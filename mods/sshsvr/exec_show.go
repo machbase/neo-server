@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"strings"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods"
 )
 
 func (sess *Session) exec_show(line string) {
@@ -19,9 +19,9 @@ func (sess *Session) exec_show(line string) {
 	}
 	switch toks[1] {
 	case "VERSION":
-		v := mach.GetVersion()
+		v := mods.GetVersion()
 		sess.Printf("Server v%d.%d.%d #%s", v.Major, v.Minor, v.Patch, v.GitSHA)
-		sess.Printf("Engine %s", mach.LibMachLinkInfo)
+		sess.Printf("Engine %s", mods.EngineInfoString())
 	case "CONFIG":
 		sess.Println(sess.server.GetConfig())
 	case "RUNTIME":

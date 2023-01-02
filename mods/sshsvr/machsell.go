@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/cemlib/logging"
 	"github.com/machbase/cemlib/ssh/sshd"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods"
 	"github.com/pkg/errors"
 )
 
@@ -83,7 +84,7 @@ func (svr *MachShell) shellProvider(user string) *sshd.Shell {
 }
 
 func (svr *MachShell) motdProvider(user string) string {
-	return fmt.Sprintf("Greeting, %s\r\nmachsvr %v\r\n", user, mach.VersionString())
+	return fmt.Sprintf("Greeting, %s\r\nmachsvr %v\r\n", user, mods.VersionString())
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {

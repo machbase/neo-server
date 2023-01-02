@@ -9,11 +9,12 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods"
 )
 
 func main() {
 	fmt.Println("-------------------------------")
-	fmt.Println(mach.LinkInfo(), mach.VersionString())
+	fmt.Println(mach.LinkInfo(), mods.VersionString())
 
 	exePath, err := os.Executable()
 	if err != nil {

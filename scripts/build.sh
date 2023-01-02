@@ -44,12 +44,12 @@ echo "Build version $MODNAME $VERSION"
 # Hardcode some values to the core package.
 if [ -d ".git" ]; then
 	GITSHA=$(git rev-parse --short HEAD)
-	LDFLAGS="$LDFLAGS -X $MODNAME.versionString=${VERSION}"
-	LDFLAGS="$LDFLAGS -X $MODNAME.versionGitSHA=${GITSHA}"
+	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
+	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 fi
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
-LDFLAGS="$LDFLAGS -X $MODNAME.goVersionString=${GOVERSTR}"
-LDFLAGS="$LDFLAGS -X $MODNAME.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
 
 # Set final Go environment options
 #LDFLAGS="$LDFLAGS -extldflags '-static'"

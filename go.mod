@@ -3,6 +3,7 @@ module github.com/machbase/neo-server
 go 1.19
 
 require (
+	github.com/Masterminds/semver/v3 v3.1.1
 	github.com/c-bata/go-prompt v0.2.6
 	github.com/eclipse/paho.mqtt.golang v1.4.1
 	github.com/gin-gonic/gin v1.8.2
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
