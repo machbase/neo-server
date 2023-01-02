@@ -10,7 +10,6 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-engine/pbconv"
 	"github.com/machbase/neo-grpc/machrpc"
 	cmap "github.com/orcaman/concurrent-map"
 	"google.golang.org/grpc/stats"
@@ -138,7 +137,7 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := pbconv.ConvertPbToAny(req.Params)
+	params := machrpc.ConvertPbToAny(req.Params)
 	if _, err := s.machbase.Exec(req.Sql, params...); err == nil {
 		rsp.Success = true
 		rsp.Reason = "success"
@@ -163,7 +162,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	// 	return nil, fmt.Errorf("invlaid session context %T", pctx)
 	// }
 
-	params := pbconv.ConvertPbToAny(req.Params)
+	params := machrpc.ConvertPbToAny(req.Params)
 	row := s.machbase.QueryRow(req.Sql, params...)
 
 	// fmt.Printf("QueryRow : %s  %s   rows: %d\n", ctx.Id, req.Sql, len(row.Values()))
@@ -176,7 +175,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	var err error
 	rsp.Success = true
 	rsp.Reason = "success"
-	rsp.Values, err = pbconv.ConvertAnyToPb(row.Values())
+	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -200,7 +199,7 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 	// }
 	// fmt.Printf("Query : %s %s\n", ctx.Id, req.Sql)
 
-	params := pbconv.ConvertPbToAny(req.Params)
+	params := machrpc.ConvertPbToAny(req.Params)
 	realRows, err := s.machbase.Query(req.Sql, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -262,7 +261,7 @@ func (s *svr) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 		return rsp, nil
 	}
 
-	rsp.Values, err = pbconv.ConvertAnyToPb(values)
+	rsp.Values, err = machrpc.ConvertAnyToPb(values)
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -375,7 +374,7 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 			return fmt.Errorf("not allowed changing handle in a stream")
 		}
 
-		values := pbconv.ConvertPbToAny(m.Params)
+		values := machrpc.ConvertPbToAny(m.Params)
 		err = wrap.appender.Append(values...)
 		if err != nil {
 			// fmt.Println("ERR>>", "append", err.Error())
