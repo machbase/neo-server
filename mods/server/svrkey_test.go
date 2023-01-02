@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	. "github.com/machbase/dbms-mach-go/server"
+	. "github.com/machbase/neo-server/mods/server"
 	"github.com/stretchr/testify/require"
 )
 

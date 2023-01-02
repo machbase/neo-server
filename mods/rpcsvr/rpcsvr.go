@@ -10,8 +10,8 @@ import (
 	"time"
 
 	mach "github.com/machbase/dbms-mach-go"
-	"github.com/machbase/dbms-mach-go/machrpc"
-	"github.com/machbase/dbms-mach-go/pbconv"
+	"github.com/machbase/neo-engine/pbconv"
+	"github.com/machbase/neo-grpc/machrpc"
 	cmap "github.com/orcaman/concurrent-map"
 	"google.golang.org/grpc/stats"
 )
