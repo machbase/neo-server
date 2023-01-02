@@ -41,15 +41,5 @@ ifeq ($(uname_p),x86_64)
 endif
 endif
 
-protos := $(basename $(shell cd proto && ls *.proto))
-
-regen-all:
-	@for tg in $(protos) ; do \
-		make regen-$$tg; \
-	done
-
-regen-%:
-	@./regen.sh $*
-
 %:
 	@./scripts/build.sh $@

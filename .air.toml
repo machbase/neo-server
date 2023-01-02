@@ -4,10 +4,10 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = [
-    "machsvr",
+    "--pname neo",
   ]
-  bin = "./tmp/machsvr"
-  cmd = "make -f Makefile machsvr"
+  bin = "./tmp/machbase-neo"
+  cmd = "make -f Makefile machbase-neo"
   delay = 1000
   exclude_dir = ["tmp", "vendor", "testdata", "vender", "packages"]
   exclude_file = []

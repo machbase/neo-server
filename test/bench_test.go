@@ -12,7 +12,7 @@ import (
 )
 
 //
-// go test -benchmem -run=^$ -bench ^BenchmarkAppend$ github.com/machbase/neo-engine/test -benchtime=1m
+// go test -benchmem -run=^$ -bench ^BenchmarkAppend$ github.com/machbase/neo-server/test -benchtime=1m
 //
 // 2022.12.13 mac-mini(m1) utm-ubuntu (4 core, 4G mem)
 // BenchmarkAppend-4         424443            167131 ns/op             560 B/op          9 allocs/op
