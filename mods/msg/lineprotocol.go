@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 )
 
 /* Interpreting Influx lineprotocol

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/dbms-mach-go/server/msg"
+	"github.com/machbase/neo-server/mods/msg"
 )
 
 func (svr *Server) handleWrite(ctx *gin.Context) {

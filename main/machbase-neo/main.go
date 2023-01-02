@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/machbase/booter"
 	_ "github.com/machbase/cemlib/banner"
-	mach "github.com/machbase/dbms-mach-go"
-	"github.com/machbase/dbms-mach-go/server"
+	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods/server"
 )
 
 func main() {

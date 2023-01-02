@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 )
 
 type WriteRequest struct {

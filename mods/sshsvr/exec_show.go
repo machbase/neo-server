@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"strings"
 
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 )
 
 func (sess *Session) exec_show(line string) {

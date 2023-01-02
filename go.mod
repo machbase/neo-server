@@ -4,12 +4,15 @@ go 1.19
 
 require (
 	github.com/c-bata/go-prompt v0.2.6
+	github.com/eclipse/paho.mqtt.golang v1.4.1
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gliderlabs/ssh v0.3.4
+	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20221215235133-2a3b3405727c
 	github.com/machbase/cemlib v0.0.0-20221215011519-04abb7ad4c80
-	github.com/machbase/dbms-mach-go v0.0.0-20221229051259-0cfeb4e31f9b
+	github.com/machbase/neo-engine v0.0.0-20230102010606-c06d63226686
+	github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
@@ -31,10 +34,12 @@ require (
 	github.com/goccy/go-json v0.9.11 // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/hcl/v2 v2.14.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/machbase/dbms-mach-go v0.0.0-20221229051259-0cfeb4e31f9b // indirect
 	github.com/mattn/go-colorable v0.1.7 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
@@ -56,6 +61,7 @@ require (
 	github.com/zclconf/go-cty v1.11.0 // indirect
 	golang.org/x/crypto v0.0.0-20220824171710-5757bc0c5503 // indirect
 	golang.org/x/net v0.4.0 // indirect
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.3.0 // indirect
 	golang.org/x/text v0.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect

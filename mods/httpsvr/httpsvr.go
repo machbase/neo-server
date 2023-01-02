@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 )
 
 func New(conf *Config) (*Server, error) {

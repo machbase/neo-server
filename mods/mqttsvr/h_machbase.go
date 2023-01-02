@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/machbase/cemlib/mqtt"
-	mach "github.com/machbase/dbms-mach-go"
-	"github.com/machbase/dbms-mach-go/server/msg"
+	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods/msg"
 	"github.com/tidwall/gjson"
 )
 

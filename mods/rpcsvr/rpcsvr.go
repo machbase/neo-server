@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/pbconv"
 	"github.com/machbase/neo-grpc/machrpc"
 	cmap "github.com/orcaman/concurrent-map"

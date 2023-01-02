@@ -15,7 +15,7 @@ import (
 	"github.com/machbase/booter"
 	"github.com/machbase/cemlib/ginutil"
 	"github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-server/mods/httpsvr"
 	"github.com/machbase/neo-server/mods/mqttsvr"
@@ -28,7 +28,7 @@ import (
 func init() {
 
 	booter.Register(
-		"github.com/machbase/dbms-mach-go/server",
+		"github.com/machbase/neo-engine/server",
 		func() *Config {
 			return NewConfig()
 		},

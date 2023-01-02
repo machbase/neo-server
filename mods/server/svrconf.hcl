@@ -38,7 +38,7 @@ module "github.com/machbase/cemlib/banner" {
     }
 }
 
-module "github.com/machbase/dbms-mach-go/server" {
+module "github.com/machbase/neo-engine/server" {
     name = "machsvr"
     config {
         MachbaseHome     = "${execDir()}/machbase"

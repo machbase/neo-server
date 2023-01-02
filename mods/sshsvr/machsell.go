@@ -10,7 +10,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/machbase/cemlib/logging"
 	"github.com/machbase/cemlib/ssh/sshd"
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 	"github.com/pkg/errors"
 )
 

@@ -7,7 +7,7 @@ import (
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/cemlib/mqtt"
-	"github.com/machbase/dbms-mach-go/server/msg"
+	"github.com/machbase/neo-server/mods/msg"
 )
 
 func (svr *Server) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {

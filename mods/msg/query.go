@@ -3,7 +3,7 @@ package msg
 import (
 	"fmt"
 
-	mach "github.com/machbase/dbms-mach-go"
+	mach "github.com/machbase/neo-engine"
 )
 
 type QueryRequest struct {
