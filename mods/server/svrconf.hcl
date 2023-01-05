@@ -23,7 +23,7 @@ module "github.com/machbase/cemlib/logging" {
         Console                     = false
         Filename                    = "-"
         DefaultPrefixWidth          = 30
-        DefaultEnableSourceLocation = true
+        DefaultEnableSourceLocation = flag("--log-source-location", false)
         DefaultLevel                = "TRACE"
         Levels = [
             { Pattern="machsvr", Level="TRACE" },

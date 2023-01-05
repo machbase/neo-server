@@ -128,7 +128,7 @@ func NewServer(conf *Config) (Server, error) {
 }
 
 func (s *svr) Start() error {
-	s.log = logging.GetLog("machsvr")
+	s.log = logging.GetLog("neosvr")
 
 	homepath, err := filepath.Abs(s.conf.MachbaseHome)
 	if err != nil {

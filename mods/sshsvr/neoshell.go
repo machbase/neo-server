@@ -40,7 +40,7 @@ func New(conf *Config) *MachShell {
 }
 
 func (svr *MachShell) Start() error {
-	svr.log = logging.GetLog("machshell")
+	svr.log = logging.GetLog("neoshell")
 	svr.sshds = make([]sshd.Server, 0)
 
 	for _, listen := range svr.conf.Listeners {
