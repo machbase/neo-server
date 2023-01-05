@@ -3,7 +3,9 @@ if [ ! -d ../packages ]; then
     mkdir ../packages
 fi
 
-# Build linux-arm64
+VMS=( "utm-arm-ubuntu18" "utm-amd-ubuntu18" )
 
-ssh utm-arm-ubuntu18 'bash -s' <  rbuild-remote.sh && \
-scp utm-arm-ubuntu18:/tmp/machsvr-v*.zip ../packages
+for VM in  ${VMS[@]}; do
+    ssh $VM 'bash -s' <  rbuild-remote.sh && \
+    scp $VM:/tmp/machbase-neo-v*.zip ../packages
+done
