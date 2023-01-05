@@ -158,7 +158,7 @@ func (sess *Session) Close() {
 }
 
 func (sess *Session) ListenWindow(ptyCh <-chan ssh.Window) {
-	defer sess.log.Trace("finish listener")
+	// defer sess.log.Trace("finish listener")
 	for !sess.closed {
 		select {
 		case <-sess.quitCh:
@@ -171,13 +171,13 @@ func (sess *Session) ListenWindow(ptyCh <-chan ssh.Window) {
 			return
 		case w := <-ptyCh:
 			sess.window = w
-			sess.log.Tracef("WIN %+v", sess.window)
+			// sess.log.Tracef("WIN %+v", sess.window)
 		}
 	}
 }
 
 func (sess *Session) Run() {
-	defer sess.log.Trace("finish runner")
+	// defer sess.log.Trace("finish runner")
 	p := prompt.New(
 		sess.executor,
 		sess.completer,
