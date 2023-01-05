@@ -28,7 +28,7 @@ import (
 func init() {
 
 	booter.Register(
-		"github.com/machbase/neo-engine/server",
+		"machbase.com/neo-server",
 		func() *Config {
 			return NewConfig()
 		},
@@ -41,7 +41,6 @@ func init() {
 type Config struct {
 	MachbaseHome   string
 	MachbasePreset MachbasePreset
-	StartupTimeout time.Duration
 	Machbase       MachbaseConfig
 	Shell          shell.Config
 	Grpc           GrpcConfig
@@ -80,8 +79,7 @@ const TagTableName = "tagdata"
 
 func NewConfig() *Config {
 	conf := Config{
-		MachbaseHome:   ".",
-		StartupTimeout: 5 * time.Second,
+		MachbaseHome: ".",
 		Grpc: GrpcConfig{
 			Listeners:      []string{"unix://./mach.sock"},
 			MaxRecvMsgSize: 4,
@@ -187,7 +185,7 @@ func (s *svr) Start() error {
 		return errors.New("database instance failed")
 	}
 
-	if err := s.db.Startup(s.conf.StartupTimeout); err != nil {
+	if err := s.db.Startup(); err != nil {
 		return errors.Wrap(err, "startup database")
 	}
 

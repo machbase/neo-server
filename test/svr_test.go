@@ -29,7 +29,7 @@ module "github.com/machbase/cemlib/logging" {
     }
 }
 
-module "github.com/machbase/neo-engine/server" {
+module "machbase.com/neo-server" {
     name = "machsvr"
     config {
         MachbaseHome     = "${VARS_WORKDIR}/machbase"

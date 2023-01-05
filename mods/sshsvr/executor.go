@@ -14,6 +14,9 @@ func (sess *Session) executor(line string) {
 		sess.Close()
 	} else if strings.HasPrefix(lineUpper, "SHOW") {
 		sess.exec_show(lineUpper)
+	} else if strings.HasPrefix(lineUpper, "EXPLAIN") {
+		sqlText := line[len("explain"):]
+		sess.exec_explain(sqlText)
 	} else {
 		sess.exec_sql(line)
 	}

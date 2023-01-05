@@ -32,7 +32,7 @@ func main() {
 	if db == nil {
 		panic(err)
 	}
-	err = db.Startup(10 * time.Second)
+	err = db.Startup()
 	if err != nil {
 		panic(err)
 	}
