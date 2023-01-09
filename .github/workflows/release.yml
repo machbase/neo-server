@@ -44,7 +44,7 @@ jobs:
         with:
           token: ${{ secrets.GIT_PASS }}
           go-version: '^1.19.4'
-      - name: Build server on ${{ matrix.os }} ${{ matrix.arch }}
+      - name: Build server on ${{ matrix.os }} ${{ matrix.arch }} ${{ steps.branch_name.outputs.SOURCE_TAG }}
         run: |
             make package-machbase-neo
       - name: Release files
