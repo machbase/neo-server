@@ -9,7 +9,7 @@ on:
 
 jobs:
   run:
-    runs-on: [ self-hosted, Linux, ${{ matrix.arch }} ]
+    runs-on: [ self-hosted ]
     env:
       GOPRIVATE: "github.com/machbase/*"
       GH_PAT: ${{ secrets.GIT_PASS }}
