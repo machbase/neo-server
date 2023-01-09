@@ -9,14 +9,14 @@ on:
 
 jobs:
   run:
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [ self-hosted, Linux, ${{ matrix.arch }} ]
     env:
       GOPRIVATE: "github.com/machbase/*"
       GH_PAT: ${{ secrets.GIT_PASS }}
       GH_USR: ${{ secrets.GIT_USER }}
     strategy:
       matrix:
-        arch: [ arm64 ]
+        arch: [ ARM64 ]
     steps:
       - name: Configure github netrc
         uses: extractions/netrc@v1
@@ -32,7 +32,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           lfs: false
-          submodules: recursive
           fetch-depth: 0
       - name: Branch name
         id: branch_name
