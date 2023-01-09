@@ -12,7 +12,7 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20221215235133-2a3b3405727c
 	github.com/machbase/cemlib v0.0.0-20221215011519-04abb7ad4c80
-	github.com/machbase/neo-engine v0.0.0-20230102010606-c06d63226686
+	github.com/machbase/neo-engine v0.0.0-20230109084103-0001ad2ec908
 	github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
