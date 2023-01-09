@@ -8,16 +8,16 @@ on:
     #   - v*
 
 jobs:
+  strategy:
+    matrix:
+        os: [ linux ]
+        arch: [ ARM64 ]
   run:
     runs-on: [ self-hosted, ${{ matrix.os }}, ${{ matrix.arch }} ]
     env:
       GOPRIVATE: "github.com/machbase/*"
       GH_PAT: ${{ secrets.GIT_PASS }}
       GH_USR: ${{ secrets.GIT_USER }}
-    strategy:
-      matrix:
-          os: [ linux ]
-          arch: [ ARM64 ]
     steps:
       # - name: Configure github netrc
       #   uses: extractions/netrc@v1
