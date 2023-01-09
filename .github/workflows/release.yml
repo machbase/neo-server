@@ -26,8 +26,7 @@ jobs:
           password: ${{ secrets.GIT_PASS }}
       - name: Configure private modules
         run: |
-          git config --global url."https://$GH_USR:$GH_PAT@github.com".insteadOf "https://github.com" &&
-          git config --global url."https://$GH_USR:$GH_PAT@github.com/MACHBASE".insteadOf "git@github.com:MACHBASE"
+          git config --global url."https://$GH_USR:$GH_PAT@github.com".insteadOf "https://github.com"
       - name: Checkout
         uses: actions/checkout@v3
         with:
