@@ -1,0 +1,62 @@
+name: Build and release neo
+
+on:
+  push:
+    branches:
+      - main
+    # tags:
+    #   - v*
+
+jobs:
+  run:
+    runs-on: [self-hosted, Linux, ARM64]
+    env:
+      GOPRIVATE: "github.com/machbase/*"
+      GH_PAT: ${{ secrets.GIT_PASS }}
+      GH_USR: ${{ secrets.GIT_USER }}
+    strategy:
+      matrix:
+        arch: [ arm64 ]
+    steps:
+      - name: Configure github netrc
+        uses: extractions/netrc@v1
+        with:
+          machine: github.com
+          username: ${{ secrets.GIT_USER }}
+          password: ${{ secrets.GIT_PASS }}
+      - name: Configure private modules
+        run: |
+          git config --global url."https://$GH_USR:$GH_PAT@github.com".insteadOf "https://github.com" &&
+          git config --global url."https://$GH_USR:$GH_PAT@github.com/MACHBASE".insteadOf "git@github.com:MACHBASE"
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          lfs: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Branch name
+        id: branch_name
+        run: |
+          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Setup go compiler
+        uses: actions/setup-go@v3
+        with:
+          go-version: '^1.19.4'
+      - name: Build server on {{ matrix.arch }}
+        run: |
+            make package-machbase-neo
+      - name: Release files
+        uses: svenstaro/upload-release-action@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
+          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
+          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
+        with:
+          repo_token: ${{ secrets.GIT_PASS }}
+          file: packages/machbase-neo-v*.zip
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
