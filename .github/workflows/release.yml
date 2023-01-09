@@ -13,7 +13,7 @@ jobs:
       matrix:
           os: [ linux ]
           arch: [ ARM64 ]
-    runs-on: [ self-hosted, ${{ matrix.os }}, ${{ matrix.arch }} ]
+    runs-on: [ self-hosted, linux, ARM64 ]
     env:
       GOPRIVATE: "github.com/machbase/*"
       GH_PAT: ${{ secrets.GIT_PASS }}
