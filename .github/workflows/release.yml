@@ -8,11 +8,11 @@ on:
     #   - v*
 
 jobs:
-  strategy:
-    matrix:
-        os: [ linux ]
-        arch: [ ARM64 ]
-  run:
+  builds:
+    strategy:
+      matrix:
+          os: [ linux ]
+          arch: [ ARM64 ]
     runs-on: [ self-hosted, ${{ matrix.os }}, ${{ matrix.arch }} ]
     env:
       GOPRIVATE: "github.com/machbase/*"
