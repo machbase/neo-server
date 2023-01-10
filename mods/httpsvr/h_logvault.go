@@ -104,9 +104,10 @@ func (svr *Server) checkLogTable() {
 		createTable = true
 	} else {
 		/// drop table for test
-		svr.db.Exec("drop table " + LogVaultTable)
+		// svr.db.Exec("drop table " + LogVaultTable)
+		// createTable = true
 		///
-		createTable = true
+		createTable = false
 	}
 
 	if createTable {
