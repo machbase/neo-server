@@ -2,6 +2,7 @@ package httpsvr
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/cemlib/logging"
@@ -29,6 +30,8 @@ type Server struct {
 	conf *Config
 	log  logging.Log
 	db   *mach.Database
+
+	logvaultAppender *mach.Appender
 }
 
 func (svr *Server) Start() error {
@@ -36,9 +39,13 @@ func (svr *Server) Start() error {
 }
 
 func (svr *Server) Stop() {
+	if svr.logvaultAppender != nil {
+		svr.logvaultAppender.Close()
+	}
 }
 
 func (svr *Server) Route(r *gin.Engine) {
+	checkLogTableOnce := sync.Once{}
 	for _, h := range svr.conf.Handlers {
 		prefix := h.Prefix
 		// remove trailing slash
@@ -51,6 +58,9 @@ func (svr *Server) Route(r *gin.Engine) {
 		switch h.Handler {
 		case "influx": // "influx line protocol"
 			r.POST(prefix+"/:oper", svr.handleLineProtocol)
+		case "logvault":
+			r.POST(prefix+"/:oper", svr.handleLogVault)
+			checkLogTableOnce.Do(svr.checkLogTable)
 		default: // "machbase"
 			r.GET(prefix+"/query", svr.handleQuery)
 			r.POST(prefix+"/query", svr.handleQuery)

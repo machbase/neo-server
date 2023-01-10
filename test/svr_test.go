@@ -47,8 +47,9 @@ module "machbase.com/neo-server" {
         Http = {
             Listeners        = [ "tcp://127.0.0.1:4088" ]
             Handlers         = [
-                { Prefix: "/db",      Handler: "machbase" },
-                { Prefix: "/metrics", Handler: "influx" },
+                { Prefix: "/db",       Handler: "machbase" },
+                { Prefix: "/metrics",  Handler: "influx" },
+				{ Prefix: "/logvault", Handler: "logvault"},
             ]
         }
         Mqtt = {

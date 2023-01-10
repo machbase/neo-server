@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/machbase/cemlib/logging"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -58,4 +60,11 @@ func TestHttp(t *testing.T) {
 	rsp, err = client.Post(baseURL+"/metrics/write?db="+tableName, "application/octet-stream", bytes.NewBufferString(lineProtocolData))
 	require.Nil(t, err)
 	require.Equal(t, http.StatusNoContent, rsp.StatusCode)
+
+	//// logvault
+	lvw := logging.NewLogVaultWriter(baseURL+"/logvault/push", map[string]string{"job": "test-log", "host": "localhost"})
+	lvw.Start()
+	lvw.Write(time.Now(), "some log messages")
+	lvw.Stop()
+	time.Sleep(1 * time.Second)
 }
