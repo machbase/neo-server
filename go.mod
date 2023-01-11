@@ -11,7 +11,7 @@ require (
 	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20221215235133-2a3b3405727c
-	github.com/machbase/cemlib v0.0.0-20230110024817-4f3458160770
+	github.com/machbase/cemlib v0.0.0-20230111102737-35c4f1d24846
 	github.com/machbase/neo-engine v0.0.0-20230109084103-0001ad2ec908
 	github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67
 	github.com/orcaman/concurrent-map v1.0.0
