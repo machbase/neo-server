@@ -12,32 +12,14 @@ if [ "$1" == "" ]; then
     exit 1
 fi
 
+VERSION="$2"
+
 # Check the Go installation
 if [ "$(which go)" == "" ]; then
 	echo "error: Go is not installed. Please download and follow installation"\
 		 "instructions at https://golang.org/dl to continue."
 	exit 1
 fi
-
-# Version from 'version.txt' or git tags
-if [ -f "./version.txt" ]; then
-    VERSION=`cat ./version.txt`
-elif [ -d ".git" ]; then
-    VERSION=$(git describe --tags --abbrev=0)
-fi
-
-function semverIncrease() {
-    TAGGED=$(git describe --tags --contains HEAD 2> /dev/null) || true
-   if [ -z $TAGGED ]; then
-        local RE='v[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)'
-        MAJOR=`echo $1 | sed -e "s#$RE#\1#"`
-        MINOR=`echo $1 | sed -e "s#$RE#\2#"`
-        PATCH=`echo $1 | sed -e "s#$RE#\3#"`
-        VERSION="v$MAJOR.$MINOR.`expr $PATCH + 1`"
-   fi
-}
-
-semverIncrease $VERSION
 
 echo "Build version $MODNAME $VERSION"
 

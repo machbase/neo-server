@@ -7,27 +7,7 @@ cd $PRJROOT
 PKGNAME="$1"
 GOOS="$2"
 GOARCH="$3"
-VERSION="v0.0.0"
-
-function semverIncrease() {
-    TAGGED=$(git describe --tags --contains HEAD 2> /dev/null) || true
-   if [ -z $TAGGED ]; then
-        local RE='v[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)'
-        MAJOR=`echo $1 | sed -e "s#$RE#\1#"`
-        MINOR=`echo $1 | sed -e "s#$RE#\2#"`
-        PATCH=`echo $1 | sed -e "s#$RE#\3#"`
-        VERSION="v$MAJOR.$MINOR.`expr $PATCH + 1`"
-   fi
-}
-
-if [ -d ".git" ]; then
-    tags=$(git tag | wc -l) 
-    if [ $tags -gt 0 ]; then
-    	VERSION=$(git describe --tags --abbrev=0)
-    fi
-fi
-
-semverIncrease $VERSION
+VERSION="$4"
 
 echo Packaging $PKGNAME $GOOS $GOARCH $VERSION
 

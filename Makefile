@@ -3,6 +3,7 @@
 targets := $(shell ls main)
 uname_s := $(shell uname -s)
 uname_p := $(shell uname -p)
+nextver := $(shell ./scripts/buildversion.sh)
 
 all:
 	@for tg in $(targets) ; do \
@@ -26,20 +27,16 @@ package-all:
 		make package-$$tg; \
 	done
 
-releases:
-	@./docker-package.sh machgo linux amd64
-	@./docker-package.sh machgo linux arm64/v7
-
 package-%:
 	@echo "package" $(uname_s) $(uname_p)
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_p),aarch64)
-	@./scripts/package.sh $*  linux    arm64
+	@./scripts/package.sh $*  linux  arm64 $(nextver)
 endif
 ifeq ($(uname_p),x86_64)
-	@./scripts/package.sh $*  linux    amd64
+	@./scripts/package.sh $*  linux  amd64 $(nextver)
 endif
 endif
 
 %:
-	@./scripts/build.sh $@
+	@./scripts/build.sh $@ $(nextver)
