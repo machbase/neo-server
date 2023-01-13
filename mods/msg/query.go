@@ -46,16 +46,14 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 	}
 	data := &QueryData{}
 	data.Rows = make([][]any, 0)
-	data.Columns, err = rows.ColumnNames()
+	cols, err := rows.Columns()
 	if err != nil {
 		rsp.Reason = err.Error()
 		return
 	}
-	data.Types, err = rows.ColumnTypes()
-	if err != nil {
-		rsp.Reason = err.Error()
-		return
-	}
+	data.Columns = cols.Names()
+	data.Types = cols.Types()
+
 	for {
 		rec, next, err := rows.Fetch()
 		if err != nil {

@@ -229,6 +229,44 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 	return rsp, nil
 }
 
+func (s *svr) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.ColumnsResponse, error) {
+	rsp := &machrpc.ColumnsResponse{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	rowsWrapVal, exists := s.ctxMap.Get(rows.Handle)
+	if !exists {
+		rsp.Reason = fmt.Sprintf("handle '%s' not found", rows.Handle)
+		return rsp, nil
+	}
+	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
+	if !ok {
+		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", rows.Handle)
+		return rsp, nil
+	}
+
+	cols, err := rowsWrap.rows.Columns()
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	rsp.Columns = make([]*machrpc.Column, len(cols))
+	for i, c := range cols {
+		rsp.Columns[i] = &machrpc.Column{
+			Name:   c.Name,
+			Type:   c.Type,
+			Size:   int32(c.Size),
+			Length: int32(c.Len),
+		}
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
 func (s *svr) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.RowsFetchResponse, error) {
 	rsp := &machrpc.RowsFetchResponse{}
 	tick := time.Now()

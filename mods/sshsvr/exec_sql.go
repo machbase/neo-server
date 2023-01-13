@@ -27,12 +27,12 @@ func (sess *Session) exec_sql(line string) {
 	}
 	chunk := &ResultChunk{}
 	chunk.heading = true
-
-	chunk.cols, err = rows.ColumnNames()
+	cols, err := rows.Columns()
 	if err != nil {
 		sess.WriteStr(err.Error() + "\r\n")
 		return
 	}
+	chunk.cols = cols.Names()
 	nrows := 0
 	height := sess.window.Height - 1
 	if chunk.heading {
