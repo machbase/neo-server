@@ -66,9 +66,15 @@ func TestGrpc(t *testing.T) {
 			)`, tableName)
 
 		err := client.Exec(sqlText)
+		if err != nil {
+			t.Log(err.Error())
+		}
 		require.Nil(t, err)
 
 		err = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
+		if err != nil {
+			t.Log(err.Error())
+		}
 		require.Nil(t, err)
 	}
 
@@ -78,6 +84,9 @@ func TestGrpc(t *testing.T) {
 	// QueryRow
 	row = client.QueryRow("select count(*) from " + tableName)
 	err = row.Scan(&count)
+	if err != nil {
+		t.Log(err.Error())
+	}
 	require.Nil(t, err)
 	t.Logf("count = %d", count)
 
@@ -91,6 +100,9 @@ func TestGrpc(t *testing.T) {
 	////////////
 	// Append
 	appender, err := client.Appender(tableName)
+	if err != nil {
+		t.Log(err.Error())
+	}
 	require.Nil(t, err)
 	for i := 0; i < 10; i++ {
 		id, _ := idgen.NewV6()

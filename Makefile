@@ -13,7 +13,10 @@ all:
 cleanpackage:
 	@rm -rf packages/*
 
-test:
+tmpdir:
+	@mkdir -p tmp
+
+test: tmpdir
 	@go test $(ARGS) ./test/
 
 test-all:
