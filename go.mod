@@ -12,8 +12,8 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e
 	github.com/machbase/cemlib v0.0.0-20230111102737-35c4f1d24846
-	github.com/machbase/neo-engine v0.0.0-20230113043956-442c5007b89c
-	github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67
+	github.com/machbase/neo-engine v0.0.4
+	github.com/machbase/neo-grpc v0.0.4
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
@@ -41,7 +41,6 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/machbase/cemlib-msg v0.0.0-20230110024559-122fc1efab3c // indirect
-	github.com/machbase/dbms-mach-go v0.0.0-20221229051259-0cfeb4e31f9b // indirect
 	github.com/mattn/go-colorable v0.1.7 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
