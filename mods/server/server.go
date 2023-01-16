@@ -17,10 +17,12 @@ import (
 	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/httpsvr"
 	"github.com/machbase/neo-server/mods/mqttsvr"
 	"github.com/machbase/neo-server/mods/rpcsvr"
 	shell "github.com/machbase/neo-server/mods/sshsvr"
+	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -34,6 +36,33 @@ func init() {
 		},
 		func(conf *Config) (booter.Boot, error) {
 			return NewServer(conf)
+		},
+	)
+
+	defaultLogConf := logging.Config{
+		Console:                     false,
+		Filename:                    "-",
+		Append:                      true,
+		RotateSchedule:              "@midnight",
+		MaxSize:                     10,
+		MaxBackups:                  1,
+		MaxAge:                      7,
+		Compress:                    false,
+		UTC:                         false,
+		DefaultPrefixWidth:          10,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+	}
+
+	booter.Register(
+		"machbase.com/neo-logging",
+		func() *logging.Config {
+			conf := defaultLogConf
+			return &conf
+		},
+		func(conf *logging.Config) (booter.Boot, error) {
+			logging.Configure(conf)
+			return &logging.Module{}, nil
 		},
 	)
 }
@@ -129,6 +158,10 @@ func NewServer(conf *Config) (Server, error) {
 
 func (s *svr) Start() error {
 	s.log = logging.GetLog("neosvr")
+
+	v := mods.GetVersion()
+	s.log.Infof("\n%s v%d.%d.%d (%s %s)\n", genBanner(), v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	s.log.Info(mods.EngineInfoString())
 
 	homepath, err := filepath.Abs(s.conf.MachbaseHome)
 	if err != nil {
@@ -298,6 +331,12 @@ func (s *svr) Stop() {
 	mach.Finalize()
 
 	s.log.Infof("shutdown.")
+}
+
+func genBanner() string {
+	fig := figlet4go.NewAsciiRender()
+	logo, _ := fig.Render("NEO")
+	return strings.TrimRight(logo, "\r\n")
 }
 
 func (s *svr) ServerPrivateKeyPath() string {

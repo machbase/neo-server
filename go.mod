@@ -14,6 +14,7 @@ require (
 	github.com/machbase/cemlib v0.0.0-20230111102737-35c4f1d24846
 	github.com/machbase/neo-engine v0.0.4
 	github.com/machbase/neo-grpc v0.0.4
+	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
@@ -45,7 +46,6 @@ require (
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/mattn/go-tty v0.0.3 // indirect
-	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

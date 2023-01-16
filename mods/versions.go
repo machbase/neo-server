@@ -44,6 +44,10 @@ func VersionString() string {
 	return fmt.Sprintf("%s (%v, %v, go %v)", versionString, versionGitSHA, buildTimestamp, goVersionString)
 }
 
+func BuildTimestamp() string {
+	return buildTimestamp
+}
+
 func EngineInfoString() string {
 	return mach.LibMachLinkInfo
 }

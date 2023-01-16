@@ -7,7 +7,7 @@ import (
 //go:embed svrconf.hcl
 var DefaultFallbackConfig []byte
 
-var DefaultFallbackPname string = "NEO"
+var DefaultFallbackPname string = "neo"
 
 // import hcl "github.com/hashicorp/hcl/v2"
 func (s *svr) GetConfig() string {

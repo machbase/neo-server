@@ -10,31 +10,24 @@ define DEF {
 define VARS {
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
     SHELL_LISTEN_PORT = flag("--shell-listen-port", DEF_SHELL_PORT)
-    GRPC_LISTEN_HOST = flag("--grpc-listen-host", DEF_LISTEN_HOST)
-    GRPC_LISTEN_PORT = flag("--grpc-listen-port", DEF_GRPC_PORT)
-    HTTP_LISTEN_HOST = flag("--http-listen-host", DEF_LISTEN_HOST)
-    HTTP_LISTEN_PORT = flag("--http-listen-port", DEF_HTTP_PORT)
-    MQTT_LISTEN_HOST = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
-    MQTT_LISTEN_PORT = flag("--mqtt-listen-port", DEF_MQTT_PORT)
+    GRPC_LISTEN_HOST  = flag("--grpc-listen-host", DEF_LISTEN_HOST)
+    GRPC_LISTEN_PORT  = flag("--grpc-listen-port", DEF_GRPC_PORT)
+    HTTP_LISTEN_HOST  = flag("--http-listen-host", DEF_LISTEN_HOST)
+    HTTP_LISTEN_PORT  = flag("--http-listen-port", DEF_HTTP_PORT)
+    MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
+    MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
 }
 
-module "github.com/machbase/cemlib/logging" {
+module "machbase.com/neo-logging" {
     config {
         Console                     = false
         Filename                    = "-"
-        DefaultPrefixWidth          = 30
+        DefaultPrefixWidth          = 20
         DefaultEnableSourceLocation = flag("--log-source-location", false)
         DefaultLevel                = "TRACE"
         Levels = [
             { Pattern="machsvr", Level="TRACE" },
         ]
-    }
-}
-
-module "github.com/machbase/cemlib/banner" {
-    config {
-        Label = pname()
-        Info  = version()
     }
 }
 
