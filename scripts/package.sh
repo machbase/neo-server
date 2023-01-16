@@ -20,9 +20,6 @@ if [ -d arch/$PKGNAME ]; then
     find "packages/$bdir" -name ".gitkeep" -exec /bin/rm -f {} \;
 fi
 case $PKGNAME in
-    machgo)
-        declare -a BINS=( "machgo" )
-        ;;
     *)
         declare -a BINS=( $PKGNAME )
         ;;

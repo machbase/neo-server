@@ -24,12 +24,12 @@ fi
 echo "Build version $MODNAME $VERSION"
 
 # Hardcode some values to the core package.
-if [ -d ".git" ]; then
+if [ -f ".git" ]; then
 	GITSHA=$(git rev-parse --short HEAD)
-	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 fi
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
 
