@@ -86,8 +86,8 @@ github.com/machbase/cemlib-msg v0.0.0-20230110024559-122fc1efab3c h1:jekIwFiK8PO
 github.com/machbase/cemlib-msg v0.0.0-20230110024559-122fc1efab3c/go.mod h1:QLuMmqbm+qhXxq1gc0zEM6zKmv7AvGEfXW7SoFXeCjc=
 github.com/machbase/dbms-mach-go v0.0.0-20221229051259-0cfeb4e31f9b h1:t3+0RRuYGVXKiAMwBDWdHMlbEKehtIx+XEbc+PVFy9g=
 github.com/machbase/dbms-mach-go v0.0.0-20221229051259-0cfeb4e31f9b/go.mod h1:x5dDAN5Rm7GiWdX+qOe2atxJ1bcHEZZg219kM0Va0w4=
-github.com/machbase/neo-engine v0.0.0-20230109084103-0001ad2ec908 h1:pcKI12DvJIxistpxThjwClnqywNZK5EP2g0a4aZdWd8=
-github.com/machbase/neo-engine v0.0.0-20230109084103-0001ad2ec908/go.mod h1:2Y5DAG+It2Vb+v5lWXiiXNXUWqn2XBNKdsX0MWZKF6s=
+github.com/machbase/neo-engine v0.0.0-20230113043956-442c5007b89c h1:Rc0HF4IwQqQqn/R3Lg+w4eK4hoNU0GsiuypxxXkM4BY=
+github.com/machbase/neo-engine v0.0.0-20230113043956-442c5007b89c/go.mod h1:2Y5DAG+It2Vb+v5lWXiiXNXUWqn2XBNKdsX0MWZKF6s=
 github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67 h1:R27UqowqB2jCmW6kO1zMe4c1ej1jWHUCSEvOt7JEwog=
 github.com/machbase/neo-grpc v0.0.0-20230102002335-9f7e1e353a67/go.mod h1:HLhAapDD2c8Wq6ptBiz4TpcU55/v3Q9Hkqbmv7MJsTc=
 github.com/mattn/go-colorable v0.1.4/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
