@@ -53,7 +53,7 @@ func (svr *Server) Route(r *gin.Engine) {
 			prefix = prefix[0 : len(prefix)-1]
 		}
 
-		svr.log.Infof("Add handler '%s' -> %s", prefix, h.Handler)
+		svr.log.Infof("Add handler %-10s '%s'", h.Handler, prefix)
 
 		switch h.Handler {
 		case "influx": // "influx line protocol"
