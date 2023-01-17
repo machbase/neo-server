@@ -16,7 +16,7 @@ define VARS {
 	WORKDIR = "../tmp"
 }
 
-module "github.com/machbase/cemlib/logging" {
+module "machbase.com/neo-logging" {
     config {
         Console                     = false
         Filename                    = "-"

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
 	cmap "github.com/orcaman/concurrent-map"
@@ -38,6 +39,7 @@ func New(conf *Config) (Server, error) {
 		conf:     conf,
 		ctxMap:   cmap.New(),
 		machbase: mach.New(),
+		log:      logging.GetLog("rpcsvr"),
 	}, nil
 }
 
@@ -47,6 +49,7 @@ type svr struct {
 	conf     *Config
 	ctxMap   cmap.ConcurrentMap
 	machbase *mach.Database
+	log      logging.Log
 }
 
 func (s *svr) Start() error {
@@ -396,31 +399,32 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 		if wrap == nil {
 			appenderWrapVal, exists := s.ctxMap.Get(m.Handle)
 			if !exists {
-				// fmt.Println("ERR>>", "not found", m.Handle)
+				s.log.Error("handle not found", m.Handle)
 				return fmt.Errorf("handle '%s' not found", m.Handle)
 			}
 			appenderWrap, ok := appenderWrapVal.(*appenderWrap)
 			if !ok {
-				// fmt.Println("ERR>>", "invalid", m.Handle)
+				s.log.Error("handle invalid", m.Handle)
 				return fmt.Errorf("handle '%s' is not valid", m.Handle)
 			}
 			wrap = appenderWrap
 		}
 
 		if wrap.id != m.Handle {
-			// fmt.Println("ERR>>", "handle changed", m.Handle)
+			s.log.Error("handle changed", m.Handle)
 			return fmt.Errorf("not allowed changing handle in a stream")
 		}
 
 		values := machrpc.ConvertPbToAny(m.Params)
 		err = wrap.appender.Append(values...)
 		if err != nil {
-			// fmt.Println("ERR>>", "append", err.Error())
-			return stream.SendAndClose(&machrpc.AppendDone{
-				Success: false,
-				Reason:  err.Error(),
-				Elapse:  time.Since(tick).String(),
-			})
+			s.log.Error("append", err.Error())
+			return err
+			// return stream.SendAndClose(&machrpc.AppendDone{
+			// 	Success: false,
+			// 	Reason:  err.Error(),
+			// 	Elapse:  time.Since(tick).String(),
+			// })
 		}
 	}
 }

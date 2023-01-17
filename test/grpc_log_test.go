@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGrpc(t *testing.T) {
+func TestGrpcLogTable(t *testing.T) {
 	const dropTable = true
 	var tableExists bool
 	var count int
-	var tableName = strings.ToUpper("tagdata")
+	var tableName = strings.ToUpper("logdata")
 
 	client := machrpc.NewClient(machrpc.QueryTimeout(10 * time.Second))
 	err := client.Connect("unix://../tmp/mach.sock")
@@ -52,10 +52,10 @@ func TestGrpc(t *testing.T) {
 		t.Logf("table '%s' doesn't exist, create new one", tableName)
 
 		sqlText := fmt.Sprintf(`
-			create tag table %s ( 
-				name            varchar(200) primary key, 
-				time            datetime basetime, 
-				value           double summarized, 
+			create log table %s ( 
+				name            varchar(200), 
+				time            datetime, 
+				value           double, 
 				type            varchar(40),
 				ivalue          long,
 				svalue          varchar(400),
@@ -98,7 +98,7 @@ func TestGrpc(t *testing.T) {
 		id.String())
 
 	////////////
-	// Append
+	// Append - log table
 	appender, err := client.Appender(tableName)
 	if err != nil {
 		t.Log(err.Error())
@@ -107,15 +107,23 @@ func TestGrpc(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		id, _ := idgen.NewV6()
 		err := appender.Append(
-			fmt.Sprintf("name-%2d", count+2+i), time.Now(), 0.1001+0.1001*float32(count+1+i), "float64", nil, nil, id.String(),
-			"pname", 0, nil)
+			fmt.Sprintf("name-%02d", count+2+i),
+			time.Now(),
+			0.1001+0.1001*float64(count+1+i),
+			"float64",
+			nil,
+			nil,
+			id.String(),
+			"pname",
+			0,
+			nil)
 		require.Nil(t, err)
 	}
 	appender.Close()
 
 	////////////
 	// Query
-	rows, err := client.Query("select name, time, value, id from "+tableName+" where id > ?", "")
+	rows, err := client.Query("select name, time, value, id from " + tableName)
 	require.Nil(t, err)
 	defer rows.Close()
 	for rows.Next() {
@@ -133,7 +141,7 @@ func TestGrpc(t *testing.T) {
 
 	////////////
 	// QueryRow
-	row = client.QueryRow("select count(*) from tagdata where id > ?", "")
+	row = client.QueryRow("select count(*) from " + tableName)
 	if row.Err() != nil {
 		fmt.Printf("ERR> %s\n", row.Err().Error())
 	}

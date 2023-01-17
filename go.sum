@@ -84,10 +84,10 @@ github.com/machbase/cemlib v0.0.0-20230111102737-35c4f1d24846 h1:23inQ9/aYYEsnjl
 github.com/machbase/cemlib v0.0.0-20230111102737-35c4f1d24846/go.mod h1:JvWkWyqDyN0L4nI4C1ctExEf+GioYb7cyijNLLWOTQ8=
 github.com/machbase/cemlib-msg v0.0.0-20230110024559-122fc1efab3c h1:jekIwFiK8POr8ZVIfgwthjEGXNsKCCwpHOxn6uloeGc=
 github.com/machbase/cemlib-msg v0.0.0-20230110024559-122fc1efab3c/go.mod h1:QLuMmqbm+qhXxq1gc0zEM6zKmv7AvGEfXW7SoFXeCjc=
-github.com/machbase/neo-engine v0.0.5-0.20230116235939-da7ed54823e5 h1:zrlq7ITzPT8WaAZbd/4YfbHwGvcr5V5uxzHk0+qEYME=
-github.com/machbase/neo-engine v0.0.5-0.20230116235939-da7ed54823e5/go.mod h1:2Y5DAG+It2Vb+v5lWXiiXNXUWqn2XBNKdsX0MWZKF6s=
-github.com/machbase/neo-grpc v0.0.4 h1:IXSTdAEcd8aFanZ0dYbkwfRB148SHAFSOLpCBN5xVD4=
-github.com/machbase/neo-grpc v0.0.4/go.mod h1:qQSw+8ZdJ+a+b1gXtu+kfafZU8h74XSr0jErnRGAq5c=
+github.com/machbase/neo-engine v0.0.5-0.20230117044050-9afe8bf5957d h1:DyX0gpo8yTDknylX83RMM7pZiWOyK7tQPt89Pyf4vWM=
+github.com/machbase/neo-engine v0.0.5-0.20230117044050-9afe8bf5957d/go.mod h1:2Y5DAG+It2Vb+v5lWXiiXNXUWqn2XBNKdsX0MWZKF6s=
+github.com/machbase/neo-grpc v0.0.5-0.20230117034931-464a7abdbf94 h1:zKfhtMXa5XEMbOoTazKsFEjXswHiEXw74aqb4F1TQ60=
+github.com/machbase/neo-grpc v0.0.5-0.20230117034931-464a7abdbf94/go.mod h1:qQSw+8ZdJ+a+b1gXtu+kfafZU8h74XSr0jErnRGAq5c=
 github.com/mattn/go-colorable v0.1.4/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.7 h1:bQGKb3vps/j0E9GfJQ03JyhRuxsvdAanXlT9BTw3mdw=
 github.com/mattn/go-colorable v0.1.7/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
