@@ -17,7 +17,7 @@ import (
 
 func TestHttp(t *testing.T) {
 	tableName := strings.ToUpper("sample")
-	baseURL := "http://127.0.0.1:4088"
+	baseURL := "http://127.0.0.1:5654"
 
 	client := http.Client{}
 

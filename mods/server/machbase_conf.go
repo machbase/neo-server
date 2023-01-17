@@ -194,7 +194,7 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		STREAM_THREAD_COUNT:            4,
 		TAG_TABLE_META_MAX_SIZE:        104857600, // 100MB
 		DISK_BUFFER_COUNT:              16,
-		TAG_CACHE_ENABLE:               31,
+		TAG_CACHE_ENABLE:               1,
 	}
 	switch preset {
 	case PresetFog:

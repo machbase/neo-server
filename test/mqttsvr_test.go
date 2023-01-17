@@ -17,7 +17,7 @@ func TestMqttClient(t *testing.T) {
 	cfg.SetAutoReconnect(false)
 	cfg.SetProtocolVersion(4)
 	cfg.SetClientID("machbase-test-cli")
-	cfg.AddBroker("127.0.0.1:4083")
+	cfg.AddBroker("127.0.0.1:5653")
 	cfg.SetKeepAlive(3 * time.Second)
 	cfg.SetUsername("user")
 	cfg.SetPassword("pass")

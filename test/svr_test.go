@@ -33,19 +33,20 @@ module "machbase.com/neo-server" {
     name = "machsvr"
     config {
         MachbaseHome     = "${VARS_WORKDIR}/machbase"
+		MachbasePreset   = 2
         Machbase = {
-            HANDLE_LIMIT = 1024
+            HANDLE_LIMIT = 2048
         }
         Grpc = {
             Listeners        = [ 
                 "unix://${VARS_WORKDIR}/mach.sock", 
-                "tcp://127.0.0.1:4056",
+                "tcp://127.0.0.1:5655",
             ]
             MaxRecvMsgSize   = 4
             MaxSendMsgSize   = 4
         }
         Http = {
-            Listeners        = [ "tcp://127.0.0.1:4088" ]
+            Listeners        = [ "tcp://127.0.0.1:5654" ]
             Handlers         = [
                 { Prefix: "/db",       Handler: "machbase" },
                 { Prefix: "/metrics",  Handler: "influx" },
@@ -53,7 +54,7 @@ module "machbase.com/neo-server" {
             ]
         }
         Mqtt = {
-            Listeners        = [ "tcp://127.0.0.1:4083"]
+            Listeners        = [ "tcp://127.0.0.1:5653"]
             Handlers         = [
                 { Prefix: "db",      Handler: "machbase" },
                 { Prefix: "metrics", Handler: "influx" },
