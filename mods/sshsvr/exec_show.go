@@ -10,7 +10,7 @@ import (
 func (sess *Session) exec_show(line string) {
 	toks := strings.Fields(line)
 	if len(toks) == 1 {
-		sess.Println("Usage: SHOW [VERSION | CONFIG]")
+		sess.Println("Usage: SHOW [TABLES | VERSION]")
 		return
 	}
 	if toks[0] != "SHOW" || len(toks) == 1 {
@@ -22,6 +22,8 @@ func (sess *Session) exec_show(line string) {
 		v := mods.GetVersion()
 		sess.Printf("Server v%d.%d.%d #%s", v.Major, v.Minor, v.Patch, v.GitSHA)
 		sess.Printf("Engine %s", mods.EngineInfoString())
+	case "TABLES":
+		sess.exec_show_tables()
 	case "CONFIG":
 		sess.Println(sess.server.GetConfig())
 	case "RUNTIME":
@@ -41,5 +43,22 @@ func (sess *Session) exec_show(line string) {
 		sess.Printf("%-*s %d MB", width, "mem sys", mem.Sys/1024/1024)
 		// bytes of allocated for heap objects.
 		sess.Printf("%-*s %d MB", width, "mem heap alloc", mem.HeapAlloc/1024/1024)
+	}
+}
+
+func (sess *Session) exec_show_tables() {
+	rows, err := sess.db.Query("select NAME, TYPE, FLAG from M$SYS_TABLES order by NAME")
+	if err != nil {
+		sess.log.Errorf("select m$sys_tables fail; %s", err.Error())
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var typ int
+		var flg int
+		rows.Scan(&name, &typ, &flg)
+		desc := tableTypeDesc(typ, flg)
+		sess.Printf("%-24s %s", name, desc)
 	}
 }

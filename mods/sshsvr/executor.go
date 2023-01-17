@@ -6,6 +6,7 @@ import (
 
 func (sess *Session) executor(line string) {
 	line = strings.TrimSpace(line)
+	line = strings.TrimSuffix(line, ";")
 	if line == "" {
 		return
 	}
