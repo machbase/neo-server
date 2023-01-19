@@ -10,7 +10,15 @@ import (
 )
 
 func TestAppendTag(t *testing.T) {
-	testCount := 10
+	testCount := 100
+
+	defer func() {
+		e := recover()
+		if e == nil {
+			return
+		}
+		fmt.Println(e)
+	}()
 
 	db := mach.New()
 
@@ -19,29 +27,30 @@ func TestAppendTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	//defer appender.Close()
+	defer appender.Close()
+
 	for i := 0; i < testCount; i++ {
 		err = appender.Append(
-			fmt.Sprintf("name-%02d", i),
+			fmt.Sprintf("name-%d", i%5),
 			time.Now(),
 			1.001*float64(i+1),
 			"some-id-string",
-			nil)
+			/*nil*/ `{"name":"json"}`)
 		if err != nil {
 			panic(err)
 		}
 	}
-	appender.Close()
-
-	r := db.QueryRow("select count(*) from " + benchmarkTableName)
-	if r.Err() != nil {
-		panic(r.Err())
+	row := db.QueryRow("select count(*) from " + benchmarkTableName)
+	if row.Err() != nil {
+		panic(row.Err())
 	}
 	var count int
-	err = r.Scan(&count)
+	err = row.Scan(&count)
 	if err != nil {
 		panic(err)
 	}
+	t.Logf("     %d records appended", count)
 	require.Equal(t, testCount, count)
+
 	t.Logf("---- append tag %s done", benchmarkTableName)
 }

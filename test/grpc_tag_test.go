@@ -47,7 +47,6 @@ func TestGrpcTagTable(t *testing.T) {
 
 	////////////
 	// Exec
-
 	if !tableExists {
 		t.Logf("table '%s' doesn't exist, create new one", tableName)
 
@@ -67,13 +66,13 @@ func TestGrpcTagTable(t *testing.T) {
 
 		err := client.Exec(sqlText)
 		if err != nil {
-			t.Log(err.Error())
+			panic(err)
 		}
 		require.Nil(t, err)
 
 		err = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
 		if err != nil {
-			t.Log(err.Error())
+			panic(err)
 		}
 		require.Nil(t, err)
 	}
@@ -85,17 +84,22 @@ func TestGrpcTagTable(t *testing.T) {
 	row = client.QueryRow("select count(*) from " + tableName)
 	err = row.Scan(&count)
 	if err != nil {
-		t.Log(err.Error())
+		panic(err)
 	}
 	require.Nil(t, err)
 	t.Logf("count = %d", count)
 
 	id, _ := idgen.NewV6()
-	client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+	err = client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
 		fmt.Sprintf("name-%02d", count+1),
 		time.Now(),
 		0.1001+0.1001*float32(count),
 		id.String())
+	if err != nil {
+		panic(err)
+	}
+	require.Nil(t, err)
+	count++
 
 	////////////
 	// Append - tag table
@@ -104,10 +108,11 @@ func TestGrpcTagTable(t *testing.T) {
 		t.Log(err.Error())
 	}
 	require.Nil(t, err)
+
 	for i := 0; i < 10; i++ {
 		id, _ := idgen.NewV6()
 		err := appender.Append(
-			fmt.Sprintf("name-%02d", count+2+i),
+			fmt.Sprintf("name-%d", count%5),
 			time.Now(),
 			0.1001+0.1001*float64(count+1+i),
 			"float64",
@@ -125,7 +130,7 @@ func TestGrpcTagTable(t *testing.T) {
 	// Query
 	rows, err := client.Query("select name, time, value, id from " + tableName)
 	require.Nil(t, err)
-	defer rows.Close()
+	//defer rows.Close()
 	for rows.Next() {
 		var name string
 		var ts time.Time
@@ -138,6 +143,7 @@ func TestGrpcTagTable(t *testing.T) {
 		}
 		t.Logf("==> %v %v %v %v", name, ts, value, id)
 	}
+	rows.Close()
 
 	////////////
 	// QueryRow

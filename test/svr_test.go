@@ -35,7 +35,10 @@ module "machbase.com/neo-server" {
         MachbaseHome     = "${VARS_WORKDIR}/machbase"
 		MachbasePreset   = 2
         Machbase = {
-            HANDLE_LIMIT = 2048
+            HANDLE_LIMIT = 4096
+			TAG_CACHE_MAX_MEMORY_SIZE = 536870912
+			DISK_BUFFER_COUNT = 1
+			TAG_CACHE_ENABLE = 3
         }
         Grpc = {
             Listeners        = [ 
