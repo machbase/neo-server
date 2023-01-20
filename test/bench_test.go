@@ -18,17 +18,17 @@ import (
 // BenchmarkAppend-4         424443            167131 ns/op             560 B/op          9 allocs/op
 
 func BenchmarkAppend(b *testing.B) {
-	db := mach.New()
-	appender, err := db.Appender(benchmarkTableName)
-	require.Nil(b, err)
-
-	idgen := uuid.NewGen()
-
 	var memBefore runtime.MemStats
 	var memAfter runtime.MemStats
 
 	runtime.GC()
 	runtime.ReadMemStats(&memBefore)
+
+	db := mach.New()
+	appender, err := db.Appender(benchmarkTableName)
+	require.Nil(b, err)
+
+	idgen := uuid.NewGen()
 
 	for i := 0; i < b.N; i++ {
 		id, _ := idgen.NewV6()
@@ -36,6 +36,7 @@ func BenchmarkAppend(b *testing.B) {
 		jsonstr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
 		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idstr, jsonstr)
 	}
+	appender.Close()
 
 	runtime.GC()
 	runtime.ReadMemStats(&memAfter)

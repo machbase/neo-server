@@ -27,12 +27,13 @@ func TestAppendTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer appender.Close()
+
+	ts := time.Now()
 
 	for i := 0; i < testCount; i++ {
 		err = appender.Append(
 			fmt.Sprintf("name-%d", i%5),
-			time.Now(),
+			ts.Add(time.Duration(i)),
 			1.001*float64(i+1),
 			"some-id-string",
 			/*nil*/ `{"name":"json"}`)
@@ -40,7 +41,9 @@ func TestAppendTag(t *testing.T) {
 			panic(err)
 		}
 	}
-	row := db.QueryRow("select count(*) from " + benchmarkTableName)
+	appender.Close()
+
+	row := db.QueryRow("select count(*) from "+benchmarkTableName+" where time >= ?", ts)
 	if row.Err() != nil {
 		panic(row.Err())
 	}
@@ -49,7 +52,7 @@ func TestAppendTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	t.Logf("     %d records appended", count)
+	t.Logf("     %s appended %d records", appender.String(), count)
 	require.Equal(t, testCount, count)
 
 	t.Logf("---- append tag %s done", benchmarkTableName)
