@@ -65,7 +65,7 @@ func TestDriver(t *testing.T) {
 	expectCount := 10000
 	ts := time.Now()
 	for i := 0; i < expectCount; i++ {
-		_, err := db.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+		result, err := db.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
 			fmt.Sprintf("name-%d", count%5),
 			ts.Add(time.Duration(i)),
 			0.1001+0.1001*float32(count),
@@ -74,6 +74,8 @@ func TestDriver(t *testing.T) {
 			panic(err)
 		}
 		require.Nil(t, err)
+		nrows, _ := result.RowsAffected()
+		require.Equal(t, int64(1), nrows)
 	}
 
 	rows, err := db.Query("select name, time, value, id from "+tableName+" where time >= ? order by time", ts)

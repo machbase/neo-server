@@ -11,9 +11,9 @@ require (
 	github.com/gofrs/uuid v4.3.1+incompatible
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e
-	github.com/machbase/cemlib v0.0.0-20230119011941-bf3ee276143d
-	github.com/machbase/neo-engine v0.0.5-0.20230119054010-0f28c08b8a33
-	github.com/machbase/neo-grpc v0.0.5-0.20230117034931-464a7abdbf94
+	github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863
+	github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1
+	github.com/machbase/neo-grpc v0.0.5-0.20230121004848-f30a9fb92f63
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
