@@ -3,25 +3,32 @@ package client
 import (
 	"runtime"
 
+	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods"
 )
+
+func (cli *client) pcShow() *readline.PrefixCompleter {
+	return readline.PcItem("show",
+		readline.PcItem("tables"),
+		readline.PcItem("runtime"),
+		readline.PcItem("version"),
+	)
+}
 
 func (cli *client) doShow(obj string) {
 	switch obj {
 	case "version":
-		v := mods.GetVersion()
-		cli.Printf("Server v%d.%d.%d #%s\r\n", v.Major, v.Minor, v.Patch, v.GitSHA)
-		cli.Printf("Engine %s\r\n", mods.EngineInfoString())
+		cli.doShowVersion()
 	case "tables":
-		cli.exec_show_tables()
+		cli.doShowTables()
 	case "runtime":
-		cli.exec_show_runtime()
+		cli.doShowRuntime()
 	default:
 		cli.Writef("unknown show '%s'", obj)
 	}
 }
 
-func (cli *client) exec_show_tables() {
+func (cli *client) doShowTables() {
 	rows, err := cli.db.Query("select NAME, TYPE, FLAG from M$SYS_TABLES order by NAME")
 	if err != nil {
 		cli.Writef("ERR select m$sys_tables fail; %s", err.Error())
@@ -38,7 +45,13 @@ func (cli *client) exec_show_tables() {
 	}
 }
 
-func (cli *client) exec_show_runtime() {
+func (cli *client) doShowVersion() {
+	v := mods.GetVersion()
+	cli.Printf("Server v%d.%d.%d #%s\r\n", v.Major, v.Minor, v.Patch, v.GitSHA)
+	cli.Printf("Engine %s\r\n", mods.EngineInfoString())
+}
+
+func (cli *client) doShowRuntime() {
 	width := 15
 	cli.Writef("%-*s %s %s", width, "os", runtime.GOOS, runtime.GOARCH)
 	cli.Writef("%-*s %s", width, "version", mods.VersionString())

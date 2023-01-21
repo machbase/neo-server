@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-server/mods/client"
 )
@@ -16,13 +17,16 @@ type SqlCmd struct {
 
 func doSql(sqlCmd *SqlCmd) {
 	clientConf := &client.Config{
-		ServerAddr: sqlCmd.ServerAddr,
-		Stdin:      os.Stdin,
-		Stdout:     os.Stdout,
+		ServerAddr:   sqlCmd.ServerAddr,
+		Stdin:        os.Stdin,
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
+		VimMode:      false,
+		QueryTimeout: 30 * time.Second,
 	}
 	client, err := client.New(clientConf)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "ERR %s\r\n", err.Error())
+		fmt.Fprintln(os.Stdout, "ERR", err.Error())
 		return
 	}
 	defer client.Close()

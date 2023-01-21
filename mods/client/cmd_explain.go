@@ -1,7 +1,9 @@
 package client
 
-type CmdExplain struct {
-	Sql string `arg:"" passthrough:""`
+import "github.com/chzyer/readline"
+
+func (cli *client) pcExplain() *readline.PrefixCompleter {
+	return readline.PcItem("explain")
 }
 
 func (cli *client) doExplain(sqlText string) {

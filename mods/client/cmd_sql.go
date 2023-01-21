@@ -59,7 +59,7 @@ func (cli *client) doSql(sqlText string) {
 		}
 		err := rows.Scan(rec...)
 		if err != nil {
-			cli.Writef("ERR %s", err.Error())
+			cli.Writeln("ERR>", err.Error())
 			return
 		}
 		nrow++
