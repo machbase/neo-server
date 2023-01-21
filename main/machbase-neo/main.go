@@ -1,17 +1,26 @@
 package main
 
 import (
-	"github.com/machbase/booter"
-	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/server"
+	"os"
+
+	"github.com/alecthomas/kong"
 )
 
 func main() {
-	booter.SetConfiFileSuffix(".conf")
-	booter.SetFallbackConfig(server.DefaultFallbackConfig)
-	booter.SetFallbackPname(server.DefaultFallbackPname)
-	booter.SetVersionString(mods.VersionString() + " " + mods.EngineInfoString())
-	booter.Startup()
-	booter.WaitSignal()
-	booter.ShutdownAndExit(0)
+	if len(os.Args) == 1 || (len(os.Args) > 1 && os.Args[1] == "serve") {
+		doServe()
+	} else {
+		var cli struct {
+			Sql SqlCmd `cmd:""`
+		}
+		cmd := kong.Parse(&cli)
+		switch cmd.Command() {
+		default:
+			doServe()
+		case "sql":
+			doSql(&cli.Sql)
+		case "sql <SQL>":
+			doSql(&cli.Sql)
+		}
+	}
 }

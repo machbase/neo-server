@@ -133,6 +133,22 @@ func (s *svr) HandleConn(ctx context.Context, stat stats.ConnStats) {
 
 //// machrpc server handler
 
+func (s *svr) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machrpc.ExplainResponse, error) {
+	rsp := &machrpc.ExplainResponse{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if plan, err := s.machbase.Explain(req.Sql); err == nil {
+		rsp.Success, rsp.Reason = true, "success"
+		rsp.Plan = plan
+	} else {
+		rsp.Success, rsp.Reason = false, err.Error()
+	}
+	return rsp, nil
+}
+
 func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.ExecResponse, error) {
 	rsp := &machrpc.ExecResponse{}
 	tick := time.Now()
