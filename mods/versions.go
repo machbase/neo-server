@@ -41,7 +41,11 @@ func GetVersion() *Version {
 }
 
 func VersionString() string {
-	return fmt.Sprintf("%s (%v, %v, go %v)", versionString, versionGitSHA, buildTimestamp, goVersionString)
+	return fmt.Sprintf("%s (%v, %v)", versionString, versionGitSHA, buildTimestamp)
+}
+
+func BuildCompiler() string {
+	return goVersionString
 }
 
 func BuildTimestamp() string {
