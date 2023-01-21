@@ -11,16 +11,17 @@ func main() {
 		doServe()
 	} else {
 		var cli struct {
-			Sql SqlCmd `cmd:""`
+			Serve struct{} `cmd:""`
+			Shell ShellCmd `cmd:""`
 		}
-		cmd := kong.Parse(&cli)
+		cmd := kong.Parse(&cli, kong.HelpOptions{NoAppSummary: false, Compact: true, FlagsLast: true})
 		switch cmd.Command() {
 		default:
 			doServe()
-		case "sql":
-			doSql(&cli.Sql)
-		case "sql <SQL>":
-			doSql(&cli.Sql)
+		case "shell":
+			doShell(&cli.Shell)
+		case "shell <ARGS>":
+			doShell(&cli.Shell)
 		}
 	}
 }

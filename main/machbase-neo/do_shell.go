@@ -9,13 +9,13 @@ import (
 	shell "github.com/machbase/neo-shell"
 )
 
-type SqlCmd struct {
-	SqlText    []string `arg:"" optional:"" name:"SQL" passthrough:""`
-	ServerAddr string   `name:"server" short:"s"`
-	User       string   `name:"user" short:"u"`
+type ShellCmd struct {
+	Args       []string `arg:"" optional:"" name:"ARGS" passthrough:""`
+	ServerAddr string   `name:"server" short:"s" default:"tcp://127.0.0.1:5655"`
+	User       string   `name:"user" short:"u" default:"sys"`
 }
 
-func doSql(sqlCmd *SqlCmd) {
+func doShell(sqlCmd *ShellCmd) {
 	clientConf := &shell.Config{
 		ServerAddr:   sqlCmd.ServerAddr,
 		Stdin:        os.Stdin,
@@ -31,10 +31,10 @@ func doSql(sqlCmd *SqlCmd) {
 	}
 	defer client.Close()
 
-	if len(sqlCmd.SqlText) > 0 {
-		sqlText := strings.TrimSpace(strings.Join(sqlCmd.SqlText, " "))
-		if len(sqlText) > 0 {
-			client.RunSql(sqlText)
+	if len(sqlCmd.Args) > 0 {
+		args := strings.TrimSpace(strings.Join(sqlCmd.Args, " "))
+		if len(args) > 0 {
+			client.RunSql(args)
 			return
 		}
 	}
