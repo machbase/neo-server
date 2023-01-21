@@ -78,7 +78,7 @@ func (svr *MachShell) shellProvider(user string) *sshd.Shell {
 	return &sshd.Shell{
 		Cmd: os.Args[0],
 		Args: []string{
-			"sql",
+			"shell",
 			"--server", "tcp://127.0.0.1:5655",
 			"--user", user,
 		},

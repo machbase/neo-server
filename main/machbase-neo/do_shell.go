@@ -32,9 +32,9 @@ func doShell(sqlCmd *ShellCmd) {
 	defer client.Close()
 
 	if len(sqlCmd.Args) > 0 {
-		args := strings.TrimSpace(strings.Join(sqlCmd.Args, " "))
-		if len(args) > 0 {
-			client.RunSql(args)
+		command := strings.TrimSpace(strings.Join(sqlCmd.Args, " "))
+		if len(command) > 0 {
+			client.Run(command)
 			return
 		}
 	}
