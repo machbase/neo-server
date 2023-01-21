@@ -5,7 +5,6 @@ go 1.19
 require (
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/alecthomas/kong v0.7.1
-	github.com/chzyer/readline v1.5.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gliderlabs/ssh v0.3.5
@@ -15,12 +14,12 @@ require (
 	github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863
 	github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1
 	github.com/machbase/neo-grpc v0.0.5-0.20230121130111-3391f9831d51
+	github.com/machbase/neo-shell v0.0.0-20230121225134-84a365150a77
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
-	golang.org/x/term v0.4.0
 	google.golang.org/grpc v1.52.0
 )
 
@@ -28,6 +27,7 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/creack/pty v1.1.18 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
@@ -62,6 +62,7 @@ require (
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
+	golang.org/x/term v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 	google.golang.org/genproto v0.0.0-20230117162540-28d6b9783ac4 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect

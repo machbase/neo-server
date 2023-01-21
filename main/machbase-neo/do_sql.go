@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/client"
+	shell "github.com/machbase/neo-shell"
 )
 
 type SqlCmd struct {
@@ -16,7 +16,7 @@ type SqlCmd struct {
 }
 
 func doSql(sqlCmd *SqlCmd) {
-	clientConf := &client.Config{
+	clientConf := &shell.Config{
 		ServerAddr:   sqlCmd.ServerAddr,
 		Stdin:        os.Stdin,
 		Stdout:       os.Stdout,
@@ -24,7 +24,7 @@ func doSql(sqlCmd *SqlCmd) {
 		VimMode:      false,
 		QueryTimeout: 30 * time.Second,
 	}
-	client, err := client.New(clientConf)
+	client, err := shell.New(clientConf)
 	if err != nil {
 		fmt.Fprintln(os.Stdout, "ERR", err.Error())
 		return

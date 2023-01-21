@@ -99,6 +99,8 @@ github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1 h1:XWcsceK/8
 github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1/go.mod h1:ttIz+lIGKxR8uydfYI41cbnHcjzZMi82Caqv5cwc6Ik=
 github.com/machbase/neo-grpc v0.0.5-0.20230121130111-3391f9831d51 h1:6cG5U1dmPHc/40NwIPBBG2jsyYvkCA463io/BedggsQ=
 github.com/machbase/neo-grpc v0.0.5-0.20230121130111-3391f9831d51/go.mod h1:qQSw+8ZdJ+a+b1gXtu+kfafZU8h74XSr0jErnRGAq5c=
+github.com/machbase/neo-shell v0.0.0-20230121225134-84a365150a77 h1:c89h2Ws/7h0/tO3I/MNUMekGFsjfgrlKqNOQtinELeI=
+github.com/machbase/neo-shell v0.0.0-20230121225134-84a365150a77/go.mod h1:IMS4Z8Xe11610zLvDTqWrotLrxdvi6Iv4d6eXgkotd8=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
 github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea h1:mQncVDBpKkAecPcH2IMGpKUQYhwowlafQbfkz2QFqkc=
