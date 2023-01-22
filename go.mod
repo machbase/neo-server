@@ -13,8 +13,8 @@ require (
 	github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e
 	github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863
 	github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1
-	github.com/machbase/neo-grpc v0.0.5-0.20230121130111-3391f9831d51
-	github.com/machbase/neo-shell v0.0.0-20230121225134-84a365150a77
+	github.com/machbase/neo-grpc v0.0.5-0.20230122083535-1975dc93d143
+	github.com/machbase/neo-shell v0.0.0-20230122083815-50e46964e859
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
@@ -30,6 +30,8 @@ require (
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/creack/pty v1.1.18 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gdamore/encoding v1.0.0 // indirect
+	github.com/gdamore/tcell/v2 v2.5.4 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
@@ -43,14 +45,20 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/machbase/cemlib-msg v0.0.0-20230117083805-54bf72ab6e6e // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/mum4k/termdash v0.17.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/rivo/tview v0.0.0-20230104153304-892d1a2eb0da // indirect
+	github.com/rivo/uniseg v0.4.3 // indirect
+	github.com/robfig/cron v1.2.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sevlyar/go-daemon v0.1.6 // indirect
 	github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569 // indirect
