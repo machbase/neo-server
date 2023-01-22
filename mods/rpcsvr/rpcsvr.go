@@ -466,12 +466,12 @@ func (s *svr) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest
 		UptimeInSecond: int64(time.Since(startupTime).Seconds()),
 		Processes:      int32(runtime.GOMAXPROCS(-1)),
 		Goroutines:     int32(runtime.NumGoroutine()),
-		MemAlloc:       mem.Alloc,
-		MemFrees:       mem.Frees,
-		MemHeapAlloc:   mem.HeapAlloc,
 		MemSys:         mem.Sys,
-		HeapInUse:      mem.HeapInuse,
-		HeapIdle:       mem.HeapIdle,
+		MemHeapSys:     mem.HeapSys,
+		MemHeapAlloc:   mem.HeapAlloc,
+		MemHeapInUse:   mem.HeapInuse,
+		MemStackSys:    mem.StackSys,
+		MemStackInUse:  mem.StackInuse,
 	}
 
 	rsp.Success = true
