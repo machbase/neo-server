@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	shell "github.com/machbase/neo-shell"
 )
@@ -16,14 +15,8 @@ type ShellCmd struct {
 }
 
 func doShell(sqlCmd *ShellCmd) {
-	clientConf := &shell.Config{
-		ServerAddr:   sqlCmd.ServerAddr,
-		Stdin:        os.Stdin,
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
-		VimMode:      false,
-		QueryTimeout: 30 * time.Second,
-	}
+	clientConf := shell.DefaultConfig()
+	clientConf.ServerAddr = sqlCmd.ServerAddr
 	client, err := shell.New(clientConf)
 	if err != nil {
 		fmt.Fprintln(os.Stdout, "ERR", err.Error())
@@ -34,10 +27,10 @@ func doShell(sqlCmd *ShellCmd) {
 	if len(sqlCmd.Args) > 0 {
 		command := strings.TrimSpace(strings.Join(sqlCmd.Args, " "))
 		if len(command) > 0 {
-			client.Run(command)
+			client.Run(command, false)
 			return
 		}
 	}
 
-	client.RunInteractive()
+	client.RunPrompt()
 }

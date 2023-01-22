@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -12,22 +14,15 @@ import (
 	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-server/mods"
 	cmap "github.com/orcaman/concurrent-map"
 	"google.golang.org/grpc/stats"
 )
 
+var startupTime time.Time = time.Now()
+
 type Config struct {
 }
-
-/**
-machrpcSvr, err := machrpcsvr.New(&machrpcsvr.Config{})
-// gRPC options
-grpcOpt := []grpc.ServerOption{ grpc.StatsHandler(machrpcSvr) }
-// crete gRpc server
-this.grpcd = grpc.NewServer(grpcOpt...)
-// register gRpc server
-machrpc.RegisterMachbaseServer(this.grpcd, machrpcSvr)
-*/
 
 type Server interface {
 	stats.Handler
@@ -444,4 +439,42 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 			// })
 		}
 	}
+}
+
+func (s *svr) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest) (*machrpc.ServerInfo, error) {
+	rsp := &machrpc.ServerInfo{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	v := mods.GetVersion()
+	mem := runtime.MemStats{}
+	runtime.ReadMemStats(&mem)
+
+	rsp.Version = &machrpc.Version{
+		Major: int32(v.Major), Minor: int32(v.Minor), Patch: int32(v.Patch),
+		GitSHA:         v.GitSHA,
+		BuildTimestamp: mods.BuildTimestamp(),
+		BuildCompiler:  mods.BuildCompiler(),
+		Engine:         mods.EngineInfoString(),
+	}
+
+	rsp.Runtime = &machrpc.Runtime{
+		OS:             runtime.GOOS,
+		Arch:           runtime.GOARCH,
+		Pid:            int32(os.Getpid()),
+		UptimeInSecond: int64(time.Since(startupTime).Seconds()),
+		Processes:      int32(runtime.GOMAXPROCS(-1)),
+		Goroutines:     int32(runtime.NumGoroutine()),
+		MemAlloc:       mem.Alloc,
+		MemFrees:       mem.Frees,
+		MemHeapAlloc:   mem.HeapAlloc,
+		MemSys:         mem.Sys,
+		HeapInUse:      mem.HeapInuse,
+		HeapIdle:       mem.HeapIdle,
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
 }
