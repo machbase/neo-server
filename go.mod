@@ -13,8 +13,8 @@ require (
 	github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e
 	github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863
 	github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1
-	github.com/machbase/neo-grpc v0.0.5-0.20230122083535-1975dc93d143
-	github.com/machbase/neo-shell v0.0.0-20230122083815-50e46964e859
+	github.com/machbase/neo-grpc v0.0.5-0.20230122092818-0e0850a38d8b
+	github.com/machbase/neo-shell v0.0.0-20230123055549-3765fbc31be6
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
@@ -42,6 +42,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.15.0 // indirect
+	github.com/jedib0t/go-pretty/v6 v6.4.4 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
