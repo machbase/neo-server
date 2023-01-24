@@ -1,4 +1,4 @@
-github.com/BurntSushi/toml v1.2.0 h1:Rt8g24XnyGTyglgET/PRUNlrUeu9F5L+7FilkXfZgs0=
+github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak=
 github.com/Masterminds/semver/v3 v3.2.0 h1:3MEsd0SM6jqZojhjLWWeBY+Kcjy9i6MQAeY7YgDP83g=
 github.com/Masterminds/semver/v3 v3.2.0/go.mod h1:qvl/7zhW3nngYb5+80sSMF+FG2BjYrf8m9wsX0PNOMQ=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
@@ -99,16 +99,16 @@ github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e h1:zFuDeUAPuPFyFYHWJAnqEMoFlmxhK8Jcq/bmzmUdh1c=
 github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e/go.mod h1:XIvfrgM0bDDmbjvD1s/4UVYyCoVbjTXAvX2V645EXIg=
-github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863 h1:R39bKSBD+XvEVg34aJxYFtzSkdAUJdZenyJiVTqyY9U=
-github.com/machbase/cemlib v0.0.0-20230119232328-dfbd55a9c863/go.mod h1:JvWkWyqDyN0L4nI4C1ctExEf+GioYb7cyijNLLWOTQ8=
+github.com/machbase/cemlib v0.0.0-20230124025810-6525e5a45406 h1:SrrZz4ulccOZZTu8k6HNfs6bzd3VfpRX5MqktDtaNYc=
+github.com/machbase/cemlib v0.0.0-20230124025810-6525e5a45406/go.mod h1:KEJ+XFaL6oxJvZP7gVl7L/HHeWiCWRU79ShCEpCLIn4=
 github.com/machbase/cemlib-msg v0.0.0-20230117083805-54bf72ab6e6e h1:yHlyHIigSS+EeChYH+j0Ul3KLBg7xBSlS0Vzm41Dsw4=
 github.com/machbase/cemlib-msg v0.0.0-20230117083805-54bf72ab6e6e/go.mod h1:QLuMmqbm+qhXxq1gc0zEM6zKmv7AvGEfXW7SoFXeCjc=
 github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1 h1:XWcsceK/8KLl7lUkiOnXP1kg8pWrs0twoHPJ4umfJdg=
 github.com/machbase/neo-engine v0.0.5-0.20230121004910-18a2b486faa1/go.mod h1:ttIz+lIGKxR8uydfYI41cbnHcjzZMi82Caqv5cwc6Ik=
 github.com/machbase/neo-grpc v0.0.5-0.20230122092818-0e0850a38d8b h1:0OvJeRV3wexSy0YrJlX5HategZmIulVNUKsuKlMg7Fw=
 github.com/machbase/neo-grpc v0.0.5-0.20230122092818-0e0850a38d8b/go.mod h1:qQSw+8ZdJ+a+b1gXtu+kfafZU8h74XSr0jErnRGAq5c=
-github.com/machbase/neo-shell v0.0.0-20230123140353-2f60d746ea1e h1:cLCxaDPYpQU05V/a6kYV4Vj/TRd1u4eVRVDJDVDGtz4=
-github.com/machbase/neo-shell v0.0.0-20230123140353-2f60d746ea1e/go.mod h1:aoeWoyZiBwVhHr5or7UsJ9JR8NXVl/ROu75YNJjsLxY=
+github.com/machbase/neo-shell v0.0.0-20230124030125-182b99372115 h1:A46sD+T7/h4+/ZM214V7xp7FUUf4EaFRpeHWqviCzNw=
+github.com/machbase/neo-shell v0.0.0-20230124030125-182b99372115/go.mod h1:1e/CdPGYq3tlRISVvC/dafiNSc/xLkNeos7W7CHNfKE=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
 github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mattn/go-runewidth v0.0.13/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
