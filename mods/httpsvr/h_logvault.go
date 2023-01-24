@@ -120,8 +120,8 @@ func (svr *Server) checkLogTable() {
 				labels varchar(1000),
 				line   text
 			)`))
-		if result.Err != nil {
-			svr.log.Error("fail to create log vault table", LogVaultTable, err.Error())
+		if result.Err() != nil {
+			svr.log.Error("fail to create log vault table", LogVaultTable, result.Err().Error())
 		}
 
 		result = svr.db.Exec(`CREATE INDEX ` + LogVaultTable + `_IDX ON ` + LogVaultTable + ` (line) INDEX_TYPE KEYWORD`)

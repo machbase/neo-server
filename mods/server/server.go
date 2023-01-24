@@ -223,8 +223,8 @@ func (s *svr) Start() error {
 	}
 
 	result := s.db.Exec("alter system set trace_log_level=1023")
-	if result.Err != nil {
-		return errors.Wrap(err, "alter log level")
+	if result.Err() != nil {
+		return errors.Wrap(result.Err(), "alter log level")
 	}
 
 	// grpc server

@@ -40,8 +40,8 @@ func Write(db *mach.Database, req *WriteRequest, rsp *WriteResponse) {
 	var nrows uint64
 	for i, rec := range req.Data.Rows {
 		result := db.Exec(sqlText, rec...)
-		if result.Err != nil {
-			rsp.Reason = fmt.Sprintf("record[%d] %s", i, result.Err.Error())
+		if result.Err() != nil {
+			rsp.Reason = fmt.Sprintf("record[%d] %s", i, result.Err().Error())
 			rsp.Data = &WriteResponseData{
 				AffectedRows: nrows,
 			}

@@ -152,14 +152,13 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	if result := s.machbase.Exec(req.Sql, params...); result.Err == nil {
-		rsp.AffectedRows = result.AffectedRows
-		rsp.Message = result.Message()
+	if result := s.machbase.Exec(req.Sql, params...); result.Err() == nil {
+		rsp.AffectedRows = result.AffectedRows()
 		rsp.Success = true
-		rsp.Reason = "success"
+		rsp.Reason = result.Message()
 	} else {
 		rsp.Success = false
-		rsp.Reason = result.Error()
+		rsp.Reason = result.Message()
 	}
 	return rsp, nil
 }
@@ -172,16 +171,8 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	// val := pctx.Value(contextCtxKey)
-	// ctx, ok := val.(*sessionCtx)
-	// if !ok {
-	// 	return nil, fmt.Errorf("invlaid session context %T", pctx)
-	// }
-
 	params := machrpc.ConvertPbToAny(req.Params)
 	row := s.machbase.QueryRow(req.Sql, params...)
-
-	// fmt.Printf("QueryRow : %s  %s   rows: %d\n", ctx.Id, req.Sql, len(row.Values()))
 
 	if row.Err() != nil {
 		rsp.Reason = row.Err().Error()
@@ -193,6 +184,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	rsp.Reason = "success"
 	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
 	rsp.AffectedRows = row.AffectedRows()
+	rsp.Message = row.Message()
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -209,13 +201,6 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	// val := pctx.Value(contextCtxKey)
-	// ctx, ok := val.(*sessionCtx)
-	// if !ok {
-	// 	return nil, fmt.Errorf("invlaid session context %T", pctx)
-	// }
-	// fmt.Printf("Query : %s %s\n", ctx.Id, req.Sql)
-
 	params := machrpc.ConvertPbToAny(req.Params)
 	realRows, err := s.machbase.Query(req.Sql, params...)
 	if err != nil {
@@ -223,25 +208,29 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 		return rsp, nil
 	}
 
-	handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
-	// TODO leak detector
-	s.ctxMap.Set(handle, &rowsWrap{
-		id:   handle,
-		rows: realRows,
-		release: func() {
-			s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-				// fmt.Printf("close rows: %v\n", handle)
-				realRows.Close()
-				return true
-			})
-		},
-	})
-
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.RowsHandle = &machrpc.RowsHandle{
-		Handle: handle,
+	if realRows.IsFetchable() {
+		handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
+		// TODO leak detector
+		s.ctxMap.Set(handle, &rowsWrap{
+			id:   handle,
+			rows: realRows,
+			release: func() {
+				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
+					// fmt.Printf("close rows: %v\n", handle)
+					realRows.Close()
+					return true
+				})
+			},
+		})
+		rsp.RowsHandle = &machrpc.RowsHandle{
+			Handle: handle,
+		}
+		rsp.Reason = "success"
+	} else {
+		nrows, _ := realRows.AffectedRows()
+		rsp.Reason = realRows.ResultString(nrows)
 	}
+	rsp.Success = true
 
 	return rsp, nil
 }
