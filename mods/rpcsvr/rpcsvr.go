@@ -152,12 +152,14 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	if _, err := s.machbase.Exec(req.Sql, params...); err == nil {
+	if result := s.machbase.Exec(req.Sql, params...); result.Err == nil {
+		rsp.AffectedRows = result.AffectedRows
+		rsp.Message = result.Message()
 		rsp.Success = true
 		rsp.Reason = "success"
 	} else {
 		rsp.Success = false
-		rsp.Reason = err.Error()
+		rsp.Reason = result.Error()
 	}
 	return rsp, nil
 }

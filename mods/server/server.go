@@ -222,8 +222,8 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "startup database")
 	}
 
-	_, err = s.db.Exec("alter system set trace_log_level=1023")
-	if err != nil {
+	result := s.db.Exec("alter system set trace_log_level=1023")
+	if result.Err != nil {
 		return errors.Wrap(err, "alter log level")
 	}
 

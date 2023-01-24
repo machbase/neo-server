@@ -111,7 +111,7 @@ func (svr *Server) checkLogTable() {
 	}
 
 	if createTable {
-		_, err := svr.db.Exec(svr.db.SqlTidy(
+		result := svr.db.Exec(svr.db.SqlTidy(
 			`CREATE TABLE ` + LogVaultTable + `(
 				ts     datetime,
 				host   varchar(80),
@@ -120,11 +120,11 @@ func (svr *Server) checkLogTable() {
 				labels varchar(1000),
 				line   text
 			)`))
-		if err != nil {
+		if result.Err != nil {
 			svr.log.Error("fail to create log vault table", LogVaultTable, err.Error())
 		}
 
-		_, err = svr.db.Exec(`CREATE INDEX ` + LogVaultTable + `_IDX ON ` + LogVaultTable + ` (line) INDEX_TYPE KEYWORD`)
+		result = svr.db.Exec(`CREATE INDEX ` + LogVaultTable + `_IDX ON ` + LogVaultTable + ` (line) INDEX_TYPE KEYWORD`)
 		if err != nil {
 			svr.log.Error("fail to create log vault index", LogVaultTable, err.Error())
 		}

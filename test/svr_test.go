@@ -101,9 +101,9 @@ func TestMain(m *testing.M) {
 
 	if count == 1 {
 		dropTableSql := fmt.Sprintf("drop table %s", benchmarkTableName)
-		_, err = db.Exec(dropTableSql)
-		if err != nil {
-			panic(err)
+		result := db.Exec(dropTableSql)
+		if result.Err != nil {
+			panic(result.Err)
 		}
 	}
 
@@ -115,14 +115,14 @@ func TestMain(m *testing.M) {
                 id       varchar(80),
                 jsondata json
         )`), benchmarkTableName)
-	_, err = db.Exec(creTableSql)
-	if err != nil {
-		panic(err)
+	result := db.Exec(creTableSql)
+	if result.Err != nil {
+		panic(result.Err)
 	}
 
-	_, err = db.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
-	if err != nil {
-		panic(err)
+	result = db.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
+	if result.Err != nil {
+		panic(result.Err)
 	}
 
 	row = db.QueryRow("select count(*) from " + benchmarkTableName)

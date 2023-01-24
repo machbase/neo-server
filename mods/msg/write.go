@@ -39,9 +39,9 @@ func Write(db *mach.Database, req *WriteRequest, rsp *WriteResponse) {
 	sqlText := fmt.Sprintf("insert into %s (%s) values(%s)", req.Table, columns, valuesFormat)
 	var nrows uint64
 	for i, rec := range req.Data.Rows {
-		_, err := db.Exec(sqlText, rec...)
-		if err != nil {
-			rsp.Reason = fmt.Sprintf("record[%d] %s", i, err.Error())
+		result := db.Exec(sqlText, rec...)
+		if result.Err != nil {
+			rsp.Reason = fmt.Sprintf("record[%d] %s", i, result.Err.Error())
 			rsp.Data = &WriteResponseData{
 				AffectedRows: nrows,
 			}
