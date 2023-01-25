@@ -4,7 +4,9 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = [
+    "serve",
     "--pname neo",
+    "--plugins-dir ./tmp/plugins"
   ]
   bin = "./tmp/machbase-neo"
   cmd = "make -f Makefile machbase-neo"

@@ -22,6 +22,7 @@ import (
 	"github.com/machbase/neo-server/mods/mqttsvr"
 	"github.com/machbase/neo-server/mods/rpcsvr"
 	shell "github.com/machbase/neo-server/mods/sshsvr"
+	"github.com/machbase/neo-server/plugins"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -69,6 +70,7 @@ func init() {
 
 type Config struct {
 	MachbaseHome   string
+	PluginsDir     string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
 	Shell          shell.Config
@@ -102,6 +104,8 @@ type svr struct {
 	shsvr *shell.MachShell
 
 	certdir string
+
+	pluginMgr plugins.Manager
 }
 
 const TagTableName = "tagdata"
@@ -304,10 +308,18 @@ func (s *svr) Start() error {
 			return errors.Wrap(err, "shell server")
 		}
 	}
+
+	// load plugins
+	s.pluginMgr = plugins.New(s.conf.PluginsDir, s.conf.Grpc.Listeners)
+	s.pluginMgr.Start()
+
 	return nil
 }
 
 func (s *svr) Stop() {
+	if s.pluginMgr != nil {
+		s.pluginMgr.Stop()
+	}
 	if s.shsvr != nil {
 		s.shsvr.Stop()
 	}

@@ -35,6 +35,7 @@ module "machbase.com/neo-server" {
     name = "machsvr"
     config {
         MachbaseHome     = "${execDir()}/machbase"
+        PluginsDir       = flag("--plugins-dir", "${execDir()}/plugins")
         Machbase         = {
             HANDLE_LIMIT     = 2048
         }
