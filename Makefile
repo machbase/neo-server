@@ -23,7 +23,7 @@ test-all:
 	@make -f Makefile ARGS="-cover -v -count 1" test
 
 package:
-	@./docker-package.sh machgo
+	@make -f Makefile package-machbase-neo
 
 package-all:
 	@for tg in $(targets) ; do \
@@ -38,6 +38,14 @@ ifeq ($(uname_p),aarch64)
 endif
 ifeq ($(uname_p),x86_64)
 	@./scripts/package.sh $*  linux  amd64 $(nextver)
+endif
+endif
+ifeq ($(uname_s),Darwin)
+ifeq ($(uname_p),aarch64)
+	@./scripts/package.sh $*  darwin  arm64 $(nextver)
+endif
+ifeq ($(uname_p),i386)
+	@./scripts/package.sh $*  darwin  amd64 $(nextver)
 endif
 endif
 
