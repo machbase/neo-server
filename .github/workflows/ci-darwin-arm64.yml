@@ -7,7 +7,7 @@ on:
 
 jobs:
   builds:
-    runs-on: [ self-hosted, darwin, ARM64 ]
+    runs-on: [ self-hosted, macOS, ARM64 ]
     env:
       GOPRIVATE: "github.com/machbase/*"
     steps:
