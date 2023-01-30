@@ -33,11 +33,11 @@ jobs:
       - name: Artifacts
         id: id
         run: |
-          cd neo-server/packages && \
+          cd packages && \
           echo "FILENAME=`ls machbase-neo-v*.zip`" >> $GITHUB_OUTPUT
       - name: Store artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.id.outputs.FILENAME }}
-          path: neo-server/packages/${{ steps.id.outputs.FILENAME }}
+          path: packages/${{ steps.id.outputs.FILENAME }}
           retention-days: 5
