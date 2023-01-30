@@ -8,11 +8,12 @@ PKGNAME="$1"
 GOOS="$2"
 GOARCH="$3"
 VERSION="$4"
+EDITION="$5"
 
-echo Packaging $PKGNAME $GOOS $GOARCH $VERSION
+echo Packaging $PKGNAME $GOOS $GOARCH $VERSION $EDITION
 
 # Remove previous build directory, if needed.
-bdir=$PKGNAME-$VERSION-$GOOS-$GOARCH
+bdir=$PKGNAME-$EDITION-$VERSION-$GOOS-$GOARCH
 rm -rf packages/$bdir && mkdir -p packages/$bdir
 
 if [ -d arch/$PKGNAME ]; then
@@ -27,7 +28,7 @@ esac
 
 for BIN in $BINS; do
     # Make the binaries.
-    GOOS=$GOOS GOARCH=$GOARCH make $BIN
+    GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION make $BIN
 
     # Copy the executable binaries.
     if [ "$GOOS" == "windows" ]; then

@@ -12,6 +12,7 @@ var (
 	versionGitSHA   = ""
 	buildTimestamp  = ""
 	goVersionString = ""
+	editionString   = ""
 )
 
 type Version struct {
@@ -19,6 +20,8 @@ type Version struct {
 	Minor  int    `json:"minor"`
 	Patch  int    `json:"patch"`
 	GitSHA string `json:"git"`
+
+	Edition string `json:"edition"`
 }
 
 var _version *Version
@@ -30,10 +33,11 @@ func GetVersion() *Version {
 			_version = &Version{}
 		} else {
 			_version = &Version{
-				Major:  int(v.Major()),
-				Minor:  int(v.Minor()),
-				Patch:  int(v.Patch()),
-				GitSHA: versionGitSHA,
+				Major:   int(v.Major()),
+				Minor:   int(v.Minor()),
+				Patch:   int(v.Patch()),
+				GitSHA:  versionGitSHA,
+				Edition: editionString,
 			}
 		}
 	}
@@ -54,4 +58,8 @@ func BuildTimestamp() string {
 
 func EngineInfoString() string {
 	return mach.LibMachLinkInfo
+}
+
+func Edition() string {
+	return editionString
 }

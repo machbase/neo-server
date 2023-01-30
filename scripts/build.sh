@@ -13,7 +13,6 @@ if [ "$1" == "" ]; then
 fi
 
 VERSION="$2"
-
 # Check the Go installation
 if [ "$(which go)" == "" ]; then
 	echo "error: Go is not installed. Please download and follow installation"\
@@ -21,7 +20,14 @@ if [ "$(which go)" == "" ]; then
 	exit 1
 fi
 
-echo "Build version $MODNAME $VERSION"
+
+if [ "$3" == "" ]; then
+    EDITION="edge"
+else
+    EDITION="$3"
+fi
+
+echo "Build version $MODNAME $VERSION $EDITION"
 
 # Hardcode some values to the core package.
 if [ -f ".git" ]; then
@@ -32,6 +38,7 @@ GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.editionString=${EDITION}"
 
 # Set final Go environment options
 #LDFLAGS="$LDFLAGS -extldflags '-static'"
@@ -46,4 +53,4 @@ if [ "$NOMODULES" != "1" ]; then
 fi
 
 # Build and store objects into original directory.
-go build -ldflags "$LDFLAGS" -o $PRJROOT/tmp/$1 ./main/$1
+go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1

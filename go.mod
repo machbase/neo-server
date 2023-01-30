@@ -8,11 +8,11 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gliderlabs/ssh v0.3.5
-	github.com/gofrs/uuid v4.3.1+incompatible
+	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20230116001355-f6b420963f7e
 	github.com/machbase/cemlib v0.0.0-20230124025810-6525e5a45406
-	github.com/machbase/neo-engine v0.0.5-0.20230125015730-be6b9d0a3b5d
+	github.com/machbase/neo-engine v0.0.7-0.20230130100127-fdb070aef401
 	github.com/machbase/neo-grpc v0.0.8-0.20230128225921-fadf1377b1b8
 	github.com/machbase/neo-shell v0.0.7-0.20230130040636-65dccb8ccbff
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
@@ -20,7 +20,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
-	google.golang.org/grpc v1.52.0
+	google.golang.org/grpc v1.52.3
 )
 
 require (
@@ -34,8 +34,8 @@ require (
 	github.com/gdamore/tcell/v2 v2.5.4 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
-	github.com/go-playground/universal-translator v0.18.0 // indirect
-	github.com/go-playground/validator/v10 v10.11.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-playground/validator/v10 v10.11.2 // indirect
 	github.com/goccy/go-json v0.10.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.3 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -47,7 +47,7 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/machbase/cemlib-msg v0.0.0-20230117083805-54bf72ab6e6e // indirect
+	github.com/machbase/cemlib-msg v0.0.0-20230127053747-4a45b928335e // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
@@ -73,7 +73,7 @@ require (
 	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/term v0.4.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
-	google.golang.org/genproto v0.0.0-20230119192704-9d59e20e5cd1 // indirect
+	google.golang.org/genproto v0.0.0-20230127162408-596548ed4efa // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

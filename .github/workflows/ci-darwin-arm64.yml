@@ -1,4 +1,4 @@
-name: CI linux-arm64
+name: CI darwin-arm64
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   builds:
-    runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
+    runs-on: [ self-hosted, darwin, ARM64 ]
     env:
       GOPRIVATE: "github.com/machbase/*"
     steps:
@@ -36,7 +36,7 @@ jobs:
         id: id
         run: |
           cd packages && \
-          echo "FILENAME=`ls machbase-neo-v*.zip`" >> $GITHUB_OUTPUT
+          echo "FILENAME=`ls machbase-neo-*-v*.zip`" >> $GITHUB_OUTPUT
       - name: Store artifacts
         uses: actions/upload-artifact@v3
         with:

@@ -40,7 +40,7 @@ jobs:
           SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
         with:
           repo_token: ${{ secrets.GIT_PASS }}
-          file: packages/machbase-neo-v*.zip
+          file: packages/machbase-neo-*-v*.zip
           repo_name: MACHBASE/machbase
           prerelease: true
           tag: ${{ github.ref }}

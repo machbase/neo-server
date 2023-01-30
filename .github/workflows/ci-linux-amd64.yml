@@ -36,7 +36,7 @@ jobs:
         id: id
         run: |
           cd packages && \
-          echo "FILENAME=`ls machbase-neo-v*.zip`" >> $GITHUB_OUTPUT
+          echo "FILENAME=`ls machbase-neo-*-v*.zip`" >> $GITHUB_OUTPUT
       - name: Store artifacts
         uses: actions/upload-artifact@v3
         with:
