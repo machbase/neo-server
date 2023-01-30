@@ -33,7 +33,6 @@ module "machbase.com/neo-server" {
     name = "machsvr"
     config {
         MachbaseHome     = "${VARS_WORKDIR}/machbase"
-		MachbasePreset   = 2
         Machbase = {
             HANDLE_LIMIT = 4096
 			TAG_CACHE_MAX_MEMORY_SIZE = 536870912
