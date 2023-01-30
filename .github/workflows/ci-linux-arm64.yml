@@ -36,10 +36,10 @@ jobs:
         id: id
         run: |
           cd packages && \
-          echo "FILENAME=`ls machbase-neo-*-v*.zip`" >> $GITHUB_OUTPUT
+          echo "FILENAME_EDGE=`ls machbase-neo-edge-v*.zip`" >> $GITHUB_OUTPUT
       - name: Store artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ steps.id.outputs.FILENAME }}
-          path: packages/${{ steps.id.outputs.FILENAME }}
+          name: ${{ steps.id.outputs.FILENAME_EDGE }}
+          path: packages/${{ steps.id.outputs.FILENAME_EDGE }}
           retention-days: 5
