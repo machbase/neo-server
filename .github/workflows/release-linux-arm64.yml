@@ -1,0 +1,50 @@
+name: Release linux-amd64
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  builds:
+    runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
+    env:
+      GOPRIVATE: "github.com/machbase/*"
+    steps:
+      - name: Checkout
+        run: |
+          cd .. && \
+          git -C neo-server pull origin ${{ github.base_ref }} || git clone git@github.com:MACHBASE/neo-server.git \
+          cd neo-server
+      - name: Branch name
+        id: branch_name
+        run: |
+          echo "VER=`./scripts/buildversion.sh`" >> $GITHUB_OUTPUT
+          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Setup go compiler
+        uses: actions/setup-go@v3
+        with:
+          token: ${{ secrets.GIT_PASS }}
+          go-version: '^1.19.5'
+      - name: Build
+        run: |
+          make test && \
+          make cleanpackage && \
+          make package-machbase-neo
+      - name: Release files
+        uses: svenstaro/upload-release-action@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
+          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
+          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
+        with:
+          repo_token: ${{ secrets.GIT_PASS }}
+          file: packages/machbase-neo-v*.zip
+          repo_name: MACHBASE/machbase
+          prerelease: true
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
