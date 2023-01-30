@@ -13,8 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Get tags
-        run: cd neo-server && git fetch --tags origin
+        with:
+          fetch-depth: 0
       - name: Branch name
         id: branch_name
         run: |
