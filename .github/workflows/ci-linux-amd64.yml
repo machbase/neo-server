@@ -36,7 +36,7 @@ jobs:
         id: id
         run: |
           cd packages && \
-          echo "FILENAME_EDGE=`ls machbase-neo-edge-v*.zip`" >> $GITHUB_OUTPUT \
+          echo "FILENAME_EDGE=`ls machbase-neo-edge-v*.zip`" >> $GITHUB_OUTPUT && \
           echo "FILENAME_FOG=`ls machbase-neo-fog-v*.zip`" >> $GITHUB_OUTPUT
       - name: Store artifacts
         uses: actions/upload-artifact@v3

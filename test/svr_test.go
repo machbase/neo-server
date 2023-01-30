@@ -43,7 +43,7 @@ module "machbase.com/neo-server" {
         Grpc = {
             Listeners        = [ 
                 "unix://${VARS_WORKDIR}/mach.sock", 
-                "tcp://127.0.0.1:5655",
+                "tcp://127.0.0.1:6565",
             ]
             MaxRecvMsgSize   = 4
             MaxSendMsgSize   = 4

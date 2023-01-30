@@ -19,18 +19,18 @@ tmpdir:
 test: tmpdir
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@go test $(ARGS) -tags linux,arm64,fog_edition ./test/
+	@go test $(ARGS) -tags linux,arm64,edge_edition ./test/
 endif
 ifeq ($(uname_p),x86_64)
-	@go test $(ARGS) -tags linux,amd64,fog_edition ./test/
+	@go test $(ARGS) -tags linux,amd64,edge_edition ./test/
 endif
 endif
 ifeq ($(uname_s),Darwin)
 ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@go test $(ARGS) -tags darwin,arm64,fog_edition ./test/
+	@go test $(ARGS) -tags darwin,arm64,edge_edition ./test/
 endif
 ifeq ($(uname_p),i386)
-	@go test $(ARGS) -tags darwin,amd64,fog_edition ./test/
+	@go test $(ARGS) -tags darwin,amd64,edge_edition ./test/
 endif
 endif
 
