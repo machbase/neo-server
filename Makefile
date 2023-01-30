@@ -17,7 +17,22 @@ tmpdir:
 	@mkdir -p tmp
 
 test: tmpdir
-	@go test $(ARGS) -tags edge_edition ./test/
+ifeq ($(uname_s),Linux)
+ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
+	@go test $(ARGS) -tags linux,arm64,fog_edition ./test/
+endif
+ifeq ($(uname_p),x86_64)
+	@go test $(ARGS) -tags linux,amd64,fog_edition ./test/
+endif
+endif
+ifeq ($(uname_s),Darwin)
+ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
+	@go test $(ARGS) -tags darwin,arm64,fog_edition ./test/
+endif
+ifeq ($(uname_p),i386)
+	@go test $(ARGS) -tags darwin,amd64,fog_edition ./test/
+endif
+endif
 
 test-all:
 	@make -f Makefile ARGS="-cover -v -count 1" test
@@ -33,7 +48,7 @@ package-all:
 package-%:
 	@echo "package" $(uname_s) $(uname_p)
 ifeq ($(uname_s),Linux)
-ifeq ($(uname_p),aarch64)
+ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
 	@./scripts/package.sh $*  linux  arm64 $(nextver) edge
 	@./scripts/package.sh $*  linux  arm64 $(nextver) fog
 endif
