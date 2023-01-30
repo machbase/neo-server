@@ -1,13 +1,13 @@
-name: Release linux-amd64
+name: CI linux-arm64
 
 on:
   push:
-    tags:
-      - v*
+    branches:
+      - '*'
 
 jobs:
   builds:
-    runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+    runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
     env:
       GOPRIVATE: "github.com/machbase/*"
     steps:
@@ -30,17 +30,14 @@ jobs:
           make test && \
           make cleanpackage && \
           make package-machbase-neo
-      - name: Release files
-        uses: svenstaro/upload-release-action@v2
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
-          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
-          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
+      - name: Artifacts
+        id: id
+        run: |
+          cd neo-server/packages && \
+          echo "FILENAME=`ls machbase-neo-v*.zip`" >> $GITHUB_OUTPUT
+      - name: Store artifacts
+        uses: actions/upload-artifact@v3
         with:
-          file: packages/machbase-neo-v*.zip
-          repo_name: MACHBASE/machbase
-          prerelease: true
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+          name: ${{ steps.id.outputs.FILENAME }}
+          path: neo-server/packages/${{ steps.id.outputs.FILENAME }}
+          retention-days: 5
