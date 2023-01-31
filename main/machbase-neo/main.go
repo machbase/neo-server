@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -16,15 +17,24 @@ func main() {
 		doServe()
 	} else {
 		var cli struct {
-			Serve ServeCmd       `cmd:"" help:"serve machbase-neo"`
-			Shell shell.ShellCmd `cmd:"" help:"shell client"`
+			Serve     ServeCmd       `cmd:"" help:"serve machbase-neo"`
+			Shell     shell.ShellCmd `cmd:"" help:"shell client"`
+			GenConfig struct{}       `cmd:"" name:"gen-config" help:"show config template"`
+			Version   struct{}       `cmd:"" name:"version" help:"show version"`
 		}
 		cmd := kong.Parse(&cli,
 			kong.HelpOptions{NoAppSummary: false, Compact: true, FlagsLast: true},
 			kong.UsageOnError(),
 		)
 		command := cmd.Command()
-
+		switch command {
+		case "gen-config":
+			fmt.Println(string(server.DefaultFallbackConfig))
+			return
+		case "version":
+			fmt.Printf("machbase-neo %s edition %s", mods.Edition(), mods.VersionString())
+			return
+		}
 		switch {
 		default:
 			cmd.PrintUsage(false)
