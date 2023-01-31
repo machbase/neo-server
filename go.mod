@@ -14,7 +14,7 @@ require (
 	github.com/machbase/cemlib v0.0.0-20230124025810-6525e5a45406
 	github.com/machbase/neo-engine v0.1.1-0.20230130115132-30d82c7a9ffb
 	github.com/machbase/neo-grpc v0.0.8-0.20230128225921-fadf1377b1b8
-	github.com/machbase/neo-shell v0.0.7-0.20230130040636-65dccb8ccbff
+	github.com/machbase/neo-shell v0.0.7-0.20230131020250-b5db99199ad4
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
