@@ -57,7 +57,6 @@ module "machbase.com/neo-server" {
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
                 { Prefix: "/metrics", Handler: "influx" },
-                { Prefix: "/logvault", Handler: "logvault"},
             ]
         }
         Mqtt = {
