@@ -41,7 +41,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GIT_PASS }}
           file: packages/machbase-neo-*-v*.zip
-          repo_name: MACHBASE/machbase
+          repo_name: machbase/machbase-neo
           prerelease: true
           tag: ${{ github.ref }}
           overwrite: true
