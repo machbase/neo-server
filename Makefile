@@ -50,6 +50,7 @@ package-%:
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
 	@./scripts/package.sh $*  linux  arm64 $(nextver) edge
+	@./scripts/package.sh $*  linux  arm64 $(nextver) fog
 endif
 ifeq ($(uname_p),x86_64)
 	@./scripts/package.sh $*  linux  amd64 $(nextver) edge
