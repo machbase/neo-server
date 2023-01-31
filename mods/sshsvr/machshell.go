@@ -9,6 +9,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/machbase/cemlib/logging"
 	"github.com/machbase/cemlib/ssh/sshd"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods"
 	"github.com/pkg/errors"
 )
@@ -90,5 +91,11 @@ func (svr *MachShell) motdProvider(user string) string {
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
-	return true
+	user := ctx.User()
+	ok, err := mach.New().UserAuth(user, password)
+	if err != nil {
+		svr.log.Errorf("user auth", err.Error())
+		return false
+	}
+	return ok
 }
