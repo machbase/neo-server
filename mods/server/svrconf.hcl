@@ -20,10 +20,11 @@ define VARS {
 }
 
 module "machbase.com/neo-logging" {
+    name = "neolog"
     config {
         Console                     = false
         Filename                    = "-"
-        DefaultPrefixWidth          = 20
+        DefaultPrefixWidth          =16
         DefaultEnableSourceLocation = flag("--log-source-location", false)
         DefaultLevel                = "TRACE"
         Levels = [
@@ -33,7 +34,7 @@ module "machbase.com/neo-logging" {
 }
 
 module "machbase.com/neo-server" {
-    name = "machsvr"
+    name = "neosvr"
     config {
         MachbaseHome     = VARS_DATA_DIR
         Machbase         = {
