@@ -426,3 +426,7 @@ func makeListener(addr string) (net.Listener, error) {
 		return nil, fmt.Errorf("unuspported listen scheme %s", addr)
 	}
 }
+
+func (s *svr) GetGrpcAddresses() []string {
+	return s.conf.Grpc.Listeners
+}

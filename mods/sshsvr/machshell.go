@@ -15,7 +15,7 @@ import (
 )
 
 type Server interface {
-	GetConfig() string
+	GetGrpcAddresses() []string
 }
 
 type Config struct {
@@ -76,18 +76,22 @@ func (svr *MachShell) Stop() {
 }
 
 func (svr *MachShell) shellProvider(user string) *sshd.Shell {
+	grpcAddrs := svr.Server.GetGrpcAddresses()
+	if len(grpcAddrs) == 0 {
+		return nil
+	}
 	return &sshd.Shell{
 		Cmd: os.Args[0],
 		Args: []string{
 			"shell",
-			"--server", "tcp://127.0.0.1:5655",
+			"--server", grpcAddrs[0],
 			"--user", user,
 		},
 	}
 }
 
 func (svr *MachShell) motdProvider(user string) string {
-	return fmt.Sprintf("Greeting, %s\r\nmachsvr %v\r\n", user, mods.VersionString())
+	return fmt.Sprintf("Greetings, %s\r\nmachbase-neo %v %s\r\n", strings.ToUpper(user), mach.Edition(), mods.VersionString())
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
