@@ -23,12 +23,13 @@ module "machbase.com/neo-logging" {
     name = "neolog"
     config {
         Console                     = false
-        Filename                    = "-"
-        DefaultPrefixWidth          =16
+        Filename                    = flag("--log-filename", "-")
+        DefaultPrefixWidth          = 16
         DefaultEnableSourceLocation = flag("--log-source-location", false)
-        DefaultLevel                = "TRACE"
+        DefaultLevel                = "INFO"
         Levels = [
-            { Pattern="machsvr", Level="TRACE" },
+            { Pattern="neo*", Level="TRACE" },
+            { Pattern="http-log", Level="DEBUG" },
         ]
     }
 }
