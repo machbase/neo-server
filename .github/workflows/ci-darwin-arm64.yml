@@ -32,21 +32,18 @@ jobs:
           make test && \
           make cleanpackage && \
           make package-machbase-neo
-      - name: Artifacts
-        id: id
-        run: |
-          cd packages && \
-          echo "FILENAME_EDGE=`ls machbase-neo-edge-v*.zip`" >> $GITHUB_OUTPUT && \
-          echo "FILENAME_FOG=`ls machbase-neo-fog-v*.zip`" >> $GITHUB_OUTPUT
-      - name: Store artifacts
-        uses: actions/upload-artifact@v3
+      - name: Upload nightly build
+        uses: svenstaro/upload-release-action@v2
+        env:
+          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
+          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
+          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
         with:
-          name: ${{ steps.id.outputs.FILENAME_EDGE }}
-          path: packages/${{ steps.id.outputs.FILENAME_EDGE }}
-          retention-days: 5
-      - name: Store artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ steps.id.outputs.FILENAME_FOG }}
-          path: packages/${{ steps.id.outputs.FILENAME_FOG }}
-          retention-days: 5
+          repo_token: ${{ secrets.GIT_PASS }}
+          file: packages/machbase-neo-*-v*.zip
+          repo_name: machbase/neo-server
+          prerelease: true
+          tag: nightly
+          overwrite: true
+          file_glob: true
+
