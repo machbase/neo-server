@@ -17,6 +17,7 @@ define VARS {
     HTTP_LISTEN_PORT  = flag("--http-listen-port", DEF_HTTP_PORT)
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
     MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
+    MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
 }
 
 module "machbase.com/neo-logging" {
@@ -66,6 +67,7 @@ module "machbase.com/neo-server" {
                 { Prefix: "db",       Handler: "machbase" },
                 { Prefix: "metrics",  Handler: "influx" },
             ]
+            MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
         }
     }
 }
