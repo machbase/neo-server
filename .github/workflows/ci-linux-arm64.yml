@@ -1,9 +1,12 @@
 name: CI linux-arm64
 
 on:
+  pull_request:
+    - opened
   push:
     branches:
-      - '*'
+      - 'main'
+      - 'devel*'
 
 jobs:
   builds:

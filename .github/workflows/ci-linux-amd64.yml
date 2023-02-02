@@ -1,9 +1,12 @@
 name: CI linux-amd64
 
 on:
+  pull_request:
+    - opened
   push:
     branches:
-      - '*'
+      - 'main'
+      - 'devel*'
 
 jobs:
   builds:
