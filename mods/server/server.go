@@ -17,6 +17,7 @@ import (
 	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/httpsvr"
 	"github.com/machbase/neo-server/mods/mqttsvr"
@@ -93,10 +94,13 @@ type Server interface {
 }
 
 type svr struct {
+	mgmt.ManagementServer
+
 	conf  *Config
 	log   logging.Log
 	db    *mach.Database
 	grpcd *grpc.Server
+	mgmtd *grpc.Server
 	httpd *http.Server
 	mqttd *mqttsvr.Server
 	shsvr *shell.MachShell
@@ -242,7 +246,12 @@ func (s *svr) Start() error {
 
 		// create grpc server
 		s.grpcd = grpc.NewServer(grpcOpt...)
+		s.mgmtd = grpc.NewServer(grpcOpt...)
+		// s.grpcd is serving only db service
 		machrpc.RegisterMachbaseServer(s.grpcd, machrpcSvr)
+		// s.mgmtd is serving general db service + mgmt service
+		machrpc.RegisterMachbaseServer(s.mgmtd, machrpcSvr)
+		mgmt.RegisterManagementServer(s.mgmtd, s)
 
 		// listeners
 		for _, listen := range s.conf.Grpc.Listeners {
@@ -252,8 +261,12 @@ func (s *svr) Start() error {
 			}
 			s.log.Infof("gRPC Listen %s", listen)
 
-			// start go server
-			go s.grpcd.Serve(lsnr)
+			if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
+				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
+				go s.mgmtd.Serve(lsnr)
+			} else {
+				go s.grpcd.Serve(lsnr)
+			}
 		}
 	}
 
@@ -324,6 +337,9 @@ func (s *svr) Stop() {
 
 	if s.grpcd != nil {
 		s.grpcd.Stop()
+	}
+	if s.mgmtd != nil {
+		s.mgmtd.Stop()
 	}
 
 	if err := s.db.Shutdown(); err != nil {
@@ -429,4 +445,14 @@ func makeListener(addr string) (net.Listener, error) {
 
 func (s *svr) GetGrpcAddresses() []string {
 	return s.conf.Grpc.Listeners
+}
+
+// // mgmt server implements
+func (s *svr) Shutdown(context.Context, *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
+	tick := time.Now()
+	rsp := &mgmt.ShutdownResponse{}
+	booter.NotifySignal()
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
 }
