@@ -129,6 +129,7 @@ func NewConfig() *Config {
 			Handlers: []mqttsvr.HandlerConfig{
 				{Prefix: "db", Handler: "machbase"},
 			},
+			MaxMessageSizeLimit: 1024 * 1024,
 		},
 		Shell: shell.Config{
 			Listeners:   []string{},

@@ -23,6 +23,7 @@ func New(conf *Config) *Server {
 		Allowance: allowance.AllowanceConfig{
 			Policy: "NONE",
 		},
+		MaxMessageSizeLimit: conf.MaxMessageSizeLimit,
 	}
 	for _, c := range conf.Listeners {
 		if strings.HasPrefix(c, "tcp://") {
@@ -52,6 +53,8 @@ type Config struct {
 	Listeners []string
 	Handlers  []HandlerConfig
 	Passwords map[string]string
+
+	MaxMessageSizeLimit int
 }
 
 type HandlerConfig struct {
