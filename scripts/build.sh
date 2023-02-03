@@ -20,23 +20,23 @@ if [ "$(which go)" == "" ]; then
 	exit 1
 fi
 
-
 if [ "$3" == "" ]; then
     EDITION="edge"
 else
     EDITION="$3"
 fi
 
-echo "Build version $MODNAME $VERSION $EDITION"
-
-# Hardcode some values to the core package.
 if [ -f ".git" ]; then
-	echo "on .git get hash"
 	GITSHA=$(git rev-parse --short HEAD)
-	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
+elif [ -f "./neo-server/.git" ]; then
+    GITSHA=$(git -C ./neo-server rev-parse --short HEAD)
+else
+    GITSHA="-"
 fi
-echo "git hash"
-echo $GITSHA
+
+echo "Build $MODNAME $EDITION $VERSION $GITSHA"
+
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
