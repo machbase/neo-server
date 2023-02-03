@@ -27,7 +27,7 @@ module "machbase.com/neo-logging" {
         Filename                    = flag("--log-filename", "-")
         DefaultPrefixWidth          = 16
         DefaultEnableSourceLocation = flag("--log-source-location", false)
-        DefaultLevel                = "INFO"
+        DefaultLevel                = flag("--log-level", "INFO")
         Levels = [
             { Pattern="neo*", Level="TRACE" },
             { Pattern="http-log", Level="DEBUG" },

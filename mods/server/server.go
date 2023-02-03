@@ -108,8 +108,6 @@ type svr struct {
 	certdir string
 }
 
-const TagTableName = "tagdata"
-
 func NewConfig() *Config {
 	conf := Config{
 		MachbaseHome: ".",

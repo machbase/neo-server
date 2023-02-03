@@ -2,6 +2,8 @@ package mqttsvr
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -106,31 +108,88 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		head := result.Get("0")
 		if head.IsArray() {
 			// if payload contains multiple tuples
+			cols := appender.Columns()
+			var err error
 			result.ForEach(func(key, value gjson.Result) bool {
-				vals := []any{}
-				value.ForEach(func(key, value gjson.Result) bool {
-					vals = append(vals, value.Value())
-					return true
-				})
+				fields := value.Array()
+				vals, err := convAppendColumns(fields, cols, appender.TableType())
+				if err != nil {
+					return false
+				}
 				err = appender.Append(vals...)
 				if err != nil {
-					svr.log.Warnf("append fail %s", err.Error())
+					svr.log.Warnf("append fail %s %d %s [%+v]", table, appender.TableType(), err.Error(), vals)
 					return false
 				}
 				return true
 			})
+			return err
 		} else {
 			// a single tuple
-			vals := []any{}
-			result.ForEach(func(key, value gjson.Result) bool {
-				vals = append(vals, value.Value())
-				return true
-			})
+			fields := result.Array()
+			cols := appender.Columns()
+			vals, err := convAppendColumns(fields, cols, appender.TableType())
+			if err != nil {
+				return err
+			}
 			err = appender.Append(vals...)
 			if err != nil {
-				svr.log.Warnf("append fail %s", err.Error())
+				svr.log.Warnf("append fail %s %d %s [%+v]", table, appender.TableType(), err.Error(), vals)
+				return err
 			}
+			return nil
 		}
 	}
 	return nil
+}
+
+func convAppendColumns(fields []gjson.Result, cols []*mach.Column, tableType mach.TableType) ([]any, error) {
+	fieldsOffset := 0
+	colsNum := len(cols)
+	vals := []any{}
+	switch tableType {
+	case mach.LogTableType:
+		if colsNum == len(fields) {
+			// num of columns is matched
+		} else if colsNum+1 == len(fields) {
+			vals = append(vals, fields[0].Int()) // timestamp included
+			fieldsOffset = 1
+		} else {
+			return nil, fmt.Errorf("append fail, received fields not matched columns(%d)", colsNum)
+		}
+
+	default:
+		if colsNum == len(fields) {
+			// num of columns is matched
+		} else {
+			return nil, fmt.Errorf("append fail, received fields not matched columns(%d)", colsNum)
+		}
+	}
+
+	for i, v := range fields[fieldsOffset:] {
+		switch cols[i].Type {
+		case mach.ColumnTypeNameInt16:
+			vals = append(vals, v.Int())
+		case mach.ColumnTypeNameInt32:
+			vals = append(vals, v.Int())
+		case mach.ColumnTypeNameInt64:
+			vals = append(vals, v.Int())
+		case mach.ColumnTypeNameString:
+			vals = append(vals, v.Str)
+		case mach.ColumnTypeNameDatetime:
+			vals = append(vals, v.Int())
+		case mach.ColumnTypeNameFloat:
+			vals = append(vals, v.Float())
+		case mach.ColumnTypeNameDouble:
+			vals = append(vals, v.Float())
+		case mach.ColumnTypeNameIPv4:
+			vals = append(vals, v.Str)
+		case mach.ColumnTypeNameIPv6:
+			vals = append(vals, v.Str)
+		case mach.ColumnTypeNameBinary:
+			return nil, errors.New("append fail, binary column is not supproted via JSON payload")
+		}
+	}
+
+	return vals, nil
 }
