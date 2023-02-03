@@ -31,9 +31,12 @@ echo "Build version $MODNAME $VERSION $EDITION"
 
 # Hardcode some values to the core package.
 if [ -f ".git" ]; then
+	echo "on .git get hash"
 	GITSHA=$(git rev-parse --short HEAD)
 	LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 fi
+echo "git hash"
+echo $GITSHA
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
