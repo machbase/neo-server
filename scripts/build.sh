@@ -27,9 +27,7 @@ else
 fi
 
 if [ -f ".git" ]; then
-	GITSHA=$(git rev-parse --short HEAD)
-elif [ -f "./neo-server/.git" ]; then
-    GITSHA=$(git -C ./neo-server rev-parse --short HEAD)
+	GITSHA=$(git rev-parse --short `git branch --show-current`)
 else
     GITSHA="-"
 fi
