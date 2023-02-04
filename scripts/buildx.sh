@@ -40,9 +40,7 @@ VERSION=`$PRJROOT/scripts/buildversion.sh`
 
 # Hardcode some values to the core package.
 if [ -f ".git" ]; then
-	GITSHA=$(git rev-parse --short HEAD)
-elif [ -f "./neo-server/.git" ]; then
-    GITSHA=$(git -C ./neo-server rev-parse --short HEAD)
+	GITSHA=$(git rev-parse --short `git branch --show-current`)
 fi
 
 echo "Build $MODNAME $EDITION $VERSION $GITSHA"
@@ -75,21 +73,25 @@ case $X_OS in
     ;;
     darwin)
         SYSROOT=`xcrun --sdk macosx --show-sdk-path`
-        SYSFLAGS="-I$SYSROOT/usr/include, -F$SYSROOT/System/Library/Frameworks -L$SYSROOT/usr/lib"
+        SYSFLAGS="-v --sysroot=$SYSROOT -I/usr/include, -F/System/Library/Frameworks -L/usr/lib"
         if [ $X_ARCH == "arm64" ]; then
-            X_CC="zig cc -target aarch64-macos-none $SYSFLAGS"
-            X_CX="zig c++ -target aarch64-macos-none $SYSFLAGS"
-        elif [ $_XARCH == "amd64"]; then
-            X_CC="zig cc -target x86_64-macos-gnu $SYSFLAGS"
-            X_CX="zig c++ -target x86_64-macos-gnu $SYSFLAGS"
+            X_CC="zig cc -target aarch64-macos.13-none $SYSFLAGS"
+            X_CX="zig c++ -target aarch64-macos.13-none $SYSFLAGS"
+        elif [ $X_ARCH == "amd64" ]; then
+            X_CC="zig cc -target x86_64-macos.13-none $SYSFLAGS"
+            X_CX="zig c++ -target x86_64-macos.13-none $SYSFLAGS"
         else
             echo "supported darwin/$X_ARCH"
             exit 1
         fi
     ;;
     windows)
-        X_CC="zig cc -target x86_64-windows-gnu"
-        X_CX="zig c++ -target x86_64-windows-gnu"
+        X_CC="zig cc -target x86_64-windows-none"
+        X_CX="zig c++ -target x86_64-windows-none"
+    ;;
+    *)
+        echo "supported os $X_OS"
+        exit 1
     ;;
 esac
 
