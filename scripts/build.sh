@@ -30,6 +30,7 @@ if [ -f ".git" ]; then
 	GITSHA=$(git rev-parse --short `git branch --show-current`)
 else
     GITSHA="-"
+    echo `pwd`
 fi
 
 echo "Build $MODNAME $EDITION $VERSION $GITSHA"
