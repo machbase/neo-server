@@ -8,6 +8,7 @@ define DEF {
 }
 
 define VARS {
+    PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
     SHELL_LISTEN_PORT = flag("--shell-listen-port", DEF_SHELL_PORT)
@@ -38,7 +39,8 @@ module "machbase.com/neo-logging" {
 module "machbase.com/neo-server" {
     name = "neosvr"
     config {
-        MachbaseHome     = VARS_DATA_DIR
+        PrefDir          = VARS_PREF_DIR
+        DataDir          = VARS_DATA_DIR
         Machbase         = {
             HANDLE_LIMIT     = 2048
         }

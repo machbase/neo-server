@@ -16,6 +16,7 @@ import (
 	"github.com/machbase/cemlib/ginutil"
 	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
@@ -69,7 +70,8 @@ func init() {
 }
 
 type Config struct {
-	MachbaseHome   string
+	DataDir        string
+	PrefDir        string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
 	Shell          shell.Config
@@ -109,8 +111,13 @@ type svr struct {
 }
 
 func NewConfig() *Config {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
 	conf := Config{
-		MachbaseHome: ".",
+		DataDir: ".",
+		PrefDir: filepath.Join(homeDir, ".config", ".machbase"),
 		Grpc: GrpcConfig{
 			Listeners:      []string{"unix://./mach.sock"},
 			MaxRecvMsgSize: 4,
@@ -162,19 +169,36 @@ func NewServer(conf *Config) (Server, error) {
 func (s *svr) Start() error {
 	s.log = logging.GetLog("neosvr")
 
-	v := mods.GetVersion()
-	s.log.Infof("\n%s v%d.%d.%d (%s %s)\n", genBanner(), v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
-	s.log.Info(mods.EngineInfoString())
+	if booter.GetDefinition("github.com/machbase/cemlib/banner") == nil {
+		// print banner if banner module is not configured
+		s.log.Infof("\n%s", GenBanner())
+	}
 
-	homepath, err := filepath.Abs(s.conf.MachbaseHome)
+	prefpath, err := filepath.Abs(s.conf.PrefDir)
 	if err != nil {
-		return errors.Wrap(err, "machbase path")
+		return errors.Wrap(err, "prefdir")
+	}
+	if err := mkDirIfNotExists(filepath.Dir(prefpath)); err != nil {
+		return errors.Wrap(err, "prefdir")
+	}
+	if err := mkDirIfNotExists(prefpath); err != nil {
+		return errors.Wrap(err, "prefdir")
+	}
+	s.certdir = filepath.Join(prefpath, "cert")
+	if err := mkDirIfNotExists(s.certdir); err != nil {
+		return errors.Wrap(err, "prefdir cert")
+	}
+	if err := s.mkKeysIfNotExists(); err != nil {
+		return errors.Wrap(err, "prefdir keys")
 	}
 
+	homepath, err := filepath.Abs(s.conf.DataDir)
+	if err != nil {
+		return errors.Wrap(err, "datadir")
+	}
 	if err := mkDirIfNotExists(homepath); err != nil {
-		return errors.Wrap(err, "machbase")
+		return errors.Wrap(err, "machbase_home")
 	}
-
 	if err := mkDirIfNotExists(filepath.Join(homepath, "conf")); err != nil {
 		return errors.Wrap(err, "machbase conf")
 	}
@@ -183,21 +207,6 @@ func (s *svr) Start() error {
 	}
 	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
 		return errors.Wrap(err, "machbase trc")
-	}
-	// execpath, err := os.Executable()
-	// if err != nil {
-	// 	return errors.Wrap(err, "can not decide executable path")
-	// }
-	// execdir, err := filepath.Abs(filepath.Dir(execpath))
-	// if err != nil {
-	// 	return errors.Wrap(err, "can not decide executable dir")
-	// }
-	s.certdir = filepath.Join(homepath, "cert")
-	if err := mkDirIfNotExists(s.certdir); err != nil {
-		return errors.Wrap(err, "machbase cert")
-	}
-	if err := s.mkKeysIfNotExists(); err != nil {
-		return errors.Wrap(err, "machbase keys")
 	}
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
@@ -349,10 +358,25 @@ func (s *svr) Stop() {
 	s.log.Infof("shutdown.")
 }
 
-func genBanner() string {
+func GenBanner() string {
+	options := figlet4go.NewRenderOptions()
+	options.FontColor = []figlet4go.Color{
+		figlet4go.ColorMagenta,
+		figlet4go.ColorYellow,
+		figlet4go.ColorCyan,
+		figlet4go.ColorBlue,
+	}
 	fig := figlet4go.NewAsciiRender()
-	logo, _ := fig.Render("NEO")
-	return strings.TrimRight(logo, "\r\n")
+	machbase, _ := fig.Render("Machbase")
+	logo, _ := fig.RenderOpts("neo", options)
+
+	v := mods.GetVersion()
+
+	lines := strings.Split(logo, "\n")
+	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
+	lines[4] = lines[4] + fmt.Sprintf("  %s", mods.EngineInfoString())
+	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
 func (s *svr) ServerPrivateKeyPath() string {

@@ -32,7 +32,7 @@ func main() {
 			fmt.Println(string(server.DefaultFallbackConfig))
 			return
 		case "version":
-			fmt.Printf("machbase-neo %s edition %s", mods.Edition(), mods.VersionString())
+			fmt.Println(server.GenBanner())
 			return
 		}
 		switch {
