@@ -82,10 +82,15 @@ type Config struct {
 	PrefDir        string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
+	AuthHandler    AuthHandlerConfig
 	Shell          shell.Config
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           mqttsvr.Config
+}
+
+type AuthHandlerConfig struct {
+	Enabled bool
 }
 
 type GrpcConfig struct {
@@ -115,8 +120,8 @@ type svr struct {
 	mqttd *mqttsvr.Server
 	shsvr *shell.MachShell
 
-	certdir string
-
+	certdir           string
+	authHandler       AuthHandler
 	authorizedKeysDir string
 }
 
@@ -223,6 +228,8 @@ func (s *svr) Start() error {
 	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
 		return errors.Wrap(err, "machbase trc")
 	}
+
+	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
 	confpath := filepath.Join(homepath, "conf", "machbase.conf")
