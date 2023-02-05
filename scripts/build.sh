@@ -26,11 +26,14 @@ else
     EDITION="$3"
 fi
 
-if [ -f ".git" ]; then
+if [ -d ".git" ]; then
 	GITSHA=$(git rev-parse --short `git branch --show-current`)
 else
-    GITSHA="-"
-    echo `pwd`
+    if [ -f ".git" ]; then
+    	GITSHA=$(git rev-parse --short `git branch --show-current`)
+    else
+        GITSHA="-"
+    fi
 fi
 
 echo "Build $MODNAME $EDITION $VERSION $GITSHA"
