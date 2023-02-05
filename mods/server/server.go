@@ -1,8 +1,16 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -108,6 +116,8 @@ type svr struct {
 	shsvr *shell.MachShell
 
 	certdir string
+
+	authorizedKeysDir string
 }
 
 func NewConfig() *Config {
@@ -190,6 +200,11 @@ func (s *svr) Start() error {
 	}
 	if err := s.mkKeysIfNotExists(); err != nil {
 		return errors.Wrap(err, "prefdir keys")
+	}
+
+	s.authorizedKeysDir = filepath.Join(s.certdir, "authorized_keys")
+	if err := mkDirIfNotExists(s.authorizedKeysDir); err != nil {
+		return errors.Wrap(err, "authorized keys")
 	}
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
@@ -387,9 +402,110 @@ func (s *svr) ServerPublicKeyPath() string {
 	return filepath.Join(s.certdir, "machbase_pub.pem")
 }
 
+func (s *svr) ServerCertificatePath() string {
+	return filepath.Join(s.certdir, "machbase_cert.pem")
+}
+
+func (s *svr) ServerCertificate() (*x509.Certificate, error) {
+	buff, err := os.ReadFile(s.ServerCertificatePath())
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(buff)
+	return x509.ParseCertificate(block.Bytes)
+}
+
+// AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
+func (s *svr) AuthorizedCertificate(id string) (*x509.Certificate, error) {
+	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
+	nfo, err := os.Stat(path)
+	if err != nil {
+		return nil, os.ErrNotExist
+	}
+	if nfo.IsDir() || nfo.Size() == 0 {
+		return nil, os.ErrExist
+	}
+	buff, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(buff)
+	return x509.ParseCertificate(block.Bytes)
+}
+
+func (s *svr) IterateAuthorizedCertificates(cb func(id string) bool) error {
+	if cb == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(s.authorizedKeysDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), "_cert.pem") || entry.IsDir() {
+			continue
+		}
+
+		id := strings.TrimSuffix(entry.Name(), "_cert.pem")
+		flag := cb(id)
+		if !flag {
+			break
+		}
+	}
+	return nil
+}
+
+func (s *svr) SetAuthorizedCertificate(id string, pemBytes []byte) error {
+	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
+	return os.WriteFile(path, pemBytes, 00600)
+}
+
+func (s *svr) RemoveAuthorizedCertificate(id string) error {
+	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
+	return os.Remove(path)
+}
+
+func (s *svr) ServerPublicKey() (any, error) {
+	buff, err := os.ReadFile(s.ServerPublicKeyPath())
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(buff)
+	priKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	switch p := priKey.(type) {
+	case *rsa.PrivateKey:
+		return p.PublicKey, nil
+	case *ecdsa.PrivateKey:
+		return p.PublicKey, nil
+	default:
+		return nil, fmt.Errorf("unsupported key type: %T", priKey)
+	}
+}
+
+func (s *svr) ServerPrivateKey() (any, error) {
+	buff, err := os.ReadFile(s.ServerPrivateKeyPath())
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(buff)
+	priKey, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return priKey, nil
+}
+
 func (s *svr) mkKeysIfNotExists() error {
 	priPath := s.ServerPrivateKeyPath()
 	pubPath := s.ServerPublicKeyPath()
+	certPath := s.ServerCertificatePath()
+
 	needGen := false
 
 	if _, err := os.Stat(priPath); err != nil {
@@ -398,6 +514,10 @@ func (s *svr) mkKeysIfNotExists() error {
 	if _, err := os.Stat(pubPath); err != nil {
 		needGen = true
 	}
+	if _, err := os.Stat(certPath); err != nil {
+		needGen = true
+	}
+
 	if !needGen {
 		return nil
 	}
@@ -424,6 +544,36 @@ func (s *svr) mkKeysIfNotExists() error {
 	if err := os.WriteFile(pubPath, []byte(pubPem), 0644); err != nil {
 		return errors.Wrap(err, "public key writer")
 	}
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate serial number")
+	}
+
+	ca := &x509.Certificate{
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{CommonName: "machbase-neo"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(10 * time.Hour * 24 * 365),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, pri)
+	if err != nil {
+		return err
+	}
+	certBuf := bytes.NewBuffer(nil)
+	if err := pem.Encode(certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return err
+	}
+	if err := os.WriteFile(certPath, certBuf.Bytes(), 0644); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -468,14 +618,4 @@ func makeListener(addr string) (net.Listener, error) {
 
 func (s *svr) GetGrpcAddresses() []string {
 	return s.conf.Grpc.Listeners
-}
-
-// // mgmt server implements
-func (s *svr) Shutdown(context.Context, *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
-	tick := time.Now()
-	rsp := &mgmt.ShutdownResponse{}
-	booter.NotifySignal()
-	rsp.Success, rsp.Reason = true, "success"
-	rsp.Elapse = time.Since(tick).String()
-	return rsp, nil
 }

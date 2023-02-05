@@ -12,14 +12,15 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/machbase/booter v0.0.0-20230204174523-50592c6799bf
 	github.com/machbase/cemlib v0.0.0-20230202104527-ba1d74e8d8e3
-	github.com/machbase/neo-engine v0.1.1-0.20230203043356-a63c782e4356
-	github.com/machbase/neo-grpc v0.1.1-0.20230202011104-fffa0e4746ea
-	github.com/machbase/neo-shell v0.0.7-0.20230202035231-a08f6416afce
+	github.com/machbase/neo-engine v0.1.1-0.20230204183349-4070f9835662
+	github.com/machbase/neo-grpc v0.1.1-0.20230205061819-d003914feadd
+	github.com/machbase/neo-shell v0.0.7-0.20230205061933-5e30e8710e1d
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
+	golang.org/x/crypto v0.5.0
 	google.golang.org/grpc v1.52.3
 )
 
@@ -67,7 +68,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/ugorji/go/codec v1.2.8 // indirect
 	github.com/zclconf/go-cty v1.12.1 // indirect
-	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect
