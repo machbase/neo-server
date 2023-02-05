@@ -32,7 +32,8 @@ module "machbase.com/neo-logging" {
 module "machbase.com/neo-server" {
     name = "machsvr"
     config {
-        MachbaseHome     = "${VARS_WORKDIR}/machbase"
+		PrefDir  = "${VARS_WORKDIR}/machbase_pref"
+        DataDir  = "${VARS_WORKDIR}/machbase_home"
         Machbase = {
 			PORT_NO = 5566
             HANDLE_LIMIT = 4096
