@@ -24,11 +24,11 @@ else
     MINOR=`echo $VERSION | sed -ne 's/v[0-9]*[.]\([0-9]*\).*/\1/p'`
     PATCH=`echo $VERSION | sed -ne 's/v[0-9]*[.][0-9]*[.]\([0-9]*\).*/\1/p'`
     if [ -z $PATCH ]; then
-        PATCH="0"
+        VERSION="v$MAJOR.$MINOR-devel"
     else
-        PATCH=`expr $PATCH + 1`
+        PATCH=`expr $PATCH + 0`
+        VERSION="v$MAJOR.$MINOR.$PATCH-devel"
     fi
-    VERSION="v$MAJOR.$MINOR.$PATCH-devel"
 fi
 
 echo $VERSION
