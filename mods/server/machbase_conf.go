@@ -9,8 +9,9 @@ import (
 )
 
 type MachbaseConfig struct {
-	PORT_NO  int
-	DBS_PATH string
+	PORT_NO         int
+	BIND_IP_ADDRESS string
+	DBS_PATH        string
 
 	TRACE_LOGFILE_SIZE  int64
 	TRACE_LOGFILE_COUNT int
@@ -116,6 +117,7 @@ func (p MachbasePreset) String() string {
 func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 	c := &MachbaseConfig{
 		PORT_NO:             5656,
+		BIND_IP_ADDRESS:     "127.0.0.1",
 		DBS_PATH:            "?/dbs",
 		TRACE_LOGFILE_SIZE:  10485760, // 10MB
 		TRACE_LOGFILE_COUNT: 1000,
