@@ -82,6 +82,7 @@ type Config struct {
 	PrefDir        string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
+	StartupQueries []string
 	AuthHandler    AuthHandlerConfig
 	Shell          shell.Config
 	Grpc           GrpcConfig
@@ -184,11 +185,6 @@ func NewServer(conf *Config) (Server, error) {
 func (s *svr) Start() error {
 	s.log = logging.GetLog("neosvr")
 
-	if booter.GetDefinition("github.com/machbase/cemlib/banner") == nil {
-		// print banner if banner module is not configured
-		s.log.Infof("\n%s", GenBanner())
-	}
-
 	prefpath, err := filepath.Abs(s.conf.PrefDir)
 	if err != nil {
 		return errors.Wrap(err, "prefdir")
@@ -256,9 +252,20 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "startup database")
 	}
 
-	result := s.db.Exec("alter system set trace_log_level=1023")
-	if result.Err() != nil {
-		return errors.Wrap(result.Err(), "alter log level")
+	if booter.GetDefinition("github.com/machbase/cemlib/banner") == nil {
+		// print banner if banner module is not configured
+		s.log.Infof("\n%s", GenBanner())
+	}
+
+	for n, sqlText := range s.conf.StartupQueries {
+		// ex) "alter system set trace_log_level=1023"
+		result := s.db.Exec(sqlText)
+		if result.Err() != nil {
+			s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
+			break
+		} else {
+			s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+		}
 	}
 
 	// grpc server
