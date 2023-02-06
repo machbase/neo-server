@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -196,7 +197,7 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "prefdir")
 	}
 	s.certdir = filepath.Join(prefpath, "cert")
-	if err := mkDirIfNotExists(s.certdir); err != nil {
+	if err := mkDirIfNotExistsMode(s.certdir, 0700); err != nil {
 		return errors.Wrap(err, "prefdir cert")
 	}
 	if err := s.mkKeysIfNotExists(); err != nil {
@@ -204,7 +205,7 @@ func (s *svr) Start() error {
 	}
 
 	s.authorizedKeysDir = filepath.Join(s.certdir, "authorized_keys")
-	if err := mkDirIfNotExists(s.authorizedKeysDir); err != nil {
+	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
 		return errors.Wrap(err, "authorized keys")
 	}
 
@@ -592,9 +593,13 @@ func (s *svr) mkKeysIfNotExists() error {
 }
 
 func mkDirIfNotExists(path string) error {
+	return mkDirIfNotExistsMode(path, 0755)
+}
+
+func mkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	_, err := os.Stat(path)
 	if err != nil && os.IsNotExist(err) {
-		if err := os.Mkdir(path, 0755); err != nil {
+		if err := os.Mkdir(path, mode); err != nil {
 			return err
 		}
 	} else if err != nil {
