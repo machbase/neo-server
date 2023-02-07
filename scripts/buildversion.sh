@@ -7,7 +7,7 @@ fi
 # 'devel-v1.2.3' branch -> get version from branch name
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ $BRANCH == devel-* ]]; then
+if [ -n "$(echo $BRANCH |grep -lE 'devel-')" ]; then
     VERSION=$(echo $BRANCH | sed -n 's/devel-\(v[0-9.]*\).*/\1/p')
     MAJOR=`echo $VERSION | sed -n 's/v\([0-9]*\)*.*/\1/p'`
     MINOR=`echo $VERSION | sed -ne 's/v[0-9]*[.]\([0-9]*\).*/\1/p'`
