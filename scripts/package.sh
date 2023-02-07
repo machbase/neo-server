@@ -14,6 +14,7 @@ echo Packaging $PKGNAME $GOOS $GOARCH $VERSION $EDITION
 
 # Remove previous build directory, if needed.
 bdir=$PKGNAME-$EDITION-$VERSION-$GOOS-$GOARCH
+echo "    prepare dir $bdir"
 rm -rf packages/$bdir && mkdir -p packages/$bdir
 
 if [ -d arch/$PKGNAME ]; then
@@ -27,9 +28,9 @@ case $PKGNAME in
 esac
 
 for BIN in $BINS; do
+    echo "    make $BIN $VERSION $EDITION"
     # Make the binaries.
     GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION make $BIN
-
     # Copy the executable binaries.
     if [ "$GOOS" == "windows" ]; then
         mv tmp/$BIN packages/$bdir/$BIN.exe
@@ -38,6 +39,7 @@ for BIN in $BINS; do
     fi
 done
 
+echo "    archiving $bdir.zip"
 
 # Copy documention and license.
 for D in $DOCS; do
@@ -63,3 +65,5 @@ zip -r -q $bdir.zip $bdir
 
 # Remove build directory.
 rm -rf $bdir
+
+echo "Packaging done."

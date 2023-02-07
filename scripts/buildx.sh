@@ -13,6 +13,8 @@ fi
 
 MODNAME=`cat $PRJROOT/go.mod | grep "^module " | awk '{print $2}'`
 
+echo "    set mod $MODNAME"
+
 # ex)
 # ./scripts/buildx.sh machbase-neo edge linux arm64
 # ./scripts/buildx.sh machbase-neo edge darwin arm64
@@ -25,23 +27,30 @@ fi
 
 # 2nd Edition
 if [ "$2" == "" ]; then
-    EDITION="edge"
+    EDITION="fog"
 else
     EDITION="$2"
 fi
+echo "    set edition $EDITION"
 
 # 3rd OS
 X_OS="$3"
+echo "    set os $X_OS"
 
 # 4th Arch
 X_ARCH="$4"
+echo "    set arch $X_ARCH"
 
 VERSION=`$PRJROOT/scripts/buildversion.sh`
+
+echo "    set version $VERSION"
 
 # Hardcode some values to the core package.
 if [ -f ".git" ]; then
 	GITSHA=$(git rev-parse --short `git branch --show-current`)
 fi
+
+echo "    set gitsha $GITSHA"
 
 echo "Build $MODNAME $EDITION $VERSION $GITSHA"
 
@@ -94,6 +103,10 @@ case $X_OS in
         exit 1
     ;;
 esac
+
+if [ ! -d $PRJROOT/tmp ]; then
+    mkdir $PRJROOT/tmp
+fi
 
 # Build and store objects into original directory.
 GO111MODULE=auto \

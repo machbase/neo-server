@@ -5,14 +5,17 @@ PRJROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd $PRJROOT
 
 MODNAME=`cat $PRJROOT/go.mod | grep "^module " | awk '{print $2}'`
-#MODNAME="github.com/machbase/neo-engine"
+echo "    set mod $MODNAME"
 
 if [ "$1" == "" ]; then
     echo "error: missing argument (target name)"
     exit 1
 fi
+echo "    set target $1"
 
 VERSION="$2"
+echo "    set version $VERSION"
+
 # Check the Go installation
 if [ "$(which go)" == "" ]; then
 	echo "error: Go is not installed. Please download and follow installation"\
@@ -21,10 +24,11 @@ if [ "$(which go)" == "" ]; then
 fi
 
 if [ "$3" == "" ]; then
-    EDITION="edge"
+    EDITION="fog"
 else
     EDITION="$3"
 fi
+echo "    set edition $EDITION"
 
 if [ -d ".git" ]; then
 	GITSHA=$(git rev-parse --short `git branch --show-current`)
@@ -35,8 +39,9 @@ else
         GITSHA="-"
     fi
 fi
+echo "    set gitsha $GITSHA"
 
-echo "Build $MODNAME $EDITION $VERSION $GITSHA"
+echo "Build $MODNAME $1 $EDITION $VERSION $GITSHA"
 
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
@@ -58,4 +63,5 @@ if [ "$NOMODULES" != "1" ]; then
 fi
 
 # Build and store objects into original directory.
-go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1
+go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1 && \
+echo "Build done."

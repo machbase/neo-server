@@ -1,4 +1,4 @@
-.PHONY: all test
+.PHONY: all test test-all package package-all
 
 targets := $(shell ls main)
 uname_s := $(shell uname -s)
@@ -49,22 +49,22 @@ package-%:
 	@echo "package" $(uname_s) $(uname_p)
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@./scripts/package.sh $*  linux  arm64 $(nextver) edge
-	@./scripts/package.sh $*  linux  arm64 $(nextver) fog
+	./scripts/package.sh $*  linux  arm64 $(nextver) edge && \
+	./scripts/package.sh $*  linux  arm64 $(nextver) fog
 endif
 ifeq ($(uname_p),x86_64)
-	@./scripts/package.sh $*  linux  amd64 $(nextver) edge
-	@./scripts/package.sh $*  linux  amd64 $(nextver) fog
+	./scripts/package.sh $*  linux  amd64 $(nextver) edge && \
+	./scripts/package.sh $*  linux  amd64 $(nextver) fog
 endif
 endif
 ifeq ($(uname_s),Darwin)
 ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@./scripts/package.sh $*  darwin  arm64 $(nextver) edge
-	@./scripts/package.sh $*  darwin  arm64 $(nextver) fog
+	./scripts/package.sh $*  darwin  arm64 $(nextver) edge && \
+	./scripts/package.sh $*  darwin  arm64 $(nextver) fog
 endif
 ifeq ($(uname_p),i386)
-	@./scripts/package.sh $*  darwin  amd64 $(nextver) edge
-	@./scripts/package.sh $*  darwin  amd64 $(nextver) fog
+	./scripts/package.sh $*  darwin  amd64 $(nextver) edge && \
+	./scripts/package.sh $*  darwin  amd64 $(nextver) fog
 endif
 endif
 
