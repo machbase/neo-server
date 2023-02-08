@@ -10,8 +10,8 @@ require (
 	github.com/gliderlabs/ssh v0.3.5
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/influxdata/line-protocol/v2 v2.2.1
-	github.com/machbase/booter v0.0.0-20230205063340-89c88ad0f885
-	github.com/machbase/cemlib v0.0.0-20230202104527-ba1d74e8d8e3
+	github.com/machbase/booter v1.0.0
+	github.com/machbase/cemlib v1.0.0
 	github.com/machbase/neo-engine v0.2.1-0.20230207102359-6a10375c9e86
 	github.com/machbase/neo-grpc v0.2.0
 	github.com/machbase/neo-shell v0.2.1-0.20230207102913-59777c458f02
