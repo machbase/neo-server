@@ -34,7 +34,7 @@ BRANCH=$(git branch --show-current)
 if [ -z $BRANCH ]; then
     BRANCH="HEAD"
 fi
-echo "    set edition $BRANCH"
+echo "    set branch $BRANCH"
 
 if [ -d ".git" ]; then
 	GITSHA=$(git rev-parse --short $BRANCH)
