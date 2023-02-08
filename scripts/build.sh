@@ -30,11 +30,17 @@ else
 fi
 echo "    set edition $EDITION"
 
+BRANCH=$(git branch --show-current)
+if [ -z $BRANCH ]; then
+    BRANCH="HEAD"
+fi
+echo "    set edition $BRANCH"
+
 if [ -d ".git" ]; then
-	GITSHA=$(git rev-parse --short `git branch --show-current`)
+	GITSHA=$(git rev-parse --short $BRANCH)
 else
     if [ -f ".git" ]; then
-    	GITSHA=$(git rev-parse --short `git branch --show-current`)
+    	GITSHA=$(git rev-parse --short $BRANCH)
     else
         GITSHA="-"
     fi
