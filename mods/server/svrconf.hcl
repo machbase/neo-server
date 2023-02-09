@@ -5,6 +5,7 @@ define DEF {
     MQTT_PORT         = flag("--mqtt-port", "5653")
     HTTP_PORT         = flag("--http-port", "5654")
     GRPC_PORT         = flag("--grpc-port", "5655")
+    GRPC_SOCK         = flag("--grpc-sock", "${execDir()}/mach-grpc.sock")
 }
 
 define VARS {
@@ -14,6 +15,7 @@ define VARS {
     SHELL_LISTEN_PORT = flag("--shell-listen-port", DEF_SHELL_PORT)
     GRPC_LISTEN_HOST  = flag("--grpc-listen-host", DEF_LISTEN_HOST)
     GRPC_LISTEN_PORT  = flag("--grpc-listen-port", DEF_GRPC_PORT)
+    GRPC_LISTEN_SOCK  = flag("--grpc-listen-sock", DEF_GRPC_SOCK)
     HTTP_LISTEN_HOST  = flag("--http-listen-host", DEF_LISTEN_HOST)
     HTTP_LISTEN_PORT  = flag("--http-listen-port", DEF_HTTP_PORT)
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
@@ -50,7 +52,7 @@ module "machbase.com/neo-server" {
         }
         Grpc = {
             Listeners        = [ 
-                "unix://${execDir()}/mach-grpc.sock",
+                "unix://${VARS_GRPC_LISTEN_SOCK}",
                 "tcp://${VARS_GRPC_LISTEN_HOST}:${VARS_GRPC_LISTEN_PORT}",
             ]
             MaxRecvMsgSize   = 4
