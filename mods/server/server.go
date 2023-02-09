@@ -270,7 +270,7 @@ func (s *svr) Start() error {
 	}
 
 	// native port
-	s.log.Infof("mach Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
+	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
 
 	// grpc server
 	if len(s.conf.Grpc.Listeners) > 0 {
