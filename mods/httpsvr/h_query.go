@@ -16,6 +16,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 
 	var err error
 	var timeformat string
+	var format string
 	if ctx.Request.Method == http.MethodPost {
 		contentType := ctx.ContentType()
 		if contentType == "application/json" {
@@ -26,9 +27,11 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 				return
 			}
 			timeformat = req.Timeformat
+			format = req.Format
 		} else if contentType == "application/x-www-form-urlencoded" {
 			req.SqlText = ctx.PostForm("q")
 			timeformat = ctx.PostForm("timeformat")
+			format = ctx.PostForm("format")
 		} else {
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
@@ -37,8 +40,10 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 		}
 	} else if ctx.Request.Method == http.MethodGet {
 		req.SqlText = ctx.Query("q")
-		timeformat = ctx.PostForm("timeformat")
+		timeformat = ctx.Query("timeformat")
+		format = ctx.Query("format")
 	}
+
 	if len(req.SqlText) == 0 {
 		rsp.Reason = "empty sql"
 		rsp.Elapse = time.Since(tick).String()
@@ -47,17 +52,29 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	}
 
 	if len(timeformat) == 0 {
-		timeformat = "epoch"
+		timeformat = "ns"
+	}
+
+	switch format {
+	case "csv":
+	default:
+		format = "json"
 	}
 
 	req.Timeformat = timeformat
+	req.Format = format
 
 	msg.Query(svr.db, req, rsp)
 	rsp.Elapse = time.Since(tick).String()
 
-	if rsp.Success {
+	if !rsp.Success {
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	if rsp.ContentType == "application/json" {
 		ctx.JSON(http.StatusOK, rsp)
 	} else {
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		ctx.Data(http.StatusOK, rsp.ContentType, rsp.Content)
 	}
 }
