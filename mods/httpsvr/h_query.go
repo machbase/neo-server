@@ -17,6 +17,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	var err error
 	var timeformat string
 	var format string
+	var compress string
 	if ctx.Request.Method == http.MethodPost {
 		contentType := ctx.ContentType()
 		if contentType == "application/json" {
@@ -28,10 +29,12 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 			}
 			timeformat = req.Timeformat
 			format = req.Format
+			compress = req.Compress
 		} else if contentType == "application/x-www-form-urlencoded" {
 			req.SqlText = ctx.PostForm("q")
 			timeformat = ctx.PostForm("timeformat")
 			format = ctx.PostForm("format")
+			compress = ctx.PostForm("compress")
 		} else {
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
@@ -42,6 +45,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 		req.SqlText = ctx.Query("q")
 		timeformat = ctx.Query("timeformat")
 		format = ctx.Query("format")
+		compress = ctx.Query("compress")
 	}
 
 	if len(req.SqlText) == 0 {
@@ -60,9 +64,15 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	default:
 		format = "json"
 	}
+	switch compress {
+	case "gzip":
+	default:
+		compress = ""
+	}
 
 	req.Timeformat = timeformat
 	req.Format = format
+	req.Compress = compress
 
 	msg.Query(svr.db, req, rsp)
 	rsp.Elapse = time.Since(tick).String()
@@ -75,6 +85,9 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	if rsp.ContentType == "application/json" {
 		ctx.JSON(http.StatusOK, rsp)
 	} else {
+		if len(rsp.ContentEncoding) > 0 {
+			ctx.Header("Content-Encoding", rsp.ContentEncoding)
+		}
 		ctx.Data(http.StatusOK, rsp.ContentType, rsp.Content)
 	}
 }

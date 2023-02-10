@@ -2,6 +2,7 @@ package msg
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/csv"
 	"fmt"
 	"strconv"
@@ -15,15 +16,17 @@ type QueryRequest struct {
 	SqlText    string `json:"q"`
 	Timeformat string `json:"timeformat,omitempty"`
 	Format     string `json:"format,omitempty"`
+	Compress   string `json:"compress,omitempty"`
 }
 
 type QueryResponse struct {
-	Success     bool       `json:"success"`
-	Reason      string     `json:"reason"`
-	Elapse      string     `json:"elapse"`
-	Data        *QueryData `json:"data,omitempty"`
-	ContentType string     `json:"-"`
-	Content     []byte     `json:"-"`
+	Success         bool       `json:"success"`
+	Reason          string     `json:"reason"`
+	Elapse          string     `json:"elapse"`
+	Data            *QueryData `json:"data,omitempty"`
+	ContentType     string     `json:"-"`
+	ContentEncoding string     `json:"-"`
+	Content         []byte     `json:"-"`
 }
 
 type QueryData struct {
@@ -58,9 +61,18 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 	timeformat := shell.GetTimeformat(req.Timeformat)
 	nrow := 0
 	if req.Format == "csv" {
+		bytesBuff := &bytes.Buffer{}
+		var csvWriter *csv.Writer
+		var gzipWriter *gzip.Writer
 		rsp.ContentType = "text/csv"
-		csvBuff := &bytes.Buffer{}
-		csvWriter := csv.NewWriter(csvBuff)
+		switch req.Compress {
+		case "gzip":
+			rsp.ContentEncoding = "gzip"
+			gzipWriter = gzip.NewWriter(bytesBuff)
+			csvWriter = csv.NewWriter(gzipWriter)
+		default:
+			csvWriter = csv.NewWriter(bytesBuff)
+		}
 		csvWriter.Write(data.Columns)
 		values := make([]string, len(cols.Lengths()))
 		for {
@@ -111,7 +123,10 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 			csvWriter.Write(values)
 		}
 		csvWriter.Flush()
-		rsp.Content = csvBuff.Bytes()
+		if gzipWriter != nil {
+			gzipWriter.Flush()
+		}
+		rsp.Content = bytesBuff.Bytes()
 	} else {
 		rsp.ContentType = "application/json"
 		for {
