@@ -9,7 +9,7 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
-	shell "github.com/machbase/neo-shell"
+	"github.com/machbase/neo-grpc/spi"
 )
 
 type QueryRequest struct {
@@ -58,7 +58,7 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 	data.Columns = cols.Names()
 	data.Types = cols.Types()
 
-	timeformat := shell.GetTimeformat(req.Timeformat)
+	timeformat := spi.GetTimeformat(req.Timeformat)
 	nrow := 0
 	if req.Format == "csv" {
 		bytesBuff := &bytes.Buffer{}

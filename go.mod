@@ -13,8 +13,8 @@ require (
 	github.com/machbase/booter v1.0.0
 	github.com/machbase/cemlib v1.0.0
 	github.com/machbase/neo-engine v0.2.1-0.20230207102359-6a10375c9e86
-	github.com/machbase/neo-grpc v0.2.1-0.20230212064816-03e3678a36e1
-	github.com/machbase/neo-shell v0.2.1-0.20230212064859-f06d22471dc6
+	github.com/machbase/neo-grpc v0.2.1-0.20230212142719-0b692f9c75e9
+	github.com/machbase/neo-shell v0.2.1-0.20230212142918-0659e02c2789
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1

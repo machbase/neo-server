@@ -74,6 +74,11 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	req.Format = format
 	req.Compress = compress
 
+	// TODO
+	// queryCtx := &spi.QueryContext{
+	// 	DB: svr.db,
+	// }
+	// spi.DoQuery()
 	msg.Query(svr.db, req, rsp)
 	rsp.Elapse = time.Since(tick).String()
 
