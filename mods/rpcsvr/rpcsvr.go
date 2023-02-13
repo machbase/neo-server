@@ -357,12 +357,13 @@ func (s *svr) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*mach
 		appender: realAppender,
 		release: func() {
 			s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-				// fmt.Printf("close appender: %v\n", handle)
+				s.log.Tracef("close appender: %v", handle)
 				realAppender.Close()
 				return true
 			})
 		},
 	})
+	s.log.Tracef("open appender: %v", handle)
 	rsp.Success = true
 	rsp.Reason = "success"
 	rsp.Handle = handle
