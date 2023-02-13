@@ -28,6 +28,7 @@ import (
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/spi"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/httpsvr"
 	"github.com/machbase/neo-server/mods/mqttsvr"
@@ -115,7 +116,7 @@ type svr struct {
 
 	conf  *Config
 	log   logging.Log
-	db    *mach.Database
+	db    spi.Database
 	grpcd *grpc.Server
 	mgmtd *grpc.Server
 	httpd *http.Server
@@ -235,22 +236,22 @@ func (s *svr) Start() error {
 	}
 
 	if err := mach.Initialize(homepath); err != nil {
-		return errors.Wrap(err, "initialize database")
+		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
 		s.log.Info("create database")
 		if err := mach.CreateDatabase(); err != nil {
-			return errors.Wrap(err, "create database")
+			return errors.Wrap(err, "create database failed")
 		}
 	}
 
-	s.db = mach.New()
-	if s.db == nil {
+	if machdb := mach.New(); machdb == nil {
 		return errors.New("database instance failed")
-	}
-
-	if err := s.db.Startup(); err != nil {
-		return errors.Wrap(err, "startup database")
+	} else {
+		if err := machdb.Startup(); err != nil {
+			return errors.Wrap(err, "startup database")
+		}
+		s.db = &DB{m: machdb}
 	}
 
 	if booter.GetDefinition("github.com/machbase/cemlib/banner") == nil {
@@ -260,9 +261,9 @@ func (s *svr) Start() error {
 
 	for n, sqlText := range s.conf.StartupQueries {
 		// ex) "alter system set trace_log_level=1023"
-		result := s.db.Exec(sqlText)
-		if result.Err() != nil {
-			s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
+		err := s.db.Exec(sqlText)
+		if err != nil {
+			s.log.Warnf("StartupQueries[%d] %s %s", n, err.Error(), sqlText)
 			break
 		} else {
 			s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
@@ -383,8 +384,10 @@ func (s *svr) Stop() {
 		s.mgmtd.Stop()
 	}
 
-	if err := s.db.Shutdown(); err != nil {
-		s.log.Warnf("db shutdown; %s", err.Error())
+	if db, ok := s.db.(*DB); ok && db.m != nil {
+		if err := db.m.Shutdown(); err != nil {
+			s.log.Warnf("db shutdown; %s", err.Error())
+		}
 	}
 	mach.Finalize()
 

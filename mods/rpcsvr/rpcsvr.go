@@ -183,7 +183,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	rsp.Success = true
 	rsp.Reason = "success"
 	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
-	rsp.AffectedRows = row.AffectedRows()
+	rsp.AffectedRows = row.RowsAffected()
 	rsp.Message = row.Message()
 	if err != nil {
 		rsp.Success = false
