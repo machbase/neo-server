@@ -253,7 +253,7 @@ func (s *svr) Start() error {
 	if s.db == nil {
 		return errors.New("database instance failed")
 	}
-	if mdb, ok := s.db.(spi.DatabaseLife); ok {
+	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Startup(); err != nil {
 			return errors.Wrap(err, "startup database")
 		}
@@ -280,7 +280,7 @@ func (s *svr) Start() error {
 
 	// grpc server
 	if len(s.conf.Grpc.Listeners) > 0 {
-		machrpcSvr, err := rpcsvr.New(&rpcsvr.Config{})
+		machrpcSvr, err := rpcsvr.New(s.db, &rpcsvr.Config{})
 		if err != nil {
 			return errors.Wrap(err, "grpc handler")
 		}
@@ -319,7 +319,7 @@ func (s *svr) Start() error {
 
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
-		machHttpSvr, err := httpsvr.New(&httpsvr.Config{Handlers: s.conf.Http.Handlers})
+		machHttpSvr, err := httpsvr.New(s.db, &httpsvr.Config{Handlers: s.conf.Http.Handlers})
 		if err != nil {
 			return errors.Wrap(err, "http handler")
 		}
@@ -347,7 +347,7 @@ func (s *svr) Start() error {
 
 	// mqtt server
 	if len(s.conf.Mqtt.Listeners) > 0 {
-		s.mqttd = mqttsvr.New(&s.conf.Mqtt)
+		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
 		err := s.mqttd.Start()
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
@@ -357,7 +357,7 @@ func (s *svr) Start() error {
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
 		s.conf.Shell.ServerKeyPath = s.ServerPrivateKeyPath()
-		s.shsvr = shell.New(&s.conf.Shell)
+		s.shsvr = shell.New(s.db, &s.conf.Shell)
 		s.shsvr.Server = s
 		err := s.shsvr.Start()
 		if err != nil {
@@ -389,7 +389,7 @@ func (s *svr) Stop() {
 		s.mgmtd.Stop()
 	}
 
-	if mdb, ok := s.db.(spi.DatabaseLife); ok {
+	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}

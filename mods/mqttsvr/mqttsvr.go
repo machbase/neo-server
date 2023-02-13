@@ -11,11 +11,7 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 )
 
-func New(conf *Config) *Server {
-	db, err := spi.NewDatabase("engine")
-	if err != nil {
-		return nil
-	}
+func New(db spi.Database, conf *Config) *Server {
 	svr := &Server{
 		conf: conf,
 		db:   db,

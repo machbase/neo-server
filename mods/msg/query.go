@@ -12,10 +12,14 @@ import (
 )
 
 type QueryRequest struct {
-	SqlText    string `json:"q"`
-	Timeformat string `json:"timeformat,omitempty"`
-	Format     string `json:"format,omitempty"`
-	Compress   string `json:"compress,omitempty"`
+	SqlText      string `json:"q"`
+	Timeformat   string `json:"timeformat,omitempty"`
+	TimeLocation string `json:"tz,omitempty"`
+	Format       string `json:"format,omitempty"`
+	Compress     string `json:"compress,omitempty"`
+	Precision    int    `json:"precision,omitempty"`
+	Rownum       bool   `json:"rownum,omitempty"`
+	Heading      bool   `json:"heading,omitempty"`
 }
 
 type QueryResponse struct {

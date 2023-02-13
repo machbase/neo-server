@@ -17,8 +17,8 @@ func TestGrpcTagTable(t *testing.T) {
 	var count int
 	var tableName = strings.ToUpper("tagdata")
 
-	client := machrpc.NewClient(machrpc.QueryTimeout(10 * time.Second))
-	err := client.Connect("unix://../tmp/mach.sock")
+	client := machrpc.NewClient()
+	err := client.Connect("unix://../tmp/mach.sock", machrpc.QueryTimeout(10*time.Second))
 	//err := client.Connect("tcp://127.0.0.1:4056")
 	require.Nil(t, err)
 	defer client.Disconnect()

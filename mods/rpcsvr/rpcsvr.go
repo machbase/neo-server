@@ -29,11 +29,7 @@ type Server interface {
 	machrpc.MachbaseServer // machrpc server interface
 }
 
-func New(conf *Config) (Server, error) {
-	db, err := spi.NewDatabase("engine")
-	if err != nil {
-		return nil, err
-	}
+func New(db spi.Database, conf *Config) (Server, error) {
 	return &svr{
 		conf:     conf,
 		ctxMap:   cmap.New(),

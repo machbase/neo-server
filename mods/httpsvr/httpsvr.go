@@ -8,11 +8,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func New(conf *Config) (*Server, error) {
-	db, err := spi.NewDatabase("engine")
-	if err != nil {
-		return nil, err
-	}
+func New(db spi.Database, conf *Config) (*Server, error) {
 	return &Server{
 		conf: conf,
 		log:  logging.GetLog("httpsvr"),
