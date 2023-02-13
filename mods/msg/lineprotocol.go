@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 )
 
 /* Interpreting Influx lineprotocol
@@ -18,7 +18,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(db *mach.Database, dbName string, measurement string, fields map[string]any, tags map[string]string, ts time.Time) error {
+func WriteLineProtocol(db spi.Database, dbName string, measurement string, fields map[string]any, tags map[string]string, ts time.Time) error {
 	columns := make([]string, 0)
 	rows := make([][]any, 0)
 

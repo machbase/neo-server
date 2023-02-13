@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-grpc/spi"
+	spi "github.com/machbase/neo-spi"
 )
 
 type QueryRequest struct {
@@ -35,7 +34,7 @@ type QueryData struct {
 	Rows    [][]any  `json:"rows"`
 }
 
-func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
+func Query(db spi.Database, req *QueryRequest, rsp *QueryResponse) {
 	rows, err := db.Query(req.SqlText)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -55,7 +54,7 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 		rsp.Reason = err.Error()
 		return
 	}
-	data.Columns = cols.Names()
+	data.Columns = cols.NamesWithTimeLocation(time.UTC)
 	data.Types = cols.Types()
 
 	timeformat := spi.GetTimeformat(req.Timeformat)
@@ -74,18 +73,16 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 			csvWriter = csv.NewWriter(bytesBuff)
 		}
 		csvWriter.Write(data.Columns)
-		values := make([]string, len(cols.Lengths()))
-		for {
-			rec, next, err := rows.Fetch()
+		values := make([]string, len(cols))
+		buffer := cols.MakeBuffer()
+		for rows.Next() {
+			err := rows.Scan(buffer...)
 			if err != nil {
 				rsp.Reason = err.Error()
 				return
 			}
-			if !next {
-				break
-			}
 			nrow++
-			for i, n := range rec {
+			for i, n := range buffer {
 				values[i] = ""
 				if n == nil {
 					continue
@@ -129,14 +126,12 @@ func Query(db *mach.Database, req *QueryRequest, rsp *QueryResponse) {
 		rsp.Content = bytesBuff.Bytes()
 	} else {
 		rsp.ContentType = "application/json"
-		for {
-			rec, next, err := rows.Fetch()
+		for rows.Next() {
+			rec := cols.MakeBuffer()
+			err := rows.Scan(rec...)
 			if err != nil {
 				rsp.Reason = err.Error()
 				return
-			}
-			if !next {
-				break
 			}
 			nrow++
 			for i, r := range rec {

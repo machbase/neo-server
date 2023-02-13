@@ -36,8 +36,8 @@ func TestGrpcTagTable(t *testing.T) {
 		t.Logf("table '%s' exists", tableName)
 		if dropTable {
 			t.Logf("drop table '%s'", tableName)
-			err = client.Exec("drop table " + tableName)
-			if err != nil {
+			result := client.Exec("drop table " + tableName)
+			if result.Err() != nil {
 				t.Logf("drop table: %s", err.Error())
 			}
 			require.Nil(t, err)
@@ -64,15 +64,15 @@ func TestGrpcTagTable(t *testing.T) {
 				payload         json
 			)`, tableName)
 
-		err := client.Exec(sqlText)
-		if err != nil {
-			panic(err)
+		result := client.Exec(sqlText)
+		if result.Err() != nil {
+			panic(result.Err())
 		}
 		require.Nil(t, err)
 
-		err = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
-		if err != nil {
-			panic(err)
+		result = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
+		if result.Err() != nil {
+			panic(result.Err())
 		}
 		require.Nil(t, err)
 	}
@@ -90,12 +90,12 @@ func TestGrpcTagTable(t *testing.T) {
 	t.Logf("count = %d", count)
 
 	id, _ := idgen.NewV6()
-	err = client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+	result := client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
 		fmt.Sprintf("name-%02d", count+1),
 		time.Now(),
 		0.1001+0.1001*float32(count),
 		id.String())
-	if err != nil {
+	if result.Err() != nil {
 		panic(err)
 	}
 	require.Nil(t, err)

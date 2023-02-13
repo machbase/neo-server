@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 )
 
 func New(conf *Config) (*Server, error) {
@@ -28,7 +29,7 @@ type HandlerConfig struct {
 type Server struct {
 	conf *Config
 	log  logging.Log
-	db   *mach.Database
+	db   spi.Database
 }
 
 func (svr *Server) Start() error {

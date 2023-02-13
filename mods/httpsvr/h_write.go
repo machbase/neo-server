@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/msg"
+	spi "github.com/machbase/neo-spi"
 )
 
 func (svr *Server) handleWrite(ctx *gin.Context) {
@@ -167,7 +167,7 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 	}
 }
 
-func prepareAheadWritingTable(db *mach.Database, tableName string, createIfNotExist bool, truncate bool) error {
+func prepareAheadWritingTable(db spi.Database, tableName string, createIfNotExist bool, truncate bool) error {
 	tableName = strings.ToUpper(tableName)
 	var tableExists = 0
 	row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
@@ -177,8 +177,8 @@ func prepareAheadWritingTable(db *mach.Database, tableName string, createIfNotEx
 	if tableExists == 0 {
 		if createIfNotExist {
 			result := db.Exec("create tag table " + tableName + " (name varchar(100) primary key, time datetime basetime, value double)")
-			if err := result.Err(); err != nil {
-				return err
+			if result.Err() != nil {
+				return result.Err()
 			}
 		} else {
 			return fmt.Errorf("table does not exist")
@@ -186,8 +186,8 @@ func prepareAheadWritingTable(db *mach.Database, tableName string, createIfNotEx
 	}
 	if truncate {
 		result := db.Exec("truncate table " + tableName)
-		if err := result.Err(); err != nil {
-			return err
+		if result.Err() != nil {
+			return result.Err()
 		}
 	}
 	return nil

@@ -52,7 +52,7 @@ func TestAppendTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	t.Logf("     %s appended %d records", appender.String(), count)
+	t.Logf("     %s appended %d records", appender.TableName(), count)
 	require.Equal(t, testCount, count)
 
 	t.Logf("---- append tag %s done", benchmarkTableName)

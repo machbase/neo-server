@@ -95,8 +95,12 @@ func (svr *MachShell) motdProvider(user string) string {
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
+	mdb, ok := mach.New().(*mach.Database)
+	if !ok {
+		svr.log.Errorf("user auth - unknown database instance")
+	}
 	user := ctx.User()
-	ok, err := mach.New().UserAuth(user, password)
+	ok, err := mdb.UserAuth(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false

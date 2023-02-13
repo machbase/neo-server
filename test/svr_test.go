@@ -108,7 +108,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	creTableSql := fmt.Sprintf(db.SqlTidy(`
+	creTableSql := fmt.Sprintf(mach.SqlTidy(`
             create tag table %s (
                 name     varchar(200) primary key,
                 time     datetime basetime,
