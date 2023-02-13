@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/cemlib/ssh/sshd"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods"
+	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -95,7 +96,7 @@ func (svr *MachShell) motdProvider(user string) string {
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
-	mdb, ok := mach.New().(*mach.Database)
+	mdb, ok := mach.New().(spi.DatabaseAuth)
 	if !ok {
 		svr.log.Errorf("user auth - unknown database instance")
 	}

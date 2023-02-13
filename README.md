@@ -13,12 +13,15 @@
 ```mermaid
 flowchart LR
 
-C[machbase] --> E
+SPI[neo-spi] -->|impl| E
+SPI-->|impl|R
 
 E[neo-engine]
-E -->|go.mod| S[neo-server]
+E --> S[neo-server]
 
-R[neo-grpc] -->|go.mod| SH[neo-shell]
-SH -->|go.mod| S
+R -->|server impl| S
+
+R[neo-grpc] -->|client impl| SH[neo-shell]
+SH --> S
 
 ```

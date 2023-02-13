@@ -250,7 +250,7 @@ func (s *svr) Start() error {
 	if s.db == nil {
 		return errors.New("database instance failed")
 	}
-	if mdb, ok := s.db.(*mach.Database); ok {
+	if mdb, ok := s.db.(spi.DatabaseLife); ok {
 		if err := mdb.Startup(); err != nil {
 			return errors.Wrap(err, "startup database")
 		}
@@ -386,8 +386,8 @@ func (s *svr) Stop() {
 		s.mgmtd.Stop()
 	}
 
-	if db, ok := s.db.(*mach.Database); ok {
-		if err := db.Shutdown(); err != nil {
+	if mdb, ok := s.db.(spi.DatabaseLife); ok {
+		if err := mdb.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 	}
