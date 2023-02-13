@@ -245,7 +245,10 @@ func (s *svr) Start() error {
 		}
 	}
 
-	s.db = mach.New()
+	s.db, err = spi.NewDatabase("engine")
+	if err != nil {
+		return errors.Wrap(err, "database instance failed")
+	}
 
 	if s.db == nil {
 		return errors.New("database instance failed")

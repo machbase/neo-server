@@ -7,15 +7,18 @@ import (
 	"github.com/machbase/cemlib/allowance"
 	"github.com/machbase/cemlib/logging"
 	"github.com/machbase/cemlib/mqtt"
-	mach "github.com/machbase/neo-engine"
 	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
 func New(conf *Config) *Server {
+	db, err := spi.NewDatabase("engine")
+	if err != nil {
+		return nil
+	}
 	svr := &Server{
 		conf: conf,
-		db:   mach.New(),
+		db:   db,
 	}
 	mqttdConf := &mqtt.MqttConfig{
 		Name:             "machbase",

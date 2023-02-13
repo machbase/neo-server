@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
-	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +24,9 @@ func BenchmarkAppend(b *testing.B) {
 	runtime.GC()
 	runtime.ReadMemStats(&memBefore)
 
-	db := mach.New()
+	db, err := spi.New()
+	require.Nil(b, err)
+
 	appender, err := db.Appender(benchmarkTableName)
 	require.Nil(b, err)
 
@@ -54,7 +56,8 @@ func BenchmarkAppend(b *testing.B) {
 // BenchmarkSelect-4          17163           4625124 ns/op           40540 B/op       2711 allocs/op
 
 func BenchmarkSelect(b *testing.B) {
-	db := mach.New()
+	db, err := spi.New()
+	require.Nil(b, err)
 	appender, err := db.Appender(benchmarkTableName)
 	require.Nil(b, err)
 

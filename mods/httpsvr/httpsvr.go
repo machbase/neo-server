@@ -5,15 +5,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/neo-engine"
 	spi "github.com/machbase/neo-spi"
 )
 
 func New(conf *Config) (*Server, error) {
+	db, err := spi.NewDatabase("engine")
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		conf: conf,
 		log:  logging.GetLog("httpsvr"),
-		db:   mach.New(),
+		db:   db,
 	}, nil
 }
 

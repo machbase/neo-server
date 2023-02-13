@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-server/mods"
 	spi "github.com/machbase/neo-spi"
@@ -31,10 +30,14 @@ type Server interface {
 }
 
 func New(conf *Config) (Server, error) {
+	db, err := spi.NewDatabase("engine")
+	if err != nil {
+		return nil, err
+	}
 	return &svr{
 		conf:     conf,
 		ctxMap:   cmap.New(),
-		machbase: mach.New(),
+		machbase: db,
 		log:      logging.GetLog("rpcsvr"),
 	}, nil
 }

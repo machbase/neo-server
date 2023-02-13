@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +20,8 @@ func TestAppendTag(t *testing.T) {
 		fmt.Println(e)
 	}()
 
-	db := mach.New()
+	db, err := spi.New()
+	require.Nil(t, err)
 
 	t.Log("---- append tag " + benchmarkTableName)
 	appender, err := db.Appender(benchmarkTableName)

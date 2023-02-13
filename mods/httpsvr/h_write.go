@@ -86,7 +86,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			case "datetime":
 				var ts int64
 				if ts, err = strconv.ParseInt(field, 10, 64); err != nil {
-					rsp.Reason = fmt.Sprintf("unable parse time in timeformat")
+					rsp.Reason = "unable parse time in timeformat"
 					ctx.JSON(http.StatusBadRequest, rsp)
 					return
 				}
