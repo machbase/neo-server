@@ -175,25 +175,25 @@ func convAppendColumns(fields []gjson.Result, cols spi.Columns, tableType spi.Ta
 
 	for i, v := range fields[fieldsOffset:] {
 		switch cols[i].Type {
-		case spi.ColumnTypeNameInt16:
+		case spi.ColumnBufferTypeInt16:
 			vals = append(vals, v.Int())
-		case spi.ColumnTypeNameInt32:
+		case spi.ColumnBufferTypeInt32:
 			vals = append(vals, v.Int())
-		case spi.ColumnTypeNameInt64:
+		case spi.ColumnBufferTypeInt64:
 			vals = append(vals, v.Int())
-		case spi.ColumnTypeNameString:
+		case spi.ColumnBufferTypeString:
 			vals = append(vals, v.Str)
-		case spi.ColumnTypeNameDatetime:
+		case spi.ColumnBufferTypeDatetime:
 			vals = append(vals, v.Int())
-		case spi.ColumnTypeNameFloat:
+		case spi.ColumnBufferTypeFloat:
 			vals = append(vals, v.Float())
-		case spi.ColumnTypeNameDouble:
+		case spi.ColumnBufferTypeDouble:
 			vals = append(vals, v.Float())
-		case spi.ColumnTypeNameIPv4:
+		case spi.ColumnBufferTypeIPv4:
 			vals = append(vals, v.Str)
-		case spi.ColumnTypeNameIPv6:
+		case spi.ColumnBufferTypeIPv6:
 			vals = append(vals, v.Str)
-		case spi.ColumnTypeNameBinary:
+		case spi.ColumnBufferTypeBinary:
 			return nil, errors.New("append fail, binary column is not supproted via JSON payload")
 		}
 	}
