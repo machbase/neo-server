@@ -84,11 +84,11 @@ func (svr *Server) handleChart(ctx *gin.Context) {
 		}
 		series = append(series, data)
 	}
-	rndr := renderer.NewChartRendererBuilder().
+	rndr := renderer.NewChartRendererBuilder(req.Format).
 		SetTitle(req.Title).
 		SetSubtitle(req.Subtitle).
 		SetSize(req.Width, req.Height).
-		Build(req.Format)
+		Build()
 
 	ctx.Writer.Header().Set("Content-type", rndr.ContentType())
 	if err = rndr.Render(ctx, sink, series); err != nil {

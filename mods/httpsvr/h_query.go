@@ -79,7 +79,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 		rspSink = &sink.WriterSink{Writer: ctx.Writer}
 	}
 
-	encoder := codec.NewEncoderBuilder().
+	encoder := codec.NewEncoderBuilder(req.Format).
 		SetSink(rspSink).
 		SetTimeLocation(timeLocation).
 		SetTimeFormat(req.Timeformat).
@@ -90,7 +90,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 		SetBoxSeparateColumns(true).
 		SetBoxDrawBorder(true).
 		SetCsvDelimieter(",").
-		Build(req.Format)
+		Build()
 
 	queryCtx := &do.QueryContext{
 		DB: svr.db,
