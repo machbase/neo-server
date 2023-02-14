@@ -54,6 +54,8 @@ func (svr *Server) Route(r *gin.Engine) {
 		default: // "machbase"
 			r.GET(prefix+"/query", svr.handleQuery)
 			r.POST(prefix+"/query", svr.handleQuery)
+			r.GET(prefix+"/chart", svr.handleChart)
+			r.POST(prefix+"/chart", svr.handleChart)
 			r.POST(prefix+"/write", svr.handleWrite)
 			r.POST(prefix+"/write/:table", svr.handleWrite)
 		}

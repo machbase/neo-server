@@ -4,8 +4,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,50 +13,6 @@ import (
 	"github.com/machbase/neo-shell/sink"
 	spi "github.com/machbase/neo-spi"
 )
-
-func strBool(str string, def bool) bool {
-	if str == "" {
-		return def
-	}
-	return strings.ToLower(str) == "true" || str == "1"
-}
-
-func strInt(str string, def int) int {
-	if str == "" {
-		return def
-	}
-	v, err := strconv.Atoi(str)
-	if err != nil {
-		return def
-	}
-	return v
-}
-
-func strString(str string, def string) string {
-	if str == "" {
-		return str
-	}
-	return str
-}
-
-func strTimeLocation(str string, def *time.Location) *time.Location {
-	if str == "" {
-		return def
-	}
-
-	tz := strings.ToLower(str)
-	if tz == "local" {
-		return time.Local
-	} else if tz == "utc" {
-		return time.UTC
-	} else {
-		if loc, err := time.LoadLocation(str); err != nil {
-			return def
-		} else {
-			return loc
-		}
-	}
-}
 
 func (svr *Server) handleQuery(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
@@ -125,7 +79,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 		rspSink = &sink.WriterSink{Writer: ctx.Writer}
 	}
 
-	renderer := codec.NewBuilder().
+	encoder := codec.NewEncoderBuilder().
 		SetSink(rspSink).
 		SetTimeLocation(timeLocation).
 		SetTimeFormat(req.Timeformat).
@@ -141,14 +95,14 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 	queryCtx := &do.QueryContext{
 		DB: svr.db,
 		OnFetchStart: func(cols spi.Columns) {
-			ctx.Writer.Header().Set("Content-Type", renderer.ContentType())
+			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
 			if len(req.Compress) > 0 {
 				ctx.Writer.Header().Set("Content-Encoding", req.Compress)
 			}
-			renderer.Open(cols)
+			encoder.Open(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
-			err := renderer.AddRow(values)
+			err := encoder.AddRow(values)
 			if err != nil {
 				// report error to client?
 				svr.log.Errorf("render", err.Error())
@@ -157,7 +111,7 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 			return true
 		},
 		OnFetchEnd: func() {
-			renderer.Close()
+			encoder.Close()
 		},
 	}
 	if err := do.Query(queryCtx, req.SqlText); err != nil {

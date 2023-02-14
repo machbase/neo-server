@@ -103,10 +103,10 @@ github.com/machbase/neo-engine v0.2.1-0.20230213040354-8abbb53e0595 h1:EYvhEfFw2
 github.com/machbase/neo-engine v0.2.1-0.20230213040354-8abbb53e0595/go.mod h1:V28hzZslOUPELS/HXSI9GlAhEfkaUxMEcZJCJvnpj5k=
 github.com/machbase/neo-grpc v0.2.1-0.20230213070304-771496782f35 h1:/bRcIthcBUcbyXTUW4oprhxNdha9XizmdtczjDBYGwE=
 github.com/machbase/neo-grpc v0.2.1-0.20230213070304-771496782f35/go.mod h1:VJAt+FneyqtaXjw3cQLL21rPBCCFY50qAmdRsR5/oqM=
-github.com/machbase/neo-shell v0.2.1-0.20230213120200-6fbabb6aa051 h1:Dm5P9ldwnAPVCfF4T+OoH+esQmTwZCDrr4JFoYMq2bI=
-github.com/machbase/neo-shell v0.2.1-0.20230213120200-6fbabb6aa051/go.mod h1:g1c+apzCFrIQ1O8CJHue7M7E7KTdFTQG4LfHf4cdSQU=
-github.com/machbase/neo-spi v0.0.0-20230213070106-333b233ae3e7 h1:lBbHxrbT5gCKl1CcLPiKcfIGuszmUt0wLZ9jjtpNOrY=
-github.com/machbase/neo-spi v0.0.0-20230213070106-333b233ae3e7/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
+github.com/machbase/neo-shell v0.2.1-0.20230214031838-dd775de3e806 h1:4mgoF7HADhPsz2ipqebVfSf5SMdUhmmql/HTjZ3PrbA=
+github.com/machbase/neo-shell v0.2.1-0.20230214031838-dd775de3e806/go.mod h1:qOJC4Sum49suGx56gzeimjlyvdD8wO5gk5meCD2e5/Q=
+github.com/machbase/neo-spi v0.0.0-20230214031719-4ea19b6b3a88 h1:e0psTg2r6xZxxzNgcmXBgevioaApeTdlFGOH4k0iExg=
+github.com/machbase/neo-spi v0.0.0-20230214031719-4ea19b6b3a88/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
 github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mattn/go-runewidth v0.0.13/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
