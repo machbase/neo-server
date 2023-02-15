@@ -45,6 +45,7 @@ module "machbase.com/neo-server" {
         DataDir          = VARS_DATA_DIR
         Machbase         = {
             HANDLE_LIMIT     = 2048
+            BIND_IP_ADDRESS  = DEF_LISTEN_HOST
         }
         Shell = {
             Listeners        = [ "tcp://${VARS_SHELL_LISTEN_HOST}:${VARS_SHELL_LISTEN_PORT}" ]
