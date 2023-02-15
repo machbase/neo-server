@@ -46,23 +46,23 @@ package-all:
 	done
 
 package-%:
-	@echo "package" $(uname_s) $(uname_p)
+	@echo "package" $(uname_s) $(uname_m)
 ifeq ($(uname_s),Linux)
-ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
+ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
 	./scripts/package.sh $*  linux  arm64 $(nextver) edge && \
 	./scripts/package.sh $*  linux  arm64 $(nextver) fog
 endif
-ifeq ($(uname_p),x86_64)
+ifeq ($(uname_m),x86_64)
 	./scripts/package.sh $*  linux  amd64 $(nextver) edge && \
 	./scripts/package.sh $*  linux  amd64 $(nextver) fog
 endif
 endif
 ifeq ($(uname_s),Darwin)
-ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
+ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
 	./scripts/package.sh $*  darwin  arm64 $(nextver) edge && \
 	./scripts/package.sh $*  darwin  arm64 $(nextver) fog
 endif
-ifeq ($(uname_p),i386)
+ifeq ($(uname_m),i386)
 	./scripts/package.sh $*  darwin  amd64 $(nextver) edge && \
 	./scripts/package.sh $*  darwin  amd64 $(nextver) fog
 endif
