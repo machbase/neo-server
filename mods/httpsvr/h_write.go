@@ -1,17 +1,18 @@
 package httpsvr
 
 import (
-	"encoding/csv"
+	"bufio"
+	"compress/gzip"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/msg"
+	"github.com/machbase/neo-shell/codec"
+	"github.com/machbase/neo-shell/do"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -31,39 +32,63 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 	}()
 
 	tableName := ctx.Param("table")
-	timeformat := ctx.Query("timeformat")
-	preAction := ctx.Query("pre-action")
+	timeformat := strString(ctx.Query("timeformat"), "ns")
+	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
+	format := strString(ctx.Query("format"), "csv")
+	method := strString(ctx.Query("method"), "insert")
+	compress := strString(ctx.Query("compress"), "-")
+	delimiter := strString(ctx.Query("delimiter"), ",")
+	createTable := strBool(ctx.Query("create-table"), false)
+	truncateTable := strBool(ctx.Query("truncate-table"), false)
 
-	createIfNotExist := false
-	truncate := false
-	if preAction == "1" {
-		createIfNotExist = true
-	} else if preAction == "2" {
-		truncate = true
-	} else if preAction == "3" {
-		createIfNotExist = true
-		truncate = true
-	}
-
-	if err := prepareAheadWritingTable(svr.db, tableName, createIfNotExist, truncate); err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	}
-
-	appender, err := svr.db.Appender(tableName)
+	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	defer appender.Close()
+	if !exists {
+		rsp.Reason = fmt.Sprintf("Table '%s' does not exist", tableName)
+		ctx.JSON(http.StatusNotFound, rsp)
+		return
+	}
 
-	columnTypes := []string{"string", "datetime", "double"}
+	var desc *do.TableDescription
+	if desc0, err := do.Describe(svr.db, tableName, false); err != nil {
+		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	} else {
+		desc = desc0.(*do.TableDescription)
+	}
 
-	csvReader := csv.NewReader(ctx.Request.Body)
+	var r io.Reader
+	if compress == "gzip" {
+		gr, err := gzip.NewReader(ctx.Request.Body)
+		if err != nil {
+			rsp.Reason = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		r = bufio.NewReader(gr)
+	} else {
+		r = ctx.Request.Body
+	}
+
+	decoder := codec.NewDecoderBuilder(format).
+		SetInputStream(r).
+		SetColumns(desc.Columns.Columns()).
+		SetTimeFormat(timeformat).
+		SetTimeLocation(timeLocation).
+		SetCsvDelimieter(delimiter).
+		Build()
+
+	var appender spi.Appender
+	hold := []string{}
+	lineno := 0
+
 	for {
-		fields, err := csvReader.Read()
+		vals, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()
@@ -72,53 +97,36 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			}
 			break
 		}
+		lineno++
 
-		values := make([]any, len(columnTypes))
-		for i, field := range fields {
-			if i >= len(columnTypes) {
-				rsp.Reason = fmt.Sprintf("too many columns; table %s has %d columns", tableName, len(columnTypes))
-				ctx.JSON(http.StatusBadRequest, rsp)
+		if method == "insert" {
+			for i := 0; i < len(desc.Columns); i++ {
+				hold = append(hold, "?")
+			}
+			query := fmt.Sprintf("insert into %s values(%s)", tableName, strings.Join(hold, ","))
+			if result := svr.db.Exec(query, vals...); result.Err() != nil {
+				rsp.Reason = result.Err().Error()
+				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
-			switch columnTypes[i] {
-			case "string":
-				values[i] = field
-			case "datetime":
-				var ts int64
-				if ts, err = strconv.ParseInt(field, 10, 64); err != nil {
-					rsp.Reason = "unable parse time in timeformat"
-					ctx.JSON(http.StatusBadRequest, rsp)
+			hold = hold[:0]
+		} else { // append
+			if appender == nil {
+				appender, err := svr.db.Appender(tableName)
+				if err != nil {
+					rsp.Reason = err.Error()
+					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
-				switch timeformat {
-				case "s":
-					values[i] = time.Unix(ts, 0)
-				case "ms":
-					values[i] = time.Unix(0, ts*int64(time.Millisecond))
-				case "us":
-					values[i] = time.Unix(0, ts*int64(time.Microsecond))
-				default: // "ns"
-					values[i] = time.Unix(0, ts)
-				}
-			case "double":
-				if values[i], err = strconv.ParseFloat(field, 64); err != nil {
-					values[i] = math.NaN()
-				}
-			case "int":
-				if values[i], err = strconv.ParseInt(field, 10, 32); err != nil {
-					values[i] = math.NaN()
-				}
-			case "int64":
-				if values[i], err = strconv.ParseInt(field, 10, 64); err != nil {
-					values[i] = math.NaN()
-				}
-			default:
-				rsp.Reason = fmt.Sprintf("unsupported column type; %s", columnTypes[i])
-				ctx.JSON(http.StatusBadRequest, rsp)
+				defer appender.Close()
+			}
+			err = appender.Append(vals...)
+			if err != nil {
+				rsp.Reason = err.Error()
+				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
 		}
-		appender.Append(values...)
 	}
 	rsp.Success, rsp.Reason = true, "success"
 	ctx.JSON(http.StatusOK, rsp)
@@ -158,37 +166,14 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 		return
 	}
 
-	msg.Write(svr.db, req, rsp)
-
-	if rsp.Success {
+	result := do.Insert(svr.db, req.Table, req.Data.Columns, req.Data.Rows)
+	if result.Err() == nil {
+		rsp.Success = true
+		rsp.Reason = result.Message()
 		ctx.JSON(http.StatusOK, rsp)
 	} else {
+		rsp.Success = false
+		rsp.Reason = result.Message()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
-}
-
-func prepareAheadWritingTable(db spi.Database, tableName string, createIfNotExist bool, truncate bool) error {
-	tableName = strings.ToUpper(tableName)
-	var tableExists = 0
-	row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
-	if err := row.Scan(&tableExists); err != nil {
-		return err
-	}
-	if tableExists == 0 {
-		if createIfNotExist {
-			result := db.Exec("create tag table " + tableName + " (name varchar(100) primary key, time datetime basetime, value double)")
-			if result.Err() != nil {
-				return result.Err()
-			}
-		} else {
-			return fmt.Errorf("table does not exist")
-		}
-	}
-	if truncate {
-		result := db.Exec("truncate table " + tableName)
-		if result.Err() != nil {
-			return result.Err()
-		}
-	}
-	return nil
 }

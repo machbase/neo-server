@@ -124,8 +124,8 @@ func (svr *Server) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		err = msg.WriteLineProtocol(svr.db, dbName, measurement, fields, tags, ts)
-		if err != nil {
+		result := msg.WriteLineProtocol(svr.db, dbName, measurement, fields, tags, ts)
+		if result.Err() != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(
 				http.StatusBadRequest,
