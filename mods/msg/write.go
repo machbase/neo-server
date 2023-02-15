@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 )
 
 type WriteRequest struct {
@@ -28,7 +28,7 @@ type WriteResponseData struct {
 	AffectedRows uint64 `json:"affectedRows"`
 }
 
-func Write(db *mach.Database, req *WriteRequest, rsp *WriteResponse) {
+func Write(db spi.Database, req *WriteRequest, rsp *WriteResponse) {
 	vf := make([]string, len(req.Data.Columns))
 	for i := range vf {
 		vf[i] = "?"

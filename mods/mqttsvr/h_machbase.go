@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/machbase/cemlib/mqtt"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/msg"
+	spi "github.com/machbase/neo-spi"
 	"github.com/tidwall/gjson"
 )
 
@@ -77,14 +77,14 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		}
 
 		var err error
-		var appenderSet []*mach.Appender
-		var appender *mach.Appender
+		var appenderSet []spi.Appender
+		var appender spi.Appender
 
 		val, exists := svr.appenders.Get(evt.PeerId)
 		if exists {
-			appenderSet = val.([]*mach.Appender)
+			appenderSet = val.([]spi.Appender)
 			for _, a := range appenderSet {
-				if a.Table() == table {
+				if a.TableName() == table {
 					appender = a
 					break
 				}
@@ -97,7 +97,7 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 				return nil
 			}
 			if len(appenderSet) == 0 {
-				appenderSet = []*mach.Appender{}
+				appenderSet = []spi.Appender{}
 			}
 			appenderSet = append(appenderSet, appender)
 			svr.appenders.Set(evt.PeerId, appenderSet)
@@ -108,8 +108,11 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		head := result.Get("0")
 		if head.IsArray() {
 			// if payload contains multiple tuples
-			cols := appender.Columns()
-			var err error
+			cols, err := appender.Columns()
+			if err != nil {
+				svr.log.Errorf("fail to get appender columns, %s", err.Error())
+				return nil
+			}
 			result.ForEach(func(key, value gjson.Result) bool {
 				fields := value.Array()
 				vals, err := convAppendColumns(fields, cols, appender.TableType())
@@ -127,7 +130,11 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		} else {
 			// a single tuple
 			fields := result.Array()
-			cols := appender.Columns()
+			cols, err := appender.Columns()
+			if err != nil {
+				svr.log.Errorf("fail to get appender columns, %s", err.Error())
+				return nil
+			}
 			vals, err := convAppendColumns(fields, cols, appender.TableType())
 			if err != nil {
 				return err
@@ -143,12 +150,12 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	return nil
 }
 
-func convAppendColumns(fields []gjson.Result, cols []*mach.Column, tableType mach.TableType) ([]any, error) {
+func convAppendColumns(fields []gjson.Result, cols spi.Columns, tableType spi.TableType) ([]any, error) {
 	fieldsOffset := 0
 	colsNum := len(cols)
 	vals := []any{}
 	switch tableType {
-	case mach.LogTableType:
+	case spi.LogTableType:
 		if colsNum == len(fields) {
 			// num of columns is matched
 		} else if colsNum+1 == len(fields) {
@@ -168,25 +175,25 @@ func convAppendColumns(fields []gjson.Result, cols []*mach.Column, tableType mac
 
 	for i, v := range fields[fieldsOffset:] {
 		switch cols[i].Type {
-		case mach.ColumnTypeNameInt16:
+		case spi.ColumnBufferTypeInt16:
 			vals = append(vals, v.Int())
-		case mach.ColumnTypeNameInt32:
+		case spi.ColumnBufferTypeInt32:
 			vals = append(vals, v.Int())
-		case mach.ColumnTypeNameInt64:
+		case spi.ColumnBufferTypeInt64:
 			vals = append(vals, v.Int())
-		case mach.ColumnTypeNameString:
+		case spi.ColumnBufferTypeString:
 			vals = append(vals, v.Str)
-		case mach.ColumnTypeNameDatetime:
+		case spi.ColumnBufferTypeDatetime:
 			vals = append(vals, v.Int())
-		case mach.ColumnTypeNameFloat:
+		case spi.ColumnBufferTypeFloat:
 			vals = append(vals, v.Float())
-		case mach.ColumnTypeNameDouble:
+		case spi.ColumnBufferTypeDouble:
 			vals = append(vals, v.Float())
-		case mach.ColumnTypeNameIPv4:
+		case spi.ColumnBufferTypeIPv4:
 			vals = append(vals, v.Str)
-		case mach.ColumnTypeNameIPv6:
+		case spi.ColumnBufferTypeIPv6:
 			vals = append(vals, v.Str)
-		case mach.ColumnTypeNameBinary:
+		case spi.ColumnBufferTypeBinary:
 			return nil, errors.New("append fail, binary column is not supproted via JSON payload")
 		}
 	}

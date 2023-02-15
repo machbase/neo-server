@@ -7,8 +7,8 @@ import (
 
 	"github.com/machbase/booter"
 	_ "github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/neo-engine"
 	_ "github.com/machbase/neo-server/mods/server"
+	spi "github.com/machbase/neo-spi"
 )
 
 var serverConf = []byte(`
@@ -90,7 +90,10 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db := mach.New()
+	db, err := spi.NewDatabase("engine")
+	if err != nil {
+		panic(err)
+	}
 	var count int
 
 	checkTableSql := fmt.Sprintf("select count(*) from M$SYS_TABLES where name = '%s'", benchmarkTableName)
@@ -108,7 +111,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	creTableSql := fmt.Sprintf(db.SqlTidy(`
+	creTableSql := fmt.Sprintf(SqlTidy(`
             create tag table %s (
                 name     varchar(200) primary key,
                 time     datetime basetime,
@@ -135,4 +138,12 @@ func TestMain(m *testing.M) {
 
 	m.Run()
 	b.Shutdown()
+}
+
+func SqlTidy(sqlText string) string {
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.TrimSpace(strings.Join(lines, " "))
 }

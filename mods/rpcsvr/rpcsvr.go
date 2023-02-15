@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/machbase/cemlib/logging"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-server/mods"
+	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 	"google.golang.org/grpc/stats"
 )
@@ -29,11 +29,11 @@ type Server interface {
 	machrpc.MachbaseServer // machrpc server interface
 }
 
-func New(conf *Config) (Server, error) {
+func New(db spi.Database, conf *Config) (Server, error) {
 	return &svr{
 		conf:     conf,
 		ctxMap:   cmap.New(),
-		machbase: mach.New(),
+		machbase: db,
 		log:      logging.GetLog("rpcsvr"),
 	}, nil
 }
@@ -43,7 +43,7 @@ type svr struct {
 
 	conf     *Config
 	ctxMap   cmap.ConcurrentMap
-	machbase *mach.Database
+	machbase spi.Database
 	log      logging.Log
 }
 
@@ -88,7 +88,7 @@ func (c *sessionCtx) Value(key any) any {
 
 type rowsWrap struct {
 	id      string
-	rows    *mach.Rows
+	rows    spi.Rows
 	release func()
 }
 
@@ -153,7 +153,7 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 
 	params := machrpc.ConvertPbToAny(req.Params)
 	if result := s.machbase.Exec(req.Sql, params...); result.Err() == nil {
-		rsp.AffectedRows = result.AffectedRows()
+		rsp.RowsAffected = result.RowsAffected()
 		rsp.Success = true
 		rsp.Reason = result.Message()
 	} else {
@@ -183,7 +183,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	rsp.Success = true
 	rsp.Reason = "success"
 	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
-	rsp.AffectedRows = row.AffectedRows()
+	rsp.RowsAffected = row.RowsAffected()
 	rsp.Message = row.Message()
 	if err != nil {
 		rsp.Success = false
@@ -227,8 +227,8 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 		}
 		rsp.Reason = "success"
 	} else {
-		nrows, _ := realRows.AffectedRows()
-		rsp.Reason = realRows.ResultString(nrows)
+		rsp.RowsAffected = realRows.RowsAffected()
+		rsp.Reason = realRows.Message()
 	}
 	rsp.Success = true
 
@@ -265,7 +265,7 @@ func (s *svr) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.C
 			Name:   c.Name,
 			Type:   c.Type,
 			Size:   int32(c.Size),
-			Length: int32(c.Len),
+			Length: int32(c.Length),
 		}
 	}
 	rsp.Success = true
@@ -291,17 +291,25 @@ func (s *svr) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 		return rsp, nil
 	}
 
-	values, next, err := rowsWrap.rows.Fetch()
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-		rsp.HasNoRows = !next
-		return rsp, nil
-	}
-	if !next {
+	if !rowsWrap.rows.Next() {
 		rsp.Success = true
 		rsp.Reason = "success"
 		rsp.HasNoRows = true
+		return rsp, nil
+	}
+
+	columns, err := rowsWrap.rows.Columns()
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	values := columns.MakeBuffer()
+	err = rowsWrap.rows.Scan(values...)
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
@@ -351,27 +359,32 @@ func (s *svr) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*mach
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
+	tableType := realAppender.TableType()
+	tableName := realAppender.TableName()
 	handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
 	s.ctxMap.Set(handle, &appenderWrap{
 		id:       handle,
 		appender: realAppender,
 		release: func() {
 			s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-				// fmt.Printf("close appender: %v\n", handle)
+				s.log.Tracef("close appender: %v", handle)
 				realAppender.Close()
 				return true
 			})
 		},
 	})
+	s.log.Tracef("open appender: %v", handle)
 	rsp.Success = true
 	rsp.Reason = "success"
 	rsp.Handle = handle
+	rsp.TableName = tableName
+	rsp.TableType = int32(tableType)
 	return rsp, nil
 }
 
 type appenderWrap struct {
 	id       string
-	appender *mach.Appender
+	appender spi.Appender
 	release  func()
 }
 

@@ -7,14 +7,14 @@ import (
 	"github.com/machbase/cemlib/allowance"
 	"github.com/machbase/cemlib/logging"
 	"github.com/machbase/cemlib/mqtt"
-	mach "github.com/machbase/neo-engine"
+	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
-func New(conf *Config) *Server {
+func New(db spi.Database, conf *Config) *Server {
 	svr := &Server{
 		conf: conf,
-		db:   mach.New(),
+		db:   db,
 	}
 	mqttdConf := &mqtt.MqttConfig{
 		Name:             "machbase",
@@ -65,7 +65,7 @@ type HandlerConfig struct {
 type Server struct {
 	conf  *Config
 	mqttd mqtt.Server
-	db    *mach.Database
+	db    spi.Database
 	log   logging.Log
 
 	appenders cmap.ConcurrentMap
@@ -112,7 +112,7 @@ func (svr *Server) OnDisconnect(evt *mqtt.EvtDisconnect) {
 		if !exists {
 			return false
 		}
-		appenders := v.([]*mach.Appender)
+		appenders := v.([]spi.Appender)
 		for _, ap := range appenders {
 			ap.Close()
 		}

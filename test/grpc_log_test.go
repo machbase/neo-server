@@ -17,8 +17,8 @@ func TestGrpcLogTable(t *testing.T) {
 	var count int
 	var tableName = strings.ToUpper("logdata")
 
-	client := machrpc.NewClient(machrpc.QueryTimeout(10 * time.Second))
-	err := client.Connect("unix://../tmp/mach.sock")
+	client := machrpc.NewClient()
+	err := client.Connect("unix://../tmp/mach.sock", machrpc.QueryTimeout(10*time.Second))
 	//err := client.Connect("tcp://127.0.0.1:5655")
 	require.Nil(t, err)
 	defer client.Disconnect()
@@ -36,8 +36,8 @@ func TestGrpcLogTable(t *testing.T) {
 		t.Logf("table '%s' exists", tableName)
 		if dropTable {
 			t.Logf("drop table '%s'", tableName)
-			err = client.Exec("drop table " + tableName)
-			if err != nil {
+			result := client.Exec("drop table " + tableName)
+			if result.Err() != nil {
 				t.Logf("drop table: %s", err.Error())
 			}
 			require.Nil(t, err)
@@ -65,14 +65,14 @@ func TestGrpcLogTable(t *testing.T) {
 				payload         json
 			)`, tableName)
 
-		err := client.Exec(sqlText)
-		if err != nil {
+		result := client.Exec(sqlText)
+		if result.Err() != nil {
 			t.Log(err.Error())
 		}
 		require.Nil(t, err)
 
-		err = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
-		if err != nil {
+		result = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
+		if result.Err() != nil {
 			t.Log(err.Error())
 		}
 		require.Nil(t, err)

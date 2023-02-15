@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/cemlib/ssh/sshd"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods"
+	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -29,10 +30,12 @@ type MachShell struct {
 	log   logging.Log
 	sshds []sshd.Server
 
+	db spi.Database
+
 	Server Server // injection point
 }
 
-func New(conf *Config) *MachShell {
+func New(dbauth spi.Database, conf *Config) *MachShell {
 	return &MachShell{
 		conf: conf,
 	}
@@ -95,8 +98,12 @@ func (svr *MachShell) motdProvider(user string) string {
 }
 
 func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
+	mdb, ok := svr.db.(spi.DatabaseAuth)
+	if !ok {
+		svr.log.Errorf("user auth - unknown database instance")
+	}
 	user := ctx.User()
-	ok, err := mach.New().UserAuth(user, password)
+	ok, err := mdb.UserAuth(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
