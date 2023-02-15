@@ -2,7 +2,7 @@
 
 targets := $(shell ls main)
 uname_s := $(shell uname -s)
-uname_p := $(shell uname -p)
+uname_m := $(shell uname -m)
 nextver := $(shell ./scripts/buildversion.sh)
 
 all:
@@ -18,19 +18,19 @@ tmpdir:
 
 test: tmpdir
 ifeq ($(uname_s),Linux)
-ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@go test $(ARGS) -tags linux,arm64,edge_edition ./test/
+ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
+	@go test $(ARGS) -tags=edge_edition ./test/
 endif
-ifeq ($(uname_p),x86_64)
-	@go test $(ARGS) -tags linux,amd64,edge_edition ./test/
+ifeq ($(uname_m),x86_64)
+	@go test $(ARGS) -tags=edge_edition ./test/
 endif
 endif
 ifeq ($(uname_s),Darwin)
-ifeq ($(uname_p),$(filter $(uname_p), aarch64 arm))
-	@go test $(ARGS) -tags darwin,arm64,edge_edition ./test/
+ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
+	go test $(ARGS) -tags=edge_edition ./test/
 endif
-ifeq ($(uname_p),i386)
-	@go test $(ARGS) -tags darwin,amd64,edge_edition ./test/
+ifeq ($(uname_m),i386)
+	@go test $(ARGS) -tags=edge_edition ./test/
 endif
 endif
 

@@ -64,7 +64,7 @@ func (svr *Server) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 
 		result := msg.WriteLineProtocol(svr.db, dbName, measurement, fields, tags, ts)
 		if result.Err() != nil {
-			svr.log.Warnf("lineprotocol fail: %s", err.Error())
+			svr.log.Warnf("lineprotocol fail: %s", result.Err().Error())
 		}
 	}
 }

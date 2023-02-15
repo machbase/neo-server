@@ -33,6 +33,7 @@ func TestHttp(t *testing.T) {
 	require.Nil(t, err)
 
 	str := string(content)
+	t.Logf("-->\n%v\n", str)
 	vSuccess := gjson.Get(str, "success")
 	require.True(t, vSuccess.Bool())
 

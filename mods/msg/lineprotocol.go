@@ -47,10 +47,5 @@ func WriteLineProtocol(db spi.Database, dbName string, measurement string, field
 		rows = append(rows, []any{name, timestamp, value})
 	}
 
-	if len(rows) == 0 {
-		// fields의 value가 string 일 경우 입력할 값이 없을 수 있다.
-		return nil
-	}
-
 	return do.Insert(db, dbName, columns, rows)
 }
