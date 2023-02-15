@@ -1,7 +1,6 @@
 package httpsvr
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ func strInt(str string, def int) int {
 
 func strString(str string, def string) string {
 	if str == "" {
-		return str
+		return def
 	}
 	return str
 }
@@ -57,7 +56,6 @@ func strDuration(str string, def time.Duration) time.Duration {
 	}
 	d, err := time.ParseDuration(str)
 	if err != nil {
-		fmt.Println("===========+>", str, err.Error())
 		return def
 	}
 	return d

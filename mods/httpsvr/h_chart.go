@@ -89,7 +89,11 @@ func (svr *Server) handleChart(ctx *gin.Context) {
 		SetSubtitle(req.Subtitle).
 		SetSize(req.Width, req.Height).
 		Build()
-
+	if rndr == nil {
+		svr.log.Warnf("chart request has no renderer %+v", req)
+		ctx.String(http.StatusInternalServerError, "no renderer")
+		return
+	}
 	ctx.Writer.Header().Set("Content-type", rndr.ContentType())
 	if err = rndr.Render(ctx, output, series); err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
