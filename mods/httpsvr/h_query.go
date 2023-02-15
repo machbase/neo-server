@@ -10,7 +10,7 @@ import (
 	"github.com/machbase/neo-server/mods/msg"
 	"github.com/machbase/neo-shell/codec"
 	"github.com/machbase/neo-shell/do"
-	"github.com/machbase/neo-shell/sink"
+	"github.com/machbase/neo-shell/stream"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -70,17 +70,17 @@ func (svr *Server) handleQuery(ctx *gin.Context) {
 
 	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
 
-	var rspSink spi.Sink
+	var output spi.OutputStream
 	switch req.Compress {
 	case "gzip":
-		rspSink = &sink.WriterSink{Writer: gzip.NewWriter(ctx.Writer)}
+		output = &stream.WriterOutputStream{Writer: gzip.NewWriter(ctx.Writer)}
 	default:
 		req.Compress = ""
-		rspSink = &sink.WriterSink{Writer: ctx.Writer}
+		output = &stream.WriterOutputStream{Writer: ctx.Writer}
 	}
 
 	encoder := codec.NewEncoderBuilder(req.Format).
-		SetSink(rspSink).
+		SetOutputStream(output).
 		SetTimeLocation(timeLocation).
 		SetTimeFormat(req.Timeformat).
 		SetPrecision(req.Precision).

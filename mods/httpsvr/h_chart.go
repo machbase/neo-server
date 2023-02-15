@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-shell/renderer"
-	"github.com/machbase/neo-shell/sink"
+	"github.com/machbase/neo-shell/stream"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -68,7 +68,7 @@ func (svr *Server) handleChart(ctx *gin.Context) {
 	}
 
 	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
-	var sink = &sink.WriterSink{Writer: ctx.Writer}
+	var output = &stream.WriterOutputStream{Writer: ctx.Writer}
 
 	queries, err := renderer.BuildChartQueries(req.TagPaths, req.Timestamp, req.Range, req.Timeformat, timeLocation)
 	if err != nil {
@@ -91,7 +91,7 @@ func (svr *Server) handleChart(ctx *gin.Context) {
 		Build()
 
 	ctx.Writer.Header().Set("Content-type", rndr.ContentType())
-	if err = rndr.Render(ctx, sink, series); err != nil {
+	if err = rndr.Render(ctx, output, series); err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
