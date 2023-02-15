@@ -13,6 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/msg"
 	"github.com/machbase/neo-shell/codec"
 	"github.com/machbase/neo-shell/do"
+	"github.com/machbase/neo-shell/stream"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -62,7 +63,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	var r io.Reader
+	var in spi.InputStream
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
 		if err != nil {
@@ -70,13 +71,13 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
-		r = bufio.NewReader(gr)
+		in = &stream.ReaderInputStream{Reader: bufio.NewReader(gr)}
 	} else {
-		r = ctx.Request.Body
+		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
 	decoder := codec.NewDecoderBuilder(format).
-		SetInputStream(r).
+		SetInputStream(in).
 		SetColumns(desc.Columns.Columns()).
 		SetTimeFormat(timeformat).
 		SetTimeLocation(timeLocation).
