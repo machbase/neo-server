@@ -1,4 +1,4 @@
-package msg
+package mqttsvr
 
 import (
 	"bytes"
@@ -8,37 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/machbase/neo-server/mods/msg"
 	spi "github.com/machbase/neo-spi"
 )
 
-type QueryRequest struct {
-	SqlText      string `json:"q"`
-	Timeformat   string `json:"timeformat,omitempty"`
-	TimeLocation string `json:"tz,omitempty"`
-	Format       string `json:"format,omitempty"`
-	Compress     string `json:"compress,omitempty"`
-	Precision    int    `json:"precision,omitempty"`
-	Rownum       bool   `json:"rownum,omitempty"`
-	Heading      bool   `json:"heading,omitempty"`
-}
-
-type QueryResponse struct {
-	Success         bool       `json:"success"`
-	Reason          string     `json:"reason"`
-	Elapse          string     `json:"elapse"`
-	Data            *QueryData `json:"data,omitempty"`
-	ContentType     string     `json:"-"`
-	ContentEncoding string     `json:"-"`
-	Content         []byte     `json:"-"`
-}
-
-type QueryData struct {
-	Columns []string `json:"colums"`
-	Types   []string `json:"types"`
-	Rows    [][]any  `json:"rows"`
-}
-
-func Query(db spi.Database, req *QueryRequest, rsp *QueryResponse) {
+func Query(db spi.Database, req *msg.QueryRequest, rsp *msg.QueryResponse) {
 	rows, err := db.Query(req.SqlText)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -51,7 +25,7 @@ func Query(db spi.Database, req *QueryRequest, rsp *QueryResponse) {
 		rsp.Reason = "success"
 		return
 	}
-	data := &QueryData{}
+	data := &msg.QueryData{}
 	data.Rows = make([][]any, 0)
 	cols, err := rows.Columns()
 	if err != nil {

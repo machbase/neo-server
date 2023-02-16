@@ -1,34 +1,14 @@
-package msg
+package mqttsvr
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/msg"
 	spi "github.com/machbase/neo-spi"
 )
 
-type WriteRequest struct {
-	Table string            `json:"table"`
-	Data  *WriteRequestData `json:"data"`
-}
-
-type WriteRequestData struct {
-	Columns []string `json:"columns"`
-	Rows    [][]any  `json:"rows"`
-}
-
-type WriteResponse struct {
-	Success bool               `json:"success"`
-	Reason  string             `json:"reason"`
-	Elapse  string             `json:"elapse"`
-	Data    *WriteResponseData `json:"data,omitempty"`
-}
-
-type WriteResponseData struct {
-	AffectedRows uint64 `json:"affectedRows"`
-}
-
-func Write(db spi.Database, req *WriteRequest, rsp *WriteResponse) {
+func Write(db spi.Database, req *msg.WriteRequest, rsp *msg.WriteResponse) {
 	vf := make([]string, len(req.Data.Columns))
 	for i := range vf {
 		vf[i] = "?"
@@ -42,7 +22,7 @@ func Write(db spi.Database, req *WriteRequest, rsp *WriteResponse) {
 		result := db.Exec(sqlText, rec...)
 		if result.Err() != nil {
 			rsp.Reason = fmt.Sprintf("record[%d] %s", i, result.Err().Error())
-			rsp.Data = &WriteResponseData{
+			rsp.Data = &msg.WriteResponseData{
 				AffectedRows: nrows,
 			}
 			return
@@ -52,7 +32,7 @@ func Write(db spi.Database, req *WriteRequest, rsp *WriteResponse) {
 
 	rsp.Success = true
 	rsp.Reason = fmt.Sprintf("%d rows inserted", nrows)
-	rsp.Data = &WriteResponseData{
+	rsp.Data = &msg.WriteResponseData{
 		AffectedRows: nrows,
 	}
 }
