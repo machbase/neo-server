@@ -394,7 +394,6 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 		if wrap == nil {
 			return
 		}
-		// fmt.Printf("--- release %s\n", wrap.id)
 		wrap.release()
 	}()
 
@@ -436,11 +435,6 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 		if err != nil {
 			s.log.Error("append", err.Error())
 			return err
-			// return stream.SendAndClose(&machrpc.AppendDone{
-			// 	Success: false,
-			// 	Reason:  err.Error(),
-			// 	Elapse:  time.Since(tick).String(),
-			// })
 		}
 	}
 }

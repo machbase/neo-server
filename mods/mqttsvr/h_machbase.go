@@ -40,7 +40,7 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 			reply(rsp)
 			return nil
 		}
-		msg.Query(svr.db, req, rsp)
+		Query(svr.db, req, rsp)
 		rsp.Elapse = time.Since(tick).String()
 		reply(rsp)
 	} else if strings.HasPrefix(topic, "write") {
@@ -65,7 +65,7 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 			reply(rsp)
 			return nil
 		}
-		msg.Write(svr.db, req, rsp)
+		Write(svr.db, req, rsp)
 		rsp.Elapse = time.Since(tick).String()
 		reply(rsp)
 	} else if strings.HasPrefix(topic, "append/") {
