@@ -28,9 +28,6 @@ func (svr *Server) handleWrite(ctx *gin.Context) {
 func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 	tick := time.Now()
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
 
 	tableName := ctx.Param("table")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
@@ -45,11 +42,13 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
 	if err != nil {
 		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !exists {
 		rsp.Reason = fmt.Sprintf("Table '%s' does not exist", tableName)
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	}
@@ -57,6 +56,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 	var desc *do.TableDescription
 	if desc0, err := do.Describe(svr.db, tableName, false); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
@@ -68,6 +68,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 		gr, err := gzip.NewReader(ctx.Request.Body)
 		if err != nil {
 			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -93,6 +94,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
@@ -107,6 +109,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			query := fmt.Sprintf("insert into %s values(%s)", tableName, strings.Join(hold, ","))
 			if result := svr.db.Exec(query, vals...); result.Err() != nil {
 				rsp.Reason = result.Err().Error()
+				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
@@ -116,6 +119,7 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 				appender, err := svr.db.Appender(tableName)
 				if err != nil {
 					rsp.Reason = err.Error()
+					rsp.Elapse = time.Since(tick).String()
 					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
@@ -124,12 +128,15 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			err = appender.Append(vals...)
 			if err != nil {
 				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
 		}
 	}
 	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
+	svr.log.Infof("written %d rows", lineno)
 	ctx.JSON(http.StatusOK, rsp)
 }
 
@@ -137,9 +144,6 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 	req := &msg.WriteRequest{}
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 	tick := time.Now()
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
 
 	err := ctx.Bind(req)
 	if err != nil {
@@ -157,12 +161,14 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 
 	if len(req.Table) == 0 {
 		rsp.Reason = "table is not specified"
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
 
 	if req.Data == nil {
 		rsp.Reason = "no data found"
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -171,10 +177,12 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 	if result.Err() == nil {
 		rsp.Success = true
 		rsp.Reason = result.Message()
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)
 	} else {
 		rsp.Success = false
 		rsp.Reason = result.Message()
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
