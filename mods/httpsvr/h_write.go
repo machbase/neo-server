@@ -18,24 +18,29 @@ import (
 )
 
 func (svr *Server) handleWrite(ctx *gin.Context) {
-	if ctx.ContentType() == "text/csv" {
-		svr.handleWriteCSV(ctx)
-	} else {
-		svr.handleWriteJSON(ctx)
-	}
-}
-
-func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 	tick := time.Now()
+
+	format := "json"
+	if ctx.ContentType() == "text/csv" {
+		format = "csv"
+	}
+	compress := "-"
+	switch ctx.Request.Header.Get("Content-Encoding") {
+	case "gzip":
+		compress = "gzip"
+	default:
+		compress = "-"
+	}
 
 	tableName := ctx.Param("table")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
 	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
-	format := strString(ctx.Query("format"), "csv")
 	method := strString(ctx.Query("method"), "insert")
-	compress := strString(ctx.Query("compress"), "-")
+	format = strString(ctx.Query("format"), format)
+	compress = strString(ctx.Query("compress"), compress)
 	delimiter := strString(ctx.Query("delimiter"), ",")
+	heading := strBool(ctx.Query("heading"), false)
 	createTable := strBool(ctx.Query("create-table"), false)
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
 
@@ -83,11 +88,25 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 		SetTimeFormat(timeformat).
 		SetTimeLocation(timeLocation).
 		SetCsvDelimieter(delimiter).
+		SetCsvHeading(heading).
 		Build()
 
+	if decoder == nil {
+		rsp.Reason = "codec not found"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
 	var appender spi.Appender
-	hold := []string{}
 	lineno := 0
+
+	_hold := []string{}
+	for i := 0; i < len(desc.Columns); i++ {
+		_hold = append(_hold, "?")
+	}
+	valueHolder := strings.Join(_hold, ",")
+	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
 
 	for {
 		vals, err := decoder.NextRow()
@@ -103,20 +122,15 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 		lineno++
 
 		if method == "insert" {
-			for i := 0; i < len(desc.Columns); i++ {
-				hold = append(hold, "?")
-			}
-			query := fmt.Sprintf("insert into %s values(%s)", tableName, strings.Join(hold, ","))
-			if result := svr.db.Exec(query, vals...); result.Err() != nil {
+			if result := svr.db.Exec(insertQuery, vals...); result.Err() != nil {
 				rsp.Reason = result.Err().Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
-			hold = hold[:0]
 		} else { // append
 			if appender == nil {
-				appender, err := svr.db.Appender(tableName)
+				appender, err = svr.db.Appender(tableName)
 				if err != nil {
 					rsp.Reason = err.Error()
 					rsp.Elapse = time.Since(tick).String()
@@ -134,12 +148,12 @@ func (svr *Server) handleWriteCSV(ctx *gin.Context) {
 			}
 		}
 	}
-	rsp.Success, rsp.Reason = true, "success"
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", lineno, method)
 	rsp.Elapse = time.Since(tick).String()
-	svr.log.Infof("written %d rows", lineno)
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+/*
 func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 	req := &msg.WriteRequest{}
 	rsp := &msg.WriteResponse{Reason: "not specified"}
@@ -186,3 +200,4 @@ func (svr *Server) handleWriteJSON(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
+*/

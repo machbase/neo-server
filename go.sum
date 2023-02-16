@@ -103,8 +103,8 @@ github.com/machbase/neo-engine v0.2.1-0.20230215075108-7f7050730aea h1:RMlus0dSZ
 github.com/machbase/neo-engine v0.2.1-0.20230215075108-7f7050730aea/go.mod h1:bKyq2XLrarvD124pyjK2sRRqrpLy123hOosBmFI8yuk=
 github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad h1:7IXtM2orDW0oqUvSMks3ph3/lNZ67CP0sZjk6fdcxvs=
 github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad/go.mod h1:57lwEEA+Kk4hkMt0q8lhnSzKebUh1ljVVbqP9CKD+uE=
-github.com/machbase/neo-shell v0.2.1-0.20230215102142-5f2be32e422c h1:Vv/xbolDNvMPpB7Pa4KEWfkhf08Dx9KkEXeVKu68iTc=
-github.com/machbase/neo-shell v0.2.1-0.20230215102142-5f2be32e422c/go.mod h1:TNKSLjnwesS0r2LUCza/8+EgcC8+hC8GTLaHa5vcygs=
+github.com/machbase/neo-shell v0.2.1-0.20230216064507-6d6824076baf h1:bKZYU1Q6oI9301MpzGbQtgkVWQguDRIyDklOiXRFrZI=
+github.com/machbase/neo-shell v0.2.1-0.20230216064507-6d6824076baf/go.mod h1:k7aq1WupjEzuBit5ucGU0Urfj7jatpF0JruO6o96YzA=
 github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0 h1:EBQipMuNb+3tkoxT411fDYvUCMeLXVLynb+mck6S9JI=
 github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
