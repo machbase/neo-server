@@ -1,14 +1,13 @@
 name: CI linux-amd64
 
 on:
-  push:
-    branches:
-      - 'main'
-      - 'devel*'
+  pull_request:
+    types:
+      - opened
 
 jobs:
   builds:
-    runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+    runs-on: [ linux, X64 ]
     env:
       GOPRIVATE: "github.com/machbase/*"
     steps:
@@ -28,22 +27,9 @@ jobs:
         with:
           token: ${{ secrets.GIT_PASS }}
           go-version: '^1.19.5'
+      - name: Test
+        run: make test
       - name: Build
         run: |
-          make test && \
           make cleanpackage && \
           make package-machbase-neo
-      - name: Upload nightly build
-        uses: svenstaro/upload-release-action@v2
-        env:
-          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
-          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
-          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
-        with:
-          repo_token: ${{ secrets.GIT_PASS }}
-          file: packages/machbase-neo-*-v*.zip
-          repo_name: machbase/neo-server
-          prerelease: true
-          tag: nightly
-          overwrite: true
-          file_glob: true

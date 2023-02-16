@@ -1,9 +1,6 @@
 name: CI linux-arm64
 
 on:
-  pull_request:
-    types:
-      - opened
   push:
     branches:
       - 'main'
