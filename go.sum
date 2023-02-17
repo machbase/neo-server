@@ -93,12 +93,12 @@ github.com/machbase/booter v1.1.0 h1:xLY3EdxIwHz8qAMnZMyyFqkHEVAFEbySyzJC1RLHAFI
 github.com/machbase/booter v1.1.0/go.mod h1:XIvfrgM0bDDmbjvD1s/4UVYyCoVbjTXAvX2V645EXIg=
 github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a h1:CEUrYTIJw44EXDpmBrVDOaiJ9rmD53osojYrixQ/COc=
 github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a/go.mod h1:bKyq2XLrarvD124pyjK2sRRqrpLy123hOosBmFI8yuk=
-github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad h1:7IXtM2orDW0oqUvSMks3ph3/lNZ67CP0sZjk6fdcxvs=
-github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad/go.mod h1:57lwEEA+Kk4hkMt0q8lhnSzKebUh1ljVVbqP9CKD+uE=
+github.com/machbase/neo-grpc v0.2.1-0.20230217143638-fc055a0f44bd h1:Vq1xFSSCrFgypCNi5lze1GoaKKJl4sGdOWw0RCP1zTA=
+github.com/machbase/neo-grpc v0.2.1-0.20230217143638-fc055a0f44bd/go.mod h1:57lwEEA+Kk4hkMt0q8lhnSzKebUh1ljVVbqP9CKD+uE=
 github.com/machbase/neo-logging v1.0.0 h1:5VarIDHLK9Un++Uy3KD9P+MceevQYZPV+mxYo+5GwB0=
 github.com/machbase/neo-logging v1.0.0/go.mod h1:Yzuw+yZ00TADBxsZg1u21weHx+/OtmyoAdApM1TG0tU=
-github.com/machbase/neo-shell v0.2.1-0.20230217043026-1f7776179095 h1:G9bfhjI+to59j/lLh9dbEvhm1CzO0aIYrsCFxyzgIeg=
-github.com/machbase/neo-shell v0.2.1-0.20230217043026-1f7776179095/go.mod h1:42CztyEGnnDn+YlYMoF4gxQ0vZn8wkp1kLuTbNj5frg=
+github.com/machbase/neo-shell v0.2.1-0.20230217144153-b165089abe80 h1:os+mgd+qn3CD8+MR5F3mJ6ILgX9uQVE0L/8cQJtMnQs=
+github.com/machbase/neo-shell v0.2.1-0.20230217144153-b165089abe80/go.mod h1:eWU/wbKbC0sSIEvN/FZgUx/s8tNm9GCPWC+JlcYJP/4=
 github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0 h1:EBQipMuNb+3tkoxT411fDYvUCMeLXVLynb+mck6S9JI=
 github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
@@ -134,8 +134,6 @@ github.com/rivo/tview v0.0.0-20230208211350-7dfff1ce7854/go.mod h1:lBUy/T5kyMudF
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.3 h1:utMvzDsuh3suAEnhH0RdHmoPbU648o6CvXxTx4SBMOw=
 github.com/rivo/uniseg v0.4.3/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
-github.com/robfig/cron v1.2.0 h1:ZjScXvvxeQ63Dbyxy76Fj3AT3Ut0aKsyd2/tl3DTMuQ=
-github.com/robfig/cron v1.2.0/go.mod h1:JGuDeoQd7Z6yL4zQhZ3OPEVHB7fL6Ka6skscFHfmt2k=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
 github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
 github.com/rogpeppe/go-internal v1.8.0 h1:FCbCCtXNOY3UtUuHUYaghJg4y7Fd14rXifAYUAtL9R8=

@@ -10,9 +10,9 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.1.0
 	github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a
-	github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad
+	github.com/machbase/neo-grpc v0.2.1-0.20230217143638-fc055a0f44bd
 	github.com/machbase/neo-logging v1.0.0
-	github.com/machbase/neo-shell v0.2.1-0.20230217043026-1f7776179095
+	github.com/machbase/neo-shell v0.2.1-0.20230217144153-b165089abe80
 	github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -59,7 +59,6 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rivo/tview v0.0.0-20230208211350-7dfff1ce7854 // indirect
 	github.com/rivo/uniseg v0.4.3 // indirect
-	github.com/robfig/cron v1.2.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sevlyar/go-daemon v0.1.6 // indirect
 	github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569 // indirect

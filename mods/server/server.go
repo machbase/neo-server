@@ -1,15 +1,19 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/big"
 	"net"
@@ -18,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -128,6 +133,8 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
+
+	authorizedSshKeysLock sync.RWMutex
 }
 
 func NewConfig() *Config {
@@ -453,6 +460,147 @@ func (s *svr) ServerCertificate() (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
+type AuthorizedSshKey struct {
+	KeyType     string
+	Key         string
+	Fingerprint string
+	Comment     string
+}
+
+const authorized_ssh_keys = "ssh_keys"
+
+func (s *svr) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
+	s.authorizedSshKeysLock.RLock()
+	defer s.authorizedSshKeysLock.RUnlock()
+
+	list := []*AuthorizedSshKey{}
+
+	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_RDONLY, 0600)
+	if err != nil {
+		// ignore error intended
+		return list, nil
+	}
+	defer file.Close()
+	reader := bufio.NewReader(file)
+
+	var line string
+	var parts = []string{}
+	for {
+		part, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return list, err
+		}
+		parts = append(parts, string(part))
+		if isPrefix {
+			continue
+		}
+		line = strings.Join(parts, "")
+		parts = parts[:0]
+
+		record := strings.Fields(line)
+		if len(record) != 3 {
+			continue
+		}
+
+		switch record[0] {
+		case "ssh-rsa":
+		case "ecdsa-sha2-nistp256":
+		default:
+			continue
+		}
+
+		hash := md5.Sum([]byte(record[1]))
+		fingerprint := hex.EncodeToString(hash[:])
+		list = append(list, &AuthorizedSshKey{KeyType: record[0], Key: record[1], Fingerprint: fingerprint, Comment: record[2]})
+	}
+	return list, nil
+}
+
+func (s *svr) AddAuthorizedSshKey(keyType string, key string, comment string) error {
+	switch keyType {
+	case "ssh-rsa":
+	case "ecdsa-sha2-nistp256":
+	default:
+		return fmt.Errorf("key type '%s' is not supported", keyType)
+	}
+	if len(key) == 0 {
+		return errors.New("invalid ssh key")
+	}
+	if len(comment) == 0 {
+		return errors.New("ssh key name should not empty")
+	}
+	list, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		return err
+	}
+	for _, r := range list {
+		if r.Key == key {
+			return fmt.Errorf("ssh key already exists")
+		}
+	}
+
+	s.authorizedSshKeysLock.Lock()
+	defer s.authorizedSshKeysLock.Unlock()
+
+	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(fmt.Sprintf("%s %s %s\n", keyType, key, comment))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *svr) RemoveAuthorizedSshKey(fingerprint string) error {
+	list, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		return err
+	}
+	found := false
+	for i, r := range list {
+		if r.Fingerprint == fingerprint {
+			head := []*AuthorizedSshKey{}
+			tail := []*AuthorizedSshKey{}
+			if i > 0 {
+				head = list[0:i]
+			}
+			if i+1 < len(list) {
+				tail = list[i+1:]
+			}
+			list = append(head, tail...)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return errors.New("ssh key doesn't exist")
+	}
+
+	s.authorizedSshKeysLock.Lock()
+	defer s.authorizedSshKeysLock.Unlock()
+
+	file, err := os.OpenFile(filepath.Join(s.authorizedKeysDir, authorized_ssh_keys), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, rec := range list {
+		_, err := file.WriteString(fmt.Sprintf("%s %s %s\n", rec.KeyType, rec.Key, rec.Comment))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
 func (s *svr) AuthorizedCertificate(id string) (*x509.Certificate, error) {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
@@ -657,6 +805,24 @@ func makeListener(addr string) (net.Listener, error) {
 	}
 }
 
+// ////////////////////////////////
+// implements neo-shell/server/sshsvr/Server interface
 func (s *svr) GetGrpcAddresses() []string {
 	return s.conf.Grpc.Listeners
+}
+
+func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
+	list, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		s.log.Warnf("ssh public key", err.Error())
+		return false
+	}
+
+	for _, rec := range list {
+		if rec.KeyType == keyType && rec.Key == key {
+			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
+			return true
+		}
+	}
+	return false
 }
