@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/machbase/booter"
-	_ "github.com/machbase/cemlib/logging"
+	mach "github.com/machbase/neo-engine"
+	_ "github.com/machbase/neo-logging"
 	_ "github.com/machbase/neo-server/mods/server"
 	spi "github.com/machbase/neo-spi"
 )
@@ -90,7 +91,7 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db, err := spi.NewDatabase("engine")
+	db, err := spi.NewDatabase(mach.FactoryName)
 	if err != nil {
 		panic(err)
 	}

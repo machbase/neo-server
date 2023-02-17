@@ -9,10 +9,10 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.1.0
-	github.com/machbase/cemlib v1.0.0
-	github.com/machbase/neo-engine v0.2.1-0.20230215075108-7f7050730aea
+	github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a
 	github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad
-	github.com/machbase/neo-shell v0.2.1-0.20230217001732-56dfad6da459
+	github.com/machbase/neo-logging v1.0.0
+	github.com/machbase/neo-shell v0.2.1-0.20230217043026-1f7776179095
 	github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -37,7 +37,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.11.2 // indirect
 	github.com/goccy/go-json v0.10.0 // indirect
-	github.com/golang-jwt/jwt/v4 v4.4.3 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
@@ -48,7 +47,6 @@ require (
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/machbase/cemlib-msg v0.0.0-20230207013138-e840243b36a0 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect

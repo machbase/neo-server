@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/cemlib/logging"
+	logging "github.com/machbase/neo-logging"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )

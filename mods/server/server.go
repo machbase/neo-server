@@ -22,13 +22,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/booter"
-	"github.com/machbase/cemlib/ginutil"
-	"github.com/machbase/cemlib/logging"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	logging "github.com/machbase/neo-logging"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-shell/server/ginutil"
 	"github.com/machbase/neo-shell/server/httpsvr"
 	"github.com/machbase/neo-shell/server/mqttsvr"
 	"github.com/machbase/neo-shell/server/rpcsvr"
@@ -90,6 +90,8 @@ type Config struct {
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           mqttsvr.Config
+
+	NoBanner bool
 }
 
 type AuthHandlerConfig struct {
@@ -158,6 +160,7 @@ func NewConfig() *Config {
 			Listeners:   []string{},
 			IdleTimeout: 2 * time.Minute,
 		},
+		NoBanner: false,
 	}
 
 	switch mach.Edition() {
@@ -245,21 +248,29 @@ func (s *svr) Start() error {
 		}
 	}
 
-	s.db, err = spi.NewDatabase("engine")
+	s.db, err = spi.NewDatabase(mach.FactoryName)
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
 	}
-
 	if s.db == nil {
 		return errors.New("database instance failed")
 	}
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
+		ver := mods.GetVersion()
+		if ver != nil {
+			mach.BuildVersion.Major = int32(ver.Major)
+			mach.BuildVersion.Minor = int32(ver.Minor)
+			mach.BuildVersion.Patch = int32(ver.Patch)
+			mach.BuildVersion.GitSHA = ver.GitSHA
+			mach.BuildVersion.BuildTimestamp = mods.BuildTimestamp()
+			mach.BuildVersion.BuildCompiler = mods.BuildCompiler()
+		}
 		if err := mdb.Startup(); err != nil {
 			return errors.Wrap(err, "startup database")
 		}
 	}
 
-	if booter.GetDefinition("github.com/machbase/cemlib/banner") == nil {
+	if !s.conf.NoBanner {
 		// print banner if banner module is not configured
 		s.log.Infof("\n%s", GenBanner())
 	}
