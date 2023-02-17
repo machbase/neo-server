@@ -9,7 +9,7 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.1.0
-	github.com/machbase/neo-engine v0.2.1-0.20230215075108-7f7050730aea
+	github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a
 	github.com/machbase/neo-grpc v0.2.1-0.20230213103137-d93c126485ad
 	github.com/machbase/neo-logging v1.0.0
 	github.com/machbase/neo-shell v0.2.1-0.20230217043026-1f7776179095
