@@ -29,10 +29,10 @@ import (
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/httpsvr"
-	"github.com/machbase/neo-server/mods/mqttsvr"
-	"github.com/machbase/neo-server/mods/rpcsvr"
-	shell "github.com/machbase/neo-server/mods/sshsvr"
+	"github.com/machbase/neo-shell/server/httpsvr"
+	"github.com/machbase/neo-shell/server/mqttsvr"
+	"github.com/machbase/neo-shell/server/rpcsvr"
+	"github.com/machbase/neo-shell/server/sshsvr"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
@@ -86,7 +86,7 @@ type Config struct {
 	Machbase       MachbaseConfig
 	StartupQueries []string
 	AuthHandler    AuthHandlerConfig
-	Shell          shell.Config
+	Shell          sshsvr.Config
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           mqttsvr.Config
@@ -121,7 +121,7 @@ type svr struct {
 	mgmtd *grpc.Server
 	httpd *http.Server
 	mqttd *mqttsvr.Server
-	shsvr *shell.MachShell
+	shsvr *sshsvr.MachShell
 
 	certdir           string
 	authHandler       AuthHandler
@@ -137,7 +137,7 @@ func NewConfig() *Config {
 		DataDir: ".",
 		PrefDir: filepath.Join(homeDir, ".config", ".machbase"),
 		Grpc: GrpcConfig{
-			Listeners:      []string{"unix://./mach.sock"},
+			Listeners:      []string{"unix://./mach-grpc.sock"},
 			MaxRecvMsgSize: 4,
 			MaxSendMsgSize: 4,
 		},
@@ -154,7 +154,7 @@ func NewConfig() *Config {
 			},
 			MaxMessageSizeLimit: 1024 * 1024,
 		},
-		Shell: shell.Config{
+		Shell: sshsvr.Config{
 			Listeners:   []string{},
 			IdleTimeout: 2 * time.Minute,
 		},
@@ -357,7 +357,7 @@ func (s *svr) Start() error {
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
 		s.conf.Shell.ServerKeyPath = s.ServerPrivateKeyPath()
-		s.shsvr = shell.New(s.db, &s.conf.Shell)
+		s.shsvr = sshsvr.New(s.db, &s.conf.Shell)
 		s.shsvr.Server = s
 		err := s.shsvr.Start()
 		if err != nil {
