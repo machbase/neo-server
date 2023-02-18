@@ -75,4 +75,8 @@ endif
 endif
 
 %:
-	@./scripts/build.sh $@ $(nextver) $(EDITION)
+ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
+	@./scripts/build.sh $@ $(nextver) edge
+else
+	@./scripts/build.sh $@ $(nextver) fog
+endif
