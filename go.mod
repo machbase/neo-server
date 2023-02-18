@@ -9,16 +9,16 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.1.0
-	github.com/machbase/neo-engine v0.2.1-0.20230217051257-ba0ac805436a
-	github.com/machbase/neo-grpc v0.2.1-0.20230217143638-fc055a0f44bd
+	github.com/machbase/neo-engine v0.2.1-0.20230218112059-dd56f0ae3809
+	github.com/machbase/neo-grpc v0.2.1-0.20230218062400-d7c1813e0573
 	github.com/machbase/neo-logging v1.0.0
-	github.com/machbase/neo-shell v0.2.1-0.20230217144153-b165089abe80
+	github.com/machbase/neo-shell v0.2.1-0.20230218114226-d3fdc7c14327
 	github.com/machbase/neo-spi v0.0.0-20230215102041-ce33f66f46e0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
-	golang.org/x/crypto v0.5.0
+	golang.org/x/crypto v0.6.0
 	google.golang.org/grpc v1.53.0
 )
 
@@ -64,7 +64,7 @@ require (
 	github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
-	github.com/ugorji/go/codec v1.2.8 // indirect
+	github.com/ugorji/go/codec v1.2.9 // indirect
 	github.com/zclconf/go-cty v1.12.1 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect

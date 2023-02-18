@@ -14,6 +14,9 @@ echo Packaging $PKGNAME $GOOS $GOARCH $VERSION $EDITION
 
 # Remove previous build directory, if needed.
 bdir=$PKGNAME-$EDITION-$VERSION-$GOOS-$GOARCH
+if [ "$GOARCH" == "arm" ]; then
+    bdir="$PKGNAME-$VERSION-$GOOS-arm32"
+fi
 echo "    prepare dir $bdir"
 rm -rf packages/$bdir && mkdir -p packages/$bdir
 
