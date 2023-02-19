@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - 'main'
-      - 'devel*'
 
 jobs:
   builds:
@@ -27,10 +26,11 @@ jobs:
         uses: actions/setup-go@v3
         with:
           token: ${{ secrets.GIT_PASS }}
-          go-version: '^1.19.5'
+          go-version: '^1.19.6'
+      - name: Test
+        run: make test
       - name: Build
         run: |
-          make test && \
           make cleanpackage && \
           make package-machbase-neo
       - name: Upload nightly build

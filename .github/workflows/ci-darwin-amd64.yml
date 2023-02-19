@@ -1,25 +1,18 @@
-name: Release linux-arm64
+name: CI darwin-arm64
 
 on:
   push:
-    tags:
-      - v*
+    branches:
+      - 'main'
 
 jobs:
   builds:
-    runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
+    runs-on: [ macos-12 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Branch name
-        id: branch_name
-        run: |
-          echo "VER=`./scripts/buildversion.sh`" >> $GITHUB_OUTPUT
-          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
@@ -30,14 +23,14 @@ jobs:
         run: |
           make cleanpackage && \
           make package-machbase-neo
-      - name: Release files
+      - name: Upload nightly build
         uses: svenstaro/upload-release-action@v2
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           repo_token: ${{ secrets.GIT_PASS }}
           file: packages/machbase-neo-*-v*.zip
           repo_name: machbase/neo-server
           prerelease: true
-          tag: ${{ github.ref }}
+          tag: nightly
           overwrite: true
           file_glob: true
+
