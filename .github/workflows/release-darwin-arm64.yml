@@ -1,4 +1,4 @@
-name: Release linux-amd64
+name: Release darwin-arm64
 
 on:
   push:
@@ -8,20 +8,11 @@ on:
 jobs:
   builds:
     runs-on: [ self-hosted, macOS, ARM64 ]
-    env:
-      GOPRIVATE: "github.com/machbase/*"
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Branch name
-        id: branch_name
-        run: |
-          echo "VER=`./scripts/buildversion.sh`" >> $GITHUB_OUTPUT
-          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:

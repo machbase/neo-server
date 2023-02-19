@@ -1,4 +1,4 @@
-name: CI darwin-arm64
+name: CI darwin-amd64
 
 on:
   push:
@@ -23,14 +23,11 @@ jobs:
         run: |
           make cleanpackage && \
           make package-machbase-neo
-      - name: Upload nightly build
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          repo_token: ${{ secrets.GIT_PASS }}
+          name: Packages
+          path: packages/machbase-neo-*-v*.zip
+          retention-days: 5
           file: packages/machbase-neo-*-v*.zip
-          repo_name: machbase/neo-server
-          prerelease: true
-          tag: nightly
-          overwrite: true
-          file_glob: true
 

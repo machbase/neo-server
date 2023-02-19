@@ -8,41 +8,25 @@ on:
 jobs:
   builds:
     runs-on: [ self-hosted, linux, X64, ubuntu18 ]
-    env:
-      GOPRIVATE: "github.com/machbase/*"
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Branch name
-        id: branch_name
-        run: |
-          echo "VER=`./scripts/buildversion.sh`" >> $GITHUB_OUTPUT
-          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
-          token: ${{ secrets.GIT_PASS }}
           go-version: '^1.19.6'
+      - name: Test
+        run: make test
       - name: Build
         run: |
-          make test && \
           make cleanpackage && \
           make package-machbase-neo
-      - name: Upload nightly build
-        uses: svenstaro/upload-release-action@v2
-        env:
-          SOURCE_NAME: ${{ steps.branch_name.outputs.SOURCE_NAME }}
-          SOURCE_BRANCH: ${{ steps.branch_name.outputs.SOURCE_BRANCH }}
-          SOURCE_TAG: ${{ steps.branch_name.outputs.SOURCE_TAG }}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          repo_token: ${{ secrets.GIT_PASS }}
+          name: Packages
+          path: packages/machbase-neo-*-v*.zip
+          retention-days: 5
           file: packages/machbase-neo-*-v*.zip
-          repo_name: machbase/neo-server
-          prerelease: true
-          tag: nightly
-          overwrite: true
-          file_glob: true
