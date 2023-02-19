@@ -32,7 +32,7 @@ ifeq ($(uname_s),Darwin)
 ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
 	go test $(ARGS) -tags=fog_edition ./test/
 endif
-ifeq ($(uname_m),i386)
+ifeq ($(uname_m),x86_64)
 	@go test $(ARGS) -tags=fog_edition ./test/
 endif
 endif
@@ -68,7 +68,7 @@ ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
 	./scripts/package.sh $*  darwin  arm64 $(nextver) edge && \
 	./scripts/package.sh $*  darwin  arm64 $(nextver) fog
 endif
-ifeq ($(uname_m),i386)
+ifeq ($(uname_m),x86_64)
 	./scripts/package.sh $*  darwin  amd64 $(nextver) edge && \
 	./scripts/package.sh $*  darwin  amd64 $(nextver) fog
 endif
