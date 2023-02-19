@@ -6,7 +6,7 @@
 
 ## Nightly Build Packages
 
-- [nightly builds](https://github.com/machbase/neo-server/releases)
+- [machbase-neo docs](https://neo.machbase.com/)
 
 ### Build dependency
 

@@ -29,5 +29,4 @@ jobs:
           name: Packages
           path: packages/machbase-neo-*-v*.zip
           retention-days: 5
-          file: packages/machbase-neo-*-v*.zip
 
