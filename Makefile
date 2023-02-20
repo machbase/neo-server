@@ -17,28 +17,30 @@ tmpdir:
 	@mkdir -p tmp
 
 test: tmpdir
+	@go test $(ARGS) \
+		./mods/server \
+		./test
+
+test-all:
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm64))
-	@go test $(ARGS) -tags=fog_edition ./test/
+	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test
 endif
 ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
-	@go test $(ARGS) -tags=edge_edition ./test/
+	make -f Makefile ARGS="-cover -v -count 1 -tags=edge_edition" test
 endif
 ifeq ($(uname_m),x86_64)
-	@go test $(ARGS) -tags=fog_edition ./test/
+	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test
 endif
 endif
 ifeq ($(uname_s),Darwin)
 ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
-	go test $(ARGS) -tags=fog_edition ./test/
+	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test
 endif
 ifeq ($(uname_m),x86_64)
-	@go test $(ARGS) -tags=fog_edition ./test/
+	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test
 endif
 endif
-
-test-all:
-	@make -f Makefile ARGS="-cover -v -count 1" test
 
 package:
 	@make -f Makefile package-machbase-neo

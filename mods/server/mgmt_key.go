@@ -3,16 +3,20 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha512"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -156,28 +160,26 @@ type GenCertReq struct {
 /*
 generateClientKey returns certificate, privatekey, token and error
 */
-func generateClientKey(req *GenCertReq) ([]byte, []byte, []byte, error) {
+func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "failed to generate serial number")
+		return nil, nil, "", errors.Wrap(err, "failed to generate serial number")
 	}
 
 	reader := rand.Reader
 
 	var clientKey any
 	var clientPub any
-	var clientToken []byte
 	switch req.Type {
 	case "rsa":
 		bitSize := 4096
 		key, err := rsa.GenerateKey(reader, bitSize)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, "", err
 		}
-		clientToken, err = rsa.EncryptOAEP(sha512.New(), rand.Reader, &key.PublicKey, []byte(req.Name.CommonName), nil)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, "", err
 		}
 		clientKey = key
 		clientPub = &key.PublicKey
@@ -185,19 +187,18 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, []byte, error) {
 		ec := NewEllipticCurveP521()
 		pri, pub, err := ec.GenerateKeys()
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, "", err
 		}
-		clientToken, err = ecdsa.SignASN1(rand.Reader, pri, []byte(req.Name.CommonName))
-		// How to verify token
-		// verified := ecdsa.VerifyASN1(pub, []byte(req.Name.CommonName), clientToken)
-		// fmt.Println("VERIFY", verified)
 		clientKey = pri
 		clientPub = pub
 	default:
-		return nil, nil, nil, errors.New("unsupported key type")
+		return nil, nil, "", errors.New("unsupported key type")
 	}
 
-	token := base64.StdEncoding.EncodeToString(clientToken)
+	token, err := GenerateClientToken(req.CommonName, clientKey, "b")
+	if err != nil {
+		return nil, nil, "", err
+	}
 
 	template := &x509.Certificate{
 		IsCA:                  false,
@@ -212,11 +213,11 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, []byte, error) {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, req.Issuer, clientPub, req.IssuerKey)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, "", err
 	}
 	certBuf := bytes.NewBuffer(nil)
 	if err := pem.Encode(certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, "", err
 	}
 
 	var keyBytes []byte
@@ -225,7 +226,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, []byte, error) {
 		if _, ok := clientKey.(*rsa.PrivateKey); ok {
 			keyBytes = x509.MarshalPKCS1PrivateKey(clientKey.(*rsa.PrivateKey))
 		} else {
-			return nil, nil, nil, fmt.Errorf("%s key type can not encoded into pkcs1 format", req.Type)
+			return nil, nil, "", fmt.Errorf("%s key type can not encoded into pkcs1 format", req.Type)
 		}
 	default:
 		keyBytes, _ = x509.MarshalPKCS8PrivateKey(clientKey)
@@ -233,10 +234,10 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, []byte, error) {
 	keyBuf := bytes.NewBuffer(nil)
 	header := fmt.Sprintf("%s PRIVATE KEY", strings.ToUpper(req.Type))
 	if err := pem.Encode(keyBuf, &pem.Block{Type: header, Bytes: keyBytes}); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, "", err
 	}
 
-	return certBuf.Bytes(), keyBuf.Bytes(), []byte(token), nil
+	return certBuf.Bytes(), keyBuf.Bytes(), token, nil
 }
 
 func hashCertificate(cert *x509.Certificate) (string, error) {
@@ -247,4 +248,37 @@ func hashCertificate(cert *x509.Certificate) (string, error) {
 	sha := sha3.New256()
 	sha.Write([]byte(b64str))
 	return hex.EncodeToString(sha.Sum(nil)), nil
+}
+
+func GenerateClientToken(clientId string, priKey crypto.PrivateKey, method string) (token string, err error) {
+	var secret []byte
+	switch key := priKey.(type) {
+	case *rsa.PrivateKey:
+		secret = x509.MarshalPKCS1PrivateKey(key)
+	case *ecdsa.PrivateKey:
+		secret = elliptic.Marshal(key.Curve, key.X, key.Y)
+	default:
+		return "", fmt.Errorf("unsupported algorithm '%T'", key)
+	}
+	if method != "b" {
+		return "", fmt.Errorf("unsupported method '%s'", method)
+	}
+	hash := hmac.New(sha256.New, secret)
+	io.WriteString(hash, clientId)
+	token = fmt.Sprintf("%s:%s:%s", clientId, method, hex.EncodeToString(hash.Sum(nil)))
+	return
+}
+
+func VerifyClientToken(token string, priKey crypto.PrivateKey) (bool, error) {
+	parts := strings.SplitN(token, ":", 3)
+	if len(parts) != 3 {
+		return false, errors.New("invalid token format")
+	}
+	clientId := parts[0]
+	method := parts[1]
+	verify, err := GenerateClientToken(clientId, priKey, method)
+	if err != nil {
+		return false, err
+	}
+	return token == verify, nil
 }
