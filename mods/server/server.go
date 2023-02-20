@@ -347,7 +347,10 @@ func (s *svr) Start() error {
 			return errors.Wrap(err, "http handler")
 		}
 		if s.conf.Http.EnableTokenAuth {
+			s.log.Infof("HTTP token authentication enabled")
 			machHttpSvr.SetAuthServer(s)
+		} else {
+			s.log.Infof("HTTP token authentication disabled")
 		}
 
 		gin.SetMode(gin.ReleaseMode)
