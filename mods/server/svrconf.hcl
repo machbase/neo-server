@@ -21,6 +21,8 @@ define VARS {
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
     MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
+
+    HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
 }
 
 module "machbase.com/neo-logging" {
@@ -65,6 +67,7 @@ module "machbase.com/neo-server" {
                 { Prefix: "/db",      Handler: "machbase" },
                 { Prefix: "/metrics", Handler: "influx" },
             ]
+            EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
         }
         Mqtt = {
             Listeners        = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}"]

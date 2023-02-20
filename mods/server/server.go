@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
 	"crypto/rand"
@@ -112,6 +113,8 @@ type GrpcConfig struct {
 type HttpConfig struct {
 	Listeners []string
 	Handlers  []httpsvr.HandlerConfig
+
+	EnableTokenAuth bool
 }
 
 type Server interface {
@@ -133,6 +136,8 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
+
+	cachedServerPrivateKey crypto.PrivateKey
 
 	authorizedSshKeysLock sync.RWMutex
 }
@@ -340,6 +345,12 @@ func (s *svr) Start() error {
 		machHttpSvr, err := httpsvr.New(s.db, &httpsvr.Config{Handlers: s.conf.Http.Handlers})
 		if err != nil {
 			return errors.Wrap(err, "http handler")
+		}
+		if s.conf.Http.EnableTokenAuth {
+			s.log.Infof("HTTP token authentication enabled")
+			machHttpSvr.SetAuthServer(s)
+		} else {
+			s.log.Infof("HTTP token authentication disabled")
 		}
 
 		gin.SetMode(gin.ReleaseMode)
@@ -672,7 +683,11 @@ func (s *svr) ServerPublicKey() (any, error) {
 	}
 }
 
-func (s *svr) ServerPrivateKey() (any, error) {
+func (s *svr) ServerPrivateKey() (crypto.PrivateKey, error) {
+	if s.cachedServerPrivateKey != nil {
+		return s.cachedServerPrivateKey, nil
+	}
+
 	buff, err := os.ReadFile(s.ServerPrivateKeyPath())
 	if err != nil {
 		return nil, err
@@ -682,6 +697,9 @@ func (s *svr) ServerPrivateKey() (any, error) {
 	priKey, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
+	}
+	if priKey != nil {
+		s.cachedServerPrivateKey = priKey
 	}
 	return priKey, nil
 }
@@ -825,4 +843,14 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
 		}
 	}
 	return false
+}
+
+// ////////////////////////////////
+// implements neo-shell/server/httpsvr/AuthServer interface
+func (s *svr) ValidateClientToken(token string) (bool, error) {
+	priKey, err := s.ServerPrivateKey()
+	if err != nil {
+		return false, err
+	}
+	return VerifyClientToken(token, priKey)
 }
