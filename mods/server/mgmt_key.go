@@ -112,7 +112,7 @@ func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKey
 		Type:      req.Type,
 		Format:    "pkcs8",
 	}
-	cert, key, token, err := generateClientKey(&gen)
+	cert, key, token, err := generateClientKey(&gen, caKey)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -160,7 +160,7 @@ type GenCertReq struct {
 /*
 generateClientKey returns certificate, privatekey, token and error
 */
-func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
+func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte, []byte, string, error) {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
@@ -250,9 +250,9 @@ func hashCertificate(cert *x509.Certificate) (string, error) {
 	return hex.EncodeToString(sha.Sum(nil)), nil
 }
 
-func GenerateClientToken(clientId string, priKey crypto.PrivateKey, method string) (token string, err error) {
+func GenerateClientToken2(clientId string, clientPriKey crypto.PrivateKey, serverPriKey crypto.PrivateKey, method string) (token string, err error) {
 	var secret []byte
-	switch key := priKey.(type) {
+	switch key := clientPriKey.(type) {
 	case *rsa.PrivateKey:
 		secret = x509.MarshalPKCS1PrivateKey(key)
 	case *ecdsa.PrivateKey:
@@ -269,16 +269,62 @@ func GenerateClientToken(clientId string, priKey crypto.PrivateKey, method strin
 	return
 }
 
-func VerifyClientToken(token string, priKey crypto.PrivateKey) (bool, error) {
+func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
+	var signature []byte
+	hash := sha256.New()
+	hash.Write([]byte(clientId))
+	hashsum := hash.Sum(nil)
+	switch key := clientPriKey.(type) {
+	case *rsa.PrivateKey:
+		signature, err = rsa.SignPSS(rand.Reader, key, crypto.SHA256, hashsum, nil)
+		if err != nil {
+			return "", err
+		}
+	case *ecdsa.PrivateKey:
+		signature, err = ecdsa.SignASN1(rand.Reader, key, hashsum)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("unsupported algorithm '%T'", key)
+	}
+	if method != "b" {
+		return "", fmt.Errorf("unsupported method '%s'", method)
+	}
+	token = fmt.Sprintf("%s:%s:%s", clientId, method, hex.EncodeToString(signature))
+	return
+}
+
+func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) != 3 {
 		return false, errors.New("invalid token format")
 	}
-	clientId := parts[0]
-	method := parts[1]
-	verify, err := GenerateClientToken(clientId, priKey, method)
+
+	if parts[1] != "b" {
+		return false, fmt.Errorf("unsupported method '%s'", parts[1])
+	}
+
+	signature, err := hex.DecodeString(parts[2])
 	if err != nil {
 		return false, err
 	}
-	return token == verify, nil
+
+	hash := sha256.New()
+	hash.Write([]byte(parts[0]))
+	hashsum := hash.Sum(nil)
+
+	switch key := clientPubKey.(type) {
+	case *rsa.PublicKey:
+		err = rsa.VerifyPSS(key, crypto.SHA256, hashsum, signature, nil)
+		if err != nil {
+			fmt.Printf("rsa <<< %s", err.Error())
+			return false, err
+		}
+		return err == nil, err
+	case *ecdsa.PublicKey:
+		return ecdsa.VerifyASN1(key, hashsum, signature), nil
+	default:
+		return false, fmt.Errorf("unsupproted algorithm '%T'", key)
+	}
 }
