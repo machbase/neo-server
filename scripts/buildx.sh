@@ -72,6 +72,9 @@ case $X_OS in
         elif [ $X_ARCH == "amd64" ]; then
             X_CC="zig cc -target x86_64-linux-gnu"
             X_CX="zig c++ -target x86_64-linux-gnu"
+        elif [ $X_ARCH == "arm" ]; then
+            X_CC="zig cc -target arm-linux-gnueabihf"
+            X_CX="zig cc -target arm-linux-gnueabihf"
         elif [ $X_ARCH == "386" ]; then
             X_CC="zig cc -target i386-linux-gnu"
             X_CX="zig c++ -target i386-linux-gnu"
