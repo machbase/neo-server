@@ -23,6 +23,8 @@ define VARS {
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
 
     HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
+    MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
+    MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 }
 
 module "machbase.com/neo-logging" {
@@ -75,6 +77,8 @@ module "machbase.com/neo-server" {
                 { Prefix: "db",       Handler: "machbase" },
                 { Prefix: "metrics",  Handler: "influx" },
             ]
+            EnableTokenAuth     = VARS_MQTT_ENABLE_TOKENAUTH
+            EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
         }
     }

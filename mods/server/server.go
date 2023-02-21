@@ -376,7 +376,24 @@ func (s *svr) Start() error {
 
 	// mqtt server
 	if len(s.conf.Mqtt.Listeners) > 0 {
+		if s.conf.Mqtt.EnableTls {
+			if len(s.conf.Mqtt.ServerCertPath) == 0 {
+				s.conf.Mqtt.ServerCertPath = s.ServerCertificatePath()
+			}
+			if len(s.conf.Mqtt.ServerKeyPath) == 0 {
+				s.conf.Mqtt.ServerKeyPath = s.ServerPrivateKeyPath()
+			}
+			s.log.Infof("MQTT TLS enabled")
+		}
+
 		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
+		if s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls {
+			s.log.Infof("MQTT token authentication enabled")
+			s.mqttd.SetAuthServer(s)
+		} else {
+			s.log.Infof("MQTT token authentication disabled")
+		}
+
 		err := s.mqttd.Start()
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
@@ -848,9 +865,13 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
 // ////////////////////////////////
 // implements neo-shell/server/httpsvr/AuthServer interface
 func (s *svr) ValidateClientToken(token string) (bool, error) {
-	priKey, err := s.ServerPrivateKey()
+	parts := strings.SplitN(token, ":", 3)
+	if len(parts) == 0 {
+		return false, errors.New("invalid token")
+	}
+	cliCert, err := s.AuthorizedCertificate(parts[0])
 	if err != nil {
 		return false, err
 	}
-	return VerifyClientToken(token, priKey)
+	return VerifyClientToken(token, cliCert.PublicKey)
 }
