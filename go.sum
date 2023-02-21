@@ -53,8 +53,6 @@ github.com/gofrs/uuid v4.4.0+incompatible/go.mod h1:b2aQJv3Z4Fp6yNu3cdSllBxTCLRx
 github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
 github.com/golang/protobuf v1.5.2 h1:ROPKBNFfQgOUMifHyP+KYbvpjbdoFNs+aK7DXlji0Tw=
 github.com/golang/protobuf v1.5.2/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
-github.com/golang/snappy v0.0.4 h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=
-github.com/golang/snappy v0.0.4/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
 github.com/google/go-cmp v0.5.2/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
@@ -95,10 +93,10 @@ github.com/machbase/neo-engine v0.9.0 h1:c9KYRQl9C9U3O0wq4WSO9VTtPew+1qfYFqEDYr1
 github.com/machbase/neo-engine v0.9.0/go.mod h1:HKGE+O8CG2tx63Ywgi0ZlaXFneiD4UyHnOGmKuw32Fw=
 github.com/machbase/neo-grpc v0.3.0 h1:0kzgdq0q6pGpHEC6AF1yC2cRZCt/eI9qFbUX+dzZhR8=
 github.com/machbase/neo-grpc v0.3.0/go.mod h1:eoxDppp3zM/WJo+JaQHbhnK4wxQpAUzHGswKJ93RdTM=
-github.com/machbase/neo-logging v1.0.1 h1:yY7IXsHz5/xnPn+EVS1DjZlinnQLKFFUNGivUm2TyOE=
-github.com/machbase/neo-logging v1.0.1/go.mod h1:Yzuw+yZ00TADBxsZg1u21weHx+/OtmyoAdApM1TG0tU=
-github.com/machbase/neo-shell v0.4.0 h1:FzVoYNx1C/y1pSWqPNJ+eoEfMMGtUyqsqFLP+oTFdvA=
-github.com/machbase/neo-shell v0.4.0/go.mod h1:Tl2qYeMv+JgO1V53S1uAkvJXPpimXIW7us8VtanJzRM=
+github.com/machbase/neo-logging v1.0.2-0.20230221030912-07ffc34d6654 h1:4zp7aWeuxEpSQoOy/bn0rOMOmxMtJyQi90Jl2NIsCEw=
+github.com/machbase/neo-logging v1.0.2-0.20230221030912-07ffc34d6654/go.mod h1:nTFq15RH/k1z6UZRoJTV7ZBtXnDzKBvItccKOvKqZds=
+github.com/machbase/neo-shell v0.4.1-0.20230221031135-6c6fb6d7e516 h1:MBcbpHGagNMHYJKecMihR4uPw0xL4q6w0S1zxTpm02s=
+github.com/machbase/neo-shell v0.4.1-0.20230221031135-6c6fb6d7e516/go.mod h1:FAoB3gSHLBowwX+9cA8XSDElVOaStIiA1AXPhVnMLPo=
 github.com/machbase/neo-spi v1.0.0 h1:oXIPmdvB+7wy1Gtsme1Fq0UFcm+GmDQspRsBYLY7mm0=
 github.com/machbase/neo-spi v1.0.0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=

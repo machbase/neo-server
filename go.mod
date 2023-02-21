@@ -11,8 +11,8 @@ require (
 	github.com/machbase/booter v1.1.0
 	github.com/machbase/neo-engine v0.9.0
 	github.com/machbase/neo-grpc v0.3.0
-	github.com/machbase/neo-logging v1.0.1
-	github.com/machbase/neo-shell v0.4.0
+	github.com/machbase/neo-logging v1.0.2-0.20230221030912-07ffc34d6654
+	github.com/machbase/neo-shell v0.4.1-0.20230221031135-6c6fb6d7e516
 	github.com/machbase/neo-spi v1.0.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -38,7 +38,6 @@ require (
 	github.com/go-playground/validator/v10 v10.11.2 // indirect
 	github.com/goccy/go-json v0.10.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.16.1 // indirect
 	github.com/influxdata/line-protocol/v2 v2.2.1 // indirect
