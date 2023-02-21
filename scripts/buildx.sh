@@ -52,14 +52,24 @@ VERSION=`$PRJROOT/scripts/buildversion.sh`
 
 echo "    set version $VERSION"
 
-# Hardcode some values to the core package.
-if [ -f ".git" ]; then
-	GITSHA=$(git rev-parse --short `git branch --show-current`)
+BRANCH=$(git branch --show-current)
+if [ -z $BRANCH ]; then
+    BRANCH="HEAD"
 fi
+echo "    set branch $BRANCH"
 
+if [ -d ".git" ]; then
+	GITSHA=$(git rev-parse --short $BRANCH)
+else
+    if [ -f ".git" ]; then
+    	GITSHA=$(git rev-parse --short $BRANCH)
+    else
+        GITSHA="-"
+    fi
+fi
 echo "    set gitsha $GITSHA"
 
-echo "Build $MODNAME $EDITION $VERSION $GITSHA"
+echo "Build $MODNAME $1 $EDITION $VERSION $GITSHA"
 
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
