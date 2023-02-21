@@ -23,6 +23,8 @@ jobs:
         run: |
           make cleanpackage && \
           make package-machbase-neo
+      - name: Build arm32 package
+        run: make arm32package-machbase-neo
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:

@@ -11,6 +11,13 @@ if [ "$(which go)" == "" ]; then
 	exit 1
 fi
 
+# Check the zig toolchain installation
+if [ "$(which zig)" == "" ]; then
+	echo "error: Zig is not installed. Please download and follow installation"\
+		 "instructions at https://ziglang.org/ to continue."
+	exit 1
+fi
+
 MODNAME=`cat $PRJROOT/go.mod | grep "^module " | awk '{print $2}'`
 
 echo "    set mod $MODNAME"

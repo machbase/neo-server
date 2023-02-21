@@ -33,7 +33,11 @@ esac
 for BIN in $BINS; do
     echo "    make $BIN $VERSION $EDITION"
     # Make the binaries.
-    GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION make $BIN
+    if [ "$GOARCH" == "arm" ]; then
+        GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION ./scripts/buildx.sh $PKGNAME $EDITION $GOOS $GOARCH
+    else
+        GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION make $BIN
+    fi
     # Copy the executable binaries.
     if [ "$GOOS" == "windows" ]; then
         mv tmp/$BIN packages/$bdir/$BIN.exe

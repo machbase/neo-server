@@ -1,4 +1,4 @@
-.PHONY: all test test-base test-all package package-all
+.PHONY: all test test-base test-all package package-all arm32package-machbase-neo
 
 targets := $(shell ls main)
 uname_s := $(shell uname -s)
@@ -52,6 +52,10 @@ package-all:
 	@for tg in $(targets) ; do \
 		make package-$$tg; \
 	done
+
+arm32package-machbase-neo:
+	@echo "package arm 32bit linux"
+	./scripts/package.sh machbase-neo linux arm $(nextver) edge
 
 package-%:
 	@echo "package" $(uname_s) $(uname_m)
