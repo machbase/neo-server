@@ -34,6 +34,7 @@ import (
 	"github.com/machbase/neo-shell/server/httpsvr"
 	"github.com/machbase/neo-shell/server/mqttsvr"
 	"github.com/machbase/neo-shell/server/rpcsvr"
+	"github.com/machbase/neo-shell/server/security"
 	"github.com/machbase/neo-shell/server/sshsvr"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -383,9 +384,10 @@ func (s *svr) Start() error {
 		}
 
 		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
+		s.mqttd.SetAuthServer(s)
+
 		if s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls {
 			s.log.Infof("MQTT token authentication enabled")
-			s.mqttd.SetAuthServer(s)
 		} else {
 			s.log.Infof("MQTT token authentication disabled")
 		}
@@ -849,4 +851,21 @@ func (s *svr) ValidateClientToken(token string) (bool, error) {
 		return false, err
 	}
 	return VerifyClientToken(token, cliCert.PublicKey)
+}
+
+func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
+	cert, err := s.AuthorizedCertificate(clientId)
+	if err != nil {
+		if err == os.ErrNotExist {
+			return false, fmt.Errorf("client-id %s not found", clientId)
+		} else {
+			return false, err
+		}
+	}
+
+	hash, err := security.HashCertificate(cert)
+	if err != nil {
+		return false, err
+	}
+	return hash == certHash, nil
 }

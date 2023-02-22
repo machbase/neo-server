@@ -10,9 +10,9 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.1.0
 	github.com/machbase/neo-engine v0.9.0
-	github.com/machbase/neo-grpc v0.3.0
+	github.com/machbase/neo-grpc v0.4.0
 	github.com/machbase/neo-logging v1.0.2-0.20230221030912-07ffc34d6654
-	github.com/machbase/neo-shell v0.4.1-0.20230221031135-6c6fb6d7e516
+	github.com/machbase/neo-shell v0.4.1-0.20230222014812-1037b718b8ca
 	github.com/machbase/neo-spi v1.0.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1

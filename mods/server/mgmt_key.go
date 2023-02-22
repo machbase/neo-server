@@ -5,15 +5,12 @@ import (
 	"context"
 	"crypto"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -145,6 +142,24 @@ func (s *svr) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.DelKey
 	return rsp, nil
 }
 
+func (s *svr) ServerKey(ctx context.Context, req *mgmt.ServerKeyRequest) (*mgmt.ServerKeyResponse, error) {
+	tick := time.Now()
+	rsp := &mgmt.ServerKeyResponse{Reason: "unspecified"}
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	path := s.ServerCertificatePath()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Certificate = string(b)
+	}
+	return rsp, nil
+}
+
 type GenCertReq struct {
 	pkix.Name
 	NotBefore time.Time
@@ -155,9 +170,7 @@ type GenCertReq struct {
 	Format    string // pkcs1, pkcs8
 }
 
-/*
-generateClientKey returns certificate, privatekey, token and error
-*/
+// generateClientKey returns certificate, privatekey, token and error
 func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte, []byte, string, error) {
 	var clientKey any
 	var clientPub any
@@ -223,25 +236,6 @@ func hashCertificate(cert *x509.Certificate) (string, error) {
 	sha := sha3.New256()
 	sha.Write([]byte(b64str))
 	return hex.EncodeToString(sha.Sum(nil)), nil
-}
-
-func GenerateClientToken2(clientId string, clientPriKey crypto.PrivateKey, serverPriKey crypto.PrivateKey, method string) (token string, err error) {
-	var secret []byte
-	switch key := clientPriKey.(type) {
-	case *rsa.PrivateKey:
-		secret = x509.MarshalPKCS1PrivateKey(key)
-	case *ecdsa.PrivateKey:
-		secret = elliptic.Marshal(key.Curve, key.X, key.Y)
-	default:
-		return "", fmt.Errorf("unsupported algorithm '%T'", key)
-	}
-	if method != "b" {
-		return "", fmt.Errorf("unsupported method '%s'", method)
-	}
-	hash := hmac.New(sha256.New, secret)
-	io.WriteString(hash, clientId)
-	token = fmt.Sprintf("%s:%s:%s", clientId, method, hex.EncodeToString(hash.Sum(nil)))
-	return
 }
 
 func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
