@@ -2,21 +2,17 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -38,6 +34,7 @@ import (
 	"github.com/machbase/neo-shell/server/httpsvr"
 	"github.com/machbase/neo-shell/server/mqttsvr"
 	"github.com/machbase/neo-shell/server/rpcsvr"
+	"github.com/machbase/neo-shell/server/security"
 	"github.com/machbase/neo-shell/server/sshsvr"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -376,7 +373,25 @@ func (s *svr) Start() error {
 
 	// mqtt server
 	if len(s.conf.Mqtt.Listeners) > 0 {
+		if s.conf.Mqtt.EnableTls {
+			if len(s.conf.Mqtt.ServerCertPath) == 0 {
+				s.conf.Mqtt.ServerCertPath = s.ServerCertificatePath()
+			}
+			if len(s.conf.Mqtt.ServerKeyPath) == 0 {
+				s.conf.Mqtt.ServerKeyPath = s.ServerPrivateKeyPath()
+			}
+			s.log.Infof("MQTT TLS enabled")
+		}
+
 		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
+		s.mqttd.SetAuthServer(s)
+
+		if s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls {
+			s.log.Infof("MQTT token authentication enabled")
+		} else {
+			s.log.Infof("MQTT token authentication disabled")
+		}
+
 		err := s.mqttd.Start()
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
@@ -741,40 +756,19 @@ func (s *svr) mkKeysIfNotExists() error {
 		return errors.Wrap(err, "public key encoder")
 	}
 
+	certBytes, err := GenerateServerCertificate(pri, pub)
+	if err != nil {
+		return errors.Wrap(err, "certificate encoder")
+	}
+
 	if err := os.WriteFile(priPath, []byte(priPem), 0600); err != nil {
 		return errors.Wrap(err, "private key writer")
 	}
 	if err := os.WriteFile(pubPath, []byte(pubPem), 0644); err != nil {
 		return errors.Wrap(err, "public key writer")
 	}
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate serial number")
-	}
-
-	ca := &x509.Certificate{
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: "machbase-neo"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(10 * time.Hour * 24 * 365),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, pri)
-	if err != nil {
-		return err
-	}
-	certBuf := bytes.NewBuffer(nil)
-	if err := pem.Encode(certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return err
-	}
-	if err := os.WriteFile(certPath, certBuf.Bytes(), 0644); err != nil {
-		return err
+	if err := os.WriteFile(certPath, certBytes, 0644); err != nil {
+		return errors.Wrap(err, "certificate writer")
 	}
 
 	return nil
@@ -848,9 +842,30 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
 // ////////////////////////////////
 // implements neo-shell/server/httpsvr/AuthServer interface
 func (s *svr) ValidateClientToken(token string) (bool, error) {
-	priKey, err := s.ServerPrivateKey()
+	parts := strings.SplitN(token, ":", 3)
+	if len(parts) == 0 {
+		return false, errors.New("invalid token")
+	}
+	cliCert, err := s.AuthorizedCertificate(parts[0])
 	if err != nil {
 		return false, err
 	}
-	return VerifyClientToken(token, priKey)
+	return VerifyClientToken(token, cliCert.PublicKey)
+}
+
+func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
+	cert, err := s.AuthorizedCertificate(clientId)
+	if err != nil {
+		if err == os.ErrNotExist {
+			return false, fmt.Errorf("client-id %s not found", clientId)
+		} else {
+			return false, err
+		}
+	}
+
+	hash, err := security.HashCertificate(cert)
+	if err != nil {
+		return false, err
+	}
+	return hash == certHash, nil
 }

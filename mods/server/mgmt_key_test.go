@@ -10,7 +10,7 @@ import (
 )
 
 func TestClientTokenRSA(t *testing.T) {
-	rc, err := rsa.GenerateKey(rand.Reader, 256)
+	rc, err := rsa.GenerateKey(rand.Reader, 512)
 	require.Nil(t, err)
 
 	token, err := server.GenerateClientToken("abcdefg", rc, "b")
@@ -18,12 +18,12 @@ func TestClientTokenRSA(t *testing.T) {
 	require.True(t, len(token) > 0)
 	t.Logf("Token: %s", token)
 
-	pass, err := server.VerifyClientToken(token, rc)
+	pass, err := server.VerifyClientToken(token, &rc.PublicKey)
 	require.Nil(t, err)
 	require.True(t, pass)
 
 	pass, err = server.VerifyClientToken(token+"wrong", rc)
-	require.Nil(t, err)
+	require.NotNil(t, err)
 	require.False(t, pass)
 }
 
@@ -39,11 +39,11 @@ func TestClientTokenECDSA(t *testing.T) {
 	require.True(t, len(token) > 0)
 	t.Logf("Token: %s", token)
 
-	pass, err := server.VerifyClientToken(token, pri)
+	pass, err := server.VerifyClientToken(token, &pri.PublicKey)
 	require.Nil(t, err)
 	require.True(t, pass)
 
 	pass, err = server.VerifyClientToken(token+"wrong", pri)
-	require.Nil(t, err)
+	require.NotNil(t, err)
 	require.False(t, pass)
 }
