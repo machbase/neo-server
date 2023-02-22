@@ -23,8 +23,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 
-	"math/big"
-
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/sha3"
@@ -161,20 +159,12 @@ type GenCertReq struct {
 generateClientKey returns certificate, privatekey, token and error
 */
 func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte, []byte, string, error) {
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return nil, nil, "", errors.Wrap(err, "failed to generate serial number")
-	}
-
-	reader := rand.Reader
-
 	var clientKey any
 	var clientPub any
 	switch req.Type {
 	case "rsa":
 		bitSize := 4096
-		key, err := rsa.GenerateKey(reader, bitSize)
+		key, err := rsa.GenerateKey(rand.Reader, bitSize)
 		if err != nil {
 			return nil, nil, "", err
 		}
@@ -200,24 +190,9 @@ func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte,
 		return nil, nil, "", err
 	}
 
-	template := &x509.Certificate{
-		IsCA:                  false,
-		BasicConstraintsValid: true,
-		SerialNumber:          serialNumber,
-		Subject:               req.Name,
-		NotBefore:             req.NotBefore,
-		NotAfter:              req.NotAfter,
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, template, req.Issuer, clientPub, req.IssuerKey)
+	certBytes, err := GenerateClientCertificate(req.Name, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
 	if err != nil {
-		return nil, nil, "", err
-	}
-	certBuf := bytes.NewBuffer(nil)
-	if err := pem.Encode(certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", errors.Wrap(err, "client certificate")
 	}
 
 	var keyBytes []byte
@@ -237,7 +212,7 @@ func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte,
 		return nil, nil, "", err
 	}
 
-	return certBuf.Bytes(), keyBuf.Bytes(), token, nil
+	return certBytes, keyBuf.Bytes(), token, nil
 }
 
 func hashCertificate(cert *x509.Certificate) (string, error) {

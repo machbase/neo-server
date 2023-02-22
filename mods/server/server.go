@@ -2,21 +2,17 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -758,40 +754,19 @@ func (s *svr) mkKeysIfNotExists() error {
 		return errors.Wrap(err, "public key encoder")
 	}
 
+	certBytes, err := GenerateServerCertificate(pri, pub)
+	if err != nil {
+		return errors.Wrap(err, "certificate encoder")
+	}
+
 	if err := os.WriteFile(priPath, []byte(priPem), 0600); err != nil {
 		return errors.Wrap(err, "private key writer")
 	}
 	if err := os.WriteFile(pubPath, []byte(pubPem), 0644); err != nil {
 		return errors.Wrap(err, "public key writer")
 	}
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate serial number")
-	}
-
-	ca := &x509.Certificate{
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: "machbase-neo"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(10 * time.Hour * 24 * 365),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, pri)
-	if err != nil {
-		return err
-	}
-	certBuf := bytes.NewBuffer(nil)
-	if err := pem.Encode(certBuf, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return err
-	}
-	if err := os.WriteFile(certPath, certBuf.Bytes(), 0644); err != nil {
-		return err
+	if err := os.WriteFile(certPath, certBytes, 0644); err != nil {
+		return errors.Wrap(err, "certificate writer")
 	}
 
 	return nil

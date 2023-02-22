@@ -1,14 +1,19 @@
 package server
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"io"
+	"math/big"
 	"reflect"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -122,4 +127,71 @@ func (ec *EllipticCurve) Test(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey
 		return errors.New("public keys do not match")
 	}
 	return nil
+}
+
+func GenerateServerCertificate(priKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey) ([]byte, error) {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		Subject: pkix.Name{
+			CommonName:         "machbase-neo",
+			OrganizationalUnit: []string{"R&D Center"},
+			Organization:       []string{"machbase.com"},
+			StreetAddress:      []string{"3003 N First St #206"},
+			PostalCode:         []string{"95134"},
+			Locality:           []string{"San Jose"},
+			Country:            []string{"CA"},
+		},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().AddDate(10, 0, 0),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, pubKey, priKey)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &bytes.Buffer{}
+	err = pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	if err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func GenerateClientCertificate(subject pkix.Name, notBefore time.Time, notAfter time.Time, ca *x509.Certificate, caKey crypto.PrivateKey, pubKey crypto.PublicKey) ([]byte, error) {
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		IsCA:                  false,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		Subject:               subject,
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, template, ca, pubKey, caKey)
+	if err != nil {
+		return nil, err
+	}
+	out := &bytes.Buffer{}
+	if err := pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
