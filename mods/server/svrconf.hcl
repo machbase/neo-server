@@ -6,11 +6,14 @@ define DEF {
     HTTP_PORT         = flag("--http-port", "5654")
     GRPC_PORT         = flag("--grpc-port", "5655")
     GRPC_SOCK         = flag("--grpc-sock", "${execDir()}/mach-grpc.sock")
+    MACH_PORT         = flag("--mach-port", "5656")
 }
 
 define VARS {
     PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
+    MACH_LISTEN_HOST  = flag("--mach-listen-host", DEF_LISTEN_HOST)
+    MACH_LISTEN_PORT  = flag("--mach-listen-port", DEF_MACH_PORT)
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
     SHELL_LISTEN_PORT = flag("--shell-listen-port", DEF_SHELL_PORT)
     GRPC_LISTEN_HOST  = flag("--grpc-listen-host", DEF_LISTEN_HOST)
@@ -49,7 +52,8 @@ module "machbase.com/neo-server" {
         DataDir          = VARS_DATA_DIR
         Machbase         = {
             HANDLE_LIMIT     = 2048
-            BIND_IP_ADDRESS  = DEF_LISTEN_HOST
+            PORT_NO          = VARS_MACH_LISTEN_PORT
+            BIND_IP_ADDRESS  = VARS_MACH_LISTEN_HOST
         }
         Shell = {
             Listeners        = [ "tcp://${VARS_SHELL_LISTEN_HOST}:${VARS_SHELL_LISTEN_PORT}" ]
