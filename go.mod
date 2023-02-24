@@ -11,9 +11,9 @@ require (
 	github.com/machbase/booter v1.1.0
 	github.com/machbase/neo-engine v0.9.0
 	github.com/machbase/neo-grpc v0.4.0
-	github.com/machbase/neo-logging v1.0.2-0.20230221030912-07ffc34d6654
-	github.com/machbase/neo-shell v0.4.1-0.20230222115348-e47bb735f9c6
-	github.com/machbase/neo-spi v1.0.1-0.20230222114145-b12306f6b6cc
+	github.com/machbase/neo-logging v1.0.2
+	github.com/machbase/neo-shell v0.5.0
+	github.com/machbase/neo-spi v1.0.1
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1

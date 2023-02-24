@@ -17,8 +17,8 @@ func main() {
 		doServe()
 	} else {
 		var cli struct {
-			Serve     ServeCmd       `cmd:"" help:"serve machbase-neo"`
-			Shell     shell.ShellCmd `cmd:"" help:"shell client"`
+			Serve     ServeCmd       `cmd:"" name:"serve" help:"serve machbase-neo"`
+			Shell     shell.ShellCmd `cmd:"" name:"shell" help:"neoshell client"`
 			GenConfig struct{}       `cmd:"" name:"gen-config" help:"show config template"`
 			Version   struct{}       `cmd:"" name:"version" help:"show version"`
 		}
