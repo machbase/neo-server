@@ -22,7 +22,7 @@ func main() {
 		GenConfig struct{}       `cmd:"" name:"gen-config" help:"show config template"`
 		Version   struct{}       `cmd:"" name:"version" help:"show version"`
 		Help      struct {
-			Command    string `arg:""`
+			Command    string `arg:"" optional:""`
 			SubCommand string `arg:"" optional:""`
 		} `cmd:"" name:"help"`
 	}
@@ -46,6 +46,9 @@ func main() {
 		return
 	case "version":
 		fmt.Println(server.GenBanner())
+		return
+	case "help":
+		doHelp("")
 		return
 	case "help <command>":
 		switch cli.Help.Command {

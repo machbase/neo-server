@@ -8,7 +8,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/machbase/booter v1.1.1-0.20230227054515-590f074242d4
+	github.com/machbase/booter v1.2.0
 	github.com/machbase/neo-engine v0.9.0
 	github.com/machbase/neo-grpc v0.4.0
 	github.com/machbase/neo-logging v1.0.2
