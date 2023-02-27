@@ -8,11 +8,11 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/machbase/booter v1.1.0
+	github.com/machbase/booter v1.1.1-0.20230227054515-590f074242d4
 	github.com/machbase/neo-engine v0.9.0
 	github.com/machbase/neo-grpc v0.4.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.5.0
+	github.com/machbase/neo-shell v0.5.1-0.20230227082247-5428eb628590
 	github.com/machbase/neo-spi v1.0.1
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -64,7 +64,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/ugorji/go/codec v1.2.9 // indirect
-	github.com/zclconf/go-cty v1.12.1 // indirect
+	github.com/zclconf/go-cty v1.13.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
