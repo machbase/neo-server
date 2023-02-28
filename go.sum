@@ -95,8 +95,8 @@ github.com/machbase/neo-grpc v0.4.0 h1:LAZzUFthhOLbtWZ8ogqZ2d7wUKShKLaVsqzyVNv9Z
 github.com/machbase/neo-grpc v0.4.0/go.mod h1:eoxDppp3zM/WJo+JaQHbhnK4wxQpAUzHGswKJ93RdTM=
 github.com/machbase/neo-logging v1.0.2 h1:UYEQaj3PMIMMSRDMWFzWpffE2wJxoreyh7S0cXy5ayI=
 github.com/machbase/neo-logging v1.0.2/go.mod h1:nTFq15RH/k1z6UZRoJTV7ZBtXnDzKBvItccKOvKqZds=
-github.com/machbase/neo-shell v0.5.1-0.20230227082247-5428eb628590 h1:0q3GWY4DeOg9O6lcwIt2fF3sQGHU1/tnw3zAaN/rhh4=
-github.com/machbase/neo-shell v0.5.1-0.20230227082247-5428eb628590/go.mod h1:jaN5rMNWh1CUEMrBMtRaPYkazRMSGM2+1HH3oqutSVo=
+github.com/machbase/neo-shell v0.6.0 h1:8AVevMzZpcWvgqZTH2Yqt+a8vvIiECu8TEkfoM+s/J4=
+github.com/machbase/neo-shell v0.6.0/go.mod h1:txNTBozFCNY9+ScDeTKqJz5hO7EoHuemszfs4MO/aUk=
 github.com/machbase/neo-spi v1.0.1 h1:zhz4wzTzoswlhFwE89yeGt5Pr3naLe7bVaMOmR6ge4U=
 github.com/machbase/neo-spi v1.0.1/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=

@@ -58,6 +58,8 @@ func main() {
 			doHelp("shell")
 		case "timeformat":
 			fmt.Printf("%s\n", client.HelpTimeFormat)
+		case "tz":
+			fmt.Printf("%s\n", client.HelpTz)
 		default:
 			doHelp("")
 		}
@@ -145,12 +147,17 @@ serve flags:
 	}
 
 	if showShellHelp {
-		fmt.Println(`
+		serverAddr := "tcp://127.0.0.1:5655"
+		if shellPref, err := client.LoadPref(); err == nil {
+			serverAddr = shellPref.Server().Value()
+		}
+		fmt.Printf(`
 shell flags:
-  -s, --server            server address (default tcp://127.0.0.1:5655)
-  -u, --user              machbase user (default sys)
+  -s, --server=<addr>     server address (default %s)
 
-shell sub-commands:`)
+shell sub-commands:
+`, serverAddr)
+
 		cmds := client.Commands()
 		for _, cmd := range cmds {
 			// fmt.Printf("  %-*s %s\n", 10, cmd.Name, cmd.Desc)
