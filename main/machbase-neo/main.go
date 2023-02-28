@@ -16,6 +16,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		doServe()
+		return
+	}
 	var cli struct {
 		Serve     ServeCmd       `cmd:"" name:"serve" help:"start machbase-neo server process"`
 		Shell     shell.ShellCmd `cmd:"" name:"shell" help:"run neoshell client"`
