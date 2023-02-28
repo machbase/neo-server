@@ -36,6 +36,7 @@ import (
 	"github.com/machbase/neo-shell/server/rpcsvr"
 	"github.com/machbase/neo-shell/server/security"
 	"github.com/machbase/neo-shell/server/sshsvr"
+	"github.com/machbase/neo-shell/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
@@ -146,7 +147,7 @@ func NewConfig() *Config {
 	}
 	conf := Config{
 		DataDir: ".",
-		PrefDir: filepath.Join(homeDir, ".config", ".machbase"),
+		PrefDir: filepath.Join(homeDir, ".config", "machbase"),
 		Grpc: GrpcConfig{
 			Listeners:      []string{"unix://./mach-grpc.sock"},
 			MaxRecvMsgSize: 4,
@@ -203,7 +204,7 @@ func (s *svr) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
-	if err := mkDirIfNotExists(filepath.Dir(prefpath)); err != nil {
+	if err := util.MkDirIfNotExists(filepath.Dir(prefpath)); err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
 	if err := mkDirIfNotExists(prefpath); err != nil {
