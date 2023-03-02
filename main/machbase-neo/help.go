@@ -8,6 +8,7 @@ import (
 
 	shell "github.com/machbase/neo-shell"
 	"github.com/machbase/neo-shell/client"
+	"github.com/machbase/neo-shell/util"
 )
 
 func doHelp(command string, subcommand string) error {
@@ -22,10 +23,12 @@ func doHelp(command string, subcommand string) error {
 		fmt.Println(os.Args[0] + " shell [flags] <sub-command> [args...]")
 		showServeHelp = false
 	case "timeformat":
-		fmt.Printf("%s\n", client.HelpTimeFormat)
+		fmt.Println("  timeformats:")
+		fmt.Printf("%s\n", util.HelpTimeformats())
 		return nil
 	case "tz":
-		fmt.Printf("%s\n", client.HelpTz)
+		fmt.Println("  timezones:")
+		fmt.Printf("%s\n", util.HelpTimeZones())
 		return nil
 	default:
 		fmt.Println(filepath.Base(os.Args[0]) + helpRootText)
@@ -44,9 +47,11 @@ func doHelp(command string, subcommand string) error {
 		if subcommand != "" {
 			fmt.Printf(helpShellText, serverAddr)
 			if subcommand == "timeformat" {
-				fmt.Printf("%s\n", client.HelpTimeFormat)
+				fmt.Println("  timeformats:")
+				fmt.Printf("%s\n", util.HelpTimeformats())
 			} else if subcommand == "tz" {
-				fmt.Printf("%s\n", client.HelpTz)
+				fmt.Println("  timezones:")
+				fmt.Printf("%s\n", util.HelpTimeZones())
 			} else {
 				targetCmd := client.FindCmd(subcommand)
 				if targetCmd == nil {
