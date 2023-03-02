@@ -4,7 +4,6 @@ go 1.19
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.0
-	github.com/alecthomas/kong v0.7.1
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
@@ -12,8 +11,8 @@ require (
 	github.com/machbase/neo-engine v0.9.0
 	github.com/machbase/neo-grpc v0.4.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.6.1-0.20230228073037-476f74e634e7
-	github.com/machbase/neo-spi v1.0.1
+	github.com/machbase/neo-shell v0.6.1-0.20230302014039-0f43b74d99ba
+	github.com/machbase/neo-spi v1.0.2-0.20230228075643-47ad1ca3ddae
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
@@ -24,6 +23,7 @@ require (
 
 require (
 	github.com/agext/levenshtein v1.2.3 // indirect
+	github.com/alecthomas/kong v0.7.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect

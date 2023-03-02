@@ -21,6 +21,7 @@ test:
 
 test-base: tmpdir
 	@go test $(ARGS) \
+		./main/machbase-neo \
 		./mods/server \
 		./test
 
