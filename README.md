@@ -11,7 +11,14 @@
 
 - [machbase-neo docs](https://neo.machbase.com/)
 
-### Build dependency
+## Build from sources
+
+- Install Go 1.19 or higher and `make`
+- Checkout machbase/neo-server
+- Run `make`
+- Find the executable binary `./tmp/machbase-neo`
+
+### Dependency
 
 ```mermaid
 flowchart LR
