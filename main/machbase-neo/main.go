@@ -19,6 +19,7 @@ func main() {
 			doHelp("", "")
 		}
 		fmt.Println("ERR", err.Error())
+		os.Exit(1)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
 		doServe()
