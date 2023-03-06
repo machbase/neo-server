@@ -95,10 +95,6 @@ func parseServe(cli *NeoCommand) (*NeoCommand, error) {
 func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 	for i := 0; i < len(cli.args); i++ {
 		s := cli.args[i]
-		if len(s) < 2 || s[0] != '-' {
-			cli.Shell.Args = append(cli.Shell.Args, s)
-			continue
-		}
 		if strings.HasPrefix(s, "--server=") {
 			cli.Shell.ServerAddr = s[9:]
 		} else if strings.HasPrefix(s, "-s=") {
@@ -106,6 +102,9 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 		} else if (s == "--server" || s == "-s") && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Shell.ServerAddr = cli.args[i+1]
 			i++
+		} else {
+			// other flags and args should be passed to neo-shell
+			cli.Shell.Args = append(cli.Shell.Args, s)
 		}
 	}
 	return cli, nil
