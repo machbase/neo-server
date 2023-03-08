@@ -11,7 +11,7 @@ require (
 	github.com/machbase/neo-engine v0.9.1-0.20230303073223-4c1844cbc75a
 	github.com/machbase/neo-grpc v0.4.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.7.0
+	github.com/machbase/neo-shell v0.7.1-0.20230308043038-41303fdf74f8
 	github.com/machbase/neo-spi v1.0.2
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
