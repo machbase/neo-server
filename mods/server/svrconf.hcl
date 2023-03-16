@@ -1,6 +1,7 @@
 
 define DEF {
     LISTEN_HOST       = flag("--host", "127.0.0.1")
+    WIRE_PORT         = flag("--wire-port", "5651")
     SHELL_PORT        = flag("--shell-port", "5652")
     MQTT_PORT         = flag("--mqtt-port", "5653")
     HTTP_PORT         = flag("--http-port", "5654")
@@ -24,6 +25,9 @@ define VARS {
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
     MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
+
+    WIRE_LISTEN_HOST  = flag("--wire-listen-host", DEF_LISTEN_HOST)
+    WIRE_LISTEN_PORT  = flag("--wire-listen-port", DEF_WIRE_PORT)
 
     HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
@@ -84,6 +88,9 @@ module "machbase.com/neo-server" {
             EnableTokenAuth     = VARS_MQTT_ENABLE_TOKENAUTH
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
+        }
+        Wire = {
+            Listeners        = [ "tcp://${VARS_WIRE_LISTEN_HOST}:${VARS_WIRE_LISTEN_PORT}" ]
         }
     }
 }

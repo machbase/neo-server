@@ -36,6 +36,7 @@ import (
 	"github.com/machbase/neo-shell/server/rpcsvr"
 	"github.com/machbase/neo-shell/server/security"
 	"github.com/machbase/neo-shell/server/sshsvr"
+	"github.com/machbase/neo-shell/server/wiresvr"
 	"github.com/machbase/neo-shell/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -94,6 +95,7 @@ type Config struct {
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           mqttsvr.Config
+	Wire           wiresvr.Config
 
 	NoBanner bool
 }
@@ -130,6 +132,7 @@ type svr struct {
 	httpd *http.Server
 	mqttd *mqttsvr.Server
 	shsvr *sshsvr.MachShell
+	pgsvr wiresvr.Server
 
 	certdir           string
 	authHandler       AuthHandler
@@ -410,10 +413,25 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// postresql wire protocol (experimental)
+	if len(s.conf.Wire.Listeners) > 0 {
+		s.conf.Wire.Development = true
+		s.pgsvr, err = wiresvr.New(s.db, &s.conf.Wire)
+		if err != nil {
+			return errors.Wrap(err, "pgwire server")
+		}
+		err = s.pgsvr.Start()
+		if err != nil {
+			return errors.Wrap(err, "pgwire server")
+		}
+	}
 	return nil
 }
 
 func (s *svr) Stop() {
+	if s.pgsvr != nil {
+		s.pgsvr.Stop()
+	}
 	if s.shsvr != nil {
 		s.shsvr.Stop()
 	}
