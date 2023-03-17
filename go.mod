@@ -11,7 +11,7 @@ require (
 	github.com/machbase/neo-engine v0.9.1
 	github.com/machbase/neo-grpc v0.5.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.8.0
+	github.com/machbase/neo-shell v0.8.1-0.20230317032903-31f5b982db0c
 	github.com/machbase/neo-spi v1.0.3
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -41,13 +41,15 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.16.1 // indirect
 	github.com/influxdata/line-protocol/v2 v2.2.1 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgtype v1.8.1 // indirect
 	github.com/jackc/pgx/v5 v5.3.1 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.4.4 // indirect
+	github.com/jeroenrinzema/psql-wire v0.5.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/lib/pq v1.10.7 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
@@ -68,6 +70,9 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/ugorji/go/codec v1.2.9 // indirect
 	github.com/zclconf/go-cty v1.13.0 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
