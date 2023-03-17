@@ -87,14 +87,14 @@ func TestMqttClient(t *testing.T) {
 			]
 		}
 	}`
-	wg.Add(1)
-	client.Publish("db/write/sample", 1, false, []byte(jsonStr))
-	wg.Wait()
+	result = client.Publish("db/write/sample", 1, false, []byte(jsonStr))
+	require.True(t, result.Wait())
 
 	//// insert with influx lineprotocol
 	// lineprotocol doesn't require reply message
 	// linestr := `sample.tag name="guage",value=3.003 1670380345000000`
-	client.Publish("metrics/sample", 1, false, []byte(lineProtocolData))
+	result = client.Publish("metrics/sample", 1, false, []byte(lineProtocolData))
+	require.True(t, result.Wait())
 
 	//// select
 	wg.Add(1)
