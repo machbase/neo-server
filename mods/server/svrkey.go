@@ -141,7 +141,7 @@ func GenerateServerCertificate(priKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey
 		BasicConstraintsValid: true,
 		SerialNumber:          serialNumber,
 		Subject: pkix.Name{
-			CommonName:         "machbase-neo",
+			CommonName:         "neo.machbase.com",
 			OrganizationalUnit: []string{"R&D Center"},
 			Organization:       []string{"machbase.com"},
 			StreetAddress:      []string{"3003 N First St #206"},

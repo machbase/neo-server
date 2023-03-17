@@ -1,16 +1,17 @@
 package server_test
 
 import (
-	"bytes"
-	"crypto/rand"
+	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"math/big"
+	"net"
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/mods/server"
 	. "github.com/machbase/neo-server/mods/server"
 	"github.com/stretchr/testify/require"
 )
@@ -36,42 +37,114 @@ func TestKeyGen(t *testing.T) {
 
 func TestCert(t *testing.T) {
 	ec := NewEllipticCurveP521()
-	pri, pub, err := ec.GenerateKeys()
+
+	// server key
+	svrPri, svrPub, err := ec.GenerateKeys()
 	require.Nil(t, err)
-	require.NotNil(t, pri)
-	require.NotNil(t, pub)
+	require.NotNil(t, svrPri)
+	require.NotNil(t, svrPub)
 
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	svrKeyPEMStr, err := ec.EncodePrivate(svrPri)
+	svrKeyPEM := []byte(svrKeyPEMStr)
+	require.Nil(t, err)
+	require.True(t, len(svrKeyPEM) > 0)
+
+	// server cert
+	svrCertPEM, err := server.GenerateServerCertificate(svrPri, svrPub)
+	require.Nil(t, err)
+	require.NotNil(t, svrCertPEM)
+
+	// re-parse server cert
+	block, _ := pem.Decode([]byte(svrCertPEM))
+	svrCert, err := x509.ParseCertificate(block.Bytes)
+	require.Nil(t, err)
+	require.NotNil(t, svrCert)
+
+	// client key
+	ec = NewEllipticCurveP521()
+	cliPri, cliPub, err := ec.GenerateKeys()
+	require.Nil(t, err)
+	require.NotNil(t, cliPri)
+	require.NotNil(t, cliPub)
+
+	cliKeyPEMStr, err := ec.EncodePrivate(cliPri)
+	cliKeyPEM := []byte(cliKeyPEMStr)
+	require.Nil(t, err)
+	require.True(t, len(cliKeyPEM) > 0)
+
+	// client cert
+	cliCertPEM, err := server.GenerateClientCertificate(pkix.Name{CommonName: "TheClient"}, time.Now(), time.Now().Add(time.Hour), svrCert, svrPri, cliPub)
+	require.Nil(t, err)
+	require.NotNil(t, cliCertPEM)
+
+	// configure server TLS
+	var rootCAs *x509.CertPool
+	rootCAs = x509.NewCertPool()
+	rootCAs.AppendCertsFromPEM(svrCertPEM)
+
+	svrKeyPair, err := tls.X509KeyPair(svrCertPEM, svrKeyPEM)
 	if err != nil {
-		panic(err)
+		t.Error(err)
+		return
+	}
+	svrTlsConf := &tls.Config{
+		Certificates: []tls.Certificate{svrKeyPair},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    rootCAs,
 	}
 
-	template := &x509.Certificate{
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		SerialNumber:          serialNumber,
-		Subject: pkix.Name{
-			CommonName:         "machbase-neo",
-			OrganizationalUnit: []string{"R&D Center"},
-			Organization:       []string{"machbase.com"},
-			StreetAddress:      []string{"3003 N First St #206"},
-			PostalCode:         []string{"95134"},
-			Locality:           []string{"San Jose"},
-			Country:            []string{"CA"},
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().AddDate(10, 0, 0),
-		KeyUsage:    x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	// test SSL
+	listener := newLocalListener(t, svrTlsConf)
+	defer listener.Close()
+
+	complete := make(chan bool)
+	defer close(complete)
+
+	go func() {
+		t.Log("server listening...", listener.Addr().String())
+		incomming, err := listener.Accept()
+		if err != nil {
+			t.Log(err.Error())
+			t.Error(err)
+			return
+		}
+		t.Log("server accepted")
+		conn, ok := incomming.(*tls.Conn)
+		require.True(t, ok)
+
+		err = conn.HandshakeContext(context.Background())
+		require.Nil(t, err)
+		t.Log("server-client handshake done")
+
+		<-complete
+		conn.Close()
+	}()
+
+	// configure client TLS
+	cliKeyPair, err := tls.X509KeyPair(cliCertPEM, cliKeyPEM)
+	cliTlsConf := &tls.Config{
+		Certificates:       []tls.Certificate{cliKeyPair},
+		RootCAs:            rootCAs,
+		InsecureSkipVerify: true,
 	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, template, template, pub, pri)
+	laddr := listener.Addr().(*net.TCPAddr)
+	hostport := fmt.Sprintf("%s:%d", laddr.IP.String(), laddr.Port)
+	t.Log("client dialing...", laddr.Network(), hostport)
+	conn, err := tls.Dial(laddr.Network(), hostport, cliTlsConf)
+	require.Nil(t, err)
+	require.NotNil(t, conn)
+	conn.Close()
+	t.Log("client done")
+	complete <- true
+}
+
+func newLocalListener(t *testing.T, tlsConf *tls.Config) net.Listener {
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsConf)
 	if err != nil {
-		panic(err)
+		ln, err = tls.Listen("tcp6", "[::1]:0", tlsConf)
 	}
-
-	out := &bytes.Buffer{}
-	pem.Encode(out, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
-	t.Log(out.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ln
 }
