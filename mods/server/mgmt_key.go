@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"fmt"
@@ -107,7 +106,7 @@ func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKey
 		Type:      req.Type,
 		Format:    "pkcs8",
 	}
-	cert, key, token, err := generateClientKey(&gen, caKey)
+	cert, key, token, err := generateClientKey(&gen)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -171,9 +170,11 @@ type GenCertReq struct {
 }
 
 // generateClientKey returns certificate, privatekey, token and error
-func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte, []byte, string, error) {
+func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	var clientKey any
 	var clientPub any
+	var clientKeyPEM []byte
+
 	switch req.Type {
 	case "rsa":
 		bitSize := 4096
@@ -186,6 +187,18 @@ func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte,
 		}
 		clientKey = key
 		clientPub = &key.PublicKey
+		var keyBytes []byte
+		switch req.Format {
+		case "pkcs1":
+			if _, ok := clientKey.(*rsa.PrivateKey); ok {
+				keyBytes = x509.MarshalPKCS1PrivateKey(clientKey.(*rsa.PrivateKey))
+			} else {
+				return nil, nil, "", fmt.Errorf("%s key type can not encoded into pkcs1 format", req.Type)
+			}
+		default:
+			keyBytes, _ = x509.MarshalPKCS8PrivateKey(clientKey)
+		}
+		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes})
 	case "ec", "ecdsa":
 		ec := NewEllipticCurveP521()
 		pri, pub, err := ec.GenerateKeys()
@@ -194,6 +207,11 @@ func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte,
 		}
 		clientKey = pri
 		clientPub = pub
+		marshal, err := x509.MarshalECPrivateKey(pri)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		clientKeyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: marshal})
 	default:
 		return nil, nil, "", errors.New("unsupported key type")
 	}
@@ -208,24 +226,7 @@ func generateClientKey(req *GenCertReq, serverPriKey crypto.PrivateKey) ([]byte,
 		return nil, nil, "", errors.Wrap(err, "client certificate")
 	}
 
-	var keyBytes []byte
-	switch req.Format {
-	case "pkcs1":
-		if _, ok := clientKey.(*rsa.PrivateKey); ok {
-			keyBytes = x509.MarshalPKCS1PrivateKey(clientKey.(*rsa.PrivateKey))
-		} else {
-			return nil, nil, "", fmt.Errorf("%s key type can not encoded into pkcs1 format", req.Type)
-		}
-	default:
-		keyBytes, _ = x509.MarshalPKCS8PrivateKey(clientKey)
-	}
-	keyBuf := bytes.NewBuffer(nil)
-	header := fmt.Sprintf("%s PRIVATE KEY", strings.ToUpper(req.Type))
-	if err := pem.Encode(keyBuf, &pem.Block{Type: header, Bytes: keyBytes}); err != nil {
-		return nil, nil, "", err
-	}
-
-	return certBytes, keyBuf.Bytes(), token, nil
+	return certBytes, clientKeyPEM, token, nil
 }
 
 func hashCertificate(cert *x509.Certificate) (string, error) {
