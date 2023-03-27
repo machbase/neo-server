@@ -71,6 +71,7 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
+                { Prefix: "/web",     Handler: "web" },
                 { Prefix: "/metrics", Handler: "influx" },
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
