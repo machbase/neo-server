@@ -8,11 +8,11 @@ require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/machbase/booter v1.2.1
-	github.com/machbase/neo-engine v0.9.2
-	github.com/machbase/neo-grpc v0.6.0
+	github.com/machbase/neo-engine v0.9.1
+	github.com/machbase/neo-grpc v0.5.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.9.0
-	github.com/machbase/neo-spi v1.1.0
+	github.com/machbase/neo-shell v0.8.1-0.20230317005815-93e8f4b278f7
+	github.com/machbase/neo-spi v1.0.3
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.1
