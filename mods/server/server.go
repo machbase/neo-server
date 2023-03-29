@@ -415,7 +415,6 @@ func (s *svr) Start() error {
 
 	// postresql wire protocol (experimental)
 	if len(s.conf.Wire.Listeners) > 0 {
-		s.conf.Wire.Development = true
 		s.pgsvr, err = wiresvr.New(s.db, &s.conf.Wire)
 		if err != nil {
 			return errors.Wrap(err, "pgwire server")
