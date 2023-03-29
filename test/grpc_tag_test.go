@@ -70,11 +70,12 @@ func TestGrpcTagTable(t *testing.T) {
 		}
 		require.Nil(t, err)
 
-		result = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
-		if result.Err() != nil {
-			panic(result.Err())
-		}
-		require.Nil(t, err)
+		//TODO remove comment when tag index is ready, MACH-ERR 2334 Tag Index is not yet supported.
+		// result = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
+		// if result.Err() != nil {
+		// 	panic(result.Err())
+		// }
+		// require.Nil(t, err)
 	}
 
 	idgen := uuid.NewGen()

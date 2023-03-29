@@ -125,10 +125,12 @@ func TestMain(m *testing.M) {
 		panic(result.Err())
 	}
 
-	result = db.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
-	if result.Err() != nil {
-		panic(result.Err())
-	}
+	//TODO remove comment when tag index is ready, MACH-ERR 2334 Tag Index is not yet supported.
+	// result = db.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
+	// if result.Err() != nil {
+	// 	panic(result.Err())
+	// }
+	//
 
 	row = db.QueryRow("select count(*) from " + benchmarkTableName)
 	err = row.Scan(&count)
