@@ -11,7 +11,7 @@ require (
 	github.com/machbase/neo-engine v0.9.2
 	github.com/machbase/neo-grpc v0.6.0
 	github.com/machbase/neo-logging v1.0.2
-	github.com/machbase/neo-shell v0.9.1-0.20230329043745-458e2ad91caa
+	github.com/machbase/neo-shell v0.9.1-0.20230329052750-895fd6d05553
 	github.com/machbase/neo-spi v1.1.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/pkg/errors v0.9.1
@@ -45,7 +45,7 @@ require (
 	github.com/jackc/pgtype v1.8.1 // indirect
 	github.com/jackc/pgx/v5 v5.3.1 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.4.4 // indirect
-	github.com/jeroenrinzema/psql-wire v0.5.2 // indirect
+	github.com/jeroenrinzema/psql-wire v0.5.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
