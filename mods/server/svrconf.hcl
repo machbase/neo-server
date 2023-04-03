@@ -28,6 +28,8 @@ define VARS {
     HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
+
+    HTTP_ENABLE_WEBUI     = flag("--http-enable-web", false)
 }
 
 module "machbase.com/neo-logging" {
@@ -71,7 +73,7 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
-                { Prefix: "/web",     Handler: "web" },
+                { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" :"-" },
                 { Prefix: "/metrics", Handler: "influx" },
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
