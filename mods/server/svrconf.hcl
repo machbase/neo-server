@@ -30,6 +30,8 @@ define VARS {
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", false)
+    
+    MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
 }
 
 module "machbase.com/neo-logging" {
@@ -88,5 +90,6 @@ module "machbase.com/neo-server" {
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
         }
+        EnableMachbaseSigHandler = VARS_MACHBASE_ENABLE_SIGHANDLER
     }
 }

@@ -96,6 +96,8 @@ type Config struct {
 	Mqtt           mqttsvr.Config
 
 	NoBanner bool
+
+	EnableMachbaseSigHandler bool
 }
 
 type AuthHandlerConfig struct {
@@ -248,7 +250,13 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase.conf")
 	}
 
-	if err := mach.Initialize(homepath); err != nil {
+	initOption := mach.OPT_SIGHANDLER_DISABLE // default, it is required to shutdown by SIGTERM
+	if s.conf.EnableMachbaseSigHandler {
+		// internal use only, for debuging call stack
+		initOption = mach.OPT_NONE
+	}
+	s.log.Infof("apply machbase init option: %d", initOption)
+	if err := mach.InitializeOption(homepath, initOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
