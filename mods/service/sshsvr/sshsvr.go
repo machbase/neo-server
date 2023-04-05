@@ -93,9 +93,12 @@ func (svr *MachShell) Start() error {
 		go func() {
 			err := s.ListenAndServe()
 			if err != nil {
-				svr.log.Warnf("machshell-listen %s", err.Error())
+				if !errors.Is(err, ssh.ErrServerClosed) {
+					svr.log.Warnf("machshell-listen %s", err.Error())
+				}
 			}
 		}()
+		svr.sshds = append(svr.sshds, s)
 		svr.log.Infof("SSHD Listen %s", listen)
 	}
 	return nil
