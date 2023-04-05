@@ -7,7 +7,7 @@ import (
 	"github.com/machbase/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/server"
-	shell "github.com/machbase/neo-shell"
+	"github.com/machbase/neo-server/mods/shell"
 )
 
 func main() {
