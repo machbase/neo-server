@@ -35,7 +35,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttsvr"
 	"github.com/machbase/neo-server/mods/service/rpcsvr"
 	"github.com/machbase/neo-server/mods/service/security"
-	"github.com/machbase/neo-server/mods/service/sshsvr"
+	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -90,7 +90,7 @@ type Config struct {
 	Machbase       MachbaseConfig
 	StartupQueries []string
 	AuthHandler    AuthHandlerConfig
-	Shell          sshsvr.Config
+	Shell          ShellConfig
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           mqttsvr.Config
@@ -117,6 +117,12 @@ type HttpConfig struct {
 	EnableTokenAuth bool
 }
 
+type ShellConfig struct {
+	Listeners     []string
+	IdleTimeout   time.Duration
+	ServerKeyPath string
+}
+
 type Server interface {
 	booter.Boot
 }
@@ -131,7 +137,7 @@ type svr struct {
 	mgmtd *grpc.Server
 	httpd *http.Server
 	mqttd *mqttsvr.Server
-	shsvr *sshsvr.MachShell
+	sshd  sshd.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -168,7 +174,7 @@ func NewConfig() *Config {
 			},
 			MaxMessageSizeLimit: 1024 * 1024,
 		},
-		Shell: sshsvr.Config{
+		Shell: ShellConfig{
 			Listeners:   []string{},
 			IdleTimeout: 2 * time.Minute,
 		},
@@ -409,11 +415,18 @@ func (s *svr) Start() error {
 
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
-		s.conf.Shell.ServerKeyPath = s.ServerPrivateKeyPath()
-		s.shsvr = sshsvr.New(s.db, &s.conf.Shell)
-		s.shsvr.SetGrpcAddresses(s.conf.Grpc.Listeners)
-		s.shsvr.SetAuthServer(s)
-		err := s.shsvr.Start()
+		s.sshd, err = sshd.New(s.db,
+			sshd.OptionListenAddress(s.conf.Shell.Listeners...),
+			sshd.OptionServerKeyPath(s.ServerPrivateKeyPath()),
+			sshd.OptionIdleTimeout(s.conf.Shell.IdleTimeout),
+			sshd.OptionAuthServer(s),
+			sshd.OptionGrpcServerAddress(s.conf.Grpc.Listeners...),
+			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+		)
+		if err != nil {
+			return errors.Wrap(err, "shell server")
+		}
+		err := s.sshd.Start()
 		if err != nil {
 			return errors.Wrap(err, "shell server")
 		}
@@ -423,8 +436,8 @@ func (s *svr) Start() error {
 }
 
 func (s *svr) Stop() {
-	if s.shsvr != nil {
-		s.shsvr.Stop()
+	if s.sshd != nil {
+		s.sshd.Stop()
 	}
 	if s.mqttd != nil {
 		s.mqttd.Stop()
