@@ -2,7 +2,6 @@ package httpsvr
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -47,7 +46,7 @@ func (svr *Server) handleAppender(ctx *gin.Context) {
 		return
 	}
 
-	log.Println("[Request] : ", req)
+	// log.Println("[Request] : ", req)
 
 	exists, err := do.ExistsTable(svr.db, tableName)
 	if err != nil {
