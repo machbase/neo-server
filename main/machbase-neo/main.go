@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/machbase/booter"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/server"
 	"github.com/machbase/neo-server/mods/shell"
@@ -44,7 +45,7 @@ func doServe() {
 	booter.SetConfiFileSuffix(".conf")
 	booter.SetFallbackConfig(server.DefaultFallbackConfig)
 	booter.SetFallbackPname(server.DefaultFallbackPname)
-	booter.SetVersionString(mods.VersionString() + " " + mods.EngineInfoString())
+	booter.SetVersionString(mods.VersionString() + " " + mach.LinkInfo())
 	booter.Startup()
 	booter.WaitSignal()
 	booter.ShutdownAndExit(0)

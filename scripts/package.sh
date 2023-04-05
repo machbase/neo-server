@@ -17,6 +17,12 @@ bdir=$PKGNAME-$EDITION-$VERSION-$GOOS-$GOARCH
 if [ "$GOARCH" == "arm" ]; then
     bdir="$PKGNAME-$EDITION-$VERSION-$GOOS-arm32"
 fi
+
+# neoshell does not have edition
+if [ "$PKGNAME" == "neoshell" ]; then
+    bdir="$PKGNAME-$VERSION-$GOOS-$GOARCH"
+fi
+
 echo "    prepare dir $bdir"
 rm -rf packages/$bdir && mkdir -p packages/$bdir
 
