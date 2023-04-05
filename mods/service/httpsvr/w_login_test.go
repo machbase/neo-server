@@ -100,6 +100,7 @@ func TestLoginRoute(t *testing.T) {
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("POST", "/web/api/relogin", b)
 	req.Header.Set("Content-type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginRsp.AccessToken)
 	router.ServeHTTP(w, req)
 	require.Equal(t, expectStatus, w.Code, w.Body.String())
 
@@ -122,6 +123,7 @@ func TestLoginRoute(t *testing.T) {
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("POST", "/web/api/logout", b)
 	req.Header.Set("Content-type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+reRsp.AccessToken)
 	router.ServeHTTP(w, req)
 	require.Equal(t, expectStatus, w.Code, w.Body.String())
 

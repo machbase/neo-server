@@ -49,17 +49,12 @@ echo "    set gitsha $GITSHA"
 
 echo "Build $MODNAME $1 $EDITION $VERSION $GITSHA"
 
-LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
-LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
-LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionGitSHA=${GITSHA}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.editionString=${EDITION}"
-
-# Set final Go environment options
-#LDFLAGS="$LDFLAGS -extldflags '-static'"
-
-export CGO_ENABLED=1
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
 
 if [ "$NOMODULES" != "1" ]; then
 	export GO111MODULE=on
@@ -69,5 +64,14 @@ if [ "$NOMODULES" != "1" ]; then
 fi
 
 # Build and store objects into original directory.
-go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1 && \
-echo "Build done."
+if [ "$1" == "neoshell" ]; then
+    export CGO_ENABLED=0
+    go build -ldflags "$LDFLAGS" -tags "neoshell" -o $PRJROOT/tmp/$1 ./main/$1 && \
+    echo "Build done."
+else
+    # Set final Go environment options
+    #LDFLAGS="$LDFLAGS -extldflags '-static'"
+    export CGO_ENABLED=1
+    go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1 && \
+    echo "Build done."
+fi

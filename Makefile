@@ -28,6 +28,7 @@ test-base: tmpdir
 		./mods/do \
 		./mods/service/security \
 		./mods/service/mqttsvr/mqtt \
+		./mods/service/httpsvr \
 		./mods/server \
 		./test
 
@@ -96,3 +97,22 @@ ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
 else
 	@./scripts/build.sh $@ $(nextver) fog
 endif
+
+release-%:
+	@echo "release" $*
+	./scripts/package.sh $* linux amd64 $(nextver)
+	./scripts/package.sh $* linux arm64 $(nextver)
+	./scripts/package.sh $* darwin arm64 $(nextver)
+	./scripts/package.sh $* darwin amd64 $(nextver)
+	./scripts/package.sh $* windows amd64 $(nextver)
+
+## Require https://github.com/matryer/moq
+regen-mock:
+	moq -out ./mods/util/mock/database.go -pkg mock ../neo-spi Database
+	moq -out ./mods/util/mock/server.go -pkg mock   ../neo-spi DatabaseServer
+	moq -out ./mods/util/mock/client.go -pkg mock   ../neo-spi DatabaseClient
+	moq -out ./mods/util/mock/auth.go -pkg mock     ../neo-spi DatabaseAuth
+	moq -out ./mods/util/mock/result.go -pkg mock   ../neo-spi Result
+	moq -out ./mods/util/mock/rows.go -pkg mock     ../neo-spi Rows
+	moq -out ./mods/util/mock/row.go -pkg mock      ../neo-spi Row
+	moq -out ./mods/util/mock/appender.go -pkg mock ../neo-spi Appender

@@ -103,7 +103,7 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 			cli.Shell.ServerAddr = cli.args[i+1]
 			i++
 		} else {
-			// other flags and args should be passed to neo-shell
+			// other flags and args should be passed to neoshell
 			cli.Shell.Args = append(cli.Shell.Args, s)
 		}
 	}

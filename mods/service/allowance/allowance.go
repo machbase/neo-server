@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/util/glob"
 )
 

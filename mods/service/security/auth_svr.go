@@ -8,6 +8,7 @@ import (
 type AuthServer interface {
 	ValidateClientToken(token string) (bool, error)
 	ValidateClientCertificate(clientId string, certHash string) (bool, error)
+	ValidateSshPublicKey(keyType string, key string) (bool, error)
 }
 
 type JwtCacheValue struct {
