@@ -10,7 +10,7 @@ import (
 	"github.com/jeroenrinzema/psql-wire/codes"
 	pgerr "github.com/jeroenrinzema/psql-wire/errors"
 	"github.com/lib/pq/oid"
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	spi "github.com/machbase/neo-spi"
 	"go.uber.org/zap"
 )
