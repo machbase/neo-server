@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-shell/util/mock"
+	"github.com/machbase/neo-server/mods/util/mock"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )

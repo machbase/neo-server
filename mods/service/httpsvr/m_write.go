@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-shell/do"
+	"github.com/machbase/neo-server/mods/do"
 )
 
 type lakeReq struct {

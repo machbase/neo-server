@@ -87,7 +87,7 @@ func (svr *Server) Route(r *gin.Engine) {
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case "lake":
 			group.POST("/appender", svr.handleAppender)
-			svr.log.Infof("HTTP path %s for the web ui", prefix)
+			svr.log.Infof("HTTP path %s for lake api", prefix)
 		default: // "machbase"
 			if svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
