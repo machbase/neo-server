@@ -141,7 +141,6 @@ func (svr *server) Stop() {
 	defer svr.childrenLock.Unlock()
 	svr.alive = false
 
-	svr.log.Infof("stop")
 	if svr.svr != nil {
 		svr.svr.Close()
 	}
