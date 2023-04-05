@@ -30,14 +30,14 @@ import (
 	"github.com/machbase/neo-grpc/mgmt"
 	logging "github.com/machbase/neo-logging"
 	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-shell/server/ginutil"
-	"github.com/machbase/neo-shell/server/httpsvr"
-	"github.com/machbase/neo-shell/server/mqttsvr"
-	"github.com/machbase/neo-shell/server/rpcsvr"
-	"github.com/machbase/neo-shell/server/security"
-	"github.com/machbase/neo-shell/server/sshsvr"
+	"github.com/machbase/neo-server/mods/service/ginutil"
+	"github.com/machbase/neo-server/mods/service/httpsvr"
+	"github.com/machbase/neo-server/mods/service/mqttsvr"
+	"github.com/machbase/neo-server/mods/service/rpcsvr"
+	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/service/sshsvr"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-shell/server/wiresvr"
-	"github.com/machbase/neo-shell/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
@@ -98,6 +98,8 @@ type Config struct {
 	Wire           wiresvr.Config
 
 	NoBanner bool
+
+	EnableMachbaseSigHandler bool
 }
 
 type AuthHandlerConfig struct {
@@ -251,7 +253,13 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase.conf")
 	}
 
-	if err := mach.Initialize(homepath); err != nil {
+	initOption := mach.OPT_SIGHANDLER_DISABLE // default, it is required to shutdown by SIGTERM
+	if s.conf.EnableMachbaseSigHandler {
+		// internal use only, for debuging call stack
+		initOption = mach.OPT_NONE
+	}
+	s.log.Infof("apply machbase init option: %d", initOption)
+	if err := mach.InitializeOption(homepath, initOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {

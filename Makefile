@@ -21,7 +21,13 @@ test:
 
 test-base: tmpdir
 	@go test $(ARGS) \
+		./mods/util/glob \
+		./mods/util/ini \
+		./mods/codec/internal/json \
 		./main/machbase-neo \
+		./mods/do \
+		./mods/service/security \
+		./mods/service/mqttsvr/mqtt \
 		./mods/server \
 		./test
 

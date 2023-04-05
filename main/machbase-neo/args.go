@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	shell "github.com/machbase/neo-shell"
+	"github.com/machbase/neo-server/mods/shell"
 )
 
 type NeoCommand struct {
