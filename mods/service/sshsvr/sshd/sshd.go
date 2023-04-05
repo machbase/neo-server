@@ -14,7 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/pkg/errors"
 )
 

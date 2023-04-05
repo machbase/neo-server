@@ -113,8 +113,6 @@ github.com/machbase/neo-engine v0.9.3-0.20230405010227-95e6e24c96cc h1:dYiafb9+q
 github.com/machbase/neo-engine v0.9.3-0.20230405010227-95e6e24c96cc/go.mod h1:MtGjvWYy3mrhifGZgeWNL0CEBQjZTUskobGdEqdMl7w=
 github.com/machbase/neo-grpc v0.6.1-0.20230404073727-7094c665b9ee h1:l9jkT/hZYX6jYWNDJvLwQ4TQ0LfP9p5//TQtg9h5e1M=
 github.com/machbase/neo-grpc v0.6.1-0.20230404073727-7094c665b9ee/go.mod h1:Ad2I91XjcFBu4Kv93+GJ0HjZgtCWGIsbKsHF1pRwvvc=
-github.com/machbase/neo-logging v1.0.2 h1:UYEQaj3PMIMMSRDMWFzWpffE2wJxoreyh7S0cXy5ayI=
-github.com/machbase/neo-logging v1.0.2/go.mod h1:nTFq15RH/k1z6UZRoJTV7ZBtXnDzKBvItccKOvKqZds=
 github.com/machbase/neo-spi v1.1.1-0.20230330032004-15397814e62d h1:AcFRqg46KD6CyOdkB01j/YVFxf/vRVwujRISzGeFB4I=
 github.com/machbase/neo-spi v1.1.1-0.20230330032004-15397814e62d/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/mattn/go-isatty v0.0.14/go.mod h1:7GGIvUiUoEMVVmxf/4nioHXj79iQHKdU27kJ6hsGG94=

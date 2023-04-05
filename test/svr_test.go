@@ -7,7 +7,7 @@ import (
 
 	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
-	_ "github.com/machbase/neo-logging"
+	_ "github.com/machbase/neo-server/mods/logging"
 	_ "github.com/machbase/neo-server/mods/server"
 	spi "github.com/machbase/neo-spi"
 )

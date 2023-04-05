@@ -19,7 +19,6 @@ require (
 	github.com/machbase/booter v1.2.1
 	github.com/machbase/neo-engine v0.9.3-0.20230405010227-95e6e24c96cc
 	github.com/machbase/neo-grpc v0.6.1-0.20230404073727-7094c665b9ee
-	github.com/machbase/neo-logging v1.0.2
 	github.com/machbase/neo-spi v1.1.1-0.20230330032004-15397814e62d
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
@@ -35,6 +34,7 @@ require (
 	golang.org/x/term v0.5.0
 	golang.org/x/text v0.7.0
 	google.golang.org/grpc v1.53.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	software.sslmate.com/src/go-pkcs12 v0.2.0
 )
 
@@ -78,6 +78,5 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20230216225411-c8e22ba71e44 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

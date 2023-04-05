@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet4"
 	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet5"
 	"github.com/machbase/neo-server/mods/util/glob"

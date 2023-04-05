@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-grpc/machrpc"
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 	"google.golang.org/grpc/stats"
