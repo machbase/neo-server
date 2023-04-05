@@ -827,7 +827,7 @@ func makeListener(addr string) (net.Listener, error) {
 }
 
 // ////////////////////////////////
-// implements neo-shell/server/sshsvr/Server interface
+// implements neo-server/mods/service/sshsvr/Server interface
 func (s *svr) GetGrpcAddresses() []string {
 	return s.conf.Grpc.Listeners
 }
@@ -849,7 +849,7 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
 }
 
 // ////////////////////////////////
-// implements neo-shell/server/httpsvr/AuthServer interface
+// implements neo-server/mods/service/httpsvr/AuthServer interface
 func (s *svr) ValidateClientToken(token string) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) == 0 {

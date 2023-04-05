@@ -31,7 +31,6 @@ E --> S[neo-server]
 
 R -->|server impl| S
 
-R[neo-grpc] -->|client impl| SH[neo-shell]
-SH --> S
+R[neo-grpc] -->|client impl| S[neo-server]
 
 ```
