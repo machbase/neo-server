@@ -25,7 +25,7 @@ type lakeRsp struct {
 
 const tableName = "EXAMPLE"
 
-func (svr *Server) LakeAppender(ctx *gin.Context) {
+func (svr *Server) handleAppender(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false}
 
 	req := lakeReq{}
