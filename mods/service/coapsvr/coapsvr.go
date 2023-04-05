@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	spi "github.com/machbase/neo-spi"
 	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"

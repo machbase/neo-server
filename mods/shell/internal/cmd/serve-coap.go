@@ -9,7 +9,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/service/coapsvr"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
-	"github.com/machbase/neo-shell/util"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 func init() {
