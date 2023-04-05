@@ -28,8 +28,8 @@ import (
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
-	logging "github.com/machbase/neo-logging"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/ginutil"
 	"github.com/machbase/neo-server/mods/service/httpsvr"
 	"github.com/machbase/neo-server/mods/service/mqttsvr"
@@ -411,7 +411,8 @@ func (s *svr) Start() error {
 	if len(s.conf.Shell.Listeners) > 0 {
 		s.conf.Shell.ServerKeyPath = s.ServerPrivateKeyPath()
 		s.shsvr = sshsvr.New(s.db, &s.conf.Shell)
-		s.shsvr.Server = s
+		s.shsvr.SetGrpcAddresses(s.conf.Grpc.Listeners)
+		s.shsvr.SetAuthServer(s)
 		err := s.shsvr.Start()
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -469,7 +470,7 @@ func GenBanner() string {
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s", mods.EngineInfoString())
+	lines[4] = lines[4] + fmt.Sprintf("  %s", mach.LinkInfo())
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
@@ -827,29 +828,10 @@ func makeListener(addr string) (net.Listener, error) {
 }
 
 // ////////////////////////////////
-// implements neo-shell/server/sshsvr/Server interface
-func (s *svr) GetGrpcAddresses() []string {
-	return s.conf.Grpc.Listeners
-}
+// implements neo-server/mods/service/httpsvr/AuthServer interface
 
-func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
-	list, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		s.log.Warnf("ssh public key", err.Error())
-		return false
-	}
+var _ security.AuthServer = &svr{}
 
-	for _, rec := range list {
-		if rec.KeyType == keyType && rec.Key == key {
-			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
-			return true
-		}
-	}
-	return false
-}
-
-// ////////////////////////////////
-// implements neo-shell/server/httpsvr/AuthServer interface
 func (s *svr) ValidateClientToken(token string) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) == 0 {
@@ -877,4 +859,20 @@ func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool,
 		return false, err
 	}
 	return hash == certHash, nil
+}
+
+func (s *svr) ValidateSshPublicKey(keyType string, key string) (bool, error) {
+	list, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		s.log.Warnf("ssh public key", err.Error())
+		return false, err
+	}
+
+	for _, rec := range list {
+		if rec.KeyType == keyType && rec.Key == key {
+			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
+			return true, nil
+		}
+	}
+	return false, nil
 }

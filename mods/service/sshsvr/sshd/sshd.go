@@ -14,7 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
-	logging "github.com/machbase/neo-logging"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/pkg/errors"
 )
 
@@ -141,7 +141,6 @@ func (svr *server) Stop() {
 	defer svr.childrenLock.Unlock()
 	svr.alive = false
 
-	svr.log.Infof("stop")
 	if svr.svr != nil {
 		svr.svr.Close()
 	}
