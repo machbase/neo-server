@@ -22,8 +22,7 @@ type lakeRsp struct {
 }
 
 // var once sync.Once
-
-const tableName = "EXAMPLE"
+const tableName = "TAG"
 
 func (svr *Server) handleAppender(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false}
