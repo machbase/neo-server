@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
-	mach "github.com/machbase/neo-engine"
 )
 
 var (
@@ -54,10 +53,6 @@ func BuildCompiler() string {
 
 func BuildTimestamp() string {
 	return buildTimestamp
-}
-
-func EngineInfoString() string {
-	return mach.LibMachLinkInfo
 }
 
 func Edition() string {

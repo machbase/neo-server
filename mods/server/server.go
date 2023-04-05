@@ -469,7 +469,7 @@ func GenBanner() string {
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s", mods.EngineInfoString())
+	lines[4] = lines[4] + fmt.Sprintf("  %s", mach.LinkInfo())
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
