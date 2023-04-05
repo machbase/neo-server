@@ -53,23 +53,18 @@ func TestAppendRoute(t *testing.T) {
 	dbMock.AppenderFunc = func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
 		am := &TestAppenderMock{}
 		am.AppendFunc = func(value ...any) error {
-			column := make([]string, 0)
+
+			count := 0
 			for _, val := range value {
 				switch val.(type) {
-				case string:
-					column = append(column, "string")
-				case time.Time:
-					column = append(column, "time.Time")
-				case float64:
-					column = append(column, "float64")
-				case int64:
-					column = append(column, "int64")
-				default:
-					return errors.New("value is invalid type")
+				case string, time.Time, float64:
+					count++
 				}
 			}
-			t.Logf("append type : %+v", column)
-			t.Logf("append value : %+v", value)
+
+			if count != len(value) {
+				return errors.New("values and number of columns do not match")
+			}
 
 			return nil
 		}
@@ -94,6 +89,7 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	// ========== ========== ========== ==========
+	// current table column ( string, time.Time, float64 )
 
 	router := gin.Default()
 	wsvr.Route(router)
@@ -101,8 +97,8 @@ func TestAppendRoute(t *testing.T) {
 	var b *bytes.Buffer
 	var lakereq lakeReq
 	var lakersp lakeRsp
-	var w *httptest.ResponseRecorder
 	var expectStatus int
+	var w *httptest.ResponseRecorder
 	var req *http.Request
 
 	// success case - append
@@ -133,28 +129,29 @@ func TestAppendRoute(t *testing.T) {
 	require.Equal(t, expectStatus, w.Code, lakersp)
 
 	// wrong case - append
-	// b = &bytes.Buffer{}
+	b = &bytes.Buffer{}
 
-	// lakereq.TagName = "tag01"
-	// values = [][]interface{}{
-	// 	{time.Now().Format("2006-01-02 15:04:05"), rand.Float64() * 10000, true},
-	// }
-	// lakereq.Values = values
+	lakereq.TagName = "tag01"
+	values = [][]interface{}{
+		// current table column ( string, time.Time, float64 )
+		{time.Now().Format("2006-01-02 15:04:05"), rand.Float64() * 10000, true},
+	}
+	lakereq.Values = values
 
-	// expectStatus = http.StatusInternalServerError
-	// if err = json.NewEncoder(b).Encode(lakereq); err != nil {
-	// 	t.Fatal(err)
-	// }
+	expectStatus = http.StatusInternalServerError
+	if err = json.NewEncoder(b).Encode(lakereq); err != nil {
+		t.Fatal(err)
+	}
 
-	// w = httptest.NewRecorder()
-	// req, _ = http.NewRequest("POST", "/lake/appender", b)
-	// req.Header.Set("Content-Type", "application/json")
-	// router.ServeHTTP(w, req)
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/lake/appender", b)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
 
-	// err = json.Unmarshal(w.Body.Bytes(), &lakersp)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
+	err = json.Unmarshal(w.Body.Bytes(), &lakersp)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// require.Equal(t, expectStatus, w.Code, lakersp)
+	require.Equal(t, expectStatus, w.Code, lakersp)
 }
