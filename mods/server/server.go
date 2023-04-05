@@ -411,7 +411,8 @@ func (s *svr) Start() error {
 	if len(s.conf.Shell.Listeners) > 0 {
 		s.conf.Shell.ServerKeyPath = s.ServerPrivateKeyPath()
 		s.shsvr = sshsvr.New(s.db, &s.conf.Shell)
-		s.shsvr.Server = s
+		s.shsvr.SetGrpcAddresses(s.conf.Grpc.Listeners)
+		s.shsvr.SetAuthServer(s)
 		err := s.shsvr.Start()
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -827,29 +828,10 @@ func makeListener(addr string) (net.Listener, error) {
 }
 
 // ////////////////////////////////
-// implements neo-server/mods/service/sshsvr/Server interface
-func (s *svr) GetGrpcAddresses() []string {
-	return s.conf.Grpc.Listeners
-}
-
-func (s *svr) ValidateSshPublicKey(keyType string, key string) bool {
-	list, err := s.GetAllAuthorizedSshKeys()
-	if err != nil {
-		s.log.Warnf("ssh public key", err.Error())
-		return false
-	}
-
-	for _, rec := range list {
-		if rec.KeyType == keyType && rec.Key == key {
-			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
-			return true
-		}
-	}
-	return false
-}
-
-// ////////////////////////////////
 // implements neo-server/mods/service/httpsvr/AuthServer interface
+
+var _ security.AuthServer = &svr{}
+
 func (s *svr) ValidateClientToken(token string) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) == 0 {
@@ -877,4 +859,20 @@ func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool,
 		return false, err
 	}
 	return hash == certHash, nil
+}
+
+func (s *svr) ValidateSshPublicKey(keyType string, key string) (bool, error) {
+	list, err := s.GetAllAuthorizedSshKeys()
+	if err != nil {
+		s.log.Warnf("ssh public key", err.Error())
+		return false, err
+	}
+
+	for _, rec := range list {
+		if rec.KeyType == keyType && rec.Key == key {
+			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
+			return true, nil
+		}
+	}
+	return false, nil
 }

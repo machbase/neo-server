@@ -9,15 +9,11 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshsvr/sshd"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
-
-type Server interface {
-	GetGrpcAddresses() []string
-	ValidateSshPublicKey(keyType string, key string) bool
-}
 
 type Config struct {
 	Listeners     []string
@@ -38,7 +34,8 @@ type MachShell struct {
 
 	shellCmd []string
 
-	Server Server // injection point
+	authServer    security.AuthServer
+	grpcAddresses []string
 }
 
 func New(db spi.Database, conf *Config) *MachShell {
@@ -110,13 +107,20 @@ func (svr *MachShell) Stop() {
 	}
 }
 
+func (svr *MachShell) SetAuthServer(auth security.AuthServer) {
+	svr.authServer = auth
+}
+
+func (svr *MachShell) SetGrpcAddresses(addrs []string) {
+	svr.grpcAddresses = addrs
+}
+
 func (svr *MachShell) makeShellCommand(user string, args ...string) []string {
-	grpcAddrs := svr.Server.GetGrpcAddresses()
-	if len(grpcAddrs) == 0 {
+	if len(svr.grpcAddresses) == 0 {
 		return nil
 	}
 	result := append(svr.shellCmd,
-		"--server", grpcAddrs[0],
+		"--server", svr.grpcAddresses[0],
 	)
 	if len(args) > 0 {
 		result = append(result, args...)
@@ -160,8 +164,13 @@ func (svr *MachShell) passwordProvider(ctx ssh.Context, password string) bool {
 }
 
 func (svr *MachShell) publicKeyProvider(ctx ssh.Context, key ssh.PublicKey) bool {
-	if svr.Server == nil {
+	if svr.authServer == nil {
 		return false
 	}
-	return svr.Server.ValidateSshPublicKey(key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
+	ok, err := svr.authServer.ValidateSshPublicKey(key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
+	if err != nil {
+		svr.log.Error("ERR", err.Error())
+		return false
+	}
+	return ok
 }
