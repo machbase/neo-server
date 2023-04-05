@@ -20,17 +20,4 @@
 
 ### Dependency
 
-```mermaid
-flowchart LR
-
-SPI[neo-spi] -->|impl| E
-SPI-->|impl|R
-
-E[neo-engine]
-E --> S[neo-server]
-
-R -->|server impl| S
-
-R[neo-grpc] -->|client impl| S[neo-server]
-
-```
+![deps](./docs/deps.png)
