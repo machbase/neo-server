@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"compress/gzip"
@@ -14,7 +14,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func (svr *Server) handleQuery(ctx *gin.Context) {
+func (svr *httpd) handleQuery(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 	defer func() {

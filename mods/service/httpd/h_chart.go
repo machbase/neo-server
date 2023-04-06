@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"fmt"
@@ -24,7 +24,7 @@ type ChartRequest struct {
 	Height       string        `json:"height,omitempty"`
 }
 
-func (svr *Server) handleChart(ctx *gin.Context) {
+func (svr *httpd) handleChart(ctx *gin.Context) {
 	var err error
 	req := &ChartRequest{
 		Timeformat:   "default",

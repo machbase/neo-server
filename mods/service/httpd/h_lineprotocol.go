@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"compress/gzip"
@@ -18,7 +18,7 @@ import (
 //	url = "http://127.0.0.1:4088/metrics/write"
 //	data_format = "influx"
 //	content_encoding = "gzip"
-func (svr *Server) handleLineProtocol(ctx *gin.Context) {
+func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 	oper := ctx.Param("oper")
 	method := ctx.Request.Method
 
@@ -31,7 +31,7 @@ func (svr *Server) handleLineProtocol(ctx *gin.Context) {
 	}
 }
 
-func (svr *Server) handleLineWrite(ctx *gin.Context) {
+func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 	dbName := ctx.Query("db")
 
 	precision := lineprotocol.Nanosecond

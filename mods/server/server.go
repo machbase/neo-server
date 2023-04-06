@@ -2,7 +2,6 @@ package server
 
 import (
 	"bufio"
-	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
@@ -14,7 +13,6 @@ import (
 	"io"
 	"io/fs"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
@@ -30,8 +27,7 @@ import (
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/service/ginutil"
-	"github.com/machbase/neo-server/mods/service/httpsvr"
+	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttsvr"
 	"github.com/machbase/neo-server/mods/service/rpcsvr"
 	"github.com/machbase/neo-server/mods/service/security"
@@ -112,7 +108,7 @@ type GrpcConfig struct {
 
 type HttpConfig struct {
 	Listeners []string
-	Handlers  []httpsvr.HandlerConfig
+	Handlers  []httpd.HandlerConfig
 
 	EnableTokenAuth bool
 }
@@ -135,8 +131,8 @@ type svr struct {
 	db    spi.Database
 	grpcd *grpc.Server
 	mgmtd *grpc.Server
-	httpd *http.Server
 	mqttd *mqttsvr.Server
+	httpd httpd.Service
 	sshd  sshd.Service
 
 	certdir           string
@@ -163,7 +159,7 @@ func NewConfig() *Config {
 		},
 		Http: HttpConfig{
 			Listeners: []string{},
-			Handlers: []httpsvr.HandlerConfig{
+			Handlers: []httpd.HandlerConfig{
 				{Prefix: "/db", Handler: "machbase"},
 			},
 		},
@@ -354,35 +350,21 @@ func (s *svr) Start() error {
 
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
-		machHttpSvr, err := httpsvr.New(s.db, &httpsvr.Config{Handlers: s.conf.Http.Handlers})
+		opts := []httpd.Option{
+			httpd.OptionListenAddress(s.conf.Http.Listeners...),
+			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
+			httpd.OptionReleaseMode(),
+		}
+		for _, h := range s.conf.Http.Handlers {
+			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
+		}
+		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
-			return errors.Wrap(err, "http handler")
+			return errors.Wrap(err, "http server")
 		}
-		if s.conf.Http.EnableTokenAuth {
-			s.log.Infof("HTTP token authentication enabled")
-			machHttpSvr.SetAuthServer(s)
-		} else {
-			s.log.Infof("HTTP token authentication disabled")
-		}
-
-		gin.SetMode(gin.ReleaseMode)
-		r := gin.New()
-		r.Use(ginutil.RecoveryWithLogging(s.log))
-		r.Use(ginutil.HttpLogger("http-log"))
-
-		machHttpSvr.Route(r)
-
-		s.httpd = &http.Server{}
-		s.httpd.Handler = r
-
-		for _, listen := range s.conf.Http.Listeners {
-			lsnr, err := makeListener(listen)
-			if err != nil {
-				return errors.Wrap(err, "cannot start with failed listener")
-			}
-			s.log.Infof("HTTP Listen %s", listen)
-
-			go s.httpd.Serve(lsnr)
+		err = s.httpd.Start()
+		if err != nil {
+			return errors.Wrap(err, "http server")
 		}
 	}
 
@@ -442,13 +424,9 @@ func (s *svr) Stop() {
 	if s.mqttd != nil {
 		s.mqttd.Stop()
 	}
-
 	if s.httpd != nil {
-		ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
-		s.httpd.Shutdown(ctx)
-		cancelFunc()
+		s.httpd.Stop()
 	}
-
 	if s.grpcd != nil {
 		s.grpcd.Stop()
 	}

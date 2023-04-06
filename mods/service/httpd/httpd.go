@@ -1,6 +1,8 @@
-package httpsvr
+package httpd
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"path"
 	"strings"
@@ -9,57 +11,161 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/service/httpsvr/assets"
+	"github.com/machbase/neo-server/mods/service/httpd/assets"
+	"github.com/machbase/neo-server/mods/service/internal/ginutil"
+	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 )
 
-func New(db spi.Database, conf *Config) (*Server, error) {
-	return &Server{
-		conf:     conf,
-		log:      logging.GetLog("httpsvr"),
-		db:       db,
-		jwtCache: security.NewJwtCache(),
-	}, nil
+type Service interface {
+	Start() error
+	Stop()
 }
 
-type Config struct {
-	Handlers []HandlerConfig
+type Option func(s *httpd)
+
+// Factory
+func New(db spi.Database, options ...Option) (Service, error) {
+	s := &httpd{
+		log:      logging.GetLog("httpd"),
+		db:       db,
+		jwtCache: security.NewJwtCache(),
+	}
+	for _, opt := range options {
+		opt(s)
+	}
+	return s, nil
 }
+
+// ListenAddresses
+func OptionListenAddress(addrs ...string) Option {
+	return func(s *httpd) {
+		s.listenAddresses = append(s.listenAddresses, addrs...)
+	}
+}
+
+// AuthServer
+func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
+	return func(s *httpd) {
+		s.authServer = authSvc
+		s.enableTokenAUth = enabled
+		if enabled {
+			s.log.Infof("HTTP token authentication enabled")
+		} else {
+			s.log.Infof("HTTP token authentication disabled")
+		}
+	}
+}
+
+// Handler
+func OptionHandler(prefix string, handler HandlerType) Option {
+	return func(s *httpd) {
+		s.handlers = append(s.handlers, &HandlerConfig{Prefix: prefix, Handler: handler})
+	}
+}
+
+func OptionDebugMode() Option {
+	return func(s *httpd) {
+		s.debugMode = true
+	}
+}
+
+func OptionReleaseMode() Option {
+	return func(s *httpd) {
+		s.debugMode = false
+	}
+}
+
+type httpd struct {
+	log   logging.Log
+	db    spi.Database
+	alive bool
+
+	listenAddresses []string
+	enableTokenAUth bool
+	handlers        []*HandlerConfig
+
+	httpServer *http.Server
+	listeners  []net.Listener
+	jwtCache   security.JwtCache
+	authServer security.AuthServer
+
+	debugMode bool
+}
+
+type HandlerType string
+
+const HandlerMachbase = HandlerType("machbase")
+const HandlerInflux = HandlerType("influx") // influx line protocol
+const HandlerWeb = HandlerType("web")       // web ui
+const HandlerVoid = HandlerType("-")
 
 type HandlerConfig struct {
 	Prefix  string
-	Handler string
+	Handler HandlerType
 }
 
-type Server struct {
-	conf *Config
-	log  logging.Log
-	db   spi.Database
+func (svr *httpd) Start() error {
+	if svr.db == nil {
+		return errors.New("no database instance")
+	}
 
-	jwtCache   security.JwtCache
-	authServer security.AuthServer // injection point
-}
+	svr.alive = true
 
-func (svr *Server) Start() error {
+	if svr.debugMode {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	svr.httpServer = &http.Server{}
+	svr.httpServer.Handler = svr.Router()
+
+	for _, listen := range svr.listenAddresses {
+		lsnr, err := netutil.MakeListener(listen)
+		if err != nil {
+			return errors.Wrap(err, "cannot start with failed listener")
+		}
+		svr.listeners = append(svr.listeners, lsnr)
+		go svr.httpServer.Serve(lsnr)
+		svr.log.Infof("HTTP Listen %s", listen)
+	}
 	return nil
 }
 
-func (svr *Server) Stop() {
+func (svr *httpd) Stop() {
+	if svr.httpServer == nil {
+		return
+	}
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
+	svr.httpServer.Shutdown(ctx)
+	cancelFunc()
 }
 
-func (svr *Server) SetAuthServer(authServer security.AuthServer) {
-	svr.authServer = authServer
-}
-
-func (svr *Server) Route(r *gin.Engine) {
+func (svr *httpd) Router() *gin.Engine {
+	r := gin.New()
+	r.Use(ginutil.RecoveryWithLogging(svr.log))
+	r.Use(ginutil.HttpLogger("http-log"))
 	r.Use(svr.corsHandler())
-	for _, h := range svr.conf.Handlers {
+
+	// redirect '/' -> '/web/'
+	for _, h := range svr.handlers {
+		if h.Handler == HandlerWeb {
+			r.GET("/", func(ctx *gin.Context) {
+				ctx.Redirect(http.StatusFound, h.Prefix)
+			})
+			break
+		}
+	}
+
+	for _, h := range svr.handlers {
 		prefix := h.Prefix
 		// remove trailing slash
 		prefix = strings.TrimSuffix(prefix, "/")
 
-		if h.Handler == "-" {
+		if h.Handler == HandlerVoid {
 			// disabled by configuration
 			continue
 		}
@@ -67,13 +173,13 @@ func (svr *Server) Route(r *gin.Engine) {
 		group := r.Group(prefix)
 
 		switch h.Handler {
-		case "influx": // "influx line protocol"
-			if svr.authServer != nil {
+		case HandlerInflux: // "influx line protocol"
+			if svr.enableTokenAUth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
 			}
 			group.POST("/:oper", svr.handleLineProtocol)
 			svr.log.Infof("HTTP path %s for the line protocol", prefix)
-		case "web": // web ui
+		case HandlerWeb: // web ui
 			contentBase := "/ui/"
 			group.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
@@ -85,8 +191,8 @@ func (svr *Server) Route(r *gin.Engine) {
 			group.POST("/api/logout", svr.handleLogout)
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
-		default: // "machbase"
-			if svr.authServer != nil {
+		case HandlerMachbase: // "machbase"
+			if svr.enableTokenAUth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
 			}
 			group.GET("/query", svr.handleQuery)
@@ -100,9 +206,10 @@ func (svr *Server) Route(r *gin.Engine) {
 	}
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
+	return r
 }
 
-func (svr *Server) handleJwtToken(ctx *gin.Context) {
+func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 	auth, exist := ctx.Request.Header["Authorization"]
 	if !exist {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization header"})
@@ -142,7 +249,7 @@ func (svr *Server) handleJwtToken(ctx *gin.Context) {
 	}
 }
 
-func (svr *Server) handleAuthToken(ctx *gin.Context) {
+func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	if svr.authServer == nil {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "no auth server"})
 		ctx.Abort()
@@ -177,7 +284,7 @@ func (svr *Server) handleAuthToken(ctx *gin.Context) {
 	}
 }
 
-func (svr *Server) corsHandler() gin.HandlerFunc {
+func (svr *httpd) corsHandler() gin.HandlerFunc {
 	corsHandler := cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{
