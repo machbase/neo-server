@@ -100,6 +100,7 @@ type HandlerType string
 const HandlerMachbase = HandlerType("machbase")
 const HandlerInflux = HandlerType("influx") // influx line protocol
 const HandlerWeb = HandlerType("web")       // web ui
+const HandlerLake = HandlerType("lake")
 const HandlerVoid = HandlerType("-")
 
 type HandlerConfig struct {
@@ -191,6 +192,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/logout", svr.handleLogout)
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
+		case HandlerLake:
+			group.POST("/appender", svr.handleAppender)
+			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
