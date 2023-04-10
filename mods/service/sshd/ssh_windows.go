@@ -1,6 +1,6 @@
 //go:build windows
 
-package sshd
+package sshsvr
 
 import "os"
 
