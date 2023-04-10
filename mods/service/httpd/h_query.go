@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"compress/gzip"
@@ -14,7 +14,16 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func (svr *Server) handleQuery(ctx *gin.Context) {
+// Execute machbase SQL query
+//
+// @Summary     Execute query
+// @Description execute query
+// @Param       q           query   string true "sql query text" default(select * from example limit 3)
+// @Success     200  {object}  msg.QueryResponse
+// @Failure     400  {object}  msg.QueryResponse
+// @Failure     500  {object}  msg.QueryResponse
+// @Router      /db/query [get]
+func (svr *httpd) handleQuery(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 	defer func() {
