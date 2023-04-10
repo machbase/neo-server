@@ -28,7 +28,7 @@ test-base: tmpdir
 		./mods/do \
 		./mods/service/security \
 		./mods/service/mqttsvr/mqtt \
-		./mods/service/httpsvr \
+		./mods/service/httpd \
 		./mods/server \
 		./test
 
