@@ -30,6 +30,7 @@ define VARS {
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", false)
+    HTTP_ENABLE_SWAGGER   = flag("--http-enable-swagger", false)
     
     MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
 }
@@ -75,8 +76,9 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
-                { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" :"-" },
                 { Prefix: "/metrics", Handler: "influx" },
+                { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
+                { Prefix: "/swagger", Handler: VARS_HTTP_ENABLE_SWAGGER ? "swagger" : "-" },
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
         }

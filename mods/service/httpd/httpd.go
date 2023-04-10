@@ -10,12 +10,15 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/docs"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/pkg/errors"
 )
 
@@ -151,6 +154,10 @@ func (svr *httpd) Router() *gin.Engine {
 	r.Use(ginutil.HttpLogger("http-log"))
 	r.Use(svr.corsHandler())
 
+	enableSwagger := false
+	prefixSwagger := "/swagger"
+	for _, h := range svr.conf.Handlers {
+
 	// redirect '/' -> '/web/'
 	for _, h := range svr.handlers {
 		if h.Handler == HandlerWeb {
@@ -180,6 +187,9 @@ func (svr *httpd) Router() *gin.Engine {
 			}
 			group.POST("/:oper", svr.handleLineProtocol)
 			svr.log.Infof("HTTP path %s for the line protocol", prefix)
+		case "swagger": // swagger ui
+			enableSwagger = true
+			prefixSwagger = prefix
 		case HandlerWeb: // web ui
 			contentBase := "/ui/"
 			group.GET("/", func(ctx *gin.Context) {
@@ -208,6 +218,18 @@ func (svr *httpd) Router() *gin.Engine {
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
+
+	if enableSwagger {
+		docs.SwaggerInfo.Title = "Swagger machbase-neo HTTP API"
+		docs.SwaggerInfo.Version = "1.0"
+		docs.SwaggerInfo.Description = "machbase-neo http server"
+		docs.SwaggerInfo.BasePath = "/"
+		docs.SwaggerInfo.Host = "localhost:5654"
+		docs.SwaggerInfo.Schemes = []string{"http"}
+		r.GET(prefixSwagger+"/*{any}", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		svr.log.Infof("HTTP path %s/index.html for swagger", prefixSwagger)
+	}
+
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r

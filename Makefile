@@ -116,3 +116,7 @@ regen-mock:
 	moq -out ./mods/util/mock/rows.go -pkg mock     ../neo-spi Rows
 	moq -out ./mods/util/mock/row.go -pkg mock      ../neo-spi Row
 	moq -out ./mods/util/mock/appender.go -pkg mock ../neo-spi Appender
+
+## Require https://github.com/swaggo/swag
+swag:
+	swag init -g mods/service/httpsvr/httpsvr.go
