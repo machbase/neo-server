@@ -17,9 +17,9 @@ import (
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"github.com/pkg/errors"
 )
 
 type Service interface {
@@ -100,11 +100,14 @@ type httpd struct {
 
 type HandlerType string
 
-const HandlerMachbase = HandlerType("machbase")
-const HandlerInflux = HandlerType("influx") // influx line protocol
-const HandlerWeb = HandlerType("web")       // web ui
-const HandlerLake = HandlerType("lake")
-const HandlerVoid = HandlerType("-")
+const (
+	HandlerMachbase = HandlerType("machbase")
+	HandlerInflux   = HandlerType("influx") // influx line protocol
+	HandlerWeb      = HandlerType("web")    // web ui
+	HandlerLake     = HandlerType("lake")
+	HandlerSwagger  = HandlerType("swagger")
+	HandlerVoid     = HandlerType("-")
+)
 
 type HandlerConfig struct {
 	Prefix  string
@@ -156,7 +159,6 @@ func (svr *httpd) Router() *gin.Engine {
 
 	enableSwagger := false
 	prefixSwagger := "/swagger"
-	for _, h := range svr.conf.Handlers {
 
 	// redirect '/' -> '/web/'
 	for _, h := range svr.handlers {
@@ -187,7 +189,7 @@ func (svr *httpd) Router() *gin.Engine {
 			}
 			group.POST("/:oper", svr.handleLineProtocol)
 			svr.log.Infof("HTTP path %s for the line protocol", prefix)
-		case "swagger": // swagger ui
+		case HandlerSwagger: // swagger ui
 			enableSwagger = true
 			prefixSwagger = prefix
 		case HandlerWeb: // web ui
