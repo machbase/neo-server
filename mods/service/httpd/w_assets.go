@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"embed"

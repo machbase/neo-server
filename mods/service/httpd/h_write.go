@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"bufio"
@@ -17,7 +17,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func (svr *Server) handleWrite(ctx *gin.Context) {
+func (svr *httpd) handleWrite(ctx *gin.Context) {
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 	tick := time.Now()
 

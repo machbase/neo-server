@@ -1,4 +1,4 @@
-package httpsvr_test
+package httpd
 
 import (
 	"bytes"
@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	. "github.com/machbase/neo-server/mods/service/httpsvr"
 	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -25,21 +23,15 @@ func TestLoginRoute(t *testing.T) {
 		return user == "sys" && password == "manager", nil
 	}
 
-	conf := &Config{
-		Handlers: []HandlerConfig{
-			{
-				Prefix:  "/web",
-				Handler: "web",
-			},
-		},
-	}
-	wsvr, err := New(dbMock, conf)
+	wservice, err := New(dbMock,
+		OptionDebugMode(),
+		OptionHandler("/web", HandlerWeb),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	router := gin.Default()
-	wsvr.Route(router)
+	wsvr := wservice.(*httpd)
+	router := wsvr.Router()
 
 	var b *bytes.Buffer
 	var loginReq *LoginReq

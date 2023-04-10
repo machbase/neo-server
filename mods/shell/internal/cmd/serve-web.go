@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/service/httpsvr"
+	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -101,21 +100,14 @@ func doServeWeb(ctx *client.ActionContext) {
 	if cmd.Verbose {
 		r.Use(weblogfunc(ctx))
 	}
-	webConf := &httpsvr.Config{
-		Handlers: []httpsvr.HandlerConfig{
-			{Prefix: cmd.Prefix, Handler: "web"},
-		},
-	}
-	svr, err := httpsvr.New(ctx.DB, webConf)
+
+	svr, err := httpd.New(ctx.DB,
+		httpd.OptionListenAddress(fmt.Sprintf("%s:%d", cmd.Host, cmd.Port)),
+		httpd.OptionHandler(cmd.Prefix, httpd.HandlerWeb),
+	)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
-	}
-	svr.Route(r)
-
-	httpd := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cmd.Host, cmd.Port),
-		Handler: r,
 	}
 
 	ctx.Printfln("serve-web > listening http://%s:%d%s", cmd.Host, cmd.Port, cmd.Prefix)
@@ -153,20 +145,17 @@ func doServeWeb(ctx *client.ActionContext) {
 					break
 				}
 			}
-			ctx.Println("serve-web > closing...")
-			httpd.Shutdown(context.Background())
-			<-serverQuit
-			ctx.Println("serve-web > closed.")
+			serverQuit <- true
 		}()
-
-		err = httpd.ListenAndServe()
-		if err != nil && err.Error() != "http: Server closed" {
-			ctx.Println("ERR", err.Error())
-		}
-		serverQuit <- true
-	} else {
-		httpd.ListenAndServe()
 	}
+
+	if err := svr.Start(); err != nil {
+		ctx.Println("ERR", err.Error())
+	}
+	<-serverQuit
+	ctx.Println("serve-web > closing...")
+	svr.Stop()
+	ctx.Println("serve-web > closed.")
 }
 
 func weblogfunc(ctx *client.ActionContext) gin.HandlerFunc {

@@ -1,4 +1,4 @@
-package httpsvr
+package httpd
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (svr *Server) issueAccessToken(loginName string) (accessToken string, refreshToken string, refreshTokenId string, err error) {
+func (svr *httpd) issueAccessToken(loginName string) (accessToken string, refreshToken string, refreshTokenId string, err error) {
 	claim := security.NewClaim(loginName)
 	accessToken, err = security.SignTokenWithClaim(claim)
 	if err != nil {
@@ -30,7 +30,7 @@ func (svr *Server) issueAccessToken(loginName string) (accessToken string, refre
 	return
 }
 
-func (svr *Server) verifyAccessToken(token string) (security.Claim, error) {
+func (svr *httpd) verifyAccessToken(token string) (security.Claim, error) {
 	claim := security.NewClaimEmpty()
 	ok, err := security.VerifyTokenWithClaim(token, claim)
 	if err != nil {
@@ -62,7 +62,7 @@ type LoginRsp struct {
 	Elapse       string `json:"elapse"`
 }
 
-func (svr *Server) handleLogin(ctx *gin.Context) {
+func (svr *httpd) handleLogin(ctx *gin.Context) {
 	var req = &LoginReq{}
 	var rsp = &LoginRsp{
 		Success: false,
@@ -140,7 +140,7 @@ type ReLoginReq struct {
 
 type ReLoginRsp LoginRsp
 
-func (svr *Server) handleReLogin(ctx *gin.Context) {
+func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	var req ReLoginReq
 	var rsp = &ReLoginRsp{
 		Success: false,
@@ -228,7 +228,7 @@ type LogoutRsp struct {
 	Elapse  string `json:"elapse"`
 }
 
-func (svr *Server) handleLogout(ctx *gin.Context) {
+func (svr *httpd) handleLogout(ctx *gin.Context) {
 	tick := time.Now()
 
 	var req = &LogoutReq{}
