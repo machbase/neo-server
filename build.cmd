@@ -3,6 +3,7 @@
 @REM    - Prefer using TDM-GCC-64
 @REM
 
+@SETLOCAL
 @SET GOOS=windows
 @SET GOARCH=amd64
 @SET CGO_ENABLED=1
@@ -12,4 +13,31 @@
 @SET CGO_CFLAGS=
 @SET GO11MODULE=on
 
-@go build -tags=fog_edition -o ./tmp/machbase-neo.exe ./main/machbase-neo
+@git describe --tags --abbrev=0 > .\tmp\version.txt
+@git rev-parse --short main > .\tmp\gitsha.txt
+@date /T > .\tmp\buildtime.txt
+@go version > .\tmp\goverstr.txt
+
+@SET /p VERSION=<.\tmp\version.txt
+@SET /p GITSHA=<.\tmp\gitsha.txt
+@SET /p BUILDTIME=<.\tmp\buildtime.txt
+@SET /p GOVERSTR=<.\tmp\goverstr.txt
+
+@for /f "tokens=3*" %%a in ("%GOVERSTR%") do (
+    SET GOVERSTR=%%a
+)
+
+@SET GOVERSTR=%GOVERSTR:~2%
+
+@SET MODNAME=github.com/machbase/neo-server
+@SET LDFLAGS=-X %MODNAME%/mods.versionString=%VERSION%
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.versionGitSHA=%GITSHA%
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp=%BUILDTIME%
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString=%GOVERSTR%
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString=fog
+
+go build -ldflags "%LDFLAGS%" -tags=fog_edition -o ./tmp/machbase-neo.exe ./main/machbase-neo
+
+if not exist .\packages md packages
+
+powershell Compress-Archive -Force -DestinationPath ".\packages\machbase-neo-fog-%VERSION%-windows-amd64.zip" -LiteralPath ".\tmp\machbase-neo.exe"
