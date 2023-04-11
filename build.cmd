@@ -3,7 +3,6 @@
 @REM    - Prefer using TDM-GCC-64
 @REM
 
-@SETLOCAL
 @SET GOOS=windows
 @SET GOARCH=amd64
 @SET CGO_ENABLED=1
@@ -14,6 +13,8 @@
 @SET CGO_LDFLAGS=
 @SET CGO_CFLAGS=
 @SET GO11MODULE=on
+
+if not exist .\tmp md tmp
 
 @git describe --tags --abbrev=0 > .\tmp\version.txt
 @git rev-parse --short main > .\tmp\gitsha.txt

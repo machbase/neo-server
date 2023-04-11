@@ -4,6 +4,7 @@
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-linux-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-linux-amd64.yml)
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml)
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml)
+[![](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml)
 
 # neo-server
 
