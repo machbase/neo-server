@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -14,14 +16,21 @@ func MkDirIfNotExists(path string) error {
 func MkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	sep := string(filepath.Separator)
 	dirs := strings.Split(path, sep)
-	if strings.HasPrefix(path, sep) {
+	if runtime.GOOS != "windows" && strings.HasPrefix(path, sep) {
 		path = "/"
 	} else {
 		path = ""
 	}
-	for _, d := range dirs {
+	windowsDrivePattern := regexp.MustCompile("[A-Za-z]:")
+	for n, d := range dirs {
 		if d == "" {
 			continue
+		}
+		if runtime.GOOS == "windows" && n == 0 {
+			if windowsDrivePattern.MatchString(d) {
+				path = d + "\\"
+				continue
+			}
 		}
 		path = filepath.Join(path, d)
 		_, err := os.Stat(path)
