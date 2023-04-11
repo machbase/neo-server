@@ -19,6 +19,7 @@ jobs:
           go-version: '1.19.8'
       - name: Build
         run: build.cmd
+        shell: cmd
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
