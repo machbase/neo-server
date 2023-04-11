@@ -14,7 +14,7 @@
 @SET CGO_CFLAGS=
 @SET GO11MODULE=on
 
-if not exist .\tmp md tmp
+@if not exist .\tmp md tmp
 
 @git describe --tags --abbrev=0 > .\tmp\version.txt
 @git rev-parse --short main > .\tmp\gitsha.txt
@@ -27,20 +27,21 @@ if not exist .\tmp md tmp
 @SET /p GOVERSTR=<.\tmp\goverstr.txt
 
 @for /f "tokens=3*" %%a in ("%GOVERSTR%") do (
-    SET GOVERSTR=%%a
+    @SET GOVERSTR=%%a
 )
 
 @SET GOVERSTR=%GOVERSTR:~2%
+@SET BUILDTIME=%BUILDTIME:~0,10%
 
 @SET MODNAME=github.com/machbase/neo-server
-@SET LDFLAGS=-X %MODNAME%/mods.versionString=%VERSION%
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.versionGitSHA=%GITSHA%
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp=%BUILDTIME%
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString=%GOVERSTR%
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString=fog
+@SET LDFLAGS=-X %MODNAME%/mods.versionString="%VERSION%"
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.versionGitSHA="%GITSHA%"
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp="%BUILDTIME%"
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString="%GOVERSTR%"
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString="fog"
 
 go build -ldflags "%LDFLAGS%" -tags=fog_edition -o .\tmp\machbase-neo.exe .\main\machbase-neo
 
-if not exist .\packages md packages
+@if not exist .\packages md packages
 
 powershell Compress-Archive -Force -DestinationPath ".\packages\machbase-neo-fog-%VERSION%-windows-amd64.zip" -LiteralPath ".\tmp\machbase-neo.exe"
