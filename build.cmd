@@ -36,7 +36,7 @@
 @SET MODNAME=github.com/machbase/neo-server
 @SET LDFLAGS=-X %MODNAME%/mods.versionString="%VERSION%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.versionGitSHA="%GITSHA%"
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp="%BUILDTIME%"
+rem @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp="%BUILDTIME%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString="%GOVERSTR%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString="fog"
 
