@@ -2,6 +2,7 @@ package transcoder
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gofrs/uuid"
 )
@@ -11,18 +12,22 @@ type Transcoder interface {
 }
 
 func New(name string) Transcoder {
-	switch name {
-	case "cems":
-		return &cemsTranslator{
-			idgen: uuid.NewGen(),
+	switch {
+	case name == "cems":
+		return cemsTranslatorSingleton
+	case strings.HasPrefix(name, "@"):
+		return &scriptTranslator{
+			name: strings.TrimPrefix(name, "@"),
 		}
 	default:
-		return &noTranslator{}
+		return noTranslatorSingleton
 	}
 }
 
 type noTranslator struct {
 }
+
+var noTranslatorSingleton = &noTranslator{}
 
 func (ts *noTranslator) Process(r any) (any, error) {
 	return r, nil
@@ -30,6 +35,10 @@ func (ts *noTranslator) Process(r any) (any, error) {
 
 type cemsTranslator struct {
 	idgen *uuid.Gen
+}
+
+var cemsTranslatorSingleton = &cemsTranslator{
+	idgen: uuid.NewGen(),
 }
 
 func (ts *cemsTranslator) Process(r any) (any, error) {
@@ -54,4 +63,12 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 	newValues[8] = 0            // sampling_period
 	newValues[9] = payload      // payload
 	return newValues, nil
+}
+
+type scriptTranslator struct {
+	name string
+}
+
+func (ts *scriptTranslator) Process(r any) (any, error) {
+	return r, nil
 }
