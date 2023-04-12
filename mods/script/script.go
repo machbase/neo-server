@@ -9,7 +9,36 @@ type Script interface {
 	GetVar(name string, value any) error
 }
 
-func NewScript(rawScript []byte) (Script, error) {
+type Loader interface {
+	Load(name string) (Script, error)
+	Parse(rawScript []byte) (Script, error)
+}
+
+type LoaderOption func(sl *loader)
+
+func PathOption(paths ...string) LoaderOption {
+	return func(sl *loader) {
+		sl.paths = append(sl.paths, paths...)
+	}
+}
+
+func NewLoader(opts ...LoaderOption) Loader {
+	sl := &loader{}
+	for _, ot := range opts {
+		ot(sl)
+	}
+	return sl
+}
+
+type loader struct {
+	paths []string
+}
+
+func (ld *loader) Load(name string) (Script, error) {
+	return nil, nil
+}
+
+func (ld *loader) Parse(rawScript []byte) (Script, error) {
 	var sc Script
 	var err error
 	sc, err = bridge_tengo.New(rawScript)

@@ -10,12 +10,14 @@ import (
 )
 
 func TestTengoStript(t *testing.T) {
+	loader := script.NewLoader()
+
 	s := []byte(`
 		fmt := import("fmt")
 		output := greeting(input)
 	`)
 
-	engine, err := script.NewScript(s)
+	engine, err := loader.Parse(s)
 	if err != nil {
 		t.Fatal(err)
 	}
