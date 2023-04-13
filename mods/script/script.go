@@ -1,7 +1,6 @@
 package script
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -44,7 +43,6 @@ func (ld *loader) Load(name string) (Script, error) {
 	var content []byte
 	for _, p := range ld.paths {
 		file := filepath.Join(p, name+".tengo")
-		fmt.Println("=====>", file)
 		stat, err := os.Stat(file)
 		if err != nil {
 			continue
