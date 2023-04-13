@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -182,7 +184,9 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 		SetCsvHeading(false)
 
 	if len(transname) > 0 {
-		trans := transcoder.New(transname)
+		trans := transcoder.New(transname,
+			transcoder.PathOption(filepath.Dir(os.Args[0])),
+		)
 		builder.SetTranscoder(trans)
 	}
 

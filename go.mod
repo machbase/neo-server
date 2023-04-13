@@ -7,6 +7,7 @@ require (
 	github.com/alecthomas/kong v0.7.1
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.18
+	github.com/d5/tengo/v2 v2.14.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gdamore/tcell/v2 v2.5.4
 	github.com/gin-contrib/cors v1.4.0
