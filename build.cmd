@@ -45,4 +45,4 @@ go build -ldflags "%LDFLAGS%" -tags=fog_edition -o .\tmp\machbase-neo.exe .\main
 
 @if not exist .\packages md packages
 
-powershell Compress-Archive -Force -DestinationPath ".\packages\machbase-neo-fog-%VERSION%-windows-amd64.zip" -LiteralPath ".\tmp\machbase-neo.exe"
+@powershell Compress-Archive -Force -DestinationPath ".\packages\machbase-neo-fog-%VERSION%-windows-amd64.zip" -LiteralPath ".\tmp\machbase-neo.exe"
