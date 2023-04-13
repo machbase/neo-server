@@ -5,6 +5,7 @@ package sshd
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 
@@ -21,6 +22,11 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	cmd := exec.Command(shell.Cmd, shell.Args...)
 	io.WriteString(ss, svr.motdProvider(ss.User()))
+	userHomeDir, err := os.UserHomeDir()
+	if err != nil {
+		userHomeDir = "."
+	}
+	cmd.Env = append(cmd.Env, "USERPROFILE="+userHomeDir)
 	cmd.Env = append(cmd.Env, "TERM=VT100")
 	for k, v := range shell.Envs {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
@@ -64,7 +70,8 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}()
 	// wait stdin, stdout pipes before Start()
 	wg.Wait()
-	err := cmd.Start()
+
+	err = cmd.Start()
 
 	// register child process after Start()
 	svr.addChild(cmd.Process)
@@ -73,6 +80,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}()
 
 	if err != nil {
+		svr.log.Infof("session terminated %s from %s %s", ss.User(), ss.RemoteAddr(), err.Error())
 		io.WriteString(ss, "No Shell started.\n")
 		ss.Exit(1)
 		return
