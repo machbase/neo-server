@@ -23,6 +23,8 @@ test-base: tmpdir
 	@go test $(ARGS) \
 		./mods/util/glob \
 		./mods/util/ini \
+		./mods/script \
+		./mods/transcoder \
 		./mods/codec/internal/json \
 		./main/machbase-neo \
 		./mods/do \
