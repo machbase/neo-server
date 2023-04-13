@@ -1,26 +1,42 @@
 package transcoder
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/gofrs/uuid"
+	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/script"
 )
 
 type Transcoder interface {
 	Process(any) (any, error)
 }
 
-func New(name string) Transcoder {
+func New(name string, opts ...Option) Transcoder {
+	var tc Transcoder
 	switch {
 	case name == "cems":
-		return cemsTranslatorSingleton
+		tc = cemsTranslatorSingleton
 	case strings.HasPrefix(name, "@"):
-		return &scriptTranslator{
-			name: strings.TrimPrefix(name, "@"),
-		}
+		tc = newScripTransaltor(strings.TrimPrefix(name, "@"))
 	default:
-		return noTranslatorSingleton
+		tc = noTranslatorSingleton
+	}
+	for _, o := range opts {
+		o(tc)
+	}
+	return tc
+}
+
+type Option func(tc Transcoder)
+
+func PathOption(paths ...string) Option {
+	return func(tc Transcoder) {
+		if sc, ok := tc.(*scriptTranslator); ok {
+			sc.opts = append(sc.opts, script.PathOption(paths...))
+		}
 	}
 }
 
@@ -67,8 +83,50 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 
 type scriptTranslator struct {
 	name string
+	sc   script.Script
+	err  error
+	log  logging.Log
+	opts []script.LoaderOption
+}
+
+func newScripTransaltor(name string) *scriptTranslator {
+	st := &scriptTranslator{
+		name: name,
+		log:  logging.GetLog("transcoder-" + name),
+	}
+	return st
 }
 
 func (ts *scriptTranslator) Process(r any) (any, error) {
-	return r, nil
+	if ts.sc == nil {
+		ld := script.NewLoader(ts.opts...)
+		ts.sc, ts.err = ld.Load(ts.name)
+	}
+
+	if ts.sc == nil {
+		if ts.err != nil {
+			return nil, ts.err
+		} else {
+			return nil, errors.New("script not found")
+		}
+	}
+
+	ts.sc.SetVar("INPUT", r)
+	ts.sc.SetFunc("LOG", func(args ...any) (any, error) {
+		if len(args) == 0 {
+			return "", nil
+		}
+		ts.log.Info(args[0])
+		return "", nil
+	})
+
+	if err := ts.sc.Run(); err != nil {
+		return nil, err
+	}
+
+	result := []any{}
+	if err := ts.sc.GetVar("OUTPUT", &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

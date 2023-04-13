@@ -1,6 +1,12 @@
 package script
 
-import "github.com/machbase/neo-server/mods/script/internal/bridge_tengo"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/machbase/neo-server/mods/script/internal/bridge_tengo"
+)
 
 type Script interface {
 	Run() error
@@ -35,7 +41,27 @@ type loader struct {
 }
 
 func (ld *loader) Load(name string) (Script, error) {
-	return nil, nil
+	var content []byte
+	for _, p := range ld.paths {
+		file := filepath.Join(p, name+".tengo")
+		fmt.Println("=====>", file)
+		stat, err := os.Stat(file)
+		if err != nil {
+			continue
+		}
+		if stat.IsDir() {
+			continue
+		}
+		content, err = os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+	}
+	if len(content) == 0 {
+		return nil, os.ErrNotExist
+	}
+
+	return ld.Parse(content)
 }
 
 func (ld *loader) Parse(rawScript []byte) (Script, error) {

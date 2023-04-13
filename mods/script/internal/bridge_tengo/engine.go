@@ -38,24 +38,7 @@ func (eng *engine) SetFunc(name string, userFunc func(...any) (any, error)) {
 		Value: func(args ...tengo.Object) (tengo.Object, error) {
 			vargs := make([]any, len(args))
 			for i, v := range args {
-				switch vv := v.(type) {
-				case *tengo.String:
-					vargs[i] = vv.Value
-				case *tengo.Int:
-					vargs[i] = vv.Value
-				case *tengo.Float:
-					vargs[i] = vv.Value
-				case *tengo.Bool:
-					vargs[i] = !vv.IsFalsy()
-				case *tengo.Bytes:
-					vargs[i] = vv.Value
-				default:
-					return nil, tengo.ErrInvalidArgumentType{
-						Name:     fmt.Sprintf("args[%d]", i),
-						Expected: argTypes[i].Kind().String(),
-						Found:    args[0].TypeName(),
-					}
-				}
+				vargs[i] = tengo.ToInterface(v)
 			}
 
 			if len(args) != argLen {
@@ -125,6 +108,13 @@ func (eng *engine) GetVar(name string, value any) error {
 		switch vv := value.(type) {
 		case *map[string]any:
 			*vv = sval.Map()
+		default:
+			return fmt.Errorf("unsupported type conversion %T from %s", vv, styp)
+		}
+	case "array":
+		switch vv := value.(type) {
+		case *[]any:
+			*vv = sval.Array()
 		default:
 			return fmt.Errorf("unsupported type conversion %T from %s", vv, styp)
 		}
