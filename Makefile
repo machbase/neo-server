@@ -63,6 +63,12 @@ package-all:
 		make package-$$tg; \
 	done
 
+docker-image:
+	docker build -t machbase/machbase-neo:$(nextver) --file ./scripts/build-dockerfile .
+
+docker-run:
+	docker run -d --name neo -p 5652-5656:5652-5656 machbase/machbase-neo:$(nextver)
+
 arm32package-machbase-neo:
 	@echo "package arm 32bit linux"
 	./scripts/package.sh machbase-neo linux arm $(nextver) edge

@@ -1,0 +1,24 @@
+FROM alpine
+
+MAINTAINER machbase.com <support@machbase.com>
+
+RUN apk add --no-cache gcompat wget zip 
+
+#libc6-compat 
+
+RUN cd /opt && \
+    wget https://github.com/machbase/neo-server/releases/download/v0.9.8/machbase-neo-fog-v0.9.8-linux-arm64.zip && \
+    unzip /opt/machbase-neo-fog-v0.9.8-linux-arm64.zip && \
+    ln -s /opt/machbase-neo-fog-v0.9.8-linux-arm64/machbase-neo /opt/machbase-neo 
+
+EXPOSE 5652
+EXPOSE 5653
+EXPOSE 5654
+EXPOSE 5655
+EXPOSE 5656
+
+VOLUME ["/machbase_home"]
+
+ENTRYPOINT /opt/machbase-neo serve \
+            --host 0.0.0.0 \
+            --data /machbase_home
