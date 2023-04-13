@@ -3,7 +3,10 @@
 package sshd
 
 import (
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"syscall"
 	"unsafe"
 
