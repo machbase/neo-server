@@ -2,20 +2,18 @@ FROM alpine
 
 MAINTAINER machbase.com <support@machbase.com>
 
-RUN apk add --no-cache gcompat wget zip 
+RUN apk add gcompat wget curl zip
 
-#libc6-compat 
+COPY scripts/build-arch.sh /opt/build-arch.sh
 
 RUN cd /opt && \
-    wget https://github.com/machbase/neo-server/releases/download/v0.9.8/machbase-neo-fog-v0.9.8-linux-arm64.zip && \
-    unzip /opt/machbase-neo-fog-v0.9.8-linux-arm64.zip && \
-    ln -s /opt/machbase-neo-fog-v0.9.8-linux-arm64/machbase-neo /opt/machbase-neo 
+    ARCH=`sh /opt/build-arch.sh` &&\
+    VERSION=`curl -fsSL https://api.github.com/repos/machbase/neo-server/releases/latest |grep tag_name | awk '{print $2}' | tr -d '",'` && \
+    wget https://github.com/machbase/neo-server/releases/download/${VERSION}/machbase-neo-fog-${VERSION}-linux-${ARCH}.zip && \
+    unzip /opt/machbase-neo-fog-${VERSION}-linux-${ARCH}.zip && \
+    ln -s /opt/machbase-neo-fog-${VERSION}-linux-${ARCH}/machbase-neo /opt/machbase-neo 
 
-EXPOSE 5652
-EXPOSE 5653
-EXPOSE 5654
-EXPOSE 5655
-EXPOSE 5656
+EXPOSE 5652-5656
 
 VOLUME ["/machbase_home"]
 
