@@ -1,6 +1,6 @@
 FROM alpine
 
-MAINTAINER machbase.com <support@machbase.com>
+LABEL MAINTAINER="machbase.com <support@machbase.com>"
 
 RUN apk add gcompat wget curl zip
 
