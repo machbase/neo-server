@@ -1,4 +1,4 @@
-package coapsvr
+package coapd
 
 import (
 	"bytes"
@@ -16,43 +16,66 @@ import (
 	"github.com/plgd-dev/go-coap/v3/net"
 	"github.com/plgd-dev/go-coap/v3/options"
 	"github.com/plgd-dev/go-coap/v3/tcp"
+	tcpServer "github.com/plgd-dev/go-coap/v3/tcp/server"
 	"github.com/plgd-dev/go-coap/v3/udp"
+	udpServer "github.com/plgd-dev/go-coap/v3/udp/server"
 )
 
-func New(db spi.Database, conf *Config) (*Server, error) {
-	return &Server{
-		conf: conf,
-		log:  logging.GetLog("coapsvr"),
-		db:   db,
-	}, nil
-}
-
-type Config struct {
-	ListenAddress []string
-	LogWriter     io.Writer
-}
-
-type Server struct {
-	conf *Config
-	log  logging.Log
-	db   spi.Database
-
-	listeners []io.Closer
-	servers   []Stopper
-}
-
-type Stopper interface {
+type Service interface {
+	Start() error
 	Stop()
 }
 
-func (svr *Server) Start() error {
+type Option func(s *coapd)
+
+// Factory
+func New(db spi.Database, options ...Option) (Service, error) {
+	s := &coapd{
+		log: logging.GetLog("coapd"),
+		db:  db,
+	}
+
+	for _, opt := range options {
+		opt(s)
+	}
+	return s, nil
+}
+
+// ListenAddresses
+func OptionListenAddress(addrs ...string) Option {
+	return func(s *coapd) {
+		s.listenAddresses = append(s.listenAddresses, addrs...)
+	}
+}
+
+// LogWriter
+func OptionLogWriter(w io.Writer) Option {
+	return func(s *coapd) {
+		s.logWriter = w
+	}
+}
+
+type coapd struct {
+	log logging.Log
+	db  spi.Database
+
+	listenAddresses []string
+	logWriter       io.Writer
+
+	tcpListeners []*net.TCPListener
+	tcpServers   []*tcpServer.Server
+	udpListeners []*net.UDPConn
+	udpServers   []*udpServer.Server
+}
+
+func (svr *coapd) Start() error {
 	r := mux.NewRouter()
 	r.Use(svr.logging)
 	if err := r.Handle("/a", mux.HandlerFunc(svr.handle)); err != nil {
 		return err
 	}
 
-	for _, addr := range svr.conf.ListenAddress {
+	for _, addr := range svr.listenAddresses {
 		network := "udp"
 		var tlsCfg *tls.Config
 		if strings.HasPrefix(addr, "tcp://") {
@@ -76,9 +99,9 @@ func (svr *Server) Start() error {
 				if err != nil {
 					return err
 				}
-				svr.listeners = append(svr.listeners, lsnr)
+				svr.tcpListeners = append(svr.tcpListeners, lsnr)
 				s := tcp.NewServer(options.WithMux(r))
-				svr.servers = append(svr.servers, s)
+				svr.tcpServers = append(svr.tcpServers, s)
 				svr.LogPrint("CoAP Listen", network, addr)
 				go s.Serve(lsnr)
 			}
@@ -88,9 +111,9 @@ func (svr *Server) Start() error {
 				if err != nil {
 					return err
 				}
-				svr.listeners = append(svr.listeners, lsnr)
+				svr.udpListeners = append(svr.udpListeners, lsnr)
 				s := udp.NewServer(options.WithMux(r))
-				svr.servers = append(svr.servers, s)
+				svr.udpServers = append(svr.udpServers, s)
 				svr.LogPrint("CoAP Listen", network, addr)
 				go s.Serve(lsnr)
 			}
@@ -99,32 +122,38 @@ func (svr *Server) Start() error {
 	return nil
 }
 
-func (svr *Server) Stop() {
-	for _, s := range svr.servers {
+func (svr *coapd) Stop() {
+	for _, s := range svr.tcpServers {
 		s.Stop()
 	}
-	for _, s := range svr.listeners {
+	for _, s := range svr.tcpListeners {
+		s.Close()
+	}
+	for _, s := range svr.udpServers {
+		s.Stop()
+	}
+	for _, s := range svr.udpListeners {
 		s.Close()
 	}
 }
 
-func (svr *Server) LogPrint(strs ...any) {
-	if svr.conf.LogWriter == nil {
+func (svr *coapd) LogPrint(strs ...any) {
+	if svr.logWriter == nil {
 		return
 	}
-	svr.conf.LogWriter.Write([]byte(fmt.Sprintln(strs...)))
+	svr.logWriter.Write([]byte(fmt.Sprintln(strs...)))
 }
 
-func (svr *Server) logging(next mux.Handler) mux.Handler {
+func (svr *coapd) logging(next mux.Handler) mux.Handler {
 	return mux.HandlerFunc(func(w mux.ResponseWriter, r *mux.Message) {
-		if svr.conf.LogWriter != nil {
-			svr.conf.LogWriter.Write([]byte(fmt.Sprintf("ClientAddress %v, %v\n", w.Conn().RemoteAddr(), r.String())))
+		if svr.logWriter != nil {
+			svr.logWriter.Write([]byte(fmt.Sprintf("ClientAddress %v, %v\n", w.Conn().RemoteAddr(), r.String())))
 		}
 		next.ServeCOAP(w, r)
 	})
 }
 
-func (svr *Server) handle(w mux.ResponseWriter, req *mux.Message) {
+func (svr *coapd) handle(w mux.ResponseWriter, req *mux.Message) {
 	obs, err := req.Options().Observe()
 	switch {
 	case req.Code() == codes.GET && err == nil && obs == 0:

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/chzyer/readline"
-	"github.com/machbase/neo-server/mods/service/coapsvr"
+	"github.com/machbase/neo-server/mods/service/coapd"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -87,14 +87,11 @@ func doServeCoap(ctx *client.ActionContext) {
 	if cmd.Verbose && logWriter != ctx.Stdout {
 		logWriter = io.MultiWriter(logWriter, &verboseWriter{ctx: ctx})
 	}
-	conf := &coapsvr.Config{
-		ListenAddress: []string{
-			fmt.Sprintf("%s://%s:%d", cmd.Network, cmd.Host, cmd.Port),
-		},
-		LogWriter: logWriter,
-	}
 
-	csvr, err := coapsvr.New(ctx.DB, conf)
+	csvr, err := coapd.New(ctx.DB,
+		coapd.OptionListenAddress(fmt.Sprintf("%s://%s:%d", cmd.Network, cmd.Host, cmd.Port)),
+		coapd.OptionLogWriter(logWriter),
+	)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
