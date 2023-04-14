@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"net"
 	"os"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -232,8 +234,24 @@ func (svr *sshd) makeShellCommand(user string, args ...string) []string {
 	if len(svr.grpcAddresses) == 0 {
 		return nil
 	}
+	candidates := []string{}
+	for _, addr := range svr.grpcAddresses {
+		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
+			continue
+		}
+		candidates = append(candidates, addr)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if strings.HasPrefix(candidates[i], "unix://") {
+			return true
+		}
+		if candidates[i] == "127.0.0.1" || candidates[i] == "localhost" {
+			return true
+		}
+		return false
+	})
 	result := append(svr.shellCmd,
-		"--server", svr.grpcAddresses[0],
+		"--server", candidates[0],
 	)
 	if len(args) > 0 {
 		result = append(result, args...)

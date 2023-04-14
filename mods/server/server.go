@@ -333,6 +333,10 @@ func (s *svr) Start() error {
 
 		// listeners
 		for _, listen := range s.conf.Grpc.Listeners {
+			if runtime.GOOS == "windows" && strings.HasPrefix(listen, "unix://") {
+				// s.log.Debugf("gRPC unable %s on Windows", listen)
+				continue
+			}
 			lsnr, err := makeListener(listen)
 			if err != nil {
 				return errors.Wrap(err, "cannot start with failed listener")

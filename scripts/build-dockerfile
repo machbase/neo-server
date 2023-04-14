@@ -1,0 +1,22 @@
+FROM alpine
+
+MAINTAINER machbase.com <support@machbase.com>
+
+RUN apk add gcompat wget curl zip
+
+COPY scripts/build-arch.sh /opt/build-arch.sh
+
+RUN cd /opt && \
+    ARCH=`sh /opt/build-arch.sh` &&\
+    VERSION=`curl -fsSL https://api.github.com/repos/machbase/neo-server/releases/latest |grep tag_name | awk '{print $2}' | tr -d '",'` && \
+    wget https://github.com/machbase/neo-server/releases/download/${VERSION}/machbase-neo-fog-${VERSION}-linux-${ARCH}.zip && \
+    unzip /opt/machbase-neo-fog-${VERSION}-linux-${ARCH}.zip && \
+    ln -s /opt/machbase-neo-fog-${VERSION}-linux-${ARCH}/machbase-neo /opt/machbase-neo 
+
+EXPOSE 5652-5656
+
+VOLUME ["/machbase_home"]
+
+ENTRYPOINT /opt/machbase-neo serve \
+            --host 0.0.0.0 \
+            --data /machbase_home

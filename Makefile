@@ -23,6 +23,8 @@ test-base: tmpdir
 	@go test $(ARGS) \
 		./mods/util/glob \
 		./mods/util/ini \
+		./mods/script \
+		./mods/transcoder \
 		./mods/codec/internal/json \
 		./main/machbase-neo \
 		./mods/do \
@@ -60,6 +62,12 @@ package-all:
 	@for tg in $(targets) ; do \
 		make package-$$tg; \
 	done
+
+docker-image:
+	docker build -t machbase-neo --file ./scripts/build-dockerfile .
+
+docker-run:
+	docker run -d --name neo -p 5652-5656:5652-5656 machbase-neo
 
 arm32package-machbase-neo:
 	@echo "package arm 32bit linux"

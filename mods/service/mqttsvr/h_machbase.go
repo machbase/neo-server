@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -90,6 +93,8 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 
 	toks := strings.Split(table, ":")
 	var compress = ""
+	var transname = ""
+
 	var format = "json"
 	if len(toks) >= 1 {
 		table = toks[0]
@@ -97,8 +102,11 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 	if len(toks) >= 2 {
 		format = strings.ToLower(toks[1])
 	}
-	if len(toks) >= 3 {
+	if len(toks) == 3 {
 		compress = strings.ToLower(toks[2])
+	} else if len(toks) == 4 {
+		transname = strings.ToLower(toks[2])
+		compress = strings.ToLower(toks[3])
 	}
 
 	switch format {
@@ -110,6 +118,7 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 	}
 	switch compress {
 	case "": // no compression
+	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
 		peerLog.Warnf("---- unsupproted compression '%s", compress)
@@ -166,14 +175,22 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 	}
 
 	cols, _ := appender.Columns()
-	decoder := codec.NewDecoderBuilder(format).
+	builder := codec.NewDecoderBuilder(format).
 		SetInputStream(instream).
 		SetColumns(cols).
 		SetTimeFormat("ns").
 		SetTimeLocation(time.UTC).
 		SetCsvDelimieter(",").
-		SetCsvHeading(false).
-		Build()
+		SetCsvHeading(false)
+
+	if len(transname) > 0 {
+		trans := transcoder.New(transname,
+			transcoder.PathOption(filepath.Dir(os.Args[0])),
+		)
+		builder.SetTranscoder(trans)
+	}
+
+	decoder := builder.Build()
 
 	recno := 0
 	for {

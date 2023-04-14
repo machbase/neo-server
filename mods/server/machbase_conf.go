@@ -3,6 +3,7 @@ package server
 import (
 	_ "embed"
 	"os"
+	"runtime"
 	"text/template"
 
 	"github.com/pkg/errors"
@@ -235,6 +236,10 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 var conf_template string
 
 func applyMachbaseConfig(confpath string, conf *MachbaseConfig) error {
+	if runtime.GOOS == "windows" {
+		// can not assign other ip address on Windows
+		conf.BIND_IP_ADDRESS = "0.0.0.0"
+	}
 	tmpl, err := template.New("machbase_conf").Parse(conf_template)
 	if err != nil {
 		return errors.Wrap(err, "config template")
