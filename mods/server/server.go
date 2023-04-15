@@ -23,20 +23,18 @@ import (
 	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
-	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttsvr"
-	"github.com/machbase/neo-server/mods/service/rpcsvr"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc"
 )
 
 func init() {
@@ -129,9 +127,8 @@ type svr struct {
 	conf  *Config
 	log   logging.Log
 	db    spi.Database
-	grpcd *grpc.Server
-	mgmtd *grpc.Server
 	mqttd *mqttsvr.Server
+	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
 
@@ -311,44 +308,18 @@ func (s *svr) Start() error {
 
 	// grpc server
 	if len(s.conf.Grpc.Listeners) > 0 {
-		machrpcSvr, err := rpcsvr.New(s.db, &rpcsvr.Config{})
+		s.grpcd, err = grpcd.New(s.db,
+			grpcd.OptionListenAddress(s.conf.Grpc.Listeners...),
+			grpcd.OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
+			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
+			grpcd.OptionManagementServer(s),
+		)
 		if err != nil {
-			return errors.Wrap(err, "grpc handler")
+			return errors.Wrap(err, "grpc server")
 		}
-		// ingest gRPC options
-		grpcOpt := []grpc.ServerOption{
-			grpc.MaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize * 1024 * 1024),
-			grpc.MaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize * 1024 * 1024),
-			grpc.StatsHandler(machrpcSvr),
-		}
-
-		// create grpc server
-		s.grpcd = grpc.NewServer(grpcOpt...)
-		s.mgmtd = grpc.NewServer(grpcOpt...)
-		// s.grpcd is serving only db service
-		machrpc.RegisterMachbaseServer(s.grpcd, machrpcSvr)
-		// s.mgmtd is serving general db service + mgmt service
-		machrpc.RegisterMachbaseServer(s.mgmtd, machrpcSvr)
-		mgmt.RegisterManagementServer(s.mgmtd, s)
-
-		// listeners
-		for _, listen := range s.conf.Grpc.Listeners {
-			if runtime.GOOS == "windows" && strings.HasPrefix(listen, "unix://") {
-				// s.log.Debugf("gRPC unable %s on Windows", listen)
-				continue
-			}
-			lsnr, err := makeListener(listen)
-			if err != nil {
-				return errors.Wrap(err, "cannot start with failed listener")
-			}
-			s.log.Infof("gRPC Listen %s", listen)
-
-			if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
-				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
-				go s.mgmtd.Serve(lsnr)
-			} else {
-				go s.grpcd.Serve(lsnr)
-			}
+		err := s.grpcd.Start()
+		if err != nil {
+			return errors.Wrap(err, "grpc server")
 		}
 	}
 
@@ -433,9 +404,6 @@ func (s *svr) Stop() {
 	}
 	if s.grpcd != nil {
 		s.grpcd.Stop()
-	}
-	if s.mgmtd != nil {
-		s.mgmtd.Stop()
 	}
 
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
