@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -364,7 +365,7 @@ func (cli *client) Process(line string) {
 
 func (cli *client) Prompt() {
 	historyFile := filepath.Join(PrefDir(), ".neoshell_history")
-	rl, err := readline.NewEx(&readline.Config{
+	readlineCfg := &readline.Config{
 		Prompt:                 cli.conf.Prompt,
 		HistoryFile:            historyFile,
 		DisableAutoSaveHistory: true,
@@ -376,7 +377,14 @@ func (cli *client) Prompt() {
 		Stderr:                 cli.conf.Stderr,
 		HistorySearchFold:      true,
 		FuncFilterInputRune:    filterInput,
-	})
+	}
+
+	if runtime.GOOS == "windows" {
+		// TODO on windows, up/down arrow keys for the history is not working if stdin is set
+		readlineCfg.Stdin = nil
+	}
+
+	rl, err := readline.NewEx(readlineCfg)
 	if err != nil {
 		panic(err)
 	}
