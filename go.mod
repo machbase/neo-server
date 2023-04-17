@@ -17,7 +17,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jedib0t/go-pretty/v6 v6.4.4
-	github.com/machbase/booter v1.2.1
+	github.com/machbase/booter v1.2.2-0.20230417040748-3ae0d9d178a3
 	github.com/machbase/neo-engine v0.9.3
 	github.com/machbase/neo-grpc v0.7.0
 	github.com/machbase/neo-spi v1.1.1

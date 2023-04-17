@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/machbase/neo-server/mods/shell"
 	"github.com/machbase/neo-server/mods/util"
@@ -33,7 +34,11 @@ func doHelp(command string, subcommand string) error {
 	}
 
 	if showServeHelp {
-		fmt.Println(helpServeText)
+		if runtime.GOOS == "windows" {
+			fmt.Println(helpServeTextWindows)
+		} else {
+			fmt.Println(helpServeText)
+		}
 	}
 
 	if showShellHelp {
@@ -58,6 +63,12 @@ serve flags:
       --pid=<path>        pid file path
       --bootlog=<path>    boot log file path
   -d, --daemon            run process in background, daemonize`
+
+const helpServeTextWindows = `
+serve flags:
+      --config-dir=<dir>  config directory path
+  -c, --config=<file>     config file path
+      --pname=<pname>     assign process name`
 
 const helpShellText = `flags:
   -s, --server=<addr>     server address (default %s)
