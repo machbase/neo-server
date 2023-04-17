@@ -32,8 +32,12 @@ func New(db spi.Database, options ...Option) (Service, error) {
 	}
 
 	if len(os.Args) > 0 {
-		s.shellCmd = []string{os.Args[0]}
-		if strings.HasSuffix(s.shellCmd[0], "machbase-neo") {
+		exename := os.Args[0]
+		s.shellCmd = []string{exename}
+		if strings.HasSuffix(exename, "machbase-neo") {
+			s.shellCmd = append(s.shellCmd, "shell")
+		} else if strings.HasSuffix(strings.ToLower(exename), "machbase-neo.exe") {
+			// windows
 			s.shellCmd = append(s.shellCmd, "shell")
 		}
 	}
