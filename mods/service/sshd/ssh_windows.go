@@ -28,6 +28,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	cmd.Env = append(cmd.Env, "USERPROFILE="+userHomeDir)
 	cmd.Env = append(cmd.Env, "TERM=VT100")
+	cmd.Env = append(cmd.Env, "NEOSHELL_KEEP_STDIN=1")
 	for k, v := range shell.Envs {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}

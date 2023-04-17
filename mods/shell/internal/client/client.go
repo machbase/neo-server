@@ -380,8 +380,14 @@ func (cli *client) Prompt() {
 	}
 
 	if runtime.GOOS == "windows" {
-		// TODO on windows, up/down arrow keys for the history is not working if stdin is set
-		readlineCfg.Stdin = nil
+		// TODO on windows,
+		//      up/down arrow keys for the history is not working if stdin is set
+		//      if it is not set, it does not work with ssh
+		//      so, use env to decide to set or not to set
+		keepStdin := os.Getenv("NEOSHELL_KEEP_STDIN")
+		if keepStdin != "1" && strings.ToLower(keepStdin) != "true" {
+			readlineCfg.Stdin = nil
+		}
 	}
 
 	rl, err := readline.NewEx(readlineCfg)
