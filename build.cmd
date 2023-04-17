@@ -41,7 +41,8 @@
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString="%GOVERSTR%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString="fog"
 
-go build -ldflags "%LDFLAGS%" -tags=fog_edition -o .\tmp\machbase-neo.exe .\main\machbase-neo
+@REM -tags=timetzdata is required for windows users
+go build -ldflags "%LDFLAGS%" -tags=fog_edition,timetzdata -o .\tmp\machbase-neo.exe .\main\machbase-neo
 
 @if not exist .\packages md packages
 
