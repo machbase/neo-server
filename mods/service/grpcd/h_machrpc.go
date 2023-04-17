@@ -1,129 +1,22 @@
-package rpcsvr
+package grpcd
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"reflect"
 	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-server/mods/logging"
 	spi "github.com/machbase/neo-spi"
-	cmap "github.com/orcaman/concurrent-map"
-	"google.golang.org/grpc/stats"
 )
-
-type Config struct {
-}
-
-type Server interface {
-	stats.Handler
-	machrpc.MachbaseServer // machrpc server interface
-}
-
-func New(db spi.Database, conf *Config) (Server, error) {
-	return &svr{
-		conf:     conf,
-		ctxMap:   cmap.New(),
-		machbase: db,
-		log:      logging.GetLog("rpcsvr"),
-	}, nil
-}
-
-type svr struct {
-	machrpc.MachbaseServer // machrpc server interface
-
-	conf     *Config
-	ctxMap   cmap.ConcurrentMap
-	machbase spi.Database
-	log      logging.Log
-}
-
-func (s *svr) Start() error {
-	return nil
-}
-
-func (s *svr) Stop() {
-
-}
-
-type sessionCtx struct {
-	context.Context
-	Id     string
-	values map[any]any
-}
-
-type stringer interface {
-	String() string
-}
-
-func contextName(c context.Context) string {
-	if s, ok := c.(stringer); ok {
-		return s.String()
-	}
-	return reflect.TypeOf(c).String()
-}
-
-func (c *sessionCtx) String() string {
-	return contextName(c.Context) + "(" + c.Id + ")"
-}
-
-func (c *sessionCtx) Value(key any) any {
-	if key == contextCtxKey {
-		return c
-	}
-	if v, ok := c.values[key]; ok {
-		return v
-	}
-	return c.Context.Value(key)
-}
-
-type rowsWrap struct {
-	id      string
-	rows    spi.Rows
-	release func()
-}
-
-const contextCtxKey = "machrpc-client-context"
-
-var contextIdSerial int64
-
-//// grpc stat handler
-
-func (s *svr) TagRPC(ctx context.Context, nfo *stats.RPCTagInfo) context.Context {
-	return ctx
-}
-
-func (s *svr) HandleRPC(ctx context.Context, stat stats.RPCStats) {
-}
-
-func (s *svr) TagConn(ctx context.Context, nfo *stats.ConnTagInfo) context.Context {
-	id := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
-	ctx = &sessionCtx{Context: ctx, Id: id}
-	s.ctxMap.Set(id, ctx)
-	return ctx
-}
-
-func (s *svr) HandleConn(ctx context.Context, stat stats.ConnStats) {
-	if sessCtx, ok := ctx.(*sessionCtx); ok {
-		switch stat.(type) {
-		case *stats.ConnBegin:
-			// fmt.Printf("get connBegin: %v\n", sessCtx.Id)
-		case *stats.ConnEnd:
-			s.ctxMap.RemoveCb(sessCtx.Id, func(key string, v interface{}, exists bool) bool {
-				// fmt.Printf("get connEnd: %v\n", sessCtx.Id)
-				return true
-			})
-		}
-	}
-}
 
 //// machrpc server handler
 
-func (s *svr) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.PingResponse, error) {
+var _ machrpc.MachbaseServer = &grpcd{}
+
+func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.PingResponse, error) {
 	rsp := &machrpc.PingResponse{}
 	tick := time.Now()
 	defer func() {
@@ -137,7 +30,7 @@ func (s *svr) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.Pin
 	return rsp, nil
 }
 
-func (s *svr) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machrpc.ExplainResponse, error) {
+func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machrpc.ExplainResponse, error) {
 	rsp := &machrpc.ExplainResponse{}
 	tick := time.Now()
 	defer func() {
@@ -147,7 +40,7 @@ func (s *svr) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machr
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if plan, err := s.machbase.Explain(req.Sql); err == nil {
+	if plan, err := s.db.Explain(req.Sql); err == nil {
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Plan = plan
 	} else {
@@ -156,7 +49,7 @@ func (s *svr) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machr
 	return rsp, nil
 }
 
-func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.ExecResponse, error) {
+func (s *grpcd) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.ExecResponse, error) {
 	rsp := &machrpc.ExecResponse{}
 	tick := time.Now()
 	defer func() {
@@ -167,7 +60,7 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	if result := s.machbase.Exec(req.Sql, params...); result.Err() == nil {
+	if result := s.db.Exec(req.Sql, params...); result.Err() == nil {
 		rsp.RowsAffected = result.RowsAffected()
 		rsp.Success = true
 		rsp.Reason = result.Message()
@@ -178,7 +71,7 @@ func (s *svr) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.Exe
 	return rsp, nil
 }
 
-func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*machrpc.QueryRowResponse, error) {
+func (s *grpcd) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*machrpc.QueryRowResponse, error) {
 	rsp := &machrpc.QueryRowResponse{}
 
 	tick := time.Now()
@@ -190,7 +83,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	row := s.machbase.QueryRow(req.Sql, params...)
+	row := s.db.QueryRow(req.Sql, params...)
 
 	if row.Err() != nil {
 		rsp.Reason = row.Err().Error()
@@ -211,7 +104,7 @@ func (s *svr) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*mac
 	return rsp, err
 }
 
-func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.QueryResponse, error) {
+func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.QueryResponse, error) {
 	rsp := &machrpc.QueryResponse{}
 
 	tick := time.Now()
@@ -223,7 +116,7 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	realRows, err := s.machbase.Query(req.Sql, params...)
+	realRows, err := s.db.Query(req.Sql, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -255,7 +148,7 @@ func (s *svr) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.Q
 	return rsp, nil
 }
 
-func (s *svr) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.ColumnsResponse, error) {
+func (s *grpcd) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.ColumnsResponse, error) {
 	rsp := &machrpc.ColumnsResponse{}
 	tick := time.Now()
 	defer func() {
@@ -296,7 +189,7 @@ func (s *svr) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.C
 	return rsp, nil
 }
 
-func (s *svr) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.RowsFetchResponse, error) {
+func (s *grpcd) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.RowsFetchResponse, error) {
 	rsp := &machrpc.RowsFetchResponse{}
 	tick := time.Now()
 	defer func() {
@@ -350,7 +243,7 @@ func (s *svr) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 	return rsp, nil
 }
 
-func (s *svr) RowsClose(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.RowsCloseResponse, error) {
+func (s *grpcd) RowsClose(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc.RowsCloseResponse, error) {
 	rsp := &machrpc.RowsCloseResponse{}
 	tick := time.Now()
 	defer func() {
@@ -377,7 +270,7 @@ func (s *svr) RowsClose(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 	return rsp, nil
 }
 
-func (s *svr) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*machrpc.AppenderResponse, error) {
+func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*machrpc.AppenderResponse, error) {
 	rsp := &machrpc.AppenderResponse{}
 	tick := time.Now()
 	defer func() {
@@ -391,7 +284,7 @@ func (s *svr) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*mach
 	if len(req.Timeformat) > 0 {
 		opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
 	}
-	realAppender, err := s.machbase.Appender(req.TableName, opts...)
+	realAppender, err := s.db.Appender(req.TableName, opts...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -430,7 +323,7 @@ type appenderWrap struct {
 	closed   bool
 }
 
-func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
+func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 	var wrap *appenderWrap
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -511,7 +404,7 @@ func (s *svr) Append(stream machrpc.Machbase_AppendServer) error {
 	}
 }
 
-func (s *svr) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*machrpc.UserAuthResponse, error) {
+func (s *grpcd) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*machrpc.UserAuthResponse, error) {
 	rsp := &machrpc.UserAuthResponse{}
 	tick := time.Now()
 	defer func() {
@@ -520,7 +413,7 @@ func (s *svr) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*mac
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if db, ok := s.machbase.(spi.DatabaseAuth); ok {
+	if db, ok := s.db.(spi.DatabaseAuth); ok {
 		passed, err := db.UserAuth(req.LoginName, req.Password)
 		if err != nil {
 			rsp.Reason = err.Error()
@@ -537,7 +430,7 @@ func (s *svr) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*mac
 	return rsp, nil
 }
 
-func (s *svr) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest) (*machrpc.ServerInfo, error) {
+func (s *grpcd) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest) (*machrpc.ServerInfo, error) {
 	rsp := &machrpc.ServerInfo{
 		Runtime: &machrpc.Runtime{},
 		Version: &machrpc.Version{},
@@ -549,7 +442,7 @@ func (s *svr) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	nfo, err := s.machbase.GetServerInfo()
+	nfo, err := s.db.GetServerInfo()
 	if err != nil {
 		return nil, err
 	}
