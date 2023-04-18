@@ -7,5 +7,8 @@ package icon
 
 import _ "embed"
 
-//go:embed icon_neo.png
-var Data []byte
+//go:embed logo.png
+var Logo []byte
+
+//go:embed shutdown.png
+var Shutdown []byte
