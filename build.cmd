@@ -44,6 +44,5 @@
 @REM -tags=timetzdata is required for windows users
 go build -ldflags "%LDFLAGS%" -tags=fog_edition,timetzdata -o .\tmp\machbase-neo.exe .\main\machbase-neo
 
-@if not exist .\packages md packages
-
-@powershell Compress-Archive -Force -DestinationPath ".\packages\machbase-neo-fog-%VERSION%-windows-amd64.zip" -LiteralPath ".\tmp\machbase-neo.exe"
+@SET CGO_ENABLED=0 
+go build -ldflags "-H=windowsgui" -o .\tmp\neow.exe .\main\neow

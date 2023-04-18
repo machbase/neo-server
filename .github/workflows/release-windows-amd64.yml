@@ -20,6 +20,9 @@ jobs:
       - name: Build
         run: build.cmd
         shell: cmd
+      - name: Package
+        run: buildpkg.cmd
+        shell: cmd
       - name: Release files
         uses: svenstaro/upload-release-action@v2
         if: startsWith(github.ref, 'refs/tags/v')

@@ -17,6 +17,8 @@
 .env.production.local
 .vscode/
 
+.config/
+
 tmp/
 packages/
 vendor/

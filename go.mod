@@ -10,6 +10,7 @@ require (
 	github.com/d5/tengo/v2 v2.14.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gdamore/tcell/v2 v2.5.4
+	github.com/getlantern/systray v1.2.1
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gliderlabs/ssh v0.3.5
@@ -17,8 +18,8 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jedib0t/go-pretty/v6 v6.4.4
-	github.com/machbase/booter v1.2.1
-	github.com/machbase/neo-engine v0.9.3
+	github.com/machbase/booter v1.2.2-0.20230417040748-3ae0d9d178a3
+	github.com/machbase/neo-engine v0.9.4-0.20230418043742-c1294c9a4782
 	github.com/machbase/neo-grpc v0.7.0
 	github.com/machbase/neo-spi v1.1.1
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
@@ -28,6 +29,7 @@ require (
 	github.com/plgd-dev/go-coap/v3 v3.1.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230208211350-7dfff1ce7854
+	github.com/robert-nix/ansihtml v1.0.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.8.2
 	github.com/swaggo/files v1.0.1
@@ -36,6 +38,7 @@ require (
 	github.com/tidwall/gjson v1.14.4
 	golang.org/x/crypto v0.7.0
 	golang.org/x/net v0.8.0
+	golang.org/x/sys v0.7.0
 	golang.org/x/term v0.6.0
 	golang.org/x/text v0.8.0
 	google.golang.org/grpc v1.53.0
@@ -53,6 +56,12 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
+	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
+	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect
+	github.com/getlantern/golog v0.0.0-20190830074920-4ef2e798c2d7 // indirect
+	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
+	github.com/getlantern/hidden v0.0.0-20190325191715-f02dbb02be55 // indirect
+	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
@@ -61,6 +70,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.12.0 // indirect
+	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
@@ -79,6 +89,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
 	github.com/pion/dtls/v2 v2.1.6-0.20230104045405-f40c61d83b5f // indirect
 	github.com/pion/logging v0.2.2 // indirect
@@ -96,7 +107,6 @@ require (
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20230108222341-4b8118a2686a // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20230216225411-c8e22ba71e44 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
