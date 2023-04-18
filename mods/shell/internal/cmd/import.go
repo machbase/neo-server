@@ -58,7 +58,7 @@ type ImportCmd struct {
 	CreateTable   bool           `name:"create-table" default:"false"`
 	TruncateTable bool           `name:"truncate-table" default:"false"`
 	Delimiter     string         `name:"delimiter" short:"d" default:","`
-	Timeformat    string         `name:"timeformat" short:"t"`
+	Timeformat    string         `name:"timeformat" short:"t" default:"ns"`
 	TimeLocation  *time.Location `name:"tz"`
 	Help          bool           `kong:"-"`
 }
