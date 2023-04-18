@@ -28,8 +28,26 @@ func main() {
 		panic(err)
 	}
 
+	neoExeArgs := []string{"serve"}
+	autoStart := false
+
+	iniPath, err := getStartupIni()
+	if err == nil {
+		cfg := ini.Load(iniPath)
+		sect, err := cfg.Section(cfg.DefaultSectionName())
+		if err == nil {
+			valueString := sect.GetValueWithDefault("args", "")
+			values := util.SplitFields(valueString, true)
+			neoExeArgs = append(neoExeArgs, values...)
+
+			autoStart = sect.GetBoolWithDefault("auto-start", false)
+		}
+	}
+
 	na := &neoAgent{
-		exepath:     neoExePath,
+		exePath:     neoExePath,
+		exeArgs:     neoExeArgs,
+		autoStart:   autoStart,
 		stateC:      make(chan NeoState, 1),
 		outputLimit: 500,
 	}
@@ -63,26 +81,10 @@ func getStartupIni() (string, error) {
 	return iniPath, nil
 }
 
-func (na *neoAgent) makeMachbaseNeoArgs() []string {
-	args := []string{"serve"}
-	iniPath, err := getStartupIni()
-	if err != nil {
-		return args
-	}
-
-	cfg := ini.Load(iniPath)
-	sect, err := cfg.Section(cfg.DefaultSectionName())
-	if err != nil {
-		return args
-	}
-	valueString := sect.GetValueWithDefault("args", "")
-	values := util.SplitFields(valueString, true)
-	args = append(args, values...)
-	return args
-}
-
 type neoAgent struct {
-	exepath string
+	exePath   string
+	exeArgs   []string
+	autoStart bool
 
 	stateC  chan NeoState
 	process *os.Process
@@ -143,6 +145,10 @@ func (na *neoAgent) onReady() {
 	na.mQuit.SetIcon(icon.Shutdown)
 
 	go na.run()
+
+	if na.autoStart {
+		na.doStart()
+	}
 }
 
 func (na *neoAgent) onExit() {
@@ -216,9 +222,7 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 func (na *neoAgent) doStart() {
 	na.stateC <- NeoStarting
 
-	args := na.makeMachbaseNeoArgs()
-
-	cmd := exec.Command(na.exepath, args...)
+	cmd := exec.Command(na.exePath, na.exeArgs...)
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
 
