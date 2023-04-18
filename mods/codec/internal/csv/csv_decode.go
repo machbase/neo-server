@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/transcoder"
@@ -52,6 +53,9 @@ func (dec *Decoder) NextRow() ([]any, error) {
 
 	values := make([]any, len(dec.columnTypes))
 	for i, field := range fields {
+		// on windows, trailing white spaces remains
+		// when using pipe like `echo n,t,3.14 | machbase-neo shell import...`
+		field = strings.TrimSpace(field)
 		switch dec.columnTypes[i] {
 		case "string":
 			values[i] = field
