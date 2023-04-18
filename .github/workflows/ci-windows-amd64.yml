@@ -20,6 +20,9 @@ jobs:
       - name: Build
         run: build.cmd
         shell: cmd
+      - name: Package
+        run: buildpkg.cmd
+        shell: cmd
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
