@@ -2,17 +2,22 @@ package main
 
 import (
 	"bufio"
+	"context"
+	_ "embed"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/getlantern/systray"
 	"github.com/machbase/neo-server/main/neow/icon"
+	"github.com/plgd-dev/go-coap/v3/net"
+	"github.com/robert-nix/ansihtml"
 )
 
 func main() {
@@ -52,12 +57,16 @@ type neoAgent struct {
 	stateC  chan NeoState
 	process *os.Process
 
-	outputs     []string
+	outputs     []LogLine
 	outputLock  sync.Mutex
 	outputLimit int
 
+	httpAddr string
+	httpSvr  *http.Server
+
 	mStart *systray.MenuItem
 	mStop  *systray.MenuItem
+	mLog   *systray.MenuItem
 	mQuit  *systray.MenuItem
 }
 
@@ -71,12 +80,22 @@ const (
 )
 
 func (na *neoAgent) Start() {
+	lsnr, _ := net.NewTCPListener("tcp", "127.0.0.1:0")
+	na.httpAddr = lsnr.Addr().String()
+	na.httpSvr = &http.Server{Handler: na}
+	go na.httpSvr.Serve(lsnr)
+
 	// wait until 'systray.Quit` called
 	systray.Run(na.onReady, na.onExit)
 }
 
 func (na *neoAgent) Stop() {
 	na.doStop()
+	if na.httpSvr != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		na.httpSvr.Shutdown(ctx)
+	}
 	systray.Quit()
 }
 
@@ -87,7 +106,10 @@ func (na *neoAgent) onReady() {
 	na.mStop.Disable()
 	systray.AddSeparator()
 
-	na.mQuit = systray.AddMenuItem("Quit", "Quit machbase-neo")
+	na.mLog = systray.AddMenuItem("Show logs", "Show logs")
+	systray.AddSeparator()
+
+	na.mQuit = systray.AddMenuItem("Quit", "Quit neow")
 	na.mQuit.SetIcon(icon.Shutdown)
 
 	go na.run()
@@ -105,7 +127,8 @@ func (na *neoAgent) run() {
 			go na.doStop()
 		case <-na.mQuit.ClickedCh:
 			go na.Stop()
-			return
+		case <-na.mLog.ClickedCh:
+			go na.doShowLog()
 		case state := <-na.stateC:
 			switch state {
 			case NeoStarting:
@@ -133,30 +156,29 @@ func (na *neoAgent) run() {
 	}
 }
 
-func (na *neoAgent) appendOutput(line string) {
+func (na *neoAgent) appendOutput(line []byte) {
 	na.outputLock.Lock()
-	na.outputs = append(na.outputs, line)
+	na.outputs = append(na.outputs, LogLine(line))
 	if len(na.outputs) > na.outputLimit {
 		na.outputs = na.outputs[(len(na.outputs) - na.outputLimit):]
 	}
 	na.outputLock.Unlock()
-	fmt.Println(line)
 }
 
-func copyReader(src io.ReadCloser, appender func(string)) {
+func copyReader(src io.ReadCloser, appender func([]byte)) {
 	reader := bufio.NewReader(src)
-	var parts []string
+	var parts []byte
 	for {
 		buf, isPrefix, err := reader.ReadLine()
 		if err != nil {
 			return
 		}
-		parts = append(parts, string(buf))
+		parts = append(parts, buf...)
 		if isPrefix {
 			continue
 		}
-		line := strings.Join(parts, "")
-		parts = parts[:0]
+		line := parts
+		parts = []byte{}
 		appender(line)
 	}
 }
@@ -186,11 +208,78 @@ func (na *neoAgent) doStop() {
 		na.process.Signal(os.Interrupt)
 		state, err := na.process.Wait()
 		if err != nil {
-			na.appendOutput(fmt.Sprintf("Shutdown failed %s", err.Error()))
+			na.appendOutput([]byte(fmt.Sprintf("Shutdown failed %s", err.Error())))
 		} else {
-			na.appendOutput(fmt.Sprintf("Shutdown %s exit(%d)", state.String(), state.ExitCode()))
+			na.appendOutput([]byte(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode())))
 		}
 		na.process = nil
 	}
 	na.stateC <- NeoStopped
+}
+
+type LogLine []byte
+
+func (ll LogLine) String() string {
+	return string(ll)
+}
+
+func (ll LogLine) ToHTML() []byte {
+	return ansihtml.ConvertToHTML(ll)
+}
+
+func (na *neoAgent) doShowLog() {
+	addr := fmt.Sprintf("http://%s/log", na.httpAddr)
+	switch runtime.GOOS {
+	case "linux":
+		exec.Command("xdg-open", addr).Start()
+	case "darwin":
+		exec.Command("open", addr).Start()
+	case "windows":
+		exec.Command("rundll32", "url.dll,FileProtocolHandler", addr).Start()
+	}
+}
+
+var htmlHeader = []byte(`<html>
+	<head>
+		<meta charset="utf-8">
+		<link rel="stylesheet" href="/terminal.css">
+		<style>
+		body {
+			padding: 0; margin: 0;
+			background: #1a1e24;
+			width: 100%;
+			min-height: 100vh;
+			display: -webkit-box; display: -ms-flexbox; display: flex;
+			-webkit-box-align: center; -ms-flex-align: center; align-items: center;
+			-webkit-box-pack: center; -ms-flex-pack: center; justify-content: center;
+			-webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+		}
+		</style>
+	</head>
+	<body>
+	<div id="termynal" data-termynal style="width:95%">`)
+var htmlFooter = []byte(`</div></body></html>`)
+
+//go:embed terminal.css
+var htmlTerminalCss []byte
+
+func (na *neoAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/log" {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(htmlHeader)
+		na.outputLock.Lock()
+		defer na.outputLock.Unlock()
+		for _, l := range na.outputs {
+			w.Write([]byte(`<span data-ty>`))
+			w.Write(l.ToHTML())
+			w.Write([]byte(`</span>`))
+		}
+		w.Write(htmlFooter)
+	} else if r.URL.Path == "/terminal.css" {
+		w.Header().Set("Content-Type", "text/css")
+		w.Write(htmlTerminalCss)
+	} else {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(r.URL.Path))
+	}
 }

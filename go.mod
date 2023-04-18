@@ -29,6 +29,7 @@ require (
 	github.com/plgd-dev/go-coap/v3 v3.1.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230208211350-7dfff1ce7854
+	github.com/robert-nix/ansihtml v1.0.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.8.2
 	github.com/swaggo/files v1.0.1
