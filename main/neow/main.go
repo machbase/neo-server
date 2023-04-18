@@ -8,10 +8,6 @@ import (
 )
 
 func main() {
-	doServe()
-}
-
-func doServe() {
 	systray.Run(onReady, onExit)
 }
 
@@ -29,25 +25,17 @@ func onReady() {
 		for {
 			select {
 			case <-mStart.ClickedCh:
-				// booter.SetConfiFileSuffix(".conf")
-				// booter.SetFallbackConfig(server.DefaultFallbackConfig)
-				// booter.SetFallbackPname(server.DefaultFallbackPname)
-				// booter.SetVersionString(mods.VersionString() + " " + mach.LinkInfo())
-				// booter.Startup()
 				mStart.Disable()
 				mStop.Enable()
 				systray.SetTooltip("Running...")
-				// booter.WaitSignal()
 			case <-mStop.ClickedCh:
 				mStart.Enable()
 				mStop.Disable()
-				//				booter.Shutdown()
 				systray.SetTooltip("Stopped")
 			case <-mQuit.ClickedCh:
 				if mStop.Disabled() {
 					systray.Quit()
 				} else {
-					// booter.ShutdownAndExit(0)
 					os.Exit(0)
 				}
 			}
