@@ -16,6 +16,8 @@ import (
 
 	"github.com/getlantern/systray"
 	"github.com/machbase/neo-server/main/neow/icon"
+	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/ini"
 	"github.com/plgd-dev/go-coap/v3/net"
 	"github.com/robert-nix/ansihtml"
 )
@@ -49,6 +51,34 @@ func getMachbaseNeoPath() (string, error) {
 	}
 
 	return neoExePath, nil
+}
+
+func getStartupIni() (string, error) {
+	selfPath := os.Args[0]
+	selfDir := filepath.Dir(selfPath)
+	iniPath := filepath.Join(selfDir, "neow.ini")
+	if _, err := os.Stat(iniPath); err != nil {
+		return "", err
+	}
+	return iniPath, nil
+}
+
+func (na *neoAgent) makeMachbaseNeoArgs() []string {
+	args := []string{"serve"}
+	iniPath, err := getStartupIni()
+	if err != nil {
+		return args
+	}
+
+	cfg := ini.Load(iniPath)
+	sect, err := cfg.Section(cfg.DefaultSectionName())
+	if err != nil {
+		return args
+	}
+	valueString := sect.GetValueWithDefault("args", "")
+	values := util.SplitFields(valueString, true)
+	args = append(args, values...)
+	return args
 }
 
 type neoAgent struct {
@@ -186,15 +216,16 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 func (na *neoAgent) doStart() {
 	na.stateC <- NeoStarting
 
-	cmd := exec.Command(na.exepath, "serve")
+	args := na.makeMachbaseNeoArgs()
+
+	cmd := exec.Command(na.exepath, args...)
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
 
 	stderr, _ := cmd.StderrPipe()
 	go copyReader(stderr, na.appendOutput)
 
-	err := cmd.Start()
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		panic(err)
 	}
 	na.process = cmd.Process
