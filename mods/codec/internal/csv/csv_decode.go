@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -52,10 +53,13 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	}
 
 	values := make([]any, len(dec.columnTypes))
+	lastField := len(fields) - 1
 	for i, field := range fields {
-		// on windows, trailing white spaces remains
-		// when using pipe like `echo n,t,3.14 | machbase-neo shell import...`
-		field = strings.TrimSpace(field)
+		if i == lastField && runtime.GOOS == "windows" {
+			// on windows, the last field contains the trailing white spaces
+			// in case of using pipe like `echo name,time,3.14 | machbase-neo shell import...`
+			field = strings.TrimSpace(field)
+		}
 		switch dec.columnTypes[i] {
 		case "string":
 			values[i] = field
