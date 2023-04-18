@@ -240,7 +240,18 @@ func (na *neoAgent) doStart() {
 func (na *neoAgent) doStop() {
 	if na.process != nil {
 		na.stateC <- NeoStopping
-		na.process.Signal(os.Interrupt)
+		if runtime.GOOS == "windows" {
+			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
+			// it will return an error instead of sending a signal.
+			// so, this will not work => na.process.Signal(syscall.SIGINT)
+			cmd := exec.Command(na.exePath, "shell", "shutdown")
+			cmd.Run()
+		} else {
+			err := na.process.Signal(os.Interrupt)
+			if err != nil {
+				na.appendOutput([]byte(err.Error()))
+			}
+		}
 		state, err := na.process.Wait()
 		if err != nil {
 			na.appendOutput([]byte(fmt.Sprintf("Shutdown failed %s", err.Error())))
