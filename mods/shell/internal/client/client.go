@@ -325,7 +325,7 @@ func (cli *client) Process(line string) {
 	cmdName := fields[0]
 	var cmd *Cmd
 	var ok bool
-	if cmd, ok = commands[cmdName]; ok {
+	if cmd, ok = commands[strings.ToLower(cmdName)]; ok {
 		line = strings.TrimSpace(line[len(cmdName):])
 	} else {
 		cmd, ok = commands["sql"]
