@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -222,7 +223,19 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 func (na *neoAgent) doStart() {
 	na.stateC <- NeoStarting
 
-	cmd := exec.Command(na.exePath, na.exeArgs...)
+	pname := ""
+	pargs := []string{}
+	if runtime.GOOS == "windows" {
+		pname = "cmd.exe"
+		pargs = append(pargs, "/c")
+		pargs = append(pargs, na.exePath)
+		pargs = append(pargs, na.exeArgs...)
+	} else {
+		pname = na.exePath
+		pargs = append(pargs, na.exeArgs...)
+	}
+	cmd := exec.Command(pname, pargs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
 
@@ -244,7 +257,8 @@ func (na *neoAgent) doStop() {
 			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
 			// it will return an error instead of sending a signal.
 			// so, this will not work => na.process.Signal(syscall.SIGINT)
-			cmd := exec.Command(na.exePath, "shell", "shutdown")
+			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "shutdown")
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 			cmd.Run()
 		} else {
 			err := na.process.Signal(os.Interrupt)
