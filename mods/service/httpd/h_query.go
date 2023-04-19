@@ -122,6 +122,11 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		OnFetchEnd: func() {
 			encoder.Close()
 		},
+		OnExecuted: func(userMessage string, rowsAffected int64) {
+			rsp.Success, rsp.Reason = true, userMessage
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusOK, rsp)
+		},
 	}
 	if _, err := do.Query(queryCtx, req.SqlText); err != nil {
 		svr.log.Error("query fail", err.Error())
