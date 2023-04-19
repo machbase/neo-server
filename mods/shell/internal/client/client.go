@@ -245,6 +245,10 @@ func (cli *client) Process(line string) {
 	if len(fields) == 0 {
 		return
 	}
+	if runtime.GOOS == "windows" {
+		// on windows, command line keeps the trailing ';'
+		fields[len(fields)-1] = strings.TrimSuffix(fields[len(fields)-1], ";")
+	}
 
 	cmdName := fields[0]
 	var cmd *Cmd
