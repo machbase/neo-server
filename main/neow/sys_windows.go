@@ -5,18 +5,89 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/machbase/booter"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
+
+func winMain(na *neoAgent) {
+}
+
+func winMainCandidate(na *neoAgent) {
+	// Am I Admin?
+	elevated := windows.GetCurrentProcessToken().IsElevated()
+	if !elevated {
+		// fmt.Println("Need to run as administrator")
+		err := reRunAsAdmin()
+		if err != nil {
+			na.log(fmt.Sprintln("ERR", err.Error()))
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// windows service
+	osService := &winService{
+		name:        "machbase-neo",
+		description: "machbase-neo service agent",
+	}
+
+	if status, err := osService.Status(); err != nil {
+		if status, err := osService.Install(); err != nil {
+			na.log(fmt.Sprintln("install:", status, "ERR", err.Error()))
+		} else {
+			na.log(fmt.Sprintln("install:", status))
+		}
+	} else {
+		fmt.Println("status:", getWindowsServiceStateFromUint32(status))
+		switch status {
+		case svc.Stopped:
+			if status, err := osService.Remove(); err != nil {
+				fmt.Println("remove:", status, "ERR", err.Error())
+			} else {
+				fmt.Println("remove:", status)
+			}
+		case svc.StopPending:
+		case svc.StartPending:
+		case svc.Running:
+		case svc.ContinuePending:
+		case svc.PausePending:
+		case svc.Paused:
+		default:
+			if status, err := osService.Install(); err != nil {
+				fmt.Println("install:", status, "ERR", err.Error())
+			} else {
+				fmt.Println("install:", status)
+			}
+		}
+	}
+}
+
+func reRunAsAdmin() error {
+	verb := "runas"
+	exe, _ := os.Executable()
+	cwd, _ := os.Getwd()
+	args := strings.Join(os.Args[1:], " ")
+
+	verbPtr, _ := syscall.UTF16PtrFromString(verb)
+	exePtr, _ := syscall.UTF16PtrFromString(exe)
+	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
+	argPtr, _ := syscall.UTF16PtrFromString(args)
+
+	var showCmd int32 = 1
+	err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
+	return err
+}
 
 func WindowsServe() error {
 	ws := &winService{
@@ -50,7 +121,7 @@ loop:
 	for {
 		select {
 		case <-tick:
-			break
+			break loop
 		case c := <-r:
 			switch c.Cmd {
 			case svc.Interrogate:
@@ -60,8 +131,6 @@ loop:
 				changes <- c.CurrentStatus
 			case svc.Stop, svc.Shutdown:
 				changes <- svc.Status{State: svc.StopPending}
-				booter.Shutdown()
-				// sh.executable.Stop()
 				break loop
 			case svc.Pause:
 				changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepted}
@@ -87,30 +156,32 @@ var ErrAlreadyRunning = errors.New("already running")
 
 func (ws *winService) Install(args ...string) (string, error) {
 	installAction := "Install " + ws.description + ":"
-	execp, err := execPath()
-	if err != nil {
-		return installAction + " failed", err
-	}
+	// execp, err := execPath()
+	// if err != nil {
+	// 	return installAction + " failed", err
+	// }
+	execp, _ := os.Executable()
 	m, err := mgr.Connect()
 	if err != nil {
-		return installAction + " failed", err
+		return installAction + " failed to connect mgr", err
 	}
 	defer m.Disconnect()
 
 	s, err := m.OpenService(ws.name)
 	if err == nil {
 		s.Close()
-		return installAction + " failed", ErrAlreadyRunning
+		return installAction + " failed to open service", ErrAlreadyRunning
 	}
 
 	s, err = m.CreateService(ws.name, execp, mgr.Config{
-		DisplayName:  ws.name,
-		Description:  ws.description,
-		StartType:    mgr.StartAutomatic,
-		Dependencies: ws.dependencies,
+		DisplayName:      ws.name,
+		Description:      ws.description,
+		StartType:        mgr.StartAutomatic,
+		DelayedAutoStart: true,
+		Dependencies:     ws.dependencies,
 	}, args...)
 	if err != nil {
-		return installAction + " failed", err
+		return installAction + " failed to create service", err
 	}
 	defer s.Close()
 
@@ -143,17 +214,17 @@ func (ws *winService) Remove(args ...string) (string, error) {
 	removeAction := "Removing " + ws.description + ":"
 	m, err := mgr.Connect()
 	if err != nil {
-		return removeAction + " failed", getWindowsError(err)
+		return removeAction + " failed to connect mgr", getWindowsError(err)
 	}
 	defer m.Disconnect()
 	s, err := m.OpenService(ws.name)
 	if err != nil {
-		return removeAction + " failed", getWindowsError(err)
+		return removeAction + " failed to open service", getWindowsError(err)
 	}
 	defer s.Close()
 	err = s.Delete()
 	if err != nil {
-		return removeAction + " failed", getWindowsError(err)
+		return removeAction + " failed to remove service", getWindowsError(err)
 	}
 	return removeAction + " completed.", nil
 }
@@ -211,7 +282,7 @@ func stopAndWait(s *mgr.Service) error {
 				return err
 			}
 		case <-timeout:
-			break
+			return nil
 		}
 	}
 	return nil
@@ -235,22 +306,22 @@ func getStopTimeout() time.Duration {
 	return time.Millisecond * time.Duration(v)
 }
 
-func (ws *winService) Status() (string, error) {
+func (ws *winService) Status() (svc.State, error) {
 	m, err := mgr.Connect()
 	if err != nil {
-		return "Getting status: failed", getWindowsError(err)
+		return 0, getWindowsError(err)
 	}
 	defer m.Disconnect()
 	s, err := m.OpenService(ws.name)
 	if err != nil {
-		return "Getting status: failed", getWindowsError(err)
+		return 0, getWindowsError(err)
 	}
 	defer s.Close()
 	status, err := s.Query()
 	if err != nil {
-		return "Getting status: failed", getWindowsError(err)
+		return 0, getWindowsError(err)
 	}
-	return "Status: " + getWindowsServiceStateFromUint32(status.State), nil
+	return status.State, nil
 }
 
 // Get executable path
@@ -295,7 +366,7 @@ func getWindowsError(inputError error) error {
 	if exiterr, ok := inputError.(*exec.ExitError); ok {
 		if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 			if sysErr, ok := WinErrCode[status.ExitStatus()]; ok {
-				return errors.New(fmt.Sprintf("\n %s: %s \n %s", sysErr.Title, sysErr.Description, sysErr.Action))
+				return fmt.Errorf("\n %s: %s \n %s", sysErr.Title, sysErr.Description, sysErr.Action)
 			}
 		}
 	}

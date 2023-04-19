@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -118,6 +119,9 @@ func (na *neoAgent) Start() {
 	na.httpSvr = &http.Server{Handler: na}
 	go na.httpSvr.Serve(lsnr)
 
+	// only effective on Windows
+	winMain(na)
+
 	// wait until 'systray.Quit` called
 	systray.Run(na.onReady, na.onExit)
 }
@@ -191,6 +195,10 @@ func (na *neoAgent) run() {
 			}
 		}
 	}
+}
+
+func (na *neoAgent) log(line string) {
+	na.appendOutput([]byte(strings.TrimSpace(line)))
 }
 
 func (na *neoAgent) appendOutput(line []byte) {
