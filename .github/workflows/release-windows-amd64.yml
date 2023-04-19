@@ -13,6 +13,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          ref: main
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
