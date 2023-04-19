@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -243,7 +242,7 @@ func (na *neoAgent) doStart() {
 		pargs = append(pargs, na.exeArgs...)
 	}
 	cmd := exec.Command(pname, pargs...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	sysProcAttr(cmd)
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
 
@@ -266,7 +265,7 @@ func (na *neoAgent) doStop() {
 			// it will return an error instead of sending a signal.
 			// so, this will not work => na.process.Signal(syscall.SIGINT)
 			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "shutdown")
-			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			sysProcAttr(cmd)
 			cmd.Run()
 		} else {
 			err := na.process.Signal(os.Interrupt)

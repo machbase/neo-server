@@ -23,6 +23,10 @@ import (
 func winMain(na *neoAgent) {
 }
 
+func sysProcAttr(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+}
+
 func winMainCandidate(na *neoAgent) {
 	// Am I Admin?
 	elevated := windows.GetCurrentProcessToken().IsElevated()
