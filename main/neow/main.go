@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -55,7 +57,7 @@ func main() {
 }
 
 func getMachbaseNeoPath() (string, error) {
-	selfPath := os.Args[0]
+	selfPath, _ := os.Executable()
 	selfDir := filepath.Dir(selfPath)
 	neoExePath := ""
 	if runtime.GOOS == "windows" {
@@ -116,6 +118,9 @@ func (na *neoAgent) Start() {
 	na.httpAddr = lsnr.Addr().String()
 	na.httpSvr = &http.Server{Handler: na}
 	go na.httpSvr.Serve(lsnr)
+
+	// only effective on Windows
+	winMain(na)
 
 	// wait until 'systray.Quit` called
 	systray.Run(na.onReady, na.onExit)
@@ -192,6 +197,10 @@ func (na *neoAgent) run() {
 	}
 }
 
+func (na *neoAgent) log(line string) {
+	na.appendOutput([]byte(strings.TrimSpace(line)))
+}
+
 func (na *neoAgent) appendOutput(line []byte) {
 	na.outputLock.Lock()
 	na.outputs = append(na.outputs, LogLine(line))
@@ -222,7 +231,19 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 func (na *neoAgent) doStart() {
 	na.stateC <- NeoStarting
 
-	cmd := exec.Command(na.exePath, na.exeArgs...)
+	pname := ""
+	pargs := []string{}
+	if runtime.GOOS == "windows" {
+		pname = "cmd.exe"
+		pargs = append(pargs, "/c")
+		pargs = append(pargs, na.exePath)
+		pargs = append(pargs, na.exeArgs...)
+	} else {
+		pname = na.exePath
+		pargs = append(pargs, na.exeArgs...)
+	}
+	cmd := exec.Command(pname, pargs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
 
@@ -244,19 +265,20 @@ func (na *neoAgent) doStop() {
 			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
 			// it will return an error instead of sending a signal.
 			// so, this will not work => na.process.Signal(syscall.SIGINT)
-			cmd := exec.Command(na.exePath, "shell", "shutdown")
+			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "shutdown")
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 			cmd.Run()
 		} else {
 			err := na.process.Signal(os.Interrupt)
 			if err != nil {
-				na.appendOutput([]byte(err.Error()))
+				na.log(err.Error())
 			}
 		}
 		state, err := na.process.Wait()
 		if err != nil {
-			na.appendOutput([]byte(fmt.Sprintf("Shutdown failed %s", err.Error())))
+			na.log(fmt.Sprintf("Shutdown failed %s", err.Error()))
 		} else {
-			na.appendOutput([]byte(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode())))
+			na.log(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode()))
 		}
 		na.process = nil
 	}
