@@ -37,6 +37,7 @@ const helpShow = `  show [options] <command>
 type ShowCmd struct {
 	Info     struct{} `cmd:""`
 	IndexGap struct{} `cmd:"" name:"indexgap"`
+	Lsm      struct{} `cmd:"" name:"lsm"`
 	Tables   struct {
 		ShowAll bool `name:"all" short:"a"`
 	} `cmd:""`
@@ -49,6 +50,7 @@ func pcShow() readline.PrefixCompleterInterface {
 	return readline.PcItem("show",
 		readline.PcItem("info"),
 		readline.PcItem("indexgap"),
+		readline.PcItem("lsm"),
 		readline.PcItem("tables"),
 		readline.PcItem("meta-tables"),
 		readline.PcItem("virtual-tables"),
@@ -77,6 +79,8 @@ func doShow(ctx *client.ActionContext) {
 		doShowInfo(ctx)
 	case "indexgap":
 		doShowIndexGap(ctx)
+	case "lsm":
+		doShowLsm(ctx)
 	case "tables":
 		doShowTables(ctx, cmd.Tables.ShowAll)
 	case "meta-tables":
@@ -102,6 +106,27 @@ func doShowIndexGap(ctx *client.ActionContext) {
 	and c.table_id = b.id 
 	order by 3 desc`
 
+	doShowByQuery0(ctx, sqlText)
+}
+
+func doShowLsm(ctx *client.ActionContext) {
+	sqlText := `select 
+		b.name as TABLE_NAME,
+		c.name as INDEX_NAME,
+		a.level as LEVEL,
+		a.end_rid - a.begin_rid as COUNT
+	from
+		v$storage_dc_lsmindex_levels a,
+		m$sys_tables b, m$sys_indexes c
+	where
+		c.id = a.index_id 
+	and b.id = a.table_id
+	order by 1, 2, 3`
+
+	doShowByQuery0(ctx, sqlText)
+}
+
+func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
 	var output spi.OutputStream
 	output, err := stream.NewOutputStream("-")
 	if err != nil {
