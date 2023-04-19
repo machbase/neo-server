@@ -57,7 +57,7 @@ func main() {
 }
 
 func getMachbaseNeoPath() (string, error) {
-	selfPath := os.Args[0]
+	selfPath, _ := os.Executable()
 	selfDir := filepath.Dir(selfPath)
 	neoExePath := ""
 	if runtime.GOOS == "windows" {
@@ -271,14 +271,14 @@ func (na *neoAgent) doStop() {
 		} else {
 			err := na.process.Signal(os.Interrupt)
 			if err != nil {
-				na.appendOutput([]byte(err.Error()))
+				na.log(err.Error())
 			}
 		}
 		state, err := na.process.Wait()
 		if err != nil {
-			na.appendOutput([]byte(fmt.Sprintf("Shutdown failed %s", err.Error())))
+			na.log(fmt.Sprintf("Shutdown failed %s", err.Error()))
 		} else {
-			na.appendOutput([]byte(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode())))
+			na.log(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode()))
 		}
 		na.process = nil
 	}
