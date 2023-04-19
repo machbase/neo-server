@@ -24,10 +24,11 @@ func init() {
 	})
 }
 
-const helpShow = `  show [options] <command>
-  commands:
+const helpShow = `  show [options] <object>
+  objects:
     info             show server info
-    indexgap         show index gap
+    indexgap         INDEX GAP status
+	lsm              LSM status
     tables           list tables
       -a,--all       includes all hidden tables
     meta-tables      show meta tables
@@ -35,15 +36,9 @@ const helpShow = `  show [options] <command>
 `
 
 type ShowCmd struct {
-	Info     struct{} `cmd:""`
-	IndexGap struct{} `cmd:"" name:"indexgap"`
-	Lsm      struct{} `cmd:"" name:"lsm"`
-	Tables   struct {
-		ShowAll bool `name:"all" short:"a"`
-	} `cmd:""`
-	MetaTables    struct{} `cmd:""`
-	VirtualTables struct{} `cmd:""`
-	Help          bool     `kong:"-"`
+	Object  string `arg:""`
+	ShowAll bool   `name:"all" short:"a"`
+	Help    bool   `kong:"-"`
 }
 
 func pcShow() readline.PrefixCompleterInterface {
@@ -65,7 +60,7 @@ func doShow(ctx *client.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	parserCtx, err := parser.Parse(util.SplitFields(ctx.Line, false))
+	_, err = parser.Parse(util.SplitFields(ctx.Line, false))
 	if cmd.Help {
 		return
 	}
@@ -74,7 +69,7 @@ func doShow(ctx *client.ActionContext) {
 		return
 	}
 
-	switch parserCtx.Command() {
+	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
 	case "indexgap":
@@ -82,7 +77,7 @@ func doShow(ctx *client.ActionContext) {
 	case "lsm":
 		doShowLsm(ctx)
 	case "tables":
-		doShowTables(ctx, cmd.Tables.ShowAll)
+		doShowTables(ctx, cmd.ShowAll)
 	case "meta-tables":
 		doShowMVTables(ctx, "M$TABLES")
 	case "virtual-tables":
