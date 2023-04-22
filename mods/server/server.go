@@ -28,7 +28,7 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
-	"github.com/machbase/neo-server/mods/service/mqttsvr"
+	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
@@ -87,7 +87,7 @@ type Config struct {
 	Shell          ShellConfig
 	Grpc           GrpcConfig
 	Http           HttpConfig
-	Mqtt           mqttsvr.Config
+	Mqtt           MqttConfig
 
 	NoBanner bool
 
@@ -111,6 +111,18 @@ type HttpConfig struct {
 	EnableTokenAuth bool
 }
 
+type MqttConfig struct {
+	Listeners []string
+	Handlers  []mqttd.HandlerConfig
+
+	EnableTokenAuth bool
+	EnableTls       bool
+	ServerCertPath  string
+	ServerKeyPath   string
+
+	MaxMessageSizeLimit int
+}
+
 type ShellConfig struct {
 	Listeners     []string
 	IdleTimeout   time.Duration
@@ -124,10 +136,11 @@ type Server interface {
 type svr struct {
 	mgmt.ManagementServer
 
-	conf  *Config
-	log   logging.Log
-	db    spi.Database
-	mqttd *mqttsvr.Server
+	conf *Config
+	log  logging.Log
+	db   spi.Database
+
+	mqttd mqttd.Service
 	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
@@ -160,9 +173,9 @@ func NewConfig() *Config {
 				{Prefix: "/db", Handler: "machbase"},
 			},
 		},
-		Mqtt: mqttsvr.Config{
+		Mqtt: MqttConfig{
 			Listeners: []string{},
-			Handlers: []mqttsvr.HandlerConfig{
+			Handlers: []mqttd.HandlerConfig{
 				{Prefix: "db", Handler: "machbase"},
 			},
 			MaxMessageSizeLimit: 1024 * 1024,
@@ -345,26 +358,30 @@ func (s *svr) Start() error {
 
 	// mqtt server
 	if len(s.conf.Mqtt.Listeners) > 0 {
+		opts := []mqttd.Option{
+			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
+			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+		}
+		for _, h := range s.conf.Mqtt.Handlers {
+			opts = append(opts, mqttd.OptionHandler(h.Prefix, h.Handler))
+		}
 		if s.conf.Mqtt.EnableTls {
-			if len(s.conf.Mqtt.ServerCertPath) == 0 {
-				s.conf.Mqtt.ServerCertPath = s.ServerCertificatePath()
+			serverCert := s.conf.Mqtt.ServerCertPath
+			if len(serverCert) == 0 {
+				serverCert = s.ServerCertificatePath()
 			}
-			if len(s.conf.Mqtt.ServerKeyPath) == 0 {
-				s.conf.Mqtt.ServerKeyPath = s.ServerPrivateKeyPath()
+			serverKey := s.conf.Mqtt.ServerKeyPath
+			if len(serverKey) == 0 {
+				serverKey = s.ServerPrivateKeyPath()
 			}
-			s.log.Infof("MQTT TLS enabled")
+			opts = append(opts, mqttd.OptionTls(serverCert, serverKey))
 		}
-
-		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
-		s.mqttd.SetAuthServer(s)
-
-		if s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls {
-			s.log.Infof("MQTT token authentication enabled")
-		} else {
-			s.log.Infof("MQTT token authentication disabled")
+		s.mqttd, err = mqttd.New(s.db, opts...)
+		if err != nil {
+			return errors.Wrap(err, "mqtt server")
 		}
-
-		err := s.mqttd.Start()
+		err = s.mqttd.Start()
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
 		}

@@ -1,4 +1,4 @@
-package mqttsvr
+package mqttd
 
 import (
 	"bytes"
@@ -7,10 +7,10 @@ import (
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-server/mods/do"
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 )
 
-func (svr *Server) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
+func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 	dbName := strings.TrimPrefix(evt.Topic, prefix+"/")
 	dec := lineprotocol.NewDecoder(bytes.NewBuffer(evt.Raw))
 	if dec == nil {
