@@ -2,11 +2,14 @@ package httpd
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/do"
+	spi "github.com/machbase/neo-spi"
 )
 
 type lakeReq struct {
@@ -20,7 +23,9 @@ type lakeRsp struct {
 	Data    string `json:"data,omitempty"`
 }
 
-// var once sync.Once
+var once sync.Once
+var appender spi.Appender
+
 const tableName = "TAG"
 
 func (svr *httpd) handleAppender(ctx *gin.Context) {
@@ -35,7 +40,7 @@ func (svr *httpd) handleAppender(ctx *gin.Context) {
 	}
 
 	if req.TagName == "" {
-		rsp.Reason = "tagName is empty"
+		rsp.Reason = "tag name is empty"
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
@@ -46,33 +51,47 @@ func (svr *httpd) handleAppender(ctx *gin.Context) {
 		return
 	}
 
-	// log.Println("[Request] : ", req)
+	// log.Printf("req : %+v\n", req)
 
-	exists, err := do.ExistsTable(svr.db, tableName)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusPreconditionFailed, rsp)
-		return
+	once.Do(func() {
+		exists, err := do.ExistsTable(svr.db, tableName)
+		if err != nil {
+			rsp.Reason = err.Error()
+			ctx.JSON(http.StatusPreconditionFailed, rsp)
+			return
+		}
+
+		if !exists {
+			rsp.Reason = fmt.Sprintf("%s table is not exist", tableName)
+			ctx.JSON(http.StatusPreconditionFailed, rsp)
+			return
+		}
+
+		appender, err = svr.db.Appender(tableName)
+		if err != nil {
+			rsp.Reason = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+
+		// close 시점 언제?
+		defer appender.Close()
+	})
+
+	if appender == nil {
+		log.Println("appender is nil")
+		appender, err = svr.db.Appender(tableName)
+		if err != nil {
+			rsp.Reason = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
 	}
-
-	if !exists {
-		rsp.Reason = fmt.Sprintf("%s table is not exist", tableName)
-		ctx.JSON(http.StatusPreconditionFailed, rsp)
-		return
-	}
-
-	appender, err := svr.db.Appender(tableName)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	}
-
-	defer appender.Close()
 
 	dataSet := make([][]interface{}, len(req.Values))
 	for idx, value := range req.Values {
 		temp := []interface{}{req.TagName}
+		// 임시
 		t, _ := time.Parse("2006-01-02 15:04:05", value[0].(string))
 		value[0] = t
 		dataSet[idx] = append(temp, value...)
@@ -91,32 +110,3 @@ func (svr *httpd) handleAppender(ctx *gin.Context) {
 	rsp.Success = true
 	ctx.JSON(http.StatusOK, rsp)
 }
-
-// once.Do(func() {
-// 	sqlText := `
-// 	create tag table TAG (
-// 		name VARCHAR(40) PRIMARY KEY,
-// 		time datetime basetime,
-// 		value double
-// 	)`
-
-// 	result := svr.db.Exec(sqlText)
-// 	if result != nil {
-// 		rsp.Reason = result.Err().Error()
-// 		ctx.JSON(http.StatusInternalServerError, rsp)
-// 		return
-// 	}
-
-// 	exists, err := do.ExistsTable(svr.db, tableName)
-// 	if err != nil {
-// 		rsp.Reason = err.Error()
-// 		ctx.JSON(http.StatusPreconditionFailed, rsp)
-// 		return
-// 	}
-
-// 	if !exists {
-// 		rsp.Reason = fmt.Sprintf("%s table is not exist", tableName)
-// 		ctx.JSON(http.StatusPreconditionFailed, rsp)
-// 		return
-// 	}
-// })
