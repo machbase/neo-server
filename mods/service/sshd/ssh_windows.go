@@ -73,6 +73,12 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	wg.Wait()
 
 	err = cmd.Start()
+	if err != nil {
+		svr.log.Infof("session terminated %s from %s %s", ss.User(), ss.RemoteAddr(), err.Error())
+		io.WriteString(ss, "No Shell started.\n")
+		ss.Exit(1)
+		return
+	}
 
 	// register child process after Start()
 	svr.addChild(cmd.Process)
@@ -80,12 +86,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		svr.removeChild(cmd.Process)
 	}()
 
-	if err != nil {
-		svr.log.Infof("session terminated %s from %s %s", ss.User(), ss.RemoteAddr(), err.Error())
-		io.WriteString(ss, "No Shell started.\n")
-		ss.Exit(1)
-		return
-	}
 	cmd.Wait()
 	svr.log.Infof("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), cmd.ProcessState)
 }
