@@ -6,7 +6,7 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-type Product struct {
+type CurrentVersion struct {
 	Name                      string
 	BuildLab                  string
 	CurrentVersion            string
@@ -15,8 +15,8 @@ type Product struct {
 	CurrentBuildNumber        int
 }
 
-func ProductName() (Product, error) {
-	prd := Product{}
+func GetCurrentVersion() (CurrentVersion, error) {
+	prd := CurrentVersion{}
 
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE)
 	if err != nil {
@@ -30,6 +30,8 @@ func ProductName() (Product, error) {
 	}
 	prd.BuildLab = bl
 
+	// e.g
+	// Windows Server 2016 Standard
 	pn, _, err := k.GetStringValue("ProductName")
 	if err != nil {
 		return prd, err
