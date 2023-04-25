@@ -19,9 +19,9 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jedib0t/go-pretty/v6 v6.4.4
 	github.com/machbase/booter v1.2.2-0.20230417040748-3ae0d9d178a3
-	github.com/machbase/neo-engine v0.9.4
-	github.com/machbase/neo-grpc v0.7.0
-	github.com/machbase/neo-spi v1.1.1
+	github.com/machbase/neo-engine v0.9.5-0.20230425033326-e32e9a545aa2
+	github.com/machbase/neo-grpc v0.7.1-0.20230425033634-562890d63574
+	github.com/machbase/neo-spi v1.1.2-0.20230425030538-9c21efb716a4
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0
