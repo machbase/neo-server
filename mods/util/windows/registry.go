@@ -48,16 +48,16 @@ func GetCurrentVersion() (CurrentVersion, error) {
 	if err != nil {
 		return prd, err
 	}
-	prd.CurrentBuildNumber = cb
+	prd.CurrentBuildNumber = int(cb)
 
 	// supported since Windows 10
 	if maj, _, err := k.GetIntegerValue("CurrentMajorVersionNumber"); err == nil {
-		prd.CurrentMajorVersionNumber = maj
+		prd.CurrentMajorVersionNumber = int(maj)
 	}
 
 	// supported since Windows 10
 	if min, _, err := k.GetIntegerValue("CurrentMinorVersionNumber"); err == nil {
-		prd.CurrentMinorVersionNumber = min
+		prd.CurrentMinorVersionNumber = int(min)
 	}
 
 	return prd, nil
