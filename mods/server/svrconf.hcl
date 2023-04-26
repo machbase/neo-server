@@ -36,6 +36,8 @@ define VARS {
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", false)
     HTTP_ENABLE_SWAGGER   = flag("--http-enable-swagger", false)
     
+    PGW_ENABLE            = flag("--pgw-enable", false)
+
     MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
 }
 
@@ -96,8 +98,8 @@ module "machbase.com/neo-server" {
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
         }
-        Wire = {
-            Listeners        = [ "tcp://${VARS_WIRE_LISTEN_HOST}:${VARS_WIRE_LISTEN_PORT}" ]
+        Pgwd = {
+            Listeners        = VARS_PGW_ENABLE ? [ "tcp://${VARS_WIRE_LISTEN_HOST}:${VARS_WIRE_LISTEN_PORT}" ] : []
         }
         EnableMachbaseSigHandler = VARS_MACHBASE_ENABLE_SIGHANDLER
     }

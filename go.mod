@@ -21,7 +21,7 @@ require (
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/jeroenrinzema/psql-wire v0.5.3
-	github.com/lib/pq v1.10.7
+	github.com/lib/pq v1.10.8
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.0
 	github.com/machbase/neo-grpc v0.8.0
@@ -40,7 +40,7 @@ require (
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.4
-	go.uber.org/zap v1.19.1
+	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.8.0
 	golang.org/x/net v0.9.0
 	golang.org/x/sys v0.7.0
@@ -87,7 +87,7 @@ require (
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgtype v1.8.1 // indirect
+	github.com/jackc/pgtype v1.14.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect

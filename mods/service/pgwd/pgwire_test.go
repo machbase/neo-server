@@ -1,4 +1,4 @@
-package wiresvr_test
+package pgwd_test
 
 import (
 	"context"
@@ -11,17 +11,17 @@ import (
 )
 
 func TestPgwire(t *testing.T) {
-	connstr := "postgres://username:password@127.0.0.1:5651/machbase"
-	conn, err := pgx.Connect(context.Background(), connstr)
+	connstr := "postgres://username:password@127.0.0.1:5651/postgres?preferQueryMode=simple"
+	conn, err := pgx.Connect(context.TODO(), connstr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close(context.Background())
+	defer conn.Close(context.TODO())
 
 	tagName := "wave.sin"
 	limit := 10
-	rows, err := conn.Query(context.Background(),
+	rows, err := conn.Query(context.TODO(),
 		"SELECT name, time, value FROM example WHERE name = ? ORDER BY TIME DESC LIMIT ?", tagName, limit)
 	if err != nil {
 		panic(err)

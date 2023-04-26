@@ -1,4 +1,4 @@
-package wiresvr
+package pgwd
 
 import (
 	"context"
@@ -15,27 +15,41 @@ import (
 	"go.uber.org/zap"
 )
 
-type Config struct {
-	Listeners   []string
-	Development bool
-}
-
-type Server interface {
+type Service interface {
 	Start() error
 	Stop()
 }
 
-func New(db spi.Database, conf *Config) (Server, error) {
-	return &svr{
-		log:  logging.GetLog("wiresvr"),
-		conf: conf,
-		db:   db,
-	}, nil
+type Option func(s *svr)
+
+func New(db spi.Database, opts ...Option) (Service, error) {
+	s := &svr{
+		log: logging.GetLog("pgwd"),
+		db:  db,
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
+}
+
+func OptionListenAddress(addr ...string) Option {
+	return func(s *svr) {
+		s.listenAddresses = append(s.listenAddresses, addr...)
+	}
+}
+
+func OptionDebugMode(flag bool) Option {
+	return func(s *svr) {
+		s.debugMode = flag
+	}
 }
 
 type svr struct {
-	log   logging.Log
-	conf  *Config
+	log             logging.Log
+	listenAddresses []string
+	debugMode       bool
+
 	db    spi.Database
 	lsnrs []*wire.Server
 }
@@ -44,7 +58,7 @@ func (s *svr) Start() (err error) {
 	options := []wire.OptionFn{}
 	options = append(options, wire.Parse(s.parse))
 	options = append(options, wire.Version("9.0"))
-	if s.conf.Development {
+	if s.debugMode {
 		zlog, _ := zap.NewDevelopment()
 		options = append(options, wire.Logger(zlog))
 	} else {
@@ -53,7 +67,7 @@ func (s *svr) Start() (err error) {
 		zlog, _ := zapCfg.Build()
 		options = append(options, wire.Logger(zlog))
 	}
-	for _, addr := range s.conf.Listeners {
+	for _, addr := range s.listenAddresses {
 		lsnr, err := wire.NewServer(options...)
 		if err != nil {
 			return err
@@ -64,7 +78,7 @@ func (s *svr) Start() (err error) {
 			return err
 		}
 		go lsnr.Serve(l)
-		s.log.Infof("WIRE Listen %s", addr)
+		s.log.Infof("PGWD Listen %s", addr)
 	}
 	return nil
 }

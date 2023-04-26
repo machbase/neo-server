@@ -29,9 +29,9 @@ import (
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttd"
+	"github.com/machbase/neo-server/mods/service/pgwd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
-	"github.com/machbase/neo-server/mods/service/wiresvr"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -88,12 +88,8 @@ type Config struct {
 	Shell          ShellConfig
 	Grpc           GrpcConfig
 	Http           HttpConfig
-<<<<<<< HEAD
-	Mqtt           mqttsvr.Config
-	Wire           wiresvr.Config
-=======
 	Mqtt           MqttConfig
->>>>>>> main
+	Pgwd           PgwdConfig
 
 	NoBanner bool
 
@@ -135,6 +131,11 @@ type ShellConfig struct {
 	ServerKeyPath string
 }
 
+type PgwdConfig struct {
+	Listeners []string
+	DebugMode bool
+}
+
 type Server interface {
 	booter.Boot
 }
@@ -150,7 +151,7 @@ type svr struct {
 	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
-	pgsvr wiresvr.Server
+	pgsvr pgwd.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -443,8 +444,11 @@ func (s *svr) Start() error {
 	}
 
 	// postresql wire protocol (experimental)
-	if len(s.conf.Wire.Listeners) > 0 {
-		s.pgsvr, err = wiresvr.New(s.db, &s.conf.Wire)
+	if len(s.conf.Pgwd.Listeners) > 0 {
+		s.pgsvr, err = pgwd.New(s.db,
+			pgwd.OptionListenAddress(s.conf.Pgwd.Listeners...),
+			pgwd.OptionDebugMode(s.conf.Pgwd.DebugMode),
+		)
 		if err != nil {
 			return errors.Wrap(err, "pgwire server")
 		}
