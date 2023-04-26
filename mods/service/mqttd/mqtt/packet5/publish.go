@@ -3,7 +3,6 @@ package packet5
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"net"
 )
 
@@ -18,7 +17,7 @@ type Publish struct {
 	Retain     bool
 }
 
-//Unpack is the implementation of the interface required function for a packet
+// Unpack is the implementation of the interface required function for a packet
 func (p *Publish) Unpack(r *bytes.Buffer) error {
 	var err error
 	p.Topic, err = readString(r)
@@ -37,7 +36,7 @@ func (p *Publish) Unpack(r *bytes.Buffer) error {
 		return err
 	}
 
-	p.Payload, err = ioutil.ReadAll(r)
+	p.Payload, err = io.ReadAll(r)
 	if err != nil {
 		return err
 	}

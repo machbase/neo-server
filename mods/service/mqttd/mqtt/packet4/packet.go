@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/mqtterr"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/mqtterr"
 )
 
 type ControlPacket interface {

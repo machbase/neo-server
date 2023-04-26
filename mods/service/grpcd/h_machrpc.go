@@ -40,7 +40,7 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if plan, err := s.db.Explain(req.Sql); err == nil {
+	if plan, err := s.db.Explain(req.Sql, req.Full); err == nil {
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Plan = plan
 	} else {

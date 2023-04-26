@@ -1,4 +1,4 @@
-package mqttsvr
+package mqttd
 
 import (
 	"fmt"

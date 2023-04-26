@@ -1,8 +1,8 @@
 package mqtt
 
 import (
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet4"
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet5"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/packet4"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/packet5"
 )
 
 func (p *peer) RecvPingreq5(msg *packet5.Pingreq) {
