@@ -254,6 +254,35 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase trc")
 	}
 
+	// port-check MACH
+	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
+		return errors.Wrap(err, "MACH port not available")
+	}
+	// port-check gRPC
+	for _, addr := range s.conf.Grpc.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "gRPC port not available")
+		}
+	}
+	// port-check HTTP
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "HTTP port not available")
+		}
+	}
+	// port-check MQTT
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "MQTT port not available")
+		}
+	}
+	// port-check SSHD
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "SSHD port not available")
+		}
+	}
+
 	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
@@ -613,6 +642,21 @@ func (s *svr) RemoveAuthorizedSshKey(fingerprint string) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *svr) checkListenPort(address string) error {
+	if !strings.HasPrefix(address, "tcp://") {
+		return nil
+	}
+	ln, err := net.Listen("tcp", strings.TrimPrefix(address, "tcp://"))
+	if err != nil {
+		return err
+	}
+	err = ln.Close()
+	if err != nil {
+		return err
 	}
 	return nil
 }
