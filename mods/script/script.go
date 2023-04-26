@@ -19,15 +19,15 @@ type Loader interface {
 	Parse(rawScript []byte) (Script, error)
 }
 
-type LoaderOption func(sl *loader)
+type Option func(sl *loader)
 
-func PathOption(paths ...string) LoaderOption {
+func OptionPath(paths ...string) Option {
 	return func(sl *loader) {
 		sl.paths = append(sl.paths, paths...)
 	}
 }
 
-func NewLoader(opts ...LoaderOption) Loader {
+func NewLoader(opts ...Option) Loader {
 	sl := &loader{}
 	for _, ot := range opts {
 		ot(sl)

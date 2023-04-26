@@ -32,10 +32,10 @@ func New(name string, opts ...Option) Transcoder {
 
 type Option func(tc Transcoder)
 
-func PathOption(paths ...string) Option {
+func OptionPath(paths ...string) Option {
 	return func(tc Transcoder) {
 		if sc, ok := tc.(*scriptTranslator); ok {
-			sc.opts = append(sc.opts, script.PathOption(paths...))
+			sc.opts = append(sc.opts, script.OptionPath(paths...))
 		}
 	}
 }
@@ -86,7 +86,7 @@ type scriptTranslator struct {
 	sc   script.Script
 	err  error
 	log  logging.Log
-	opts []script.LoaderOption
+	opts []script.Option
 }
 
 func newScripTransaltor(name string) *scriptTranslator {
@@ -124,7 +124,7 @@ func (ts *scriptTranslator) Process(r any) (any, error) {
 		return nil, err
 	}
 
-	result := []any{}
+	var result any
 	if err := ts.sc.GetVar("OUTPUT", &result); err != nil {
 		return nil, err
 	}

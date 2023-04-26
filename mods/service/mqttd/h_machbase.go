@@ -184,9 +184,11 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		SetCsvHeading(false)
 
 	if len(transname) > 0 {
-		trans := transcoder.New(transname,
-			transcoder.PathOption(filepath.Dir(os.Args[0])),
-		)
+		opts := []transcoder.Option{}
+		if exepath, err := os.Executable(); err == nil {
+			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+		}
+		trans := transcoder.New(transname, opts...)
 		builder.SetTranscoder(trans)
 	}
 
