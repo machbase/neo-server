@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet4"
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/packet5"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/packet4"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/packet5"
 )
 
 func accept(r io.Reader) (byte, any, int64, error) {

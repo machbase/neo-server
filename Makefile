@@ -29,7 +29,7 @@ test-base: tmpdir
 		./main/machbase-neo \
 		./mods/do \
 		./mods/service/security \
-		./mods/service/mqttsvr/mqtt \
+		./mods/service/mqttd/mqtt \
 		./mods/service/httpd \
 		./mods/server \
 		./test

@@ -17,7 +17,7 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/util/glob"
 	"github.com/stretchr/testify/assert"
