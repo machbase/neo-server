@@ -3,7 +3,6 @@ module github.com/machbase/neo-server
 go 1.19
 
 require (
-	github.com/ActiveState/termtest/conpty v0.5.0
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78
 	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/alecthomas/kong v0.7.1

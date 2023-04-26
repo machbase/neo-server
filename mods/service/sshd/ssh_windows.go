@@ -10,8 +10,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/ActiveState/termtest/conpty"
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-server/mods/util/conpty"
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
