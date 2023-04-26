@@ -46,7 +46,9 @@ func NewClaim(loginName string) Claim {
 }
 
 func NewClaimForRefresh(claim Claim) Claim {
-	return NewClaim(claim.Subject)
+	c := NewClaim(claim.Subject)
+	c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(jwtConf.RtDuration))
+	return c
 }
 
 func SignTokenWithClaim(claim Claim) (string, error) {

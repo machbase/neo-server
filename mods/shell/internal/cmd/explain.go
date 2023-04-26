@@ -21,10 +21,13 @@ func init() {
 const helpExplain string = `  explain <query>
   arguments:
     query       query statement to display the execution plan
+  options:
+    --full      full explain
 `
 
 type ExplainCmd struct {
 	Help  bool     `kong:"-"`
+	Full  bool     `name:"full"`
 	Query []string `arg:"" name:"query" passthrough:""`
 }
 
@@ -49,7 +52,7 @@ func doExplain(ctx *client.ActionContext) {
 	}
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	plan, err := ctx.DB.Explain(sqlText)
+	plan, err := ctx.DB.Explain(sqlText, cmd.Full)
 	if err != nil {
 		ctx.Println(err.Error())
 		return

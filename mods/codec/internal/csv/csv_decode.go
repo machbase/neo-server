@@ -5,26 +5,32 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 )
 
 type Decoder struct {
 	reader      *csv.Reader
 	columnTypes []string
 	ctx         *spi.RowsDecoderContext
+	translator  transcoder.Transcoder
 }
 
-func NewDecoder(ctx *spi.RowsDecoderContext, delimiter string, heading bool) spi.RowsDecoder {
+func NewDecoder(ctx *spi.RowsDecoderContext, delimiter string, heading bool, translator transcoder.Transcoder) spi.RowsDecoder {
 	delmiter, _ := utf8.DecodeRuneInString(delimiter)
 
 	rr := &Decoder{ctx: ctx}
 	rr.reader = csv.NewReader(ctx.Reader)
 	rr.reader.Comma = delmiter
 	rr.columnTypes = ctx.Columns.Types()
+	rr.translator = translator
 
 	if heading { // skip first line
 		rr.reader.Read()
@@ -47,7 +53,13 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	}
 
 	values := make([]any, len(dec.columnTypes))
+	lastField := len(fields) - 1
 	for i, field := range fields {
+		if i == lastField && runtime.GOOS == "windows" {
+			// on windows, the last field contains the trailing white spaces
+			// in case of using pipe like `echo name,time,3.14 | machbase-neo shell import...`
+			field = strings.TrimSpace(field)
+		}
 		switch dec.columnTypes[i] {
 		case "string":
 			values[i] = field
@@ -74,6 +86,17 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			}
 		default:
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
+		}
+	}
+	if dec.translator != nil {
+		result, err := dec.translator.Process(values)
+		if err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("transcoder internal error '%T'", dec.translator))
+		}
+		if conv, ok := result.([]any); !ok {
+			return nil, errors.Wrap(err, fmt.Sprintf("transcoder returns invalid type '%T'", result))
+		} else {
+			values = conv
 		}
 	}
 	return values, nil

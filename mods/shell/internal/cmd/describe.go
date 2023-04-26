@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
@@ -61,26 +58,6 @@ func doDescribe(ctx *client.ActionContext) {
 		return
 	}
 	desc := _desc.(*do.TableDescription)
-
-	ctx.Printfln("TABLE  %s  %s", desc.Name, desc.TypeString())
-	if desc.Type == spi.TagTableType {
-		tags := []string{}
-		rows, err := ctx.DB.Query(fmt.Sprintf("select name from _%s_META order by name", strings.ToUpper(desc.Name)))
-		if err != nil {
-			ctx.Println("ERR", err.Error())
-			return
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var name string
-			if err := rows.Scan(&name); err != nil {
-				ctx.Println("ERR", err.Error())
-				return
-			}
-			tags = append(tags, name)
-		}
-		ctx.Println("TAGS  ", strings.Join(tags, ", "))
-	}
 
 	nrow := 0
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})

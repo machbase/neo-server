@@ -26,9 +26,6 @@ import (
 func (svr *httpd) handleQuery(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
 
 	var err error
 	req := &msg.QueryRequest{Precision: -1}
@@ -43,6 +40,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Precision = -1
 			if err = ctx.Bind(req); err != nil {
 				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
@@ -57,6 +55,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Precision = strInt(ctx.PostForm("precision"), -1)
 		} else {
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
+			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
@@ -73,6 +72,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 
 	if len(req.SqlText) == 0 {
 		rsp.Reason = "empty sql"
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -122,9 +122,16 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		OnFetchEnd: func() {
 			encoder.Close()
 		},
+		OnExecuted: func(userMessage string, rowsAffected int64) {
+			rsp.Success, rsp.Reason = true, userMessage
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusOK, rsp)
+		},
 	}
 	if _, err := do.Query(queryCtx, req.SqlText); err != nil {
+		svr.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }

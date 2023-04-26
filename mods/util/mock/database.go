@@ -28,7 +28,7 @@ var _ spi.Database = &DatabaseMock{}
 //			ExecContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
 //				panic("mock out the ExecContext method")
 //			},
-//			ExplainFunc: func(sqlText string) (string, error) {
+//			ExplainFunc: func(sqlText string, full bool) (string, error) {
 //				panic("mock out the Explain method")
 //			},
 //			GetServerInfoFunc: func() (*spi.ServerInfo, error) {
@@ -63,7 +63,7 @@ type DatabaseMock struct {
 	ExecContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
 
 	// ExplainFunc mocks the Explain method.
-	ExplainFunc func(sqlText string) (string, error)
+	ExplainFunc func(sqlText string, full bool) (string, error)
 
 	// GetServerInfoFunc mocks the GetServerInfo method.
 	GetServerInfoFunc func() (*spi.ServerInfo, error)
@@ -109,6 +109,8 @@ type DatabaseMock struct {
 		Explain []struct {
 			// SqlText is the sqlText argument value.
 			SqlText string
+			// Full is the full argument value.
+			Full bool
 		}
 		// GetServerInfo holds details about calls to the GetServerInfo method.
 		GetServerInfo []struct {
@@ -270,19 +272,21 @@ func (mock *DatabaseMock) ExecContextCalls() []struct {
 }
 
 // Explain calls ExplainFunc.
-func (mock *DatabaseMock) Explain(sqlText string) (string, error) {
+func (mock *DatabaseMock) Explain(sqlText string, full bool) (string, error) {
 	if mock.ExplainFunc == nil {
 		panic("DatabaseMock.ExplainFunc: method is nil but Database.Explain was just called")
 	}
 	callInfo := struct {
 		SqlText string
+		Full    bool
 	}{
 		SqlText: sqlText,
+		Full:    full,
 	}
 	mock.lockExplain.Lock()
 	mock.calls.Explain = append(mock.calls.Explain, callInfo)
 	mock.lockExplain.Unlock()
-	return mock.ExplainFunc(sqlText)
+	return mock.ExplainFunc(sqlText, full)
 }
 
 // ExplainCalls gets all the calls that were made to Explain.
@@ -291,9 +295,11 @@ func (mock *DatabaseMock) Explain(sqlText string) (string, error) {
 //	len(mockedDatabase.ExplainCalls())
 func (mock *DatabaseMock) ExplainCalls() []struct {
 	SqlText string
+	Full    bool
 } {
 	var calls []struct {
 		SqlText string
+		Full    bool
 	}
 	mock.lockExplain.RLock()
 	calls = mock.calls.Explain

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -195,82 +196,6 @@ func (cli *client) Config() *Config {
 	return cli.conf
 }
 
-type ActionContext struct {
-	Line         string
-	Client       Client
-	DB           spi.Database
-	Lang         language.Tag
-	TimeLocation *time.Location
-	TimeFormat   string
-	Interactive  bool
-
-	Stdin  io.ReadCloser
-	Stdout io.Writer
-	Stderr io.Writer
-
-	parent     context.Context
-	cancelFunc func()
-	cli        *client
-}
-
-func (ctx *ActionContext) Deadline() (deadline time.Time, ok bool) {
-	return ctx.parent.Deadline()
-}
-
-func (ctx *ActionContext) Done() <-chan struct{} {
-	return ctx.parent.Done()
-}
-
-func (ctx *ActionContext) Err() error {
-	return ctx.parent.Err()
-}
-
-func (ctx *ActionContext) Value(key any) any {
-	return ctx.parent.Value(key)
-}
-
-func (ctx *ActionContext) Cancel() {
-	ctx.cancelFunc()
-}
-
-func (ctx *ActionContext) Write(p []byte) (int, error) {
-	return ctx.Client.Write(p)
-}
-func (ctx *ActionContext) Print(args ...any) {
-	ctx.Client.Print(args...)
-}
-func (ctx *ActionContext) Printf(format string, args ...any) {
-	ctx.Client.Printf(format, args...)
-}
-func (ctx *ActionContext) Println(args ...any) {
-	ctx.Client.Println(args...)
-}
-func (ctx *ActionContext) Printfln(format string, args ...any) {
-	ctx.Client.Printfln(format, args...)
-}
-
-func (ctx *ActionContext) Config() *Config {
-	return ctx.cli.conf
-}
-
-func (ctx *ActionContext) Pref() *Pref {
-	return ctx.cli.pref
-}
-
-func (ctx *ActionContext) NewManagementClient() (mgmt.ManagementClient, error) {
-	conn, err := machrpc.MakeGrpcConn(ctx.cli.conf.ServerAddr)
-	if err != nil {
-		return nil, err
-	}
-	return mgmt.NewManagementClient(conn), nil
-}
-
-// ShutdownServerFunc returns callable function to shutdown server if this instance has ability of shutdown server
-// otherwise return nil
-func (ctx *ActionContext) ShutdownServerFunc() ShutdownServerFunc {
-	return ctx.cli.ShutdownServer
-}
-
 type Cmd struct {
 	Name   string
 	PcFunc func() readline.PrefixCompleterInterface
@@ -320,11 +245,15 @@ func (cli *client) Process(line string) {
 	if len(fields) == 0 {
 		return
 	}
+	if runtime.GOOS == "windows" {
+		// on windows, command line keeps the trailing ';'
+		fields[len(fields)-1] = strings.TrimSuffix(fields[len(fields)-1], ";")
+	}
 
 	cmdName := fields[0]
 	var cmd *Cmd
 	var ok bool
-	if cmd, ok = commands[cmdName]; ok {
+	if cmd, ok = commands[strings.ToLower(cmdName)]; ok {
 		line = strings.TrimSpace(line[len(cmdName):])
 	} else {
 		cmd, ok = commands["sql"]
@@ -364,7 +293,7 @@ func (cli *client) Process(line string) {
 
 func (cli *client) Prompt() {
 	historyFile := filepath.Join(PrefDir(), ".neoshell_history")
-	rl, err := readline.NewEx(&readline.Config{
+	readlineCfg := &readline.Config{
 		Prompt:                 cli.conf.Prompt,
 		HistoryFile:            historyFile,
 		DisableAutoSaveHistory: true,
@@ -376,7 +305,18 @@ func (cli *client) Prompt() {
 		Stderr:                 cli.conf.Stderr,
 		HistorySearchFold:      true,
 		FuncFilterInputRune:    filterInput,
-	})
+	}
+
+	if runtime.GOOS == "windows" {
+		// TODO on windows,
+		//      up/down arrow keys for the history is not working if stdin is set
+		//      guess: underlying Windows interface requires os.Stdin.Fd() to syscall
+		readlineCfg.Stdin = nil
+		readlineCfg.Stdout = nil
+		readlineCfg.Stderr = nil
+	}
+
+	rl, err := readline.NewEx(readlineCfg)
 	if err != nil {
 		panic(err)
 	}

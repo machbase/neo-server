@@ -6,6 +6,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
+	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
@@ -118,6 +119,7 @@ type DecoderBuilder interface {
 	SetColumns(columns spi.Columns) DecoderBuilder
 	SetCsvHeading(heading bool) DecoderBuilder
 	SetCsvDelimieter(del string) DecoderBuilder
+	SetTranscoder(trans transcoder.Transcoder) DecoderBuilder
 }
 
 type decBuilder struct {
@@ -125,6 +127,7 @@ type decBuilder struct {
 	decoderType  string
 	csvDelimiter string
 	csvHeading   bool
+	transcoder   transcoder.Transcoder
 }
 
 func NewDecoderBuilder(decoderType string) DecoderBuilder {
@@ -138,7 +141,7 @@ func NewDecoderBuilder(decoderType string) DecoderBuilder {
 func (b *decBuilder) Build() spi.RowsDecoder {
 	switch b.decoderType {
 	case CSV:
-		return csv.NewDecoder(b.RowsDecoderContext, b.csvDelimiter, b.csvHeading)
+		return csv.NewDecoder(b.RowsDecoderContext, b.csvDelimiter, b.csvHeading, b.transcoder)
 	default: // "json"
 		return json.NewDecoder(b.RowsDecoderContext)
 	}
@@ -171,5 +174,10 @@ func (b *decBuilder) SetCsvDelimieter(del string) DecoderBuilder {
 
 func (b *decBuilder) SetCsvHeading(heading bool) DecoderBuilder {
 	b.csvHeading = heading
+	return b
+}
+
+func (b *decBuilder) SetTranscoder(trans transcoder.Transcoder) DecoderBuilder {
+	b.transcoder = trans
 	return b
 }

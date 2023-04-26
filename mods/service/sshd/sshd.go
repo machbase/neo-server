@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"net"
 	"os"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,8 +32,15 @@ func New(db spi.Database, options ...Option) (Service, error) {
 	}
 
 	if len(os.Args) > 0 {
-		s.shellCmd = []string{os.Args[0]}
+		if exename, err := os.Executable(); err != nil {
+			s.shellCmd = []string{os.Args[0]}
+		} else {
+			s.shellCmd = []string{exename}
+		}
 		if strings.HasSuffix(s.shellCmd[0], "machbase-neo") {
+			s.shellCmd = append(s.shellCmd, "shell")
+		} else if strings.HasSuffix(strings.ToLower(s.shellCmd[0]), "machbase-neo.exe") {
+			// windows
 			s.shellCmd = append(s.shellCmd, "shell")
 		}
 	}
@@ -88,6 +97,9 @@ type sshd struct {
 	log   logging.Log
 	db    spi.Database
 	alive bool
+
+	dumpInput  bool
+	dumpOutput bool
 
 	listenAddresses []string
 	idleTimeout     time.Duration
@@ -232,8 +244,24 @@ func (svr *sshd) makeShellCommand(user string, args ...string) []string {
 	if len(svr.grpcAddresses) == 0 {
 		return nil
 	}
+	candidates := []string{}
+	for _, addr := range svr.grpcAddresses {
+		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
+			continue
+		}
+		candidates = append(candidates, addr)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if strings.HasPrefix(candidates[i], "unix://") {
+			return true
+		}
+		if candidates[i] == "127.0.0.1" || candidates[i] == "localhost" {
+			return true
+		}
+		return false
+	})
 	result := append(svr.shellCmd,
-		"--server", svr.grpcAddresses[0],
+		"--server", candidates[0],
 	)
 	if len(args) > 0 {
 		result = append(result, args...)

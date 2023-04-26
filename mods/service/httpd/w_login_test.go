@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -78,6 +81,24 @@ func TestLoginRoute(t *testing.T) {
 	loginRsp = &LoginRsp{}
 	err = dec.Decode(loginRsp)
 	require.Nil(t, err, "login response decode")
+
+	// Access Token default expire 5 minutes
+	claim := security.NewClaimEmpty()
+	_, err = jwt.ParseWithClaims(loginRsp.AccessToken, claim, func(t *jwt.Token) (interface{}, error) {
+		return []byte("__secret__"), nil
+	})
+	require.Nil(t, err, "parse access token")
+	require.True(t, claim.VerifyExpiresAt(time.Now().Add(4*time.Minute), true))
+	require.False(t, claim.VerifyExpiresAt(time.Now().Add(6*time.Minute), true))
+
+	// Access Token default expire 60 minutes
+	claim = security.NewClaimEmpty()
+	_, err = jwt.ParseWithClaims(loginRsp.RefreshToken, claim, func(t *jwt.Token) (interface{}, error) {
+		return []byte("__secret__"), nil
+	})
+	require.Nil(t, err, "parse refresh token")
+	require.True(t, claim.VerifyExpiresAt(time.Now().Add(59*time.Minute), true))
+	require.False(t, claim.VerifyExpiresAt(time.Now().Add(61*time.Minute), true))
 
 	// success case - re-login
 	b = &bytes.Buffer{}

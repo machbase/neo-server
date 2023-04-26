@@ -34,7 +34,7 @@ func pcHelp() readline.PrefixCompleterInterface {
 func doHelp(ctx *ActionContext) {
 	fields := util.SplitFields(ctx.Line, true)
 	if len(fields) > 0 {
-		if cmd, ok := commands[fields[0]]; ok {
+		if cmd, ok := commands[strings.ToLower(fields[0])]; ok {
 			ctx.Println(cmd.Desc)
 
 			if len(cmd.Usage) > 0 {

@@ -11,6 +11,7 @@ type QueryContext struct {
 	OnFetchStart func(spi.Columns)
 	OnFetch      func(rownum int64, values []any) bool
 	OnFetchEnd   func()
+	OnExecuted   func(userMessage string, rowsAffected int64) // callback if query is not a fetchable (e.g: create/drop table)
 }
 
 func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
@@ -21,6 +22,9 @@ func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
 	defer rows.Close()
 
 	if !rows.IsFetchable() {
+		if ctx.OnExecuted != nil {
+			ctx.OnExecuted(rows.Message(), rows.RowsAffected())
+		}
 		return rows.Message(), nil
 	}
 

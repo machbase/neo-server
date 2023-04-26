@@ -58,3 +58,16 @@ func TestAppendTag(t *testing.T) {
 
 	t.Logf("---- append tag %s done", benchmarkTableName)
 }
+
+func TestAppendTagNotExist(t *testing.T) {
+	db, err := spi.New()
+	require.Nil(t, err)
+
+	t.Log("---- append tag notexist")
+	appender, err := db.Appender("notexist")
+	require.NotNil(t, err)
+	if appender != nil {
+		appender.Close()
+	}
+	t.Logf("---- append tag notexist done")
+}
