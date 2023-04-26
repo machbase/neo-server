@@ -464,11 +464,22 @@ func (s *svr) Stop() {
 
 func GenBanner() string {
 	options := figlet4go.NewRenderOptions()
-	options.FontColor = []figlet4go.Color{
-		figlet4go.ColorMagenta,
-		figlet4go.ColorYellow,
-		figlet4go.ColorCyan,
-		figlet4go.ColorBlue,
+	supportColor := true
+	windowsVersion := ""
+	if runtime.GOOS == "windows" {
+		major, minor, build := util.GetWindowsVersion()
+		windowsVersion = fmt.Sprintf("Windows %d.%d %d", major, minor, build)
+		if major <= 10 && build < 14931 {
+			supportColor = false
+		}
+	}
+	if supportColor {
+		options.FontColor = []figlet4go.Color{
+			figlet4go.ColorMagenta,
+			figlet4go.ColorYellow,
+			figlet4go.ColorCyan,
+			figlet4go.ColorBlue,
+		}
 	}
 	fig := figlet4go.NewAsciiRender()
 	machbase, _ := fig.Render("Machbase")
@@ -479,7 +490,7 @@ func GenBanner() string {
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s", mach.LinkInfo())
+	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
