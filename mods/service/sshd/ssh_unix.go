@@ -52,7 +52,13 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		}
 	}()
 	go func() {
-		_, err := io.Copy(fn, ss) // session -> stdin
+		var w io.Writer
+		if svr.dumpInput {
+			w = io.MultiWriter(fn, NewIODebugger(svr.log, "RECV:"))
+		} else {
+			w = fn
+		}
+		_, err := io.Copy(w, ss) // session -> stdin
 		if err != nil {
 			svr.log.Warnf("session push %s", err.Error())
 		}
@@ -66,7 +72,13 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		cmd.Process.Kill()
 	}()
 	go func() {
-		_, err := io.Copy(ss, fn) // stdout -> session
+		var w io.Writer
+		if svr.dumpOutput {
+			w = io.MultiWriter(ss, NewIODebugger(svr.log, "SEND:"))
+		} else {
+			w = ss
+		}
+		_, err := io.Copy(w, fn) // stdout -> session
 		if err != nil && cmd.ProcessState != nil && !cmd.ProcessState.Exited() {
 			svr.log.Warnf("session pull %s", err.Error())
 		}

@@ -98,6 +98,9 @@ type sshd struct {
 	db    spi.Database
 	alive bool
 
+	dumpInput  bool
+	dumpOutput bool
+
 	listenAddresses []string
 	idleTimeout     time.Duration
 	serverKeyPath   string
