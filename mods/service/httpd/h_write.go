@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -43,6 +46,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	heading := strBool(ctx.Query("heading"), false)
 	createTable := strBool(ctx.Query("create-table"), false)
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
+	transcode := strString(ctx.Query("transcode"), "")
 
 	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
 	if err != nil {
@@ -82,14 +86,24 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
-	decoder := codec.NewDecoderBuilder(format).
+	builder := codec.NewDecoderBuilder(format).
 		SetInputStream(in).
 		SetColumns(desc.Columns.Columns()).
 		SetTimeFormat(timeformat).
 		SetTimeLocation(timeLocation).
 		SetCsvDelimieter(delimiter).
-		SetCsvHeading(heading).
-		Build()
+		SetCsvHeading(heading)
+
+	if len(transcode) > 0 {
+		opts := []transcoder.Option{}
+		if exepath, err := os.Executable(); err == nil {
+			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+		}
+		trans := transcoder.New(transcode, opts...)
+		builder.SetTranscoder(trans)
+	}
+
+	decoder := builder.Build()
 
 	if decoder == nil {
 		rsp.Reason = "codec not found"

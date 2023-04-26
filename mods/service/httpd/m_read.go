@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -136,37 +135,40 @@ func (svr *httpd) RawData(ctx *gin.Context) {
 		param.Separator = ","
 	}
 
-	// plan을 알아야 LimitSelTag 값을 알 수 있음
-	if param.TagName != "" {
-		param.TagList = strings.Split(param.TagName, param.Separator)
-		if len(param.TagList) > LimitSelTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
+	svr.log.Info(timezone) // 에러 방지
 
-		}
-	} else {
-		svr.log.Info("tag name is empty")
-		rsp.Reason = "wrong prameter. tagname is empty"
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
+	// plan을 알아야 LimitSelTag 값을 알 수 있음
+	// if param.TagName != "" {
+	// 	param.TagList = strings.Split(param.TagName, param.Separator)
+	// 	if len(param.TagList) > LimitSelTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
+
+	// 	}
+	// } else {
+	// 	svr.log.Info("tag name is empty")
+	// 	rsp.Reason = "wrong prameter. tagname is empty"
+	// 	ctx.JSON(http.StatusBadRequest, rsp)
+	// 	return
+	// }
 	// tagname list
 
 }
 
 func (svr *httpd) CurrentData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	ctx.JSON(http.StatusOK, rsp)
 
 }
 func (svr *httpd) StatData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
-
+	ctx.JSON(http.StatusOK, rsp)
 }
 func (svr *httpd) CalcData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
-
+	ctx.JSON(http.StatusOK, rsp)
 }
 func (svr *httpd) PivotData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
-
+	ctx.JSON(http.StatusOK, rsp)
 }
 
 // 사용자가 보낸 Timezone을 확인하고 machbase에서 사용 가능한 Timezone으로 변경하는 함수
