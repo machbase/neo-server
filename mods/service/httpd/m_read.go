@@ -10,7 +10,85 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type planLimit struct {
+	maxQuery         float64
+	maxNetwork       float64
+	maxStorage       float64
+	limitSelectValue float64
+	limitAppendValue float64
+	limitAppendTag   float64
+	limitSelectTag   float64
+	maxConcurrent    float64
+	defaultTagCount  float64
+	maxTagCount      float64
+}
+
+const (
+	MACHLAKE_PLAN_TINY       = "TINY"
+	MACHLAKE_PLAN_BASIC      = "BASIC"
+	MACHLAKE_PLAN_BUSINESS   = "BUSINESS"
+	MACHLAKE_PLAN_ENTERPRISE = "ENTERPRISE"
+)
+
+var gradeMap = map[string]planLimit{}
+
+func init() {
+	gradeMap[MACHLAKE_PLAN_TINY] = planLimit{
+		maxQuery:         100000,
+		maxNetwork:       10737418240,
+		maxStorage:       10737418240,
+		limitSelectValue: 1000,
+		limitAppendValue: 1000,
+		limitAppendTag:   1000,
+		limitSelectTag:   1000,
+		maxConcurrent:    5,
+		defaultTagCount:  100,
+		maxTagCount:      500,
+	}
+
+	gradeMap[MACHLAKE_PLAN_BASIC] = planLimit{
+		maxQuery:         750000,
+		maxNetwork:       10737418240,
+		maxStorage:       107374182400,
+		limitSelectValue: 5000,
+		limitAppendValue: 5000,
+		limitAppendTag:   5000,
+		limitSelectTag:   5000,
+		maxConcurrent:    20,
+		defaultTagCount:  500,
+		maxTagCount:      5000,
+	}
+
+	gradeMap[MACHLAKE_PLAN_BUSINESS] = planLimit{
+		maxQuery:         4000000,
+		maxNetwork:       10737418240,
+		maxStorage:       1099511627776,
+		limitSelectValue: 50000,
+		limitAppendValue: 50000,
+		limitAppendTag:   50000,
+		limitSelectTag:   50000,
+		maxConcurrent:    50,
+		defaultTagCount:  5000,
+		maxTagCount:      50000,
+	}
+
+	gradeMap[MACHLAKE_PLAN_ENTERPRISE] = planLimit{
+		maxQuery:         10000000,
+		maxNetwork:       10737418240,
+		maxStorage:       5497558138880,
+		limitSelectValue: 100000,
+		limitAppendValue: 100000,
+		limitAppendTag:   100000,
+		limitSelectTag:   100000,
+		maxConcurrent:    100,
+		defaultTagCount:  50000,
+		maxTagCount:      500000,
+	}
+
+}
+
 func (svr *httpd) lakeRead(ctx *gin.Context) {
+
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
 
 	// 기존 lake에서는 cli를 통해서 db 사용
@@ -58,11 +136,19 @@ func (svr *httpd) RawData(ctx *gin.Context) {
 		param.Separator = ","
 	}
 
-	// tagname list
-	param.TagList = strings.Split(param.TagName, param.Separator)
-	if len(param.TagList) > LimitSelTag { // mysql 에서 데이터 로드 필요
+	// plan을 알아야 LimitSelTag 값을 알 수 있음
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+		if len(param.TagList) > LimitSelTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
 
+		}
+	} else {
+		svr.log.Info("tag name is empty")
+		rsp.Reason = "wrong prameter. tagname is empty"
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
 	}
+	// tagname list
 
 }
 
