@@ -3,18 +3,15 @@
 package sshd
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/ActiveState/termtest/conpty"
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/mods/logging"
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
@@ -58,7 +55,6 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 
 	var process *os.Process
-	var debugDump = false
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -69,14 +65,15 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			svr.log.Warnf("session stdin pipe %s", err.Error())
 			return
 		}
-		if debugDump {
-			ikd := &inputKeyDebug{prefix: "RECV:", log: svr.log}
-			io.Copy(io.MultiWriter(pin, ikd), ss)
+		var w io.Writer
+		if svr.dumpInput {
+			w = NewIODebugger(svr.log, "RECV:")
 		} else {
-			_, err = io.Copy(pin, ss) // session -> stdin
-			if err != nil {
-				svr.log.Warnf("session push %s", err.Error())
-			}
+			w = pin
+		}
+		_, err = io.Copy(w, ss) // session -> stdin
+		if err != nil {
+			svr.log.Warnf("session push %s", err.Error())
 		}
 		// At the time the session closed by exceeding Idletimeout,
 		// First, this go-routine's io.Copy() returned.
@@ -97,14 +94,15 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 			svr.log.Warnf("session stdout pipe %s", err.Error())
 			return
 		}
-		if debugDump {
-			okd := &inputKeyDebug{prefix: "SEND:", log: svr.log}
-			io.Copy(io.MultiWriter(ss, okd), pout)
+		var w io.Writer
+		if svr.dumpOutput {
+			w = io.MultiWriter(ss, NewIODebugger(svr.log, "SEND:"))
 		} else {
-			_, err = io.Copy(ss, pout) // stdout -> session
-			if err != nil {
-				svr.log.Warnf("session pull %s", err.Error())
-			}
+			w = ss
+		}
+		_, err = io.Copy(w, pout) // stdout -> session
+		if err != nil {
+			svr.log.Warnf("session pull %s", err.Error())
 		}
 	}()
 	// wait stdin, stdout pipes before Start()
@@ -139,16 +137,4 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 
 	svr.log.Infof("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), ps)
-}
-
-type inputKeyDebug struct {
-	log    logging.Log
-	prefix string
-}
-
-var _ io.Writer = &inputKeyDebug{}
-
-func (ikd *inputKeyDebug) Write(b []byte) (int, error) {
-	ikd.log.Debugf("%s %s", ikd.prefix, strings.TrimSpace(hex.Dump(b)))
-	return len(b), nil
 }
