@@ -6,7 +6,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt/mqtterr"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt/mqtterr"
 )
 
 // PacketType is a type alias to byte representing the different

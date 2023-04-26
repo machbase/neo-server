@@ -28,7 +28,7 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
-	"github.com/machbase/neo-server/mods/service/mqttsvr"
+	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
@@ -87,7 +87,7 @@ type Config struct {
 	Shell          ShellConfig
 	Grpc           GrpcConfig
 	Http           HttpConfig
-	Mqtt           mqttsvr.Config
+	Mqtt           MqttConfig
 
 	NoBanner bool
 
@@ -111,6 +111,18 @@ type HttpConfig struct {
 	EnableTokenAuth bool
 }
 
+type MqttConfig struct {
+	Listeners []string
+	Handlers  []mqttd.HandlerConfig
+
+	EnableTokenAuth bool
+	EnableTls       bool
+	ServerCertPath  string
+	ServerKeyPath   string
+
+	MaxMessageSizeLimit int
+}
+
 type ShellConfig struct {
 	Listeners     []string
 	IdleTimeout   time.Duration
@@ -124,10 +136,11 @@ type Server interface {
 type svr struct {
 	mgmt.ManagementServer
 
-	conf  *Config
-	log   logging.Log
-	db    spi.Database
-	mqttd *mqttsvr.Server
+	conf *Config
+	log  logging.Log
+	db   spi.Database
+
+	mqttd mqttd.Service
 	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
@@ -160,9 +173,9 @@ func NewConfig() *Config {
 				{Prefix: "/db", Handler: "machbase"},
 			},
 		},
-		Mqtt: mqttsvr.Config{
+		Mqtt: MqttConfig{
 			Listeners: []string{},
-			Handlers: []mqttsvr.HandlerConfig{
+			Handlers: []mqttd.HandlerConfig{
 				{Prefix: "db", Handler: "machbase"},
 			},
 			MaxMessageSizeLimit: 1024 * 1024,
@@ -239,6 +252,35 @@ func (s *svr) Start() error {
 	}
 	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
 		return errors.Wrap(err, "machbase trc")
+	}
+
+	// port-check MACH
+	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
+		return errors.Wrap(err, "MACH port not available")
+	}
+	// port-check gRPC
+	for _, addr := range s.conf.Grpc.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "gRPC port not available")
+		}
+	}
+	// port-check HTTP
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "HTTP port not available")
+		}
+	}
+	// port-check MQTT
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "MQTT port not available")
+		}
+	}
+	// port-check SSHD
+	for _, addr := range s.conf.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "SSHD port not available")
+		}
 	}
 
 	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
@@ -345,26 +387,30 @@ func (s *svr) Start() error {
 
 	// mqtt server
 	if len(s.conf.Mqtt.Listeners) > 0 {
+		opts := []mqttd.Option{
+			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
+			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+		}
+		for _, h := range s.conf.Mqtt.Handlers {
+			opts = append(opts, mqttd.OptionHandler(h.Prefix, h.Handler))
+		}
 		if s.conf.Mqtt.EnableTls {
-			if len(s.conf.Mqtt.ServerCertPath) == 0 {
-				s.conf.Mqtt.ServerCertPath = s.ServerCertificatePath()
+			serverCert := s.conf.Mqtt.ServerCertPath
+			if len(serverCert) == 0 {
+				serverCert = s.ServerCertificatePath()
 			}
-			if len(s.conf.Mqtt.ServerKeyPath) == 0 {
-				s.conf.Mqtt.ServerKeyPath = s.ServerPrivateKeyPath()
+			serverKey := s.conf.Mqtt.ServerKeyPath
+			if len(serverKey) == 0 {
+				serverKey = s.ServerPrivateKeyPath()
 			}
-			s.log.Infof("MQTT TLS enabled")
+			opts = append(opts, mqttd.OptionTls(serverCert, serverKey))
 		}
-
-		s.mqttd = mqttsvr.New(s.db, &s.conf.Mqtt)
-		s.mqttd.SetAuthServer(s)
-
-		if s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls {
-			s.log.Infof("MQTT token authentication enabled")
-		} else {
-			s.log.Infof("MQTT token authentication disabled")
+		s.mqttd, err = mqttd.New(s.db, opts...)
+		if err != nil {
+			return errors.Wrap(err, "mqtt server")
 		}
-
-		err := s.mqttd.Start()
+		err = s.mqttd.Start()
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
 		}
@@ -418,11 +464,22 @@ func (s *svr) Stop() {
 
 func GenBanner() string {
 	options := figlet4go.NewRenderOptions()
-	options.FontColor = []figlet4go.Color{
-		figlet4go.ColorMagenta,
-		figlet4go.ColorYellow,
-		figlet4go.ColorCyan,
-		figlet4go.ColorBlue,
+	supportColor := true
+	windowsVersion := ""
+	if runtime.GOOS == "windows" {
+		major, minor, build := util.GetWindowsVersion()
+		windowsVersion = fmt.Sprintf("Windows %d.%d %d", major, minor, build)
+		if major <= 10 && build < 14931 {
+			supportColor = false
+		}
+	}
+	if supportColor {
+		options.FontColor = []figlet4go.Color{
+			figlet4go.ColorMagenta,
+			figlet4go.ColorYellow,
+			figlet4go.ColorCyan,
+			figlet4go.ColorBlue,
+		}
 	}
 	fig := figlet4go.NewAsciiRender()
 	machbase, _ := fig.Render("Machbase")
@@ -433,7 +490,7 @@ func GenBanner() string {
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s", mach.LinkInfo())
+	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
@@ -596,6 +653,21 @@ func (s *svr) RemoveAuthorizedSshKey(fingerprint string) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *svr) checkListenPort(address string) error {
+	if !strings.HasPrefix(address, "tcp://") {
+		return nil
+	}
+	ln, err := net.Listen("tcp", strings.TrimPrefix(address, "tcp://"))
+	if err != nil {
+		return err
+	}
+	err = ln.Close()
+	if err != nil {
+		return err
 	}
 	return nil
 }

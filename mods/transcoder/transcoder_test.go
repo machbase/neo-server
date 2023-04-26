@@ -9,7 +9,7 @@ import (
 )
 
 func TestTranscoderScript(t *testing.T) {
-	tc := transcoder.New("@transcode_echo", transcoder.PathOption("../../test"))
+	tc := transcoder.New("@transcode_echo", transcoder.OptionPath("../../test"))
 	result, err := tc.Process([]any{"name.1", 1680142626000000000, 1.0})
 	require.Nil(t, err)
 	require.NotNil(t, result)

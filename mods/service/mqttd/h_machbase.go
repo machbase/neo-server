@@ -1,4 +1,4 @@
-package mqttsvr
+package mqttd
 
 import (
 	"bytes"
@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
-	"github.com/machbase/neo-server/mods/service/mqttsvr/mqtt"
+	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
 
-func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
+func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	topic := evt.Topic
 	topic = strings.TrimPrefix(topic, prefix+"/")
 	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
@@ -44,7 +44,7 @@ func (svr *Server) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	return nil
 }
 
-func (svr *Server) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any)) error {
+func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any)) error {
 	tick := time.Now()
 	req := &msg.QueryRequest{}
 	rsp := &msg.QueryResponse{Reason: "not specified"}
@@ -62,7 +62,7 @@ func (svr *Server) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg an
 	return nil
 }
 
-func (svr *Server) handleWrite(peer mqtt.Peer, topic string, payload []byte) error {
+func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) error {
 	req := &msg.WriteRequest{}
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 
@@ -83,7 +83,7 @@ func (svr *Server) handleWrite(peer mqtt.Peer, topic string, payload []byte) err
 	return nil
 }
 
-func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) error {
+func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) error {
 	peerLog := peer.GetLog()
 
 	table := strings.ToUpper(strings.TrimPrefix(topic, "append/"))
@@ -184,9 +184,11 @@ func (svr *Server) handleAppend(peer mqtt.Peer, topic string, payload []byte) er
 		SetCsvHeading(false)
 
 	if len(transname) > 0 {
-		trans := transcoder.New(transname,
-			transcoder.PathOption(filepath.Dir(os.Args[0])),
-		)
+		opts := []transcoder.Option{}
+		if exepath, err := os.Executable(); err == nil {
+			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+		}
+		trans := transcoder.New(transname, opts...)
 		builder.SetTranscoder(trans)
 	}
 

@@ -115,6 +115,8 @@ func (eng *engine) GetVar(name string, value any) error {
 		switch vv := value.(type) {
 		case *[]any:
 			*vv = sval.Array()
+		case *any:
+			*vv = sval.Array()
 		default:
 			return fmt.Errorf("unsupported type conversion %T from %s", vv, styp)
 		}
