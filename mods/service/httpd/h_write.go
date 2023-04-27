@@ -121,7 +121,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	valueHolder := strings.Join(_hold, ",")
 	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
-
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {

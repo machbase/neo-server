@@ -47,6 +47,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if len(fields) > len(dec.columnTypes) {
 		return nil, fmt.Errorf("too many columns (%d); table '%s' has %d columns",
 			len(fields), dec.ctx.TableName, len(dec.columnTypes))
