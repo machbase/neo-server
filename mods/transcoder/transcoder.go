@@ -67,7 +67,6 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 	id, _ := ts.idgen.NewV6()
 	idstr := id.String()
 	payload := fmt.Sprintf(`{"@type":"type.googleapis.com/google.protobuf.DoubleValue", "value":%f}`, orgValues[2])
-
 	newValues[0] = orgValues[0] // name
 	newValues[1] = orgValues[1] // time
 	newValues[2] = orgValues[2] // value

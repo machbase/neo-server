@@ -46,7 +46,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	heading := strBool(ctx.Query("heading"), false)
 	createTable := strBool(ctx.Query("create-table"), false)
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
-	transcode := strString(ctx.Query("transcode"), "")
+	trans := strString(ctx.Query("transcoder"), "")
 
 	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
 	if err != nil {
@@ -94,12 +94,12 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		SetCsvDelimieter(delimiter).
 		SetCsvHeading(heading)
 
-	if len(transcode) > 0 {
+	if len(trans) > 0 {
 		opts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
 			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
-		trans := transcoder.New(transcode, opts...)
+		trans := transcoder.New(trans, opts...)
 		builder.SetTranscoder(trans)
 	}
 
