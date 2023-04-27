@@ -99,6 +99,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		if exepath, err := os.Executable(); err == nil {
 			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
+		opts = append(opts, transcoder.OptionPname("http"))
 		trans := transcoder.New(trans, opts...)
 		builder.SetTranscoder(trans)
 	}

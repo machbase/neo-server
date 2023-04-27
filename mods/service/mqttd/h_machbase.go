@@ -188,6 +188,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		if exepath, err := os.Executable(); err == nil {
 			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
+		opts = append(opts, transcoder.OptionPname("mqtt"))
 		trans := transcoder.New(transname, opts...)
 		builder.SetTranscoder(trans)
 	}

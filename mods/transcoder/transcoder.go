@@ -40,8 +40,16 @@ func OptionPath(paths ...string) Option {
 	}
 }
 
-type noTranslator struct {
+func OptionPname(pname string) Option {
+	return func(tc Transcoder) {
+		switch t := tc.(type) {
+		case *cemsTranslator:
+			t.pname = pname
+		}
+	}
 }
+
+type noTranslator struct{}
 
 var noTranslatorSingleton = &noTranslator{}
 
@@ -50,10 +58,12 @@ func (ts *noTranslator) Process(r any) (any, error) {
 }
 
 type cemsTranslator struct {
+	pname string
 	idgen *uuid.Gen
 }
 
 var cemsTranslatorSingleton = &cemsTranslator{
+	pname: "cems_transcoder",
 	idgen: uuid.NewGen(),
 }
 
@@ -74,7 +84,7 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 	newValues[4] = nil          // ivalue
 	newValues[5] = nil          // svalue
 	newValues[6] = idstr        // id
-	newValues[7] = "mqtt"       // pname
+	newValues[7] = ts.pname     // pname
 	newValues[8] = 0            // sampling_period
 	newValues[9] = payload      // payload
 	return newValues, nil
