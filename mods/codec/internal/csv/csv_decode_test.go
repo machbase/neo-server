@@ -29,3 +29,19 @@ func TestCsvDecoder(t *testing.T) {
 	require.Equal(t, "1", fields[8])
 	require.Equal(t, "{\"name\":1234}", fields[9])
 }
+
+func TestCsvDecoders(t *testing.T) {
+	data := []byte("my-car,1670380342000000000,1.0001")
+
+	r := csv.NewReader(bytes.NewBuffer(data))
+	r.Comma = ','
+
+	fields, err := r.Read()
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, "my-car", fields[0])
+	require.Equal(t, "1670380342000000000", fields[1])
+	require.Equal(t, "1.0001", fields[2])
+
+}
