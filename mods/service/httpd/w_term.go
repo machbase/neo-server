@@ -34,6 +34,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	termLoginName := claim.Subject
 	termPassword := "manager"
 	termAddress := "127.0.0.1:5652"
+	termIdleTimeout := time.Duration(0) // 0 - no timeout
 
 	termKey := fmt.Sprintf("%s-%s", termLoginName, termId)
 
@@ -105,7 +106,9 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}()
 
 	for {
-		// conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		if termIdleTimeout > 0 {
+			conn.SetReadDeadline(time.Now().Add(termIdleTimeout))
+		}
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if closeErr, ok := err.(*websocket.CloseError); ok {
@@ -214,8 +217,7 @@ func NewTerm(hostPort string, user string, password string) (*Term, error) {
 		return nil, errors.Wrap(err, "NewTerm dial")
 	}
 
-	// 하나의 ssh connection과 Term을 분리하여 구현하면
-	// 복수의 term을 생성할 수 있지만 여기서는 하나의 term만 생성하도록 일단 구현한다.
+	// Creating a session from the connection
 	session, err := conn.NewSession()
 	if err != nil {
 		conn.Close()
@@ -225,6 +227,7 @@ func NewTerm(hostPort string, user string, password string) (*Term, error) {
 		Type:    "xterm",
 		Rows:    25,
 		Cols:    80,
+		Since:   time.Now(),
 		conn:    conn,
 		session: session,
 	}
