@@ -388,6 +388,12 @@ func (s *svr) Start() error {
 		for _, h := range s.conf.Http.Handlers {
 			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
 		}
+		shellPorts := s.servicePorts["shell"]
+		shellAddrs := []string{}
+		for _, sp := range shellPorts {
+			shellAddrs = append(shellAddrs, sp.Address)
+		}
+		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
 		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")

@@ -33,7 +33,10 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	claim := claimValue.(security.Claim)
 	termLoginName := claim.Subject
 	termPassword := "manager"
-	termAddress := "127.0.0.1:5652"
+	termAddress := svr.neoShellAddress
+	if len(termAddress) == 0 {
+		termAddress = "127.0.0.1:5652"
+	}
 	termIdleTimeout := time.Duration(0) // 0 - no timeout
 
 	termKey := fmt.Sprintf("%s-%s", termLoginName, termId)

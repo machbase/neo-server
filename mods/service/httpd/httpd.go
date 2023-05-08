@@ -62,6 +62,19 @@ func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	}
 }
 
+// neo-shell address
+func OptionNeoShellAddress(addrs ...string) Option {
+	return func(s *httpd) {
+		for _, addr := range addrs {
+			if s.neoShellAddress == "" {
+				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+			} else if strings.HasPrefix(s.neoShellAddress, "127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "localhost:") {
+				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+			}
+		}
+	}
+}
+
 // Handler
 func OptionHandler(prefix string, handler HandlerType) Option {
 	return func(s *httpd) {
@@ -94,6 +107,8 @@ type httpd struct {
 	listeners  []net.Listener
 	jwtCache   security.JwtCache
 	authServer security.AuthServer
+
+	neoShellAddress string
 
 	debugMode bool
 }
