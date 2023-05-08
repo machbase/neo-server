@@ -21,6 +21,7 @@ test:
 
 test-base: tmpdir
 	@go test $(ARGS) \
+		./mods/util \
 		./mods/util/glob \
 		./mods/util/ini \
 		./mods/script \

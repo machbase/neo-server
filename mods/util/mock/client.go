@@ -40,6 +40,9 @@ var _ spi.DatabaseClient = &DatabaseClientMock{}
 //			GetServerInfoFunc: func() (*spi.ServerInfo, error) {
 //				panic("mock out the GetServerInfo method")
 //			},
+//			GetServicePortsFunc: func(service string) ([]*spi.ServicePort, error) {
+//				panic("mock out the GetServicePorts method")
+//			},
 //			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 //				panic("mock out the Query method")
 //			},
@@ -79,6 +82,9 @@ type DatabaseClientMock struct {
 
 	// GetServerInfoFunc mocks the GetServerInfo method.
 	GetServerInfoFunc func() (*spi.ServerInfo, error)
+
+	// GetServicePortsFunc mocks the GetServicePorts method.
+	GetServicePortsFunc func(service string) ([]*spi.ServicePort, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
@@ -137,6 +143,11 @@ type DatabaseClientMock struct {
 		// GetServerInfo holds details about calls to the GetServerInfo method.
 		GetServerInfo []struct {
 		}
+		// GetServicePorts holds details about calls to the GetServicePorts method.
+		GetServicePorts []struct {
+			// Service is the service argument value.
+			Service string
+		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// SqlText is the sqlText argument value.
@@ -177,6 +188,7 @@ type DatabaseClientMock struct {
 	lockExecContext     sync.RWMutex
 	lockExplain         sync.RWMutex
 	lockGetServerInfo   sync.RWMutex
+	lockGetServicePorts sync.RWMutex
 	lockQuery           sync.RWMutex
 	lockQueryContext    sync.RWMutex
 	lockQueryRow        sync.RWMutex
@@ -418,6 +430,38 @@ func (mock *DatabaseClientMock) GetServerInfoCalls() []struct {
 	mock.lockGetServerInfo.RLock()
 	calls = mock.calls.GetServerInfo
 	mock.lockGetServerInfo.RUnlock()
+	return calls
+}
+
+// GetServicePorts calls GetServicePortsFunc.
+func (mock *DatabaseClientMock) GetServicePorts(service string) ([]*spi.ServicePort, error) {
+	if mock.GetServicePortsFunc == nil {
+		panic("DatabaseClientMock.GetServicePortsFunc: method is nil but DatabaseClient.GetServicePorts was just called")
+	}
+	callInfo := struct {
+		Service string
+	}{
+		Service: service,
+	}
+	mock.lockGetServicePorts.Lock()
+	mock.calls.GetServicePorts = append(mock.calls.GetServicePorts, callInfo)
+	mock.lockGetServicePorts.Unlock()
+	return mock.GetServicePortsFunc(service)
+}
+
+// GetServicePortsCalls gets all the calls that were made to GetServicePorts.
+// Check the length with:
+//
+//	len(mockedDatabaseClient.GetServicePortsCalls())
+func (mock *DatabaseClientMock) GetServicePortsCalls() []struct {
+	Service string
+} {
+	var calls []struct {
+		Service string
+	}
+	mock.lockGetServicePorts.RLock()
+	calls = mock.calls.GetServicePorts
+	mock.lockGetServicePorts.RUnlock()
 	return calls
 }
 

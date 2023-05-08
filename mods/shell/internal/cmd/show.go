@@ -27,6 +27,7 @@ func init() {
 const helpShow = `  show [options] <object>
   objects:
     info                show server info
+    ports               show service ports
     users               list users
     tables [-a]         list tables
     table [-a] <table>  describe the table
@@ -46,8 +47,6 @@ const helpShow = `  show [options] <object>
     -a,--all         includes all hidden tables/columns
 `
 
-// 	sessions         list sessions (that connected via MACH)
-
 type ShowCmd struct {
 	Object  string   `arg:""`
 	Args    []string `arg:"" optional:""`
@@ -58,6 +57,7 @@ type ShowCmd struct {
 func pcShow() readline.PrefixCompleterInterface {
 	return readline.PcItem("show",
 		readline.PcItem("info"),
+		readline.PcItem("ports"),
 		readline.PcItem("users"),
 		readline.PcItem("tables"),
 		readline.PcItem("table"),
@@ -96,6 +96,8 @@ func doShow(ctx *client.ActionContext) {
 	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
+	case "ports":
+		doShowPorts(ctx)
 	case "users":
 		doShowUsers(ctx)
 	case "tables":
@@ -530,5 +532,19 @@ func doShowInfo(ctx *client.ActionContext) {
 	box.AppendRow("mem.stack.sys", util.BytesUnit(nfo.Runtime.MemStackSys, ctx.Lang))
 	box.AppendRow("mem.stack.in-use", util.BytesUnit(nfo.Runtime.MemStackInUse, ctx.Lang))
 
+	box.Render()
+}
+
+func doShowPorts(ctx *client.ActionContext) {
+	ports, err := ctx.DB.GetServicePorts("")
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	box := ctx.NewBox([]string{"SERVICE", "PORT"})
+	for _, p := range ports {
+		box.AppendRow(p.Service, p.Address)
+	}
 	box.Render()
 }

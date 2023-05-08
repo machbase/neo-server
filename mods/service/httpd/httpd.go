@@ -62,6 +62,19 @@ func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	}
 }
 
+// neo-shell address
+func OptionNeoShellAddress(addrs ...string) Option {
+	return func(s *httpd) {
+		for _, addr := range addrs {
+			if s.neoShellAddress == "" {
+				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+			} else if strings.HasPrefix(s.neoShellAddress, "127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "localhost:") {
+				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+			}
+		}
+	}
+}
+
 // Handler
 func OptionHandler(prefix string, handler HandlerType) Option {
 	return func(s *httpd) {
@@ -94,6 +107,8 @@ type httpd struct {
 	listeners  []net.Listener
 	jwtCache   security.JwtCache
 	authServer security.AuthServer
+
+	neoShellAddress string
 
 	debugMode bool
 }
@@ -202,6 +217,8 @@ func (svr *httpd) Router() *gin.Engine {
 			group.Use(svr.handleJwtToken)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/term/:term_id/data", svr.handleTermData)
+			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
@@ -244,13 +261,15 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 		ctx.Abort()
 		return
 	}
-	found := false
+	var claim security.Claim
+	var err error
+	var found = false
 	for _, h := range auth {
 		if !strings.HasPrefix(strings.ToUpper(h), "BEARER ") {
 			continue
 		}
 		tok := h[7:]
-		claim, err := svr.verifyAccessToken(tok)
+		claim, err = svr.verifyAccessToken(tok)
 		if err != nil {
 			if IsErrTokenExpired(err) && strings.HasSuffix(ctx.Request.URL.Path, "/api/relogin") {
 				// jwt has been expired, but the request is for 'relogin'
@@ -270,7 +289,9 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 			break
 		}
 	}
-	if !found {
+	if found {
+		ctx.Set("jwt-claim", claim)
+	} else {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
 		ctx.Abort()
 		return
