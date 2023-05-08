@@ -38,7 +38,6 @@ import (
 )
 
 func init() {
-
 	booter.Register(
 		"machbase.com/neo-server",
 		func() *Config {
@@ -151,6 +150,9 @@ type svr struct {
 
 	cachedServerPrivateKey crypto.PrivateKey
 
+	servicePorts     map[string][]*spi.ServicePort
+	servicePortsLock sync.RWMutex
+
 	authorizedSshKeysLock sync.RWMutex
 }
 
@@ -207,7 +209,8 @@ func NewConfig() *Config {
 
 func NewServer(conf *Config) (Server, error) {
 	return &svr{
-		conf: conf,
+		conf:         conf,
+		servicePorts: make(map[string][]*spi.ServicePort),
 	}, nil
 }
 
@@ -257,30 +260,38 @@ func (s *svr) Start() error {
 	// port-check MACH
 	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
 		return errors.Wrap(err, "MACH port not available")
+	} else {
+		machPort := fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
+		s.AddServicePort("mach", machPort)
 	}
+
 	// port-check gRPC
 	for _, addr := range s.conf.Grpc.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "gRPC port not available")
 		}
+		s.AddServicePort("grpc", addr)
 	}
 	// port-check HTTP
 	for _, addr := range s.conf.Http.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "HTTP port not available")
 		}
+		s.AddServicePort("http", addr)
 	}
 	// port-check MQTT
-	for _, addr := range s.conf.Http.Listeners {
+	for _, addr := range s.conf.Mqtt.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "MQTT port not available")
 		}
+		s.AddServicePort("mqtt", addr)
 	}
 	// port-check SSHD
-	for _, addr := range s.conf.Http.Listeners {
+	for _, addr := range s.conf.Shell.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "SSHD port not available")
 		}
+		s.AddServicePort("shell", addr)
 	}
 
 	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
@@ -324,6 +335,8 @@ func (s *svr) Start() error {
 			mach.BuildVersion.BuildTimestamp = mods.BuildTimestamp()
 			mach.BuildVersion.BuildCompiler = mods.BuildCompiler()
 		}
+		mach.ServicePorts = s.servicePorts
+
 		if err := mdb.Startup(); err != nil {
 			return errors.Wrap(err, "startup database")
 		}
@@ -460,6 +473,37 @@ func (s *svr) Stop() {
 	mach.Finalize()
 
 	s.log.Infof("shutdown.")
+}
+
+func (s *svr) AddServicePort(svc string, addr string) error {
+	svc = strings.ToLower(svc)
+	if strings.HasPrefix(addr, "tcp://") {
+		host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp://"))
+		if err != nil {
+			return errors.Wrapf(err, "%s host:port invalid syntax", svc)
+		}
+		lsnrHost := net.ParseIP(host)
+		addrs := util.FindAllAddresses(lsnrHost)
+		for _, addr := range addrs {
+			lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
+			s.servicePortsLock.Lock()
+			lst := s.servicePorts[svc]
+			lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
+			s.servicePorts[svc] = lst
+			s.servicePortsLock.Unlock()
+		}
+	} else {
+		s.servicePortsLock.Lock()
+		lst := s.servicePorts[svc]
+		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
+		s.servicePorts[svc] = lst
+		s.servicePortsLock.Unlock()
+	}
+	return nil
+}
+
+func (s *svr) ServicePort(svc string) []*spi.ServicePort {
+	return s.servicePorts[strings.ToLower(svc)]
 }
 
 func GenBanner() string {
