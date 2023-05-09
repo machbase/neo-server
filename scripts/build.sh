@@ -65,12 +65,13 @@ fi
 
 # Build and store objects into original directory.
 if [ "$1" == "neoshell" ]; then
-    export CGO_ENABLED=0
-    go build -ldflags "$LDFLAGS" -tags "neoshell" -o $PRJROOT/tmp/$1 ./main/$1 && \
+    CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -tags "neoshell" -o $PRJROOT/tmp/$1 ./main/$1 && \
+    echo "Build done."
+elif [ "$1" == "neow" ]; then
+    CGO_ENABLED=1 go build -o $PRJROOT/tmp/$1 ./main/$1 && \
     echo "Build done."
 else
     # Set final Go environment options
-    #LDFLAGS="$LDFLAGS -extldflags '-static'"
     export CGO_ENABLED=1
     go build -ldflags "$LDFLAGS" -tags "${EDITION}_edition" -o $PRJROOT/tmp/$1 ./main/$1 && \
     echo "Build done."
