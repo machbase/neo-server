@@ -67,7 +67,7 @@ fi
 if [ "$1" == "neoshell" ]; then
     CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -tags "neoshell" -o $PRJROOT/tmp/$1 ./main/$1 && \
     echo "Build done."
-elif [ "$1" == "neou" ]; then
+elif [ "$1" == "neow" ]; then
     CGO_ENABLED=1 go build -o $PRJROOT/tmp/$1 ./main/$1 && \
     echo "Build done."
 else

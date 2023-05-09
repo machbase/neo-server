@@ -12,7 +12,6 @@ require (
 	github.com/d5/tengo/v2 v2.16.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gdamore/tcell/v2 v2.6.0
-	github.com/getlantern/systray v1.2.1
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gliderlabs/ssh v0.3.5
@@ -32,7 +31,6 @@ require (
 	github.com/plgd-dev/go-coap/v3 v3.1.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230406072732-e22ce9588bb4
-	github.com/robert-nix/ansihtml v1.0.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.8.2
 	github.com/swaggo/files v1.0.1
@@ -65,17 +63,9 @@ require (
 	github.com/fyne-io/glfw-js v0.0.0-20220120001248-ee7290d23504 // indirect
 	github.com/fyne-io/image v0.0.0-20220602074514-4956b0afb3d2 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
-	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
-	github.com/getlantern/errors v1.0.3 // indirect
-	github.com/getlantern/golog v0.0.0-20230206140254-6d0a2e0f79af // indirect
-	github.com/getlantern/hex v0.0.0-20220104173244-ad7e4b9194dc // indirect
-	github.com/getlantern/hidden v0.0.0-20220104173330-f221c5a24770 // indirect
-	github.com/getlantern/ops v0.0.0-20230424193308-26325dfed3cf // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/spec v0.20.9 // indirect
@@ -83,7 +73,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.12.0 // indirect
-	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-text/typesetting v0.0.0-20230405155246-bf9c697c6e16 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -106,7 +95,6 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
 	github.com/pion/dtls/v2 v2.2.6 // indirect
 	github.com/pion/logging v0.2.2 // indirect
@@ -125,11 +113,7 @@ require (
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/yuin/goldmark v1.4.13 // indirect
 	github.com/zclconf/go-cty v1.13.1 // indirect
-	go.opentelemetry.io/otel v1.14.0 // indirect
-	go.opentelemetry.io/otel/trace v1.14.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
-	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
 	golang.org/x/image v0.3.0 // indirect

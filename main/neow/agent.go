@@ -20,7 +20,7 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/machbase/neo-server/main/neou/res"
+	"github.com/machbase/neo-server/main/neow/res"
 )
 
 type neoAgent struct {
@@ -65,10 +65,14 @@ func (na *neoAgent) Start() {
 			na.doShowLog()
 		})
 		itmShowLogs.Disabled = true
+		itmOpenWebUI := fyne.NewMenuItem("Open Web UI", func() {
+			na.doOpenWebUI()
+		})
 		m := fyne.NewMenu("machbase-neo",
 			itmStartDB,
 			itmStopDB,
 			fyne.NewMenuItemSeparator(),
+			itmOpenWebUI,
 			itmShowLogs,
 		)
 		go func() {
@@ -78,16 +82,20 @@ func (na *neoAgent) Start() {
 				case NeoStarting:
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = true
+					itmOpenWebUI.Disabled = true
 				case NeoRunning:
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = false
 					itmShowLogs.Disabled = false
+					itmOpenWebUI.Disabled = false
 				case NeoStopping:
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = true
+					itmOpenWebUI.Disabled = true
 				case NeoStopped:
 					itmStartDB.Disabled = false
 					itmStopDB.Disabled = true
+					itmOpenWebUI.Disabled = true
 				}
 				m.Refresh()
 			}
@@ -226,14 +234,26 @@ func (na *neoAgent) doStopDatabase() {
 	na.stateC <- NeoStopped
 }
 
+func (na *neoAgent) doShowLog() {
+	na.mainWindow.Show()
+}
+
+func (na *neoAgent) doOpenWebUI() {
+	addr := fmt.Sprintf("http://%s/web/ui/", "127.0.0.1:5654")
+	switch runtime.GOOS {
+	case "linux":
+		exec.Command("xdg-open", addr).Start()
+	case "darwin":
+		exec.Command("open", addr).Start()
+	case "windows":
+		exec.Command("rundll32", "url.dll,FileProtocolHandler", addr).Start()
+	}
+}
+
 type LogLine []byte
 
 func (ll LogLine) String() string {
 	return string(ll)
-}
-
-func (na *neoAgent) doShowLog() {
-	na.mainWindow.Show()
 }
 
 const (
