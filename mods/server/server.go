@@ -108,6 +108,7 @@ type HttpConfig struct {
 	Handlers  []httpd.HandlerConfig
 
 	EnableTokenAuth bool
+	DebugMode       bool
 }
 
 type MqttConfig struct {
@@ -383,7 +384,11 @@ func (s *svr) Start() error {
 		opts := []httpd.Option{
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
-			httpd.OptionReleaseMode(),
+		}
+		if s.conf.Http.DebugMode {
+			opts = append(opts, httpd.OptionDebugMode())
+		} else {
+			opts = append(opts, httpd.OptionReleaseMode())
 		}
 		for _, h := range s.conf.Http.Handlers {
 			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))

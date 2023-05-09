@@ -169,7 +169,9 @@ func (svr *httpd) Stop() {
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(ginutil.RecoveryWithLogging(svr.log))
-	r.Use(ginutil.HttpLogger("http-log"))
+	if svr.debugMode {
+		r.Use(ginutil.HttpLogger("http-log"))
+	}
 	r.Use(svr.corsHandler())
 
 	enableSwagger := false
