@@ -77,7 +77,6 @@ func (na *neoAgent) Start() {
 		)
 		go func() {
 			for state := range na.stateC {
-				fmt.Println("state", state)
 				switch state {
 				case NeoStarting:
 					itmStartDB.Disabled = true
@@ -150,6 +149,7 @@ func (na *neoAgent) appendOutput(line []byte) {
 
 	na.mainTextGrid.Rows = rows
 	na.mainTextGrid.Refresh()
+	na.mainTextScroll.ScrollToBottom()
 
 	na.outputLock.Unlock()
 }
