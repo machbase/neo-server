@@ -31,12 +31,15 @@ if [ -d arch/$PKGNAME ]; then
     find "packages/$bdir" -name ".gitkeep" -exec /bin/rm -f {} \;
 fi
 case $PKGNAME in
+    "machbase-neo")
+        declare -a BINS=( "machbase-neo" "neow" )
+        ;;
     *)
         declare -a BINS=( $PKGNAME )
         ;;
 esac
 
-for BIN in $BINS; do
+for BIN in "${BINS[@]}"; do
     echo "    make $BIN $VERSION $EDITION"
     # Make the binaries.
     if [ "$GOARCH" == "arm" ]; then
