@@ -1,12 +1,8 @@
 package httpd
 
 import (
-	"fmt"
 	"net/http"
 	"os"
-	"regexp"
-	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,7 +31,7 @@ var gradeMap = map[string]planLimit{}
 var localPlan string
 
 func init() {
-	// =========== 임시 테스트 ================
+	// =========== Termporary env ================
 	localPlan = os.Getenv("PLAN_NAME")
 	if localPlan == "" {
 		localPlan = MACHLAKE_PLAN_TINY
@@ -96,32 +92,6 @@ func init() {
 
 }
 
-/* unused
-func (svr *httpd) lakeRead(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
-
-	// 기존 lake에서는 cli를 통해서 db 사용
-	dataType := ctx.Query("type")
-
-	switch dataType {
-	case "raw", "":
-		svr.RawData(ctx)
-	case "current":
-		svr.CurrentData(ctx)
-	case "stat":
-		svr.StatData(ctx)
-	case "calc":
-		svr.CalcData(ctx)
-	case "pivot":
-		svr.PivotData(ctx)
-	default:
-		rsp.Reason = fmt.Sprintf("unsupported data-type: %s", dataType)
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-}
-*/
-
 func (svr *httpd) RawData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
 
@@ -133,29 +103,28 @@ func (svr *httpd) RawData(ctx *gin.Context) {
 		return
 	}
 
-	svr.log.Debugf("request param : %+v", param)
+	// svr.log.Debugf("request param : %+v", param)
 
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
-		return
-	}
+	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Reason = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
 
-	if param.Separator == "" {
-		param.Separator = ","
-	}
+	// if param.Separator == "" {
+	// 	param.Separator = ","
+	// }
 
-	svr.log.Info(timezone) // 에러 방지
+	// currentPlan := gradeMap[localPlan]
 
-	currentPlan := gradeMap[localPlan]
-
-	// plan을 알아야 LimitSelTag 값을 알 수 있음
-	if param.TagName != "" {
-		param.TagList = strings.Split(param.TagName, param.Separator)
-		if len(param.TagList) > currentPlan.limitSelectTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
-		}
-	}
+	// Decide LimitSelTag by Plan
+	// if param.TagName != "" {
+	// 	param.TagList = strings.Split(param.TagName, param.Separator)
+	// 	if len(param.TagList) > currentPlan.limitSelectTag {
+	// 		// lakeserver conf value, loading data from  rdbms
+	// 	}
+	// }
 	// } else {
 	// 	svr.log.Info("tag name is empty")
 	// 	rsp.Reason = "wrong prameter. tagname is empty"
@@ -163,7 +132,6 @@ func (svr *httpd) RawData(ctx *gin.Context) {
 	// 	return
 	// }
 	// tagname list
-
 }
 
 func (svr *httpd) CurrentData(ctx *gin.Context) {
@@ -184,7 +152,8 @@ func (svr *httpd) PivotData(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-// 사용자가 보낸 Timezone을 확인하고 machbase에서 사용 가능한 Timezone으로 변경하는 함수
+/* unused
+// VerifyTimezone, convert to Machbase's Timezone variable
 func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error) {
 	if timezone == "" {
 		svr.log.Error("use default timezone 'Etc/UTC'")
@@ -199,9 +168,11 @@ func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error
 
 	return svr.convertTimezone(ctx, timezone)
 }
+*/
 
+/* unused
 func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, error) {
-	// convertTimezone 함수만 사용 하는 곳도 존재, 아래 기능이 있으면 makeTimezone 함수와 중복, convert 함수만 사용 가능
+	// some time-zones can be applied convertTimezone
 	// if timezone == "" {
 	// 	return "", fmt.Errorf("timezone is empty")
 	// }
@@ -229,6 +200,7 @@ func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, er
 
 	return machbaseTimezone, nil
 }
+*/
 
 type SelectRaw struct {
 	Timezone     string `form:"timezone" json:"timezone"`

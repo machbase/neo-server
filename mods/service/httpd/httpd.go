@@ -222,8 +222,8 @@ func (svr *httpd) Router() *gin.Engine {
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
-			group.GET("/logs", svr.handleLogs)
-			group.POST("/values", svr.handleAppender)
+			group.GET("/logs", svr.handleLakeGetLogs)
+			group.POST("/values", svr.handleLakePostValues)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
