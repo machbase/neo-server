@@ -96,6 +96,7 @@ func init() {
 
 }
 
+/* unused
 func (svr *httpd) lakeRead(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
 
@@ -119,6 +120,7 @@ func (svr *httpd) lakeRead(ctx *gin.Context) {
 		return
 	}
 }
+*/
 
 func (svr *httpd) RawData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
@@ -190,7 +192,7 @@ func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error
 	}
 
 	matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
-	if matched.MatchString(timezone) == true {
+	if matched.MatchString(timezone) {
 		svr.log.Infof("available timezone format : %s", timezone)
 		return timezone, nil
 	}

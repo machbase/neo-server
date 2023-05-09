@@ -17,12 +17,13 @@ require (
 	github.com/gliderlabs/ssh v0.3.5
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/machbase/booter v1.2.2
-	github.com/machbase/neo-engine v1.0.1-0.20230427023231-daa1f39178ed
-	github.com/machbase/neo-grpc v0.8.0
-	github.com/machbase/neo-spi v1.2.0
+	github.com/machbase/neo-engine v1.0.2-0.20230508071328-cfcfdc6a25df
+	github.com/machbase/neo-grpc v0.8.1-0.20230508071519-6cae2372504c
+	github.com/machbase/neo-spi v1.2.1-0.20230508071206-90bcddd6d54b
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0
@@ -76,7 +77,6 @@ require (
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl/v2 v2.16.2 // indirect
