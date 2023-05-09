@@ -17,8 +17,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/machbase/neo-server/main/neow/res"
 )
@@ -56,6 +58,19 @@ func (na *neoAgent) Start() {
 	a.SetIcon(iconLogo)
 	na.mainWindow = a.NewWindow("machbase-neo")
 
+	var playAndStopButton *widget.Button
+	var statusLabel *widget.Label
+	var startOptionEntry *widget.Entry
+
+	var startOptionString = binding.NewString()
+	startOptionString.Set(strings.Join(na.exeArgs[1:], " "))
+	startOptionString.AddListener(binding.NewDataListener(func() {
+		if str, err := startOptionString.Get(); err != nil {
+			return
+		} else {
+			na.exeArgs = append(na.exeArgs[0:1], strings.Split(str, " ")...)
+		}
+	}))
 	if desk, ok := a.(desktop.App); ok {
 		itmStartDB := fyne.NewMenuItem("Start database", func() {
 			na.doStartDatabase()
@@ -63,11 +78,9 @@ func (na *neoAgent) Start() {
 		itmStopDB := fyne.NewMenuItem("Stop database", func() {
 			na.doStopDatabase()
 		})
-		itmStopDB.Disabled = true
 		itmShowLogs := fyne.NewMenuItem("Show logs", func() {
 			na.doShowLog()
 		})
-		itmShowLogs.Disabled = true
 		itmOpenWebUI := fyne.NewMenuItem("Open Web UI", func() {
 			na.doOpenWebUI()
 		})
@@ -78,6 +91,19 @@ func (na *neoAgent) Start() {
 			itmOpenWebUI,
 			itmShowLogs,
 		)
+		desk.SetSystemTrayIcon(iconLogo)
+		desk.SetSystemTrayMenu(m)
+
+		playAndStopButton = widget.NewButtonWithIcon("Start Database", theme.MediaPlayIcon(), func() {
+			if playAndStopButton.Text == "Start Database" {
+				na.doStartDatabase()
+			} else if playAndStopButton.Text == "Stop Database" {
+				na.doStopDatabase()
+			}
+		})
+		statusLabel = widget.NewLabel("")
+		startOptionEntry = widget.NewEntryWithData(startOptionString)
+		startOptionEntry.SetPlaceHolder("flags")
 		go func() {
 			for state := range na.stateC {
 				switch state {
@@ -85,36 +111,53 @@ func (na *neoAgent) Start() {
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
+					playAndStopButton.Disable()
+					startOptionEntry.Disable()
 				case NeoRunning:
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = false
-					itmShowLogs.Disabled = false
 					itmOpenWebUI.Disabled = false
+					playAndStopButton.SetText("Stop Database")
+					playAndStopButton.SetIcon(theme.MediaStopIcon())
+					playAndStopButton.Enable()
+					startOptionEntry.Disable()
 				case NeoStopping:
 					itmStartDB.Disabled = true
 					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
+					playAndStopButton.Disable()
+					startOptionEntry.Disable()
 				case NeoStopped:
 					itmStartDB.Disabled = false
 					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
+					playAndStopButton.SetText("Start Database")
+					playAndStopButton.SetIcon(theme.MediaPlayIcon())
+					playAndStopButton.Enable()
+					startOptionEntry.Enable()
 				}
-				m.Refresh()
+				//				m.Refresh()
+				statusLabel.SetText("Status: " + string(state))
 			}
 		}()
-
-		desk.SetSystemTrayIcon(iconLogo)
-		desk.SetSystemTrayMenu(m)
-		m.Refresh()
 	}
+
+	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
+	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
+	bottomBox := container.New(layout.NewHBoxLayout(), statusLabel)
 
 	na.mainTextGrid = widget.NewTextGrid()
 	na.mainTextScroll = container.NewScroll(na.mainTextGrid)
-	mainBox := container.New(layout.NewMaxLayout(), na.mainTextScroll)
+	middleBox := container.New(layout.NewMaxLayout(), na.mainTextScroll)
+
+	mainBox := container.New(layout.NewBorderLayout(topBox, bottomBox, nil, nil), topBox, middleBox, bottomBox)
 	na.mainWindow.SetContent(mainBox)
 	na.mainWindow.SetCloseIntercept(func() {
 		na.mainWindow.Hide()
 	})
+
+	// initialize state
+	na.stateC <- NeoStopped
 
 	if na.autoStart {
 		go na.doStartDatabase()
