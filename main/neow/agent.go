@@ -50,8 +50,11 @@ const (
 )
 
 func (na *neoAgent) Start() {
+	iconLogo := fyne.NewStaticResource("logo.png", res.Logo)
+
 	a := app.New()
-	na.mainWindow = a.NewWindow("Machbase logs")
+	a.SetIcon(iconLogo)
+	na.mainWindow = a.NewWindow("machbase-neo")
 
 	if desk, ok := a.(desktop.App); ok {
 		itmStartDB := fyne.NewMenuItem("Start database", func() {
@@ -100,9 +103,7 @@ func (na *neoAgent) Start() {
 			}
 		}()
 
-		icn := fyne.NewStaticResource("logo.png", res.Logo)
-		a.SetIcon(icn)
-		desk.SetSystemTrayIcon(icn)
+		desk.SetSystemTrayIcon(iconLogo)
 		desk.SetSystemTrayMenu(m)
 		m.Refresh()
 	}
