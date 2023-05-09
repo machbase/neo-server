@@ -3,23 +3,25 @@ package httpd
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type planLimit struct {
-	maxQuery         float64
-	maxNetwork       float64
-	maxStorage       float64
-	limitSelectValue float64
-	limitAppendValue float64
-	limitAppendTag   float64
-	limitSelectTag   float64
-	maxConcurrent    float64
-	defaultTagCount  float64
-	maxTagCount      float64
+	maxQuery         int64
+	maxStorage       int64
+	maxNetwork       int64
+	maxTagCount      int64
+	maxConcurrent    int
+	limitSelectTag   int
+	limitSelectValue int64
+	limitAppendTag   int64
+	limitAppendValue int64
+	defaultTagCount  int64
 }
 
 const (
@@ -30,8 +32,16 @@ const (
 )
 
 var gradeMap = map[string]planLimit{}
+var localPlan string
 
 func init() {
+	// =========== 임시 테스트 ================
+	localPlan = os.Getenv("PLAN_NAME")
+	if localPlan == "" {
+		localPlan = MACHLAKE_PLAN_TINY
+	}
+	//=========================================
+
 	gradeMap[MACHLAKE_PLAN_TINY] = planLimit{
 		maxQuery:         100000,
 		maxNetwork:       10737418240,
@@ -87,7 +97,6 @@ func init() {
 }
 
 func (svr *httpd) lakeRead(ctx *gin.Context) {
-
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
 
 	// 기존 lake에서는 cli를 통해서 db 사용
@@ -137,12 +146,14 @@ func (svr *httpd) RawData(ctx *gin.Context) {
 
 	svr.log.Info(timezone) // 에러 방지
 
-	// plan을 알아야 LimitSelTag 값을 알 수 있음
-	// if param.TagName != "" {
-	// 	param.TagList = strings.Split(param.TagName, param.Separator)
-	// 	if len(param.TagList) > LimitSelTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
+	currentPlan := gradeMap[localPlan]
 
-	// 	}
+	// plan을 알아야 LimitSelTag 값을 알 수 있음
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+		if len(param.TagList) > currentPlan.limitSelectTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
+		}
+	}
 	// } else {
 	// 	svr.log.Info("tag name is empty")
 	// 	rsp.Reason = "wrong prameter. tagname is empty"
