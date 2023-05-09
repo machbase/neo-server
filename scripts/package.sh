@@ -32,7 +32,7 @@ if [ -d arch/$PKGNAME ]; then
 fi
 case $PKGNAME in
     "machbase-neo")
-        declare -a BINS=( "machbase-neo" "neow" )
+        declare -a BINS=( "machbase-neo" )
         ;;
     *)
         declare -a BINS=( $PKGNAME )
