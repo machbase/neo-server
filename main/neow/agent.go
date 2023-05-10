@@ -87,6 +87,7 @@ func (na *neoAgent) Start() {
 	})
 
 	var playAndStopButton *widget.Button
+	var openBrowserButton *widget.Button
 	var statusLabel *widget.Label
 	var startOptionEntry *widget.Entry
 
@@ -123,6 +124,11 @@ func (na *neoAgent) Start() {
 				na.doStopDatabase()
 			}
 		})
+		openBrowserButton = widget.NewButtonWithIcon("Open in browser", theme.GridIcon(), func() {
+			na.doOpenWebUI()
+		})
+		openBrowserButton.Disable()
+
 		statusLabel = widget.NewLabel("")
 		startOptionEntry = widget.NewEntryWithData(startOptionString)
 		startOptionEntry.SetPlaceHolder("flags")
@@ -137,20 +143,24 @@ func (na *neoAgent) Start() {
 				switch state {
 				case NeoStarting:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoRunning:
 					itmOpenWebUI.Disabled = false
+					openBrowserButton.Enable()
 					playAndStopButton.SetText(StopDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaStopIcon())
 					playAndStopButton.Enable()
 					startOptionEntry.Disable()
 				case NeoStopping:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoStopped:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.SetText(StartDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaPlayIcon())
 					playAndStopButton.Enable()
@@ -164,7 +174,7 @@ func (na *neoAgent) Start() {
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	bottomBox := container.New(layout.NewHBoxLayout(), statusLabel)
+	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusLabel, openBrowserButton), statusLabel, openBrowserButton)
 
 	na.mainTextGrid = widget.NewTextGrid()
 	na.mainTextScroll = container.NewScroll(na.mainTextGrid)
