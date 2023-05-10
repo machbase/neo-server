@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	_ "embed"
 
@@ -53,11 +54,32 @@ const (
 	NeoStopped  NeoState = "not running"
 )
 
+type appTheme struct {
+	base        fyne.Theme
+	defaultFont fyne.Resource
+}
+
+func (th *appTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	return th.base.Color(name, variant)
+}
+func (th *appTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return th.defaultFont
+}
+func (th *appTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return th.base.Icon(name)
+}
+func (th *appTheme) Size(name fyne.ThemeSizeName) float32 {
+	return th.base.Size(name)
+}
+
 func (na *neoAgent) Start() {
 	iconLogo := fyne.NewStaticResource("logo.png", res.Logo)
+	fontDefault := fyne.NewStaticResource("default_font", res.D2Coding)
+	aTheme := &appTheme{base: theme.DefaultTheme(), defaultFont: fontDefault}
 
-	a := app.New()
+	a := app.NewWithID("com.machbase.neow")
 	a.SetIcon(iconLogo)
+	a.Settings().SetTheme(aTheme)
 	na.mainWindow = a.NewWindow("machbase-neo")
 
 	a.Lifecycle().SetOnStopped(func() {
@@ -65,6 +87,7 @@ func (na *neoAgent) Start() {
 	})
 
 	var playAndStopButton *widget.Button
+	var openBrowserButton *widget.Button
 	var statusLabel *widget.Label
 	var startOptionEntry *widget.Entry
 
@@ -101,6 +124,11 @@ func (na *neoAgent) Start() {
 				na.doStopDatabase()
 			}
 		})
+		openBrowserButton = widget.NewButtonWithIcon("Open in browser", theme.GridIcon(), func() {
+			na.doOpenWebUI()
+		})
+		openBrowserButton.Disable()
+
 		statusLabel = widget.NewLabel("")
 		startOptionEntry = widget.NewEntryWithData(startOptionString)
 		startOptionEntry.SetPlaceHolder("flags")
@@ -115,20 +143,24 @@ func (na *neoAgent) Start() {
 				switch state {
 				case NeoStarting:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoRunning:
 					itmOpenWebUI.Disabled = false
+					openBrowserButton.Enable()
 					playAndStopButton.SetText(StopDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaStopIcon())
 					playAndStopButton.Enable()
 					startOptionEntry.Disable()
 				case NeoStopping:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoStopped:
 					itmOpenWebUI.Disabled = true
+					openBrowserButton.Disable()
 					playAndStopButton.SetText(StartDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaPlayIcon())
 					playAndStopButton.Enable()
@@ -142,7 +174,7 @@ func (na *neoAgent) Start() {
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	bottomBox := container.New(layout.NewHBoxLayout(), statusLabel)
+	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusLabel, openBrowserButton), statusLabel, openBrowserButton)
 
 	na.mainTextGrid = widget.NewTextGrid()
 	na.mainTextScroll = container.NewScroll(na.mainTextGrid)
@@ -384,6 +416,9 @@ func (ll LogLine) ToTextGridCell(tabWidth int) []widget.TextGridCell {
 			for i := col; i < next; i++ {
 				cells = append(cells, widget.TextGridCell{Rune: ' ', Style: style})
 			}
+		} else if unicode.Is(unicode.Hangul, r) || unicode.Is(unicode.Han, r) || unicode.Is(unicode.Javanese, r) {
+			// CJK Unicode block
+			cells = append(cells, widget.TextGridCell{Rune: ' ', Style: style})
 		}
 	}
 	return cells
