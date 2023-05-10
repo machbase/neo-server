@@ -186,7 +186,6 @@ func (na *neoAgent) Start() {
 	na.mainWindow.Resize(fyne.NewSize(800, 600))
 	na.mainWindow.Show()
 
-	na.log("abc한글 출력 시험xyz")
 	a.Run()
 	na.Stop()
 }
