@@ -297,6 +297,19 @@ func (na *neoAgent) doOpenWebUI() {
 	}
 }
 
+var ConsoleStyle widget.TextGridStyle = &consoleStyle{}
+
+type consoleStyle struct {
+}
+
+func (cs *consoleStyle) TextColor() color.Color {
+	return widget.TextGridStyleDefault.TextColor()
+}
+
+func (cs *consoleStyle) BackgroundColor() color.Color {
+	return widget.TextGridStyleDefault.BackgroundColor()
+}
+
 type LogLine []byte
 
 func (ll LogLine) String() string {
@@ -316,7 +329,7 @@ func (ll LogLine) ToTextGridCell(tabWidth int) []widget.TextGridCell {
 	esc := noEscape
 	code := ""
 	osc := false
-	style := widget.TextGridStyleDefault
+	style := ConsoleStyle
 
 	for i, r := range string(ll) {
 		if r == asciiEscape {
@@ -352,10 +365,10 @@ func (ll LogLine) ToTextGridCell(tabWidth int) []widget.TextGridCell {
 					code = strings.TrimSuffix(code, "m")
 					bfToks := strings.SplitN(code, ";", 2)
 					if len(bfToks) == 1 && bfToks[0] == "0" {
-						style = widget.TextGridStyleDefault
+						style = ConsoleStyle
 					} else {
-						bg := ansiColor(bfToks[0], widget.TextGridStyleDefault.BackgroundColor())
-						fg := ansiColor(bfToks[1], widget.TextGridStyleDefault.TextColor())
+						bg := ansiColor(bfToks[0], ConsoleStyle.BackgroundColor())
+						fg := ansiColor(bfToks[1], ConsoleStyle.TextColor())
 						style = &widget.CustomTextGridStyle{FGColor: fg, BGColor: bg}
 					}
 				}
@@ -387,7 +400,7 @@ func ansiColor(code string, def color.Color) color.Color {
 	case "32": // green
 		return color.RGBA{R: 149, G: 189, B: 64, A: 255}
 	case "33": // yellow
-		return color.RGBA{R: 255, G: 220, B: 0, A: 255}
+		return color.RGBA{R: 213, G: 217, B: 17, A: 255}
 	case "34": // blue
 		return color.RGBA{R: 0, G: 116, B: 217, A: 255}
 	case "35": // magenta
