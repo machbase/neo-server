@@ -58,9 +58,10 @@ LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
 
 if [ "$NOMODULES" != "1" ]; then
 	export GO111MODULE=on
-    if [ ! -d ./vendor ]; then
-	    go mod vendor
-    fi
+    go mod tidy
+    # if [ ! -d ./vendor ]; then
+	#     go mod vendor
+    # fi
 fi
 
 # Build and store objects into original directory.
