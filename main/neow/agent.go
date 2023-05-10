@@ -107,75 +107,75 @@ func (na *neoAgent) Start() {
 	}))
 	const StartDatabaseText = "machbase-neo serve"
 	const StopDatabaseText = "Stop machbase-neo "
-	if desk, ok := a.(desktop.App); ok {
-		itmShowLogs := fyne.NewMenuItem("Show window", func() {
-			na.doShowMainWindow()
-		})
-		itmOpenWebUI := fyne.NewMenuItem("Open in Web Browser", func() {
-			na.doOpenWebUI()
-		})
-		m := fyne.NewMenu("machbase-neo",
-			itmShowLogs,
-			itmOpenWebUI,
-			// fyne.NewMenuItemSeparator(),
-		)
+	itmShowLogs := fyne.NewMenuItem("Show window", func() {
+		na.doShowMainWindow()
+	})
+	itmOpenWebUI := fyne.NewMenuItem("Open in Web Browser", func() {
+		na.doOpenWebUI()
+	})
+	playAndStopButton = widget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
+		if playAndStopButton.Text == StartDatabaseText {
+			na.doStartDatabase()
+		} else if playAndStopButton.Text == StopDatabaseText {
+			na.doStopDatabase()
+		}
+	})
+	openBrowserButton = widget.NewButtonWithIcon("Open in browser", theme.GridIcon(), func() {
+		na.doOpenWebUI()
+	})
+	openBrowserButton.Disable()
+
+	statusLabel = widget.NewLabel("")
+	startOptionEntry = widget.NewEntryWithData(startOptionString)
+	startOptionEntry.SetPlaceHolder("flags")
+	m := fyne.NewMenu("machbase-neo",
+		itmShowLogs,
+		itmOpenWebUI,
+		// fyne.NewMenuItemSeparator(),
+	)
+
+	if desk, ok := a.(desktop.App); ok && runtime.GOOS != "windows" {
 		desk.SetSystemTrayIcon(iconLogo)
 		desk.SetSystemTrayMenu(m)
-
-		playAndStopButton = widget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
-			if playAndStopButton.Text == StartDatabaseText {
-				na.doStartDatabase()
-			} else if playAndStopButton.Text == StopDatabaseText {
-				na.doStopDatabase()
-			}
-		})
-		openBrowserButton = widget.NewButtonWithIcon("Open in browser", theme.GridIcon(), func() {
-			na.doOpenWebUI()
-		})
-		openBrowserButton.Disable()
-
-		statusLabel = widget.NewLabel("")
-		startOptionEntry = widget.NewEntryWithData(startOptionString)
-		startOptionEntry.SetPlaceHolder("flags")
-
-		go func() {
-			// There is some weird behavior on macOS
-			// Guessing some issue related timing between SetSystemTrayMenu() and menu.Refresh()
-			time.Sleep(1000 * time.Millisecond)
-
-			menu := m // capturing
-			for state := range na.stateC {
-				switch state {
-				case NeoStarting:
-					itmOpenWebUI.Disabled = true
-					openBrowserButton.Disable()
-					playAndStopButton.Disable()
-					startOptionEntry.Disable()
-				case NeoRunning:
-					itmOpenWebUI.Disabled = false
-					openBrowserButton.Enable()
-					playAndStopButton.SetText(StopDatabaseText)
-					playAndStopButton.SetIcon(theme.MediaStopIcon())
-					playAndStopButton.Enable()
-					startOptionEntry.Disable()
-				case NeoStopping:
-					itmOpenWebUI.Disabled = true
-					openBrowserButton.Disable()
-					playAndStopButton.Disable()
-					startOptionEntry.Disable()
-				case NeoStopped:
-					itmOpenWebUI.Disabled = true
-					openBrowserButton.Disable()
-					playAndStopButton.SetText(StartDatabaseText)
-					playAndStopButton.SetIcon(theme.MediaPlayIcon())
-					playAndStopButton.Enable()
-					startOptionEntry.Enable()
-				}
-				statusLabel.SetText("Status: " + string(state))
-				menu.Refresh()
-			}
-		}()
 	}
+
+	go func() {
+		// There is some weird behavior on macOS
+		// Guessing some issue related timing between SetSystemTrayMenu() and menu.Refresh()
+		time.Sleep(1000 * time.Millisecond)
+
+		menu := m // capturing
+		for state := range na.stateC {
+			switch state {
+			case NeoStarting:
+				itmOpenWebUI.Disabled = true
+				openBrowserButton.Disable()
+				playAndStopButton.Disable()
+				startOptionEntry.Disable()
+			case NeoRunning:
+				itmOpenWebUI.Disabled = false
+				openBrowserButton.Enable()
+				playAndStopButton.SetText(StopDatabaseText)
+				playAndStopButton.SetIcon(theme.MediaStopIcon())
+				playAndStopButton.Enable()
+				startOptionEntry.Disable()
+			case NeoStopping:
+				itmOpenWebUI.Disabled = true
+				openBrowserButton.Disable()
+				playAndStopButton.Disable()
+				startOptionEntry.Disable()
+			case NeoStopped:
+				itmOpenWebUI.Disabled = true
+				openBrowserButton.Disable()
+				playAndStopButton.SetText(StartDatabaseText)
+				playAndStopButton.SetIcon(theme.MediaPlayIcon())
+				playAndStopButton.Enable()
+				startOptionEntry.Enable()
+			}
+			statusLabel.SetText("Status: " + string(state))
+			menu.Refresh()
+		}
+	}()
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
@@ -188,7 +188,11 @@ func (na *neoAgent) Start() {
 	mainBox := container.New(layout.NewBorderLayout(topBox, bottomBox, nil, nil), topBox, middleBox, bottomBox)
 	na.mainWindow.SetContent(mainBox)
 	na.mainWindow.SetCloseIntercept(func() {
-		na.mainWindow.Hide()
+		if runtime.GOOS == "windows" {
+			a.Quit()
+		} else {
+			na.mainWindow.Hide()
+		}
 	})
 
 	// initialize state

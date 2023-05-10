@@ -2,7 +2,7 @@ package res
 
 import _ "embed"
 
-//go:embed logo.png
+//go:embed appicon.png
 var Logo []byte
 
 //go:embed D2Coding-Ver1.3.2-20180524.ttf

@@ -20,11 +20,13 @@
 @git rev-parse --short main > .\tmp\gitsha.txt
 @date /T > .\tmp\buildtime.txt
 @go version > .\tmp\goverstr.txt
+@cd > .\tmp\cwd.txt
 
 @SET /p VERSION=<.\tmp\version.txt
 @SET /p GITSHA=<.\tmp\gitsha.txt
 @SET /p BUILDTIME=<.\tmp\buildtime.txt
 @SET /p GOVERSTR=<.\tmp\goverstr.txt
+@SET /p PRJABSPATH=<.\tmp\cwd.txt
 
 @for /f "tokens=3*" %%a in ("%GOVERSTR%") do (
     @SET GOVERSTR=%%a
@@ -45,4 +47,6 @@
 go build -ldflags "%LDFLAGS%" -tags=fog_edition,timetzdata -o .\tmp\machbase-neo.exe .\main\machbase-neo
 
 @SET CGO_ENABLED=0 
-go build -ldflags "-H=windowsgui" -o .\tmp\neow.exe .\main\neow
+@REM go build -ldflags "-H=windowsgui" -o .\tmp\neow.exe .\main\neow
+fyne package --os windows --src main\neow --icon %PRJABSPATH%\main\neow\res\appicon.png --id com.machbase.neow
+move /Y %PRJABSPATH%\main\neow\neow.exe %PRJABSPATH%\tmp\neow.exe
