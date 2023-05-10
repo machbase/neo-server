@@ -3,6 +3,7 @@
 set -e
 PRJROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd $PRJROOT
+PRJABSPATH=`pwd`
 
 PKGNAME="$1"
 GOOS="$2"
@@ -34,6 +35,9 @@ case $PKGNAME in
     "machbase-neo")
         declare -a BINS=( "machbase-neo" )
         ;;
+    "neow")
+        declare -a BINS=( "machbase-neo" "neow" )
+        ;;
     *)
         declare -a BINS=( $PKGNAME )
         ;;
@@ -62,22 +66,23 @@ for D in $DOCS; do
     cp $D packages/$bdir
 done
 
-# Copy test directory
-# if [ ! -d packages/$bdir/test ]; then
-#     mkdir packages/$bdir/test
-# fi
-# for D in $TESTD; do
-#     cp -r $D packages/$bdir/test
-# done
-
 # Compress the package.
-cd packages
-zip -r -q $bdir.zip $bdir
-# if [ "$GOOS" == "linux" ]; then
-# 	tar -zcf $bdir.tar.gz $bdir
-# else
-# 	zip -r -q $bdir.zip $bdir
-# fi
+if [ "$GOOS" == "darwin" ] || [ "$PKGNAME" == "neow" ]; then
+    if [ -d neow.app ]; then
+        rm -rf neow.app
+    fi
+    if [ -d packages/neow.app ]; then
+        rm -rf packages/neow.app
+    fi
+    fyne package --os darwin --src main/neow --icon $PRJABSPATH/main/neow/res/appicon.png --id com.machbase.neow && \
+    mv neow.app packages/ && \
+    mv packages/$bdir/machbase-neo packages/neow.app/Contents/MacOS/
+    cd packages
+    zip -r -q neow-$EDITION-$VERSION.zip neow.app
+else
+    cd packages
+    zip -r -q $bdir.zip $bdir
+fi
 
 # Remove build directory.
 rm -rf $bdir
