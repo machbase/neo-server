@@ -67,7 +67,7 @@ for D in $DOCS; do
 done
 
 # Compress the package.
-if [ "$GOOS" == "darwin" ] || [ "$PKGNAME" == "neow" ]; then
+if [ "$GOOS" == "darwin" ] && [ "$PKGNAME" == "neow" ]; then
     if [ -d neow.app ]; then
         rm -rf neow.app
     fi
@@ -78,7 +78,7 @@ if [ "$GOOS" == "darwin" ] || [ "$PKGNAME" == "neow" ]; then
     mv neow.app packages/ && \
     mv packages/$bdir/machbase-neo packages/neow.app/Contents/MacOS/
     cd packages
-    zip -r -q neow-$EDITION-$VERSION.zip neow.app
+    zip -r -q neow-$EDITION-$VERSION-$GOOS-$GOARCH.zip neow.app && rm -rf neow.app
 else
     cd packages
     zip -r -q $bdir.zip $bdir
