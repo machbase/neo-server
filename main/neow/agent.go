@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	_ "embed"
 
@@ -30,8 +31,9 @@ type neoAgent struct {
 	exeArgs   []string
 	autoStart bool
 
-	stateC  chan NeoState
-	process *os.Process
+	stateC    chan NeoState
+	process   *os.Process
+	processWg sync.WaitGroup
 
 	outputs     []LogLine
 	outputLock  sync.Mutex
@@ -58,6 +60,10 @@ func (na *neoAgent) Start() {
 	a.SetIcon(iconLogo)
 	na.mainWindow = a.NewWindow("machbase-neo")
 
+	a.Lifecycle().SetOnStopped(func() {
+		na.Stop()
+	})
+
 	var playAndStopButton *widget.Button
 	var statusLabel *widget.Label
 	var startOptionEntry *widget.Entry
@@ -71,73 +77,65 @@ func (na *neoAgent) Start() {
 			na.exeArgs = append(na.exeArgs[0:1], strings.Split(str, " ")...)
 		}
 	}))
+	const StartDatabaseText = "machbase-neo serve"
+	const StopDatabaseText = "Stop machbase-neo "
 	if desk, ok := a.(desktop.App); ok {
-		itmStartDB := fyne.NewMenuItem("Start database", func() {
-			na.doStartDatabase()
+		itmShowLogs := fyne.NewMenuItem("Show window", func() {
+			na.doShowMainWindow()
 		})
-		itmStopDB := fyne.NewMenuItem("Stop database", func() {
-			na.doStopDatabase()
-		})
-		itmShowLogs := fyne.NewMenuItem("Show logs", func() {
-			na.doShowLog()
-		})
-		itmOpenWebUI := fyne.NewMenuItem("Open Web UI", func() {
+		itmOpenWebUI := fyne.NewMenuItem("Open in Web Browser", func() {
 			na.doOpenWebUI()
 		})
 		m := fyne.NewMenu("machbase-neo",
-			itmStartDB,
-			itmStopDB,
-			fyne.NewMenuItemSeparator(),
-			itmOpenWebUI,
 			itmShowLogs,
+			itmOpenWebUI,
+			// fyne.NewMenuItemSeparator(),
 		)
 		desk.SetSystemTrayIcon(iconLogo)
 		desk.SetSystemTrayMenu(m)
 
-		playAndStopButton = widget.NewButtonWithIcon("Start Database", theme.MediaPlayIcon(), func() {
-			if playAndStopButton.Text == "Start Database" {
+		playAndStopButton = widget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
+			if playAndStopButton.Text == StartDatabaseText {
 				na.doStartDatabase()
-			} else if playAndStopButton.Text == "Stop Database" {
+			} else if playAndStopButton.Text == StopDatabaseText {
 				na.doStopDatabase()
 			}
 		})
 		statusLabel = widget.NewLabel("")
 		startOptionEntry = widget.NewEntryWithData(startOptionString)
 		startOptionEntry.SetPlaceHolder("flags")
+
 		go func() {
+			// There is some weird behavior on macOS
+			// Guessing some issue related timing between SetSystemTrayMenu() and menu.Refresh()
+			time.Sleep(1000 * time.Millisecond)
+
+			menu := m // capturing
 			for state := range na.stateC {
 				switch state {
 				case NeoStarting:
-					itmStartDB.Disabled = true
-					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoRunning:
-					itmStartDB.Disabled = true
-					itmStopDB.Disabled = false
 					itmOpenWebUI.Disabled = false
-					playAndStopButton.SetText("Stop Database")
+					playAndStopButton.SetText(StopDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaStopIcon())
 					playAndStopButton.Enable()
 					startOptionEntry.Disable()
 				case NeoStopping:
-					itmStartDB.Disabled = true
-					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
 					playAndStopButton.Disable()
 					startOptionEntry.Disable()
 				case NeoStopped:
-					itmStartDB.Disabled = false
-					itmStopDB.Disabled = true
 					itmOpenWebUI.Disabled = true
-					playAndStopButton.SetText("Start Database")
+					playAndStopButton.SetText(StartDatabaseText)
 					playAndStopButton.SetIcon(theme.MediaPlayIcon())
 					playAndStopButton.Enable()
 					startOptionEntry.Enable()
 				}
-				//				m.Refresh()
 				statusLabel.SetText("Status: " + string(state))
+				menu.Refresh()
 			}
 		}()
 	}
@@ -248,7 +246,19 @@ func (na *neoAgent) doStartDatabase() {
 	}
 	na.process = cmd.Process
 
-	na.stateC <- NeoRunning
+	go func() {
+		na.stateC <- NeoRunning
+		na.processWg.Add(1)
+		state, err := na.process.Wait()
+		na.processWg.Done()
+		if err != nil {
+			na.log(fmt.Sprintf("Shutdown failed %s", err.Error()))
+		} else {
+			na.log(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode()))
+		}
+		na.process = nil
+		na.stateC <- NeoStopped
+	}()
 }
 
 func (na *neoAgent) doStopDatabase() {
@@ -267,18 +277,11 @@ func (na *neoAgent) doStopDatabase() {
 				na.log(err.Error())
 			}
 		}
-		state, err := na.process.Wait()
-		if err != nil {
-			na.log(fmt.Sprintf("Shutdown failed %s", err.Error()))
-		} else {
-			na.log(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode()))
-		}
-		na.process = nil
+		na.processWg.Wait()
 	}
-	na.stateC <- NeoStopped
 }
 
-func (na *neoAgent) doShowLog() {
+func (na *neoAgent) doShowMainWindow() {
 	na.mainWindow.Show()
 }
 
