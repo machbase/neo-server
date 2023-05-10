@@ -25,6 +25,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/machbase/neo-server/main/neow/res"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type neoAgent struct {
@@ -80,11 +81,14 @@ func (na *neoAgent) Start() {
 	a := app.NewWithID("com.machbase.neow")
 	a.SetIcon(iconLogo)
 	a.Settings().SetTheme(aTheme)
-	na.mainWindow = a.NewWindow("machbase-neo")
-
+	if args := a.Preferences().String("args"); len(args) > 0 {
+		na.exeArgs = util.SplitFields(args, true)
+	}
 	a.Lifecycle().SetOnStopped(func() {
 		na.Stop()
 	})
+
+	na.mainWindow = a.NewWindow("machbase-neo")
 
 	var playAndStopButton *widget.Button
 	var openBrowserButton *widget.Button
@@ -92,12 +96,13 @@ func (na *neoAgent) Start() {
 	var startOptionEntry *widget.Entry
 
 	var startOptionString = binding.NewString()
-	startOptionString.Set(strings.Join(na.exeArgs[1:], " "))
+	startOptionString.Set(strings.Join(na.exeArgs, " "))
 	startOptionString.AddListener(binding.NewDataListener(func() {
 		if str, err := startOptionString.Get(); err != nil {
 			return
 		} else {
-			na.exeArgs = append(na.exeArgs[0:1], strings.Split(str, " ")...)
+			na.exeArgs = util.SplitFields(str, true)
+			a.Preferences().SetString("args", str)
 		}
 	}))
 	const StartDatabaseText = "machbase-neo serve"
@@ -251,18 +256,25 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 	}
 }
 
+func (na *neoAgent) clearLogs() {
+	na.outputs = []LogLine{}
+}
+
 func (na *neoAgent) doStartDatabase() {
 	na.stateC <- NeoStarting
 
+	na.clearLogs()
 	pname := ""
 	pargs := []string{}
 	if runtime.GOOS == "windows" {
 		pname = "cmd.exe"
 		pargs = append(pargs, "/c")
 		pargs = append(pargs, na.exePath)
+		pargs = append(pargs, "serve")
 		pargs = append(pargs, na.exeArgs...)
 	} else {
 		pname = na.exePath
+		pargs = append(pargs, "serve")
 		pargs = append(pargs, na.exeArgs...)
 	}
 	cmd := exec.Command(pname, pargs...)
