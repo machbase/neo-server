@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -82,6 +83,7 @@ func (na *neoAgent) Start() {
 	})
 
 	na.mainWindow = a.NewWindow("machbase-neo")
+	na.mainWindow.SetMaster()
 
 	var playAndStopButton *widget.Button
 	var openBrowserButton *widget.Button
@@ -181,10 +183,19 @@ func (na *neoAgent) Start() {
 	mainBox := container.New(layout.NewBorderLayout(topBox, bottomBox, nil, nil), topBox, middleBox, bottomBox)
 	na.mainWindow.SetContent(mainBox)
 	na.mainWindow.SetCloseIntercept(func() {
-		if runtime.GOOS == "windows" {
-			a.Quit()
+		if na.process != nil {
+			title := "Database is running..."
+			message := "Are you sure to shutdown the database and quit?"
+			d := dialog.NewConfirm(title, message, func(confirm bool) {
+				if !confirm {
+					return
+				}
+				na.doStopDatabase()
+				a.Quit()
+			}, na.mainWindow)
+			d.Show()
 		} else {
-			na.mainWindow.Hide()
+			a.Quit()
 		}
 	})
 
