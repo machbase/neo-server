@@ -8,7 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -93,7 +93,7 @@ func (na *neoAgent) Start() {
 				home = "/tmp"
 			}
 		}
-		args = fmt.Sprintf(`--data "%s"`, path.Join(home, "machbase_home"))
+		args = fmt.Sprintf(`--data "%s"`, filepath.Join(home, "machbase_home"))
 		a.Preferences().SetString("args", args)
 		na.exeArgs = util.SplitFields(args, true)
 	}
