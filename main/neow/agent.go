@@ -22,7 +22,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -80,6 +79,16 @@ func (na *neoAgent) Start() {
 		a.Preferences().SetString("args", args)
 		na.exeArgs = util.SplitFields(args, true)
 	}
+	a.Lifecycle().SetOnStarted(func() {
+		// initialize state
+		na.stateC <- NeoStopped
+
+		if na.autoStart {
+			na.doStartDatabase()
+		} else {
+			na.doShowVersion()
+		}
+	})
 	a.Lifecycle().SetOnStopped(func() {
 		na.Stop()
 	})
@@ -104,9 +113,6 @@ func (na *neoAgent) Start() {
 	}))
 	const StartDatabaseText = "machbase-neo serve"
 	const StopDatabaseText = "Stop machbase-neo "
-	itmShowLogs := fyne.NewMenuItem("Show window", func() {
-		na.doShowMainWindow()
-	})
 	itmOpenWebUI := fyne.NewMenuItem("Open in Web Browser", func() {
 		na.doOpenWebUI()
 	})
@@ -126,23 +132,12 @@ func (na *neoAgent) Start() {
 
 	startOptionEntry = widget.NewEntryWithData(startOptionString)
 	startOptionEntry.SetPlaceHolder("flags")
-	m := fyne.NewMenu("machbase-neo",
-		itmShowLogs,
-		itmOpenWebUI,
-		// fyne.NewMenuItemSeparator(),
-	)
-
-	if desk, ok := a.(desktop.App); ok && runtime.GOOS != "windows" {
-		desk.SetSystemTrayIcon(iconLogo)
-		desk.SetSystemTrayMenu(m)
-	}
 
 	go func() {
 		// There is some weird behavior on macOS
 		// Guessing some issue related timing between SetSystemTrayMenu() and menu.Refresh()
 		time.Sleep(1000 * time.Millisecond)
 
-		menu := m // capturing
 		for state := range na.stateC {
 			var statusLight *widget.Icon
 			switch state {
@@ -177,17 +172,16 @@ func (na *neoAgent) Start() {
 			}
 
 			statusBox.RemoveAll()
-			statusBox.Add(widget.NewLabel(" "))
+			statusBox.Add(widget.NewLabel(""))
 			statusBox.Add(statusLight)
 			statusBox.Add(widget.NewLabel(strings.ToUpper(string(state))))
 			statusBox.Refresh()
-			menu.Refresh()
 		}
 	}()
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, widget.NewLabel(" "))
+	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, widget.NewLabel(""))
 	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusBox, openBrowserBox), statusBox, openBrowserBox)
 
 	na.mainTextGrid = widget.NewTextGrid()
@@ -205,22 +199,21 @@ func (na *neoAgent) Start() {
 					return
 				}
 				na.doStopDatabase()
-				a.Quit()
+				go func() {
+					time.Sleep(2000 * time.Millisecond)
+					na.mainWindow.Close()
+				}()
 			}, na.mainWindow)
 			d.Show()
 		} else {
-			a.Quit()
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				na.mainWindow.Close()
+			}()
 		}
 	})
 
-	// initialize state
-	na.stateC <- NeoStopped
-
-	if na.autoStart {
-		go na.doStartDatabase()
-	}
-
-	na.mainWindow.Resize(fyne.NewSize(800, 600))
+	na.mainWindow.Resize(fyne.NewSize(800, 400))
 	na.mainWindow.Show()
 
 	a.Run()
@@ -282,6 +275,32 @@ func (na *neoAgent) clearLogs() {
 	na.outputs = []LogLine{}
 }
 
+func (na *neoAgent) doShowVersion() {
+	na.clearLogs()
+	pname := ""
+	pargs := []string{}
+	if runtime.GOOS == "windows" {
+		pname = "cmd.exe"
+		pargs = append(pargs, "/c")
+		pargs = append(pargs, na.exePath)
+		pargs = append(pargs, "version")
+	} else {
+		pname = na.exePath
+		pargs = append(pargs, "version")
+	}
+	cmd := exec.Command(pname, pargs...)
+	sysProcAttr(cmd)
+	stdout, _ := cmd.StdoutPipe()
+	go copyReader(stdout, na.appendOutput)
+
+	stderr, _ := cmd.StderrPipe()
+	go copyReader(stderr, na.appendOutput)
+
+	if err := cmd.Run(); err != nil {
+		panic(err)
+	}
+}
+
 func (na *neoAgent) doStartDatabase() {
 	na.stateC <- NeoStarting
 
@@ -320,7 +339,7 @@ func (na *neoAgent) doStartDatabase() {
 		if err != nil {
 			na.log(fmt.Sprintf("Shutdown failed %s", err.Error()))
 		} else {
-			na.log(fmt.Sprintf("Shutdown exit(%d)", state.ExitCode()))
+			na.log(fmt.Sprintf("Shutdown done (exit code: %d)", state.ExitCode()))
 		}
 		na.process = nil
 		na.stateC <- NeoStopped
