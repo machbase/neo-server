@@ -177,6 +177,7 @@ func (na *neoAgent) Start() {
 			}
 
 			statusBox.RemoveAll()
+			statusBox.Add(widget.NewLabel(" "))
 			statusBox.Add(statusLight)
 			statusBox.Add(widget.NewLabel(strings.ToUpper(string(state))))
 			statusBox.Refresh()
@@ -186,7 +187,8 @@ func (na *neoAgent) Start() {
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusBox, openBrowserButton), statusBox, openBrowserButton)
+	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, widget.NewLabel(" "))
+	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusBox, openBrowserBox), statusBox, openBrowserBox)
 
 	na.mainTextGrid = widget.NewTextGrid()
 	na.mainTextScroll = container.NewScroll(na.mainTextGrid)

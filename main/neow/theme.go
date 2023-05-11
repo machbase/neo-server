@@ -41,11 +41,18 @@ func (th *appTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return th.base.Icon(name)
 }
 func (th *appTheme) Size(name fyne.ThemeSizeName) float32 {
-	if name == theme.SizeNameText {
-		return 12
+	sz := th.base.Size(name)
+	switch name {
+	case theme.SizeNamePadding:
+		sz = 3
+	case theme.SizeNameText:
+		sz = 12
+	case theme.SizeNameLineSpacing:
+		sz = 8
+	case theme.SizeNameInlineIcon:
+		sz = 12
 	}
-
-	return th.base.Size(name)
+	return sz
 }
 
 const termOverlay = fyne.ThemeColorName("termOver")
