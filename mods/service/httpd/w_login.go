@@ -122,6 +122,9 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		return
 	}
 
+	// cache username and password for web-terminal uses
+	svr.neoShellAccount[req.LoginName] = req.Password
+
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
 

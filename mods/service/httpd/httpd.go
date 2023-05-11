@@ -35,6 +35,8 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		log:      logging.GetLog("httpd"),
 		db:       db,
 		jwtCache: security.NewJwtCache(),
+
+		neoShellAccount: make(map[string]string),
 	}
 	for _, opt := range options {
 		opt(s)
@@ -109,6 +111,7 @@ type httpd struct {
 	authServer security.AuthServer
 
 	neoShellAddress string
+	neoShellAccount map[string]string
 
 	debugMode bool
 }
@@ -216,11 +219,11 @@ func (svr *httpd) Router() *gin.Engine {
 			})
 			group.StaticFS(contentBase, GetAssets(contentBase))
 			group.POST("/api/login", svr.handleLogin)
+			group.GET("/api/term/:term_id/data", svr.handleTermData)
+			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.Use(svr.handleJwtToken)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
-			group.GET("/api/term/:term_id/data", svr.handleTermData)
-			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:

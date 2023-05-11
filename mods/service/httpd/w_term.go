@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/mods/service/security"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
@@ -25,14 +24,18 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, "invalid termId")
 		return
 	}
-	claimValue, hasClaim := ctx.Get("jwt-claim")
-	if !hasClaim {
+	// current websocket spec requires pass the token through handshake process
+	token := ctx.Query("token")
+	claim, err := svr.verifyAccessToken(token)
+	if err != nil {
 		ctx.String(http.StatusUnauthorized, "unauthorized access")
 		return
 	}
-	claim := claimValue.(security.Claim)
 	termLoginName := claim.Subject
-	termPassword := "manager"
+	termPassword := svr.neoShellAccount[termLoginName]
+	if len(termPassword) == 0 {
+		termPassword = "manager"
+	}
 	termAddress := svr.neoShellAddress
 	if len(termAddress) == 0 {
 		termAddress = "127.0.0.1:5652"
@@ -62,11 +65,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 
-	svr.log.Infof("term %s register %s", termKey, termAddress)
+	svr.log.Debugf("term %s register %s", termKey, termAddress)
 	terminals.Register(termKey, term)
 
 	defer func() {
-		svr.log.Infof("term %s unregister %s", termKey, termAddress)
+		svr.log.Debugf("term %s unregister %s", termKey, termAddress)
 		terminals.Unregister(termKey)
 		term.Close()
 		conn.Close()
@@ -115,7 +118,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			if closeErr, ok := err.(*websocket.CloseError); ok {
-				svr.log.Infof("term %s closed by websocket %d %s", termKey, closeErr.Code, closeErr.Text)
+				svr.log.Debugf("term %s closed by websocket %d %s", termKey, closeErr.Code, closeErr.Text)
 			} else if !errors.Is(err, io.EOF) {
 				svr.log.Errorf("term %s error %T %s", termKey, err, err.Error())
 			}
@@ -131,7 +134,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 			return
 		}
 	}
-
 }
 
 type setTerminalSizeRequest struct {
@@ -214,7 +216,7 @@ func NewTerm(hostPort string, user string, password string) (*Term, error) {
 		Auth: []ssh.AuthMethod{
 			ssh.Password(password),
 		},
-		// HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil },
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil },
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "NewTerm dial")
