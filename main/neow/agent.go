@@ -56,32 +56,12 @@ const (
 	NeoStopped  NeoState = "not running"
 )
 
-type appTheme struct {
-	base        fyne.Theme
-	defaultFont fyne.Resource
-}
-
-func (th *appTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	return th.base.Color(name, variant)
-}
-func (th *appTheme) Font(style fyne.TextStyle) fyne.Resource {
-	return th.defaultFont
-}
-func (th *appTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
-	return th.base.Icon(name)
-}
-func (th *appTheme) Size(name fyne.ThemeSizeName) float32 {
-	return th.base.Size(name)
-}
-
 func (na *neoAgent) Start() {
 	iconLogo := fyne.NewStaticResource("logo.png", res.Logo)
-	fontDefault := fyne.NewStaticResource("default_font", res.D2Coding)
-	aTheme := &appTheme{base: theme.DefaultTheme(), defaultFont: fontDefault}
 
 	a := app.NewWithID("com.machbase.neow")
 	a.SetIcon(iconLogo)
-	a.Settings().SetTheme(aTheme)
+	a.Settings().SetTheme(newAppTheme())
 	if args := a.Preferences().String("args"); len(args) > 0 {
 		na.exeArgs = util.SplitFields(args, true)
 	} else {
