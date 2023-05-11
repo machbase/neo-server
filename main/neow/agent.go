@@ -59,7 +59,9 @@ const (
 
 func (na *neoAgent) Start() {
 	iconLogo := fyne.NewStaticResource("logo.png", res.Logo)
-
+	iconLightYellow := fyne.NewStaticResource("sig_yellow.png", res.CircleYellow)
+	iconLightGreen := fyne.NewStaticResource("sig_green.png", res.CircleGreen)
+	iconLightRed := fyne.NewStaticResource("sig_red.png", res.CircleRed)
 	a := app.NewWithID("com.machbase.neow")
 	a.SetIcon(iconLogo)
 	a.Settings().SetTheme(newAppTheme())
@@ -87,7 +89,7 @@ func (na *neoAgent) Start() {
 
 	var playAndStopButton *widget.Button
 	var openBrowserButton *widget.Button
-	var statusLabel *widget.Label
+	var statusBox *fyne.Container
 	var startOptionEntry *widget.Entry
 
 	var startOptionString = binding.NewString()
@@ -120,7 +122,8 @@ func (na *neoAgent) Start() {
 	})
 	openBrowserButton.Disable()
 
-	statusLabel = widget.NewLabel("")
+	statusBox = container.New(layout.NewHBoxLayout())
+
 	startOptionEntry = widget.NewEntryWithData(startOptionString)
 	startOptionEntry.SetPlaceHolder("flags")
 	m := fyne.NewMenu("machbase-neo",
@@ -141,13 +144,16 @@ func (na *neoAgent) Start() {
 
 		menu := m // capturing
 		for state := range na.stateC {
+			var statusLight *widget.Icon
 			switch state {
 			case NeoStarting:
+				statusLight = widget.NewIcon(iconLightYellow)
 				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.Disable()
 				startOptionEntry.Disable()
 			case NeoRunning:
+				statusLight = widget.NewIcon(iconLightGreen)
 				itmOpenWebUI.Disabled = false
 				openBrowserButton.Enable()
 				playAndStopButton.SetText(StopDatabaseText)
@@ -155,11 +161,13 @@ func (na *neoAgent) Start() {
 				playAndStopButton.Enable()
 				startOptionEntry.Disable()
 			case NeoStopping:
+				statusLight = widget.NewIcon(iconLightYellow)
 				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.Disable()
 				startOptionEntry.Disable()
 			case NeoStopped:
+				statusLight = widget.NewIcon(iconLightRed)
 				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.SetText(StartDatabaseText)
@@ -167,14 +175,20 @@ func (na *neoAgent) Start() {
 				playAndStopButton.Enable()
 				startOptionEntry.Enable()
 			}
-			statusLabel.SetText("Status: " + string(state))
+
+			statusBox.RemoveAll()
+			statusBox.Add(widget.NewLabel(" "))
+			statusBox.Add(statusLight)
+			statusBox.Add(widget.NewLabel(strings.ToUpper(string(state))))
+			statusBox.Refresh()
 			menu.Refresh()
 		}
 	}()
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusLabel, openBrowserButton), statusLabel, openBrowserButton)
+	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, widget.NewLabel(" "))
+	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusBox, openBrowserBox), statusBox, openBrowserBox)
 
 	na.mainTextGrid = widget.NewTextGrid()
 	na.mainTextScroll = container.NewScroll(na.mainTextGrid)
