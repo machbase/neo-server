@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path"
 	"runtime"
 	"strings"
 	"sync"
@@ -82,6 +83,18 @@ func (na *neoAgent) Start() {
 	a.SetIcon(iconLogo)
 	a.Settings().SetTheme(aTheme)
 	if args := a.Preferences().String("args"); len(args) > 0 {
+		na.exeArgs = util.SplitFields(args, true)
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			if runtime.GOOS == "windows" {
+				home = "C:\\"
+			} else {
+				home = "/tmp"
+			}
+		}
+		args = fmt.Sprintf(`--data "%s"`, path.Join(home, "machbase_home"))
+		a.Preferences().SetString("args", args)
 		na.exeArgs = util.SplitFields(args, true)
 	}
 	a.Lifecycle().SetOnStopped(func() {
