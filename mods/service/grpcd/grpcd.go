@@ -115,11 +115,16 @@ func (svr *grpcd) Start() error {
 		}
 		svr.log.Infof("gRPC Listen %s", listen)
 
-		if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
-			// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
+		if runtime.GOOS == "windows" {
+			// windows require mgmt service to shutdown process from neow
 			go svr.mgmtServer.Serve(lsnr)
 		} else {
-			go svr.rpcServer.Serve(lsnr)
+			if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
+				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
+				go svr.mgmtServer.Serve(lsnr)
+			} else {
+				go svr.rpcServer.Serve(lsnr)
+			}
 		}
 	}
 	return nil
