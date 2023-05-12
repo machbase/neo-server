@@ -353,9 +353,18 @@ func (na *neoAgent) doStopDatabase() {
 			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
 			// it will return an error instead of sending a signal.
 			// so, this will not work => na.process.Signal(syscall.SIGINT)
-			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "shutdown")
+			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "--server", "127.0.0.1:5655", "shutdown")
 			sysProcAttr(cmd)
-			cmd.Run()
+			stdout, _ := cmd.StdoutPipe()
+			go copyReader(stdout, na.appendOutput)
+
+			stderr, _ := cmd.StderrPipe()
+			go copyReader(stderr, na.appendOutput)
+
+			if err := cmd.Start(); err != nil {
+				panic(err)
+			}
+			cmd.Wait()
 		} else {
 			err := na.process.Signal(os.Interrupt)
 			if err != nil {
