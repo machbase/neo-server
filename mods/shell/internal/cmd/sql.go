@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -149,8 +150,8 @@ func doSql(ctx *client.ActionContext) {
 	}
 
 	windowHeight := 0
-	if cmd.Interactive && term.IsTerminal(0) {
-		if _, height, err := term.GetSize(0); err == nil {
+	if cmd.Interactive && term.IsTerminal(int(syscall.Stdout)) {
+		if _, height, err := term.GetSize(int(syscall.Stdout)); err == nil {
 			windowHeight = height
 		}
 	}
