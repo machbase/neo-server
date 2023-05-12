@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,21 +76,27 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		conn.Close()
 	}()
 
+	oneceCloseMessage := sync.Once{}
+
 	go func() {
 		b := [termBuffSize]byte{}
 		for {
 			n, err := term.Stdout.Read(b[:])
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
+				} else {
+					oneceCloseMessage.Do(func() {
+						conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte("\r\nclosed.\r\n"))
+					})
 				}
 				return
 			}
 			if n == 0 {
 				continue
 			}
-			conn.WriteMessage(websocket.TextMessage, b[:n])
+			conn.WriteMessage(websocket.BinaryMessage, b[:n])
 		}
 	}()
 
@@ -99,15 +106,19 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 			n, err := term.Stderr.Read(b[:])
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
+				} else {
+					oneceCloseMessage.Do(func() {
+						conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte("\r\nclosed.\r\n"))
+					})
 				}
 				return
 			}
 			if n == 0 {
 				continue
 			}
-			conn.WriteMessage(websocket.TextMessage, b[:n])
+			conn.WriteMessage(websocket.BinaryMessage, b[:n])
 		}
 	}()
 
@@ -166,6 +177,7 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"success": false, "reason": err.Error()})
 			return
 		}
+		// svr.log.Debugf("term %s resize %d %d", termKey, req.Rows, req.Cols)
 	}
 	ctx.JSON(http.StatusOK, gin.H{"success": true, "reason": "success"})
 }
