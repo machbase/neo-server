@@ -123,7 +123,7 @@ func doImport(ctx *client.ActionContext) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	if ctx.Interactive {
+	if ctx.IsUserShellInteractiveMode() && cmd.Input == "-" {
 		ctx.Printfln("# Enter %s⏎ to quit", cmd.EofMark)
 		colNames := desc.Columns.Columns().Names()
 		ctx.Println("#", strings.Join(colNames, cmd.Delimiter))
