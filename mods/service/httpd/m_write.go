@@ -147,7 +147,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	req := queryRequest{}
 
 	if ctx.Request.Method == http.MethodGet {
-		req.edgeId = ctx.Query("edgeId")
+		req.edgeId = ctx.Query("edgeid")
 		req.startTime = ctx.Query("startTime") // strString() -> default?
 		req.endTime = ctx.Query("endTime")
 		req.level = strInt(ctx.Query("level"), 0)
