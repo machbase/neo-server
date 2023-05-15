@@ -216,6 +216,7 @@ func NewServer(conf *Config) (Server, error) {
 }
 
 func (s *svr) Start() error {
+	tick := time.Now()
 	s.log = logging.GetLog("neosvr")
 
 	prefpath, err := filepath.Abs(s.conf.PrefDir)
@@ -458,6 +459,23 @@ func (s *svr) Start() error {
 			return errors.Wrap(err, "shell server")
 		}
 	}
+
+	svcPorts, err := s.db.GetServicePorts("http")
+	if err != nil {
+		return errors.Wrap(err, "service ports")
+	}
+	readyMsg := []string{}
+	for _, p := range svcPorts {
+		addr := strings.Replace(p.Address, "tcp://", "http://", 1)
+		if strings.HasPrefix(addr, "http://127.0.0.1:") {
+			addr = fmt.Sprintf("  > Local:   %s", addr)
+		} else {
+			addr = fmt.Sprintf("  > Network: %s", addr)
+		}
+		readyMsg = append(readyMsg, addr)
+	}
+	s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+		strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
 
 	return nil
 }
