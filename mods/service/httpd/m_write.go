@@ -28,7 +28,7 @@ var appender spi.Appender
 
 const tableName = "TAG"
 
-func (svr *httpd) handleAppender(ctx *gin.Context) {
+func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false}
 
 	req := lakeReq{}
@@ -131,7 +131,7 @@ type queryResponse struct {
 	Lines   []string `json:"lines"`
 }
 
-func (svr *httpd) handleLogs(ctx *gin.Context) {
+func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	rsp := queryResponse{Success: false}
 
 	req := queryRequest{}
@@ -150,7 +150,7 @@ func (svr *httpd) handleLogs(ctx *gin.Context) {
 		return
 	}
 
-	// table check?,  테이블 이름 고정?
+	// check table existence ? or just use fixed table.
 	// exists, err := do.ExistsTable(svr.db, tableName)
 
 	params := []any{}
@@ -200,7 +200,7 @@ func (svr *httpd) handleLogs(ctx *gin.Context) {
 		}
 		sqlText += "line search '?'"
 		params = append(params, req.Keyword)
-		andFlag = false
+		andFlag = true
 	}
 	if req.Limit != "" {
 		if andFlag {
@@ -214,6 +214,10 @@ func (svr *httpd) handleLogs(ctx *gin.Context) {
 			sqlText += "limit ?"
 			params = append(params, req.Limit)
 		}
+	}
+
+	if len(params) == 0 {
+		sqlText = "SELECT line FROM logdata" // default limit?
 	}
 
 	rows, err := svr.db.Query(sqlText, params)
