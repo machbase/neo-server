@@ -65,7 +65,7 @@ func (na *neoAgent) Start() {
 	a.SetIcon(iconLogo)
 	a.Settings().SetTheme(newAppTheme())
 	if args := a.Preferences().String("args"); len(args) > 0 {
-		na.exeArgs = util.SplitFields(args, true)
+		na.exeArgs = util.SplitFields(args, false)
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -77,7 +77,7 @@ func (na *neoAgent) Start() {
 		}
 		args = fmt.Sprintf(`--data "%s"`, filepath.Join(home, "machbase_home"))
 		a.Preferences().SetString("args", args)
-		na.exeArgs = util.SplitFields(args, true)
+		na.exeArgs = util.SplitFields(args, false)
 	}
 	a.Lifecycle().SetOnStarted(func() {
 		// initialize state
