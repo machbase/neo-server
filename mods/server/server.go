@@ -380,6 +380,8 @@ func (s *svr) Start() error {
 		}
 	}
 
+	enabledWebUI := false
+
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
 		opts := []httpd.Option{
@@ -392,6 +394,9 @@ func (s *svr) Start() error {
 			opts = append(opts, httpd.OptionReleaseMode())
 		}
 		for _, h := range s.conf.Http.Handlers {
+			if h.Handler == httpd.HandlerWeb {
+				enabledWebUI = true
+			}
 			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
 		}
 		shellPorts := s.servicePorts["shell"]
@@ -460,22 +465,26 @@ func (s *svr) Start() error {
 		}
 	}
 
-	svcPorts, err := s.db.GetServicePorts("http")
-	if err != nil {
-		return errors.Wrap(err, "service ports")
-	}
-	readyMsg := []string{}
-	for _, p := range svcPorts {
-		addr := strings.Replace(p.Address, "tcp://", "http://", 1)
-		if strings.HasPrefix(addr, "http://127.0.0.1:") {
-			addr = fmt.Sprintf("  > Local:   %s", addr)
-		} else {
-			addr = fmt.Sprintf("  > Network: %s", addr)
+	if enabledWebUI {
+		svcPorts, err := s.db.GetServicePorts("http")
+		if err != nil {
+			return errors.Wrap(err, "service ports")
 		}
-		readyMsg = append(readyMsg, addr)
+		readyMsg := []string{}
+		for _, p := range svcPorts {
+			addr := strings.Replace(p.Address, "tcp://", "http://", 1)
+			if strings.HasPrefix(addr, "http://127.0.0.1:") {
+				addr = fmt.Sprintf("  > Local:   %s", addr)
+			} else {
+				addr = fmt.Sprintf("  > Network: %s", addr)
+			}
+			readyMsg = append(readyMsg, addr)
+		}
+		s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+			strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+	} else {
+		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
 	}
-	s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-		strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
 
 	return nil
 }
