@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,36 +115,47 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 //=================================
 
 type queryRequest struct {
-	EdgeId    string
-	StartTime string
-	EndTime   string
-	Offset    string
-	Limit     string
-	Level     string
-	Job       string
-	Keyword   string
-	//filename string
+	edgeId    string
+	startTime string
+	endTime   string
+	offset    int
+	limit     int
+	level     int
+	job       string
+	keyword   string
+	tableName string
 }
 
 type queryResponse struct {
 	Success bool     `json:"success"`
 	Reason  string   `json:"reason,omitempty"`
-	Lines   []string `json:"lines"`
+	Columns []string `json:"columns"`
+	Data    []any    `json:"data"`
+}
+
+type queryRow struct {
+	EdgeId   string `json:"EDGEID"`
+	Time     string `json:"TIME"`
+	FileName string `json:"FILENAME"`
+	Job      string `json:"JOB"`
+	Level    int    `json:"LEVEL"`
+	Line     string `json:"LINE"`
 }
 
 func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	rsp := queryResponse{Success: false}
-
 	req := queryRequest{}
+
 	if ctx.Request.Method == http.MethodGet {
-		req.EdgeId = ctx.Query("edgeId")
-		req.StartTime = ctx.Query("startTime") // strString() -> default?
-		req.EndTime = ctx.Query("endTime")
-		req.Level = ctx.Query("level")
-		req.Limit = ctx.Query("limit")
-		req.Offset = ctx.Query("offset")
-		req.Job = ctx.Query("job")
-		req.Keyword = ctx.Query("keyword")
+		req.edgeId = ctx.Query("edgeId")
+		req.startTime = ctx.Query("startTime") // strString() -> default?
+		req.endTime = ctx.Query("endTime")
+		req.level = strInt(ctx.Query("level"), 0)
+		req.limit = strInt(ctx.Query("limit"), 0)
+		req.offset = strInt(ctx.Query("offset"), 0)
+		req.job = ctx.Query("job")
+		req.keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
+		req.tableName = strString(ctx.Query("tablename"), "logdata")
 	} else {
 		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
 		ctx.JSON(http.StatusBadRequest, rsp)
@@ -151,91 +163,114 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	}
 
 	// check table existence ? or just use fixed table.
-	// exists, err := do.ExistsTable(svr.db, tableName)
+	exists, _ := do.ExistsTable(svr.db, req.tableName)
+	if !exists {
+		rsp.Reason = fmt.Sprintf("%q table does not exist.", req.tableName)
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	sqlText := fmt.Sprintf("SELECT * FROM %s WHERE ", req.tableName)
+	queryLen := len(ctx.Request.URL.Query())
+	if queryLen == 2 { // tableName, limit
+		limit := ctx.Request.URL.Query().Get("limit")
+		if limit != "" {
+			sqlText = fmt.Sprintf("SELECT * FROM %s ", req.tableName)
+		}
+	} else if queryLen == 1 {
+		sqlText = fmt.Sprintf("SELECT * FROM %s", req.tableName)
+	}
 
 	params := []any{}
-	sqlText := "SELECT line FROM logdata WHERE "
-
 	andFlag := false
-	if req.EdgeId != "" {
+	if req.edgeId != "" {
 		sqlText += "edgeid = ?"
-		params = append(params, req.EdgeId)
+		params = append(params, req.edgeId)
 		andFlag = true
 	}
-	if req.StartTime != "" {
+	if req.startTime != "" {
 		if andFlag {
 			sqlText += " AND "
 		}
-		sqlText += "time > ?"
-		params = append(params, req.StartTime)
+		sqlText += "time >= ?"
+		params = append(params, req.startTime)
 		andFlag = true
 	}
-	if req.EndTime != "" {
+	if req.endTime != "" {
 		if andFlag {
 			sqlText += " AND "
 		}
-		sqlText += "time < ?"
-		params = append(params, req.EndTime)
+		sqlText += "time <= ?"
+		params = append(params, req.endTime)
 		andFlag = true
 	}
-	if req.Level != "" {
+	if req.level >= 1 && req.level <= 5 {
 		if andFlag {
 			sqlText += " AND "
 		}
 		sqlText += "level = ?"
-		params = append(params, req.EdgeId)
+		params = append(params, req.level)
 		andFlag = true
 	}
-	if req.Job != "" {
+	if req.job != "" {
 		if andFlag {
 			sqlText += " AND "
 		}
 		sqlText += "job = ?"
-		params = append(params, req.Job)
+		params = append(params, req.job)
 		andFlag = true
 	}
-	if req.Keyword != "" {
+	if req.keyword != "" {
 		if andFlag {
 			sqlText += " AND "
 		}
-		sqlText += "line search '?'"
-		params = append(params, req.Keyword)
+		if strings.Contains(req.keyword, "%") {
+			sqlText += "line esearch ?"
+		} else {
+			sqlText += "line search ?"
+		}
+		params = append(params, req.keyword)
 		andFlag = true
 	}
-	if req.Limit != "" {
-		if andFlag {
-			sqlText += " "
-		}
-		if req.Offset != "" {
-			sqlText += "limit ?, ?"
-			params = append(params, req.Offset)
-			params = append(params, req.Limit)
-		} else {
-			sqlText += "limit ?"
-			params = append(params, req.Limit)
-		}
+	if andFlag {
+		sqlText += " "
+	}
+	if req.offset > 0 {
+		sqlText += "limit ?, ?"
+		params = append(params, req.offset)
+		params = append(params, req.limit)
+	} else if req.limit > 0 {
+		sqlText += "limit ?"
+		params = append(params, req.limit)
 	}
 
-	if len(params) == 0 {
-		sqlText = "SELECT line FROM logdata" // default limit?
-	}
-
-	rows, err := svr.db.Query(sqlText, params)
+	rows, err := svr.db.Query(sqlText, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 
+	cols, err := rows.Columns()
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	} else {
+		rsp.Columns = cols.Names()
+	}
+
+	defer rows.Close()
+
 	for rows.Next() {
-		line := ""
-		err = rows.Scan(&line)
+		row := queryRow{}
+		err = rows.Scan(&row.EdgeId, &row.Time, &row.FileName, &row.Job, &row.Level, &row.Line)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
-		rsp.Lines = append(rsp.Lines, line)
+		rsp.Data = append(rsp.Data, row)
 	}
 
 	rsp.Success = true
