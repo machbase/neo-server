@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -98,6 +99,7 @@ func (na *neoAgent) Start() {
 
 	var playAndStopButton *widget.Button
 	var openBrowserButton *widget.Button
+	var copyLogButton *widget.Button
 	var statusBox *fyne.Container
 	var startOptionEntry *widget.Entry
 
@@ -113,9 +115,6 @@ func (na *neoAgent) Start() {
 	}))
 	const StartDatabaseText = "machbase-neo serve"
 	const StopDatabaseText = "Stop machbase-neo "
-	itmOpenWebUI := fyne.NewMenuItem("Open in Web Browser", func() {
-		na.doOpenWebUI()
-	})
 	playAndStopButton = widget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
 		if playAndStopButton.Text == StartDatabaseText {
 			na.doStartDatabase()
@@ -127,6 +126,10 @@ func (na *neoAgent) Start() {
 		na.doOpenWebUI()
 	})
 	openBrowserButton.Disable()
+	copyLogButton = widget.NewButtonWithIcon("Copy log", theme.ContentCopyIcon(), func() {
+		na.doCopyLog()
+	})
+	copyLogButton.Enable()
 
 	statusBox = container.New(layout.NewHBoxLayout())
 
@@ -143,13 +146,11 @@ func (na *neoAgent) Start() {
 			switch state {
 			case NeoStarting:
 				statusLight = widget.NewIcon(iconLightYellow)
-				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.Disable()
 				startOptionEntry.Disable()
 			case NeoRunning:
 				statusLight = widget.NewIcon(iconLightGreen)
-				itmOpenWebUI.Disabled = false
 				openBrowserButton.Enable()
 				playAndStopButton.SetText(StopDatabaseText)
 				playAndStopButton.SetIcon(theme.MediaStopIcon())
@@ -157,13 +158,11 @@ func (na *neoAgent) Start() {
 				startOptionEntry.Disable()
 			case NeoStopping:
 				statusLight = widget.NewIcon(iconLightYellow)
-				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.Disable()
 				startOptionEntry.Disable()
 			case NeoStopped:
 				statusLight = widget.NewIcon(iconLightRed)
-				itmOpenWebUI.Disabled = true
 				openBrowserButton.Disable()
 				playAndStopButton.SetText(StartDatabaseText)
 				playAndStopButton.SetIcon(theme.MediaPlayIcon())
@@ -181,7 +180,7 @@ func (na *neoAgent) Start() {
 
 	playAndStop := container.New(layout.NewHBoxLayout(), playAndStopButton)
 	topBox := container.New(layout.NewBorderLayout(nil, nil, playAndStop, nil), startOptionEntry, playAndStop)
-	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, widget.NewLabel(""))
+	openBrowserBox := container.New(layout.NewHBoxLayout(), openBrowserButton, copyLogButton, widget.NewLabel(""))
 	bottomBox := container.New(layout.NewBorderLayout(nil, nil, statusBox, openBrowserBox), statusBox, openBrowserBox)
 
 	na.mainTextGrid = widget.NewTextGrid()
@@ -273,6 +272,19 @@ func copyReader(src io.ReadCloser, appender func([]byte)) {
 
 func (na *neoAgent) clearLogs() {
 	na.outputs = []LogLine{}
+}
+
+func (na *neoAgent) doCopyLog() {
+	const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+
+	var re = regexp.MustCompile(ansi)
+
+	buf := []string{}
+	for _, b := range na.outputs {
+		buf = append(buf, re.ReplaceAllString(string(b), ""))
+	}
+	cb := na.mainWindow.Clipboard()
+	cb.SetContent(strings.Join(buf, "\n"))
 }
 
 func (na *neoAgent) doShowVersion() {
@@ -373,10 +385,6 @@ func (na *neoAgent) doStopDatabase() {
 		}
 		na.processWg.Wait()
 	}
-}
-
-func (na *neoAgent) doShowMainWindow() {
-	na.mainWindow.Show()
 }
 
 func (na *neoAgent) doOpenWebUI() {
