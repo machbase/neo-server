@@ -15,7 +15,7 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	svr.log.Infof("session open %s from %s", ss.User(), ss.RemoteAddr())
+	svr.log.Debugf("session open %s from %s", ss.User(), ss.RemoteAddr())
 	shell := svr.shellProvider(ss.User())
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
@@ -136,5 +136,5 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		return
 	}
 
-	svr.log.Infof("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), ps)
+	svr.log.Debugf("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), ps)
 }
