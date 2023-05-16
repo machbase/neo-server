@@ -9,7 +9,8 @@ import (
 func main() {
 	neoExePath, err := getMachbaseNeoPath()
 	if err != nil {
-		panic(err)
+		PanicWindow(err.Error())
+		os.Exit(1)
 	}
 
 	na := &neoAgent{
