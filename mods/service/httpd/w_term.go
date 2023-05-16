@@ -84,11 +84,13 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 			n, err := term.Stdout.Read(b[:])
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
 				} else {
 					oneceCloseMessage.Do(func() {
-						conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte("\r\nclosed.\r\n"))
+						conn.WriteMessage(websocket.TextMessage, []byte("\r\nclosed.\r\n"))
+						conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					})
 				}
 				return
@@ -106,11 +108,13 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 			n, err := term.Stderr.Read(b[:])
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
-					conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+					conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
 				} else {
 					oneceCloseMessage.Do(func() {
 						conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte("\r\nclosed.\r\n"))
+						conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					})
 				}
 				return
@@ -134,12 +138,14 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 				svr.log.Errorf("term %s error %T %s", termKey, err, err.Error())
 			}
 			conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nconnection closed. %s\r\n", err.Error())))
+			conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 			return
 		}
 		_, err = term.Stdin.Write(message)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nError: %s\r\n", err.Error())))
+				conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 				svr.log.Errorf("%s term error %T %s", termKey, err, err.Error())
 			}
 			return
