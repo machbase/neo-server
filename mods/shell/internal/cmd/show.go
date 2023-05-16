@@ -44,7 +44,7 @@ const helpShow = `  show [options] <object>
     tagindexgap         tag index gap status
     tags <table>        tag list of the table
   options:
-    -a,--all         includes all hidden tables/columns
+    -a,--all            includes all hidden tables/columns
 `
 
 type ShowCmd struct {
