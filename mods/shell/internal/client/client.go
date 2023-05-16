@@ -331,11 +331,8 @@ func (cli *client) Prompt() {
 	for {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
-			if len(line) == 0 {
-				break
-			} else {
-				continue
-			}
+			// when user send input '^C'
+			continue
 		} else if err == io.EOF {
 			break
 		}

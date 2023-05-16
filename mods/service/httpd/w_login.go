@@ -260,3 +260,14 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
+
+func (svr *httpd) handleCheck(ctx *gin.Context) {
+	if o := ctx.Value("jwt-claim"); o != nil {
+		if claim, ok := o.(security.Claim); ok {
+			if err := claim.Valid(); err == nil {
+				ctx.JSON(http.StatusNoContent, "")
+			}
+		}
+	}
+	ctx.JSON(http.StatusUnauthorized, "")
+}
