@@ -222,6 +222,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.Use(svr.handleJwtToken)
+			group.POST("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
 			group.Any("/machbase", svr.handleQuery)
