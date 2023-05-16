@@ -128,4 +128,4 @@ regen-mock:
 
 ## Require https://github.com/swaggo/swag
 swag:
-	swag init -g mods/service/httpsvr/httpsvr.go
+	swag init -g mods/service/httpd/httpd.go

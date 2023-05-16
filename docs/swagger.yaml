@@ -48,5 +48,9 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/msg.QueryResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/msg.QueryResponse'
       summary: Execute query
 swagger: "2.0"

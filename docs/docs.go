@@ -42,6 +42,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/msg.QueryResponse"
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/msg.QueryResponse"
+                        }
                     }
                 }
             }
