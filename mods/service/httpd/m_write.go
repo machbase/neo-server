@@ -148,16 +148,22 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 
 	if ctx.Request.Method == http.MethodGet {
 		req.edgeId = ctx.Query("edgeid")
-		req.startTime = ctx.Query("startTime") // strString() -> default?
+		req.startTime = ctx.Query("startTime")
 		req.endTime = ctx.Query("endTime")
 		req.level = strInt(ctx.Query("level"), 0)
 		req.limit = strInt(ctx.Query("limit"), 0)
 		req.offset = strInt(ctx.Query("offset"), 0)
 		req.job = ctx.Query("job")
 		req.keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
-		req.tableName = strString(ctx.Query("tablename"), "logdata")
+		req.tableName = ctx.Query("tablename")
 	} else {
 		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	if req.tableName == "" {
+		rsp.Reason = "tablename is empty"
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
