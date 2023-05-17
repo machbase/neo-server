@@ -2,12 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
+	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -15,29 +19,33 @@ func init() {
 		Name:         "fake",
 		PcFunc:       pcFake,
 		Action:       doFake,
-		Desc:         "Generating fake data into the specified table",
+		Desc:         "Generating fake data and writing into the specified table",
 		Usage:        helpFake,
-		Experimental: true,
+		Experimental: false,
 	})
 }
 
-const helpFake = `  fake [options] <name>
+const helpFake = `  fake [options] [table]
+    generates fake data which is (y:value, t:current time)
+      y = amplitude0⋅sin(2π⋅frequency0⋅t+phase0) + ... + amplitudeN⋅sin(2π⋅frequencyN⋅t+phaseN) + bias
   arguments:
-    name                         tag name
+    table                        table to write data (print to stdout if not specified)
   options:
+    -n,--name <tag_name>         tag name (default: 'value')
     -a,--amplitude <float,...>   amplitude (default: 1.0)
     -f,--frequency <float,...>   frequency in Hz (default: 1.0)
     -p,--phase <float,...>       phase (default: 0)
     -b,--bias <float>            bias (default: 0)
-    -r,--sampling-rate <float>        sampling rate (default: 10)
+    -r,--sampling-rate <float>   sampling rate per sec. (default: 10)
 `
 
 /*
-ex) machbase-neo shell fake --frequency 120,60 -p 1.570796 sig.1
+ex) machbase-neo shell fake --name sig.1 --amplitude 2.0,1.0 --frequency 0.5,1 --sampling-rate 100
 */
 
 type FakeCmd struct {
-	Name         string    `arg:"" name:"name"`
+	Table        string    `arg:"" optional:""`
+	Name         string    `name:"name" short:"n" default:"value"`
 	Ampl         []float64 `name:"amplitude" short:"a" default:"1.0"`
 	Freq         []float64 `name:"frequency" short:"f" default:"1.0"`
 	Phaz         []float64 `name:"phase" short:"p" default:"0"`
@@ -96,11 +104,77 @@ func doFake(ctx *client.ActionContext) {
 		return
 	}
 
-	gen := NewFakeGenerator(SinComp(sigs), cmd.SamplingRate)
-	defer gen.Stop()
-	for v := range gen.C {
-		ctx.Printfln("%s,%d,%.3f", cmd.Name, v.T.UnixNano(), v.V)
+	var appender spi.Appender
+	if len(cmd.Table) > 0 {
+		appender, err = ctx.DB.Appender(cmd.Table, spi.AppendTimeformatOption("ns"))
+		if err != nil {
+			ctx.Printfln("ERR", err.Error())
+			return
+		}
+		defer func() {
+			s, f, e := appender.Close()
+			if e != nil {
+				ctx.Println("Wrote to", cmd.Table, "success:", s, "fail:", f, "ERR", e.Error())
+			} else {
+				ctx.Println("Wrote to", cmd.Table, "success:", s, "fail:", f)
+			}
+		}()
 	}
+
+	loopQuit := make(chan bool, 1)
+	if ctx.Interactive {
+		go func() {
+			prompt := "fake > "
+			if appender != nil {
+				prompt = "fake is running ('exit⏎' to stop) > "
+			}
+			rl, err := readline.NewEx(&readline.Config{
+				Prompt:                 prompt,
+				DisableAutoSaveHistory: true,
+				InterruptPrompt:        "^C",
+				Stdin:                  ctx.Stdin,
+				Stdout:                 ctx.Stdout,
+				Stderr:                 ctx.Stderr,
+			})
+			if err != nil {
+				panic(err)
+			}
+			defer rl.Close()
+			rl.CaptureExitSignal()
+			for {
+				line, err := rl.Readline()
+				if err == readline.ErrInterrupt {
+					break
+				} else if err == io.EOF {
+					break
+				}
+				line = strings.TrimSpace(line)
+				if line == "exit" || line == "quit" {
+					break
+				}
+			}
+			loopQuit <- true
+		}()
+	}
+
+	var stopOnce sync.Once
+	gen := NewFakeGenerator(SinComp(sigs), cmd.SamplingRate)
+	defer stopOnce.Do(func() { gen.Stop() })
+
+	go func() {
+		for v := range gen.C {
+			if appender == nil {
+				ctx.Printfln("%s,%d,%.3f", cmd.Name, v.T.UnixNano(), v.V)
+			} else {
+				if err := appender.Append(cmd.Name, v.T.UnixNano(), v.V); err != nil {
+					ctx.Println("ERR", err.Error())
+				}
+			}
+		}
+	}()
+
+	<-loopQuit
+	stopOnce.Do(func() { gen.Stop() })
 }
 
 type FakeGenerator struct {
@@ -176,6 +250,6 @@ func (cs *SinSig) String() string {
 
 func (cs *SinSig) Apply(t time.Time) float64 {
 	ts := float64(t.UnixNano()) / float64(time.Second)
-	y := cs.Ampl*math.Sin(2*math.Pi*cs.Freq*ts+cs.Phaz) + cs.Bias
+	y := cs.Ampl*math.Sin(2*math.Pi*cs.Freq*ts+cs.Phaz) + cs.Bias /* + addNoise() */
 	return y
 }
