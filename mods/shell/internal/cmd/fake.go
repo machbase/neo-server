@@ -124,7 +124,7 @@ func doFake(ctx *client.ActionContext) {
 	loopQuit := make(chan bool, 1)
 	if ctx.Interactive {
 		go func() {
-			prompt := "fake > "
+			prompt := ""
 			if appender != nil {
 				prompt = "fake is running ('exit⏎' to stop) > "
 			}
