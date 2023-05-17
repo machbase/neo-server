@@ -265,7 +265,8 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if o := ctx.Value("jwt-claim"); o != nil {
 		if claim, ok := o.(security.Claim); ok {
 			if err := claim.Valid(); err == nil {
-				ctx.JSON(http.StatusNoContent, "")
+				ctx.Status(http.StatusNoContent)
+				return
 			}
 		}
 	}
