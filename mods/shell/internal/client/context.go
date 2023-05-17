@@ -2,8 +2,10 @@ package client
 
 import (
 	"io"
+	"strings"
 	"time"
 
+	"github.com/chzyer/readline"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	spi "github.com/machbase/neo-spi"
@@ -102,4 +104,73 @@ func (ctx *ActionContext) NewManagementClient() (mgmt.ManagementClient, error) {
 // otherwise return nil
 func (ctx *ActionContext) ShutdownServerFunc() ShutdownServerFunc {
 	return ctx.cli.ShutdownServer
+}
+
+type CaptureUserInterrupt struct {
+	C        chan bool
+	prompt   string
+	callback func(string) bool
+	ctx      *ActionContext
+}
+
+func (ctx *ActionContext) NewCaptureUserInterrupt(prompt string) *CaptureUserInterrupt {
+	return ctx.NewCaptureUserInterruptCallback(prompt, nil)
+}
+
+func (ctx *ActionContext) NewCaptureUserInterruptCallback(prompt string, callback func(string) bool) *CaptureUserInterrupt {
+	cui := &CaptureUserInterrupt{
+		C:        make(chan bool, 1),
+		prompt:   prompt,
+		callback: callback,
+		ctx:      ctx,
+	}
+	return cui
+}
+
+func (cui *CaptureUserInterrupt) SetPrompt(p string) {
+	cui.prompt = p
+}
+
+func (cui *CaptureUserInterrupt) Start() {
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:                 cui.prompt,
+		DisableAutoSaveHistory: true,
+		InterruptPrompt:        "^C",
+		Stdin:                  cui.ctx.Stdin,
+		Stdout:                 cui.ctx.Stdout,
+		Stderr:                 cui.ctx.Stderr,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer rl.Close()
+	rl.CaptureExitSignal()
+	for {
+		line, err := rl.Readline()
+		if err == readline.ErrInterrupt {
+			break
+		} else if err == io.EOF {
+			break
+		}
+		if cui.callback != nil {
+			if !cui.callback(line) {
+				break
+			}
+		} else {
+			line = strings.TrimSpace(line)
+			if line == "exit" || line == "quit" {
+				break
+			}
+		}
+	}
+	if cui.C != nil {
+		cui.C <- true
+	}
+}
+
+func (cui *CaptureUserInterrupt) Close() {
+	if cui.C != nil {
+		close(cui.C)
+		cui.C = nil
+	}
 }

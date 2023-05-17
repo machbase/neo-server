@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -121,40 +119,12 @@ func doFake(ctx *client.ActionContext) {
 		}()
 	}
 
-	loopQuit := make(chan bool, 1)
+	capture := ctx.NewCaptureUserInterrupt("")
 	if ctx.Interactive {
-		go func() {
-			prompt := "fake > "
-			if appender != nil {
-				prompt = "fake is running ('exit⏎' to stop) > "
-			}
-			rl, err := readline.NewEx(&readline.Config{
-				Prompt:                 prompt,
-				DisableAutoSaveHistory: true,
-				InterruptPrompt:        "^C",
-				Stdin:                  ctx.Stdin,
-				Stdout:                 ctx.Stdout,
-				Stderr:                 ctx.Stderr,
-			})
-			if err != nil {
-				panic(err)
-			}
-			defer rl.Close()
-			rl.CaptureExitSignal()
-			for {
-				line, err := rl.Readline()
-				if err == readline.ErrInterrupt {
-					break
-				} else if err == io.EOF {
-					break
-				}
-				line = strings.TrimSpace(line)
-				if line == "exit" || line == "quit" {
-					break
-				}
-			}
-			loopQuit <- true
-		}()
+		if appender != nil {
+			capture.SetPrompt("fake is running ('exit⏎' to stop) > ")
+		}
+		go capture.Start()
 	}
 
 	var stopOnce sync.Once
@@ -173,7 +143,8 @@ func doFake(ctx *client.ActionContext) {
 		}
 	}()
 
-	<-loopQuit
+	<-capture.C
+	capture.Close()
 	stopOnce.Do(func() { gen.Stop() })
 }
 
