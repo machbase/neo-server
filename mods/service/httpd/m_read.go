@@ -1,7 +1,6 @@
 package httpd
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -118,31 +117,32 @@ func init() {
 	}
 }
 
-/* unused
-func (svr *httpd) lakeRead(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
+func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start handleLakeGetValues()")
 
 	// 기존 lake에서는 cli를 통해서 db 사용
 	dataType := ctx.Query("type")
 
 	switch dataType {
 	case "raw", "":
-		svr.RawData(ctx)
+		svr.GetRawData(ctx)
 	case "current":
-		svr.CurrentData(ctx)
+		svr.GetCurrentData(ctx)
 	case "stat":
-		svr.StatData(ctx)
+		svr.GetStatData(ctx)
 	case "calc":
-		svr.CalcData(ctx)
+		svr.GetCalculateData(ctx)
 	case "pivot":
-		svr.PivotData(ctx)
+		svr.GetPivotData(ctx)
 	default:
-		rsp.Reason = fmt.Sprintf("unsupported data-type: %s", dataType)
+		svr.log.Info(trackId, "not available type : ", dataType)
+		rsp := lakeRsp{Success: false, Reason: "This type is not available"}
 		ctx.JSON(http.StatusBadRequest, rsp)
-		return
 	}
 }
-*/
+
+// get handler들이 앞줄이 다 공통이라 나중에 함수로?
 
 func (svr *httpd) GetRawData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
@@ -326,9 +326,9 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 
 	// machbaseCLI 통해서 데이터 가져올때 timezone을 설정 후 쿼리,
 	// neo는 따로 설정이 없음,
-	timezone, sError := svr.makeTimezone(ctx, param.Timezone)
-	if sError != nil {
-		rsp.Reason = sError.Error()
+	timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	if err != nil {
+		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
@@ -395,10 +395,10 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 		go func(svr *httpd, where string, idx int) {
 			defer wg.Done()
 
-			sql := fmt.Sprintf("%s %s", sqlText, where)
-			svr.log.Debugf("%s [%d] query : %s", trackId, idx, sql)
+			sqlQuery := fmt.Sprintf("%s %s", sqlText, where)
+			svr.log.Debugf("%s [%d] query : %s", trackId, idx, sqlQuery)
 
-			dbData, err := svr.getData(sql, param.Scale)
+			dbData, err := svr.getData(sqlQuery, param.Scale)
 			if err != nil {
 				svr.log.Infof("%s [%d] get data error : %s", trackId, idx, err.Error())
 				return
@@ -409,7 +409,7 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 			// add success select data
 			if len(dbData.Data) > 0 {
 				if len(dbData.Data[0]) > 0 {
-					dataChannel <- dbData.Data[0]
+					dataChannel <- dbData.Data[0] // 첫번째 인덱스만 가져가는 이유 : WHERE절 Limit 1 , scan_backward로 가장 최근 데이터
 				}
 			}
 		}(svr, fmt.Sprintf("WHERE NAME='%s' LIMIT 1", tagName), idx)
@@ -418,6 +418,7 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 	wg.Wait()
 	close(dataChannel)
 
+	// 아래 구문도 고루틴으로 수신?
 	for row := range dataChannel {
 		data.Rows = append(data.Rows, row)
 	}
@@ -429,6 +430,571 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 	svr.log.Trace(trackId, "select current data success")
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) GetStatData(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start GetStatDataV1()")
+
+	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	param := SelectRaw{}
+
+	err := ctx.ShouldBind(&param)
+	if err != nil {
+		svr.log.Info(trackId, "bind error : ", err.Error())
+		rsp.Reason = "get parameter failed"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	svr.log.Debugf("%s request data %+v", trackId, param)
+
+	timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	svr.log.Info(timezone) // 에러 방지
+
+	if param.Separator == "" {
+		param.Separator = ","
+	}
+
+	currentPlan := lakePlanMap[localPlan]
+
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+
+		if len(param.TagList) > currentPlan.limitSelectTag {
+			rsp.Reason = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
+			svr.log.Info(trackId, rsp.Reason)
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		svr.log.Info(trackId, "Tag name is nil")
+		rsp.Reason = "Wrong Parameter. (tag_name) : must be at least 1"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.DateFormat == "" {
+		param.DateFormat = "YYYY-MM-DD HH24:MI:SS"
+	}
+
+	if param.Limit != "" {
+		check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue)
+		if check != "" {
+			rsp.Reason = check
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
+	}
+
+	// SELECT NAME, ROW_COUNT, MIN_VALUE, MAX_VALUE TO_TIMESTAMP(MIN_TIME) AS MIN_TIME, TO_TIMESTAMP(MAX_TIME) AS MAX_TIME
+	// 		  TO_TIMESTAMP(MIN_VALUE_TIME) AS MIN_VALUE_TIME, TO_TIMESTAMP(MAX_VALUE_TIME) AS MAX_VALUE_TIME, TO_TIMESTAMP(RECENT_ROW_TIME) AS RECENT_ROW_TIME
+	// FROM V$TAG_STAT
+	// WHERE NAME IN (tagvalue) LIMIT
+
+	sqlText := "SELECT "
+	sqlText += "NAME, ROW_COUNT, MIN_VALUE, MAX_VALUE, "
+	sqlText += makeTimeColumn("MIN_TIME", param.DateFormat, "MIN_TIME") + ", "
+	sqlText += makeTimeColumn("MAX_TIME", param.DateFormat, "MAX_TIME") + ", "
+	sqlText += makeTimeColumn("MIN_VALUE_TIME", param.DateFormat, "MIN_VALUE_TIME") + ", "
+	sqlText += makeTimeColumn("MAX_VALUE_TIME", param.DateFormat, "MAX_VALUE_TIME") + ", "
+	sqlText += makeTimeColumn("RECENT_ROW_TIME", param.DateFormat, "RECENT_ROW_TIME") + " "
+	sqlText += "FROM " + "V$TAG_STAT" + " "
+	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true) + " "
+	sqlText += makeLimit(param.Offset, param.Limit)
+
+	svr.log.Debug(trackId, "query : ", sqlText)
+
+	dbData, err := svr.getData(sqlText, param.Scale)
+	if err != nil {
+		svr.log.Info(trackId, "get data error : ", err.Error())
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusFailedDependency, rsp)
+		return
+	}
+
+	data := SelectReturn{Columns: dbData.Columns}
+
+	if dbData.Data == nil {
+		data.Rows = make([][]interface{}, 0)
+	} else {
+		data.Rows = dbData.Data
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "select stat data success")
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) GetCalculateData(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start GetCalculateData()")
+
+	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	param := SelectCalc{}
+
+	err := ctx.ShouldBind(&param)
+	if err != nil {
+		svr.log.Info(trackId, "bind error : ", err.Error())
+		rsp.Reason = "get parameter failed"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+	svr.log.Infof("%s request data %+v", trackId, param)
+
+	// svr.log.Debugf("%s request data %+v", trackId, param)
+
+	timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+	svr.log.Info(timezone) // 에러 방지
+
+	if param.Separator == "" {
+		param.Separator = ","
+	}
+
+	currentPlan := lakePlanMap[localPlan]
+
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+
+		if len(param.TagList) > currentPlan.limitSelectTag {
+			rsp.Reason = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
+			svr.log.Info(trackId, rsp.Reason)
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		svr.log.Info(trackId, "Tag name is nil")
+		rsp.Reason = "Wrong Parameter. (tag_name) : must be at least 1"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.DateFormat == "" {
+		param.DateFormat = "YYYY-MM-DD HH24:MI:SS"
+	}
+
+	/* calc mode */
+	if param.CalcMode != "" {
+		if param.CalcMode, err = svr.checkCalcUnit(ctx, param.CalcMode); err != nil {
+			rsp.Reason = "Wrong Parameter. (calc_mode) : form must be min,max,cnt,avg,sum,sumsq"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.CalcMode = "AVG"
+	}
+
+	param.StartType, err = svr.checkTimeFormat(ctx, param.StartTime, false)
+	if err != nil {
+		rsp.Reason = "Wrong Parameter. (start_time)"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	/* end time */
+	param.EndType, err = svr.checkTimeFormat(ctx, param.EndTime, false)
+	if err != nil {
+		rsp.Reason = "Wrong Parameter. (end_time)"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	err = svr.checkTimePeriod(ctx, param.StartTime, param.StartType, param.EndTime, param.EndType)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.IntervalType != "" {
+		if param.IntervalType, err = svr.checkTimeUnit(ctx, param.IntervalType); err != nil {
+			rsp.Reason = "Wrong Parameter. (interval_type) : form must be sec,min,hour,day"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.IntervalType = "SEC"
+	}
+
+	/* interval value */
+	if param.IntervalValue == "" {
+		param.IntervalValue = "1"
+	}
+
+	/* limit count */
+	if param.Limit != "" {
+		if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
+			rsp.Reason = check
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
+	}
+
+	/* direction type */
+	if param.Direction != "" {
+		if param.Direction != "0" && param.Direction != "1" {
+			svr.log.Info("direction range over")
+			rsp.Reason = "Wrong Parameter. (direction) : must be 0, 1"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		// nfx #128 해결 후 삭제 예정
+		param.Direction = "0"
+	}
+
+	/* get Interpolation type (reserved) */
+	if param.Interpolation > 3 || param.Interpolation < 0 {
+		svr.log.Info("%s interpolation range over : %d", trackId, param.Interpolation)
+		rsp.Reason = "Wrong Parameter. (interpolation) : form must be 0,1,2,3"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	columnList := []string{"TIME", "NAME"}
+
+	sqlText := "SELECT NAME, "
+	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
+	sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
+	sqlText += "FROM "
+	// sub
+	sqlText += "(SELECT NAME, "
+	sqlText += makeRollupHint("TIME", param.IntervalType, param.CalcMode, "VALUE") + " "
+	sqlText += "FROM " + "TAG" + " "
+	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
+	if param.StartType == "date" {
+		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
+	} else {
+		sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + " "
+	}
+	sqlText += makeGroupBy(columnList) + ") "
+	// sub(end)
+	sqlText += makeGroupBy(columnList) + " "
+
+	sortList := make([]string, 0)
+	if param.Direction != "" {
+		columnList = []string{"TIME"}
+		sortList = append(sortList, param.Direction)
+		sqlText += makeOrderBy(columnList, sortList) + " "
+	}
+
+	sqlText += makeLimit(param.Offset, param.Limit)
+
+	svr.log.Debug(trackId, "query : ", sqlText)
+
+	dbData, err := svr.getData(sqlText, param.Scale)
+	if err != nil {
+		svr.log.Info(trackId, "get data error : ", err.Error())
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusFailedDependency, rsp)
+		return
+	}
+
+	data := SelectReturn{Columns: dbData.Columns}
+
+	if dbData.Data == nil {
+		data.Rows = make([][]interface{}, 0)
+	} else {
+		data.Rows = dbData.Data
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "select calculate data success")
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) GetPivotData(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start GetPivotData()")
+
+	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	param := SelectCalc{}
+
+	err := ctx.ShouldBind(&param)
+	if err != nil {
+		svr.log.Info(trackId, "bind error : ", err.Error())
+		rsp.Reason = "get parameter failed"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	svr.log.Debugf("%s request data %+v", trackId, param)
+
+	timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+	svr.log.Info(timezone) // 에러 방지
+
+	if param.Separator == "" {
+		param.Separator = ","
+	}
+
+	currentPlan := lakePlanMap[localPlan]
+
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+
+		if len(param.TagList) > currentPlan.limitSelectTag {
+			rsp.Reason = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
+			svr.log.Info(trackId, rsp.Reason)
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		svr.log.Info(trackId, "Tag name is nil")
+		rsp.Reason = "Wrong Parameter. (tag_name) : must be at least 1"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.DateFormat == "" {
+		param.DateFormat = "YYYY-MM-DD HH24:MI:SS"
+	}
+
+	/* calc mode */
+	if param.CalcMode != "" {
+		if param.CalcMode, err = svr.checkCalcUnit(ctx, param.CalcMode); err != nil {
+			rsp.Reason = "Wrong Parameter. (calc_mode) : form must be min,max,cnt,avg,sum,sumsq"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.CalcMode = "AVG"
+	}
+
+	param.StartType, err = svr.checkTimeFormat(ctx, param.StartTime, false)
+	if err != nil {
+		rsp.Reason = "Wrong Parameter. (start_time)"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	/* end time */
+	param.EndType, err = svr.checkTimeFormat(ctx, param.EndTime, false)
+	if err != nil {
+		rsp.Reason = "Wrong Parameter. (end_time)"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	err = svr.checkTimePeriod(ctx, param.StartTime, param.StartType, param.EndTime, param.EndType)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.IntervalType != "" {
+		if param.IntervalType, err = svr.checkTimeUnit(ctx, param.IntervalType); err != nil {
+			rsp.Reason = "Wrong Parameter. (interval_type) : form must be sec,min,hour,day"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.IntervalType = "SEC"
+	}
+
+	/* interval value */
+	if param.IntervalValue == "" {
+		param.IntervalValue = "1"
+	}
+
+	/* limit count */
+	if param.Limit != "" {
+		if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
+			rsp.Reason = check
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
+	}
+
+	/* direction type */
+	if param.Direction != "" {
+		if param.Direction != "0" && param.Direction != "1" {
+			svr.log.Info("direction range over")
+			rsp.Reason = "Wrong Parameter. (direction) : must be 0, 1"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		// nfx #128 해결 후 삭제 예정
+		param.Direction = "0"
+	}
+
+	/* get Interpolation type (reserved) */
+	if param.Interpolation > 3 || param.Interpolation < 0 {
+		svr.log.Info("%s interpolation range over : %d", trackId, param.Interpolation)
+		rsp.Reason = "Wrong Parameter. (interpolation) : form must be 0,1,2,3"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	sqlText := "SELECT * FROM ("
+	sqlText += "SELECT NAME, "
+	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
+	sqlText += "VALUE "
+	sqlText += "FROM " + "TAG" + " "
+	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
+	if param.StartType == "date" {
+		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + ") "
+	} else {
+		sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + ") "
+	}
+
+	sqlText += makePivotCondition(makeCalculator("VALUE", param.CalcMode), makeInCondition("NAME", param.TagList, false, true)) + " "
+
+	if param.Direction != "" {
+		sColumnList := []string{"TIME"}
+		sSortList := []string{param.Direction}
+		sqlText += makeOrderBy(sColumnList, sSortList) + " "
+	}
+
+	sqlText += makeLimit(param.Offset, param.Limit)
+
+	svr.log.Debug(trackId, "query : ", sqlText)
+
+}
+
+func makePivotCondition(column, inCondition string) string {
+	return fmt.Sprintf("PIVOT (%s FOR %s)", column, inCondition)
+}
+
+func makeOrderBy(columns, sortList []string) string {
+	result := "ORDER BY "
+	format := "%s %s"
+
+	for idx, value := range sortList {
+		switch value {
+		case "0":
+			sortList[idx] = "ASC"
+		case "1":
+			sortList[idx] = "DESC"
+		}
+	}
+
+	if len(columns) > 0 {
+		result += fmt.Sprintf(format, columns[0], sortList[0])
+	}
+
+	for i := 1; i < len(columns); i++ {
+		result += ", " + fmt.Sprintf(format, columns[i], sortList[i])
+	}
+
+	return result
+}
+
+func makeGroupBy(columns []string) string {
+	result := "GROUP BY "
+
+	if len(columns) > 0 {
+		result += columns[0]
+	}
+
+	for i := 1; i < len(columns); i++ {
+		result += ", " + columns[i]
+	}
+
+	return result
+}
+
+func makeRollupHint(timeColumn, intervalType, calcType, valueColumn string) string {
+	if (intervalType != "SEC") && (intervalType != "MIN") {
+		intervalType = "HOUR"
+	}
+
+	return fmt.Sprintf("%s ROLLUP 1 %s %s, %s(%s) %s", timeColumn, intervalType, timeColumn, calcType, valueColumn, valueColumn)
+}
+
+func makeCalculator(column, calcType string) string {
+	if calcType == "COUNT" || calcType == "SUMSQ" {
+		calcType = "SUM"
+	}
+	return fmt.Sprintf("%s(%s)", calcType, column)
+}
+
+func makeDateTrunc(intervalType, timeColumn, intervalValue string) string {
+	result := ""
+	switch intervalType {
+	case "SEC", "MIN", "HOUR":
+		result = fmt.Sprintf("DATE_TRUNC('%s', %s, %s)", intervalType, timeColumn, intervalValue)
+	case "DAY":
+		result = fmt.Sprintf("%s / (%s*86400*1000000000) * (%s*86400*1000000000)", timeColumn, intervalValue, intervalValue)
+	}
+	return result
+}
+
+func (svr *httpd) checkTimeUnit(ctx *gin.Context, intervalType string) (string, error) {
+	var err error = nil
+	intervalType = strings.ToUpper(intervalType)
+	switch intervalType {
+	case "SEC", "S":
+		intervalType = "SEC"
+	case "MIN", "M":
+		intervalType = "MIN"
+	case "HOUR", "H":
+		intervalType = "HOUR"
+	case "DAY", "D":
+		intervalType = "DAY"
+	default:
+		svr.log.Infof("%s '%s' format not supported\n", ctx.Value(HTTP_TRACKID), intervalType)
+		err = fmt.Errorf("wrong format : '%s' not supported", intervalType)
+	}
+
+	return intervalType, err
+}
+
+func (svr *httpd) checkCalcUnit(ctx *gin.Context, calcMode string) (string, error) {
+	var err error = nil
+	trackId := ctx.Value(HTTP_TRACKID)
+
+	if calcMode == "" {
+		svr.log.Info(trackId, "value is nil")
+		err = fmt.Errorf("wrong format : value is nil")
+		return calcMode, err
+	}
+
+	calcMode = strings.ToUpper(calcMode)
+
+	switch calcMode {
+	case "MIN", "MAX", "AVG", "SUM", "SUMSQ":
+		svr.log.Debugf("%s '%s' is available function", trackId, calcMode)
+	case "CNT", "COUNT":
+		calcMode = "COUNT"
+		svr.log.Debugf("%s '%s' is available function", trackId, calcMode)
+	default:
+		svr.log.Infof("%s '%s' format not supported\n", trackId, calcMode)
+		err = fmt.Errorf("wrong format : '%s' not supported", calcMode)
+	}
+
+	return calcMode, err
 }
 
 // scale 적용, 데이터 받은 후에 수정
@@ -477,54 +1043,51 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 	return result, nil
 }
 
-func makeLimit(aOffset, aLimit string) string {
-	if aOffset != "" {
-		return fmt.Sprintf("LIMIT %s, %s", aOffset, aLimit)
+func makeLimit(offset, limit string) string {
+	if offset != "" {
+		return fmt.Sprintf("LIMIT %s, %s", offset, limit)
 	} else {
-		return fmt.Sprintf("LIMIT %s", aLimit)
+		return fmt.Sprintf("LIMIT %s", limit)
 	}
 }
 
-func makeAndCondition(aStr, aSep string, aFlag bool) string {
-	var (
-		sRes          string   = ""
-		sConditionArr []string = nil
-	)
+func makeAndCondition(str, sep string, flag bool) string {
+	result := ""
 
-	sConditionArr = strings.Split(aStr, aSep)
-	if len(sConditionArr) > 0 {
-		if sConditionArr[0] != "" {
-			if aFlag == true {
-				sRes = " AND "
+	conditionArr := strings.Split(str, sep)
+	if len(conditionArr) > 0 {
+		if conditionArr[0] != "" {
+			if flag {
+				result = " AND "
 			}
-			sRes += sConditionArr[0]
+			result += conditionArr[0]
 		}
 
-		for i := 1; i < len(sConditionArr); i++ {
-			sRes = sRes + " AND " + sConditionArr[i]
+		for i := 1; i < len(conditionArr); i++ {
+			result = result + " AND " + conditionArr[i]
 		}
-		sRes += " "
+		result += " "
 	}
 
-	return sRes
+	return result
 }
 
-func (svr *httpd) makeNanoTimeStamp(ctx context.Context, aTime string) string {
+func (svr *httpd) makeNanoTimeStamp(ctx *gin.Context, time string) string {
 	var (
-		sGap   int    = 0
-		sPow   int64  = 0
-		sRes   string = ""
-		sTime  int64  = 0
-		sError error  = nil
+		sGap  int    = 0
+		sPow  int64  = 0
+		sRes  string = ""
+		sTime int64  = 0
+		err   error  = nil
 	)
 
 	trackId := ctx.Value(HTTP_TRACKID)
-	sGap = 19 - len(aTime)
+	sGap = 19 - len(time)
 	sPow = int64(math.Pow10(sGap))
 
-	sTime, sError = strconv.ParseInt(aTime, 10, 64)
-	if sError != nil {
-		svr.log.Info(trackId, "value is not TimeStamp : ", aTime)
+	sTime, err = strconv.ParseInt(time, 10, 64)
+	if err != nil {
+		svr.log.Info(trackId, "value is not TimeStamp : ", time)
 		return sRes
 	}
 
@@ -538,10 +1101,10 @@ func (svr *httpd) makeFromTimestamp(ctx *gin.Context, times string) string {
 		sRes    string = ""
 		sTime   string = ""
 		sLength int    = len(times)
-		sError  error  = nil
+		err     error  = nil
 	)
 
-	if _, sError = strconv.ParseInt(times, 10, 64); sError == nil {
+	if _, err = strconv.ParseInt(times, 10, 64); err == nil {
 		if sLength > 13 {
 			times = times[0:13]
 		}
@@ -669,7 +1232,8 @@ func makeScanHint(flag, tableName string) string {
 	}
 }
 
-func (svr *httpd) checkSelectValueLimit(ctx context.Context, limit string, limitSelectValue int64) string {
+// svr 안에 currentPlan이 없으므로, limitSelectValue값을 매개변수로 받아야 됨
+func (svr *httpd) checkSelectValueLimit(ctx *gin.Context, limit string, limitSelectValue int64) string {
 	result := ""
 	limitInt, err := strconv.ParseInt(limit, 10, 64)
 	if err != nil {
@@ -683,7 +1247,7 @@ func (svr *httpd) checkSelectValueLimit(ctx context.Context, limit string, limit
 	return result
 }
 
-func (svr *httpd) checkTimeFormat(ctx context.Context, timeValue string, nilOk bool) (string, error) {
+func (svr *httpd) checkTimeFormat(ctx *gin.Context, timeValue string, nilOk bool) (string, error) {
 	var err error
 	var timeType string
 
@@ -725,7 +1289,7 @@ func (svr *httpd) checkTimeFormat(ctx context.Context, timeValue string, nilOk b
 	return timeType, err
 }
 
-func (svr *httpd) checkTimePeriod(ctx context.Context, startTime, startType, endTime, endType string) error {
+func (svr *httpd) checkTimePeriod(ctx *gin.Context, startTime, startType, endTime, endType string) error {
 	if startType != endType {
 		svr.log.Info("StartTime, EndTime Format Different")
 		return fmt.Errorf("StartTime, EndTime Format Different")
@@ -756,19 +1320,6 @@ func (svr *httpd) checkTimePeriod(ctx context.Context, startTime, startType, end
 	} else {
 		return nil
 	}
-}
-
-func (svr *httpd) StatData(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
-	ctx.JSON(http.StatusOK, rsp)
-}
-func (svr *httpd) CalcData(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
-	ctx.JSON(http.StatusOK, rsp)
-}
-func (svr *httpd) PivotData(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
-	ctx.JSON(http.StatusOK, rsp)
 }
 
 // 사용자가 보낸 Timezone을 확인하고 machbase에서 사용 가능한 Timezone으로 변경하는 함수
@@ -827,24 +1378,46 @@ func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, er
 	return resultTimezone, nil
 }
 
-type SelectRaw struct {
-	Timezone     string `form:"timezone" json:"timezone"`
-	TagName      string `form:"tag_name" json:"tag_name"`
-	DateFormat   string `form:"date_format" json:"date_format"`
-	StartTime    string `form:"start_time" json:"start_time"`
-	EndTime      string `form:"end_time" json:"end_time"`
-	Columns      string `form:"columns" json:"columns"`
-	AndCondition string `form:"and_condition" json:"and_condition"`
-	Separator    string `form:"separator" json:"separator"`
-	Alias        string `form:"aliases" json:"aliases"`
-	Limit        string `form:"limit" json:"limit"`
-	Offset       string `form:"offset" json:"offset"`
-	Direction    string `form:"direction" json:"direction"`
-	ReturnType   string `form:"value_return_form" json:"value_return_form"`
-	Scale        int    `form:"scale" json:"scale"`
-	StartType    string
-	EndType      string
-	TagList      []string
-	ColumnList   []string
-	AliasList    []string
-}
+type (
+	SelectRaw struct {
+		Timezone     string `form:"timezone" json:"timezone"`
+		TagName      string `form:"tag_name" json:"tag_name"`
+		DateFormat   string `form:"date_format" json:"date_format"`
+		StartTime    string `form:"start_time" json:"start_time"`
+		EndTime      string `form:"end_time" json:"end_time"`
+		Columns      string `form:"columns" json:"columns"`
+		AndCondition string `form:"and_condition" json:"and_condition"`
+		Separator    string `form:"separator" json:"separator"`
+		Alias        string `form:"aliases" json:"aliases"`
+		Limit        string `form:"limit" json:"limit"`
+		Offset       string `form:"offset" json:"offset"`
+		Direction    string `form:"direction" json:"direction"`
+		ReturnType   string `form:"value_return_form" json:"value_return_form"`
+		Scale        int    `form:"scale" json:"scale"`
+		StartType    string
+		EndType      string
+		TagList      []string
+		ColumnList   []string
+		AliasList    []string
+	}
+	SelectCalc struct {
+		Timezone      string `form:"timezone" json:"timezone"`
+		TagName       string `form:"tag_name" json:"tag_name"`
+		CalcMode      string `form:"calc_mode" json:"calc_mode"`
+		Separator     string `form:"separator" json:"separator"`
+		DateFormat    string `form:"date_format" json:"date_format"`
+		StartTime     string `form:"start_time" json:"start_time"`
+		EndTime       string `form:"end_time" json:"end_time"`
+		IntervalType  string `form:"interval_type" json:"interval_type"`
+		IntervalValue string `form:"interval_value" json:"interval_value"`
+		Limit         string `form:"limit" json:"limit"`
+		Offset        string `form:"offset" json:"offset"`
+		Direction     string `form:"direction" json:"direction"`
+		ReturnType    string `form:"value_return_form" json:"value_return_form"`
+		Scale         int    `form:"scale" json:"scale"`
+		Interpolation int    `form:"interpolation" json:"interpolation"`
+		StartType     string
+		EndType       string
+		TagList       []string
+	}
+)
