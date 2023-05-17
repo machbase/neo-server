@@ -3,6 +3,7 @@ package json
 import (
 	gojson "encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	spi "github.com/machbase/neo-spi"
@@ -77,14 +78,26 @@ func (ex *Exporter) AddRow(source []any) error {
 				values[i] = v.In(ex.ctx.TimeLocation).Format(ex.ctx.TimeFormat)
 			}
 			continue
+		} else if v, ok := field.(*float64); ok {
+			if math.IsNaN(*v) {
+				values[i] = "NaN"
+			} else if math.IsInf(*v, -1) {
+				values[i] = "-Inf"
+			} else if math.IsInf(*v, 1) {
+				values[i] = "+Inf"
+			}
 		}
 	}
 	var recJson []byte
+	var err error
 	if ex.ctx.Rownum {
 		vs := append([]any{ex.nrow}, values...)
-		recJson, _ = gojson.Marshal(vs)
+		recJson, err = gojson.Marshal(vs)
 	} else {
-		recJson, _ = gojson.Marshal(values)
+		recJson, err = gojson.Marshal(values)
+	}
+	if err != nil {
+		return err
 	}
 
 	if ex.nrow > 1 {
