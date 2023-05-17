@@ -313,6 +313,48 @@ func (na *neoAgent) doShowVersion() {
 	}
 }
 
+type guess struct {
+	httpAddr string
+	grpcAddr string
+}
+
+func guessBindAddress(args []string) guess {
+	host := "127.0.0.1"
+	grpcPort := "5655"
+	httpPort := "5654"
+	for i := 0; i < len(args); i++ {
+		s := args[i]
+		if strings.HasPrefix(s, "--host=") {
+			host = s[7:]
+		} else if s == "--host" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+			host = args[i+1]
+			i++
+		} else if strings.HasPrefix(s, "--grpc-port=") {
+			grpcPort = s[12:]
+		} else if s == "--grpc-port" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+			grpcPort = args[i+1]
+			i++
+		} else if strings.HasPrefix(s, "--http-port=") {
+			httpPort = s[12:]
+		} else if s == "--http-port" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+			httpPort = args[i+1]
+			i++
+		}
+	}
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	return guess{
+		httpAddr: fmt.Sprintf("%s:%s", host, httpPort),
+		grpcAddr: fmt.Sprintf("%s:%s", host, grpcPort),
+	}
+}
+
+var bestGuess = guess{
+	httpAddr: "127.0.0.1:5654",
+	grpcAddr: "127.0.0.1:5655",
+}
+
 func (na *neoAgent) doStartDatabase() {
 	na.stateC <- NeoStarting
 
@@ -343,6 +385,8 @@ func (na *neoAgent) doStartDatabase() {
 	}
 	na.process = cmd.Process
 
+	bestGuess = guessBindAddress(pargs)
+
 	go func() {
 		na.stateC <- NeoRunning
 		na.processWg.Add(1)
@@ -365,7 +409,7 @@ func (na *neoAgent) doStopDatabase() {
 			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
 			// it will return an error instead of sending a signal.
 			// so, this will not work => na.process.Signal(syscall.SIGINT)
-			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "--server", "127.0.0.1:5655", "shutdown")
+			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "--server", bestGuess.grpcAddr, "shutdown")
 			sysProcAttr(cmd)
 			stdout, _ := cmd.StdoutPipe()
 			go copyReader(stdout, na.appendOutput)
@@ -388,7 +432,7 @@ func (na *neoAgent) doStopDatabase() {
 }
 
 func (na *neoAgent) doOpenWebUI() {
-	addr := fmt.Sprintf("http://%s/web/ui/", "127.0.0.1:5654")
+	addr := fmt.Sprintf("http://%s/web/ui/", bestGuess.httpAddr)
 	switch runtime.GOOS {
 	case "linux":
 		exec.Command("xdg-open", addr).Start()
