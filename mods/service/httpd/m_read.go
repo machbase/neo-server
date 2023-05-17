@@ -40,6 +40,11 @@ type MachbaseColumn struct {
 	Length int    `json:"length"`
 }
 
+type SelectReturn struct {
+	Columns []MachbaseColumn `json:"columns"`
+	Rows    [][]interface{}  `json:"rows"`
+}
+
 const (
 	MACHLAKE_PLAN_TINY       = "TINY"
 	MACHLAKE_PLAN_BASIC      = "BASIC"
@@ -275,9 +280,9 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	svr.log.Debug(trackId, "query : ", sqlText)
 
 	// scale의 수만큼 소수점 자릿수를 보여줌
-	// 기존 getDataCli 에서는 scale 을 설정하는 함수가 존재
-	// Neo는 scale 설정이 없으므로 데이터를 scan 후에 소수점을 잘라주고 저장 후 리턴
-	data, err := svr.getData(sqlText, param.Scale)
+	// 기존 Lake getDataCli() 에서는 scale 을 설정하는 함수가 존재
+	// Neo는 scale 설정이 없으므로 데이터를 scan 후에 scale만큼 소수점을 잘라주고 리턴
+	dbData, err := svr.getData(sqlText, param.Scale)
 	if err != nil {
 		svr.log.Info(trackId, "get Data error : ", err.Error())
 		rsp.Reason = err.Error()
@@ -285,6 +290,145 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		return
 	}
 
+	data := SelectReturn{Columns: dbData.Columns}
+
+	if dbData.Data == nil {
+		data.Rows = make([][]interface{}, 0)
+	} else {
+		data.Rows = dbData.Data
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "select raw data success")
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) GetCurrentData(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start GetCurrentData()")
+	rsp := lakeRsp{Success: false, Reason: "not specified"}
+
+	param := SelectRaw{}
+
+	err := ctx.ShouldBind(&param)
+	if err != nil {
+		svr.log.Info(trackId, "bind error : ", err.Error())
+		rsp.Reason = "get parameter failed"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	svr.log.Debugf("%s request data %+v", trackId, param)
+
+	// machbaseCLI 통해서 데이터 가져올때 timezone을 설정 후 쿼리,
+	// neo는 따로 설정이 없음,
+	timezone, sError := svr.makeTimezone(ctx, param.Timezone)
+	if sError != nil {
+		rsp.Reason = sError.Error()
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	svr.log.Info(timezone) // 에러 방지
+
+	if param.Separator == "" {
+		param.Separator = ","
+	}
+
+	currentPlan := lakePlanMap[localPlan]
+
+	if param.TagName != "" {
+		param.TagList = strings.Split(param.TagName, param.Separator)
+
+		if len(param.TagList) > currentPlan.limitSelectTag {
+			rsp.Reason = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
+			svr.log.Info(trackId, rsp.Reason)
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	} else {
+		svr.log.Info(trackId, "Tag name is nil")
+		rsp.Reason = "Wrong Parameter. (tag_name) : must be at least 1"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	if param.DateFormat == "" {
+		param.DateFormat = "YYYY-MM-DD HH24:MI:SS"
+	}
+
+	if param.Columns != "" {
+		param.ColumnList = strings.Split(param.Columns, param.Separator)
+	} else {
+		param.ColumnList = append(param.ColumnList, "VALUE")
+	}
+
+	if param.Alias != "" {
+		param.AliasList = strings.Split(param.Alias, param.Separator)
+
+		if len(param.ColumnList) != len(param.AliasList) {
+			svr.log.Infof("%s The number of 'columns' and 'aliases' is different (column=%d, alias=%d)", trackId, len(param.ColumnList), len(param.AliasList))
+			rsp.Reason = "The number of 'columns' and 'aliases' is different"
+			ctx.JSON(http.StatusUnprocessableEntity, rsp)
+			return
+		}
+	}
+
+	//  SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME, VALUE FROM TAG
+	sqlText := "SELECT " + makeScanHint("1", "TAG") //
+	sqlText += "NAME, "
+	sqlText += makeTimeColumn("TIME", param.DateFormat, "TIME")
+	sqlText += makeValueColumn(param.ColumnList, param.AliasList) + " "
+	sqlText += "FROM " + "TAG"
+
+	data := SelectReturn{}
+	dataChannel := make(chan []interface{}, len(param.TagList))
+
+	wg := sync.WaitGroup{}
+	for idx, tagName := range param.TagList {
+		wg.Add(1)
+
+		go func(svr *httpd, where string, idx int) {
+			defer wg.Done()
+
+			sql := fmt.Sprintf("%s %s", sqlText, where)
+			svr.log.Debugf("%s [%d] query : %s", trackId, idx, sql)
+
+			dbData, err := svr.getData(sql, param.Scale)
+			if err != nil {
+				svr.log.Infof("%s [%d] get data error : %s", trackId, idx, err.Error())
+				return
+			}
+
+			data.Columns = dbData.Columns //  columns 는 slice인데 append가 아닌 대입만 하는 이유는? 어차피 컬럼이 똑같아서 첫번째만 대입?
+
+			// add success select data
+			if len(dbData.Data) > 0 {
+				if len(dbData.Data[0]) > 0 {
+					dataChannel <- dbData.Data[0]
+				}
+			}
+		}(svr, fmt.Sprintf("WHERE NAME='%s' LIMIT 1", tagName), idx)
+	}
+
+	wg.Wait()
+	close(dataChannel)
+
+	for row := range dataChannel {
+		data.Rows = append(data.Rows, row)
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "select current data success")
+
+	ctx.JSON(http.StatusOK, rsp)
 }
 
 // scale 적용, 데이터 받은 후에 수정
@@ -300,11 +444,13 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 	if err != nil {
 		return result, err
 	}
+
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
 
@@ -474,7 +620,7 @@ func makeValueColumn(columns, aliases []string) string {
 		}
 	} else {
 		for _, name := range columns {
-			result += fmt.Sprintf(colNameFormat, strings.TrimSpace(name)) // , "value" , "level"...
+			result += fmt.Sprintf(colNameFormat, strings.TrimSpace(name)) // , "value" , "level", "job" ...
 		}
 	}
 
@@ -612,11 +758,6 @@ func (svr *httpd) checkTimePeriod(ctx context.Context, startTime, startType, end
 	}
 }
 
-func (svr *httpd) CurrentData(ctx *gin.Context) {
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
-	ctx.JSON(http.StatusOK, rsp)
-
-}
 func (svr *httpd) StatData(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false, Reason: "not specified"}
 	ctx.JSON(http.StatusOK, rsp)
@@ -632,48 +773,58 @@ func (svr *httpd) PivotData(ctx *gin.Context) {
 
 // 사용자가 보낸 Timezone을 확인하고 machbase에서 사용 가능한 Timezone으로 변경하는 함수
 func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error) {
+	trackId := ctx.Value(HTTP_TRACKID)
+	resultTimezone := ""
+
 	if timezone == "" {
-		svr.log.Error("use default timezone 'Etc/UTC'")
-		timezone = "Etc/UTC"
+		svr.log.Info(trackId, "custom timezone is nil. use default timezone 'Etc/UTC'")
+		resultTimezone = "Etc/UTC"
+		return resultTimezone, nil
 	}
 
 	matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
 	if matched.MatchString(timezone) {
 		svr.log.Infof("available timezone format : %s", timezone)
-		return timezone, nil
+		resultTimezone = timezone
+		return resultTimezone, nil
 	}
 
 	return svr.convertTimezone(ctx, timezone)
 }
 
+// convertTimezone 함수만 사용 하는 곳도 존재, 아래 기능이 있으면 makeTimezone 함수와 중복, convert 함수만 사용 가능
 func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, error) {
-	// convertTimezone 함수만 사용 하는 곳도 존재, 아래 기능이 있으면 makeTimezone 함수와 중복, convert 함수만 사용 가능
-	// if timezone == "" {
-	// 	return "", fmt.Errorf("timezone is empty")
-	// }
+	trackId := ctx.Value(HTTP_TRACKID)
+	resultTimezone := ""
 
-	// matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
-	// if matched.MatchString(timezone) == true {
-	// 	return timezone, nil
-	// }
+	if timezone == "" {
+		svr.log.Info(trackId, "timezone is nil")
+		return resultTimezone, fmt.Errorf("must entered timezone name")
+	}
+
+	matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
+	if matched.MatchString(timezone) {
+		svr.log.Info(trackId, "available timezone format : ", timezone)
+		resultTimezone = timezone
+		return resultTimezone, nil
+	}
 
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		svr.log.Errorf("load location : %s", timezone)
-		return "", err
+		svr.log.Info(trackId, "not available Timezone name : ", timezone)
+		return resultTimezone, fmt.Errorf("%s is not available Timezone name", timezone)
 	}
 
 	sampleDate := time.Date(2021, 1, 1, 12, 0, 0, 0, time.UTC)
 	locDate := sampleDate.In(loc).String()
 	if len(locDate) < 25 {
-		svr.log.Errorf("convert timezone failed : %s", locDate)
-		return "", fmt.Errorf("convert timezone failed : %s", locDate)
+		svr.log.Info(trackId, "convert timezone failed : ", locDate)
+		return resultTimezone, fmt.Errorf("convert timezone failed")
 	}
 
-	machbaseTimezone := locDate[20:25]                                        // ex) +0900, -0900
-	svr.log.Debugf("convert timezone (%s -> %s)", timezone, machbaseTimezone) // ex) aTimezone = Asia/Seoul,  sResTimezone = +0900
-
-	return machbaseTimezone, nil
+	resultTimezone = locDate[20:25]                                                     // ex) +0900, -0900
+	svr.log.Debugf("%s convert timezone (%s -> %s)", trackId, timezone, resultTimezone) // ex) aTimezone = Asia/Seoul,  sResTimezone = +0900
+	return resultTimezone, nil
 }
 
 type SelectRaw struct {

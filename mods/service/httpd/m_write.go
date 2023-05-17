@@ -19,9 +19,9 @@ type lakeReq struct {
 }
 
 type lakeRsp struct {
-	Success bool   `json:"success"`
-	Reason  string `json:"reason,omitempty"`
-	Data    string `json:"data,omitempty"`
+	Success bool        `json:"success"`
+	Reason  string      `json:"reason"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 var once sync.Once
@@ -163,7 +163,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	}
 
 	if req.tableName == "" {
-		rsp.Reason = "tablename is empty"
+		rsp.Reason = "table name is empty"
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
