@@ -114,7 +114,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			err := encoder.AddRow(values)
 			if err != nil {
 				// report error to client?
-				svr.log.Errorf("render", err.Error())
+				svr.log.Error("render", err.Error())
 				return false
 			}
 			return true
