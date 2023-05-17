@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/net/context"
+	"golang.org/x/term"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -292,6 +293,9 @@ func (cli *client) Process(line string) {
 }
 
 func (cli *client) Prompt() {
+	if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
+		defer term.Restore(int(os.Stdin.Fd()), oldState)
+	}
 	historyFile := filepath.Join(PrefDir(), ".neoshell_history")
 	readlineCfg := &readline.Config{
 		Prompt:                 cli.conf.Prompt,
