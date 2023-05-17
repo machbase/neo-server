@@ -53,4 +53,26 @@ paths:
           schema:
             $ref: '#/definitions/msg.QueryResponse'
       summary: Execute query
+  /db/tables:
+    get:
+      description: Get table list
+      parameters:
+      - description: table name prefix
+        in: query
+        name: name
+        type: string
+      - description: show all hidden tables
+        in: query
+        name: showall
+        type: boolean
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/msg.QueryResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/msg.QueryResponse'
+      summary: Get table list
 swagger: "2.0"

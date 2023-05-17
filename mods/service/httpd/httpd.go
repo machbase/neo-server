@@ -225,6 +225,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/tables", svr.handleTables)
 			group.Any("/machbase", svr.handleQuery)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
@@ -241,6 +242,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
+			group.GET("/tables", svr.handleTables)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
