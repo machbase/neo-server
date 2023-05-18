@@ -307,9 +307,6 @@ func (cli *client) Process(line string) {
 }
 
 func (cli *client) Prompt() {
-	if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
-		defer term.Restore(int(os.Stdin.Fd()), oldState)
-	}
 	historyFile := filepath.Join(PrefDir(), ".neoshell_history")
 	readlineCfg := &readline.Config{
 		Prompt:                 cli.conf.Prompt,
@@ -332,6 +329,9 @@ func (cli *client) Prompt() {
 		readlineCfg.Stdin = nil
 		readlineCfg.Stdout = nil
 		readlineCfg.Stderr = nil
+		if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
+			defer term.Restore(int(os.Stdin.Fd()), oldState)
+		}
 	}
 
 	rl, err := readline.NewEx(readlineCfg)
