@@ -14,7 +14,7 @@ type ChartQuery struct {
 	Table        string
 	Tag          string
 	Field        string
-	RangeFunc    func() (time.Time, time.Time)
+	RangeFunc    func(db spi.Database) (time.Time, time.Time)
 	Label        string
 	TimeLocation *time.Location
 }
@@ -25,7 +25,7 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 	} else {
 		dq.Label = strings.ToLower(fmt.Sprintf("%s-%s", dq.Tag, dq.Field))
 	}
-	rangeFrom, rangeTo := dq.RangeFunc()
+	rangeFrom, rangeTo := dq.RangeFunc(db)
 
 	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, dq.Field, dq.Table)
 
@@ -46,7 +46,7 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 			fmt.Println(err.Error())
 			return nil, err
 		}
-		label := ts.In(dq.TimeLocation).Format("15:04:05")
+		label := ts.In(dq.TimeLocation).Format("15:04:05.000000000")
 		values = append(values, value)
 		labels = append(labels, label)
 		idx++
@@ -58,7 +58,7 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 	timeformat = util.GetTimeformat(timeformat)
 	queries := make([]*ChartQuery, len(tagPaths))
 	for i, path := range tagPaths {
-		// path는 <table>/<tag>#<column> 형식으로 구성된다.
+		// path syntax: <table>/<tag>#<column>
 		toks := strings.SplitN(path, "/", 2)
 		if len(toks) == 2 {
 			queries[i] = &ChartQuery{}
@@ -77,12 +77,17 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 
 		queries[i].TimeLocation = tz
 
-		queries[i].RangeFunc = func() (time.Time, time.Time) {
+		queries[i].RangeFunc = func(db spi.Database) (time.Time, time.Time) {
 			var timestamp time.Time
 			var epoch int64
 			var err error
 			if cmdTimestamp == "now" || cmdTimestamp == "" {
 				timestamp = time.Now()
+			} else if cmdTimestamp == "last" {
+				row := db.QueryRow(fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].Table), queries[i].Tag)
+				if err := row.Scan(&timestamp); err != nil {
+					timestamp = time.Now()
+				}
 			} else {
 				switch timeformat {
 				case "ns":
