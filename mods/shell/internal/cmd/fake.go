@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,17 +113,17 @@ func doFake(ctx *client.ActionContext) {
 		defer func() {
 			s, f, e := appender.Close()
 			if e != nil {
-				ctx.Println("Wrote to", cmd.Table, "success:", s, "fail:", f, "ERR", e.Error())
+				ctx.Println("Wrote to", strings.ToUpper(cmd.Table)+"/"+cmd.Name, "success:", s, "fail:", f, "ERR", e.Error())
 			} else {
-				ctx.Println("Wrote to", cmd.Table, "success:", s, "fail:", f)
+				ctx.Println("Wrote to", strings.ToUpper(cmd.Table)+"/"+cmd.Name, "success:", s, "fail:", f)
 			}
 		}()
 	}
 
-	capture := ctx.NewCaptureUserInterrupt("")
+	capture := ctx.NewCaptureUserInterruptCallback("", func(string) bool { return false })
 	if ctx.Interactive {
 		if appender != nil {
-			capture.SetPrompt("fake is running ('exit⏎' to stop) > ")
+			capture.SetPrompt("fake is running (enter ⏎ to stop) > ")
 		}
 		go capture.Start()
 	}
