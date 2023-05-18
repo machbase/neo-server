@@ -51,6 +51,40 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/db/tables": {
+            "get": {
+                "description": "Get table list",
+                "summary": "Get table list",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "table name prefix",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "show all hidden tables",
+                        "name": "showall",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/msg.QueryResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/msg.QueryResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {

@@ -418,59 +418,21 @@ func doShowTable(ctx *client.ActionContext, args []string, showAll bool) {
 }
 
 func doShowTables(ctx *client.ActionContext, showAll bool) {
-	sqlText := `SELECT
-			j.DB_NAME as DB_NAME,
-			u.NAME as USER_NAME,
-			j.NAME as TABLE_NAME,
-			j.TYPE as TABLE_TYPE,
-			j.FLAG as TABLE_FLAG
-		from
-			M$SYS_USERS u,
-			(select
-				a.NAME as NAME,
-				a.USER_ID as USER_ID,
-				a.TYPE as TYPE,
-				a.FLAG as FLAG,
-				case a.DATABASE_ID
-					when -1 then 'MACHBASEDB'
-					else d.MOUNTDB
-				end as DB_NAME
-			from M$SYS_TABLES a
-				left join V$STORAGE_MOUNT_DATABASES d on a.DATABASE_ID = d.BACKUP_TBSID) as j
-		where
-			u.USER_ID = j.USER_ID
-		order by j.NAME
-		`
-
-	rows, err := ctx.DB.Query(sqlText)
-	if err != nil {
-		ctx.Printfln("ERR show tables fail; %s", err.Error())
-		return
-	}
-	defer rows.Close()
-
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
-
 	nrow := 0
-	for rows.Next() {
-		var dbname string
-		var user string
-		var name string
-		var typ int
-		var flg int
-		err := rows.Scan(&dbname, &user, &name, &typ, &flg)
+	do.Tables(ctx.DB, func(ti *do.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
-			return
+			return false
 		}
-		if !showAll && strings.HasPrefix(name, "_") {
-			continue
+		if !showAll && strings.HasPrefix(ti.Name, "_") {
+			return true
 		}
 		nrow++
-
-		desc := do.TableTypeDescription(spi.TableType(typ), flg)
-		t.AppendRow(nrow, dbname, user, name, desc)
-	}
+		desc := do.TableTypeDescription(spi.TableType(ti.Type), ti.Flag)
+		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
+		return true
+	})
 	t.Render()
 }
 

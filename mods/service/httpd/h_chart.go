@@ -2,6 +2,7 @@ package httpd
 
 import (
 	"fmt"
+	"math/cmplx"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/machbase/neo-server/mods/renderer"
 	"github.com/machbase/neo-server/mods/stream"
 	spi "github.com/machbase/neo-spi"
+	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 type ChartRequest struct {
@@ -17,6 +19,7 @@ type ChartRequest struct {
 	TimeLocation string        `json:"tz,omitempty"`
 	Range        time.Duration `json:"range,omitempty"`
 	Timestamp    string        `json:"time,omitempty"`
+	Transform    string        `json:"transform,omitempty"`
 	Format       string        `json:"format,omitempty"`
 	Title        string        `json:"title,omitempty"`
 	Subtitle     string        `json:"subtitle,omitempty"`
@@ -31,6 +34,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		TimeLocation: "UTC",
 		Range:        1 * time.Minute,
 		Timestamp:    "now",
+		Transform:    "",
 		Format:       "html",
 		Title:        "Chart",
 		Subtitle:     "",
@@ -55,6 +59,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		req.TimeLocation = strString(ctx.Query("tz"), req.TimeLocation)
 		req.Range = strDuration(ctx.Query("range"), req.Range)
 		req.Timestamp = strString(ctx.Query("time"), req.Timestamp)
+		req.Transform = strString(ctx.Query("transform"), req.Transform)
 		req.Format = strString(ctx.Query("format"), req.Format)
 		req.Title = strString(ctx.Query("title"), req.Title)
 		req.Subtitle = strString(ctx.Query("subtitle"), req.Subtitle)
@@ -84,6 +89,11 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		}
 		series = append(series, data)
 	}
+
+	if req.Transform == "fft" {
+		series[0] = transformFFT(series[0], req.Range)
+	}
+
 	rndr := renderer.NewChartRendererBuilder(req.Format).
 		SetTitle(req.Title).
 		SetSubtitle(req.Subtitle).
@@ -99,4 +109,28 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+}
+
+// raw: http://127.0.0.1:5654/db/chart?tags=example/sig.1&time=last&range=10s
+// fft: http://127.0.0.1:5654/db/chart?tags=example/sig.1&time=last&range=10s&transform=fft
+func transformFFT(series *spi.RenderingData, periodDuration time.Duration) *spi.RenderingData {
+	lenSamples := len(series.Values)
+	period := float64(lenSamples) / (float64(periodDuration) / float64(time.Second))
+	fmt.Printf("period=%v\n", period)
+	fft := fourier.NewFFT(lenSamples)
+	coeff := fft.Coefficients(nil, series.Values)
+
+	trans := &spi.RenderingData{}
+	trans.Name = fmt.Sprintf("FFT-%s", series.Name)
+	for i, c := range coeff {
+		hz := fft.Freq(i) * period
+		if hz == 0 {
+			continue
+		}
+		trans.Labels = append(trans.Labels, fmt.Sprintf("%f Hz", hz))
+		trans.Values = append(trans.Values, 2.0*cmplx.Abs(c)/float64(lenSamples))
+		// fmt.Printf("freq=%v cycles/period, magnitude=%v, phase=%.4g\n",
+		// 	fft.Freq(i)*period, cmplx.Abs(c), cmplx.Phase(c))
+	}
+	return trans
 }
