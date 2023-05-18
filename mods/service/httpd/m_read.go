@@ -124,6 +124,7 @@ func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
 	// 기존 lake에서는 cli를 통해서 db 사용
 	dataType := ctx.Query("type")
 
+	// form-data 형식으로 수신
 	switch dataType {
 	case "raw", "":
 		svr.GetRawData(ctx)
@@ -673,22 +674,43 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	columnList := []string{"TIME", "NAME"}
 
 	sqlText := "SELECT NAME, "
+	svr.log.Infof("sqlText : %s\n", sqlText)
 	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	sqlText += "FROM "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	// sub
 	sqlText += "(SELECT NAME, "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	sqlText += makeRollupHint("TIME", param.IntervalType, param.CalcMode, "VALUE") + " "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	sqlText += "FROM " + "TAG" + " "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	if param.StartType == "date" {
 		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
+		svr.log.Infof("date sqlText : %s\n", sqlText)
+
 	} else {
 		sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + " "
+		svr.log.Infof("sqlText : %s\n", sqlText)
 	}
 	sqlText += makeGroupBy(columnList) + ") "
+	svr.log.Infof("sqlText : %s\n", sqlText)
+
 	// sub(end)
 	sqlText += makeGroupBy(columnList) + " "
+	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	sortList := make([]string, 0)
 	if param.Direction != "" {
@@ -696,10 +718,13 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		sortList = append(sortList, param.Direction)
 		sqlText += makeOrderBy(columnList, sortList) + " "
 	}
+	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	sqlText += makeLimit(param.Offset, param.Limit)
+	svr.log.Infof("sqlText : %s\n", sqlText)
 
-	svr.log.Debug(trackId, "query : ", sqlText)
+	// svr.log.Debug(trackId, "query : ", sqlText)
+	svr.log.Infof(trackId, "query : ", sqlText)
 
 	dbData, err := svr.getData(sqlText, param.Scale)
 	if err != nil {
@@ -1010,6 +1035,7 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 	if err != nil {
 		return result, err
 	}
+	svr.log.Infof("cols : %+v", cols.Names())
 
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
@@ -1026,14 +1052,13 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 			colsList[idx].Length = col.Length
 		}
 	}()
-
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가?
-		row := make([]any, colsLen)
-		err = rows.Scan(row...)
+		buffer := cols.MakeBuffer()
+		err = rows.Scan(buffer...)
 		if err != nil {
 			return result, err
 		}
-		result.Data = append(result.Data, row)
+		result.Data = append(result.Data, buffer)
 	}
 
 	wg.Wait()
