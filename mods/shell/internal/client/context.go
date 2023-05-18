@@ -23,9 +23,10 @@ type ActionContext struct {
 	Interactive  bool // is shell in BATCH or INTERACTIVE mode
 	ServeMode    bool // is shell is running in SERVER/PROXY or user shell mode
 
-	Stdin  io.ReadCloser
-	Stdout io.Writer
-	Stderr io.Writer
+	ReadLine *readline.Instance
+	Stdin    io.ReadCloser
+	Stdout   io.Writer
+	Stderr   io.Writer
 
 	parent     context.Context
 	cancelFunc func()
@@ -133,17 +134,9 @@ func (cui *CaptureUserInterrupt) SetPrompt(p string) {
 }
 
 func (cui *CaptureUserInterrupt) Start() {
-	rl, _ := readline.NewEx(&readline.Config{
-		Prompt:                 cui.prompt,
-		DisableAutoSaveHistory: true,
-		InterruptPrompt:        "^C",
-	})
-
-	defer rl.Close()
-
-	rl.CaptureExitSignal()
+	cui.ctx.ReadLine.SetPrompt(cui.prompt)
 	for !cui.closed {
-		line, err := rl.Readline()
+		line, err := cui.ctx.ReadLine.Readline()
 		if err == readline.ErrInterrupt {
 			break
 		} else if err == io.EOF {
@@ -165,4 +158,5 @@ func (cui *CaptureUserInterrupt) Start() {
 
 func (cui *CaptureUserInterrupt) Close() {
 	cui.closed = true
+	cui.ctx.ReadLine.Operation.Close()
 }

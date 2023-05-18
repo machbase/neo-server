@@ -165,11 +165,13 @@ func doImport(ctx *client.ActionContext) {
 	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {
 		go capture.Start()
 	}
+	doneC := make(chan bool, 1)
 
 	var alive bool = true
 	var appender spi.Appender
 	var lineno int = 0
 	go func() {
+		defer capture.Close()
 		hold := []string{}
 		tick := time.Now()
 		for alive {
@@ -210,7 +212,7 @@ func doImport(ctx *client.ActionContext) {
 					ctx.Println("ERR", err.Error())
 					break
 				}
-				// time.Sleep(10 * time.Millisecond) // slow down for testing
+				time.Sleep(5 * time.Millisecond) // slow down for testing
 			}
 			ctx.Printf("%s %d records (%d/s)\r", cmd.Method, lineno, int(float64(lineno)/time.Since(tick).Seconds()))
 		}
@@ -228,9 +230,11 @@ func doImport(ctx *client.ActionContext) {
 		} else {
 			ctx.Print("import processed no record\r\n")
 		}
-
-		capture.Close()
+		doneC <- true
 	}()
-	<-capture.C
+	select {
+	case <-capture.C:
+	case <-doneC:
+	}
 	alive = false
 }

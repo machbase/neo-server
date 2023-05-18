@@ -78,6 +78,7 @@ type client struct {
 	db   spi.DatabaseClient
 	pref *Pref
 
+	rl            *readline.Instance
 	interactive   bool
 	remoteSession bool
 }
@@ -284,6 +285,19 @@ func (cli *client) Process(line string) {
 		Stdout:       cli.conf.Stdout,
 		Stderr:       cli.conf.Stderr,
 	}
+
+	if cli.rl != nil {
+		actCtx.ReadLine = cli.rl
+		defer cli.rl.SetPrompt(cli.conf.Prompt)
+	} else {
+		rl, _ := readline.NewEx(&readline.Config{
+			DisableAutoSaveHistory: true,
+			InterruptPrompt:        "^C",
+		})
+		defer rl.Close()
+		actCtx.ReadLine = rl
+	}
+
 	actCtx.parent, actCtx.cancelFunc = context.WithCancel(context.Background())
 	actCtx.cli = cli
 
