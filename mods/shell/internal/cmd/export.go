@@ -124,6 +124,18 @@ func doExport(ctx *client.ActionContext) {
 		SetCsvDelimieter(cmd.Delimiter).
 		Build()
 
+	alive := true
+
+	capture := ctx.NewCaptureUserInterrupt("")
+	defer capture.Close()
+	if ctx.IsUserShellInteractiveMode() {
+		go capture.Start()
+		go func() {
+			<-capture.C
+			alive = false
+		}()
+	}
+
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
@@ -134,7 +146,7 @@ func doExport(ctx *client.ActionContext) {
 			if err != nil {
 				ctx.Println("ERR", err.Error())
 			}
-			return true
+			return alive
 		},
 		OnFetchEnd: func() {
 			encoder.Close()

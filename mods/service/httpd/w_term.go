@@ -126,6 +126,25 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		}
 	}()
 
+	ticker := time.NewTicker(30 * time.Second)
+	tickerStop := make(chan bool, 1)
+	defer func() {
+		ticker.Stop()
+		tickerStop <- true
+		close(tickerStop)
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				term.session.SendRequest("no-op", false, []byte{})
+			case <-tickerStop:
+				return
+			}
+		}
+	}()
+
 	for {
 		if termIdleTimeout > 0 {
 			conn.SetReadDeadline(time.Now().Add(termIdleTimeout))
