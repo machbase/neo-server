@@ -111,6 +111,7 @@ type CaptureUserInterrupt struct {
 	prompt   string
 	callback func(string) bool
 	ctx      *ActionContext
+	closed   bool
 }
 
 func (ctx *ActionContext) NewCaptureUserInterrupt(prompt string) *CaptureUserInterrupt {
@@ -132,20 +133,16 @@ func (cui *CaptureUserInterrupt) SetPrompt(p string) {
 }
 
 func (cui *CaptureUserInterrupt) Start() {
-	rl, err := readline.NewEx(&readline.Config{
+	rl, _ := readline.NewEx(&readline.Config{
 		Prompt:                 cui.prompt,
 		DisableAutoSaveHistory: true,
 		InterruptPrompt:        "^C",
-		Stdin:                  cui.ctx.Stdin,
-		Stdout:                 cui.ctx.Stdout,
-		Stderr:                 cui.ctx.Stderr,
 	})
-	if err != nil {
-		panic(err)
-	}
+
 	defer rl.Close()
+
 	rl.CaptureExitSignal()
-	for {
+	for !cui.closed {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
 			break
@@ -163,14 +160,9 @@ func (cui *CaptureUserInterrupt) Start() {
 			}
 		}
 	}
-	if cui.C != nil {
-		cui.C <- true
-	}
+	cui.C <- true
 }
 
 func (cui *CaptureUserInterrupt) Close() {
-	if cui.C != nil {
-		close(cui.C)
-		cui.C = nil
-	}
+	cui.closed = true
 }

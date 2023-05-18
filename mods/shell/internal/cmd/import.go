@@ -161,63 +161,76 @@ func doImport(ctx *client.ActionContext) {
 		SetCsvDelimieter(cmd.Delimiter).
 		Build()
 
-	var appender spi.Appender
-	hold := []string{}
-	lineno := 0
-	for {
-		vals, err := decoder.NextRow()
-		if err != nil {
-			if err != io.EOF {
-				ctx.Println("ERR", err.Error())
-			}
-			break
-		}
-		lineno++
+	capture := ctx.NewCaptureUserInterrupt("")
+	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {
+		go capture.Start()
+	}
 
-		if len(vals) != len(desc.Columns) {
-			ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
-			break
-		}
-		if cmd.Method == "insert" {
-			for i := 0; i < len(desc.Columns); i++ {
-				hold = append(hold, "?")
-			}
-			query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
-			if result := ctx.DB.Exec(query, vals...); result.Err() != nil {
-				ctx.Println(result.Err().Error())
+	var alive bool = true
+	var appender spi.Appender
+	var lineno int = 0
+	go func() {
+		hold := []string{}
+		tick := time.Now()
+		for alive {
+			vals, err := decoder.NextRow()
+			if err != nil {
+				if err != io.EOF {
+					ctx.Println("ERR", err.Error())
+				}
 				break
 			}
-			hold = hold[:0]
-		} else { // append
-			if appender == nil {
-				appender, err = ctx.DB.Appender(cmd.Table)
+			lineno++
+
+			if len(vals) != len(desc.Columns) {
+				ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
+				break
+			}
+			if cmd.Method == "insert" {
+				for i := 0; i < len(desc.Columns); i++ {
+					hold = append(hold, "?")
+				}
+				query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
+				if result := ctx.DB.Exec(query, vals...); result.Err() != nil {
+					ctx.Println(result.Err().Error())
+					break
+				}
+				hold = hold[:0]
+			} else { // append
+				if appender == nil {
+					appender, err = ctx.DB.Appender(cmd.Table)
+					if err != nil {
+						ctx.Println("ERR", err.Error())
+						break
+					}
+				}
+
+				err = appender.Append(vals...)
 				if err != nil {
 					ctx.Println("ERR", err.Error())
 					break
 				}
+				// time.Sleep(10 * time.Millisecond) // slow down for testing
 			}
+			ctx.Printf("%s %d records (%d/s)\r", cmd.Method, lineno, int(float64(lineno)/time.Since(tick).Seconds()))
+		}
 
-			err = appender.Append(vals...)
+		ctx.Print("\r\n")
+		if cmd.Method == "insert" {
+			ctx.Printf("import total %d record(s) %sed\r\n", lineno, cmd.Method)
+		} else if appender != nil {
+			succ, fail, err := appender.Close()
 			if err != nil {
-				ctx.Println("ERR", err.Error())
-				break
+				ctx.Printf("import total %d record(s) appended, %d failed %s\r\n", succ, fail, err.Error())
+			} else if fail > 0 {
+				ctx.Printf("import total %d record(s) appended, %d failed\r\n", succ, fail)
 			}
-		}
-	}
-	if cmd.Method == "insert" {
-		ctx.Printfln("import total %d record(s) %sed", lineno, cmd.Method)
-	} else if appender != nil {
-		succ, fail, err := appender.Close()
-		if err != nil {
-			ctx.Printfln("import total %d record(s) appended, %d failed %s", succ, fail, err.Error())
 		} else {
-			if fail == 0 {
-				ctx.Printfln("import total %d record(s) appended", succ)
-			} else {
-				ctx.Printfln("import total %d record(s) appended, %d failed", succ, fail)
-			}
+			ctx.Print("import processed no record\r\n")
 		}
-	} else {
-		ctx.Printfln("import processed no record")
-	}
+
+		capture.Close()
+	}()
+	<-capture.C
+	alive = false
 }
