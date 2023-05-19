@@ -222,11 +222,14 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.Use(svr.handleJwtToken)
+			group.Any("/machbase", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.POST("/api/chart", svr.handleChart)
 			group.GET("/api/tables", svr.handleTables)
-			group.Any("/machbase", svr.handleQuery)
+			group.GET("/api/tables/:table/tags", svr.handleTags)
+			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/logs", svr.handleLakeGetLogs)
@@ -242,7 +245,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
-			group.GET("/tables", svr.handleTables)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
