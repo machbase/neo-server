@@ -226,6 +226,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/chart", svr.handleChart)
 			group.POST("/api/chart", svr.handleChart)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
