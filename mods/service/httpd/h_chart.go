@@ -2,8 +2,10 @@ package httpd
 
 import (
 	"fmt"
+	"math"
 	"math/cmplx"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	spi "github.com/machbase/neo-spi"
 	"gonum.org/v1/gonum/dsp/fourier"
+	"gonum.org/v1/gonum/dsp/window"
 )
 
 type ChartRequest struct {
@@ -20,6 +23,7 @@ type ChartRequest struct {
 	Range        time.Duration `json:"range,omitempty"`
 	Timestamp    string        `json:"time,omitempty"`
 	Transform    string        `json:"transform,omitempty"`
+	Window       string        `json:"window,omitempty"`
 	Format       string        `json:"format,omitempty"`
 	Title        string        `json:"title,omitempty"`
 	Subtitle     string        `json:"subtitle,omitempty"`
@@ -60,6 +64,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		req.Range = strDuration(ctx.Query("range"), req.Range)
 		req.Timestamp = strString(ctx.Query("time"), req.Timestamp)
 		req.Transform = strString(ctx.Query("transform"), req.Transform)
+		req.Window = strString(ctx.Query("window"), req.Window)
 		req.Format = strString(ctx.Query("format"), req.Format)
 		req.Title = strString(ctx.Query("title"), req.Title)
 		req.Subtitle = strString(ctx.Query("subtitle"), req.Subtitle)
@@ -91,7 +96,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 	}
 
 	if req.Transform == "fft" {
-		series[0] = transformFFT(series[0], req.Range)
+		series[0] = transformFFT(series[0], req.Range, req.Window)
 	}
 
 	rndr := renderer.NewChartRendererBuilder(req.Format).
@@ -111,14 +116,32 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 	}
 }
 
-// raw: http://127.0.0.1:5654/db/chart?tags=example/sig.1&time=last&range=10s
-// fft: http://127.0.0.1:5654/db/chart?tags=example/sig.1&time=last&range=10s&transform=fft
-func transformFFT(series *spi.RenderingData, periodDuration time.Duration) *spi.RenderingData {
+func transformFFT(series *spi.RenderingData, periodDuration time.Duration, windowType string) *spi.RenderingData {
 	lenSamples := len(series.Values)
 	period := float64(lenSamples) / (float64(periodDuration) / float64(time.Second))
-	fmt.Printf("period=%v\n", period)
 	fft := fourier.NewFFT(lenSamples)
-	coeff := fft.Coefficients(nil, series.Values)
+	vals := series.Values
+	amplifier := func(v float64) float64 { return v }
+
+	switch strings.ToLower(windowType) {
+	case "hamming":
+		vals = window.Hamming(vals)
+		// The magnitude of all bins has been decreased by β.
+		// Generally in an analysis amplification may be omitted, but to
+		// make a comparable data, the result should be amplified by -β
+		// of the window function — +5.37 dB for the Hamming window.
+		//  -β = 20 log_10(amplifier).
+		// amplifier := math.Pow(10, 5.37/20.0)
+		amplifier = func(v float64) float64 {
+			return v * math.Pow(10, 5.37/float64(lenSamples))
+		}
+	default:
+		amplifier = func(v float64) float64 {
+			return v * 2.0 / float64(lenSamples)
+		}
+	}
+
+	coeff := fft.Coefficients(nil, vals)
 
 	trans := &spi.RenderingData{}
 	trans.Name = fmt.Sprintf("FFT-%s", series.Name)
@@ -127,10 +150,11 @@ func transformFFT(series *spi.RenderingData, periodDuration time.Duration) *spi.
 		if hz == 0 {
 			continue
 		}
-		trans.Labels = append(trans.Labels, fmt.Sprintf("%f Hz", hz))
-		trans.Values = append(trans.Values, 2.0*cmplx.Abs(c)/float64(lenSamples))
-		// fmt.Printf("freq=%v cycles/period, magnitude=%v, phase=%.4g\n",
-		// 	fft.Freq(i)*period, cmplx.Abs(c), cmplx.Phase(c))
+		magnitude := cmplx.Abs(c)
+		amplitude := amplifier(magnitude)
+		// phase = cmplx.Phase(c)
+		trans.Labels = append(trans.Labels, fmt.Sprintf("%f", hz))
+		trans.Values = append(trans.Values, amplitude)
 	}
 	return trans
 }

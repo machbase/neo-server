@@ -1,6 +1,7 @@
 package renderer
 
 import (
+	"github.com/machbase/neo-server/mods/renderer/internal/csvchart"
 	"github.com/machbase/neo-server/mods/renderer/internal/jschart"
 	"github.com/machbase/neo-server/mods/renderer/internal/termchart"
 	spi "github.com/machbase/neo-spi"
@@ -40,6 +41,8 @@ func (cb *chartbuilder) Build() spi.Renderer {
 		)
 	case "term":
 		return termchart.NewRenderer()
+	case "csv":
+		return csvchart.NewRenderer()
 	default:
 		return nil
 	}

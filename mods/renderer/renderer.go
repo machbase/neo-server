@@ -17,6 +17,7 @@ type ChartQuery struct {
 	RangeFunc    func(db spi.Database) (time.Time, time.Time)
 	Label        string
 	TimeLocation *time.Location
+	TimeRange    time.Duration
 }
 
 func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
@@ -38,6 +39,9 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 	values := make([]float64, 0)
 	labels := make([]string, 0)
 	idx := 0
+	var timeOffset time.Time
+	var firstTime = false
+
 	for rows.Next() {
 		var ts time.Time
 		var value float64
@@ -46,7 +50,20 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 			fmt.Println(err.Error())
 			return nil, err
 		}
-		label := ts.In(dq.TimeLocation).Format("15:04:05.000000000")
+		if !firstTime {
+			timeOffset = ts
+			firstTime = true
+		}
+
+		label := ""
+		if dq.TimeRange < 10*time.Second {
+			d := ts.Sub(timeOffset)
+			label = fmt.Sprintf("%d.%09d", d/time.Second, d%time.Second)
+		} else if dq.TimeRange < time.Hour {
+			label = ts.In(dq.TimeLocation).Format("04:05.000")
+		} else {
+			label = ts.In(dq.TimeLocation).Format("15:04:05")
+		}
 		values = append(values, value)
 		labels = append(labels, label)
 		idx++
@@ -76,6 +93,7 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 		}
 
 		queries[i].TimeLocation = tz
+		queries[i].TimeRange = cmdRange
 
 		queries[i].RangeFunc = func(db spi.Database) (time.Time, time.Time) {
 			var timestamp time.Time
