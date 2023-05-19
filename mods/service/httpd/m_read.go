@@ -12,6 +12,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/mods/do"
+)
+
+const (
+	MACHLAKE_PLAN_TINY       = "TINY"
+	MACHLAKE_PLAN_BASIC      = "BASIC"
+	MACHLAKE_PLAN_BUSINESS   = "BUSINESS"
+	MACHLAKE_PLAN_ENTERPRISE = "ENTERPRISE"
+
+	HTTP_TRACKID = "cemlib/trackid"
 )
 
 type planLimit struct {
@@ -44,19 +54,61 @@ type SelectReturn struct {
 	Rows    [][]interface{}  `json:"rows"`
 }
 
-const (
-	MACHLAKE_PLAN_TINY       = "TINY"
-	MACHLAKE_PLAN_BASIC      = "BASIC"
-	MACHLAKE_PLAN_BUSINESS   = "BUSINESS"
-	MACHLAKE_PLAN_ENTERPRISE = "ENTERPRISE"
-
-	HTTP_TRACKID = "cemlib/trackid"
+type (
+	lakesvr struct {
+		Info      *LakeInfo
+		tagColumn string
+	}
+	LakeInfo struct {
+		LakeId      string   `json:"lake_id"`
+		Owner       string   `json:"owner"`
+		Cems        string   `json:"cems"`
+		DefTimezone string   `json:"timezone"`
+		DefTagCnt   int64    `json:"default_tag_count"`
+		MaxTagCnt   int64    `json:"max_tag_count"`
+		MaxQuery    int64    `json:"max_query"`
+		LimitSelTag int      `json:"limit_select_tag"`
+		LimitSelVal int64    `json:"limit_select_value"`
+		LimitAppTag int64    `json:"limit_append_tag"`
+		LimitAppVal int64    `json:"limit_append_value"`
+		Concurrent  int      `json:"max_concurrent"`
+		TagExtCol   []Schema `json:"tag_schema"`   // manage_control.go -> makeLakeInfo()
+		ValExtCol   []Schema `json:"value_schema"` // manage_control.go -> makeLakeInfo()
+	}
+	Schema struct {
+		ColName   string `json:"col_name"`
+		ColType   string `json:"col_type"`
+		Collength int    `json:"col_length"`
+	}
+	SelectTagList struct {
+		TagList [][]interface{} `json:"tag"`
+		// TagList []map[string]interface{} `json:"tag"`
+	}
 )
 
 var lakePlanMap = map[string]planLimit{}
 var localPlan string
+var lakeSvr = lakesvr{}
 
 func init() {
+
+	// 원래는 CreateLake를 통해 값 수신, 테스트를 위해 임시로
+	lakeSvr.Info.TagExtCol = append(lakeSvr.Info.TagExtCol, Schema{
+		ColName:   "name",
+		ColType:   "varchar",
+		Collength: 80,
+	})
+	lakeSvr.Info.ValExtCol = append(lakeSvr.Info.ValExtCol, Schema{
+		ColName:   "time",
+		ColType:   "datetime",
+		Collength: 0,
+	})
+	lakeSvr.Info.ValExtCol = append(lakeSvr.Info.ValExtCol, Schema{
+		ColName:   "value",
+		ColType:   "double",
+		Collength: 0,
+	})
+
 	// =========== 임시 테스트 ================
 	localPlan = os.Getenv("PLAN_NAME")
 	if localPlan == "" {
@@ -115,6 +167,104 @@ func init() {
 		defaultTagCount:  50000,
 		maxTagCount:      500000,
 	}
+}
+func SetColumnList() {
+	cols := []string{}
+	for _, row := range lakeSvr.Info.TagExtCol {
+		cols = append(cols, `"`+row.ColName+`"`)
+	}
+
+	if len(cols) > 0 {
+		lakeSvr.tagColumn = strings.Join(cols, ", ")
+	}
+}
+
+func (svr *httpd) handleLakeGetTags(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start handleLakeGetTags()")
+
+	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	hint := ""
+
+	name := ctx.Query("name")
+	svr.log.Debug(trackId, "param(name) : ", name)
+	if name != "" {
+		hint = " WHERE NAME LIKE '%" + name + "%'"
+	}
+	hint += " order by _ID"
+	hint += " limit "
+
+	offset := ctx.Query("offset")
+	if offset != "" {
+		svr.log.Debug(trackId, "param(offset) : ", offset)
+		hint = hint + offset + ","
+	}
+
+	currentPlan := lakePlanMap[localPlan]
+
+	limit := ctx.Query("limit")
+	svr.log.Debug(trackId, "param(limit) : ", limit)
+	if limit != "" && limit != "0" {
+		check := svr.checkSelectTagLimit(ctx, limit, currentPlan.limitSelectTag)
+		if check != "" {
+			rsp.Reason = check
+			ctx.JSON(http.StatusPreconditionFailed, rsp)
+			return
+		}
+		hint += limit
+	} else {
+		defaultLimit := currentPlan.limitSelectValue
+		hint += fmt.Sprintf("%d", defaultLimit)
+	}
+
+	sqlText := fmt.Sprintf("SELECT %s FROM _TAG_META%s", lakeSvr.tagColumn, hint)
+	svr.log.Debug(trackId, "query : ", sqlText)
+
+	data, err := svr.selectTagMetaList(ctx, sqlText)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	rsp.Success = true
+	rsp.Reason = "get tag meta list success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "list tag meta success")
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) selectTagMetaList(ctx *gin.Context, sqlText string) (SelectTagList, error) {
+	result := SelectTagList{}
+
+	dbData, err := svr.getData(sqlText, 1)
+	if err == nil {
+		result.TagList = dbData.Data
+	}
+
+	return result, err
+}
+
+func (svr *httpd) checkSelectTagLimit(ctx *gin.Context, limitStr string, limitSelectTag int) string {
+	trackId := ctx.Value(HTTP_TRACKID)
+
+	result := ""
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		svr.log.Info(trackId, "ParseInt error : ", err.Error())
+		result = "limit param is not number"
+		return result
+	}
+
+	if limit > limitSelectTag {
+		svr.log.Infof("%s limit over. (parameter:%d, Available:%d)", trackId, limit, limitSelectTag)
+		result = fmt.Sprintf("limit over. (parameter:%d, Available:%d)", limit, limitSelectTag)
+		svr.log.Error(result)
+	}
+
+	return result
 }
 
 func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
@@ -674,43 +824,25 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	columnList := []string{"TIME", "NAME"}
 
 	sqlText := "SELECT NAME, "
-	svr.log.Infof("sqlText : %s\n", sqlText)
 	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
-	svr.log.Infof("sqlText : %s\n", sqlText)
-
 	sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
-	svr.log.Infof("sqlText : %s\n", sqlText)
-
 	sqlText += "FROM "
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	// sub
 	sqlText += "(SELECT NAME, "
-	svr.log.Infof("sqlText : %s\n", sqlText)
-
 	sqlText += makeRollupHint("TIME", param.IntervalType, param.CalcMode, "VALUE") + " "
-	svr.log.Infof("sqlText : %s\n", sqlText)
-
 	sqlText += "FROM " + "TAG" + " "
-	svr.log.Infof("sqlText : %s\n", sqlText)
-
 	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	if param.StartType == "date" {
 		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
-		svr.log.Infof("date sqlText : %s\n", sqlText)
-
 	} else {
 		sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + " "
-		svr.log.Infof("sqlText : %s\n", sqlText)
 	}
 	sqlText += makeGroupBy(columnList) + ") "
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	// sub(end)
 	sqlText += makeGroupBy(columnList) + " "
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	sortList := make([]string, 0)
 	if param.Direction != "" {
@@ -718,10 +850,8 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		sortList = append(sortList, param.Direction)
 		sqlText += makeOrderBy(columnList, sortList) + " "
 	}
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	sqlText += makeLimit(param.Offset, param.Limit)
-	svr.log.Infof("sqlText : %s\n", sqlText)
 
 	// svr.log.Debug(trackId, "query : ", sqlText)
 	svr.log.Infof(trackId, "query : ", sqlText)
@@ -1446,3 +1576,173 @@ type (
 		TagList       []string
 	}
 )
+
+// ===
+type queryRequest struct {
+	edgeId    string
+	startTime string
+	endTime   string
+	offset    int
+	limit     int
+	level     int
+	job       string
+	keyword   string
+	tableName string
+}
+
+type queryResponse struct {
+	Success bool     `json:"success"`
+	Reason  string   `json:"reason,omitempty"`
+	Columns []string `json:"columns"`
+	Data    []any    `json:"data"`
+}
+
+type queryRow struct {
+	EdgeId   string `json:"EDGEID"`
+	Time     string `json:"TIME"`
+	FileName string `json:"FILENAME"`
+	Job      string `json:"JOB"`
+	Level    int    `json:"LEVEL"`
+	Line     string `json:"LINE"`
+}
+
+func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
+	rsp := queryResponse{Success: false}
+	req := queryRequest{}
+
+	if ctx.Request.Method == http.MethodGet {
+		req.edgeId = ctx.Query("edgeid")
+		req.startTime = ctx.Query("startTime")
+		req.endTime = ctx.Query("endTime")
+		req.level = strInt(ctx.Query("level"), 0)
+		req.limit = strInt(ctx.Query("limit"), 0)
+		req.offset = strInt(ctx.Query("offset"), 0)
+		req.job = ctx.Query("job")
+		req.keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
+		req.tableName = ctx.Query("tablename")
+	} else {
+		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	if req.tableName == "" {
+		rsp.Reason = "table name is empty"
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	// check table existence ? or just use fixed table.
+	exists, _ := do.ExistsTable(svr.db, req.tableName)
+	if !exists {
+		rsp.Reason = fmt.Sprintf("%q table does not exist.", req.tableName)
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+
+	sqlText := fmt.Sprintf("SELECT * FROM %s WHERE ", req.tableName)
+	queryLen := len(ctx.Request.URL.Query())
+	if queryLen == 2 { // tableName, limit
+		limit := ctx.Request.URL.Query().Get("limit")
+		if limit != "" {
+			sqlText = fmt.Sprintf("SELECT * FROM %s ", req.tableName)
+		}
+	} else if queryLen == 1 {
+		sqlText = fmt.Sprintf("SELECT * FROM %s", req.tableName)
+	}
+
+	params := []any{}
+	andFlag := false
+	if req.edgeId != "" {
+		sqlText += "edgeid = ?"
+		params = append(params, req.edgeId)
+		andFlag = true
+	}
+	if req.startTime != "" {
+		if andFlag {
+			sqlText += " AND "
+		}
+		sqlText += "time >= ?"
+		params = append(params, req.startTime)
+		andFlag = true
+	}
+	if req.endTime != "" {
+		if andFlag {
+			sqlText += " AND "
+		}
+		sqlText += "time <= ?"
+		params = append(params, req.endTime)
+		andFlag = true
+	}
+	if req.level >= 1 && req.level <= 5 {
+		if andFlag {
+			sqlText += " AND "
+		}
+		sqlText += "level = ?"
+		params = append(params, req.level)
+		andFlag = true
+	}
+	if req.job != "" {
+		if andFlag {
+			sqlText += " AND "
+		}
+		sqlText += "job = ?"
+		params = append(params, req.job)
+		andFlag = true
+	}
+	if req.keyword != "" {
+		if andFlag {
+			sqlText += " AND "
+		}
+		if strings.Contains(req.keyword, "%") {
+			sqlText += "line esearch ?"
+		} else {
+			sqlText += "line search ?"
+		}
+		params = append(params, req.keyword)
+		andFlag = true
+	}
+	if andFlag {
+		sqlText += " "
+	}
+	if req.offset > 0 {
+		sqlText += "limit ?, ?"
+		params = append(params, req.offset)
+		params = append(params, req.limit)
+	} else if req.limit > 0 {
+		sqlText += "limit ?"
+		params = append(params, req.limit)
+	}
+
+	rows, err := svr.db.Query(sqlText, params...)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	cols, err := rows.Columns()
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	} else {
+		rsp.Columns = cols.Names()
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		row := queryRow{}
+		err = rows.Scan(&row.EdgeId, &row.Time, &row.FileName, &row.Job, &row.Level, &row.Line)
+		if err != nil {
+			rsp.Reason = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		rsp.Data = append(rsp.Data, row)
+	}
+
+	rsp.Success = true
+	ctx.JSON(http.StatusOK, rsp)
+}
