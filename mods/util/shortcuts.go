@@ -10,7 +10,6 @@ func HelpShortcuts() string {
 		{"Ctrl + A", "Beginning of line"},
 		{"Ctrl + B / ←", "Backward one character"},
 		{"Meta + B", "Backward one word"},
-		{"Ctrl + C", "Send io.EOF"},
 		{"Ctrl + D", "Delete one character"},
 		{"Meta + D", "Delete one word"},
 		{"Ctrl + E", "End of line"},
@@ -33,13 +32,39 @@ func HelpShortcuts() string {
 		{"Backspace", "Delete previous character"},
 		{"Meta+Backspace", "Cut previous word"},
 	}
+	searchMode := [][2]string{
+		{"Ctrl + S", "Search forwards in history"},
+		{"Ctrl + R", "Search backwards in history"},
+		{"Ctrl + C / Ctrl + G", "Exit Search Mode and revert the history"},
+		{"Backspace", "Delete previous charactor"},
+		{"Other", "Exit Search Mode"},
+	}
+	completeMode := [][2]string{
+		{"Ctrl + F", "Move Forward"},
+		{"Ctrl + B", "Move Backward"},
+		{"Ctrl + N", "Move to next line"},
+		{"Ctrl + P", "Move to previous line"},
+		{"Ctrl + A", "Move to the first candidate in current line"},
+		{"Ctrl + E", "Move to the last candidate in current line"},
+		{"Ctrl + C / Ctrl + G", "Exit Complete Select Mode"},
+		{"Other", "Exit Complete Select Mode"},
+	}
+
 	keys := []string{}
 	for _, v := range normalMode {
-		keys = append(keys, fmt.Sprintf("      %-16s %s", v[0], v[1]))
+		keys = append(keys, fmt.Sprintf("      %-20s %s", v[0], v[1]))
 	}
+	keys = append(keys, "\n  Shortcut in Search Mode ('Ctrl+S' or 'Ctrl+R' to enter this mode)")
+	for _, v := range searchMode {
+		keys = append(keys, fmt.Sprintf("      %-20s %s", v[0], v[1]))
+	}
+	keys = append(keys, "\n  Shortcut in Complete Select Mode (double 'Tab' to enter this mode)")
+	for _, v := range completeMode {
+		keys = append(keys, fmt.Sprintf("      %-20s %s", v[0], v[1]))
+	}
+
 	return `    "Meta + B" means press 'ESC' and 'B' separately.
     Users can change that in terminal simulator (i.e. iTerm2) to 'Alt'+'B'
     Notice: "Meta + B" is equals with 'Alt'+'B' in Windows.
-
 ` + strings.Join(keys, "\n")
 }
