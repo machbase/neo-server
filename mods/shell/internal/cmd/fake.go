@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/chzyer/readline"
+	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/mods/nums/oscilator"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -35,7 +35,7 @@ const helpFake = `  fake [options] [table]
     -f,--frequency <float,...>   frequency in Hz (default: 1.0)
     -p,--phase <float,...>       phase (default: 0)
     -b,--bias <float>            bias (default: 0)
-    -r,--sampling-rate <float>   sampling rate per sec. (default: 10)
+    -r,--sampling-rate <int>     sampling rate per sec. (default: 10)
 `
 
 /*
@@ -49,7 +49,7 @@ type FakeCmd struct {
 	Freq         []float64 `name:"frequency" short:"f" default:"1.0"`
 	Phaz         []float64 `name:"phase" short:"p" default:"0"`
 	Bias         float64   `name:"bias" short:"b" default:"0"`
-	SamplingRate float64   `name:"sampling-rate" short:"r" default:"10"`
+	SamplingRate int       `name:"sampling-rate" short:"r" default:"10"`
 	Help         bool      `kong:"-"`
 }
 
@@ -73,7 +73,7 @@ func doFake(ctx *client.ActionContext) {
 		return
 	}
 
-	sigs := []*SinSig{}
+	sigs := []*oscilator.Generator{}
 	for i := 0; i < 10; i++ {
 		var freq float64 = 10
 		var ampl float64 = 1.0
@@ -91,17 +91,19 @@ func doFake(ctx *client.ActionContext) {
 		if !exists {
 			break
 		}
-		cosSig := &SinSig{
-			Ampl: ampl,
-			Freq: freq,
-			Phaz: phase,
-			Bias: cmd.Bias,
+		s := &oscilator.Generator{
+			Amplitude: ampl,
+			Frequency: freq,
+			Phase:     phase,
+			Bias:      cmd.Bias,
+			Functor:   math.Sin,
 		}
-		sigs = append(sigs, cosSig)
+		sigs = append(sigs, s)
 	}
 	if len(sigs) == 0 {
 		return
 	}
+	eval := oscilator.Composite(sigs).EvalTime
 
 	var appender spi.Appender
 	if len(cmd.Table) > 0 {
@@ -129,15 +131,15 @@ func doFake(ctx *client.ActionContext) {
 	}
 
 	var stopOnce sync.Once
-	gen := NewFakeGenerator(SinComp(sigs), cmd.SamplingRate)
+	gen := nums.NewFakeGenerator(eval, cmd.SamplingRate)
 	defer stopOnce.Do(func() { gen.Stop() })
 
 	go func() {
 		for v := range gen.C {
 			if appender == nil {
-				ctx.Printfln("%s,%d,%.3f", cmd.Name, v.T.UnixNano(), v.V)
+				ctx.Printfln("%s,%d,%f", cmd.Name, v.T, v.V)
 			} else {
-				if err := appender.Append(cmd.Name, v.T.UnixNano(), v.V); err != nil {
+				if err := appender.Append(cmd.Name, v.T, v.V); err != nil {
 					ctx.Println("ERR", err.Error())
 				}
 			}
@@ -147,81 +149,4 @@ func doFake(ctx *client.ActionContext) {
 	<-capture.C
 	capture.Close()
 	stopOnce.Do(func() { gen.Stop() })
-}
-
-type FakeGenerator struct {
-	C            <-chan GenVal
-	ch           chan GenVal
-	functor      FakeFunctor
-	samplingRate float64
-	ticker       *time.Ticker
-}
-
-type FakeFunctor interface {
-	Apply(t time.Time) float64
-}
-
-func NewFakeGenerator(s FakeFunctor, samplingRate float64) *FakeGenerator {
-	gs := &FakeGenerator{
-		functor:      s,
-		samplingRate: samplingRate,
-	}
-	gs.ch = make(chan GenVal)
-	gs.C = gs.ch
-
-	go gs.run()
-	return gs
-}
-
-func (gs *FakeGenerator) run() {
-	T := float64(1*time.Second) / gs.samplingRate
-	gs.ticker = time.NewTicker(time.Duration(T))
-
-	for t := range gs.ticker.C {
-		y := gs.functor.Apply(t)
-		gs.ch <- GenVal{T: t, V: y}
-	}
-}
-
-func (gs *FakeGenerator) Stop() {
-	if gs.ticker != nil {
-		gs.ticker.Stop()
-	}
-
-	if gs.ch != nil {
-		close(gs.ch)
-	}
-}
-
-type GenVal struct {
-	T time.Time
-	V float64
-}
-
-type SinSig struct {
-	Ampl float64
-	Freq float64
-	Phaz float64
-	Bias float64
-}
-
-type SinComp []*SinSig
-
-func (sigs SinComp) Apply(t time.Time) float64 {
-	y := 0.0
-	for _, s := range sigs {
-		y += s.Apply(t)
-	}
-	return y
-}
-
-func (cs *SinSig) String() string {
-	return fmt.Sprintf("y = ampl(%f) x sin( 2π x freq(%f) x time + phase(%f) ) + %f",
-		cs.Ampl, cs.Freq, cs.Phaz, cs.Bias)
-}
-
-func (cs *SinSig) Apply(t time.Time) float64 {
-	ts := float64(t.UnixNano()) / float64(time.Second)
-	y := cs.Ampl*math.Sin(2*math.Pi*cs.Freq*ts+cs.Phaz) + cs.Bias /* + addNoise() */
-	return y
 }
