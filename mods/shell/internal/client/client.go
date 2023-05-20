@@ -388,7 +388,9 @@ func (cli *client) Prompt() {
 		parts = parts[:0]
 		rl.SetPrompt(cli.conf.Prompt)
 		cli.Process(line)
-		rl.Clean()
+		// TODO there is a timeing issue between prompt and stdout
+		// without sleep, sometimes the prompt does not display on client's terminal.
+		time.Sleep(50 * time.Millisecond)
 	}
 exit:
 }
