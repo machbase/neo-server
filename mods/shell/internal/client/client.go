@@ -388,6 +388,7 @@ func (cli *client) Prompt() {
 		parts = parts[:0]
 		rl.SetPrompt(cli.conf.Prompt)
 		cli.Process(line)
+		rl.Clean()
 	}
 exit:
 }
