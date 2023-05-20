@@ -350,6 +350,9 @@ func (cli *client) Prompt() {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
 			// when user send input '^C'
+			// clear multi-line buffer and recover origin prompt
+			parts = parts[:0]
+			rl.SetPrompt(cli.conf.Prompt)
 			continue
 		} else if err == io.EOF {
 			break
