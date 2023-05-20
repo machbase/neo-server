@@ -374,7 +374,7 @@ func (cli *client) Prompt() {
 			}
 		}
 
-		parts = append(parts, line)
+		parts = append(parts, strings.Clone(line))
 		if !strings.HasSuffix(line, ";") {
 			rl.SetPrompt(cli.conf.PromptCont)
 			continue
