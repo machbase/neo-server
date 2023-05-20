@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 )
 
 func loadSamples() <-chan []float64 {
@@ -66,5 +67,14 @@ func TestSamples(t *testing.T) {
 			t.Fatalf("Expected %v, got %v for %dD sample at %v",
 				expected, actual, len(s)-1, s[:len(s)-1])
 		}
+	}
+}
+
+func TestTimeDomain(t *testing.T) {
+	n := New(0)
+
+	for i := 0; i < 10; i++ {
+		v := n.Eval(float64(time.Now().Nanosecond()))
+		t.Logf("==>%v", v)
 	}
 }

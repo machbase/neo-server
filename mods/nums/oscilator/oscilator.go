@@ -3,6 +3,8 @@ package oscilator
 import (
 	"math"
 	"time"
+
+	"github.com/machbase/neo-server/mods/nums/opensimplex"
 )
 
 type Generator struct {
@@ -32,12 +34,41 @@ func (g *Generator) EvalTime(t time.Time) float64 {
 	return g.Eval(x)
 }
 
-type Composite []*Generator
+type Composite interface {
+	EvalTime(t time.Time) float64
+}
 
-func (sigs Composite) EvalTime(t time.Time) float64 {
+func NewComposite(s []*Generator) Composite {
+	return &composite{
+		sigs: s,
+	}
+}
+
+func NewCompositeWithNoise(s []*Generator, noiseMaxAmplitude float64) Composite {
+	var noise *opensimplex.Generator
+	if noiseMaxAmplitude != 0 {
+		noise = opensimplex.New(time.Now().UnixNano())
+	}
+	return &composite{
+		sigs:  s,
+		noise: noise,
+	}
+}
+
+type composite struct {
+	sigs  []*Generator
+	noise *opensimplex.Generator
+
+	noiseMaxAmplitude float64
+}
+
+func (c *composite) EvalTime(t time.Time) float64 {
 	y := 0.0
-	for _, s := range sigs {
+	for _, s := range c.sigs {
 		y += s.EvalTime(t)
+	}
+	if c.noise != nil {
+		y += c.noiseMaxAmplitude + c.noise.Eval(float64(t.Nanosecond()))
 	}
 	return y
 }

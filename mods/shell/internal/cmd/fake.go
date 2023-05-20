@@ -36,6 +36,7 @@ const helpFake = `  fake [options] [table]
     -p,--phase <float,...>       phase (default: 0)
     -b,--bias <float>            bias (default: 0)
     -r,--sampling-rate <int>     sampling rate per sec. (default: 10)
+    -z,--noise <float>           max noise amplitude. (default: 0 no-noise)
 `
 
 /*
@@ -50,6 +51,7 @@ type FakeCmd struct {
 	Phaz         []float64 `name:"phase" short:"p" default:"0"`
 	Bias         float64   `name:"bias" short:"b" default:"0"`
 	SamplingRate int       `name:"sampling-rate" short:"r" default:"10"`
+	Noise        float64   `name:"noise" short:"z" default:"0"`
 	Help         bool      `kong:"-"`
 }
 
@@ -103,7 +105,8 @@ func doFake(ctx *client.ActionContext) {
 	if len(sigs) == 0 {
 		return
 	}
-	eval := oscilator.Composite(sigs).EvalTime
+
+	eval := oscilator.NewCompositeWithNoise(sigs, cmd.Noise).EvalTime
 
 	var appender spi.Appender
 	if len(cmd.Table) > 0 {
