@@ -15,6 +15,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/transcoder"
+	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -86,46 +87,33 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) error {
 	peerLog := peer.GetLog()
 
-	table := strings.ToUpper(strings.TrimPrefix(topic, "append/"))
-	if len(table) == 0 {
+	writePath := strings.ToUpper(strings.TrimPrefix(topic, "append/"))
+	wp, err := util.ParseWritePath(writePath)
+	if err != nil {
+		peerLog.Warn(topic, err.Error())
 		return nil
 	}
 
-	toks := strings.Split(table, ":")
-	var compress = ""
-	var transname = ""
-
-	var format = "json"
-	if len(toks) >= 1 {
-		table = toks[0]
-	}
-	if len(toks) >= 2 {
-		format = strings.ToLower(toks[1])
-	}
-	if len(toks) == 3 {
-		compress = strings.ToLower(toks[2])
-	} else if len(toks) == 4 {
-		transname = strings.ToLower(toks[2])
-		compress = strings.ToLower(toks[3])
+	if wp.Format == "" {
+		wp.Format = "json"
 	}
 
-	switch format {
+	switch wp.Format {
 	case "json":
 	case "csv":
 	default:
-		peerLog.Warnf("---- unsupported format '%s'", format)
+		peerLog.Warnf("---- unsupported format '%s'", wp.Format)
 		return nil
 	}
-	switch compress {
+	switch wp.Compress {
 	case "": // no compression
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		peerLog.Warnf("---- unsupproted compression '%s", compress)
+		peerLog.Warnf("---- unsupproted compression '%s", wp.Compress)
 		return nil
 	}
 
-	var err error
 	var appenderSet []spi.Appender
 	var appender spi.Appender
 	var peerId = peer.Id()
@@ -134,14 +122,14 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	if exists {
 		appenderSet = val.([]spi.Appender)
 		for _, a := range appenderSet {
-			if a.TableName() == table {
+			if a.TableName() == wp.Table {
 				appender = a
 				break
 			}
 		}
 	}
 	if appender == nil {
-		appender, err = svr.db.Appender(table)
+		appender, err = svr.db.Appender(wp.Table)
 		if err != nil {
 			peerLog.Errorf("---- fail to create appender, %s", err.Error())
 			return nil
@@ -155,7 +143,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 	var instream spi.InputStream
 
-	if compress == "gzip" {
+	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
 			if gr != nil {
@@ -175,7 +163,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	builder := codec.NewDecoderBuilder(format).
+	builder := codec.NewDecoderBuilder(wp.Format).
 		SetInputStream(instream).
 		SetColumns(cols).
 		SetTimeFormat("ns").
@@ -183,13 +171,13 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		SetCsvDelimieter(",").
 		SetCsvHeading(false)
 
-	if len(transname) > 0 {
+	if len(wp.Transform) > 0 {
 		opts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
 			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
 		opts = append(opts, transcoder.OptionPname("mqtt"))
-		trans := transcoder.New(transname, opts...)
+		trans := transcoder.New(wp.Transform, opts...)
 		builder.SetTranscoder(trans)
 	}
 
@@ -200,14 +188,14 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		vals, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
-				peerLog.Warnf("---- append %s, %s", format, err.Error())
+				peerLog.Warnf("---- append %s, %s", wp.Format, err.Error())
 				return nil
 			}
 			break
 		}
 		err = appender.Append(vals...)
 		if err != nil {
-			peerLog.Errorf("---- append %s, %s", format, err.Error())
+			peerLog.Errorf("---- append %s, %s", wp.Format, err.Error())
 			break
 		}
 		recno++
