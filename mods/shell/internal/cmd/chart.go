@@ -32,18 +32,19 @@ const helpChart = `  chart [options] <tag_path>...
        --tz                  timezone for handling datetime
     -t,--timeformat          time format [ns|ms|s|<timeformat>] (default:'default')
                              consult "help timeformat"
-       --time  <time>        base time, now or time string in format "2023-02-03 13:20:30" (default: now)
+       --time  <time>        base time, now, last or time string in format "2023-02-03 13:20:30" (default: now)
        --range <duration>    time range of data, from time specified by '--time' (default: 1m)
     -r,--refresh <duration>  refresh period (default: 0)
-                             effective only if '--time' is "now".
+                             effective only if '--time' is "now" or "last".
                              value format is '[0-9]+(s|m)'  ex) '3s' for 3 seconds, '1m' for 1 minute
                              auto refresh is disabled if value is 0 which is default
-    -m,--count <count>       repeat times (default: 0)
+    -n,--count <count>       repeat times (default: 0)
                              set 0 for unlimit
     -o,--output <file>       output file (default:'-' stdout)
     -f,--format <format>     output format
                 term         terminal chart (default)
                 json         json format
+                csv          csv format
                 html         generate chart page in html format
        --title <title>       title text for html output (default:"Chart")
        --subtitle <title>    sub title text for html output (default:"")
@@ -60,7 +61,7 @@ type ChartCmd struct {
 	Refresh      time.Duration  `name:"refresh" short:"r" default:"0"`
 	Count        int            `name:"count" short:"n" default:"0"`
 	Output       string         `name:"output" short:"o" default:"-"`
-	Format       string         `name:"format" short:"f" enum:"term,json,html" default:"term"`
+	Format       string         `name:"format" short:"f" enum:"term,json,csv,html" default:"term"`
 	HtmlTitle    string         `name:"title" default:"Chart"`
 	HtmlSubtitle string         `name:"subtitle" default:""`
 	HtmlWidth    string         `name:"width" default:"1600"`
@@ -123,10 +124,13 @@ func doChart(ctx *client.ActionContext) {
 	}
 	switch cmd.Format {
 	default:
-		// termdash의 경우 refresh cycle이 cmd.Count에 도달하여
-		// 외부에서 close하는 경우 정상적으로 화면이 복구 되지 않는 문제가 있어
-		// Count를 무조건 0 (무한 루프)으로 강제 설정한다.
+		// termdash allows cmd.Count only 0 (infinite)
+		// it control the termination by itself (enter ESC key)
 		cmd.Count = 0
+		if cmd.Refresh < time.Second {
+			cmd.Refresh = time.Second
+		}
+	case "csv":
 	case "json":
 	case "html":
 	}
@@ -171,17 +175,28 @@ func doChart(ctx *client.ActionContext) {
 	runner()
 	// repeat ?
 	if cmd.Count != 1 && !runCanceled {
-		scheduler = cron.New()
-		go func() {
-			<-quitCh
-			scheduler.Stop()
-			ctx.Cancel()
-		}()
+		capture := ctx.NewCaptureUserInterruptCallback("", func(string) bool { return false })
+		if ctx.Interactive && cmd.Format != "term" {
+			go capture.Start()
+			defer capture.Close()
+		}
 
+		scheduler = cron.New()
 		if _, err := scheduler.AddFunc(fmt.Sprintf("@every %s", cmd.Refresh.String()), runner); err != nil {
 			fmt.Println(err.Error())
 			return
 		}
-		scheduler.Run()
+		go scheduler.Run()
+
+		for !runCanceled {
+			select {
+			case <-capture.C:
+				runCanceled = true
+			case <-quitCh:
+				runCanceled = true
+			}
+		}
+		scheduler.Stop()
+		ctx.Cancel()
 	}
 }
