@@ -326,17 +326,17 @@ func guessBindAddress(args []string) guess {
 		s := args[i]
 		if strings.HasPrefix(s, "--host=") {
 			host = s[7:]
-		} else if s == "--host" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+		} else if s == "--host" && len(args) > i+1 && !strings.HasPrefix(args[i+1], "-") {
 			host = args[i+1]
 			i++
 		} else if strings.HasPrefix(s, "--grpc-port=") {
 			grpcPort = s[12:]
-		} else if s == "--grpc-port" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+		} else if s == "--grpc-port" && len(args) > i+1 && !strings.HasPrefix(args[i+1], "-") {
 			grpcPort = args[i+1]
 			i++
 		} else if strings.HasPrefix(s, "--http-port=") {
 			httpPort = s[12:]
-		} else if s == "--http-port" && len(args) >= i+1 && !strings.HasPrefix(args[i+1], "-") {
+		} else if s == "--http-port" && len(args) > i+1 && !strings.HasPrefix(args[i+1], "-") {
 			httpPort = args[i+1]
 			i++
 		}
