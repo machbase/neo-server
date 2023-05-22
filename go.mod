@@ -22,7 +22,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.2
-	github.com/machbase/neo-grpc v0.8.1-0.20230508071519-6cae2372504c
+	github.com/machbase/neo-grpc v0.8.1-0.20230522065035-77ce4e3b73b9
 	github.com/machbase/neo-spi v1.2.1-0.20230508071206-90bcddd6d54b
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
