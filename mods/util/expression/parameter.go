@@ -2,7 +2,7 @@ package expression
 
 import "fmt"
 
-// Parameters is a collection of named parameters that can be used by an EvaluableExpression to retrieve parameters
+// Parameters is a collection of named parameters that can be used by an Expression to retrieve parameters
 // when an expression tries to use them.
 type Parameters interface {
 	// Get gets the parameter of the given name, or an error if the parameter is unavailable.

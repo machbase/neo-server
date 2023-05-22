@@ -8,16 +8,16 @@ import (
 // Represents a function that can be called from within an expression.
 // This method must return an error if, for any reason, it is unable to produce exactly one unambiguous result.
 // An error returned will halt execution of the expression.
-type ExpressionFunction func(args ...any) (any, error)
+type Function func(args ...any) (any, error)
 
 const isoDateFormat string = "2006-01-02T15:04:05.999999999Z0700"
 const shortCircuitHolder int = -1
 
 var DUMMY_PARAMETERS = MapParameters(map[string]any{})
 
-// EvaluableExpression represents a set of ExpressionTokens which, taken together,
+// Expression represents a set of Tokens which, taken together,
 // are an expression that can be evaluated down into a single value.
-type EvaluableExpression struct {
+type Expression struct {
 	// Represents the query format used to output dates. Typically only used when creating SQL or Mongo queries from an expression.
 	// Defaults to the complete ISO8601 format, including nanoseconds.
 	QueryDateFormat string
@@ -30,24 +30,24 @@ type EvaluableExpression struct {
 	// and you should only set this to false if you know exactly what you're doing.
 	ChecksTypes bool
 
-	tokens           []ExpressionToken
+	tokens           []Token
 	evaluationStages *evaluationStage
 	inputExpression  string
 }
 
-// Parses a new EvaluableExpression from the given [expression] string.
+// Parses a new Expression from the given [expression] string.
 // Returns an error if the given expression has invalid syntax.
-func NewEvaluableExpression(expression string) (*EvaluableExpression, error) {
+func New(expression string) (*Expression, error) {
 
-	functions := make(map[string]ExpressionFunction)
-	return NewEvaluableExpressionWithFunctions(expression, functions)
+	functions := make(map[string]Function)
+	return NewWithFunctions(expression, functions)
 }
 
-// Similar to [NewEvaluableExpression], except that instead of a string, an already-tokenized expression is given.
+// Similar to [New], except that instead of a string, an already-tokenized expression is given.
 // This is useful in cases where you may be generating an expression automatically, or using some other parser (e.g., to parse from a query language)
-func NewEvaluableExpressionFromTokens(tokens []ExpressionToken) (*EvaluableExpression, error) {
+func NewFromTokens(tokens []Token) (*Expression, error) {
 	var err error
-	ret := new(EvaluableExpression)
+	ret := new(Expression)
 	ret.QueryDateFormat = isoDateFormat
 
 	err = checkBalance(tokens)
@@ -74,11 +74,11 @@ func NewEvaluableExpressionFromTokens(tokens []ExpressionToken) (*EvaluableExpre
 	return ret, nil
 }
 
-// Similar to [NewEvaluableExpression], except enables the use of user-defined functions.
+// Similar to [New], except enables the use of user-defined functions.
 // Functions passed into this will be available to the expression.
-func NewEvaluableExpressionWithFunctions(expression string, functions map[string]ExpressionFunction) (*EvaluableExpression, error) {
+func NewWithFunctions(expression string, functions map[string]Function) (*Expression, error) {
 	var err error
-	ret := new(EvaluableExpression)
+	ret := new(Expression)
 	ret.QueryDateFormat = isoDateFormat
 	ret.inputExpression = expression
 
@@ -112,7 +112,7 @@ func NewEvaluableExpressionWithFunctions(expression string, functions map[string
 }
 
 // Same as `Eval`, but automatically wraps a map of parameters into a `Parameters` structure.
-func (ee EvaluableExpression) Evaluate(parameters map[string]any) (any, error) {
+func (ee Expression) Evaluate(parameters map[string]any) (any, error) {
 	if parameters == nil {
 		return ee.Eval(nil)
 	}
@@ -128,7 +128,7 @@ func (ee EvaluableExpression) Evaluate(parameters map[string]any) (any, error) {
 // In all non-error circumstances, this returns the single value result of the expression and parameters given.
 // e.g., if the expression is "1 + 1", this will return 2.0.
 // e.g., if the expression is "foo + 1" and parameters contains "foo" = 2, this will return 3.0
-func (ee EvaluableExpression) Eval(parameters Parameters) (any, error) {
+func (ee Expression) Eval(parameters Parameters) (any, error) {
 	if ee.evaluationStages == nil {
 		return nil, nil
 	}
@@ -140,7 +140,7 @@ func (ee EvaluableExpression) Eval(parameters Parameters) (any, error) {
 	return ee.evaluateStage(ee.evaluationStages, parameters)
 }
 
-func (ee EvaluableExpression) evaluateStage(stage *evaluationStage, parameters Parameters) (any, error) {
+func (ee Expression) evaluateStage(stage *evaluationStage, parameters Parameters) (any, error) {
 	var left, right any
 	var err error
 
@@ -165,7 +165,6 @@ func (ee EvaluableExpression) evaluateStage(stage *evaluationStage, parameters P
 			if left != nil {
 				return left, nil
 			}
-
 		case TERNARY_TRUE:
 			if left == false {
 				right = shortCircuitHolder
@@ -186,12 +185,10 @@ func (ee EvaluableExpression) evaluateStage(stage *evaluationStage, parameters P
 
 	if ee.ChecksTypes {
 		if stage.typeCheck == nil {
-
 			err = typeCheck(stage.leftTypeCheck, left, stage.symbol, stage.typeErrorFormat)
 			if err != nil {
 				return nil, err
 			}
-
 			err = typeCheck(stage.rightTypeCheck, right, stage.symbol, stage.typeErrorFormat)
 			if err != nil {
 				return nil, err
@@ -212,27 +209,25 @@ func typeCheck(check stageTypeCheck, value any, symbol OperatorSymbol, format st
 	if check == nil {
 		return nil
 	}
-
 	if check(value) {
 		return nil
 	}
-
 	errorMsg := fmt.Sprintf(format, value, symbol.String())
 	return errors.New(errorMsg)
 }
 
-// Returns an array representing the ExpressionTokens that make up this expression.
-func (ee EvaluableExpression) Tokens() []ExpressionToken {
+// Returns an array representing the Tokens that make up this expression.
+func (ee Expression) Tokens() []Token {
 	return ee.tokens
 }
 
-// Returns the original expression used to create this EvaluableExpression.
-func (ee EvaluableExpression) String() string {
+// Returns the original expression used to create this Expression.
+func (ee Expression) String() string {
 	return ee.inputExpression
 }
 
-// Returns an array representing the variables contained in this EvaluableExpression.
-func (ee EvaluableExpression) Vars() []string {
+// Returns an array representing the variables contained in this Expression.
+func (ee Expression) Vars() []string {
 	var varlist []string
 	for _, val := range ee.Tokens() {
 		if val.Kind == VARIABLE {

@@ -178,7 +178,7 @@ func TestSQLSerialization(test *testing.T) {
 }
 
 func runQueryTests(testCases []QueryTest, test *testing.T) {
-	var expression *EvaluableExpression
+	var expression *Expression
 	var actualQuery string
 	var err error
 
@@ -187,7 +187,7 @@ func runQueryTests(testCases []QueryTest, test *testing.T) {
 	// Run the test cases.
 	for _, testCase := range testCases {
 
-		expression, err = NewEvaluableExpression(testCase.Input)
+		expression, err = New(testCase.Input)
 
 		if err != nil {
 

@@ -225,7 +225,7 @@ func makeLiteralStage(literal any) evaluationOperator {
 	}
 }
 
-func makeFunctionStage(function ExpressionFunction) evaluationOperator {
+func makeFunctionStage(function Function) evaluationOperator {
 	return func(left any, right any, parameters Parameters) (any, error) {
 		if right == nil {
 			return function()

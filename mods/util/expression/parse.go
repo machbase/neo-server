@@ -11,9 +11,9 @@ import (
 	"unicode"
 )
 
-func parseTokens(input string, functions map[string]ExpressionFunction) ([]ExpressionToken, error) {
-	var ret []ExpressionToken
-	var token ExpressionToken
+func parseTokens(input string, functions map[string]Function) ([]Token, error) {
+	var ret []Token
+	var token Token
 	var found bool
 	var err error
 
@@ -40,9 +40,9 @@ func parseTokens(input string, functions map[string]ExpressionFunction) ([]Expre
 	return ret, nil
 }
 
-func readToken(stream *lexerStream, state lexerState, functions map[string]ExpressionFunction) (ExpressionToken, error, bool) {
-	var function ExpressionFunction
-	var ret ExpressionToken
+func readToken(stream *lexerStream, state lexerState, functions map[string]Function) (Token, error, bool) {
+	var function Function
+	var ret Token
 	var tokenValue interface{}
 	var tokenTime time.Time
 	var tokenString string
@@ -79,7 +79,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 					tokenValueInt, err := strconv.ParseUint(tokenString, 16, 64)
 
 					if err != nil {
-						return ExpressionToken{}, fmt.Errorf("unable to parse hex value '%v' to uint64", tokenString), false
+						return Token{}, fmt.Errorf("unable to parse hex value '%v' to uint64", tokenString), false
 					}
 
 					kind = NUMERIC
@@ -94,7 +94,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 			tokenValue, err = strconv.ParseFloat(tokenString, 64)
 
 			if err != nil {
-				return ExpressionToken{}, fmt.Errorf("unable to parse numeric value '%v' to float64", tokenString), false
+				return Token{}, fmt.Errorf("unable to parse numeric value '%v' to float64", tokenString), false
 			}
 			kind = NUMERIC
 			break
@@ -115,7 +115,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 			kind = VARIABLE
 
 			if !completed {
-				return ExpressionToken{}, errors.New("unclosed parameter bracket"), false
+				return Token{}, errors.New("unclosed parameter bracket"), false
 			}
 
 			// above method normally rewinds us to the closing bracket, which we want to skip.
@@ -163,7 +163,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 
 				// check that it doesn't end with a hanging period
 				if tokenString[len(tokenString)-1] == '.' {
-					return ExpressionToken{}, fmt.Errorf("hanging accessor on token '%s'", tokenString), false
+					return Token{}, fmt.Errorf("hanging accessor on token '%s'", tokenString), false
 				}
 
 				kind = ACCESSOR
@@ -176,7 +176,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 					firstCharacter := getFirstRune(splits[i])
 
 					if unicode.ToUpper(firstCharacter) != firstCharacter {
-						return ExpressionToken{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
+						return Token{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
 					}
 				}
 			}
@@ -187,7 +187,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuote)
 
 			if !completed {
-				return ExpressionToken{}, errors.New("unclosed string literal"), false
+				return Token{}, errors.New("unclosed string literal"), false
 			}
 
 			// advance the stream one position, since reading until false assumes the terminator is a real token
@@ -309,8 +309,8 @@ func readUntilFalse(stream *lexerStream, includeWhitespace bool, breakWhitespace
 
 // Checks to see if any optimizations can be performed on the given [tokens], which form a complete, valid expression.
 // The returns slice will represent the optimized (or unmodified) list of tokens to use.
-func optimizeTokens(tokens []ExpressionToken) ([]ExpressionToken, error) {
-	var token ExpressionToken
+func optimizeTokens(tokens []Token) ([]Token, error) {
+	var token Token
 	var symbol OperatorSymbol
 	var err error
 	var index int
@@ -341,9 +341,9 @@ func optimizeTokens(tokens []ExpressionToken) ([]ExpressionToken, error) {
 }
 
 // checks the balance of tokens which have multiple parts, such as parenthesis.
-func checkBalance(tokens []ExpressionToken) error {
+func checkBalance(tokens []Token) error {
 	var stream *tokenStream
-	var token ExpressionToken
+	var token Token
 	var parens int
 
 	stream = newTokenStream(tokens)

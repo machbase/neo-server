@@ -16,7 +16,7 @@ type DebugStruct struct {
 type EvaluationFailureTest struct {
 	Name       string
 	Input      string
-	Functions  map[string]ExpressionFunction
+	Functions  map[string]Function
 	Parameters map[string]interface{}
 	Expected   string
 }
@@ -41,7 +41,7 @@ var EVALUATION_FAILURE_PARAMETERS = map[string]interface{}{
 
 func TestComplexParameter(test *testing.T) {
 
-	var expression *EvaluableExpression
+	var expression *Expression
 	var err error
 	var v interface{}
 
@@ -50,7 +50,7 @@ func TestComplexParameter(test *testing.T) {
 		"complex128": complex128(0),
 	}
 
-	expression, _ = NewEvaluableExpression("complex64")
+	expression, _ = New("complex64")
 	v, err = expression.Evaluate(parameters)
 	if err != nil {
 		test.Errorf("Expected no error, but have %s", err)
@@ -59,7 +59,7 @@ func TestComplexParameter(test *testing.T) {
 		test.Errorf("Expected %v == %v", v, complex64(0))
 	}
 
-	expression, _ = NewEvaluableExpression("complex128")
+	expression, _ = New("complex128")
 	v, err = expression.Evaluate(parameters)
 	if err != nil {
 		test.Errorf("Expected no error, but have %s", err)
@@ -71,7 +71,7 @@ func TestComplexParameter(test *testing.T) {
 
 func TestStructParameter(t *testing.T) {
 	expected := DebugStruct{}
-	expression, _ := NewEvaluableExpression("foo")
+	expression, _ := New("foo")
 	parameters := map[string]interface{}{"foo": expected}
 	v, err := expression.Evaluate(parameters)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestStructParameter(t *testing.T) {
 }
 
 func TestNilParameterUsage(test *testing.T) {
-	expression, _ := NewEvaluableExpression("2 > 1")
+	expression, _ := New("2 > 1")
 	_, err := expression.Evaluate(nil)
 
 	if err != nil {
@@ -419,7 +419,7 @@ func TestFunctionExecution(test *testing.T) {
 
 			Name:  "Function error bubbling",
 			Input: "error()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"error": func(arguments ...interface{}) (interface{}, error) {
 					return nil, errors.New("Huge problems")
 				},
@@ -490,7 +490,7 @@ func TestInvalidParameterCalls(test *testing.T) {
 
 func runEvaluationFailureTests(evaluationTests []EvaluationFailureTest, test *testing.T) {
 
-	var expression *EvaluableExpression
+	var expression *Expression
 	var err error
 
 	fmt.Printf("Running %d negative parsing test cases...\n", len(evaluationTests))
@@ -498,9 +498,9 @@ func runEvaluationFailureTests(evaluationTests []EvaluationFailureTest, test *te
 	for _, testCase := range evaluationTests {
 
 		if len(testCase.Functions) > 0 {
-			expression, err = NewEvaluableExpressionWithFunctions(testCase.Input, testCase.Functions)
+			expression, err = NewWithFunctions(testCase.Input, testCase.Functions)
 		} else {
-			expression, err = NewEvaluableExpression(testCase.Input)
+			expression, err = New(testCase.Input)
 		}
 
 		if err != nil {

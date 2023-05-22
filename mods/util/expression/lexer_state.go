@@ -18,8 +18,8 @@ func (ls lexerState) canTransitionTo(kind TokenKind) bool {
 	return false
 }
 
-func checkExpressionSyntax(tokens []ExpressionToken) error {
-	var lastToken ExpressionToken
+func checkExpressionSyntax(tokens []Token) error {
+	var lastToken Token
 	var err error
 	state := validLexerStates[0]
 	for _, tok := range tokens {

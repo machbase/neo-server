@@ -1,6 +1,6 @@
 package expression
 
-type ExpressionToken struct {
+type Token struct {
 	Kind  TokenKind
 	Value any
 }
@@ -70,12 +70,12 @@ func (kind TokenKind) String() string {
 }
 
 type tokenStream struct {
-	tokens []ExpressionToken
+	tokens []Token
 	index  int
 	length int
 }
 
-func newTokenStream(tokens []ExpressionToken) *tokenStream {
+func newTokenStream(tokens []Token) *tokenStream {
 	return &tokenStream{
 		tokens: tokens,
 		index:  0,
@@ -87,7 +87,7 @@ func (ts *tokenStream) rewind() {
 	ts.index -= 1
 }
 
-func (ts *tokenStream) next() ExpressionToken {
+func (ts *tokenStream) next() Token {
 	tok := ts.tokens[ts.index]
 	ts.index++
 	return tok

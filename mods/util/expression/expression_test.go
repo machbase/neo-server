@@ -6,7 +6,7 @@ import (
 )
 
 func TestBasicEvaluation(test *testing.T) {
-	expression, err := NewEvaluableExpression("10 > 0")
+	expression, err := New("10 > 0")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -25,7 +25,7 @@ func TestBasicEvaluation(test *testing.T) {
 }
 
 func TestParameterEvaluation(test *testing.T) {
-	expression, err := NewEvaluableExpression("foo > 0")
+	expression, err := New("foo > 0")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -47,7 +47,7 @@ func TestParameterEvaluation(test *testing.T) {
 }
 
 func TestModifierEvaluation(test *testing.T) {
-	expression, err := NewEvaluableExpression("(requests_made * requests_succeeded / 100) >= 90")
+	expression, err := New("(requests_made * requests_succeeded / 100) >= 90")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -70,7 +70,7 @@ func TestModifierEvaluation(test *testing.T) {
 }
 
 func TestStringEvaluation(test *testing.T) {
-	expression, err := NewEvaluableExpression("http_response_body == 'service is ok'")
+	expression, err := New("http_response_body == 'service is ok'")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -92,7 +92,7 @@ func TestStringEvaluation(test *testing.T) {
 }
 
 func TestFloatEvaluation(test *testing.T) {
-	expression, err := NewEvaluableExpression("(mem_used / total_mem) * 100")
+	expression, err := New("(mem_used / total_mem) * 100")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -115,7 +115,7 @@ func TestFloatEvaluation(test *testing.T) {
 }
 
 func TestDateComparison(test *testing.T) {
-	expression, err := NewEvaluableExpression("'2014-01-02' > '2014-01-01 23:59:59'")
+	expression, err := New("'2014-01-02' > '2014-01-01 23:59:59'")
 	if err != nil {
 		test.Log(err)
 		test.Fail()
@@ -134,7 +134,7 @@ func TestDateComparison(test *testing.T) {
 }
 
 func TestMultipleEvaluation(test *testing.T) {
-	expression, _ := NewEvaluableExpression("response_time <= 100")
+	expression, _ := New("response_time <= 100")
 	parameters := make(map[string]interface{}, 8)
 
 	for i := 0; i < 64; i++ {
@@ -154,7 +154,7 @@ func TestMultipleEvaluation(test *testing.T) {
 }
 
 func TestStrlenFunction(test *testing.T) {
-	functions := map[string]ExpressionFunction{
+	functions := map[string]Function{
 		"strlen": func(args ...interface{}) (interface{}, error) {
 			length := len(args[0].(string))
 			return (float64)(length), nil
@@ -162,7 +162,7 @@ func TestStrlenFunction(test *testing.T) {
 	}
 
 	expString := "strlen('someReallyLongInputString') <= 16"
-	expression, err := NewEvaluableExpressionWithFunctions(expString, functions)
+	expression, err := NewWithFunctions(expString, functions)
 	if err != nil {
 		test.Log(err)
 		test.Fail()

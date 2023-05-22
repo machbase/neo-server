@@ -12,7 +12,7 @@ import (
 type EvaluationTest struct {
 	Name       string
 	Input      string
-	Functions  map[string]ExpressionFunction
+	Functions  map[string]Function
 	Parameters []EvaluationParameter
 	Expected   interface{}
 }
@@ -464,7 +464,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Single function",
 			Input: "foo()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"foo": func(arguments ...interface{}) (interface{}, error) {
 					return true, nil
 				},
@@ -474,7 +474,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Function with argument",
 			Input: "passthrough(1)",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"passthrough": func(arguments ...interface{}) (interface{}, error) {
 					return arguments[0], nil
 				},
@@ -484,7 +484,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Function with arguments",
 			Input: "passthrough(1, 2)",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"passthrough": func(arguments ...interface{}) (interface{}, error) {
 					return arguments[0].(float64) + arguments[1].(float64), nil
 				},
@@ -494,7 +494,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Nested function with precedence",
 			Input: "sum(1, sum(2, 3), 2 + 2, true ? 4 : 5)",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"sum": func(arguments ...interface{}) (interface{}, error) {
 					sum := 0.0
 					for _, v := range arguments {
@@ -508,7 +508,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function and modifier, compared",
 			Input: "numeric()-1 > 0",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"numeric": func(arguments ...interface{}) (interface{}, error) {
 					return 2.0, nil
 				},
@@ -518,7 +518,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function comparator",
 			Input: "numeric() > 0",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"numeric": func(arguments ...interface{}) (interface{}, error) {
 					return 2.0, nil
 				},
@@ -528,7 +528,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function logical operator",
 			Input: "success() && !false",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"success": func(arguments ...interface{}) (interface{}, error) {
 					return true, nil
 				},
@@ -538,7 +538,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function ternary",
 			Input: "nope() ? 1 : 2.0",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"nope": func(arguments ...interface{}) (interface{}, error) {
 					return false, nil
 				},
@@ -548,7 +548,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function null coalesce",
 			Input: "null() ?? 2",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"null": func(arguments ...interface{}) (interface{}, error) {
 					return nil, nil
 				},
@@ -558,7 +558,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function with prefix",
 			Input: "-ten()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"ten": func(arguments ...interface{}) (interface{}, error) {
 					return 10.0, nil
 				},
@@ -568,7 +568,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function as part of chain",
 			Input: "10 - numeric() - 2",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"numeric": func(arguments ...interface{}) (interface{}, error) {
 					return 5.0, nil
 				},
@@ -578,7 +578,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Empty function near separator",
 			Input: "10 in (1, 2, 3, ten(), 8)",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"ten": func(arguments ...interface{}) (interface{}, error) {
 					return 10.0, nil
 				},
@@ -588,7 +588,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Enclosed empty function with modifier and comparator (#28)",
 			Input: "(ten() - 1) > 3",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"ten": func(arguments ...interface{}) (interface{}, error) {
 					return 10.0, nil
 				},
@@ -598,7 +598,7 @@ func TestNoParameterEvaluation(test *testing.T) {
 		{
 			Name:  "Ternary/Java EL ambiguity",
 			Input: "false ? foo:length()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"length": func(arguments ...interface{}) (interface{}, error) {
 					return 1.0, nil
 				},
@@ -1072,7 +1072,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 		{
 			Name:  "Mixed function and parameters",
 			Input: "sum(1.2, amount) + name",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"sum": func(arguments ...interface{}) (interface{}, error) {
 
 					sum := 0.0
@@ -1097,7 +1097,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 		{
 			Name:  "Short-circuit OR",
 			Input: "true || fail()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"fail": func(arguments ...interface{}) (interface{}, error) {
 					return nil, errors.New("Did not short-circuit")
 				},
@@ -1107,7 +1107,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 		{
 			Name:  "Short-circuit AND",
 			Input: "false && fail()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"fail": func(arguments ...interface{}) (interface{}, error) {
 					return nil, errors.New("Did not short-circuit")
 				},
@@ -1117,7 +1117,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 		{
 			Name:  "Short-circuit ternary",
 			Input: "true ? 1 : fail()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"fail": func(arguments ...interface{}) (interface{}, error) {
 					return nil, errors.New("Did not short-circuit")
 				},
@@ -1127,7 +1127,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 		{
 			Name:  "Short-circuit coalesce",
 			Input: "'foo' ?? fail()",
-			Functions: map[string]ExpressionFunction{
+			Functions: map[string]Function{
 				"fail": func(arguments ...interface{}) (interface{}, error) {
 					return nil, errors.New("Did not short-circuit")
 				},
@@ -1245,7 +1245,7 @@ func TestParameterizedEvaluation(test *testing.T) {
 // Tests the behavior of a nil set of parameters.
 func TestNilParameters(test *testing.T) {
 
-	expression, _ := NewEvaluableExpression("true")
+	expression, _ := New("true")
 	_, err := expression.Evaluate(nil)
 
 	if err != nil {
@@ -1259,7 +1259,7 @@ func TestStructFunctions(test *testing.T) {
 	y2k, _ := time.Parse(parseFormat, "2000")
 	y2k1, _ := time.Parse(parseFormat, "2001")
 
-	functions := map[string]ExpressionFunction{
+	functions := map[string]Function{
 		"func1": func(args ...interface{}) (interface{}, error) {
 			return float64(y2k.Year()), nil
 		},
@@ -1268,7 +1268,7 @@ func TestStructFunctions(test *testing.T) {
 		},
 	}
 
-	exp, _ := NewEvaluableExpressionWithFunctions("func1() + func2()", functions)
+	exp, _ := NewWithFunctions("func1() + func2()", functions)
 	result, _ := exp.Evaluate(nil)
 
 	if result != 4001.0 {
@@ -1278,7 +1278,7 @@ func TestStructFunctions(test *testing.T) {
 }
 
 func runEvaluationTests(evaluationTests []EvaluationTest, test *testing.T) {
-	var expression *EvaluableExpression
+	var expression *Expression
 	var result interface{}
 	var parameters map[string]interface{}
 	var err error
@@ -1289,9 +1289,9 @@ func runEvaluationTests(evaluationTests []EvaluationTest, test *testing.T) {
 	for _, evaluationTest := range evaluationTests {
 
 		if evaluationTest.Functions != nil {
-			expression, err = NewEvaluableExpressionWithFunctions(evaluationTest.Input, evaluationTest.Functions)
+			expression, err = NewWithFunctions(evaluationTest.Input, evaluationTest.Functions)
 		} else {
-			expression, err = NewEvaluableExpression(evaluationTest.Input)
+			expression, err = New(evaluationTest.Input)
 		}
 
 		if err != nil {

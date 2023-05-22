@@ -13,8 +13,8 @@ import (
 type TokenParsingTest struct {
 	Name      string
 	Input     string
-	Functions map[string]ExpressionFunction
-	Expected  []ExpressionToken
+	Functions map[string]Function
+	Expected  []Token
 }
 
 func TestConstantParsing(test *testing.T) {
@@ -22,7 +22,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single numeric",
 			Input: "1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -32,7 +32,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single two-digit numeric",
 			Input: "50",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 50.0,
@@ -42,7 +42,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Zero",
 			Input: "0",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 0.0,
@@ -52,7 +52,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "One digit hex",
 			Input: "0x1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -62,7 +62,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Two digit hex",
 			Input: "0x10",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 16.0,
@@ -72,7 +72,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Hex with lowercase",
 			Input: "0xabcdef",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 11259375.0,
@@ -82,7 +82,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Hex with uppercase",
 			Input: "0xABCDEF",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 11259375.0,
@@ -92,7 +92,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single string",
 			Input: "'foo'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -102,7 +102,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single time, RFC3339, only date",
 			Input: "'2014-01-02'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  TIME,
 					Value: time.Date(2014, time.January, 2, 0, 0, 0, 0, time.Local),
@@ -112,7 +112,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single time, RFC3339, with hh:mm",
 			Input: "'2014-01-02 14:12'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  TIME,
 					Value: time.Date(2014, time.January, 2, 14, 12, 0, 0, time.Local),
@@ -122,7 +122,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single time, RFC3339, with hh:mm:ss",
 			Input: "'2014-01-02 14:12:22'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  TIME,
 					Value: time.Date(2014, time.January, 2, 14, 12, 22, 0, time.Local),
@@ -132,7 +132,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single boolean",
 			Input: "true",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: true,
@@ -142,7 +142,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single large numeric",
 			Input: "1234567890",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1234567890.0,
@@ -152,7 +152,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single floating-point",
 			Input: "0.5",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 0.5,
@@ -162,7 +162,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single large floating point",
 			Input: "3.14567471",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 3.14567471,
@@ -172,7 +172,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single false boolean",
 			Input: "false",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: false,
@@ -182,7 +182,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single internationalized string",
 			Input: "'ÆŦǽഈᚥஇคٸ'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "ÆŦǽഈᚥஇคٸ",
@@ -192,7 +192,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Single internationalized parameter",
 			Input: "ÆŦǽഈᚥஇคٸ",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "ÆŦǽഈᚥஇคٸ",
@@ -202,8 +202,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Parameterless function",
 			Input:     "foo()",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -219,8 +219,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Single parameter function",
 			Input:     "foo('bar')",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -240,8 +240,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Multiple parameter function",
 			Input:     "foo('bar', 1.0)",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -268,8 +268,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Nested function",
 			Input:     "foo(foo('bar'), 1.0, foo(2.0))",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -323,8 +323,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Function with modifier afterwards (#28)",
 			Input:     "foo() + 1",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -348,8 +348,8 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:      "Function with modifier afterwards and comparator",
 			Input:     "(foo()-1) > 3",
-			Functions: map[string]ExpressionFunction{"foo": noop},
-			Expected: []ExpressionToken{
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
 				{
 					Kind: CLAUSE,
 				},
@@ -387,7 +387,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Double-quoted string added to square-brackted param (#59)",
 			Input: "\"a\" + [foo]",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "a",
@@ -405,7 +405,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Accessor variable",
 			Input: "foo.Var",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  ACCESSOR,
 					Value: []string{"foo", "Var"},
@@ -415,7 +415,7 @@ func TestConstantParsing(test *testing.T) {
 		{
 			Name:  "Accessor function",
 			Input: "foo.Operation()",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  ACCESSOR,
 					Value: []string{"foo", "Operation"},
@@ -440,7 +440,7 @@ func TestLogicalOperatorParsing(test *testing.T) {
 		{
 			Name:  "Boolean AND",
 			Input: "true && false",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: true,
@@ -458,7 +458,7 @@ func TestLogicalOperatorParsing(test *testing.T) {
 		{
 			Name:  "Boolean OR",
 			Input: "true || false",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: true,
@@ -476,7 +476,7 @@ func TestLogicalOperatorParsing(test *testing.T) {
 		{
 			Name:  "Multiple logical operators",
 			Input: "true || false && true",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: true,
@@ -510,7 +510,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric EQ",
 			Input: "1 == 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -528,7 +528,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric NEQ",
 			Input: "1 != 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -546,7 +546,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric GT",
 			Input: "1 > 0",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -564,7 +564,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric LT",
 			Input: "1 < 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -582,7 +582,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric GTE",
 			Input: "1 >= 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -600,7 +600,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Numeric LTE",
 			Input: "1 <= 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -618,7 +618,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String LT",
 			Input: "'ab.cd' < 'abc.def'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "ab.cd",
@@ -636,7 +636,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String LTE",
 			Input: "'ab.cd' <= 'abc.def'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "ab.cd",
@@ -654,7 +654,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String GT",
 			Input: "'ab.cd' > 'abc.def'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "ab.cd",
@@ -672,7 +672,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String GTE",
 			Input: "'ab.cd' >= 'abc.def'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "ab.cd",
@@ -690,7 +690,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String REQ",
 			Input: "'foobar' =~ 'bar'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foobar",
@@ -710,7 +710,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "String NREQ",
 			Input: "'foobar' !~ 'bar'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foobar",
@@ -727,7 +727,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string additive (#22)",
 			Input: "'foo' == '+'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -745,7 +745,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string multiplicative (#22)",
 			Input: "'foo' == '/'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -763,7 +763,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string exponential (#22)",
 			Input: "'foo' == '**'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -781,7 +781,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string bitwise (#22)",
 			Input: "'foo' == '^'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -799,7 +799,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string shift (#22)",
 			Input: "'foo' == '>>'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -817,7 +817,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Comparator against modifier string ternary (#22)",
 			Input: "'foo' == '?'",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -835,7 +835,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Array membership lowercase",
 			Input: "'foo' in ('foo', 'bar')",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -866,7 +866,7 @@ func TestComparatorParsing(test *testing.T) {
 		{
 			Name:  "Array membership uppercase",
 			Input: "'foo' IN ('foo', 'bar')",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo",
@@ -905,7 +905,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric PLUS",
 			Input: "1 + 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -923,7 +923,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric MINUS",
 			Input: "1 - 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -941,7 +941,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric MULTIPLY",
 			Input: "1 * 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -959,7 +959,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric DIVIDE",
 			Input: "1 / 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -977,7 +977,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric MODULUS",
 			Input: "1 % 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -995,7 +995,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric BITWISE_AND",
 			Input: "1 & 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1013,7 +1013,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric BITWISE_OR",
 			Input: "1 | 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1031,7 +1031,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric BITWISE_XOR",
 			Input: "1 ^ 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1049,7 +1049,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric BITWISE_LSHIFT",
 			Input: "1 << 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1067,7 +1067,7 @@ func TestModifierParsing(test *testing.T) {
 		{
 			Name:  "Numeric BITWISE_RSHIFT",
 			Input: "1 >> 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1093,7 +1093,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Sign prefix",
 			Input: "-1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "-",
@@ -1107,7 +1107,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Sign prefix on variable",
 			Input: "-foo",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "-",
@@ -1121,7 +1121,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Boolean prefix",
 			Input: "!true",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "!",
@@ -1135,7 +1135,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Boolean prefix on variable",
 			Input: "!foo",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "!",
@@ -1149,7 +1149,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Bitwise not prefix",
 			Input: "~1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "~",
@@ -1163,7 +1163,7 @@ func TestPrefixParsing(test *testing.T) {
 		{
 			Name:  "Bitwise not prefix on variable",
 			Input: "~foo",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  PREFIX,
 					Value: "~",
@@ -1185,7 +1185,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "Single escaped parameter",
 			Input: "[foo]",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo",
@@ -1195,7 +1195,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "Single escaped parameter with whitespace",
 			Input: "[foo bar]",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo bar",
@@ -1205,7 +1205,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "Single escaped parameter with escaped closing bracket",
 			Input: "[foo[bar\\]]",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo[bar]",
@@ -1216,7 +1216,7 @@ func TestEscapedParameters(test *testing.T) {
 
 			Name:  "Escaped parameters and unescaped parameters",
 			Input: "[foo] > bar",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo",
@@ -1235,7 +1235,7 @@ func TestEscapedParameters(test *testing.T) {
 
 			Name:  "Unescaped parameter with space",
 			Input: "foo\\ bar > bar",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo bar",
@@ -1253,7 +1253,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "Unescaped parameter with space",
 			Input: "response\\-time > bar",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "response-time",
@@ -1271,7 +1271,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "Parameters with snake_case",
 			Input: "foo_bar > baz_quux",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  VARIABLE,
 					Value: "foo_bar",
@@ -1289,7 +1289,7 @@ func TestEscapedParameters(test *testing.T) {
 		{
 			Name:  "String literal uses backslash to escape",
 			Input: "\"foo\\'bar\"",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  STRING,
 					Value: "foo'bar",
@@ -1306,7 +1306,7 @@ func TestTernaryParsing(test *testing.T) {
 		{
 			Name:  "Ternary after Boolean",
 			Input: "true ? 1",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  BOOLEAN,
 					Value: true,
@@ -1324,7 +1324,7 @@ func TestTernaryParsing(test *testing.T) {
 		{
 			Name:  "Ternary after Comperator",
 			Input: "1 == 0 ? true",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1350,7 +1350,7 @@ func TestTernaryParsing(test *testing.T) {
 		{
 			Name:  "Null coalesce left",
 			Input: "1 ?? 2",
-			Expected: []ExpressionToken{
+			Expected: []Token{
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
@@ -1380,7 +1380,7 @@ func TestOriginalString(test *testing.T) {
 		"[escapedVariable name with spaces] <= unescaped\\-variableName &&" +
 		"modifierTest + 1000 / 2 > (80 * 100 % 2) && true ? true : false"
 
-	expression, err := NewEvaluableExpression(expressionString)
+	expression, err := New(expressionString)
 	if err != nil {
 
 		test.Logf("failed to parse original string test: %v", err)
@@ -1408,7 +1408,7 @@ func TestOriginalVars(test *testing.T) {
 		"modifierTest",
 		"unescaped-variableName"}
 
-	expression, err := NewEvaluableExpression(expressionString)
+	expression, err := New(expressionString)
 	if err != nil {
 
 		test.Logf("failed to parse original var test: %v", err)
@@ -1478,9 +1478,9 @@ func stripUnquotedWhitespace(expression string) string {
 func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) {
 
 	var parsingTest TokenParsingTest
-	var expression *EvaluableExpression
-	var actualTokens []ExpressionToken
-	var actualToken ExpressionToken
+	var expression *Expression
+	var actualTokens []Token
+	var actualToken Token
 	var expectedTokenKindString, actualTokenKindString string
 	var expectedTokenLength, actualTokenLength int
 	var err error
@@ -1497,9 +1497,9 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 	for _, parsingTest = range tokenParsingTests {
 
 		if parsingTest.Functions != nil {
-			expression, err = NewEvaluableExpressionWithFunctions(parsingTest.Input, parsingTest.Functions)
+			expression, err = NewWithFunctions(parsingTest.Input, parsingTest.Functions)
 		} else {
-			expression, err = NewEvaluableExpression(parsingTest.Input)
+			expression, err = New(parsingTest.Input)
 		}
 
 		if err != nil {

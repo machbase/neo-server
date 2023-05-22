@@ -7,7 +7,7 @@ import (
 // Serves as a "water test" to give an idea of the general overhead of parsing
 func BenchmarkSingleParse(bench *testing.B) {
 	for i := 0; i < bench.N; i++ {
-		NewEvaluableExpression("1")
+		New("1")
 	}
 }
 
@@ -15,7 +15,7 @@ func BenchmarkSingleParse(bench *testing.B) {
 // This is the "expected" use case of govaluate.
 func BenchmarkSimpleParse(bench *testing.B) {
 	for i := 0; i < bench.N; i++ {
-		NewEvaluableExpression("(requests_made * requests_succeeded / 100) >= 90")
+		New("(requests_made * requests_succeeded / 100) >= 90")
 	}
 }
 
@@ -28,13 +28,13 @@ func BenchmarkFullParse(bench *testing.B) {
 		"[escapedVariable name with spaces] <= unescaped\\-variableName &&" +
 		"modifierTest + 1000 / 2 > (80 * 100 % 2)"
 	for i := 0; i < bench.N; i++ {
-		NewEvaluableExpression(expression)
+		New(expression)
 	}
 }
 
 // Benchmarks the bare-minimum evaluation time
 func BenchmarkEvaluationSingle(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("1")
+	expression, _ := New("1")
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(nil)
@@ -43,7 +43,7 @@ func BenchmarkEvaluationSingle(bench *testing.B) {
 
 // Benchmarks evaluation times of literals (no variables, no modifiers)
 func BenchmarkEvaluationNumericLiteral(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("(2) > (1)")
+	expression, _ := New("(2) > (1)")
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(nil)
@@ -52,7 +52,7 @@ func BenchmarkEvaluationNumericLiteral(bench *testing.B) {
 
 // Benchmarks evaluation times of literals with modifiers
 func BenchmarkEvaluationLiteralModifiers(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("(2) + (2) == (4)")
+	expression, _ := New("(2) + (2) == (4)")
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(nil)
@@ -60,7 +60,7 @@ func BenchmarkEvaluationLiteralModifiers(bench *testing.B) {
 }
 
 func BenchmarkEvaluationParameter(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("requests_made")
+	expression, _ := New("requests_made")
 	parameters := map[string]interface{}{
 		"requests_made": 99.0,
 	}
@@ -72,7 +72,7 @@ func BenchmarkEvaluationParameter(bench *testing.B) {
 
 // Benchmarks evaluation times of parameters
 func BenchmarkEvaluationParameters(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("requests_made > requests_succeeded")
+	expression, _ := New("requests_made > requests_succeeded")
 	parameters := map[string]interface{}{
 		"requests_made":      99.0,
 		"requests_succeeded": 90.0,
@@ -85,7 +85,7 @@ func BenchmarkEvaluationParameters(bench *testing.B) {
 
 // Benchmarks evaluation times of parameters + literals with modifiers
 func BenchmarkEvaluationParametersModifiers(bench *testing.B) {
-	expression, _ := NewEvaluableExpression("(requests_made * requests_succeeded / 100) >= 90")
+	expression, _ := New("(requests_made * requests_succeeded / 100) >= 90")
 	parameters := map[string]interface{}{
 		"requests_made":      99.0,
 		"requests_succeeded": 90.0,
@@ -107,7 +107,7 @@ func BenchmarkComplexExpression(bench *testing.B) {
 		"[escapedVariable name with spaces] <= unescaped\\-variableName &&" +
 		"modifierTest + 1000 / 2 > (80 * 100 % 2)"
 
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	parameters := map[string]interface{}{
 		"escapedVariable name with spaces": 99.0,
 		"unescaped\\-variableName":         90.0,
@@ -127,7 +127,7 @@ func BenchmarkComplexExpression(bench *testing.B) {
 func BenchmarkRegexExpression(bench *testing.B) {
 	expressionString := "(foo !~ bar) && (foobar =~ oba)"
 
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	parameters := map[string]interface{}{
 		"foo": "foo",
 		"bar": "bar",
@@ -146,7 +146,7 @@ func BenchmarkRegexExpression(bench *testing.B) {
 // Also demonstrates that (generally) compiling a regex at evaluation-time takes an order of magnitude more time than pre-compiling.
 func BenchmarkConstantRegexExpression(bench *testing.B) {
 	expressionString := "(foo !~ '[bB]az') && (bar =~ '[bB]ar')"
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 
 	parameters := map[string]interface{}{
 		"foo": "foo",
@@ -161,7 +161,7 @@ func BenchmarkConstantRegexExpression(bench *testing.B) {
 
 func BenchmarkAccessors(bench *testing.B) {
 	expressionString := "foo.Int"
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(fooFailureParameters)
@@ -170,7 +170,7 @@ func BenchmarkAccessors(bench *testing.B) {
 
 func BenchmarkAccessorMethod(bench *testing.B) {
 	expressionString := "foo.Func()"
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(fooFailureParameters)
@@ -179,7 +179,7 @@ func BenchmarkAccessorMethod(bench *testing.B) {
 
 func BenchmarkAccessorMethodParams(bench *testing.B) {
 	expressionString := "foo.FuncArgStr('bonk')"
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(fooFailureParameters)
@@ -188,7 +188,7 @@ func BenchmarkAccessorMethodParams(bench *testing.B) {
 
 func BenchmarkNestedAccessors(bench *testing.B) {
 	expressionString := "foo.Nested.Funk"
-	expression, _ := NewEvaluableExpression(expressionString)
+	expression, _ := New(expressionString)
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
 		expression.Evaluate(fooFailureParameters)

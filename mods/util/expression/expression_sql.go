@@ -17,7 +17,7 @@ import (
 // Boolean values are considered to be "1" for true, "0" for false.
 //
 // Times are formatted according to this.QueryDateFormat.
-func (ee EvaluableExpression) ToSQLQuery() (string, error) {
+func (ee Expression) ToSQLQuery() (string, error) {
 	stream := newTokenStream(ee.tokens)
 	transactions := new(expressionOutputStream)
 	for stream.hasNext() {
@@ -30,7 +30,7 @@ func (ee EvaluableExpression) ToSQLQuery() (string, error) {
 	return transactions.createString(" "), nil
 }
 
-func (ee EvaluableExpression) findNextSQLString(stream *tokenStream, transactions *expressionOutputStream) (string, error) {
+func (ee Expression) findNextSQLString(stream *tokenStream, transactions *expressionOutputStream) (string, error) {
 	var ret string
 	token := stream.next()
 
