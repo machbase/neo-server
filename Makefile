@@ -24,7 +24,8 @@ test-base: tmpdir
 		./mods/util \
 		./mods/util/glob \
 		./mods/util/ini \
-		./mods/util/expression \
+		./mods/expression \
+		./mods/tagql \
 		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \
