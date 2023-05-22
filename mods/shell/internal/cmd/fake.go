@@ -36,7 +36,7 @@ const helpFake = `  fake [options] [table]
     -p,--phase <float,...>       phase (default: 0)
     -b,--bias <float>            bias (default: 0)
     -r,--sampling-rate <int>     sampling rate per sec. (default: 10)
-    -z,--noise <float>           max noise amplitude. (default: 0 no-noise)
+    -z,--noise <float>           possible max amplitude of noise (default: 0 no-noise)
 `
 
 /*
