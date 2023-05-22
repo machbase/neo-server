@@ -125,9 +125,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 
 		// regular variable - or function?
 		if unicode.IsLetter(character) {
-
 			tokenString = readTokenUntilFalse(stream, isVariableName)
-
 			tokenValue = tokenString
 			kind = VARIABLE
 
@@ -147,7 +145,6 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 
 			// textual operator?
 			if tokenValue == "in" || tokenValue == "IN" {
-
 				// force lower case for consistency
 				tokenValue = "in"
 				kind = COMPARATOR
@@ -228,35 +225,30 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Expre
 		if state.canTransitionTo(PREFIX) {
 			_, found = prefixSymbols[tokenString]
 			if found {
-
 				kind = PREFIX
 				break
 			}
 		}
 		_, found = modifierSymbols[tokenString]
 		if found {
-
 			kind = MODIFIER
 			break
 		}
 
 		_, found = logicalSymbols[tokenString]
 		if found {
-
 			kind = LOGICALOP
 			break
 		}
 
 		_, found = comparatorSymbols[tokenString]
 		if found {
-
 			kind = COMPARATOR
 			break
 		}
 
 		_, found = ternarySymbols[tokenString]
 		if found {
-
 			kind = TERNARY
 			break
 		}

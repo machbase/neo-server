@@ -46,11 +46,8 @@ func NewEvaluableExpression(expression string) (*EvaluableExpression, error) {
 // Similar to [NewEvaluableExpression], except that instead of a string, an already-tokenized expression is given.
 // This is useful in cases where you may be generating an expression automatically, or using some other parser (e.g., to parse from a query language)
 func NewEvaluableExpressionFromTokens(tokens []ExpressionToken) (*EvaluableExpression, error) {
-
-	var ret *EvaluableExpression
 	var err error
-
-	ret = new(EvaluableExpression)
+	ret := new(EvaluableExpression)
 	ret.QueryDateFormat = isoDateFormat
 
 	err = checkBalance(tokens)
@@ -80,10 +77,8 @@ func NewEvaluableExpressionFromTokens(tokens []ExpressionToken) (*EvaluableExpre
 // Similar to [NewEvaluableExpression], except enables the use of user-defined functions.
 // Functions passed into this will be available to the expression.
 func NewEvaluableExpressionWithFunctions(expression string, functions map[string]ExpressionFunction) (*EvaluableExpression, error) {
-	var ret *EvaluableExpression
 	var err error
-
-	ret = new(EvaluableExpression)
+	ret := new(EvaluableExpression)
 	ret.QueryDateFormat = isoDateFormat
 	ret.inputExpression = expression
 
@@ -116,7 +111,7 @@ func NewEvaluableExpressionWithFunctions(expression string, functions map[string
 	return ret, nil
 }
 
-// Same as `Eval`, but automatically wraps a map of parameters into a `govalute.Parameters` structure.
+// Same as `Eval`, but automatically wraps a map of parameters into a `Parameters` structure.
 func (ee EvaluableExpression) Evaluate(parameters map[string]any) (any, error) {
 	if parameters == nil {
 		return ee.Eval(nil)
@@ -124,17 +119,15 @@ func (ee EvaluableExpression) Evaluate(parameters map[string]any) (any, error) {
 	return ee.Eval(MapParameters(parameters))
 }
 
-/*
-Runs the entire expression using the given [parameters].
-e.g., If the expression contains a reference to the variable "foo", it will be taken from `parameters.Get("foo")`.
-
-This function returns errors if the combination of expression and parameters cannot be run,
-such as if a variable in the expression is not present in [parameters].
-
-In all non-error circumstances, this returns the single value result of the expression and parameters given.
-e.g., if the expression is "1 + 1", this will return 2.0.
-e.g., if the expression is "foo + 1" and parameters contains "foo" = 2, this will return 3.0
-*/
+// Runs the entire expression using the given [parameters].
+// e.g., If the expression contains a reference to the variable "foo", it will be taken from `parameters.Get("foo")`.
+//
+// This function returns errors if the combination of expression and parameters cannot be run,
+// such as if a variable in the expression is not present in [parameters].
+//
+// In all non-error circumstances, this returns the single value result of the expression and parameters given.
+// e.g., if the expression is "1 + 1", this will return 2.0.
+// e.g., if the expression is "foo + 1" and parameters contains "foo" = 2, this will return 3.0
 func (ee EvaluableExpression) Eval(parameters Parameters) (any, error) {
 	if ee.evaluationStages == nil {
 		return nil, nil
@@ -216,7 +209,6 @@ func (ee EvaluableExpression) evaluateStage(stage *evaluationStage, parameters P
 }
 
 func typeCheck(check stageTypeCheck, value any, symbol OperatorSymbol, format string) error {
-
 	if check == nil {
 		return nil
 	}

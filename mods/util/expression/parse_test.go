@@ -277,7 +277,6 @@ func TestConstantParsing(test *testing.T) {
 				{
 					Kind: CLAUSE,
 				},
-
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -295,16 +294,13 @@ func TestConstantParsing(test *testing.T) {
 				{
 					Kind: SEPARATOR,
 				},
-
 				{
 					Kind:  NUMERIC,
 					Value: 1.0,
 				},
-
 				{
 					Kind: SEPARATOR,
 				},
-
 				{
 					Kind:  FUNCTION,
 					Value: noop,
@@ -319,7 +315,6 @@ func TestConstantParsing(test *testing.T) {
 				{
 					Kind: CLAUSE_CLOSE,
 				},
-
 				{
 					Kind: CLAUSE_CLOSE,
 				},

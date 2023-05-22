@@ -7,19 +7,16 @@ import "fmt"
 type Parameters interface {
 	// Get gets the parameter of the given name, or an error if the parameter is unavailable.
 	// Failure to find the given parameter should be indicated by returning an error.
-	Get(name string) (interface{}, error)
+	Get(name string) (any, error)
 }
 
-type MapParameters map[string]interface{}
+type MapParameters map[string]any
 
-func (p MapParameters) Get(name string) (interface{}, error) {
-
+func (p MapParameters) Get(name string) (any, error) {
 	value, found := p[name]
-
 	if !found {
 		return nil, fmt.Errorf("no parameter '%s' found", name)
 	}
-
 	return value, nil
 }
 
@@ -29,16 +26,15 @@ type sanitizedParameters struct {
 	orig Parameters
 }
 
-func (p sanitizedParameters) Get(key string) (interface{}, error) {
+func (p sanitizedParameters) Get(key string) (any, error) {
 	value, err := p.orig.Get(key)
 	if err != nil {
 		return nil, err
 	}
-
 	return castToFloat64(value), nil
 }
 
-func castToFloat64(value interface{}) interface{} {
+func castToFloat64(value any) any {
 	switch v := value.(type) {
 	case uint8:
 		return float64(v)

@@ -25,7 +25,6 @@ func TestBasicEvaluation(test *testing.T) {
 }
 
 func TestParameterEvaluation(test *testing.T) {
-
 	expression, err := NewEvaluableExpression("foo > 0")
 	if err != nil {
 		test.Log(err)

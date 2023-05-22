@@ -245,7 +245,6 @@ var validLexerStates = []lexerState{
 		isEOF:      false,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			NUMERIC,
 			BOOLEAN,
 			VARIABLE,
