@@ -49,6 +49,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 
 	// log.Printf("req : %+v\n", req)
 
+	// api 요청 시 table 확인?
 	once.Do(func() {
 		exists, err := do.ExistsTable(svr.db, TableName)
 		if err != nil {
@@ -88,7 +89,6 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		err = appender.Append(data.Tag, data.Ts, data.Val)
 		if err != nil {
 			rsp.Reason = err.Error()
-			svr.log.Info("append error : ", err.Error())
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
