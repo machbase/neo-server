@@ -37,5 +37,10 @@ func TagStat(db spi.Database, table string, tag string) (*TagStatInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// if nfo.MinValueTime.IsZero() && nfo.MinValue == 0 {
+
+	// }
+
 	return nfo, nil
 }

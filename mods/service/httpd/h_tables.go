@@ -127,6 +127,8 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 // @Description Get tag stat
 // @Param       table         path string true "table name"
 // @Param       tag           path string true "tag name"
+// @Param       timeformat    query string false "timeformat (ns, us, ms, s, timeformat)"
+// @Param       tz            query string false "timezone"
 // @Success     200  {object}  msg.QueryResponse
 // @Failure     500 {object}  msg.QueryResponse
 // @Router      /web/api/tables/:table/tags/:tag/stat [get]
@@ -135,10 +137,13 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	table := strings.ToUpper(ctx.Param("table"))
 	tag := ctx.Param("tag")
+	timeformat := strString(ctx.Query("timeformat"), "ns")
+	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
 
 	nfo, err := do.TagStat(svr.db, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
+		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -161,14 +166,49 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		},
 		Rows: [][]any{},
 	}
-	data.Rows = append(data.Rows, []any{
-		1,
-		nfo.Name, nfo.RowCount,
-		nfo.MinTime, nfo.MaxTime,
-		nfo.MinValue, nfo.MinValueTime,
-		nfo.MaxValue, nfo.MaxValueTime,
-		nfo.RecentRowTime,
-	})
+
+	timeToJson := func(v time.Time) any {
+		switch timeformat {
+		case "ns":
+			return v.UnixNano()
+		case "ms":
+			return v.UnixMilli()
+		case "us":
+			return v.UnixMicro()
+		case "s":
+			return v.Unix()
+		default:
+			return v.In(timeLocation).Format(timeformat)
+		}
+	}
+
+	vs := []any{1, nfo.Name, nfo.RowCount}
+	if nfo.MinTime.IsZero() {
+		vs = append(vs, nil)
+	} else {
+		vs = append(vs, timeToJson(nfo.MinTime))
+	}
+	if nfo.MaxTime.IsZero() {
+		vs = append(vs, nil)
+	} else {
+		vs = append(vs, timeToJson(nfo.MaxTime))
+	}
+	if nfo.MinValueTime.IsZero() {
+		vs = append(vs, nil, nil)
+	} else {
+		vs = append(vs, nfo.MinValue, timeToJson(nfo.MinValueTime))
+	}
+	if nfo.MaxValueTime.IsZero() {
+		vs = append(vs, nil, nil)
+	} else {
+		vs = append(vs, nfo.MaxValue, timeToJson(nfo.MaxValueTime))
+	}
+	if nfo.RecentRowTime.IsZero() {
+		vs = append(vs, nil)
+	} else {
+		vs = append(vs, timeToJson(nfo.RecentRowTime))
+	}
+	data.Rows = append(data.Rows, vs)
 
 	rsp.Elapse = time.Since(tick).String()
 	rsp.Data = data
