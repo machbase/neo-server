@@ -67,12 +67,21 @@ func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 // neo-shell address
 func OptionNeoShellAddress(addrs ...string) Option {
 	return func(s *httpd) {
+		candidates := []string{}
 		for _, addr := range addrs {
-			if s.neoShellAddress == "" {
+			if strings.HasPrefix(s.neoShellAddress, "tcp://127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "tcp://localhost:") {
 				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
-			} else if strings.HasPrefix(s.neoShellAddress, "127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "localhost:") {
-				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+				// if loopback is available, use it for web-terminal
+				// eliminate other candiates
+				candidates = candidates[:0]
+				break
+			} else if strings.HasPrefix(addr, "tcp://") {
+				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
 			}
+		}
+		if len(candidates) > 0 {
+			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
+			s.neoShellAddress = candidates[0]
 		}
 	}
 }
