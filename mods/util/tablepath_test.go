@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/expression"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +74,10 @@ func TestTagPath(t *testing.T) {
 }
 
 func testTagPath(t *testing.T, tc CaseTagPath) {
-	p, err := ParseTagPath(tc.path)
+	p, err := ParseTagPathWithFunctions(tc.path, map[string]expression.Function{
+		"kalman": func(args ...any) (any, error) { return nil, nil },
+		"fft":    func(args ...any) (any, error) { return nil, nil },
+	})
 	if tc.expect == nil {
 		require.NotNil(t, err)
 		require.Equal(t, err.Error(), "invalid syntax")

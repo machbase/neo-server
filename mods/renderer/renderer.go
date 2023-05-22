@@ -11,9 +11,7 @@ import (
 )
 
 type ChartQuery struct {
-	Table        string
-	Tag          string
-	Field        string
+	TagPath      *util.TagPath
 	RangeFunc    func(db spi.Database) (time.Time, time.Time)
 	Label        string
 	TimeLocation *time.Location
@@ -21,16 +19,10 @@ type ChartQuery struct {
 }
 
 func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
-	if strings.ToUpper(dq.Field) == "VALUE" {
-		dq.Label = strings.ToLower(dq.Tag)
-	} else {
-		dq.Label = strings.ToLower(fmt.Sprintf("%s-%s", dq.Tag, dq.Field))
-	}
 	rangeFrom, rangeTo := dq.RangeFunc(db)
-
-	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, dq.Field, dq.Table)
-
-	rows, err := db.Query(lastSql, dq.Tag, rangeFrom, rangeTo)
+	fields := strings.Join(dq.TagPath.Field.Columns, ",")
+	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, fields, dq.TagPath.Table)
+	rows, err := db.Query(lastSql, dq.TagPath.Tag, rangeFrom, rangeTo)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +46,11 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 			timeOffset = ts
 			firstTime = true
 		}
+		value, err = dq.TagPath.Field.Eval(value)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
 
 		label := ""
 		if dq.TimeRange < 10*time.Second {
@@ -64,7 +61,6 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 		} else {
 			label = ts.In(dq.TimeLocation).Format("15:04:05")
 		}
-		values = append(values, value)
 		labels = append(labels, label)
 		idx++
 	}
@@ -75,23 +71,14 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 	timeformat = util.GetTimeformat(timeformat)
 	queries := make([]*ChartQuery, len(tagPaths))
 	for i, path := range tagPaths {
-		// path syntax: <table>/<tag>#<column>
-		toks := strings.SplitN(path, "/", 2)
-		if len(toks) == 2 {
-			queries[i] = &ChartQuery{}
-			queries[i].Table = strings.ToUpper(toks[0])
-		} else {
-			return nil, fmt.Errorf("table name not found in '%s'", path)
+		// path syntax: <table>/<tag>#(<column> expression)
+		tagPath, err := util.ParseTagPath(path)
+		if err != nil {
+			return nil, err
 		}
-		toks = strings.SplitN(toks[1], "#", 2)
-		if len(toks) == 2 {
-			queries[i].Tag = toks[0]
-			queries[i].Field = toks[1]
-		} else {
-			queries[i].Tag = toks[0]
-			queries[i].Field = "VALUE"
-		}
-
+		queries[i] = &ChartQuery{}
+		queries[i].TagPath = tagPath
+		queries[i].Label = strings.Join(tagPath.Field.Columns, "-")
 		queries[i].TimeLocation = tz
 		queries[i].TimeRange = cmdRange
 
@@ -102,7 +89,7 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 			if cmdTimestamp == "now" || cmdTimestamp == "" {
 				timestamp = time.Now()
 			} else if cmdTimestamp == "last" {
-				row := db.QueryRow(fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].Table), queries[i].Tag)
+				row := db.QueryRow(fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].TagPath.Table), queries[i].TagPath.Tag)
 				if err := row.Scan(&timestamp); err != nil {
 					timestamp = time.Now()
 				}
