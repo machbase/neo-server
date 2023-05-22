@@ -18,7 +18,7 @@ func (ls lexerState) canTransitionTo(kind TokenKind) bool {
 	return false
 }
 
-func (ls lexerState) checkExpressionSyntax(tokens []ExpressionToken) error {
+func checkExpressionSyntax(tokens []ExpressionToken) error {
 	var lastToken ExpressionToken
 	var err error
 	state := validLexerStates[0]
@@ -58,13 +58,11 @@ func getLexerStateForToken(kind TokenKind) (lexerState, error) {
 // lexer states.
 // Constant for all purposes except compiler.
 var validLexerStates = []lexerState{
-
-	lexerState{
+	{
 		kind:       UNKNOWN,
 		isEOF:      false,
 		isNullable: true,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
@@ -77,14 +75,11 @@ var validLexerStates = []lexerState{
 			CLAUSE,
 		},
 	},
-
-	lexerState{
-
+	{
 		kind:       CLAUSE,
 		isEOF:      false,
 		isNullable: true,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
@@ -98,14 +93,11 @@ var validLexerStates = []lexerState{
 			CLAUSE_CLOSE,
 		},
 	},
-
-	lexerState{
-
+	{
 		kind:       CLAUSE_CLOSE,
 		isEOF:      true,
 		isNullable: true,
 		validNextKinds: []TokenKind{
-
 			COMPARATOR,
 			MODIFIER,
 			NUMERIC,
@@ -121,14 +113,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-
-	lexerState{
-
+	{
 		kind:       NUMERIC,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -137,13 +126,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       BOOLEAN,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -152,13 +139,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       STRING,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -167,13 +152,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       TIME,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -181,13 +164,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       PATTERN,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -195,13 +176,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       VARIABLE,
 		isEOF:      true,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			MODIFIER,
 			COMPARATOR,
 			LOGICALOP,
@@ -210,13 +189,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       MODIFIER,
 		isEOF:      false,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			VARIABLE,
@@ -228,13 +205,11 @@ var validLexerStates = []lexerState{
 			CLAUSE_CLOSE,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       COMPARATOR,
 		isEOF:      false,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
@@ -248,13 +223,11 @@ var validLexerStates = []lexerState{
 			PATTERN,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       LOGICALOP,
 		isEOF:      false,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
@@ -267,8 +240,7 @@ var validLexerStates = []lexerState{
 			CLAUSE_CLOSE,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       PREFIX,
 		isEOF:      false,
 		isNullable: false,
@@ -283,14 +255,11 @@ var validLexerStates = []lexerState{
 			CLAUSE_CLOSE,
 		},
 	},
-
-	lexerState{
-
+	{
 		kind:       TERNARY,
 		isEOF:      false,
 		isNullable: false,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
@@ -303,8 +272,7 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       FUNCTION,
 		isEOF:      false,
 		isNullable: false,
@@ -312,8 +280,7 @@ var validLexerStates = []lexerState{
 			CLAUSE,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       ACCESSOR,
 		isEOF:      true,
 		isNullable: false,
@@ -327,13 +294,11 @@ var validLexerStates = []lexerState{
 			SEPARATOR,
 		},
 	},
-	lexerState{
-
+	{
 		kind:       SEPARATOR,
 		isEOF:      false,
 		isNullable: true,
 		validNextKinds: []TokenKind{
-
 			PREFIX,
 			NUMERIC,
 			BOOLEAN,
