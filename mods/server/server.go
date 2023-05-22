@@ -109,6 +109,7 @@ type HttpConfig struct {
 
 	EnableTokenAuth bool
 	DebugMode       bool
+	ExperimentMode  bool
 }
 
 type MqttConfig struct {
@@ -387,6 +388,7 @@ func (s *svr) Start() error {
 		opts := []httpd.Option{
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
+			httpd.OptionExperimentMode(s.conf.Http.ExperimentMode),
 		}
 		if s.conf.Http.DebugMode {
 			opts = append(opts, httpd.OptionDebugMode())

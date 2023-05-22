@@ -55,11 +55,16 @@ type LoginReq struct {
 }
 
 type LoginRsp struct {
-	Success      bool   `json:"success"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	Reason       string `json:"reason"`
-	Elapse       string `json:"elapse"`
+	Success      bool        `json:"success"`
+	AccessToken  string      `json:"accessToken"`
+	RefreshToken string      `json:"refreshToken"`
+	Reason       string      `json:"reason"`
+	Elapse       string      `json:"elapse"`
+	Options      *WebOptions `json:"option,omitempty"`
+}
+
+type WebOptions struct {
+	ExperimentMode bool `json:"experimentMode"`
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {
@@ -132,6 +137,11 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	rsp.Reason = "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	if svr.experimentMode {
+		rsp.Options = &WebOptions{
+			ExperimentMode: svr.experimentMode,
+		}
+	}
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -216,6 +226,11 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	if svr.experimentMode {
+		rsp.Options = &WebOptions{
+			ExperimentMode: svr.experimentMode,
+		}
+	}
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)

@@ -86,6 +86,13 @@ func OptionNeoShellAddress(addrs ...string) Option {
 	}
 }
 
+// experiement features
+func OptionExperimentMode(enable bool) Option {
+	return func(s *httpd) {
+		s.experimentMode = enable
+	}
+}
+
 // Handler
 func OptionHandler(prefix string, handler HandlerType) Option {
 	return func(s *httpd) {
@@ -122,7 +129,8 @@ type httpd struct {
 	neoShellAddress string
 	neoShellAccount map[string]string
 
-	debugMode bool
+	debugMode      bool
+	experimentMode bool
 }
 
 type HandlerType string
