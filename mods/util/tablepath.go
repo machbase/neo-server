@@ -2,42 +2,21 @@ package util
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/machbase/neo-server/mods/util/expression"
 )
 
 type TagPath struct {
 	Table string
 	Tag   string
-	Term  TagPathTerm
+	Field TagPathField
 }
 
-type TagPathTerm struct {
-	Column string
-	Func   string
-	Args   []TagPathTerm
-}
-
-func (term *TagPathTerm) IsEqual(other *TagPathTerm) bool {
-	if term.Column != other.Column {
-		fmt.Printf("column %s %s\n", term.Column, other.Column)
-		return false
-	}
-	if term.Func != other.Func {
-		fmt.Printf("fybc %s %s\n", term.Func, other.Func)
-		return false
-	}
-	if len(term.Args) != len(other.Args) {
-		fmt.Printf("argslen\n\t%s\n\t%s\n", term.Args, other.Args)
-		return false
-	}
-	for i, a := range term.Args {
-		if !a.IsEqual(&other.Args[i]) {
-			return false
-		}
-	}
-	return true
+type TagPathField struct {
+	Columns []string
+	expr    *expression.Expression
 }
 
 var regexpTagPath = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -63,48 +42,23 @@ func ParseTagPath(path string) (*TagPath, error) {
 	r := &TagPath{}
 	r.Table = strings.ToUpper(strings.TrimSpace(toks[0][1]))
 	termParts := strings.SplitN(toks[0][2], "#", 2)
-	if len(termParts) == 1 {
-		r.Tag = termParts[0]
-		r.Term = TagPathTerm{Column: "VALUE"}
-		return r, nil
-	}
-
 	r.Tag = termParts[0]
-	args := parseTerm(termParts[1])
-	if len(args) == 1 {
-		r.Term = args[0]
-	}
+	r.Field = TagPathField{}
 
-	return r, nil
-}
-
-var regexpTagPathTerm = regexp.MustCompile(`([a-zA-Z0-9_]+)\s*\((.+)\)`)
-
-func parseTerm(part string) []TagPathTerm {
-	toks := regexpTagPathTerm.FindAllStringSubmatch(part, -1)
-	if len(toks) != 1 {
-		argToks := strings.Split(part, ",")
-		if len(argToks) < 2 {
-			return []TagPathTerm{{Column: strings.ToUpper(strings.TrimSpace(argToks[0]))}}
-		} else {
-			arr := []TagPathTerm{{Column: strings.ToUpper(strings.TrimSpace(argToks[0]))}}
-			for _, a := range argToks[1:] {
-				r := parseTerm(a)
-				if len(r) == 0 {
-					continue
-				}
-				arr = append(arr, r[0])
-			}
-			return arr
+	if len(termParts) == 1 {
+		r.Field.Columns = []string{"VALUE"}
+	} else if len(termParts) == 2 {
+		expr, err := expression.NewWithFunctions(termParts[1], map[string]expression.Function{
+			"kalman": func(args ...any) (any, error) { return nil, nil },
+			"fft":    func(args ...any) (any, error) { return nil, nil },
+		})
+		if err != nil {
+			return nil, err
 		}
+		r.Field.Columns = expr.Vars()
+		r.Field.expr = expr
 	}
-
-	if len(toks[0]) == 3 {
-		fname := toks[0][1]
-		args := parseTerm(toks[0][2])
-		return []TagPathTerm{{Func: strings.ToUpper(strings.TrimSpace(fname)), Args: args}}
-	}
-	return []TagPathTerm{}
+	return r, nil
 }
 
 type WritePath struct {

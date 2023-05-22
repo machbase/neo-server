@@ -26,48 +26,49 @@ func TestTagPath(t *testing.T) {
 		expect: &TagPath{
 			Table: "TABLE_1",
 			Tag:   "/",
-			Term:  TagPathTerm{Column: "VALUE"}},
+			Field: TagPathField{Columns: []string{"VALUE"}}},
 	})
 	testTagPath(t, CaseTagPath{
 		path: "table_1/tag_1",
 		expect: &TagPath{
 			Table: "TABLE_1",
 			Tag:   "tag_1",
-			Term:  TagPathTerm{Column: "VALUE"}},
+			Field: TagPathField{Columns: []string{"VALUE"}}},
 	})
 	testTagPath(t, CaseTagPath{
 		path: "table_1/tag_1#v1",
 		expect: &TagPath{
 			Table: "TABLE_1",
 			Tag:   "tag_1",
-			Term:  TagPathTerm{Column: "V1"}},
+			Field: TagPathField{Columns: []string{"v1"}}},
+	})
+	testTagPath(t, CaseTagPath{
+		path: "table_1/tag_1#v1 + v2",
+		expect: &TagPath{
+			Table: "TABLE_1",
+			Tag:   "tag_1",
+			Field: TagPathField{Columns: []string{"v1", "v2"}}},
+	})
+	testTagPath(t, CaseTagPath{
+		path: "table_1/tag_1#value*0.01",
+		expect: &TagPath{
+			Table: "TABLE_1",
+			Tag:   "tag_1",
+			Field: TagPathField{Columns: []string{"value"}}},
 	})
 	testTagPath(t, CaseTagPath{
 		path: "table_1/tag_1#kalman(value)",
 		expect: &TagPath{
 			Table: "TABLE_1",
 			Tag:   "tag_1",
-			Term:  TagPathTerm{Func: "KALMAN", Args: []TagPathTerm{{Column: "VALUE"}}}},
+			Field: TagPathField{Columns: []string{"value"}}},
 	})
 	testTagPath(t, CaseTagPath{
 		path: "table_1/tag_1#fft( kalman(value) )",
 		expect: &TagPath{
 			Table: "TABLE_1",
 			Tag:   "tag_1",
-			Term: TagPathTerm{
-				Func: "FFT",
-				Args: []TagPathTerm{
-					{
-						Func: "KALMAN",
-						Args: []TagPathTerm{
-							{
-								Column: "VALUE",
-							},
-						},
-					},
-				},
-			},
-		},
+			Field: TagPathField{Columns: []string{"value"}}},
 	})
 }
 
@@ -82,7 +83,10 @@ func testTagPath(t *testing.T, tc CaseTagPath) {
 	require.NotNil(t, p)
 	require.Equal(t, tc.expect.Table, p.Table)
 	require.Equal(t, tc.expect.Tag, p.Tag)
-	require.True(t, tc.expect.Term.IsEqual(&p.Term))
+	require.Equal(t, len(tc.expect.Field.Columns), len(p.Field.Columns))
+	for i, c := range tc.expect.Field.Columns {
+		require.Equal(t, c, p.Field.Columns[i])
+	}
 }
 
 type CaseWritePath struct {
