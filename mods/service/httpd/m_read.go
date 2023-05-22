@@ -40,7 +40,20 @@ type MachbaseResult struct {
 	ErrorCode    int              `json:"errorCode"`
 	ErrorMessage string           `json:"errorMessage"`
 	Columns      []MachbaseColumn `json:"columns"`
-	Data         [][]interface{}  `json:"data"`
+	Data         [][]interface{}  `json:"data"` // chqd <----> lake , data struct =  map[string]interface{}
+}
+
+type MetaResult struct {
+	// ErrorCode    int                      `json:"errorCode"`
+	// ErrorMessage string                   `json:"errorMessage"`
+	// Columns      []MachbaseColumn         `json:"columns"`
+	Data []map[string]interface{} `json:"data"`
+}
+
+type ResSet struct {
+	Status  string      `json:"status"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 type MachbaseColumn struct {
@@ -50,8 +63,10 @@ type MachbaseColumn struct {
 }
 
 type SelectReturn struct {
-	Columns []MachbaseColumn `json:"columns"`
-	Rows    [][]interface{}  `json:"rows"`
+	CalcMode string           `json:"calc_mode"`
+	Columns  []MachbaseColumn `json:"columns"`
+	Rows     [][]interface{}  `json:"rows"`
+	Samples  interface{}      `json:"samples"`
 }
 
 type (
@@ -81,7 +96,7 @@ type (
 		Collength int    `json:"col_length"`
 	}
 	SelectTagList struct {
-		TagList [][]interface{} `json:"tag"`
+		TagList []map[string]interface{} `json:"tag"`
 		// TagList []map[string]interface{} `json:"tag"`
 	}
 )
@@ -92,7 +107,8 @@ var lakeSvr = lakesvr{}
 
 func init() {
 
-	// 원래는 CreateLake를 통해 값 수신, 테스트를 위해 임시로
+	lakeSvr.Info = new(LakeInfo)
+	// 원래는 CreateLake를 통해 값 수신, 임시 테스트
 	lakeSvr.Info.TagExtCol = append(lakeSvr.Info.TagExtCol, Schema{
 		ColName:   "name",
 		ColType:   "varchar",
@@ -108,6 +124,7 @@ func init() {
 		ColType:   "double",
 		Collength: 0,
 	})
+	SetColumnList()
 
 	// =========== 임시 테스트 ================
 	localPlan = os.Getenv("PLAN_NAME")
@@ -179,11 +196,11 @@ func SetColumnList() {
 	}
 }
 
-func (svr *httpd) handleLakeGetTags(ctx *gin.Context) {
+func (svr *httpd) handleLakeGetTagList(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
-	svr.log.Trace(trackId, "start handleLakeGetTags()")
+	svr.log.Trace(trackId, "start handleLakeGetTagList()")
 
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	rsp := ResSet{Status: "false"}
 	hint := ""
 
 	name := ctx.Query("name")
@@ -207,7 +224,6 @@ func (svr *httpd) handleLakeGetTags(ctx *gin.Context) {
 	if limit != "" && limit != "0" {
 		check := svr.checkSelectTagLimit(ctx, limit, currentPlan.limitSelectTag)
 		if check != "" {
-			rsp.Reason = check
 			ctx.JSON(http.StatusPreconditionFailed, rsp)
 			return
 		}
@@ -222,13 +238,13 @@ func (svr *httpd) handleLakeGetTags(ctx *gin.Context) {
 
 	data, err := svr.selectTagMetaList(ctx, sqlText)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Message = err.Error()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
 
-	rsp.Success = true
-	rsp.Reason = "get tag meta list success"
+	rsp.Status = "success"
+	rsp.Message = "get tag meta list success"
 	rsp.Data = data
 
 	svr.log.Trace(trackId, "list tag meta success")
@@ -236,14 +252,14 @@ func (svr *httpd) handleLakeGetTags(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) selectTagMetaList(ctx *gin.Context, sqlText string) (SelectTagList, error) {
-	result := SelectTagList{}
-
-	dbData, err := svr.getData(sqlText, 1)
-	if err == nil {
-		result.TagList = dbData.Data
+func (svr *httpd) selectTagMetaList(ctx *gin.Context, sqlText string) (*SelectTagList, error) {
+	result := &SelectTagList{}
+	metaList, err := svr.getMetaData(sqlText)
+	if err != nil {
+		return result, err
 	}
 
+	result.TagList = metaList.Data
 	return result, err
 }
 
@@ -272,20 +288,20 @@ func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
 	svr.log.Trace(trackId, "start handleLakeGetValues()")
 
 	// 기존 lake에서는 cli를 통해서 db 사용
-	dataType := ctx.Query("type")
+	dataType := ctx.Param("type")
 
 	// form-data 형식으로 수신
 	switch dataType {
-	case "raw", "":
+	case "raw":
 		svr.GetRawData(ctx)
 	case "current":
 		svr.GetCurrentData(ctx)
+	case "calculated":
+		svr.GetCalculateData(ctx)
+	case "pivoted":
+		svr.GetPivotData(ctx)
 	case "stat":
 		svr.GetStatData(ctx)
-	case "calc":
-		svr.GetCalculateData(ctx)
-	case "pivot":
-		svr.GetPivotData(ctx)
 	default:
 		svr.log.Info(trackId, "not available type : ", dataType)
 		rsp := lakeRsp{Success: false, Reason: "This type is not available"}
@@ -299,12 +315,12 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start RawData()")
 
-	rsp := lakeRsp{Success: false, Reason: "not specified"}
+	rsp := ResSet{Status: "false", Message: "not specified"}
 
 	param := SelectRaw{}
 	err := ctx.ShouldBind(&param)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Message = err.Error()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -313,8 +329,22 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 
 	timezone, err := svr.makeTimezone(ctx, param.Timezone)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Message = err.Error()
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	switch param.ReturnType {
+	case "":
+		param.ReturnType = "0"
+	case "0", "1":
+		svr.log.Trace(trackId, "return type ok")
+	default:
+		svr.log.Info(trackId, "return form range over")
+		rsp.Data = map[string]interface{}{
+			"title": "Wrong Parameter. (value_return_form) : must be 0,1",
+		}
+		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
 
@@ -330,14 +360,14 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	if param.TagName != "" {
 		param.TagList = strings.Split(param.TagName, param.Separator)
 		if len(param.TagList) > currentPlan.limitSelectTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
-			rsp.Reason = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
-			svr.log.Info(rsp.Reason)
+			rsp.Message = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
+			svr.log.Info(rsp.Message)
 			ctx.JSON(http.StatusUnprocessableEntity, rsp)
 			return
 		}
 	} else {
 		svr.log.Info("Tag name is empty")
-		rsp.Reason = "Wrong Parameter. (tagname) : must be a least 1"
+		rsp.Message = "Wrong Parameter. (tagname) : must be a least 1"
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
@@ -350,7 +380,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	// start time
 	param.StartType, err = svr.checkTimeFormat(ctx, param.StartTime, false)
 	if err != nil {
-		rsp.Reason = "Wrong Parameter. (startTime)"
+		rsp.Message = "Wrong Parameter. (startTime)"
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
@@ -358,14 +388,14 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	//end time
 	param.EndType, err = svr.checkTimeFormat(ctx, param.EndTime, false)
 	if err != nil {
-		rsp.Reason = "Wrong Parameter. (endTime)"
+		rsp.Message = "Wrong Parameter. (endTime)"
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
 
 	err = svr.checkTimePeriod(ctx, param.StartTime, param.StartType, param.EndTime, param.EndType)
 	if err != nil {
-		rsp.Reason = err.Error()
+		rsp.Message = err.Error()
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
@@ -383,7 +413,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		//length check
 		if len(param.ColumnList) != len(param.AliasList) {
 			svr.log.Infof("The number of 'columns' and 'aliases' is different (column=%d, alias=%d)", len(param.ColumnList), len(param.AliasList))
-			rsp.Reason = "The number of 'columns' and 'aliases' is different"
+			rsp.Message = "The number of 'columns' and 'aliases' is different"
 			ctx.JSON(http.StatusUnprocessableEntity, rsp)
 			return
 		}
@@ -392,7 +422,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	// limit count
 	if param.Limit != "" {
 		if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
-			rsp.Reason = check
+			rsp.Message = check
 			ctx.JSON(http.StatusUnprocessableEntity, rsp)
 			return
 		}
@@ -404,7 +434,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	if param.Direction != "" {
 		if param.Direction != "0" && param.Direction != "1" {
 			svr.log.Info("direction range over")
-			rsp.Reason = "Wrong Parameter. (direction) : must be 0, 1"
+			rsp.Message = "Wrong Parameter. (direction) : must be 0, 1"
 			ctx.JSON(http.StatusUnprocessableEntity, rsp)
 			return
 		}
@@ -436,7 +466,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	dbData, err := svr.getData(sqlText, param.Scale)
 	if err != nil {
 		svr.log.Info(trackId, "get Data error : ", err.Error())
-		rsp.Reason = err.Error()
+		rsp.Message = err.Error()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -449,8 +479,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		data.Rows = dbData.Data
 	}
 
-	rsp.Success = true
-	rsp.Reason = "success"
+	rsp.Status = "success"
 	rsp.Data = data
 
 	svr.log.Trace(trackId, "select raw data success")
@@ -1152,6 +1181,28 @@ func (svr *httpd) checkCalcUnit(ctx *gin.Context, calcMode string) (string, erro
 	return calcMode, err
 }
 
+func (svr *httpd) getMetaData(sqlText string) (*MetaResult, error) {
+	result := &MetaResult{}
+
+	rows, err := svr.db.Query(sqlText)
+	if err != nil {
+		return result, err
+	}
+
+	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( cols.Name 으로 순서 확인 가능? )
+		meta := ""
+		err = rows.Scan(&meta)
+		if err != nil {
+			svr.log.Warn("rows.Scan error : ", err.Error())
+			return result, err
+		}
+
+		result.Data = append(result.Data, map[string]interface{}{"name": meta})
+	}
+
+	return result, nil
+}
+
 // scale 적용, 데이터 받은 후에 수정
 func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 	result := &MachbaseResult{}
@@ -1182,10 +1233,12 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 			colsList[idx].Length = col.Length
 		}
 	}()
-	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가?
+
+	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( cols.Name 으로 순서 확인 가능? )
 		buffer := cols.MakeBuffer()
 		err = rows.Scan(buffer...)
 		if err != nil {
+			svr.log.Warn("rows.Scan error : ", err.Error())
 			return result, err
 		}
 		result.Data = append(result.Data, buffer)
@@ -1611,15 +1664,15 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	req := queryRequest{}
 
 	if ctx.Request.Method == http.MethodGet {
-		req.edgeId = ctx.Query("edgeid")
-		req.startTime = ctx.Query("startTime")
-		req.endTime = ctx.Query("endTime")
+		req.edgeId = ctx.Query("edge_id")
+		req.startTime = ctx.Query("start_time")
+		req.endTime = ctx.Query("end_time")
 		req.level = strInt(ctx.Query("level"), 0)
 		req.limit = strInt(ctx.Query("limit"), 0)
 		req.offset = strInt(ctx.Query("offset"), 0)
 		req.job = ctx.Query("job")
 		req.keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
-		req.tableName = ctx.Query("tablename")
+		req.tableName = ctx.Query("table_name")
 	} else {
 		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
 		ctx.JSON(http.StatusBadRequest, rsp)
