@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ type tagQL struct {
 	tag   string
 
 	columns []string
+	source  string
 	expr    *expression.Expression
 
 	baseTimeColumn string
@@ -38,7 +40,16 @@ type tagQL struct {
 	timeGroup time.Duration
 }
 
-var defaultFunctions = map[string]expression.Function{}
+var defaultFunctions = map[string]expression.Function{
+	"stddev":          func(args ...any) (any, error) { return nil, nil },
+	"avg":             func(args ...any) (any, error) { return nil, nil },
+	"sum":             func(args ...any) (any, error) { return nil, nil },
+	"count":           func(args ...any) (any, error) { return nil, nil },
+	"ts_change_count": func(args ...any) (any, error) { return nil, nil },
+	"sumsq":           func(args ...any) (any, error) { return nil, nil },
+	"first":           func(args ...any) (any, error) { return nil, nil },
+	"last":            func(args ...any) (any, error) { return nil, nil },
+}
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
 
@@ -54,12 +65,6 @@ func ParseTagQL(query string) (TagQL, error) {
 
 func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	toks := regexpTagQL.FindAllStringSubmatch(query, -1)
-	// fmt.Println("TAGQL", query)
-	// for i := range toks {
-	// 	for n := range toks[i] {
-	// 		fmt.Printf("  toks[%d][%d] %s\n", i, n, toks[i][n])
-	// 	}
-	// }
 	if len(toks) != 1 || len(toks[0]) < 3 {
 		return nil, errors.New("invalid syntax")
 	}
@@ -68,31 +73,46 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	tq.baseTimeColumn = ctx.BaseTimeColumn
 
 	tq.table = strings.ToUpper(strings.TrimSpace(toks[0][1]))
-	termParts := strings.SplitN(toks[0][2], "#", 2)
-	tq.tag = termParts[0]
 
-	var params map[string][]string
-	if len(termParts) == 1 {
+	uri, err := url.Parse("tag:///" + query)
+	if err != nil {
+		return nil, err
+	}
+
+	tq.table = strings.ToUpper(strings.TrimPrefix(path.Dir(uri.Path), "/"))
+	tq.tag = path.Base(uri.Path)
+	expressionPart := uri.Fragment
+	fmt.Println("========uri", uri, query)
+	fmt.Println("========tbl", tq.table)
+	fmt.Println("========tag", tq.tag)
+	fmt.Println("========exp", expressionPart)
+	fmt.Println("========raw", uri.RawQuery)
+
+	if tq.tag == "" {
 		tq.columns = []string{"value"}
-	} else if len(termParts) == 2 {
-		var expressionPart string
-		paramParts := strings.SplitN(termParts[1], "?", 2)
-		if len(paramParts) == 1 {
-			expressionPart = termParts[1]
-		} else if len(paramParts) == 2 {
-			expressionPart = paramParts[0]
-			urlParams, err := url.ParseQuery(paramParts[1])
-			if err != nil {
-				return nil, err
-			}
-			params = urlParams
-		}
+		tq.source = "value"
+	}
+
+	if expressionPart == "" {
+		tq.columns = []string{"value"}
+		tq.source = "value"
+	} else {
 		expr, err := expression.NewWithFunctions(expressionPart, defaultFunctions)
 		if err != nil {
 			return nil, err
 		}
 		tq.columns = expr.Vars()
 		tq.expr = expr
+		tq.source = expressionPart
+	}
+
+	var params map[string][]string
+	if uri.RawQuery != "" {
+		urlParams, err := url.ParseQuery(uri.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		params = urlParams
 	}
 
 	getParam := func(k string, def string) string {
@@ -101,7 +121,6 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 		} else {
 			return def
 		}
-
 	}
 	tq.strTime = strings.ToLower(getParam("time", "last"))
 	tq.strLimit = getParam("limit", strconv.Itoa(ctx.MaxLimit))
@@ -137,10 +156,8 @@ func (tq *tagQL) ToSQL() string {
 
 func (tq *tagQL) toSqlGroup() string {
 	ret := ""
-	// fields := strings.Join(tq.columns, ", ")
-
 	if tq.strTime == "last" {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s
@@ -151,7 +168,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -161,7 +178,7 @@ func (tq *tagQL) toSqlGroup() string {
 			tq.strLimit,
 		)
 	} else if tq.strTime == "now" {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s BETWEEN now - %d AND now 
@@ -169,7 +186,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.baseTimeColumn,
@@ -177,7 +194,7 @@ func (tq *tagQL) toSqlGroup() string {
 			tq.strLimit,
 		)
 	} else {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s
@@ -186,7 +203,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,
@@ -200,7 +217,6 @@ func (tq *tagQL) toSqlGroup() string {
 
 func (tq *tagQL) toSql() string {
 	ret := ""
-	fields := strings.Join(tq.columns, ", ")
 	if tq.strTime == "last" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
 			WHERE
@@ -211,7 +227,7 @@ func (tq *tagQL) toSql() string {
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, fields, tq.table,
+			tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -225,7 +241,7 @@ func (tq *tagQL) toSql() string {
 			AND %s BETWEEN now - %d AND now 
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, fields, tq.table,
+			tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.strLimit,
@@ -237,7 +253,7 @@ func (tq *tagQL) toSql() string {
 			AND %s
 				BETWEEN %s - %d AND %s
 			LIMIT %s`,
-			tq.baseTimeColumn, fields, tq.table,
+			tq.baseTimeColumn, tq.source, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,
