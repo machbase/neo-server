@@ -35,6 +35,7 @@ type tagQL struct {
 	strTime   string
 	timeRange time.Duration
 	strLimit  string
+	timeGroup time.Duration
 }
 
 var defaultFunctions = map[string]expression.Function{}
@@ -103,6 +104,16 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 
 	}
 	tq.strTime = strings.ToLower(getParam("time", "last"))
+	tq.strLimit = getParam("limit", strconv.Itoa(ctx.MaxLimit))
+	if d := getParam("group", ""); d == "" {
+		tq.timeGroup = 0
+	} else {
+		var err error
+		tq.timeGroup, err = time.ParseDuration(d)
+		if err != nil {
+			return nil, errors.New("invalid group syntax")
+		}
+	}
 	if d := getParam("range", ""); d == "" {
 		tq.timeRange = ctx.DefaultRange
 	} else {
@@ -112,24 +123,94 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 			return nil, errors.New("invalid range syntax")
 		}
 	}
-	tq.strLimit = getParam("limit", strconv.Itoa(ctx.MaxLimit))
 
 	return tq, nil
 }
 
 func (tq *tagQL) ToSQL() string {
+	if tq.timeGroup == 0 {
+		return tq.toSql()
+	} else {
+		return tq.toSqlGroup()
+	}
+}
+
+func (tq *tagQL) toSqlGroup() string {
+	ret := ""
+	// fields := strings.Join(tq.columns, ", ")
+
+	if tq.strTime == "last" {
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+			WHERE
+				name = '%s'
+			AND %s
+				BETWEEN
+					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
+				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
+			GROUP BY %s
+			ORDER BY %s
+			LIMIT %s
+			`,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.tag,
+			tq.baseTimeColumn,
+			tq.timeRange, tq.table, tq.tag,
+			tq.table, tq.tag,
+			tq.baseTimeColumn,
+			tq.baseTimeColumn,
+			tq.strLimit,
+		)
+	} else if tq.strTime == "now" {
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+			WHERE
+				name = '%s'
+			AND %s BETWEEN now - %d AND now 
+			GROUP BY %s
+			ORDER BY %s
+			LIMIT %s
+			`,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.tag,
+			tq.baseTimeColumn, tq.timeRange,
+			tq.baseTimeColumn,
+			tq.baseTimeColumn,
+			tq.strLimit,
+		)
+	} else {
+		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, stddev(value) value FROM %s
+			WHERE
+				name = '%s'
+			AND %s
+				BETWEEN %s - %d AND %s
+			GROUP BY %s
+			ORDER BY %s
+			LIMIT %s
+			`,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.table,
+			tq.tag,
+			tq.baseTimeColumn,
+			tq.strTime, tq.timeRange, tq.strTime,
+			tq.baseTimeColumn,
+			tq.baseTimeColumn,
+			tq.strLimit,
+		)
+	}
+	return ret
+}
+
+func (tq *tagQL) toSql() string {
 	ret := ""
 	fields := strings.Join(tq.columns, ", ")
 	if tq.strTime == "last" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-		WHERE
-			name = '%s'
-		AND %s
-			BETWEEN 
-				(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
-			AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-		LIMIT %s
-		`,
+			WHERE
+				name = '%s'
+			AND %s
+				BETWEEN 
+					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
+				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
+			LIMIT %s
+			`,
 			tq.baseTimeColumn, fields, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
@@ -139,20 +220,27 @@ func (tq *tagQL) ToSQL() string {
 		)
 	} else if tq.strTime == "now" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-		WHERE
-			name = '%s'
-		AND %s BETWEEN now - %d AND now 
-		LIMIT %s
-		`,
+			WHERE
+				name = '%s'
+			AND %s BETWEEN now - %d AND now 
+			LIMIT %s
+			`,
 			tq.baseTimeColumn, fields, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.strLimit,
 		)
 	} else {
-		ret = fmt.Sprintf("SELECT %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s LIMIT %s",
-			fields, tq.table, tq.tag,
-			tq.baseTimeColumn, tq.timeRange, tq.strTime,
+		ret = fmt.Sprintf(`SELECT %s, %s FROM %s 
+			WHERE
+				name = '%s'
+			AND %s
+				BETWEEN %s - %d AND %s
+			LIMIT %s`,
+			tq.baseTimeColumn, fields, tq.table,
+			tq.tag,
+			tq.baseTimeColumn,
+			tq.strTime, tq.timeRange, tq.strTime,
 			tq.strLimit)
 	}
 	return ret
