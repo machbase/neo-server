@@ -213,7 +213,12 @@ func doImport(ctx *client.ActionContext) {
 					break
 				}
 			}
-			if lineno%100 == 0 {
+			if appender != nil && lineno%500000 == 0 {
+				// update progress message per 500K records
+				tps := int(float64(lineno) / time.Since(tick).Seconds())
+				ctx.Printf("%s %s records (%s/s)\r", cmd.Method, util.NumberFormat(lineno), util.NumberFormat(tps))
+			} else if appender == nil && lineno%100 == 0 {
+				// progress message per 100 records
 				tps := int(float64(lineno) / time.Since(tick).Seconds())
 				ctx.Printf("%s %s records (%s/s)\r", cmd.Method, util.NumberFormat(lineno), util.NumberFormat(tps))
 			}
