@@ -41,14 +41,14 @@ type tagQL struct {
 }
 
 var defaultFunctions = map[string]expression.Function{
-	"stddev":          func(args ...any) (any, error) { return nil, nil },
-	"avg":             func(args ...any) (any, error) { return nil, nil },
-	"sum":             func(args ...any) (any, error) { return nil, nil },
-	"count":           func(args ...any) (any, error) { return nil, nil },
-	"ts_change_count": func(args ...any) (any, error) { return nil, nil },
-	"sumsq":           func(args ...any) (any, error) { return nil, nil },
-	"first":           func(args ...any) (any, error) { return nil, nil },
-	"last":            func(args ...any) (any, error) { return nil, nil },
+	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
+	"AVG":             func(args ...any) (any, error) { return nil, nil },
+	"SUM":             func(args ...any) (any, error) { return nil, nil },
+	"COUNT":           func(args ...any) (any, error) { return nil, nil },
+	"TS_CHANGE_COUNT": func(args ...any) (any, error) { return nil, nil },
+	"SUMSQ":           func(args ...any) (any, error) { return nil, nil },
+	"FIRST":           func(args ...any) (any, error) { return nil, nil },
+	"LAST":            func(args ...any) (any, error) { return nil, nil },
 }
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -82,16 +82,6 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	tq.table = strings.ToUpper(strings.TrimPrefix(path.Dir(uri.Path), "/"))
 	tq.tag = path.Base(uri.Path)
 	queryPart := uri.RawQuery
-	// toks := strings.SplitN(uri.Fragment, "?", 2)
-
-	//	expressionPart := ""
-	// queryPart := ""
-	// if len(toks) == 2 {
-	// 	// expressionPart = toks[0]
-	// 	queryPart = toks[1]
-	// 	// } else {
-	// 	// 	expressionPart = uri.Fragment
-	//	}
 
 	var params map[string][]string
 	if queryPart != "" {
@@ -158,12 +148,12 @@ func (tq *tagQL) ToSQL() string {
 func (tq *tagQL) toSqlGroup() string {
 	ret := ""
 	if tq.strTime == "last" {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
+		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s
 				BETWEEN
-					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
+				    (SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			GROUP BY %s
 			ORDER BY %s
@@ -179,7 +169,7 @@ func (tq *tagQL) toSqlGroup() string {
 			tq.strLimit,
 		)
 	} else if tq.strTime == "now" {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
+		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s BETWEEN now - %d AND now 
@@ -195,7 +185,7 @@ func (tq *tagQL) toSqlGroup() string {
 			tq.strLimit,
 		)
 	} else {
-		ret = fmt.Sprintf(`SELECT round(to_timestamp(%s)/%d)*%d %s, %s FROM %s
+		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s
