@@ -212,7 +212,6 @@ func doImport(ctx *client.ActionContext) {
 					ctx.Println("ERR", err.Error())
 					break
 				}
-				time.Sleep(5 * time.Millisecond) // slow down for testing
 			}
 			ctx.Printf("%s %d records (%d/s)\r", cmd.Method, lineno, int(float64(lineno)/time.Since(tick).Seconds()))
 		}
