@@ -81,29 +81,17 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 
 	tq.table = strings.ToUpper(strings.TrimPrefix(path.Dir(uri.Path), "/"))
 	tq.tag = path.Base(uri.Path)
-	toks := strings.SplitN(uri.Fragment, "?", 2)
+	queryPart := uri.RawQuery
+	// toks := strings.SplitN(uri.Fragment, "?", 2)
 
-	expressionPart := ""
-	queryPart := ""
-	if len(toks) == 2 {
-		expressionPart = toks[0]
-		queryPart = toks[1]
-	} else {
-		expressionPart = uri.Fragment
-	}
-
-	if expressionPart == "" {
-		tq.columns = []string{"value"}
-		tq.source = "value"
-	} else {
-		expr, err := expression.NewWithFunctions(expressionPart, defaultFunctions)
-		if err != nil {
-			return nil, err
-		}
-		tq.columns = expr.Vars()
-		tq.expr = expr
-		tq.source = expressionPart
-	}
+	//	expressionPart := ""
+	// queryPart := ""
+	// if len(toks) == 2 {
+	// 	// expressionPart = toks[0]
+	// 	queryPart = toks[1]
+	// 	// } else {
+	// 	// 	expressionPart = uri.Fragment
+	//	}
 
 	var params map[string][]string
 	if queryPart != "" {
@@ -140,6 +128,20 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 		if err != nil {
 			return nil, errors.New("invalid range syntax")
 		}
+	}
+	expressionPart := getParam("value", "value")
+
+	if expressionPart == "" {
+		tq.columns = []string{"value"}
+		tq.source = "value"
+	} else {
+		expr, err := expression.NewWithFunctions(expressionPart, defaultFunctions)
+		if err != nil {
+			return nil, err
+		}
+		tq.columns = expr.Vars()
+		tq.expr = expr
+		tq.source = expressionPart
 	}
 
 	return tq, nil

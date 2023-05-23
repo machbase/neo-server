@@ -20,12 +20,8 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	tick := time.Now()
 	table := ctx.Param("table")
 	tag := ctx.Param("tag")
-	ql := ctx.Request.URL.Fragment
+	ql := ctx.Request.URL.RawPath
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
-
-	if len(ql) > 0 {
-		ql = "#" + ql
-	}
 
 	qlCtx := &tagql.Context{
 		BaseTimeColumn: "time",
@@ -33,15 +29,19 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		DefaultRange:   10 * time.Second,
 		MaxRange:       1 * time.Minute,
 	}
-	composed := fmt.Sprintf("%s/%s%s?%s", table, tag, ql, ctx.Request.URL.RawQuery)
+	composed := fmt.Sprintf("%s/%s", table, tag)
+	if ql != "" {
+		composed = fmt.Sprintf("%s%s", composed, ql)
+	}
+	fmt.Println("=========>frag:", ctx.Request.URL.Fragment, "ql:", ql, "composed:", composed)
 	parsed, err := tagql.ParseTagQLContext(qlCtx, composed)
-	svr.log.Info("composed", composed, "parsed", parsed.ToSQL())
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
+	svr.log.Info("composed", composed, "parsed", parsed.ToSQL())
 
 	req := &msg.QueryRequest{Precision: -1}
 	req.SqlText = parsed.ToSQL()
