@@ -31,7 +31,8 @@ type ChartJsDataset struct {
 }
 
 type ChartJsOptions struct {
-	Scales ChartJsScalesOption `json:"scales"`
+	Scales  ChartJsScalesOption  `json:"scales"`
+	Plugins ChartJsPluginsOption `json:"plugins"`
 }
 
 type ChartJsScalesOption struct {
@@ -40,6 +41,15 @@ type ChartJsScalesOption struct {
 
 type ChartJsScale struct {
 	BeginAtZero bool `json:"beginAtZero"`
+}
+
+type ChartJsPluginsOption struct {
+	Title ChartJsTitlePluginOption `json:"title"`
+}
+
+type ChartJsTitlePluginOption struct {
+	Display bool   `json:"display"`
+	Text    string `json:"text"`
 }
 
 func convertChartJsModel(data []*spi.RenderingData) (*ChartJsModel, error) {
@@ -62,6 +72,12 @@ func convertChartJsModel(data []*spi.RenderingData) (*ChartJsModel, error) {
 	cm.Options = ChartJsOptions{}
 	cm.Options.Scales = ChartJsScalesOption{
 		Y: ChartJsScale{BeginAtZero: false},
+	}
+	cm.Options.Plugins = ChartJsPluginsOption{
+		Title: ChartJsTitlePluginOption{
+			Display: true,
+			Text:    "High Frequency Chart",
+		},
 	}
 	return cm, nil
 }
