@@ -31,9 +31,10 @@ define VARS {
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_ENABLE_SWAGGER   = flag("--http-enable-swagger", false)
-    HTTP_EXPERIMENT       = flag("--http-experiment", false)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
-    
+
+    EXPERIMENT_MODE       = flag("--experiment", false)
+
     MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
 }
 
@@ -57,6 +58,7 @@ module "machbase.com/neo-server" {
     config {
         PrefDir          = VARS_PREF_DIR
         DataDir          = VARS_DATA_DIR
+        ExperimentMode   = VARS_EXPERIMENT_MODE
         Machbase         = {
             HANDLE_LIMIT     = 2048
             PORT_NO          = VARS_MACH_LISTEN_PORT
@@ -84,7 +86,6 @@ module "machbase.com/neo-server" {
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
-            ExperimentMode   = VARS_HTTP_EXPERIMENT
         }
         Mqtt = {
             Listeners        = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}"]
