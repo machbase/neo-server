@@ -213,21 +213,27 @@ func doImport(ctx *client.ActionContext) {
 					break
 				}
 			}
-			ctx.Printf("%s %d records (%d/s)\r", cmd.Method, lineno, int(float64(lineno)/time.Since(tick).Seconds()))
+			if lineno%100 == 0 {
+				tps := int(float64(lineno) / time.Since(tick).Seconds())
+				ctx.Printf("%s %s records (%s/s)\r", cmd.Method, util.NumberFormat(lineno), util.NumberFormat(tps))
+			}
 		}
 
 		ctx.Print("\r\n")
 		if cmd.Method == "insert" {
-			ctx.Printf("import total %d record(s) %sed\r\n", lineno, cmd.Method)
+			ctx.Printf("import total %d record(s) %sed\n", util.NumberFormat(lineno), cmd.Method)
 		} else if appender != nil {
 			succ, fail, err := appender.Close()
 			if err != nil {
-				ctx.Printf("import total %d record(s) appended, %d failed %s\r\n", succ, fail, err.Error())
+				ctx.Printf("import total %s record(s) appended, %s failed %s\n", util.NumberFormat(succ), util.NumberFormat(fail), err.Error())
 			} else if fail > 0 {
-				ctx.Printf("import total %d record(s) appended, %d failed\r\n", succ, fail)
+				ctx.Printf("import total %s record(s) appended, %s failed\n", util.NumberFormat(succ), util.NumberFormat(fail))
+			} else {
+				ctx.Printf("import total %s record(s) appended\n", util.NumberFormat(succ))
 			}
+			ctx.Print("enter ⏎ : ")
 		} else {
-			ctx.Print("import processed no record\r\n")
+			ctx.Print("import processed no record\n")
 		}
 		doneC <- true
 	}()
