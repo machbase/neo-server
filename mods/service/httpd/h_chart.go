@@ -97,6 +97,10 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 
 	if req.Transform == "fft" {
 		series[0] = transformFFT(series[0], req.Range, req.Window)
+		if series[0] == nil {
+			ctx.String(http.StatusInternalServerError, "unable use fft")
+			return
+		}
 	}
 
 	rndr := renderer.NewChartRendererBuilder(req.Format).
@@ -118,6 +122,9 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 
 func transformFFT(series *spi.RenderingData, periodDuration time.Duration, windowType string) *spi.RenderingData {
 	lenSamples := len(series.Values)
+	if lenSamples < 16 {
+		return nil
+	}
 	period := float64(lenSamples) / (float64(periodDuration) / float64(time.Second))
 	fft := fourier.NewFFT(lenSamples)
 	vals := series.Values
