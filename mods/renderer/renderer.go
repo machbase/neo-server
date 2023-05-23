@@ -79,9 +79,14 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 		}
 		queries[i] = &ChartQuery{}
 		queries[i].TagPath = tagPath
-		queries[i].Label = strings.Join(tagPath.Field.Columns, "-")
 		queries[i].TimeLocation = tz
 		queries[i].TimeRange = cmdRange
+		compositeName := strings.Join(tagPath.Field.Columns, "-")
+		if strings.ToUpper(compositeName) == "VALUE" {
+			queries[i].Label = tagPath.Tag
+		} else {
+			queries[i].Label = tagPath.Tag + "-" + compositeName
+		}
 
 		queries[i].RangeFunc = func(db spi.Database) (time.Time, time.Time) {
 			var timestamp time.Time
