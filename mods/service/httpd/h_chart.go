@@ -34,7 +34,7 @@ type ChartRequest struct {
 func (svr *httpd) handleChart(ctx *gin.Context) {
 	var err error
 	req := &ChartRequest{
-		Timeformat:   "default",
+		Timeformat:   "ns",
 		TimeLocation: "UTC",
 		Range:        1 * time.Minute,
 		Timestamp:    "now",
