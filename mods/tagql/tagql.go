@@ -64,15 +64,15 @@ func ParseTagQL(query string) (TagQL, error) {
 }
 
 func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
-	toks := regexpTagQL.FindAllStringSubmatch(query, -1)
-	if len(toks) != 1 || len(toks[0]) < 3 {
+	subs := regexpTagQL.FindAllStringSubmatch(query, -1)
+	if len(subs) != 1 || len(subs[0]) < 3 {
 		return nil, errors.New("invalid syntax")
 	}
 
 	tq := &tagQL{}
 	tq.baseTimeColumn = ctx.BaseTimeColumn
 
-	tq.table = strings.ToUpper(strings.TrimSpace(toks[0][1]))
+	tq.table = strings.ToUpper(strings.TrimSpace(subs[0][1]))
 
 	uri, err := url.Parse("tag:///" + query)
 	if err != nil {
@@ -81,16 +81,15 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 
 	tq.table = strings.ToUpper(strings.TrimPrefix(path.Dir(uri.Path), "/"))
 	tq.tag = path.Base(uri.Path)
-	expressionPart := uri.Fragment
-	fmt.Println("========uri", uri, query)
-	fmt.Println("========tbl", tq.table)
-	fmt.Println("========tag", tq.tag)
-	fmt.Println("========exp", expressionPart)
-	fmt.Println("========raw", uri.RawQuery)
+	toks := strings.SplitN(uri.Fragment, "?", 2)
 
-	if tq.tag == "" {
-		tq.columns = []string{"value"}
-		tq.source = "value"
+	expressionPart := ""
+	queryPart := ""
+	if len(toks) == 2 {
+		expressionPart = toks[0]
+		queryPart = toks[1]
+	} else {
+		expressionPart = uri.Fragment
 	}
 
 	if expressionPart == "" {
@@ -107,8 +106,8 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	}
 
 	var params map[string][]string
-	if uri.RawQuery != "" {
-		urlParams, err := url.ParseQuery(uri.RawQuery)
+	if queryPart != "" {
+		urlParams, err := url.ParseQuery(queryPart)
 		if err != nil {
 			return nil, err
 		}
