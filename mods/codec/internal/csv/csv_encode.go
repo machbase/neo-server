@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -16,12 +17,16 @@ type Exporter struct {
 	writer *csv.Writer
 	Comma  rune
 
-	ctx *spi.RowsEncoderContext
+	TimeLocation *time.Location
+	Output       spec.OutputStream
+	Rownum       bool
+	Heading      bool
+	TimeFormat   string
+	Precision    int
 }
 
-func NewEncoder(ctx *spi.RowsEncoderContext, delimiter string) spi.RowsEncoder {
-	rr := &Exporter{ctx: ctx}
-	rr.SetDelimiter(delimiter)
+func NewEncoder() *Exporter {
+	rr := &Exporter{}
 	return rr
 }
 
@@ -35,16 +40,16 @@ func (ex *Exporter) ContentType() string {
 }
 
 func (ex *Exporter) Open(cols spi.Columns) error {
-	ex.writer = csv.NewWriter(ex.ctx.Output)
+	ex.writer = csv.NewWriter(ex.Output)
 
 	if ex.Comma != 0 {
 		ex.writer.Comma = ex.Comma
 	}
 
 	colNames := cols.Names()
-	if ex.ctx.Heading {
+	if ex.Heading {
 		// TODO check if write() returns error, when csvWritter.Comma is not valid
-		if ex.ctx.Rownum {
+		if ex.Rownum {
 			ex.writer.Write(append([]string{"ROWNUM"}, colNames...))
 		} else {
 			ex.writer.Write(colNames)
@@ -56,12 +61,12 @@ func (ex *Exporter) Open(cols spi.Columns) error {
 
 func (ex *Exporter) Close() {
 	ex.writer.Flush()
-	ex.ctx.Output.Close()
+	ex.Output.Close()
 }
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Flush()
-	ex.ctx.Output.Flush()
+	ex.Output.Flush()
 }
 
 func (ex *Exporter) AddRow(values []any) error {
@@ -78,7 +83,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			switch ex.ctx.TimeFormat {
+			switch ex.TimeFormat {
 			case "ns":
 				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
 			case "ms":
@@ -88,22 +93,22 @@ func (ex *Exporter) AddRow(values []any) error {
 			case "s":
 				cols[i] = strconv.FormatInt(v.Unix(), 10)
 			default:
-				if ex.ctx.TimeLocation == nil {
-					ex.ctx.TimeLocation = time.UTC
+				if ex.TimeLocation == nil {
+					ex.TimeLocation = time.UTC
 				}
-				cols[i] = v.In(ex.ctx.TimeLocation).Format(ex.ctx.TimeFormat)
+				cols[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
 			}
 		case *float64:
-			if ex.ctx.Precision < 0 {
+			if ex.Precision < 0 {
 				cols[i] = fmt.Sprintf("%f", *v)
 			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.ctx.Precision, *v)
+				cols[i] = fmt.Sprintf("%.*f", ex.Precision, *v)
 			}
 		case float64:
-			if ex.ctx.Precision < 0 {
+			if ex.Precision < 0 {
 				cols[i] = fmt.Sprintf("%f", v)
 			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.ctx.Precision, v)
+				cols[i] = fmt.Sprintf("%.*f", ex.Precision, v)
 			}
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
@@ -124,7 +129,7 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	ex.rownum++
 
-	if ex.ctx.Rownum {
+	if ex.Rownum {
 		return ex.writer.Write(append([]string{strconv.FormatInt(ex.rownum, 10)}, cols...))
 	} else {
 		return ex.writer.Write(cols)

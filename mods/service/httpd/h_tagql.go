@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tagql"
 	spi "github.com/machbase/neo-spi"
 )
@@ -54,7 +55,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 
 	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
 
-	var output spi.OutputStream
+	var output spec.OutputStream
 	switch req.Compress {
 	case "gzip":
 		output = &stream.WriterOutputStream{Writer: gzip.NewWriter(ctx.Writer)}
@@ -63,18 +64,20 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		output = &stream.WriterOutputStream{Writer: ctx.Writer}
 	}
 
-	encoder := codec.NewEncoderBuilder(req.Format).
-		SetOutputStream(output).
-		SetTimeLocation(timeLocation).
-		SetTimeFormat(req.Timeformat).
-		SetPrecision(req.Precision).
-		SetRownum(req.Rownum).
-		SetHeading(req.Heading).
-		SetBoxStyle("default").
-		SetBoxSeparateColumns(true).
-		SetBoxDrawBorder(true).
-		SetCsvDelimieter(",").
-		Build()
+	encoder := codec.NewEncoder(req.Format,
+		codec.OutputStream(output),
+		codec.TimeFormat(req.Timeformat),
+		codec.Precision(req.Precision),
+		codec.Rownum(req.Rownum),
+		codec.Heading(req.Heading),
+		codec.TimeLocation(timeLocation),
+		codec.Title("TagQL chart"),
+		codec.Subtitle(composed),
+		codec.Delimiter(","),
+		codec.BoxStyle("default"),
+		codec.BoxSeparateColumns(true),
+		codec.BoxDrawBorder(true),
+	)
 
 	queryCtx := &do.QueryContext{
 		DB: svr.db,

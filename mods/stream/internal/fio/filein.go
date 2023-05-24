@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type fin struct {
@@ -14,7 +14,7 @@ type fin struct {
 	mutex sync.Mutex
 }
 
-func NewInputStream(path string) (spi.InputStream, error) {
+func NewInputStream(path string) (spec.InputStream, error) {
 	in := &fin{
 		path: path,
 	}

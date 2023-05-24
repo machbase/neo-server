@@ -7,10 +7,10 @@ import (
 
 	"github.com/machbase/neo-server/mods/stream/internal/fio"
 	"github.com/machbase/neo-server/mods/stream/internal/pio"
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
-func NewOutputStream(output string) (out spi.OutputStream, err error) {
+func NewOutputStream(output string) (out spec.OutputStream, err error) {
 	var outputFields = strings.Fields(output)
 	if len(outputFields) > 0 && outputFields[0] == "exec" {
 		binArgs := strings.TrimSpace(strings.TrimPrefix(output, "exec"))
@@ -46,7 +46,7 @@ func (out *WriterOutputStream) Close() error {
 	return nil
 }
 
-func NewInputStream(input string) (in spi.InputStream, err error) {
+func NewInputStream(input string) (in spec.InputStream, err error) {
 	var inputFields = strings.Fields(input)
 	if len(inputFields) > 0 && inputFields[0] == "exec" {
 		return nil, errors.New("not implemented")

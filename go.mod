@@ -15,6 +15,7 @@ require (
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/gliderlabs/ssh v0.3.5
+	github.com/go-echarts/go-echarts/v2 v2.2.6
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
@@ -23,7 +24,7 @@ require (
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.3
 	github.com/machbase/neo-grpc v0.9.0
-	github.com/machbase/neo-spi v1.2.1
+	github.com/machbase/neo-spi v1.3.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0

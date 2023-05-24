@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -141,7 +142,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		svr.appenders.Set(peerId, appenderSet)
 	}
 
-	var instream spi.InputStream
+	var instream spec.InputStream
 
 	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
@@ -163,13 +164,14 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	builder := codec.NewDecoderBuilder(wp.Format).
-		SetInputStream(instream).
-		SetColumns(cols).
-		SetTimeFormat("ns").
-		SetTimeLocation(time.UTC).
-		SetCsvDelimieter(",").
-		SetCsvHeading(false)
+	codecOpts := []codec.Option{
+		codec.InputStream(instream),
+		codec.Columns(cols),
+		codec.TimeFormat("ns"),
+		codec.TimeLocation(time.UTC),
+		codec.Delimiter(","),
+		codec.Heading(false),
+	}
 
 	if len(wp.Transform) > 0 {
 		opts := []transcoder.Option{}
@@ -178,10 +180,10 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		}
 		opts = append(opts, transcoder.OptionPname("mqtt"))
 		trans := transcoder.New(wp.Transform, opts...)
-		builder.SetTranscoder(trans)
+		codecOpts = append(codecOpts, codec.Transcoder(trans))
 	}
 
-	decoder := builder.Build()
+	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
 	recno := 0
 	for {

@@ -153,13 +153,13 @@ func doImport(ctx *client.ActionContext) {
 		}
 	}
 
-	decoder := codec.NewDecoderBuilder(cmd.InputFormat).
-		SetInputStream(in).
-		SetColumns(desc.Columns.Columns()).
-		SetTimeFormat(cmd.Timeformat).
-		SetTimeLocation(cmd.TimeLocation).
-		SetCsvDelimieter(cmd.Delimiter).
-		Build()
+	decoder := codec.NewDecoder(cmd.InputFormat,
+		codec.InputStream(in),
+		codec.Columns(desc.Columns.Columns()),
+		codec.TimeFormat(cmd.Timeformat),
+		codec.TimeLocation(cmd.TimeLocation),
+		codec.Delimiter(cmd.Delimiter),
+	)
 
 	capture := ctx.NewCaptureUserInterrupt("")
 	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {
