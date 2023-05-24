@@ -98,6 +98,22 @@ func (ex *Exporter) AddRow(values []any) error {
 				}
 				cols[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
 			}
+		case time.Time:
+			switch ex.TimeFormat {
+			case "ns":
+				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
+			case "ms":
+				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
+			case "us":
+				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
+			case "s":
+				cols[i] = strconv.FormatInt(v.Unix(), 10)
+			default:
+				if ex.TimeLocation == nil {
+					ex.TimeLocation = time.UTC
+				}
+				cols[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
+			}
 		case *float64:
 			if ex.Precision < 0 {
 				cols[i] = fmt.Sprintf("%f", *v)
