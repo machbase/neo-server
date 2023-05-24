@@ -1,8 +1,10 @@
 package tagql
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"path"
 	"regexp"
@@ -10,11 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
+	spi "github.com/machbase/neo-spi"
 )
 
 type TagQL interface {
 	ToSQL() string
+	Execute(ctx context.Context, db spi.Database, encoder codec.RowsEncoder) error
 }
 
 type Context struct {
@@ -35,9 +41,11 @@ type tagQL struct {
 	timeRange time.Duration
 	strLimit  string
 	timeGroup time.Duration
+
+	mapExprs []*expression.Expression
 }
 
-var defaultFunctions = map[string]expression.Function{
+var yieldFunctions = map[string]expression.Function{
 	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
 	"AVG":             func(args ...any) (any, error) { return nil, nil },
 	"SUM":             func(args ...any) (any, error) { return nil, nil },
@@ -123,13 +131,121 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	tq.yieldColumns = strings.Join(expressionParts, ", ")
 	for _, part := range expressionParts {
 		// validates the syntax: e.g) invalid token, undefined function...
-		_ /* expr */, err := expression.NewWithFunctions(part, defaultFunctions)
+		_ /* expr */, err := expression.NewWithFunctions(part, yieldFunctions)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	mapParts := params["map"]
+	for _, part := range mapParts {
+		expr, err := expression.NewWithFunctions(part, newMapFunctions())
+		if err != nil {
+			return nil, err
+		}
+		tq.mapExprs = append(tq.mapExprs, expr)
+	}
 	return tq, nil
+}
+
+func (tq *tagQL) Execute(ctx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
+	queryCtx := &do.QueryContext{
+		DB: db,
+		OnFetchStart: func(cols spi.Columns) {
+			encoder.Open(cols)
+		},
+		OnFetch: func(nrow int64, values []any) bool {
+			var param []any = values
+			for _, expr := range tq.mapExprs {
+				var ret any
+				var retValid bool
+				ret, err = expr.Eval(MapData(param))
+				if err != nil {
+					return false
+				}
+				if ret == nil {
+					// aggregation function can return nil
+					param = nil
+					return true
+				}
+				if param, retValid = ret.([]any); !retValid {
+					err = fmt.Errorf("map function %s returns invalid value", expr.String())
+					return false
+				}
+			}
+			if param != nil {
+				if err = encoder.AddRow(param); err != nil {
+					return false
+				}
+			}
+			return true
+		},
+		OnFetchEnd: func() {
+			var param = endOfDataFrame // indicator of end of dataframe
+			for _, expr := range tq.mapExprs {
+				ret, _ := expr.Eval(MapData(param))
+				if ret == nil {
+					param = endOfDataFrame
+					continue
+				} else {
+					var ok bool
+					if param, ok = ret.([]any); !ok {
+						param = endOfDataFrame
+					}
+				}
+			}
+			if param != nil && !IsEndOfDataFrame(param) {
+				encoder.AddRow(param)
+			}
+			encoder.Close()
+		},
+		OnExecuted: nil, // never happen in tagQL
+	}
+
+	_, err = do.Query(queryCtx, tq.ToSQL())
+	return err
+}
+
+var endOfDataFrame = []any{io.EOF}
+
+func IsEndOfDataFrame(v any) bool {
+	if arr, ok := v.([]any); ok {
+		return len(arr) >= 1 && arr[0] == io.EOF
+	}
+	return false
+}
+
+type MapData []any
+
+func (p MapData) Get(name string) (any, error) {
+	switch len(p) {
+	case 0:
+		return nil, errors.New("empty parameter")
+	case 1:
+		if p[0] == io.EOF {
+			return io.EOF, nil
+		}
+		return nil, fmt.Errorf("not enough parameters (len:1)")
+	}
+	if name == "K" || name == "k" {
+		return p[0], nil
+	} else if name == "V" || name == "v" {
+		return p[1:], nil
+	} else {
+		return nil, fmt.Errorf("parameter '%s' is not defined", name)
+	}
+}
+
+func (p MapData) IsEOF() bool {
+	return IsEndOfDataFrame(p)
+}
+
+func (p MapData) String() string {
+	buf := []string{"tagql.MapData"}
+	for _, v := range p {
+		buf = append(buf, fmt.Sprintf("%T(%v)", v, v))
+	}
+	return strings.Join(buf, ", ")
 }
 
 func (tq *tagQL) ToSQL() string {

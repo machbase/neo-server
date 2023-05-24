@@ -68,6 +68,14 @@ func TestTagQLMajorParts(t *testing.T) {
 		run(t)
 }
 
+func TestTagQLMap(t *testing.T) {
+	TagQLTestCase{
+		q:      "table/tag?yield=value&time=last&range=1s&map=GROUP_TIME(K, V, 100*1000*1000)",
+		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10000",
+		err:    ""}.
+		run(t)
+}
+
 func TestTagQLGroupBy(t *testing.T) {
 	TagQLTestCase{
 		q:      "table/tag?range=3.45s&time=123456789000&group=1ms&limit=100&yield=" + url.QueryEscape("STDDEV(val)"),
