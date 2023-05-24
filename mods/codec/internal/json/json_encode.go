@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -14,7 +15,7 @@ type Exporter struct {
 	nrow int
 
 	TimeLocation *time.Location
-	Output       spi.OutputStream
+	Output       spec.OutputStream
 	Rownum       bool
 	Heading      bool
 	TimeFormat   string

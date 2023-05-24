@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/renderer"
+	"github.com/machbase/neo-server/mods/renderer/model"
 	"github.com/machbase/neo-server/mods/stream"
-	spi "github.com/machbase/neo-spi"
 	"gonum.org/v1/gonum/dsp/fourier"
 	"gonum.org/v1/gonum/dsp/window"
 )
@@ -85,7 +85,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	series := []*spi.RenderingData{}
+	series := []*model.RenderingData{}
 	for _, dq := range queries {
 		data, err := dq.Query(svr.db)
 		if err != nil {
@@ -103,11 +103,11 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		}
 	}
 
-	rndr := renderer.NewChartRendererBuilder(req.Format).
-		SetTitle(req.Title).
-		SetSubtitle(req.Subtitle).
-		SetSize(req.Width, req.Height).
-		Build()
+	rndr := renderer.New(req.Format,
+		renderer.Title(req.Title),
+		renderer.Subtitle(req.Subtitle),
+		renderer.Size(req.Width, req.Height),
+	)
 	if rndr == nil {
 		svr.log.Warnf("chart request has no renderer %+v", req)
 		ctx.String(http.StatusInternalServerError, "no renderer")
@@ -120,7 +120,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 	}
 }
 
-func transformFFT(series *spi.RenderingData, periodDuration time.Duration, windowType string) *spi.RenderingData {
+func transformFFT(series *model.RenderingData, periodDuration time.Duration, windowType string) *model.RenderingData {
 	lenSamples := len(series.Values)
 	if lenSamples < 16 {
 		return nil
@@ -150,7 +150,7 @@ func transformFFT(series *spi.RenderingData, periodDuration time.Duration, windo
 
 	coeff := fft.Coefficients(nil, vals)
 
-	trans := &spi.RenderingData{}
+	trans := &model.RenderingData{}
 	trans.Name = fmt.Sprintf("FFT-%s", series.Name)
 	for i, c := range coeff {
 		hz := fft.Freq(i) * period

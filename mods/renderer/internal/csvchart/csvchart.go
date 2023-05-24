@@ -6,13 +6,14 @@ import (
 
 	"encoding/csv"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/renderer/model"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type Renderer struct {
 }
 
-func NewRenderer() spi.Renderer {
+func NewRenderer() *Renderer {
 	return &Renderer{}
 }
 
@@ -20,7 +21,7 @@ func (r *Renderer) ContentType() string {
 	return "text/csv"
 }
 
-func (r *Renderer) Render(ctx context.Context, output spi.OutputStream, data []*spi.RenderingData) error {
+func (r *Renderer) Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error {
 	w := csv.NewWriter(output)
 	for row := range data[0].Values {
 		label := data[0].Labels[row]

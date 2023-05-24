@@ -6,6 +6,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/types"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -15,7 +16,7 @@ type Exporter struct {
 	series       [][]opts.LineData
 
 	TimeLocation *time.Location
-	Output       spi.OutputStream
+	Output       spec.OutputStream
 	Rownum       bool
 	Heading      bool
 	TimeFormat   string

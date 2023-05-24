@@ -10,6 +10,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
@@ -407,7 +408,7 @@ func doShowTagStat(ctx *client.ActionContext, args []string) {
 }
 
 func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
-	var output spi.OutputStream
+	var output spec.OutputStream
 	output, err := stream.NewOutputStream("-")
 	if err != nil {
 		ctx.Println("ERR", err.Error())

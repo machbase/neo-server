@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
@@ -90,7 +91,7 @@ func doExport(ctx *client.ActionContext) {
 	}
 
 	var outputPath = util.StripQuote(cmd.Output)
-	var output spi.OutputStream
+	var output spec.OutputStream
 	output, err = stream.NewOutputStream(outputPath)
 	if err != nil {
 		ctx.Println("ERR", err.Error())

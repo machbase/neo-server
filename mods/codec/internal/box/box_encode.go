@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -17,7 +18,7 @@ type Exporter struct {
 	SeparateColumns bool
 	DrawBorder      bool
 	TimeLocation    *time.Location
-	Output          spi.OutputStream
+	Output          spec.OutputStream
 	Rownum          bool
 	Heading         bool
 	TimeFormat      string

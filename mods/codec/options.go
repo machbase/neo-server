@@ -7,12 +7,12 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
-
 	spi "github.com/machbase/neo-spi"
 )
 
-func OutputStream(s spi.OutputStream) Option {
+func OutputStream(s spec.OutputStream) Option {
 	return func(one any) {
 		switch e := one.(type) {
 		case *box.Exporter:
@@ -186,7 +186,7 @@ func BoxDrawBorder(flag bool) Option {
 }
 
 // Decoder only
-func InputStream(in spi.InputStream) Option {
+func InputStream(in spec.InputStream) Option {
 	return func(one any) {
 		switch e := one.(type) {
 		case *csv.Decoder:

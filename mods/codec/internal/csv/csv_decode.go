@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -23,7 +24,7 @@ type Decoder struct {
 	Translator   transcoder.Transcoder
 	Comma        rune
 	Heading      bool
-	Input        spi.InputStream
+	Input        spec.InputStream
 	TimeFormat   string
 	TimeLocation *time.Location
 	TableName    string

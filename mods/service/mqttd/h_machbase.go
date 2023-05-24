@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -141,7 +142,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		svr.appenders.Set(peerId, appenderSet)
 	}
 
-	var instream spi.InputStream
+	var instream spec.InputStream
 
 	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))

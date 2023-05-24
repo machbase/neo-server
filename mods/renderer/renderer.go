@@ -1,15 +1,23 @@
 package renderer
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/renderer/model"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tagql"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
+
+type Renderer interface {
+	ContentType() string
+	Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error
+}
 
 type ChartQuery struct {
 	TagPath      *tagql.TagPath
@@ -19,7 +27,7 @@ type ChartQuery struct {
 	TimeRange    time.Duration
 }
 
-func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
+func (dq *ChartQuery) Query(db spi.Database) (*model.RenderingData, error) {
 	rangeFrom, rangeTo := dq.RangeFunc(db)
 	fields := strings.Join(dq.TagPath.Field.Columns, ",")
 	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, fields, dq.TagPath.Table)
@@ -65,7 +73,7 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 		labels = append(labels, label)
 		idx++
 	}
-	return &spi.RenderingData{Name: dq.Label, Values: values, Labels: labels}, nil
+	return &model.RenderingData{Name: dq.Label, Values: values, Labels: labels}, nil
 }
 
 func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Duration, timeformat string, tz *time.Location) ([]*ChartQuery, error) {

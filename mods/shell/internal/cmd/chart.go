@@ -6,6 +6,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/renderer"
+	"github.com/machbase/neo-server/mods/renderer/model"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
@@ -112,11 +113,11 @@ func doChart(ctx *client.ActionContext) {
 		return
 	}
 
-	render := renderer.NewChartRendererBuilder(cmd.Format).
-		SetTitle(cmd.HtmlTitle).
-		SetSubtitle(cmd.HtmlSubtitle).
-		SetSize(cmd.HtmlWidth, cmd.HtmlHeight).
-		Build()
+	render := renderer.New(cmd.Format,
+		renderer.Title(cmd.HtmlTitle),
+		renderer.Subtitle(cmd.HtmlSubtitle),
+		renderer.Size(cmd.HtmlWidth, cmd.HtmlHeight),
+	)
 
 	if render == nil {
 		ctx.Println("ERR", "no renderer found for", cmd.Format)
@@ -148,7 +149,7 @@ func doChart(ctx *client.ActionContext) {
 		}
 		defer output.Close()
 
-		series := []*spi.RenderingData{}
+		series := []*model.RenderingData{}
 		// query
 		for _, dq := range queries {
 			data, err := dq.Query(ctx.DB)

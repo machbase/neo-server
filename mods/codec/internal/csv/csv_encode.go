@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -17,7 +18,7 @@ type Exporter struct {
 	Comma  rune
 
 	TimeLocation *time.Location
-	Output       spi.OutputStream
+	Output       spec.OutputStream
 	Rownum       bool
 	Heading      bool
 	TimeFormat   string

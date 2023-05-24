@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -79,7 +80,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 
 	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
 
-	var output spi.OutputStream
+	var output spec.OutputStream
 	switch req.Compress {
 	case "gzip":
 		output = &stream.WriterOutputStream{Writer: gzip.NewWriter(ctx.Writer)}

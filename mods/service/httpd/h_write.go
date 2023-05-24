@@ -16,6 +16,7 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
@@ -72,7 +73,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	var in spi.InputStream
+	var in spec.InputStream
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
 		if err != nil {

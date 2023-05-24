@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -16,7 +17,7 @@ type Decoder struct {
 	reader       *gojson.Decoder
 	dataDepth    int
 	nrow         int64
-	Input        spi.InputStream
+	Input        spec.InputStream
 	TimeFormat   string
 	TimeLocation *time.Location
 	TableName    string
