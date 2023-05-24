@@ -80,6 +80,7 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
+                { Prefix: "/lakes",      Handler: "lakes" },
                 { Prefix: "/metrics", Handler: "influx" },
                 { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
                 { Prefix: "/swagger", Handler: VARS_HTTP_ENABLE_SWAGGER ? "swagger" : "-" },
