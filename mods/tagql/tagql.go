@@ -28,10 +28,7 @@ type tagQL struct {
 	table string
 	tag   string
 
-	columns []string
-	source  string
-	expr    *expression.Expression
-
+	yieldColumns   string
 	baseTimeColumn string
 
 	strTime   string
@@ -119,19 +116,17 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 			return nil, errors.New("invalid range syntax")
 		}
 	}
-	expressionPart := getParam("value", "value")
-
-	if expressionPart == "" {
-		tq.columns = []string{"value"}
-		tq.source = "value"
-	} else {
-		expr, err := expression.NewWithFunctions(expressionPart, defaultFunctions)
+	expressionParts := params["yield"]
+	if len(expressionParts) == 0 {
+		expressionParts = []string{"value"}
+	}
+	tq.yieldColumns = strings.Join(expressionParts, ", ")
+	for _, part := range expressionParts {
+		// validates the syntax: e.g) invalid token, undefined function...
+		_ /* expr */, err := expression.NewWithFunctions(part, defaultFunctions)
 		if err != nil {
 			return nil, err
 		}
-		tq.columns = expr.Vars()
-		tq.expr = expr
-		tq.source = expressionPart
 	}
 
 	return tq, nil
@@ -159,7 +154,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -177,7 +172,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.baseTimeColumn,
@@ -194,7 +189,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,
@@ -218,7 +213,7 @@ func (tq *tagQL) toSql() string {
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -232,7 +227,7 @@ func (tq *tagQL) toSql() string {
 			AND %s BETWEEN now - %d AND now 
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.strLimit,
@@ -244,7 +239,7 @@ func (tq *tagQL) toSql() string {
 			AND %s
 				BETWEEN %s - %d AND %s
 			LIMIT %s`,
-			tq.baseTimeColumn, tq.source, tq.table,
+			tq.baseTimeColumn, tq.yieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,
