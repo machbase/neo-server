@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/transcoder"
@@ -17,25 +18,35 @@ import (
 )
 
 type Decoder struct {
-	reader      *csv.Reader
-	columnTypes []string
-	ctx         *spi.RowsDecoderContext
-	translator  transcoder.Transcoder
+	reader       *csv.Reader
+	columnTypes  []string
+	Translator   transcoder.Transcoder
+	Comma        rune
+	Heading      bool
+	Input        spi.InputStream
+	TimeFormat   string
+	TimeLocation *time.Location
+	TableName    string
+	Columns      spi.Columns
 }
 
-func NewDecoder(ctx *spi.RowsDecoderContext, delimiter string, heading bool, translator transcoder.Transcoder) spi.RowsDecoder {
-	delmiter, _ := utf8.DecodeRuneInString(delimiter)
+func NewDecoder() *Decoder {
+	return &Decoder{}
+}
 
-	rr := &Decoder{ctx: ctx}
-	rr.reader = csv.NewReader(ctx.Reader)
-	rr.reader.Comma = delmiter
-	rr.columnTypes = ctx.Columns.Types()
-	rr.translator = translator
+func (dec *Decoder) Open() {
+	dec.reader = csv.NewReader(dec.Input)
+	dec.reader.Comma = dec.Comma
+	dec.columnTypes = dec.Columns.Types()
 
-	if heading { // skip first line
-		rr.reader.Read()
+	if dec.Heading { // skip first line
+		dec.reader.Read()
 	}
-	return rr
+}
+
+func (dec *Decoder) SetDelimiter(delimiter string) {
+	delmiter, _ := utf8.DecodeRuneInString(delimiter)
+	dec.Comma = delmiter
 }
 
 func (dec *Decoder) NextRow() ([]any, error) {
@@ -50,7 +61,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 
 	if len(fields) > len(dec.columnTypes) {
 		return nil, fmt.Errorf("too many columns (%d); table '%s' has %d columns",
-			len(fields), dec.ctx.TableName, len(dec.columnTypes))
+			len(fields), dec.TableName, len(dec.columnTypes))
 	}
 
 	values := make([]any, len(dec.columnTypes))
@@ -65,7 +76,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		case "string":
 			values[i] = field
 		case "datetime":
-			values[i], err = util.ParseTime(field, dec.ctx.TimeFormat, dec.ctx.TimeLocation)
+			values[i], err = util.ParseTime(field, dec.TimeFormat, dec.TimeLocation)
 			if err != nil {
 				return nil, err
 			}
@@ -89,10 +100,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
 		}
 	}
-	if dec.translator != nil {
-		result, err := dec.translator.Process(values)
+	if dec.Translator != nil {
+		result, err := dec.Translator.Process(values)
 		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("transcoder internal error '%T'", dec.translator))
+			return nil, errors.Wrap(err, fmt.Sprintf("transcoder internal error '%T'", dec.Translator))
 		}
 		if conv, ok := result.([]any); !ok {
 			return nil, errors.Wrap(err, fmt.Sprintf("transcoder returns invalid type '%T'", result))

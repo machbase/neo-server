@@ -12,11 +12,17 @@ import (
 type Exporter struct {
 	tick time.Time
 	nrow int
-	ctx  *spi.RowsEncoderContext
+
+	TimeLocation *time.Location
+	Output       spi.OutputStream
+	Rownum       bool
+	Heading      bool
+	TimeFormat   string
+	Precision    int
 }
 
-func NewEncoder(ctx *spi.RowsEncoderContext) spi.RowsEncoder {
-	return &Exporter{ctx: ctx, tick: time.Now()}
+func NewEncoder() *Exporter {
+	return &Exporter{tick: time.Now()}
 }
 
 func (ex *Exporter) ContentType() string {
@@ -26,7 +32,7 @@ func (ex *Exporter) ContentType() string {
 func (ex *Exporter) Open(cols spi.Columns) error {
 	names := cols.Names()
 	types := cols.Types()
-	if ex.ctx.Rownum {
+	if ex.Rownum {
 		names = append([]string{"ROWNUM"}, names...)
 		types = append([]string{"string"}, types...)
 	}
@@ -36,33 +42,33 @@ func (ex *Exporter) Open(cols spi.Columns) error {
 
 	header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
 		string(columnsJson), string(typesJson))
-	ex.ctx.Output.Write([]byte(header))
+	ex.Output.Write([]byte(header))
 
 	return nil
 }
 
 func (ex *Exporter) Close() {
 	footer := fmt.Sprintf(`]}, "success":true, "reason":"success", "elapse":"%s"}`, time.Since(ex.tick).String())
-	ex.ctx.Output.Write([]byte(footer))
-	ex.ctx.Output.Close()
+	ex.Output.Write([]byte(footer))
+	ex.Output.Close()
 }
 
 func (ex *Exporter) Flush(heading bool) {
-	ex.ctx.Output.Flush()
+	ex.Output.Flush()
 }
 
 func (ex *Exporter) AddRow(source []any) error {
 	ex.nrow++
 
-	if ex.ctx.TimeLocation == nil {
-		ex.ctx.TimeLocation = time.UTC
+	if ex.TimeLocation == nil {
+		ex.TimeLocation = time.UTC
 	}
 
 	values := make([]any, len(source))
 	for i, field := range source {
 		values[i] = field
 		if v, ok := field.(*time.Time); ok {
-			switch ex.ctx.TimeFormat {
+			switch ex.TimeFormat {
 			case "ns":
 				values[i] = v.UnixNano()
 			case "ms":
@@ -72,10 +78,10 @@ func (ex *Exporter) AddRow(source []any) error {
 			case "s":
 				values[i] = v.Unix()
 			default:
-				if ex.ctx.TimeLocation == nil {
-					ex.ctx.TimeLocation = time.UTC
+				if ex.TimeLocation == nil {
+					ex.TimeLocation = time.UTC
 				}
-				values[i] = v.In(ex.ctx.TimeLocation).Format(ex.ctx.TimeFormat)
+				values[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
 			}
 			continue
 		} else if v, ok := field.(*float64); ok {
@@ -90,7 +96,7 @@ func (ex *Exporter) AddRow(source []any) error {
 	}
 	var recJson []byte
 	var err error
-	if ex.ctx.Rownum {
+	if ex.Rownum {
 		vs := append([]any{ex.nrow}, values...)
 		recJson, err = gojson.Marshal(vs)
 	} else {
@@ -101,9 +107,9 @@ func (ex *Exporter) AddRow(source []any) error {
 	}
 
 	if ex.nrow > 1 {
-		ex.ctx.Output.Write([]byte(","))
+		ex.Output.Write([]byte(","))
 	}
-	ex.ctx.Output.Write(recJson)
+	ex.Output.Write(recJson)
 
 	return nil
 }

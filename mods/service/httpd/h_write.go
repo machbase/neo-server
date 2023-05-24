@@ -86,13 +86,14 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
-	builder := codec.NewDecoderBuilder(format).
-		SetInputStream(in).
-		SetColumns(desc.Columns.Columns()).
-		SetTimeFormat(timeformat).
-		SetTimeLocation(timeLocation).
-		SetCsvDelimieter(delimiter).
-		SetCsvHeading(heading)
+	codecOpts := []codec.Option{
+		codec.InputStream(in),
+		codec.Columns(desc.Columns.Columns()),
+		codec.TimeFormat(timeformat),
+		codec.TimeLocation(timeLocation),
+		codec.Delimiter(delimiter),
+		codec.Heading(heading),
+	}
 
 	if len(trans) > 0 {
 		opts := []transcoder.Option{}
@@ -101,10 +102,10 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		}
 		opts = append(opts, transcoder.OptionPname("http"))
 		trans := transcoder.New(trans, opts...)
-		builder.SetTranscoder(trans)
-	}
 
-	decoder := builder.Build()
+		codecOpts = append(codecOpts, codec.Transcoder(trans))
+	}
+	decoder := codec.NewDecoder(format, codecOpts...)
 
 	if decoder == nil {
 		rsp.Reason = "codec not found"

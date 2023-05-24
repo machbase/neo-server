@@ -111,18 +111,18 @@ func doExport(ctx *client.ActionContext) {
 		output = &stream.WriterOutputStream{Writer: gw}
 	}
 
-	encoder := codec.NewEncoderBuilder(cmd.Format).
-		SetOutputStream(output).
-		SetTimeLocation(cmd.TimeLocation).
-		SetTimeFormat(cmd.Timeformat).
-		SetPrecision(cmd.Precision).
-		SetRownum(false).
-		SetHeading(cmd.Heading).
-		SetBoxStyle("light").
-		SetBoxSeparateColumns(true).
-		SetBoxDrawBorder(true).
-		SetCsvDelimieter(cmd.Delimiter).
-		Build()
+	encoder := codec.NewEncoder(cmd.Format,
+		codec.OutputStream(output),
+		codec.TimeFormat(cmd.Timeformat),
+		codec.Precision(cmd.Precision),
+		codec.Rownum(false),
+		codec.Heading(cmd.Heading),
+		codec.TimeLocation(cmd.TimeLocation),
+		codec.Delimiter(cmd.Delimiter),
+		codec.BoxStyle("light"),
+		codec.BoxSeparateColumns(true),
+		codec.BoxDrawBorder(true),
+	)
 
 	alive := true
 

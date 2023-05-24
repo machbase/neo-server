@@ -126,18 +126,18 @@ func doSql(ctx *client.ActionContext) {
 		}
 	}
 
-	encoder := codec.NewEncoderBuilder(cmd.Format).
-		SetOutputStream(output).
-		SetTimeLocation(cmd.TimeLocation).
-		SetTimeFormat(cmd.Timeformat).
-		SetPrecision(cmd.Precision).
-		SetRownum(cmd.Rownum).
-		SetHeading(cmd.Heading).
-		SetBoxStyle(cmd.BoxStyle).
-		SetBoxSeparateColumns(cmd.Interactive).
-		SetBoxDrawBorder(cmd.Interactive).
-		SetCsvDelimieter(cmd.Delimiter).
-		Build()
+	encoder := codec.NewEncoder(cmd.Format,
+		codec.OutputStream(output),
+		codec.TimeFormat(cmd.Timeformat),
+		codec.Precision(cmd.Precision),
+		codec.Rownum(cmd.Rownum),
+		codec.Heading(cmd.Heading),
+		codec.TimeLocation(cmd.TimeLocation),
+		codec.Delimiter(cmd.Delimiter),
+		codec.BoxStyle(cmd.BoxStyle),
+		codec.BoxSeparateColumns(cmd.Interactive),
+		codec.BoxDrawBorder(cmd.Interactive),
+	)
 
 	headerHeight := 0
 	switch cmd.Format {

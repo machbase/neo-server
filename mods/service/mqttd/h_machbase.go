@@ -163,13 +163,14 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	builder := codec.NewDecoderBuilder(wp.Format).
-		SetInputStream(instream).
-		SetColumns(cols).
-		SetTimeFormat("ns").
-		SetTimeLocation(time.UTC).
-		SetCsvDelimieter(",").
-		SetCsvHeading(false)
+	codecOpts := []codec.Option{
+		codec.InputStream(instream),
+		codec.Columns(cols),
+		codec.TimeFormat("ns"),
+		codec.TimeLocation(time.UTC),
+		codec.Delimiter(","),
+		codec.Heading(false),
+	}
 
 	if len(wp.Transform) > 0 {
 		opts := []transcoder.Option{}
@@ -178,10 +179,10 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		}
 		opts = append(opts, transcoder.OptionPname("mqtt"))
 		trans := transcoder.New(wp.Transform, opts...)
-		builder.SetTranscoder(trans)
+		codecOpts = append(codecOpts, codec.Transcoder(trans))
 	}
 
-	decoder := builder.Build()
+	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
 	recno := 0
 	for {

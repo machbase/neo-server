@@ -414,12 +414,12 @@ func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
 	}
 	defer output.Close()
 
-	encoder := codec.NewEncoderBuilder(codec.BOX).
-		SetOutputStream(output).
-		SetRownum(true).
-		SetHeading(true).
-		SetBoxStyle(ctx.Pref().BoxStyle().Value()).
-		Build()
+	encoder := codec.NewEncoder(codec.BOX,
+		codec.OutputStream(output),
+		codec.Rownum(true),
+		codec.Heading(true),
+		codec.BoxStyle(ctx.Pref().BoxStyle().Value()),
+	)
 
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,

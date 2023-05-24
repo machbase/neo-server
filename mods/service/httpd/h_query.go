@@ -88,18 +88,18 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		output = &stream.WriterOutputStream{Writer: ctx.Writer}
 	}
 
-	encoder := codec.NewEncoderBuilder(req.Format).
-		SetOutputStream(output).
-		SetTimeLocation(timeLocation).
-		SetTimeFormat(req.Timeformat).
-		SetPrecision(req.Precision).
-		SetRownum(req.Rownum).
-		SetHeading(req.Heading).
-		SetBoxStyle("default").
-		SetBoxSeparateColumns(true).
-		SetBoxDrawBorder(true).
-		SetCsvDelimieter(",").
-		Build()
+	encoder := codec.NewEncoder(req.Format,
+		codec.OutputStream(output),
+		codec.TimeFormat(req.Timeformat),
+		codec.Precision(req.Precision),
+		codec.Rownum(req.Rownum),
+		codec.Heading(req.Heading),
+		codec.TimeLocation(timeLocation),
+		codec.Delimiter(","),
+		codec.BoxStyle("default"),
+		codec.BoxSeparateColumns(true),
+		codec.BoxDrawBorder(true),
+	)
 
 	queryCtx := &do.QueryContext{
 		DB: svr.db,
