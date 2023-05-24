@@ -1913,22 +1913,22 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	req := queryRequest{}
 
 	if ctx.Request.Method == http.MethodGet {
-		err := ctx.ShouldBind(&req)
-		if err != nil {
-			rsp.Reason = fmt.Sprintf("form data bind error : %s", err.Error())
-			ctx.JSON(http.StatusBadRequest, rsp)
-			return
-		}
+		// err := ctx.ShouldBind(&req)
+		// if err != nil {
+		// 	rsp.Reason = fmt.Sprintf("form data bind error : %s", err.Error())
+		// 	ctx.JSON(http.StatusBadRequest, rsp)
+		// 	return
+		// }
 
-		// req.edgeId = ctx.Query("edge_id")
-		// req.startTime = ctx.Query("start_time")
-		// req.endTime = ctx.Query("end_time")
-		// req.level = strInt(ctx.Query("level"), 0)
-		// req.limit = strInt(ctx.Query("limit"), 0)
-		// req.offset = strInt(ctx.Query("offset"), 0)
-		// req.job = ctx.Query("job")
-		// req.keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
-		// req.tableName = ctx.Query("table_name")
+		req.EdgeId = ctx.Query("edge_id")
+		req.StartTime = ctx.Query("start_time")
+		req.EndTime = ctx.Query("end_time")
+		req.Level = strInt(ctx.Query("level"), 0)
+		req.Limit = strInt(ctx.Query("limit"), 0)
+		req.Offset = strInt(ctx.Query("offset"), 0)
+		req.Job = ctx.Query("job")
+		req.Keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
+		req.TableName = ctx.Query("table_name")
 	} else {
 		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
 		ctx.JSON(http.StatusBadRequest, rsp)
