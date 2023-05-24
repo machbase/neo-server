@@ -47,7 +47,9 @@ func (ex *Exporter) Close() {
 		charts.WithTitleOpts(opts.Title{
 			Title:    ex.Title,
 			Subtitle: ex.Subtitle,
-		}))
+		}),
+		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
+	)
 	// Put data into instance
 	line.SetXAxis(ex.xLabels)
 	for i, label := range ex.seriesLabels {
