@@ -2,13 +2,18 @@ package httpd
 
 import (
 	"fmt"
+	"math"
+	"math/cmplx"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/renderer"
+	"github.com/machbase/neo-server/mods/renderer/model"
 	"github.com/machbase/neo-server/mods/stream"
-	spi "github.com/machbase/neo-spi"
+	"gonum.org/v1/gonum/dsp/fourier"
+	"gonum.org/v1/gonum/dsp/window"
 )
 
 type ChartRequest struct {
@@ -17,6 +22,8 @@ type ChartRequest struct {
 	TimeLocation string        `json:"tz,omitempty"`
 	Range        time.Duration `json:"range,omitempty"`
 	Timestamp    string        `json:"time,omitempty"`
+	Transform    string        `json:"transform,omitempty"`
+	Window       string        `json:"window,omitempty"`
 	Format       string        `json:"format,omitempty"`
 	Title        string        `json:"title,omitempty"`
 	Subtitle     string        `json:"subtitle,omitempty"`
@@ -27,10 +34,11 @@ type ChartRequest struct {
 func (svr *httpd) handleChart(ctx *gin.Context) {
 	var err error
 	req := &ChartRequest{
-		Timeformat:   "default",
+		Timeformat:   "default", // do not change this default value; already documented as is.
 		TimeLocation: "UTC",
 		Range:        1 * time.Minute,
 		Timestamp:    "now",
+		Transform:    "",
 		Format:       "html",
 		Title:        "Chart",
 		Subtitle:     "",
@@ -55,6 +63,8 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		req.TimeLocation = strString(ctx.Query("tz"), req.TimeLocation)
 		req.Range = strDuration(ctx.Query("range"), req.Range)
 		req.Timestamp = strString(ctx.Query("time"), req.Timestamp)
+		req.Transform = strString(ctx.Query("transform"), req.Transform)
+		req.Window = strString(ctx.Query("window"), req.Window)
 		req.Format = strString(ctx.Query("format"), req.Format)
 		req.Title = strString(ctx.Query("title"), req.Title)
 		req.Subtitle = strString(ctx.Query("subtitle"), req.Subtitle)
@@ -75,7 +85,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	series := []*spi.RenderingData{}
+	series := []*model.RenderingData{}
 	for _, dq := range queries {
 		data, err := dq.Query(svr.db)
 		if err != nil {
@@ -84,11 +94,20 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		}
 		series = append(series, data)
 	}
-	rndr := renderer.NewChartRendererBuilder(req.Format).
-		SetTitle(req.Title).
-		SetSubtitle(req.Subtitle).
-		SetSize(req.Width, req.Height).
-		Build()
+
+	if req.Transform == "fft" {
+		series[0] = transformFFT(series[0], req.Range, req.Window)
+		if series[0] == nil {
+			ctx.String(http.StatusInternalServerError, "unable use fft")
+			return
+		}
+	}
+
+	rndr := renderer.New(req.Format,
+		renderer.Title(req.Title),
+		renderer.Subtitle(req.Subtitle),
+		renderer.Size(req.Width, req.Height),
+	)
 	if rndr == nil {
 		svr.log.Warnf("chart request has no renderer %+v", req)
 		ctx.String(http.StatusInternalServerError, "no renderer")
@@ -99,4 +118,50 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+}
+
+func transformFFT(series *model.RenderingData, periodDuration time.Duration, windowType string) *model.RenderingData {
+	lenSamples := len(series.Values)
+	if lenSamples < 16 {
+		return nil
+	}
+	period := float64(lenSamples) / (float64(periodDuration) / float64(time.Second))
+	fft := fourier.NewFFT(lenSamples)
+	vals := series.Values
+	amplifier := func(v float64) float64 { return v }
+
+	switch strings.ToLower(windowType) {
+	case "hamming":
+		vals = window.Hamming(vals)
+		// The magnitude of all bins has been decreased by β.
+		// Generally in an analysis amplification may be omitted, but to
+		// make a comparable data, the result should be amplified by -β
+		// of the window function — +5.37 dB for the Hamming window.
+		//  -β = 20 log_10(amplifier).
+		// amplifier := math.Pow(10, 5.37/20.0)
+		amplifier = func(v float64) float64 {
+			return v * math.Pow(10, 5.37/float64(lenSamples))
+		}
+	default:
+		amplifier = func(v float64) float64 {
+			return v * 2.0 / float64(lenSamples)
+		}
+	}
+
+	coeff := fft.Coefficients(nil, vals)
+
+	trans := &model.RenderingData{}
+	trans.Name = fmt.Sprintf("FFT-%s", series.Name)
+	for i, c := range coeff {
+		hz := fft.Freq(i) * period
+		if hz == 0 {
+			continue
+		}
+		magnitude := cmplx.Abs(c)
+		amplitude := amplifier(magnitude)
+		// phase = cmplx.Phase(c)
+		trans.Labels = append(trans.Labels, fmt.Sprintf("%f", hz))
+		trans.Values = append(trans.Values, amplitude)
+	}
+	return trans
 }

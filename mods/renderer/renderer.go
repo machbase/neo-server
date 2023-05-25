@@ -1,35 +1,37 @@
 package renderer
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/renderer/model"
+	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tagql"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
-type ChartQuery struct {
-	Table        string
-	Tag          string
-	Field        string
-	RangeFunc    func() (time.Time, time.Time)
-	Label        string
-	TimeLocation *time.Location
+type Renderer interface {
+	ContentType() string
+	Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error
 }
 
-func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
-	if strings.ToUpper(dq.Field) == "VALUE" {
-		dq.Label = strings.ToLower(dq.Tag)
-	} else {
-		dq.Label = strings.ToLower(fmt.Sprintf("%s-%s", dq.Tag, dq.Field))
-	}
-	rangeFrom, rangeTo := dq.RangeFunc()
+type ChartQuery struct {
+	TagPath      *tagql.TagPath
+	RangeFunc    func(db spi.Database) (time.Time, time.Time)
+	Label        string
+	TimeLocation *time.Location
+	TimeRange    time.Duration
+}
 
-	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, dq.Field, dq.Table)
-
-	rows, err := db.Query(lastSql, dq.Tag, rangeFrom, rangeTo)
+func (dq *ChartQuery) Query(db spi.Database) (*model.RenderingData, error) {
+	rangeFrom, rangeTo := dq.RangeFunc(db)
+	fields := strings.Join(dq.TagPath.Field.Columns, ",")
+	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, fields, dq.TagPath.Table)
+	rows, err := db.Query(lastSql, dq.TagPath.Tag, rangeFrom, rangeTo)
 	if err != nil {
 		return nil, err
 	}
@@ -38,6 +40,9 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 	values := make([]float64, 0)
 	labels := make([]string, 0)
 	idx := 0
+	var timeOffset time.Time
+	var firstTime = false
+
 	for rows.Next() {
 		var ts time.Time
 		var value float64
@@ -46,43 +51,62 @@ func (dq *ChartQuery) Query(db spi.Database) (*spi.RenderingData, error) {
 			fmt.Println(err.Error())
 			return nil, err
 		}
-		label := ts.In(dq.TimeLocation).Format("15:04:05")
+		if !firstTime {
+			timeOffset = ts
+			firstTime = true
+		}
+		value, err = dq.TagPath.Field.Eval(value)
+		if err != nil {
+			return nil, err
+		}
 		values = append(values, value)
+
+		label := ""
+		if dq.TimeRange < 10*time.Second {
+			d := ts.Sub(timeOffset)
+			label = fmt.Sprintf("%d.%09d", d/time.Second, d%time.Second)
+		} else if dq.TimeRange < time.Hour {
+			label = ts.In(dq.TimeLocation).Format("04:05.000")
+		} else {
+			label = ts.In(dq.TimeLocation).Format("15:04:05")
+		}
 		labels = append(labels, label)
 		idx++
 	}
-	return &spi.RenderingData{Name: dq.Label, Values: values, Labels: labels}, nil
+	return &model.RenderingData{Name: dq.Label, Values: values, Labels: labels}, nil
 }
 
 func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Duration, timeformat string, tz *time.Location) ([]*ChartQuery, error) {
 	timeformat = util.GetTimeformat(timeformat)
 	queries := make([]*ChartQuery, len(tagPaths))
 	for i, path := range tagPaths {
-		// path는 <table>/<tag>#<column> 형식으로 구성된다.
-		toks := strings.SplitN(path, "/", 2)
-		if len(toks) == 2 {
-			queries[i] = &ChartQuery{}
-			queries[i].Table = strings.ToUpper(toks[0])
-		} else {
-			return nil, fmt.Errorf("table name not found in '%s'", path)
+		// path syntax: <table>/<tag>#(<column> expression)
+		tagPath, err := tagql.ParseTagPath(path)
+		if err != nil {
+			return nil, err
 		}
-		toks = strings.SplitN(toks[1], "#", 2)
-		if len(toks) == 2 {
-			queries[i].Tag = toks[0]
-			queries[i].Field = toks[1]
-		} else {
-			queries[i].Tag = toks[0]
-			queries[i].Field = "VALUE"
-		}
-
+		queries[i] = &ChartQuery{}
+		queries[i].TagPath = tagPath
 		queries[i].TimeLocation = tz
+		queries[i].TimeRange = cmdRange
+		compositeName := strings.Join(tagPath.Field.Columns, "-")
+		if strings.ToUpper(compositeName) == "VALUE" {
+			queries[i].Label = tagPath.Tag
+		} else {
+			queries[i].Label = tagPath.Tag + "-" + compositeName
+		}
 
-		queries[i].RangeFunc = func() (time.Time, time.Time) {
+		queries[i].RangeFunc = func(db spi.Database) (time.Time, time.Time) {
 			var timestamp time.Time
 			var epoch int64
 			var err error
 			if cmdTimestamp == "now" || cmdTimestamp == "" {
 				timestamp = time.Now()
+			} else if cmdTimestamp == "last" {
+				row := db.QueryRow(fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].TagPath.Table), queries[i].TagPath.Tag)
+				if err := row.Scan(&timestamp); err != nil {
+					timestamp = time.Now()
+				}
 			} else {
 				switch timeformat {
 				case "ns":

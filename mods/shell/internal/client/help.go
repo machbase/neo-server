@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -26,6 +27,7 @@ func pcHelp() readline.PrefixCompleterInterface {
 		}
 		lst = append(lst, "timeformat")
 		lst = append(lst, "tz")
+		lst = append(lst, "keyboard")
 		lst = append(lst, "exit")
 		return lst
 	}))
@@ -48,10 +50,13 @@ func doHelp(ctx *ActionContext) {
 		}
 		switch fields[0] {
 		case "timeformat":
-			ctx.Println("\n  timeformats:\n" + util.HelpTimeformats())
+			ctx.Println("  timeformats:\n" + util.HelpTimeformats())
 			return
 		case "tz":
-			ctx.Println("\n  timezones:\n" + util.HelpTimeZones())
+			ctx.Println("  timezones:\n" + util.HelpTimeZones())
+			return
+		case "keyboard":
+			ctx.Println("  keybaord:\n" + util.HelpShortcuts())
 			return
 		}
 	}
@@ -76,5 +81,6 @@ func doHelp(ctx *ActionContext) {
 		}
 		ctx.Printfln("    %-*s %s", 10, cmd.Name, cmd.Desc)
 	}
-	ctx.Printfln("    %-*s %s", 10, "exit", "Exit shell")
+	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "keyboard", "Show shortcut keys"))
+	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "exit", "Exit shell"))
 }

@@ -35,6 +35,8 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		log:      logging.GetLog("httpd"),
 		db:       db,
 		jwtCache: security.NewJwtCache(),
+
+		neoShellAccount: make(map[string]string),
 	}
 	for _, opt := range options {
 		opt(s)
@@ -65,13 +67,29 @@ func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 // neo-shell address
 func OptionNeoShellAddress(addrs ...string) Option {
 	return func(s *httpd) {
+		candidates := []string{}
 		for _, addr := range addrs {
-			if s.neoShellAddress == "" {
+			if strings.HasPrefix(s.neoShellAddress, "tcp://127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "tcp://localhost:") {
 				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
-			} else if strings.HasPrefix(s.neoShellAddress, "127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "localhost:") {
-				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+				// if loopback is available, use it for web-terminal
+				// eliminate other candiates
+				candidates = candidates[:0]
+				break
+			} else if strings.HasPrefix(addr, "tcp://") {
+				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
 			}
 		}
+		if len(candidates) > 0 {
+			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
+			s.neoShellAddress = candidates[0]
+		}
+	}
+}
+
+// experiement features
+func OptionExperimentMode(enable bool) Option {
+	return func(s *httpd) {
+		s.experimentMode = enable
 	}
 }
 
@@ -109,8 +127,10 @@ type httpd struct {
 	authServer security.AuthServer
 
 	neoShellAddress string
+	neoShellAccount map[string]string
 
-	debugMode bool
+	debugMode      bool
+	experimentMode bool
 }
 
 type HandlerType string
@@ -169,7 +189,9 @@ func (svr *httpd) Stop() {
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(ginutil.RecoveryWithLogging(svr.log))
-	r.Use(ginutil.HttpLogger("http-log"))
+	if svr.debugMode {
+		r.Use(ginutil.HttpLogger("http-log"))
+	}
 	r.Use(svr.corsHandler())
 
 	enableSwagger := false
@@ -214,12 +236,19 @@ func (svr *httpd) Router() *gin.Engine {
 			})
 			group.StaticFS(contentBase, GetAssets(contentBase))
 			group.POST("/api/login", svr.handleLogin)
-			group.Use(svr.handleJwtToken)
-			group.POST("/api/relogin", svr.handleReLogin)
-			group.POST("/api/logout", svr.handleLogout)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.Use(svr.handleJwtToken)
 			group.Any("/machbase", svr.handleQuery)
+			group.GET("/api/check", svr.handleCheck)
+			group.POST("/api/relogin", svr.handleReLogin)
+			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/chart", svr.handleChart)
+			group.POST("/api/chart", svr.handleChart)
+			group.GET("/api/tagql/:table/:tag", svr.handleTagQL)
+			group.GET("/api/tables", svr.handleTables)
+			group.GET("/api/tables/:table/tags", svr.handleTags)
+			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/tags", svr.handleLakeGetTagList)
@@ -237,6 +266,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
+			group.GET("/tagql/:table/:tag", svr.handleTagQL)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

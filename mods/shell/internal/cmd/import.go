@@ -123,7 +123,7 @@ func doImport(ctx *client.ActionContext) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	if ctx.Interactive {
+	if ctx.IsUserShellInteractiveMode() && cmd.Input == "-" {
 		ctx.Printfln("# Enter %s⏎ to quit", cmd.EofMark)
 		colNames := desc.Columns.Columns().Names()
 		ctx.Println("#", strings.Join(colNames, cmd.Delimiter))
@@ -153,71 +153,98 @@ func doImport(ctx *client.ActionContext) {
 		}
 	}
 
-	decoder := codec.NewDecoderBuilder(cmd.InputFormat).
-		SetInputStream(in).
-		SetColumns(desc.Columns.Columns()).
-		SetTimeFormat(cmd.Timeformat).
-		SetTimeLocation(cmd.TimeLocation).
-		SetCsvDelimieter(cmd.Delimiter).
-		Build()
+	decoder := codec.NewDecoder(cmd.InputFormat,
+		codec.InputStream(in),
+		codec.Columns(desc.Columns.Columns()),
+		codec.TimeFormat(cmd.Timeformat),
+		codec.TimeLocation(cmd.TimeLocation),
+		codec.Delimiter(cmd.Delimiter),
+	)
 
+	capture := ctx.NewCaptureUserInterrupt("")
+	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {
+		go capture.Start()
+	}
+	doneC := make(chan bool, 1)
+
+	var alive bool = true
 	var appender spi.Appender
-	hold := []string{}
-	lineno := 0
-	for {
-		vals, err := decoder.NextRow()
-		if err != nil {
-			if err != io.EOF {
-				ctx.Println("ERR", err.Error())
-			}
-			break
-		}
-		lineno++
-
-		if len(vals) != len(desc.Columns) {
-			ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
-			break
-		}
-		if cmd.Method == "insert" {
-			for i := 0; i < len(desc.Columns); i++ {
-				hold = append(hold, "?")
-			}
-			query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
-			if result := ctx.DB.Exec(query, vals...); result.Err() != nil {
-				ctx.Println(result.Err().Error())
+	var lineno int = 0
+	go func() {
+		defer capture.Close()
+		hold := []string{}
+		tick := time.Now()
+		for alive {
+			vals, err := decoder.NextRow()
+			if err != nil {
+				if err != io.EOF {
+					ctx.Println("ERR", err.Error())
+				}
 				break
 			}
-			hold = hold[:0]
-		} else { // append
-			if appender == nil {
-				appender, err = ctx.DB.Appender(cmd.Table)
+			lineno++
+
+			if len(vals) != len(desc.Columns) {
+				ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
+				break
+			}
+			if cmd.Method == "insert" {
+				for i := 0; i < len(desc.Columns); i++ {
+					hold = append(hold, "?")
+				}
+				query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
+				if result := ctx.DB.Exec(query, vals...); result.Err() != nil {
+					ctx.Println(result.Err().Error())
+					break
+				}
+				hold = hold[:0]
+			} else { // append
+				if appender == nil {
+					appender, err = ctx.DB.Appender(cmd.Table)
+					if err != nil {
+						ctx.Println("ERR", err.Error())
+						break
+					}
+				}
+
+				err = appender.Append(vals...)
 				if err != nil {
 					ctx.Println("ERR", err.Error())
 					break
 				}
 			}
+			if appender != nil && lineno%500000 == 0 {
+				// update progress message per 500K records
+				tps := int(float64(lineno) / time.Since(tick).Seconds())
+				ctx.Printf("%s %s records (%s/s)\r", cmd.Method, util.NumberFormat(lineno), util.NumberFormat(tps))
+			} else if appender == nil && lineno%100 == 0 {
+				// progress message per 100 records
+				tps := int(float64(lineno) / time.Since(tick).Seconds())
+				ctx.Printf("%s %s records (%s/s)\r", cmd.Method, util.NumberFormat(lineno), util.NumberFormat(tps))
+			}
+		}
 
-			err = appender.Append(vals...)
+		ctx.Print("\r\n")
+		if cmd.Method == "insert" {
+			ctx.Printf("import total %d record(s) %sed\n", util.NumberFormat(lineno), cmd.Method)
+		} else if appender != nil {
+			succ, fail, err := appender.Close()
 			if err != nil {
-				ctx.Println("ERR", err.Error())
-				break
-			}
-		}
-	}
-	if cmd.Method == "insert" {
-		ctx.Printfln("import total %d record(s) %sed", lineno, cmd.Method)
-	} else if appender != nil {
-		succ, fail, err := appender.Close()
-		if err != nil {
-			ctx.Printfln("import total %d record(s) appended, %d failed %s", succ, fail, err.Error())
-		} else {
-			if fail == 0 {
-				ctx.Printfln("import total %d record(s) appended", succ)
+				ctx.Printf("import total %s record(s) appended, %s failed %s\n", util.NumberFormat(succ), util.NumberFormat(fail), err.Error())
+			} else if fail > 0 {
+				ctx.Printf("import total %s record(s) appended, %s failed\n", util.NumberFormat(succ), util.NumberFormat(fail))
 			} else {
-				ctx.Printfln("import total %d record(s) appended, %d failed", succ, fail)
+				ctx.Printf("import total %s record(s) appended\n", util.NumberFormat(succ))
 			}
+			ctx.Print("enter ⏎ : ")
+		} else {
+			ctx.Print("import processed no record\n")
 		}
-	} else {
-		ctx.Printfln("import processed no record")
+		doneC <- true
+	}()
+	select {
+	case <-capture.C:
+	case <-doneC:
 	}
+	alive = false
 }

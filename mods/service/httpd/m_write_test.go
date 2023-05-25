@@ -137,7 +137,7 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/lake/appender", b)
+	req, _ = http.NewRequest("POST", "/lake/values", b)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 

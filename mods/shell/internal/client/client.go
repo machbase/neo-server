@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/net/context"
+	"golang.org/x/term"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -77,6 +78,7 @@ type client struct {
 	db   spi.DatabaseClient
 	pref *Pref
 
+	rl            *readline.Instance
 	interactive   bool
 	remoteSession bool
 }
@@ -283,6 +285,19 @@ func (cli *client) Process(line string) {
 		Stdout:       cli.conf.Stdout,
 		Stderr:       cli.conf.Stderr,
 	}
+
+	if cli.rl != nil {
+		actCtx.ReadLine = cli.rl
+		defer cli.rl.SetPrompt(cli.conf.Prompt)
+	} else {
+		rl, _ := readline.NewEx(&readline.Config{
+			DisableAutoSaveHistory: true,
+			InterruptPrompt:        "^C",
+		})
+		defer rl.Close()
+		actCtx.ReadLine = rl
+	}
+
 	actCtx.parent, actCtx.cancelFunc = context.WithCancel(context.Background())
 	actCtx.cli = cli
 
@@ -314,6 +329,9 @@ func (cli *client) Prompt() {
 		readlineCfg.Stdin = nil
 		readlineCfg.Stdout = nil
 		readlineCfg.Stderr = nil
+		if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
+			defer term.Restore(int(os.Stdin.Fd()), oldState)
+		}
 	}
 
 	rl, err := readline.NewEx(readlineCfg)
@@ -331,11 +349,11 @@ func (cli *client) Prompt() {
 	for {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
-			if len(line) == 0 {
-				break
-			} else {
-				continue
-			}
+			// when user send input '^C'
+			// clear multi-line buffer and recover origin prompt
+			parts = parts[:0]
+			rl.SetPrompt(cli.conf.Prompt)
+			continue
 		} else if err == io.EOF {
 			break
 		}
@@ -356,7 +374,7 @@ func (cli *client) Prompt() {
 			}
 		}
 
-		parts = append(parts, line)
+		parts = append(parts, strings.Clone(line))
 		if !strings.HasSuffix(line, ";") {
 			rl.SetPrompt(cli.conf.PromptCont)
 			continue
@@ -370,6 +388,9 @@ func (cli *client) Prompt() {
 		parts = parts[:0]
 		rl.SetPrompt(cli.conf.Prompt)
 		cli.Process(line)
+		// TODO there is a timeing issue between prompt and stdout
+		// without sleep, sometimes the prompt does not display on client's terminal.
+		time.Sleep(50 * time.Millisecond)
 	}
 exit:
 }

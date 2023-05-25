@@ -2,8 +2,10 @@ package client
 
 import (
 	"io"
+	"strings"
 	"time"
 
+	"github.com/chzyer/readline"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	spi "github.com/machbase/neo-spi"
@@ -21,9 +23,10 @@ type ActionContext struct {
 	Interactive  bool // is shell in BATCH or INTERACTIVE mode
 	ServeMode    bool // is shell is running in SERVER/PROXY or user shell mode
 
-	Stdin  io.ReadCloser
-	Stdout io.Writer
-	Stderr io.Writer
+	ReadLine *readline.Instance
+	Stdin    io.ReadCloser
+	Stdout   io.Writer
+	Stderr   io.Writer
 
 	parent     context.Context
 	cancelFunc func()
@@ -102,4 +105,58 @@ func (ctx *ActionContext) NewManagementClient() (mgmt.ManagementClient, error) {
 // otherwise return nil
 func (ctx *ActionContext) ShutdownServerFunc() ShutdownServerFunc {
 	return ctx.cli.ShutdownServer
+}
+
+type CaptureUserInterrupt struct {
+	C        chan bool
+	prompt   string
+	callback func(string) bool
+	ctx      *ActionContext
+	closed   bool
+}
+
+func (ctx *ActionContext) NewCaptureUserInterrupt(prompt string) *CaptureUserInterrupt {
+	return ctx.NewCaptureUserInterruptCallback(prompt, nil)
+}
+
+func (ctx *ActionContext) NewCaptureUserInterruptCallback(prompt string, callback func(string) bool) *CaptureUserInterrupt {
+	cui := &CaptureUserInterrupt{
+		C:        make(chan bool, 1),
+		prompt:   prompt,
+		callback: callback,
+		ctx:      ctx,
+	}
+	return cui
+}
+
+func (cui *CaptureUserInterrupt) SetPrompt(p string) {
+	cui.prompt = p
+}
+
+func (cui *CaptureUserInterrupt) Start() {
+	cui.ctx.ReadLine.SetPrompt(cui.prompt)
+	for !cui.closed {
+		line, err := cui.ctx.ReadLine.Readline()
+		if err == readline.ErrInterrupt {
+			break
+		} else if err == io.EOF {
+			break
+		}
+		if cui.callback != nil {
+			if !cui.callback(line) {
+				break
+			}
+		} else {
+			line = strings.TrimSpace(line)
+			if line == "exit" || line == "quit" {
+				break
+			}
+		}
+	}
+	cui.C <- true
+}
+
+func (cui *CaptureUserInterrupt) Close() {
+	cui.closed = true
+	cui.ctx.ReadLine.Operation.Close()
 }

@@ -24,6 +24,9 @@ test-base: tmpdir
 		./mods/util \
 		./mods/util/glob \
 		./mods/util/ini \
+		./mods/expression \
+		./mods/tagql \
+		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \
 		./mods/codec/internal/json \
@@ -128,4 +131,4 @@ regen-mock:
 
 ## Require https://github.com/swaggo/swag
 swag:
-	swag init -g mods/service/httpsvr/httpsvr.go
+	swag init -g mods/service/httpd/httpd.go

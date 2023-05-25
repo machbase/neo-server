@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 type pout struct {
@@ -23,7 +23,7 @@ type pout struct {
 	mutex  sync.Mutex
 }
 
-func New(cmdLine string) (spi.OutputStream, error) {
+func New(cmdLine string) (spec.OutputStream, error) {
 	fields := util.SplitFields(cmdLine, true)
 	if len(fields) == 0 {
 		return nil, errors.New("empty command line")
