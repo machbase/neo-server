@@ -348,6 +348,8 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		return
 	}
 
+	svr.log.Info("timezone : ", timezone)
+
 	switch param.ReturnType {
 	case "":
 		param.ReturnType = "0"
@@ -1799,7 +1801,6 @@ func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error
 
 	return svr.convertTimezone(ctx, timezone)
 }
-*/
 
 // convertTimezone 함수만 사용 하는 곳도 존재, 아래 기능이 있으면 makeTimezone 함수와 중복, convert 함수만 사용 가능
 func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, error) {
@@ -1835,7 +1836,6 @@ func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, er
 	svr.log.Debugf("%s convert timezone (%s -> %s)", trackId, timezone, resultTimezone) // ex) aTimezone = Asia/Seoul,  sResTimezone = +0900
 	return resultTimezone, nil
 }
-*/
 
 type (
 	SelectRaw struct {
