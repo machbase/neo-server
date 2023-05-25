@@ -1,6 +1,7 @@
 package tagql
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -8,13 +9,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
+	spi "github.com/machbase/neo-spi"
 )
 
 type TagQL interface {
 	ToSQL() string
+	Execute(ctx context.Context, db spi.Database, encoder codec.RowsEncoder) error
 }
 
 type Context struct {
@@ -35,17 +41,8 @@ type tagQL struct {
 	timeRange time.Duration
 	strLimit  string
 	timeGroup time.Duration
-}
 
-var defaultFunctions = map[string]expression.Function{
-	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
-	"AVG":             func(args ...any) (any, error) { return nil, nil },
-	"SUM":             func(args ...any) (any, error) { return nil, nil },
-	"COUNT":           func(args ...any) (any, error) { return nil, nil },
-	"TS_CHANGE_COUNT": func(args ...any) (any, error) { return nil, nil },
-	"SUMSQ":           func(args ...any) (any, error) { return nil, nil },
-	"FIRST":           func(args ...any) (any, error) { return nil, nil },
-	"LAST":            func(args ...any) (any, error) { return nil, nil },
+	mapExprs []*expression.Expression
 }
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -123,13 +120,120 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	tq.yieldColumns = strings.Join(expressionParts, ", ")
 	for _, part := range expressionParts {
 		// validates the syntax: e.g) invalid token, undefined function...
-		_ /* expr */, err := expression.NewWithFunctions(part, defaultFunctions)
+		_ /* expr */, err := expression.NewWithFunctions(part, yieldFunctions)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	mapParts := params["map"]
+	for _, part := range mapParts {
+		expr, err := expression.NewWithFunctions(part, mapFunctions)
+		if err != nil {
+			return nil, err
+		}
+		tq.mapExprs = append(tq.mapExprs, expr)
+	}
 	return tq, nil
+}
+
+func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
+	R := make(chan any)
+	closeOnce := sync.Once{}
+
+	ctxArr := NewContextChain(ctxCtx, tq.mapExprs, R)
+	var firstCtx *ExecutionContext
+	if len(ctxArr) > 0 {
+		firstCtx = ctxArr[0]
+	}
+
+	var errorToStop error
+	var waitWg sync.WaitGroup
+
+	queryCtx := &do.QueryContext{
+		DB: db,
+		OnFetchStart: func(cols spi.Columns) {
+			encoder.Open(cols)
+		},
+		OnFetch: func(nrow int64, values []any) bool {
+			if errorToStop != nil {
+				return false
+			}
+			if firstCtx != nil {
+				firstCtx.C <- &ExecutionParam{Ctx: firstCtx, K: values[0], V: values[1:]}
+			} else {
+				encoder.AddRow(values)
+			}
+			return true
+		},
+		OnFetchEnd: func() {
+			if firstCtx != nil {
+				firstCtx.C <- ExecutionEOF
+			} else {
+				encoder.Close()
+			}
+		},
+		OnExecuted: nil, // never happen in tagQL
+	}
+
+	waitWg.Add(len(ctxArr))
+	go func() {
+		for ret := range R {
+			switch castV := ret.(type) {
+			case *ExecutionParam:
+				if castV == ExecutionEOF {
+					waitWg.Done()
+				} else {
+					switch tV := castV.V.(type) {
+					case []any:
+						if subarr, ok := tV[0].([][]any); ok {
+							for _, subitm := range subarr {
+								fields := append([]any{castV.K}, subitm...)
+								encoder.AddRow(fields)
+							}
+						} else {
+							fields := append([]any{castV.K}, tV...)
+							encoder.AddRow(fields)
+						}
+					case [][]any:
+						for _, row := range tV {
+							fields := append([]any{castV.K}, row...)
+							encoder.AddRow(fields)
+						}
+					}
+				}
+			case []*ExecutionParam:
+				for _, v := range castV {
+					switch tV := v.V.(type) {
+					case []any:
+						fields := append([]any{v.K}, tV...)
+						encoder.AddRow(fields)
+					case [][]any:
+						for _, row := range tV {
+							fields := append([]any{v.K}, row...)
+							encoder.AddRow(fields)
+						}
+					}
+				}
+			case error:
+				errorToStop = castV
+			}
+		}
+	}()
+
+	_, err = do.Query(queryCtx, tq.ToSQL())
+
+	waitWg.Wait()
+	for _, ctx := range ctxArr {
+		ctx.Stop()
+	}
+	closeOnce.Do(func() { close(R) })
+	encoder.Close()
+
+	if errorToStop != nil {
+		return errorToStop
+	}
+	return err
 }
 
 func (tq *tagQL) ToSQL() string {

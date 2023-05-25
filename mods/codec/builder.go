@@ -12,6 +12,10 @@ const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
 const ECHART = "echart"
+const ECHART_LINE3D = "echart.line3d"
+const ECHART_SURFACE3D = "echart.surface3d"
+const ECHART_SCATTER3D = "echart.scatter3d"
+const ECHART_BAR3D = "echart.bar3d"
 
 type RowsEncoder interface {
 	Open(columns spi.Columns) error
@@ -36,7 +40,15 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 	case CSV:
 		ret = csv.NewEncoder()
 	case ECHART:
-		ret = echart.NewEncoder()
+		ret = &echart.Line{}
+	case ECHART_LINE3D:
+		ret = &echart.Line3D{}
+	case ECHART_SURFACE3D:
+		ret = &echart.Surface3D{}
+	case ECHART_SCATTER3D:
+		ret = &echart.Scatter3D{}
+	case ECHART_BAR3D:
+		ret = &echart.Bar3D{}
 	default: // "json"
 		ret = json.NewEncoder()
 	}

@@ -3,6 +3,7 @@ package csv
 import (
 	"encoding/csv"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -70,6 +71,14 @@ func (ex *Exporter) Flush(heading bool) {
 }
 
 func (ex *Exporter) AddRow(values []any) error {
+	defer func() {
+		o := recover()
+		if o != nil {
+			fmt.Println("PANIC (csvexporter)", o)
+			debug.PrintStack()
+		}
+	}()
+
 	var cols = make([]string, len(values))
 
 	for i, r := range values {
@@ -83,6 +92,22 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
+			switch ex.TimeFormat {
+			case "ns":
+				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
+			case "ms":
+				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
+			case "us":
+				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
+			case "s":
+				cols[i] = strconv.FormatInt(v.Unix(), 10)
+			default:
+				if ex.TimeLocation == nil {
+					ex.TimeLocation = time.UTC
+				}
+				cols[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
+			}
+		case time.Time:
 			switch ex.TimeFormat {
 			case "ns":
 				cols[i] = strconv.FormatInt(v.UnixNano(), 10)

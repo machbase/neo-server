@@ -19,7 +19,15 @@ func OutputStream(s spec.OutputStream) Option {
 			e.Output = s
 		case *csv.Exporter:
 			e.Output = s
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Output = s
+		case *echart.Line3D:
+			e.Output = s
+		case *echart.Surface3D:
+			e.Output = s
+		case *echart.Scatter3D:
+			e.Output = s
+		case *echart.Bar3D:
 			e.Output = s
 		case *json.Exporter:
 			e.Output = s
@@ -36,7 +44,13 @@ func TimeFormat(f string) Option {
 			e.TimeFormat = f
 		case *csv.Decoder:
 			e.TimeFormat = f
-		case *echart.Exporter:
+		case *echart.Line:
+			e.TimeFormat = f
+		case *echart.Line3D:
+			e.TimeFormat = f
+		case *echart.Surface3D:
+			e.TimeFormat = f
+		case *echart.Scatter3D:
 			e.TimeFormat = f
 		case *json.Exporter:
 			e.TimeFormat = f
@@ -52,7 +66,13 @@ func Precision(p int) Option {
 			e.Precision = p
 		case *csv.Exporter:
 			e.Precision = p
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Precision = p
+		case *echart.Line3D:
+			e.Precision = p
+		case *echart.Surface3D:
+			e.Precision = p
+		case *echart.Scatter3D:
 			e.Precision = p
 		case *json.Exporter:
 			e.Precision = p
@@ -67,7 +87,13 @@ func Rownum(b bool) Option {
 			e.Rownum = b
 		case *csv.Exporter:
 			e.Rownum = b
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Rownum = b
+		case *echart.Line3D:
+			e.Rownum = b
+		case *echart.Surface3D:
+			e.Rownum = b
+		case *echart.Scatter3D:
 			e.Rownum = b
 		case *json.Exporter:
 			e.Rownum = b
@@ -84,7 +110,9 @@ func Heading(b bool) Option {
 			e.Heading = b
 		case *csv.Decoder:
 			e.Heading = b
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Heading = b
+		case *echart.Line3D:
 			e.Heading = b
 		case *json.Exporter:
 			e.Heading = b
@@ -101,7 +129,9 @@ func TimeLocation(tz *time.Location) Option {
 			e.TimeLocation = tz
 		case *csv.Decoder:
 			e.TimeLocation = tz
-		case *echart.Exporter:
+		case *echart.Line:
+			e.TimeLocation = tz
+		case *echart.Line3D:
 			e.TimeLocation = tz
 		case *json.Exporter:
 			e.TimeLocation = tz
@@ -115,7 +145,9 @@ func Title(title string) Option {
 		switch e := one.(type) {
 		case *box.Exporter:
 		case *csv.Exporter:
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Title = title
+		case *echart.Line3D:
 			e.Title = title
 		case *json.Exporter:
 		}
@@ -127,7 +159,9 @@ func Subtitle(subtitle string) Option {
 		switch e := one.(type) {
 		case *box.Exporter:
 		case *csv.Exporter:
-		case *echart.Exporter:
+		case *echart.Line:
+			e.Subtitle = subtitle
+		case *echart.Line3D:
 			e.Subtitle = subtitle
 		case *json.Exporter:
 		}
@@ -142,7 +176,7 @@ func Delimiter(delimiter string) Option {
 			e.SetDelimiter(delimiter)
 		case *csv.Decoder:
 			e.SetDelimiter(delimiter)
-		case *echart.Exporter:
+		case *echart.Line:
 		case *json.Exporter:
 		}
 	}
@@ -155,7 +189,7 @@ func BoxStyle(style string) Option {
 		case *box.Exporter:
 			e.Style = style
 		case *csv.Exporter:
-		case *echart.Exporter:
+		case *echart.Line:
 		case *json.Exporter:
 		}
 	}
@@ -167,7 +201,7 @@ func BoxSeparateColumns(flag bool) Option {
 		case *box.Exporter:
 			e.SeparateColumns = flag
 		case *csv.Exporter:
-		case *echart.Exporter:
+		case *echart.Line:
 		case *json.Exporter:
 		}
 	}
@@ -179,7 +213,7 @@ func BoxDrawBorder(flag bool) Option {
 		case *box.Exporter:
 			e.DrawBorder = flag
 		case *csv.Exporter:
-		case *echart.Exporter:
+		case *echart.Line:
 		case *json.Exporter:
 		}
 	}
