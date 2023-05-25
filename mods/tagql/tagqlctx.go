@@ -136,3 +136,29 @@ func (p *ExecutionParam) Get(name string) (any, error) {
 		return nil, fmt.Errorf("parameter '%s' is not defined", name)
 	}
 }
+
+func (p *ExecutionParam) EqualKey(other *ExecutionParam) bool {
+	if other == nil {
+		return false
+	}
+	switch lv := p.K.(type) {
+	case time.Time:
+		if rv, ok := other.K.(time.Time); !ok {
+			return false
+		} else {
+			return lv.Nanosecond() == rv.Nanosecond()
+		}
+	}
+	return p.K == other.K
+}
+
+func (p *ExecutionParam) EqualValue(other *ExecutionParam) bool {
+	if other == nil {
+		return false
+	}
+	lv := fmt.Sprintf("%#v", p.V)
+	rv := fmt.Sprintf("%#v", other.V)
+	// fmt.Println("lv", lv)
+	// fmt.Println("rv", rv)
+	return lv == rv
+}

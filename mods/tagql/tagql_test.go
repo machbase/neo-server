@@ -70,7 +70,7 @@ func TestTagQLMajorParts(t *testing.T) {
 
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag?yield=value&time=last&range=1s&map=GROUP_TIME(K, V, 100*1000*1000)",
+		q:      "table/tag?yield=value&time=last&range=1s&map=MODTIME(K, V, '100ms')",
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10000",
 		err:    ""}.
 		run(t)

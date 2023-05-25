@@ -21,26 +21,27 @@ var yieldFunctions = map[string]expression.Function{
 }
 
 var mapFunctions = map[string]expression.Function{
-	"GROUP_TIME": mapf_GROUP_TIME,
-	"FFT":        mapf_FFT,
-	"MERGE":      mapf_MERGE,
-	"FLATTEN":    mapf_FLATTEN,
+	"MODTIME": mapf_MODTIME,
+	"PUSHKEY": mapf_PUSHKEY,
+	"POPKEY":  mapf_POPKEY,
+	"FFT":     mapf_FFT,
 }
 
-// `map=GROUP_TIME(K, V, 1000*1000*1000)` --> group by 1 second
-func mapf_GROUP_TIME(args ...any) (any, error) {
+// make new key by modulus of time
+// `map=MODTIME(K, V, '100ms')` produces `K' : [K, V...]` (K' = K % 100ms)
+func mapf_MODTIME(args ...any) (any, error) {
 	if len(args) != 3 {
-		return nil, fmt.Errorf("f(GROUP_TIME) invalid number of args (n:%d)", len(args))
+		return nil, fmt.Errorf("f(MODTIME) invalid number of args (n:%d)", len(args))
 	}
 	// K : time
 	key, ok := args[0].(time.Time)
 	if !ok {
-		return nil, fmt.Errorf("f(GROUP_TIME) arg k should be time, but %T", args[0])
+		return nil, fmt.Errorf("f(MODTIME) 1st arg should be time, but %T", args[0])
 	}
 	// V : value
 	val, ok := args[1].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(GROUP_TIME) arg v should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(MODTIME) 2nd arg should be []any, but %T", args[1])
 	}
 	// duration
 	var mod int64
@@ -50,7 +51,7 @@ func mapf_GROUP_TIME(args ...any) (any, error) {
 	case string:
 		td, err := time.ParseDuration(d)
 		if err != nil {
-			return nil, fmt.Errorf("f(GROUP_TIME) 3rd argument should be duration, %s", err.Error())
+			return nil, fmt.Errorf("f(MODTIME) 3rd arg should be duration, %s", err.Error())
 		}
 		mod = int64(td)
 	}
@@ -65,29 +66,23 @@ func mapf_GROUP_TIME(args ...any) (any, error) {
 	return ret, nil
 }
 
-// `map=MERGE(K, V, NewKEY)` --> merge to array of array(K, V) with NewKEY
-func mapf_MERGE(args ...any) (any, error) {
+// merge all incoming values into a single key
+// `map=PUSHKEY(NewKEY, K, V)` produces `NewKEY: [K, V...]`
+func mapf_PUSHKEY(args ...any) (any, error) {
 	if len(args) != 3 {
-		return nil, fmt.Errorf("f(MERGE) invalid number of args (n:%d)", len(args))
-	}
-	// K : time
-	key, ok := args[0].(time.Time)
-	if !ok {
-		return nil, fmt.Errorf("f(MERGE) arg k should be time, but %T", args[0])
-	}
-	// V : value
-	val, ok := args[1].([]any)
-	if !ok {
-		return nil, fmt.Errorf("f(MERGE) arg v should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(PUSHKEY) invalid number of args (n:%d)", len(args))
 	}
 	// newkey
-	newKey, ok := args[2].(string)
+	newKey := args[0]
+	// K : time
+	key := args[1]
+	// V : value
+	val, ok := args[2].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(MERGE) 3rd argument should be string, but %T", args[2])
+		return nil, fmt.Errorf("f(PUSHKEY) 3rd arg should be []any, but %T", args[1])
 	}
 
 	newVal := append([]any{key}, val...)
-
 	ret := &ExecutionParam{
 		K: newKey,
 		V: newVal,
@@ -95,16 +90,29 @@ func mapf_MERGE(args ...any) (any, error) {
 	return ret, nil
 }
 
-// `map=FLATTEN(V)` --> produce key: V -> V[0], value: V[1:]
-func mapf_FLATTEN(args ...any) (any, error) {
+// Drop Key, then make the first element of value to promote as a Key
+// `map=POPKEY(V)` produces
+// 1 dimension : `K: [V1, V2, V3...]` ==> `V1 : [V2, V3, .... ]`
+// 2 dimension : `K: [[V11, V12, V13...],[V21, V22, V23...], ...] ==> `V11: [V12, V13...]` and `V21: [V22, V23...]` ...
+func mapf_POPKEY(args ...any) (any, error) {
+	fmt.Printf("==> %#v\n", args)
 	if len(args) != 1 {
-		return nil, fmt.Errorf("f(FLATTEN) invalid number of args (n:%d)", len(args))
+		return nil, fmt.Errorf("f(POPKEY) invalid number of args (n:%d)", len(args))
 	}
 	// V : value
 	switch val := args[0].(type) {
+	default:
+		if len(args) < 2 {
+			return nil, fmt.Errorf("f(POPKEY) arg should be []any or [][]any, but %T", val)
+		}
+		ret := &ExecutionParam{
+			K: args[0],
+			V: args[1:],
+		}
+		return ret, nil
 	case []any:
 		if len(val) < 2 {
-			return nil, fmt.Errorf("f(FLATTEN) arg v length should be larger 2, but %d", len(val))
+			return nil, fmt.Errorf("f(POPKEY) arg length should be larger 2, but %d", len(val))
 		}
 		ret := &ExecutionParam{
 			K: val[0],
@@ -115,7 +123,7 @@ func mapf_FLATTEN(args ...any) (any, error) {
 		ret := make([]*ExecutionParam, len(val))
 		for i, v := range val {
 			if len(v) < 2 {
-				return nil, fmt.Errorf("f(FLATTEN) arg v elements should be larger than 2, but %d", len(v))
+				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
 			}
 			if len(v) == 2 {
 				ret[i] = &ExecutionParam{K: v[0], V: v[1]}
@@ -124,8 +132,6 @@ func mapf_FLATTEN(args ...any) (any, error) {
 			}
 		}
 		return ret, nil
-	default:
-		return nil, fmt.Errorf("f(FLATTEN) arg v should be []any or [][]any, but %T", val)
 	}
 }
 

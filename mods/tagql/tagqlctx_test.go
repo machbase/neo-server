@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewContextChain(t *testing.T) {
-	exprMerge, err := expression.NewWithFunctions("MERGE(K, V, 'tt')", mapFunctions)
+	exprMerge, err := expression.NewWithFunctions("PUSHKEY('tt', K, V)", mapFunctions)
 	require.Nil(t, err)
 	exprFFT, err := expression.NewWithFunctions("FFT(K, V)", mapFunctions)
 	require.Nil(t, err)
