@@ -1,7 +1,6 @@
 package tagql
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -19,6 +18,11 @@ type MapFuncTestCase struct {
 }
 
 func TestMapFunc_MODTIME(t *testing.T) {
+	MapFuncTestCase{
+		input:     `MODTIME(K, V, 'x', 'y')`,
+		params:    FuncParamMock(1, ""),
+		expectErr: "f(MODTIME) invalid number of args (n:4)",
+	}.run(t)
 	MapFuncTestCase{
 		input:     `MODTIME(K, V, '100ms')`,
 		params:    FuncParamMock(123456, ""),
@@ -66,19 +70,24 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 
 func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
-		input:     `POPKEY(K, V)`,
-		params:    FuncParamMock("x", []any{1, 2, 3}),
-		expectErr: "f(POPKEY) invalid number of args (n:2)",
+		input:     `POPKEY(V)`,
+		params:    FuncParamMock("x", []int{1, 2, 3}),
+		expectErr: "f(POPKEY) requires 2 args, but got 1",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `POPKEY(V)`,
+		input:     `POPKEY(K, V)`,
+		params:    FuncParamMock("x", []any{1, 2, 3}),
+		expectErr: "f(POPKEY) 2nd arg should be index of V, but []interface {}",
+	}.run(t)
+	MapFuncTestCase{
+		input:     `POPKEY(V, 0)`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
 		expectErr: "f(POPKEY) arg should be []any or [][]any, but []int",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `POPKEY(V)`,
+		input:     `POPKEY(V, 0)`,
 		params:    FuncParamMock("x", []any{"K", 1, 2}),
-		expectErr: "f(POPKEY) invalid number of args (n:3)",
+		expectErr: "f(POPKEY) requires 2 args, but got 4",
 	}.run(t)
 }
 
@@ -118,18 +127,7 @@ func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameter
 }
 
 func FuncParamMock(k any, v any) expression.Parameters {
-	return &paramMock{
-		back: func(name string) (any, error) {
-			switch name {
-			case "K", "k":
-				return k, nil
-			case "V", "v":
-				return v, nil
-			default:
-				return nil, errors.New("unknown parameter")
-			}
-		},
-	}
+	return &ExecutionParam{K: k, V: v}
 }
 
 type paramMock struct {

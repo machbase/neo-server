@@ -66,7 +66,8 @@ func mapf_MODTIME(args ...any) (any, error) {
 	return ret, nil
 }
 
-// merge all incoming values into a single key
+// Merge all incoming values into a single key,
+// incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY, K, V)` produces `NewKEY: [K, V...]`
 func mapf_PUSHKEY(args ...any) (any, error) {
 	if len(args) != 3 {
@@ -90,34 +91,34 @@ func mapf_PUSHKEY(args ...any) (any, error) {
 	return ret, nil
 }
 
-// Drop Key, then make the first element of value to promote as a Key
-// `map=POPKEY(V)` produces
+// Drop Key, then make the first element of value to promote as a key,
+// decrease dimension of vector as result if the input is not multiple dimension vector.
+// `map=POPKEY(V, 0)` produces
 // 1 dimension : `K: [V1, V2, V3...]` ==> `V1 : [V2, V3, .... ]`
 // 2 dimension : `K: [[V11, V12, V13...],[V21, V22, V23...], ...] ==> `V11: [V12, V13...]` and `V21: [V22, V23...]` ...
 func mapf_POPKEY(args ...any) (any, error) {
 	fmt.Printf("==> %#v\n", args)
-	if len(args) != 1 {
-		return nil, fmt.Errorf("f(POPKEY) invalid number of args (n:%d)", len(args))
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(POPKEY) requires 2 args, but got %d", len(args))
 	}
+	var nth = 0
+	if arg2, ok := args[1].(float64); !ok {
+		return nil, fmt.Errorf("f(POPKEY) 2nd arg should be index of V, but %T", args[1])
+	} else {
+		nth = int(arg2)
+	}
+
 	// V : value
 	switch val := args[0].(type) {
 	default:
-		if len(args) < 2 {
-			return nil, fmt.Errorf("f(POPKEY) arg should be []any or [][]any, but %T", val)
-		}
-		ret := &ExecutionParam{
-			K: args[0],
-			V: args[1:],
-		}
-		return ret, nil
+		return nil, fmt.Errorf("f(POPKEY) arg should be []any or [][]any, but %T", val)
 	case []any:
-		if len(val) < 2 {
-			return nil, fmt.Errorf("f(POPKEY) arg length should be larger 2, but %d", len(val))
+		if nth <= len(val) {
+			return nil, fmt.Errorf("f(POPKEY) 2nd arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
-		ret := &ExecutionParam{
-			K: val[0],
-			V: val[1:],
-		}
+		newKey := val[nth]
+		newVal := append(val[0:nth], val[nth+1:]...)
+		ret := &ExecutionParam{K: newKey, V: newVal}
 		return ret, nil
 	case [][]any:
 		ret := make([]*ExecutionParam, len(val))
