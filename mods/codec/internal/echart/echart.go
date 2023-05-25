@@ -10,7 +10,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-type Exporter struct {
+type Line struct {
 	xLabels      []any
 	seriesLabels []string
 	series       [][]opts.LineData
@@ -25,22 +25,18 @@ type Exporter struct {
 	Subtitle     string
 }
 
-func NewEncoder() *Exporter {
-	return &Exporter{}
-}
-
-func (ex *Exporter) ContentType() string {
+func (ex *Line) ContentType() string {
 	return "text/html"
 }
 
-func (ex *Exporter) Open(cols spi.Columns) error {
+func (ex *Line) Open(cols spi.Columns) error {
 	names := cols.Names()
 	ex.seriesLabels = names[1:]
 	ex.series = make([][]opts.LineData, len(ex.seriesLabels))
 	return nil
 }
 
-func (ex *Exporter) Close() {
+func (ex *Line) Close() {
 	line := charts.NewLine()
 	line.SetGlobalOptions(
 		charts.WithInitializationOpts(opts.Initialization{Theme: types.ThemeWesteros}),
@@ -59,10 +55,15 @@ func (ex *Exporter) Close() {
 	line.Render(ex.Output)
 }
 
-func (ex *Exporter) Flush(heading bool) {
+func (ex *Line) Flush(heading bool) {
 }
 
-func (ex *Exporter) AddRow(values []any) error {
+func (ex *Line) AddRow(values []any) error {
+	if len(ex.series) < len(values)-1 {
+		for i := 0; i < len(values)-1-len(ex.series); i++ {
+			ex.series = append(ex.series, []opts.LineData{})
+		}
+	}
 	ex.xLabels = append(ex.xLabels, values[0])
 	for n := 1; n < len(values); n++ {
 		ov := opts.LineData{
