@@ -3,6 +3,7 @@ package csv
 import (
 	"encoding/csv"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -70,6 +71,14 @@ func (ex *Exporter) Flush(heading bool) {
 }
 
 func (ex *Exporter) AddRow(values []any) error {
+	defer func() {
+		o := recover()
+		if o != nil {
+			fmt.Println("PANIC (csvexporter)", o)
+			debug.PrintStack()
+		}
+	}()
+
 	var cols = make([]string, len(values))
 
 	for i, r := range values {

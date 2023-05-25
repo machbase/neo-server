@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
@@ -43,17 +43,6 @@ type tagQL struct {
 	timeGroup time.Duration
 
 	mapExprs []*expression.Expression
-}
-
-var yieldFunctions = map[string]expression.Function{
-	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
-	"AVG":             func(args ...any) (any, error) { return nil, nil },
-	"SUM":             func(args ...any) (any, error) { return nil, nil },
-	"COUNT":           func(args ...any) (any, error) { return nil, nil },
-	"TS_CHANGE_COUNT": func(args ...any) (any, error) { return nil, nil },
-	"SUMSQ":           func(args ...any) (any, error) { return nil, nil },
-	"FIRST":           func(args ...any) (any, error) { return nil, nil },
-	"LAST":            func(args ...any) (any, error) { return nil, nil },
 }
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -139,7 +128,7 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 
 	mapParts := params["map"]
 	for _, part := range mapParts {
-		expr, err := expression.NewWithFunctions(part, newMapFunctions())
+		expr, err := expression.NewWithFunctions(part, mapFunctions)
 		if err != nil {
 			return nil, err
 		}
@@ -148,104 +137,103 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	return tq, nil
 }
 
-func (tq *tagQL) Execute(ctx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
+func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
+	R := make(chan any)
+	closeOnce := sync.Once{}
+
+	ctxArr := NewContextChain(ctxCtx, tq.mapExprs, R)
+	var firstCtx *ExecutionContext
+	if len(ctxArr) > 0 {
+		firstCtx = ctxArr[0]
+	}
+
+	var errorToStop error
+	var waitWg sync.WaitGroup
+
 	queryCtx := &do.QueryContext{
 		DB: db,
 		OnFetchStart: func(cols spi.Columns) {
 			encoder.Open(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
-			var param []any = values
-			for _, expr := range tq.mapExprs {
-				var ret any
-				var retValid bool
-				ret, err = expr.Eval(MapData(param))
-				if err != nil {
-					return false
-				}
-				if ret == nil {
-					// aggregation function can return nil
-					param = nil
-					return true
-				}
-				if param, retValid = ret.([]any); !retValid {
-					err = fmt.Errorf("map function %s returns invalid value", expr.String())
-					return false
-				}
+			if errorToStop != nil {
+				return false
 			}
-			if param != nil {
-				if err = encoder.AddRow(param); err != nil {
-					return false
-				}
+			if firstCtx != nil {
+				firstCtx.C <- &ExecutionParam{Ctx: firstCtx, K: values[0], V: values[1:]}
+			} else {
+				encoder.AddRow(values)
 			}
 			return true
 		},
 		OnFetchEnd: func() {
-			var param = endOfDataFrame // indicator of end of dataframe
-			for _, expr := range tq.mapExprs {
-				ret, _ := expr.Eval(MapData(param))
-				if ret == nil {
-					param = endOfDataFrame
-					continue
-				} else {
-					var ok bool
-					if param, ok = ret.([]any); !ok {
-						param = endOfDataFrame
-					}
-				}
+			if firstCtx != nil {
+				firstCtx.C <- ExecutionEOF
+			} else {
+				encoder.Close()
 			}
-			if param != nil && !IsEndOfDataFrame(param) {
-				encoder.AddRow(param)
-			}
-			encoder.Close()
 		},
 		OnExecuted: nil, // never happen in tagQL
 	}
 
-	_, err = do.Query(queryCtx, tq.ToSQL())
-	return err
-}
-
-var endOfDataFrame = []any{io.EOF}
-
-func IsEndOfDataFrame(v any) bool {
-	if arr, ok := v.([]any); ok {
-		return len(arr) >= 1 && arr[0] == io.EOF
-	}
-	return false
-}
-
-type MapData []any
-
-func (p MapData) Get(name string) (any, error) {
-	switch len(p) {
-	case 0:
-		return nil, errors.New("empty parameter")
-	case 1:
-		if p[0] == io.EOF {
-			return io.EOF, nil
+	waitWg.Add(len(ctxArr))
+	go func() {
+		for ret := range R {
+			switch castV := ret.(type) {
+			case *ExecutionParam:
+				if castV == ExecutionEOF {
+					waitWg.Done()
+				} else {
+					switch tV := castV.V.(type) {
+					case []any:
+						if subarr, ok := tV[0].([][]any); ok {
+							for _, subitm := range subarr {
+								fields := append([]any{castV.K}, subitm...)
+								encoder.AddRow(fields)
+							}
+						} else {
+							fields := append([]any{castV.K}, tV...)
+							encoder.AddRow(fields)
+						}
+					case [][]any:
+						for _, row := range tV {
+							fields := append([]any{castV.K}, row...)
+							encoder.AddRow(fields)
+						}
+					}
+				}
+			case []*ExecutionParam:
+				for _, v := range castV {
+					switch tV := v.V.(type) {
+					case []any:
+						fields := append([]any{v.K}, tV...)
+						encoder.AddRow(fields)
+					case [][]any:
+						for _, row := range tV {
+							fields := append([]any{v.K}, row...)
+							encoder.AddRow(fields)
+						}
+					}
+				}
+			case error:
+				errorToStop = castV
+			}
 		}
-		return nil, fmt.Errorf("not enough parameters (len:1)")
-	}
-	if name == "K" || name == "k" {
-		return p[0], nil
-	} else if name == "V" || name == "v" {
-		return p[1:], nil
-	} else {
-		return nil, fmt.Errorf("parameter '%s' is not defined", name)
-	}
-}
+	}()
 
-func (p MapData) IsEOF() bool {
-	return IsEndOfDataFrame(p)
-}
+	_, err = do.Query(queryCtx, tq.ToSQL())
 
-func (p MapData) String() string {
-	buf := []string{"tagql.MapData"}
-	for _, v := range p {
-		buf = append(buf, fmt.Sprintf("%T(%v)", v, v))
+	waitWg.Wait()
+	for _, ctx := range ctxArr {
+		ctx.Stop()
 	}
-	return strings.Join(buf, ", ")
+	closeOnce.Do(func() { close(R) })
+	encoder.Close()
+
+	if errorToStop != nil {
+		return errorToStop
+	}
+	return err
 }
 
 func (tq *tagQL) ToSQL() string {
