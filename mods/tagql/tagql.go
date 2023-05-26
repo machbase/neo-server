@@ -113,7 +113,7 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 			return nil, errors.New("invalid range syntax")
 		}
 	}
-	expressionParts := params["yield"]
+	expressionParts := params["field"]
 	if len(expressionParts) == 0 {
 		expressionParts = []string{"value"}
 	}
