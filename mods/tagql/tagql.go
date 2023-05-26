@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
@@ -138,17 +137,9 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 }
 
 func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
-	R := make(chan any)
-	closeOnce := sync.Once{}
-
-	ctxArr := NewContextChain(ctxCtx, tq.mapExprs, R)
-	var firstCtx *ExecutionContext
-	if len(ctxArr) > 0 {
-		firstCtx = ctxArr[0]
-	}
+	chain := NewExecutionChain(ctxCtx, tq.mapExprs, encoder)
 
 	var errorToStop error
-	var waitWg sync.WaitGroup
 
 	queryCtx := &do.QueryContext{
 		DB: db,
@@ -159,30 +150,21 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.
 			if errorToStop != nil {
 				return false
 			}
-			if firstCtx != nil {
-				firstCtx.C <- &ExecutionParam{Ctx: firstCtx, K: values[0], V: values[1:]}
-			} else {
-				encoder.AddRow(values)
-			}
+			chain.Source(values)
 			return true
 		},
 		OnFetchEnd: func() {
-			if firstCtx != nil {
-				firstCtx.C <- ExecutionEOF
-			} else {
-				encoder.Close()
-			}
+			chain.Source(nil)
 		},
 		OnExecuted: nil, // never happen in tagQL
 	}
 
-	waitWg.Add(len(ctxArr))
 	go func() {
-		for ret := range R {
+		for ret := range chain.R {
 			switch castV := ret.(type) {
 			case *ExecutionParam:
 				if castV == ExecutionEOF {
-					waitWg.Done()
+					chain.Done()
 				} else {
 					switch tV := castV.V.(type) {
 					case []any:
@@ -223,12 +205,9 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.
 
 	_, err = do.Query(queryCtx, tq.ToSQL())
 
-	waitWg.Wait()
-	for _, ctx := range ctxArr {
-		ctx.Stop()
-	}
-	closeOnce.Do(func() { close(R) })
-	encoder.Close()
+	chain.Wait()
+	chain.Stop()
+	chain.Close()
 
 	if errorToStop != nil {
 		return errorToStop

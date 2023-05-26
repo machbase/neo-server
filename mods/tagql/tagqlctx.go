@@ -7,8 +7,79 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
+	spi "github.com/machbase/neo-spi"
 )
+
+type ExecutionChain struct {
+	R <-chan any
+
+	encoder   codec.RowsEncoder
+	chain     []*ExecutionContext
+	head      *ExecutionContext
+	r         chan any
+	closeOnce sync.Once
+	waitWg    sync.WaitGroup
+}
+
+func NewExecutionChain(ctxCtx context.Context, exprs []*expression.Expression, encoder codec.RowsEncoder) *ExecutionChain {
+	ret := &ExecutionChain{}
+	ret.r = make(chan any)
+	ret.R = ret.r
+	ret.encoder = encoder
+	ret.chain = NewContextChain(ctxCtx, exprs, ret.r)
+	if len(ret.chain) > 0 {
+		ret.head = ret.chain[0]
+	}
+	ret.waitWg.Add(len(ret.chain))
+	return ret
+}
+
+func (ec *ExecutionChain) Done() {
+	ec.waitWg.Done()
+}
+
+func (ec *ExecutionChain) Wait() {
+	ec.waitWg.Wait()
+}
+
+func (ec *ExecutionChain) Stop() {
+	for _, ctx := range ec.chain {
+		ctx.Stop()
+	}
+}
+
+func (ec *ExecutionChain) Open(cols spi.Columns) {
+	if ec.encoder != nil {
+		ec.encoder.Open(cols)
+	}
+}
+
+func (ec *ExecutionChain) Close() {
+	ec.closeOnce.Do(func() {
+		close(ec.r)
+	})
+	if ec.encoder != nil {
+		ec.encoder.Close()
+	}
+}
+
+func (ec *ExecutionChain) Source(values []any) {
+	if ec.head != nil {
+		if values != nil {
+			ec.head.C <- &ExecutionParam{Ctx: ec.head, K: values[0], V: values[1:]}
+		} else {
+			ec.head.C <- ExecutionEOF
+		}
+	} else {
+		if values != nil {
+			ec.encoder.AddRow(values)
+		} else {
+			ec.encoder.Close()
+		}
+	}
+}
 
 type ExecutionContext struct {
 	context.Context
