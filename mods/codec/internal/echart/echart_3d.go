@@ -1,6 +1,7 @@
 package echart
 
 import (
+	"errors"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -70,16 +71,71 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 }
 
 func (ex *Base3D) AddRow(values []any) error {
-	t := values[0].(time.Time).UnixMilli()
-	hz := values[1].(float64)
-	amp := values[2].(float64)
+	if len(values) < 3 {
+		return errors.New("3D chart require  at last 3 vlaues")
+	}
+	var xv time.Time
+	var yv float64
+	var zv float64
 
-	if hz > 500 {
+	if v, ok := values[0].(time.Time); ok {
+		xv = v
+	} else {
+		if pv, ok := values[0].(*time.Time); ok {
+			xv = *pv
+		} else {
+			return errors.New("3D chart requires time.Time value for x-axis")
+		}
+	}
+	if v, ok := ex.value(values[1]); ok {
+		yv = v
+	} else {
+		return errors.New("3D chart requires float64 value for y-axis")
+	}
+
+	if v, ok := ex.value(values[2]); ok {
+		zv = v
+	} else {
+		return errors.New("3D chart requires float64 value for z-axis")
+	}
+
+	if yv > 500 {
 		return nil
 	}
-	ex.series = append(ex.series, opts.Chart3DData{Value: []any{t, hz, amp}, ItemStyle: &opts.ItemStyle{Opacity: 0.4}})
+	ex.series = append(ex.series, opts.Chart3DData{Value: []any{xv.UnixMilli(), yv, zv}, ItemStyle: &opts.ItemStyle{Opacity: 0.4}})
 
 	return nil
+}
+
+func (ex *Base3D) value(x any) (float64, bool) {
+	switch v := x.(type) {
+	case int:
+		return float64(v), true
+	case *int:
+		return float64(*v), true
+	case int16:
+		return float64(v), true
+	case *int16:
+		return float64(*v), true
+	case int32:
+		return float64(v), true
+	case *int32:
+		return float64(*v), true
+	case int64:
+		return float64(v), true
+	case *int64:
+		return float64(*v), true
+	case float32:
+		return float64(v), true
+	case *float32:
+		return float64(*v), true
+	case float64:
+		return v, true
+	case *float64:
+		return *v, true
+	default:
+		return 0, false
+	}
 }
 
 type Line3D struct {

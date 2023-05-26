@@ -11,7 +11,7 @@ import (
 const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
-const ECHART = "echart"
+const ECHART_LINE = "echart.line"
 const ECHART_LINE3D = "echart.line3d"
 const ECHART_SURFACE3D = "echart.surface3d"
 const ECHART_SCATTER3D = "echart.scatter3d"
@@ -39,7 +39,7 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 		ret = box.NewEncoder()
 	case CSV:
 		ret = csv.NewEncoder()
-	case ECHART:
+	case ECHART_LINE:
 		ret = &echart.Line{}
 	case ECHART_LINE3D:
 		ret = &echart.Line3D{}

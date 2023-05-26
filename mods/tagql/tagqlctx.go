@@ -41,8 +41,8 @@ func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionCha
 			Name:    expr.String(),
 			Context: ctxCtx,
 			Expr:    expr,
-			C:       make(chan *ExecutionParam),
-			R:       ret.r,
+			src:     make(chan *ExecutionParam),
+			sink:    ret.r,
 			Next:    nil,
 		}
 		if n > 0 {
@@ -64,11 +64,12 @@ func (ec *ExecutionChain) Error() error {
 func (ec *ExecutionChain) Source(values []any) {
 	if ec.head != nil {
 		if values != nil {
-			ec.head.C <- &ExecutionParam{Ctx: ec.head, K: values[0], V: values[1:]}
+			ec.head.src <- &ExecutionParam{Ctx: ec.head, K: values[0], V: values[1:]}
 		} else {
-			ec.head.C <- ExecutionEOF
+			ec.head.src <- ExecutionEOF
 		}
 	} else {
+		// there is no chain, just forward input data to sink directly
 		if values != nil {
 			ec.sink <- values
 		}
@@ -85,6 +86,20 @@ func (ec *ExecutionChain) Start() {
 		child.Start()
 	}
 
+	sink0 := func(k any, v any) {
+		ec.sink <- []any{k, v}
+	}
+
+	sink1 := func(k any, v []any) {
+		ec.sink <- append([]any{k}, v...)
+	}
+
+	sink2 := func(k any, v [][]any) {
+		for _, row := range v {
+			sink1(k, row)
+		}
+	}
+
 	for ret := range ec.r {
 		switch castV := ret.(type) {
 		case *ExecutionParam:
@@ -94,36 +109,25 @@ func (ec *ExecutionChain) Start() {
 				switch tV := castV.V.(type) {
 				case []any:
 					if subarr, ok := tV[0].([][]any); ok {
-						fmt.Println("sink-1")
-						for _, subitm := range subarr {
-							fields := append([]any{castV.K}, subitm...)
-							ec.sink <- fields
-						}
+						sink2(castV.K, subarr)
 					} else {
-						fmt.Println("sink-2")
-						fields := append([]any{castV.K}, tV...)
-						ec.sink <- fields
+						sink1(castV.K, tV)
 					}
 				case [][]any:
-					fmt.Println("sink-3")
-					for _, row := range tV {
-						fields := append([]any{castV.K}, row...)
-						ec.sink <- fields
-					}
+					sink2(castV.K, tV)
+				default:
+					sink0(castV.K, castV.V)
 				}
 			}
 		case []*ExecutionParam:
-			fmt.Println("sink-4")
 			for _, v := range castV {
 				switch tV := v.V.(type) {
 				case []any:
-					fields := append([]any{v.K}, tV...)
-					ec.sink <- fields
+					sink1(v.K, tV)
 				case [][]any:
-					for _, row := range tV {
-						fields := append([]any{v.K}, row...)
-						ec.sink <- fields
-					}
+					sink2(v.K, tV)
+				default:
+					sink0(v.K, tV)
 				}
 			}
 		case error:
@@ -150,8 +154,8 @@ type ExecutionContext struct {
 	context.Context
 	Name string
 	Expr *expression.Expression
-	C    chan *ExecutionParam
-	R    chan<- any
+	src  chan *ExecutionParam
+	sink chan<- any
 	Next *ExecutionContext
 
 	closeWg sync.WaitGroup
@@ -162,9 +166,9 @@ func (ctx *ExecutionContext) Start() {
 	go func() {
 		defer func() {
 			if ctx.Next != nil {
-				ctx.Next.C <- ExecutionEOF
+				ctx.Next.src <- ExecutionEOF
 			}
-			ctx.R <- ExecutionEOF
+			ctx.sink <- ExecutionEOF
 			ctx.closeWg.Done()
 			if o := recover(); o != nil {
 				fmt.Println("panic", ctx.Name, o)
@@ -174,12 +178,31 @@ func (ctx *ExecutionContext) Start() {
 		var curKey any
 		var curVal []any
 
-		for p := range ctx.C {
+		yield := func() {
+			var yieldValue *ExecutionParam
+			if len(curVal) == 1 {
+				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal[0]}
+			} else {
+				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
+			}
+			if ctx.Next != nil {
+				fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
+				ctx.Next.src <- yieldValue
+			} else {
+				fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
+				ctx.sink <- yieldValue
+			}
+		}
+		drop := func(p *ExecutionParam) {
+			fmt.Println("--", ctx.Name, "DROP", p.K, p.StringValueTypes())
+		}
+
+		for p := range ctx.src {
 			if p == ExecutionEOF {
 				break
 			}
 			if ret, err := ctx.Expr.Eval(p); err != nil {
-				ctx.R <- err
+				ctx.sink <- err
 			} else if ret != nil {
 				var resultset []*ExecutionParam
 				switch rs := ret.(type) {
@@ -188,7 +211,7 @@ func (ctx *ExecutionContext) Start() {
 				case []*ExecutionParam:
 					resultset = rs
 				default:
-					ctx.R <- fmt.Errorf("func returns invalid type: %T (%s)", ret, ctx.Name)
+					ctx.sink <- fmt.Errorf("func returns invalid type: %T (%s)", ret, ctx.Name)
 				}
 
 				for _, param := range resultset {
@@ -196,40 +219,29 @@ func (ctx *ExecutionContext) Start() {
 						curKey = param.K
 						curVal = []any{}
 					}
-					fmt.Println("--", ctx.Name, "curKey", fmt.Sprintf("%v", curKey))
 					if curKey == param.K {
 						// aggregate
 						curVal = append(curVal, param.V)
 					} else {
-						yieldValue := &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
-						if ctx.Next != nil {
-							fmt.Println("**", ctx.Name, "==>", ctx.Next.Name, curKey, len(curVal))
-							ctx.Next.C <- yieldValue
-						} else {
-							ctx.R <- yieldValue
-						}
+						yield()
 						curKey = param.K
 						curVal = []any{param.V}
 					}
 				}
 			} else {
-				fmt.Println("drop", ctx.Name, curKey)
+				drop(p)
 			}
 		}
 		if curKey != nil && len(curVal) > 0 {
-			if ctx.Next != nil {
-				ctx.Next.C <- &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
-			} else {
-				ctx.R <- &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
-			}
+			yield()
 		}
 	}()
 }
 
 func (ctx *ExecutionContext) Stop() {
-	if ctx.C != nil {
+	if ctx.src != nil {
 		ctx.closeWg.Wait()
-		close(ctx.C)
+		close(ctx.src)
 	}
 }
 
@@ -260,6 +272,58 @@ func (p *ExecutionParam) Get(name string) (any, error) {
 	} else {
 		return nil, fmt.Errorf("parameter '%s' is not defined", name)
 	}
+}
+
+func (p *ExecutionParam) String() string {
+	return fmt.Sprintf("K:%T(%v) V:%s", p.K, p.K, p.StringValueTypes())
+}
+
+func (p *ExecutionParam) StringValueTypes() string {
+	if arr, ok := p.V.([]any); ok {
+		return p.stringTypesOfArray(arr, 3)
+	} else if arr, ok := p.V.([][]any); ok {
+		subTypes := []string{}
+		for i, subarr := range arr {
+			if i == 3 && len(arr) > i {
+				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}, ...", i, p.stringTypesOfArray(subarr, 3)))
+				break
+			} else {
+				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}", i, p.stringTypesOfArray(subarr, 3)))
+			}
+		}
+
+		return fmt.Sprintf("(len=%d) [][]any{%s}", len(arr), strings.Join(subTypes, ","))
+	} else {
+		return fmt.Sprintf("%T", p.V)
+	}
+}
+
+func (p *ExecutionParam) stringTypesOfArray(arr []any, limit int) string {
+	s := []string{}
+	for i, a := range arr {
+		aType := fmt.Sprintf("%T", a)
+		if subarr, ok := a.([]any); ok {
+			s2 := []string{}
+			for n, subelm := range subarr {
+				if n == limit && len(subarr) > n {
+					s2 = append(s2, fmt.Sprintf("%T,... (len=%d)", subelm, len(subarr)))
+					break
+				} else {
+					s2 = append(s2, fmt.Sprintf("%T", subelm))
+				}
+			}
+			aType = "[]any{" + strings.Join(s2, ",") + "}"
+		}
+
+		if i == limit && len(arr) > i {
+			t := fmt.Sprintf("%s, ... (len=%d)", aType, len(arr))
+			s = append(s, t)
+			break
+		} else {
+			s = append(s, aType)
+		}
+	}
+	return strings.Join(s, ", ")
 }
 
 func (p *ExecutionParam) EqualKey(other *ExecutionParam) bool {

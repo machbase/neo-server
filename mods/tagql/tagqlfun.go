@@ -26,6 +26,7 @@ var mapFunctions = map[string]expression.Function{
 	"MODTIME": mapf_MODTIME,
 	"PUSHKEY": mapf_PUSHKEY,
 	"POPKEY":  mapf_POPKEY,
+	"FLATTEN": mapf_FLATTEN,
 	"FILTER":  mapf_FILTER,
 	"FFT":     mapf_FFT,
 }
@@ -37,6 +38,7 @@ var mapFunctionsMacro = [][2]string{
 	{"PUSHKEY(", "PUSHKEY(K,V,"},
 	{"POPKEY()", "POPKEY(K,V)"},
 	{"POPKEY(", "POPKEY(K,V,"},
+	{"FLATTEN()", "FLATTEN(K,V)"},
 	{"FILTER(", "FILTER(K,V,"},
 	{"FFT()", "FFT(K,V)"},
 }
@@ -137,7 +139,6 @@ func mapf_POPKEY(args ...any) (any, error) {
 	default:
 		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
 	case []any:
-		fmt.Println("pop--1", fmt.Sprintf("%T", val[0]))
 		if nth < 0 || nth >= len(val) {
 			return nil, fmt.Errorf("f(POPKEY) 1st arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
@@ -146,7 +147,6 @@ func mapf_POPKEY(args ...any) (any, error) {
 		ret := &ExecutionParam{K: newKey, V: newVal}
 		return ret, nil
 	case [][]any:
-		fmt.Println("pop--2", len(val))
 		ret := make([]*ExecutionParam, len(val))
 		for i, v := range val {
 			if len(v) < 2 {
@@ -159,6 +159,31 @@ func mapf_POPKEY(args ...any) (any, error) {
 			}
 		}
 		return ret, nil
+	}
+}
+
+func mapf_FLATTEN(args ...any) (any, error) {
+	K := args[0]
+	V := args[1]
+
+	if arr, ok := V.([]any); ok {
+		ret := []*ExecutionParam{}
+		for _, elm := range arr {
+			if subarr, ok := elm.([]any); ok {
+				for _, subelm := range subarr {
+					ret = append(ret, &ExecutionParam{K: K, V: subelm})
+				}
+			} else if subarr, ok := elm.([][]any); ok {
+				for _, subelm := range subarr {
+					ret = append(ret, &ExecutionParam{K: K, V: subelm})
+				}
+			} else {
+				ret = append(ret, &ExecutionParam{K: K, V: elm})
+			}
+		}
+		return ret, nil
+	} else {
+		return &ExecutionParam{K: K, V: V}, nil
 	}
 }
 
@@ -240,6 +265,7 @@ func mapf_FFT(args ...any) (any, error) {
 	for i, c := range coeff {
 		hz := fft.Freq(i) * period
 		if hz == 0 {
+			newVal[i] = []any{0., 0.}
 			continue
 		}
 		magnitude := cmplx.Abs(c)
