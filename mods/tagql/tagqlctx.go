@@ -94,15 +94,18 @@ func (ec *ExecutionChain) Start() {
 				switch tV := castV.V.(type) {
 				case []any:
 					if subarr, ok := tV[0].([][]any); ok {
+						fmt.Println("sink-1")
 						for _, subitm := range subarr {
 							fields := append([]any{castV.K}, subitm...)
 							ec.sink <- fields
 						}
 					} else {
+						fmt.Println("sink-2")
 						fields := append([]any{castV.K}, tV...)
 						ec.sink <- fields
 					}
 				case [][]any:
+					fmt.Println("sink-3")
 					for _, row := range tV {
 						fields := append([]any{castV.K}, row...)
 						ec.sink <- fields
@@ -110,6 +113,7 @@ func (ec *ExecutionChain) Start() {
 				}
 			}
 		case []*ExecutionParam:
+			fmt.Println("sink-4")
 			for _, v := range castV {
 				switch tV := v.V.(type) {
 				case []any:
@@ -156,6 +160,17 @@ type ExecutionContext struct {
 func (ctx *ExecutionContext) Start() {
 	ctx.closeWg.Add(1)
 	go func() {
+		defer func() {
+			if ctx.Next != nil {
+				ctx.Next.C <- ExecutionEOF
+			}
+			ctx.R <- ExecutionEOF
+			ctx.closeWg.Done()
+			if o := recover(); o != nil {
+				fmt.Println("panic", ctx.Name, o)
+			}
+		}()
+
 		var curKey any
 		var curVal []any
 
@@ -181,12 +196,14 @@ func (ctx *ExecutionContext) Start() {
 						curKey = param.K
 						curVal = []any{}
 					}
+					fmt.Println("--", ctx.Name, "curKey", fmt.Sprintf("%v", curKey))
 					if curKey == param.K {
 						// aggregate
 						curVal = append(curVal, param.V)
 					} else {
 						yieldValue := &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
 						if ctx.Next != nil {
+							fmt.Println("**", ctx.Name, "==>", ctx.Next.Name, curKey, len(curVal))
 							ctx.Next.C <- yieldValue
 						} else {
 							ctx.R <- yieldValue
@@ -195,6 +212,8 @@ func (ctx *ExecutionContext) Start() {
 						curVal = []any{param.V}
 					}
 				}
+			} else {
+				fmt.Println("drop", ctx.Name, curKey)
 			}
 		}
 		if curKey != nil && len(curVal) > 0 {
@@ -204,13 +223,6 @@ func (ctx *ExecutionContext) Start() {
 				ctx.R <- &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
 			}
 		}
-
-		if ctx.Next != nil {
-			ctx.Next.C <- ExecutionEOF
-		}
-		ctx.R <- ExecutionEOF
-
-		ctx.closeWg.Done()
 	}()
 }
 
@@ -260,6 +272,20 @@ func (p *ExecutionParam) EqualKey(other *ExecutionParam) bool {
 			return false
 		} else {
 			return lv.Nanosecond() == rv.Nanosecond()
+		}
+	case []int:
+		if rv, ok := other.K.([]int); !ok {
+			return false
+		} else {
+			if len(lv) != len(rv) {
+				return false
+			}
+			for i := range lv {
+				if lv[i] != rv[i] {
+					return false
+				}
+			}
+			return true
 		}
 	}
 	return p.K == other.K

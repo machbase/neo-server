@@ -83,7 +83,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	}
 
 	if err := tql.Execute(ctx, svr.db, encoder); err != nil {
-		svr.log.Error("query fail", err.Error())
+		svr.log.Error("tagql execute fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)

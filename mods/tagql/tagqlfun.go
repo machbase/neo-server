@@ -22,9 +22,11 @@ var fieldFunctions = map[string]expression.Function{
 }
 
 var mapFunctions = map[string]expression.Function{
+	"len":     mapf_len,
 	"MODTIME": mapf_MODTIME,
 	"PUSHKEY": mapf_PUSHKEY,
 	"POPKEY":  mapf_POPKEY,
+	"FILTER":  mapf_FILTER,
 	"FFT":     mapf_FFT,
 }
 
@@ -35,6 +37,7 @@ var mapFunctionsMacro = [][2]string{
 	{"PUSHKEY(", "PUSHKEY(K,V,"},
 	{"POPKEY()", "POPKEY(K,V)"},
 	{"POPKEY(", "POPKEY(K,V,"},
+	{"FILTER(", "FILTER(K,V,"},
 	{"FFT()", "FFT(K,V)"},
 }
 
@@ -134,6 +137,7 @@ func mapf_POPKEY(args ...any) (any, error) {
 	default:
 		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
 	case []any:
+		fmt.Println("pop--1", fmt.Sprintf("%T", val[0]))
 		if nth < 0 || nth >= len(val) {
 			return nil, fmt.Errorf("f(POPKEY) 1st arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
@@ -142,6 +146,7 @@ func mapf_POPKEY(args ...any) (any, error) {
 		ret := &ExecutionParam{K: newKey, V: newVal}
 		return ret, nil
 	case [][]any:
+		fmt.Println("pop--2", len(val))
 		ret := make([]*ExecutionParam, len(val))
 		for i, v := range val {
 			if len(v) < 2 {
@@ -155,6 +160,27 @@ func mapf_POPKEY(args ...any) (any, error) {
 		}
 		return ret, nil
 	}
+}
+
+// `map=FILTER(LEN(V)<1900)`
+func mapf_FILTER(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf("f(FILTER) invalid number of args (n:%d)", len(args))
+	}
+	flag, ok := args[2].(bool)
+	if !ok {
+		return nil, fmt.Errorf("f(FILTER) arg should be boolean, but %T", args[2])
+	}
+	if !flag {
+		return nil, nil // drop this vector
+	}
+
+	return &ExecutionParam{K: args[0], V: args[1]}, nil
+}
+
+// `map=len(V)`
+func mapf_len(args ...any) (any, error) {
+	return float64(len(args)), nil
 }
 
 // `map=FFT()` : K is any, V is array of array(time, value)
@@ -171,7 +197,7 @@ func mapf_FFT(args ...any) (any, error) {
 	}
 	lenSamples := len(V)
 	if lenSamples < 16 {
-		return nil, fmt.Errorf("f(FFT) samples should more than 16")
+		return nil, fmt.Errorf("f(FFT) samples should be more than 16")
 	}
 
 	sampleTimes := make([]time.Time, lenSamples)
@@ -210,7 +236,7 @@ func mapf_FFT(args ...any) (any, error) {
 
 	coeff := fft.Coefficients(nil, sampleValues)
 
-	newVal := [][]any{}
+	newVal := make([][]any, len(coeff))
 	for i, c := range coeff {
 		hz := fft.Freq(i) * period
 		if hz == 0 {
@@ -219,7 +245,7 @@ func mapf_FFT(args ...any) (any, error) {
 		magnitude := cmplx.Abs(c)
 		amplitude := amplifier(magnitude)
 		// phase = cmplx.Phase(c)
-		newVal = append(newVal, []any{hz, amplitude})
+		newVal[i] = []any{hz, amplitude}
 	}
 
 	ret := &ExecutionParam{

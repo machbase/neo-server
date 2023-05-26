@@ -51,20 +51,21 @@ func TestMapFunc_MODTIME(t *testing.T) {
 }
 
 func TestMapFunc_PUSHKEY(t *testing.T) {
+	extime := time.Unix(123, 0)
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
-		params:    FuncParamMock(time.Unix(123, 0), []any{1, 2, 3}),
+		params:    FuncParamMock(extime, []any{1, 2, 3}),
 		expectErr: "f(PUSHKEY) invalid number of args (n:2)",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `PUSHKEY('err')`,
-		params:    FuncParamMock(time.Unix(123, 0), []int{1, 2, 3}),
+		params:    FuncParamMock(extime, []int{1, 2, 3}),
 		expectErr: "f(PUSHKEY) V should be []any, but []int",
 	}.run(t)
 	MapFuncTestCase{
 		input:  `PUSHKEY('sam')`,
-		params: FuncParamMock(time.Unix(123, 0), []any{1, 2, 3}),
-		expect: &ExecutionParam{K: "sam", V: []any{time.Unix(123, 0), 1, 2, 3}},
+		params: FuncParamMock(extime, []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "sam", V: []any{extime, 1, 2, 3}},
 	}.run(t)
 }
 
@@ -80,6 +81,11 @@ func TestMapFunc_POPKEY(t *testing.T) {
 		expect: &ExecutionParam{K: 1, V: []any{2, 3}},
 	}.run(t)
 	MapFuncTestCase{
+		input:  `POPKEY()`,
+		params: FuncParamMock("x", []any{[]int{10, 11, 12}, []int{20, 21, 22}, []int{30, 31, 32}}),
+		expect: &ExecutionParam{K: []int{10, 11, 12}, V: []any{[]int{20, 21, 22}, []int{30, 31, 32}}},
+	}.run(t)
+	MapFuncTestCase{
 		input:     `POPKEY(0)`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
 		expectErr: "f(POPKEY) V should be []any or [][]any, but []int",
@@ -88,6 +94,29 @@ func TestMapFunc_POPKEY(t *testing.T) {
 		input:  `POPKEY(1)`,
 		params: FuncParamMock("x", []any{"K", 1, 2}),
 		expect: &ExecutionParam{K: 1, V: []any{"K", 2}},
+	}.run(t)
+}
+
+func TestMapFunc_FILTER(t *testing.T) {
+	MapFuncTestCase{
+		input:  `FILTER(10<100)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(10>100)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: nil,
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(len(V) > 2)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(len(V) > 4)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: nil,
 	}.run(t)
 }
 
@@ -105,12 +134,12 @@ func (tc MapFuncTestCase) run(t *testing.T) {
 		return
 	}
 	require.Nil(t, err, msg)
-	require.NotNil(t, ret, msg)
 
 	if tc.expect == nil {
 		require.Nil(t, ret)
 		return
 	}
+	require.NotNil(t, ret, msg)
 	// compare key
 	if retParam, ok := ret.(*ExecutionParam); !ok {
 		t.Fatalf("invalid return type: %T", ret)
