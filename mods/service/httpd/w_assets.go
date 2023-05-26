@@ -55,6 +55,7 @@ var wellknowns = map[string]bool{
 	".txt":   true,
 	".yaml":  true,
 	".yml":   true,
+	".woff":  true,
 	".woff2": true,
 }
 
