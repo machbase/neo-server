@@ -7,62 +7,58 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
-	spi "github.com/machbase/neo-spi"
 )
 
 type ExecutionChain struct {
-	R <-chan any
-
-	encoder   codec.RowsEncoder
-	chain     []*ExecutionContext
+	nodes     []*ExecutionContext
 	head      *ExecutionContext
 	r         chan any
+	sink      chan []any
 	closeOnce sync.Once
 	waitWg    sync.WaitGroup
+	lastError error
 }
 
-func NewExecutionChain(ctxCtx context.Context, exprs []*expression.Expression, encoder codec.RowsEncoder) *ExecutionChain {
+func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.r = make(chan any)
-	ret.R = ret.r
-	ret.encoder = encoder
-	ret.chain = NewContextChain(ctxCtx, exprs, ret.r)
-	if len(ret.chain) > 0 {
-		ret.head = ret.chain[0]
+	ret.sink = make(chan []any)
+
+	exprs := []*expression.Expression{}
+	for _, str := range exprstrs {
+		strExpr := normalizeMapFuncExpr(str)
+		expr, err := expression.NewWithFunctions(strExpr, mapFunctions)
+		if err != nil {
+			return nil, err
+		}
+		exprs = append(exprs, expr)
 	}
-	ret.waitWg.Add(len(ret.chain))
-	return ret
-}
 
-func (ec *ExecutionChain) Done() {
-	ec.waitWg.Done()
-}
-
-func (ec *ExecutionChain) Wait() {
-	ec.waitWg.Wait()
-}
-
-func (ec *ExecutionChain) Stop() {
-	for _, ctx := range ec.chain {
-		ctx.Stop()
+	nodes := make([]*ExecutionContext, len(exprs))
+	for n, expr := range exprs {
+		nodes[n] = &ExecutionContext{
+			Name:    expr.String(),
+			Context: ctxCtx,
+			Expr:    expr,
+			C:       make(chan *ExecutionParam),
+			R:       ret.r,
+			Next:    nil,
+		}
+		if n > 0 {
+			nodes[n-1].Next = nodes[n]
+		}
 	}
+	ret.nodes = nodes
+
+	if len(ret.nodes) > 0 {
+		ret.head = ret.nodes[0]
+	}
+	return ret, nil
 }
 
-func (ec *ExecutionChain) Open(cols spi.Columns) {
-	if ec.encoder != nil {
-		ec.encoder.Open(cols)
-	}
-}
-
-func (ec *ExecutionChain) Close() {
-	ec.closeOnce.Do(func() {
-		close(ec.r)
-	})
-	if ec.encoder != nil {
-		ec.encoder.Close()
-	}
+func (ec *ExecutionChain) Error() error {
+	return ec.lastError
 }
 
 func (ec *ExecutionChain) Source(values []any) {
@@ -74,11 +70,76 @@ func (ec *ExecutionChain) Source(values []any) {
 		}
 	} else {
 		if values != nil {
-			ec.encoder.AddRow(values)
-		} else {
-			ec.encoder.Close()
+			ec.sink <- values
 		}
 	}
+}
+
+func (ec *ExecutionChain) Sink() <-chan []any {
+	return ec.sink
+}
+
+func (ec *ExecutionChain) Start() {
+	for _, child := range ec.nodes {
+		ec.waitWg.Add(1)
+		child.Start()
+	}
+
+	for ret := range ec.r {
+		switch castV := ret.(type) {
+		case *ExecutionParam:
+			if castV == ExecutionEOF {
+				ec.waitWg.Done()
+			} else {
+				switch tV := castV.V.(type) {
+				case []any:
+					if subarr, ok := tV[0].([][]any); ok {
+						for _, subitm := range subarr {
+							fields := append([]any{castV.K}, subitm...)
+							ec.sink <- fields
+						}
+					} else {
+						fields := append([]any{castV.K}, tV...)
+						ec.sink <- fields
+					}
+				case [][]any:
+					for _, row := range tV {
+						fields := append([]any{castV.K}, row...)
+						ec.sink <- fields
+					}
+				}
+			}
+		case []*ExecutionParam:
+			for _, v := range castV {
+				switch tV := v.V.(type) {
+				case []any:
+					fields := append([]any{v.K}, tV...)
+					ec.sink <- fields
+				case [][]any:
+					for _, row := range tV {
+						fields := append([]any{v.K}, row...)
+						ec.sink <- fields
+					}
+				}
+			}
+		case error:
+			ec.lastError = castV
+		}
+	}
+}
+
+func (ec *ExecutionChain) Wait() {
+	ec.waitWg.Wait()
+}
+
+func (ec *ExecutionChain) Stop() {
+	for _, ctx := range ec.nodes {
+		ctx.Stop()
+	}
+	ec.closeOnce.Do(func() {
+		close(ec.r)
+		close(ec.sink)
+	})
 }
 
 type ExecutionContext struct {
@@ -90,25 +151,6 @@ type ExecutionContext struct {
 	Next *ExecutionContext
 
 	closeWg sync.WaitGroup
-}
-
-func NewContextChain(ctxCtx context.Context, exprs []*expression.Expression, r chan<- any) []*ExecutionContext {
-	ctxArr := make([]*ExecutionContext, len(exprs))
-	for n, expr := range exprs {
-		ctxArr[n] = &ExecutionContext{
-			Name:    expr.String(),
-			Context: ctxCtx,
-			Expr:    expr,
-			C:       make(chan *ExecutionParam),
-			R:       r,
-			Next:    nil,
-		}
-		if n > 0 {
-			ctxArr[n-1].Next = ctxArr[n]
-		}
-		ctxArr[n].Start()
-	}
-	return ctxArr
 }
 
 func (ctx *ExecutionContext) Start() {

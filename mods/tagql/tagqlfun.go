@@ -3,13 +3,14 @@ package tagql
 import (
 	"fmt"
 	"math/cmplx"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-var yieldFunctions = map[string]expression.Function{
+var fieldFunctions = map[string]expression.Function{
 	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
 	"AVG":             func(args ...any) (any, error) { return nil, nil },
 	"SUM":             func(args ...any) (any, error) { return nil, nil },
@@ -27,8 +28,27 @@ var mapFunctions = map[string]expression.Function{
 	"FFT":     mapf_FFT,
 }
 
+var mapFunctionsMacro = [][2]string{
+	{"MODTIME()", "MODTIME(K,V)"},
+	{"MODTIME(", "MODTIME(K,V,"},
+	{"PUSHKEY()", "PUSHKEY(K,V)"},
+	{"PUSHKEY(", "PUSHKEY(K,V,"},
+	{"POPKEY()", "POPKEY(K,V)"},
+	{"POPKEY(", "POPKEY(K,V,"},
+	{"FFT()", "FFT(K,V)"},
+}
+
+func normalizeMapFuncExpr(expr string) string {
+	for _, f := range mapFunctionsMacro {
+		expr = strings.ReplaceAll(expr, f[0], f[1])
+	}
+	expr = strings.ReplaceAll(expr, "K,V,K,V,", "K,V,")
+	expr = strings.ReplaceAll(expr, "K,V,K,V)", "K,V)")
+	return expr
+}
+
 // make new key by modulus of time
-// `map=MODTIME(K, V, '100ms')` produces `K' : [K, V...]` (K' = K % 100ms)
+// `map=MODTIME('100ms')` produces `K:V` ==> `K':[K, V]` (K' = K % 100ms)
 func mapf_MODTIME(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("f(MODTIME) invalid number of args (n:%d)", len(args))
@@ -36,12 +56,12 @@ func mapf_MODTIME(args ...any) (any, error) {
 	// K : time
 	key, ok := args[0].(time.Time)
 	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) 1st arg should be time, but %T", args[0])
+		return nil, fmt.Errorf("f(MODTIME) K should be time, but %T", args[0])
 	}
 	// V : value
 	val, ok := args[1].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) 2nd arg should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(MODTIME) V should be []any, but %T", args[1])
 	}
 	// duration
 	var mod int64
@@ -51,7 +71,7 @@ func mapf_MODTIME(args ...any) (any, error) {
 	case string:
 		td, err := time.ParseDuration(d)
 		if err != nil {
-			return nil, fmt.Errorf("f(MODTIME) 3rd arg should be duration, %s", err.Error())
+			return nil, fmt.Errorf("f(MODTIME) 1st arg should be duration, %s", err.Error())
 		}
 		mod = int64(td)
 	}
@@ -68,20 +88,20 @@ func mapf_MODTIME(args ...any) (any, error) {
 
 // Merge all incoming values into a single key,
 // incresing dimension of vector as result.
-// `map=PUSHKEY(NewKEY, K, V)` produces `NewKEY: [K, V...]`
+// `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
 func mapf_PUSHKEY(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, fmt.Errorf("f(PUSHKEY) invalid number of args (n:%d)", len(args))
 	}
-	// newkey
-	newKey := args[0]
 	// K : time
-	key := args[1]
+	key := args[0]
 	// V : value
-	val, ok := args[2].([]any)
+	val, ok := args[1].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(PUSHKEY) 3rd arg should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(PUSHKEY) V should be []any, but %T", args[1])
 	}
+	// newkey
+	newKey := args[2]
 
 	newVal := append([]any{key}, val...)
 	ret := &ExecutionParam{
@@ -97,24 +117,25 @@ func mapf_PUSHKEY(args ...any) (any, error) {
 // 1 dimension : `K: [V1, V2, V3...]` ==> `V1 : [V2, V3, .... ]`
 // 2 dimension : `K: [[V11, V12, V13...],[V21, V22, V23...], ...] ==> `V11: [V12, V13...]` and `V21: [V22, V23...]` ...
 func mapf_POPKEY(args ...any) (any, error) {
-	fmt.Printf("==> %#v\n", args)
-	if len(args) != 2 {
+	if len(args) < 2 || len(args) > 3 {
 		return nil, fmt.Errorf("f(POPKEY) requires 2 args, but got %d", len(args))
 	}
 	var nth = 0
-	if arg2, ok := args[1].(float64); !ok {
-		return nil, fmt.Errorf("f(POPKEY) 2nd arg should be index of V, but %T", args[1])
-	} else {
-		nth = int(arg2)
+	if len(args) == 3 {
+		if arg2, ok := args[2].(float64); !ok {
+			return nil, fmt.Errorf("f(POPKEY) 1st arg should be index of V, but %T", args[1])
+		} else {
+			nth = int(arg2)
+		}
 	}
 
 	// V : value
-	switch val := args[0].(type) {
+	switch val := args[1].(type) {
 	default:
-		return nil, fmt.Errorf("f(POPKEY) arg should be []any or [][]any, but %T", val)
+		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
 	case []any:
-		if nth <= len(val) {
-			return nil, fmt.Errorf("f(POPKEY) 2nd arg should be between 0 and %d, but %d", len(val)-1, nth)
+		if nth < 0 || nth >= len(val) {
+			return nil, fmt.Errorf("f(POPKEY) 1st arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
@@ -136,7 +157,7 @@ func mapf_POPKEY(args ...any) (any, error) {
 	}
 }
 
-// `map=FFT(K, V)` : K is any, V is array of array(time, value)
+// `map=FFT()` : K is any, V is array of array(time, value)
 func mapf_FFT(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("f(FFT) invalid number of args (n:%d)", len(args))

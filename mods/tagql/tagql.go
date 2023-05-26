@@ -33,7 +33,7 @@ type tagQL struct {
 	table string
 	tag   string
 
-	yieldColumns   string
+	fieldColumns   string
 	baseTimeColumn string
 
 	strTime   string
@@ -41,7 +41,7 @@ type tagQL struct {
 	strLimit  string
 	timeGroup time.Duration
 
-	mapExprs []*expression.Expression
+	mapExprs []string
 }
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -116,10 +116,10 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 	if len(expressionParts) == 0 {
 		expressionParts = []string{"value"}
 	}
-	tq.yieldColumns = strings.Join(expressionParts, ", ")
+	tq.fieldColumns = strings.Join(expressionParts, ", ")
 	for _, part := range expressionParts {
 		// validates the syntax: e.g) invalid token, undefined function...
-		_ /* expr */, err := expression.NewWithFunctions(part, yieldFunctions)
+		_ /* expr */, err := expression.NewWithFunctions(part, fieldFunctions)
 		if err != nil {
 			return nil, err
 		}
@@ -127,27 +127,28 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 
 	mapParts := params["map"]
 	for _, part := range mapParts {
-		expr, err := expression.NewWithFunctions(part, mapFunctions)
+		// validates the syntax
+		_ /*expr */, err := expression.NewWithFunctions(part, mapFunctions)
 		if err != nil {
 			return nil, err
 		}
-		tq.mapExprs = append(tq.mapExprs, expr)
+		tq.mapExprs = append(tq.mapExprs, part)
 	}
 	return tq, nil
 }
 
 func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
-	chain := NewExecutionChain(ctxCtx, tq.mapExprs, encoder)
-
-	var errorToStop error
-
+	chain, err := NewExecutionChain(ctxCtx, tq.mapExprs)
+	if err != nil {
+		return err
+	}
 	queryCtx := &do.QueryContext{
 		DB: db,
 		OnFetchStart: func(cols spi.Columns) {
 			encoder.Open(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
-			if errorToStop != nil {
+			if chain.Error() != nil {
 				return false
 			}
 			chain.Source(values)
@@ -159,58 +160,21 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.
 		OnExecuted: nil, // never happen in tagQL
 	}
 
+	go chain.Start()
 	go func() {
-		for ret := range chain.R {
-			switch castV := ret.(type) {
-			case *ExecutionParam:
-				if castV == ExecutionEOF {
-					chain.Done()
-				} else {
-					switch tV := castV.V.(type) {
-					case []any:
-						if subarr, ok := tV[0].([][]any); ok {
-							for _, subitm := range subarr {
-								fields := append([]any{castV.K}, subitm...)
-								encoder.AddRow(fields)
-							}
-						} else {
-							fields := append([]any{castV.K}, tV...)
-							encoder.AddRow(fields)
-						}
-					case [][]any:
-						for _, row := range tV {
-							fields := append([]any{castV.K}, row...)
-							encoder.AddRow(fields)
-						}
-					}
-				}
-			case []*ExecutionParam:
-				for _, v := range castV {
-					switch tV := v.V.(type) {
-					case []any:
-						fields := append([]any{v.K}, tV...)
-						encoder.AddRow(fields)
-					case [][]any:
-						for _, row := range tV {
-							fields := append([]any{v.K}, row...)
-							encoder.AddRow(fields)
-						}
-					}
-				}
-			case error:
-				errorToStop = castV
-			}
+		for arr := range chain.Sink() {
+			encoder.AddRow(arr)
 		}
 	}()
-
 	_, err = do.Query(queryCtx, tq.ToSQL())
 
 	chain.Wait()
 	chain.Stop()
-	chain.Close()
 
-	if errorToStop != nil {
-		return errorToStop
+	encoder.Close()
+
+	if chain.Error() != nil {
+		return chain.Error()
 	}
 	return err
 }
@@ -237,7 +201,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -255,7 +219,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.baseTimeColumn,
@@ -272,7 +236,7 @@ func (tq *tagQL) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.timeGroup, tq.timeGroup, tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,
@@ -296,7 +260,7 @@ func (tq *tagQL) toSql() string {
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.timeRange, tq.table, tq.tag,
@@ -310,7 +274,7 @@ func (tq *tagQL) toSql() string {
 			AND %s BETWEEN now - %d AND now 
 			LIMIT %s
 			`,
-			tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn, tq.timeRange,
 			tq.strLimit,
@@ -322,7 +286,7 @@ func (tq *tagQL) toSql() string {
 			AND %s
 				BETWEEN %s - %d AND %s
 			LIMIT %s`,
-			tq.baseTimeColumn, tq.yieldColumns, tq.table,
+			tq.baseTimeColumn, tq.fieldColumns, tq.table,
 			tq.tag,
 			tq.baseTimeColumn,
 			tq.strTime, tq.timeRange, tq.strTime,

@@ -19,32 +19,32 @@ type MapFuncTestCase struct {
 
 func TestMapFunc_MODTIME(t *testing.T) {
 	MapFuncTestCase{
-		input:     `MODTIME(K, V, 'x', 'y')`,
+		input:     `MODTIME('x', 'y')`,
 		params:    FuncParamMock(1, ""),
 		expectErr: "f(MODTIME) invalid number of args (n:4)",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `MODTIME(K, V, '100ms')`,
+		input:     `MODTIME('100ms')`,
 		params:    FuncParamMock(123456, ""),
-		expectErr: "f(MODTIME) 1st arg should be time, but float64",
+		expectErr: "f(MODTIME) K should be time, but float64",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `MODTIME(K, V, '100ms')`,
+		input:     `MODTIME('100ms')`,
 		params:    FuncParamMock(time.Unix(100, 200300400), ""),
-		expectErr: "f(MODTIME) 2nd arg should be []any, but string",
+		expectErr: "f(MODTIME) V should be []any, but string",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `MODTIME(K, V, '100x')`,
+		input:     `MODTIME('100x')`,
 		params:    FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
-		expectErr: `f(MODTIME) 3rd arg should be duration, time: unknown unit "x" in duration "100x"`,
+		expectErr: `f(MODTIME) 1st arg should be duration, time: unknown unit "x" in duration "100x"`,
 	}.run(t)
 	MapFuncTestCase{
-		input:  `MODTIME(K, V, '100ms')`,
+		input:  `MODTIME('100ms')`,
 		params: FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
 		expect: &ExecutionParam{K: time.Unix(100, 200000000), V: []any{time.Unix(100, 200300400), 0, 1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
-		input:  `MODTIME(K, V, '100us')`,
+		input:  `MODTIME('100us')`,
 		params: FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
 		expect: &ExecutionParam{K: time.Unix(100, 200300000), V: []any{time.Unix(100, 200300400), 0, 1, 2, 3}},
 	}.run(t)
@@ -52,17 +52,17 @@ func TestMapFunc_MODTIME(t *testing.T) {
 
 func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
-		input:     `PUSHKEY(K, V)`,
+		input:     `PUSHKEY()`,
 		params:    FuncParamMock(time.Unix(123, 0), []any{1, 2, 3}),
 		expectErr: "f(PUSHKEY) invalid number of args (n:2)",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `PUSHKEY('err', K, V)`,
+		input:     `PUSHKEY('err')`,
 		params:    FuncParamMock(time.Unix(123, 0), []int{1, 2, 3}),
-		expectErr: "f(PUSHKEY) 3rd arg should be []any, but time.Time",
+		expectErr: "f(PUSHKEY) V should be []any, but []int",
 	}.run(t)
 	MapFuncTestCase{
-		input:  `PUSHKEY('sam', K, V)`,
+		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(time.Unix(123, 0), []any{1, 2, 3}),
 		expect: &ExecutionParam{K: "sam", V: []any{time.Unix(123, 0), 1, 2, 3}},
 	}.run(t)
@@ -70,30 +70,31 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 
 func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
-		input:     `POPKEY(V)`,
+		input:     `POPKEY()`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
-		expectErr: "f(POPKEY) requires 2 args, but got 1",
+		expectErr: "f(POPKEY) V should be []any or [][]any, but []int",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `POPKEY(K, V)`,
-		params:    FuncParamMock("x", []any{1, 2, 3}),
-		expectErr: "f(POPKEY) 2nd arg should be index of V, but []interface {}",
+		input:  `POPKEY()`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: 1, V: []any{2, 3}},
 	}.run(t)
 	MapFuncTestCase{
-		input:     `POPKEY(V, 0)`,
+		input:     `POPKEY(0)`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
-		expectErr: "f(POPKEY) arg should be []any or [][]any, but []int",
+		expectErr: "f(POPKEY) V should be []any or [][]any, but []int",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `POPKEY(V, 0)`,
-		params:    FuncParamMock("x", []any{"K", 1, 2}),
-		expectErr: "f(POPKEY) requires 2 args, but got 4",
+		input:  `POPKEY(1)`,
+		params: FuncParamMock("x", []any{"K", 1, 2}),
+		expect: &ExecutionParam{K: 1, V: []any{"K", 2}},
 	}.run(t)
 }
 
 func (tc MapFuncTestCase) run(t *testing.T) {
-	msg := fmt.Sprintf("TestCase %s", tc.input)
-	expr, err := expression.NewWithFunctions(tc.input, mapFunctions)
+	strExpr := normalizeMapFuncExpr(tc.input)
+	msg := fmt.Sprintf("TestCase %s => %s", tc.input, strExpr)
+	expr, err := expression.NewWithFunctions(strExpr, mapFunctions)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 
