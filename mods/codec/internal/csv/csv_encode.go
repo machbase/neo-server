@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strconv"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -24,6 +25,8 @@ type Exporter struct {
 	Heading      bool
 	TimeFormat   string
 	Precision    int
+
+	closeOnce sync.Once
 }
 
 func NewEncoder() *Exporter {
@@ -61,8 +64,10 @@ func (ex *Exporter) Open(cols spi.Columns) error {
 }
 
 func (ex *Exporter) Close() {
-	ex.writer.Flush()
-	ex.Output.Close()
+	ex.closeOnce.Do(func() {
+		ex.writer.Flush()
+		ex.Output.Close()
+	})
 }
 
 func (ex *Exporter) Flush(heading bool) {

@@ -14,12 +14,14 @@ import (
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
 
 type TagQL interface {
 	ToSQL() string
-	Execute(ctx context.Context, db spi.Database, encoder codec.RowsEncoder) error
+	Execute(ctx context.Context, db spi.Database, deligate *ExecuteDeligate) error
 }
 
 type Context struct {
@@ -42,6 +44,7 @@ type tagQL struct {
 	timeGroup time.Duration
 
 	mapExprs []string
+	sinkExpr string
 }
 
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
@@ -134,18 +137,67 @@ func ParseTagQLContext(ctx *Context, query string) (TagQL, error) {
 		}
 		tq.mapExprs = append(tq.mapExprs, part)
 	}
+
+	sinkParts := params["sink"]
+	if len(sinkParts) > 0 {
+		// only take the last one
+		part := sinkParts[len(sinkParts)-1]
+		// validates the syntax
+		_ /*expr*/, err := expression.NewWithFunctions(part, sinkFunctions)
+		if err != nil {
+			return nil, err
+		}
+		tq.sinkExpr = part
+	}
+
 	return tq, nil
 }
 
-func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
+type ExecuteDeligate struct {
+	OnStart      func(contentType string, compress string)
+	OutputStream func() spec.OutputStream
+}
+
+func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, deligate *ExecuteDeligate) (err error) {
+	deferHooks := []func(){}
+	defer func() {
+		for _, f := range deferHooks {
+			f()
+		}
+	}()
+
+	var output spec.OutputStream
+	if deligate != nil && deligate.OutputStream != nil {
+		output = deligate.OutputStream()
+	} else {
+		output, err = stream.NewOutputStream("-")
+		if err != nil {
+			return err
+		}
+	}
+	sinkExpr, err := expression.NewWithFunctions(normalizeSinkFuncExpr(tq.sinkExpr), sinkFunctions)
+	if err != nil {
+		return err
+	}
+	sinkRet, err := sinkExpr.Evaluate(map[string]any{"outstream": output})
+	if err != nil {
+		return err
+	}
+	encoder, ok := sinkRet.(codec.RowsEncoder)
+	if !ok {
+		return fmt.Errorf("invalid sink type: %T", sinkRet)
+	}
+
 	chain, err := NewExecutionChain(ctxCtx, tq.mapExprs)
 	if err != nil {
 		return err
 	}
+
+	var cols spi.Columns
 	queryCtx := &do.QueryContext{
 		DB: db,
-		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+		OnFetchStart: func(c spi.Columns) {
+			cols = c
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			if chain.Error() != nil {
@@ -162,7 +214,28 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.
 
 	go chain.Start()
 	go func() {
+		open := false
 		for arr := range chain.Sink() {
+			if !open {
+				if cols == nil {
+					for i, v := range arr {
+						cols = append(cols, &spi.Column{
+							Name: fmt.Sprintf("col#%d", i),
+							Type: fmt.Sprintf("%T", v)})
+					}
+				}
+				if deligate != nil && deligate.OnStart != nil {
+					deligate.OnStart(encoder.ContentType(), "" /*compression*/)
+				}
+				// TODO can not trust column types if arr comes through map()
+				encoder.Open(cols)
+				deferHooks = append(deferHooks, func() {
+					// if close encoder right away without defer,
+					// it will crash, because it could be earlier than all map() pipe to be closed
+					encoder.Close()
+				})
+				open = true
+			}
 			encoder.AddRow(arr)
 		}
 	}()
@@ -170,8 +243,6 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, encoder codec.
 
 	chain.Wait()
 	chain.Stop()
-
-	encoder.Close()
 
 	if chain.Error() != nil {
 		return chain.Error()

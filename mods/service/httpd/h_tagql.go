@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -51,7 +50,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	req.Heading = strBool(ctx.Query("heading"), true)
 	req.Precision = strInt(ctx.Query("precision"), -1)
 
-	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
+	// var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
 
 	var output spec.OutputStream
 	switch req.Compress {
@@ -62,27 +61,31 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		output = &stream.WriterOutputStream{Writer: ctx.Writer}
 	}
 
-	encoder := codec.NewEncoder(req.Format,
-		codec.OutputStream(output),
-		codec.TimeFormat(req.Timeformat),
-		codec.Precision(req.Precision),
-		codec.Rownum(req.Rownum),
-		codec.Heading(req.Heading),
-		codec.TimeLocation(timeLocation),
-		codec.Title("TagQL chart"),
-		codec.Subtitle(composed),
-		codec.Delimiter(","),
-		codec.BoxStyle("default"),
-		codec.BoxSeparateColumns(true),
-		codec.BoxDrawBorder(true),
-	)
+	// encoder := codec.NewEncoder(req.Format,
+	// 	codec.OutputStream(output),
+	// 	codec.TimeFormat(req.Timeformat),
+	// 	codec.Precision(req.Precision),
+	// 	codec.Rownum(req.Rownum),
+	// 	codec.Heading(req.Heading),
+	// 	codec.TimeLocation(timeLocation),
+	// 	codec.Title("TagQL chart"),
+	// 	codec.Subtitle(composed),
+	// 	codec.Delimiter(","),
+	// 	codec.BoxStyle("default"),
+	// 	codec.BoxSeparateColumns(true),
+	// 	codec.BoxDrawBorder(true),
+	// )
 
-	ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
-	if len(req.Compress) > 0 {
-		ctx.Writer.Header().Set("Content-Encoding", req.Compress)
+	deligate := &tagql.ExecuteDeligate{
+		OnStart: func(contentType string, compress string) {
+			ctx.Writer.Header().Set("Content-Type", contentType)
+			if len(compress) > 0 {
+				ctx.Writer.Header().Set("Content-Encoding", compress)
+			}
+		},
+		OutputStream: func() spec.OutputStream { return output },
 	}
-
-	if err := tql.Execute(ctx, svr.db, encoder); err != nil {
+	if err := tql.Execute(ctx, svr.db, deligate); err != nil {
 		svr.log.Error("tagql execute fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

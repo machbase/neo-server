@@ -20,6 +20,8 @@ type Base3D struct {
 	Precision    int
 	Title        string
 	Subtitle     string
+	Width        string
+	Height       string
 }
 
 func (ex *Base3D) ContentType() string {
@@ -34,16 +36,32 @@ func (ex *Base3D) Flush(heading bool) {
 }
 
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
+	width := "600px"
+	if ex.Width != "" {
+		width = ex.Width
+	}
+	height := "400px"
+	if ex.Height != "" {
+		height = ex.Height
+	}
+	title := "Chart"
+	if ex.Title != "" {
+		title = ex.Title
+	}
+	subtitle := ""
+	if ex.Subtitle != "" {
+		subtitle = ex.Subtitle
+	}
 	return []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			// Theme:     types.ThemeChalk,
-			Height:    "900px",
-			Width:     "900px",
-			PageTitle: "Test-chart",
+			Width:     width,
+			Height:    height,
+			PageTitle: title,
 		}),
 		charts.WithTitleOpts(opts.Title{
-			Title:    ex.Title,
-			Subtitle: ex.Subtitle,
+			Title:    title,
+			Subtitle: subtitle,
 		}),
 		charts.WithVisualMapOpts(opts.VisualMap{
 			InRange: &opts.VisualMapInRange{
