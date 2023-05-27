@@ -99,9 +99,6 @@ func (ex *Base3D) AddRow(values []any) error {
 		return errors.New("3D chart requires float64 value for z-axis")
 	}
 
-	if yv > 500 {
-		return nil
-	}
 	ex.series = append(ex.series, opts.Chart3DData{Value: []any{xv.UnixMilli(), yv, zv}, ItemStyle: &opts.ItemStyle{Opacity: 0.4}})
 
 	return nil

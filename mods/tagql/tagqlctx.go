@@ -20,6 +20,8 @@ type ExecutionChain struct {
 	lastError error
 }
 
+var debugMode = false
+
 func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.r = make(chan any)
@@ -186,15 +188,21 @@ func (ctx *ExecutionContext) Start() {
 				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
 			}
 			if ctx.Next != nil {
-				fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
+				if debugMode {
+					fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
+				}
 				ctx.Next.src <- yieldValue
 			} else {
-				fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
+				if debugMode {
+					fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
+				}
 				ctx.sink <- yieldValue
 			}
 		}
 		drop := func(p *ExecutionParam) {
-			fmt.Println("--", ctx.Name, "DROP", p.K, p.StringValueTypes())
+			if debugMode {
+				fmt.Println("--", ctx.Name, "DROP", p.K, p.StringValueTypes())
+			}
 		}
 
 		for p := range ctx.src {

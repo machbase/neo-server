@@ -2,6 +2,7 @@ package tagql
 
 import (
 	"fmt"
+	"math"
 	"math/cmplx"
 	"strings"
 	"time"
@@ -22,33 +23,32 @@ var fieldFunctions = map[string]expression.Function{
 }
 
 var mapFunctions = map[string]expression.Function{
-	"len":     mapf_len,
-	"element": mapf_element,
-	"MODTIME": mapf_MODTIME,
-	"PUSHKEY": mapf_PUSHKEY,
-	"POPKEY":  mapf_POPKEY,
-	"FLATTEN": mapf_FLATTEN,
-	"FILTER":  mapf_FILTER,
-	"FFT":     mapf_FFT,
+	"len":      mapf_len,
+	"element":  mapf_element,
+	"maxHzOpt": optf_maxHz,
+	"minHzOpt": optf_minHz,
+	"MODTIME":  mapf_MODTIME,
+	"PUSHKEY":  mapf_PUSHKEY,
+	"POPKEY":   mapf_POPKEY,
+	"FLATTEN":  mapf_FLATTEN,
+	"FILTER":   mapf_FILTER,
+	"FFT":      mapf_FFT,
 }
 
 var mapFunctionsMacro = [][2]string{
-	{"MODTIME()", "MODTIME(K,V)"},
 	{"MODTIME(", "MODTIME(K,V,"},
-	{"PUSHKEY()", "PUSHKEY(K,V)"},
 	{"PUSHKEY(", "PUSHKEY(K,V,"},
-	{"POPKEY()", "POPKEY(K,V)"},
 	{"POPKEY(", "POPKEY(K,V,"},
 	{"FLATTEN()", "FLATTEN(K,V)"},
 	{"FILTER(", "FILTER(K,V,"},
-	{"FFT()", "FFT(K,V)"},
+	{"FFT(", "FFT(K,V,"},
 }
 
 func normalizeMapFuncExpr(expr string) string {
 	for _, f := range mapFunctionsMacro {
 		expr = strings.ReplaceAll(expr, f[0], f[1])
 	}
-	expr = strings.ReplaceAll(expr, "K,V,K,V,", "K,V,")
+	expr = strings.ReplaceAll(expr, "V,)", "V)")
 	expr = strings.ReplaceAll(expr, "K,V,K,V)", "K,V)")
 	return expr
 }
@@ -241,9 +241,33 @@ func mapf_element(args ...any) (any, error) {
 	}
 }
 
+type maxHzOpt float64
+
+func optf_maxHz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(maxHzOpt) invalid number of args (n:%d)", len(args))
+	}
+	if v, ok := args[0].(float64); ok {
+		return maxHzOpt(v), nil
+	}
+	return nil, fmt.Errorf("f(maxHzOpt) invalid parameter: %T", args[0])
+}
+
+type minHzOpt float64
+
+func optf_minHz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(minHzOpt) invalid number of args (n:%d)", len(args))
+	}
+	if v, ok := args[0].(float64); ok {
+		return minHzOpt(v), nil
+	}
+	return nil, fmt.Errorf("f(minHzOpt) invalid parameter: %T", args[0])
+}
+
 // `map=FFT()` : K is any, V is array of array(time, value)
 func mapf_FFT(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, fmt.Errorf("f(FFT) invalid number of args (n:%d)", len(args))
 	}
 	// K : any
@@ -253,6 +277,18 @@ func mapf_FFT(args ...any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("f(FFT) arg v should be []any, but %T", args[1])
 	}
+	minHz := math.NaN()
+	maxHz := math.NaN()
+	// options
+	for _, arg := range args[2:] {
+		switch v := arg.(type) {
+		case minHzOpt:
+			minHz = float64(v)
+		case maxHzOpt:
+			maxHz = float64(v)
+		}
+	}
+
 	lenSamples := len(V)
 	if lenSamples < 16 {
 		return nil, fmt.Errorf("f(FFT) samples should be more than 16")
@@ -294,17 +330,24 @@ func mapf_FFT(args ...any) (any, error) {
 
 	coeff := fft.Coefficients(nil, sampleValues)
 
-	newVal := make([][]any, len(coeff))
+	newVal := [][]any{}
+	// newVal := make([][]any, len(coeff))
 	for i, c := range coeff {
 		hz := fft.Freq(i) * period
 		if hz == 0 {
-			newVal[i] = []any{0., 0.}
+			// newVal[i] = []any{0., 0.}
+			continue
+		}
+		if hz < minHz {
+			continue
+		}
+		if hz > maxHz {
 			continue
 		}
 		magnitude := cmplx.Abs(c)
 		amplitude := amplifier(magnitude)
 		// phase = cmplx.Phase(c)
-		newVal[i] = []any{hz, amplitude}
+		newVal = append(newVal, []any{hz, amplitude})
 	}
 
 	ret := &ExecutionParam{
