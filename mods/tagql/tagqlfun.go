@@ -23,6 +23,7 @@ var fieldFunctions = map[string]expression.Function{
 
 var mapFunctions = map[string]expression.Function{
 	"len":     mapf_len,
+	"element": mapf_element,
 	"MODTIME": mapf_MODTIME,
 	"PUSHKEY": mapf_PUSHKEY,
 	"POPKEY":  mapf_POPKEY,
@@ -203,9 +204,41 @@ func mapf_FILTER(args ...any) (any, error) {
 	return &ExecutionParam{K: args[0], V: args[1]}, nil
 }
 
-// `map=len(V)`
+// `len(V)`
 func mapf_len(args ...any) (any, error) {
 	return float64(len(args)), nil
+}
+
+// `element(V, idx)`
+func mapf_element(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, fmt.Errorf("f(element) invalud number of args (n:%d)", len(args))
+	}
+	var idx int
+	if n, ok := args[len(args)-1].(float64); ok {
+		idx = int(n)
+	} else {
+		return nil, fmt.Errorf("f(element) 2nd arg should be int")
+	}
+	if len(args)-1 <= idx {
+		return nil, fmt.Errorf("f(element) out of index %d / %d", idx, len(args)-1)
+	}
+	switch v := args[idx].(type) {
+	case int:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	case string:
+		return v, nil
+	case bool:
+		return v, nil
+	case time.Time:
+		return float64(v.UnixNano()) / float64(time.Second), nil
+	default:
+		return nil, fmt.Errorf("f(element) unsupported type %T", v)
+	}
 }
 
 // `map=FFT()` : K is any, V is array of array(time, value)

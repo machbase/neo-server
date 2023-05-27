@@ -109,6 +109,21 @@ func TestMapFunc_FILTER(t *testing.T) {
 		expect: nil,
 	}.run(t)
 	MapFuncTestCase{
+		input:  `FILTER(K == 'x')`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(K != 'x')`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: nil,
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(K != 'y')`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
+	}.run(t)
+	MapFuncTestCase{
 		input:  `FILTER(len(V) > 2)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
@@ -117,6 +132,16 @@ func TestMapFunc_FILTER(t *testing.T) {
 		input:  `FILTER(len(V) > 4)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: nil,
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(element(V, 0) >= 1)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
+	}.run(t)
+	MapFuncTestCase{
+		input:  `FILTER(element(V, 0) > 0)`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: &ExecutionParam{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 }
 
