@@ -66,8 +66,6 @@ func Precision(p int) Option {
 			e.Precision = p
 		case *csv.Exporter:
 			e.Precision = p
-		case *echart.Line:
-			e.Precision = p
 		case *echart.Line3D:
 			e.Precision = p
 		case *echart.Surface3D:
@@ -86,8 +84,6 @@ func Rownum(b bool) Option {
 		case *box.Exporter:
 			e.Rownum = b
 		case *csv.Exporter:
-			e.Rownum = b
-		case *echart.Line:
 			e.Rownum = b
 		case *echart.Line3D:
 			e.Rownum = b
@@ -109,8 +105,6 @@ func Heading(b bool) Option {
 		case *csv.Exporter:
 			e.Heading = b
 		case *csv.Decoder:
-			e.Heading = b
-		case *echart.Line:
 			e.Heading = b
 		case *echart.Line3D:
 			e.Heading = b
@@ -172,6 +166,14 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
+func Series(idx int, label string) Option {
+	return func(one any) {
+		switch e := one.(type) {
+		case *echart.Line:
+			e.SetSeries(idx, label)
+		}
+	}
+}
 func Delimiter(delimiter string) Option {
 	return func(one any) {
 		switch e := one.(type) {

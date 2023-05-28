@@ -65,6 +65,7 @@ var sinkFunctions = map[string]expression.Function{
 	"precision":  sinkf_precision,
 	"size":       sinkf_size,
 	"title":      sinkf_title,
+	"series":     sinkf_series,
 	"OUTPUT":     sinkf_OUTPUT,
 }
 
@@ -483,6 +484,22 @@ func sinkf_title(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(title) invalid title, should be string, but %T`", args[0])
 	}
 	return codec.Title(str), nil
+}
+
+// `series(1, 'rms-value')`
+func sinkf_series(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(series) invalid arg `series(idx, label)`")
+	}
+	idx, ok := args[0].(float64)
+	if !ok {
+		return nil, fmt.Errorf("f(series) invalid index, should be int, but %T`", args[0])
+	}
+	label, ok := args[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("f(series) invalid label, should be string, but %T`", args[1])
+	}
+	return codec.Series(int(idx), label), nil
 }
 
 // `sink=OUTPUT(format, opts...)`

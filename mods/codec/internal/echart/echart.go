@@ -12,15 +12,12 @@ import (
 
 type Line struct {
 	xLabels      []any
-	seriesLabels []string
 	series       [][]opts.LineData
+	seriesLabels map[int]string
 
 	TimeLocation *time.Location
 	Output       spec.OutputStream
-	Rownum       bool
-	Heading      bool
 	TimeFormat   string
-	Precision    int
 	Title        string
 	Subtitle     string
 	Width        string
@@ -32,9 +29,7 @@ func (ex *Line) ContentType() string {
 }
 
 func (ex *Line) Open(cols spi.Columns) error {
-	names := cols.Names()
-	ex.seriesLabels = names[1:]
-	ex.series = make([][]opts.LineData, len(ex.seriesLabels))
+	// names := cols.Names()
 	return nil
 }
 
@@ -59,13 +54,27 @@ func (ex *Line) Close() {
 			Title:    ex.Title,
 			Subtitle: ex.Subtitle,
 		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
+		charts.WithTooltipOpts(opts.Tooltip{
+			Show:    true,
+			Trigger: "axis",
+		}),
+		// charts.WithLabelOpts(opts.Label{
+		// 	Show:      true,
+		// 	Formatter: "{mm}:{ss} {SSS}",
+		// }),
 	)
 	// Put data into instance
 	line.SetXAxis(ex.xLabels)
 	for i, label := range ex.seriesLabels {
 		line.AddSeries(label, ex.series[i]).
-			SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: true}))
+			SetSeriesOptions(
+				charts.WithLineChartOpts(
+					opts.LineChart{
+						Smooth:     true,
+						XAxisIndex: 0,
+						YAxisIndex: i,
+					},
+				))
 	}
 	line.Render(ex.Output)
 }
@@ -73,7 +82,18 @@ func (ex *Line) Close() {
 func (ex *Line) Flush(heading bool) {
 }
 
+func (ex *Line) SetSeries(idx int, label string) {
+	if ex.seriesLabels == nil {
+		ex.seriesLabels = map[int]string{}
+	}
+	ex.seriesLabels[idx] = label
+}
+
 func (ex *Line) AddRow(values []any) error {
+	if ex.series == nil {
+		ex.series = make([][]opts.LineData, len(values)-1)
+	}
+
 	if len(ex.series) < len(values)-1 {
 		for i := 0; i < len(values)-1-len(ex.series); i++ {
 			ex.series = append(ex.series, []opts.LineData{})
