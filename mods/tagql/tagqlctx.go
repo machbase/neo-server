@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/pkg/errors"
 )
 
 type ExecutionChain struct {
@@ -32,7 +33,7 @@ func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionCha
 		strExpr := normalizeMapFuncExpr(str)
 		expr, err := expression.NewWithFunctions(strExpr, mapFunctions)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "at %s", strExpr)
 		}
 		exprs = append(exprs, expr)
 	}

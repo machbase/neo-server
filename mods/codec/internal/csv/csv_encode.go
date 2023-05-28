@@ -30,7 +30,9 @@ type Exporter struct {
 }
 
 func NewEncoder() *Exporter {
-	rr := &Exporter{}
+	rr := &Exporter{
+		Precision: -1,
+	}
 	return rr
 }
 

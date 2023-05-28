@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/cmplx"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,16 +14,16 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-var fieldFunctions = map[string]expression.Function{
-	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
-	"AVG":             func(args ...any) (any, error) { return nil, nil },
-	"SUM":             func(args ...any) (any, error) { return nil, nil },
-	"COUNT":           func(args ...any) (any, error) { return nil, nil },
-	"TS_CHANGE_COUNT": func(args ...any) (any, error) { return nil, nil },
-	"SUMSQ":           func(args ...any) (any, error) { return nil, nil },
-	"FIRST":           func(args ...any) (any, error) { return nil, nil },
-	"LAST":            func(args ...any) (any, error) { return nil, nil },
-}
+// var fieldFunctions = map[string]expression.Function{
+// 	"STDDEV":          func(args ...any) (any, error) { return nil, nil },
+// 	"AVG":             func(args ...any) (any, error) { return nil, nil },
+// 	"SUM":             func(args ...any) (any, error) { return nil, nil },
+// 	"COUNT":           func(args ...any) (any, error) { return nil, nil },
+// 	"TS_CHANGE_COUNT": func(args ...any) (any, error) { return nil, nil },
+// 	"SUMSQ":           func(args ...any) (any, error) { return nil, nil },
+// 	"FIRST":           func(args ...any) (any, error) { return nil, nil },
+// 	"LAST":            func(args ...any) (any, error) { return nil, nil },
+// }
 
 var mapFunctions = map[string]expression.Function{
 	"len":      mapf_len,
@@ -57,7 +58,9 @@ func normalizeMapFuncExpr(expr string) string {
 
 var sinkFunctions = map[string]expression.Function{
 	"heading":    sinkf_heading,
+	"rownum":     sinkf_rownum,
 	"timeformat": sinkf_timeformat,
+	"precision":  sinkf_precision,
 	"size":       sinkf_size,
 	"title":      sinkf_title,
 	"OUTPUT":     sinkf_OUTPUT,
@@ -65,7 +68,14 @@ var sinkFunctions = map[string]expression.Function{
 
 func normalizeSinkFuncExpr(expr string) string {
 	expr = strings.ReplaceAll(expr, "OUTPUT(", "OUTPUT(outstream,")
+	expr = strings.ReplaceAll(expr, "outputstream,)", "outputstream)")
 	return expr
+}
+
+var srcFunctions = map[string]expression.Function{
+	"range": srcf_range,
+	"limit": srcf_limit,
+	"INPUT": srcf_INPUT,
 }
 
 // make new key by modulus of time
@@ -395,6 +405,27 @@ func sinkf_heading(args ...any) (any, error) {
 	}
 }
 
+func sinkf_rownum(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(rownum) invalid arg `rownum(bool)`")
+	}
+	if flag, ok := args[0].(bool); !ok {
+		return nil, fmt.Errorf("f(rownum) invalid arg `rownum(bool)`")
+	} else {
+		return codec.Rownum(flag), nil
+	}
+}
+
+func sinkf_precision(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(precision) invalid arg `precision(int)`")
+	}
+	if prec, ok := args[0].(float64); !ok {
+		return nil, fmt.Errorf("f(precision) invalid arg `precision(int)`")
+	} else {
+		return codec.Precision(int(prec)), nil
+	}
+}
 func sinkf_size(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("f(size) invalid arg `size(width string, height string)`")
@@ -424,7 +455,6 @@ func sinkf_title(args ...any) (any, error) {
 
 // `sink=OUTPUT(format, opts...)`
 func sinkf_OUTPUT(args ...any) (any, error) {
-	fmt.Println("OUTPUT", args)
 	if len(args) < 2 {
 		return nil, fmt.Errorf("f(OUTPUT) invalid number of args (n:%d)", len(args))
 	}
@@ -450,4 +480,122 @@ func sinkf_OUTPUT(args ...any) (any, error) {
 	}
 	encoder := codec.NewEncoder(format, opts...)
 	return encoder, nil
+}
+
+type Range struct {
+	ts       string
+	tsTime   time.Time
+	duration time.Duration
+	groupBy  time.Duration
+}
+
+func srcf_range(args ...any) (any, error) {
+	if len(args) != 2 && len(args) != 3 {
+		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
+	}
+	ret := &Range{}
+	if str, ok := args[0].(string); ok {
+		if str != "now" && str != "last" {
+			return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
+		}
+		ret.ts = str
+	} else {
+		if num, ok := args[0].(float64); ok {
+			ret.tsTime = time.Unix(0, int64(num))
+		} else {
+			if ts, ok := args[0].(time.Time); ok {
+				ret.tsTime = ts
+			} else {
+				return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
+			}
+		}
+	}
+	if str, ok := args[1].(string); ok {
+		if d, err := time.ParseDuration(str); err == nil {
+			ret.duration = d
+		} else {
+			return nil, fmt.Errorf("f(range) 2nd args should be duration, %s", err.Error())
+		}
+	} else if d, ok := args[1].(float64); ok {
+		ret.duration = time.Duration(int64(d))
+	} else {
+		return nil, fmt.Errorf("f(range) 2nd args should be duration, but %T", args[1])
+	}
+	if len(args) == 2 {
+		return ret, nil
+	}
+
+	if str, ok := args[2].(string); ok {
+		if d, err := time.ParseDuration(str); err == nil {
+			ret.groupBy = d
+		} else {
+			return nil, fmt.Errorf("f(range) 3rd args should be duration, %s", err.Error())
+		}
+	} else if d, ok := args[1].(float64); ok {
+		ret.groupBy = time.Duration(int64(d))
+	} else {
+		return nil, fmt.Errorf("f(range) 3rd args should be duration, but %T", args[1])
+	}
+	if ret.duration <= ret.groupBy {
+		return nil, fmt.Errorf("f(range) 3rd args should be smaller than 2nd")
+	}
+
+	return ret, nil
+}
+
+type Limit struct {
+	limit int
+}
+
+func (lm *Limit) String() string {
+	return strconv.Itoa(lm.limit)
+}
+
+func srcf_limit(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(limit) invalid number of args (n:%d)", len(args))
+	}
+	ret := &Limit{}
+	if d, ok := args[0].(float64); ok {
+		ret.limit = int(d)
+	} else {
+		return nil, fmt.Errorf("f(range) arg should be int, but %T", args[1])
+	}
+	return ret, nil
+}
+
+type SrcInput struct {
+	Columns []string
+	Range   *Range
+	Limit   *Limit
+}
+
+func newSrcInput() *SrcInput {
+	return &SrcInput{
+		Columns: []string{},
+		Range:   &Range{ts: "last", duration: time.Second, groupBy: 0},
+		Limit:   &Limit{limit: 1000000},
+	}
+}
+
+// src=INPUT('value', 'STDDEV(val)', range('last', '10s', '1s'), limit(100000) )
+func srcf_INPUT(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, fmt.Errorf("f(INPUT) invalid number of args (n:%d)", len(args))
+	}
+
+	ret := newSrcInput()
+	for i, arg := range args {
+		switch tok := arg.(type) {
+		case string:
+			ret.Columns = append(ret.Columns, tok)
+		case *Range:
+			ret.Range = tok
+		case *Limit:
+			ret.Limit = tok
+		default:
+			return nil, fmt.Errorf("f(INPUT) unknown type of args[%d], %T", i, tok)
+		}
+	}
+	return ret, nil
 }
