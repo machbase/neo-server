@@ -12,11 +12,26 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-func Parse(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(normalizeMapFuncExpr(text), Functions)
+var mapFunctionsMacro = [][2]string{
+	{"MODTIME(", "MODTIME(CTX,K,V,"},
+	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
+	{"POPKEY(", "POPKEY(CTX,K,V,"},
+	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
+	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
+	{"FILTER(", "FILTER(CTX,K,V,"},
+	{"FFT(", "FFT(CTX,K,V,"},
 }
 
-var Functions = map[string]expression.Function{
+func Parse(text string) (*expression.Expression, error) {
+	for _, f := range mapFunctionsMacro {
+		text = strings.ReplaceAll(text, f[0], f[1])
+	}
+	text = strings.ReplaceAll(text, ",V,)", ",V)")
+	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
+	return expression.NewWithFunctions(text, functions)
+}
+
+var functions = map[string]expression.Function{
 	"len":        mapf_len,
 	"element":    mapf_element,
 	"maxHz":      optf_maxHz,
@@ -28,25 +43,6 @@ var Functions = map[string]expression.Function{
 	"FLATTEN":    mapf_FLATTEN,
 	"FILTER":     mapf_FILTER,
 	"FFT":        mapf_FFT,
-}
-
-var mapFunctionsMacro = [][2]string{
-	{"MODTIME(", "MODTIME(CTX,K,V,"},
-	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
-	{"POPKEY(", "POPKEY(CTX,K,V,"},
-	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
-	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
-	{"FILTER(", "FILTER(CTX,K,V,"},
-	{"FFT(", "FFT(CTX,K,V,"},
-}
-
-func normalizeMapFuncExpr(expr string) string {
-	for _, f := range mapFunctionsMacro {
-		expr = strings.ReplaceAll(expr, f[0], f[1])
-	}
-	expr = strings.ReplaceAll(expr, ",V,)", ",V)")
-	expr = strings.ReplaceAll(expr, "K,V,K,V", "K,V")
-	return expr
 }
 
 // `len(V)`

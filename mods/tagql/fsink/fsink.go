@@ -10,10 +10,12 @@ import (
 )
 
 func Parse(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(normalizeSinkFuncExpr(text), Functions)
+	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
+	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")
+	return expression.NewWithFunctions(text, functions)
 }
 
-var Functions = map[string]expression.Function{
+var functions = map[string]expression.Function{
 	"heading":    sinkf_heading,
 	"rownum":     sinkf_rownum,
 	"timeformat": sinkf_timeformat,
@@ -24,12 +26,6 @@ var Functions = map[string]expression.Function{
 	"subtitle":   sinkf_subtitle,
 	"series":     sinkf_series,
 	"OUTPUT":     sinkf_OUTPUT,
-}
-
-func normalizeSinkFuncExpr(expr string) string {
-	expr = strings.ReplaceAll(expr, "OUTPUT(", "OUTPUT(outstream,")
-	expr = strings.ReplaceAll(expr, "outputstream,)", "outputstream)")
-	return expr
 }
 
 func sinkf_timeformat(args ...any) (any, error) {

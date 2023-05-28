@@ -14,7 +14,6 @@ import (
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
-	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tagql/fmap"
@@ -32,12 +31,11 @@ type TagQL interface {
 }
 
 type tagQL struct {
-	table string
-	tag   string
-
+	table          string
+	tag            string
 	baseTimeColumn string
 
-	srcInput *fsrc.SrcInput
+	srcInput fsrc.Source
 	mapExprs []string
 	sinkExpr string
 }
@@ -120,29 +118,18 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		expr, err := expression.NewWithFunctions(srcLine.text, fsrc.Functions)
+		src, err := fsrc.Compile(srcLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
-		ret, err := expr.Eval(nil)
-		if err != nil {
-			return nil, err
-		}
-		input, ok := ret.(*fsrc.SrcInput)
-		if !ok {
-			return nil, fmt.Errorf("invalid compile result of src at line %d, %v", srcLine.line, input)
-		}
-		if len(input.Columns) == 0 {
-			input.Columns = []string{"value"}
-		}
-		tq.srcInput = input
+		tq.srcInput = src
 	}
 
 	// sink
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		_, err := expression.NewWithFunctions(sinkLine.text, fsink.Functions)
+		_, err := fsink.Parse(sinkLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
@@ -154,7 +141,7 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 		exprs = exprs[1 : len(exprs)-1]
 		for _, mapLine := range exprs {
 			// validates the syntax
-			_, err := expression.NewWithFunctions(mapLine.text, fmap.Functions)
+			_, err := fmap.Parse(mapLine.text)
 			if err != nil {
 				return nil, errors.Wrapf(err, "at line %d", mapLine.line)
 			}
@@ -199,31 +186,20 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 
 	srcParts := params["src"]
 	if len(srcParts) == 0 {
-		tq.srcInput = fsrc.NewSrcInput()
-		tq.srcInput.Columns = []string{"value"}
+		tq.srcInput = fsrc.NewSource()
 	} else {
 		// only take the last one
 		part := srcParts[len(srcParts)-1]
-		// validates the syntax
-		expr, err := expression.NewWithFunctions(part, fsrc.Functions)
+		src, err := fsrc.Compile(part)
 		if err != nil {
 			return nil, err
 		}
-		ret, err := expr.Eval(nil)
-		if err != nil {
-			return nil, err
-		}
-		input, ok := ret.(*fsrc.SrcInput)
-		if !ok {
-			return nil, fmt.Errorf("invalid compile result of src, %v", input)
-		}
-
-		tq.srcInput = input
+		tq.srcInput = src
 	}
 	mapParts := params["map"]
 	for _, part := range mapParts {
 		// validates the syntax
-		_ /*expr */, err := expression.NewWithFunctions(part, fmap.Functions)
+		_ /*expr */, err := fmap.Parse(part)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +211,7 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 		// only take the last one
 		part := sinkParts[len(sinkParts)-1]
 		// validates the syntax
-		_ /*expr*/, err := expression.NewWithFunctions(part, fsink.Functions)
+		_ /*expr*/, err := fsink.Parse(part)
 		if err != nil {
 			return nil, err
 		}
@@ -367,8 +343,5 @@ func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, erro
 }
 
 func (tq *tagQL) ToSQL() string {
-	tq.srcInput.BaseTimeColumn = tq.baseTimeColumn
-	tq.srcInput.Table = tq.table
-	tq.srcInput.Tag = tq.tag
-	return tq.srcInput.ToSQL()
+	return tq.srcInput.ToSQL(tq.table, tq.tag, tq.baseTimeColumn)
 }

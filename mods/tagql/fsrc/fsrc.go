@@ -9,13 +9,38 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 )
 
-var Functions = map[string]expression.Function{
+func Parse(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, functions)
+}
+
+type Source interface {
+	ToSQL(table string, tag string, baseTime string) string
+}
+
+func Compile(text string) (Source, error) {
+	// validates the syntax
+	expr, err := Parse(text)
+	if err != nil {
+		return nil, err
+	}
+	ret, err := expr.Eval(nil)
+	if err != nil {
+		return nil, err
+	}
+	input, ok := ret.(*srcInput)
+	if !ok {
+		return nil, fmt.Errorf("compile error, %v", input)
+	}
+	return input, nil
+}
+
+var functions = map[string]expression.Function{
 	"range": srcf_range,
 	"limit": srcf_limit,
 	"INPUT": srcf_INPUT,
 }
 
-type Range struct {
+type timeRange struct {
 	ts       string
 	tsTime   time.Time
 	duration time.Duration
@@ -26,7 +51,7 @@ func srcf_range(args ...any) (any, error) {
 	if len(args) != 2 && len(args) != 3 {
 		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
 	}
-	ret := &Range{}
+	ret := &timeRange{}
 	if str, ok := args[0].(string); ok {
 		if str != "now" && str != "last" {
 			return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
@@ -103,15 +128,15 @@ func srcf_INPUT(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(INPUT) invalid number of args (n:%d)", len(args))
 	}
 
-	ret := NewSrcInput()
+	ret := NewSource().(*srcInput)
 	for i, arg := range args {
 		switch tok := arg.(type) {
 		case string:
-			ret.Columns = append(ret.Columns, tok)
-		case *Range:
-			ret.Range = tok
+			ret.columns = append(ret.columns, tok)
+		case *timeRange:
+			ret.timeRange = tok
 		case *Limit:
-			ret.Limit = tok
+			ret.limit = tok
 		default:
 			return nil, fmt.Errorf("f(INPUT) unknown type of args[%d], %T", i, tok)
 		}
@@ -119,36 +144,36 @@ func srcf_INPUT(args ...any) (any, error) {
 	return ret, nil
 }
 
-type SrcInput struct {
-	Table          string
-	Tag            string
-	BaseTimeColumn string
-
-	Columns []string
-	Range   *Range
-	Limit   *Limit
+type srcInput struct {
+	columns   []string
+	timeRange *timeRange
+	limit     *Limit
 }
 
-func NewSrcInput() *SrcInput {
-	return &SrcInput{
-		Columns: []string{},
-		Range:   &Range{ts: "last", duration: time.Second, groupBy: 0},
-		Limit:   &Limit{limit: 1000000},
+func NewSource() Source {
+	return &srcInput{
+		columns:   []string{},
+		timeRange: &timeRange{ts: "last", duration: time.Second, groupBy: 0},
+		limit:     &Limit{limit: 1000000},
 	}
 }
 
-func (si *SrcInput) ToSQL() string {
-	if si.Range == nil || si.Range.groupBy == 0 {
-		return si.toSql()
+func (si *srcInput) ToSQL(table string, tag string, baseTime string) string {
+	if si.timeRange == nil || si.timeRange.groupBy == 0 {
+		return si.toSql(table, tag, baseTime)
 	} else {
-		return si.toSqlGroup()
+		return si.toSqlGroup(table, tag, baseTime)
 	}
 }
 
-func (si *SrcInput) toSqlGroup() string {
+func (si *srcInput) toSqlGroup(table string, tag string, baseTime string) string {
 	ret := ""
-	rng := si.Range
-	columns := strings.Join(si.Columns, ", ")
+	rng := si.timeRange
+	columns := "value"
+	if len(si.columns) > 0 {
+		columns = strings.Join(si.columns, ", ")
+	}
+
 	if rng.ts == "last" {
 		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
 			WHERE
@@ -161,14 +186,14 @@ func (si *SrcInput) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			si.BaseTimeColumn, rng.groupBy, rng.groupBy, si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn,
-			rng.duration, si.Table, si.Tag,
-			si.Table, si.Tag,
-			si.BaseTimeColumn,
-			si.BaseTimeColumn,
-			si.Limit.limit,
+			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			tag,
+			baseTime,
+			rng.duration, table, tag,
+			table, tag,
+			baseTime,
+			baseTime,
+			si.limit.limit,
 		)
 	} else if rng.ts == "now" {
 		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
@@ -179,12 +204,12 @@ func (si *SrcInput) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			si.BaseTimeColumn, rng.groupBy, rng.groupBy, si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn, rng.duration,
-			si.BaseTimeColumn,
-			si.BaseTimeColumn,
-			si.Limit.limit,
+			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			tag,
+			baseTime, rng.duration,
+			baseTime,
+			baseTime,
+			si.limit.limit,
 		)
 	} else {
 		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
@@ -196,22 +221,25 @@ func (si *SrcInput) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			si.BaseTimeColumn, rng.groupBy, rng.groupBy, si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn,
+			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			tag,
+			baseTime,
 			rng.tsTime.UnixNano(), rng.duration, rng.tsTime.UnixNano(),
-			si.BaseTimeColumn,
-			si.BaseTimeColumn,
-			si.Limit.limit,
+			baseTime,
+			baseTime,
+			si.limit.limit,
 		)
 	}
 	return ret
 }
 
-func (si *SrcInput) toSql() string {
+func (si *srcInput) toSql(table string, tag string, baseTime string) string {
 	ret := ""
-	columns := strings.Join(si.Columns, ", ")
-	if si.Range.ts == "last" {
+	columns := "value"
+	if len(si.columns) > 0 {
+		columns = strings.Join(si.columns, ", ")
+	}
+	if si.timeRange.ts == "last" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
 			WHERE
 				name = '%s'
@@ -221,24 +249,24 @@ func (si *SrcInput) toSql() string {
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			LIMIT %d
 			`,
-			si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn,
-			si.Range.duration, si.Table, si.Tag,
-			si.Table, si.Tag,
-			si.Limit.limit,
+			baseTime, columns, table,
+			tag,
+			baseTime,
+			si.timeRange.duration, table, tag,
+			table, tag,
+			si.limit.limit,
 		)
-	} else if si.Range.ts == "now" {
+	} else if si.timeRange.ts == "now" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s BETWEEN now - %d AND now 
 			LIMIT %d
 			`,
-			si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn, si.Range.duration,
-			si.Limit.limit,
+			baseTime, columns, table,
+			tag,
+			baseTime, si.timeRange.duration,
+			si.limit.limit,
 		)
 	} else {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s 
@@ -247,11 +275,11 @@ func (si *SrcInput) toSql() string {
 			AND %s
 				BETWEEN %d - %d AND %d
 			LIMIT %d`,
-			si.BaseTimeColumn, columns, si.Table,
-			si.Tag,
-			si.BaseTimeColumn,
-			si.Range.tsTime.UnixNano(), si.Range.duration, si.Range.tsTime.UnixNano(),
-			si.Limit.limit)
+			baseTime, columns, table,
+			tag,
+			baseTime,
+			si.timeRange.tsTime.UnixNano(), si.timeRange.duration, si.timeRange.tsTime.UnixNano(),
+			si.limit.limit)
 	}
 	return ret
 }
