@@ -12,7 +12,11 @@ import (
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
-var MapFunctions = map[string]expression.Function{
+func Parse(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(normalizeMapFuncExpr(text), Functions)
+}
+
+var Functions = map[string]expression.Function{
 	"len":        mapf_len,
 	"element":    mapf_element,
 	"maxHz":      optf_maxHz,
@@ -36,7 +40,7 @@ var mapFunctionsMacro = [][2]string{
 	{"FFT(", "FFT(CTX,K,V,"},
 }
 
-func NormalizeMapFuncExpr(expr string) string {
+func normalizeMapFuncExpr(expr string) string {
 	for _, f := range mapFunctionsMacro {
 		expr = strings.ReplaceAll(expr, f[0], f[1])
 	}

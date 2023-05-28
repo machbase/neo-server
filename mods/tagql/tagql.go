@@ -154,7 +154,7 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 		exprs = exprs[1 : len(exprs)-1]
 		for _, mapLine := range exprs {
 			// validates the syntax
-			_, err := expression.NewWithFunctions(mapLine.text, fmap.MapFunctions)
+			_, err := expression.NewWithFunctions(mapLine.text, fmap.Functions)
 			if err != nil {
 				return nil, errors.Wrapf(err, "at line %d", mapLine.line)
 			}
@@ -223,7 +223,7 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 	mapParts := params["map"]
 	for _, part := range mapParts {
 		// validates the syntax
-		_ /*expr */, err := expression.NewWithFunctions(part, fmap.MapFunctions)
+		_ /*expr */, err := expression.NewWithFunctions(part, fmap.Functions)
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +351,7 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 }
 
 func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, error) {
-	sinkExpr, err := expression.NewWithFunctions(fsink.NormalizeSinkFuncExpr(tq.sinkExpr), fsink.Functions)
+	sinkExpr, err := fsink.Parse(tq.sinkExpr)
 	if err != nil {
 		return nil, err
 	}

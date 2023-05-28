@@ -9,6 +9,10 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
+func Parse(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(normalizeSinkFuncExpr(text), Functions)
+}
+
 var Functions = map[string]expression.Function{
 	"heading":    sinkf_heading,
 	"rownum":     sinkf_rownum,
@@ -22,7 +26,7 @@ var Functions = map[string]expression.Function{
 	"OUTPUT":     sinkf_OUTPUT,
 }
 
-func NormalizeSinkFuncExpr(expr string) string {
+func normalizeSinkFuncExpr(expr string) string {
 	expr = strings.ReplaceAll(expr, "OUTPUT(", "OUTPUT(outstream,")
 	expr = strings.ReplaceAll(expr, "outputstream,)", "outputstream)")
 	return expr

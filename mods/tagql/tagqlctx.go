@@ -28,10 +28,9 @@ func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionCha
 
 	exprs := []*expression.Expression{}
 	for _, str := range exprstrs {
-		strExpr := fmap.NormalizeMapFuncExpr(str)
-		expr, err := expression.NewWithFunctions(strExpr, fmap.MapFunctions)
+		expr, err := fmap.Parse(str)
 		if err != nil {
-			return nil, errors.Wrapf(err, "at %s", strExpr)
+			return nil, errors.Wrapf(err, "at %s", str)
 		}
 		exprs = append(exprs, expr)
 	}

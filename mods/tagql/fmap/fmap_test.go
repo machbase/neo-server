@@ -1,14 +1,14 @@
-package tagql
+package fmap_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tagql/ctx"
 	"github.com/machbase/neo-server/mods/tagql/fmap"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCase
@@ -156,9 +156,8 @@ func TestMapFunc_GROUPBYKEY(t *testing.T) {
 }
 
 func (tc MapFuncTestCase) run(t *testing.T) {
-	strExpr := fmap.NormalizeMapFuncExpr(tc.input)
-	msg := fmt.Sprintf("TestCase %s => %s", tc.input, strExpr)
-	expr, err := expression.NewWithFunctions(strExpr, fmap.MapFunctions)
+	msg := fmt.Sprintf("TestCase %s", tc.input)
+	expr, err := fmap.Parse(tc.input)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 
