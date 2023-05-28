@@ -129,6 +129,9 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid compile result of src at line %d, %v", srcLine.line, input)
 		}
+		if len(input.Columns) == 0 {
+			input.Columns = []string{"value"}
+		}
 		tq.srcInput = input
 	}
 

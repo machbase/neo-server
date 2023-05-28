@@ -31,7 +31,8 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	rr := &Exporter{
-		Precision: -1,
+		Precision:  -1,
+		TimeFormat: "ns",
 	}
 	return rr
 }
