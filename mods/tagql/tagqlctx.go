@@ -21,8 +21,6 @@ type ExecutionChain struct {
 	lastError error
 }
 
-var debugMode = false
-
 func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.r = make(chan any)
@@ -161,7 +159,69 @@ type ExecutionContext struct {
 	sink chan<- any
 	Next *ExecutionContext
 
+	values map[string]any
+	buffer map[any][]any
+	Debug  bool
+
 	closeWg sync.WaitGroup
+}
+
+func (ctx *ExecutionContext) Get(name string) (any, bool) {
+	if ctx.values == nil {
+		return nil, false
+	}
+	ret, ok := ctx.values[name]
+	return ret, ok
+}
+
+func (ctx *ExecutionContext) Set(name string, value any) {
+	if ctx.values == nil {
+		ctx.values = make(map[string]any)
+	}
+	ctx.values[name] = value
+}
+
+func (ctx *ExecutionContext) Buffer(key any, value any) {
+	if ctx.buffer == nil {
+		ctx.buffer = map[any][]any{}
+	}
+	if values, ok := ctx.buffer[key]; ok {
+		ctx.buffer[key] = append(values, value)
+	} else {
+		ctx.buffer[key] = []any{value}
+	}
+}
+
+func (ctx *ExecutionContext) YieldBuffer(key any) {
+	values, ok := ctx.buffer[key]
+	if !ok {
+		return
+	}
+	ctx.yield(key, values)
+	delete(ctx.buffer, key)
+}
+
+func (ctx *ExecutionContext) yield(key any, values []any) {
+	if len(values) == 0 {
+		return
+	}
+	var yieldValue *ExecutionParam
+	if len(values) == 1 {
+		yieldValue = &ExecutionParam{Ctx: ctx.Next, K: key, V: values[0]}
+	} else {
+		yieldValue = &ExecutionParam{Ctx: ctx.Next, K: key, V: values}
+	}
+	if ctx.Next != nil {
+		if ctx.Debug {
+			fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
+		}
+		ctx.Next.src <- yieldValue
+	} else {
+		if ctx.Debug {
+			fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
+		}
+		ctx.sink <- yieldValue
+	}
 }
 
 func (ctx *ExecutionContext) Start() {
@@ -178,30 +238,8 @@ func (ctx *ExecutionContext) Start() {
 			}
 		}()
 
-		var curKey any
-		var curVal []any
-
-		yield := func() {
-			var yieldValue *ExecutionParam
-			if len(curVal) == 1 {
-				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal[0]}
-			} else {
-				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
-			}
-			if ctx.Next != nil {
-				if debugMode {
-					fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
-				}
-				ctx.Next.src <- yieldValue
-			} else {
-				if debugMode {
-					fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
-				}
-				ctx.sink <- yieldValue
-			}
-		}
 		drop := func(p *ExecutionParam) {
-			if debugMode {
+			if ctx.Debug {
 				fmt.Println("--", ctx.Name, "DROP", p.K, p.StringValueTypes())
 			}
 		}
@@ -224,25 +262,15 @@ func (ctx *ExecutionContext) Start() {
 				}
 
 				for _, param := range resultset {
-					if curKey == nil {
-						curKey = param.K
-						curVal = []any{}
-					}
-					if curKey == param.K {
-						// aggregate
-						curVal = append(curVal, param.V)
-					} else {
-						yield()
-						curKey = param.K
-						curVal = []any{param.V}
-					}
+					ctx.yield(param.K, []any{param.V})
 				}
 			} else {
 				drop(p)
 			}
 		}
-		if curKey != nil && len(curVal) > 0 {
-			yield()
+
+		for k, v := range ctx.buffer {
+			ctx.yield(k, v)
 		}
 	}()
 }

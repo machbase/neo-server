@@ -26,32 +26,34 @@ import (
 // }
 
 var mapFunctions = map[string]expression.Function{
-	"len":     mapf_len,
-	"element": mapf_element,
-	"maxHz":   optf_maxHz,
-	"minHz":   optf_minHz,
-	"MODTIME": mapf_MODTIME,
-	"PUSHKEY": mapf_PUSHKEY,
-	"POPKEY":  mapf_POPKEY,
-	"FLATTEN": mapf_FLATTEN,
-	"FILTER":  mapf_FILTER,
-	"FFT":     mapf_FFT,
+	"len":        mapf_len,
+	"element":    mapf_element,
+	"maxHz":      optf_maxHz,
+	"minHz":      optf_minHz,
+	"MODTIME":    mapf_MODTIME,
+	"PUSHKEY":    mapf_PUSHKEY,
+	"POPKEY":     mapf_POPKEY,
+	"GROUPBYKEY": mapf_GROUPBYKEY,
+	"FLATTEN":    mapf_FLATTEN,
+	"FILTER":     mapf_FILTER,
+	"FFT":        mapf_FFT,
 }
 
 var mapFunctionsMacro = [][2]string{
-	{"MODTIME(", "MODTIME(K,V,"},
-	{"PUSHKEY(", "PUSHKEY(K,V,"},
-	{"POPKEY(", "POPKEY(K,V,"},
-	{"FLATTEN()", "FLATTEN(K,V)"},
-	{"FILTER(", "FILTER(K,V,"},
-	{"FFT(", "FFT(K,V,"},
+	{"MODTIME(", "MODTIME(CTX,K,V,"},
+	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
+	{"POPKEY(", "POPKEY(CTX,K,V,"},
+	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
+	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
+	{"FILTER(", "FILTER(CTX,K,V,"},
+	{"FFT(", "FFT(CTX,K,V,"},
 }
 
 func normalizeMapFuncExpr(expr string) string {
 	for _, f := range mapFunctionsMacro {
 		expr = strings.ReplaceAll(expr, f[0], f[1])
 	}
-	expr = strings.ReplaceAll(expr, "V,)", "V)")
+	expr = strings.ReplaceAll(expr, ",V,)", ",V)")
 	expr = strings.ReplaceAll(expr, "K,V,K,V", "K,V")
 	return expr
 }
@@ -81,22 +83,22 @@ var srcFunctions = map[string]expression.Function{
 // make new key by modulus of time
 // `map=MODTIME('100ms')` produces `K:V` ==> `K':[K, V]` (K' = K % 100ms)
 func mapf_MODTIME(args ...any) (any, error) {
-	if len(args) != 3 {
+	if len(args) != 4 {
 		return nil, fmt.Errorf("f(MODTIME) invalid number of args (n:%d)", len(args))
 	}
 	// K : time
-	key, ok := args[0].(time.Time)
+	key, ok := args[1].(time.Time)
 	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) K should be time, but %T", args[0])
+		return nil, fmt.Errorf("f(MODTIME) K should be time, but %T", args[1])
 	}
 	// V : value
-	val, ok := args[1].([]any)
+	val, ok := args[2].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) V should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(MODTIME) V should be []any, but %T", args[2])
 	}
 	// duration
 	var mod int64
-	switch d := args[2].(type) {
+	switch d := args[3].(type) {
 	case float64:
 		mod = int64(d)
 	case string:
@@ -121,18 +123,18 @@ func mapf_MODTIME(args ...any) (any, error) {
 // incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
 func mapf_PUSHKEY(args ...any) (any, error) {
-	if len(args) != 3 {
+	if len(args) != 4 {
 		return nil, fmt.Errorf("f(PUSHKEY) invalid number of args (n:%d)", len(args))
 	}
 	// K : time
-	key := args[0]
+	key := args[1]
 	// V : value
-	val, ok := args[1].([]any)
+	val, ok := args[2].([]any)
 	if !ok {
-		return nil, fmt.Errorf("f(PUSHKEY) V should be []any, but %T", args[1])
+		return nil, fmt.Errorf("f(PUSHKEY) V should be []any, but %T", args[2])
 	}
 	// newkey
-	newKey := args[2]
+	newKey := args[3]
 
 	newVal := append([]any{key}, val...)
 	ret := &ExecutionParam{
@@ -148,20 +150,20 @@ func mapf_PUSHKEY(args ...any) (any, error) {
 // 1 dimension : `K: [V1, V2, V3...]` ==> `V1 : [V2, V3, .... ]`
 // 2 dimension : `K: [[V11, V12, V13...],[V21, V22, V23...], ...] ==> `V11: [V12, V13...]` and `V21: [V22, V23...]` ...
 func mapf_POPKEY(args ...any) (any, error) {
-	if len(args) < 2 || len(args) > 3 {
-		return nil, fmt.Errorf("f(POPKEY) requires 2 args, but got %d", len(args))
+	if len(args) < 3 || len(args) > 4 {
+		return nil, fmt.Errorf("f(POPKEY) invalid number of args (n:%d)", len(args)-3)
 	}
 	var nth = 0
-	if len(args) == 3 {
-		if arg2, ok := args[2].(float64); !ok {
-			return nil, fmt.Errorf("f(POPKEY) 1st arg should be index of V, but %T", args[1])
+	if len(args) == 4 {
+		if arg2, ok := args[3].(float64); !ok {
+			return nil, fmt.Errorf("f(POPKEY) 1st arg should be index of V, but %T", args[2])
 		} else {
 			nth = int(arg2)
 		}
 	}
 
 	// V : value
-	switch val := args[1].(type) {
+	switch val := args[2].(type) {
 	default:
 		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
 	case []any:
@@ -188,9 +190,39 @@ func mapf_POPKEY(args ...any) (any, error) {
 	}
 }
 
+func mapf_GROUPBYKEY(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf("f(GROUPBYKEY) invalid number of args (n:%d)", len(args))
+	}
+
+	ctx, ok := args[0].(*ExecutionContext)
+	if !ok {
+		return nil, fmt.Errorf("f(GROUPBYKEY) expect context, but %T", args[0])
+	}
+	K := args[1]
+	V := args[2]
+	var curKey any
+
+	curKey, _ = ctx.Get("curKey")
+	defer func() {
+		ctx.Set("curKey", curKey)
+	}()
+	if curKey == nil {
+		curKey = K
+	}
+
+	ctx.Buffer(K, V)
+
+	if curKey != K {
+		ctx.YieldBuffer(curKey)
+		curKey = K
+	}
+	return nil, nil
+}
+
 func mapf_FLATTEN(args ...any) (any, error) {
-	K := args[0]
-	V := args[1]
+	K := args[1]
+	V := args[2]
 
 	if arr, ok := V.([]any); ok {
 		ret := []*ExecutionParam{}
@@ -215,18 +247,18 @@ func mapf_FLATTEN(args ...any) (any, error) {
 
 // `map=FILTER(LEN(V)<1900)`
 func mapf_FILTER(args ...any) (any, error) {
-	if len(args) != 3 {
+	if len(args) != 4 {
 		return nil, fmt.Errorf("f(FILTER) invalid number of args (n:%d)", len(args))
 	}
-	flag, ok := args[2].(bool)
+	flag, ok := args[3].(bool)
 	if !ok {
-		return nil, fmt.Errorf("f(FILTER) arg should be boolean, but %T", args[2])
+		return nil, fmt.Errorf("f(FILTER) arg should be boolean, but %T", args[4])
 	}
 	if !flag {
 		return nil, nil // drop this vector
 	}
 
-	return &ExecutionParam{K: args[0], V: args[1]}, nil
+	return &ExecutionParam{K: args[1], V: args[2]}, nil
 }
 
 // `len(V)`
@@ -236,7 +268,7 @@ func mapf_len(args ...any) (any, error) {
 
 // `element(V, idx)`
 func mapf_element(args ...any) (any, error) {
-	if len(args) < 2 {
+	if len(args) < 3 {
 		return nil, fmt.Errorf("f(element) invalud number of args (n:%d)", len(args))
 	}
 	var idx int
@@ -292,20 +324,20 @@ func optf_minHz(args ...any) (any, error) {
 
 // `map=FFT()` : K is any, V is array of array(time, value)
 func mapf_FFT(args ...any) (any, error) {
-	if len(args) < 2 {
+	if len(args) < 3 {
 		return nil, fmt.Errorf("f(FFT) invalid number of args (n:%d)", len(args))
 	}
 	// K : any
-	K := args[0]
+	K := args[1]
 	// V : value
-	V, ok := args[1].([]any)
+	V, ok := args[2].([]any)
 	if !ok {
 		return nil, fmt.Errorf("f(FFT) arg v should be []any, but %T", args[1])
 	}
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
-	for _, arg := range args[2:] {
+	for _, arg := range args[3:] {
 		switch v := arg.(type) {
 		case minHzOpt:
 			minHz = float64(v)

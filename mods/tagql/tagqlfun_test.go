@@ -21,7 +21,7 @@ func TestMapFunc_MODTIME(t *testing.T) {
 	MapFuncTestCase{
 		input:     `MODTIME('x', 'y')`,
 		params:    FuncParamMock(1, ""),
-		expectErr: "f(MODTIME) invalid number of args (n:4)",
+		expectErr: "f(MODTIME) invalid number of args (n:5)",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `MODTIME('100ms')`,
@@ -55,7 +55,7 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
 		params:    FuncParamMock(extime, []any{1, 2, 3}),
-		expectErr: "f(PUSHKEY) invalid number of args (n:2)",
+		expectErr: "f(PUSHKEY) invalid number of args (n:3)",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `PUSHKEY('err')`,
@@ -145,6 +145,14 @@ func TestMapFunc_FILTER(t *testing.T) {
 	}.run(t)
 }
 
+func TestMapFunc_GROUPBYKEY(t *testing.T) {
+	MapFuncTestCase{
+		input:  `GROUPBYKEY()`,
+		params: FuncParamMock("x", []any{1, 2, 3}),
+		expect: nil,
+	}.run(t)
+}
+
 func (tc MapFuncTestCase) run(t *testing.T) {
 	strExpr := normalizeMapFuncExpr(tc.input)
 	msg := fmt.Sprintf("TestCase %s => %s", tc.input, strExpr)
@@ -182,7 +190,7 @@ func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameter
 }
 
 func FuncParamMock(k any, v any) expression.Parameters {
-	return &ExecutionParam{K: k, V: v}
+	return &ExecutionParam{Ctx: &ExecutionContext{}, K: k, V: v}
 }
 
 type paramMock struct {
