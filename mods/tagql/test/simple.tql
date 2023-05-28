@@ -1,0 +1,11 @@
+#
+# tql example
+#
+
+INPUT( 'value', range('last', '10s') )
+    
+OUTPUT(
+        'csv',
+        timeformat('ns'), 
+        heading(true)
+    )

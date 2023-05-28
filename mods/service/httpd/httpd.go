@@ -16,6 +16,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/tagql"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	swaggerFiles "github.com/swaggo/files"
@@ -100,6 +101,12 @@ func OptionHandler(prefix string, handler HandlerType) Option {
 	}
 }
 
+func OptionTagQLLoader(loader tagql.Loader) Option {
+	return func(s *httpd) {
+		s.tagqlLoader = loader
+	}
+}
+
 func OptionDebugMode() Option {
 	return func(s *httpd) {
 		s.debugMode = true
@@ -128,6 +135,8 @@ type httpd struct {
 
 	neoShellAddress string
 	neoShellAccount map[string]string
+
+	tagqlLoader tagql.Loader
 
 	debugMode      bool
 	experimentMode bool
@@ -245,7 +254,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/logout", svr.handleLogout)
 			group.GET("/api/chart", svr.handleChart)
 			group.POST("/api/chart", svr.handleChart)
-			group.GET("/api/tagql/:table/:tag", svr.handleTagQL)
+			if svr.tagqlLoader != nil {
+				group.GET("/api/tagql/:table/:tag/*path", svr.handleTagQL)
+			}
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
@@ -264,7 +275,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
-			group.GET("/tagql/:table/:tag", svr.handleTagQL)
+			if svr.tagqlLoader != nil {
+				group.GET("/tagql/:table/:tag/*path", svr.handleTagQL)
+			}
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

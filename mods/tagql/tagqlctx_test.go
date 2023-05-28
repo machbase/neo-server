@@ -5,27 +5,22 @@ import (
 	"testing"
 
 	"github.com/d5/tengo/v2/require"
-	"github.com/machbase/neo-server/mods/expression"
 )
 
 func TestNewContextChain(t *testing.T) {
-	exprMerge, err := expression.NewWithFunctions("MERGE(K, V, 'tt')", mapFunctions)
-	require.Nil(t, err)
-	exprFFT, err := expression.NewWithFunctions("FFT(K, V)", mapFunctions)
-	require.Nil(t, err)
-	exprs := []*expression.Expression{
-		exprMerge,
-		exprFFT,
+	exprs := []string{
+		"PUSHKEY('tt')",
+		"FFT()",
 	}
-	var R chan any = nil
-
-	chain := NewContextChain(context.TODO(), exprs, R)
+	chain, err := NewExecutionChain(context.TODO(), exprs)
+	require.Nil(t, err)
 	require.NotNil(t, chain)
-	require.Equal(t, 2, len(chain))
-	require.NotNil(t, chain[0].Next)
-	require.NotNil(t, chain[1])
-	require.Nil(t, chain[1].Next)
-	require.True(t, exprMerge == chain[0].Expr)
-	require.True(t, exprFFT == chain[1].Expr)
-	require.True(t, chain[1] == chain[0].Next)
+	require.Equal(t, 2, len(chain.nodes))
+	require.NotNil(t, chain.nodes[0].Next)
+	require.NotNil(t, chain.nodes[1])
+	require.Nil(t, chain.nodes[1].Next)
+	require.Equal(t, "PUSHKEY(K,V,'tt')", chain.nodes[0].Expr.String())
+	require.Equal(t, "FFT(K,V)", chain.nodes[1].Expr.String())
+	require.True(t, chain.nodes[1] == chain.nodes[0].Next)
+	chain.Stop()
 }

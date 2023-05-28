@@ -12,6 +12,7 @@ define DEF {
 define VARS {
     PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
+    TAGQL_DIR         = flag("--tagql", "${execDir()}")
     MACH_LISTEN_HOST  = flag("--mach-listen-host", DEF_LISTEN_HOST)
     MACH_LISTEN_PORT  = flag("--mach-listen-port", DEF_MACH_PORT)
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
@@ -58,6 +59,7 @@ module "machbase.com/neo-server" {
     config {
         PrefDir          = VARS_PREF_DIR
         DataDir          = VARS_DATA_DIR
+        TagQLDir         = [ VARS_TAGQL_DIR ]
         ExperimentMode   = VARS_EXPERIMENT_MODE
         Machbase         = {
             HANDLE_LIMIT     = 2048

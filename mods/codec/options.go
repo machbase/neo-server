@@ -149,6 +149,8 @@ func Title(title string) Option {
 			e.Title = title
 		case *echart.Line3D:
 			e.Title = title
+		case *echart.Bar3D:
+			e.Title = title
 		case *json.Exporter:
 		}
 	}
@@ -162,6 +164,8 @@ func Subtitle(subtitle string) Option {
 		case *echart.Line:
 			e.Subtitle = subtitle
 		case *echart.Line3D:
+			e.Subtitle = subtitle
+		case *echart.Bar3D:
 			e.Subtitle = subtitle
 		case *json.Exporter:
 		}
@@ -259,6 +263,19 @@ func Columns(cols spi.Columns) Option {
 			e.Columns = cols
 		case *json.Decoder:
 			e.Columns = cols
+		}
+	}
+}
+
+func Size(width string, height string) Option {
+	return func(one any) {
+		switch e := one.(type) {
+		case *echart.Bar3D:
+			e.Width = width
+			e.Height = height
+		case *echart.Line:
+			e.Width = width
+			e.Height = height
 		}
 	}
 }

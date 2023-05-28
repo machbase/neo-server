@@ -23,6 +23,8 @@ type Line struct {
 	Precision    int
 	Title        string
 	Subtitle     string
+	Width        string
+	Height       string
 }
 
 func (ex *Line) ContentType() string {
@@ -37,9 +39,22 @@ func (ex *Line) Open(cols spi.Columns) error {
 }
 
 func (ex *Line) Close() {
+	width := "600px"
+	if ex.Width != "" {
+		width = ex.Width
+	}
+	height := "400px"
+	if ex.Height != "" {
+		height = ex.Height
+	}
+
 	line := charts.NewLine()
 	line.SetGlobalOptions(
-		charts.WithInitializationOpts(opts.Initialization{Theme: types.ThemeWesteros}),
+		charts.WithInitializationOpts(opts.Initialization{
+			Theme:  types.ThemeWesteros,
+			Width:  width,
+			Height: height,
+		}),
 		charts.WithTitleOpts(opts.Title{
 			Title:    ex.Title,
 			Subtitle: ex.Subtitle,
