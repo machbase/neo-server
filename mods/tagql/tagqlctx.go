@@ -71,9 +71,16 @@ func (ec *ExecutionChain) Source(values []any) {
 		}
 	} else {
 		// there is no chain, just forward input data to sink directly
-		if values != nil {
-			ec.sink <- values
+		ec.sendToSink(values)
+	}
+}
+
+func (ec *ExecutionChain) sendToSink(values []any) {
+	if len(values) > 0 {
+		if t, ok := values[0].(*time.Time); ok {
+			values[0] = *t
 		}
+		ec.sink <- values
 	}
 }
 
@@ -88,11 +95,11 @@ func (ec *ExecutionChain) Start() {
 	}
 
 	sink0 := func(k any, v any) {
-		ec.sink <- []any{k, v}
+		ec.sendToSink([]any{k, v})
 	}
 
 	sink1 := func(k any, v []any) {
-		ec.sink <- append([]any{k}, v...)
+		ec.sendToSink(append([]any{k}, v...))
 	}
 
 	sink2 := func(k any, v [][]any) {

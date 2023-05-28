@@ -64,7 +64,9 @@ var sinkFunctions = map[string]expression.Function{
 	"timeformat": sinkf_timeformat,
 	"precision":  sinkf_precision,
 	"size":       sinkf_size,
+	"theme":      sinkf_theme,
 	"title":      sinkf_title,
+	"subtitle":   sinkf_subtitle,
 	"series":     sinkf_series,
 	"OUTPUT":     sinkf_OUTPUT,
 }
@@ -484,6 +486,28 @@ func sinkf_title(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(title) invalid title, should be string, but %T`", args[0])
 	}
 	return codec.Title(str), nil
+}
+
+func sinkf_subtitle(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(subtitle) invalid arg `subtitle(string)`")
+	}
+	str, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("f(subtitle) invalid title, should be string, but %T`", args[0])
+	}
+	return codec.Subtitle(str), nil
+}
+
+func sinkf_theme(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(theme) invalid arg `theme(string)`")
+	}
+	str, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("f(theme) invalid theme, should be string, but %T`", args[0])
+	}
+	return codec.Theme(str), nil
 }
 
 // `series(1, 'rms-value')`

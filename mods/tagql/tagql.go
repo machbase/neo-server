@@ -73,7 +73,7 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 		lineText := string(parts)
 		parts = parts[:0]
 
-		if lineText == "" || strings.HasPrefix(lineText, "#") || strings.HasPrefix(lineText, "--") {
+		if lineText == "" || strings.HasPrefix(strings.TrimSpace(lineText), "#") {
 			continue
 		}
 		if len(stmt) == 0 {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/go-echarts/v2/types"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 )
@@ -20,6 +21,7 @@ type Base3D struct {
 	Precision    int
 	Title        string
 	Subtitle     string
+	Theme        string
 	Width        string
 	Height       string
 }
@@ -52,9 +54,13 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	if ex.Subtitle != "" {
 		subtitle = ex.Subtitle
 	}
+	theme := ex.Theme
+	if theme == "" {
+		theme = types.ThemeWesteros
+	}
 	return []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			// Theme:     types.ThemeChalk,
+			Theme:     theme,
 			Width:     width,
 			Height:    height,
 			PageTitle: title,

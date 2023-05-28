@@ -166,6 +166,19 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
+func Theme(theme string) Option {
+	return func(one any) {
+		switch e := one.(type) {
+		case *echart.Line:
+			e.Theme = theme
+		case *echart.Line3D:
+			e.Theme = theme
+		case *echart.Bar3D:
+			e.Theme = theme
+		}
+	}
+}
+
 func Series(idx int, label string) Option {
 	return func(one any) {
 		switch e := one.(type) {

@@ -1,6 +1,7 @@
 package echart
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -20,6 +21,7 @@ type Line struct {
 	TimeFormat   string
 	Title        string
 	Subtitle     string
+	Theme        string
 	Width        string
 	Height       string
 }
@@ -43,10 +45,15 @@ func (ex *Line) Close() {
 		height = ex.Height
 	}
 
+	theme := ex.Theme
+	if theme == "" {
+		theme = types.ThemeWesteros
+	}
+
 	line := charts.NewLine()
 	line.SetGlobalOptions(
 		charts.WithInitializationOpts(opts.Initialization{
-			Theme:  types.ThemeWesteros,
+			Theme:  theme,
 			Width:  width,
 			Height: height,
 		}),
@@ -58,23 +65,36 @@ func (ex *Line) Close() {
 			Show:    true,
 			Trigger: "axis",
 		}),
-		// charts.WithLabelOpts(opts.Label{
-		// 	Show:      true,
-		// 	Formatter: "{mm}:{ss} {SSS}",
-		// }),
+		charts.WithXAxisOpts(opts.XAxis{
+			Name: "time",
+			// Type: "time",
+			Show: true,
+			Min:  ex.xLabels[0],
+			Max:  ex.xLabels[len(ex.xLabels)-1],
+		}, 0),
 	)
 	// Put data into instance
 	line.SetXAxis(ex.xLabels)
-	for i, label := range ex.seriesLabels {
-		line.AddSeries(label, ex.series[i]).
-			SetSeriesOptions(
-				charts.WithLineChartOpts(
-					opts.LineChart{
-						Smooth:     true,
-						XAxisIndex: 0,
-						YAxisIndex: i,
-					},
-				))
+
+	for i, series := range ex.series {
+		var label string
+		if i < len(ex.seriesLabels) {
+			label = ex.seriesLabels[i]
+		} else {
+			label = fmt.Sprintf("value[%d]", i)
+		}
+		line.AddSeries(label, series,
+			charts.WithLabelOpts(opts.Label{
+				Show: true,
+				// Color: "red",
+			}),
+			charts.WithLineChartOpts(
+				opts.LineChart{
+					Smooth:     true,
+					XAxisIndex: 0,
+				},
+			),
+		)
 	}
 	line.Render(ex.Output)
 }
