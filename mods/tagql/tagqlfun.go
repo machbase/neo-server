@@ -26,16 +26,16 @@ import (
 // }
 
 var mapFunctions = map[string]expression.Function{
-	"len":      mapf_len,
-	"element":  mapf_element,
-	"maxHzOpt": optf_maxHz,
-	"minHzOpt": optf_minHz,
-	"MODTIME":  mapf_MODTIME,
-	"PUSHKEY":  mapf_PUSHKEY,
-	"POPKEY":   mapf_POPKEY,
-	"FLATTEN":  mapf_FLATTEN,
-	"FILTER":   mapf_FILTER,
-	"FFT":      mapf_FFT,
+	"len":     mapf_len,
+	"element": mapf_element,
+	"maxHz":   optf_maxHz,
+	"minHz":   optf_minHz,
+	"MODTIME": mapf_MODTIME,
+	"PUSHKEY": mapf_PUSHKEY,
+	"POPKEY":  mapf_POPKEY,
+	"FLATTEN": mapf_FLATTEN,
+	"FILTER":  mapf_FILTER,
+	"FFT":     mapf_FFT,
 }
 
 var mapFunctionsMacro = [][2]string{
@@ -270,24 +270,24 @@ type maxHzOpt float64
 
 func optf_maxHz(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("f(maxHzOpt) invalid number of args (n:%d)", len(args))
+		return nil, fmt.Errorf("f(maxHz) invalid number of args (n:%d)", len(args))
 	}
 	if v, ok := args[0].(float64); ok {
 		return maxHzOpt(v), nil
 	}
-	return nil, fmt.Errorf("f(maxHzOpt) invalid parameter: %T", args[0])
+	return nil, fmt.Errorf("f(maxHz) invalid parameter: %T", args[0])
 }
 
 type minHzOpt float64
 
 func optf_minHz(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("f(minHzOpt) invalid number of args (n:%d)", len(args))
+		return nil, fmt.Errorf("f(minHz) invalid number of args (n:%d)", len(args))
 	}
 	if v, ok := args[0].(float64); ok {
 		return minHzOpt(v), nil
 	}
-	return nil, fmt.Errorf("f(minHzOpt) invalid parameter: %T", args[0])
+	return nil, fmt.Errorf("f(minHz) invalid parameter: %T", args[0])
 }
 
 // `map=FFT()` : K is any, V is array of array(time, value)
