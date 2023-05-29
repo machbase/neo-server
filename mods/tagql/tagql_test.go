@@ -101,7 +101,7 @@ func TestTagQLMajorParts(t *testing.T) {
 
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', range('last', '1s'))`) + "&map=" + url.QueryEscape(`MODTIME(K, V, '100ms')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', range('last', '1s'))`) + "&map=" + url.QueryEscape(`PUSHKEY(roundTime(K, '100ms'))`),
 		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)

@@ -37,7 +37,6 @@ var functions = map[string]expression.Function{
 	"element":    mapf_element,
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
-	"MODTIME":    mapf_MODTIME,
 	"PUSHKEY":    mapf_PUSHKEY,
 	"POPKEY":     mapf_POPKEY,
 	"GROUPBYKEY": mapf_GROUPBYKEY,
@@ -76,7 +75,7 @@ func mapf_roundTime(args ...any) (any, error) {
 	} else if ts, ok := args[0].(*time.Time); ok {
 		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
 	} else {
-		return nil, fmt.Errorf("f(roundTime) arg should time, but %T", args[0])
+		return nil, fmt.Errorf("f(roundTime) 1st arg should be time, but %T", args[0])
 	}
 	return ret, nil
 }
@@ -136,6 +135,7 @@ func mapf_element(args ...any) (any, error) {
 
 // make new key by modulus of time
 // `map=MODTIME('100ms')` produces `K:V` ==> `K':[K, V]` (K' = K % 100ms)
+/*
 func mapf_MODTIME(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, fmt.Errorf("f(MODTIME) invalid number of args (n:%d)", len(args))
@@ -172,6 +172,7 @@ func mapf_MODTIME(args ...any) (any, error) {
 	}
 	return ret, nil
 }
+*/
 
 // Merge all incoming values into a single key,
 // incresing dimension of vector as result.
@@ -183,14 +184,15 @@ func mapf_PUSHKEY(args ...any) (any, error) {
 	// K : time
 	key := args[1]
 	// V : value
-	val, ok := args[2].([]any)
-	if !ok {
+	var newVal []any
+	if val, ok := args[2].([]any); ok {
+		newVal = append([]any{key}, val...)
+	} else {
 		return nil, fmt.Errorf("f(PUSHKEY) V should be []any, but %T", args[2])
 	}
 	// newkey
 	newKey := args[3]
 
-	newVal := append([]any{key}, val...)
 	ret := &ctx.Param{
 		K: newKey,
 		V: newVal,

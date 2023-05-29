@@ -19,36 +19,16 @@ type MapFuncTestCase struct {
 	expectErr string
 }
 
-func TestMapFunc_MODTIME(t *testing.T) {
+func TestMapFunc_roundTime(t *testing.T) {
 	MapFuncTestCase{
-		input:     `MODTIME('x', 'y')`,
+		input:     `roundTime()`,
 		params:    FuncParamMock(1, ""),
-		expectErr: "f(MODTIME) invalid number of args (n:5)",
+		expectErr: "f(roundTime) invalud args 'roundTime(time, 'duration')' (n:0)",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `MODTIME('100ms')`,
-		params:    FuncParamMock(123456, ""),
-		expectErr: "f(MODTIME) K should be time, but float64",
-	}.run(t)
-	MapFuncTestCase{
-		input:     `MODTIME('100ms')`,
-		params:    FuncParamMock(time.Unix(100, 200300400), ""),
-		expectErr: "f(MODTIME) V should be []any, but string",
-	}.run(t)
-	MapFuncTestCase{
-		input:     `MODTIME('100x')`,
-		params:    FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
-		expectErr: `f(MODTIME) 1st arg should be duration, time: unknown unit "x" in duration "100x"`,
-	}.run(t)
-	MapFuncTestCase{
-		input:  `MODTIME('100ms')`,
-		params: FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
-		expect: &ctx.Param{K: time.Unix(100, 200000000), V: []any{time.Unix(100, 200300400), 0, 1, 2, 3}},
-	}.run(t)
-	MapFuncTestCase{
-		input:  `MODTIME('100us')`,
-		params: FuncParamMock(time.Unix(100, 200300400), []any{0, 1, 2, 3}),
-		expect: &ctx.Param{K: time.Unix(100, 200300000), V: []any{time.Unix(100, 200300400), 0, 1, 2, 3}},
+		input:     `roundTime(123, '1x')`,
+		params:    FuncParamMock(1, ""),
+		expectErr: "f(roundTime) 2nd arg should be duration",
 	}.run(t)
 }
 
@@ -68,6 +48,13 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(extime, []any{1, 2, 3}),
 		expect: &ctx.Param{K: "sam", V: []any{extime, 1, 2, 3}},
+	}.run(t)
+	tick := time.Now()
+	tick100ms := time.Unix(0, (tick.UnixNano()/100000000)*100000000)
+	MapFuncTestCase{
+		input:  `PUSHKEY(roundTime(K, '100ms'))`,
+		params: FuncParamMock(tick, []any{"v"}),
+		expect: &ctx.Param{K: tick100ms, V: []any{tick, "v"}},
 	}.run(t)
 }
 
