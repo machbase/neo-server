@@ -91,7 +91,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 
 	encoder := codec.NewEncoder(req.Format,
 		codec.OutputStream(output),
-		codec.TimeFormat(req.Timeformat),
+		codec.Timeformat(req.Timeformat),
 		codec.Precision(req.Precision),
 		codec.Rownum(req.Rownum),
 		codec.Heading(req.Heading),
@@ -109,7 +109,8 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			if len(req.Compress) > 0 {
 				ctx.Writer.Header().Set("Content-Encoding", req.Compress)
 			}
-			encoder.Open(cols)
+			codec.SetEncoderColumns(encoder, cols)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)

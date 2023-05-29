@@ -89,8 +89,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 
 	codecOpts := []codec.Option{
 		codec.InputStream(in),
-		codec.Columns(desc.Columns.Columns()),
-		codec.TimeFormat(timeformat),
+		codec.Timeformat(timeformat),
 		codec.TimeLocation(timeLocation),
 		codec.Delimiter(delimiter),
 		codec.Heading(heading),
@@ -114,6 +113,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
+	codec.SetDecoderColumns(decoder, desc.Columns.Columns())
 
 	var appender spi.Appender
 	lineno := 0

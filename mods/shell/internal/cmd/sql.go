@@ -129,7 +129,7 @@ func doSql(ctx *client.ActionContext) {
 
 	encoder := codec.NewEncoder(cmd.Format,
 		codec.OutputStream(output),
-		codec.TimeFormat(cmd.Timeformat),
+		codec.Timeformat(cmd.Timeformat),
 		codec.Precision(cmd.Precision),
 		codec.Rownum(cmd.Rownum),
 		codec.Heading(cmd.Heading),
@@ -165,7 +165,8 @@ func doSql(ctx *client.ActionContext) {
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)

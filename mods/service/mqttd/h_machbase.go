@@ -166,8 +166,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	cols, _ := appender.Columns()
 	codecOpts := []codec.Option{
 		codec.InputStream(instream),
-		codec.Columns(cols),
-		codec.TimeFormat("ns"),
+		codec.Timeformat("ns"),
 		codec.TimeLocation(time.UTC),
 		codec.Delimiter(","),
 		codec.Heading(false),
@@ -184,6 +183,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
+	codec.SetDecoderColumns(decoder, cols)
 
 	recno := 0
 	for {

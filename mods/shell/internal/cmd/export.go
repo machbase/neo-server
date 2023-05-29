@@ -114,7 +114,7 @@ func doExport(ctx *client.ActionContext) {
 
 	encoder := codec.NewEncoder(cmd.Format,
 		codec.OutputStream(output),
-		codec.TimeFormat(cmd.Timeformat),
+		codec.Timeformat(cmd.Timeformat),
 		codec.Precision(cmd.Precision),
 		codec.Rownum(false),
 		codec.Heading(cmd.Heading),
@@ -140,7 +140,8 @@ func doExport(ctx *client.ActionContext) {
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+			codec.SetEncoderColumns(encoder, cols)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)

@@ -425,7 +425,8 @@ func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+			codec.SetEncoderColumns(encoder, cols)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)

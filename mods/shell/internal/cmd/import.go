@@ -155,11 +155,11 @@ func doImport(ctx *client.ActionContext) {
 
 	decoder := codec.NewDecoder(cmd.InputFormat,
 		codec.InputStream(in),
-		codec.Columns(desc.Columns.Columns()),
-		codec.TimeFormat(cmd.Timeformat),
+		codec.Timeformat(cmd.Timeformat),
 		codec.TimeLocation(cmd.TimeLocation),
 		codec.Delimiter(cmd.Delimiter),
 	)
+	codec.SetDecoderColumns(decoder, desc.Columns.Columns())
 
 	capture := ctx.NewCaptureUserInterrupt("")
 	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {
