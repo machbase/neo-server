@@ -6,29 +6,19 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
+	"github.com/go-echarts/go-echarts/v2/types"
 )
 
 type Base3D struct {
-	series       []opts.Chart3DData
-	TimeLocation *time.Location
-	Output       spec.OutputStream
-	Rownum       bool
-	Heading      bool
-	TimeFormat   string
-	Precision    int
-	Title        string
-	Subtitle     string
-	Width        string
-	Height       string
+	ChartBase
+	series []opts.Chart3DData
 }
 
 func (ex *Base3D) ContentType() string {
 	return "text/html"
 }
 
-func (ex *Base3D) Open(cols spi.Columns) error {
+func (ex *Base3D) Open() error {
 	return nil
 }
 
@@ -37,24 +27,28 @@ func (ex *Base3D) Flush(heading bool) {
 
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	width := "600px"
-	if ex.Width != "" {
-		width = ex.Width
+	if ex.width != "" {
+		width = ex.width
 	}
 	height := "400px"
-	if ex.Height != "" {
-		height = ex.Height
+	if ex.height != "" {
+		height = ex.height
 	}
 	title := "Chart"
-	if ex.Title != "" {
-		title = ex.Title
+	if ex.title != "" {
+		title = ex.title
 	}
 	subtitle := ""
-	if ex.Subtitle != "" {
-		subtitle = ex.Subtitle
+	if ex.subtitle != "" {
+		subtitle = ex.subtitle
+	}
+	theme := ex.theme
+	if theme == "" {
+		theme = types.ThemeWesteros
 	}
 	return []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			// Theme:     types.ThemeChalk,
+			Theme:     theme,
 			Width:     width,
 			Height:    height,
 			PageTitle: title,
@@ -161,7 +155,7 @@ func (ex *Line3D) Close() {
 	line3d := charts.NewLine3D()
 	line3d.SetGlobalOptions(ex.getGlobalOptions()...)
 	line3d.AddSeries("Amplitude", ex.series)
-	line3d.Render(ex.Output)
+	line3d.Render(ex.output)
 
 	// page := components.NewPage()
 	// page.AddCharts(line3d)
@@ -176,7 +170,7 @@ func (ex *Surface3D) Close() {
 	surface3d := charts.NewSurface3D()
 	surface3d.SetGlobalOptions(ex.getGlobalOptions()...)
 	surface3d.AddSeries("Amplitude", ex.series)
-	surface3d.Render(ex.Output)
+	surface3d.Render(ex.output)
 }
 
 type Scatter3D struct {
@@ -187,7 +181,7 @@ func (ex *Scatter3D) Close() {
 	scatter3d := charts.NewScatter3D()
 	scatter3d.SetGlobalOptions(ex.getGlobalOptions()...)
 	scatter3d.AddSeries("Amplitude", ex.series)
-	scatter3d.Render(ex.Output)
+	scatter3d.Render(ex.output)
 }
 
 type Bar3D struct {
@@ -198,5 +192,5 @@ func (ex *Bar3D) Close() {
 	bar3d := charts.NewBar3D()
 	bar3d.SetGlobalOptions(ex.getGlobalOptions()...)
 	bar3d.AddSeries("Amplitude", ex.series)
-	bar3d.Render(ex.Output)
+	bar3d.Render(ex.output)
 }

@@ -14,9 +14,11 @@ import (
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
-	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tagql/fmap"
+	"github.com/machbase/neo-server/mods/tagql/fsink"
+	"github.com/machbase/neo-server/mods/tagql/fsrc"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -29,12 +31,11 @@ type TagQL interface {
 }
 
 type tagQL struct {
-	table string
-	tag   string
-
+	table          string
+	tag            string
 	baseTimeColumn string
 
-	srcInput *SrcInput
+	srcInput fsrc.Source
 	mapExprs []string
 	sinkExpr string
 }
@@ -73,7 +74,7 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 		lineText := string(parts)
 		parts = parts[:0]
 
-		if lineText == "" || strings.HasPrefix(lineText, "#") || strings.HasPrefix(lineText, "--") {
+		if lineText == "" || strings.HasPrefix(strings.TrimSpace(lineText), "#") {
 			continue
 		}
 		if len(stmt) == 0 {
@@ -117,29 +118,18 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		expr, err := expression.NewWithFunctions(srcLine.text, srcFunctions)
+		src, err := fsrc.Compile(srcLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
-		ret, err := expr.Eval(nil)
-		if err != nil {
-			return nil, err
-		}
-		input, ok := ret.(*SrcInput)
-		if !ok {
-			return nil, fmt.Errorf("invalid compile result of src at line %d, %v", srcLine.line, input)
-		}
-		if len(input.Columns) == 0 {
-			input.Columns = []string{"value"}
-		}
-		tq.srcInput = input
+		tq.srcInput = src
 	}
 
 	// sink
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		_, err := expression.NewWithFunctions(sinkLine.text, sinkFunctions)
+		_, err := fsink.Parse(sinkLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
@@ -151,7 +141,7 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 		exprs = exprs[1 : len(exprs)-1]
 		for _, mapLine := range exprs {
 			// validates the syntax
-			_, err := expression.NewWithFunctions(mapLine.text, mapFunctions)
+			_, err := fmap.Parse(mapLine.text)
 			if err != nil {
 				return nil, errors.Wrapf(err, "at line %d", mapLine.line)
 			}
@@ -196,31 +186,20 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 
 	srcParts := params["src"]
 	if len(srcParts) == 0 {
-		tq.srcInput = newSrcInput()
-		tq.srcInput.Columns = []string{"value"}
+		tq.srcInput = fsrc.NewSource()
 	} else {
 		// only take the last one
 		part := srcParts[len(srcParts)-1]
-		// validates the syntax
-		expr, err := expression.NewWithFunctions(part, srcFunctions)
+		src, err := fsrc.Compile(part)
 		if err != nil {
 			return nil, err
 		}
-		ret, err := expr.Eval(nil)
-		if err != nil {
-			return nil, err
-		}
-		input, ok := ret.(*SrcInput)
-		if !ok {
-			return nil, fmt.Errorf("invalid compile result of src, %v", input)
-		}
-
-		tq.srcInput = input
+		tq.srcInput = src
 	}
 	mapParts := params["map"]
 	for _, part := range mapParts {
 		// validates the syntax
-		_ /*expr */, err := expression.NewWithFunctions(part, mapFunctions)
+		_ /*expr */, err := fmap.Parse(part)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +211,7 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 		// only take the last one
 		part := sinkParts[len(sinkParts)-1]
 		// validates the syntax
-		_ /*expr*/, err := expression.NewWithFunctions(part, sinkFunctions)
+		_ /*expr*/, err := fsink.Parse(part)
 		if err != nil {
 			return nil, err
 		}
@@ -317,15 +296,15 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 		open := false
 		for arr := range chain.Sink() {
 			if !open {
-				if cols == nil {
+				if len(tq.mapExprs) > 0 {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
-							Name: fmt.Sprintf("col#%d", i),
+							Name: fmt.Sprintf("C%02d", i),
 							Type: fmt.Sprintf("%T", v)})
 					}
 				}
-				// TODO can not trust column types if arr comes through map()
-				encoder.Open(cols)
+				codec.SetEncoderColumns(encoder, cols)
+				encoder.Open()
 				deferHooks = append(deferHooks, func() {
 					// if close encoder right away without defer,
 					// it will crash, because it could be earlier than all map() pipe to be closed
@@ -348,7 +327,7 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 }
 
 func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, error) {
-	sinkExpr, err := expression.NewWithFunctions(normalizeSinkFuncExpr(tq.sinkExpr), sinkFunctions)
+	sinkExpr, err := fsink.Parse(tq.sinkExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -364,121 +343,5 @@ func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, erro
 }
 
 func (tq *tagQL) ToSQL() string {
-	if tq.srcInput.Range == nil || tq.srcInput.Range.groupBy == 0 {
-		return tq.toSql()
-	} else {
-		return tq.toSqlGroup()
-	}
-}
-
-func (tq *tagQL) toSqlGroup() string {
-	ret := ""
-	rng := tq.srcInput.Range
-	columns := strings.Join(tq.srcInput.Columns, ", ")
-	if rng.ts == "last" {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN
-				    (SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
-				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d
-			`,
-			tq.baseTimeColumn, rng.groupBy, rng.groupBy, tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn,
-			rng.duration, tq.table, tq.tag,
-			tq.table, tq.tag,
-			tq.baseTimeColumn,
-			tq.baseTimeColumn,
-			tq.srcInput.Limit.limit,
-		)
-	} else if rng.ts == "now" {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s BETWEEN now - %d AND now 
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d
-			`,
-			tq.baseTimeColumn, rng.groupBy, rng.groupBy, tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn, rng.duration,
-			tq.baseTimeColumn,
-			tq.baseTimeColumn,
-			tq.srcInput.Limit.limit,
-		)
-	} else {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN %d - %d AND %d
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d
-			`,
-			tq.baseTimeColumn, rng.groupBy, rng.groupBy, tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn,
-			rng.tsTime.UnixNano(), rng.duration, rng.tsTime.UnixNano(),
-			tq.baseTimeColumn,
-			tq.baseTimeColumn,
-			tq.srcInput.Limit.limit,
-		)
-	}
-	return ret
-}
-
-func (tq *tagQL) toSql() string {
-	ret := ""
-	src := tq.srcInput
-	columns := strings.Join(tq.srcInput.Columns, ", ")
-	if src.Range.ts == "last" {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN 
-					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
-				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-			LIMIT %d
-			`,
-			tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn,
-			src.Range.duration, tq.table, tq.tag,
-			tq.table, tq.tag,
-			src.Limit.limit,
-		)
-	} else if src.Range.ts == "now" {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s BETWEEN now - %d AND now 
-			LIMIT %d
-			`,
-			tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn, src.Range.duration,
-			src.Limit.limit,
-		)
-	} else {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s 
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN %d - %d AND %d
-			LIMIT %d`,
-			tq.baseTimeColumn, columns, tq.table,
-			tq.tag,
-			tq.baseTimeColumn,
-			src.Range.tsTime.UnixNano(), src.Range.duration, src.Range.tsTime.UnixNano(),
-			src.Limit.limit)
-	}
-	return ret
+	return tq.srcInput.ToSQL(tq.table, tq.tag, tq.baseTimeColumn)
 }

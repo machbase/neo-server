@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -17,19 +16,37 @@ type Decoder struct {
 	reader       *gojson.Decoder
 	dataDepth    int
 	nrow         int64
-	Input        spec.InputStream
-	TimeFormat   string
-	TimeLocation *time.Location
-	TableName    string
-	Columns      spi.Columns
+	input        spec.InputStream
+	timeformat   string
+	timeLocation *time.Location
+	tableName    string
 }
 
 func NewDecoder() *Decoder {
 	return &Decoder{}
 }
 
+func (dec *Decoder) SetInputStream(in spec.InputStream) {
+	dec.input = in
+}
+
+func (dec *Decoder) SetTimeformat(format string) {
+	dec.timeformat = format
+}
+
+func (dec *Decoder) SetTimeLocation(tz *time.Location) {
+	dec.timeLocation = tz
+}
+
+func (dec *Decoder) SetTable(tableName string) {
+	dec.tableName = tableName
+}
+
+func (dec *Decoder) SetColumns(labels []string, types []string) {
+	dec.columnTypes = types
+}
+
 func (dec *Decoder) Open() {
-	dec.columnTypes = dec.Columns.Types()
 }
 
 func (dec *Decoder) NextRow() ([]any, error) {
@@ -42,7 +59,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 
 	if len(fields) != len(dec.columnTypes) {
 		return nil, fmt.Errorf("#[%d] number of columns not matched (%d); table '%s' has %d columns",
-			dec.nrow, len(fields), dec.TableName, len(dec.columnTypes))
+			dec.nrow, len(fields), dec.tableName, len(dec.columnTypes))
 	}
 
 	values := make([]any, len(dec.columnTypes))
@@ -69,7 +86,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			if ts, err = strconv.ParseInt(strexp, 10, 64); err != nil {
 				return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertable", dec.nrow, i)
 			}
-			switch dec.TimeFormat {
+			switch dec.timeformat {
 			case "s":
 				values[i] = time.Unix(ts, 0)
 			case "ms":
@@ -116,7 +133,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 
 func (dec *Decoder) nextRow0() ([]any, error) {
 	if dec.reader == nil {
-		dec.reader = gojson.NewDecoder(dec.Input)
+		dec.reader = gojson.NewDecoder(dec.input)
 		// find first '{'
 		if tok, err := dec.reader.Token(); err != nil {
 			return nil, err

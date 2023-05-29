@@ -1,8 +1,8 @@
 package tagql_test
 
 import (
+	"bytes"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -11,8 +11,20 @@ import (
 )
 
 func TestTagQLFile(t *testing.T) {
-	r, err := os.Open("./test/simple.tql")
-	require.Nil(t, err)
+	text := `
+#
+# tql example
+#
+
+INPUT( 'value', range('last', '10s') )
+    
+OUTPUT(
+        'csv',
+        timeformat('ns'), 
+        heading(true)
+    )
+`
+	r := bytes.NewBuffer([]byte(text))
 	tql, err := Parse("table", "tag", r)
 	require.Nil(t, err)
 	require.NotNil(t, tql)
@@ -89,7 +101,7 @@ func TestTagQLMajorParts(t *testing.T) {
 
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', range('last', '1s'))`) + "&map=" + url.QueryEscape(`MODTIME(K, V, '100ms')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', range('last', '1s'))`) + "&map=" + url.QueryEscape(`PUSHKEY(roundTime(K, '100ms'))`),
 		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
 )
 
 type Exporter struct {
@@ -15,11 +14,14 @@ type Exporter struct {
 	nrow int
 
 	TimeLocation *time.Location
-	Output       spec.OutputStream
+	output       spec.OutputStream
 	Rownum       bool
 	Heading      bool
-	TimeFormat   string
-	Precision    int
+	timeformat   string
+	precision    int
+
+	colNames []string
+	colTypes []string
 }
 
 func NewEncoder() *Exporter {
@@ -30,12 +32,44 @@ func (ex *Exporter) ContentType() string {
 	return "application/json"
 }
 
-func (ex *Exporter) Open(cols spi.Columns) error {
-	names := cols.Names()
-	types := cols.Types()
+func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+	ex.output = o
+}
+
+func (ex *Exporter) SetTimeformat(format string) {
+	ex.timeformat = format
+}
+
+func (ex *Exporter) SetTimeLocation(tz *time.Location) {
+	ex.TimeLocation = tz
+}
+
+func (ex *Exporter) SetPrecision(precision int) {
+	ex.precision = precision
+}
+
+func (ex *Exporter) SetRownum(show bool) {
+	ex.Rownum = show
+}
+
+func (ex *Exporter) SetHeading(show bool) {
+	ex.Heading = show
+}
+
+func (ex *Exporter) SetColumns(labels []string, types []string) {
+	ex.colNames = labels
+	ex.colTypes = types
+}
+
+func (ex *Exporter) Open() error {
+	var names []string
+	var types []string
 	if ex.Rownum {
-		names = append([]string{"ROWNUM"}, names...)
-		types = append([]string{"string"}, types...)
+		names = append([]string{"ROWNUM"}, ex.colNames...)
+		types = append([]string{"string"}, ex.colTypes...)
+	} else {
+		names = ex.colNames
+		types = ex.colTypes
 	}
 
 	columnsJson, _ := gojson.Marshal(names)
@@ -43,19 +77,19 @@ func (ex *Exporter) Open(cols spi.Columns) error {
 
 	header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
 		string(columnsJson), string(typesJson))
-	ex.Output.Write([]byte(header))
+	ex.output.Write([]byte(header))
 
 	return nil
 }
 
 func (ex *Exporter) Close() {
 	footer := fmt.Sprintf(`]}, "success":true, "reason":"success", "elapse":"%s"}`, time.Since(ex.tick).String())
-	ex.Output.Write([]byte(footer))
-	ex.Output.Close()
+	ex.output.Write([]byte(footer))
+	ex.output.Close()
 }
 
 func (ex *Exporter) Flush(heading bool) {
-	ex.Output.Flush()
+	ex.output.Flush()
 }
 
 func (ex *Exporter) AddRow(source []any) error {
@@ -69,7 +103,7 @@ func (ex *Exporter) AddRow(source []any) error {
 	for i, field := range source {
 		values[i] = field
 		if v, ok := field.(*time.Time); ok {
-			switch ex.TimeFormat {
+			switch ex.timeformat {
 			case "ns":
 				values[i] = v.UnixNano()
 			case "ms":
@@ -82,7 +116,7 @@ func (ex *Exporter) AddRow(source []any) error {
 				if ex.TimeLocation == nil {
 					ex.TimeLocation = time.UTC
 				}
-				values[i] = v.In(ex.TimeLocation).Format(ex.TimeFormat)
+				values[i] = v.In(ex.TimeLocation).Format(ex.timeformat)
 			}
 			continue
 		} else if v, ok := field.(*float64); ok {
@@ -108,9 +142,9 @@ func (ex *Exporter) AddRow(source []any) error {
 	}
 
 	if ex.nrow > 1 {
-		ex.Output.Write([]byte(","))
+		ex.output.Write([]byte(","))
 	}
-	ex.Output.Write(recJson)
+	ex.output.Write(recJson)
 
 	return nil
 }

@@ -2,26 +2,24 @@ package tagql
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/tagql/ctx"
+	"github.com/machbase/neo-server/mods/tagql/fmap"
 	"github.com/pkg/errors"
 )
 
 type ExecutionChain struct {
-	nodes     []*ExecutionContext
-	head      *ExecutionContext
+	nodes     []*ctx.Context
+	head      *ctx.Context
 	r         chan any
 	sink      chan []any
 	closeOnce sync.Once
 	waitWg    sync.WaitGroup
 	lastError error
 }
-
-var debugMode = false
 
 func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
@@ -30,22 +28,21 @@ func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionCha
 
 	exprs := []*expression.Expression{}
 	for _, str := range exprstrs {
-		strExpr := normalizeMapFuncExpr(str)
-		expr, err := expression.NewWithFunctions(strExpr, mapFunctions)
+		expr, err := fmap.Parse(str)
 		if err != nil {
-			return nil, errors.Wrapf(err, "at %s", strExpr)
+			return nil, errors.Wrapf(err, "at %s", str)
 		}
 		exprs = append(exprs, expr)
 	}
 
-	nodes := make([]*ExecutionContext, len(exprs))
+	nodes := make([]*ctx.Context, len(exprs))
 	for n, expr := range exprs {
-		nodes[n] = &ExecutionContext{
+		nodes[n] = &ctx.Context{
 			Name:    expr.String(),
 			Context: ctxCtx,
 			Expr:    expr,
-			src:     make(chan *ExecutionParam),
-			sink:    ret.r,
+			Src:     make(chan *ctx.Param),
+			Sink:    ret.r,
 			Next:    nil,
 		}
 		if n > 0 {
@@ -67,15 +64,22 @@ func (ec *ExecutionChain) Error() error {
 func (ec *ExecutionChain) Source(values []any) {
 	if ec.head != nil {
 		if values != nil {
-			ec.head.src <- &ExecutionParam{Ctx: ec.head, K: values[0], V: values[1:]}
+			ec.head.Src <- &ctx.Param{Ctx: ec.head, K: values[0], V: values[1:]}
 		} else {
-			ec.head.src <- ExecutionEOF
+			ec.head.Src <- ctx.ExecutionEOF
 		}
 	} else {
 		// there is no chain, just forward input data to sink directly
-		if values != nil {
-			ec.sink <- values
+		ec.sendToSink(values)
+	}
+}
+
+func (ec *ExecutionChain) sendToSink(values []any) {
+	if len(values) > 0 {
+		if t, ok := values[0].(*time.Time); ok {
+			values[0] = *t
 		}
+		ec.sink <- values
 	}
 }
 
@@ -90,11 +94,11 @@ func (ec *ExecutionChain) Start() {
 	}
 
 	sink0 := func(k any, v any) {
-		ec.sink <- []any{k, v}
+		ec.sendToSink([]any{k, v})
 	}
 
 	sink1 := func(k any, v []any) {
-		ec.sink <- append([]any{k}, v...)
+		ec.sendToSink(append([]any{k}, v...))
 	}
 
 	sink2 := func(k any, v [][]any) {
@@ -105,8 +109,8 @@ func (ec *ExecutionChain) Start() {
 
 	for ret := range ec.r {
 		switch castV := ret.(type) {
-		case *ExecutionParam:
-			if castV == ExecutionEOF {
+		case *ctx.Param:
+			if castV == ctx.ExecutionEOF {
 				ec.waitWg.Done()
 			} else {
 				switch tV := castV.V.(type) {
@@ -122,7 +126,7 @@ func (ec *ExecutionChain) Start() {
 					sink0(castV.K, castV.V)
 				}
 			}
-		case []*ExecutionParam:
+		case []*ctx.Param:
 			for _, v := range castV {
 				switch tV := v.V.(type) {
 				case []any:
@@ -151,226 +155,4 @@ func (ec *ExecutionChain) Stop() {
 		close(ec.r)
 		close(ec.sink)
 	})
-}
-
-type ExecutionContext struct {
-	context.Context
-	Name string
-	Expr *expression.Expression
-	src  chan *ExecutionParam
-	sink chan<- any
-	Next *ExecutionContext
-
-	closeWg sync.WaitGroup
-}
-
-func (ctx *ExecutionContext) Start() {
-	ctx.closeWg.Add(1)
-	go func() {
-		defer func() {
-			if ctx.Next != nil {
-				ctx.Next.src <- ExecutionEOF
-			}
-			ctx.sink <- ExecutionEOF
-			ctx.closeWg.Done()
-			if o := recover(); o != nil {
-				fmt.Println("panic", ctx.Name, o)
-			}
-		}()
-
-		var curKey any
-		var curVal []any
-
-		yield := func() {
-			var yieldValue *ExecutionParam
-			if len(curVal) == 1 {
-				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal[0]}
-			} else {
-				yieldValue = &ExecutionParam{Ctx: ctx, K: curKey, V: curVal}
-			}
-			if ctx.Next != nil {
-				if debugMode {
-					fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
-				}
-				ctx.Next.src <- yieldValue
-			} else {
-				if debugMode {
-					fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
-				}
-				ctx.sink <- yieldValue
-			}
-		}
-		drop := func(p *ExecutionParam) {
-			if debugMode {
-				fmt.Println("--", ctx.Name, "DROP", p.K, p.StringValueTypes())
-			}
-		}
-
-		for p := range ctx.src {
-			if p == ExecutionEOF {
-				break
-			}
-			if ret, err := ctx.Expr.Eval(p); err != nil {
-				ctx.sink <- err
-			} else if ret != nil {
-				var resultset []*ExecutionParam
-				switch rs := ret.(type) {
-				case *ExecutionParam:
-					resultset = []*ExecutionParam{rs}
-				case []*ExecutionParam:
-					resultset = rs
-				default:
-					ctx.sink <- fmt.Errorf("func returns invalid type: %T (%s)", ret, ctx.Name)
-				}
-
-				for _, param := range resultset {
-					if curKey == nil {
-						curKey = param.K
-						curVal = []any{}
-					}
-					if curKey == param.K {
-						// aggregate
-						curVal = append(curVal, param.V)
-					} else {
-						yield()
-						curKey = param.K
-						curVal = []any{param.V}
-					}
-				}
-			} else {
-				drop(p)
-			}
-		}
-		if curKey != nil && len(curVal) > 0 {
-			yield()
-		}
-	}()
-}
-
-func (ctx *ExecutionContext) Stop() {
-	if ctx.src != nil {
-		ctx.closeWg.Wait()
-		close(ctx.src)
-	}
-}
-
-// ////////////////////////////
-// PARAM
-var ExecutionEOF = &ExecutionParam{}
-
-type ExecutionParam struct {
-	Ctx *ExecutionContext
-	K   any
-	V   any
-}
-
-func (p *ExecutionParam) Get(name string) (any, error) {
-	if name == "K" || name == "k" {
-		switch k := p.K.(type) {
-		case *time.Time:
-			return *k, nil
-		default:
-			return p.K, nil
-		}
-	} else if name == "V" || name == "v" {
-		return p.V, nil
-	} else if name == "P" || name == "p" {
-		return p, nil
-	} else if strings.ToLower(name) == "ctx" {
-		return p.Ctx, nil
-	} else {
-		return nil, fmt.Errorf("parameter '%s' is not defined", name)
-	}
-}
-
-func (p *ExecutionParam) String() string {
-	return fmt.Sprintf("K:%T(%v) V:%s", p.K, p.K, p.StringValueTypes())
-}
-
-func (p *ExecutionParam) StringValueTypes() string {
-	if arr, ok := p.V.([]any); ok {
-		return p.stringTypesOfArray(arr, 3)
-	} else if arr, ok := p.V.([][]any); ok {
-		subTypes := []string{}
-		for i, subarr := range arr {
-			if i == 3 && len(arr) > i {
-				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}, ...", i, p.stringTypesOfArray(subarr, 3)))
-				break
-			} else {
-				subTypes = append(subTypes, fmt.Sprintf("[%d]{%s}", i, p.stringTypesOfArray(subarr, 3)))
-			}
-		}
-
-		return fmt.Sprintf("(len=%d) [][]any{%s}", len(arr), strings.Join(subTypes, ","))
-	} else {
-		return fmt.Sprintf("%T", p.V)
-	}
-}
-
-func (p *ExecutionParam) stringTypesOfArray(arr []any, limit int) string {
-	s := []string{}
-	for i, a := range arr {
-		aType := fmt.Sprintf("%T", a)
-		if subarr, ok := a.([]any); ok {
-			s2 := []string{}
-			for n, subelm := range subarr {
-				if n == limit && len(subarr) > n {
-					s2 = append(s2, fmt.Sprintf("%T,... (len=%d)", subelm, len(subarr)))
-					break
-				} else {
-					s2 = append(s2, fmt.Sprintf("%T", subelm))
-				}
-			}
-			aType = "[]any{" + strings.Join(s2, ",") + "}"
-		}
-
-		if i == limit && len(arr) > i {
-			t := fmt.Sprintf("%s, ... (len=%d)", aType, len(arr))
-			s = append(s, t)
-			break
-		} else {
-			s = append(s, aType)
-		}
-	}
-	return strings.Join(s, ", ")
-}
-
-func (p *ExecutionParam) EqualKey(other *ExecutionParam) bool {
-	if other == nil {
-		return false
-	}
-	switch lv := p.K.(type) {
-	case time.Time:
-		if rv, ok := other.K.(time.Time); !ok {
-			return false
-		} else {
-			return lv.Nanosecond() == rv.Nanosecond()
-		}
-	case []int:
-		if rv, ok := other.K.([]int); !ok {
-			return false
-		} else {
-			if len(lv) != len(rv) {
-				return false
-			}
-			for i := range lv {
-				if lv[i] != rv[i] {
-					return false
-				}
-			}
-			return true
-		}
-	}
-	return p.K == other.K
-}
-
-func (p *ExecutionParam) EqualValue(other *ExecutionParam) bool {
-	if other == nil {
-		return false
-	}
-	lv := fmt.Sprintf("%#v", p.V)
-	rv := fmt.Sprintf("%#v", other.V)
-	// fmt.Println("lv", lv)
-	// fmt.Println("rv", rv)
-	return lv == rv
 }

@@ -1,6 +1,8 @@
 package codec
 
 import (
+	"time"
+
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
@@ -18,7 +20,7 @@ const ECHART_SCATTER3D = "echart.scatter3d"
 const ECHART_BAR3D = "echart.bar3d"
 
 type RowsEncoder interface {
-	Open(columns spi.Columns) error
+	Open() error
 	Close()
 	AddRow(values []any) error
 	Flush(heading bool)
@@ -71,4 +73,47 @@ func NewDecoder(decoderType string, opts ...Option) RowsDecoder {
 	}
 	ret.Open()
 	return ret
+}
+
+func SetEncoderColumns(encoder RowsEncoder, cols spi.Columns) {
+	SetEncoderColumnsTimeLocation(encoder, cols, nil)
+}
+
+func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *time.Location) {
+	var colNames []string
+	if tz != nil {
+		colNames = cols.NamesWithTimeLocation(tz)
+	} else {
+		for _, c := range cols {
+			colNames = append(colNames, c.Name)
+		}
+	}
+	var colTypes []string
+	for _, c := range cols {
+		colTypes = append(colTypes, c.Type)
+	}
+	if enc, ok := encoder.(CanSetColumns); ok {
+		enc.SetColumns(colNames, colTypes)
+	}
+}
+
+func SetDecoderColumns(decoder RowsDecoder, cols spi.Columns) {
+	SetDecoderColumnsTimeLocation(decoder, cols, nil)
+}
+
+func SetDecoderColumnsTimeLocation(decoder RowsDecoder, cols spi.Columns, tz *time.Location) {
+	var colNames []string
+	if tz != nil {
+		colNames = cols.NamesWithTimeLocation(tz)
+	} else {
+		for _, c := range cols {
+			colNames = append(colNames, c.Name)
+		}
+	}
+	var colTypes []string
+	for _, c := range cols {
+		colTypes = append(colTypes, c.Type)
+	}
+
+	Columns(colNames, colTypes)(decoder)
 }

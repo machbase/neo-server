@@ -3,279 +3,237 @@ package codec
 import (
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/internal/box"
-	"github.com/machbase/neo-server/mods/codec/internal/csv"
-	"github.com/machbase/neo-server/mods/codec/internal/echart"
-	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
-	spi "github.com/machbase/neo-spi"
 )
+
+type CanSetOutputStream interface {
+	SetOutputStream(o spec.OutputStream)
+}
 
 func OutputStream(s spec.OutputStream) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.Output = s
-		case *csv.Exporter:
-			e.Output = s
-		case *echart.Line:
-			e.Output = s
-		case *echart.Line3D:
-			e.Output = s
-		case *echart.Surface3D:
-			e.Output = s
-		case *echart.Scatter3D:
-			e.Output = s
-		case *echart.Bar3D:
-			e.Output = s
-		case *json.Exporter:
-			e.Output = s
+		if o, ok := one.(CanSetOutputStream); ok {
+			o.SetOutputStream(s)
 		}
 	}
 }
 
-func TimeFormat(f string) Option {
+type CanSetTimeformat interface {
+	SetTimeformat(format string)
+}
+
+func Timeformat(f string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.TimeFormat = f
-		case *csv.Exporter:
-			e.TimeFormat = f
-		case *csv.Decoder:
-			e.TimeFormat = f
-		case *echart.Line:
-			e.TimeFormat = f
-		case *echart.Line3D:
-			e.TimeFormat = f
-		case *echart.Surface3D:
-			e.TimeFormat = f
-		case *echart.Scatter3D:
-			e.TimeFormat = f
-		case *json.Exporter:
-			e.TimeFormat = f
-		case *json.Decoder:
-			e.TimeFormat = f
+		if o, ok := one.(CanSetTimeformat); ok {
+			o.SetTimeformat(f)
 		}
 	}
 }
+
+type CanSetPrecision interface {
+	SetPrecision(precision int)
+}
+
 func Precision(p int) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.Precision = p
-		case *csv.Exporter:
-			e.Precision = p
-		case *echart.Line:
-			e.Precision = p
-		case *echart.Line3D:
-			e.Precision = p
-		case *echart.Surface3D:
-			e.Precision = p
-		case *echart.Scatter3D:
-			e.Precision = p
-		case *json.Exporter:
-			e.Precision = p
+		if o, ok := one.(CanSetPrecision); ok {
+			o.SetPrecision(p)
 		}
 	}
+}
+
+type CanSetRownum interface {
+	SetRownum(show bool)
 }
 
 func Rownum(b bool) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.Rownum = b
-		case *csv.Exporter:
-			e.Rownum = b
-		case *echart.Line:
-			e.Rownum = b
-		case *echart.Line3D:
-			e.Rownum = b
-		case *echart.Surface3D:
-			e.Rownum = b
-		case *echart.Scatter3D:
-			e.Rownum = b
-		case *json.Exporter:
-			e.Rownum = b
+		if o, ok := one.(CanSetRownum); ok {
+			o.SetRownum(b)
 		}
 	}
+}
+
+type CanSetHeading interface {
+	SetHeading(show bool)
 }
 
 func Heading(b bool) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.Heading = b
-		case *csv.Exporter:
-			e.Heading = b
-		case *csv.Decoder:
-			e.Heading = b
-		case *echart.Line:
-			e.Heading = b
-		case *echart.Line3D:
-			e.Heading = b
-		case *json.Exporter:
-			e.Heading = b
+		if o, ok := one.(CanSetHeading); ok {
+			o.SetHeading(b)
 		}
 	}
+}
+
+type CanSetTimeLocation interface {
+	SetTimeLocation(tz *time.Location)
 }
 
 func TimeLocation(tz *time.Location) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.TimeLocation = tz
-		case *csv.Exporter:
-			e.TimeLocation = tz
-		case *csv.Decoder:
-			e.TimeLocation = tz
-		case *echart.Line:
-			e.TimeLocation = tz
-		case *echart.Line3D:
-			e.TimeLocation = tz
-		case *json.Exporter:
-			e.TimeLocation = tz
-		case *json.Decoder:
-			e.TimeLocation = tz
+		if o, ok := one.(CanSetTimeLocation); ok {
+			o.SetTimeLocation(tz)
 		}
 	}
 }
+
+type CanSetTitle interface {
+	SetTitle(title string)
+}
+
 func Title(title string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-		case *csv.Exporter:
-		case *echart.Line:
-			e.Title = title
-		case *echart.Line3D:
-			e.Title = title
-		case *echart.Bar3D:
-			e.Title = title
-		case *json.Exporter:
+		if o, ok := one.(CanSetTitle); ok {
+			o.SetTitle(title)
 		}
 	}
+}
+
+type CanSetSubtitle interface {
+	SetSubtitle(subtitle string)
 }
 
 func Subtitle(subtitle string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-		case *csv.Exporter:
-		case *echart.Line:
-			e.Subtitle = subtitle
-		case *echart.Line3D:
-			e.Subtitle = subtitle
-		case *echart.Bar3D:
-			e.Subtitle = subtitle
-		case *json.Exporter:
+		if o, ok := one.(CanSetSubtitle); ok {
+			o.SetSubtitle(subtitle)
 		}
 	}
 }
 
+type CanSetSize interface {
+	SetSize(width, height string)
+}
+
+func Size(width string, height string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetSize); ok {
+			o.SetSize(width, height)
+		}
+	}
+}
+
+type CanSetTheme interface {
+	SetTheme(theme string)
+}
+
+func Theme(theme string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetTheme); ok {
+			o.SetTheme(theme)
+		}
+	}
+}
+
+type CanSetSeries interface {
+	SetSeries(idx int, label string)
+}
+
+func Series(idx int, label string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetSeries); ok {
+			o.SetSeries(idx, label)
+		}
+	}
+}
+
+type CanSetDelimiter interface {
+	SetDelimiter(comma string)
+}
+
 func Delimiter(delimiter string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-		case *csv.Exporter:
-			e.SetDelimiter(delimiter)
-		case *csv.Decoder:
-			e.SetDelimiter(delimiter)
-		case *echart.Line:
-		case *json.Exporter:
+		if o, ok := one.(CanSetDelimiter); ok {
+			o.SetDelimiter(delimiter)
 		}
 	}
 }
 
 // BOX only
+
+type CanSetBoxStyle interface {
+	SetBoxStyle(style string)
+}
+
 func BoxStyle(style string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.Style = style
-		case *csv.Exporter:
-		case *echart.Line:
-		case *json.Exporter:
+		if o, ok := one.(CanSetBoxStyle); ok {
+			o.SetBoxStyle(style)
 		}
 	}
+}
+
+type CanSetBoxSeparateColumns interface {
+	SetBoxSeparateColumns(flag bool)
 }
 
 func BoxSeparateColumns(flag bool) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.SeparateColumns = flag
-		case *csv.Exporter:
-		case *echart.Line:
-		case *json.Exporter:
+		if o, ok := one.(CanSetBoxSeparateColumns); ok {
+			o.SetBoxSeparateColumns(flag)
 		}
 	}
 }
 
+type CanSetBoxDrawBorder interface {
+	SetBoxDrawBorder(flag bool)
+}
+
 func BoxDrawBorder(flag bool) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *box.Exporter:
-			e.DrawBorder = flag
-		case *csv.Exporter:
-		case *echart.Line:
-		case *json.Exporter:
+		if o, ok := one.(CanSetBoxDrawBorder); ok {
+			o.SetBoxDrawBorder(flag)
 		}
 	}
 }
 
 // Decoder only
+type CanSetInputStream interface {
+	SetInputStream(in spec.InputStream)
+}
+
 func InputStream(in spec.InputStream) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *csv.Decoder:
-			e.Input = in
-		case *json.Decoder:
-			e.Input = in
+		if o, ok := one.(CanSetInputStream); ok {
+			o.SetInputStream(in)
 		}
 	}
+}
+
+type CanSetTable interface {
+	SetTable(table string)
 }
 
 func Table(table string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *csv.Decoder:
-			e.TableName = table
-		case *json.Decoder:
-			e.TableName = table
+		if o, ok := one.(CanSetTable); ok {
+			o.SetTable(table)
 		}
 	}
+}
+
+type CanSetTranscoder interface {
+	SetTranscoder(trans transcoder.Transcoder)
 }
 
 func Transcoder(trans transcoder.Transcoder) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *csv.Decoder:
-			e.Translator = trans
-		case *json.Decoder:
+		if o, ok := one.(CanSetTranscoder); ok {
+			o.SetTranscoder(trans)
 		}
 	}
 }
 
-func Columns(cols spi.Columns) Option {
-	return func(one any) {
-		switch e := one.(type) {
-		case *csv.Decoder:
-			e.Columns = cols
-		case *json.Decoder:
-			e.Columns = cols
-		}
-	}
+type CanSetColumns interface {
+	SetColumns(labels []string, types []string)
 }
 
-func Size(width string, height string) Option {
+func Columns(labels []string, types []string) Option {
 	return func(one any) {
-		switch e := one.(type) {
-		case *echart.Bar3D:
-			e.Width = width
-			e.Height = height
-		case *echart.Line:
-			e.Width = width
-			e.Height = height
+		if o, ok := one.(CanSetColumns); ok {
+			o.SetColumns(labels, types)
 		}
 	}
 }
