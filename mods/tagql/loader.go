@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Loader interface {
@@ -40,6 +41,10 @@ func (ld *loader) Load(path string) (Script, error) {
 		joined := filepath.Join(d, path)
 		stat, err := os.Stat(joined)
 		if err != nil || stat.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(joined, d) {
+			// check relative path leak
 			continue
 		}
 

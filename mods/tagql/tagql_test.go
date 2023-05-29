@@ -1,8 +1,8 @@
 package tagql_test
 
 import (
+	"bytes"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -11,8 +11,20 @@ import (
 )
 
 func TestTagQLFile(t *testing.T) {
-	r, err := os.Open("./test/simple.tql")
-	require.Nil(t, err)
+	text := `
+#
+# tql example
+#
+
+INPUT( 'value', range('last', '10s') )
+    
+OUTPUT(
+        'csv',
+        timeformat('ns'), 
+        heading(true)
+    )
+`
+	r := bytes.NewBuffer([]byte(text))
 	tql, err := Parse("table", "tag", r)
 	require.Nil(t, err)
 	require.NotNil(t, tql)

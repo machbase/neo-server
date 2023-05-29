@@ -13,7 +13,6 @@ import (
 )
 
 var mapFunctionsMacro = [][2]string{
-	{"MODTIME(", "MODTIME(CTX,K,V,"},
 	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
 	{"POPKEY(", "POPKEY(CTX,K,V,"},
 	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
@@ -33,6 +32,8 @@ func Parse(text string) (*expression.Expression, error) {
 
 var functions = map[string]expression.Function{
 	"len":        mapf_len,
+	"roundTime":  mapf_roundTime,
+	"round":      mapf_round,
 	"element":    mapf_element,
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
@@ -48,6 +49,57 @@ var functions = map[string]expression.Function{
 // `len(V)`
 func mapf_len(args ...any) (any, error) {
 	return float64(len(args)), nil
+}
+
+// `roundTime(time, duration)`
+func mapf_roundTime(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(roundTime) invalud args 'roundTime(time, 'duration')' (n:%d)", len(args))
+	}
+	var dur time.Duration
+	if str, ok := args[1].(string); ok {
+		if d, err := time.ParseDuration(str); err != nil {
+			return nil, fmt.Errorf("f(roundTime) 2nd arg should be duration")
+		} else {
+			dur = d
+		}
+	} else if num, ok := args[1].(float64); ok {
+		dur = time.Duration(int64(num))
+	}
+	if dur == 0 {
+		return nil, fmt.Errorf("f(roundTime) zero duration")
+	}
+
+	var ret time.Time
+	if ts, ok := args[0].(time.Time); ok {
+		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
+	} else if ts, ok := args[0].(*time.Time); ok {
+		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
+	} else {
+		return nil, fmt.Errorf("f(roundTime) arg should time, but %T", args[0])
+	}
+	return ret, nil
+}
+
+// `round(number, number)`
+func mapf_round(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(round) invalud args 'round(int, int)' (n:%d)", len(args))
+	}
+	var num int64
+	var mod int64
+	if d, ok := args[0].(int64); ok {
+		num = d
+	} else {
+		return nil, fmt.Errorf("f(round) args should be non-zero int")
+	}
+	if d, ok := args[1].(int64); ok {
+		mod = d
+	} else {
+		return nil, fmt.Errorf("f(round) args should be non-zero int")
+	}
+
+	return (num / mod) * mod, nil
 }
 
 // `element(V, idx)`

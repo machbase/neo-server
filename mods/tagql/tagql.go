@@ -296,15 +296,15 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 		open := false
 		for arr := range chain.Sink() {
 			if !open {
-				if cols == nil {
+				if len(tq.mapExprs) > 0 {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
-							Name: fmt.Sprintf("col#%d", i),
+							Name: fmt.Sprintf("C%02d", i),
 							Type: fmt.Sprintf("%T", v)})
 					}
 				}
-				// TODO can not trust column types if arr comes through map()
-				encoder.Open(cols)
+				codec.SetEncoderColumns(encoder, cols)
+				encoder.Open()
 				deferHooks = append(deferHooks, func() {
 					// if close encoder right away without defer,
 					// it will crash, because it could be earlier than all map() pipe to be closed
