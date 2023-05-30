@@ -59,7 +59,9 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 						text: strings.Join(stmt, ""),
 						line: lineNo,
 					}
-					expressions = append(expressions, line)
+					if len(strings.TrimSpace(line.text)) > 0 {
+						expressions = append(expressions, line)
+					}
 				}
 				break
 			}
@@ -74,15 +76,15 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 		lineText := string(parts)
 		parts = parts[:0]
 
-		if lineText == "" || strings.HasPrefix(strings.TrimSpace(lineText), "#") {
+		if strings.TrimSpace(lineText) == "" {
 			continue
 		}
-		if len(stmt) == 0 {
-			stmt = append(stmt, lineText)
+		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
 			continue
 		}
 
 		if regexpSpaceprefix.MatchString(lineText) {
+			// line starts with whitespace
 			stmt = append(stmt, lineText)
 			continue
 		} else {
@@ -90,9 +92,13 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 				text: strings.Join(stmt, ""),
 				line: lineNo,
 			}
-			expressions = append(expressions, line)
+			if len(strings.TrimSpace(line.text)) > 0 {
+				expressions = append(expressions, line)
+			}
 			stmt = stmt[:0]
-			stmt = append(stmt, lineText)
+			if len(strings.TrimSpace(lineText)) > 0 {
+				stmt = append(stmt, lineText)
+			}
 		}
 
 	}
