@@ -11,13 +11,11 @@ import (
 	"github.com/machbase/neo-server/mods/tagql"
 )
 
-// "/tagql/:table/:tag/*path"
+// "/tagql/*path"
 func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
-	table := ctx.Param("table")
-	tag := ctx.Param("tag")
 	path := ctx.Param("path")
 
 	if strings.HasSuffix(path, ".tql") {
@@ -30,7 +28,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 			return
 		}
 
-		tql, err := script.Parse(table, tag)
+		tql, err := script.Parse()
 		if err != nil {
 			svr.log.Error("tql parse fail", path, err.Error())
 			rsp.Reason = err.Error()
@@ -46,12 +44,8 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 		}
 	} else {
-		ql := ctx.Request.URL.RawQuery
-		composed := fmt.Sprintf("%s/%s", table, tag)
-		if ql != "" {
-			composed = fmt.Sprintf("%s?%s", composed, ql)
-		}
-		tql, err := tagql.ParseURIContext(ctx, composed)
+		ql := fmt.Sprintf("?%s", ctx.Request.URL.RawQuery)
+		tql, err := tagql.ParseURIContext(ctx, ql)
 		if err != nil {
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()

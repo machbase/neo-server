@@ -8,12 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/codec"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tagql/fmap"
@@ -31,11 +29,7 @@ type TagQL interface {
 }
 
 type tagQL struct {
-	table          string
-	tag            string
-	baseTimeColumn string
-
-	srcInput fsrc.Source
+	input    fsrc.Input
 	mapExprs []string
 	sinkExpr string
 }
@@ -43,7 +37,7 @@ type tagQL struct {
 var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
 var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
 
-func Parse(table, tag string, in io.Reader) (TagQL, error) {
+func Parse(in io.Reader) (TagQL, error) {
 	reader := bufio.NewReader(in)
 
 	parts := []byte{}
@@ -59,7 +53,9 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 						text: strings.Join(stmt, ""),
 						line: lineNo,
 					}
-					expressions = append(expressions, line)
+					if len(strings.TrimSpace(line.text)) > 0 {
+						expressions = append(expressions, line)
+					}
 				}
 				break
 			}
@@ -74,15 +70,15 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 		lineText := string(parts)
 		parts = parts[:0]
 
-		if lineText == "" || strings.HasPrefix(strings.TrimSpace(lineText), "#") {
+		if strings.TrimSpace(lineText) == "" {
 			continue
 		}
-		if len(stmt) == 0 {
-			stmt = append(stmt, lineText)
+		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
 			continue
 		}
 
 		if regexpSpaceprefix.MatchString(lineText) {
+			// line starts with whitespace
 			stmt = append(stmt, lineText)
 			continue
 		} else {
@@ -90,14 +86,18 @@ func Parse(table, tag string, in io.Reader) (TagQL, error) {
 				text: strings.Join(stmt, ""),
 				line: lineNo,
 			}
-			expressions = append(expressions, line)
+			if len(strings.TrimSpace(line.text)) > 0 {
+				expressions = append(expressions, line)
+			}
 			stmt = stmt[:0]
-			stmt = append(stmt, lineText)
+			if len(strings.TrimSpace(lineText)) > 0 {
+				stmt = append(stmt, lineText)
+			}
 		}
 
 	}
 
-	return ParseExpressions(table, tag, expressions)
+	return ParseExpressions(expressions)
 }
 
 type Line struct {
@@ -105,15 +105,12 @@ type Line struct {
 	line int
 }
 
-func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
+func ParseExpressions(exprs []Line) (TagQL, error) {
 	if len(exprs) == 0 {
 		return nil, errors.New("empty expressions")
 	}
 
 	tq := &tagQL{}
-	tq.baseTimeColumn = "time"
-	tq.table = table
-	tq.tag = tag
 
 	// src
 	if len(exprs) >= 1 {
@@ -122,7 +119,7 @@ func ParseExpressions(table, tag string, exprs []Line) (TagQL, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
-		tq.srcInput = src
+		tq.input = src
 	}
 
 	// sink
@@ -162,17 +159,12 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 	}
 
 	tq := &tagQL{}
-	tq.baseTimeColumn = "time"
-
-	tq.table = strings.ToUpper(strings.TrimSpace(subs[0][1]))
 
 	uri, err := url.Parse("tag:///" + query)
 	if err != nil {
 		return nil, err
 	}
 
-	tq.table = strings.ToUpper(strings.TrimPrefix(path.Dir(uri.Path), "/"))
-	tq.tag = path.Base(uri.Path)
 	queryPart := uri.RawQuery
 
 	var params map[string][]string
@@ -186,15 +178,15 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 
 	srcParts := params["src"]
 	if len(srcParts) == 0 {
-		tq.srcInput = fsrc.NewSource()
+		tq.input = fsrc.NewDefaultInput()
 	} else {
 		// only take the last one
 		part := srcParts[len(srcParts)-1]
-		src, err := fsrc.Compile(part)
+		in, err := fsrc.Compile(part)
 		if err != nil {
 			return nil, err
 		}
-		tq.srcInput = src
+		tq.input = in
 	}
 	mapParts := params["map"]
 	for _, part := range mapParts {
@@ -273,24 +265,6 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 	}
 
 	var cols spi.Columns
-	queryCtx := &do.QueryContext{
-		DB: db,
-		OnFetchStart: func(c spi.Columns) {
-			cols = c
-		},
-		OnFetch: func(nrow int64, values []any) bool {
-			if chain.Error() != nil {
-				return false
-			}
-			chain.Source(values)
-			return true
-		},
-		OnFetchEnd: func() {
-			chain.Source(nil)
-		},
-		OnExecuted: nil, // never happen in tagQL
-	}
-
 	go chain.Start()
 	go func() {
 		open := false
@@ -315,7 +289,16 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 			encoder.AddRow(arr)
 		}
 	}()
-	_, err = do.Query(queryCtx, tq.ToSQL())
+	//_, err = do.Query(queryCtx, tq.ToSQL())
+
+	deligate := &fsrc.InputDelegateWrapper{
+		DatabaseFunc:   func() spi.Database { return db },
+		ShouldStopFunc: func() bool { return chain.Error() != nil },
+		FeedHeaderFunc: func(c spi.Columns) { cols = c },
+		FeedFunc:       func(values []any) { chain.Source(values) },
+	}
+
+	err = tq.input.Run(deligate)
 
 	chain.Wait()
 	chain.Stop()
@@ -343,5 +326,5 @@ func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, erro
 }
 
 func (tq *tagQL) ToSQL() string {
-	return tq.srcInput.ToSQL(tq.table, tq.tag, tq.baseTimeColumn)
+	return tq.input.Source().ToSQL()
 }
