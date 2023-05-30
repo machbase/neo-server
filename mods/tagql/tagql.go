@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
@@ -32,12 +31,16 @@ type tagQL struct {
 	input    fsrc.Input
 	mapExprs []string
 	sinkExpr string
+	params   map[string][]string
 }
 
-var regexpTagQL = regexp.MustCompile(`([a-zA-Z0-9_-]+)\/(.+)`)
 var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
 
 func Parse(in io.Reader) (TagQL, error) {
+	return ParseWithParams(in, nil)
+}
+
+func ParseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
 	reader := bufio.NewReader(in)
 
 	parts := []byte{}
@@ -94,10 +97,16 @@ func Parse(in io.Reader) (TagQL, error) {
 				stmt = append(stmt, lineText)
 			}
 		}
-
 	}
 
-	return ParseExpressions(expressions)
+	tq, err := parseExpressions(expressions, params)
+	if err != nil {
+		return nil, err
+	}
+	if tagql, ok := tq.(*tagQL); ok {
+		tagql.params = params
+	}
+	return tq, nil
 }
 
 type Line struct {
@@ -105,7 +114,7 @@ type Line struct {
 	line int
 }
 
-func ParseExpressions(exprs []Line) (TagQL, error) {
+func parseExpressions(exprs []Line, params map[string][]string) (TagQL, error) {
 	if len(exprs) == 0 {
 		return nil, errors.New("empty expressions")
 	}
@@ -115,7 +124,7 @@ func ParseExpressions(exprs []Line) (TagQL, error) {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		src, err := fsrc.Compile(srcLine.text)
+		src, err := fsrc.Compile(srcLine.text, params)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
@@ -148,48 +157,23 @@ func ParseExpressions(exprs []Line) (TagQL, error) {
 	return tq, nil
 }
 
-func ParseURI(query string) (TagQL, error) {
-	return ParseURIContext(context.Background(), query)
-}
-
-func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
-	subs := regexpTagQL.FindAllStringSubmatch(query, -1)
-	if len(subs) != 1 || len(subs[0]) < 3 {
-		return nil, errors.New("invalid syntax")
+func ParseContext(ctx context.Context, params map[string][]string) (TagQL, error) {
+	tq := &tagQL{
+		params: params,
 	}
 
-	tq := &tagQL{}
+	tqls := params["_tq"]
+	if len(tqls) != 2 {
+		return nil, errors.New("tql require at leat two '_tq' params for source and sink")
+	}
 
-	uri, err := url.Parse("tag:///" + query)
+	var err error
+	tq.input, err = fsrc.Compile(tqls[0], tq.params)
 	if err != nil {
 		return nil, err
 	}
 
-	queryPart := uri.RawQuery
-
-	var params map[string][]string
-	if queryPart != "" {
-		urlParams, err := url.ParseQuery(queryPart)
-		if err != nil {
-			return nil, err
-		}
-		params = urlParams
-	}
-
-	srcParts := params["src"]
-	if len(srcParts) == 0 {
-		tq.input = fsrc.NewDefaultInput()
-	} else {
-		// only take the last one
-		part := srcParts[len(srcParts)-1]
-		in, err := fsrc.Compile(part)
-		if err != nil {
-			return nil, err
-		}
-		tq.input = in
-	}
-	mapParts := params["map"]
-	for _, part := range mapParts {
+	for _, part := range tqls[1 : len(tqls)-1] {
 		// validates the syntax
 		_ /*expr */, err := fmap.Parse(part)
 		if err != nil {
@@ -198,17 +182,12 @@ func ParseURIContext(ctx context.Context, query string) (TagQL, error) {
 		tq.mapExprs = append(tq.mapExprs, part)
 	}
 
-	sinkParts := params["sink"]
-	if len(sinkParts) > 0 {
-		// only take the last one
-		part := sinkParts[len(sinkParts)-1]
-		// validates the syntax
-		_ /*expr*/, err := fsink.Parse(part)
-		if err != nil {
-			return nil, err
-		}
-		tq.sinkExpr = part
+	// validates the syntax
+	_ /*expr*/, err = fsink.Parse(tqls[len(tqls)-1])
+	if err != nil {
+		return nil, err
 	}
+	tq.sinkExpr = tqls[len(tqls)-1]
 
 	return tq, nil
 }
@@ -259,7 +238,7 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 		}
 	}()
 
-	chain, err := NewExecutionChain(ctxCtx, tq.mapExprs)
+	chain, err := newExecutionChain(ctxCtx, tq.mapExprs, tq.params)
 	if err != nil {
 		return err
 	}
@@ -289,7 +268,6 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 			encoder.AddRow(arr)
 		}
 	}()
-	//_, err = do.Query(queryCtx, tq.ToSQL())
 
 	deligate := &fsrc.InputDelegateWrapper{
 		DatabaseFunc:   func() spi.Database { return db },

@@ -23,13 +23,29 @@ type Source interface {
 	ToSQL() string
 }
 
-func Compile(text string) (Input, error) {
-	// validates the syntax
+type inputParameters struct {
+	params map[string][]string
+}
+
+func (p *inputParameters) Get(name string) (any, error) {
+	if name == "CTX" {
+		return p, nil
+	} else {
+		if p, ok := p.params[name]; ok {
+			if len(p) > 0 {
+				return p[len(p)-1], nil
+			}
+		}
+		return nil, nil
+	}
+}
+
+func Compile(text string, params map[string][]string) (Input, error) {
 	expr, err := Parse(text)
 	if err != nil {
 		return nil, err
 	}
-	ret, err := expr.Eval(nil)
+	ret, err := expr.Eval(&inputParameters{params})
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +61,7 @@ var functions = map[string]expression.Function{
 	"range": srcf_range,
 	"limit": srcf_limit,
 	"dump":  srcf_dump,
+	"len":   srcf_len,
 	"QUERY": srcf_QUERY,
 	"SQL":   src_SQL,
 	"INPUT": srcf_INPUT,
@@ -113,5 +130,16 @@ func srcf_INPUT(args ...any) (any, error) {
 		return &input{
 			src: s,
 		}, nil
+	}
+}
+
+// `len(V)`
+func srcf_len(args ...any) (any, error) {
+	if arr, ok := args[0].([]any); ok {
+		return float64(len(arr)), nil
+	} else if str, ok := args[0].(string); ok {
+		return float64(len(str)), nil
+	} else {
+		return float64(len(args)), nil
 	}
 }

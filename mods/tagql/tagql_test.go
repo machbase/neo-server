@@ -2,6 +2,7 @@ package tagql_test
 
 import (
 	"bytes"
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -146,7 +147,7 @@ func normalize(ret string) string {
 }
 
 func (tc TagQLTestCase) run(t *testing.T) {
-	ql, err := ParseURI(tc.q)
+	ql, err := ParseContext(context.TODO(), map[string][]string{"_tq": {tc.q}})
 	if len(tc.err) > 0 {
 		require.NotNil(t, err)
 		require.Equal(t, tc.err, err.Error())

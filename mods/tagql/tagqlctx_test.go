@@ -12,7 +12,7 @@ func TestNewContextChain(t *testing.T) {
 		"PUSHKEY('tt')",
 		"FFT()",
 	}
-	chain, err := NewExecutionChain(context.TODO(), exprs)
+	chain, err := newExecutionChain(context.TODO(), exprs, nil)
 	require.Nil(t, err)
 	require.NotNil(t, chain)
 	require.Equal(t, 2, len(chain.nodes))

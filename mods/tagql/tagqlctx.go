@@ -21,7 +21,7 @@ type ExecutionChain struct {
 	lastError error
 }
 
-func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionChain, error) {
+func newExecutionChain(ctxCtx context.Context, exprstrs []string, params map[string][]string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.r = make(chan any)
 	ret.sink = make(chan []any)
@@ -44,6 +44,7 @@ func NewExecutionChain(ctxCtx context.Context, exprstrs []string) (*ExecutionCha
 			Src:     make(chan *ctx.Param),
 			Sink:    ret.r,
 			Next:    nil,
+			Params:  params,
 		}
 		if n > 0 {
 			nodes[n-1].Next = nodes[n]

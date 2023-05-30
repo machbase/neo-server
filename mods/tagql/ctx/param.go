@@ -31,6 +31,9 @@ func (p *Param) Get(name string) (any, error) {
 	} else if strings.ToLower(name) == "ctx" {
 		return p.Ctx, nil
 	} else {
+		if arr, ok := p.Ctx.Params[name]; ok && len(arr) > 0 {
+			return arr[len(arr)-1], nil
+		}
 		return nil, fmt.Errorf("parameter '%s' is not defined", name)
 	}
 }

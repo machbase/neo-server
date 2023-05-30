@@ -10,11 +10,12 @@ import (
 
 type Context struct {
 	context.Context
-	Name string
-	Expr *expression.Expression
-	Src  chan *Param
-	Sink chan<- any
-	Next *Context
+	Name   string
+	Expr   *expression.Expression
+	Src    chan *Param
+	Sink   chan<- any
+	Next   *Context
+	Params map[string][]string
 
 	values map[string]any
 	buffer map[any][]any
