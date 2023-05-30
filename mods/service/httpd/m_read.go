@@ -1973,16 +1973,14 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		if andFlag {
 			sqlText += " AND "
 		}
-		sqlText += "time >= ?"
-		params = append(params, req.StartTime)
+		sqlText += fmt.Sprintf("time >= FROM_TIMESTAMP(%s)", req.StartTime)
 		andFlag = true
 	}
 	if req.EndTime != "" {
 		if andFlag {
 			sqlText += " AND "
 		}
-		sqlText += "time <= ?"
-		params = append(params, req.EndTime)
+		sqlText += fmt.Sprintf("time <= FROM_TIMESTAMP(%s)", req.EndTime)
 		andFlag = true
 	}
 	if req.Level >= 1 && req.Level <= 5 {
