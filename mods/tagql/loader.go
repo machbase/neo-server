@@ -12,7 +12,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse(table, tag string) (TagQL, error)
+	Parse() (TagQL, error)
 	String() string
 }
 
@@ -67,14 +67,14 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse(table, tag string) (TagQL, error) {
+func (sc *script) Parse() (TagQL, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	tql, err := Parse(table, tag, file)
+	tql, err := Parse(file)
 	if err != nil {
 		return nil, err
 	}

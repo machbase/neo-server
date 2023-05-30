@@ -16,7 +16,7 @@ func TestTagQLFile(t *testing.T) {
 # tql example
 #
 
-INPUT( 'value', range('last', '10s') )
+INPUT( QUERY('value', range('last', '10s'), from("table", "tag", "time")) )
     
 OUTPUT(
         'csv',
@@ -25,17 +25,17 @@ OUTPUT(
     )
 `
 	r := bytes.NewBuffer([]byte(text))
-	tql, err := Parse("table", "tag", r)
+	tql, err := Parse(r)
 	require.Nil(t, err)
 	require.NotNil(t, tql)
 	require.Equal(t,
-		normalize(`SELECT time, value FROM table
+		normalize(`SELECT time, value FROM TABLE
 			WHERE
 				name = 'tag'
 			AND time
 				BETWEEN
-					(SELECT MAX_TIME - 10000000000 FROM V$table_STAT WHERE name = 'tag')
-				AND (SELECT MAX_TIME FROM V$table_STAT WHERE name = 'tag')
+					(SELECT MAX_TIME - 10000000000 FROM V$TABLE_STAT WHERE name = 'tag')
+				AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
 			LIMIT 1000000`),
 		normalize(tql.ToSQL()), "./test/simple.tql")
 }
@@ -48,52 +48,52 @@ type TagQLTestCase struct {
 
 func TestTagQLMajorParts(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag",
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('value', from('table', 'tag')))`),
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('val', from('table', 'tag')))`),
 		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('value', range('last', '1.0s'))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('value', from('table', 'tag'), range('last', '1.0s')))`),
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('value', range('last', '12.0s'))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('value', from('table', 'tag'), range('last', '12.0s')))`),
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', 'val2')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('val1', 'val2' , from('table', 'tag')))`),
 		expect: "SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('(val * 0.01) altVal', 'val2')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag')))`),
 		expect: "SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('(val + val2/2)', range('last', '2.34s'), limit(2000))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('(val + val2/2)', from('table', 'tag'), range('last', '2.34s'), limit(2000)))`),
 		expect: "SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 2000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val', range('now', '2.34s'), limit(100))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('val', from('table', 'tag'), range('now', '2.34s'), limit(100)))`),
 		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('value', range(123456789000, '2.34s'))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('value', from('table', 'tag'), range(123456789000, '2.34s')))`),
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 2340000000 AND 123456789000 LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('AVG(val1+val2)')`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('AVG(val1+val2)', from('table', 'tag')))`),
 		expect: "SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
@@ -101,7 +101,7 @@ func TestTagQLMajorParts(t *testing.T) {
 
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('val1', range('last', '1s'))`) + "&map=" + url.QueryEscape(`PUSHKEY(roundTime(K, '100ms'))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('val1', from('table', 'tag'), range('last', '1s')))`) + "&map=" + url.QueryEscape(`PUSHKEY(roundTime(K, '100ms'))`),
 		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
@@ -109,17 +109,17 @@ func TestTagQLMap(t *testing.T) {
 
 func TestTagQLGroupBy(t *testing.T) {
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('STDDEV(val)', range(123456789000, "3.45s", '1ms'), limit(100))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range(123456789000, "3.45s", '1ms'), limit(100)))`),
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 3450000000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('STDDEV(val)', 'zval', range('last', '2.34s', '0.5ms'), limit(100))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('STDDEV(val)', 'zval', from('table', 'tag'), range('last', '2.34s', '0.5ms'), limit(100)))`),
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		q:      "table/tag?src=" + url.QueryEscape(`INPUT('STDDEV(val)', range('now', '2.34s', '0.5ms'), limit(100))`),
+		q:      "table/tag?src=" + url.QueryEscape(`INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range('now', '2.34s', '0.5ms'), limit(100)))`),
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
