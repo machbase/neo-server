@@ -17,22 +17,26 @@ type Param struct {
 }
 
 func (p *Param) Get(name string) (any, error) {
-	if name == "K" || name == "k" {
+	if name == "K" {
 		switch k := p.K.(type) {
 		case *time.Time:
 			return *k, nil
 		default:
 			return p.K, nil
 		}
-	} else if name == "V" || name == "v" {
+	} else if name == "V" {
 		return p.V, nil
-	} else if name == "P" || name == "p" {
+	} else if name == "P" {
 		return p, nil
-	} else if strings.ToLower(name) == "ctx" {
+	} else if name == "CTX" {
 		return p.Ctx, nil
-	} else {
-		return nil, fmt.Errorf("parameter '%s' is not defined", name)
+	} else if strings.HasPrefix(name, "$") {
+		if arr, ok := p.Ctx.Params[strings.TrimPrefix(name, "$")]; ok && len(arr) > 0 {
+			return arr[len(arr)-1], nil
+		}
+		return nil, nil
 	}
+	return nil, fmt.Errorf("undefined variable '%s'", name)
 }
 
 func (p *Param) String() string {

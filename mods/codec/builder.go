@@ -42,7 +42,7 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 	case CSV:
 		ret = csv.NewEncoder()
 	case ECHART_LINE:
-		ret = &echart.Line{}
+		ret = echart.NewLine()
 	case ECHART_LINE3D:
 		ret = &echart.Line3D{}
 	case ECHART_SURFACE3D:

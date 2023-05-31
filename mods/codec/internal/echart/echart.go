@@ -45,10 +45,24 @@ type Line struct {
 	ChartBase
 	xLabels      []any
 	series       [][]opts.LineData
-	seriesLabels map[int]string
+	seriesLabels []string
+
+	xAxisIdx   int
+	yAxisIdx   int
+	xAxisLabel string
+	yAxisLabel string
 
 	TimeLocation *time.Location
 	TimeFormat   string
+}
+
+func NewLine() *Line {
+	return &Line{
+		xAxisIdx:   0,
+		xAxisLabel: "x",
+		yAxisIdx:   1,
+		yAxisLabel: "y",
+	}
 }
 
 func (ex *Line) ContentType() string {
@@ -74,8 +88,7 @@ func (ex *Line) Close() {
 		theme = types.ThemeWesteros
 	}
 
-	line := charts.NewLine()
-	line.SetGlobalOptions(
+	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			Theme:  theme,
 			Width:  width,
@@ -89,13 +102,17 @@ func (ex *Line) Close() {
 			Show:    true,
 			Trigger: "axis",
 		}),
-		// charts.WithXAxisOpts(opts.XAxis{
-		// 	Name: "time",
-		// 	Show: true,
-		// 	Min:  ex.xLabels[0],
-		// 	Max:  ex.xLabels[len(ex.xLabels)-1],
-		// }, 0),
-	)
+		charts.WithXAxisOpts(opts.XAxis{
+			Name: ex.xAxisLabel,
+			Show: true,
+		}, 0),
+		charts.WithYAxisOpts(opts.YAxis{
+			Name: ex.yAxisLabel,
+			Show: true,
+		}, 0),
+	}
+	line := charts.NewLine()
+	line.SetGlobalOptions(globalOptions...)
 	// Put data into instance
 	line.SetXAxis(ex.xLabels)
 
@@ -104,7 +121,7 @@ func (ex *Line) Close() {
 		if i < len(ex.seriesLabels) {
 			label = ex.seriesLabels[i]
 		} else {
-			label = fmt.Sprintf("value[%d]", i)
+			label = fmt.Sprintf("column[%d]", i)
 		}
 		line.AddSeries(label, series,
 			charts.WithLabelOpts(opts.Label{
@@ -125,11 +142,18 @@ func (ex *Line) Close() {
 func (ex *Line) Flush(heading bool) {
 }
 
-func (ex *Line) SetSeries(idx int, label string) {
-	if ex.seriesLabels == nil {
-		ex.seriesLabels = map[int]string{}
-	}
-	ex.seriesLabels[idx] = label
+func (ex *Line) SetXAxis(idx int, label string) {
+	ex.xAxisIdx = idx
+	ex.xAxisLabel = label
+}
+
+func (ex *Line) SetYAxis(idx int, label string) {
+	ex.yAxisIdx = idx
+	ex.yAxisLabel = label
+}
+
+func (ex *Line) SetSeriesLabels(labels ...string) {
+	ex.seriesLabels = labels
 }
 
 func (ex *Line) AddRow(values []any) error {
@@ -142,12 +166,18 @@ func (ex *Line) AddRow(values []any) error {
 			ex.series = append(ex.series, []opts.LineData{})
 		}
 	}
-	ex.xLabels = append(ex.xLabels, values[0])
-	for n := 1; n < len(values); n++ {
-		ov := opts.LineData{
-			Value: values[n],
+	ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
+	seriesIdx := -1
+	for n, v := range values {
+		if n == ex.xAxisIdx {
+			continue
+		} else {
+			seriesIdx++
 		}
-		ex.series[n-1] = append(ex.series[n-1], ov)
+		ov := opts.LineData{
+			Value: v,
+		}
+		ex.series[seriesIdx] = append(ex.series[seriesIdx], ov)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package fsrc
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -134,20 +135,24 @@ func srcf_range(args ...any) (any, error) {
 }
 
 type queryDump struct {
-	flag bool
+	flag   bool
+	escape bool
 }
 
 func srcf_dump(args ...any) (any, error) {
-	if len(args) != 1 {
+	if len(args) == 0 {
+		return &queryDump{flag: true}, nil
+	} else if len(args) == 1 {
+		ret := &queryDump{flag: true}
+		if b, ok := args[0].(bool); ok {
+			ret.escape = b
+		} else {
+			return nil, fmt.Errorf("f(dump) arg should be boolean, but %T", args[1])
+		}
+		return ret, nil
+	} else {
 		return nil, fmt.Errorf("f(dump) invalid number of args (n:%d)", len(args))
 	}
-	ret := &queryDump{}
-	if b, ok := args[0].(bool); ok {
-		ret.flag = b
-	} else {
-		return nil, fmt.Errorf("f(dump) arg should be boolean, but %T", args[1])
-	}
-	return ret, nil
 }
 
 type queryLimit struct {
@@ -213,7 +218,11 @@ func (si *querySrc) ToSQL() string {
 		ret = si.toSqlGroup()
 	}
 	if si.dump != nil && si.dump.flag {
-		fmt.Printf("\n%s\n", ret)
+		if si.dump.escape {
+			fmt.Printf("\n%s\n", url.QueryEscape(ret))
+		} else {
+			fmt.Printf("\n%s\n", ret)
+		}
 	}
 	return ret
 }

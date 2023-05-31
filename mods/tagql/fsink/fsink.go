@@ -9,6 +9,27 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
+type Context struct {
+	Output spec.OutputStream
+	Params map[string][]string
+}
+
+func (ctx *Context) Get(name string) (any, error) {
+	if name == "outstream" {
+		return ctx.Output, nil
+	} else if name == "nil" {
+		return nil, nil
+	} else if strings.HasPrefix(name, "$") {
+		if p, ok := ctx.Params[strings.TrimPrefix(name, "$")]; ok {
+			if len(p) > 0 {
+				return p[len(p)-1], nil
+			}
+		}
+		return nil, nil
+	}
+	return nil, fmt.Errorf("undefined variable '%s'", name)
+}
+
 func Parse(text string) (*expression.Expression, error) {
 	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
 	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")
@@ -16,15 +37,20 @@ func Parse(text string) (*expression.Expression, error) {
 }
 
 var functions = map[string]expression.Function{
-	"heading":         sinkf_heading,
-	"rownum":          sinkf_rownum,
-	"timeformat":      sinkf_timeformat,
-	"precision":       sinkf_precision,
-	"size":            sinkf_size,
-	"theme":           sinkf_theme,
-	"title":           sinkf_title,
-	"subtitle":        sinkf_subtitle,
-	"series":          sinkf_series,
+	// csv, json options
+	"heading":    sinkf_heading,
+	"rownum":     sinkf_rownum,
+	"timeformat": sinkf_timeformat,
+	"precision":  sinkf_precision,
+	// chart options
+	"xaxis":        sinkf_xaxis,
+	"yaxis":        sinkf_yaxis,
+	"size":         sinkf_size,
+	"theme":        sinkf_theme,
+	"title":        sinkf_title,
+	"subtitle":     sinkf_subtitle,
+	"seriesLabels": sinkf_seriesLabels,
+	// sink functions
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
 	"JSON":            JSON,
@@ -84,11 +110,11 @@ func sinkf_size(args ...any) (any, error) {
 	}
 	width, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("f(size) invalid width, should be string, but %T`", args[0])
+		return nil, fmt.Errorf("f(size) invalid width, should be string, but '%T'", args[0])
 	}
 	height, ok := args[1].(string)
 	if !ok {
-		return nil, fmt.Errorf("f(size) invalid height, should be string, but %T`", args[1])
+		return nil, fmt.Errorf("f(size) invalid height, should be string, but '%T'", args[1])
 	}
 
 	return codec.Size(width, height), nil
@@ -100,7 +126,7 @@ func sinkf_title(args ...any) (any, error) {
 	}
 	str, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("f(title) invalid title, should be string, but %T`", args[0])
+		return nil, fmt.Errorf("f(title) invalid title, should be string, but '%T'", args[0])
 	}
 	return codec.Title(str), nil
 }
@@ -111,7 +137,7 @@ func sinkf_subtitle(args ...any) (any, error) {
 	}
 	str, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("f(subtitle) invalid title, should be string, but %T`", args[0])
+		return nil, fmt.Errorf("f(subtitle) invalid title, should be string, but '%T'", args[0])
 	}
 	return codec.Subtitle(str), nil
 }
@@ -122,25 +148,63 @@ func sinkf_theme(args ...any) (any, error) {
 	}
 	str, ok := args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("f(theme) invalid theme, should be string, but %T`", args[0])
+		return nil, fmt.Errorf("f(theme) invalid theme, should be string, but '%T'", args[0])
 	}
 	return codec.Theme(str), nil
 }
 
-// `series(1, 'rms-value')`
-func sinkf_series(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(series) invalid arg `series(idx, label)`")
+// `series('value', 'rms-value')`
+func sinkf_seriesLabels(args ...any) (any, error) {
+	labels := []string{}
+	for _, a := range args {
+		if str, ok := a.(string); !ok {
+			return nil, fmt.Errorf("f(series) invalid arg `series(string...)`")
+		} else {
+			labels = append(labels, str)
+		}
 	}
-	idx, ok := args[0].(float64)
-	if !ok {
-		return nil, fmt.Errorf("f(series) invalid index, should be int, but %T`", args[0])
+
+	return codec.Series(labels...), nil
+}
+
+func sinkf_xaxis(args ...any) (any, error) {
+	idx := 0
+	label := "x"
+	if len(args) >= 1 {
+		if d, ok := args[0].(float64); !ok {
+			return nil, fmt.Errorf("f(xaxis) invalid index, should be int, but '%T'", args[1])
+		} else {
+			idx = int(d)
+		}
 	}
-	label, ok := args[1].(string)
-	if !ok {
-		return nil, fmt.Errorf("f(series) invalid label, should be string, but %T`", args[1])
+	if len(args) == 2 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(xaxis) invalid label, should be string, but '%T'", args[1])
+		} else {
+			label = s
+		}
 	}
-	return codec.Series(int(idx), label), nil
+	return codec.SetXAxis(idx, label), nil
+}
+
+func sinkf_yaxis(args ...any) (any, error) {
+	idx := 0
+	label := "x"
+	if len(args) >= 1 {
+		if d, ok := args[0].(float64); !ok {
+			return nil, fmt.Errorf("f(yaxis) invalid index, should be int, but '%T'", args[1])
+		} else {
+			idx = int(d)
+		}
+	}
+	if len(args) == 2 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(yaxis) invalid label, should be string, but '%T'`", args[1])
+		} else {
+			label = s
+		}
+	}
+	return codec.SetYAxis(idx, label), nil
 }
 
 type Encoder struct {

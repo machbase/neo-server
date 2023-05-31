@@ -103,6 +103,30 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
+type CanSetXAxis interface {
+	SetXAxis(int, string)
+}
+
+func SetXAxis(idx int, label string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetXAxis); ok {
+			o.SetXAxis(idx, label)
+		}
+	}
+}
+
+type CanSetYAxis interface {
+	SetYAxis(int, string)
+}
+
+func SetYAxis(idx int, label string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetYAxis); ok {
+			o.SetYAxis(idx, label)
+		}
+	}
+}
+
 type CanSetSize interface {
 	SetSize(width, height string)
 }
@@ -127,14 +151,14 @@ func Theme(theme string) Option {
 	}
 }
 
-type CanSetSeries interface {
-	SetSeries(idx int, label string)
+type CanSetSeriesLabels interface {
+	SetSeriesLabels(labels ...string)
 }
 
-func Series(idx int, label string) Option {
+func Series(labels ...string) Option {
 	return func(one any) {
-		if o, ok := one.(CanSetSeries); ok {
-			o.SetSeries(idx, label)
+		if o, ok := one.(CanSetSeriesLabels); ok {
+			o.SetSeriesLabels(labels...)
 		}
 	}
 }

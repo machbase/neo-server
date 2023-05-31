@@ -1,8 +1,8 @@
 package httpd
 
 import (
-	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,6 +17,14 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	tick := time.Now()
 
 	path := ctx.Param("path")
+	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
+	if err != nil {
+		svr.log.Error("tql parse query fail", path, err.Error())
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusNotFound, rsp)
+		return
+	}
 
 	if strings.HasSuffix(path, ".tql") {
 		script, err := svr.tagqlLoader.Load(path)
@@ -28,7 +36,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 			return
 		}
 
-		tql, err := script.Parse()
+		tql, err := script.ParseWithParams(params)
 		if err != nil {
 			svr.log.Error("tql parse fail", path, err.Error())
 			rsp.Reason = err.Error()
@@ -44,8 +52,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 		}
 	} else {
-		ql := fmt.Sprintf("?%s", ctx.Request.URL.RawQuery)
-		tql, err := tagql.ParseURIContext(ctx, ql)
+		tql, err := tagql.ParseContext(ctx, params)
 		if err != nil {
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()
@@ -54,7 +61,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		}
 
 		if err := tql.ExecuteHandler(ctx, svr.db, ctx.Writer); err != nil {
-			svr.log.Error("tagql execute fail", err.Error())
+			svr.log.Error("tql execute fail", err.Error())
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)

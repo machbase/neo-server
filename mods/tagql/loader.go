@@ -13,6 +13,7 @@ type Loader interface {
 
 type Script interface {
 	Parse() (TagQL, error)
+	ParseWithParams(map[string][]string) (TagQL, error)
 	String() string
 }
 
@@ -68,13 +69,17 @@ func (sc *script) String() string {
 }
 
 func (sc *script) Parse() (TagQL, error) {
+	return sc.ParseWithParams(nil)
+}
+
+func (sc *script) ParseWithParams(params map[string][]string) (TagQL, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	tql, err := Parse(file)
+	tql, err := parseWithParams(file, params)
 	if err != nil {
 		return nil, err
 	}
