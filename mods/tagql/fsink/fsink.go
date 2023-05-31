@@ -50,6 +50,7 @@ var functions = map[string]expression.Function{
 	"title":        sinkf_title,
 	"subtitle":     sinkf_subtitle,
 	"seriesLabels": sinkf_seriesLabels,
+	"dataZoom":     sinkf_dataZoom,
 	// sink functions
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
@@ -165,6 +166,20 @@ func sinkf_seriesLabels(args ...any) (any, error) {
 	}
 
 	return codec.Series(labels...), nil
+}
+
+func sinkf_dataZoom(args ...any) (any, error) {
+	start, end := 0, 0
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(dataZoom) invalid arg, `dataZoom(start, end)`, but (n:%d)", len(args))
+	}
+	if d, ok := args[0].(float64); ok {
+		start = int(d)
+	}
+	if d, ok := args[1].(float64); ok {
+		end = int(d)
+	}
+	return codec.SetDataZoom(start, end), nil
 }
 
 func sinkf_xaxis(args ...any) (any, error) {

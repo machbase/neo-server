@@ -139,6 +139,18 @@ func Size(width string, height string) Option {
 	}
 }
 
+type CanSetDataZoom interface {
+	SetDataZoom(start, end int)
+}
+
+func SetDataZoom(start, end int) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetDataZoom); ok {
+			o.SetDataZoom(start, end)
+		}
+	}
+}
+
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
