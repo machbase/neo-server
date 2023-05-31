@@ -140,13 +140,13 @@ func Size(width string, height string) Option {
 }
 
 type CanSetDataZoom interface {
-	SetDataZoom(start, end int)
+	SetDataZoom(typ string, start, end float32)
 }
 
-func SetDataZoom(start, end int) Option {
+func SetDataZoom(typ string, start, end float32) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetDataZoom); ok {
-			o.SetDataZoom(start, end)
+			o.SetDataZoom(typ, start, end)
 		}
 	}
 }

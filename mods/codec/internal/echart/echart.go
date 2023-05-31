@@ -52,8 +52,9 @@ type Line struct {
 	xAxisLabel string
 	yAxisLabel string
 
-	dataZoomStart int
-	dataZoomEnd   int
+	dataZoomType  string  // inside, slider
+	dataZoomStart float32 // 0 ~ 100 %
+	dataZoomEnd   float32 // 0 ~ 100 %
 
 	TimeLocation *time.Location
 	TimeFormat   string
@@ -117,9 +118,9 @@ func (ex *Line) Close() {
 	if ex.dataZoomStart < ex.dataZoomEnd {
 		globalOptions = append(globalOptions,
 			charts.WithDataZoomOpts(opts.DataZoom{
-				Type:  "slider",
-				Start: 45,
-				End:   55,
+				Type:  ex.dataZoomType,
+				Start: ex.dataZoomStart,
+				End:   ex.dataZoomEnd,
 			}),
 		)
 	}
@@ -154,7 +155,8 @@ func (ex *Line) Close() {
 func (ex *Line) Flush(heading bool) {
 }
 
-func (ex *Line) SetDataZoom(start int, end int) {
+func (ex *Line) SetDataZoom(typ string, start float32, end float32) {
+	ex.dataZoomType = typ
 	ex.dataZoomStart = start
 	ex.dataZoomEnd = end
 }

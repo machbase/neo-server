@@ -169,17 +169,23 @@ func sinkf_seriesLabels(args ...any) (any, error) {
 }
 
 func sinkf_dataZoom(args ...any) (any, error) {
-	start, end := 0, 0
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(dataZoom) invalid arg, `dataZoom(start, end)`, but (n:%d)", len(args))
+	var typ string
+	var start, end float32
+	if len(args) != 3 {
+		return nil, fmt.Errorf("f(dataZoom) invalid arg, `dataZoom(type, start, end)`, but (n:%d)", len(args))
 	}
-	if d, ok := args[0].(float64); ok {
-		start = int(d)
+	if s, ok := args[0].(string); ok {
+		typ = s
+	} else {
+		typ = "slider"
 	}
 	if d, ok := args[1].(float64); ok {
-		end = int(d)
+		start = float32(d)
 	}
-	return codec.SetDataZoom(start, end), nil
+	if d, ok := args[2].(float64); ok {
+		end = float32(d)
+	}
+	return codec.SetDataZoom(typ, start, end), nil
 }
 
 func sinkf_xaxis(args ...any) (any, error) {
