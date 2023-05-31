@@ -115,7 +115,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	codec.SetDecoderColumns(decoder, desc.Columns.Columns())
 
 	var appender spi.Appender
 	lineno := 0

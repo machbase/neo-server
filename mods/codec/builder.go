@@ -96,24 +96,3 @@ func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *ti
 		enc.SetColumns(colNames, colTypes)
 	}
 }
-
-func SetDecoderColumns(decoder RowsDecoder, cols spi.Columns) {
-	SetDecoderColumnsTimeLocation(decoder, cols, nil)
-}
-
-func SetDecoderColumnsTimeLocation(decoder RowsDecoder, cols spi.Columns, tz *time.Location) {
-	var colNames []string
-	if tz != nil {
-		colNames = cols.NamesWithTimeLocation(tz)
-	} else {
-		for _, c := range cols {
-			colNames = append(colNames, c.Name)
-		}
-	}
-	var colTypes []string
-	for _, c := range cols {
-		colTypes = append(colTypes, c.Type)
-	}
-
-	Columns(colNames, colTypes)(decoder)
-}

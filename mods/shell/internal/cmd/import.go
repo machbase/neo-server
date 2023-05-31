@@ -162,7 +162,6 @@ func doImport(ctx *client.ActionContext) {
 		codec.Columns(cols.Names(), cols.Types()),
 		codec.Delimiter(cmd.Delimiter),
 	)
-	codec.SetDecoderColumns(decoder, desc.Columns.Columns())
 
 	capture := ctx.NewCaptureUserInterrupt("")
 	if ctx.IsUserShellInteractiveMode() && cmd.Input != "-" {

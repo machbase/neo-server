@@ -185,7 +185,6 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
-	codec.SetDecoderColumns(decoder, cols)
 
 	recno := 0
 	for {

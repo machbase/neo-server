@@ -247,6 +247,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			if svr.tagqlLoader != nil {
+				group.GET("/api/tql/*path", svr.handleTagQL)
+			}
 			group.Use(svr.handleJwtToken)
 			group.Any("/machbase", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
@@ -254,9 +257,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/logout", svr.handleLogout)
 			group.GET("/api/chart", svr.handleChart)
 			group.POST("/api/chart", svr.handleChart)
-			if svr.tagqlLoader != nil {
-				group.GET("/api/tql/*path", svr.handleTagQL)
-			}
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
