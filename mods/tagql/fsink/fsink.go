@@ -42,6 +42,9 @@ var functions = map[string]expression.Function{
 	"rownum":     sinkf_rownum,
 	"timeformat": sinkf_timeformat,
 	"precision":  sinkf_precision,
+	"columns":    sinkf_columns,
+	// json options
+	"transpose": sinkf_transpose,
 	// chart options
 	"xaxis":        sinkf_xaxis,
 	"yaxis":        sinkf_yaxis,
@@ -84,6 +87,18 @@ func sinkf_heading(args ...any) (any, error) {
 	}
 }
 
+func sinkf_columns(args ...any) (any, error) {
+	cols := []string{}
+	for _, a := range args {
+		if str, ok := a.(string); !ok {
+			return nil, fmt.Errorf("f(columns) invalid arg `columns(string...)`")
+		} else {
+			cols = append(cols, str)
+		}
+	}
+	return codec.Columns(cols, []string{}), nil
+}
+
 func sinkf_rownum(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(rownum) invalid arg `rownum(bool)`")
@@ -92,6 +107,17 @@ func sinkf_rownum(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(rownum) invalid arg `rownum(bool)`")
 	} else {
 		return codec.Rownum(flag), nil
+	}
+}
+
+func sinkf_transpose(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(transpose) invalid arg `transpose(bool)`")
+	}
+	if flag, ok := args[0].(bool); !ok {
+		return nil, fmt.Errorf("f(transpose) invalid arg `transpose(bool)`")
+	} else {
+		return codec.Transpose(flag), nil
 	}
 }
 
@@ -185,7 +211,7 @@ func sinkf_dataZoom(args ...any) (any, error) {
 	if d, ok := args[2].(float64); ok {
 		end = float32(d)
 	}
-	return codec.SetDataZoom(typ, start, end), nil
+	return codec.DataZoom(typ, start, end), nil
 }
 
 func sinkf_xaxis(args ...any) (any, error) {
@@ -205,7 +231,7 @@ func sinkf_xaxis(args ...any) (any, error) {
 			label = s
 		}
 	}
-	return codec.SetXAxis(idx, label), nil
+	return codec.XAxis(idx, label), nil
 }
 
 func sinkf_yaxis(args ...any) (any, error) {
@@ -225,7 +251,7 @@ func sinkf_yaxis(args ...any) (any, error) {
 			label = s
 		}
 	}
-	return codec.SetYAxis(idx, label), nil
+	return codec.YAxis(idx, label), nil
 }
 
 type Encoder struct {

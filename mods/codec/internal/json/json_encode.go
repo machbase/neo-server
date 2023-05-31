@@ -22,6 +22,9 @@ type Exporter struct {
 
 	colNames []string
 	colTypes []string
+
+	transpose bool
+	series    [][]any
 }
 
 func NewEncoder() *Exporter {
@@ -61,6 +64,10 @@ func (ex *Exporter) SetColumns(labels []string, types []string) {
 	ex.colTypes = types
 }
 
+func (ex *Exporter) SetTranspose(flag bool) {
+	ex.transpose = flag
+}
+
 func (ex *Exporter) Open() error {
 	var names []string
 	var types []string
@@ -75,14 +82,31 @@ func (ex *Exporter) Open() error {
 	columnsJson, _ := gojson.Marshal(names)
 	typesJson, _ := gojson.Marshal(types)
 
-	header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
-		string(columnsJson), string(typesJson))
-	ex.output.Write([]byte(header))
+	if ex.transpose {
+		ex.output.Write([]byte(`{"data":{"cols":[`))
+	} else {
+		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
+			string(columnsJson), string(typesJson))
+		ex.output.Write([]byte(header))
+	}
 
 	return nil
 }
 
 func (ex *Exporter) Close() {
+	if ex.transpose {
+		for n, ser := range ex.series {
+			recJson, err := gojson.Marshal(ser)
+			if err != nil {
+				// TODO how to report error?
+				break
+			}
+			if n > 0 {
+				ex.output.Write([]byte(","))
+			}
+			ex.output.Write(recJson)
+		}
+	}
 	footer := fmt.Sprintf(`]}, "success":true, "reason":"success", "elapse":"%s"}`, time.Since(ex.tick).String())
 	ex.output.Write([]byte(footer))
 	ex.output.Close()
@@ -129,22 +153,37 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		}
 	}
-	var recJson []byte
-	var err error
-	if ex.Rownum {
-		vs := append([]any{ex.nrow}, values...)
-		recJson, err = gojson.Marshal(vs)
-	} else {
-		recJson, err = gojson.Marshal(values)
-	}
-	if err != nil {
-		return err
-	}
 
-	if ex.nrow > 1 {
-		ex.output.Write([]byte(","))
+	if ex.transpose {
+		if ex.series == nil {
+			ex.series = make([][]any, len(values)-1)
+		}
+		if len(ex.series) < len(values) {
+			for i := 0; i < len(values)-len(ex.series); i++ {
+				ex.series = append(ex.series, []any{})
+			}
+		}
+		for n, v := range values {
+			ex.series[n] = append(ex.series[n], v)
+		}
+	} else {
+		var recJson []byte
+		var err error
+		if ex.Rownum {
+			vs := append([]any{ex.nrow}, values...)
+			recJson, err = gojson.Marshal(vs)
+		} else {
+			recJson, err = gojson.Marshal(values)
+		}
+		if err != nil {
+			return err
+		}
+
+		if ex.nrow > 1 {
+			ex.output.Write([]byte(","))
+		}
+		ex.output.Write(recJson)
 	}
-	ex.output.Write(recJson)
 
 	return nil
 }

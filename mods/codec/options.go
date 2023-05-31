@@ -79,6 +79,18 @@ func TimeLocation(tz *time.Location) Option {
 	}
 }
 
+type CanSetTranspose interface {
+	SetTranspose(bool)
+}
+
+func Transpose(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetTranspose); ok {
+			o.SetTranspose(flag)
+		}
+	}
+}
+
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -107,7 +119,7 @@ type CanSetXAxis interface {
 	SetXAxis(int, string)
 }
 
-func SetXAxis(idx int, label string) Option {
+func XAxis(idx int, label string) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetXAxis); ok {
 			o.SetXAxis(idx, label)
@@ -119,7 +131,7 @@ type CanSetYAxis interface {
 	SetYAxis(int, string)
 }
 
-func SetYAxis(idx int, label string) Option {
+func YAxis(idx int, label string) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetYAxis); ok {
 			o.SetYAxis(idx, label)
@@ -143,7 +155,7 @@ type CanSetDataZoom interface {
 	SetDataZoom(typ string, start, end float32)
 }
 
-func SetDataZoom(typ string, start, end float32) Option {
+func DataZoom(typ string, start, end float32) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetDataZoom); ok {
 			o.SetDataZoom(typ, start, end)
