@@ -37,10 +37,10 @@ type tagQL struct {
 var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
 
 func Parse(in io.Reader) (TagQL, error) {
-	return parseWithParams(in, nil)
+	return ParseWithParams(in, nil)
 }
 
-func parseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
+func ParseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
 	reader := bufio.NewReader(in)
 
 	parts := []byte{}
