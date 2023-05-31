@@ -14,13 +14,13 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
 type Decoder struct {
 	reader       *csv.Reader
 	columnTypes  []string
+	columnNames  []string
 	translator   transcoder.Transcoder
 	comma        rune
 	heading      bool
@@ -28,7 +28,6 @@ type Decoder struct {
 	timeformat   string
 	timeLocation *time.Location
 	tableName    string
-	columns      spi.Columns
 }
 
 func NewDecoder() *Decoder {
@@ -64,14 +63,14 @@ func (dec *Decoder) SetTranscoder(trans transcoder.Transcoder) {
 	dec.translator = trans
 }
 
-func (dec *Decoder) SetColumns(cols spi.Columns) {
-	dec.columns = cols
+func (dec *Decoder) SetColumns(names []string, types []string) {
+	dec.columnNames = names
+	dec.columnTypes = types
 }
 
 func (dec *Decoder) Open() {
 	dec.reader = csv.NewReader(dec.input)
 	dec.reader.Comma = dec.comma
-	dec.columnTypes = dec.columns.Types()
 
 	if dec.heading { // skip first line
 		dec.reader.Read()

@@ -153,10 +153,13 @@ func doImport(ctx *client.ActionContext) {
 		}
 	}
 
+	cols := desc.Columns.Columns()
 	decoder := codec.NewDecoder(cmd.InputFormat,
 		codec.InputStream(in),
 		codec.Timeformat(cmd.Timeformat),
 		codec.TimeLocation(cmd.TimeLocation),
+		codec.Table(cmd.Table),
+		codec.Columns(cols.Names(), cols.Types()),
 		codec.Delimiter(cmd.Delimiter),
 	)
 	codec.SetDecoderColumns(decoder, desc.Columns.Columns())
