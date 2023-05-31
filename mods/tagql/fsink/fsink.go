@@ -9,6 +9,27 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
+type Context struct {
+	Output spec.OutputStream
+	Params map[string][]string
+}
+
+func (ctx *Context) Get(name string) (any, error) {
+	if name == "outstream" {
+		return ctx.Output, nil
+	} else if name == "nil" {
+		return nil, nil
+	} else if strings.HasPrefix(name, "$") {
+		if p, ok := ctx.Params[strings.TrimPrefix(name, "$")]; ok {
+			if len(p) > 0 {
+				return p[len(p)-1], nil
+			}
+		}
+		return nil, nil
+	}
+	return nil, fmt.Errorf("undefined variable '%s'", name)
+}
+
 func Parse(text string) (*expression.Expression, error) {
 	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
 	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")

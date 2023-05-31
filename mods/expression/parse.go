@@ -70,7 +70,6 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 
 		// numeric constant
 		if isNumeric(character) {
-
 			if stream.canRead() && character == '0' {
 				character = stream.readCharacter()
 
@@ -102,7 +101,6 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 
 		// comma, separator
 		if character == ',' {
-
 			tokenValue = ","
 			kind = SEPARATOR
 			break
@@ -110,7 +108,6 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 
 		// escaped variable
 		if character == '[' {
-
 			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotClosingBracket)
 			kind = VARIABLE
 
@@ -123,6 +120,15 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			break
 		}
 
+		if character == '$' {
+			if nc := stream.readCharacter(); unicode.IsLetter(nc) {
+				tokenString = readTokenUntilFalse(stream, isVariableName)
+				tokenValue = "$" + tokenString
+				kind = VARIABLE
+				break
+			}
+		}
+
 		// regular variable - or function?
 		if unicode.IsLetter(character) {
 			tokenString = readTokenUntilFalse(stream, isVariableName)
@@ -131,13 +137,10 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 
 			// boolean?
 			if tokenValue == "true" {
-
 				kind = BOOLEAN
 				tokenValue = true
 			} else {
-
 				if tokenValue == "false" {
-
 					kind = BOOLEAN
 					tokenValue = false
 				}
@@ -172,9 +175,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 
 				// check that none of them are unexported
 				for i := 1; i < len(splits); i++ {
-
 					firstCharacter := getFirstRune(splits[i])
-
 					if unicode.ToUpper(firstCharacter) != firstCharacter {
 						return Token{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
 					}

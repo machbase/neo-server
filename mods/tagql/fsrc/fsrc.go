@@ -3,6 +3,7 @@ package fsrc
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/do"
@@ -30,14 +31,17 @@ type inputParameters struct {
 func (p *inputParameters) Get(name string) (any, error) {
 	if name == "CTX" {
 		return p, nil
-	} else {
-		if p, ok := p.params[name]; ok {
+	} else if name == "nil" {
+		return nil, nil
+	} else if strings.HasPrefix(name, "$") {
+		if p, ok := p.params[strings.TrimPrefix(name, "$")]; ok {
 			if len(p) > 0 {
 				return p[len(p)-1], nil
 			}
 		}
 		return nil, nil
 	}
+	return nil, fmt.Errorf("undefined variable '%s'", name)
 }
 
 func Compile(text string, params map[string][]string) (Input, error) {

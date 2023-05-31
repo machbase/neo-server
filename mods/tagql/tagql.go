@@ -37,10 +37,10 @@ type tagQL struct {
 var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
 
 func Parse(in io.Reader) (TagQL, error) {
-	return ParseWithParams(in, nil)
+	return parseWithParams(in, nil)
 }
 
-func ParseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
+func parseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
 	reader := bufio.NewReader(in)
 
 	parts := []byte{}
@@ -163,7 +163,7 @@ func ParseContext(ctx context.Context, params map[string][]string) (TagQL, error
 	}
 
 	tqls := params["_tq"]
-	if len(tqls) != 2 {
+	if len(tqls) < 2 {
 		return nil, errors.New("tql require at leat two '_tq' params for source and sink")
 	}
 
@@ -204,7 +204,7 @@ func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.Res
 		output = &stream.WriterOutputStream{Writer: w}
 	}
 
-	encoder, err := tq.buildEncoder(output)
+	encoder, err := tq.buildEncoder(output, tq.params)
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, output spec.Ou
 			return err
 		}
 	}
-	encoder, err := tq.buildEncoder(output)
+	encoder, err := tq.buildEncoder(output, tq.params)
 	if err != nil {
 		return err
 	}
@@ -287,12 +287,12 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 	return err
 }
 
-func (tq *tagQL) buildEncoder(output spec.OutputStream) (codec.RowsEncoder, error) {
+func (tq *tagQL) buildEncoder(output spec.OutputStream, params map[string][]string) (codec.RowsEncoder, error) {
 	sinkExpr, err := fsink.Parse(tq.sinkExpr)
 	if err != nil {
 		return nil, err
 	}
-	sinkRet, err := sinkExpr.Evaluate(map[string]any{"outstream": output})
+	sinkRet, err := sinkExpr.Eval(&fsink.Context{Output: output, Params: params})
 	if err != nil {
 		return nil, err
 	}

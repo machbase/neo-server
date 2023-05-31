@@ -79,7 +79,7 @@ func (sc *script) ParseWithParams(params map[string][]string) (TagQL, error) {
 	}
 	defer file.Close()
 
-	tql, err := ParseWithParams(file, params)
+	tql, err := parseWithParams(file, params)
 	if err != nil {
 		return nil, err
 	}
