@@ -26,6 +26,7 @@ test-base: tmpdir
 		./mods/util/ini \
 		./mods/expression \
 		./mods/tagql \
+		./mods/tagql/fcom \
 		./mods/tagql/fmap \
 		./mods/nums/opensimplex \
 		./mods/script \

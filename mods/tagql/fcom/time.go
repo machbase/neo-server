@@ -2,8 +2,12 @@ package fcom
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
+
+var standardTimeNow func() time.Time = time.Now
 
 func to_time(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {
@@ -15,7 +19,7 @@ func to_time(args ...any) (any, error) {
 
 	if str, ok := args[0].(string); ok {
 		if str == "now" {
-			baseTime = time.Now()
+			baseTime = standardTimeNow()
 		} else {
 			return nil, fmt.Errorf("f(time) first args should be time, but %s", args[0])
 		}
@@ -32,11 +36,20 @@ func to_time(args ...any) (any, error) {
 
 	if len(args) == 2 {
 		if str, ok := args[1].(string); ok {
-			d, err := time.ParseDuration(str)
-			if err != nil {
-				return nil, fmt.Errorf("f(time) second args should be duration, but %s", args[1])
+			if strings.HasSuffix(str, "d") && len(str) > 1 {
+				digit := str[0 : len(str)-1]
+				d, err := strconv.ParseFloat(digit, 64)
+				if err != nil {
+					return nil, fmt.Errorf("f(time) second args should be duration, but %s", args[1])
+				}
+				delta = time.Duration(int64(d * float64(24) * float64(time.Hour)))
+			} else {
+				d, err := time.ParseDuration(str)
+				if err != nil {
+					return nil, fmt.Errorf("f(time) second args should be duration, but %s", args[1])
+				}
+				delta = d
 			}
-			delta = d
 		} else if d, ok := args[0].(float64); ok {
 			epoch := int64(d)
 			delta = time.Duration(epoch)
@@ -45,7 +58,6 @@ func to_time(args ...any) (any, error) {
 		}
 	}
 
-	fmt.Printf("%v      %v\n", baseTime, delta)
 	return baseTime.Add(delta), nil
 }
 
@@ -73,6 +85,8 @@ func roundTime(args ...any) (any, error) {
 		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
 	} else if ts, ok := args[0].(*time.Time); ok {
 		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
+	} else if ts, ok := args[0].(float64); ok {
+		ret = time.Unix(0, (int64(ts)/int64(dur))*int64(dur))
 	} else {
 		return nil, fmt.Errorf("f(roundTime) 1st arg should be time, but %T", args[0])
 	}
