@@ -7,6 +7,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tagql/fcom"
 )
 
 type Context struct {
@@ -65,6 +66,11 @@ var functions = map[string]expression.Function{
 	"CHART_SCATTER3D": CHART_SCATTER3D,
 }
 
+func init() {
+	for k, v := range fcom.Functions {
+		functions[k] = v
+	}
+}
 func sinkf_timeformat(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")

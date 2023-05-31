@@ -9,6 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tagql/ctx"
+	"github.com/machbase/neo-server/mods/tagql/fcom"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -31,10 +32,6 @@ func Parse(text string) (*expression.Expression, error) {
 }
 
 var functions = map[string]expression.Function{
-	"len":        mapf_len,
-	"roundTime":  mapf_roundTime,
-	"round":      mapf_round,
-	"element":    mapf_element,
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
 	"PUSHKEY":    mapf_PUSHKEY,
@@ -45,134 +42,11 @@ var functions = map[string]expression.Function{
 	"FFT":        mapf_FFT,
 }
 
-// `len(V)`
-func mapf_len(args ...any) (any, error) {
-	return float64(len(args)), nil
-}
-
-// `roundTime(time, duration)`
-func mapf_roundTime(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(roundTime) invalud args 'roundTime(time, 'duration')' (n:%d)", len(args))
-	}
-	var dur time.Duration
-	if str, ok := args[1].(string); ok {
-		if d, err := time.ParseDuration(str); err != nil {
-			return nil, fmt.Errorf("f(roundTime) 2nd arg should be duration")
-		} else {
-			dur = d
-		}
-	} else if num, ok := args[1].(float64); ok {
-		dur = time.Duration(int64(num))
-	}
-	if dur == 0 {
-		return nil, fmt.Errorf("f(roundTime) zero duration")
-	}
-
-	var ret time.Time
-	if ts, ok := args[0].(time.Time); ok {
-		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
-	} else if ts, ok := args[0].(*time.Time); ok {
-		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
-	} else {
-		return nil, fmt.Errorf("f(roundTime) 1st arg should be time, but %T", args[0])
-	}
-	return ret, nil
-}
-
-// `round(number, number)`
-func mapf_round(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(round) invalud args 'round(int, int)' (n:%d)", len(args))
-	}
-	var num int64
-	var mod int64
-	if d, ok := args[0].(int64); ok {
-		num = d
-	} else {
-		return nil, fmt.Errorf("f(round) args should be non-zero int")
-	}
-	if d, ok := args[1].(int64); ok {
-		mod = d
-	} else {
-		return nil, fmt.Errorf("f(round) args should be non-zero int")
-	}
-
-	return (num / mod) * mod, nil
-}
-
-// `element(V, idx)`
-func mapf_element(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, fmt.Errorf("f(element) invalud number of args (n:%d)", len(args))
-	}
-	var idx int
-	if n, ok := args[len(args)-1].(float64); ok {
-		idx = int(n)
-	} else {
-		return nil, fmt.Errorf("f(element) 2nd arg should be int")
-	}
-	if len(args)-1 <= idx {
-		return nil, fmt.Errorf("f(element) out of index %d / %d", idx, len(args)-1)
-	}
-	switch v := args[idx].(type) {
-	case int:
-		return float64(v), nil
-	case int64:
-		return float64(v), nil
-	case float64:
-		return v, nil
-	case string:
-		return v, nil
-	case bool:
-		return v, nil
-	case time.Time:
-		return float64(v.UnixNano()) / float64(time.Second), nil
-	default:
-		return nil, fmt.Errorf("f(element) unsupported type %T", v)
+func init() {
+	for k, v := range fcom.Functions {
+		functions[k] = v
 	}
 }
-
-// make new key by modulus of time
-// `map=MODTIME('100ms')` produces `K:V` ==> `K':[K, V]` (K' = K % 100ms)
-/*
-func mapf_MODTIME(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, fmt.Errorf("f(MODTIME) invalid number of args (n:%d)", len(args))
-	}
-	// K : time
-	key, ok := args[1].(time.Time)
-	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) K should be time, but %T", args[1])
-	}
-	// V : value
-	val, ok := args[2].([]any)
-	if !ok {
-		return nil, fmt.Errorf("f(MODTIME) V should be []any, but %T", args[2])
-	}
-	// duration
-	var mod int64
-	switch d := args[3].(type) {
-	case float64:
-		mod = int64(d)
-	case string:
-		td, err := time.ParseDuration(d)
-		if err != nil {
-			return nil, fmt.Errorf("f(MODTIME) 1st arg should be duration, %s", err.Error())
-		}
-		mod = int64(td)
-	}
-
-	newKey := time.Unix(0, (key.UnixNano()/mod)*mod)
-	newVal := append([]any{key}, val...)
-
-	ret := &ctx.Param{
-		K: newKey,
-		V: newVal,
-	}
-	return ret, nil
-}
-*/
 
 // Merge all incoming values into a single key,
 // incresing dimension of vector as result.

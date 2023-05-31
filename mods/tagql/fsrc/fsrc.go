@@ -8,6 +8,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/tagql/fcom"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -65,10 +66,15 @@ var functions = map[string]expression.Function{
 	"range": srcf_range,
 	"limit": srcf_limit,
 	"dump":  srcf_dump,
-	"len":   srcf_len,
 	"QUERY": srcf_QUERY,
 	"SQL":   src_SQL,
 	"INPUT": srcf_INPUT,
+}
+
+func init() {
+	for k, v := range fcom.Functions {
+		functions[k] = v
+	}
 }
 
 func NewDefaultInput() Input {
@@ -134,16 +140,5 @@ func srcf_INPUT(args ...any) (any, error) {
 		return &input{
 			src: s,
 		}, nil
-	}
-}
-
-// `len(V)`
-func srcf_len(args ...any) (any, error) {
-	if arr, ok := args[0].([]any); ok {
-		return float64(len(arr)), nil
-	} else if str, ok := args[0].(string); ok {
-		return float64(len(str)), nil
-	} else {
-		return float64(len(args)), nil
 	}
 }
