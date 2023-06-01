@@ -21,7 +21,7 @@ func to_time(args ...any) (any, error) {
 		if str == "now" {
 			baseTime = standardTimeNow()
 		} else {
-			return nil, fmt.Errorf("f(time) first args should be time, but %s", args[0])
+			return nil, fmt.Errorf("f(time) first arg should be time, but %s", args[0])
 		}
 	} else if d, ok := args[0].(float64); ok {
 		epoch := int64(d)
@@ -31,30 +31,41 @@ func to_time(args ...any) (any, error) {
 	} else if t, ok := args[0].(*time.Time); ok {
 		baseTime = *t
 	} else {
-		return nil, fmt.Errorf("f(time) first args should be time, but %T", args[0])
+		return nil, fmt.Errorf("f(time) first arg should be time, but %T", args[0])
 	}
 
 	if len(args) == 2 {
 		if str, ok := args[1].(string); ok {
-			if strings.HasSuffix(str, "d") && len(str) > 1 {
-				digit := str[0 : len(str)-1]
-				d, err := strconv.ParseFloat(digit, 64)
+			var sig int64 = 1
+			var day int64 = 0
+			var hour int64 = 0
+			if i := strings.IndexRune(str, 'd'); i > 0 {
+				digit := str[0:i]
+				str = str[i+1:]
+				d, err := strconv.ParseInt(digit, 10, 64)
 				if err != nil {
-					return nil, fmt.Errorf("f(time) second args should be duration, but %s", args[1])
+					return nil, fmt.Errorf("f(time) second arg should be duration, but %s", args[1])
 				}
-				delta = time.Duration(int64(d * float64(24) * float64(time.Hour)))
-			} else {
-				d, err := time.ParseDuration(str)
-				if err != nil {
-					return nil, fmt.Errorf("f(time) second args should be duration, but %s", args[1])
+				if d < 0 {
+					sig = -1
+					day = d * -1
+				} else {
+					day = d
 				}
-				delta = d
 			}
+			if len(str) > 0 {
+				h, err := time.ParseDuration(str)
+				if err != nil {
+					return nil, fmt.Errorf("f(time) second arg should be duration, but %s", args[1])
+				}
+				hour = int64(h)
+			}
+			delta = time.Duration(sig * (day*24*int64(time.Hour) + int64(hour)))
 		} else if d, ok := args[0].(float64); ok {
 			epoch := int64(d)
 			delta = time.Duration(epoch)
 		} else {
-			return nil, fmt.Errorf("f(time) second args should be duration, but %T", args[1])
+			return nil, fmt.Errorf("f(time) second arg should be duration, but %T", args[1])
 		}
 	}
 
@@ -96,20 +107,20 @@ func roundTime(args ...any) (any, error) {
 // `round(number, number)`
 func round(args ...any) (any, error) {
 	if len(args) != 2 {
-		return nil, fmt.Errorf("f(round) invalud args 'round(int, int)' (n:%d)", len(args))
+		return nil, fmt.Errorf("f(round) invalid args 'round(int, int)', (n:%d)", len(args))
 	}
 	var num int64
 	var mod int64
-	if d, ok := args[0].(int64); ok {
-		num = d
+	if d, ok := args[0].(float64); ok {
+		num = int64(d)
 	} else {
-		return nil, fmt.Errorf("f(round) args should be non-zero int")
+		return nil, fmt.Errorf("f(round) arg should be non-zero int")
 	}
-	if d, ok := args[1].(int64); ok {
-		mod = d
+	if d, ok := args[1].(float64); ok {
+		mod = int64(d)
 	} else {
-		return nil, fmt.Errorf("f(round) args should be non-zero int")
+		return nil, fmt.Errorf("f(round) arg should be non-zero int")
 	}
 
-	return (num / mod) * mod, nil
+	return float64((num / mod) * mod), nil
 }
