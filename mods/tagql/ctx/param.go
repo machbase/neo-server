@@ -126,7 +126,5 @@ func (p *Param) EqualValue(other *Param) bool {
 	}
 	lv := fmt.Sprintf("%#v", p.V)
 	rv := fmt.Sprintf("%#v", other.V)
-	// fmt.Println("lv", lv)
-	// fmt.Println("rv", rv)
 	return lv == rv
 }

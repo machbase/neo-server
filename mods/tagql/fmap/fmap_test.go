@@ -32,6 +32,14 @@ func TestMapFunc_roundTime(t *testing.T) {
 	}.run(t)
 }
 
+func TestMapFunc_TAKE(t *testing.T) {
+	MapFuncTestCase{
+		input:  `TAKE(1)`,
+		params: FuncParamMock("sam", []any{1, 2, 3}),
+		expect: &ctx.Param{K: "sam", V: []any{1, 2, 3}},
+	}.run(t)
+}
+
 func TestMapFunc_PUSHKEY(t *testing.T) {
 	extime := time.Unix(123, 0)
 	MapFuncTestCase{

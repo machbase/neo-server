@@ -16,6 +16,7 @@ type Context struct {
 	Sink   chan<- any
 	Next   *Context
 	Params map[string][]string
+	Nrow   int
 
 	values map[string]any
 	buffer map[any][]any
@@ -106,13 +107,18 @@ func (ctx *Context) Start() {
 			if p == ExecutionEOF {
 				break
 			}
+			ctx.Nrow++
 			if ret, err := ctx.Expr.Eval(p); err != nil {
 				ctx.Sink <- err
 			} else if ret != nil {
 				var resultset []*Param
 				switch rs := ret.(type) {
 				case *Param:
-					resultset = []*Param{rs}
+					if rs == ExecutionEOF {
+						break
+					} else {
+						resultset = []*Param{rs}
+					}
 				case []*Param:
 					resultset = rs
 				default:

@@ -14,6 +14,8 @@ import (
 )
 
 var mapFunctionsMacro = [][2]string{
+	{"TAKE(", "TAKE(CTX,K,V,"},
+	{"DROP(", "DROP(CTX,K,V,"},
 	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
 	{"POPKEY(", "POPKEY(CTX,K,V,"},
 	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
@@ -34,6 +36,8 @@ func Parse(text string) (*expression.Expression, error) {
 var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
+	"TAKE":       mapf_TAKE,
+	"DROP":       mapf_DROP,
 	"PUSHKEY":    mapf_PUSHKEY,
 	"POPKEY":     mapf_POPKEY,
 	"GROUPBYKEY": mapf_GROUPBYKEY,
@@ -46,6 +50,62 @@ func init() {
 	for k, v := range fcom.Functions {
 		functions[k] = v
 	}
+}
+
+func errInvalidNumOfArgs(name string, expect int, actual int) error {
+	return fmt.Errorf("f(%s) invalid number of args; expect:%d, actual:%d", name, expect, actual)
+}
+
+func errWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
+	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
+}
+
+func mapf_TAKE(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, errInvalidNumOfArgs("TAKE", 4, len(args))
+	}
+	cx, ok := args[0].(*ctx.Context)
+	if !ok {
+		return nil, errWrongTypeOfArgs("TAKE", 0, "context", args[0])
+	}
+
+	if limit, ok := args[3].(float64); ok {
+		if cx.Nrow > int(limit) {
+			return ctx.ExecutionEOF, nil
+		}
+	} else if limit, ok := args[3].(int); ok {
+		if cx.Nrow > int(limit) {
+			return ctx.ExecutionEOF, nil
+		}
+	} else {
+		return nil, errWrongTypeOfArgs("TAKE", 3, "int", args[3])
+	}
+
+	return &ctx.Param{K: args[1], V: args[2]}, nil
+}
+
+func mapf_DROP(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, errInvalidNumOfArgs("DROP", 4, len(args))
+	}
+	cx, ok := args[0].(*ctx.Context)
+	if !ok {
+		return nil, errWrongTypeOfArgs("DROP", 0, "context", args[0])
+	}
+
+	if limit, ok := args[3].(float64); ok {
+		if cx.Nrow <= int(limit) {
+			return nil, nil
+		}
+	} else if limit, ok := args[3].(int); ok {
+		if cx.Nrow <= int(limit) {
+			return nil, nil
+		}
+	} else {
+		return nil, errWrongTypeOfArgs("DROP", 3, "int", args[3])
+	}
+
+	return &ctx.Param{K: args[1], V: args[2]}, nil
 }
 
 // Merge all incoming values into a single key,
