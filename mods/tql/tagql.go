@@ -248,7 +248,7 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 		open := false
 		for arr := range chain.Sink() {
 			if !open {
-				if len(tq.mapExprs) > 0 {
+				if len(cols) == 0 {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
 							Name: fmt.Sprintf("C%02d", i),
@@ -264,7 +264,9 @@ func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder
 				})
 				open = true
 			}
-			encoder.AddRow(arr)
+			if err := encoder.AddRow(arr); err != nil {
+				fmt.Println("ERR", err.Error())
+			}
 		}
 	}()
 

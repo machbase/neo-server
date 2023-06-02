@@ -3,11 +3,13 @@ package fsink
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fcom"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Context struct {
@@ -42,6 +44,7 @@ var functions = map[string]expression.Function{
 	"heading":    sinkf_heading,
 	"rownum":     sinkf_rownum,
 	"timeformat": sinkf_timeformat,
+	"tz":         sinkf_tz,
 	"precision":  sinkf_precision,
 	"columns":    sinkf_columns,
 	// json options
@@ -71,6 +74,26 @@ func init() {
 		functions[k] = v
 	}
 }
+
+func sinkf_tz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
+	}
+	if timezone, ok := args[0].(string); !ok {
+		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
+	} else {
+		if timeLocation, err := time.LoadLocation(timezone); err != nil {
+			timeLocation, err := util.GetTimeLocation(timezone)
+			if err != nil {
+				return nil, fmt.Errorf("f(tz) %s", err.Error())
+			}
+			return codec.TimeLocation(timeLocation), nil
+		} else {
+			return codec.TimeLocation(timeLocation), nil
+		}
+	}
+}
+
 func sinkf_timeformat(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
