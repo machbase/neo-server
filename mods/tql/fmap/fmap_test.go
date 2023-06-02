@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tagql/ctx"
-	"github.com/machbase/neo-server/mods/tagql/fmap"
+	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fmap"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ import (
 type MapFuncTestCase struct {
 	input     string
 	params    expression.Parameters
-	expect    *ctx.Param
+	expect    *context.Param
 	expectErr string
 }
 
@@ -36,7 +36,7 @@ func TestMapFunc_TAKE(t *testing.T) {
 	MapFuncTestCase{
 		input:  `TAKE(1)`,
 		params: FuncParamMock("sam", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "sam", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "sam", V: []any{1, 2, 3}},
 	}.run(t)
 }
 
@@ -55,14 +55,14 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(extime, []any{1, 2, 3}),
-		expect: &ctx.Param{K: "sam", V: []any{extime, 1, 2, 3}},
+		expect: &context.Param{K: "sam", V: []any{extime, 1, 2, 3}},
 	}.run(t)
 	tick := time.Now()
 	tick100ms := time.Unix(0, (tick.UnixNano()/100000000)*100000000)
 	MapFuncTestCase{
 		input:  `PUSHKEY(roundTime(K, '100ms'))`,
 		params: FuncParamMock(tick, []any{"v"}),
-		expect: &ctx.Param{K: tick100ms, V: []any{tick, "v"}},
+		expect: &context.Param{K: tick100ms, V: []any{tick, "v"}},
 	}.run(t)
 }
 
@@ -75,12 +75,12 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: 1, V: []any{2, 3}},
+		expect: &context.Param{K: 1, V: []any{2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{[]int{10, 11, 12}, []int{20, 21, 22}, []int{30, 31, 32}}),
-		expect: &ctx.Param{K: []int{10, 11, 12}, V: []any{[]int{20, 21, 22}, []int{30, 31, 32}}},
+		expect: &context.Param{K: []int{10, 11, 12}, V: []any{[]int{20, 21, 22}, []int{30, 31, 32}}},
 	}.run(t)
 	MapFuncTestCase{
 		input:     `POPKEY(0)`,
@@ -90,7 +90,7 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY(1)`,
 		params: FuncParamMock("x", []any{"K", 1, 2}),
-		expect: &ctx.Param{K: 1, V: []any{"K", 2}},
+		expect: &context.Param{K: 1, V: []any{"K", 2}},
 	}.run(t)
 }
 
@@ -98,7 +98,7 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(10<100)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(10>100)`,
@@ -108,7 +108,7 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(K == 'x')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(K != 'x')`,
@@ -118,12 +118,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(K != 'y')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(V) > 2)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(V) > 4)`,
@@ -133,12 +133,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(element(V, 0) >= 1)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(element(V, 0) > 0)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: &ctx.Param{K: "x", V: []any{1, 2, 3}},
+		expect: &context.Param{K: "x", V: []any{1, 2, 3}},
 	}.run(t)
 }
 
@@ -170,7 +170,7 @@ func (tc MapFuncTestCase) run(t *testing.T) {
 	}
 	require.NotNil(t, ret, msg)
 	// compare key
-	if retParam, ok := ret.(*ctx.Param); !ok {
+	if retParam, ok := ret.(*context.Param); !ok {
 		t.Fatalf("invalid return type: %T", ret)
 	} else {
 		require.True(t, tc.expect.EqualKey(retParam), "K's are different")
@@ -186,7 +186,7 @@ func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameter
 }
 
 func FuncParamMock(k any, v any) expression.Parameters {
-	return &ctx.Param{Ctx: &ctx.Context{}, K: k, V: v}
+	return &context.Param{Ctx: &context.Context{}, K: k, V: v}
 }
 
 type paramMock struct {

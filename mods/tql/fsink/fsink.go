@@ -7,7 +7,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tagql/fcom"
+	"github.com/machbase/neo-server/mods/tql/fcom"
 )
 
 type Context struct {

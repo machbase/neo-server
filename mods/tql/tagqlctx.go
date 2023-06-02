@@ -1,19 +1,19 @@
-package tagql
+package tql
 
 import (
-	"context"
+	gocontext "context"
 	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tagql/ctx"
-	"github.com/machbase/neo-server/mods/tagql/fmap"
+	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fmap"
 	"github.com/pkg/errors"
 )
 
 type ExecutionChain struct {
-	nodes     []*ctx.Context
-	head      *ctx.Context
+	nodes     []*context.Context
+	head      *context.Context
 	r         chan any
 	sink      chan []any
 	closeOnce sync.Once
@@ -21,7 +21,7 @@ type ExecutionChain struct {
 	lastError error
 }
 
-func newExecutionChain(ctxCtx context.Context, exprstrs []string, params map[string][]string) (*ExecutionChain, error) {
+func newExecutionChain(ctxCtx gocontext.Context, exprstrs []string, params map[string][]string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.r = make(chan any)
 	ret.sink = make(chan []any)
@@ -35,13 +35,13 @@ func newExecutionChain(ctxCtx context.Context, exprstrs []string, params map[str
 		exprs = append(exprs, expr)
 	}
 
-	nodes := make([]*ctx.Context, len(exprs))
+	nodes := make([]*context.Context, len(exprs))
 	for n, expr := range exprs {
-		nodes[n] = &ctx.Context{
+		nodes[n] = &context.Context{
 			Name:    expr.String(),
 			Context: ctxCtx,
 			Expr:    expr,
-			Src:     make(chan *ctx.Param),
+			Src:     make(chan *context.Param),
 			Sink:    ret.r,
 			Next:    nil,
 			Params:  params,
@@ -65,9 +65,9 @@ func (ec *ExecutionChain) Error() error {
 func (ec *ExecutionChain) Source(values []any) {
 	if ec.head != nil {
 		if values != nil {
-			ec.head.Src <- &ctx.Param{Ctx: ec.head, K: values[0], V: values[1:]}
+			ec.head.Src <- &context.Param{Ctx: ec.head, K: values[0], V: values[1:]}
 		} else {
-			ec.head.Src <- ctx.ExecutionEOF
+			ec.head.Src <- context.ExecutionEOF
 		}
 	} else {
 		// there is no chain, just forward input data to sink directly
@@ -110,8 +110,8 @@ func (ec *ExecutionChain) Start() {
 
 	for ret := range ec.r {
 		switch castV := ret.(type) {
-		case *ctx.Param:
-			if castV == ctx.ExecutionEOF {
+		case *context.Param:
+			if castV == context.ExecutionEOF {
 				ec.waitWg.Done()
 			} else {
 				switch tV := castV.V.(type) {
@@ -127,7 +127,7 @@ func (ec *ExecutionChain) Start() {
 					sink0(castV.K, castV.V)
 				}
 			}
-		case []*ctx.Param:
+		case []*context.Param:
 			for _, v := range castV {
 				switch tV := v.V.(type) {
 				case []any:

@@ -1,4 +1,4 @@
-package tagql
+package tql
 
 import (
 	"context"

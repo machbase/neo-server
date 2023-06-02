@@ -31,7 +31,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
-	"github.com/machbase/neo-server/mods/tagql"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -363,7 +363,7 @@ func (s *svr) Start() error {
 		}
 	}
 
-	tagqlLoader := tagql.NewLoader(s.conf.TagQLDir)
+	tqlLoader := tql.NewLoader(s.conf.TagQLDir)
 
 	// native port
 	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
@@ -392,7 +392,7 @@ func (s *svr) Start() error {
 		opts := []httpd.Option{
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
-			httpd.OptionTagQLLoader(tagqlLoader),
+			httpd.OptionTqlLoader(tqlLoader),
 			httpd.OptionExperimentMode(s.conf.ExperimentMode),
 		}
 		if s.conf.Http.DebugMode {

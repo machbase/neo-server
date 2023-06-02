@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tagql/ctx"
-	"github.com/machbase/neo-server/mods/tagql/fcom"
+	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fcom"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
@@ -64,31 +64,31 @@ func mapf_TAKE(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, errInvalidNumOfArgs("TAKE", 4, len(args))
 	}
-	cx, ok := args[0].(*ctx.Context)
+	cx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, errWrongTypeOfArgs("TAKE", 0, "context", args[0])
 	}
 
 	if limit, ok := args[3].(float64); ok {
 		if cx.Nrow > int(limit) {
-			return ctx.ExecutionEOF, nil
+			return context.ExecutionEOF, nil
 		}
 	} else if limit, ok := args[3].(int); ok {
 		if cx.Nrow > int(limit) {
-			return ctx.ExecutionEOF, nil
+			return context.ExecutionEOF, nil
 		}
 	} else {
 		return nil, errWrongTypeOfArgs("TAKE", 3, "int", args[3])
 	}
 
-	return &ctx.Param{K: args[1], V: args[2]}, nil
+	return &context.Param{K: args[1], V: args[2]}, nil
 }
 
 func mapf_DROP(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, errInvalidNumOfArgs("DROP", 4, len(args))
 	}
-	cx, ok := args[0].(*ctx.Context)
+	cx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, errWrongTypeOfArgs("DROP", 0, "context", args[0])
 	}
@@ -105,7 +105,7 @@ func mapf_DROP(args ...any) (any, error) {
 		return nil, errWrongTypeOfArgs("DROP", 3, "int", args[3])
 	}
 
-	return &ctx.Param{K: args[1], V: args[2]}, nil
+	return &context.Param{K: args[1], V: args[2]}, nil
 }
 
 // Merge all incoming values into a single key,
@@ -127,7 +127,7 @@ func mapf_PUSHKEY(args ...any) (any, error) {
 	// newkey
 	newKey := args[3]
 
-	ret := &ctx.Param{
+	ret := &context.Param{
 		K: newKey,
 		V: newVal,
 	}
@@ -162,18 +162,18 @@ func mapf_POPKEY(args ...any) (any, error) {
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
-		ret := &ctx.Param{K: newKey, V: newVal}
+		ret := &context.Param{K: newKey, V: newVal}
 		return ret, nil
 	case [][]any:
-		ret := make([]*ctx.Param, len(val))
+		ret := make([]*context.Param, len(val))
 		for i, v := range val {
 			if len(v) < 2 {
 				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
 			}
 			if len(v) == 2 {
-				ret[i] = &ctx.Param{K: v[0], V: v[1]}
+				ret[i] = &context.Param{K: v[0], V: v[1]}
 			} else {
-				ret[i] = &ctx.Param{K: v[0], V: v[1:]}
+				ret[i] = &context.Param{K: v[0], V: v[1:]}
 			}
 		}
 		return ret, nil
@@ -185,7 +185,7 @@ func mapf_GROUPBYKEY(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(GROUPBYKEY) invalid number of args (n:%d)", len(args))
 	}
 
-	ctx, ok := args[0].(*ctx.Context)
+	ctx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, fmt.Errorf("f(GROUPBYKEY) expect context, but %T", args[0])
 	}
@@ -215,23 +215,23 @@ func mapf_FLATTEN(args ...any) (any, error) {
 	V := args[2]
 
 	if arr, ok := V.([]any); ok {
-		ret := []*ctx.Param{}
+		ret := []*context.Param{}
 		for _, elm := range arr {
 			if subarr, ok := elm.([]any); ok {
 				for _, subelm := range subarr {
-					ret = append(ret, &ctx.Param{K: K, V: subelm})
+					ret = append(ret, &context.Param{K: K, V: subelm})
 				}
 			} else if subarr, ok := elm.([][]any); ok {
 				for _, subelm := range subarr {
-					ret = append(ret, &ctx.Param{K: K, V: subelm})
+					ret = append(ret, &context.Param{K: K, V: subelm})
 				}
 			} else {
-				ret = append(ret, &ctx.Param{K: K, V: elm})
+				ret = append(ret, &context.Param{K: K, V: elm})
 			}
 		}
 		return ret, nil
 	} else {
-		return &ctx.Param{K: K, V: V}, nil
+		return &context.Param{K: K, V: V}, nil
 	}
 }
 
@@ -248,7 +248,7 @@ func mapf_FILTER(args ...any) (any, error) {
 		return nil, nil // drop this vector
 	}
 
-	return &ctx.Param{K: args[1], V: args[2]}, nil
+	return &context.Param{K: args[1], V: args[2]}, nil
 }
 
 type maxHzOpt float64
@@ -360,7 +360,7 @@ func mapf_FFT(args ...any) (any, error) {
 		newVal = append(newVal, []any{hz, amplitude})
 	}
 
-	ret := &ctx.Param{
+	ret := &context.Param{
 		K: K,
 		V: newVal,
 	}

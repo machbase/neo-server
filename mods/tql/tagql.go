@@ -1,4 +1,4 @@
-package tagql
+package tql
 
 import (
 	"bufio"
@@ -13,9 +13,9 @@ import (
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tagql/fmap"
-	"github.com/machbase/neo-server/mods/tagql/fsink"
-	"github.com/machbase/neo-server/mods/tagql/fsrc"
+	"github.com/machbase/neo-server/mods/tql/fmap"
+	"github.com/machbase/neo-server/mods/tql/fsink"
+	"github.com/machbase/neo-server/mods/tql/fsrc"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )

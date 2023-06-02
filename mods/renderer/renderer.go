@@ -9,7 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/renderer/model"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tagql"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
@@ -20,7 +20,7 @@ type Renderer interface {
 }
 
 type ChartQuery struct {
-	TagPath      *tagql.TagPath
+	TagPath      *tql.TagPath
 	RangeFunc    func(db spi.Database) (time.Time, time.Time)
 	Label        string
 	TimeLocation *time.Location
@@ -81,7 +81,7 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 	queries := make([]*ChartQuery, len(tagPaths))
 	for i, path := range tagPaths {
 		// path syntax: <table>/<tag>#(<column> expression)
-		tagPath, err := tagql.ParseTagPath(path)
+		tagPath, err := tql.ParseTagPath(path)
 		if err != nil {
 			return nil, err
 		}

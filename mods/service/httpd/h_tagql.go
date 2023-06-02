@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/service/msg"
-	"github.com/machbase/neo-server/mods/tagql"
+	"github.com/machbase/neo-server/mods/tql"
 )
 
 // POST "/tql"
@@ -25,7 +25,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		return
 	}
 
-	tql, err := tagql.ParseWithParams(ctx.Request.Body, params)
+	tql, err := tql.ParseWithParams(ctx.Request.Body, params)
 	if err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
@@ -82,7 +82,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 		}
 	} else {
-		tql, err := tagql.ParseContext(ctx, params)
+		tql, err := tql.ParseContext(ctx, params)
 		if err != nil {
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()

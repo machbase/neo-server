@@ -16,7 +16,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
-	"github.com/machbase/neo-server/mods/tagql"
+	"github.com/machbase/neo-server/mods/tql"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	swaggerFiles "github.com/swaggo/files"
@@ -101,7 +101,7 @@ func OptionHandler(prefix string, handler HandlerType) Option {
 	}
 }
 
-func OptionTagQLLoader(loader tagql.Loader) Option {
+func OptionTqlLoader(loader tql.Loader) Option {
 	return func(s *httpd) {
 		s.tagqlLoader = loader
 	}
@@ -136,7 +136,7 @@ type httpd struct {
 	neoShellAddress string
 	neoShellAccount map[string]string
 
-	tagqlLoader tagql.Loader
+	tagqlLoader tql.Loader
 
 	debugMode      bool
 	experimentMode bool
@@ -247,11 +247,11 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.Use(svr.handleJwtToken)
 			if svr.tagqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
-			group.Use(svr.handleJwtToken)
 			group.Any("/machbase", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
@@ -279,7 +279,6 @@ func (svr *httpd) Router() *gin.Engine {
 			if svr.tagqlLoader != nil {
 				group.GET("/tql/*path", svr.handleTagQL)
 				group.POST("/tql", svr.handlePostTagQL)
-				group.GET("/tagql/*path", svr.handleTagQL)
 			}
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}

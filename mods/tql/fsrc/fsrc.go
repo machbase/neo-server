@@ -8,7 +8,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tagql/fcom"
+	"github.com/machbase/neo-server/mods/tql/fcom"
 	spi "github.com/machbase/neo-spi"
 )
 
