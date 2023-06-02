@@ -42,7 +42,7 @@ func srcf_QUERY(args ...any) (any, error) {
 	}
 	ret := &querySrc{
 		columns:   []string{},
-		timeRange: &queryRange{ts: "last", duration: time.Second, groupBy: 0},
+		timeRange: &timeRange{ts: "last", duration: time.Second, period: 0},
 		limit:     &queryLimit{limit: 1000000},
 	}
 	for i, arg := range args {
@@ -51,7 +51,7 @@ func srcf_QUERY(args ...any) (any, error) {
 			ret.columns = append(ret.columns, tok)
 		case *queryFrom:
 			ret.from = tok
-		case *queryRange:
+		case *timeRange:
 			ret.timeRange = tok
 		case *queryLimit:
 			ret.limit = tok
@@ -70,73 +70,12 @@ func srcf_QUERY(args ...any) (any, error) {
 type querySrc struct {
 	columns   []string
 	from      *queryFrom
-	timeRange *queryRange
+	timeRange *timeRange
 	limit     *queryLimit
 	dump      *queryDump
 }
 
 var _ dbSource = &querySrc{}
-
-type queryRange struct {
-	ts       string
-	tsTime   time.Time
-	duration time.Duration
-	groupBy  time.Duration
-}
-
-func srcf_range(args ...any) (any, error) {
-	if len(args) != 2 && len(args) != 3 {
-		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
-	}
-	ret := &queryRange{}
-	if str, ok := args[0].(string); ok {
-		if str != "now" && str != "last" {
-			return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
-		}
-		ret.ts = str
-	} else {
-		if num, ok := args[0].(float64); ok {
-			ret.tsTime = time.Unix(0, int64(num))
-		} else {
-			if ts, ok := args[0].(time.Time); ok {
-				ret.tsTime = ts
-			} else {
-				return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
-			}
-		}
-	}
-	if str, ok := args[1].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.duration = d
-		} else {
-			return nil, fmt.Errorf("f(range) 2nd args should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[1].(float64); ok {
-		ret.duration = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 2nd args should be duration, but %T", args[1])
-	}
-	if len(args) == 2 {
-		return ret, nil
-	}
-
-	if str, ok := args[2].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.groupBy = d
-		} else {
-			return nil, fmt.Errorf("f(range) 3rd args should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[1].(float64); ok {
-		ret.groupBy = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 3rd args should be duration, but %T", args[1])
-	}
-	if ret.duration <= ret.groupBy {
-		return nil, fmt.Errorf("f(range) 3rd args should be smaller than 2nd")
-	}
-
-	return ret, nil
-}
 
 type queryDump struct {
 	flag   bool
@@ -216,7 +155,7 @@ func srcf_from(args ...any) (any, error) {
 
 func (si *querySrc) ToSQL() string {
 	var ret string
-	if si.timeRange == nil || si.timeRange.groupBy == 0 {
+	if si.timeRange == nil || si.timeRange.period == 0 {
 		ret = si.toSql()
 	} else {
 		ret = si.toSqlGroup()
@@ -254,7 +193,7 @@ func (si *querySrc) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
 			baseTime,
 			rng.duration, table, tag,
@@ -272,7 +211,7 @@ func (si *querySrc) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
 			baseTime, rng.duration,
 			baseTime,
@@ -289,7 +228,7 @@ func (si *querySrc) toSqlGroup() string {
 			ORDER BY %s
 			LIMIT %d
 			`,
-			baseTime, rng.groupBy, rng.groupBy, baseTime, columns, table,
+			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
 			baseTime,
 			rng.tsTime.UnixNano(), rng.duration, rng.tsTime.UnixNano(),
