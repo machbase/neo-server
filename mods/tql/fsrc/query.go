@@ -9,11 +9,15 @@ import (
 	"time"
 )
 
+type dbSource interface {
+	ToSQL() string
+}
+
 type sqlSrc struct {
 	text string
 }
 
-var _ Source = &sqlSrc{}
+var _ dbSource = &sqlSrc{}
 
 // SQL('select ....')
 func src_SQL(args ...any) (any, error) {
@@ -71,7 +75,7 @@ type querySrc struct {
 	dump      *queryDump
 }
 
-var _ Source = &querySrc{}
+var _ dbSource = &querySrc{}
 
 type queryRange struct {
 	ts       string

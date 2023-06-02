@@ -1,34 +1,23 @@
-package tql_test
+package fsrc
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/d5/tengo/v2/require"
-	. "github.com/machbase/neo-server/mods/tql"
 )
 
 func TestTagQLFile(t *testing.T) {
-	text := `
-#
-# tql example
-#
-
-INPUT( QUERY('value', range('last', '10s'), from("table", "tag", "time")) )
-    
-OUTPUT(
-        'csv',
-        timeformat('ns'), 
-        heading(true)
-    )
-`
-	r := bytes.NewBuffer([]byte(text))
-	tql, err := Parse(r)
+	text := `INPUT( QUERY('value', range('last', '10s'), from("table", "tag", "time")) )`
+	expr, err := Parse(text)
 	require.Nil(t, err)
-	require.NotNil(t, tql)
+	require.NotNil(t, expr)
+	ret, err := expr.Eval(nil)
+	in := ret.(*input)
+	src := in.dbSrc
+	require.Nil(t, err)
+	require.NotNil(t, ret)
 	require.Equal(t,
 		normalize(`SELECT time, value FROM TABLE
 			WHERE
@@ -38,63 +27,63 @@ OUTPUT(
 					(SELECT MAX_TIME - 10000000000 FROM V$TABLE_STAT WHERE name = 'tag')
 				AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
 			LIMIT 1000000`),
-		normalize(tql.ToSQL()), "./test/simple.tql")
+		normalize(src.ToSQL()), "./test/simple.tql")
 }
 
 type TagQLTestCase struct {
-	tq     []string
+	tq     string
 	expect string
 	err    string
 }
 
 func TestTagQLMajorParts(t *testing.T) {
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('value', from('table', 'tag')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('value', from('table', 'tag')))`,
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('val', from('table', 'tag')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('val', from('table', 'tag')))`,
 		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('value', from('table', 'tag'), range('last', '1.0s')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('value', from('table', 'tag'), range('last', '1.0s')))`,
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('value', from('table', 'tag'), range('last', '12.0s')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('value', from('table', 'tag'), range('last', '12.0s')))`,
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('val1', 'val2' , from('table', 'tag')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('val1', 'val2' , from('table', 'tag')))`,
 		expect: "SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag')))`,
 		expect: "SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('(val + val2/2)', from('table', 'tag'), range('last', '2.34s'), limit(2000)))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('(val + val2/2)', from('table', 'tag'), range('last', '2.34s'), limit(2000)))`,
 		expect: "SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 2000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('val', from('table', 'tag'), range('now', '2.34s'), limit(100)))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('val', from('table', 'tag'), range('now', '2.34s'), limit(100)))`,
 		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('value', from('table', 'tag'), range(123456789000, '2.34s')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('value', from('table', 'tag'), range(123456789000, '2.34s')))`,
 		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 2340000000 AND 123456789000 LIMIT 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('AVG(val1+val2)', from('table', 'tag')))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('AVG(val1+val2)', from('table', 'tag')))`,
 		expect: "SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
@@ -102,7 +91,7 @@ func TestTagQLMajorParts(t *testing.T) {
 
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('val1', from('table', 'tag'), range('last', '1s')))`, `PUSHKEY(roundTime(K, '100ms'))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('val1', from('table', 'tag'), range('last', '1s')))`,
 		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
 		err:    ""}.
 		run(t)
@@ -110,17 +99,17 @@ func TestTagQLMap(t *testing.T) {
 
 func TestTagQLGroupBy(t *testing.T) {
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range(123456789000, "3.45s", '1ms'), limit(100)))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range(123456789000, "3.45s", '1ms'), limit(100)))`,
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 3450000000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('STDDEV(val)', 'zval', from('table', 'tag'), range('last', '2.34s', '0.5ms'), limit(100)))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('STDDEV(val)', 'zval', from('table', 'tag'), range('last', '2.34s', '0.5ms'), limit(100)))`,
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     []string{`INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range('now', '2.34s', '0.5ms'), limit(100)))`, `OUTPUT(CSV())`},
+		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range('now', '2.34s', '0.5ms'), limit(100)))`,
 		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now GROUP BY time ORDER BY time LIMIT 100",
 		err:    ""}.
 		run(t)
@@ -147,7 +136,16 @@ func normalize(ret string) string {
 }
 
 func (tc TagQLTestCase) run(t *testing.T) {
-	ql, err := ParseContext(context.TODO(), map[string][]string{"_tq": tc.tq})
+	expr, err := Parse(tc.tq)
+	if err != nil {
+		t.Fatalf("tq:'%s' parse err:%s", tc.tq, err.Error())
+	}
+	ret, err := expr.Eval(nil)
+	if err != nil {
+		t.Fatalf("tq:'%s' eval err:%s", tc.tq, err.Error())
+	}
+	require.NotNil(t, ret)
+
 	if len(tc.err) > 0 {
 		require.NotNil(t, err)
 		require.Equal(t, tc.err, err.Error())
@@ -155,6 +153,7 @@ func (tc TagQLTestCase) run(t *testing.T) {
 	}
 	msg := fmt.Sprintf("%v", tc.tq)
 	require.Nil(t, err, msg)
-	require.NotNil(t, ql, msg)
-	require.Equal(t, normalize(tc.expect), normalize(ql.ToSQL()), msg)
+	require.NotNil(t, ret, msg)
+	in := ret.(*input)
+	require.Equal(t, normalize(tc.expect), normalize(in.dbSrc.ToSQL()), msg)
 }

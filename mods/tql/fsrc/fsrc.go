@@ -18,11 +18,6 @@ func Parse(text string) (*expression.Expression, error) {
 
 type Input interface {
 	Run(InputDeligate) error
-	Source() Source
-}
-
-type Source interface {
-	ToSQL() string
 }
 
 type inputParameters struct {
@@ -79,7 +74,7 @@ func init() {
 
 func NewDefaultInput() Input {
 	return &input{
-		src: &querySrc{
+		dbSrc: &querySrc{
 			columns:   []string{},
 			timeRange: &queryRange{ts: "last", duration: time.Second, groupBy: 0},
 			limit:     &queryLimit{limit: 1000000},
@@ -88,13 +83,13 @@ func NewDefaultInput() Input {
 }
 
 type input struct {
-	src Source
+	dbSrc dbSource
 }
 
 var _ Input = &input{}
 
 func (in *input) Run(deligate InputDeligate) error {
-	if in.src == nil {
+	if in.dbSrc == nil {
 		return errors.New("nil source")
 	}
 	if deligate == nil {
@@ -118,15 +113,11 @@ func (in *input) Run(deligate InputDeligate) error {
 		},
 		OnExecuted: nil, // never happen in tagQL
 	}
-	_, err := do.Query(queryCtx, in.src.ToSQL())
+	_, err := do.Query(queryCtx, in.dbSrc.ToSQL())
 	if err != nil {
 		deligate.Feed(nil)
 	}
 	return err
-}
-
-func (in *input) Source() Source {
-	return in.src
 }
 
 // src=INPUT('value', 'STDDEV(val)', range('last', '10s', '1s'), limit(100000) )
@@ -134,11 +125,11 @@ func srcf_INPUT(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(INPUT) invalid number of args (n:%d)", len(args))
 	}
-	if s, ok := args[0].(Source); !ok {
+	if s, ok := args[0].(dbSource); !ok {
 		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
 	} else {
 		return &input{
-			src: s,
+			dbSrc: s,
 		}, nil
 	}
 }

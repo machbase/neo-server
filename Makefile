@@ -28,6 +28,7 @@ test-base: tmpdir
 		./mods/tql \
 		./mods/tql/fcom \
 		./mods/tql/fmap \
+		./mods/tql/fsrc \
 		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \

@@ -21,7 +21,6 @@ import (
 )
 
 type TagQL interface {
-	ToSQL() string
 	Execute(ctx context.Context, db spi.Database, output spec.OutputStream) error
 	ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) error
 	ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error
@@ -301,8 +300,4 @@ func (tq *tagQL) buildEncoder(output spec.OutputStream, params map[string][]stri
 		return nil, fmt.Errorf("invalid sink type: %T", sinkRet)
 	}
 	return encoder, nil
-}
-
-func (tq *tagQL) ToSQL() string {
-	return tq.input.Source().ToSQL()
 }
