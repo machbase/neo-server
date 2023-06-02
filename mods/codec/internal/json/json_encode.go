@@ -128,6 +128,8 @@ func (ex *Exporter) AddRow(source []any) error {
 		values[i] = field
 		if v, ok := field.(*time.Time); ok {
 			switch ex.timeformat {
+			case "":
+				fallthrough
 			case "ns":
 				values[i] = v.UnixNano()
 			case "ms":
