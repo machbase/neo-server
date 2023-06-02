@@ -141,12 +141,16 @@ func srcf_INPUT(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(INPUT) invalid number of args (n:%d)", len(args))
 	}
-	if s, ok := args[0].(dbSource); !ok {
-		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
-	} else {
+	if s, ok := args[0].(dbSource); ok {
 		return &input{
 			dbSrc: s,
 		}, nil
+	} else if s, ok := args[0].(fakeSource); ok {
+		return &input{
+			fakeSrc: s,
+		}, nil
+	} else {
+		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
 	}
 }
 
