@@ -2,10 +2,12 @@ package tql
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/tql/fmap"
 )
 
@@ -29,4 +31,23 @@ func TestNewContextChain(t *testing.T) {
 	require.Equal(t, "FFT(CTX,K,V)", chain.nodes[1].Expr.String())
 	require.True(t, chain.nodes[1] == chain.nodes[0].Next)
 	chain.stop()
+}
+
+func TestFFTChain(t *testing.T) {
+	strExprs := []string{
+		"INPUT( FAKE( oscilator( range(time(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0))))",
+		"PUSHKEY('samples')",
+		"GROUPBYKEY()",
+		"FFT(minHz(0), maxHz(60))",
+		"POPKEY()",
+		"OUTPUT(CSV())",
+	}
+	reader := strings.NewReader(strings.Join(strExprs, "\n"))
+
+	tq, err := Parse(reader)
+	require.Nil(t, err)
+	require.NotNil(t, tq)
+
+	output, _ := stream.NewOutputStream("-")
+	tq.Execute(context.TODO(), nil, output)
 }
