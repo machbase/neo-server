@@ -64,17 +64,16 @@ func mapf_TAKE(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, errInvalidNumOfArgs("TAKE", 4, len(args))
 	}
-	cx, ok := args[0].(*context.Context)
+	ctx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, errWrongTypeOfArgs("TAKE", 0, "context", args[0])
 	}
-
 	if limit, ok := args[3].(float64); ok {
-		if cx.Nrow > int(limit) {
+		if ctx.Nrow > int(limit) {
 			return context.ExecutionEOF, nil
 		}
 	} else if limit, ok := args[3].(int); ok {
-		if cx.Nrow > int(limit) {
+		if ctx.Nrow > int(limit) {
 			return context.ExecutionEOF, nil
 		}
 	} else {
@@ -88,17 +87,17 @@ func mapf_DROP(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, errInvalidNumOfArgs("DROP", 4, len(args))
 	}
-	cx, ok := args[0].(*context.Context)
+	ctx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, errWrongTypeOfArgs("DROP", 0, "context", args[0])
 	}
 
 	if limit, ok := args[3].(float64); ok {
-		if cx.Nrow <= int(limit) {
+		if ctx.Nrow <= int(limit) {
 			return nil, nil
 		}
 	} else if limit, ok := args[3].(int); ok {
-		if cx.Nrow <= int(limit) {
+		if ctx.Nrow <= int(limit) {
 			return nil, nil
 		}
 	} else {

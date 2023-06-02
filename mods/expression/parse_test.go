@@ -18,6 +18,7 @@ type TokenParsingTest struct {
 }
 
 func TestConstantParsing(test *testing.T) {
+	ParseStringToTime = true
 	tokenParsingTests := []TokenParsingTest{
 		{
 			Name:  "Single numeric",

@@ -482,6 +482,17 @@ func TestNoParameterEvaluation(test *testing.T) {
 			Expected: 1.0,
 		},
 		{
+			Name:  "Function with time format string argument",
+			Input: "passthrough('2006-01-02 15:04:05')",
+			Functions: map[string]Function{
+				"passthrough": func(arguments ...interface{}) (interface{}, error) {
+					fmt.Printf("-- %T %v\n", arguments[0], arguments[0])
+					return arguments[0], nil
+				},
+			},
+			Expected: "2006-01-02 15:04:05",
+		},
+		{
 			Name:  "Function with arguments",
 			Input: "passthrough(1, 2)",
 			Functions: map[string]Function{

@@ -82,6 +82,12 @@ func sinkf_tz(args ...any) (any, error) {
 	if timezone, ok := args[0].(string); !ok {
 		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
 	} else {
+		switch strings.ToUpper(timezone) {
+		case "LOCAL":
+			timezone = "Local"
+		case "UTC":
+			timezone = "UTC"
+		}
 		if timeLocation, err := time.LoadLocation(timezone); err != nil {
 			timeLocation, err := util.GetTimeLocation(timezone)
 			if err != nil {
@@ -98,10 +104,11 @@ func sinkf_timeformat(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
 	}
-	if timeformat, ok := args[0].(string); !ok {
-		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
-	} else {
+	fmt.Println(len(args), fmt.Sprintf("%T", args[0]))
+	if timeformat, ok := args[0].(string); ok {
 		return codec.Timeformat(timeformat), nil
+	} else {
+		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
 	}
 }
 

@@ -40,6 +40,8 @@ func parseTokens(input string, functions map[string]Function) ([]Token, error) {
 	return ret, nil
 }
 
+var ParseStringToTime = false
+
 func readToken(stream *lexerStream, state lexerState, functions map[string]Function) (Token, error, bool) {
 	var function Function
 	var ret Token
@@ -201,10 +203,14 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			stream.rewind(-1)
 
 			// check to see if this can be parsed as a time.
-			tokenTime, found = tryParseTime(tokenValue.(string))
-			if found {
-				kind = TIME
-				tokenValue = tokenTime
+			if ParseStringToTime {
+				tokenTime, found = tryParseTime(tokenValue.(string))
+				if found {
+					kind = TIME
+					tokenValue = tokenTime
+				} else {
+					kind = STRING
+				}
 			} else {
 				kind = STRING
 			}
