@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
@@ -72,52 +71,55 @@ func init() {
 	}
 }
 
-func NewDefaultInput() Input {
-	return &input{
-		dbSrc: &querySrc{
-			columns:   []string{},
-			timeRange: &queryRange{ts: "last", duration: time.Second, groupBy: 0},
-			limit:     &queryLimit{limit: 1000000},
-		},
-	}
-}
-
 type input struct {
-	dbSrc dbSource
+	dbSrc   dbSource
+	fakeSrc fakeSource
 }
 
 var _ Input = &input{}
 
 func (in *input) Run(deligate InputDeligate) error {
-	if in.dbSrc == nil {
+	if in.dbSrc == nil && in.fakeSrc == nil {
 		return errors.New("nil source")
 	}
 	if deligate == nil {
 		return errors.New("nil deligate")
 	}
 
-	queryCtx := &do.QueryContext{
-		DB: deligate.Database(),
-		OnFetchStart: func(c spi.Columns) {
-			deligate.FeedHeader(c)
-		},
-		OnFetch: func(nrow int64, values []any) bool {
-			if deligate.ShouldStop() {
-				return false
-			}
-			deligate.Feed(values)
-			return true
-		},
-		OnFetchEnd: func() {
+	if in.dbSrc != nil {
+		queryCtx := &do.QueryContext{
+			DB: deligate.Database(),
+			OnFetchStart: func(c spi.Columns) {
+				deligate.FeedHeader(c)
+			},
+			OnFetch: func(nrow int64, values []any) bool {
+				if deligate.ShouldStop() {
+					return false
+				}
+				deligate.Feed(values)
+				return true
+			},
+			OnFetchEnd: func() {
+				deligate.Feed(nil)
+			},
+			OnExecuted: nil, // never happen in tagQL
+		}
+		_, err := do.Query(queryCtx, in.dbSrc.ToSQL())
+		if err != nil {
 			deligate.Feed(nil)
-		},
-		OnExecuted: nil, // never happen in tagQL
-	}
-	_, err := do.Query(queryCtx, in.dbSrc.ToSQL())
-	if err != nil {
+		}
+		return err
+	} else {
+		deligate.FeedHeader(in.fakeSrc.Header())
+		for values := range in.fakeSrc.Gen() {
+			deligate.Feed(values)
+			if deligate.ShouldStop() {
+				break
+			}
+		}
 		deligate.Feed(nil)
+		return nil
 	}
-	return err
 }
 
 // src=INPUT('value', 'STDDEV(val)', range('last', '10s', '1s'), limit(100000) )
