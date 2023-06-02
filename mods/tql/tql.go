@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fmap"
@@ -20,7 +21,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type TagQL interface {
+type Tql interface {
 	Execute(ctx context.Context, db spi.Database, output spec.OutputStream) error
 	ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) error
 	ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error
@@ -35,11 +36,11 @@ type tagQL struct {
 
 var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
 
-func Parse(in io.Reader) (TagQL, error) {
+func Parse(in io.Reader) (Tql, error) {
 	return ParseWithParams(in, nil)
 }
 
-func ParseWithParams(in io.Reader, params map[string][]string) (TagQL, error) {
+func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
 	reader := bufio.NewReader(in)
 
 	parts := []byte{}
@@ -113,7 +114,7 @@ type Line struct {
 	line int
 }
 
-func parseExpressions(exprs []Line, params map[string][]string) (TagQL, error) {
+func parseExpressions(exprs []Line, params map[string][]string) (Tql, error) {
 	if len(exprs) == 0 {
 		return nil, errors.New("empty expressions")
 	}
@@ -156,7 +157,7 @@ func parseExpressions(exprs []Line, params map[string][]string) (TagQL, error) {
 	return tq, nil
 }
 
-func ParseContext(ctx context.Context, params map[string][]string) (TagQL, error) {
+func ParseContext(ctx context.Context, params map[string][]string) (Tql, error) {
 	tq := &tagQL{
 		params: params,
 	}
@@ -230,62 +231,20 @@ func (tq *tagQL) Execute(ctxCtx context.Context, db spi.Database, output spec.Ou
 }
 
 func (tq *tagQL) ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) (err error) {
-	deferHooks := []func(){}
-	defer func() {
-		for _, f := range deferHooks {
-			f()
+	exprs := []*expression.Expression{}
+	for _, str := range tq.mapExprs {
+		expr, err := fmap.Parse(str)
+		if err != nil {
+			return errors.Wrapf(err, "at %s", str)
 		}
-	}()
+		exprs = append(exprs, expr)
+	}
 
-	chain, err := newExecutionChain(ctxCtx, tq.mapExprs, tq.params)
+	chain, err := newExecutionChain(ctxCtx, db, tq.input, encoder, exprs, tq.params)
 	if err != nil {
 		return err
 	}
-
-	var cols spi.Columns
-	go chain.Start()
-	go func() {
-		open := false
-		for arr := range chain.Sink() {
-			if !open {
-				if len(cols) == 0 {
-					for i, v := range arr {
-						cols = append(cols, &spi.Column{
-							Name: fmt.Sprintf("C%02d", i),
-							Type: fmt.Sprintf("%T", v)})
-					}
-				}
-				codec.SetEncoderColumns(encoder, cols)
-				encoder.Open()
-				deferHooks = append(deferHooks, func() {
-					// if close encoder right away without defer,
-					// it will crash, because it could be earlier than all map() pipe to be closed
-					encoder.Close()
-				})
-				open = true
-			}
-			if err := encoder.AddRow(arr); err != nil {
-				fmt.Println("ERR", err.Error())
-			}
-		}
-	}()
-
-	deligate := &fsrc.InputDelegateWrapper{
-		DatabaseFunc:   func() spi.Database { return db },
-		ShouldStopFunc: func() bool { return chain.Error() != nil },
-		FeedHeaderFunc: func(c spi.Columns) { cols = c },
-		FeedFunc:       func(values []any) { chain.Source(values) },
-	}
-
-	err = tq.input.Run(deligate)
-
-	chain.Wait()
-	chain.Stop()
-
-	if chain.Error() != nil {
-		return chain.Error()
-	}
-	return err
+	return chain.Run()
 }
 
 func (tq *tagQL) buildEncoder(output spec.OutputStream, params map[string][]string) (codec.RowsEncoder, error) {

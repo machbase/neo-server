@@ -70,11 +70,11 @@ func mapf_TAKE(args ...any) (any, error) {
 	}
 	if limit, ok := args[3].(float64); ok {
 		if ctx.Nrow > int(limit) {
-			return context.ExecutionEOF, nil
+			return context.ExecutionCircuitBreak, nil
 		}
 	} else if limit, ok := args[3].(int); ok {
 		if ctx.Nrow > int(limit) {
-			return context.ExecutionEOF, nil
+			return context.ExecutionCircuitBreak, nil
 		}
 	} else {
 		return nil, errWrongTypeOfArgs("TAKE", 3, "int", args[3])

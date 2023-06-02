@@ -104,7 +104,6 @@ func sinkf_timeformat(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
 	}
-	fmt.Println(len(args), fmt.Sprintf("%T", args[0]))
 	if timeformat, ok := args[0].(string); ok {
 		return codec.Timeformat(timeformat), nil
 	} else {

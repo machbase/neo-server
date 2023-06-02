@@ -1,7 +1,7 @@
 package context
 
 import (
-	"context"
+	gocontext "context"
 	"fmt"
 	"sync"
 
@@ -9,7 +9,7 @@ import (
 )
 
 type Context struct {
-	context.Context
+	gocontext.Context
 	Name   string
 	Expr   *expression.Expression
 	Src    chan *Param
@@ -116,6 +116,8 @@ func (ctx *Context) Start() {
 				case *Param:
 					if rs == ExecutionEOF {
 						break
+					} else if rs == ExecutionCircuitBreak {
+						ctx.Sink <- ExecutionCircuitBreak
 					} else {
 						resultset = []*Param{rs}
 					}

@@ -12,8 +12,8 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse() (TagQL, error)
-	ParseWithParams(map[string][]string) (TagQL, error)
+	Parse() (Tql, error)
+	ParseWithParams(map[string][]string) (Tql, error)
 	String() string
 }
 
@@ -68,11 +68,11 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse() (TagQL, error) {
+func (sc *script) Parse() (Tql, error) {
 	return sc.ParseWithParams(nil)
 }
 
-func (sc *script) ParseWithParams(params map[string][]string) (TagQL, error) {
+func (sc *script) ParseWithParams(params map[string][]string) (Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err

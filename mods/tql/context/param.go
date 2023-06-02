@@ -9,6 +9,7 @@ import (
 // ////////////////////////////
 // PARAM
 var ExecutionEOF = &Param{}
+var ExecutionCircuitBreak = &Param{K: "_circuit_breaker"}
 
 type Param struct {
 	Ctx *Context

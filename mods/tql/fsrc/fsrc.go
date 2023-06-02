@@ -95,14 +95,15 @@ func (in *input) Run(deligate InputDeligate) error {
 			OnFetch: func(nrow int64, values []any) bool {
 				if deligate.ShouldStop() {
 					return false
+				} else {
+					deligate.Feed(values)
+					return true
 				}
-				deligate.Feed(values)
-				return true
 			},
 			OnFetchEnd: func() {
 				deligate.Feed(nil)
 			},
-			OnExecuted: nil, // never happen in tagQL
+			OnExecuted: nil, // tql src can not run executable sql
 		}
 		_, err := do.Query(queryCtx, in.dbSrc.ToSQL())
 		if err != nil {
