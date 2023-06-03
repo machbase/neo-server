@@ -161,12 +161,12 @@ func (ex *Line) SetDataZoom(typ string, start float32, end float32) {
 	ex.dataZoomEnd = end
 }
 
-func (ex *Line) SetXAxis(idx int, label string) {
+func (ex *Line) SetXAxis(idx int, label string, typ string) {
 	ex.xAxisIdx = idx
 	ex.xAxisLabel = label
 }
 
-func (ex *Line) SetYAxis(idx int, label string) {
+func (ex *Line) SetYAxis(idx int, label string, typ string) {
 	ex.yAxisIdx = idx
 	ex.yAxisLabel = label
 }
