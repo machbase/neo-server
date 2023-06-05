@@ -24,6 +24,7 @@ test-base: tmpdir
 		./mods/util \
 		./mods/util/glob \
 		./mods/util/ini \
+		./mods/util/ssfs \
 		./mods/expression \
 		./mods/tql \
 		./mods/tql/fcom \
