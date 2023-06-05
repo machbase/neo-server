@@ -255,6 +255,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.Any("/api/files/*path", svr.handleFiles)
 			group.Use(svr.handleJwtToken)
 			if svr.tagqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
@@ -269,7 +270,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
-			group.Any("/api/files/*path", svr.handleFiles)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/logs", svr.handleLakeGetLogs)

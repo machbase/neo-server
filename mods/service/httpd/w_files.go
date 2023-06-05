@@ -35,7 +35,13 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 		if isFsFile(filter) {
 			ent, err = svr.serverFs.GetGlob(path, filter)
 		} else {
-			ent, err = svr.serverFs.Get(path)
+			ent, err = svr.serverFs.GetFilter(path, func(se *ssfs.SubEntry) bool {
+				if se.IsDir {
+					return true
+				} else {
+					return isFsFile(se.Name)
+				}
+			})
 		}
 		if err != nil {
 			rsp.Reason = err.Error()
@@ -47,11 +53,13 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			rsp.Success, rsp.Reason = true, "success"
 			rsp.Elapse = time.Since(tick).String()
 			rsp.Data = ent
+			ctx.JSON(http.StatusOK, rsp)
 			return
 		} else if isFsFile(path) {
 			rsp.Success, rsp.Reason = true, "success"
 			rsp.Elapse = time.Since(tick).String()
 			rsp.Data = ent
+			ctx.JSON(http.StatusOK, rsp)
 			return
 		} else {
 			rsp.Reason = fmt.Sprintf("not found: %s", path)
