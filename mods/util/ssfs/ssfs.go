@@ -60,13 +60,14 @@ type Entry struct {
 	Name     string      `json:"name"`
 	Content  []byte      `json:"content,omitempty"`  // file content, if the entry is FILE
 	Children []*SubEntry `json:"children,omitempty"` // entry of sub files and dirs, if the entry is DIR
-	abspath  string
+	abspath  string      `json:"-"`
 }
 
 type SubEntry struct {
-	IsDir bool   `json:"isDir"`
-	Name  string `json:"name"`
-	Size  int64  `json:"size,omitempty"`
+	IsDir              bool   `json:"isDir"`
+	Name               string `json:"name"`
+	Size               int64  `json:"size,omitempty"`
+	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
 }
 
 type SubEntryFilter func(*SubEntry) bool
@@ -119,9 +120,10 @@ func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) 
 				continue
 			}
 			subEnt := &SubEntry{
-				IsDir: nfo.IsDir(),
-				Name:  ent.Name(),
-				Size:  nfo.Size(),
+				IsDir:              nfo.IsDir(),
+				Name:               ent.Name(),
+				Size:               nfo.Size(),
+				LastModifiedMillis: nfo.ModTime().UnixMilli(),
 			}
 			if filter != nil {
 				if !filter(subEnt) {
