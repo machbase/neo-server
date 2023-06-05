@@ -50,8 +50,11 @@ var functions = map[string]expression.Function{
 	// json options
 	"transpose": sinkf_transpose,
 	// chart options
-	"xaxis":        sinkf_xaxis,
-	"yaxis":        sinkf_yaxis,
+	"xAxis":        sinkf_xAxis,
+	"yAxis":        sinkf_yAxis,
+	"zAxis":        sinkf_zAxis,
+	"xaxis":        sinkf_xaxis, // deprecated
+	"yaxis":        sinkf_yaxis, // deprecated
 	"size":         sinkf_size,
 	"theme":        sinkf_theme,
 	"title":        sinkf_title,
@@ -250,43 +253,97 @@ func sinkf_dataZoom(args ...any) (any, error) {
 }
 
 func sinkf_xaxis(args ...any) (any, error) {
+	fmt.Println("WARNING, 'xaxis()' is deprecated, use 'xAxis()' instead.!!!")
+	return sinkf_xAxis(args...)
+}
+
+func sinkf_xAxis(args ...any) (any, error) {
 	idx := 0
 	label := "x"
+	typ := "value"
 	if len(args) >= 1 {
 		if d, ok := args[0].(float64); !ok {
-			return nil, fmt.Errorf("f(xaxis) invalid index, should be int, but '%T'", args[1])
+			return nil, fmt.Errorf("f(xAxis) invalid index, should be int, but '%T'", args[0])
 		} else {
 			idx = int(d)
 		}
 	}
-	if len(args) == 2 {
+	if len(args) >= 2 {
 		if s, ok := args[1].(string); !ok {
-			return nil, fmt.Errorf("f(xaxis) invalid label, should be string, but '%T'", args[1])
+			return nil, fmt.Errorf("f(xAxis) invalid label, should be string, but '%T'", args[1])
 		} else {
 			label = s
 		}
 	}
-	return codec.XAxis(idx, label), nil
+	if len(args) >= 3 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(xAxis) invalid type, should be string, but '%T'", args[2])
+		} else {
+			typ = s
+		}
+	}
+	return codec.XAxis(idx, label, typ), nil
 }
 
 func sinkf_yaxis(args ...any) (any, error) {
+	fmt.Println("WARNING, 'yaxis()' is deprecated, use 'yAxis()' instead.!!!")
+	return sinkf_yAxis(args...)
+}
+
+func sinkf_yAxis(args ...any) (any, error) {
 	idx := 0
-	label := "x"
+	label := "y"
+	typ := "value"
 	if len(args) >= 1 {
 		if d, ok := args[0].(float64); !ok {
-			return nil, fmt.Errorf("f(yaxis) invalid index, should be int, but '%T'", args[1])
+			return nil, fmt.Errorf("f(yAxis) invalid index, should be int, but '%T'", args[0])
 		} else {
 			idx = int(d)
 		}
 	}
 	if len(args) == 2 {
 		if s, ok := args[1].(string); !ok {
-			return nil, fmt.Errorf("f(yaxis) invalid label, should be string, but '%T'`", args[1])
+			return nil, fmt.Errorf("f(yAxis) invalid label, should be string, but '%T'`", args[1])
 		} else {
 			label = s
 		}
 	}
-	return codec.YAxis(idx, label), nil
+	if len(args) >= 3 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(yAxis) invalid type, should be string, but '%T'", args[2])
+		} else {
+			typ = s
+		}
+	}
+	return codec.YAxis(idx, label, typ), nil
+}
+
+func sinkf_zAxis(args ...any) (any, error) {
+	idx := 0
+	label := "z"
+	typ := "value"
+	if len(args) >= 1 {
+		if d, ok := args[0].(float64); !ok {
+			return nil, fmt.Errorf("f(zAxis) invalid index, should be int, but '%T'", args[0])
+		} else {
+			idx = int(d)
+		}
+	}
+	if len(args) == 2 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(zAxis) invalid label, should be string, but '%T'`", args[1])
+		} else {
+			label = s
+		}
+	}
+	if len(args) >= 3 {
+		if s, ok := args[1].(string); !ok {
+			return nil, fmt.Errorf("f(zAxis) invalid type, should be string, but '%T'", args[2])
+		} else {
+			typ = s
+		}
+	}
+	return codec.ZAxis(idx, label, typ), nil
 }
 
 type Encoder struct {

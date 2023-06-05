@@ -22,8 +22,10 @@ type ExecutionChain struct {
 	headNode *context.Context
 	nodesWg  sync.WaitGroup
 
-	resultCh       chan any
-	encoderCh      chan []any
+	resultCh    chan any
+	encoderCh   chan []any
+	encoderChWg sync.WaitGroup
+
 	closeOnce      sync.Once
 	lastError      error
 	circuitBreaker bool
@@ -90,6 +92,7 @@ func (ec *ExecutionChain) start() {
 		}
 	}()
 
+	ec.encoderChWg.Add(1)
 	var cols spi.Columns
 	go func() {
 		open := false
@@ -115,6 +118,7 @@ func (ec *ExecutionChain) start() {
 				fmt.Println("ERR", err.Error())
 			}
 		}
+		ec.encoderChWg.Done()
 	}()
 
 	////////////////////////////////
@@ -212,11 +216,12 @@ func (ec *ExecutionChain) wait() {
 }
 
 func (ec *ExecutionChain) stop() {
-	for _, ctx := range ec.nodes {
-		ctx.Stop()
-	}
 	ec.closeOnce.Do(func() {
+		for _, ctx := range ec.nodes {
+			ctx.Stop()
+		}
 		close(ec.resultCh)
 		close(ec.encoderCh)
+		ec.encoderChWg.Wait()
 	})
 }

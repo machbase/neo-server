@@ -44,13 +44,13 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 	case ECHART_LINE:
 		ret = echart.NewLine()
 	case ECHART_LINE3D:
-		ret = &echart.Line3D{}
+		ret = echart.NewLine3D()
 	case ECHART_SURFACE3D:
-		ret = &echart.Surface3D{}
+		ret = echart.NewSurface3D()
 	case ECHART_SCATTER3D:
-		ret = &echart.Scatter3D{}
+		ret = echart.NewScatter3D()
 	case ECHART_BAR3D:
-		ret = &echart.Bar3D{}
+		ret = echart.NewBar3D()
 	default: // "json"
 		ret = json.NewEncoder()
 	}

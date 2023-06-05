@@ -116,25 +116,37 @@ func Subtitle(subtitle string) Option {
 }
 
 type CanSetXAxis interface {
-	SetXAxis(int, string)
+	SetXAxis(int, string, string)
 }
 
-func XAxis(idx int, label string) Option {
+func XAxis(idx int, label string, typ string) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetXAxis); ok {
-			o.SetXAxis(idx, label)
+			o.SetXAxis(idx, label, typ)
 		}
 	}
 }
 
 type CanSetYAxis interface {
-	SetYAxis(int, string)
+	SetYAxis(int, string, string)
 }
 
-func YAxis(idx int, label string) Option {
+func YAxis(idx int, label string, typ string) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetYAxis); ok {
-			o.SetYAxis(idx, label)
+			o.SetYAxis(idx, label, typ)
+		}
+	}
+}
+
+type CanSetZAxis interface {
+	SetZAxis(int, string, string)
+}
+
+func ZAxis(idx int, label string, typ string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetZAxis); ok {
+			o.SetZAxis(idx, label, typ)
 		}
 	}
 }
