@@ -17,6 +17,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	swaggerFiles "github.com/swaggo/files"
@@ -107,6 +108,12 @@ func OptionTqlLoader(loader tql.Loader) Option {
 	}
 }
 
+func OptionServerSideFileSystem(ssfs *ssfs.SSFS) Option {
+	return func(s *httpd) {
+		s.serverFs = ssfs
+	}
+}
+
 func OptionDebugMode() Option {
 	return func(s *httpd) {
 		s.debugMode = true
@@ -137,6 +144,7 @@ type httpd struct {
 	neoShellAccount map[string]string
 
 	tagqlLoader tql.Loader
+	serverFs    *ssfs.SSFS
 
 	debugMode      bool
 	experimentMode bool
@@ -247,6 +255,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.Any("/api/files/*path", svr.handleFiles)
 			group.Use(svr.handleJwtToken)
 			if svr.tagqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)

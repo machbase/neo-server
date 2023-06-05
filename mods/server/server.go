@@ -33,6 +33,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
@@ -80,7 +81,7 @@ func init() {
 type Config struct {
 	DataDir        string
 	PrefDir        string
-	TagQLDir       []string
+	FileDirs       []string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
 	StartupQueries []string
@@ -363,8 +364,6 @@ func (s *svr) Start() error {
 		}
 	}
 
-	tqlLoader := tql.NewLoader(s.conf.TagQLDir)
-
 	// native port
 	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
 
@@ -385,14 +384,21 @@ func (s *svr) Start() error {
 		}
 	}
 
-	enabledWebUI := false
+	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
 
+	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
 		opts := []httpd.Option{
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
+			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionExperimentMode(s.conf.ExperimentMode),
 		}
 		if s.conf.Http.DebugMode {
