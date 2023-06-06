@@ -252,6 +252,17 @@ func sinkf_dataZoom(args ...any) (any, error) {
 	return codec.DataZoom(typ, start, end), nil
 }
 
+func availableAxisType(typ string) bool {
+	switch typ {
+	case "time":
+		return true
+	case "value":
+		return true
+	default:
+		return false
+	}
+}
+
 func sinkf_xaxis(args ...any) (any, error) {
 	fmt.Println("WARNING, 'xaxis()' is deprecated, use 'xAxis()' instead.!!!")
 	return sinkf_xAxis(args...)
@@ -276,10 +287,14 @@ func sinkf_xAxis(args ...any) (any, error) {
 		}
 	}
 	if len(args) >= 3 {
-		if s, ok := args[1].(string); !ok {
+		if s, ok := args[2].(string); !ok {
 			return nil, fmt.Errorf("f(xAxis) invalid type, should be string, but '%T'", args[2])
 		} else {
-			typ = s
+			if availableAxisType(s) {
+				typ = s
+			} else {
+				return nil, fmt.Errorf("f(xAxis) invalid axis type, '%s'", s)
+			}
 		}
 	}
 	return codec.XAxis(idx, label, typ), nil
@@ -309,10 +324,14 @@ func sinkf_yAxis(args ...any) (any, error) {
 		}
 	}
 	if len(args) >= 3 {
-		if s, ok := args[1].(string); !ok {
+		if s, ok := args[2].(string); !ok {
 			return nil, fmt.Errorf("f(yAxis) invalid type, should be string, but '%T'", args[2])
 		} else {
-			typ = s
+			if availableAxisType(s) {
+				typ = s
+			} else {
+				return nil, fmt.Errorf("f(yAxis) invalid axis type, '%s'", s)
+			}
 		}
 	}
 	return codec.YAxis(idx, label, typ), nil
@@ -337,10 +356,14 @@ func sinkf_zAxis(args ...any) (any, error) {
 		}
 	}
 	if len(args) >= 3 {
-		if s, ok := args[1].(string); !ok {
+		if s, ok := args[2].(string); !ok {
 			return nil, fmt.Errorf("f(zAxis) invalid type, should be string, but '%T'", args[2])
 		} else {
-			typ = s
+			if availableAxisType(s) {
+				typ = s
+			} else {
+				return nil, fmt.Errorf("f(yAxis) invalid axis type, '%s'", s)
+			}
 		}
 	}
 	return codec.ZAxis(idx, label, typ), nil

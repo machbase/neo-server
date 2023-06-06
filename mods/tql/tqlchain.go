@@ -18,6 +18,8 @@ type ExecutionChain struct {
 	encoder codec.RowsEncoder
 	db      spi.Database
 
+	encoderNeedToClose bool
+
 	nodes    []*context.Context
 	headNode *context.Context
 	nodesWg  sync.WaitGroup
@@ -85,19 +87,11 @@ func (ec *ExecutionChain) Run() error {
 func (ec *ExecutionChain) start() {
 	////////////////////////////////
 	// encoder
-	deferHooks := []func(){}
-	defer func() {
-		for _, f := range deferHooks {
-			f()
-		}
-	}()
-
 	ec.encoderChWg.Add(1)
 	var cols spi.Columns
 	go func() {
-		open := false
 		for arr := range ec.encoderCh {
-			if !open {
+			if !ec.encoderNeedToClose {
 				if len(cols) == 0 {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
@@ -107,12 +101,7 @@ func (ec *ExecutionChain) start() {
 				}
 				codec.SetEncoderColumns(ec.encoder, cols)
 				ec.encoder.Open()
-				deferHooks = append(deferHooks, func() {
-					// if close encoder right away without defer,
-					// it will crash, because it could be earlier than all map() pipe to be closed
-					ec.encoder.Close()
-				})
-				open = true
+				ec.encoderNeedToClose = true
 			}
 			if err := ec.encoder.AddRow(arr); err != nil {
 				fmt.Println("ERR", err.Error())
@@ -153,10 +142,14 @@ func (ec *ExecutionChain) start() {
 				} else {
 					switch tV := castV.V.(type) {
 					case []any:
-						if subarr, ok := tV[0].([][]any); ok {
-							sink2(castV.K, subarr)
-						} else {
+						if len(tV) == 0 {
 							sink1(castV.K, tV)
+						} else {
+							if subarr, ok := tV[0].([][]any); ok {
+								sink2(castV.K, subarr)
+							} else {
+								sink1(castV.K, tV)
+							}
 						}
 					case [][]any:
 						sink2(castV.K, tV)
@@ -223,5 +216,8 @@ func (ec *ExecutionChain) stop() {
 		close(ec.resultCh)
 		close(ec.encoderCh)
 		ec.encoderChWg.Wait()
+		if ec.encoder != nil && ec.encoderNeedToClose {
+			ec.encoder.Close()
+		}
 	})
 }
