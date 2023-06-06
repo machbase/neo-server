@@ -29,7 +29,7 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 		}
 		name := "/"
 		if i > 0 {
-			name = "/" + filepath.Base(abspath) + "/"
+			name = "/" + filepath.Base(abspath)
 		}
 		ret.bases = append(ret.bases, BaseDir{name: name, abspath: abspath})
 	}
@@ -41,9 +41,10 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 // returns index of baseDirs and absolute path of the give path
 // returns -1 if it doesn't match any dir
 func (ssfs *SSFS) findDir(path string) (int, string, string) {
+	path = filepath.Join(path)
 	for i := len(ssfs.bases) - 1; i >= 0; i-- {
 		bd := ssfs.bases[i]
-		if strings.HasPrefix(path, bd.name) {
+		if strings.HasPrefix(path, bd.name) && (len(path) == len(bd.name) || bd.name == "/" || path[len(bd.name)] == '/') {
 			remain := strings.TrimPrefix(path, bd.name)
 			if len(remain) == 0 {
 				return i, bd.name, bd.abspath
