@@ -49,7 +49,11 @@ func (ssfs *SSFS) findDir(path string) (int, string, string) {
 				return i, bd.name, bd.abspath
 			}
 			abspath := filepath.Join(bd.abspath, remain)
-			return i, filepath.Base(abspath), abspath
+			if strings.HasPrefix(abspath, bd.abspath) {
+				return i, filepath.Base(abspath), abspath
+			} else {
+				return -1, "", ""
+			}
 		}
 	}
 	return -1, "", ""

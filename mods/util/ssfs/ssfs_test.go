@@ -39,6 +39,14 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "select.sql", ret.Children[3].Name)
 	require.Equal(t, false, ret.Children[3].IsDir)
 
+	ret, err = ssfs.Get("/../notaccess.tql")
+	require.NotNil(t, err)
+	require.Nil(t, ret)
+
+	ret, err = ssfs.Get("/data1/../notaccess.tql")
+	require.NotNil(t, err)
+	require.Nil(t, ret)
+
 	ret, err = ssfs.Get("/data1/")
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
