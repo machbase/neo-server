@@ -300,7 +300,9 @@ func mapf_FFT(args ...any) (any, error) {
 
 	lenSamples := len(V)
 	if lenSamples < 16 {
-		return nil, fmt.Errorf("f(FFT) samples should be more than 16")
+		// fmt.Errorf("f(FFT) samples should be more than 16")
+		// drop input, instead of raising error
+		return nil, nil
 	}
 
 	sampleTimes := make([]time.Time, lenSamples)
