@@ -255,9 +255,11 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
-			group.Use(svr.handleJwtToken)
 			if svr.tagqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
+			}
+			group.Use(svr.handleJwtToken)
+			if svr.tagqlLoader != nil {
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
 			group.Any("/machbase", svr.handleQuery)
