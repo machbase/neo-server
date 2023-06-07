@@ -22,6 +22,16 @@ func isFsFile(path string) bool {
 	return strings.HasSuffix(path, ".tql") || strings.HasSuffix(path, ".sql")
 }
 
+func contentTypeOfFile(name string) string {
+	if strings.HasSuffix(name, ".sql") {
+		return "text/plain"
+	} else if strings.HasSuffix(name, ".tql") {
+		return "text/plain"
+	} else {
+		return "application/octet-stream"
+	}
+}
+
 func (svr *httpd) handleFiles(ctx *gin.Context) {
 	rsp := &SsfsResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
@@ -56,10 +66,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ctx.JSON(http.StatusOK, rsp)
 			return
 		} else if isFsFile(path) {
-			rsp.Success, rsp.Reason = true, "success"
-			rsp.Elapse = time.Since(tick).String()
-			rsp.Data = ent
-			ctx.JSON(http.StatusOK, rsp)
+			ctx.Data(http.StatusOK, contentTypeOfFile(ent.Name), ent.Content)
 			return
 		} else {
 			rsp.Reason = fmt.Sprintf("not found: %s", path)
