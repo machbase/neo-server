@@ -18,7 +18,9 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "/", ret.Name)
 	require.Equal(t, 2, len(ret.Children))
 	require.Equal(t, "hello.sql", ret.Children[0].Name)
+	require.Equal(t, ".sql", ret.Children[0].Type)
 	require.Equal(t, "select.sql", ret.Children[1].Name)
+	require.Equal(t, ".sql", ret.Children[1].Type)
 
 	ssfs, err = NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
 	require.Nil(t, err)
@@ -31,12 +33,16 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "/", ret.Name)
 	require.Equal(t, 4, len(ret.Children))
 	require.Equal(t, "/data1", ret.Children[0].Name)
+	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
 	require.Equal(t, "example.tql", ret.Children[1].Name)
+	require.Equal(t, ".tql", ret.Children[1].Type)
 	require.Equal(t, false, ret.Children[1].IsDir)
 	require.Equal(t, "hello.sql", ret.Children[2].Name)
+	require.Equal(t, ".sql", ret.Children[2].Type)
 	require.Equal(t, false, ret.Children[2].IsDir)
 	require.Equal(t, "select.sql", ret.Children[3].Name)
+	require.Equal(t, ".sql", ret.Children[3].Type)
 	require.Equal(t, false, ret.Children[3].IsDir)
 
 	// do not allow accessing out side of the given dirs

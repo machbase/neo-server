@@ -71,6 +71,7 @@ type Entry struct {
 type SubEntry struct {
 	IsDir              bool   `json:"isDir"`
 	Name               string `json:"name"`
+	Type               string `json:"type"`
 	Size               int64  `json:"size,omitempty"`
 	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
 }
@@ -111,7 +112,7 @@ func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) 
 		if idx == 0 && len(ssfs.bases) > 1 { // root dir and has sub dirs
 			for _, sub := range ssfs.bases[1:] {
 				ret.Children = append(ret.Children, &SubEntry{
-					IsDir: true, Name: sub.name,
+					IsDir: true, Name: sub.name, Type: "dir",
 				})
 			}
 		}
@@ -124,9 +125,14 @@ func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) 
 			if err != nil {
 				continue
 			}
+			entType := "dir"
+			if !nfo.IsDir() {
+				entType = filepath.Ext(ent.Name())
+			}
 			subEnt := &SubEntry{
 				IsDir:              nfo.IsDir(),
 				Name:               ent.Name(),
+				Type:               entType,
 				Size:               nfo.Size(),
 				LastModifiedMillis: nfo.ModTime().UnixMilli(),
 			}
