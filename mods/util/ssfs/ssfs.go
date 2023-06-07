@@ -85,6 +85,9 @@ func (ssfs *SSFS) Get(path string) (*Entry, error) {
 
 func (ssfs *SSFS) GetGlob(path string, pattern string) (*Entry, error) {
 	return ssfs.GetFilter(path, func(ent *SubEntry) bool {
+		if ent.IsDir {
+			return true
+		}
 		ok, err := glob.Match(pattern, ent.Name)
 		if err != nil {
 			return false
