@@ -18,7 +18,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
 	if err != nil {
-		svr.log.Error("tql get params error", err.Error())
+		svr.log.Error("tql params error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
@@ -49,7 +49,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	path := ctx.Param("path")
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
 	if err != nil {
-		svr.log.Error("tql parse query fail", path, err.Error())
+		svr.log.Error("tql params error", path, err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)

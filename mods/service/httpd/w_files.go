@@ -1,6 +1,7 @@
 package httpd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -125,6 +126,16 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
+			}
+			if ctx.ContentType() == "application/json" {
+				var text string
+				if err := json.Unmarshal(content, &text); err != nil {
+					rsp.Reason = err.Error()
+					rsp.Elapse = time.Since(tick).String()
+					ctx.JSON(http.StatusBadRequest, rsp)
+					return
+				}
+				content = []byte(text)
 			}
 			err = svr.serverFs.Set(path, content)
 			if err == nil {
