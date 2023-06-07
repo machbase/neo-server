@@ -162,7 +162,16 @@ func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) 
 			ret.Children = append(ret.Children, subEnt)
 		}
 		sort.Slice(ret.Children, func(i, j int) bool {
-			return ret.Children[i].Name < ret.Children[j].Name
+			// sort, directory first
+			if ret.Children[i].IsDir && ret.Children[j].IsDir {
+				return ret.Children[i].Name < ret.Children[j].Name
+			} else if ret.Children[i].IsDir && !ret.Children[j].IsDir {
+				return true
+			} else if !ret.Children[i].IsDir && ret.Children[j].IsDir {
+				return false
+			} else {
+				return ret.Children[i].Name < ret.Children[j].Name
+			}
 		})
 		return ret, nil
 	} else {
