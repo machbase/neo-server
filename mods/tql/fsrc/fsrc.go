@@ -83,6 +83,14 @@ func init() {
 	}
 }
 
+func Functions() []string {
+	ret := []string{}
+	for k := range functions {
+		ret = append(ret, k)
+	}
+	return ret
+}
+
 type input struct {
 	dbSrc   dbSource
 	fakeSrc fakeSource

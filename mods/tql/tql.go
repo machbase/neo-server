@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/codec"
@@ -34,7 +33,19 @@ type tagQL struct {
 	params   map[string][]string
 }
 
-var regexpSpaceprefix = regexp.MustCompile(`^\s+(.*)`)
+var tqlFunctions = map[string]expression.Function{}
+
+func init() {
+	for _, f := range fsrc.Functions() {
+		tqlFunctions[f] = nil
+	}
+	for _, f := range fsink.Functions() {
+		tqlFunctions[f] = nil
+	}
+	for _, f := range fmap.Functions() {
+		tqlFunctions[f] = nil
+	}
+}
 
 func Parse(in io.Reader) (Tql, error) {
 	return ParseWithParams(in, nil)
@@ -42,7 +53,6 @@ func Parse(in io.Reader) (Tql, error) {
 
 func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
 	reader := bufio.NewReader(in)
-
 	parts := []byte{}
 	stmt := []string{}
 	expressions := []Line{}
@@ -80,11 +90,15 @@ func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
 			continue
 		}
 
-		if regexpSpaceprefix.MatchString(lineText) {
-			// line starts with whitespace
+		aStmt := strings.Join(append(stmt, lineText), "")
+		_, err = expression.ParseTokens(aStmt, tqlFunctions)
+		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue
+		} else if err != nil {
+			return nil, err
 		} else {
+			stmt = append(stmt, lineText)
 			line := Line{
 				text: strings.Join(stmt, ""),
 				line: lineNo,
@@ -93,9 +107,6 @@ func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
 				expressions = append(expressions, line)
 			}
 			stmt = stmt[:0]
-			if len(strings.TrimSpace(lineText)) > 0 {
-				stmt = append(stmt, lineText)
-			}
 		}
 	}
 

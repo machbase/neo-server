@@ -52,6 +52,14 @@ func init() {
 	}
 }
 
+func Functions() []string {
+	ret := []string{}
+	for k := range functions {
+		ret = append(ret, k)
+	}
+	return ret
+}
+
 func errInvalidNumOfArgs(name string, expect int, actual int) error {
 	return fmt.Errorf("f(%s) invalid number of args; expect:%d, actual:%d", name, expect, actual)
 }

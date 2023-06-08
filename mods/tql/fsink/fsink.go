@@ -78,6 +78,14 @@ func init() {
 	}
 }
 
+func Functions() []string {
+	ret := []string{}
+	for k := range functions {
+		ret = append(ret, k)
+	}
+	return ret
+}
+
 func sinkf_tz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
