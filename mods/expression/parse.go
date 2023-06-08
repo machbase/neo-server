@@ -11,7 +11,7 @@ import (
 	"unicode"
 )
 
-func parseTokens(input string, functions map[string]Function) ([]Token, error) {
+func ParseTokens(input string, functions map[string]Function) ([]Token, error) {
 	var ret []Token
 	var token Token
 	var found bool

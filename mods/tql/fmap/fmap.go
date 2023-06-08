@@ -52,6 +52,14 @@ func init() {
 	}
 }
 
+func Functions() []string {
+	ret := []string{}
+	for k := range functions {
+		ret = append(ret, k)
+	}
+	return ret
+}
+
 func errInvalidNumOfArgs(name string, expect int, actual int) error {
 	return fmt.Errorf("f(%s) invalid number of args; expect:%d, actual:%d", name, expect, actual)
 }
@@ -300,7 +308,9 @@ func mapf_FFT(args ...any) (any, error) {
 
 	lenSamples := len(V)
 	if lenSamples < 16 {
-		return nil, fmt.Errorf("f(FFT) samples should be more than 16")
+		// fmt.Errorf("f(FFT) samples should be more than 16")
+		// drop input, instead of raising error
+		return nil, nil
 	}
 
 	sampleTimes := make([]time.Time, lenSamples)
