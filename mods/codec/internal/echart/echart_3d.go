@@ -135,32 +135,65 @@ func (ex *Base3D) AddRow(values []any) error {
 	if len(values) < 3 {
 		return errors.New("3D chart require  at last 3 vlaues")
 	}
-	var xv time.Time
+	var xv float64
 	var yv float64
 	var zv float64
 
-	if v, ok := values[ex.xAxisIdx].(time.Time); ok {
-		xv = v
-	} else {
-		if pv, ok := values[ex.xAxisIdx].(*time.Time); ok {
-			xv = *pv
+	if ex.xAxisType == "time" {
+		if v, ok := values[ex.xAxisIdx].(time.Time); ok {
+			xv = float64(v.UnixMilli())
 		} else {
-			return errors.New("3D chart requires time.Time value for x-axis")
+			if pv, ok := values[ex.xAxisIdx].(*time.Time); ok {
+				xv = float64((*pv).UnixMilli())
+			} else {
+				return errors.New("3D chart requires time for x-axis")
+			}
+		}
+	} else {
+		if v, ok := ex.value(values[ex.xAxisIdx]); ok {
+			xv = v
+		} else {
+			return errors.New("3D chart requires value for x-axis")
 		}
 	}
-	if v, ok := ex.value(values[ex.yAxisIdx]); ok {
-		yv = v
+
+	if ex.yAxisType == "time" {
+		if v, ok := values[ex.yAxisIdx].(time.Time); ok {
+			yv = float64(v.UnixMilli())
+		} else {
+			if pv, ok := values[ex.yAxisIdx].(*time.Time); ok {
+				yv = float64((*pv).UnixMilli())
+			} else {
+				return errors.New("3D chart requires time for y-axis")
+			}
+		}
 	} else {
-		return errors.New("3D chart requires float64 value for y-axis")
+		if v, ok := ex.value(values[ex.yAxisIdx]); ok {
+			yv = v
+		} else {
+			return errors.New("3D chart requires value for y-axis")
+		}
 	}
 
-	if v, ok := ex.value(values[ex.zAxisIdx]); ok {
-		zv = v
+	if ex.zAxisType == "time" {
+		if v, ok := values[ex.zAxisIdx].(time.Time); ok {
+			zv = float64(v.UnixMilli())
+		} else {
+			if pv, ok := values[ex.zAxisIdx].(*time.Time); ok {
+				zv = float64((*pv).UnixMilli())
+			} else {
+				return errors.New("3D chart requires time for z-axis")
+			}
+		}
 	} else {
-		return errors.New("3D chart requires float64 value for z-axis")
+		if v, ok := ex.value(values[ex.zAxisIdx]); ok {
+			zv = v
+		} else {
+			return errors.New("3D chart requires value for z-axis")
+		}
 	}
 
-	vv := opts.Chart3DData{Value: []any{xv.UnixMilli(), yv, zv}}
+	vv := opts.Chart3DData{Value: []any{xv, yv, zv}}
 	if ex.opacity > 0.0 {
 		vv.ItemStyle = &opts.ItemStyle{Opacity: float32(ex.opacity)}
 	}
