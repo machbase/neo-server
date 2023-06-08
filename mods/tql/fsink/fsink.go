@@ -61,6 +61,8 @@ var functions = map[string]expression.Function{
 	"subtitle":     sinkf_subtitle,
 	"seriesLabels": sinkf_seriesLabels,
 	"dataZoom":     sinkf_dataZoom,
+	"visualMap":    sinkf_visualMap,
+	"opacity":      sinkf_opacity,
 	// sink functions
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
@@ -260,6 +262,31 @@ func sinkf_dataZoom(args ...any) (any, error) {
 		end = float32(d)
 	}
 	return codec.DataZoom(typ, start, end), nil
+}
+
+func sinkf_visualMap(args ...any) (any, error) {
+	var minValue, maxValue float64
+	if len(args) != 2 {
+		return nil, fmt.Errorf("f(visualMap) invalid arg, `visualMap(minValue, maxValue)`, but (n:%d)", len(args))
+	}
+	if d, ok := args[0].(float64); ok {
+		minValue = d
+	}
+	if d, ok := args[1].(float64); ok {
+		maxValue = d
+	}
+	return codec.VisualMap(minValue, maxValue), nil
+}
+
+func sinkf_opacity(args ...any) (any, error) {
+	var value float64
+	if len(args) != 1 {
+		return nil, fmt.Errorf("f(opacity) invalid arg, `opacity(opacity)`, but (n:%d)", len(args))
+	}
+	if d, ok := args[0].(float64); ok {
+		value = d
+	}
+	return codec.Opacity(value), nil
 }
 
 func availableAxisType(typ string) bool {

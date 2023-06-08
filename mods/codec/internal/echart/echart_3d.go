@@ -22,6 +22,10 @@ type Base3D struct {
 	xAxisType  string
 	yAxisType  string
 	zAxisType  string
+
+	minValue float64
+	maxValue float64
+	opacity  float64
 }
 
 func (ex *Base3D) ContentType() string {
@@ -53,6 +57,15 @@ func (ex *Base3D) SetZAxis(idx int, label string, typ string) {
 	ex.zAxisType = typ
 }
 
+func (ex *Base3D) SetVisualMap(minValue float64, maxValue float64) {
+	ex.minValue = minValue
+	ex.maxValue = maxValue
+}
+
+func (ex *Base3D) SetOpacity(opacity float64) {
+	ex.opacity = opacity
+}
+
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	width := "600px"
 	if ex.width != "" {
@@ -74,7 +87,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	if theme == "" {
 		theme = types.ThemeWesteros
 	}
-	return []charts.GlobalOpts{
+	options := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			Theme:     theme,
 			Width:     width,
@@ -88,7 +101,16 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 		charts.WithLegendOpts(opts.Legend{
 			Show: false,
 		}),
-		charts.WithVisualMapOpts(opts.VisualMap{
+		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
+		charts.WithGrid3DOpts(opts.Grid3D{Show: true}),
+		charts.WithXAxis3DOpts(opts.XAxis3D{Name: ex.xAxisLabel, Type: ex.xAxisType}),
+		charts.WithYAxis3DOpts(opts.YAxis3D{Name: ex.yAxisLabel, Type: ex.yAxisType}),
+		charts.WithZAxis3DOpts(opts.ZAxis3D{Name: ex.zAxisLabel, Type: ex.zAxisType}),
+	}
+	if ex.minValue < ex.maxValue {
+		options = append(options, charts.WithVisualMapOpts(opts.VisualMap{
+			Min: float32(ex.minValue),
+			Max: float32(ex.maxValue),
 			InRange: &opts.VisualMapInRange{
 				Color: []string{
 					"#313695",
@@ -104,13 +126,9 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 					"#a50026",
 				},
 			},
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
-		charts.WithGrid3DOpts(opts.Grid3D{Show: true}),
-		charts.WithXAxis3DOpts(opts.XAxis3D{Name: ex.xAxisLabel, Type: ex.xAxisType}),
-		charts.WithYAxis3DOpts(opts.YAxis3D{Name: ex.yAxisLabel, Type: ex.yAxisType}),
-		charts.WithZAxis3DOpts(opts.ZAxis3D{Name: ex.zAxisLabel, Type: ex.zAxisType}),
+		}))
 	}
+	return options
 }
 
 func (ex *Base3D) AddRow(values []any) error {
@@ -142,7 +160,11 @@ func (ex *Base3D) AddRow(values []any) error {
 		return errors.New("3D chart requires float64 value for z-axis")
 	}
 
-	ex.series = append(ex.series, opts.Chart3DData{Value: []any{xv.UnixMilli(), yv, zv}, ItemStyle: &opts.ItemStyle{Opacity: 0.4}})
+	vv := opts.Chart3DData{Value: []any{xv.UnixMilli(), yv, zv}}
+	if ex.opacity > 0.0 {
+		vv.ItemStyle = &opts.ItemStyle{Opacity: float32(ex.opacity)}
+	}
+	ex.series = append(ex.series, vv)
 
 	return nil
 }

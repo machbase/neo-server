@@ -151,6 +151,30 @@ func ZAxis(idx int, label string, typ string) Option {
 	}
 }
 
+type CanSetVisualMap interface {
+	SetVisualMap(float64, float64)
+}
+
+func VisualMap(minValue float64, maxValue float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetVisualMap); ok {
+			o.SetVisualMap(minValue, maxValue)
+		}
+	}
+}
+
+type CanSetOpacity interface {
+	SetOpacity(float64)
+}
+
+func Opacity(opacity float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetOpacity); ok {
+			o.SetOpacity(opacity)
+		}
+	}
+}
+
 type CanSetSize interface {
 	SetSize(width, height string)
 }
