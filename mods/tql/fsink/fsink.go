@@ -66,6 +66,8 @@ var functions = map[string]expression.Function{
 	"CSV":             CSV,
 	"JSON":            JSON,
 	"CHART_LINE":      CHART_LINE,
+	"CHART_SCATTER":   CHART_SCATTER,
+	"CHART_BAR":       CHART_BAR,
 	"CHART_LINE3D":    CHART_LINE3D,
 	"CHART_BAR3D":     CHART_BAR3D,
 	"CHART_SURFACE3D": CHART_SURFACE3D,
@@ -405,8 +407,12 @@ func CHART_LINE(args ...any) (any, error) {
 	return newEncoder("echart.line", args...)
 }
 
-func CHART_BOX(args ...any) (any, error) {
-	return newEncoder("echart.box", args...)
+func CHART_SCATTER(args ...any) (any, error) {
+	return newEncoder("echart.scatter", args...)
+}
+
+func CHART_BAR(args ...any) (any, error) {
+	return newEncoder("echart.bar", args...)
 }
 
 func CHART_LINE3D(args ...any) (any, error) {

@@ -14,6 +14,8 @@ const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
 const ECHART_LINE = "echart.line"
+const ECHART_SCATTER = "echart.scatter"
+const ECHART_BAR = "echart.bar"
 const ECHART_LINE3D = "echart.line3d"
 const ECHART_SURFACE3D = "echart.surface3d"
 const ECHART_SCATTER3D = "echart.scatter3d"
@@ -43,6 +45,10 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 		ret = csv.NewEncoder()
 	case ECHART_LINE:
 		ret = echart.NewLine()
+	case ECHART_SCATTER:
+		ret = echart.NewScatter()
+	case ECHART_BAR:
+		ret = echart.NewBar()
 	case ECHART_LINE3D:
 		ret = echart.NewLine3D()
 	case ECHART_SURFACE3D:
