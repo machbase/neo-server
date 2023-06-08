@@ -72,6 +72,9 @@ var functions = map[string]expression.Function{
 	"freq":      srcf_freq,
 	"oscilator": src_oscilator,
 	"FAKE":      src_FAKE,
+	"CSV":       src_CSV,
+	"file":      src_file, // CSV()
+	"col":       src_col,  // CSV()
 	"QUERY":     srcf_QUERY,
 	"SQL":       src_SQL,
 	"INPUT":     srcf_INPUT,
@@ -92,14 +95,15 @@ func Functions() []string {
 }
 
 type input struct {
-	dbSrc   dbSource
-	fakeSrc fakeSource
+	dbSrc     dbSource
+	fakeSrc   fakeSource
+	readerSrc readerSource
 }
 
 var _ Input = &input{}
 
 func (in *input) Run(deligate InputDeligate) error {
-	if in.dbSrc == nil && in.fakeSrc == nil {
+	if in.dbSrc == nil && in.fakeSrc == nil && in.readerSrc == nil {
 		return errors.New("nil source")
 	}
 	if deligate == nil {
@@ -130,7 +134,7 @@ func (in *input) Run(deligate InputDeligate) error {
 			deligate.Feed(nil)
 		}
 		return err
-	} else {
+	} else if in.fakeSrc != nil {
 		deligate.FeedHeader(in.fakeSrc.Header())
 		for values := range in.fakeSrc.Gen() {
 			deligate.Feed(values)
@@ -141,6 +145,18 @@ func (in *input) Run(deligate InputDeligate) error {
 		}
 		deligate.Feed(nil)
 		return nil
+	} else if in.readerSrc != nil {
+		for values := range in.readerSrc.Gen() {
+			deligate.Feed(values)
+			if deligate.ShouldStop() {
+				in.readerSrc.Stop()
+				break
+			}
+		}
+		deligate.Feed(nil)
+		return nil
+	} else {
+		return errors.New("no source")
 	}
 }
 
@@ -156,6 +172,10 @@ func srcf_INPUT(args ...any) (any, error) {
 	} else if s, ok := args[0].(fakeSource); ok {
 		return &input{
 			fakeSrc: s,
+		}, nil
+	} else if s, ok := args[0].(readerSource); ok {
+		return &input{
+			readerSrc: s,
 		}, nil
 	} else {
 		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
