@@ -40,6 +40,7 @@ test-base: tmpdir
 		./mods/service/mqttd/mqtt \
 		./mods/service/httpd \
 		./mods/server \
+		./mods/shell \
 		./test
 
 test-all:
