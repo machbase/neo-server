@@ -106,6 +106,7 @@ func (in *input) Run(deligate InputDeligate) error {
 		return errors.New("nil deligate")
 	}
 
+	executed := false
 	if in.dbSrc != nil {
 		queryCtx := &do.QueryContext{
 			DB: deligate.Database(),
@@ -123,10 +124,17 @@ func (in *input) Run(deligate InputDeligate) error {
 			OnFetchEnd: func() {
 				deligate.Feed(nil)
 			},
-			OnExecuted: nil, // tql src can not run executable sql
+			OnExecuted: func(usermsg string, rowsAffected int64) {
+				executed = true
+			},
 		}
-		_, err := do.Query(queryCtx, in.dbSrc.ToSQL())
+		msg, err := do.Query(queryCtx, in.dbSrc.ToSQL())
 		if err != nil {
+			deligate.Feed(nil)
+		}
+		if executed {
+			deligate.FeedHeader(spi.Columns{{Name: "message", Type: "string"}})
+			deligate.Feed([]any{msg})
 			deligate.Feed(nil)
 		}
 		return err
