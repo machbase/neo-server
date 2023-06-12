@@ -152,6 +152,8 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
+	licenseFilePath   string
+	licenseFileTime   time.Time
 
 	cachedServerPrivateKey crypto.PrivateKey
 
@@ -246,6 +248,11 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "authorized keys")
 	}
 
+	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
+	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
+		s.licenseFileTime = stat.ModTime()
+	}
+
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "datadir")
@@ -262,6 +269,19 @@ func (s *svr) Start() error {
 	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
 		return errors.Wrap(err, "machbase trc")
 	}
+	/*
+		if !s.licenseFileTime.IsZero() {
+			stat, err := os.Stat(filepath.Join(homepath, "license.dat"))
+			if err != nil && os.IsNotExist(err) {
+				// copy license file
+				s.log.Infof("install license")
+			} else if err != nil {
+				s.log.Warnf("fail to install license; %s", err.Error())
+			} else if stat.ModTime().Sub(s.licenseFileTime) < 0 {
+				s.log.Infof("update license")
+			}
+		}
+	*/
 
 	// port-check MACH
 	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
@@ -395,6 +415,7 @@ func (s *svr) Start() error {
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
 		opts := []httpd.Option{
+			httpd.OptionLicenseFilePath(s.licenseFilePath),
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
