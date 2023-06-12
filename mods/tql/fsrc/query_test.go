@@ -26,7 +26,7 @@ func TestTagQLFile(t *testing.T) {
 				BETWEEN
 					(SELECT MAX_TIME - 10000000000 FROM V$TABLE_STAT WHERE name = 'tag')
 				AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
-			LIMIT 1000000`),
+			LIMIT 0, 1000000`),
 		normalize(src.ToSQL()), "./test/simple.tql")
 }
 
@@ -39,52 +39,52 @@ type TagQLTestCase struct {
 func TestTagQLMajorParts(t *testing.T) {
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('value', from('table', 'tag')))`,
-		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('val', from('table', 'tag')))`,
-		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('value', from('table', 'tag'), range('last', '1.0s')))`,
-		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('value', from('table', 'tag'), range('last', '12.0s')))`,
-		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('val1', 'val2' , from('table', 'tag')))`,
-		expect: "SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag')))`,
-		expect: "SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     `INPUT(QUERY('(val + val2/2)', from('table', 'tag'), range('last', '2.34s'), limit(2000)))`,
-		expect: "SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 2000",
+		tq:     `INPUT(QUERY('(val + val2/2)', from('table', 'tag'), range('last', '2.34s'), limit(10, 2000)))`,
+		expect: "SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     `INPUT(QUERY('val', from('table', 'tag'), range('now', '2.34s'), limit(100)))`,
-		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now LIMIT 100",
+		tq:     `INPUT(QUERY('val', from('table', 'tag'), range('now', '2.34s'), limit(5, 100)))`,
+		expect: "SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now LIMIT 5, 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('value', from('table', 'tag'), range(123456789000, '2.34s')))`,
-		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 2340000000 AND 123456789000 LIMIT 1000000",
+		expect: "SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 2340000000 AND 123456789000 LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('AVG(val1+val2)', from('table', 'tag')))`,
-		expect: "SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 }
@@ -92,25 +92,25 @@ func TestTagQLMajorParts(t *testing.T) {
 func TestTagQLMap(t *testing.T) {
 	TagQLTestCase{
 		tq:     `INPUT(QUERY('val1', from('table', 'tag'), range('last', '1s')))`,
-		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 1000000",
+		expect: "SELECT time, val1 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000",
 		err:    ""}.
 		run(t)
 }
 
 func TestTagQLGroupBy(t *testing.T) {
 	TagQLTestCase{
-		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range(123456789000, "3.45s", '1ms'), limit(100)))`,
-		expect: "SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 3450000000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 100",
+		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range(123456789000, "3.45s", '1ms'), limit(1, 100)))`,
+		expect: "SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 123456789000 - 3450000000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     `INPUT(QUERY('STDDEV(val)', 'zval', from('table', 'tag'), range('last', '2.34s', '0.5ms'), limit(100)))`,
-		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 100",
+		tq:     `INPUT(QUERY('STDDEV(val)', 'zval', from('table', 'tag'), range('last', '2.34s', '0.5ms'), limit(2, 100)))`,
+		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME - 2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100",
 		err:    ""}.
 		run(t)
 	TagQLTestCase{
-		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range('now', '2.34s', '0.5ms'), limit(100)))`,
-		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now GROUP BY time ORDER BY time LIMIT 100",
+		tq:     `INPUT(QUERY('STDDEV(val)', from('table', 'tag'), range('now', '2.34s', '0.5ms'), limit(3, 100)))`,
+		expect: "SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN now - 2340000000 AND now GROUP BY time ORDER BY time LIMIT 3, 100",
 		err:    ""}.
 		run(t)
 }

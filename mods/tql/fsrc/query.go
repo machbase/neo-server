@@ -99,22 +99,34 @@ func srcf_dump(args ...any) (any, error) {
 }
 
 type queryLimit struct {
-	limit int
+	offset int
+	limit  int
 }
 
 func (lm *queryLimit) String() string {
 	return strconv.Itoa(lm.limit)
 }
 
+// len([offset ,] limit)
 func srcf_limit(args ...any) (any, error) {
-	if len(args) != 1 {
+	lenArgs := len(args)
+	if lenArgs != 1 && lenArgs != 2 {
 		return nil, fmt.Errorf("f(limit) invalid number of args (n:%d)", len(args))
 	}
 	ret := &queryLimit{}
-	if d, ok := args[0].(float64); ok {
+	idxArgs := 0
+	if lenArgs == 2 {
+		if d, ok := args[idxArgs].(float64); ok {
+			ret.offset = int(d)
+		} else {
+			return nil, fmt.Errorf("f(range) offset should be int, but %T", args[1])
+		}
+		idxArgs++
+	}
+	if d, ok := args[idxArgs].(float64); ok {
 		ret.limit = int(d)
 	} else {
-		return nil, fmt.Errorf("f(range) arg should be int, but %T", args[1])
+		return nil, fmt.Errorf("f(range) limit should be int, but %T", args[1])
 	}
 	return ret, nil
 }
@@ -191,7 +203,7 @@ func (si *querySrc) toSqlGroup() string {
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
 			GROUP BY %s
 			ORDER BY %s
-			LIMIT %d
+			LIMIT %d, %d
 			`,
 			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
@@ -200,7 +212,7 @@ func (si *querySrc) toSqlGroup() string {
 			table, tag,
 			baseTime,
 			baseTime,
-			si.limit.limit,
+			si.limit.offset, si.limit.limit,
 		)
 	} else if rng.ts == "now" {
 		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
@@ -209,14 +221,14 @@ func (si *querySrc) toSqlGroup() string {
 			AND %s BETWEEN now - %d AND now 
 			GROUP BY %s
 			ORDER BY %s
-			LIMIT %d
+			LIMIT %d, %d
 			`,
 			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
 			baseTime, rng.duration,
 			baseTime,
 			baseTime,
-			si.limit.limit,
+			si.limit.offset, si.limit.limit,
 		)
 	} else {
 		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
@@ -226,7 +238,7 @@ func (si *querySrc) toSqlGroup() string {
 				BETWEEN %d - %d AND %d
 			GROUP BY %s
 			ORDER BY %s
-			LIMIT %d
+			LIMIT %d, %d
 			`,
 			baseTime, rng.period, rng.period, baseTime, columns, table,
 			tag,
@@ -234,7 +246,7 @@ func (si *querySrc) toSqlGroup() string {
 			rng.tsTime.UnixNano(), rng.duration, rng.tsTime.UnixNano(),
 			baseTime,
 			baseTime,
-			si.limit.limit,
+			si.limit.offset, si.limit.limit,
 		)
 	}
 	return ret
@@ -260,26 +272,26 @@ func (si *querySrc) toSql() string {
 				BETWEEN 
 					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
 				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-			LIMIT %d
+			LIMIT %d, %d
 			`,
 			baseTime, columns, table,
 			tag,
 			baseTime,
 			si.timeRange.duration, table, tag,
 			table, tag,
-			si.limit.limit,
+			si.limit.offset, si.limit.limit,
 		)
 	} else if si.timeRange.ts == "now" {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
 			WHERE
 				name = '%s'
 			AND %s BETWEEN now - %d AND now 
-			LIMIT %d
+			LIMIT %d, %d
 			`,
 			baseTime, columns, table,
 			tag,
 			baseTime, si.timeRange.duration,
-			si.limit.limit,
+			si.limit.offset, si.limit.limit,
 		)
 	} else {
 		ret = fmt.Sprintf(`SELECT %s, %s FROM %s 
@@ -287,12 +299,12 @@ func (si *querySrc) toSql() string {
 				name = '%s'
 			AND %s
 				BETWEEN %d - %d AND %d
-			LIMIT %d`,
+			LIMIT %d, %d`,
 			baseTime, columns, table,
 			tag,
 			baseTime,
 			si.timeRange.tsTime.UnixNano(), si.timeRange.duration, si.timeRange.tsTime.UnixNano(),
-			si.limit.limit)
+			si.limit.offset, si.limit.limit)
 	}
 	return ret
 }
