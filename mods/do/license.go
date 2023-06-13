@@ -1,7 +1,9 @@
 package do
 
 import (
+	"fmt"
 	"os"
+	"time"
 
 	spi "github.com/machbase/neo-spi"
 )
@@ -27,7 +29,7 @@ func GetLicenseInfo(db spi.Database) (*LicenseInfo, error) {
 
 func InstallLicenseFile(db spi.Database, path string) (*LicenseInfo, error) {
 	// alter system install license='path_to/license.dat';
-	result := db.Exec("alter system install license=?", path)
+	result := db.Exec("alter system install license='" + path + "'")
 	if result.Err() != nil {
 		return nil, result.Err()
 	}
@@ -36,8 +38,9 @@ func InstallLicenseFile(db spi.Database, path string) (*LicenseInfo, error) {
 
 func InstallLicenseData(db spi.Database, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
-	if err != nil && err != os.ErrNotExist {
-		return nil, err
+	if err == nil {
+		// backup existing file
+		os.Rename(licenseFilePath, fmt.Sprintf("%s_%s", licenseFilePath, time.Now().Format("2006_01_02_150405")))
 	}
 	if err := os.WriteFile(licenseFilePath, content, 0640); err != nil {
 		return nil, err

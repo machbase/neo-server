@@ -1,6 +1,7 @@
 package httpd
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -37,7 +38,16 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	content, err := io.ReadAll(ctx.Request.Body)
+	file, _, err := ctx.Request.FormFile("license.dat")
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	fmt.Println("LIC", string(content))
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -46,6 +56,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	}
 	nfo, err := do.InstallLicenseData(svr.db, svr.licenseFilePath, content)
 	if err != nil {
+		fmt.Println("ERR", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)

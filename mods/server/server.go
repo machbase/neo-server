@@ -25,6 +25,7 @@ import (
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
@@ -269,19 +270,16 @@ func (s *svr) Start() error {
 	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
 		return errors.Wrap(err, "machbase trc")
 	}
-	/*
-		if !s.licenseFileTime.IsZero() {
-			stat, err := os.Stat(filepath.Join(homepath, "license.dat"))
-			if err != nil && os.IsNotExist(err) {
-				// copy license file
-				s.log.Infof("install license")
-			} else if err != nil {
-				s.log.Warnf("fail to install license; %s", err.Error())
-			} else if stat.ModTime().Sub(s.licenseFileTime) < 0 {
-				s.log.Infof("update license")
-			}
+
+	shouldInstallLicense := false
+	if !s.licenseFileTime.IsZero() {
+		stat, err := os.Stat(filepath.Join(homepath, "conf", "license.dat"))
+		if err != nil {
+			shouldInstallLicense = true
+		} else if stat.ModTime().Sub(s.licenseFileTime) < 0 {
+			shouldInstallLicense = true
 		}
-	*/
+	}
 
 	// port-check MACH
 	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
@@ -371,6 +369,15 @@ func (s *svr) Start() error {
 	if !s.conf.NoBanner {
 		// print banner if banner module is not configured
 		s.log.Infof("\n%s", GenBanner())
+	}
+
+	if shouldInstallLicense {
+		_, err := do.InstallLicenseFile(s.db, s.licenseFilePath)
+		if err != nil {
+			s.log.Warn("set license fail,", err.Error())
+		} else {
+			s.log.Info("set license success")
+		}
 	}
 
 	for n, sqlText := range s.conf.StartupQueries {

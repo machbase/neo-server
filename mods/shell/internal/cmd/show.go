@@ -257,7 +257,7 @@ func doShowSessions(ctx *client.ActionContext) {
 }
 
 func doShowLicense(ctx *client.ActionContext) {
-	sqlText := "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info"
+	sqlText := "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE from v$license_info"
 	doShowByQuery0(ctx, sqlText)
 }
 
