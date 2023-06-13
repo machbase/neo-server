@@ -1,15 +1,19 @@
 package fsink
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fcom"
 	"github.com/machbase/neo-server/mods/util"
+	spi "github.com/machbase/neo-spi"
 )
 
 type Context struct {
@@ -18,7 +22,9 @@ type Context struct {
 }
 
 func (ctx *Context) Get(name string) (any, error) {
-	if name == "outstream" {
+	if name == "CTX" {
+		return ctx, nil
+	} else if name == "outstream" {
 		return ctx.Output, nil
 	} else if name == "nil" {
 		return nil, nil
@@ -37,6 +43,86 @@ func Parse(text string) (*expression.Expression, error) {
 	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
 	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")
 	return expression.NewWithFunctions(text, functions)
+}
+
+type Output interface {
+	Open() error
+	Close()
+	ContentType() string
+	ContentEncoding() string
+	SetHeader(spi.Columns)
+	AddRow([]any) error
+}
+
+func Compile(code string, params map[string][]string, writer io.Writer) (Output, error) {
+	expr, err := Parse(code)
+	if err != nil {
+		return nil, err
+	}
+	var outputStream spec.OutputStream
+	if writer == nil {
+		outputStream, err = stream.NewOutputStream("-")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		outputStream = &stream.WriterOutputStream{Writer: writer}
+	}
+	result, err := expr.Eval(&Context{Output: outputStream, Params: params})
+	if err != nil {
+		return nil, err
+	}
+	encoder, ok := result.(codec.RowsEncoder)
+	if !ok {
+		return nil, fmt.Errorf("invalid sink type: %T", result)
+	}
+	return &output{
+		encoder: encoder,
+	}, nil
+}
+
+type output struct {
+	encoder codec.RowsEncoder
+}
+
+var _ Output = &output{}
+
+func (out *output) SetHeader(cols spi.Columns) {
+	if out.encoder != nil {
+		codec.SetEncoderColumns(out.encoder, cols)
+	}
+}
+
+func (out *output) ContentType() string {
+	if out.encoder != nil {
+		return out.encoder.ContentType()
+	}
+	return "application/octet-stream"
+}
+
+func (out *output) ContentEncoding() string {
+	//ex: return "gzip" for  Content-Encoding: gzip
+	return ""
+}
+
+func (out *output) AddRow(vals []any) error {
+	if out.encoder != nil {
+		return out.encoder.AddRow(vals)
+	}
+	return errors.New("no output encoder")
+}
+
+func (out *output) Open() error {
+	if out.encoder != nil {
+		return out.encoder.Open()
+	}
+	return errors.New("no output encoder")
+}
+
+func (out *output) Close() {
+	if out.encoder != nil {
+		out.encoder.Close()
+	}
 }
 
 var functions = map[string]expression.Function{

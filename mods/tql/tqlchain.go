@@ -6,17 +6,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fsink"
 	"github.com/machbase/neo-server/mods/tql/fsrc"
 	spi "github.com/machbase/neo-spi"
 )
 
 type ExecutionChain struct {
-	input   fsrc.Input
-	encoder codec.RowsEncoder
-	db      spi.Database
+	input  fsrc.Input
+	output fsink.Output
+	db     spi.Database
 
 	encoderNeedToClose bool
 
@@ -33,7 +33,7 @@ type ExecutionChain struct {
 	circuitBreaker bool
 }
 
-func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input fsrc.Input, encoder codec.RowsEncoder, exprs []*expression.Expression, params map[string][]string) (*ExecutionChain, error) {
+func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input fsrc.Input, output fsink.Output, exprs []*expression.Expression, params map[string][]string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.resultCh = make(chan any)
 	ret.encoderCh = make(chan []any)
@@ -55,7 +55,7 @@ func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input fsrc.Inp
 	}
 	ret.nodes = nodes
 	ret.input = input
-	ret.encoder = encoder
+	ret.output = output
 	ret.db = db
 
 	if len(ret.nodes) > 0 {
@@ -84,6 +84,27 @@ func (ec *ExecutionChain) Run() error {
 	return ec.Error()
 }
 
+func (ec *ExecutionChain) columnTypeName(v any) string {
+	switch v.(type) {
+	default:
+		return fmt.Sprintf("%T", v)
+	case string:
+		return "string"
+	case *time.Time:
+		return "datetime"
+	case time.Time:
+		return "datetime"
+	case *float32:
+		return "float"
+	case float32:
+		return "float"
+	case *float64:
+		return "double"
+	case float64:
+		return "double"
+	}
+}
+
 func (ec *ExecutionChain) start() {
 	////////////////////////////////
 	// encoder
@@ -96,14 +117,14 @@ func (ec *ExecutionChain) start() {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
 							Name: fmt.Sprintf("C%02d", i),
-							Type: fmt.Sprintf("%T", v)})
+							Type: ec.columnTypeName(v)})
 					}
 				}
-				codec.SetEncoderColumns(ec.encoder, cols)
-				ec.encoder.Open()
+				ec.output.SetHeader(cols)
+				ec.output.Open()
 				ec.encoderNeedToClose = true
 			}
-			if err := ec.encoder.AddRow(arr); err != nil {
+			if err := ec.output.AddRow(arr); err != nil {
 				fmt.Println("ERR", err.Error())
 			}
 		}
@@ -216,8 +237,8 @@ func (ec *ExecutionChain) stop() {
 		close(ec.resultCh)
 		close(ec.encoderCh)
 		ec.encoderChWg.Wait()
-		if ec.encoder != nil && ec.encoderNeedToClose {
-			ec.encoder.Close()
+		if ec.output != nil && ec.encoderNeedToClose {
+			ec.output.Close()
 		}
 	})
 }

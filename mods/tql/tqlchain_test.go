@@ -43,11 +43,11 @@ func TestFFTChain(t *testing.T) {
 		"OUTPUT(CSV())",
 	}
 	reader := strings.NewReader(strings.Join(strExprs, "\n"))
+	output, _ := stream.NewOutputStream("-")
 
-	tq, err := Parse(reader)
+	tq, err := Parse(reader, nil, nil, output)
 	require.Nil(t, err)
 	require.NotNil(t, tq)
 
-	output, _ := stream.NewOutputStream("-")
-	tq.Execute(context.TODO(), nil, output)
+	tq.Execute(context.TODO(), nil)
 }
