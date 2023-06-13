@@ -40,7 +40,7 @@ func InstallLicenseData(db spi.Database, licenseFilePath string, content []byte)
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file
-		os.Rename(licenseFilePath, fmt.Sprintf("%s_%s", licenseFilePath, time.Now().Format("2006_01_02_150405")))
+		os.Rename(licenseFilePath, fmt.Sprintf("%s_%s", licenseFilePath, time.Now().Format("20060102_150405")))
 	}
 	if err := os.WriteFile(licenseFilePath, content, 0640); err != nil {
 		return nil, err
