@@ -41,9 +41,9 @@ func srcf_QUERY(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(QUERY) invalid number of args (n:%d)", len(args))
 	}
 	ret := &querySrc{
-		columns:   []string{},
-		timeRange: &timeRange{ts: "last", duration: time.Second, period: 0},
-		limit:     &queryLimit{limit: 1000000},
+		columns: []string{},
+		between: &queryBetween{aStr: "last", aDur: time.Duration(-1000000000), bStr: "last", period: 0},
+		limit:   &queryLimit{limit: 1000000},
 	}
 	for i, arg := range args {
 		switch tok := arg.(type) {
@@ -51,8 +51,8 @@ func srcf_QUERY(args ...any) (any, error) {
 			ret.columns = append(ret.columns, tok)
 		case *queryFrom:
 			ret.from = tok
-		case *timeRange:
-			ret.timeRange = tok
+		case *queryBetween:
+			ret.between = tok
 		case *queryLimit:
 			ret.limit = tok
 		case *queryDump:
@@ -68,11 +68,11 @@ func srcf_QUERY(args ...any) (any, error) {
 }
 
 type querySrc struct {
-	columns   []string
-	from      *queryFrom
-	timeRange *timeRange
-	limit     *queryLimit
-	dump      *queryDump
+	columns []string
+	from    *queryFrom
+	between *queryBetween
+	limit   *queryLimit
+	dump    *queryDump
 }
 
 var _ dbSource = &querySrc{}
@@ -165,12 +165,115 @@ func srcf_from(args ...any) (any, error) {
 	return ret, nil
 }
 
+type queryBetween struct {
+	aStr   string
+	aDur   time.Duration
+	aTime  time.Time
+	bStr   string
+	bDur   time.Duration
+	bTime  time.Time
+	period time.Duration
+}
+
+func parseBetweenTime(str string) (string, time.Duration, error) {
+	str = strings.TrimSpace(strings.ToLower(str))
+	var dur time.Duration
+	var err error
+	if strings.HasPrefix(str, "now") {
+		remain := strings.TrimSpace(str[3:])
+		if len(remain) > 0 {
+			dur, err = time.ParseDuration(remain)
+			if err != nil {
+				return "", 0, fmt.Errorf("f(between) %s", err.Error())
+			}
+		}
+		return "now", dur, nil
+	} else if strings.HasPrefix(str, "last") {
+		remain := strings.TrimSpace(str[4:])
+		if len(remain) > 0 {
+			dur, err = time.ParseDuration(remain)
+			if err != nil {
+				return "", 0, fmt.Errorf("f(between) %s", err.Error())
+			}
+		}
+		return "last", dur, nil
+	} else {
+		return "", 0, fmt.Errorf("f(between) invalid time expression")
+	}
+}
+
+func srcf_between(args ...any) (any, error) {
+	if len(args) != 2 && len(args) != 3 {
+		return nil, fmt.Errorf("f(between) invalid number of args (n:%d)", len(args))
+	}
+	ret := &queryBetween{}
+	if str, ok := args[0].(string); ok {
+		tok, dur, err := parseBetweenTime(str)
+		if err != nil {
+			return nil, err
+		}
+		ret.aStr = tok
+		ret.aDur = dur
+	} else {
+		if num, ok := args[0].(float64); ok {
+			ret.aTime = time.Unix(0, int64(num))
+		} else {
+			if ts, ok := args[0].(time.Time); ok {
+				ret.aTime = ts
+			} else {
+				return nil, fmt.Errorf("f(between) 1st arg should be time or 'now', 'last', but %T", args[0])
+			}
+		}
+	}
+
+	if str, ok := args[1].(string); ok {
+		tok, dur, err := parseBetweenTime(str)
+		if err != nil {
+			return nil, err
+		}
+		ret.bStr = tok
+		ret.bDur = dur
+	} else {
+		if num, ok := args[1].(float64); ok {
+			ret.bTime = time.Unix(0, int64(num))
+		} else {
+			if ts, ok := args[1].(time.Time); ok {
+				ret.bTime = ts
+			} else {
+				return nil, fmt.Errorf("f(between) 2nd arg should be time or 'now', 'last', but %T", args[1])
+			}
+		}
+	}
+
+	if len(args) == 2 {
+		return ret, nil
+	}
+
+	if str, ok := args[2].(string); ok {
+		if d, err := time.ParseDuration(str); err == nil {
+			ret.period = d
+		} else {
+			return nil, fmt.Errorf("f(between) 3rd arg should be duration, %s", err.Error())
+		}
+	} else if d, ok := args[1].(float64); ok {
+		ret.period = time.Duration(int64(d))
+	} else {
+		return nil, fmt.Errorf("f(between) 3rd arg should be duration, but %T", args[1])
+	}
+	return ret, nil
+}
+
 func (si *querySrc) ToSQL() string {
 	var ret string
-	if si.timeRange == nil || si.timeRange.period == 0 {
-		ret = si.toSql()
-	} else {
-		ret = si.toSqlGroup()
+	if si.from == nil {
+		return "ERROR 'from()' missing"
+	}
+	if si.between != nil {
+		if si.between.period == 0 {
+			ret = si.toSql()
+		} else {
+			ret = si.toSqlGroup()
+		}
 	}
 	if si.dump != nil && si.dump.flag {
 		if si.dump.escape {
@@ -182,129 +285,78 @@ func (si *querySrc) ToSQL() string {
 	return ret
 }
 
+func stringBetweenDuration(dur time.Duration) string {
+	if dur == 0 {
+		return ""
+	} else if dur < 0 {
+		return fmt.Sprintf("%d", dur)
+	} else {
+		return fmt.Sprintf("+%d", dur)
+	}
+}
+
+func stringBetweenPart(str string, dur time.Duration, ts time.Time, table string, tag string) string {
+	if str == "last" {
+		return fmt.Sprintf("(SELECT MAX_TIME%s FROM V$%s_STAT WHERE name = '%s')", stringBetweenDuration(dur), table, tag)
+	} else if str == "now" && dur == 0 {
+		return "now"
+	} else if str == "now" {
+		return fmt.Sprintf("(now%s)", stringBetweenDuration(dur))
+	} else {
+		return fmt.Sprintf("%d", ts.UnixNano())
+	}
+}
+
+func (si *querySrc) toSql() string {
+	table := si.from.table
+	tag := si.from.tag
+	baseTime := si.from.baseTime
+	ret := ""
+	columns := "value"
+	if len(si.columns) > 0 {
+		columns = strings.Join(si.columns, ", ")
+	}
+	bw := si.between
+	aPart := stringBetweenPart(bw.aStr, bw.aDur, bw.aTime, table, tag)
+	bPart := stringBetweenPart(bw.bStr, bw.bDur, bw.bTime, table, tag)
+
+	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
+		baseTime, columns, table,
+		tag,
+		baseTime, aPart, bPart,
+		si.limit.offset, si.limit.limit,
+	)
+
+	return ret
+}
+
 func (si *querySrc) toSqlGroup() string {
 	table := si.from.table
 	tag := si.from.tag
 	baseTime := si.from.baseTime
 	ret := ""
-	rng := si.timeRange
 	columns := "value"
 	if len(si.columns) > 0 {
 		columns = strings.Join(si.columns, ", ")
 	}
+	bw := si.between
+	aPart := stringBetweenPart(bw.aStr, bw.aDur, bw.aTime, table, tag)
+	bPart := stringBetweenPart(bw.bStr, bw.bDur, bw.bTime, table, tag)
 
-	if rng.ts == "last" {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN
-				    (SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
-				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d, %d
-			`,
-			baseTime, rng.period, rng.period, baseTime, columns, table,
-			tag,
-			baseTime,
-			rng.duration, table, tag,
-			table, tag,
-			baseTime,
-			baseTime,
-			si.limit.offset, si.limit.limit,
-		)
-	} else if rng.ts == "now" {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s BETWEEN now - %d AND now 
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d, %d
-			`,
-			baseTime, rng.period, rng.period, baseTime, columns, table,
-			tag,
-			baseTime, rng.duration,
-			baseTime,
-			baseTime,
-			si.limit.offset, si.limit.limit,
-		)
-	} else {
-		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN %d - %d AND %d
-			GROUP BY %s
-			ORDER BY %s
-			LIMIT %d, %d
-			`,
-			baseTime, rng.period, rng.period, baseTime, columns, table,
-			tag,
-			baseTime,
-			rng.tsTime.UnixNano(), rng.duration, rng.tsTime.UnixNano(),
-			baseTime,
-			baseTime,
-			si.limit.offset, si.limit.limit,
-		)
-	}
-	return ret
-}
-
-func (si *querySrc) toSql() string {
-	if si.from == nil {
-		return "ERROR 'from' function missing"
-	}
-	table := si.from.table
-	tag := si.from.tag
-	baseTime := si.from.baseTime
-	ret := ""
-	columns := "value"
-	if len(si.columns) > 0 {
-		columns = strings.Join(si.columns, ", ")
-	}
-	if si.timeRange.ts == "last" {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN 
-					(SELECT MAX_TIME - %d FROM V$%s_STAT WHERE name = '%s') 
-				AND (SELECT MAX_TIME FROM V$%s_STAT WHERE name = '%s')
-			LIMIT %d, %d
-			`,
-			baseTime, columns, table,
-			tag,
-			baseTime,
-			si.timeRange.duration, table, tag,
-			table, tag,
-			si.limit.offset, si.limit.limit,
-		)
-	} else if si.timeRange.ts == "now" {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s
-			WHERE
-				name = '%s'
-			AND %s BETWEEN now - %d AND now 
-			LIMIT %d, %d
-			`,
-			baseTime, columns, table,
-			tag,
-			baseTime, si.timeRange.duration,
-			si.limit.offset, si.limit.limit,
-		)
-	} else {
-		ret = fmt.Sprintf(`SELECT %s, %s FROM %s 
-			WHERE
-				name = '%s'
-			AND %s
-				BETWEEN %d - %d AND %d
-			LIMIT %d, %d`,
-			baseTime, columns, table,
-			tag,
-			baseTime,
-			si.timeRange.tsTime.UnixNano(), si.timeRange.duration, si.timeRange.tsTime.UnixNano(),
-			si.limit.offset, si.limit.limit)
-	}
+	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
+		WHERE
+			name = '%s'
+		AND %s BETWEEN %s AND %s
+		GROUP BY %s
+		ORDER BY %s
+		LIMIT %d, %d
+		`,
+		baseTime, bw.period, bw.period, baseTime, columns, table,
+		tag,
+		baseTime, aPart, bPart,
+		baseTime,
+		baseTime,
+		si.limit.offset, si.limit.limit,
+	)
 	return ret
 }

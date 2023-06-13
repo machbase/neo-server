@@ -158,3 +158,63 @@ func srcf_freq(args ...any) (any, error) {
 	}
 	return ret, nil
 }
+
+type timeRange struct {
+	tsTime   time.Time
+	duration time.Duration
+	period   time.Duration
+}
+
+func srcf_range(args ...any) (any, error) {
+	if len(args) != 2 && len(args) != 3 {
+		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
+	}
+	ret := &timeRange{}
+	if str, ok := args[0].(string); ok {
+		if str != "now" {
+			return nil, fmt.Errorf("f(range) 1st arg should be time or 'now', but %T", args[0])
+		}
+		ret.tsTime = time.Now()
+	} else {
+		if num, ok := args[0].(float64); ok {
+			ret.tsTime = time.Unix(0, int64(num))
+		} else {
+			if ts, ok := args[0].(time.Time); ok {
+				ret.tsTime = ts
+			} else {
+				return nil, fmt.Errorf("f(range) 1st arg should be time or 'now', but %T", args[0])
+			}
+		}
+	}
+	if str, ok := args[1].(string); ok {
+		if d, err := time.ParseDuration(str); err == nil {
+			ret.duration = d
+		} else {
+			return nil, fmt.Errorf("f(range) 2nd arg should be duration, %s", err.Error())
+		}
+	} else if d, ok := args[1].(float64); ok {
+		ret.duration = time.Duration(int64(d))
+	} else {
+		return nil, fmt.Errorf("f(range) 2nd arg should be duration, but %T", args[1])
+	}
+	if len(args) == 2 {
+		return ret, nil
+	}
+
+	if str, ok := args[2].(string); ok {
+		if d, err := time.ParseDuration(str); err == nil {
+			ret.period = d
+		} else {
+			return nil, fmt.Errorf("f(range) 3rd arg should be duration, %s", err.Error())
+		}
+	} else if d, ok := args[2].(float64); ok {
+		ret.period = time.Duration(int64(d))
+	} else {
+		return nil, fmt.Errorf("f(range) 3rd arg should be duration, but %T", args[1])
+	}
+	if ret.duration <= ret.period {
+		return nil, fmt.Errorf("f(range) 3rd arg should be smaller than 2nd")
+	}
+
+	return ret, nil
+}
