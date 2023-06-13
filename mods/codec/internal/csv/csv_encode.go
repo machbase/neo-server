@@ -106,6 +106,32 @@ func (ex *Exporter) Flush(heading bool) {
 	ex.output.Flush()
 }
 
+func (ex *Exporter) encodeTime(v time.Time) string {
+	switch ex.timeformat {
+	case "ns":
+		return strconv.FormatInt(v.UnixNano(), 10)
+	case "ms":
+		return strconv.FormatInt(v.UnixMilli(), 10)
+	case "us":
+		return strconv.FormatInt(v.UnixMicro(), 10)
+	case "s":
+		return strconv.FormatInt(v.Unix(), 10)
+	default:
+		if ex.timeLocation == nil {
+			ex.timeLocation = time.UTC
+		}
+		return v.In(ex.timeLocation).Format(ex.timeformat)
+	}
+}
+
+func (ex *Exporter) encodeFloat64(v float64) string {
+	if ex.precision < 0 {
+		return fmt.Sprintf("%f", v)
+	} else {
+		return fmt.Sprintf("%.*f", ex.precision, v)
+	}
+}
+
 func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
@@ -128,49 +154,17 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			switch ex.timeformat {
-			case "ns":
-				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
-			case "ms":
-				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
-			case "us":
-				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
-			case "s":
-				cols[i] = strconv.FormatInt(v.Unix(), 10)
-			default:
-				if ex.timeLocation == nil {
-					ex.timeLocation = time.UTC
-				}
-				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
-			}
+			cols[i] = ex.encodeTime(*v)
 		case time.Time:
-			switch ex.timeformat {
-			case "ns":
-				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
-			case "ms":
-				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
-			case "us":
-				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
-			case "s":
-				cols[i] = strconv.FormatInt(v.Unix(), 10)
-			default:
-				if ex.timeLocation == nil {
-					ex.timeLocation = time.UTC
-				}
-				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
-			}
+			cols[i] = ex.encodeTime(v)
 		case *float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", *v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
-			}
+			cols[i] = ex.encodeFloat64(*v)
 		case float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, v)
-			}
+			cols[i] = ex.encodeFloat64(v)
+		case *float32:
+			cols[i] = ex.encodeFloat64(float64(*v))
+		case float32:
+			cols[i] = ex.encodeFloat64(float64(v))
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

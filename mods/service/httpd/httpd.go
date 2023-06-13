@@ -95,6 +95,13 @@ func OptionExperimentMode(enable bool) Option {
 	}
 }
 
+// license file path
+func OptionLicenseFilePath(path string) Option {
+	return func(s *httpd) {
+		s.licenseFilePath = path
+	}
+}
+
 // Handler
 func OptionHandler(prefix string, handler HandlerType) Option {
 	return func(s *httpd) {
@@ -146,8 +153,9 @@ type httpd struct {
 	tagqlLoader tql.Loader
 	serverFs    *ssfs.SSFS
 
-	debugMode      bool
-	experimentMode bool
+	licenseFilePath string
+	debugMode       bool
+	experimentMode  bool
 }
 
 type HandlerType string
@@ -273,6 +281,8 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
 			group.Any("/api/files/*path", svr.handleFiles)
+			group.GET("/api/license", svr.handleGetLicense)
+			group.POST("/api/license", svr.handleInstallLicense)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/logs", svr.handleLakeGetLogs)

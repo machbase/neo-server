@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
@@ -19,6 +19,55 @@ func errInvalidNumOfArgs(name string, expect int, actual int) error {
 
 func errWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
 	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
+}
+
+func intArgs(raw any, fname string, idx int, expect string) (int, error) {
+	switch v := raw.(type) {
+	case float64:
+		return int(v), nil
+	case *float64:
+		return int(*v), nil
+	case string:
+		if fv, err := strconv.ParseInt(v, 10, 32); err != nil {
+			return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
+		} else {
+			return int(fv), nil
+		}
+	default:
+		return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
+func float64Args(raw any, fname string, idx int, expect string) (float64, error) {
+	switch v := raw.(type) {
+	case float64:
+		return v, nil
+	case *float64:
+		return *v, nil
+	case string:
+		if fv, err := strconv.ParseFloat(v, 64); err != nil {
+			return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
+		} else {
+			return fv, nil
+		}
+	default:
+		return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
+func boolArgs(raw any, fname string, idx int, expect string) (bool, error) {
+	switch v := raw.(type) {
+	case bool:
+		return v, nil
+	case string:
+		if fv, err := strconv.ParseBool(v); err != nil {
+			return false, errWrongTypeOfArgs(fname, idx, expect, raw)
+		} else {
+			return fv, nil
+		}
+	default:
+		return false, errWrongTypeOfArgs(fname, idx, expect, raw)
+	}
 }
 
 func Parse(text string) (*expression.Expression, error) {
@@ -69,6 +118,7 @@ func Compile(code string, dataReader io.Reader, params map[string][]string) (Inp
 var functions = map[string]expression.Function{
 	"from":      srcf_from,
 	"range":     srcf_range,
+	"between":   srcf_between,
 	"limit":     srcf_limit,
 	"dump":      srcf_dump,
 	"freq":      srcf_freq,
@@ -190,65 +240,4 @@ func srcf_INPUT(args ...any) (any, error) {
 	} else {
 		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
 	}
-}
-
-type timeRange struct {
-	ts       string
-	tsTime   time.Time
-	duration time.Duration
-	period   time.Duration
-}
-
-func srcf_range(args ...any) (any, error) {
-	if len(args) != 2 && len(args) != 3 {
-		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
-	}
-	ret := &timeRange{}
-	if str, ok := args[0].(string); ok {
-		if str != "now" && str != "last" {
-			return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
-		}
-		ret.ts = str
-	} else {
-		if num, ok := args[0].(float64); ok {
-			ret.tsTime = time.Unix(0, int64(num))
-		} else {
-			if ts, ok := args[0].(time.Time); ok {
-				ret.tsTime = ts
-			} else {
-				return nil, fmt.Errorf("f(range) 1st args should be time or 'now', 'last', but %T", args[0])
-			}
-		}
-	}
-	if str, ok := args[1].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.duration = d
-		} else {
-			return nil, fmt.Errorf("f(range) 2nd args should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[1].(float64); ok {
-		ret.duration = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 2nd args should be duration, but %T", args[1])
-	}
-	if len(args) == 2 {
-		return ret, nil
-	}
-
-	if str, ok := args[2].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.period = d
-		} else {
-			return nil, fmt.Errorf("f(range) 3rd args should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[1].(float64); ok {
-		ret.period = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 3rd args should be duration, but %T", args[1])
-	}
-	if ret.duration <= ret.period {
-		return nil, fmt.Errorf("f(range) 3rd args should be smaller than 2nd")
-	}
-
-	return ret, nil
 }

@@ -83,7 +83,9 @@ func (ex *Exporter) Open() error {
 	typesJson, _ := gojson.Marshal(types)
 
 	if ex.transpose {
-		ex.output.Write([]byte(`{"data":{"cols":[`))
+		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"cols":[`,
+			string(columnsJson), string(typesJson))
+		ex.output.Write([]byte(header))
 	} else {
 		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
 			string(columnsJson), string(typesJson))
@@ -116,6 +118,37 @@ func (ex *Exporter) Flush(heading bool) {
 	ex.output.Flush()
 }
 
+func (ex *Exporter) encodeTime(t time.Time) any {
+	switch ex.timeformat {
+	case "":
+		fallthrough
+	case "ns":
+		return t.UnixNano()
+	case "ms":
+		return t.UnixMilli()
+	case "us":
+		return t.UnixMicro()
+	case "s":
+		return t.Unix()
+	default:
+		if ex.TimeLocation == nil {
+			ex.TimeLocation = time.UTC
+		}
+		return t.In(ex.TimeLocation).Format(ex.timeformat)
+	}
+}
+
+func (ex *Exporter) encodeFloat64(v float64) any {
+	if math.IsNaN(v) {
+		return "NaN"
+	} else if math.IsInf(v, -1) {
+		return "-Inf"
+	} else if math.IsInf(v, 1) {
+		return "+Inf"
+	}
+	return v
+}
+
 func (ex *Exporter) AddRow(source []any) error {
 	ex.nrow++
 
@@ -125,34 +158,21 @@ func (ex *Exporter) AddRow(source []any) error {
 
 	values := make([]any, len(source))
 	for i, field := range source {
-		values[i] = field
-		if v, ok := field.(*time.Time); ok {
-			switch ex.timeformat {
-			case "":
-				fallthrough
-			case "ns":
-				values[i] = v.UnixNano()
-			case "ms":
-				values[i] = v.UnixMilli()
-			case "us":
-				values[i] = v.UnixMicro()
-			case "s":
-				values[i] = v.Unix()
-			default:
-				if ex.TimeLocation == nil {
-					ex.TimeLocation = time.UTC
-				}
-				values[i] = v.In(ex.TimeLocation).Format(ex.timeformat)
-			}
-			continue
-		} else if v, ok := field.(*float64); ok {
-			if math.IsNaN(*v) {
-				values[i] = "NaN"
-			} else if math.IsInf(*v, -1) {
-				values[i] = "-Inf"
-			} else if math.IsInf(*v, 1) {
-				values[i] = "+Inf"
-			}
+		switch v := field.(type) {
+		default:
+			values[i] = field
+		case *time.Time:
+			values[i] = ex.encodeTime(*v)
+		case time.Time:
+			values[i] = ex.encodeTime(v)
+		case *float64:
+			values[i] = ex.encodeFloat64(*v)
+		case float64:
+			values[i] = ex.encodeFloat64(v)
+		case *float32:
+			values[i] = ex.encodeFloat64(float64(*v))
+		case float32:
+			values[i] = ex.encodeFloat64(float64(v))
 		}
 	}
 
