@@ -206,6 +206,7 @@ func (in *input) Run(deligate InputDeligate) error {
 		deligate.Feed(nil)
 		return nil
 	} else if in.readerSrc != nil {
+		deligate.FeedHeader(in.readerSrc.Header())
 		for values := range in.readerSrc.Gen() {
 			deligate.Feed(values)
 			if deligate.ShouldStop() {

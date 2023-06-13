@@ -84,6 +84,27 @@ func (ec *ExecutionChain) Run() error {
 	return ec.Error()
 }
 
+func (ec *ExecutionChain) columnTypeName(v any) string {
+	switch v.(type) {
+	default:
+		return fmt.Sprintf("%T", v)
+	case string:
+		return "string"
+	case *time.Time:
+		return "datetime"
+	case time.Time:
+		return "datetime"
+	case *float32:
+		return "float"
+	case float32:
+		return "float"
+	case *float64:
+		return "double"
+	case float64:
+		return "double"
+	}
+}
+
 func (ec *ExecutionChain) start() {
 	////////////////////////////////
 	// encoder
@@ -96,7 +117,7 @@ func (ec *ExecutionChain) start() {
 					for i, v := range arr {
 						cols = append(cols, &spi.Column{
 							Name: fmt.Sprintf("C%02d", i),
-							Type: fmt.Sprintf("%T", v)})
+							Type: ec.columnTypeName(v)})
 					}
 				}
 				codec.SetEncoderColumns(ec.encoder, cols)

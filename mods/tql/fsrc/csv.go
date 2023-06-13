@@ -8,9 +8,12 @@ import (
 	"os"
 	"strconv"
 	"sync"
+
+	spi "github.com/machbase/neo-spi"
 )
 
 type readerSource interface {
+	Header() spi.Columns
 	Gen() <-chan []any
 	Stop()
 }
@@ -35,7 +38,7 @@ func (src *csvSrc) Gen() <-chan []any {
 		rownum := 0
 		for src.alive {
 			fields, err := src.reader.Read()
-			if fields == nil && err == io.EOF {
+			if len(fields) == 0 || err != nil {
 				break
 			}
 			values := make([]any, len(fields))
@@ -48,9 +51,21 @@ func (src *csvSrc) Gen() <-chan []any {
 					case "float32":
 						fallthrough
 					case "float64":
+						fallthrough
+					case "double":
+						src.columns[i].dataType = "double"
 						values[i], err = strconv.ParseFloat(fields[i], 64)
 						if err != nil {
-							fmt.Println("ERR", err.Error())
+							src.ch <- nil
+							break
+						}
+					case "boolean":
+						fallthrough
+					case "bool":
+						src.columns[i].dataType = "boolean"
+						values[i], err = strconv.ParseBool(fields[i])
+						if err != nil {
+							src.ch <- nil
 							break
 						}
 					case "string":
@@ -77,6 +92,21 @@ func (src *csvSrc) Stop() {
 	if src.fd != nil {
 		src.fd.Close()
 	}
+}
+
+func (fs *csvSrc) Header() spi.Columns {
+	max := 0
+	for i := range fs.columns {
+		if i > max {
+			max = i
+		}
+	}
+	ret := make([]*spi.Column, max+1)
+	for i, c := range fs.columns {
+		ret[i] = &spi.Column{Name: c.label, Type: c.dataType}
+	}
+
+	return ret
 }
 
 /*
