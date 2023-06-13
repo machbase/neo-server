@@ -82,20 +82,30 @@ type queryDump struct {
 	escape bool
 }
 
+// dump(flag [, escape])
 func srcf_dump(args ...any) (any, error) {
+	ret := &queryDump{flag: true}
+
 	if len(args) == 0 {
-		return &queryDump{flag: true}, nil
-	} else if len(args) == 1 {
-		ret := &queryDump{flag: true}
-		if b, ok := args[0].(bool); ok {
-			ret.escape = b
-		} else {
-			return nil, fmt.Errorf("f(dump) arg should be boolean, but %T", args[1])
-		}
 		return ret, nil
-	} else {
-		return nil, fmt.Errorf("f(dump) invalid number of args (n:%d)", len(args))
 	}
+
+	if len(args) >= 1 {
+		if flag, err := boolArgs(args[0], "dump", 0, "flag(bool)"); err == nil {
+			ret.flag = flag
+		} else {
+			return nil, err
+		}
+	}
+
+	if len(args) == 2 {
+		if escape, err := boolArgs(args[1], "dump", 1, "escape(bool)"); err == nil {
+			ret.escape = escape
+		} else {
+			return nil, err
+		}
+	}
+	return ret, nil
 }
 
 type queryLimit struct {
@@ -116,17 +126,17 @@ func srcf_limit(args ...any) (any, error) {
 	ret := &queryLimit{}
 	idxArgs := 0
 	if lenArgs == 2 {
-		if d, ok := args[idxArgs].(float64); ok {
-			ret.offset = int(d)
+		if v, err := intArgs(args[idxArgs], "limit", idxArgs, "offset(int)"); err == nil {
+			ret.offset = v
 		} else {
-			return nil, fmt.Errorf("f(range) offset should be int, but %T", args[1])
+			return nil, err
 		}
 		idxArgs++
 	}
-	if d, ok := args[idxArgs].(float64); ok {
-		ret.limit = int(d)
+	if v, err := intArgs(args[idxArgs], "limit", idxArgs, "limit(int)"); err == nil {
+		ret.limit = v
 	} else {
-		return nil, fmt.Errorf("f(range) limit should be int, but %T", args[1])
+		return nil, err
 	}
 	return ret, nil
 }
