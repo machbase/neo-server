@@ -1,8 +1,10 @@
 package do
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	spi "github.com/machbase/neo-spi"
@@ -28,7 +30,9 @@ func GetLicenseInfo(db spi.Database) (*LicenseInfo, error) {
 }
 
 func InstallLicenseFile(db spi.Database, path string) (*LicenseInfo, error) {
-	// alter system install license='path_to/license.dat';
+	if strings.ContainsRune(path, ';') {
+		return nil, errors.New("invalid license file path")
+	}
 	result := db.Exec("alter system install license='" + path + "'")
 	if result.Err() != nil {
 		return nil, result.Err()
