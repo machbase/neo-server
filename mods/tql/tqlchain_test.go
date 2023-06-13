@@ -44,7 +44,7 @@ func TestFFTChain(t *testing.T) {
 	}
 	reader := strings.NewReader(strings.Join(strExprs, "\n"))
 
-	tq, err := Parse(reader)
+	tq, err := Parse(reader, nil, nil)
 	require.Nil(t, err)
 	require.NotNil(t, tq)
 

@@ -18,7 +18,7 @@ type readerSource interface {
 var _ readerSource = &csvSrc{}
 
 type csvSrc struct {
-	fd      *os.File
+	fd      io.ReadCloser
 	columns map[int]*columnOpt
 
 	reader    *csv.Reader
@@ -42,7 +42,6 @@ func (src *csvSrc) Gen() <-chan []any {
 			for i := 0; i < len(fields); i++ {
 				colOpt := src.columns[i]
 				if colOpt != nil {
-					fmt.Printf("=== %v\n", colOpt)
 					switch colOpt.dataType {
 					case "float":
 						fallthrough
@@ -87,35 +86,43 @@ func src_CSV(args ...any) (any, error) {
 	ret := &csvSrc{columns: make(map[int]*columnOpt)}
 
 	var file *fileOpt
+	var reader io.Reader
+
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case *fileOpt:
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
+		case io.Reader:
+			reader = v
 		default:
 			return nil, fmt.Errorf("f(CSV) unknown argument, %T", v)
 		}
 	}
 
-	if file == nil {
-		return nil, errors.New("f(CSV) file path is not specified")
-	}
-	stat, err := os.Stat(file.path)
-	if err != nil {
-		return nil, err
-	}
-	if stat.IsDir() {
-		return nil, errors.New("f(CSV) file path is a directory")
+	if file == nil && reader == nil {
+		return nil, errors.New("f(CSV) file path or data reader is not specified")
 	}
 
-	if fd, err := os.Open(file.path); err != nil {
-		fmt.Println("===>", err.Error())
-		return nil, err
-	} else {
-		ret.fd = fd
+	if reader != nil {
+		ret.reader = csv.NewReader(reader)
+	} else if file != nil {
+		stat, err := os.Stat(file.path)
+		if err != nil {
+			return nil, err
+		}
+		if stat.IsDir() {
+			return nil, errors.New("f(CSV) file path is a directory")
+		}
+
+		if fd, err := os.Open(file.path); err != nil {
+			return nil, err
+		} else {
+			ret.fd = fd
+		}
+		ret.reader = csv.NewReader(ret.fd)
 	}
-	ret.reader = csv.NewReader(ret.fd)
 
 	return ret, nil
 }

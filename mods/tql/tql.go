@@ -23,7 +23,7 @@ import (
 type Tql interface {
 	Execute(ctx context.Context, db spi.Database, output spec.OutputStream) error
 	ExecuteEncoder(ctxCtx context.Context, db spi.Database, encoder codec.RowsEncoder) error
-	ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error
+	ExecuteHandler(ctx context.Context, db spi.Database, r *http.Request, w http.ResponseWriter) error
 }
 
 type tagQL struct {
@@ -47,12 +47,8 @@ func init() {
 	}
 }
 
-func Parse(in io.Reader) (Tql, error) {
-	return ParseWithParams(in, nil)
-}
-
-func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
-	reader := bufio.NewReader(in)
+func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]string) (Tql, error) {
+	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}
 	expressions := []Line{}
@@ -110,7 +106,7 @@ func ParseWithParams(in io.Reader, params map[string][]string) (Tql, error) {
 		}
 	}
 
-	tq, err := parseExpressions(expressions, params)
+	tq, err := parseExpressions(expressions, dataReader, params)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +121,7 @@ type Line struct {
 	line int
 }
 
-func parseExpressions(exprs []Line, params map[string][]string) (Tql, error) {
+func parseExpressions(exprs []Line, dataReader io.Reader, params map[string][]string) (Tql, error) {
 	if len(exprs) == 0 {
 		return nil, errors.New("empty expressions")
 	}
@@ -135,7 +131,7 @@ func parseExpressions(exprs []Line, params map[string][]string) (Tql, error) {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		src, err := fsrc.Compile(srcLine.text, params)
+		src, err := fsrc.Compile(srcLine.text, dataReader, params)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
@@ -168,7 +164,7 @@ func parseExpressions(exprs []Line, params map[string][]string) (Tql, error) {
 	return tq, nil
 }
 
-func ParseContext(ctx context.Context, params map[string][]string) (Tql, error) {
+func ParseContext(ctx context.Context, dataReader io.Reader, params map[string][]string) (Tql, error) {
 	tq := &tagQL{
 		params: params,
 	}
@@ -179,7 +175,7 @@ func ParseContext(ctx context.Context, params map[string][]string) (Tql, error) 
 	}
 
 	var err error
-	tq.input, err = fsrc.Compile(tqls[0], tq.params)
+	tq.input, err = fsrc.Compile(tqls[0], dataReader, tq.params)
 	if err != nil {
 		return nil, err
 	}
@@ -203,10 +199,30 @@ func ParseContext(ctx context.Context, params map[string][]string) (Tql, error) 
 	return tq, nil
 }
 
-func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error {
-	var compress = ""
-	var output spec.OutputStream
+func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, req *http.Request, w http.ResponseWriter) error {
+	// input format
+	switch req.Method {
+	case http.MethodGet:
+	case http.MethodPost:
+		contentType := req.Header["Content-Type"]
+		if len(contentType) > 0 && contentType[0] == "text/csv" {
 
+		}
+		contentEncoding := req.Header["Content-Encoding"]
+		if len(contentEncoding) > 0 && contentEncoding[0] == "gzip" {
+
+		}
+	}
+
+	// output format
+	params := req.URL.Query()
+	var compress = ""
+	for k, v := range params {
+		if k == "compress" && len(v) > 0 {
+			compress = v[len(v)-1]
+		}
+	}
+	var output spec.OutputStream
 	switch compress {
 	case "gzip":
 		output = &stream.WriterOutputStream{Writer: gzip.NewWriter(w)}

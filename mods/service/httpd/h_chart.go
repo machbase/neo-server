@@ -128,7 +128,7 @@ func transformFFT(series *model.RenderingData, periodDuration time.Duration, win
 	period := float64(lenSamples) / (float64(periodDuration) / float64(time.Second))
 	fft := fourier.NewFFT(lenSamples)
 	vals := series.Values
-	amplifier := func(v float64) float64 { return v }
+	var amplifier func(v float64) float64
 
 	switch strings.ToLower(windowType) {
 	case "hamming":

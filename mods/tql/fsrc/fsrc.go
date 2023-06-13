@@ -3,6 +3,7 @@ package fsrc
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type Input interface {
 }
 
 type inputParameters struct {
+	Body   io.Reader
 	params map[string][]string
 }
 
@@ -48,12 +50,12 @@ func (p *inputParameters) Get(name string) (any, error) {
 	return nil, fmt.Errorf("undefined variable '%s'", name)
 }
 
-func Compile(text string, params map[string][]string) (Input, error) {
-	expr, err := Parse(text)
+func Compile(code string, dataReader io.Reader, params map[string][]string) (Input, error) {
+	expr, err := Parse(code)
 	if err != nil {
 		return nil, err
 	}
-	ret, err := expr.Eval(&inputParameters{params})
+	ret, err := expr.Eval(&inputParameters{Body: dataReader, params: params})
 	if err != nil {
 		return nil, err
 	}

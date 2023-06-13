@@ -257,6 +257,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			if svr.tagqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
+				group.POST("/api/tql/*path", svr.handleTagQL)
 			}
 			group.Use(svr.handleJwtToken)
 			if svr.tagqlLoader != nil {
@@ -289,6 +290,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/write/:table", svr.handleWrite)
 			if svr.tagqlLoader != nil {
 				group.GET("/tql/*path", svr.handleTagQL)
+				group.POST("/tql/*path", svr.handleTagQL)
 				group.POST("/tql", svr.handlePostTagQL)
 			}
 			svr.log.Infof("HTTP path %s for machbase api", prefix)

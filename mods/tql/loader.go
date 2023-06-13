@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse() (Tql, error)
-	ParseWithParams(map[string][]string) (Tql, error)
+	Parse(dataReader io.Reader, params map[string][]string) (Tql, error)
 	String() string
 }
 
@@ -68,18 +68,14 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse() (Tql, error) {
-	return sc.ParseWithParams(nil)
-}
-
-func (sc *script) ParseWithParams(params map[string][]string) (Tql, error) {
+func (sc *script) Parse(dataReader io.Reader, params map[string][]string) (Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	tql, err := ParseWithParams(file, params)
+	tql, err := Parse(file, dataReader, params)
 	if err != nil {
 		return nil, err
 	}
