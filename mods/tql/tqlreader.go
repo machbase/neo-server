@@ -66,6 +66,9 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 		if strings.TrimSpace(lineText) == "" {
 			continue
 		}
+		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+			continue
+		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
 			continue
 		}
