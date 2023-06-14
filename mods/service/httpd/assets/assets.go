@@ -1,8 +1,10 @@
 package assets
 
 import (
-	_ "embed"
+	"embed"
+	"io"
 	"net/http"
+	"strings"
 )
 
 //go:embed favicon.ico
@@ -13,6 +15,11 @@ var appleTouchIcon []byte
 
 //go:embed apple-touch-icon-precomposed.png
 var appleTouchIconPrecomposed []byte
+
+//go:embed echarts/*
+var echartsDir embed.FS
+
+const echartsPrefix = "/echarts/"
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	switch r.RequestURI {
@@ -29,6 +36,17 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(appleTouchIconPrecomposed)
 	default:
-		w.WriteHeader(http.StatusNotFound)
+		if strings.HasPrefix(r.RequestURI, echartsPrefix) {
+			path := strings.TrimPrefix(r.RequestURI, "/")
+			if file, err := echartsDir.Open(path); err == nil {
+				w.WriteHeader(http.StatusOK)
+				io.Copy(w, file)
+				file.Close()
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}
 }

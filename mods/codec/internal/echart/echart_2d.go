@@ -80,9 +80,10 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	}
 	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			Theme:  theme,
-			Width:  width,
-			Height: height,
+			AssetsHost: "/echarts/",
+			Theme:      theme,
+			Width:      width,
+			Height:     height,
 		}),
 		charts.WithTitleOpts(opts.Title{
 			Title:    ex.title,
