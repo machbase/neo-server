@@ -318,6 +318,8 @@ func (svr *httpd) Router() *gin.Engine {
 		svr.log.Infof("HTTP path %s/index.html for swagger", prefixSwagger)
 	}
 
+	// handle /echarts/*
+	r.GET("/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r

@@ -38,7 +38,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	file, _, err := ctx.Request.FormFile("license.dat")
+	file, fileHeader, err := ctx.Request.FormFile("license.dat")
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -46,8 +46,15 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		return
 	}
 	defer file.Close()
+
+	if fileHeader.Size > 4096 {
+		// too big as a license file, user might send wrong file.
+		rsp.Reason = "too large file as license.dat"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 	content, err := io.ReadAll(file)
-	fmt.Println("LIC", string(content))
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
