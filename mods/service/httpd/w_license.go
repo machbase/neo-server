@@ -49,7 +49,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 
 	if fileHeader.Size > 4096 {
 		// too big as a license file, user might send wrong file.
-		rsp.Reason = "too large file as license.dat"
+		rsp.Reason = "Too large file as a license file."
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
@@ -69,7 +69,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	rsp.Success, rsp.Reason = true, "success"
+	rsp.Success, rsp.Reason = true, "Successfully registered."
 	rsp.Data = nfo
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
