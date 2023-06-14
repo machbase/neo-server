@@ -3,7 +3,7 @@ module github.com/machbase/neo-server
 go 1.19
 
 require (
-	fyne.io/fyne/v2 v2.3.4
+	fyne.io/fyne/v2 v2.3.5
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/kong v0.7.1
@@ -50,7 +50,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.10.1-0.20230403195833-7dc3c09283d6 // indirect
+	fyne.io/systray v1.10.1-0.20230602210930-b6a2d6ca2a7b // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
