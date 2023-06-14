@@ -22,7 +22,7 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/machbase/booter v1.2.2
-	github.com/machbase/neo-engine v1.0.5
+	github.com/machbase/neo-engine v1.0.6
 	github.com/machbase/neo-grpc v0.9.0
 	github.com/machbase/neo-spi v1.3.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
