@@ -121,7 +121,7 @@ func (ec *ExecutionChain) start() {
 					}
 				}
 				ec.output.SetHeader(cols)
-				ec.output.Open()
+				ec.output.Open(ec.db)
 				ec.encoderNeedToClose = true
 			}
 			if err := ec.output.AddRow(arr); err != nil {

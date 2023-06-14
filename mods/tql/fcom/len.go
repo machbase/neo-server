@@ -17,6 +17,10 @@ func to_len(args ...any) (any, error) {
 	}
 }
 
+func count(args ...any) (any, error) {
+	return float64(len(args)), nil
+}
+
 func element(args ...any) (any, error) {
 	if len(args) < 3 {
 		return nil, fmt.Errorf("f(element) invalud number of args (n:%d)", len(args))

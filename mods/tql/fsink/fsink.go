@@ -46,7 +46,7 @@ func Parse(text string) (*expression.Expression, error) {
 }
 
 type Output interface {
-	Open() error
+	Open(db spi.Database) error
 	Close()
 	ContentType() string
 	ContentEncoding() string
@@ -72,17 +72,22 @@ func Compile(code string, params map[string][]string, writer io.Writer) (Output,
 	if err != nil {
 		return nil, err
 	}
-	encoder, ok := result.(codec.RowsEncoder)
-	if !ok {
+
+	ret := &output{}
+	switch v := result.(type) {
+	case codec.RowsEncoder:
+		ret.encoder = v
+	case dbSink:
+		ret.dbSink = v
+	default:
 		return nil, fmt.Errorf("invalid sink type: %T", result)
 	}
-	return &output{
-		encoder: encoder,
-	}, nil
+	return ret, nil
 }
 
 type output struct {
 	encoder codec.RowsEncoder
+	dbSink  dbSink
 }
 
 var _ Output = &output{}
@@ -108,13 +113,17 @@ func (out *output) ContentEncoding() string {
 func (out *output) AddRow(vals []any) error {
 	if out.encoder != nil {
 		return out.encoder.AddRow(vals)
+	} else if out.dbSink != nil {
+		return out.dbSink.AddRow(vals)
 	}
 	return errors.New("no output encoder")
 }
 
-func (out *output) Open() error {
+func (out *output) Open(db spi.Database) error {
 	if out.encoder != nil {
 		return out.encoder.Open()
+	} else if out.dbSink != nil {
+		return out.dbSink.Open(db)
 	}
 	return errors.New("no output encoder")
 }
@@ -122,6 +131,8 @@ func (out *output) Open() error {
 func (out *output) Close() {
 	if out.encoder != nil {
 		out.encoder.Close()
+	} else if out.dbSink != nil {
+		out.dbSink.Close()
 	}
 }
 
@@ -149,10 +160,14 @@ var functions = map[string]expression.Function{
 	"dataZoom":     sinkf_dataZoom,
 	"visualMap":    sinkf_visualMap,
 	"opacity":      sinkf_opacity,
+	// db options
+	"table": to_table,
+	"tag":   to_tag,
 	// sink functions
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
 	"JSON":            JSON,
+	"INSERT":          INSERT,
 	"CHART_LINE":      CHART_LINE,
 	"CHART_SCATTER":   CHART_SCATTER,
 	"CHART_BAR":       CHART_BAR,
@@ -547,26 +562,29 @@ func CHART_SCATTER3D(args ...any) (any, error) {
 // `sink=OUTPUT(encoder)`
 func OUTPUT(args ...any) (any, error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("f(PRINT) invalid number of args (n:%d)", len(args))
+		return nil, fmt.Errorf("f(OUTPUT) invalid number of args (n:%d)", len(args))
 	}
 	outstream, ok := args[0].(spec.OutputStream)
 	if !ok {
-		return nil, fmt.Errorf("f(PRINT) invalid output stream, but %T", args[0])
+		return nil, fmt.Errorf("f(OUTPUT) invalid output stream, but %T", args[0])
 	}
 
-	encoder, ok := args[1].(*Encoder)
-	if !ok {
-		return nil, fmt.Errorf("f(PRINT) 1st arg must be Encoder in string, but %T", args[1])
-	}
-
-	opts := append(encoder.opts, codec.OutputStream(outstream))
-	for i, arg := range args[2:] {
-		if op, ok := arg.(codec.Option); !ok {
-			return nil, fmt.Errorf("f(PRINT) invalid option %d %T", i, arg)
-		} else {
-			opts = append(opts, op)
+	switch sink := args[1].(type) {
+	case *Encoder:
+		opts := append(sink.opts, codec.OutputStream(outstream))
+		for i, arg := range args[2:] {
+			if op, ok := arg.(codec.Option); !ok {
+				return nil, fmt.Errorf("f(OUTPUT) invalid option %d %T", i, arg)
+			} else {
+				opts = append(opts, op)
+			}
 		}
+		ret := codec.NewEncoder(sink.format, opts...)
+		return ret, nil
+	case dbSink:
+		sink.SetOutputStream(outstream)
+		return sink, nil
+	default:
+		return nil, fmt.Errorf("f(OUTPUT) 1st arg must be Encoder in string, but %T", args[1])
 	}
-	ret := codec.NewEncoder(encoder.format, opts...)
-	return ret, nil
 }
