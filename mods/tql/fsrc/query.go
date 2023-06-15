@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/mods/tql/conv"
 )
 
 type dbSource interface {
@@ -91,7 +93,7 @@ func srcf_dump(args ...any) (any, error) {
 	}
 
 	if len(args) >= 1 {
-		if flag, err := boolArgs(args[0], "dump", 0, "flag(bool)"); err == nil {
+		if flag, err := conv.Bool(args[0], "dump", 0, "flag(bool)"); err == nil {
 			ret.flag = flag
 		} else {
 			return nil, err
@@ -99,7 +101,7 @@ func srcf_dump(args ...any) (any, error) {
 	}
 
 	if len(args) == 2 {
-		if escape, err := boolArgs(args[1], "dump", 1, "escape(bool)"); err == nil {
+		if escape, err := conv.Bool(args[1], "dump", 1, "escape(bool)"); err == nil {
 			ret.escape = escape
 		} else {
 			return nil, err
@@ -126,14 +128,14 @@ func srcf_limit(args ...any) (any, error) {
 	ret := &queryLimit{}
 	idxArgs := 0
 	if lenArgs == 2 {
-		if v, err := intArgs(args[idxArgs], "limit", idxArgs, "offset(int)"); err == nil {
+		if v, err := conv.Int(args[idxArgs], "limit", idxArgs, "offset(int)"); err == nil {
 			ret.offset = v
 		} else {
 			return nil, err
 		}
 		idxArgs++
 	}
-	if v, err := intArgs(args[idxArgs], "limit", idxArgs, "limit(int)"); err == nil {
+	if v, err := conv.Int(args[idxArgs], "limit", idxArgs, "limit(int)"); err == nil {
 		ret.limit = v
 	} else {
 		return nil, err

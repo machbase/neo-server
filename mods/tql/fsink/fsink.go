@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/tql/fcom"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -265,8 +266,8 @@ func sinkf_transpose(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(transpose) invalid arg `transpose(bool)`")
 	}
-	if flag, ok := args[0].(bool); !ok {
-		return nil, fmt.Errorf("f(transpose) invalid arg `transpose(bool)`")
+	if flag, err := conv.Bool(args[0], "transpose", 0, "boolean"); err != nil {
+		return nil, err
 	} else {
 		return codec.Transpose(flag), nil
 	}

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/mods/tql/conv"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -31,12 +32,12 @@ Example)
 */
 func src_FAKE(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, errInvalidNumOfArgs("FAKE", 1, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("FAKE", 1, len(args))
 	}
 	if gen, ok := args[0].(fakeSource); ok {
 		return gen, nil
 	} else {
-		return nil, errWrongTypeOfArgs("FAKE", 0, "fakeSource", args[0])
+		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", args[0])
 	}
 }
 
@@ -127,30 +128,30 @@ func (fr *freq) Value(x float64) float64 {
 // freq(240, amplitude [, bias [, phase]])
 func srcf_freq(args ...any) (any, error) {
 	if len(args) < 2 || len(args) > 4 {
-		return nil, errInvalidNumOfArgs("freq", 2, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("freq", 2, len(args))
 	}
 	var err error
 	ret := &freq{}
 
-	ret.hertz, err = float64Args(args[0], "freq", 0, "frequency(float64)")
+	ret.hertz, err = conv.Float64(args[0], "freq", 0, "frequency(float64)")
 	if err != nil {
 		return nil, err
 	}
 
-	ret.amplitude, err = float64Args(args[1], "freq", 1, "amplitude(float64)")
+	ret.amplitude, err = conv.Float64(args[1], "freq", 1, "amplitude(float64)")
 	if err != nil {
 		return nil, err
 	}
 
 	if len(args) >= 3 {
-		ret.bias, err = float64Args(args[2], "freq", 2, "bias(float64)")
+		ret.bias, err = conv.Float64(args[2], "freq", 2, "bias(float64)")
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if len(args) >= 4 {
-		ret.bias, err = float64Args(args[3], "freq", 3, "phase(float64)")
+		ret.bias, err = conv.Float64(args[3], "freq", 3, "phase(float64)")
 		if err != nil {
 			return nil, err
 		}

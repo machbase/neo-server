@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/do"
@@ -12,63 +11,6 @@ import (
 	"github.com/machbase/neo-server/mods/tql/fcom"
 	spi "github.com/machbase/neo-spi"
 )
-
-func errInvalidNumOfArgs(name string, expect int, actual int) error {
-	return fmt.Errorf("f(%s) invalid number of args; expect:%d, actual:%d", name, expect, actual)
-}
-
-func errWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
-	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
-}
-
-func intArgs(raw any, fname string, idx int, expect string) (int, error) {
-	switch v := raw.(type) {
-	case float64:
-		return int(v), nil
-	case *float64:
-		return int(*v), nil
-	case string:
-		if fv, err := strconv.ParseInt(v, 10, 32); err != nil {
-			return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
-		} else {
-			return int(fv), nil
-		}
-	default:
-		return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
-	}
-}
-
-func float64Args(raw any, fname string, idx int, expect string) (float64, error) {
-	switch v := raw.(type) {
-	case float64:
-		return v, nil
-	case *float64:
-		return *v, nil
-	case string:
-		if fv, err := strconv.ParseFloat(v, 64); err != nil {
-			return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
-		} else {
-			return fv, nil
-		}
-	default:
-		return 0, errWrongTypeOfArgs(fname, idx, expect, raw)
-	}
-}
-
-func boolArgs(raw any, fname string, idx int, expect string) (bool, error) {
-	switch v := raw.(type) {
-	case bool:
-		return v, nil
-	case string:
-		if fv, err := strconv.ParseBool(v); err != nil {
-			return false, errWrongTypeOfArgs(fname, idx, expect, raw)
-		} else {
-			return fv, nil
-		}
-	default:
-		return false, errWrongTypeOfArgs(fname, idx, expect, raw)
-	}
-}
 
 func Parse(text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, functions)

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/machbase/neo-server/mods/tql/conv"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -163,7 +164,7 @@ type fileOpt struct {
 
 func src_file(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, errInvalidNumOfArgs("file", 1, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("file", 1, len(args))
 	}
 	if str, ok := args[0].(string); ok {
 		return &fileOpt{path: str}, nil
@@ -180,7 +181,7 @@ type columnOpt struct {
 
 func src_col(args ...any) (any, error) {
 	if len(args) != 3 {
-		return nil, errInvalidNumOfArgs("col", 3, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("col", 3, len(args))
 	}
 	col := &columnOpt{}
 	if d, ok := args[0].(float64); ok {
