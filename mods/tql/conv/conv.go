@@ -13,6 +13,25 @@ func ErrWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
 	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
 }
 
+func String(raw any, fname string, idx int, expect string) (string, error) {
+	switch v := raw.(type) {
+	case string:
+		return v, nil
+	case *string:
+		return *v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case *float64:
+		return strconv.FormatFloat(*v, 'f', -1, 64), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case *bool:
+		return strconv.FormatBool(*v), nil
+	default:
+		return "", ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
 func Int(raw any, fname string, idx int, expect string) (int, error) {
 	switch v := raw.(type) {
 	case float64:

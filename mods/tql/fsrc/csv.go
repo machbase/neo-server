@@ -7,9 +7,12 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -46,33 +49,50 @@ func (src *csvSrc) Gen() <-chan []any {
 			for i := 0; i < len(fields); i++ {
 				colOpt := src.columns[i]
 				if colOpt != nil {
-					switch colOpt.dataType {
-					case "float":
-						fallthrough
-					case "float32":
-						fallthrough
-					case "float64":
-						fallthrough
-					case "double":
-						src.columns[i].dataType = "double"
+					switch dataType := colOpt.dataType.(type) {
+					case *anyOpt:
+						switch dataType.typeName {
+						case "float":
+							fallthrough
+						case "float32":
+							fallthrough
+						case "float64":
+							fallthrough
+						case "double":
+							dataType.typeName = "double"
+							values[i], err = strconv.ParseFloat(fields[i], 64)
+							if err != nil {
+								src.ch <- nil
+								break
+							}
+						case "boolean":
+							fallthrough
+						case "bool":
+							dataType.typeName = "boolean"
+							values[i], err = strconv.ParseBool(fields[i])
+							if err != nil {
+								src.ch <- nil
+								break
+							}
+						case "string":
+							values[i] = fields[i]
+						default:
+							values[i] = fields[i]
+						}
+					case *stringOpt:
+						values[i] = fields[i]
+					case *doubleOpt:
 						values[i], err = strconv.ParseFloat(fields[i], 64)
 						if err != nil {
 							src.ch <- nil
 							break
 						}
-					case "boolean":
-						fallthrough
-					case "bool":
-						src.columns[i].dataType = "boolean"
-						values[i], err = strconv.ParseBool(fields[i])
+					case *datetimeOpt:
+						values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 						if err != nil {
 							src.ch <- nil
 							break
 						}
-					case "string":
-						values[i] = fields[i]
-					default:
-						values[i] = fields[i]
 					}
 				} else {
 					values[i] = fields[i]
@@ -104,7 +124,7 @@ func (fs *csvSrc) Header() spi.Columns {
 	}
 	ret := make([]*spi.Column, max+1)
 	for i, c := range fs.columns {
-		ret[i] = &spi.Column{Name: c.label, Type: c.dataType}
+		ret[i] = &spi.Column{Name: c.label, Type: c.dataType.spiType()}
 	}
 
 	return ret
@@ -175,7 +195,7 @@ func src_file(args ...any) (any, error) {
 
 type columnOpt struct {
 	idx      int
-	dataType string
+	dataType colOpt
 	label    string
 }
 
@@ -190,10 +210,14 @@ func src_col(args ...any) (any, error) {
 		return nil, errors.New("f(col) first argument should be int")
 	}
 
-	if str, ok := args[1].(string); ok {
-		col.dataType = str
+	if v, ok := args[1].(colOpt); ok {
+		col.dataType = v
 	} else {
-		return nil, errors.New("f(col) second argument should be data type")
+		if str, ok := args[1].(string); ok {
+			col.dataType = &anyOpt{typeName: str}
+		} else {
+			return nil, errors.New("f(col) second argument should be data type")
+		}
 	}
 
 	if str, ok := args[2].(string); ok {
@@ -203,4 +227,73 @@ func src_col(args ...any) (any, error) {
 	}
 
 	return col, nil
+}
+
+type colOpt interface {
+	spiType() string
+}
+
+type anyOpt struct {
+	typeName string
+}
+
+func (o *anyOpt) spiType() string { return o.typeName }
+
+type stringOpt struct{}
+
+func (o *stringOpt) spiType() string { return "string" }
+
+func src_stringType(args ...any) (any, error) {
+	return &stringOpt{}, nil
+}
+
+type doubleOpt struct{}
+
+func (o *doubleOpt) spiType() string { return "double" }
+
+func src_doubleType(args ...any) (any, error) {
+	return &doubleOpt{}, nil
+}
+
+type datetimeOpt struct {
+	timeformat   string
+	timeLocation *time.Location
+}
+
+func (o *datetimeOpt) spiType() string { return "datetime" }
+
+func src_datetimeType(args ...any) (any, error) {
+	if len(args) != 1 && len(args) != 2 {
+		return nil, conv.ErrInvalidNumOfArgs("datetime", 2, len(args))
+	}
+	var err error
+	ret := &datetimeOpt{timeformat: "ns", timeLocation: time.UTC}
+	if ret.timeformat, err = conv.String(args[0], "datetime", 0, "string"); err != nil {
+		return ret, err
+	}
+	if len(args) == 2 {
+		var tz string
+		if tz, err = conv.String(args[1], "datetime", 1, "string"); err != nil {
+			return ret, err
+		} else {
+			switch strings.ToUpper(tz) {
+			case "UTC":
+				tz = "UTC"
+			case "LOCAL":
+				tz = "Local"
+			case "GMT":
+				tz = "GMT"
+			}
+			loc, err := time.LoadLocation(tz)
+			if err == nil {
+				ret.timeLocation = loc
+			} else {
+				ret.timeLocation, err = util.GetTimeLocation(tz)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	return ret, nil
 }

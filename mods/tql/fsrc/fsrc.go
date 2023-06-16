@@ -58,20 +58,23 @@ func Compile(code string, dataReader io.Reader, params map[string][]string) (Inp
 }
 
 var functions = map[string]expression.Function{
-	"from":      srcf_from,
-	"range":     srcf_range,
-	"between":   srcf_between,
-	"limit":     srcf_limit,
-	"dump":      srcf_dump,
-	"freq":      srcf_freq,
-	"oscilator": src_oscilator,
-	"FAKE":      src_FAKE,
-	"CSV":       src_CSV,
-	"file":      src_file, // CSV()
-	"col":       src_col,  // CSV()
-	"QUERY":     srcf_QUERY,
-	"SQL":       src_SQL,
-	"INPUT":     srcf_INPUT,
+	"from":         srcf_from,
+	"range":        srcf_range,
+	"between":      srcf_between,
+	"limit":        srcf_limit,
+	"dump":         srcf_dump,
+	"freq":         srcf_freq,
+	"oscilator":    src_oscilator,
+	"FAKE":         src_FAKE,
+	"CSV":          src_CSV,
+	"file":         src_file,         // CSV()
+	"col":          src_col,          // CSV()
+	"datetimeType": src_datetimeType, // col()
+	"stringType":   src_stringType,   // col()
+	"doubleType":   src_doubleType,   // col()
+	"QUERY":        srcf_QUERY,
+	"SQL":          src_SQL,
+	"INPUT":        srcf_INPUT,
 }
 
 func init() {
