@@ -151,6 +151,42 @@ func ZAxis(idx int, label string, typ string) Option {
 	}
 }
 
+type CanSetAutoRotate interface {
+	SetAutoRotate(float64)
+}
+
+func AutoRotate(speed float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetAutoRotate); ok {
+			o.SetAutoRotate(speed)
+		}
+	}
+}
+
+type CanSetShowGrid interface {
+	SetShowGrid(bool)
+}
+
+func ShowGrid(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetShowGrid); ok {
+			o.SetShowGrid(flag)
+		}
+	}
+}
+
+type CanSetGridSize interface {
+	SetGridSize(whd ...float64)
+}
+
+func GridSize(whd ...float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetGridSize); ok {
+			o.SetGridSize(whd...)
+		}
+	}
+}
+
 type CanSetVisualMap interface {
 	SetVisualMap(float64, float64)
 }

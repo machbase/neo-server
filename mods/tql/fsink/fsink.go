@@ -161,6 +161,9 @@ var functions = map[string]expression.Function{
 	"dataZoom":     sinkf_dataZoom,
 	"visualMap":    sinkf_visualMap,
 	"opacity":      sinkf_opacity,
+	"autoRotate":   sinkf_autoRotate,
+	"showGrid":     sinkf_showGrid,
+	"gridSize":     sinkf_gridSize,
 	// db options
 	"table": to_table,
 	"tag":   to_tag,
@@ -390,6 +393,39 @@ func sinkf_opacity(args ...any) (any, error) {
 		value = d
 	}
 	return codec.Opacity(value), nil
+}
+
+func sinkf_autoRotate(args ...any) (any, error) {
+	speed := 10.0
+	if len(args) > 0 {
+		if d, err := conv.Float64(args[0], "autoRotate", 0, "number"); err != nil {
+			return nil, err
+		} else {
+			speed = d
+		}
+	}
+	return codec.AutoRotate(speed), nil
+}
+
+func sinkf_showGrid(args ...any) (any, error) {
+	flag, err := conv.Bool(args[0], "showGrid", 0, "boolean")
+	if err != nil {
+		return nil, err
+	}
+	// go-echarts bug? not working
+	return codec.ShowGrid(flag), nil
+}
+
+func sinkf_gridSize(args ...any) (any, error) {
+	whd := []float64{}
+	for i := 0; i < 3 && i < len(args); i++ {
+		if gs, err := conv.Float64(args[i], "gridSize", i, "number"); err != nil {
+			return nil, err
+		} else {
+			whd = append(whd, gs)
+		}
+	}
+	return codec.GridSize(whd...), nil
 }
 
 func availableAxisType(typ string) bool {

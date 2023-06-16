@@ -26,6 +26,10 @@ type Base3D struct {
 	minValue float64
 	maxValue float64
 	opacity  float64
+
+	autoRotate float32 // angle/sec
+	showGrid   bool
+	gridSize   []float32 // [width, height, depth]
 }
 
 func (ex *Base3D) ContentType() string {
@@ -62,6 +66,29 @@ func (ex *Base3D) SetVisualMap(minValue float64, maxValue float64) {
 	ex.maxValue = maxValue
 }
 
+// speed angle/sec
+func (ex *Base3D) SetAutoRotate(speed float64) {
+	if speed < 0 {
+		speed = 0
+	}
+	if speed > 180 {
+		speed = 180
+	}
+	ex.autoRotate = float32(speed)
+}
+
+func (ex *Base3D) SetShowGrid(flag bool) {
+	ex.showGrid = flag
+}
+
+func (ex *Base3D) SetGridSize(args ...float64) {
+	widthHeightDepth := [3]float32{100, 100, 100}
+	for i := 0; i < 3 && i < len(args); i++ {
+		widthHeightDepth[i] = float32(args[i])
+	}
+	ex.gridSize = []float32{widthHeightDepth[0], widthHeightDepth[1], widthHeightDepth[2]}
+}
+
 func (ex *Base3D) SetOpacity(opacity float64) {
 	ex.opacity = opacity
 }
@@ -87,6 +114,21 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	if theme == "" {
 		theme = types.ThemeWesteros
 	}
+	gridOpt := opts.Grid3D{
+		Show: ex.showGrid,
+	}
+	if len(ex.gridSize) == 3 && ex.gridSize[0] > 0 && ex.gridSize[1] > 0 && ex.gridSize[2] > 0 {
+		gridOpt.BoxWidth = ex.gridSize[0]
+		gridOpt.BoxHeight = ex.gridSize[1]
+		gridOpt.BoxDepth = ex.gridSize[2]
+	}
+	if ex.autoRotate > 0 {
+		gridOpt.ViewControl = &opts.ViewControl{
+			AutoRotate:      true,
+			AutoRotateSpeed: ex.autoRotate,
+		}
+	}
+
 	options := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			AssetsHost: "/web/echarts/",
@@ -103,7 +145,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 			Show: false,
 		}),
 		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
-		charts.WithGrid3DOpts(opts.Grid3D{Show: true}),
+		charts.WithGrid3DOpts(gridOpt),
 		charts.WithXAxis3DOpts(opts.XAxis3D{Name: ex.xAxisLabel, Type: ex.xAxisType}),
 		charts.WithYAxis3DOpts(opts.YAxis3D{Name: ex.yAxisLabel, Type: ex.yAxisType}),
 		charts.WithZAxis3DOpts(opts.ZAxis3D{Name: ex.zAxisLabel, Type: ex.zAxisType}),
