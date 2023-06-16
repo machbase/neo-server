@@ -21,14 +21,7 @@ type fakeSource interface {
 Example)
 
 	 INPUT(
-		FAKE(
-		    oscilator(
-		            range(time('now','-10s'), '10s', '1ms'),
-		            freq(100, amplitude [,phase [, bias]]),
-		            freq(240, amplitude [,phase [, bias]]),
-		        )
-		    )
-		)
+		FAKE( oscilator() | sphere() )
 */
 func src_FAKE(args ...any) (any, error) {
 	if len(args) != 1 {
@@ -41,6 +34,59 @@ func src_FAKE(args ...any) (any, error) {
 	}
 }
 
+func src_sphere(args ...any) (any, error) {
+	return &sphere{
+		latStep: 36,
+		lonStep: 18,
+	}, nil
+}
+
+var _ fakeSource = &sphere{}
+
+type sphere struct {
+	latStep float64
+	lonStep float64
+
+	ch        chan []any
+	alive     bool
+	closeWait sync.WaitGroup
+}
+
+func (sp *sphere) Header() spi.Columns {
+	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
+}
+
+func (sp *sphere) Gen() <-chan []any {
+	sp.ch = make(chan []any)
+	sp.alive = true
+	sp.closeWait.Add(1)
+	go func() {
+		var u, v float64
+		for u = 0; sp.alive && u < 2.0*math.Pi; u += (2.0 * math.Pi) / sp.latStep {
+			for v = 0; sp.alive && v < math.Pi; v += math.Pi / sp.lonStep {
+				x := math.Cos(u) * math.Sin(v)
+				y := math.Sin(u) * math.Sin(v)
+				z := math.Cos(v)
+				sp.ch <- []any{x, y, z}
+			}
+		}
+		close(sp.ch)
+		sp.closeWait.Done()
+	}()
+	return sp.ch
+}
+
+func (sp *sphere) Stop() {
+	sp.alive = false
+	sp.closeWait.Wait()
+}
+
+// // oscilator(
+// //		range(time('now','-10s'), '10s', '1ms'),
+// //		freq(100, amplitude [,phase [, bias]]),
+// //		freq(240, amplitude [,phase [, bias]]),
+// //	)
+// // )
 func src_oscilator(args ...any) (any, error) {
 	ret := &oscilator{}
 	for _, arg := range args {

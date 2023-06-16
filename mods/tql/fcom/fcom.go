@@ -9,4 +9,12 @@ var Functions = map[string]expression.Function{
 	"time":      to_time,   // time(ts [, delta])
 	"roundTime": roundTime, // roundTime(time, duration)
 	"element":   element,   // element(list, idx)
+	// math
+	"sin":   sin,
+	"cos":   cos,
+	"tan":   tan,
+	"exp":   exp,
+	"exp2":  exp2,
+	"log":   log,
+	"log10": log10,
 }

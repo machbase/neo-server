@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/do"
@@ -26,19 +27,25 @@ type inputParameters struct {
 }
 
 func (p *inputParameters) Get(name string) (any, error) {
-	if name == "CTX" {
-		return p, nil
-	} else if name == "nil" {
-		return nil, nil
-	} else if strings.HasPrefix(name, "$") {
+	if strings.HasPrefix(name, "$") {
 		if p, ok := p.params[strings.TrimPrefix(name, "$")]; ok {
 			if len(p) > 0 {
 				return p[len(p)-1], nil
 			}
 		}
 		return nil, nil
+	} else {
+		switch name {
+		default:
+			return nil, fmt.Errorf("undefined variable '%s'", name)
+		case "CTX":
+			return p, nil
+		case "PI":
+			return math.Pi, nil
+		case "nil":
+			return nil, nil
+		}
 	}
-	return nil, fmt.Errorf("undefined variable '%s'", name)
 }
 
 func Compile(code string, dataReader io.Reader, params map[string][]string) (Input, error) {
@@ -65,6 +72,7 @@ var functions = map[string]expression.Function{
 	"dump":         srcf_dump,
 	"freq":         srcf_freq,
 	"oscilator":    src_oscilator,
+	"sphere":       src_sphere,
 	"FAKE":         src_FAKE,
 	"CSV":          src_CSV,
 	"file":         src_file,         // CSV()
