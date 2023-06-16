@@ -268,12 +268,12 @@ func src_datetimeType(args ...any) (any, error) {
 	}
 	var err error
 	ret := &datetimeOpt{timeformat: "ns", timeLocation: time.UTC}
-	if ret.timeformat, err = conv.String(args[0], "datetime", 0, "string"); err != nil {
+	if ret.timeformat, err = conv.String(args, 0, "datetime", "string"); err != nil {
 		return ret, err
 	}
 	if len(args) == 2 {
 		var tz string
-		if tz, err = conv.String(args[1], "datetime", 1, "string"); err != nil {
+		if tz, err = conv.String(args, 1, "datetime", "string"); err != nil {
 			return ret, err
 		} else {
 			switch strings.ToUpper(tz) {

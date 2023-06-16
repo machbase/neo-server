@@ -270,7 +270,7 @@ func sinkf_transpose(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(transpose) invalid arg `transpose(bool)`")
 	}
-	if flag, err := conv.Bool(args[0], "transpose", 0, "boolean"); err != nil {
+	if flag, err := conv.Bool(args, 0, "transpose", "boolean"); err != nil {
 		return nil, err
 	} else {
 		return codec.Transpose(flag), nil
@@ -398,7 +398,7 @@ func sinkf_opacity(args ...any) (any, error) {
 func sinkf_autoRotate(args ...any) (any, error) {
 	speed := 10.0
 	if len(args) > 0 {
-		if d, err := conv.Float64(args[0], "autoRotate", 0, "number"); err != nil {
+		if d, err := conv.Float64(args, 0, "autoRotate", "number"); err != nil {
 			return nil, err
 		} else {
 			speed = d
@@ -408,7 +408,7 @@ func sinkf_autoRotate(args ...any) (any, error) {
 }
 
 func sinkf_showGrid(args ...any) (any, error) {
-	flag, err := conv.Bool(args[0], "showGrid", 0, "boolean")
+	flag, err := conv.Bool(args, 0, "showGrid", "boolean")
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +419,7 @@ func sinkf_showGrid(args ...any) (any, error) {
 func sinkf_gridSize(args ...any) (any, error) {
 	whd := []float64{}
 	for i := 0; i < 3 && i < len(args); i++ {
-		if gs, err := conv.Float64(args[i], "gridSize", i, "number"); err != nil {
+		if gs, err := conv.Float64(args, i, "gridSize", "number"); err != nil {
 			return nil, err
 		} else {
 			whd = append(whd, gs)

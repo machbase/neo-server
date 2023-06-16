@@ -13,7 +13,11 @@ func ErrWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
 	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
 }
 
-func String(raw any, fname string, idx int, expect string) (string, error) {
+func String(args []any, idx int, fname string, expect string) (string, error) {
+	if idx >= len(args) {
+		return "", ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
 	switch v := raw.(type) {
 	case string:
 		return v, nil
@@ -32,7 +36,11 @@ func String(raw any, fname string, idx int, expect string) (string, error) {
 	}
 }
 
-func Int(raw any, fname string, idx int, expect string) (int, error) {
+func Int(args []any, idx int, fname string, expect string) (int, error) {
+	if idx >= len(args) {
+		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
 	switch v := raw.(type) {
 	case float64:
 		return int(v), nil
@@ -49,7 +57,11 @@ func Int(raw any, fname string, idx int, expect string) (int, error) {
 	}
 }
 
-func Float64(raw any, fname string, idx int, expect string) (float64, error) {
+func Float64(args []any, idx int, fname string, expect string) (float64, error) {
+	if idx >= len(args) {
+		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
 	switch v := raw.(type) {
 	case float64:
 		return v, nil
@@ -66,7 +78,11 @@ func Float64(raw any, fname string, idx int, expect string) (float64, error) {
 	}
 }
 
-func Bool(raw any, fname string, idx int, expect string) (bool, error) {
+func Bool(args []any, idx int, fname string, expect string) (bool, error) {
+	if idx >= len(args) {
+		return false, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
 	switch v := raw.(type) {
 	case bool:
 		return v, nil

@@ -179,25 +179,25 @@ func srcf_freq(args ...any) (any, error) {
 	var err error
 	ret := &freq{}
 
-	ret.hertz, err = conv.Float64(args[0], "freq", 0, "frequency(float64)")
+	ret.hertz, err = conv.Float64(args, 0, "freq", "frequency(float64)")
 	if err != nil {
 		return nil, err
 	}
 
-	ret.amplitude, err = conv.Float64(args[1], "freq", 1, "amplitude(float64)")
+	ret.amplitude, err = conv.Float64(args, 1, "freq", "amplitude(float64)")
 	if err != nil {
 		return nil, err
 	}
 
 	if len(args) >= 3 {
-		ret.bias, err = conv.Float64(args[2], "freq", 2, "bias(float64)")
+		ret.bias, err = conv.Float64(args, 2, "freq", "bias(float64)")
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if len(args) >= 4 {
-		ret.bias, err = conv.Float64(args[3], "freq", 3, "phase(float64)")
+		ret.bias, err = conv.Float64(args, 3, "freq", "phase(float64)")
 		if err != nil {
 			return nil, err
 		}
