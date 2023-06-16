@@ -169,6 +169,7 @@ var functions = map[string]expression.Function{
 	"CSV":             CSV,
 	"JSON":            JSON,
 	"INSERT":          INSERT,
+	"APPEND":          APPEND,
 	"CHART_LINE":      CHART_LINE,
 	"CHART_SCATTER":   CHART_SCATTER,
 	"CHART_BAR":       CHART_BAR,

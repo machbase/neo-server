@@ -84,6 +84,65 @@ func (ins *insert) AddRow(values []any) error {
 	return err
 }
 
+var _ dbSink = &appender{}
+
+type appender struct {
+	db     spi.Database
+	writer spec.OutputStream
+	nrows  int
+
+	dbAppender spi.Appender
+
+	table *table
+}
+
+func APPEND(args ...any) (any, error) {
+	ret := &appender{}
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *table:
+			ret.table = v
+		}
+	}
+	if ret.table == nil {
+		return nil, errors.New("f(APPEND) table is not specified")
+	}
+	return ret, nil
+}
+
+func (app *appender) Open(db spi.Database) (err error) {
+	app.db = db
+	app.dbAppender, err = app.db.Appender(app.table.name)
+	return
+}
+func (app *appender) Close() {
+	var succ, fail int64
+	var err error
+	if app.dbAppender != nil {
+		succ, fail, err = app.dbAppender.Close()
+	}
+	if app.writer != nil {
+		if err != nil {
+			app.writer.Write([]byte(fmt.Sprintf("append fail, %s", err.Error())))
+		} else {
+			app.writer.Write([]byte(fmt.Sprintf("append %d rows (success %d, fail %d).", app.nrows, succ, fail)))
+		}
+	}
+}
+func (app *appender) SetOutputStream(w spec.OutputStream) {
+	app.writer = w
+}
+func (app *appender) AddRow(values []any) error {
+	if app.dbAppender == nil {
+		return errors.New("f(APPEND) no appender")
+	}
+	err := app.dbAppender.Append(values...)
+	if err == nil {
+		app.nrows++
+	}
+	return err
+}
+
 type table struct {
 	name string
 }
