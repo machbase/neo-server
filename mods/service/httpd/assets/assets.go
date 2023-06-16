@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -21,12 +22,14 @@ var echartsDir embed.FS
 
 func EchartsDir() http.FileSystem {
 	return &staticFSWrap{
+		trimPrefix:   "/web",
 		base:         http.FS(echartsDir),
 		fixedModTime: time.Now(),
 	}
 }
 
 type staticFSWrap struct {
+	trimPrefix   string
 	base         http.FileSystem
 	fixedModTime time.Time
 }
@@ -37,7 +40,7 @@ type staticFile struct {
 }
 
 func (fsw *staticFSWrap) Open(name string) (http.File, error) {
-	f, err := fsw.base.Open(name)
+	f, err := fsw.base.Open(strings.TrimPrefix(name, fsw.trimPrefix))
 	if err != nil {
 		return nil, err
 	}

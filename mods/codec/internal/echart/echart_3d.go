@@ -89,7 +89,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	}
 	options := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: "/echarts/",
+			AssetsHost: "/web/echarts/",
 			Theme:      theme,
 			Width:      width,
 			Height:     height,
