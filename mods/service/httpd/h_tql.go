@@ -1,6 +1,9 @@
 package httpd
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,7 +28,17 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		return
 	}
 
-	tql, err := tql.Parse(ctx.Request.Body, nil, params, ctx.Writer)
+	var input io.Reader
+	var debug = false
+	if debug {
+		b, _ := io.ReadAll(ctx.Request.Body)
+		fmt.Println("...", string(b), "...")
+		input = bytes.NewBuffer(b)
+	} else {
+		input = ctx.Request.Body
+	}
+
+	tql, err := tql.Parse(input, nil, params, ctx.Writer)
 	if err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()

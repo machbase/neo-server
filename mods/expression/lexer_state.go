@@ -76,15 +76,6 @@ var validLexerStates = []lexerState{
 		},
 	},
 	{
-		kind:       BLOCK,
-		isEOF:      false,
-		isNullable: true,
-		validNextKinds: []TokenKind{
-			SEPARATOR,
-			CLAUSE_CLOSE,
-		},
-	},
-	{
 		kind:       CLAUSE,
 		isEOF:      false,
 		isNullable: true,
@@ -98,7 +89,6 @@ var validLexerStates = []lexerState{
 			ACCESSOR,
 			STRING,
 			TIME,
-			BLOCK,
 			CLAUSE,
 			CLAUSE_CLOSE,
 		},
@@ -317,7 +307,6 @@ var validLexerStates = []lexerState{
 			FUNCTION,
 			ACCESSOR,
 			CLAUSE,
-			BLOCK,
 		},
 	},
 }

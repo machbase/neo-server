@@ -450,7 +450,7 @@ func TestScriptBlock(test *testing.T) {
 					Kind: CLAUSE,
 				},
 				{
-					Kind:  BLOCK,
+					Kind:  STRING, //BLOCK,
 					Value: "l = a + b\n return l\n",
 				},
 				{
@@ -478,7 +478,7 @@ func TestScriptBlock(test *testing.T) {
 					Kind: SEPARATOR,
 				},
 				{
-					Kind:  BLOCK,
+					Kind:  STRING, // BLOCK,
 					Value: "l = a + b\n return l\n",
 				},
 				{

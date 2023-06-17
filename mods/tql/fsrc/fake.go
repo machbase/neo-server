@@ -29,9 +29,55 @@ func src_FAKE(args ...any) (any, error) {
 	}
 	if gen, ok := args[0].(fakeSource); ok {
 		return gen, nil
+	} else if arr, ok := args[0].([][][]float64); ok {
+		return &meshgrid{vals: arr}, nil
 	} else {
 		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", args[0])
 	}
+}
+
+var _ fakeSource = &meshgrid{}
+
+type meshgrid struct {
+	vals [][][]float64
+
+	ch        chan []any
+	alive     bool
+	closeWait sync.WaitGroup
+}
+
+func (mg *meshgrid) Header() spi.Columns {
+	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
+}
+
+func (mg *meshgrid) Gen() <-chan []any {
+	mg.ch = make(chan []any)
+	mg.alive = true
+	mg.closeWait.Add(1)
+	go func() {
+		id := 0
+		for x := range mg.vals {
+			for y := range mg.vals[x] {
+				if !mg.alive {
+					goto done
+				}
+				elm := mg.vals[x][y]
+				if len(elm) == 2 {
+					id++
+					mg.ch <- []any{id, elm[0], elm[1]}
+				}
+			}
+		}
+	done:
+		close(mg.ch)
+		mg.closeWait.Done()
+	}()
+	return mg.ch
+}
+
+func (mg *meshgrid) Stop() {
+	mg.alive = false
+	mg.closeWait.Wait()
 }
 
 func src_sphere(args ...any) (any, error) {

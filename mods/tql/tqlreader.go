@@ -43,7 +43,7 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 			if err == io.EOF {
 				if len(stmt) > 0 {
 					line := &Line{
-						text: strings.Join(stmt, ""),
+						text: strings.Join(stmt, "\n"),
 						line: lineNo,
 					}
 					if len(strings.TrimSpace(line.text)) > 0 {
@@ -83,7 +83,7 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 		} else {
 			stmt = append(stmt, lineText)
 			line := &Line{
-				text: strings.Join(stmt, ""),
+				text: strings.Join(stmt, "\n"),
 				line: lineNo,
 			}
 			if len(strings.TrimSpace(line.text)) > 0 {

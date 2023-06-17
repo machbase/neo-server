@@ -14,6 +14,7 @@ import (
 )
 
 var mapFunctionsMacro = [][2]string{
+	{"SCRIPT(", "SCRIPT(CTX,K,V,"},
 	{"TAKE(", "TAKE(CTX,K,V,"},
 	{"DROP(", "DROP(CTX,K,V,"},
 	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
@@ -36,6 +37,7 @@ func Parse(text string) (*expression.Expression, error) {
 var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
+	"SCRIPT":     mapf_SCRIPT,
 	"TAKE":       mapf_TAKE,
 	"DROP":       mapf_DROP,
 	"PUSHKEY":    mapf_PUSHKEY,

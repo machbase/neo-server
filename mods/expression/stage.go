@@ -367,9 +367,6 @@ func planValue(stream *tokenStream) (*evaluationStage, error) {
 		// so we just return nil so that the stage planner continues on its way.
 		stream.rewind()
 		return nil, nil
-	case BLOCK:
-		stream.next()
-		return nil, nil
 	case VARIABLE:
 		operator = makeParameterStage(token.Value.(string))
 	case NUMERIC:

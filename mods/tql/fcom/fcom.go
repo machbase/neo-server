@@ -17,4 +17,7 @@ var Functions = map[string]expression.Function{
 	"exp2":  exp2,
 	"log":   log,
 	"log10": log10,
+	//
+	"linspace": linspace,
+	"meshgrid": meshgrid,
 }
