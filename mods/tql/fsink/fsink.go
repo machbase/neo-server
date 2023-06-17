@@ -155,6 +155,7 @@ var functions = map[string]expression.Function{
 	"yaxis":        sinkf_yaxis, // deprecated
 	"size":         sinkf_size,
 	"theme":        sinkf_theme,
+	"assetHost":    sinkf_assetHost,
 	"title":        sinkf_title,
 	"subtitle":     sinkf_subtitle,
 	"seriesLabels": sinkf_seriesLabels,
@@ -301,6 +302,14 @@ func sinkf_size(args ...any) (any, error) {
 	}
 
 	return codec.Size(width, height), nil
+}
+
+func sinkf_assetHost(args ...any) (any, error) {
+	if str, err := conv.String(args, 0, "assetHost", "string"); err != nil {
+		return nil, err
+	} else {
+		return codec.AssetHost(str), nil
+	}
 }
 
 func sinkf_title(args ...any) (any, error) {
@@ -609,7 +618,11 @@ func OUTPUT(args ...any) (any, error) {
 
 	switch sink := args[1].(type) {
 	case *Encoder:
-		opts := append(sink.opts, codec.OutputStream(outstream))
+		opts := []codec.Option{
+			codec.AssetHost("/web/echarts/"),
+			codec.OutputStream(outstream),
+		}
+		opts = append(opts, sink.opts...)
 		for i, arg := range args[2:] {
 			if op, ok := arg.(codec.Option); !ok {
 				return nil, fmt.Errorf("f(OUTPUT) invalid option %d %T", i, arg)

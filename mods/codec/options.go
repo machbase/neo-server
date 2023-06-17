@@ -91,6 +91,18 @@ func Transpose(flag bool) Option {
 	}
 }
 
+type CanSetAssetHost interface {
+	SetAssetHost(string)
+}
+
+func AssetHost(path string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetAssetHost); ok {
+			o.SetAssetHost(path)
+		}
+	}
+}
+
 type CanSetTitle interface {
 	SetTitle(title string)
 }

@@ -78,9 +78,13 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	if theme == "" {
 		theme = types.ThemeWesteros
 	}
+	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
+	if len(ex.assetHost) > 0 {
+		assetHost = ex.assetHost
+	}
 	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: "/web/echarts/",
+			AssetsHost: assetHost,
 			Theme:      theme,
 			Width:      width,
 			Height:     height,

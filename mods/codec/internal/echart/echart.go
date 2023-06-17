@@ -12,6 +12,8 @@ type ChartBase struct {
 	theme    string
 	width    string
 	height   string
+
+	assetHost string
 }
 
 func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
@@ -33,4 +35,8 @@ func (ex *ChartBase) SetTitle(title string) {
 
 func (ex *ChartBase) SetSubtitle(subtitle string) {
 	ex.subtitle = subtitle
+}
+
+func (ex *ChartBase) SetAssetHost(path string) {
+	ex.assetHost = path
 }

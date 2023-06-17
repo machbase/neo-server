@@ -128,10 +128,13 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 			AutoRotateSpeed: ex.autoRotate,
 		}
 	}
-
+	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
+	if len(ex.assetHost) > 0 {
+		assetHost = ex.assetHost
+	}
 	options := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: "/web/echarts/",
+			AssetsHost: assetHost,
 			Theme:      theme,
 			Width:      width,
 			Height:     height,
