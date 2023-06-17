@@ -28,6 +28,8 @@ const (
 	CLAUSE
 	CLAUSE_CLOSE
 
+	BLOCK
+
 	TERNARY
 )
 
@@ -61,6 +63,8 @@ func (kind TokenKind) String() string {
 		return "CLAUSE"
 	case CLAUSE_CLOSE:
 		return "CLAUSE_CLOSE"
+	case BLOCK:
+		return "BLOCK"
 	case TERNARY:
 		return "TERNARY"
 	case ACCESSOR:

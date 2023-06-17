@@ -435,8 +435,62 @@ func TestConstantParsing(test *testing.T) {
 	runTokenParsingTest(tokenParsingTests, test)
 }
 
-func TestLogicalOperatorParsing(test *testing.T) {
+func TestScriptBlock(test *testing.T) {
+	tokenParsingTests := []TokenParsingTest{
+		{
+			Name:      "Block with script",
+			Input:     "script({l = a + b\n return l\n})",
+			Functions: map[string]Function{"script": noop},
+			Expected: []Token{
+				{
+					Kind:  FUNCTION,
+					Value: noop,
+				},
+				{
+					Kind: CLAUSE,
+				},
+				{
+					Kind:  BLOCK,
+					Value: "l = a + b\n return l\n",
+				},
+				{
+					Kind: CLAUSE_CLOSE,
+				},
+			},
+		},
+		{
+			Name:      "Block with script",
+			Input:     "script('tengo', {l = a + b\n return l\n})",
+			Functions: map[string]Function{"script": noop},
+			Expected: []Token{
+				{
+					Kind:  FUNCTION,
+					Value: noop,
+				},
+				{
+					Kind: CLAUSE,
+				},
+				{
+					Kind:  STRING,
+					Value: "tengo",
+				},
+				{
+					Kind: SEPARATOR,
+				},
+				{
+					Kind:  BLOCK,
+					Value: "l = a + b\n return l\n",
+				},
+				{
+					Kind: CLAUSE_CLOSE,
+				},
+			},
+		},
+	}
+	runTokenParsingTest(tokenParsingTests, test)
+}
 
+func TestLogicalOperatorParsing(test *testing.T) {
 	tokenParsingTests := []TokenParsingTest{
 		{
 			Name:  "Boolean AND",
@@ -1397,7 +1451,6 @@ func TestOriginalString(test *testing.T) {
 
 // Tests to make sure that the Vars() reprsentation of an expression identifies all variables contained within the expression.
 func TestOriginalVars(test *testing.T) {
-
 	// include all the token types, to be sure there's no shenaniganery going on.
 	expressionString := "2 > 1 &&" +
 		"'something' != 'nothing' || " +
@@ -1438,11 +1491,9 @@ func combineWhitespaceExpressions(testCases []TokenParsingTest) []TokenParsingTe
 	var currentCase, strippedCase TokenParsingTest
 	caseLength := len(testCases)
 	for i := 0; i < caseLength; i++ {
-
 		currentCase = testCases[i]
 
 		strippedCase = TokenParsingTest{
-
 			Name:      (currentCase.Name + " (without whitespace)"),
 			Input:     stripUnquotedWhitespace(currentCase.Input),
 			Expected:  currentCase.Expected,
@@ -1456,28 +1507,22 @@ func combineWhitespaceExpressions(testCases []TokenParsingTest) []TokenParsingTe
 }
 
 func stripUnquotedWhitespace(expression string) string {
-
 	var expressionBuffer bytes.Buffer
 	var quoted bool
 
 	for _, character := range expression {
-
 		if !quoted && unicode.IsSpace(character) {
 			continue
 		}
-
 		if character == '\'' {
 			quoted = !quoted
 		}
-
 		expressionBuffer.WriteString(string(character))
 	}
-
 	return expressionBuffer.String()
 }
 
 func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) {
-
 	var parsingTest TokenParsingTest
 	var expression *Expression
 	var actualTokens []Token
@@ -1517,7 +1562,6 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 		actualTokenLength = len(actualTokens)
 
 		if actualTokenLength != expectedTokenLength {
-
 			test.Logf("Test '%s' failed:", parsingTest.Name)
 			test.Logf("Expected %d tokens, actually found %d", expectedTokenLength, actualTokenLength)
 			test.Fail()
@@ -1525,10 +1569,8 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 		}
 
 		for i, expectedToken := range parsingTest.Expected {
-
 			actualToken = actualTokens[i]
 			if actualToken.Kind != expectedToken.Kind {
-
 				actualTokenKindString = actualToken.Kind.String()
 				expectedTokenKindString = expectedToken.Kind.String()
 
@@ -1549,7 +1591,6 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 
 			// gotta be an accessor
 			if reflectedKind == reflect.Slice {
-
 				if actualToken.Value == nil {
 					test.Logf("Test '%s' failed:", parsingTest.Name)
 					test.Logf("Expected token value '%v' does not match nil", expectedToken.Value)
@@ -1557,7 +1598,6 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 				}
 
 				for z, actual := range actualToken.Value.([]string) {
-
 					if actual != expectedToken.Value.([]string)[z] {
 
 						test.Logf("Test '%s' failed:", parsingTest.Name)
@@ -1569,7 +1609,6 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 			}
 
 			if actualToken.Value != expectedToken.Value {
-
 				test.Logf("Test '%s' failed:", parsingTest.Name)
 				test.Logf("Expected token value '%v' does not match '%v'", expectedToken.Value, actualToken.Value)
 				test.Fail()

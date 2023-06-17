@@ -229,6 +229,13 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			break
 		}
 
+		if character == '{' {
+			blockValue := readBlock(stream)
+			tokenValue = blockValue
+			kind = BLOCK
+			break
+		}
+
 		// must be a known symbol
 		tokenString = readTokenUntilFalse(stream, isNotAlphanumeric)
 		tokenValue = tokenString
@@ -283,6 +290,29 @@ func readStringUntilBacktick(stream *lexerStream) string {
 			break
 		}
 		tokenBuffer.WriteString(string(character))
+	}
+	return tokenBuffer.String()
+}
+
+func readBlock(stream *lexerStream) string {
+	var tokenBuffer bytes.Buffer
+	var character rune
+	var depth = 1
+
+	for stream.canRead() {
+		character = stream.readCharacter()
+		switch character {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		}
+
+		if depth != 0 {
+			tokenBuffer.WriteString(string(character))
+		} else {
+			break
+		}
 	}
 	return tokenBuffer.String()
 }
