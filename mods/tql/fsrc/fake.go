@@ -31,6 +31,8 @@ func src_FAKE(args ...any) (any, error) {
 		return gen, nil
 	} else if arr, ok := args[0].([][][]float64); ok {
 		return &meshgrid{vals: arr}, nil
+	} else if arr, ok := args[0].([]float64); ok {
+		return &linspace{vals: arr}, nil
 	} else {
 		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", args[0])
 	}
@@ -76,6 +78,45 @@ func (mg *meshgrid) Gen() <-chan []any {
 }
 
 func (mg *meshgrid) Stop() {
+	mg.alive = false
+	mg.closeWait.Wait()
+}
+
+var _ fakeSource = &linspace{}
+
+type linspace struct {
+	vals []float64
+
+	ch        chan []any
+	alive     bool
+	closeWait sync.WaitGroup
+}
+
+func (mg *linspace) Header() spi.Columns {
+	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
+}
+
+func (mg *linspace) Gen() <-chan []any {
+	mg.ch = make(chan []any)
+	mg.alive = true
+	mg.closeWait.Add(1)
+	go func() {
+		id := 0
+		for _, v := range mg.vals {
+			if !mg.alive {
+				goto done
+			}
+			id++
+			mg.ch <- []any{id, v}
+		}
+	done:
+		close(mg.ch)
+		mg.closeWait.Done()
+	}()
+	return mg.ch
+}
+
+func (mg *linspace) Stop() {
 	mg.alive = false
 	mg.closeWait.Wait()
 }
