@@ -92,33 +92,33 @@ type linspace struct {
 	closeWait sync.WaitGroup
 }
 
-func (mg *linspace) Header() spi.Columns {
+func (ls *linspace) Header() spi.Columns {
 	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
 }
 
-func (mg *linspace) Gen() <-chan []any {
-	mg.ch = make(chan []any)
-	mg.alive = true
-	mg.closeWait.Add(1)
+func (ls *linspace) Gen() <-chan []any {
+	ls.ch = make(chan []any)
+	ls.alive = true
+	ls.closeWait.Add(1)
 	go func() {
 		id := 0
-		for _, v := range mg.vals {
-			if !mg.alive {
+		for _, v := range ls.vals {
+			if !ls.alive {
 				goto done
 			}
 			id++
-			mg.ch <- []any{id, v}
+			ls.ch <- []any{id, v}
 		}
 	done:
-		close(mg.ch)
-		mg.closeWait.Done()
+		close(ls.ch)
+		ls.closeWait.Done()
 	}()
-	return mg.ch
+	return ls.ch
 }
 
-func (mg *linspace) Stop() {
-	mg.alive = false
-	mg.closeWait.Wait()
+func (ls *linspace) Stop() {
+	ls.alive = false
+	ls.closeWait.Wait()
 }
 
 func src_sphere(args ...any) (any, error) {
