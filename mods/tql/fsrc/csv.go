@@ -87,6 +87,13 @@ func (src *csvSrc) Gen() <-chan []any {
 							src.ch <- nil
 							break
 						}
+					case *epochtimeOpt:
+						if t, err := strconv.ParseInt(fields[i], 10, 64); err != nil {
+							src.ch <- nil
+							break
+						} else {
+							values[i] = t * dataType.unit
+						}
 					case *datetimeOpt:
 						values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 						if err != nil {
@@ -255,6 +262,12 @@ func src_doubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
 }
 
+type epochtimeOpt struct {
+	unit int64
+}
+
+func (o *epochtimeOpt) spiType() string { return "datetime" }
+
 type datetimeOpt struct {
 	timeformat   string
 	timeLocation *time.Location
@@ -271,6 +284,17 @@ func src_datetimeType(args ...any) (any, error) {
 	if ret.timeformat, err = conv.String(args, 0, "datetime", "string"); err != nil {
 		return ret, err
 	}
+	switch ret.timeformat {
+	case "ns":
+		return &epochtimeOpt{unit: 1}, nil
+	case "us":
+		return &epochtimeOpt{unit: 1000}, nil
+	case "ms":
+		return &epochtimeOpt{unit: 1000000}, nil
+	case "s":
+		return &epochtimeOpt{unit: 1000000000}, nil
+	}
+
 	if len(args) == 2 {
 		var tz string
 		if tz, err = conv.String(args, 1, "datetime", "string"); err != nil {
