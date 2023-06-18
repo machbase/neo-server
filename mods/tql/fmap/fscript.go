@@ -1,6 +1,7 @@
 package fmap
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/d5/tengo/v2"
@@ -118,10 +119,12 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 	slet.script.SetImports(modules)
 	slet.compiled, slet.err = slet.script.Compile()
 	if slet.err != nil {
+		fmt.Println("SCRIPT", slet.err.Error())
 		return nil, slet.err
 	}
 	slet.err = slet.compiled.RunContext(ctx)
 	if slet.err != nil {
+		fmt.Println("SCRIPT", slet.err.Error())
 		return nil, slet.err
 	}
 
