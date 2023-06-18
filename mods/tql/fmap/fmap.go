@@ -9,11 +9,13 @@ import (
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/tql/fcom"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 var mapFunctionsMacro = [][2]string{
+	{"SCRIPT(", "SCRIPT(CTX,K,V,"},
 	{"TAKE(", "TAKE(CTX,K,V,"},
 	{"DROP(", "DROP(CTX,K,V,"},
 	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
@@ -36,6 +38,7 @@ func Parse(text string) (*expression.Expression, error) {
 var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
+	"SCRIPT":     mapf_SCRIPT,
 	"TAKE":       mapf_TAKE,
 	"DROP":       mapf_DROP,
 	"PUSHKEY":    mapf_PUSHKEY,
@@ -60,21 +63,13 @@ func Functions() []string {
 	return ret
 }
 
-func errInvalidNumOfArgs(name string, expect int, actual int) error {
-	return fmt.Errorf("f(%s) invalid number of args; expect:%d, actual:%d", name, expect, actual)
-}
-
-func errWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
-	return fmt.Errorf("f(%s) arg(%d) should be %s, but %T", name, idx, expect, actual)
-}
-
 func mapf_TAKE(args ...any) (any, error) {
 	if len(args) != 4 {
-		return nil, errInvalidNumOfArgs("TAKE", 4, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("TAKE", 4, len(args))
 	}
 	ctx, ok := args[0].(*context.Context)
 	if !ok {
-		return nil, errWrongTypeOfArgs("TAKE", 0, "context", args[0])
+		return nil, conv.ErrWrongTypeOfArgs("TAKE", 0, "context", args[0])
 	}
 	if limit, ok := args[3].(float64); ok {
 		if ctx.Nrow > int(limit) {
@@ -85,7 +80,7 @@ func mapf_TAKE(args ...any) (any, error) {
 			return context.ExecutionCircuitBreak, nil
 		}
 	} else {
-		return nil, errWrongTypeOfArgs("TAKE", 3, "int", args[3])
+		return nil, conv.ErrWrongTypeOfArgs("TAKE", 3, "int", args[3])
 	}
 
 	return &context.Param{K: args[1], V: args[2]}, nil
@@ -93,11 +88,11 @@ func mapf_TAKE(args ...any) (any, error) {
 
 func mapf_DROP(args ...any) (any, error) {
 	if len(args) != 4 {
-		return nil, errInvalidNumOfArgs("DROP", 4, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("DROP", 4, len(args))
 	}
 	ctx, ok := args[0].(*context.Context)
 	if !ok {
-		return nil, errWrongTypeOfArgs("DROP", 0, "context", args[0])
+		return nil, conv.ErrWrongTypeOfArgs("DROP", 0, "context", args[0])
 	}
 
 	if limit, ok := args[3].(float64); ok {
@@ -109,7 +104,7 @@ func mapf_DROP(args ...any) (any, error) {
 			return nil, nil
 		}
 	} else {
-		return nil, errWrongTypeOfArgs("DROP", 3, "int", args[3])
+		return nil, conv.ErrWrongTypeOfArgs("DROP", 3, "int", args[3])
 	}
 
 	return &context.Param{K: args[1], V: args[2]}, nil
