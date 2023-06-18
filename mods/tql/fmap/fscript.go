@@ -1,13 +1,12 @@
 package fmap
 
 import (
-	"errors"
-	"fmt"
+	"time"
 
+	"github.com/d5/tengo/v2"
+	"github.com/d5/tengo/v2/stdlib"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
-
-	scriptLoader "github.com/machbase/neo-server/mods/script"
 )
 
 // SCRIPT(CTX, K, V, {block})
@@ -27,45 +26,104 @@ func mapf_SCRIPT(args ...any) (any, error) {
 		return nil, err
 	}
 
-	return script_tengo(ctx, k, v, []byte(content))
+	return script_tengo(ctx, k, v, content)
 }
 
-func script_tengo(ctx *context.Context, K any, V any, content []byte) (any, error) {
-	loader := scriptLoader.NewLoader()
+type scriptlet struct {
+	script   *tengo.Script
+	compiled *tengo.Compiled
+	err      error
+}
 
-	engine, err := loader.Parse(content)
-	if err != nil {
-		fmt.Println("ERR Tengo1", err.Error())
-		return nil, err
-	}
-
-	engine.SetVar("CTX", ctx)
-	engine.SetVar("K", K)
-	engine.SetVar("V", V)
-
-	ret := &context.Param{K: K, V: V}
-	engine.SetFunc("yield", func(args ...any) (any, error) {
-		if len(args) == 0 {
-			return nil, errors.New("missing key-value argument")
-		} else if len(args) == 1 {
-			switch v := args[0].(type) {
-			case []any:
-				ret.K = v[0]
-				ret.V = v[1:]
-			default:
-				fmt.Printf("-->%T len:%+v\n", args[0], args[0])
-			}
-		} else {
-			ret.K = args[0]
-			ret.V = args[1:]
+func anyToTengoObject(av any) tengo.Object {
+	switch v := av.(type) {
+	case float64:
+		return &tengo.Float{Value: v}
+	case *float64:
+		return &tengo.Float{Value: *v}
+	case string:
+		return &tengo.String{Value: v}
+	case *string:
+		return &tengo.String{Value: *v}
+	case time.Time:
+		return &tengo.Time{Value: v}
+	case *time.Time:
+		return &tengo.Time{Value: *v}
+	case []any:
+		arr := &tengo.Array{}
+		for _, n := range v {
+			arr.Value = append(arr.Value, anyToTengoObject(n))
 		}
-		return nil, nil
-	})
+		return arr
+	}
+	return nil
+}
 
-	if err = engine.Run(); err != nil {
-		fmt.Println("ERR Tengo run", err.Error())
-		return nil, err
+func script_tengo(ctx *context.Context, K any, V any, content string) (any, error) {
+	ret := &context.Param{K: K, V: V}
+
+	slet := &scriptlet{}
+	slet.script = tengo.NewScript([]byte(content))
+
+	modules := stdlib.GetModuleMap(stdlib.AllModuleNames()...)
+	modules.AddBuiltinModule("context", map[string]tengo.Object{
+		"key": &tengo.UserFunction{
+			Name: "key",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				if len(args) != 0 {
+					return nil, tengo.ErrWrongNumArguments
+				}
+				return anyToTengoObject(K), nil
+			},
+		},
+		"value": &tengo.UserFunction{
+			Name: "value",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				if len(args) != 0 {
+					return nil, tengo.ErrWrongNumArguments
+				}
+				return anyToTengoObject(V), nil
+			},
+		},
+		"yieldKey": &tengo.UserFunction{
+			Name: "yieldKey",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				vargs := make([]any, len(args))
+				for i, v := range args {
+					vargs[i] = tengo.ToInterface(v)
+				}
+				if len(vargs) == 0 {
+					return nil, nil // yield no changes
+				} else if len(vargs) == 1 {
+					ret.K = []any{vargs[0]} // change key only
+				} else {
+					ret.K = vargs[0] // change key and values
+					ret.V = vargs[1:]
+				}
+				return nil, nil
+			},
+		},
+		"yield": &tengo.UserFunction{
+			Name: "yield",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				vargs := make([]any, len(args))
+				for i, v := range args {
+					vargs[i] = tengo.ToInterface(v)
+				}
+				ret.V = vargs
+				return nil, nil
+			},
+		},
+	})
+	slet.script.SetImports(modules)
+	slet.compiled, slet.err = slet.script.Compile()
+	if slet.err != nil {
+		return nil, slet.err
+	}
+	slet.err = slet.compiled.RunContext(ctx)
+	if slet.err != nil {
+		return nil, slet.err
 	}
 
-	return ret, nil
+	return ret, slet.err
 }
