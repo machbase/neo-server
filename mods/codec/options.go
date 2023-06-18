@@ -199,6 +199,18 @@ func GridSize(whd ...float64) Option {
 	}
 }
 
+type CanSetLineWidth interface {
+	SetLineWidth(width float64)
+}
+
+func LineWidth(w float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetLineWidth); ok {
+			o.SetLineWidth(w)
+		}
+	}
+}
+
 type CanSetVisualMap interface {
 	SetVisualMap(float64, float64)
 }

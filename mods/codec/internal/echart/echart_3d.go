@@ -11,7 +11,8 @@ import (
 
 type Base3D struct {
 	ChartBase
-	series []opts.Chart3DData
+	series             [][]opts.Chart3DData
+	sereisBreakByXAxis bool
 
 	xAxisIdx   int
 	yAxisIdx   int
@@ -30,6 +31,8 @@ type Base3D struct {
 	autoRotate float32 // angle/sec
 	showGrid   bool
 	gridSize   []float32 // [width, height, depth]
+
+	lineWidth float32
 }
 
 func (ex *Base3D) ContentType() string {
@@ -91,6 +94,10 @@ func (ex *Base3D) SetGridSize(args ...float64) {
 
 func (ex *Base3D) SetOpacity(opacity float64) {
 	ex.opacity = opacity
+}
+
+func (ex *Base3D) SetLineWidth(width float64) {
+	ex.lineWidth = float32(width)
 }
 
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
@@ -243,7 +250,28 @@ func (ex *Base3D) AddRow(values []any) error {
 	if ex.opacity > 0.0 {
 		vv.ItemStyle = &opts.ItemStyle{Opacity: float32(ex.opacity)}
 	}
-	ex.series = append(ex.series, vv)
+
+	if ex.sereisBreakByXAxis {
+		nSer := len(ex.series)
+		if nSer == 0 {
+			ex.series = append(ex.series, []opts.Chart3DData{})
+		} else {
+			ser := ex.series[nSer-1]
+			prev := ser[len(ser)-1]
+			if len(prev.Value) > 0 && len(values) > 0 {
+				if prev.Value[0] != xv {
+					ex.series = append(ex.series, []opts.Chart3DData{})
+				}
+			}
+		}
+		nSer = len(ex.series)
+		ex.series[nSer-1] = append(ex.series[nSer-1], vv)
+	} else {
+		if len(ex.series) == 0 {
+			ex.series = append(ex.series, []opts.Chart3DData{})
+		}
+		ex.series[0] = append(ex.series[0], vv)
+	}
 
 	return nil
 }
@@ -286,6 +314,8 @@ type Line3D struct {
 func NewLine3D() *Line3D {
 	return &Line3D{
 		Base3D{
+			sereisBreakByXAxis: true,
+
 			xAxisIdx:   0,
 			xAxisLabel: "x",
 			xAxisType:  "value",
@@ -302,12 +332,16 @@ func NewLine3D() *Line3D {
 func (ex *Line3D) Close() {
 	line3d := charts.NewLine3D()
 	line3d.SetGlobalOptions(ex.getGlobalOptions()...)
-	line3d.AddSeries(ex.zAxisLabel, ex.series)
+	serOpts := []charts.SeriesOpts{}
+	if ex.lineWidth > 0 {
+		serOpts = append(serOpts, charts.WithLineStyleOpts(
+			opts.LineStyle{Width: ex.lineWidth},
+		))
+	}
+	for _, ser := range ex.series {
+		line3d.AddSeries(ex.zAxisLabel, ser, serOpts...)
+	}
 	line3d.Render(ex.output)
-
-	// page := components.NewPage()
-	// page.AddCharts(line3d)
-	// page.Render(ex.Output)
 }
 
 type Surface3D struct {
@@ -317,6 +351,8 @@ type Surface3D struct {
 func NewSurface3D() *Surface3D {
 	return &Surface3D{
 		Base3D{
+			sereisBreakByXAxis: true,
+
 			xAxisIdx:   0,
 			xAxisLabel: "x",
 			xAxisType:  "value",
@@ -333,7 +369,9 @@ func NewSurface3D() *Surface3D {
 func (ex *Surface3D) Close() {
 	surface3d := charts.NewSurface3D()
 	surface3d.SetGlobalOptions(ex.getGlobalOptions()...)
-	surface3d.AddSeries(ex.zAxisLabel, ex.series)
+	for _, ser := range ex.series {
+		surface3d.AddSeries(ex.zAxisLabel, ser)
+	}
 	surface3d.Render(ex.output)
 }
 
@@ -344,6 +382,8 @@ type Scatter3D struct {
 func NewScatter3D() *Scatter3D {
 	return &Scatter3D{
 		Base3D{
+			sereisBreakByXAxis: true,
+
 			xAxisIdx:   0,
 			xAxisLabel: "x",
 			xAxisType:  "value",
@@ -360,7 +400,9 @@ func NewScatter3D() *Scatter3D {
 func (ex *Scatter3D) Close() {
 	scatter3d := charts.NewScatter3D()
 	scatter3d.SetGlobalOptions(ex.getGlobalOptions()...)
-	scatter3d.AddSeries(ex.zAxisLabel, ex.series)
+	for _, ser := range ex.series {
+		scatter3d.AddSeries(ex.zAxisLabel, ser)
+	}
 	scatter3d.Render(ex.output)
 }
 
@@ -371,6 +413,8 @@ type Bar3D struct {
 func NewBar3D() *Bar3D {
 	return &Bar3D{
 		Base3D{
+			sereisBreakByXAxis: false,
+
 			xAxisIdx:   0,
 			xAxisLabel: "x",
 			xAxisType:  "value",
@@ -387,6 +431,8 @@ func NewBar3D() *Bar3D {
 func (ex *Bar3D) Close() {
 	bar3d := charts.NewBar3D()
 	bar3d.SetGlobalOptions(ex.getGlobalOptions()...)
-	bar3d.AddSeries(ex.zAxisLabel, ex.series)
+	for _, ser := range ex.series {
+		bar3d.AddSeries(ex.zAxisLabel, ser)
+	}
 	bar3d.Render(ex.output)
 }

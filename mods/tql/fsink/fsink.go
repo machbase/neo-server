@@ -165,6 +165,7 @@ var functions = map[string]expression.Function{
 	"autoRotate":   sinkf_autoRotate,
 	"showGrid":     sinkf_showGrid,
 	"gridSize":     sinkf_gridSize,
+	"lineWidth":    sinkf_lineWidth,
 	// db options
 	"table": to_table,
 	"tag":   to_tag,
@@ -435,6 +436,14 @@ func sinkf_gridSize(args ...any) (any, error) {
 		}
 	}
 	return codec.GridSize(whd...), nil
+}
+
+func sinkf_lineWidth(args ...any) (any, error) {
+	if w, err := conv.Float64(args, 0, "lineWidth", "number"); err != nil {
+		return nil, err
+	} else {
+		return codec.LineWidth(w), nil
+	}
 }
 
 func availableAxisType(typ string) bool {
