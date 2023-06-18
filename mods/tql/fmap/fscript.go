@@ -1,6 +1,7 @@
 package fmap
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,6 +35,121 @@ type scriptlet struct {
 	script   *tengo.Script
 	compiled *tengo.Compiled
 	err      error
+
+	param *context.Param
+}
+
+func script_tengo(ctx *context.Context, K any, V any, content string) (any, error) {
+	var slet *scriptlet
+	if obj, ok := ctx.Get(tengo_script_key); ok {
+		if sl, ok := obj.(*scriptlet); ok {
+			slet = sl
+		}
+	} else {
+		slet = &scriptlet{param: &context.Param{}}
+		if s, c, err := script_compile(content, ctx); err != nil {
+			fmt.Println("SCRIPT", err.Error())
+			return nil, err
+		} else {
+			slet.script = s
+			slet.compiled = c
+		}
+		ctx.Set(tengo_script_key, slet)
+	}
+	if slet == nil {
+		return nil, errors.New("script internal error - nil script")
+	}
+	slet.param.K, slet.param.V = K, V
+
+	slet.err = slet.compiled.RunContext(ctx)
+	if slet.err != nil {
+		fmt.Println("SCRIPT", slet.err.Error())
+		return nil, slet.err
+	}
+
+	return slet.param, slet.err
+}
+
+const tengo_script_key = "$tengo_script"
+
+func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo.Compiled, error) {
+	s := tengo.NewScript([]byte(content))
+
+	modules := stdlib.GetModuleMap([]string{
+		"math", "text", "times", "rand", "fmt", "json", "base64", "hex",
+	}...)
+	modules.AddBuiltinModule("context", map[string]tengo.Object{
+		"key": &tengo.UserFunction{
+			Name: "key",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				if len(args) != 0 {
+					return nil, tengo.ErrWrongNumArguments
+				}
+				if obj, ok := ctx.Get(tengo_script_key); ok {
+					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+						return anyToTengoObject(slet.param.K), nil
+					}
+				}
+				return nil, nil
+			},
+		},
+		"value": &tengo.UserFunction{
+			Name: "value",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				if len(args) != 0 {
+					return nil, tengo.ErrWrongNumArguments
+				}
+				if obj, ok := ctx.Get(tengo_script_key); ok {
+					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+						return anyToTengoObject(slet.param.V), nil
+					}
+				}
+				return nil, nil
+			},
+		},
+		"yieldKey": &tengo.UserFunction{
+			Name: "yieldKey",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				vargs := make([]any, len(args))
+				for i, v := range args {
+					vargs[i] = tengo.ToInterface(v)
+				}
+				if len(vargs) == 0 {
+					return nil, nil // yield no changes
+				} else {
+					if obj, ok := ctx.Get(tengo_script_key); ok {
+						if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+							if len(vargs) == 1 {
+								slet.param.K = []any{vargs[0]} // change key only
+							} else {
+								slet.param.K = vargs[0] // change key and values
+								slet.param.V = vargs[1:]
+							}
+						}
+					}
+				}
+				return nil, nil
+			},
+		},
+		"yield": &tengo.UserFunction{
+			Name: "yield",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				vargs := make([]any, len(args))
+				for i, v := range args {
+					vargs[i] = tengo.ToInterface(v)
+				}
+				if obj, ok := ctx.Get(tengo_script_key); ok {
+					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+						slet.param.V = vargs
+					}
+				}
+				return nil, nil
+			},
+		},
+	})
+	s.SetImports(modules)
+	compiled, err := s.Compile()
+	return s, compiled, err
 }
 
 func anyToTengoObject(av any) tengo.Object {
@@ -58,75 +174,4 @@ func anyToTengoObject(av any) tengo.Object {
 		return arr
 	}
 	return nil
-}
-
-func script_tengo(ctx *context.Context, K any, V any, content string) (any, error) {
-	ret := &context.Param{K: K, V: V}
-
-	slet := &scriptlet{}
-	slet.script = tengo.NewScript([]byte(content))
-
-	modules := stdlib.GetModuleMap(stdlib.AllModuleNames()...)
-	modules.AddBuiltinModule("context", map[string]tengo.Object{
-		"key": &tengo.UserFunction{
-			Name: "key",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if len(args) != 0 {
-					return nil, tengo.ErrWrongNumArguments
-				}
-				return anyToTengoObject(K), nil
-			},
-		},
-		"value": &tengo.UserFunction{
-			Name: "value",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if len(args) != 0 {
-					return nil, tengo.ErrWrongNumArguments
-				}
-				return anyToTengoObject(V), nil
-			},
-		},
-		"yieldKey": &tengo.UserFunction{
-			Name: "yieldKey",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				vargs := make([]any, len(args))
-				for i, v := range args {
-					vargs[i] = tengo.ToInterface(v)
-				}
-				if len(vargs) == 0 {
-					return nil, nil // yield no changes
-				} else if len(vargs) == 1 {
-					ret.K = []any{vargs[0]} // change key only
-				} else {
-					ret.K = vargs[0] // change key and values
-					ret.V = vargs[1:]
-				}
-				return nil, nil
-			},
-		},
-		"yield": &tengo.UserFunction{
-			Name: "yield",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				vargs := make([]any, len(args))
-				for i, v := range args {
-					vargs[i] = tengo.ToInterface(v)
-				}
-				ret.V = vargs
-				return nil, nil
-			},
-		},
-	})
-	slet.script.SetImports(modules)
-	slet.compiled, slet.err = slet.script.Compile()
-	if slet.err != nil {
-		fmt.Println("SCRIPT", slet.err.Error())
-		return nil, slet.err
-	}
-	slet.err = slet.compiled.RunContext(ctx)
-	if slet.err != nil {
-		fmt.Println("SCRIPT", slet.err.Error())
-		return nil, slet.err
-	}
-
-	return ret, slet.err
 }
