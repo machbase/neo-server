@@ -1,4 +1,4 @@
-package oscilator
+package oscillator
 
 import (
 	"math"

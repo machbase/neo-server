@@ -35,7 +35,7 @@ func TestNewContextChain(t *testing.T) {
 
 func TestFFTChain(t *testing.T) {
 	strExprs := []string{
-		"INPUT( FAKE( oscilator( range(time(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0))))",
+		"INPUT( FAKE( oscillator( range(time(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0))))",
 		"PUSHKEY('samples')",
 		"GROUPBYKEY()",
 		"FFT(minHz(0), maxHz(60))",
