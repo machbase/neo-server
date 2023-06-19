@@ -64,7 +64,8 @@ var functions = map[string]expression.Function{
 	"limit":        srcf_limit,
 	"dump":         srcf_dump,
 	"freq":         srcf_freq,
-	"oscilator":    src_oscilator,
+	"oscilator":    src_oscillator, // deprecated, typo
+	"oscillator":   src_oscillator,
 	"FAKE":         src_FAKE,
 	"CSV":          src_CSV,
 	"file":         src_file,         // CSV()

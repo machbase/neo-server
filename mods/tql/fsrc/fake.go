@@ -41,8 +41,8 @@ func src_FAKE(args ...any) (any, error) {
 	}
 }
 
-func src_oscilator(args ...any) (any, error) {
-	ret := &oscilator{}
+func src_oscillator(args ...any) (any, error) {
+	ret := &oscillator{}
 	for _, arg := range args {
 		switch v := arg.(type) {
 		default:
@@ -66,7 +66,7 @@ func src_oscilator(args ...any) (any, error) {
 	return ret, nil
 }
 
-type oscilator struct {
+type oscillator struct {
 	timeRange   *timeRange
 	frequencies []*freq
 	ch          chan []any
@@ -74,13 +74,13 @@ type oscilator struct {
 	closeWait   sync.WaitGroup
 }
 
-var _ fakeSource = &oscilator{}
+var _ fakeSource = &oscillator{}
 
-func (fs *oscilator) Header() spi.Columns {
+func (fs *oscillator) Header() spi.Columns {
 	return []*spi.Column{{Name: "time", Type: "datetime"}, {Name: "value", Type: "double"}}
 }
 
-func (fs *oscilator) Gen() <-chan []any {
+func (fs *oscillator) Gen() <-chan []any {
 	fs.ch = make(chan []any)
 	fs.alive = true
 	fs.closeWait.Add(1)
@@ -109,7 +109,7 @@ func (fs *oscilator) Gen() <-chan []any {
 	return fs.ch
 }
 
-func (fs *oscilator) Stop() {
+func (fs *oscillator) Stop() {
 	fs.alive = false
 	fs.closeWait.Wait()
 }
