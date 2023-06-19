@@ -13,7 +13,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.4.2
 	github.com/gdamore/tcell/v2 v2.6.0
 	github.com/gin-contrib/cors v1.4.0
-	github.com/gin-gonic/gin v1.9.0
+	github.com/gin-gonic/gin v1.9.1
 	github.com/gliderlabs/ssh v0.3.5
 	github.com/go-echarts/go-echarts/v2 v2.2.6
 	github.com/gofrs/uuid v4.4.0+incompatible
@@ -33,16 +33,16 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230406072732-e22ce9588bb4
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.4
-	golang.org/x/crypto v0.8.0
-	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
-	golang.org/x/term v0.7.0
-	golang.org/x/text v0.9.0
+	golang.org/x/crypto v0.10.0
+	golang.org/x/net v0.11.0
+	golang.org/x/sys v0.9.0
+	golang.org/x/term v0.9.0
+	golang.org/x/text v0.10.0
 	gonum.org/v1/gonum v0.13.0
 	google.golang.org/grpc v1.54.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -55,7 +55,7 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/bytedance/sonic v1.8.8 // indirect
+	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
@@ -64,6 +64,7 @@ require (
 	github.com/fyne-io/gl-js v0.0.0-20220119005834-d2da28d9ccfe // indirect
 	github.com/fyne-io/glfw-js v0.0.0-20220120001248-ee7290d23504 // indirect
 	github.com/fyne-io/image v0.0.0-20220602074514-4956b0afb3d2 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
@@ -74,7 +75,7 @@ require (
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.12.0 // indirect
+	github.com/go-playground/validator/v10 v10.14.1 // indirect
 	github.com/go-text/typesetting v0.0.0-20230405155246-bf9c697c6e16 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -88,16 +89,16 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.4 // indirect
-	github.com/leodido/go-urn v1.2.3 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-isatty v0.0.18 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/pelletier/go-toml/v2 v2.0.7 // indirect
+	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/pion/dtls/v2 v2.2.6 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/transport/v2 v2.0.2 // indirect
