@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/renderer"
 	"github.com/machbase/neo-server/mods/renderer/model"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"github.com/robfig/cron/v3"
 )

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/net/context"
 	"golang.org/x/term"

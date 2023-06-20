@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
+	"github.com/machbase/neo-server/mods/util/readline"
 )
 
 func init() {
