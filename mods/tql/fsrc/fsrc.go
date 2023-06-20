@@ -71,7 +71,7 @@ var functions = map[string]expression.Function{
 	"limit":        srcf_limit,
 	"dump":         srcf_dump,
 	"freq":         srcf_freq,
-	"oscilator":    src_oscilator,
+	"oscillator":   src_oscillator,
 	"sphere":       src_sphere,
 	"FAKE":         src_FAKE,
 	"CSV":          src_CSV,

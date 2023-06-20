@@ -21,7 +21,7 @@ type fakeSource interface {
 Example)
 
 	 INPUT(
-		FAKE( oscilator() | sphere() )
+		FAKE( oscillator() | sphere() )
 */
 func src_FAKE(args ...any) (any, error) {
 	if len(args) != 1 {
@@ -168,38 +168,38 @@ func (sp *sphere) Stop() {
 	sp.closeWait.Wait()
 }
 
-// // oscilator(
+// // oscillator(
 // //		range(time('now','-10s'), '10s', '1ms'),
 // //		freq(100, amplitude [,phase [, bias]]),
 // //		freq(240, amplitude [,phase [, bias]]),
 // //	)
 // // )
-func src_oscilator(args ...any) (any, error) {
-	ret := &oscilator{}
+func src_oscillator(args ...any) (any, error) {
+	ret := &oscillator{}
 	for _, arg := range args {
 		switch v := arg.(type) {
 		default:
-			return nil, fmt.Errorf("f(oscilator) invalid arg type '%T'", v)
+			return nil, fmt.Errorf("f(oscillator) invalid arg type '%T'", v)
 		case *freq:
 			ret.frequencies = append(ret.frequencies, v)
 		case *timeRange:
 			if ret.timeRange != nil {
-				return nil, fmt.Errorf("f(oscilator) duplicated time range, %v", v)
+				return nil, fmt.Errorf("f(oscillator) duplicated time range, %v", v)
 			}
 			ret.timeRange = v
 		}
 	}
 
 	if ret.timeRange == nil {
-		return nil, errors.New("f(oscilator) no time range is defined")
+		return nil, errors.New("f(oscillator) no time range is defined")
 	}
 	if ret.timeRange.period <= 0 {
-		return nil, errors.New("f(oscilator) period should be positive")
+		return nil, errors.New("f(oscillator) period should be positive")
 	}
 	return ret, nil
 }
 
-type oscilator struct {
+type oscillator struct {
 	timeRange   *timeRange
 	frequencies []*freq
 	ch          chan []any
@@ -207,13 +207,13 @@ type oscilator struct {
 	closeWait   sync.WaitGroup
 }
 
-var _ fakeSource = &oscilator{}
+var _ fakeSource = &oscillator{}
 
-func (fs *oscilator) Header() spi.Columns {
+func (fs *oscillator) Header() spi.Columns {
 	return []*spi.Column{{Name: "time", Type: "datetime"}, {Name: "value", Type: "double"}}
 }
 
-func (fs *oscilator) Gen() <-chan []any {
+func (fs *oscillator) Gen() <-chan []any {
 	fs.ch = make(chan []any)
 	fs.alive = true
 	fs.closeWait.Add(1)
@@ -242,7 +242,7 @@ func (fs *oscilator) Gen() <-chan []any {
 	return fs.ch
 }
 
-func (fs *oscilator) Stop() {
+func (fs *oscillator) Stop() {
 	fs.alive = false
 	fs.closeWait.Wait()
 }

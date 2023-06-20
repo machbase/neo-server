@@ -7,7 +7,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/nums"
-	"github.com/machbase/neo-server/mods/nums/oscilator"
+	"github.com/machbase/neo-server/mods/nums/oscillator"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -75,7 +75,7 @@ func doFake(ctx *client.ActionContext) {
 		return
 	}
 
-	sigs := []*oscilator.Generator{}
+	sigs := []*oscillator.Generator{}
 	for i := 0; i < 10; i++ {
 		var freq float64 = 10
 		var ampl float64 = 1.0
@@ -93,7 +93,7 @@ func doFake(ctx *client.ActionContext) {
 		if !exists {
 			break
 		}
-		s := &oscilator.Generator{
+		s := &oscillator.Generator{
 			Amplitude: ampl,
 			Frequency: freq,
 			Phase:     phase,
@@ -106,7 +106,7 @@ func doFake(ctx *client.ActionContext) {
 		return
 	}
 
-	eval := oscilator.NewCompositeWithNoise(sigs, cmd.Noise).EvalTime
+	eval := oscillator.NewCompositeWithNoise(sigs, cmd.Noise).EvalTime
 
 	var appender spi.Appender
 	if len(cmd.Table) > 0 {
