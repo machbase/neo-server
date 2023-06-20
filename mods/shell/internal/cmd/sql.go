@@ -8,13 +8,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/term"
 )

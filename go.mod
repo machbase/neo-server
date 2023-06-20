@@ -7,7 +7,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/kong v0.7.1
-	github.com/chzyer/readline v1.5.1
+	github.com/chzyer/test v1.0.0
 	github.com/creack/pty v1.1.18
 	github.com/d5/tengo/v2 v2.16.0
 	github.com/eclipse/paho.mqtt.golang v1.4.2
@@ -57,6 +57,7 @@ require (
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
+	github.com/chzyer/logex v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/fredbi/uri v0.1.0 // indirect

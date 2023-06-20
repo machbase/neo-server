@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 )
 
 func init() {

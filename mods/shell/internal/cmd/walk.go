@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/gdamore/tcell/v2"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"github.com/rivo/tview"
 )

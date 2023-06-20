@@ -5,11 +5,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/oscillator"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 )
 
