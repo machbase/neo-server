@@ -187,7 +187,6 @@ func (c *ConPty) createPseudoConsoleAndPipes() (err error) {
 	if err := windows.CreatePipe(&c.pipeFdOut, &hPipePTYOut, nil, 0); err != nil {
 		log.Fatalf("Failed to create PTY output pipe: %v", err)
 	}
-
 	err = createPseudoConsole(c.consoleSize, hPipePTYIn, hPipePTYOut, c.hpCon)
 	if err != nil {
 		return fmt.Errorf("failed to create pseudo console: %d, %v", uintptr(*c.hpCon), err)
@@ -210,7 +209,9 @@ func (c *ConPty) createPseudoConsoleAndPipes() (err error) {
 }
 
 func (c *ConPty) Resize(cols uint16, rows uint16) error {
-	return resizePseudoConsole(*c.hpCon, uintptr(cols)+(uintptr(rows)<<16))
+	c.consoleSize = uintptr(cols) + (uintptr(rows) << 16)
+	// fmt.Println("ConPty Resize", cols, rows)
+	return resizePseudoConsole(*c.hpCon, c.consoleSize)
 }
 
 func (c *ConPty) initializeStartupInfoAttachedToPTY() (err error) {
