@@ -41,15 +41,12 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		return
 	}
 
-	if req.Values == nil || len(req.Values) == 0 {
-		rsp.Reason = "values is nil"
+	if len(req.Values) == 0 {
+		rsp.Reason = "values is empty"
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
 
-	// log.Printf("req : %+v\n", req)
-
-	// api 요청 시 table 확인?
 	once.Do(func() {
 		exists, err := do.ExistsTable(svr.db, TableName)
 		if err != nil {
@@ -70,9 +67,6 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
-
-		// close 시점 언제?
-		// defer appender.Close()
 	})
 
 	if appender == nil {
