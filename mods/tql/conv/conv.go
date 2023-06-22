@@ -2,6 +2,7 @@ package conv
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 )
 
@@ -94,5 +95,18 @@ func Bool(args []any, idx int, fname string, expect string) (bool, error) {
 		}
 	default:
 		return false, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
+func Reader(args []any, idx int, fname string, expect string) (io.Reader, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
+	switch v := raw.(type) {
+	case io.Reader:
+		return v, nil
+	default:
+		return nil, ErrWrongTypeOfArgs(fname, idx, expect, raw)
 	}
 }

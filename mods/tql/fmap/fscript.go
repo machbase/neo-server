@@ -36,7 +36,8 @@ type scriptlet struct {
 	compiled *tengo.Compiled
 	err      error
 
-	param *context.Param
+	param  *context.Param
+	yields []*context.Param
 }
 
 func script_tengo(ctx *context.Context, K any, V any, content string) (any, error) {
@@ -59,6 +60,7 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 	if slet == nil {
 		return nil, errors.New("script internal error - nil script")
 	}
+	slet.yields = slet.yields[:0]
 	slet.param.K, slet.param.V = K, V
 
 	slet.err = slet.compiled.RunContext(ctx)
@@ -67,7 +69,11 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 		return nil, slet.err
 	}
 
-	return slet.param, slet.err
+	if len(slet.yields) == 0 {
+		return slet.param, slet.err
+	} else {
+		return slet.yields, slet.err
+	}
 }
 
 const tengo_script_key = "$tengo_script"
@@ -116,15 +122,13 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 				}
 				if len(vargs) == 0 {
 					return nil, nil // yield no changes
-				} else {
-					if obj, ok := ctx.Get(tengo_script_key); ok {
-						if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-							if len(vargs) == 1 {
-								slet.param.K = []any{vargs[0]} // change key only
-							} else {
-								slet.param.K = vargs[0] // change key and values
-								slet.param.V = vargs[1:]
-							}
+				}
+				if obj, ok := ctx.Get(tengo_script_key); ok {
+					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+						if len(vargs) == 1 { // change key only
+							slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: slet.param.V})
+						} else { // change key and values
+							slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: vargs[1:]})
 						}
 					}
 				}
@@ -140,7 +144,7 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 				}
 				if obj, ok := ctx.Get(tengo_script_key); ok {
 					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						slet.param.V = vargs
+						slet.yields = append(slet.yields, &context.Param{K: slet.param.K, V: vargs})
 					}
 				}
 				return nil, nil
@@ -166,6 +170,8 @@ func anyToTengoObject(av any) tengo.Object {
 		return &tengo.Time{Value: v}
 	case *time.Time:
 		return &tengo.Time{Value: *v}
+	case []byte:
+		return &tengo.Bytes{Value: v}
 	case []any:
 		arr := &tengo.Array{}
 		for _, n := range v {
