@@ -29,7 +29,7 @@ func (src *bytesSrc) Gen() <-chan []any {
 	buff := bufio.NewReader(src.reader)
 	num := 0
 	go func() {
-		for {
+		for src.alive {
 			var str any
 			var err error
 			if src.toString {
