@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
@@ -51,11 +52,16 @@ func doExplain(ctx *client.ActionContext) {
 		return
 	}
 
+	tick := time.Now()
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
 	plan, err := ctx.DB.Explain(sqlText, cmd.Full)
 	if err != nil {
 		ctx.Println(err.Error())
 		return
 	}
+	elapsed := time.Since(tick).String()
 	ctx.Println(plan)
+	if cmd.Full {
+		ctx.Printfln("Elapsed time %s", elapsed)
+	}
 }
