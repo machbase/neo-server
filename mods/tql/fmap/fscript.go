@@ -3,6 +3,7 @@ package fmap
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/d5/tengo/v2"
@@ -36,6 +37,7 @@ type scriptlet struct {
 	compiled *tengo.Compiled
 	err      error
 
+	drop   bool
 	param  *context.Param
 	yields []*context.Param
 }
@@ -49,8 +51,12 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 	} else {
 		slet = &scriptlet{param: &context.Param{}}
 		if s, c, err := script_compile(content, ctx); err != nil {
+			// script compile error
 			fmt.Println("SCRIPT", err.Error())
-			return nil, err
+			fallbackCode := fmt.Sprintf(`import("context").yield(%s)`, strconv.Quote(err.Error()))
+			s, c, _ = script_compile(fallbackCode, ctx)
+			slet.script = s
+			slet.compiled = c
 		} else {
 			slet.script = s
 			slet.compiled = c
@@ -60,6 +66,7 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 	if slet == nil {
 		return nil, errors.New("script internal error - nil script")
 	}
+	slet.drop = false
 	slet.yields = slet.yields[:0]
 	slet.param.K, slet.param.V = K, V
 
@@ -69,7 +76,9 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 		return nil, slet.err
 	}
 
-	if len(slet.yields) == 0 {
+	if slet.drop {
+		return nil, slet.err
+	} else if len(slet.yields) == 0 {
 		return slet.param, slet.err
 	} else {
 		return slet.yields, slet.err
@@ -79,8 +88,6 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 const tengo_script_key = "$tengo_script"
 
 func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo.Compiled, error) {
-	s := tengo.NewScript([]byte(content))
-
 	modules := stdlib.GetModuleMap([]string{
 		"math", "text", "times", "rand", "fmt", "json", "base64", "hex",
 	}...)
@@ -108,6 +115,17 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 				if obj, ok := ctx.Get(tengo_script_key); ok {
 					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
 						return anyToTengoObject(slet.param.V), nil
+					}
+				}
+				return nil, nil
+			},
+		},
+		"drop": &tengo.UserFunction{
+			Name: "drop",
+			Value: func(args ...tengo.Object) (tengo.Object, error) {
+				if obj, ok := ctx.Get(tengo_script_key); ok {
+					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+						slet.drop = true
 					}
 				}
 				return nil, nil
@@ -151,6 +169,7 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 			},
 		},
 	})
+	s := tengo.NewScript([]byte(content))
 	s.SetImports(modules)
 	compiled, err := s.Compile()
 	return s, compiled, err

@@ -2,6 +2,7 @@ package fsrc
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"sync"
 
@@ -73,13 +74,19 @@ func (src *bytesSrc) Header() spi.Columns {
 	}}
 }
 
-// STRING(CTX.Body [, delimeter()])
-func src_STRING(args ...any) (any, error) {
-	ret := &bytesSrc{toString: true}
-	if v, err := conv.Reader(args, 0, "STRING", "io.Reader"); err != nil {
-		return nil, err
+func src_bytes(typ string, args ...any) (any, error) {
+	ret := &bytesSrc{}
+	if v, err := conv.Reader(args, 0, typ, "io.Reader"); err != nil {
+		if s, err := conv.String(args, 0, typ, "reader or string"); err != nil {
+			return nil, err
+		} else {
+			ret.reader = bytes.NewBufferString(s)
+		}
 	} else {
 		ret.reader = v
+	}
+	if typ == "STRING" {
+		ret.toString = true
 	}
 	for _, arg := range args[1:] {
 		switch v := arg.(type) {
@@ -90,21 +97,14 @@ func src_STRING(args ...any) (any, error) {
 	return ret, nil
 }
 
+// STRING(CTX.Body [, delimeter()])
+func src_STRING(args ...any) (any, error) {
+	return src_bytes("STRING", args...)
+}
+
 // BYTES(CTX.Body [, delimeter()])
 func src_BYTES(args ...any) (any, error) {
-	ret := &bytesSrc{toString: false}
-	if v, err := conv.Reader(args, 0, "BYTES", "io.Reader"); err != nil {
-		return nil, err
-	} else {
-		ret.reader = v
-	}
-	for _, arg := range args[1:] {
-		switch v := arg.(type) {
-		case *delimiter:
-			ret.delimiter = v.c
-		}
-	}
-	return ret, nil
+	return src_bytes("BYTES", args...)
 }
 
 type delimiter struct {
