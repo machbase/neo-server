@@ -128,6 +128,8 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 				tokenValue = "$" + tokenString
 				kind = VARIABLE
 				break
+			} else {
+				stream.rewind(1)
 			}
 		}
 
@@ -336,7 +338,14 @@ func readUntilFalse(stream *lexerStream, includeWhitespace bool, breakWhitespace
 		// Use backslashes to escape anything
 		if allowEscaping && character == '\\' {
 			character = stream.readCharacter()
-			tokenBuffer.WriteString(string(character))
+			switch character {
+			case 'n':
+				tokenBuffer.WriteString("\n")
+			case 't':
+				tokenBuffer.WriteString("\t")
+			default:
+				tokenBuffer.WriteString(string(character))
+			}
 			continue
 		}
 

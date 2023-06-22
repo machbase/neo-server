@@ -101,6 +101,16 @@ func TestConstantParsing(test *testing.T) {
 			},
 		},
 		{
+			Name:  "Single string with carrage return",
+			Input: `'foo\nbar'`,
+			Expected: []Token{
+				{
+					Kind:  STRING,
+					Value: "foo\nbar",
+				},
+			},
+		},
+		{
 			Name:  "Single time, RFC3339, only date",
 			Input: "'2014-01-02'",
 			Expected: []Token{
@@ -1549,7 +1559,6 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 		}
 
 		if err != nil {
-
 			test.Logf("Test '%s' failed to parse: %s", parsingTest.Name, err)
 			test.Logf("Expression: '%s'", parsingTest.Input)
 			test.Fail()

@@ -32,9 +32,19 @@ func (src *bytesSrc) Gen() <-chan []any {
 			var str any
 			var err error
 			if src.toString {
-				str, err = buff.ReadString(src.delimiter)
+				var v string
+				if v, err = buff.ReadString(src.delimiter); len(v) == 0 {
+					break
+				} else {
+					str = v
+				}
 			} else {
-				str, err = buff.ReadBytes(src.delimiter)
+				var v []byte
+				if v, err = buff.ReadBytes(src.delimiter); len(v) == 0 {
+					break
+				} else {
+					str = v
+				}
 			}
 			if err != nil && err != io.EOF {
 				break
@@ -63,6 +73,7 @@ func (src *bytesSrc) Header() spi.Columns {
 	}}
 }
 
+// STRING(CTX.Body [, delimeter()])
 func src_STRING(args ...any) (any, error) {
 	ret := &bytesSrc{toString: true}
 	if v, err := conv.Reader(args, 0, "STRING", "io.Reader"); err != nil {
@@ -70,15 +81,42 @@ func src_STRING(args ...any) (any, error) {
 	} else {
 		ret.reader = v
 	}
+	for _, arg := range args[1:] {
+		switch v := arg.(type) {
+		case *delimiter:
+			ret.delimiter = v.c
+		}
+	}
 	return ret, nil
 }
 
+// BYTES(CTX.Body [, delimeter()])
 func src_BYTES(args ...any) (any, error) {
 	ret := &bytesSrc{toString: false}
 	if v, err := conv.Reader(args, 0, "BYTES", "io.Reader"); err != nil {
 		return nil, err
 	} else {
 		ret.reader = v
+	}
+	for _, arg := range args[1:] {
+		switch v := arg.(type) {
+		case *delimiter:
+			ret.delimiter = v.c
+		}
+	}
+	return ret, nil
+}
+
+type delimiter struct {
+	c byte
+}
+
+func srcf_delimiter(args ...any) (any, error) {
+	ret := &delimiter{}
+	if v, err := conv.Byte(args, 0, "delimiter", "byte"); err != nil {
+		return nil, err
+	} else {
+		ret.c = v
 	}
 	return ret, nil
 }
