@@ -439,6 +439,23 @@ func TestConstantParsing(test *testing.T) {
 				},
 			},
 		},
+		{
+			Name:      "Function following comment",
+			Input:     "foo() // this is comment",
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
+				{
+					Kind:  FUNCTION,
+					Value: noop,
+				},
+				{
+					Kind: CLAUSE,
+				},
+				{
+					Kind: CLAUSE_CLOSE,
+				},
+			},
+		},
 	}
 
 	tokenParsingTests = combineWhitespaceExpressions(tokenParsingTests)
