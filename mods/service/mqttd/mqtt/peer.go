@@ -77,6 +77,8 @@ type peer struct {
 	name string
 	log  logging.Log
 
+	logPayloadDump bool
+
 	conn     Connection
 	server   Server
 	delegate ServerDelegate
@@ -175,9 +177,9 @@ func (p *peer) Start() {
 
 	certHash := p.conn.RemoteCertHash()
 	if len(certHash) > 8 {
-		p.log.Infof("Sess CREATE %s cert-hash:%s", p.conn.RemoteAddrString(), certHash[0:8])
+		p.log.Debugf("Sess CREATE %s cert-hash:%s", p.conn.RemoteAddrString(), certHash[0:8])
 	} else {
-		p.log.Infof("Sess CREATE")
+		p.log.Debugf("Sess CREATE")
 	}
 
 	p.protocolVersion = ver
@@ -203,7 +205,7 @@ func (p *peer) Close() {
 
 	age := time.Since(p.cretime).Round(time.Second)
 
-	p.log.Infof("Sess DESTROY age:%s", age)
+	p.log.Debugf("Sess DESTROY age:%s", age)
 }
 
 func (p *peer) RemoteAddrString() string {
@@ -562,7 +564,7 @@ func (p *peer) egress(sendMsg any) {
 	case *packet4.PublishPacket:
 		p.send(msg)
 		//p.Infof("Egrs Publish %s mid:%d d:%t r:%t len:%d", msg.TopicName, msg.MessageID, msg.Dup, msg.Retain, len(msg.Payload))
-		if p.log.TraceEnabled() {
+		if p.logPayloadDump && p.log.TraceEnabled() {
 			dump := strings.Split(hex.Dump(msg.Payload), "\n")
 			for _, line := range dump {
 				p.log.Tracef("Dump %s", line)
@@ -571,7 +573,7 @@ func (p *peer) egress(sendMsg any) {
 	case *packet5.Publish:
 		p.send(msg)
 		//p.Infof("Egrs Publish %s mid:%d d:%t r:%t len:%d", msg.Topic, msg.PacketID, msg.Duplicate, msg.Retain, len(msg.Payload))
-		if p.log.TraceEnabled() {
+		if p.logPayloadDump && p.log.TraceEnabled() {
 			dump := strings.Split(hex.Dump(msg.Payload), "\n")
 			for _, line := range dump {
 				p.log.Tracef("Dump %s", line)

@@ -50,6 +50,12 @@ func OptionMaxMessageSizeLimit(limit int) Option {
 	}
 }
 
+func OptionPeerDefaultLogLevel(lvl logging.Level) Option {
+	return func(s *mqttd) {
+		s.mqttd.SetPeerDefaultLogLevel(lvl)
+	}
+}
+
 func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	return func(s *mqttd) {
 		s.authServer = authSvc
@@ -199,11 +205,6 @@ func (svr *mqttd) OnConnect(evt *mqtt.EvtConnect) (mqtt.AuthCode, *mqtt.ConnectR
 		if !pass {
 			return mqtt.AuthError, nil, nil
 		}
-	}
-
-	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
-	if ok {
-		peer.SetLogLevel(logging.LevelDebug)
 	}
 
 	pubTopic := []string{}

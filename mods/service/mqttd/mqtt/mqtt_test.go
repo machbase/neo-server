@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -29,7 +28,6 @@ var (
 
 	//logFile          = filepath.Join(basepath, "../tmp/mqtt01.log")
 	logFile          = "-"
-	admSockFile      = filepath.Join(basepath, "../tmp/mqtt.sock")
 	handshakeTimeout = 3
 	serverCertFile   = filepath.Join(basepath, "../test/test_server_cert.pem")
 	serverKeyFile    = filepath.Join(basepath, "../test/test_server_key.pem")
@@ -148,7 +146,7 @@ func getOptions(broker string, keepAlive time.Duration) *paho.ClientOptions {
 		////////////////////
 		// append root ca
 		rootCAs := x509.NewCertPool()
-		ca, err := ioutil.ReadFile(serverCertFile)
+		ca, err := os.ReadFile(serverCertFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "fail to load keys: %s\n", err)
 			return nil

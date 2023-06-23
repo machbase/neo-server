@@ -1,6 +1,7 @@
 package fsrc
 
 import (
+	"bytes"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -154,6 +155,8 @@ func src_CSV(args ...any) (any, error) {
 			ret.columns[v.idx] = v
 		case io.Reader:
 			reader = v
+		case string:
+			reader = bytes.NewBufferString(v)
 		default:
 			return nil, fmt.Errorf("f(CSV) unknown argument, %T", v)
 		}

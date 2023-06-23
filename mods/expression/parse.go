@@ -128,9 +128,19 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 				tokenValue = "$" + tokenString
 				kind = VARIABLE
 				break
+			} else {
+				stream.rewind(1)
 			}
 		}
 
+		if character == '/' {
+			if nc := stream.readCharacter(); nc == '/' {
+				readStringUntilEndOfLine(stream)
+				continue
+			} else {
+				stream.rewind(1)
+			}
+		}
 		if character == '`' {
 			kind = STRING
 			tokenValue = readStringUntilBacktick(stream)
@@ -294,6 +304,15 @@ func readStringUntilBacktick(stream *lexerStream) string {
 	return tokenBuffer.String()
 }
 
+func readStringUntilEndOfLine(stream *lexerStream) {
+	for stream.canRead() {
+		character := stream.readCharacter()
+		if character == '\n' {
+			return
+		}
+	}
+}
+
 func readBlock(stream *lexerStream) string {
 	var tokenBuffer bytes.Buffer
 	var character rune
@@ -336,7 +355,14 @@ func readUntilFalse(stream *lexerStream, includeWhitespace bool, breakWhitespace
 		// Use backslashes to escape anything
 		if allowEscaping && character == '\\' {
 			character = stream.readCharacter()
-			tokenBuffer.WriteString(string(character))
+			switch character {
+			case 'n':
+				tokenBuffer.WriteString("\n")
+			case 't':
+				tokenBuffer.WriteString("\t")
+			default:
+				tokenBuffer.WriteString(string(character))
+			}
 			continue
 		}
 

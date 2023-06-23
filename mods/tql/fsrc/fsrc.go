@@ -80,6 +80,9 @@ var functions = map[string]expression.Function{
 	"datetimeType": src_datetimeType, // col()
 	"stringType":   src_stringType,   // col()
 	"doubleType":   src_doubleType,   // col()
+	"STRING":       src_STRING,
+	"BYTES":        src_BYTES,
+	"delimiter":    srcf_delimiter,
 	"QUERY":        srcf_QUERY,
 	"SQL":          src_SQL,
 	"INPUT":        srcf_INPUT,
