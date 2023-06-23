@@ -114,12 +114,14 @@ func (p *peer) handleRecvPublish(topic string, payload []byte) {
 		Raw:        payload,
 	})
 
+	dumpEnabled := p.logPayloadDump
 	logLevel := logging.LevelTrace
 	if err != nil {
 		logLevel = logging.LevelWarn
+		dumpEnabled = true // force to dump payload
 	}
 
-	if p.log.LogEnabled(logLevel) {
+	if dumpEnabled && p.log.LogEnabled(logLevel) {
 		msg := ""
 		if err != nil {
 			msg = fmt.Sprintf("error: %s", err.Error())
