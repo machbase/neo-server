@@ -3,6 +3,7 @@ package tql
 import (
 	gocontext "context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -111,6 +112,15 @@ func (ec *ExecutionChain) start() {
 	ec.encoderChWg.Add(1)
 	var cols spi.Columns
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if err, ok := r.(error); ok {
+					fmt.Println("ERR", err.Error())
+					debug.PrintStack()
+				}
+			}
+			ec.encoderChWg.Done()
+		}()
 		for arr := range ec.encoderCh {
 			if !ec.encoderNeedToClose {
 				if len(cols) == 0 {
@@ -128,7 +138,6 @@ func (ec *ExecutionChain) start() {
 				fmt.Println("ERR", err.Error())
 			}
 		}
-		ec.encoderChWg.Done()
 	}()
 
 	////////////////////////////////

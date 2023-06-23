@@ -124,6 +124,9 @@ func (src *csvSrc) Stop() {
 }
 
 func (fs *csvSrc) Header() spi.Columns {
+	if len(fs.columns) == 0 {
+		return []*spi.Column{}
+	}
 	max := 0
 	for i := range fs.columns {
 		if i > max {
