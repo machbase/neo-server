@@ -4,11 +4,33 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 )
+
+type fileOption struct {
+	abspath string
+}
+
+func src_file(args ...any) (any, error) {
+	path, err := conv.String(args, 0, "file", "string")
+	if err != nil {
+		return nil, err
+	}
+	serverFs := ssfs.Default()
+	if serverFs == nil {
+		return nil, os.ErrNotExist
+	}
+	realPath, err := serverFs.RealPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return &fileOption{abspath: realPath}, nil
+}
 
 var _ readerSource = &bytesSrc{}
 

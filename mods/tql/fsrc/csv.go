@@ -147,12 +147,12 @@ INPUT( CSV( file('./path.csv') ))
 func src_CSV(args ...any) (any, error) {
 	ret := &csvSrc{columns: make(map[int]*columnOpt)}
 
-	var file *fileOpt
+	var file *fileOption
 	var reader io.Reader
 
 	for _, arg := range args {
 		switch v := arg.(type) {
-		case *fileOpt:
+		case *fileOption:
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
@@ -172,7 +172,7 @@ func src_CSV(args ...any) (any, error) {
 	if reader != nil {
 		ret.reader = csv.NewReader(reader)
 	} else if file != nil {
-		stat, err := os.Stat(file.path)
+		stat, err := os.Stat(file.abspath)
 		if err != nil {
 			return nil, err
 		}
@@ -180,7 +180,7 @@ func src_CSV(args ...any) (any, error) {
 			return nil, errors.New("f(CSV) file path is a directory")
 		}
 
-		if fd, err := os.Open(file.path); err != nil {
+		if fd, err := os.Open(file.abspath); err != nil {
 			return nil, err
 		} else {
 			ret.fd = fd
@@ -189,21 +189,6 @@ func src_CSV(args ...any) (any, error) {
 	}
 
 	return ret, nil
-}
-
-type fileOpt struct {
-	path string
-}
-
-func src_file(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("file", 1, len(args))
-	}
-	if str, ok := args[0].(string); ok {
-		return &fileOpt{path: str}, nil
-	} else {
-		return nil, errors.New("f(file) path should be string")
-	}
 }
 
 type columnOpt struct {

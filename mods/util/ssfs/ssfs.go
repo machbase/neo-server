@@ -16,6 +16,16 @@ type SSFS struct {
 	bases []BaseDir
 }
 
+var defaultFs *SSFS
+
+func SetDefault(fs *SSFS) {
+	defaultFs = fs
+}
+
+func Default() *SSFS {
+	return defaultFs
+}
+
 type BaseDir struct {
 	name    string
 	abspath string
@@ -112,6 +122,18 @@ func (ssfs *SSFS) GetGlob(path string, pattern string) (*Entry, error) {
 }
 
 func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) {
+	return ssfs.getEntry(path, filter, true)
+}
+
+func (ssfs *SSFS) RealPath(path string) (string, error) {
+	ent, err := ssfs.getEntry(path, nil, false)
+	if err != nil {
+		return "", err
+	}
+	return ent.abspath, nil
+}
+
+func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
 	idx, name, abspath := ssfs.findDir(path)
 	if idx == -1 {
 		return nil, os.ErrNotExist
@@ -180,11 +202,15 @@ func (ssfs *SSFS) GetFilter(path string, filter SubEntryFilter) (*Entry, error) 
 			Name:    name,
 			abspath: abspath,
 		}
-		if content, err := os.ReadFile(abspath); err == nil {
-			ret.Content = content
-			return ret, nil
+		if loadContent {
+			if content, err := os.ReadFile(abspath); err == nil {
+				ret.Content = content
+				return ret, nil
+			} else {
+				return nil, err
+			}
 		} else {
-			return nil, err
+			return ret, nil
 		}
 	}
 }

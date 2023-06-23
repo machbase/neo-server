@@ -416,6 +416,7 @@ func (s *svr) Start() error {
 		s.log.Warnf("Server filesystem, %s", err.Error())
 		return errors.Wrap(err, "server side file system")
 	}
+	ssfs.SetDefault(serverFs)
 
 	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 	enabledWebUI := false
