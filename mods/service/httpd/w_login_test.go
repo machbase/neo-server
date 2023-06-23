@@ -27,7 +27,7 @@ func TestLoginRoute(t *testing.T) {
 	}
 
 	wservice, err := New(dbMock,
-		OptionDebugMode(),
+		OptionDebugMode(true),
 		OptionHandler("/web", HandlerWeb),
 	)
 	if err != nil {

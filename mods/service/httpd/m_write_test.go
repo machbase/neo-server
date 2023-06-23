@@ -74,7 +74,7 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	webService, err := New(dbMock,
-		OptionDebugMode(),
+		OptionDebugMode(true),
 		OptionHandler("/lake", HandlerLake),
 	)
 	if err != nil {

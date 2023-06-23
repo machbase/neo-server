@@ -428,11 +428,7 @@ func (s *svr) Start() error {
 			httpd.OptionTqlLoader(tqlLoader),
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionExperimentMode(s.conf.ExperimentMode),
-		}
-		if s.conf.Http.DebugMode {
-			opts = append(opts, httpd.OptionDebugMode())
-		} else {
-			opts = append(opts, httpd.OptionReleaseMode())
+			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {

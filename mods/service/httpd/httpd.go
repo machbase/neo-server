@@ -121,15 +121,9 @@ func OptionServerSideFileSystem(ssfs *ssfs.SSFS) Option {
 	}
 }
 
-func OptionDebugMode() Option {
+func OptionDebugMode(isDebug bool) Option {
 	return func(s *httpd) {
-		s.debugMode = true
-	}
-}
-
-func OptionReleaseMode() Option {
-	return func(s *httpd) {
-		s.debugMode = false
+		s.debugMode = isDebug
 	}
 }
 
