@@ -8,6 +8,7 @@ import (
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
+	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
 )
@@ -86,6 +87,7 @@ func script_tengo(ctx *context.Context, K any, V any, content string) (any, erro
 }
 
 const tengo_script_key = "$tengo_script"
+const tengo_uuid_key = "$tengo_uuid"
 
 func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo.Compiled, error) {
 	modules := stdlib.GetModuleMap([]string{
@@ -93,86 +95,145 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 	}...)
 	modules.AddBuiltinModule("context", map[string]tengo.Object{
 		"key": &tengo.UserFunction{
-			Name: "key",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if len(args) != 0 {
-					return nil, tengo.ErrWrongNumArguments
-				}
-				if obj, ok := ctx.Get(tengo_script_key); ok {
-					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						return anyToTengoObject(slet.param.K), nil
-					}
-				}
-				return nil, nil
-			},
+			Name: "key", Value: tengof_key(ctx),
 		},
 		"value": &tengo.UserFunction{
-			Name: "value",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if len(args) != 0 {
-					return nil, tengo.ErrWrongNumArguments
-				}
-				if obj, ok := ctx.Get(tengo_script_key); ok {
-					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						return anyToTengoObject(slet.param.V), nil
-					}
-				}
-				return nil, nil
-			},
+			Name: "value", Value: tengof_value(ctx),
 		},
 		"drop": &tengo.UserFunction{
-			Name: "drop",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if obj, ok := ctx.Get(tengo_script_key); ok {
-					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						slet.drop = true
-					}
-				}
-				return nil, nil
-			},
+			Name: "drop", Value: tengof_drop(ctx),
 		},
 		"yieldKey": &tengo.UserFunction{
-			Name: "yieldKey",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				vargs := make([]any, len(args))
-				for i, v := range args {
-					vargs[i] = tengo.ToInterface(v)
-				}
-				if len(vargs) == 0 {
-					return nil, nil // yield no changes
-				}
-				if obj, ok := ctx.Get(tengo_script_key); ok {
-					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						if len(vargs) == 1 { // change key only
-							slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: slet.param.V})
-						} else { // change key and values
-							slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: vargs[1:]})
-						}
-					}
-				}
-				return nil, nil
-			},
+			Name: "yieldKey", Value: tengof_yieldKey(ctx),
 		},
 		"yield": &tengo.UserFunction{
-			Name: "yield",
-			Value: func(args ...tengo.Object) (tengo.Object, error) {
-				vargs := make([]any, len(args))
-				for i, v := range args {
-					vargs[i] = tengo.ToInterface(v)
-				}
-				if obj, ok := ctx.Get(tengo_script_key); ok {
-					if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-						slet.yields = append(slet.yields, &context.Param{K: slet.param.K, V: vargs})
-					}
-				}
-				return nil, nil
-			},
+			Name: "yield", Value: tengof_yield(ctx),
+		},
+		"uuid": &tengo.UserFunction{
+			Name: "uuid", Value: tengof_uuid(ctx),
 		},
 	})
 	s := tengo.NewScript([]byte(content))
 	s.SetImports(modules)
 	compiled, err := s.Compile()
 	return s, compiled, err
+}
+
+func tengof_key(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if len(args) != 0 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		if obj, ok := ctx.Get(tengo_script_key); ok {
+			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+				return anyToTengoObject(slet.param.K), nil
+			}
+		}
+		return nil, nil
+	}
+}
+
+func tengof_value(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if len(args) != 0 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		if obj, ok := ctx.Get(tengo_script_key); ok {
+			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+				return anyToTengoObject(slet.param.V), nil
+			}
+		}
+		return nil, nil
+	}
+}
+
+func tengof_drop(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if obj, ok := ctx.Get(tengo_script_key); ok {
+			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+				slet.drop = true
+			}
+		}
+		return nil, nil
+	}
+}
+
+func tengof_yieldKey(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		vargs := make([]any, len(args))
+		for i, v := range args {
+			vargs[i] = tengo.ToInterface(v)
+		}
+		if len(vargs) == 0 {
+			return nil, nil // yield no changes
+		}
+		if obj, ok := ctx.Get(tengo_script_key); ok {
+			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+				if len(vargs) == 1 { // change key only
+					slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: slet.param.V})
+				} else { // change key and values
+					slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: vargs[1:]})
+				}
+			}
+		}
+		return nil, nil
+	}
+}
+
+func tengof_yield(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		vargs := make([]any, len(args))
+		for i, v := range args {
+			vargs[i] = tengo.ToInterface(v)
+		}
+		if obj, ok := ctx.Get(tengo_script_key); ok {
+			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
+				slet.yields = append(slet.yields, &context.Param{K: slet.param.K, V: vargs})
+			}
+		}
+		return nil, nil
+	}
+}
+
+func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		ver := 4
+		if len(args) == 1 {
+			if v, ok := args[0].(*tengo.Int); ok {
+				ver = int(v.Value)
+			}
+		}
+		var gen uuid.Generator
+		if obj, ok := ctx.Get(tengo_uuid_key); ok {
+			if id, ok := obj.(uuid.Generator); ok {
+				gen = id
+			}
+		}
+
+		if gen == nil {
+			gen = uuid.NewGen()
+			ctx.Set(tengo_uuid_key, gen)
+		}
+
+		var uid uuid.UUID
+		var err error
+		switch ver {
+		case 1:
+			uid, err = gen.NewV1()
+		case 4:
+			uid, err = gen.NewV4()
+		case 6:
+			uid, err = gen.NewV6()
+		case 7:
+			uid, err = gen.NewV7()
+		default:
+			return nil, tengo.ErrInvalidArgumentType{Name: "uuid version", Expected: "1,4,6,7", Found: fmt.Sprintf("%d", ver)}
+		}
+		if err != nil {
+			return nil, err
+		}
+		return anyToTengoObject(uid.String()), nil
+	}
 }
 
 func anyToTengoObject(av any) tengo.Object {
