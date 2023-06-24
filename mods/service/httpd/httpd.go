@@ -158,7 +158,7 @@ const (
 	HandlerMachbase = HandlerType("machbase")
 	HandlerInflux   = HandlerType("influx") // influx line protocol
 	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerLake     = HandlerType("lake")
+	HandlerLake     = HandlerType("lakes")
 	HandlerSwagger  = HandlerType("swagger")
 	HandlerVoid     = HandlerType("-")
 )
@@ -279,7 +279,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/license", svr.handleInstallLicense)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
+			group.GET("/tags", svr.handleLakeGetTagList)
 			group.GET("/logs", svr.handleLakeGetLogs)
+			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
