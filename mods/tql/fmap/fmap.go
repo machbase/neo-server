@@ -38,6 +38,7 @@ func Parse(text string) (*expression.Expression, error) {
 var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
+	"lazy":       optf_lazy,
 	"SCRIPT":     mapf_SCRIPT,
 	"TAKE":       mapf_TAKE,
 	"DROP":       mapf_DROP,
@@ -183,16 +184,31 @@ func mapf_POPKEY(args ...any) (any, error) {
 }
 
 func mapf_GROUPBYKEY(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, fmt.Errorf("f(GROUPBYKEY) invalid number of args (n:%d)", len(args))
+	lenArgs := len(args)
+	if lenArgs != 3 && lenArgs != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
+	}
+	ctx, err := conv.Context(args, 0, "GROUPBYKEY", "Context")
+	if err != nil {
+		return nil, err
+	}
+	lazy := false
+	if lenArgs > 3 {
+		for _, arg := range args {
+			switch v := arg.(type) {
+			case *lazyOption:
+				lazy = v.flag
+			}
+		}
 	}
 
-	ctx, ok := args[0].(*context.Context)
-	if !ok {
-		return nil, fmt.Errorf("f(GROUPBYKEY) expect context, but %T", args[0])
-	}
 	K := args[1]
 	V := args[2]
+
+	if lazy {
+		ctx.Buffer(K, V)
+		return nil, nil
+	}
 	var curKey any
 
 	curKey, _ = ctx.Get("curKey")
@@ -210,6 +226,18 @@ func mapf_GROUPBYKEY(args ...any) (any, error) {
 		curKey = K
 	}
 	return nil, nil
+}
+
+type lazyOption struct {
+	flag bool
+}
+
+func optf_lazy(args ...any) (any, error) {
+	if flag, err := conv.Bool(args, 0, "lazy", "boolean"); err != nil {
+		return nil, err
+	} else {
+		return &lazyOption{flag: flag}, nil
+	}
 }
 
 func mapf_FLATTEN(args ...any) (any, error) {
@@ -253,26 +281,26 @@ func mapf_FILTER(args ...any) (any, error) {
 	return &context.Param{K: args[1], V: args[2]}, nil
 }
 
-type maxHzOpt float64
+type maxHzOption float64
 
 func optf_maxHz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(maxHz) invalid number of args (n:%d)", len(args))
 	}
 	if v, ok := args[0].(float64); ok {
-		return maxHzOpt(v), nil
+		return maxHzOption(v), nil
 	}
 	return nil, fmt.Errorf("f(maxHz) invalid parameter: %T", args[0])
 }
 
-type minHzOpt float64
+type minHzOption float64
 
 func optf_minHz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(minHz) invalid number of args (n:%d)", len(args))
 	}
 	if v, ok := args[0].(float64); ok {
-		return minHzOpt(v), nil
+		return minHzOption(v), nil
 	}
 	return nil, fmt.Errorf("f(minHz) invalid parameter: %T", args[0])
 }
@@ -294,9 +322,9 @@ func mapf_FFT(args ...any) (any, error) {
 	// options
 	for _, arg := range args[3:] {
 		switch v := arg.(type) {
-		case minHzOpt:
+		case minHzOption:
 			minHz = float64(v)
-		case maxHzOpt:
+		case maxHzOption:
 			maxHz = float64(v)
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/machbase/neo-server/mods/tql/context"
 )
 
 func ErrInvalidNumOfArgs(name string, expect int, actual int) error {
@@ -16,6 +18,17 @@ func ErrWrongTypeOfArgs(name string, idx int, expect string, actual any) error {
 
 func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
+}
+
+func Context(args []any, idx int, fname string, expect string) (*context.Context, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
+	if ctx, ok := raw.(*context.Context); ok {
+		return ctx, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, raw)
 }
 
 func String(args []any, idx int, fname string, expect string) (string, error) {
