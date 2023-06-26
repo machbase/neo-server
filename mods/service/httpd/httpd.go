@@ -71,7 +71,7 @@ func OptionNeoShellAddress(addrs ...string) Option {
 	return func(s *httpd) {
 		candidates := []string{}
 		for _, addr := range addrs {
-			if strings.HasPrefix(s.neoShellAddress, "tcp://127.0.0.1:") || strings.HasPrefix(s.neoShellAddress, "tcp://localhost:") {
+			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
 				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
 				// if loopback is available, use it for web-terminal
 				// eliminate other candiates
