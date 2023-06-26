@@ -1,11 +1,14 @@
 package util
 
-import "net"
+import (
+	"net"
+)
 
 type InterfaceAddr struct {
 	Interface string
 	IP        net.IP
 	Net       *net.IPNet
+	Flags     net.Flags
 }
 
 func GetAllAddresses() []*InterfaceAddr {
@@ -27,7 +30,7 @@ func GetAllAddresses() []*InterfaceAddr {
 			if err != nil {
 				continue
 			}
-			rt = append(rt, &InterfaceAddr{Interface: ifname, IP: netip, Net: netmask})
+			rt = append(rt, &InterfaceAddr{Interface: ifname, IP: netip, Net: netmask, Flags: ifc.Flags})
 		}
 	}
 	return rt
