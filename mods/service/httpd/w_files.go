@@ -22,7 +22,8 @@ type SsfsResponse struct {
 func isFsFile(path string) bool {
 	return strings.HasSuffix(path, ".tql") ||
 		strings.HasSuffix(path, ".sql") ||
-		strings.HasSuffix(path, ".taz")
+		strings.HasSuffix(path, ".taz") ||
+		strings.HasSuffix(path, ".wrk")
 }
 
 func contentTypeOfFile(name string) string {
@@ -31,6 +32,8 @@ func contentTypeOfFile(name string) string {
 	} else if strings.HasSuffix(name, ".tql") {
 		return "text/plain"
 	} else if strings.HasSuffix(name, ".taz") {
+		return "application/json"
+	} else if strings.HasSuffix(name, ".wrk") {
 		return "application/json"
 	} else {
 		return "application/octet-stream"
