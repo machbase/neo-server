@@ -222,14 +222,6 @@ func (svr *httpd) Router() *gin.Engine {
 			r.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, h.Prefix)
 			})
-			corsHandler := cors.New(cors.Config{
-				AllowOrigins:  []string{"*"},
-				AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
-				AllowHeaders:  []string{"Origin", "Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Content-Type", "Accept"},
-				ExposeHeaders: []string{"Content-Length", "Cache-Control", "Content-Type", "Last-Modified"},
-				MaxAge:        12 * time.Hour,
-			})
-			r.Use(corsHandler)
 			break
 		}
 	}
@@ -410,25 +402,12 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 
 func (svr *httpd) corsHandler() gin.HandlerFunc {
 	corsHandler := cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{
-			http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete,
-			http.MethodPatch, http.MethodHead, http.MethodOptions},
-		AllowHeaders: []string{
-			"Origin", "Access-Control-Allow-Origin",
-			"Authorization", "Access-Control-Allow-Headers",
-			"Access-Control-Max-Age",
-			"X-Requested-With", "Accept",
-			"Content-Type", "Content-Length",
-			"Use-Timezone",
-		},
-		ExposeHeaders: []string{
-			"Cache-Control", "Content-Length", "Content-Language",
-			"Content-Type", "Expires", "Last-Modified", "pragma",
-		},
-		AllowCredentials: true,
-		AllowWebSockets:  true,
-		MaxAge:           12 * time.Hour,
+		AllowAllOrigins: true,
+		//AllowOrigins:    []string{"*"},
+		AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+		AllowHeaders:  []string{"Origin", "Accept"},
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Hour,
 	})
 	return corsHandler
 }
