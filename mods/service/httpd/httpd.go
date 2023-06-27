@@ -222,6 +222,14 @@ func (svr *httpd) Router() *gin.Engine {
 			r.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, h.Prefix)
 			})
+			corsHandler := cors.New(cors.Config{
+				AllowOrigins:  []string{"*"},
+				AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+				AllowHeaders:  []string{"Origin", "Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Content-Type", "Accept"},
+				ExposeHeaders: []string{"Content-Length", "Cache-Control", "Content-Type", "Last-Modified"},
+				MaxAge:        12 * time.Hour,
+			})
+			r.Use(corsHandler)
 			break
 		}
 	}

@@ -64,7 +64,20 @@ type LoginRsp struct {
 }
 
 type WebOptions struct {
-	ExperimentMode bool `json:"experimentMode"`
+	ExperimentMode bool                `json:"experimentMode"`
+	References     []WebReferenceGroup `json:"references"`
+}
+
+type WebReferenceGroup struct {
+	Label string          `json:"label"`
+	Items []ReferenceItem `json:"items"`
+}
+
+type ReferenceItem struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Addr   string `json:"address"`
+	Target string `json:"target,omitempty"`
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {
@@ -140,6 +153,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	if svr.experimentMode {
 		rsp.Options = &WebOptions{
 			ExperimentMode: svr.experimentMode,
+			References:     buildReferences(svr.experimentMode),
 		}
 	}
 	rsp.Elapse = time.Since(tick).String()
@@ -229,6 +243,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	if svr.experimentMode {
 		rsp.Options = &WebOptions{
 			ExperimentMode: svr.experimentMode,
+			References:     buildReferences(svr.experimentMode),
 		}
 	}
 	rsp.Elapse = time.Since(tick).String()
@@ -286,4 +301,25 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		}
 	}
 	ctx.JSON(http.StatusUnauthorized, "")
+}
+
+func buildReferences(experimentMode bool) []WebReferenceGroup {
+	ret := []WebReferenceGroup{}
+	ret = append(ret, WebReferenceGroup{
+		Label: "References",
+		Items: []ReferenceItem{
+			{Type: "url", Title: "machbase-neo documents", Addr: "https://neo.machbase.com/", Target: "_blank"},
+			{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"},
+			{Type: "tql", Title: "User script in TQL", Addr: "https://gist.githubusercontent.com/OutOfBedlam/1fd60b15d90eac60876417244572ebb8/raw/e38ad2a1b4180e97471e8bb34f220e13bcfb548f/waves.tql"},
+		},
+	})
+	if experimentMode {
+		ret = append(ret, WebReferenceGroup{
+			Label: "Experimental Tests",
+			Items: []ReferenceItem{
+				{Type: "wrk", Title: "Worksheet Tutorial", Addr: "https://gist.githubusercontent.com/OutOfBedlam/a9458a19af6ba15dc242f11b6ac69fe7/raw/7566bf32bdad96df71254db54d696c3fbe03629e/tutorial.wrk"},
+			},
+		})
+	}
+	return ret
 }
