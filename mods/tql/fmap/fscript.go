@@ -238,10 +238,38 @@ func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object,
 
 func anyToTengoObject(av any) tengo.Object {
 	switch v := av.(type) {
+	case int:
+		return &tengo.Int{Value: int64(v)}
+	case *int:
+		return &tengo.Int{Value: int64(*v)}
+	case int16:
+		return &tengo.Int{Value: int64(v)}
+	case *int16:
+		return &tengo.Int{Value: int64(*v)}
+	case int32:
+		return &tengo.Int{Value: int64(v)}
+	case *int32:
+		return &tengo.Int{Value: int64(*v)}
+	case int64:
+		return &tengo.Int{Value: v}
+	case *int64:
+		return &tengo.Int{Value: *v}
 	case float64:
 		return &tengo.Float{Value: v}
 	case *float64:
 		return &tengo.Float{Value: *v}
+	case bool:
+		if v {
+			return tengo.TrueValue
+		} else {
+			return tengo.FalseValue
+		}
+	case *bool:
+		if *v {
+			return tengo.TrueValue
+		} else {
+			return tengo.FalseValue
+		}
 	case string:
 		return &tengo.String{Value: v}
 	case *string:

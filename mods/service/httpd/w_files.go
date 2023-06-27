@@ -96,7 +96,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				if err != nil {
 					rsp.Reason = err.Error()
 					rsp.Elapse = time.Since(tick).String()
-					ctx.JSON(http.StatusNotFound, rsp)
+					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				} else {
 					rsp.Success, rsp.Reason = true, "success"
@@ -111,10 +111,18 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				return
 			}
 		} else if isFsFile(path) {
-			rsp.Success, rsp.Reason = true, "success"
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusOK, rsp)
-			return
+			err = svr.serverFs.Remove(path)
+			if err != nil {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusInternalServerError, rsp)
+				return
+			} else {
+				rsp.Success, rsp.Reason = true, "success"
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusOK, rsp)
+				return
+			}
 		} else {
 			rsp.Reason = fmt.Sprintf("not found: %s", path)
 			rsp.Elapse = time.Since(tick).String()
