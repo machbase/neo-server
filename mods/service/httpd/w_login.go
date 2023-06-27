@@ -150,11 +150,9 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	rsp.Reason = "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
-	if svr.experimentMode {
-		rsp.Options = &WebOptions{
-			ExperimentMode: svr.experimentMode,
-			References:     buildReferences(svr.experimentMode),
-		}
+	rsp.Options = &WebOptions{
+		ExperimentMode: svr.experimentMode,
+		References:     buildReferences(svr.experimentMode),
 	}
 	rsp.Elapse = time.Since(tick).String()
 
@@ -240,11 +238,9 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
-	if svr.experimentMode {
-		rsp.Options = &WebOptions{
-			ExperimentMode: svr.experimentMode,
-			References:     buildReferences(svr.experimentMode),
-		}
+	rsp.Options = &WebOptions{
+		ExperimentMode: svr.experimentMode,
+		References:     buildReferences(svr.experimentMode),
 	}
 	rsp.Elapse = time.Since(tick).String()
 
@@ -310,16 +306,18 @@ func buildReferences(experimentMode bool) []WebReferenceGroup {
 		Items: []ReferenceItem{
 			{Type: "url", Title: "machbase-neo documents", Addr: "https://neo.machbase.com/", Target: "_blank"},
 			{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"},
-			{Type: "tql", Title: "User script in TQL", Addr: "https://gist.githubusercontent.com/OutOfBedlam/1fd60b15d90eac60876417244572ebb8/raw/e38ad2a1b4180e97471e8bb34f220e13bcfb548f/waves.tql"},
 		},
 	})
+	// Tutorials
 	if experimentMode {
-		ret = append(ret, WebReferenceGroup{
-			Label: "Experimental Tests",
-			Items: []ReferenceItem{
-				{Type: "wrk", Title: "Worksheet Tutorial", Addr: "https://gist.githubusercontent.com/OutOfBedlam/a9458a19af6ba15dc242f11b6ac69fe7/raw/7566bf32bdad96df71254db54d696c3fbe03629e/tutorial.wrk"},
-			},
-		})
+		tutorials := WebReferenceGroup{Label: "Tutorials"}
+		tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Welcome to machbase-neo", Addr: "./tutorials/welcome.wrk"})
+		ret = append(ret, tutorials)
 	}
+	// Samples
+	samples := WebReferenceGroup{Label: "Samples"}
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL", Addr: "./tutorials/user-script.tql"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "FFT in TQL", Addr: "./tutorials/sample-fft.tql"})
+	ret = append(ret, samples)
 	return ret
 }

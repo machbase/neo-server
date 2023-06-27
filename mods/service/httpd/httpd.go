@@ -316,6 +316,7 @@ func (svr *httpd) Router() *gin.Engine {
 
 	// handle /web/echarts/*
 	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
+	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r
@@ -405,7 +406,7 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 		AllowAllOrigins: true,
 		//AllowOrigins:    []string{"*"},
 		AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
-		AllowHeaders:  []string{"Origin", "Accept"},
+		AllowHeaders:  []string{"Origin", "Accept", "Content-Type"},
 		ExposeHeaders: []string{"Content-Length"},
 		MaxAge:        12 * time.Hour,
 	})

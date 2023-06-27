@@ -20,6 +20,17 @@ var appleTouchIconPrecomposed []byte
 //go:embed echarts/*
 var echartsDir embed.FS
 
+//go:embed tutorials/*
+var tutorialsDir embed.FS
+
+func TutorialsDir() http.FileSystem {
+	return &staticFSWrap{
+		trimPrefix:   "/web",
+		base:         http.FS(tutorialsDir),
+		fixedModTime: time.Now(),
+	}
+}
+
 func EchartsDir() http.FileSystem {
 	return &staticFSWrap{
 		trimPrefix:   "/web",
