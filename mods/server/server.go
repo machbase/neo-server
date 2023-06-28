@@ -459,6 +459,7 @@ func (s *svr) Start() error {
 			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
 			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
 			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+			mqttd.OptionTqlLoader(tqlLoader),
 		}
 		for _, h := range s.conf.Mqtt.Handlers {
 			opts = append(opts, mqttd.OptionHandler(h.Prefix, h.Handler))

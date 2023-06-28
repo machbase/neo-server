@@ -111,7 +111,7 @@ func OptionHandler(prefix string, handler HandlerType) Option {
 
 func OptionTqlLoader(loader tql.Loader) Option {
 	return func(s *httpd) {
-		s.tagqlLoader = loader
+		s.tqlLoader = loader
 	}
 }
 
@@ -144,8 +144,8 @@ type httpd struct {
 	neoShellAddress string
 	neoShellAccount map[string]string
 
-	tagqlLoader tql.Loader
-	serverFs    *ssfs.SSFS
+	tqlLoader tql.Loader
+	serverFs  *ssfs.SSFS
 
 	licenseFilePath string
 	debugMode       bool
@@ -257,12 +257,12 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
-			if svr.tagqlLoader != nil {
+			if svr.tqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql/*path", svr.handleTagQL)
 			}
 			group.Use(svr.handleJwtToken)
-			if svr.tagqlLoader != nil {
+			if svr.tqlLoader != nil {
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
 			group.Any("/machbase", svr.handleQuery)
@@ -294,7 +294,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
-			if svr.tagqlLoader != nil {
+			if svr.tqlLoader != nil {
 				group.GET("/tql/*path", svr.handleTagQL)
 				group.POST("/tql/*path", svr.handleTagQL)
 				group.POST("/tql", svr.handlePostTagQL)
