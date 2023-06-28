@@ -381,3 +381,27 @@ func Columns(labels []string, types []string) Option {
 		}
 	}
 }
+
+type CanSetHtmlRender interface {
+	SetHtmlRender(bool)
+}
+
+func HtmlRender(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetHtmlRender); ok {
+			o.SetHtmlRender(flag)
+		}
+	}
+}
+
+type CanSetBrief interface {
+	SetBrief(bool)
+}
+
+func Brief(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetBrief); ok {
+			o.SetBrief(flag)
+		}
+	}
+}

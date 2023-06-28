@@ -147,6 +147,9 @@ var functions = map[string]expression.Function{
 	"columns":    sinkf_columns,
 	// json options
 	"transpose": sinkf_transpose,
+	// markdown options
+	"brief": sinkf_brief,
+	"html":  sinkf_html,
 	// chart options
 	"xAxis":        sinkf_xAxis,
 	"yAxis":        sinkf_yAxis,
@@ -173,6 +176,7 @@ var functions = map[string]expression.Function{
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
 	"JSON":            JSON,
+	"MARKDOWN":        MARKDOWN,
 	"INSERT":          INSERT,
 	"APPEND":          APPEND,
 	"CHART_LINE":      CHART_LINE,
@@ -579,6 +583,27 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 	}
 	return ret, nil
 }
+
+func sinkf_brief(args ...any) (any, error) {
+	flag, err := conv.Bool(args, 0, "brief", "boolean")
+	if err != nil {
+		return nil, err
+	}
+	return codec.Brief(flag), nil
+}
+
+func sinkf_html(args ...any) (any, error) {
+	flag, err := conv.Bool(args, 0, "html", "boolean")
+	if err != nil {
+		return nil, err
+	}
+	return codec.HtmlRender(flag), nil
+}
+
+func MARKDOWN(args ...any) (any, error) {
+	return newEncoder("markdown", args...)
+}
+
 func CSV(args ...any) (any, error) {
 	return newEncoder("csv", args...)
 }
