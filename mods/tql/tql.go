@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/fmap"
@@ -23,18 +24,37 @@ type tagQL struct {
 	output   fsink.Output
 	mapExprs []string
 	params   map[string][]string
+
+	// comments start with plus(+) symbold and sperated by comma.
+	// ex) => `// +brief, markdown`
+	pragma []string
 }
 
 func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]string, dataWriter io.Writer) (Tql, error) {
-	exprs, err := readLines(codeReader)
+	lines, err := readLines(codeReader)
 	if err != nil {
 		return nil, err
 	}
-	if len(exprs) == 0 {
+	if len(lines) == 0 {
 		return nil, errors.New("empty expressions")
 	}
 
-	tq := &tagQL{params: params}
+	var exprs []*Line
+	var pragma []string
+	for _, line := range lines {
+		if line.isComment {
+			if strings.HasPrefix(line.text, "+") {
+				toks := strings.Split(line.text[1:], ",")
+				for _, t := range toks {
+					pragma = append(pragma, strings.TrimSpace(t))
+				}
+			}
+		} else {
+			exprs = append(exprs, line)
+		}
+	}
+
+	tq := &tagQL{params: params, pragma: pragma}
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]

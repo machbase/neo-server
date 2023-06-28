@@ -26,8 +26,9 @@ func init() {
 }
 
 type Line struct {
-	text string
-	line int
+	text      string
+	line      int
+	isComment bool
 }
 
 func readLines(codeReader io.Reader) ([]*Line, error) {
@@ -67,9 +68,11 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[2:]), line: lineNo, isComment: true})
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[1:]), line: lineNo, isComment: true})
 			continue
 		}
 
