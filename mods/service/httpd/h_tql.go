@@ -76,7 +76,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	script, err := svr.tagqlLoader.Load(path)
+	script, err := svr.tqlLoader.Load(path)
 	if err != nil {
 		svr.log.Error("tql load fail", path, err.Error())
 		rsp.Reason = err.Error()
