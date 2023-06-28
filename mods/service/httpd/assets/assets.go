@@ -17,15 +17,6 @@ var appleTouchIcon []byte
 //go:embed apple-touch-icon-precomposed.png
 var appleTouchIconPrecomposed []byte
 
-//go:embed github-markdown.css
-var githubMarkdown []byte
-
-//go:embed github-markdown-dark.css
-var githubMarkdownDark []byte
-
-//go:embed github-markdown-light.css
-var githubMarkdownLight []byte
-
 //go:embed echarts/*
 var echartsDir embed.FS
 
@@ -102,18 +93,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		w.Write(appleTouchIconPrecomposed)
-	case "/web/assets/github-markdown.css":
-		w.Header().Set("Content-Type", "text/css")
-		w.WriteHeader(http.StatusOK)
-		w.Write(githubMarkdown)
-	case "/web/assets/github-markdown-light.css":
-		w.Header().Set("Content-Type", "text/css")
-		w.WriteHeader(http.StatusOK)
-		w.Write(githubMarkdownLight)
-	case "/web/assets/github-markdown-dark.css":
-		w.Header().Set("Content-Type", "text/css")
-		w.WriteHeader(http.StatusOK)
-		w.Write(githubMarkdownDark)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
