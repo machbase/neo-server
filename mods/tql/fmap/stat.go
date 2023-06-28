@@ -27,22 +27,15 @@ func mapf_STAT(args ...any) (any, error) {
 	if len(V) == 0 {
 		return nil, nil
 	}
-	// method string
-	var method = "mean"
+	// method
+	var method statMethod
 	if len(args) >= 4 {
-		method, err = conv.String(args, 3, "STAT", "method string")
-		if err != nil {
-			return nil, err
+		if m, ok := args[3].(statMethod); ok {
+			method = m
 		}
 	}
-
-	var doStat func(x []float64, weights []float64) float64
-
-	switch method {
-	case "mean":
-		doStat = stat.Mean
-	case "stddev":
-		doStat = stat.StdDev
+	if method == nil {
+		return nil, conv.ErrWrongTypeOfArgs("STAT", 3, "stat method [mean()]", "none")
 	}
 
 	if _, ok := V[0].(float64); ok {
@@ -50,8 +43,8 @@ func mapf_STAT(args ...any) (any, error) {
 		for i := range V {
 			arr[i] = V[i].(float64)
 		}
-		mean := doStat(arr, nil)
-		return &context.Param{K: K, V: mean}, nil
+		result := method(arr)
+		return &context.Param{K: K, V: result}, nil
 	} else if _, ok := V[0].([]any); ok {
 		marr := [][]float64{}
 		colsNum := 0
@@ -70,11 +63,25 @@ func mapf_STAT(args ...any) (any, error) {
 		}
 		arr := make([]any, colsNum)
 		for i := range arr {
-			arr[i] = doStat(marr[i], nil)
+			arr[i] = method(marr[i])
 		}
 		return &context.Param{K: K, V: arr}, nil
 	} else {
 		fmt.Println("ERR", "f(STAT) unknown input data type")
 		return nil, nil
 	}
+}
+
+type statMethod func([]float64) float64
+
+func optf_stat_mean(args ...any) (any, error) {
+	return statMethod(func(x []float64) float64 {
+		return stat.Mean(x, nil)
+	}), nil
+}
+
+func optf_stat_stddev(args ...any) (any, error) {
+	return statMethod(func(x []float64) float64 {
+		return stat.StdDev(x, nil)
+	}), nil
 }

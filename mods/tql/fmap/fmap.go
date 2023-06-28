@@ -40,6 +40,8 @@ var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
 	"lazy":       optf_lazy,
+	"mean":       optf_stat_mean,
+	"stddev":     optf_stat_stddev,
 	"SCRIPT":     mapf_SCRIPT,
 	"TAKE":       mapf_TAKE,
 	"DROP":       mapf_DROP,
