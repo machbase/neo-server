@@ -9,6 +9,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
+	"go.abhg.dev/goldmark/mermaid"
 )
 
 // POST "/md"
@@ -16,6 +17,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
+			&mermaid.Extender{NoScript: true},
 		),
 		goldmark.WithRendererOptions(
 			html.WithHardWraps(),
