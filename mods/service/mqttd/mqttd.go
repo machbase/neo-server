@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/allowance"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/tql"
 	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
@@ -77,6 +78,12 @@ func OptionTls(serverCertPath string, serverKeyPath string) Option {
 	}
 }
 
+func OptionTqlLoader(loader tql.Loader) Option {
+	return func(s *mqttd) {
+		s.tqlLoader = loader
+	}
+}
+
 type HandlerType string
 
 const (
@@ -96,6 +103,7 @@ type mqttd struct {
 	log        logging.Log
 	appenders  cmap.ConcurrentMap
 	authServer security.AuthServer
+	tqlLoader  tql.Loader
 
 	listenAddresses     []string
 	handlers            []*HandlerConfig

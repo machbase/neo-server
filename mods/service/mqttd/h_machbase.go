@@ -3,8 +3,10 @@ package mqttd
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +42,8 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {
 		return svr.handleAppend(peer, topic, evt.Raw)
+	} else if strings.HasPrefix(topic, "tql/") {
+		return svr.handleTql(peer, topic, evt.Raw)
 	} else {
 		peer.GetLog().Warnf("---- invalid topic '%s'", evt.Topic)
 	}
@@ -204,5 +208,47 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		recno++
 	}
 	peerLog.Debugf("---- appended %d record(s), %s", recno, topic)
+	return nil
+}
+
+func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error {
+	peerLog := peer.GetLog()
+
+	rawQuery := strings.SplitN(strings.ToUpper(strings.TrimPrefix(topic, "tql/")), "?", 2)
+	if len(rawQuery) == 0 {
+		peerLog.Warnf(topic, "no tql path")
+		return nil
+	}
+	path := rawQuery[0]
+	if !strings.HasSuffix(path, ".tql") {
+		peerLog.Warnf(topic, "no tql found: %s", path)
+		return nil
+	}
+	var params url.Values
+	if len(path) == 2 {
+		vs, err := url.ParseQuery(rawQuery[1])
+		if err != nil {
+			peerLog.Warnf(topic, "tql invalid query: %s", rawQuery[1])
+			return nil
+		}
+		params = vs
+	}
+
+	script, err := svr.tqlLoader.Load(path)
+	if err != nil {
+		peerLog.Warn(topic, "tql load fail", path, err.Error())
+		return nil
+	}
+
+	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard)
+	if err != nil {
+		svr.log.Error("tql parse fail", path, err.Error())
+		return nil
+	}
+
+	if err := tql.Execute(context.TODO(), svr.db); err != nil {
+		svr.log.Error("tql execute fail", path, err.Error())
+		return nil
+	}
 	return nil
 }
