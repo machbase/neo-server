@@ -265,6 +265,7 @@ func (svr *httpd) Router() *gin.Engine {
 			if svr.tqlLoader != nil {
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
+			group.POST("/api/md", svr.handleMarkdown)
 			group.Any("/machbase", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)

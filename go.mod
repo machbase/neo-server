@@ -38,6 +38,7 @@ require (
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.4
+	github.com/yuin/goldmark v1.5.4
 	golang.org/x/crypto v0.10.0
 	golang.org/x/net v0.11.0
 	golang.org/x/sys v0.9.0
@@ -115,7 +116,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
-	github.com/yuin/goldmark v1.4.13 // indirect
 	github.com/zclconf/go-cty v1.13.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
