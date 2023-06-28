@@ -42,7 +42,7 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {
 		return svr.handleAppend(peer, topic, evt.Raw)
-	} else if strings.HasPrefix(topic, "tql/") {
+	} else if strings.HasPrefix(topic, "tql/") && svr.tqlLoader != nil {
 		return svr.handleTql(peer, topic, evt.Raw)
 	} else {
 		peer.GetLog().Warnf("---- invalid topic '%s'", evt.Topic)
@@ -213,6 +213,11 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error {
 	peerLog := peer.GetLog()
+
+	if svr.tqlLoader == nil {
+		peerLog.Error("tql is disabled.")
+		return nil
+	}
 
 	rawQuery := strings.SplitN(strings.ToUpper(strings.TrimPrefix(topic, "tql/")), "?", 2)
 	if len(rawQuery) == 0 {
