@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.3.5
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/alecthomas/chroma/v2 v2.7.0
 	github.com/alecthomas/kong v0.7.1
 	github.com/chzyer/test v1.0.0
 	github.com/creack/pty v1.1.18
@@ -39,6 +40,7 @@ require (
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.4
 	github.com/yuin/goldmark v1.5.4
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
 	go.abhg.dev/goldmark/mermaid v0.4.0
 	golang.org/x/crypto v0.10.0
 	golang.org/x/net v0.11.0
@@ -61,6 +63,7 @@ require (
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/chzyer/logex v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/fredbi/uri v0.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect

@@ -5,8 +5,10 @@ import (
 	"io"
 	"net/http"
 
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/gin-gonic/gin"
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"go.abhg.dev/goldmark/mermaid"
@@ -18,6 +20,12 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		goldmark.WithExtensions(
 			extension.GFM,
 			&mermaid.Extender{NoScript: true},
+			highlighting.NewHighlighting(
+				highlighting.WithStyle("catppuccin-macchiato"),
+				highlighting.WithFormatOptions(
+					chromahtml.WithLineNumbers(true),
+				),
+			),
 		),
 		goldmark.WithRendererOptions(
 			html.WithHardWraps(),
