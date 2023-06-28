@@ -49,7 +49,7 @@ func NewEncoder() *Exporter {
 
 func (ex *Exporter) ContentType() string {
 	if ex.htmlRender {
-		return "text/markdown+html"
+		return "application/xhtml+xml"
 	} else {
 		return "text/markdown"
 	}
