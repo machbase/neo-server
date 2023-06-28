@@ -24,6 +24,7 @@ var mapFunctionsMacro = [][2]string{
 	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
 	{"FILTER(", "FILTER(CTX,K,V,"},
 	{"FFT(", "FFT(CTX,K,V,"},
+	{"STAT(", "STAT(CTX,K,V,"},
 }
 
 func Parse(text string) (*expression.Expression, error) {
@@ -48,6 +49,7 @@ var functions = map[string]expression.Function{
 	"FLATTEN":    mapf_FLATTEN,
 	"FILTER":     mapf_FILTER,
 	"FFT":        mapf_FFT,
+	"STAT":       mapf_STAT,
 }
 
 func init() {
@@ -188,7 +190,7 @@ func mapf_GROUPBYKEY(args ...any) (any, error) {
 	if lenArgs != 3 && lenArgs != 4 {
 		return nil, conv.ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
 	}
-	ctx, err := conv.Context(args, 0, "GROUPBYKEY", "Context")
+	ctx, err := conv.Context(args, 0, "GROUPBYKEY")
 	if err != nil {
 		return nil, err
 	}
