@@ -395,13 +395,13 @@ func HtmlRender(flag bool) Option {
 }
 
 type CanSetBrief interface {
-	SetBrief(bool)
+	SetBrief(int)
 }
 
-func Brief(flag bool) Option {
+func Brief(count int) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetBrief); ok {
-			o.SetBrief(flag)
+			o.SetBrief(count)
 		}
 	}
 }

@@ -20,11 +20,10 @@ import (
 )
 
 type Exporter struct {
-	htmlRender    bool
-	brief         bool
-	briefMaxCount int64
-	rownum        int64
-	mdLines       []string
+	htmlRender bool
+	brief      int64
+	rownum     int64
+	mdLines    []string
 
 	timeLocation *time.Location
 	output       spec.OutputStream
@@ -40,9 +39,9 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	ret := &Exporter{
-		precision:     -1,
-		timeformat:    "ns",
-		briefMaxCount: 5,
+		precision:  -1,
+		timeformat: "ns",
+		brief:      0,
 	}
 	return ret
 }
@@ -87,8 +86,8 @@ func (ex *Exporter) SetHtmlRender(flag bool) {
 	ex.htmlRender = flag
 }
 
-func (ex *Exporter) SetBrief(flag bool) {
-	ex.brief = flag
+func (ex *Exporter) SetBrief(count int) {
+	ex.brief = int64(count)
 }
 
 func (ex *Exporter) Open() error {
@@ -104,7 +103,7 @@ func (ex *Exporter) Open() error {
 func (ex *Exporter) Close() {
 	ex.closeOnce.Do(func() {
 		tailLines := []string{}
-		if ex.brief && ex.rownum > ex.briefMaxCount {
+		if ex.brief > 0 && ex.rownum > ex.brief {
 			tailLines = append(tailLines, strings.Repeat("| ... ", len(ex.colNames))+"|\n")
 			tailLines = append(tailLines, fmt.Sprintf("\n> *Total* %d *records*\n", ex.rownum))
 		}
@@ -191,7 +190,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		}
 	}
 
-	if ex.brief && ex.rownum > ex.briefMaxCount {
+	if ex.brief > 0 && ex.rownum > ex.brief {
 		return nil
 	}
 

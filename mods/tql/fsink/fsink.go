@@ -585,11 +585,19 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 }
 
 func sinkf_brief(args ...any) (any, error) {
-	flag, err := conv.Bool(args, 0, "brief", "boolean")
+	count, err := conv.Int(args, 0, "brief", "int")
 	if err != nil {
-		return nil, err
+		if flag, err := conv.Bool(args, 0, "brief", "int"); err != nil {
+			return nil, err
+		} else {
+			if flag {
+				count = 5
+			} else {
+				count = 0
+			}
+		}
 	}
-	return codec.Brief(flag), nil
+	return codec.Brief(count), nil
 }
 
 func sinkf_html(args ...any) (any, error) {
