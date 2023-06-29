@@ -25,7 +25,7 @@
     {
         "id": "1688004052269735",
         "type": "mrk",
-        "contents": "## 테이블 `EXAMPLE` 생성\n\n테이블이 존재하지 않는다면 신규로 생성한다.\n\n```sql\nCREATE TAG TABLE example (\n  name varchar(100) primary key,\n  time datetime basetime,\n  value double\\n);\n```",
+        "contents": "## 테이블 `EXAMPLE` 생성\n\n테이블이 존재하지 않는다면 신규로 생성한다.\n\n```sql\nCREATE TAG TABLE example (\n  name varchar(100) primary key,\n  time datetime basetime,\n  value double\n);\n```",
         "status": true,
         "height": 299,
         "lang": [
