@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/machbase/neo-server/mods/service/httpd/assets"
 )
 
 //go:embed web/*
@@ -13,28 +16,33 @@ var webFs embed.FS
 
 func GetAssets(dir string) http.FileSystem {
 	dir = strings.TrimPrefix(strings.TrimSuffix(dir, "/"), "/")
-	subfs, err := fs.Sub(webFs, "web/"+dir)
+	_, err := fs.Sub(webFs, "web/"+dir)
 	if err != nil {
 		panic(err)
 	}
 
 	return &assetFileSystem{
-		FileSystem: http.FS(subfs),
+		StaticFSWrap: assets.StaticFSWrap{
+			TrimPrefix:   "",
+			Base:         http.FS(webFs),
+			FixedModTime: time.Now(),
+		},
+		prefix: "web/" + dir,
 	}
 }
 
 type assetFileSystem struct {
-	http.FileSystem
-	Prefix string
+	assets.StaticFSWrap
+	prefix string
 }
 
 func (fs *assetFileSystem) Open(name string) (http.File, error) {
 	if strings.HasSuffix(name, "/") {
-		return fs.FileSystem.Open(name)
+		return fs.StaticFSWrap.Open(name)
 	} else if isWellKnownFileType(name) {
-		return fs.FileSystem.Open(name)
+		return fs.StaticFSWrap.Open(fs.prefix + name)
 	} else {
-		return fs.FileSystem.Open("index.html")
+		return fs.StaticFSWrap.Open(fs.prefix + "/index.html")
 	}
 }
 
