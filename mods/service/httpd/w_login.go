@@ -316,8 +316,9 @@ func buildReferences(experimentMode bool) []WebReferenceGroup {
 	}
 	// Samples
 	samples := WebReferenceGroup{Label: "Samples"}
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL", Addr: "./tutorials/user-script.tql"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "FFT in TQL", Addr: "./tutorials/sample-fft.tql"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL (1)", Addr: "./tutorials/user-script1.tql"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL (2)", Addr: "./tutorials/user-script2.tql"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "Markdown cheatsheet", Addr: "./tutorials/markdown.wrk"})
 	ret = append(ret, samples)
 	return ret
 }
