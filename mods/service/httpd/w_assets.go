@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +38,11 @@ type assetFileSystem struct {
 }
 
 func (fs *assetFileSystem) Open(name string) (http.File, error) {
+	toks := strings.SplitN(name, "?", 2)
+	if len(toks) == 0 {
+		return nil, os.ErrNotExist
+	}
+	name = toks[0]
 	if strings.HasSuffix(name, "/") {
 		return fs.StaticFSWrap.Open(name)
 	} else if isWellKnownFileType(name) {

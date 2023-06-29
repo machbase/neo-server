@@ -55,7 +55,7 @@ func (fsw *StaticFSWrap) Open(name string) (http.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &staticFile{f, fsw.FixedModTime}, nil
+	return &staticFile{File: f, modTime: fsw.FixedModTime}, nil
 }
 
 func (f *staticFile) Stat() (fs.FileInfo, error) {
@@ -63,7 +63,7 @@ func (f *staticFile) Stat() (fs.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &staticStat{stat, f.modTime}, nil
+	return &staticStat{FileInfo: stat, modTime: f.modTime}, nil
 }
 
 func (f *staticFile) ModTime() time.Time {
