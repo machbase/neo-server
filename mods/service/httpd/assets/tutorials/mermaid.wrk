@@ -2,7 +2,7 @@
     {
         "id": "168801026145860",
         "type": "mrk",
-        "contents": "# Flowchart\n## Node shapes\n\n```mermaid\nflowchart LR\n  id1(Text box) --> id2([Text box]) \n  id2 --> id3[[subroutine]]\n  id3 --> id4[(database)]\n  id4 --> id5((circle))\n  id5 --> id6>asymmetric]\n  id6 --> id7{rhombus}\n  id7 --> id8{{hexagon}}\n  id8 --> id9[/paralleogram/]\n\n  idA[\\parallegram alt\\] --> idB[/Trapezoid\\]\n  idB -->idC[\\Trapezoid alt/]\n  idC -->idD(((double circle)))\n```",
+        "contents": "# Flowchart\n## Node shapes\n\n```mermaid\nflowchart LR\n  id1(\"(Text box)\") --> id2([\"[Text box]\"]) \n  id2 --> id3[[\"[[subroutine]]\"]]\n  id3 --> id4[(\"[(database)]\")]\n  id4 --> id5((\"((circle))\"))\n\n  id6>\">asymmetric]\"] --> id7{\"{rhombus}\"}\n  id7 --> id8{{\"{{hexagon}}\"}}\n  id8 --> id9[/\"[/paralleogram/]\"/]\n\n  idA[\\\"[\\parallegram alt\\]\"\\] --> idB[/\"[/Trapezoid\\]\"\\]\n  idB -->idC[\\\"[\\Trapezoid alt/]\"/]\n  idC -->idD(((\"(((double circle)))\")))\n```",
         "result": "",
         "status": true,
         "height": 273,
