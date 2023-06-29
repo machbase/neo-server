@@ -219,21 +219,21 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	rawQuery := strings.SplitN(strings.ToUpper(strings.TrimPrefix(topic, "tql/")), "?", 2)
+	rawQuery := strings.SplitN(strings.TrimPrefix(topic, "tql/"), "?", 2)
 	if len(rawQuery) == 0 {
-		peerLog.Warnf(topic, "no tql path")
+		peerLog.Warn(topic, "no tql path")
 		return nil
 	}
 	path := rawQuery[0]
 	if !strings.HasSuffix(path, ".tql") {
-		peerLog.Warnf(topic, "no tql found: %s", path)
+		peerLog.Warn(topic, "no tql found:", path)
 		return nil
 	}
 	var params url.Values
 	if len(path) == 2 {
 		vs, err := url.ParseQuery(rawQuery[1])
 		if err != nil {
-			peerLog.Warnf(topic, "tql invalid query: %s", rawQuery[1])
+			peerLog.Warn(topic, "tql invalid query:", rawQuery[1])
 			return nil
 		}
 		params = vs
