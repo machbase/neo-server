@@ -12,6 +12,7 @@ import (
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -105,7 +106,7 @@ func (ex *Exporter) Close() {
 		tailLines := []string{}
 		if ex.brief > 0 && ex.rownum > ex.brief {
 			tailLines = append(tailLines, strings.Repeat("| ... ", len(ex.colNames))+"|\n")
-			tailLines = append(tailLines, fmt.Sprintf("\n> *Total* %d *records*\n", ex.rownum))
+			tailLines = append(tailLines, fmt.Sprintf("\n> *Total* %s *records*\n", util.NumberFormat(ex.rownum)))
 		}
 		if !ex.htmlRender {
 			for _, line := range tailLines {

@@ -1,227 +1,253 @@
-[
-    {
-        "id": "1688003944419302",
-        "type": "mrk",
-        "contents": "# Let's make waves in TQL\n\n*TQL* 이 제공하는 *FAKE()* 함수를 사용하여 진동데이터를 생성하여 데이터를 저장하고 쿼리해서 차트를 생성하는 방법>을 설명한다.\n",
-        "result": "",
-        "status": true,
-        "height": 200,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
+{
+    "data": [
+        {
+            "id": "1688003944419302",
+            "type": "mrk",
+            "contents": "# Let's make waves in TQL\n\n*TQL* 이 제공하는 *FAKE()* 함수를 사용하여 진동데이터를 생성하여 데이터를 저장하고 쿼리해서 차트를 생성하는 방법>을 설명한다.\n",
+            "result": "",
+            "status": true,
+            "height": 200,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "SQL",
-                "SQL"
+            "minimal": false
+        },
+        {
+            "id": "1688004052269735",
+            "type": "mrk",
+            "contents": "## 테이블 `EXAMPLE` 생성\n\n테이블이 존재하지 않는다면 신규로 생성한다.\n\n```sql\nCREATE TAG TABLE example (\n  name varchar(100) primary key,\n  time datetime basetime,\n  value double\n);\n```",
+            "status": true,
+            "height": 299,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    },
-    {
-        "id": "1688004052269735",
-        "type": "mrk",
-        "contents": "## 테이블 `EXAMPLE` 생성\n\n테이블이 존재하지 않는다면 신규로 생성한다.\n\n```sql\nCREATE TAG TABLE example (\n  name varchar(100) primary key,\n  time datetime basetime,\n  value double\n);\n```",
-        "status": true,
-        "height": 299,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
+            "minimal": false
+        },
+        {
+            "id": "1688004100166204",
+            "type": "sql",
+            "contents": "SELECT * FROM EXAMPLE limit 5;",
+            "status": true,
+            "height": 50,
+            "lang": [
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "SQL",
-                "SQL"
+            "minimal": false,
+            "tqlType": "csv",
+            "result": ""
+        },
+        {
+            "id": "1688004171883164",
+            "type": "mrk",
+            "contents": "## 데이터 생성\n\n*FAKE()* 를 사용하여 시험을 위한 가상의 진동 데이터 (1.5 Hz, 1.0 진폭)를 생성한다.\n",
+            "status": true,
+            "height": 140,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    },
-    {
-        "id": "1688004100166204",
-        "type": "sql",
-        "contents": "SELECT * FROM EXAMPLE limit 1;",
-        "status": true,
-        "height": 75,
-        "lang": [
-            [
-                "SQL",
-                "SQL"
+            "minimal": false
+        },
+        {
+            "id": "1688004209851688",
+            "type": "tql",
+            "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( CHART_LINE() )",
+            "status": false,
+            "height": 77,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
             ],
-            [
-                "markdown",
-                "Markdown"
+            "minimal": false,
+            "tqlType": "html",
+            "result": ""
+        },
+        {
+            "id": "1688004248031724",
+            "type": "mrk",
+            "contents": "## 데이터 저장\n\n`OUTPUT()`을 수정하여 *FAKE()* >로 생성한 데이터를 *EXAMPLE* 테이블로 저장한다.\n",
+            "status": true,
+            "height": 140,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false,
-        "tqlType": "csv"
-    },
-    {
-        "id": "1688004171883164",
-        "type": "mrk",
-        "contents": "## 데이터 생성\n\n*FAKE()* 를 사용하여 시험을 위한 가상의 진동 데이터 (1.5 Hz, 1.0 진폭)를 생성한다.\n",
-        "status": true,
-        "height": 140,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
+            "minimal": false
+        },
+        {
+            "id": "1688004284363401",
+            "type": "tql",
+            "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( INSERT( 'time', 'value', table('example'), tag('wave.sin') ) )",
+            "status": false,
+            "height": 77,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
             ],
-            [
-                "SQL",
-                "SQL"
+            "minimal": false,
+            "tqlType": "text"
+        },
+        {
+            "id": "168800431761486",
+            "type": "mrk",
+            "contents": "## 데이터 쿼리\n*INPUT()* 에 *FAKE()* 대신 *QUERY()* 를 사용하여 저장된 데이터를 \n데이터베이스에서 읽어온다.",
+            "status": true,
+            "height": 200,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    },
-    {
-        "id": "1688004209851688",
-        "type": "tql",
-        "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( CHART_LINE() )",
-        "status": true,
-        "height": 115,
-        "lang": [
-            [
-                "javascript",
-                "TQL"
+            "minimal": false
+        },
+        {
+            "id": "1688004354527301",
+            "type": "tql",
+            "contents": "INPUT( SQL(`select time, value from example where name = 'wave.sin' limit 100`) )\nOUTPUT( CHART_SCATTER() )",
+            "status": false,
+            "height": 71,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
             ],
-            [
-                "markdown",
-                "Markdown"
+            "minimal": false,
+            "tqlType": "html"
+        },
+        {
+            "id": "1688004422293548",
+            "type": "mrk",
+            "contents": "## TQL as RESTful API - HTTP GET\n\n아래와 같이 *tql* 을 작성하여 `hello.tql`로 저장한 후\n웹브라우저로 [http: //127.0.0.1:5654/db/tql/hello.tql](http://127.0.0.1:5654/db/tql/hello.tql) 주소를 오픈하거나\n\n터미널에서 *curl* 명령어로 호출한다. \n```bash\nurl -o - http://127.0.0.1:5654/db/tql/hello.tql\n```\n\n```js\nINPUT( QUERY('value', from('example', 'wave.sin'), between('last-3s', 'last')) )\nOUTPUT( JSON() )\n```",
+            "status": true,
+            "height": 243,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "SQL",
-                "SQL"
-            ]
-        ],
-        "minimal": false,
-        "tqlType": "html"
-    },
-    {
-        "id": "1688004248031724",
-        "type": "mrk",
-        "contents": "## 데이터 저장\n\n`OUTPUT()`을 수정하여 *FAKE()* >로 생성한 데이터를 *EXAMPLE* 테이블로 저장한다.\n",
-        "status": true,
-        "height": 140,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
+            "minimal": false
+        },
+        {
+            "id": "1688340086180408",
+            "type": "mrk",
+            "contents": "# Lorem ipsum \n Lorem ipsum dolor sit amet,\n consectetur adipiscing elit,\n sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+            "status": true,
+            "height": 200,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
             ],
-            [
-                "SQL",
-                "SQL"
-            ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    },
-    {
-        "id": "1688004284363401",
-        "type": "tql",
-        "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( INSERT( 'time', 'value', table('example'), tag('wave.sin') ) )",
-        "status": true,
-        "height": 134,
-        "lang": [
-            [
-                "javascript",
-                "TQL"
-            ],
-            [
-                "markdown",
-                "Markdown"
-            ],
-            [
-                "SQL",
-                "SQL"
-            ]
-        ],
-        "minimal": false,
-        "tqlType": "text"
-    },
-    {
-        "id": "168800431761486",
-        "type": "mrk",
-        "contents": "## 데이터 쿼리\n*INPUT()* 에 *FAKE()* 대신 *QUERY()* 를 사용하여 저장된 데이터를 \n데이터베이스에서 읽어온다.",
-        "status": true,
-        "height": 200,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
-            ],
-            [
-                "SQL",
-                "SQL"
-            ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    },
-    {
-        "id": "1688004354527301",
-        "type": "tql",
-        "contents": "INPUT( SQL(`select time, value from example where name = 'wave.sin' limit 100`) )\nOUTPUT( CHART_SCATTER() )",
-        "status": true,
-        "height": 104,
-        "lang": [
-            [
-                "javascript",
-                "TQL"
-            ],
-            [
-                "markdown",
-                "Markdown"
-            ],
-            [
-                "SQL",
-                "SQL"
-            ]
-        ],
-        "minimal": false,
-        "tqlType": "html"
-    },
-    {
-        "id": "1688004422293548",
-        "type": "mrk",
-        "contents": "## TQL as RESTful API - HTTP GET\n\n아래와 같이 *tql* 을 작성하여 `hello.tql`로 저장한 후\n웹브라우저로 [http: //127.0.0.1:5654/db/tql/hello.tql](http://127.0.0.1:5654/db/tql/hello.tql) 주소를 오픈하거나\n\n터미널에서 *curl* 명령어로 호출한다. \n```bash\nurl -o - http://127.0.0.1:5654/db/tql/hello.tql\n```\n\n```js\nINPUT( QUERY('value', from('example', 'wave.sin'), between('last-3s', 'last')) )\nOUTPUT( JSON() )\n```",
-        "status": true,
-        "height": 243,
-        "lang": [
-            [
-                "markdown",
-                "Markdown"
-            ],
-            [
-                "SQL",
-                "SQL"
-            ],
-            [
-                "javascript",
-                "TQL"
-            ]
-        ],
-        "minimal": false
-    }
-]
+            "minimal": false
+        }
+    ]
+}
