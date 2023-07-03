@@ -3,7 +3,7 @@
         {
             "id": "1688003944419302",
             "type": "mrk",
-            "contents": "# Let's make waves in TQL\n\n**TQL** (*Transforming Query Language*) is a new way to tranform the data\nbefore writing it on the database or after querying it from the data.\n\nThis example shows how to simulate a vibration data with *FAKE()* function,\nsaving it on the database, query and disiplay it as plots in *TQL*.",
+            "contents": "# Let's make waves in TQL\n\n**TQL** (*Transforming Query Language*) is a new way to tranform the data\nbefore writing it on the database or after querying it from the database.\n\nThis example shows how to simulate a vibration data with *FAKE()* function,\nsaving it on the database, query and disiplay it as plots in *TQL*.",
             "result": "",
             "status": true,
             "height": 198,
