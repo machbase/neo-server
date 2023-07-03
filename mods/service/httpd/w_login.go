@@ -304,22 +304,26 @@ func buildReferences(experimentMode bool) []WebReferenceGroup {
 	ret = append(ret, WebReferenceGroup{
 		Label: "References",
 		Items: []ReferenceItem{
-			{Type: "url", Title: "machbase-neo documents", Addr: "https://neo.machbase.com/", Target: "_blank"},
+			{Type: "url", Title: "machbase-neo server project", Addr: "https://neo.machbase.com/", Target: "_blank"},
 			{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"},
+			{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"},
 		},
 	})
 	// Tutorials
 	if experimentMode {
 		tutorials := WebReferenceGroup{Label: "Tutorials"}
-		tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Welcome to machbase-neo", Addr: "./tutorials/welcome.wrk"})
+		tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
 		ret = append(ret, tutorials)
 	}
 	// Samples
 	samples := WebReferenceGroup{Label: "Samples"}
-	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/markdown.wrk"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/mermaid.wrk"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL (1)", Addr: "./tutorials/user-script1.tql"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "User script in TQL (2)", Addr: "./tutorials/user-script2.tql"})
+	if experimentMode {
+		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
+		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
+		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
+	}
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
 	ret = append(ret, samples)
 	return ret
 }

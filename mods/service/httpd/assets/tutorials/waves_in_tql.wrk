@@ -1,0 +1,301 @@
+{
+    "data": [
+        {
+            "id": "1688003944419302",
+            "type": "mrk",
+            "contents": "# Let's make waves in TQL\n\n**TQL** (*Transforming Query Language*) is a new way to tranform the data\nbefore writing it on the database or after querying it from the data.\n\nThis example shows how to simulate a vibration data with *FAKE()* function,\nsaving it on the database, query and disiplay it as plots in *TQL*.",
+            "result": "",
+            "status": true,
+            "height": 198,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004052269735",
+            "type": "mrk",
+            "contents": "## Create table `EXAMPLE`\n\nCreate `EXAMPLE` table if you don't have it yet.\n\n```sql\nCREATE TAG TABLE example (\n  name varchar(100) primary key,\n  time datetime basetime,\n  value double\n);\n```",
+            "status": true,
+            "height": 280,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004171883164",
+            "type": "mrk",
+            "contents": "## Generate simulated wave\n\nUse *FAKE()* function to generate simulated data which is a wave\nthat has 1.5Hz frequence and 1.0 magnitude.\nIt generates data in 100 sampling rate (every 10 millisecodns) for 3 seconds.\nThen it shows the result in a plot.",
+            "status": true,
+            "height": 174,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004209851688",
+            "type": "tql",
+            "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( CHART_SCATTER() )",
+            "status": true,
+            "height": 77,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
+            ],
+            "minimal": false,
+            "tqlType": "html",
+            "result": ""
+        },
+        {
+            "id": "1688004248031724",
+            "type": "mrk",
+            "contents": "## Store the data in the database\n\nReplace `OUTPUT(CHART_SCATTER())` with `OUTPUT(INSERT(...))`\nso that it writes the genrated data in the `EXAMPLE` table.",
+            "status": true,
+            "height": 122,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004284363401",
+            "type": "tql",
+            "contents": "INPUT( FAKE( oscillator(freq(1.5, 1.0), range('now', '3s', '10ms')) ))\nOUTPUT( INSERT( 'time', 'value', table('example'), tag('wave.sin') ) )",
+            "status": true,
+            "height": 77,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
+            ],
+            "minimal": false,
+            "tqlType": "text",
+            "result": "fail"
+        },
+        {
+            "id": "1688380762447955",
+            "type": "mrk",
+            "contents": "## Query the data with SQL\n\n> This worksheet only shows the first 5 records for the briefness,\n> execute the quey on the `SQL` editor to show the full result.",
+            "status": true,
+            "height": 114,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004100166204",
+            "type": "sql",
+            "contents": "SELECT * FROM EXAMPLE WHERE name = 'wave.sin';",
+            "status": true,
+            "height": 50,
+            "lang": [
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": false,
+            "tqlType": "csv",
+            "result": ""
+        },
+        {
+            "id": "168800431761486",
+            "type": "mrk",
+            "contents": "## Query the data and plot\n\nReplace `INPUT(FAKE(...))` with `INPUT(SQL(...))`.",
+            "status": true,
+            "height": 91,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688004354527301",
+            "type": "tql",
+            "contents": "INPUT( SQL(`select time, value from example where name = 'wave.sin' limit 300`) )\nOUTPUT( CHART_LINE() )",
+            "status": true,
+            "height": 71,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
+            ],
+            "minimal": false,
+            "tqlType": "html",
+            "result": ""
+        },
+        {
+            "id": "1688381165204497",
+            "type": "mrk",
+            "contents": "## Query() function\n\nSometimes, composing SQL statements is tedious work, especially it is related time ranges.\nBecause it often requires converting date-time conversions (for example: `to_date`).\n\nSo *TQL* provides simpler way with `QUERY()` function.\n\nThe first line `INPUT(QUERY(...between(...)))` of the example below shows the equivalent result \nthat executes this SQL statement.\n\n```sql\nSELECT\n    time, value \nFROM EXAMPLE\nWHERE\n    name = 'wave.sin'\nAND time BETWEEN\n        (SELECT MAX_TIME-3000000000 FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\n    AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\nLIMIT 0, 1000000\n```",
+            "status": true,
+            "height": 529,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        },
+        {
+            "id": "1688381640684127",
+            "type": "tql",
+            "contents": "INPUT( QUERY('value', from('example', 'wave.sin'), between('last-3s', 'last')) )\nOUTPUT( CHART_BAR() )",
+            "status": true,
+            "height": 81,
+            "lang": [
+                [
+                    "javascript",
+                    "TQL"
+                ],
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ]
+            ],
+            "minimal": false,
+            "result": "",
+            "tqlType": "html"
+        },
+        {
+            "id": "1688340086180408",
+            "type": "mrk",
+            "contents": "## more example\n\nPlease visit https://neo.machbase.com/docs/letsmakewaves/tql-wave/ for the more *tql* examples.",
+            "status": true,
+            "height": 110,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": true
+        }
+    ]
+}
