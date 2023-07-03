@@ -301,29 +301,24 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 
 func buildReferences(experimentMode bool) []WebReferenceGroup {
 	ret := []WebReferenceGroup{}
-	ret = append(ret, WebReferenceGroup{
-		Label: "References",
-		Items: []ReferenceItem{
-			{Type: "url", Title: "machbase-neo server project", Addr: "https://neo.machbase.com/", Target: "_blank"},
-			{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"},
-			{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"},
-		},
-	})
-	// Tutorials
-	if experimentMode {
-		tutorials := WebReferenceGroup{Label: "Tutorials"}
-		tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
-		ret = append(ret, tutorials)
-	}
-	// Samples
+
+	references := WebReferenceGroup{Label: "References"}
+	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
+	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"})
+	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
+	ret = append(ret, references)
+
+	tutorials := WebReferenceGroup{Label: "Tutorials"}
+	tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
+	ret = append(ret, tutorials)
+
 	samples := WebReferenceGroup{Label: "Samples"}
-	if experimentMode {
-		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
-		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
-		samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
-	}
+	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
+	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
 	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
 	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
 	ret = append(ret, samples)
+
 	return ret
 }
