@@ -7,6 +7,7 @@ import (
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/gin-gonic/gin"
+	pikchr "github.com/jchenry/goldmark-pikchr"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -20,6 +21,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		goldmark.WithExtensions(
 			extension.GFM,
 			&mermaid.Extender{NoScript: true},
+			&pikchr.Extender{},
 			highlighting.NewHighlighting(
 				highlighting.WithStyle("catppuccin-macchiato"),
 				highlighting.WithFormatOptions(
