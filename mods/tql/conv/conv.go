@@ -20,7 +20,7 @@ func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
 }
 
-func Context(args []any, idx int, fname string, expect string) (*context.Context, error) {
+func Context(args []any, idx int, fname string) (*context.Context, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -28,7 +28,14 @@ func Context(args []any, idx int, fname string, expect string) (*context.Context
 	if ctx, ok := raw.(*context.Context); ok {
 		return ctx, nil
 	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	return nil, ErrWrongTypeOfArgs(fname, idx, "Context", raw)
+}
+
+func Any(args []any, idx int, fname string, expect string) (any, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	return args[idx], nil
 }
 
 func String(args []any, idx int, fname string, expect string) (string, error) {
@@ -93,6 +100,19 @@ func Float64(args []any, idx int, fname string, expect string) (float64, error) 
 		}
 	default:
 		return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
+func Array(args []any, idx int, fname string) ([]any, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
+	switch v := raw.(type) {
+	case []any:
+		return v, nil
+	default:
+		return nil, ErrWrongTypeOfArgs(fname, idx, "Array", raw)
 	}
 }
 

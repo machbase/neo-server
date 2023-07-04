@@ -7,12 +7,14 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
+	"github.com/machbase/neo-server/mods/codec/internal/markdown"
 	spi "github.com/machbase/neo-spi"
 )
 
 const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
+const MARKDOWN = "markdown"
 const ECHART_LINE = "echart.line"
 const ECHART_SCATTER = "echart.scatter"
 const ECHART_BAR = "echart.bar"
@@ -43,6 +45,8 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 		ret = box.NewEncoder()
 	case CSV:
 		ret = csv.NewEncoder()
+	case MARKDOWN:
+		ret = markdown.NewEncoder()
 	case ECHART_LINE:
 		ret = echart.NewLine()
 	case ECHART_SCATTER:

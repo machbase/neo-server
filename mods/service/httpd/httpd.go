@@ -265,6 +265,7 @@ func (svr *httpd) Router() *gin.Engine {
 			if svr.tqlLoader != nil {
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
+			group.POST("/api/md", svr.handleMarkdown)
 			group.Any("/machbase", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
@@ -316,6 +317,7 @@ func (svr *httpd) Router() *gin.Engine {
 
 	// handle /web/echarts/*
 	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
+	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r
@@ -402,25 +404,12 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 
 func (svr *httpd) corsHandler() gin.HandlerFunc {
 	corsHandler := cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{
-			http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete,
-			http.MethodPatch, http.MethodHead, http.MethodOptions},
-		AllowHeaders: []string{
-			"Origin", "Access-Control-Allow-Origin",
-			"Authorization", "Access-Control-Allow-Headers",
-			"Access-Control-Max-Age",
-			"X-Requested-With", "Accept",
-			"Content-Type", "Content-Length",
-			"Use-Timezone",
-		},
-		ExposeHeaders: []string{
-			"Cache-Control", "Content-Length", "Content-Language",
-			"Content-Type", "Expires", "Last-Modified", "pragma",
-		},
-		AllowCredentials: true,
-		AllowWebSockets:  true,
-		MaxAge:           12 * time.Hour,
+		AllowAllOrigins: true,
+		//AllowOrigins:    []string{"*"},
+		AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+		AllowHeaders:  []string{"Origin", "Accept", "Content-Type"},
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Hour,
 	})
 	return corsHandler
 }

@@ -20,18 +20,29 @@ var appleTouchIconPrecomposed []byte
 //go:embed echarts/*
 var echartsDir embed.FS
 
-func EchartsDir() http.FileSystem {
-	return &staticFSWrap{
-		trimPrefix:   "/web",
-		base:         http.FS(echartsDir),
-		fixedModTime: time.Now(),
+//go:embed tutorials/*
+var tutorialsDir embed.FS
+
+func TutorialsDir() http.FileSystem {
+	return &StaticFSWrap{
+		TrimPrefix:   "/web",
+		Base:         http.FS(tutorialsDir),
+		FixedModTime: time.Now(),
 	}
 }
 
-type staticFSWrap struct {
-	trimPrefix   string
-	base         http.FileSystem
-	fixedModTime time.Time
+func EchartsDir() http.FileSystem {
+	return &StaticFSWrap{
+		TrimPrefix:   "/web",
+		Base:         http.FS(echartsDir),
+		FixedModTime: time.Now(),
+	}
+}
+
+type StaticFSWrap struct {
+	TrimPrefix   string
+	Base         http.FileSystem
+	FixedModTime time.Time
 }
 
 type staticFile struct {
@@ -39,12 +50,12 @@ type staticFile struct {
 	modTime time.Time
 }
 
-func (fsw *staticFSWrap) Open(name string) (http.File, error) {
-	f, err := fsw.base.Open(strings.TrimPrefix(name, fsw.trimPrefix))
+func (fsw *StaticFSWrap) Open(name string) (http.File, error) {
+	f, err := fsw.Base.Open(strings.TrimPrefix(name, fsw.TrimPrefix))
 	if err != nil {
 		return nil, err
 	}
-	return &staticFile{f, fsw.fixedModTime}, nil
+	return &staticFile{File: f, modTime: fsw.FixedModTime}, nil
 }
 
 func (f *staticFile) Stat() (fs.FileInfo, error) {
@@ -52,7 +63,7 @@ func (f *staticFile) Stat() (fs.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &staticStat{stat, f.modTime}, nil
+	return &staticStat{FileInfo: stat, modTime: f.modTime}, nil
 }
 
 func (f *staticFile) ModTime() time.Time {

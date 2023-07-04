@@ -6,6 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.3.5
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/alecthomas/chroma/v2 v2.7.0
 	github.com/alecthomas/kong v0.7.1
 	github.com/chzyer/test v1.0.0
 	github.com/creack/pty v1.1.18
@@ -20,6 +21,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
+	github.com/jchenry/goldmark-pikchr v0.0.2
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.7
@@ -38,6 +40,9 @@ require (
 	github.com/swaggo/gin-swagger v1.6.0
 	github.com/swaggo/swag v1.16.1
 	github.com/tidwall/gjson v1.14.4
+	github.com/yuin/goldmark v1.5.4
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
+	go.abhg.dev/goldmark/mermaid v0.4.0
 	golang.org/x/crypto v0.10.0
 	golang.org/x/net v0.11.0
 	golang.org/x/sys v0.9.0
@@ -55,10 +60,11 @@ require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/bytedance/sonic v1.9.1 // indirect
+	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/chzyer/logex v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/fredbi/uri v0.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
@@ -67,6 +73,7 @@ require (
 	github.com/fyne-io/image v0.0.0-20220602074514-4956b0afb3d2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
+	github.com/gebv/pikchr v1.0.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
@@ -115,7 +122,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
-	github.com/yuin/goldmark v1.4.13 // indirect
 	github.com/zclconf/go-cty v1.13.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
@@ -125,7 +131,7 @@ require (
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/tools v0.8.0 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/js/dom v0.0.0-20210725211120-f030747120f2 // indirect
 )

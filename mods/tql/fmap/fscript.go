@@ -112,6 +112,9 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 		"uuid": &tengo.UserFunction{
 			Name: "uuid", Value: tengof_uuid(ctx),
 		},
+		"nil": &tengo.UserFunction{
+			Name: "nil", Value: tengof_nil(ctx),
+		},
 	})
 	s := tengo.NewScript([]byte(content))
 	s.SetImports(modules)
@@ -233,6 +236,12 @@ func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object,
 			return nil, err
 		}
 		return anyToTengoObject(uid.String()), nil
+	}
+}
+
+func tengof_nil(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		return tengo.UndefinedValue, nil
 	}
 }
 
