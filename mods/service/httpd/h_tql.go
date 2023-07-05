@@ -38,7 +38,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		input = ctx.Request.Body
 	}
 
-	tql, err := tql.Parse(input, nil, params, ctx.Writer)
+	tql, err := tql.Parse(input, nil, params, ctx.Writer, true)
 	if err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
@@ -54,6 +54,8 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	}
 }
 
+// tql as RESTful API
+//
 // GET  "/tql/*path"
 // POST "/tql/*path"
 func (svr *httpd) handleTagQL(ctx *gin.Context) {
@@ -85,7 +87,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	tql, err := script.Parse(ctx.Request.Body, params, ctx.Writer)
+	tql, err := script.Parse(ctx.Request.Body, params, ctx.Writer, false)
 	if err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		rsp.Reason = err.Error()

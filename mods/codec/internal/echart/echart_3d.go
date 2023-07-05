@@ -2,10 +2,12 @@ package echart
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/go-echarts/go-echarts/v2/types"
 )
 
@@ -36,6 +38,9 @@ type Base3D struct {
 }
 
 func (ex *Base3D) ContentType() string {
+	if ex.toJsonOutput {
+		return "application/json"
+	}
 	return "text/html"
 }
 
@@ -341,7 +346,16 @@ func (ex *Line3D) Close() {
 	for _, ser := range ex.series {
 		line3d.AddSeries(ex.zAxisLabel, ser, serOpts...)
 	}
-	line3d.Render(ex.output)
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(line3d, line3d.Validate)
+	} else {
+		rndr = newChartRender(line3d, line3d.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
 }
 
 type Surface3D struct {
@@ -372,7 +386,16 @@ func (ex *Surface3D) Close() {
 	for _, ser := range ex.series {
 		surface3d.AddSeries(ex.zAxisLabel, ser)
 	}
-	surface3d.Render(ex.output)
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(surface3d, surface3d.Validate)
+	} else {
+		rndr = newChartRender(surface3d, surface3d.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
 }
 
 type Scatter3D struct {
@@ -403,7 +426,16 @@ func (ex *Scatter3D) Close() {
 	for _, ser := range ex.series {
 		scatter3d.AddSeries(ex.zAxisLabel, ser)
 	}
-	scatter3d.Render(ex.output)
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(scatter3d, scatter3d.Validate)
+	} else {
+		rndr = newChartRender(scatter3d, scatter3d.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
 }
 
 type Bar3D struct {
@@ -434,5 +466,14 @@ func (ex *Bar3D) Close() {
 	for _, ser := range ex.series {
 		bar3d.AddSeries(ex.zAxisLabel, ser)
 	}
-	bar3d.Render(ex.output)
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(bar3d, bar3d.Validate)
+	} else {
+		rndr = newChartRender(bar3d, bar3d.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
 }

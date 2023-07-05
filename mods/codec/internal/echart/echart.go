@@ -13,7 +13,8 @@ type ChartBase struct {
 	width    string
 	height   string
 
-	assetHost string
+	assetHost    string
+	toJsonOutput bool
 }
 
 func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
@@ -39,4 +40,8 @@ func (ex *ChartBase) SetSubtitle(subtitle string) {
 
 func (ex *ChartBase) SetAssetHost(path string) {
 	ex.assetHost = path
+}
+
+func (ex *ChartBase) SetJson(flag bool) {
+	ex.toJsonOutput = flag
 }

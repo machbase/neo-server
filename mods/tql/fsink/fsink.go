@@ -55,7 +55,7 @@ type Output interface {
 	AddRow([]any) error
 }
 
-func Compile(code string, params map[string][]string, writer io.Writer) (Output, error) {
+func Compile(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (Output, error) {
 	expr, err := Parse(code)
 	if err != nil {
 		return nil, err
@@ -77,6 +77,9 @@ func Compile(code string, params map[string][]string, writer io.Writer) (Output,
 	ret := &output{}
 	switch v := result.(type) {
 	case codec.RowsEncoder:
+		if o, ok := v.(codec.CanSetJson); ok {
+			o.SetJson(toJsonOutput)
+		}
 		ret.encoder = v
 	case dbSink:
 		ret.dbSink = v
