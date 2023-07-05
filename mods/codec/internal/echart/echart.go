@@ -42,6 +42,6 @@ func (ex *ChartBase) SetAssetHost(path string) {
 	ex.assetHost = path
 }
 
-func (ex *ChartBase) SetJson(flag bool) {
+func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
 }

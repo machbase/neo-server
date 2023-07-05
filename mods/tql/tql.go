@@ -96,6 +96,9 @@ func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.Res
 	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
 		w.Header().Set("Content-Encoding", contentEncoding)
 	}
+	if tq.output.IsChart() {
+		w.Header().Set("X-Chart-Type", "echarts")
+	}
 	return tq.Execute(ctx, db)
 }
 

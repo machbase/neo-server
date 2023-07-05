@@ -53,6 +53,7 @@ type Output interface {
 	ContentEncoding() string
 	SetHeader(spi.Columns)
 	AddRow([]any) error
+	IsChart() bool
 }
 
 func Compile(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (Output, error) {
@@ -77,8 +78,9 @@ func Compile(code string, params map[string][]string, writer io.Writer, toJsonOu
 	ret := &output{}
 	switch v := result.(type) {
 	case codec.RowsEncoder:
-		if o, ok := v.(codec.CanSetJson); ok {
-			o.SetJson(toJsonOutput)
+		if o, ok := v.(codec.CanSetChartJson); ok {
+			o.SetChartJson(toJsonOutput)
+			ret.isChart = true
 		}
 		ret.encoder = v
 	case dbSink:
@@ -92,6 +94,7 @@ func Compile(code string, params map[string][]string, writer io.Writer, toJsonOu
 type output struct {
 	encoder codec.RowsEncoder
 	dbSink  dbSink
+	isChart bool
 }
 
 var _ Output = &output{}
@@ -107,6 +110,10 @@ func (out *output) ContentType() string {
 		return out.encoder.ContentType()
 	}
 	return "application/octet-stream"
+}
+
+func (out *output) IsChart() bool {
+	return out.isChart
 }
 
 func (out *output) ContentEncoding() string {

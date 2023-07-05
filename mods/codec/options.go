@@ -127,14 +127,14 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
-type CanSetJson interface {
-	SetJson(flag bool)
+type CanSetChartJson interface {
+	SetChartJson(flag bool)
 }
 
-func Json(flag bool) Option {
+func ChartJson(flag bool) Option {
 	return func(one any) {
-		if o, ok := one.(CanSetJson); ok {
-			o.SetJson(flag)
+		if o, ok := one.(CanSetChartJson); ok {
+			o.SetChartJson(flag)
 		}
 	}
 }
