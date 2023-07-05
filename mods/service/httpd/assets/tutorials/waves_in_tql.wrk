@@ -232,7 +232,7 @@
         {
             "id": "1688381165204497",
             "type": "mrk",
-            "contents": "## Query() function\n\nSometimes, composing SQL statements is tedious work, especially it is related time ranges.\nBecause it often requires converting date-time conversions (for example: `to_date`).\n\nSo *TQL* provides simpler way with `QUERY()` function.\n\nThe first line `INPUT(QUERY(...between(...)))` of the example below shows the equivalent result \nthat executes this SQL statement.\n\n```sql\nSELECT\n    time, value \nFROM EXAMPLE\nWHERE\n    name = 'wave.sin'\nAND time BETWEEN\n        (SELECT MAX_TIME-3000000000 FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\n    AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\nLIMIT 0, 1000000\n```",
+            "contents": "## Query() function\n\nSometimes, composing SQL statements is a tedious work, especially when it is related to time range conditions.\nBecause it often requires converting date-time conversions (for example: `to_date`).\n\nSo *TQL* provides a simple way with `QUERY()` function.\n\nThe first line `INPUT(QUERY(...between(...)))` of the example below shows the equivalent result \nthat executes this SQL statement.\n\n```sql\nSELECT\n    time, value \nFROM EXAMPLE\nWHERE\n    name = 'wave.sin'\nAND time BETWEEN\n        (SELECT MAX_TIME-3000000000 FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\n    AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'wave.sin')\nLIMIT 0, 1000000\n```",
             "status": true,
             "height": 529,
             "lang": [
