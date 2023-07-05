@@ -22,11 +22,14 @@ jobs:
       - name: Build
         run: |
           make cleanpackage && \
-          make package-machbase-neo
+          make package-machbase-neo && \
+          make package-neow
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
           name: Packages
-          path: packages/machbase-neo-*-v*.zip
+          path: |
+            packages/machbase-neo-*-v*.zip
+            packages/neow-*-v*.zip
           retention-days: 5
 

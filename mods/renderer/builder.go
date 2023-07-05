@@ -1,62 +1,57 @@
 package renderer
 
 import (
+	"github.com/machbase/neo-server/mods/renderer/internal/csvchart"
 	"github.com/machbase/neo-server/mods/renderer/internal/jschart"
 	"github.com/machbase/neo-server/mods/renderer/internal/termchart"
-	spi "github.com/machbase/neo-spi"
 )
 
-type ChartRendererBuilder interface {
-	Build() spi.Renderer
-	SetTitle(string) ChartRendererBuilder
-	SetSubtitle(string) ChartRendererBuilder
-	SetSize(width, height string) ChartRendererBuilder
-}
+type Option func(r Renderer)
 
-type chartbuilder struct {
-	chartType string
-	title     string
-	subtitle  string
-	width     string
-	height    string
-}
-
-func NewChartRendererBuilder(format string) ChartRendererBuilder {
-	return &chartbuilder{chartType: format}
-}
-
-func (cb *chartbuilder) Build() spi.Renderer {
-	switch cb.chartType {
+func New(format string, opts ...Option) Renderer {
+	var ret Renderer
+	switch format {
 	case "json":
-		return jschart.NewJsonRenderer()
+		ret = jschart.NewJsonRenderer()
 	case "html":
-		return jschart.NewHtmlRenderer(
-			jschart.HtmlOptions{
-				Title:    cb.title,
-				Subtitle: cb.subtitle,
-				Width:    cb.width,
-				Height:   cb.height,
-			},
-		)
+		ret = jschart.NewHtmlRenderer(jschart.HtmlOptions{})
 	case "term":
-		return termchart.NewRenderer()
+		ret = termchart.NewRenderer()
+	case "csv":
+		ret = csvchart.NewRenderer()
 	default:
 		return nil
 	}
+	for _, op := range opts {
+		op(ret)
+	}
+	return ret
 }
 
-func (cb *chartbuilder) SetTitle(title string) ChartRendererBuilder {
-	cb.title = title
-	return cb
+func Title(title string) Option {
+	return func(one Renderer) {
+		switch r := one.(type) {
+		case *jschart.HtmlRenderer:
+			r.Options.Title = title
+		}
+	}
 }
 
-func (cb *chartbuilder) SetSubtitle(subtitle string) ChartRendererBuilder {
-	cb.subtitle = subtitle
-	return cb
+func Subtitle(subtitle string) Option {
+	return func(one Renderer) {
+		switch r := one.(type) {
+		case *jschart.HtmlRenderer:
+			r.Options.Subtitle = subtitle
+		}
+	}
 }
 
-func (cb *chartbuilder) SetSize(width, height string) ChartRendererBuilder {
-	cb.width = width
-	cb.height = height
-	return cb
+func Size(width, height string) Option {
+	return func(one Renderer) {
+		switch r := one.(type) {
+		case *jschart.HtmlRenderer:
+			r.Options.Width = width
+			r.Options.Height = height
+		}
+	}
 }

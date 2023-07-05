@@ -6,25 +6,32 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type Exporter struct {
 	writer table.Writer
 	rownum int64
-	ctx    *spi.RowsEncoderContext
 
-	Style           string
-	SeparateColumns bool
-	DrawBorder      bool
+	style           string
+	separateColumns bool
+	drawBorder      bool
+	timeLocation    *time.Location
+	output          spec.OutputStream
+	showRownum      bool
+	heading         bool
+	timeformat      string
+	precision       int
+
+	colNames []string
+	colTypes []string
 }
 
-func NewEncoder(ctx *spi.RowsEncoderContext, style string, separateColumns bool, drawBorder bool) spi.RowsEncoder {
+func NewEncoder() *Exporter {
 	return &Exporter{
-		ctx:             ctx,
-		Style:           style,
-		SeparateColumns: separateColumns,
-		DrawBorder:      drawBorder,
+		style:           "default",
+		separateColumns: true,
+		drawBorder:      true,
 	}
 }
 
@@ -32,12 +39,53 @@ func (ex *Exporter) ContentType() string {
 	return "plain/text"
 }
 
-func (ex *Exporter) Open(cols spi.Columns) error {
+func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+	ex.output = o
+}
+
+func (ex *Exporter) SetTimeformat(format string) {
+	ex.timeformat = format
+}
+
+func (ex *Exporter) SetTimeLocation(tz *time.Location) {
+	ex.timeLocation = tz
+}
+
+func (ex *Exporter) SetPrecision(precision int) {
+	ex.precision = precision
+}
+
+func (ex *Exporter) SetRownum(show bool) {
+	ex.showRownum = show
+}
+
+func (ex *Exporter) SetHeading(show bool) {
+	ex.heading = show
+}
+
+func (ex *Exporter) SetBoxStyle(style string) {
+	ex.style = style
+}
+
+func (ex *Exporter) SetBoxSeparateColumns(flag bool) {
+	ex.separateColumns = flag
+}
+
+func (ex *Exporter) SetBoxDrawBorder(flag bool) {
+	ex.drawBorder = flag
+}
+
+func (ex *Exporter) SetColumns(names []string, types []string) {
+	ex.colNames = names
+	ex.colTypes = types
+}
+
+func (ex *Exporter) Open() error {
 	ex.writer = table.NewWriter()
-	ex.writer.SetOutputMirror(ex.ctx.Output)
+	ex.writer.SetOutputMirror(ex.output)
 
 	style := table.StyleDefault
-	switch ex.Style {
+	switch ex.style {
 	case "bold":
 		style = table.StyleBold
 	case "double":
@@ -49,18 +97,17 @@ func (ex *Exporter) Open(cols spi.Columns) error {
 	default:
 		style = table.StyleDefault
 	}
-	style.Options.SeparateColumns = ex.SeparateColumns
-	style.Options.DrawBorder = ex.DrawBorder
+	style.Options.SeparateColumns = ex.separateColumns
+	style.Options.DrawBorder = ex.drawBorder
 
 	ex.writer.SetStyle(style)
 
-	colNames := cols.NamesWithTimeLocation(ex.ctx.TimeLocation)
-	if ex.ctx.Heading {
-		vs := make([]any, len(colNames))
-		for i, h := range colNames {
+	if ex.heading {
+		vs := make([]any, len(ex.colNames))
+		for i, h := range ex.colNames {
 			vs[i] = h
 		}
-		if ex.ctx.Rownum {
+		if ex.showRownum {
 			ex.writer.AppendHeader(table.Row(append([]any{"ROWNUM"}, vs...)))
 		} else {
 			ex.writer.AppendHeader(table.Row(vs))
@@ -75,12 +122,12 @@ func (ex *Exporter) Close() {
 		ex.writer.Render()
 		ex.writer.ResetRows()
 	}
-	ex.ctx.Output.Close()
+	ex.output.Close()
 }
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Render()
-	ex.ctx.Output.Flush()
+	ex.output.Flush()
 
 	ex.writer.ResetRows()
 	if !heading {
@@ -102,7 +149,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			switch ex.ctx.TimeFormat {
+			switch ex.timeformat {
 			case "ns":
 				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
 			case "ms":
@@ -112,16 +159,16 @@ func (ex *Exporter) AddRow(values []any) error {
 			case "s":
 				cols[i] = strconv.FormatInt(v.Unix(), 10)
 			default:
-				if ex.ctx.TimeLocation == nil {
-					ex.ctx.TimeLocation = time.UTC
+				if ex.timeLocation == nil {
+					ex.timeLocation = time.UTC
 				}
-				cols[i] = v.In(ex.ctx.TimeLocation).Format(ex.ctx.TimeFormat)
+				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
 			}
 		case *float64:
-			if ex.ctx.Precision < 0 {
+			if ex.precision < 0 {
 				cols[i] = fmt.Sprintf("%f", *v)
 			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.ctx.Precision, *v)
+				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
 			}
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
@@ -150,7 +197,7 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	ex.rownum++
 
-	if ex.ctx.Rownum {
+	if ex.showRownum {
 		ex.writer.AppendRow(table.Row(append([]any{ex.rownum}, cols...)))
 	} else {
 		ex.writer.AppendRow(table.Row(cols))

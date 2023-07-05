@@ -16,6 +16,7 @@ var (
 	procResizePseudoConsole               = kernel32.NewProc("ResizePseudoConsole")
 	procCreatePseudoConsole               = kernel32.NewProc("CreatePseudoConsole")
 	procClosePseudoConsole                = kernel32.NewProc("ClosePseudoConsole")
+	procSetConsoleMode                    = kernel32.NewProc("SetConsoleMode")
 	procInitializeProcThreadAttributeList = kernel32.NewProc("InitializeProcThreadAttributeList")
 	procUpdateProcThreadAttribute         = kernel32.NewProc("UpdateProcThreadAttribute")
 	procLocalAlloc                        = kernel32.NewProc("LocalAlloc")
@@ -86,7 +87,6 @@ func localAlloc(size uint64) (ptr windows.Handle, err error) {
 
 func createPseudoConsole(consoleSize uintptr, ptyIn windows.Handle, ptyOut windows.Handle, hpCon *windows.Handle) (err error) {
 	r1, _, e1 := procCreatePseudoConsole.Call(consoleSize, uintptr(ptyIn), uintptr(ptyOut), 0, uintptr(unsafe.Pointer(hpCon)))
-
 	if r1 != 0 { // !S_OK
 		err = e1
 	}
@@ -95,6 +95,7 @@ func createPseudoConsole(consoleSize uintptr, ptyIn windows.Handle, ptyOut windo
 
 func resizePseudoConsole(handle windows.Handle, consoleSize uintptr) (err error) {
 	r1, _, e1 := procResizePseudoConsole.Call(uintptr(handle), consoleSize)
+	use(consoleSize)
 	if r1 != 0 { // !S_OK
 		err = e1
 	}
@@ -106,6 +107,16 @@ func closePseudoConsole(handle windows.Handle) (err error) {
 	if r1 == 0 {
 		err = e1
 	}
-
 	return
 }
+
+func setConsoleMode(handle windows.Handle, mode uint32) (err error) {
+	r1, _, e1 := procSetConsoleMode.Call(uintptr(handle), uintptr(mode), 0)
+	use(mode)
+	if r1 == 0 {
+		err = e1
+	}
+	return
+}
+
+func use(any) {}

@@ -8,34 +8,73 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
 type Decoder struct {
-	reader      *csv.Reader
-	columnTypes []string
-	ctx         *spi.RowsDecoderContext
-	translator  transcoder.Transcoder
+	reader       *csv.Reader
+	columnTypes  []string
+	columnNames  []string
+	translator   transcoder.Transcoder
+	comma        rune
+	heading      bool
+	input        spec.InputStream
+	timeformat   string
+	timeLocation *time.Location
+	tableName    string
 }
 
-func NewDecoder(ctx *spi.RowsDecoderContext, delimiter string, heading bool, translator transcoder.Transcoder) spi.RowsDecoder {
+func NewDecoder() *Decoder {
+	return &Decoder{}
+}
+
+func (dec *Decoder) SetInputStream(in spec.InputStream) {
+	dec.input = in
+}
+
+func (dec *Decoder) SetTimeformat(format string) {
+	dec.timeformat = format
+}
+
+func (dec *Decoder) SetTimeLocation(tz *time.Location) {
+	dec.timeLocation = tz
+}
+
+func (dec *Decoder) SetHeading(skipHeading bool) {
+	dec.heading = skipHeading
+}
+
+func (dec *Decoder) SetDelimiter(delimiter string) {
 	delmiter, _ := utf8.DecodeRuneInString(delimiter)
+	dec.comma = delmiter
+}
 
-	rr := &Decoder{ctx: ctx}
-	rr.reader = csv.NewReader(ctx.Reader)
-	rr.reader.Comma = delmiter
-	rr.columnTypes = ctx.Columns.Types()
-	rr.translator = translator
+func (dec *Decoder) SetTable(tableName string) {
+	dec.tableName = tableName
+}
 
-	if heading { // skip first line
-		rr.reader.Read()
+func (dec *Decoder) SetTranscoder(trans transcoder.Transcoder) {
+	dec.translator = trans
+}
+
+func (dec *Decoder) SetColumns(names []string, types []string) {
+	dec.columnNames = names
+	dec.columnTypes = types
+}
+
+func (dec *Decoder) Open() {
+	dec.reader = csv.NewReader(dec.input)
+	dec.reader.Comma = dec.comma
+
+	if dec.heading { // skip first line
+		dec.reader.Read()
 	}
-	return rr
 }
 
 func (dec *Decoder) NextRow() ([]any, error) {
@@ -47,9 +86,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if len(fields) > len(dec.columnTypes) {
 		return nil, fmt.Errorf("too many columns (%d); table '%s' has %d columns",
-			len(fields), dec.ctx.TableName, len(dec.columnTypes))
+			len(fields), dec.tableName, len(dec.columnTypes))
 	}
 
 	values := make([]any, len(dec.columnTypes))
@@ -64,7 +104,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		case "string":
 			values[i] = field
 		case "datetime":
-			values[i], err = util.ParseTime(field, dec.ctx.TimeFormat, dec.ctx.TimeLocation)
+			values[i], err = util.ParseTime(field, dec.timeformat, dec.timeLocation)
 			if err != nil {
 				return nil, err
 			}

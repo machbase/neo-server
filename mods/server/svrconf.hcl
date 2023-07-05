@@ -13,6 +13,7 @@ define DEF {
 define VARS {
     PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
+    FILE_DIR          = flag("--file", "${execDir()}")
     MACH_LISTEN_HOST  = flag("--mach-listen-host", DEF_LISTEN_HOST)
     MACH_LISTEN_PORT  = flag("--mach-listen-port", DEF_MACH_PORT)
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
@@ -33,10 +34,12 @@ define VARS {
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
-    HTTP_ENABLE_WEBUI     = flag("--http-enable-web", false)
+    HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_ENABLE_SWAGGER   = flag("--http-enable-swagger", false)
     
     PGW_ENABLE            = flag("--pgw-enable", false)
+    HTTP_DEBUG_MODE       = flag("--http-debug", false)
+    EXPERIMENT_MODE       = flag("--experiment", false)
 
     MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
 }
@@ -61,6 +64,8 @@ module "machbase.com/neo-server" {
     config {
         PrefDir          = VARS_PREF_DIR
         DataDir          = VARS_DATA_DIR
+        FileDirs         = [ VARS_FILE_DIR ]
+        ExperimentMode   = VARS_EXPERIMENT_MODE
         Machbase         = {
             HANDLE_LIMIT     = 2048
             PORT_NO          = VARS_MACH_LISTEN_PORT
@@ -82,11 +87,13 @@ module "machbase.com/neo-server" {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
             Handlers         = [
                 { Prefix: "/db",      Handler: "machbase" },
+                { Prefix: "/lakes",      Handler: "lakes" },
                 { Prefix: "/metrics", Handler: "influx" },
                 { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
                 { Prefix: "/swagger", Handler: VARS_HTTP_ENABLE_SWAGGER ? "swagger" : "-" },
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
+            DebugMode        = VARS_HTTP_DEBUG_MODE
         }
         Mqtt = {
             Listeners        = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}"]

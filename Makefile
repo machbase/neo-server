@@ -21,8 +21,16 @@ test:
 
 test-base: tmpdir
 	@go test $(ARGS) \
+		./mods/util \
 		./mods/util/glob \
 		./mods/util/ini \
+		./mods/util/ssfs \
+		./mods/expression \
+		./mods/tql \
+		./mods/tql/fcom \
+		./mods/tql/fmap \
+		./mods/tql/fsrc \
+		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \
 		./mods/codec/internal/json \
@@ -32,6 +40,7 @@ test-base: tmpdir
 		./mods/service/mqttd/mqtt \
 		./mods/service/httpd \
 		./mods/server \
+		./mods/shell \
 		./test
 
 test-all:
@@ -127,4 +136,4 @@ regen-mock:
 
 ## Require https://github.com/swaggo/swag
 swag:
-	swag init -g mods/service/httpsvr/httpsvr.go
+	swag init -g mods/service/httpd/httpd.go

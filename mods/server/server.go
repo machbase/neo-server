@@ -25,6 +25,7 @@ import (
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
@@ -32,14 +33,15 @@ import (
 	"github.com/machbase/neo-server/mods/service/pgwd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
 )
 
 func init() {
-
 	booter.Register(
 		"machbase.com/neo-server",
 		func() *Config {
@@ -81,6 +83,7 @@ func init() {
 type Config struct {
 	DataDir        string
 	PrefDir        string
+	FileDirs       []string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
 	StartupQueries []string
@@ -91,7 +94,8 @@ type Config struct {
 	Mqtt           MqttConfig
 	Pgwd           PgwdConfig
 
-	NoBanner bool
+	NoBanner       bool
+	ExperimentMode bool
 
 	EnableMachbaseSigHandler bool
 }
@@ -111,6 +115,7 @@ type HttpConfig struct {
 	Handlers  []httpd.HandlerConfig
 
 	EnableTokenAuth bool
+	DebugMode       bool
 }
 
 type MqttConfig struct {
@@ -156,8 +161,13 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
+	licenseFilePath   string
+	licenseFileTime   time.Time
 
 	cachedServerPrivateKey crypto.PrivateKey
+
+	servicePorts     map[string][]*spi.ServicePort
+	servicePortsLock sync.RWMutex
 
 	authorizedSshKeysLock sync.RWMutex
 }
@@ -215,11 +225,13 @@ func NewConfig() *Config {
 
 func NewServer(conf *Config) (Server, error) {
 	return &svr{
-		conf: conf,
+		conf:         conf,
+		servicePorts: make(map[string][]*spi.ServicePort),
 	}, nil
 }
 
 func (s *svr) Start() error {
+	tick := time.Now()
 	s.log = logging.GetLog("neosvr")
 
 	prefpath, err := filepath.Abs(s.conf.PrefDir)
@@ -245,6 +257,11 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "authorized keys")
 	}
 
+	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
+	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
+		s.licenseFileTime = stat.ModTime()
+	}
+
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "datadir")
@@ -262,33 +279,51 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase trc")
 	}
 
+	shouldInstallLicense := false
+	if !s.licenseFileTime.IsZero() {
+		stat, err := os.Stat(filepath.Join(homepath, "conf", "license.dat"))
+		if err != nil {
+			shouldInstallLicense = true
+		} else if stat.ModTime().Sub(s.licenseFileTime) < 0 {
+			shouldInstallLicense = true
+		}
+	}
+
 	// port-check MACH
 	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
 		return errors.Wrap(err, "MACH port not available")
+	} else {
+		machPort := fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
+		s.AddServicePort("mach", machPort)
 	}
+
 	// port-check gRPC
 	for _, addr := range s.conf.Grpc.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "gRPC port not available")
 		}
+		s.AddServicePort("grpc", addr)
 	}
 	// port-check HTTP
 	for _, addr := range s.conf.Http.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "HTTP port not available")
 		}
+		s.AddServicePort("http", addr)
 	}
 	// port-check MQTT
-	for _, addr := range s.conf.Http.Listeners {
+	for _, addr := range s.conf.Mqtt.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "MQTT port not available")
 		}
+		s.AddServicePort("mqtt", addr)
 	}
 	// port-check SSHD
-	for _, addr := range s.conf.Http.Listeners {
+	for _, addr := range s.conf.Shell.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "SSHD port not available")
 		}
+		s.AddServicePort("shell", addr)
 	}
 
 	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
@@ -332,6 +367,8 @@ func (s *svr) Start() error {
 			mach.BuildVersion.BuildTimestamp = mods.BuildTimestamp()
 			mach.BuildVersion.BuildCompiler = mods.BuildCompiler()
 		}
+		mach.ServicePorts = s.servicePorts
+
 		if err := mdb.Startup(); err != nil {
 			return errors.Wrap(err, "startup database")
 		}
@@ -340,6 +377,15 @@ func (s *svr) Start() error {
 	if !s.conf.NoBanner {
 		// print banner if banner module is not configured
 		s.log.Infof("\n%s", GenBanner())
+	}
+
+	if shouldInstallLicense {
+		_, err := do.InstallLicenseFile(s.db, s.licenseFilePath)
+		if err != nil {
+			s.log.Warn("set license fail,", err.Error())
+		} else {
+			s.log.Info("set license success")
+		}
 	}
 
 	for n, sqlText := range s.conf.StartupQueries {
@@ -373,16 +419,38 @@ func (s *svr) Start() error {
 		}
 	}
 
+	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
+	ssfs.SetDefault(serverFs)
+
+	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
 		opts := []httpd.Option{
+			httpd.OptionLicenseFilePath(s.licenseFilePath),
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
-			httpd.OptionReleaseMode(),
+			httpd.OptionTqlLoader(tqlLoader),
+			httpd.OptionServerSideFileSystem(serverFs),
+			httpd.OptionExperimentMode(s.conf.ExperimentMode),
+			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 		}
 		for _, h := range s.conf.Http.Handlers {
+			if h.Handler == httpd.HandlerWeb {
+				enabledWebUI = true
+			}
 			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
 		}
+		shellPorts := s.servicePorts["shell"]
+		shellAddrs := []string{}
+		for _, sp := range shellPorts {
+			shellAddrs = append(shellAddrs, sp.Address)
+		}
+		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
 		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
@@ -399,6 +467,7 @@ func (s *svr) Start() error {
 			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
 			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
 			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+			mqttd.OptionTqlLoader(tqlLoader),
 		}
 		for _, h := range s.conf.Mqtt.Handlers {
 			opts = append(opts, mqttd.OptionHandler(h.Prefix, h.Handler))
@@ -457,6 +526,28 @@ func (s *svr) Start() error {
 			return errors.Wrap(err, "pgwire server")
 		}
 	}
+
+	if enabledWebUI {
+		svcPorts, err := s.db.GetServicePorts("http")
+		if err != nil {
+			return errors.Wrap(err, "service ports")
+		}
+		readyMsg := []string{}
+		for _, p := range svcPorts {
+			addr := strings.Replace(p.Address, "tcp://", "http://", 1)
+			if strings.HasPrefix(addr, "http://127.0.0.1:") {
+				addr = fmt.Sprintf("  > Local:   %s", addr)
+			} else {
+				addr = fmt.Sprintf("  > Network: %s", addr)
+			}
+			readyMsg = append(readyMsg, addr)
+		}
+		s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+			strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+	} else {
+		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
+	}
+
 	return nil
 }
 
@@ -487,13 +578,55 @@ func (s *svr) Stop() {
 	s.log.Infof("shutdown.")
 }
 
+func (s *svr) AddServicePort(svc string, addr string) error {
+	svc = strings.ToLower(svc)
+	if strings.HasPrefix(addr, "tcp://") {
+		host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp://"))
+		if err != nil {
+			return errors.Wrapf(err, "%s host:port invalid syntax", svc)
+		}
+		lsnrHost := net.ParseIP(host)
+		addrs := util.FindAllAddresses(lsnrHost)
+		for _, addr := range addrs {
+			lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
+			s.servicePortsLock.Lock()
+			lst := s.servicePorts[svc]
+			lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
+			s.servicePorts[svc] = lst
+			s.servicePortsLock.Unlock()
+		}
+	} else {
+		s.servicePortsLock.Lock()
+		lst := s.servicePorts[svc]
+		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
+		s.servicePorts[svc] = lst
+		s.servicePortsLock.Unlock()
+	}
+	return nil
+}
+
+func (s *svr) ServicePort(svc string) []*spi.ServicePort {
+	return s.servicePorts[strings.ToLower(svc)]
+}
+
 func GenBanner() string {
 	options := figlet4go.NewRenderOptions()
-	options.FontColor = []figlet4go.Color{
-		figlet4go.ColorMagenta,
-		figlet4go.ColorYellow,
-		figlet4go.ColorCyan,
-		figlet4go.ColorBlue,
+	supportColor := true
+	windowsVersion := ""
+	if runtime.GOOS == "windows" {
+		major, minor, build := util.GetWindowsVersion()
+		windowsVersion = fmt.Sprintf("Windows %d.%d %d", major, minor, build)
+		if major <= 10 && build < 14931 {
+			supportColor = false
+		}
+	}
+	if supportColor {
+		options.FontColor = []figlet4go.Color{
+			figlet4go.ColorMagenta,
+			figlet4go.ColorYellow,
+			figlet4go.ColorCyan,
+			figlet4go.ColorBlue,
+		}
 	}
 	fig := figlet4go.NewAsciiRender()
 	machbase, _ := fig.Render("Machbase")
@@ -504,7 +637,7 @@ func GenBanner() string {
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s", mach.LinkInfo())
+	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 

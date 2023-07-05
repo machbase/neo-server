@@ -274,9 +274,18 @@ func (svr *sshd) shellProvider(user string) *Shell {
 	if len(parsed) == 0 {
 		return nil
 	}
+	envs := map[string]string{}
+	es := os.Environ()
+	for _, str := range es {
+		toks := strings.SplitN(str, "=", 2)
+		if len(toks) == 2 {
+			envs[toks[0]] = toks[1]
+		}
+	}
 	return &Shell{
 		Cmd:  parsed[0],
 		Args: parsed[1:],
+		Envs: envs,
 	}
 }
 

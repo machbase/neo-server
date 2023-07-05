@@ -5,12 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -26,27 +27,28 @@ func init() {
 
 const helpShow = `  show [options] <object>
   objects:
-    info                show server info
-    users               list users
-    tables [-a]         list tables
-    table [-a] <table>  describe the table
-    meta-tables         list meta tables
-    virtual-tables      list virtual tables
-    statements          list statements
-    indexes             list indexes
-    index <index>       describe the index
-    storage             show storage info
-    table-usage         show table usage
-    lsm                 LSM status
-    indexgap            index gap status
-    rollupgap           rollup gap status
-    tagindexgap         tag index gap status
-    tags <table>        tag list of the table
+    info                   show server info
+    license                show license info
+    ports                  show service ports
+    users                  list users
+    tables [-a]            list tables
+    table [-a] <table>     describe the table
+    meta-tables            list meta tables
+    virtual-tables         list virtual tables
+    statements             list statements
+    indexes                list indexes
+    index <index>          describe the index
+    storage                show storage info
+    table-usage            show table usage
+    lsm                    LSM status
+    indexgap               index gap status
+    rollupgap              rollup gap status
+    tagindexgap            tag index gap status
+    tags <table>           tag list of the table
+    tagstat <table> <tag>  show stat of the tag
   options:
-    -a,--all         includes all hidden tables/columns
+    -a,--all               includes all hidden tables/columns
 `
-
-// 	sessions         list sessions (that connected via MACH)
 
 type ShowCmd struct {
 	Object  string   `arg:""`
@@ -58,6 +60,8 @@ type ShowCmd struct {
 func pcShow() readline.PrefixCompleterInterface {
 	return readline.PcItem("show",
 		readline.PcItem("info"),
+		readline.PcItem("license"),
+		readline.PcItem("ports"),
 		readline.PcItem("users"),
 		readline.PcItem("tables"),
 		readline.PcItem("table"),
@@ -73,6 +77,7 @@ func pcShow() readline.PrefixCompleterInterface {
 		readline.PcItem("rollupgap"),
 		readline.PcItem("tagindexgap"),
 		readline.PcItem("tags"),
+		readline.PcItem("tagstat"),
 	)
 }
 
@@ -96,6 +101,8 @@ func doShow(ctx *client.ActionContext) {
 	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
+	case "ports":
+		doShowPorts(ctx)
 	case "users":
 		doShowUsers(ctx)
 	case "tables":
@@ -130,6 +137,8 @@ func doShow(ctx *client.ActionContext) {
 		doShowTagIndexGap(ctx)
 	case "tags":
 		doShowTags(ctx, cmd.Args)
+	case "tagstat":
+		doShowTagStat(ctx, cmd.Args)
 	default:
 		ctx.Println(helpShow)
 		return
@@ -248,7 +257,7 @@ func doShowSessions(ctx *client.ActionContext) {
 }
 
 func doShowLicense(ctx *client.ActionContext) {
-	sqlText := "select INSTALL_DATE, ISSUE_DATE, TYPE from v$license_info"
+	sqlText := "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE from v$license_info"
 	doShowByQuery0(ctx, sqlText)
 }
 
@@ -345,29 +354,81 @@ func doShowTags(ctx *client.ActionContext, args []string) {
 		return
 	}
 
-	sqlText := fmt.Sprintf("select name from _%s_META order by name", strings.ToUpper(args[0]))
-	doShowByQuery0(ctx, sqlText)
+	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
+	nrow := 0
+	do.Tags(ctx.DB, strings.ToUpper(args[0]), func(name string, err error) bool {
+		if err != nil {
+			ctx.Println("ERR", err.Error())
+			return false
+		}
+		nrow++
+		t.AppendRow(nrow, name)
+		return true
+	})
+	t.Render()
+}
+
+func doShowTagStat(ctx *client.ActionContext, args []string) {
+	if len(args) != 2 {
+		ctx.Println("missing table or tag name")
+		ctx.Println("Usage: show tagstat <table> <tag>")
+		return
+	}
+
+	t := ctx.NewBox([]string{"NAME", "VALUE"})
+	stat, err := do.TagStat(ctx.DB, args[0], args[1])
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	tz := time.UTC
+	if itm := ctx.Pref().TimeZone(); itm != nil {
+		tz = itm.TimezoneValue()
+	}
+	timeformat := util.GetTimeformat("-")
+	if itm := ctx.Pref().Timeformat(); itm != nil {
+		timeformat = itm.Value()
+	}
+	tmf := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return fmt.Sprintf("%s (%s)", t.In(tz).Format(timeformat), tz.String())
+	}
+
+	t.AppendRow("NAME", stat.Name)
+	t.AppendRow("ROW_COUNT", stat.RowCount)
+	t.AppendRow("MIN_TIME", tmf(stat.MinTime))
+	t.AppendRow("MAX_TIME", tmf(stat.MaxTime))
+	t.AppendRow("MIN_VALUE", stat.MinValue)
+	t.AppendRow("MIN_VALUE_TIME", tmf(stat.MinValueTime))
+	t.AppendRow("MAX_VALUE", stat.MaxValue)
+	t.AppendRow("MAX_VALUE_TIME", tmf(stat.MaxValueTime))
+	t.AppendRow("RECENT_ROW_TIME", tmf(stat.RecentRowTime))
+	t.Render()
 }
 
 func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
-	var output spi.OutputStream
+	var output spec.OutputStream
 	output, err := stream.NewOutputStream("-")
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 	defer output.Close()
 
-	encoder := codec.NewEncoderBuilder(codec.BOX).
-		SetOutputStream(output).
-		SetRownum(true).
-		SetHeading(true).
-		SetBoxStyle(ctx.Pref().BoxStyle().Value()).
-		Build()
+	encoder := codec.NewEncoder(codec.BOX,
+		codec.OutputStream(output),
+		codec.Rownum(true),
+		codec.Heading(true),
+		codec.BoxStyle(ctx.Pref().BoxStyle().Value()),
+	)
 
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+			codec.SetEncoderColumns(encoder, cols)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
@@ -416,59 +477,21 @@ func doShowTable(ctx *client.ActionContext, args []string, showAll bool) {
 }
 
 func doShowTables(ctx *client.ActionContext, showAll bool) {
-	sqlText := `SELECT
-			j.DB_NAME as DB_NAME,
-			u.NAME as USER_NAME,
-			j.NAME as TABLE_NAME,
-			j.TYPE as TABLE_TYPE,
-			j.FLAG as TABLE_FLAG
-		from
-			M$SYS_USERS u,
-			(select
-				a.NAME as NAME,
-				a.USER_ID as USER_ID,
-				a.TYPE as TYPE,
-				a.FLAG as FLAG,
-				case a.DATABASE_ID
-					when -1 then 'MACHBASEDB'
-					else d.MOUNTDB
-				end as DB_NAME
-			from M$SYS_TABLES a
-				left join V$STORAGE_MOUNT_DATABASES d on a.DATABASE_ID = d.BACKUP_TBSID) as j
-		where
-			u.USER_ID = j.USER_ID
-		order by j.NAME
-		`
-
-	rows, err := ctx.DB.Query(sqlText)
-	if err != nil {
-		ctx.Printfln("ERR show tables fail; %s", err.Error())
-		return
-	}
-	defer rows.Close()
-
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
-
 	nrow := 0
-	for rows.Next() {
-		var dbname string
-		var user string
-		var name string
-		var typ int
-		var flg int
-		err := rows.Scan(&dbname, &user, &name, &typ, &flg)
+	do.Tables(ctx.DB, func(ti *do.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
-			return
+			return false
 		}
-		if !showAll && strings.HasPrefix(name, "_") {
-			continue
+		if !showAll && strings.HasPrefix(ti.Name, "_") {
+			return true
 		}
 		nrow++
-
-		desc := do.TableTypeDescription(spi.TableType(typ), flg)
-		t.AppendRow(nrow, dbname, user, name, desc)
-	}
+		desc := do.TableTypeDescription(spi.TableType(ti.Type), ti.Flag)
+		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
+		return true
+	})
 	t.Render()
 }
 
@@ -530,5 +553,19 @@ func doShowInfo(ctx *client.ActionContext) {
 	box.AppendRow("mem.stack.sys", util.BytesUnit(nfo.Runtime.MemStackSys, ctx.Lang))
 	box.AppendRow("mem.stack.in-use", util.BytesUnit(nfo.Runtime.MemStackInUse, ctx.Lang))
 
+	box.Render()
+}
+
+func doShowPorts(ctx *client.ActionContext) {
+	ports, err := ctx.DB.GetServicePorts("")
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	box := ctx.NewBox([]string{"SERVICE", "PORT"})
+	for _, p := range ports {
+		box.AppendRow(p.Service, p.Address)
+	}
 	box.Render()
 }

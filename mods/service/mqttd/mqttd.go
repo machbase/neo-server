@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/allowance"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/tql"
 	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
@@ -50,6 +51,12 @@ func OptionMaxMessageSizeLimit(limit int) Option {
 	}
 }
 
+func OptionPeerDefaultLogLevel(lvl logging.Level) Option {
+	return func(s *mqttd) {
+		s.mqttd.SetPeerDefaultLogLevel(lvl)
+	}
+}
+
 func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	return func(s *mqttd) {
 		s.authServer = authSvc
@@ -68,6 +75,12 @@ func OptionTls(serverCertPath string, serverKeyPath string) Option {
 		s.serverCertPath = serverCertPath
 		s.serverKeyPath = serverKeyPath
 		s.log.Infof("MQTT TLS enabled")
+	}
+}
+
+func OptionTqlLoader(loader tql.Loader) Option {
+	return func(s *mqttd) {
+		s.tqlLoader = loader
 	}
 }
 
@@ -90,6 +103,7 @@ type mqttd struct {
 	log        logging.Log
 	appenders  cmap.ConcurrentMap
 	authServer security.AuthServer
+	tqlLoader  tql.Loader
 
 	listenAddresses     []string
 	handlers            []*HandlerConfig
@@ -199,11 +213,6 @@ func (svr *mqttd) OnConnect(evt *mqtt.EvtConnect) (mqtt.AuthCode, *mqtt.ConnectR
 		if !pass {
 			return mqtt.AuthError, nil, nil
 		}
-	}
-
-	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
-	if ok {
-		peer.SetLogLevel(logging.LevelDebug)
 	}
 
 	pubTopic := []string{}

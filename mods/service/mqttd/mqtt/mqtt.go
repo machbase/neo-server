@@ -83,6 +83,8 @@ type Server interface {
 	SetDelegate(d ServerDelegate)
 	Delegate() ServerDelegate
 
+	SetPeerDefaultLogLevel(lvl logging.Level)
+
 	GetPeer(peerId string) (Peer, bool)
 	CountPeers() int64
 	IteratePeers(cb func(p Peer) bool)
@@ -114,6 +116,8 @@ type server struct {
 
 	peers cmap.ConcurrentMap // map string(remoteAddress) - Peer
 
+	peerLogLevel logging.Level
+
 	OtpPrefixes OtpPrefixes
 	metrics     *ServerMetrics
 }
@@ -130,6 +134,8 @@ func NewServer(cfg *MqttConfig, delegate ServerDelegate) Server {
 
 func (s *server) Start() error {
 	s.log = logging.GetLog("mqtt")
+	s.peerLogLevel = s.log.Level()
+
 	s.allowance = allowance.NewAllowanceFromConfig(&s.conf.Allowance)
 	s.metrics = NewServerMetrics(s)
 
@@ -177,6 +183,7 @@ func (s *server) Start() error {
 					// create and start new peer
 					p := NewPeer(s, cn)
 					p.SetMaxMessageSizeLimit(s.conf.MaxMessageSizeLimit)
+					p.SetLogLevel(s.peerLogLevel)
 					go p.Start()
 					s.metrics.ConnAllowed.Inc(1)
 
@@ -218,6 +225,10 @@ func (s *server) Stop() {
 	s.closeWait.Wait()
 
 	close(s.quitChan)
+}
+
+func (s *server) SetPeerDefaultLogLevel(lvl logging.Level) {
+	s.peerLogLevel = lvl
 }
 
 func (s *server) Listeners() []Listener {

@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"html/template"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/renderer/model"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type ChartJsModel struct {
@@ -31,7 +32,8 @@ type ChartJsDataset struct {
 }
 
 type ChartJsOptions struct {
-	Scales ChartJsScalesOption `json:"scales"`
+	Scales  ChartJsScalesOption  `json:"scales"`
+	Plugins ChartJsPluginsOption `json:"plugins"`
 }
 
 type ChartJsScalesOption struct {
@@ -42,7 +44,16 @@ type ChartJsScale struct {
 	BeginAtZero bool `json:"beginAtZero"`
 }
 
-func convertChartJsModel(data []*spi.RenderingData) (*ChartJsModel, error) {
+type ChartJsPluginsOption struct {
+	Title ChartJsTitlePluginOption `json:"title"`
+}
+
+type ChartJsTitlePluginOption struct {
+	Display bool   `json:"display"`
+	Text    string `json:"text"`
+}
+
+func convertChartJsModel(data []*model.RenderingData) (*ChartJsModel, error) {
 	pl := []string{"rgb(44,142,229)", "rgb(251,72,113)", "rgb(63,180,179)", "rgb(252,141,50)", "rgb(133,71,255)", "rgb(253,195,69)", "rgb(189,192,197)"}
 
 	cm := &ChartJsModel{}
@@ -63,6 +74,12 @@ func convertChartJsModel(data []*spi.RenderingData) (*ChartJsModel, error) {
 	cm.Options.Scales = ChartJsScalesOption{
 		Y: ChartJsScale{BeginAtZero: false},
 	}
+	cm.Options.Plugins = ChartJsPluginsOption{
+		Title: ChartJsTitlePluginOption{
+			Display: true,
+			Text:    "High Frequency Chart",
+		},
+	}
 	return cm, nil
 }
 
@@ -72,7 +89,7 @@ func convertChartJsModel(data []*spi.RenderingData) (*ChartJsModel, error) {
 type JsonRenderer struct {
 }
 
-func NewJsonRenderer() spi.Renderer {
+func NewJsonRenderer() *JsonRenderer {
 	return &JsonRenderer{}
 }
 
@@ -80,7 +97,7 @@ func (r *JsonRenderer) ContentType() string {
 	return "application/json"
 }
 
-func (r *JsonRenderer) Render(ctx context.Context, output spi.OutputStream, data []*spi.RenderingData) error {
+func (r *JsonRenderer) Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error {
 	model, err := convertChartJsModel(data)
 	if err != nil {
 		return err
@@ -96,7 +113,7 @@ func (r *JsonRenderer) Render(ctx context.Context, output spi.OutputStream, data
 ///////////////////////////////////////////////
 // HTML Renderer
 
-func NewHtmlRenderer(opts HtmlOptions) spi.Renderer {
+func NewHtmlRenderer(opts HtmlOptions) *HtmlRenderer {
 	return &HtmlRenderer{
 		Options: opts,
 	}
@@ -125,7 +142,7 @@ type HtmlRenderer struct {
 	Options HtmlOptions
 }
 
-func (r *HtmlRenderer) Render(ctx context.Context, output spi.OutputStream, data []*spi.RenderingData) error {
+func (r *HtmlRenderer) Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error {
 	tmpl, err := template.New("chart_template").Parse(chartHtmlTemplate)
 	if err != nil {
 		fmt.Println(err.Error())

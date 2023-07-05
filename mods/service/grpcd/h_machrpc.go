@@ -472,3 +472,26 @@ func (s *grpcd) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoReque
 	rsp.Reason = "success"
 	return rsp, nil
 }
+
+func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsRequest) (*machrpc.ServicePorts, error) {
+	rsp := &machrpc.ServicePorts{}
+	tick := time.Now()
+
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("GetServicePorts panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	list, err := s.db.GetServicePorts(req.Service)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range list {
+		rsp.Ports = append(rsp.Ports, &machrpc.Port{Service: p.Service, Address: p.Address})
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}

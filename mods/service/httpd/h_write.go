@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +16,8 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -43,6 +47,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	heading := strBool(ctx.Query("heading"), false)
 	createTable := strBool(ctx.Query("create-table"), false)
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
+	trans := strString(ctx.Query("transcoder"), "")
 
 	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
 	if err != nil {
@@ -68,7 +73,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	var in spi.InputStream
+	var in spec.InputStream
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
 		if err != nil {
@@ -82,14 +87,27 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
-	decoder := codec.NewDecoderBuilder(format).
-		SetInputStream(in).
-		SetColumns(desc.Columns.Columns()).
-		SetTimeFormat(timeformat).
-		SetTimeLocation(timeLocation).
-		SetCsvDelimieter(delimiter).
-		SetCsvHeading(heading).
-		Build()
+	codecOpts := []codec.Option{
+		codec.InputStream(in),
+		codec.Table(tableName),
+		codec.Columns(desc.Columns.Columns().Names(), desc.Columns.Columns().Types()),
+		codec.Timeformat(timeformat),
+		codec.TimeLocation(timeLocation),
+		codec.Delimiter(delimiter),
+		codec.Heading(heading),
+	}
+
+	if len(trans) > 0 {
+		opts := []transcoder.Option{}
+		if exepath, err := os.Executable(); err == nil {
+			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+		}
+		opts = append(opts, transcoder.OptionPname("http"))
+		trans := transcoder.New(trans, opts...)
+
+		codecOpts = append(codecOpts, codec.Transcoder(trans))
+	}
+	decoder := codec.NewDecoder(format, codecOpts...)
 
 	if decoder == nil {
 		rsp.Reason = "codec not found"
@@ -107,7 +125,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	valueHolder := strings.Join(_hold, ",")
 	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
-
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {

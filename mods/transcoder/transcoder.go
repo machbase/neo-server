@@ -32,16 +32,24 @@ func New(name string, opts ...Option) Transcoder {
 
 type Option func(tc Transcoder)
 
-func PathOption(paths ...string) Option {
+func OptionPath(paths ...string) Option {
 	return func(tc Transcoder) {
 		if sc, ok := tc.(*scriptTranslator); ok {
-			sc.opts = append(sc.opts, script.PathOption(paths...))
+			sc.opts = append(sc.opts, script.OptionPath(paths...))
 		}
 	}
 }
 
-type noTranslator struct {
+func OptionPname(pname string) Option {
+	return func(tc Transcoder) {
+		switch t := tc.(type) {
+		case *cemsTranslator:
+			t.pname = pname
+		}
+	}
 }
+
+type noTranslator struct{}
 
 var noTranslatorSingleton = &noTranslator{}
 
@@ -50,10 +58,12 @@ func (ts *noTranslator) Process(r any) (any, error) {
 }
 
 type cemsTranslator struct {
+	pname string
 	idgen *uuid.Gen
 }
 
 var cemsTranslatorSingleton = &cemsTranslator{
+	pname: "cems_transcoder",
 	idgen: uuid.NewGen(),
 }
 
@@ -67,7 +77,6 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 	id, _ := ts.idgen.NewV6()
 	idstr := id.String()
 	payload := fmt.Sprintf(`{"@type":"type.googleapis.com/google.protobuf.DoubleValue", "value":%f}`, orgValues[2])
-
 	newValues[0] = orgValues[0] // name
 	newValues[1] = orgValues[1] // time
 	newValues[2] = orgValues[2] // value
@@ -75,7 +84,7 @@ func (ts *cemsTranslator) Process(r any) (any, error) {
 	newValues[4] = nil          // ivalue
 	newValues[5] = nil          // svalue
 	newValues[6] = idstr        // id
-	newValues[7] = "mqtt"       // pname
+	newValues[7] = ts.pname     // pname
 	newValues[8] = 0            // sampling_period
 	newValues[9] = payload      // payload
 	return newValues, nil
@@ -86,7 +95,7 @@ type scriptTranslator struct {
 	sc   script.Script
 	err  error
 	log  logging.Log
-	opts []script.LoaderOption
+	opts []script.Option
 }
 
 func newScripTransaltor(name string) *scriptTranslator {
@@ -124,7 +133,7 @@ func (ts *scriptTranslator) Process(r any) (any, error) {
 		return nil, err
 	}
 
-	result := []any{}
+	var result any
 	if err := ts.sc.GetVar("OUTPUT", &result); err != nil {
 		return nil, err
 	}

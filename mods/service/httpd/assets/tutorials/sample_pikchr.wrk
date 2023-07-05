@@ -1,0 +1,50 @@
+{
+    "data": [
+        {
+            "id": "1688358708563364",
+            "type": "mrk",
+            "contents": "# `pikchr` Example\n\nPikchr (pronounced \"picture\") is a PIC-like markup language for diagrams in technical documentation.\nPikchr is designed to be embedded in fenced code blocks of Markdown or similar mechanisms of \nother documentation markup languages.\n\n```pikchr\n       linerad = 10px\n       linewid *= 0.5 \n       $h = 0.21\n       # debug_label_color=red; color=lightgray; margin=1cm\n\nC0:    circle radius 10%\n       arrow 150%\nX1:    previous.end\nSEL:   oval \"SELECT\" fit\n       arrow right linerad then down 1.0*$h then right linerad+arrowht\nDSTCT: oval \"DISTINCT\" fit\n       arrow right linerad then up even with SEL then right 150%\nRC:    box \"result-column\" fit\nCMA1:  oval \",\" bold fit at 1.25*$h below RC\n       arrow from RC.e right linerad then down even with CMA1 then to CMA1.e\n       line from CMA1.w right even with linerad+arrowht west of RC.w \\\n          then up even with RC then right linerad\n\n       # DISTINCT bypass\n       arrow from SEL.e right even with DSTCT\n       line to arrowht west of RC.w\n\n       # ALL option\nALL:   oval \"ALL\" fit with .w at 1.25*$h below DISTINCT.w\n       arrow right even with DSTCT.e\n       line right linerad then up even with DSTCT.n\n       arrow from SEL.e right linerad then down even with ALL then to ALL.w\n\nBACK1: 1.25*$h below ALL\nX2:    linerad+arrowht right of X1\n\n       # Build the FROM clause\n       right\nFROM:  oval \"FROM\" fit with .w at (X2,1.25*$h below BACK1)\n       arrow 200%\nTORS:  box \"table-or-subquery\" fit\nJCLS:  box \"join-clause\" fit at 2.45*$h below TORS\nCMA2:  oval \",\" bold fit at 1.2*$h below TORS\n       arrow from TORS.e right linerad then down even with CMA2 \\\n          then to CMA2.e\n       line from CMA2.w left even with linerad+arrowht left of TORS.w \\\n          then up even with TORS then right linerad\n       arrow from FROM.e right linerad then down 2.45*$h \\\n          then to JCLS.w\n       arrow from JCLS.e right even with TORS.e then right 2.2*linerad \\\n          then up 1.1*$h\n       arrow up 1.35*$h then right 1.4*linerad\n       line right even with linewid right of TORS.e \\\n          then down even with TORS then right linerad\nFout:  previous.end\n\n       # Linkage from SELECT down into FROM\n       arrow from RC.e right linerad then down even with ALL\n       arrow down even with BACK1 then left even with DSTCT.e\n       arrow left even with X1 then down even with FROM then to FROM.w\n\nBACK2: 1.25*$h below JCLS\n\n       # Build the WHERE clause\n       right\nWHERE: oval \"WHERE\" fit with .w at (X2,1.25*$h below BACK2)\n       arrow 2*arrowht\nWHEX:  box \"expr\" fit\nBACK3: 1.25*$h below WHERE\n\n       # Linkage from FROM down to WHERE\n       arrow from TORS.e to linerad east of Fout then down even with CMA2.s\n       arrow down even with BACK2 then to BACK2\n       arrow left even with X1 then down even with WHERE then to WHERE.w\n       arrow from (X1,FROM.n) down even with CMA2.s\n       line down even with WHERE.n\n\n       # Build the GROUP BY clause\n       right\nGROUP: oval \"GROUP\" fit with .w at (X2,2*$h below BACK3)\n       arrow 2*arrowht\n       oval \"BY\" fit\n       arrow\nGEX:   box \"expr\" fit\n       arrow 230%\nHVNG:  oval \"HAVING\" fit\n       arrow 2*arrowht\nHEX:   box \"expr\" fit\nGCMA:  oval \",\" bold fit at 1.25*$h below GEX\n       arrow from GEX.e right linerad then down even with GCMA then to GCMA.e\n       line from GCMA.w left even with linerad+arrowht west of GEX.w \\\n          then up even with GEX then right linerad\n       arrow from 2*linerad+arrowht west of HAVING.w then right linerad \\\n          then down $h then right even with .5<HAVING,HAVING.e>\n       line right even with linerad east of HEX.e then down even with HEX \\\n          then right linerad\nGout:  previous.end\nBACK4: (BACK2,1.25*$h below GCMA)\n       arrow from (X1,BACK3) then down $h \\\n          then right even with BY\n       arrow right even with linerad right of GEX.e \\\n          then down even with GEX then right linerad+arrowht\n\n       # Link the WHERE clause down into the GROUP BY clause\n       arrow from WHEX.e right linerad then down even with BACK3 \\\n          then left even with WHERE.e\n       arrow left even with X1 then down even with GROUP then to GROUP.w\n       arrow from (X1,WHERE.n) down even with .5<WHERE,arrowht below BACK3>\n       line down even with GROUP.n\n       right\n\n       # build the WINDOW clause\n       oval \"WINDOW\" fit with .w at (X2,1.25*$h below BACK4)\n       arrow\nWNAM:  oval \"window-name\" fit\n       arrow 2*arrowht\n       oval \"AS\" fit\n       arrow same\nWDEF:  box \"window-defn\" fit\nWCMA:  oval \",\" bold fit at 1.25*$h below .5<WNAM.w,WDEF.e>\n       arrow from WDEF.e right linerad then down even with WCMA then to WCMA.e\n       line from WCMA.w left even with linerad+arrowht west of WNAM.w \\\n           then up even with WNAM then right linerad\nOUT5:  (BACK2,1.25*$h below WCMA)\n\n       # Link GROUP BY down into WINDOW and WINDOW to output\n       arrow from HEX.e to linerad east of Gout then down even with GCMA\n       arrow down even with BACK4 then to BACK4\n       arrow left even with X1 then down even with WINDOW then to WINDOW.w\n       arrow from (X1,GROUP.n) down even with GCMA\n       arrow down even with OUT5 then to OUT5\n       arrow right even with 2*linewid east of Gout\nC99:   circle same\n       arrow from (linerad right of WDEF.e,WCMA.n) \\\n          down even with arrowht above OUT5\n       line down even with OUT5 then right linerad\n\n       # build the VALUES clause\n       right\n       oval \"VALUES\" fit with .w at (X1,2.5*$h below OUT5)\n       arrow\nVLP:   oval \"(\" bold fit\n       arrow\nVEX:   box \"expr\" fit\n       arrow\nVRP:   oval \")\" bold fit\n       arrow right even with Gout\n       arrow right linerad then up even with linerad below OUT5\n       line up even with OUT5 then right\n       # expr loop\nVCMA1: oval \",\" bold fit at 1.25*$h above VEX\nVCMA2: oval \",\" bold fit at 1.25*$h below VEX\n       arrow from VEX.e right linerad then up even with VCMA1 then to VCMA1.e\n       line from VCMA1.w left even with linerad+arrowht west of VEX.w \\\n          then down even with VEX then right linerad\n       arrow from VRP.e right linerad then down even with VCMA2 then to VCMA2.e\n       line from VCMA2.w left even with linerad+arrowht west of VLP.w \\\n          then up even with VLP then right linerad\n\n       # link input down to VALUES\n       arrow from C0.e right linerad then down even with VALUES \\\n          then to VALUES.w\n```",
+            "result": "",
+            "status": true,
+            "height": 329,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": false
+        },
+        {
+            "id": "1688359980771110",
+            "type": "mrk",
+            "contents": "## DELETE\n\n```pikchr\n     linerad = 10px\n     linewid *= 0.5\n     $h = 0.21\n\n     circle radius 10%\nA0:  arrow 2*arrowht\n\n     # Draw the optional WITH prefix\n     arrow\nWTH: oval \"WITH\" fit\nRSV: oval \"RECURSIVE\" fit with .w at WTH.e + (1.25*linewid,-1.0*$h)\n     arrow from WTH.e right even with RSV\n     arrow right even with RSV.e+(2.5*linewid,0)\nCTE: box \"common-table-expression\" fit\n\n     # Link in the RECURSIVE bubble\n     arrow from WTH.e right linerad then down even with RSV then to RSV.w\n     arrow from RSV.e right 2*arrowht\n     line right linerad then up even with WTH then to arrowht left of CTE.w\n\n     # CTE loop back\nC1:  oval \",\" bold fit at 1.25*$h below CTE\n     arrow from CTE.e right linerad then down even with C1 then to C1.e\n     line from C1.w right even with 2*arrowht west of CTE.w \\\n        then up even with CTE then to arrowht west of CTE.w\n\n     # Main line\nY1:  1.25*$h below RSV   # Vertical position of the WITH clause back-arrow\n     right\nDEL: oval \"DELETE\" fit with .w at (WTH.w,1.25*$h below Y1)\n     arrow 2*arrowht\nFRM: oval \"FROM\" fit\n     arrow 2*arrowht\nQTN: box \"qualified-table-name\" fit\nY9:  3.0*$h below QTN\n\nC9:  circle same at (linewid right of CTE.e, Y9)\n     line from C9.w then left linewid then up $h \\\n       then left linerad\nRC:  box \"returning-clause\" fit\n     arrow <- left linerad+arrowht then down even with C9 then left linerad\n     arrow <- left linerad+arrowht then up even with RC then left linerad\nEXP: box \"expr\" fit\n     arrow <- left 2*arrowht\nWHR: oval \"WHERE\" fit\n     arrow from QTN.e right linerad \\\n       then down even with 0.5<QTN,WHR> then left even with QTN\nXW:  linerad+arrowht left of WHR.nw\n     arrow left even with XW then down even with WHR then to WHR.w\n     arrow from XW down even with C9 then to C9.w\n\n     # Link the WITH clause and its bypass into the DELETE keyword\n     arrow from CTE.e right linerad then down even with Y1 \\\n        then right even with QTN\n     arrow left even with linerad right of A0.end \\\n        then down even with DEL then to DEL.w\n     arrow from A0.end right linerad then down even with RSV\n     line down even with DEL.n\n```",
+            "status": true,
+            "height": 286,
+            "lang": [
+                [
+                    "markdown",
+                    "Markdown"
+                ],
+                [
+                    "SQL",
+                    "SQL"
+                ],
+                [
+                    "javascript",
+                    "TQL"
+                ]
+            ],
+            "minimal": false,
+            "result": ""
+        }
+    ]
+}

@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type fout struct {
@@ -16,7 +16,7 @@ type fout struct {
 	mutex sync.Mutex
 }
 
-func NewOutputStream(path string) (spi.OutputStream, error) {
+func NewOutputStream(path string) (spec.OutputStream, error) {
 	out := &fout{
 		path: path,
 	}

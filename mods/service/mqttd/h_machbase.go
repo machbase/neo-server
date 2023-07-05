@@ -3,8 +3,10 @@ package mqttd
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +16,9 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
+	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -38,6 +42,8 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {
 		return svr.handleAppend(peer, topic, evt.Raw)
+	} else if strings.HasPrefix(topic, "tql/") && svr.tqlLoader != nil {
+		return svr.handleTql(peer, topic, evt.Raw)
 	} else {
 		peer.GetLog().Warnf("---- invalid topic '%s'", evt.Topic)
 	}
@@ -86,46 +92,33 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) error {
 	peerLog := peer.GetLog()
 
-	table := strings.ToUpper(strings.TrimPrefix(topic, "append/"))
-	if len(table) == 0 {
+	writePath := strings.ToUpper(strings.TrimPrefix(topic, "append/"))
+	wp, err := util.ParseWritePath(writePath)
+	if err != nil {
+		peerLog.Warn(topic, err.Error())
 		return nil
 	}
 
-	toks := strings.Split(table, ":")
-	var compress = ""
-	var transname = ""
-
-	var format = "json"
-	if len(toks) >= 1 {
-		table = toks[0]
-	}
-	if len(toks) >= 2 {
-		format = strings.ToLower(toks[1])
-	}
-	if len(toks) == 3 {
-		compress = strings.ToLower(toks[2])
-	} else if len(toks) == 4 {
-		transname = strings.ToLower(toks[2])
-		compress = strings.ToLower(toks[3])
+	if wp.Format == "" {
+		wp.Format = "json"
 	}
 
-	switch format {
+	switch wp.Format {
 	case "json":
 	case "csv":
 	default:
-		peerLog.Warnf("---- unsupported format '%s'", format)
+		peerLog.Warnf("---- unsupported format '%s'", wp.Format)
 		return nil
 	}
-	switch compress {
+	switch wp.Compress {
 	case "": // no compression
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		peerLog.Warnf("---- unsupproted compression '%s", compress)
+		peerLog.Warnf("---- unsupproted compression '%s", wp.Compress)
 		return nil
 	}
 
-	var err error
 	var appenderSet []spi.Appender
 	var appender spi.Appender
 	var peerId = peer.Id()
@@ -134,14 +127,14 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	if exists {
 		appenderSet = val.([]spi.Appender)
 		for _, a := range appenderSet {
-			if a.TableName() == table {
+			if a.TableName() == wp.Table {
 				appender = a
 				break
 			}
 		}
 	}
 	if appender == nil {
-		appender, err = svr.db.Appender(table)
+		appender, err = svr.db.Appender(wp.Table)
 		if err != nil {
 			peerLog.Errorf("---- fail to create appender, %s", err.Error())
 			return nil
@@ -153,9 +146,9 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		svr.appenders.Set(peerId, appenderSet)
 	}
 
-	var instream spi.InputStream
+	var instream spec.InputStream
 
-	if compress == "gzip" {
+	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
 			if gr != nil {
@@ -175,40 +168,92 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	builder := codec.NewDecoderBuilder(format).
-		SetInputStream(instream).
-		SetColumns(cols).
-		SetTimeFormat("ns").
-		SetTimeLocation(time.UTC).
-		SetCsvDelimieter(",").
-		SetCsvHeading(false)
-
-	if len(transname) > 0 {
-		trans := transcoder.New(transname,
-			transcoder.PathOption(filepath.Dir(os.Args[0])),
-		)
-		builder.SetTranscoder(trans)
+	codecOpts := []codec.Option{
+		codec.InputStream(instream),
+		codec.Timeformat("ns"),
+		codec.TimeLocation(time.UTC),
+		codec.Table(wp.Table),
+		codec.Columns(cols.Names(), cols.Types()),
+		codec.Delimiter(","),
+		codec.Heading(false),
 	}
 
-	decoder := builder.Build()
+	if len(wp.Transform) > 0 {
+		opts := []transcoder.Option{}
+		if exepath, err := os.Executable(); err == nil {
+			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+		}
+		opts = append(opts, transcoder.OptionPname("mqtt"))
+		trans := transcoder.New(wp.Transform, opts...)
+		codecOpts = append(codecOpts, codec.Transcoder(trans))
+	}
+
+	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
 	recno := 0
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
-				peerLog.Warnf("---- append %s, %s", format, err.Error())
+				peerLog.Warnf("---- append %s, %s", wp.Format, err.Error())
 				return nil
 			}
 			break
 		}
 		err = appender.Append(vals...)
 		if err != nil {
-			peerLog.Errorf("---- append %s, %s", format, err.Error())
+			peerLog.Errorf("---- append %s, %s", wp.Format, err.Error())
 			break
 		}
 		recno++
 	}
 	peerLog.Debugf("---- appended %d record(s), %s", recno, topic)
+	return nil
+}
+
+func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error {
+	peerLog := peer.GetLog()
+
+	if svr.tqlLoader == nil {
+		peerLog.Error("tql is disabled.")
+		return nil
+	}
+
+	rawQuery := strings.SplitN(strings.TrimPrefix(topic, "tql/"), "?", 2)
+	if len(rawQuery) == 0 {
+		peerLog.Warn(topic, "no tql path")
+		return nil
+	}
+	path := rawQuery[0]
+	if !strings.HasSuffix(path, ".tql") {
+		peerLog.Warn(topic, "no tql found:", path)
+		return nil
+	}
+	var params url.Values
+	if len(path) == 2 {
+		vs, err := url.ParseQuery(rawQuery[1])
+		if err != nil {
+			peerLog.Warn(topic, "tql invalid query:", rawQuery[1])
+			return nil
+		}
+		params = vs
+	}
+
+	script, err := svr.tqlLoader.Load(path)
+	if err != nil {
+		peerLog.Warn(topic, "tql load fail", path, err.Error())
+		return nil
+	}
+
+	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard)
+	if err != nil {
+		svr.log.Error("tql parse fail", path, err.Error())
+		return nil
+	}
+
+	if err := tql.Execute(context.TODO(), svr.db); err != nil {
+		svr.log.Error("tql execute fail", path, err.Error())
+		return nil
+	}
 	return nil
 }

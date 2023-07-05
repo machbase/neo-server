@@ -16,6 +16,8 @@ import (
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	swaggerFiles "github.com/swaggo/files"
@@ -35,6 +37,8 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		log:      logging.GetLog("httpd"),
 		db:       db,
 		jwtCache: security.NewJwtCache(),
+
+		neoShellAccount: make(map[string]string),
 	}
 	for _, opt := range options {
 		opt(s)
@@ -62,6 +66,42 @@ func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	}
 }
 
+// neo-shell address
+func OptionNeoShellAddress(addrs ...string) Option {
+	return func(s *httpd) {
+		candidates := []string{}
+		for _, addr := range addrs {
+			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
+				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
+				// if loopback is available, use it for web-terminal
+				// eliminate other candiates
+				candidates = candidates[:0]
+				break
+			} else if strings.HasPrefix(addr, "tcp://") {
+				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
+			}
+		}
+		if len(candidates) > 0 {
+			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
+			s.neoShellAddress = candidates[0]
+		}
+	}
+}
+
+// experiement features
+func OptionExperimentMode(enable bool) Option {
+	return func(s *httpd) {
+		s.experimentMode = enable
+	}
+}
+
+// license file path
+func OptionLicenseFilePath(path string) Option {
+	return func(s *httpd) {
+		s.licenseFilePath = path
+	}
+}
+
 // Handler
 func OptionHandler(prefix string, handler HandlerType) Option {
 	return func(s *httpd) {
@@ -69,15 +109,21 @@ func OptionHandler(prefix string, handler HandlerType) Option {
 	}
 }
 
-func OptionDebugMode() Option {
+func OptionTqlLoader(loader tql.Loader) Option {
 	return func(s *httpd) {
-		s.debugMode = true
+		s.tqlLoader = loader
 	}
 }
 
-func OptionReleaseMode() Option {
+func OptionServerSideFileSystem(ssfs *ssfs.SSFS) Option {
 	return func(s *httpd) {
-		s.debugMode = false
+		s.serverFs = ssfs
+	}
+}
+
+func OptionDebugMode(isDebug bool) Option {
+	return func(s *httpd) {
+		s.debugMode = isDebug
 	}
 }
 
@@ -95,7 +141,15 @@ type httpd struct {
 	jwtCache   security.JwtCache
 	authServer security.AuthServer
 
-	debugMode bool
+	neoShellAddress string
+	neoShellAccount map[string]string
+
+	tqlLoader tql.Loader
+	serverFs  *ssfs.SSFS
+
+	licenseFilePath string
+	debugMode       bool
+	experimentMode  bool
 }
 
 type HandlerType string
@@ -104,7 +158,7 @@ const (
 	HandlerMachbase = HandlerType("machbase")
 	HandlerInflux   = HandlerType("influx") // influx line protocol
 	HandlerWeb      = HandlerType("web")    // web ui
-	HandlerLake     = HandlerType("lake")
+	HandlerLake     = HandlerType("lakes")
 	HandlerSwagger  = HandlerType("swagger")
 	HandlerVoid     = HandlerType("-")
 )
@@ -154,7 +208,9 @@ func (svr *httpd) Stop() {
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(ginutil.RecoveryWithLogging(svr.log))
-	r.Use(ginutil.HttpLogger("http-log"))
+	if svr.debugMode {
+		r.Use(ginutil.HttpLogger("http-log"))
+	}
 	r.Use(svr.corsHandler())
 
 	enableSwagger := false
@@ -199,13 +255,35 @@ func (svr *httpd) Router() *gin.Engine {
 			})
 			group.StaticFS(contentBase, GetAssets(contentBase))
 			group.POST("/api/login", svr.handleLogin)
+			group.GET("/api/term/:term_id/data", svr.handleTermData)
+			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			if svr.tqlLoader != nil {
+				group.GET("/api/tql/*path", svr.handleTagQL)
+				group.POST("/api/tql/*path", svr.handleTagQL)
+			}
 			group.Use(svr.handleJwtToken)
+			if svr.tqlLoader != nil {
+				group.POST("/api/tql", svr.handlePostTagQL)
+			}
+			group.POST("/api/md", svr.handleMarkdown)
+			group.Any("/machbase", svr.handleQuery)
+			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
-			group.Any("/machbase", svr.handleQuery)
+			group.GET("/api/chart", svr.handleChart)
+			group.POST("/api/chart", svr.handleChart)
+			group.GET("/api/tables", svr.handleTables)
+			group.GET("/api/tables/:table/tags", svr.handleTags)
+			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
+			group.Any("/api/files/*path", svr.handleFiles)
+			group.GET("/api/license", svr.handleGetLicense)
+			group.POST("/api/license", svr.handleInstallLicense)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
-			group.POST("/appender", svr.handleAppender)
+			group.GET("/tags", svr.handleLakeGetTagList)
+			group.GET("/logs", svr.handleLakeGetLogs)
+			group.GET("/values/:type", svr.handleLakeGetValues)
+			group.POST("/values", svr.handleLakePostValues)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
@@ -217,6 +295,11 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
+			if svr.tqlLoader != nil {
+				group.GET("/tql/*path", svr.handleTagQL)
+				group.POST("/tql/*path", svr.handleTagQL)
+				group.POST("/tql", svr.handlePostTagQL)
+			}
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
@@ -232,6 +315,9 @@ func (svr *httpd) Router() *gin.Engine {
 		svr.log.Infof("HTTP path %s/index.html for swagger", prefixSwagger)
 	}
 
+	// handle /web/echarts/*
+	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
+	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r
@@ -244,13 +330,15 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 		ctx.Abort()
 		return
 	}
-	found := false
+	var claim security.Claim
+	var err error
+	var found = false
 	for _, h := range auth {
 		if !strings.HasPrefix(strings.ToUpper(h), "BEARER ") {
 			continue
 		}
 		tok := h[7:]
-		claim, err := svr.verifyAccessToken(tok)
+		claim, err = svr.verifyAccessToken(tok)
 		if err != nil {
 			if IsErrTokenExpired(err) && strings.HasSuffix(ctx.Request.URL.Path, "/api/relogin") {
 				// jwt has been expired, but the request is for 'relogin'
@@ -270,7 +358,9 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 			break
 		}
 	}
-	if !found {
+	if found {
+		ctx.Set("jwt-claim", claim)
+	} else {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
 		ctx.Abort()
 		return
@@ -314,25 +404,12 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 
 func (svr *httpd) corsHandler() gin.HandlerFunc {
 	corsHandler := cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{
-			http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete,
-			http.MethodPatch, http.MethodHead, http.MethodOptions},
-		AllowHeaders: []string{
-			"Origin", "Access-Control-Allow-Origin",
-			"Authorization", "Access-Control-Allow-Headers",
-			"Access-Control-Max-Age",
-			"X-Requested-With", "Accept",
-			"Content-Type", "Content-Length",
-			"Use-Timezone",
-		},
-		ExposeHeaders: []string{
-			"Cache-Control", "Content-Length", "Content-Language",
-			"Content-Type", "Expires", "Last-Modified", "pragma",
-		},
-		AllowCredentials: true,
-		AllowWebSockets:  true,
-		MaxAge:           12 * time.Hour,
+		AllowAllOrigins: true,
+		//AllowOrigins:    []string{"*"},
+		AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+		AllowHeaders:  []string{"Origin", "Accept", "Content-Type"},
+		ExposeHeaders: []string{"Content-Length"},
+		MaxAge:        12 * time.Hour,
 	})
 	return corsHandler
 }

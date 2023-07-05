@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/term"
 )
@@ -98,7 +100,7 @@ func doSql(ctx *client.ActionContext) {
 		cmd.BoxStyle = ctx.Pref().BoxStyle().Value()
 	}
 	var outputPath = util.StripQuote(cmd.Output)
-	var output spi.OutputStream
+	var output spec.OutputStream
 	output, err = stream.NewOutputStream(outputPath)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
@@ -125,18 +127,18 @@ func doSql(ctx *client.ActionContext) {
 		}
 	}
 
-	encoder := codec.NewEncoderBuilder(cmd.Format).
-		SetOutputStream(output).
-		SetTimeLocation(cmd.TimeLocation).
-		SetTimeFormat(cmd.Timeformat).
-		SetPrecision(cmd.Precision).
-		SetRownum(cmd.Rownum).
-		SetHeading(cmd.Heading).
-		SetBoxStyle(cmd.BoxStyle).
-		SetBoxSeparateColumns(cmd.Interactive).
-		SetBoxDrawBorder(cmd.Interactive).
-		SetCsvDelimieter(cmd.Delimiter).
-		Build()
+	encoder := codec.NewEncoder(cmd.Format,
+		codec.OutputStream(output),
+		codec.Timeformat(cmd.Timeformat),
+		codec.Precision(cmd.Precision),
+		codec.Rownum(cmd.Rownum),
+		codec.Heading(cmd.Heading),
+		codec.TimeLocation(cmd.TimeLocation),
+		codec.Delimiter(cmd.Delimiter),
+		codec.BoxStyle(cmd.BoxStyle),
+		codec.BoxSeparateColumns(cmd.Interactive),
+		codec.BoxDrawBorder(cmd.Interactive),
+	)
 
 	headerHeight := 0
 	switch cmd.Format {
@@ -149,8 +151,8 @@ func doSql(ctx *client.ActionContext) {
 	}
 
 	windowHeight := 0
-	if cmd.Interactive && term.IsTerminal(0) {
-		if _, height, err := term.GetSize(0); err == nil {
+	if cmd.Interactive && term.IsTerminal(int(syscall.Stdout)) {
+		if _, height, err := term.GetSize(int(syscall.Stdout)); err == nil {
 			windowHeight = height
 		}
 	}
@@ -163,7 +165,8 @@ func doSql(ctx *client.ActionContext) {
 	queryCtx := &do.QueryContext{
 		DB: ctx.DB,
 		OnFetchStart: func(cols spi.Columns) {
-			encoder.Open(cols)
+			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
+			encoder.Open()
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			err := encoder.AddRow(values)

@@ -121,7 +121,6 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 			color = "\033[90;47m" // 3xx white
 		case StatusCode >= http.StatusBadRequest && StatusCode < http.StatusInternalServerError:
 			color = "\033[90;43m" // 4xx yellow
-			level = logging.LevelWarn
 		default:
 			color = "\033[97;41m" // 5xx red
 			level = logging.LevelError

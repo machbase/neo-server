@@ -3,6 +3,8 @@ package termchart
 import (
 	"context"
 
+	"github.com/machbase/neo-server/mods/renderer/model"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
@@ -22,7 +24,7 @@ type Renderer struct {
 	err        error
 }
 
-func NewRenderer() spi.Renderer {
+func NewRenderer() *Renderer {
 	return &Renderer{}
 }
 
@@ -30,7 +32,7 @@ func (r *Renderer) ContentType() string {
 	return "application/octet-stream"
 }
 
-func (r *Renderer) Render(ctx context.Context, output spi.OutputStream, data []*spi.RenderingData) error {
+func (r *Renderer) Render(ctx context.Context, output spec.OutputStream, data []*model.RenderingData) error {
 	if r.err != nil {
 		return r.err
 	}
