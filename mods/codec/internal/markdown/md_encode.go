@@ -134,7 +134,9 @@ func (ex *Exporter) Close() {
 				html.WithXHTML(),
 			),
 		)
+		ex.output.Write([]byte("<div>"))
 		md.Convert(bytes.NewBufferString(strings.Join(ex.mdLines, "")).Bytes(), ex.output)
+		ex.output.Write([]byte("</div>"))
 		ex.output.Close()
 	})
 }
