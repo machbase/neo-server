@@ -9,6 +9,7 @@ public class PostgreSQL {
         // wiresvr
         //
         String connurl = "jdbc:postgresql://127.0.0.1:5651/postgres?preferQueryMode=simple";
+        //String connurl = "jdbc:postgresql://127.0.0.1:5651/postgres";
 
         try (Connection conn = DriverManager.getConnection(connurl);) {
             PreparedStatement stmt = conn.prepareStatement(

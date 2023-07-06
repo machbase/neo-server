@@ -56,7 +56,6 @@ type svr struct {
 
 func (s *svr) Start() (err error) {
 	options := []wire.OptionFn{}
-	options = append(options, wire.Parse(s.parse))
 	options = append(options, wire.Version("9.0"))
 	if s.debugMode {
 		zlog, _ := zap.NewDevelopment()
@@ -68,7 +67,7 @@ func (s *svr) Start() (err error) {
 		options = append(options, wire.Logger(zlog))
 	}
 	for _, addr := range s.listenAddresses {
-		lsnr, err := wire.NewServer(options...)
+		lsnr, err := wire.NewServer(s.parse, options...)
 		if err != nil {
 			return err
 		}
@@ -89,7 +88,7 @@ func (s *svr) Stop() {
 	}
 }
 
-func (s *svr) parse(ctx context.Context, query string) (wire.PreparedStatementFn, []oid.Oid, error) {
+func (s *svr) parse(ctx context.Context, query string) (wire.PreparedStatementFn, []oid.Oid, wire.Columns, error) {
 	// NOTE: we have to lookup all parameters within the given query.
 	// Parameters could represent positional parameters or anonymous
 	// parameters. We return a zero parameter oid for each parameter
@@ -115,74 +114,71 @@ func (s *svr) parse(ctx context.Context, query string) (wire.PreparedStatementFn
 	}
 
 	var statement wire.PreparedStatementFn
+	var define wire.Columns
 
 	// check if the query should be handled by fake query handler
 	upperQuery := strings.ToUpper(query)
 	for _, f := range fakeQueryFilters {
-		if f(upperQuery) {
+		if define = f(upperQuery); define != nil {
 			statement = func(ctx context.Context, writer wire.DataWriter, parameters []string) error {
 				return s.handleFakeQuery(ctx, query, writer, parameters)
 			}
-			return statement, parameters, nil
+			return statement, parameters, define, nil
 		}
 	}
 
 	// query will be handled by machbase
 	if statement == nil {
+		s.log.Trace("pgwire", query)
+
+		params := make([]any, len(parameters))
+		for i, p := range parameters {
+			params[i] = p
+		}
+
+		rows, err := s.db.Query(query, params...)
+		if err != nil {
+			s.log.Error(err.Error())
+			err = pgerr.WithCode(err, codes.Internal)
+			err = pgerr.WithSeverity(err, pgerr.LevelFatal)
+			return nil, nil, nil, err
+		}
+
+		cols, err := rows.Columns()
+		if err != nil {
+			s.log.Error(err.Error())
+			return nil, nil, nil, err
+		}
+
+		tableId := 0
+
+		for _, c := range cols {
+			oidType, format := columnToOid(c)
+			def := wire.Column{
+				Table:  int32(tableId),
+				Name:   c.Name,
+				Oid:    oidType,
+				Width:  int16(c.Size),
+				Format: format,
+			}
+			define = append(define, def)
+		}
+
+		values := cols.MakeBuffer()
+
 		statement = func(ctx context.Context, writer wire.DataWriter, parameters []string) error {
-			return s.handleQuery(ctx, query, writer, parameters)
+			for rows.Next() {
+				rows.Scan(values...)
+				writer.Row(values)
+			}
+
+			rows.Close()
+
+			return writer.Complete("OK")
 		}
 	}
 
-	return statement, parameters, nil
-}
-
-func (s *svr) handleQuery(ctx context.Context, query string, writer wire.DataWriter, parameters []string) error {
-	s.log.Debug("handle query", query)
-
-	params := make([]any, len(parameters))
-	for i, p := range parameters {
-		params[i] = p
-	}
-
-	rows, err := s.db.Query(query, params...)
-	if err != nil {
-		s.log.Error(err.Error())
-		err = pgerr.WithCode(err, codes.Internal)
-		err = pgerr.WithSeverity(err, pgerr.LevelFatal)
-		return err
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		s.log.Error(err.Error())
-		return err
-	}
-
-	tableId := 0
-	define := wire.Columns{}
-
-	for _, c := range cols {
-		oidType, format := columnToOid(c)
-		def := wire.Column{
-			Table:  int32(tableId),
-			Name:   c.Name,
-			Oid:    oidType,
-			Width:  int16(c.Size),
-			Format: format,
-		}
-		define = append(define, def)
-	}
-	writer.Define(define)
-
-	values := cols.MakeBuffer()
-	for rows.Next() {
-		rows.Scan(values...)
-		writer.Row(values)
-	}
-
-	return writer.Complete("OK")
+	return statement, parameters, define, nil
 }
 
 func columnToOid(c *spi.Column) (oid.Oid, wire.FormatCode) {
@@ -216,91 +212,98 @@ func columnToOid(c *spi.Column) (oid.Oid, wire.FormatCode) {
 	return oidType, format
 }
 
-var fakeQueryFilters = []func(string) bool{
-	func(q string) bool { return strings.HasPrefix(q, "SET ") },
-	func(q string) bool { return q == "SELECT 1" },
-	func(q string) bool {
-		return strings.HasPrefix(q, "SELECT T.TABLE_NAME AS LABEL, (CASE WHEN T.TABLE_TYPE = 'BASE TABLE'")
-	},
-	func(q string) bool {
-		return strings.HasPrefix(q, "SELECT C.COLUMN_NAME AS LABEL, 'CONNECTION.COLUMN' AS TYPE, ")
-	},
-	func(q string) bool {
-		return strings.HasPrefix(q, "SELECT DB.*, DB.DATNAME AS \"LABEL\", DB.DATNAME as \"DATABASE\", ")
-	},
-}
-
-func (s *svr) handleFakeQuery(ctx context.Context, query string, writer wire.DataWriter, parameters []string) error {
-	defTextColumn := func(name string) wire.Column {
-		return wire.Column{
-			Table:  int32(0),
-			Name:   name,
-			Oid:    oid.T_text,
-			Width:  int16(100),
-			Format: wire.TextFormat,
+var fakeQueryFilters = []func(string) wire.Columns{
+	func(q string) wire.Columns {
+		if !strings.HasPrefix(q, "SET ") {
+			return nil
 		}
-	}
-	defInt32Column := func(name string) wire.Column {
-		return wire.Column{
-			Table:  int32(0),
-			Name:   name,
-			Oid:    oid.T_int4,
-			Width:  int16(16),
-			Format: wire.BinaryFormat,
+		return wire.Columns{}
+	},
+	func(q string) wire.Columns {
+		if q != "SELECT 1" {
+			return nil
 		}
-	}
-	defBoolColumn := func(name string) wire.Column {
-		return wire.Column{
-			Table:  int32(0),
-			Name:   name,
-			Oid:    oid.T_bool,
-			Width:  int16(100),
-			Format: wire.BinaryFormat,
-		}
-	}
-
-	if strings.HasPrefix(strings.ToUpper(query), "SET ") {
-		return writer.Complete("SET")
-	} else if query == "SELECT 1" {
-		define := wire.Columns{}
-		define = append(define, wire.Column{
+		return wire.Columns{wire.Column{
 			Table:  int32(0),
 			Name:   "1",
 			Oid:    oid.T_int8,
 			Width:  int16(1),
 			Format: wire.TextFormat,
-		})
-		writer.Define(define)
+		}}
+	},
+	// func(q string) bool {
+	// 	return strings.HasPrefix(q, "SELECT T.TABLE_NAME AS LABEL, (CASE WHEN T.TABLE_TYPE = 'BASE TABLE'")
+	// },
+	// func(q string) bool {
+	// 	return strings.HasPrefix(q, "SELECT C.COLUMN_NAME AS LABEL, 'CONNECTION.COLUMN' AS TYPE, ")
+	// },
+	// func(q string) bool {
+	// 	return strings.HasPrefix(q, "SELECT DB.*, DB.DATNAME AS \"LABEL\", DB.DATNAME as \"DATABASE\", ")
+	// },
+}
+
+func (s *svr) handleFakeQuery(ctx context.Context, query string, writer wire.DataWriter, parameters []string) error {
+	// defTextColumn := func(name string) wire.Column {
+	// 	return wire.Column{
+	// 		Table:  int32(0),
+	// 		Name:   name,
+	// 		Oid:    oid.T_text,
+	// 		Width:  int16(100),
+	// 		Format: wire.TextFormat,
+	// 	}
+	// }
+	// defInt32Column := func(name string) wire.Column {
+	// 	return wire.Column{
+	// 		Table:  int32(0),
+	// 		Name:   name,
+	// 		Oid:    oid.T_int4,
+	// 		Width:  int16(16),
+	// 		Format: wire.BinaryFormat,
+	// 	}
+	// }
+	// defBoolColumn := func(name string) wire.Column {
+	// 	return wire.Column{
+	// 		Table:  int32(0),
+	// 		Name:   name,
+	// 		Oid:    oid.T_bool,
+	// 		Width:  int16(100),
+	// 		Format: wire.BinaryFormat,
+	// 	}
+	// }
+
+	if strings.HasPrefix(strings.ToUpper(query), "SET ") {
+		return writer.Complete("SET")
+	} else if query == "SELECT 1" {
 		writer.Row([]any{1})
-	} else if strings.HasPrefix(strings.ToUpper(query), "SELECT T.TABLE_NAME AS LABEL, (CASE WHEN T.TABLE_TYPE = 'BASE TABLE'") {
-		writer.Define([]wire.Column{
-			defTextColumn("label"),
-			defTextColumn("type"),
-			defTextColumn("schema"),
-			defTextColumn("database"),
-			defBoolColumn("isView"),
-			defTextColumn("description"),
-			defTextColumn("detail"),
-		})
-	} else if strings.HasPrefix(strings.ToUpper(query), "SELECT C.COLUMN_NAME AS LABEL, 'CONNECTION.COLUMN' AS TYPE") {
-		writer.Define([]wire.Column{
-			defTextColumn("label"),
-			defTextColumn("type"),
-			defTextColumn("table"),
-			defTextColumn("dataType"),
-			defInt32Column("size"),
-			defTextColumn("database"),
-			defTextColumn("defaultValue"),
-			defBoolColumn("isNullable"),
-			defBoolColumn("isPk"),
-			defBoolColumn("isFk"),
-		})
-	} else if strings.HasPrefix(strings.ToUpper(query), "SELECT DB.*, DB.DATNAME AS \"LABEL\", DB.DATNAME AS \"DATABASE\", ") {
-		// SELECT db.*, db.datname as "label", db.datname as "database", 'connection.database' as "type", 'database' as "detail"
-		// FROM pg_catalog.pg_database db
-		// WHERE datallowconn AND NOT datistemplate AND db.datname = CURRENT_DATABASE()
-		//ORDER BY db.datname;
-		return writer.Complete("OK")
+		// } else if strings.HasPrefix(strings.ToUpper(query), "SELECT T.TABLE_NAME AS LABEL, (CASE WHEN T.TABLE_TYPE = 'BASE TABLE'") {
+		// 	writer.Define([]wire.Column{
+		// 		defTextColumn("label"),
+		// 		defTextColumn("type"),
+		// 		defTextColumn("schema"),
+		// 		defTextColumn("database"),
+		// 		defBoolColumn("isView"),
+		// 		defTextColumn("description"),
+		// 		defTextColumn("detail"),
+		// 	})
+		// } else if strings.HasPrefix(strings.ToUpper(query), "SELECT C.COLUMN_NAME AS LABEL, 'CONNECTION.COLUMN' AS TYPE") {
+		// 	writer.Define([]wire.Column{
+		// 		defTextColumn("label"),
+		// 		defTextColumn("type"),
+		// 		defTextColumn("table"),
+		// 		defTextColumn("dataType"),
+		// 		defInt32Column("size"),
+		// 		defTextColumn("database"),
+		// 		defTextColumn("defaultValue"),
+		// 		defBoolColumn("isNullable"),
+		// 		defBoolColumn("isPk"),
+		// 		defBoolColumn("isFk"),
+		// 	})
+		// } else if strings.HasPrefix(strings.ToUpper(query), "SELECT DB.*, DB.DATNAME AS \"LABEL\", DB.DATNAME AS \"DATABASE\", ") {
+		// 	// SELECT db.*, db.datname as "label", db.datname as "database", 'connection.database' as "type", 'database' as "detail"
+		// 	// FROM pg_catalog.pg_database db
+		// 	// WHERE datallowconn AND NOT datistemplate AND db.datname = CURRENT_DATABASE()
+		// 	//ORDER BY db.datname;
+		// 	return writer.Complete("OK")
 
 	} else {
 		s.log.Debug("handle fake", query)

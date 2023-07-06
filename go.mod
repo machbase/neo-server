@@ -24,7 +24,7 @@ require (
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/jchenry/goldmark-pikchr v0.0.2
 	github.com/jedib0t/go-pretty/v6 v6.4.6
-	github.com/jeroenrinzema/psql-wire v0.5.3
+	github.com/jeroenrinzema/psql-wire v0.6.3
 	github.com/lib/pq v1.10.8
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.7
@@ -71,7 +71,7 @@ require (
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/fredbi/uri v0.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.5.4 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fyne-io/gl-js v0.0.0-20220119005834-d2da28d9ccfe // indirect
 	github.com/fyne-io/glfw-js v0.0.0-20220120001248-ee7290d23504 // indirect
 	github.com/fyne-io/image v0.0.0-20220602074514-4956b0afb3d2 // indirect
@@ -132,7 +132,7 @@ require (
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/zclconf/go-cty v1.13.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
 	golang.org/x/image v0.6.0 // indirect
