@@ -310,6 +310,7 @@ func buildReferences(experimentMode bool) []WebReferenceGroup {
 
 	tutorials := WebReferenceGroup{Label: "Tutorials"}
 	tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
+	tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
 	ret = append(ret, tutorials)
 
 	samples := WebReferenceGroup{Label: "Samples"}

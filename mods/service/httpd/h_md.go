@@ -30,7 +30,6 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 			),
 		),
 		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
 			html.WithXHTML(),
 		),
 	)
