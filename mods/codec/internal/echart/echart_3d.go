@@ -8,7 +8,6 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/render"
-	"github.com/go-echarts/go-echarts/v2/types"
 )
 
 type Base3D struct {
@@ -122,10 +121,6 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	if ex.subtitle != "" {
 		subtitle = ex.subtitle
 	}
-	theme := ex.theme
-	if theme == "" {
-		theme = types.ThemeWesteros
-	}
 	gridOpt := opts.Grid3D{
 		Show: ex.showGrid,
 	}
@@ -147,7 +142,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	options := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			AssetsHost: assetHost,
-			Theme:      theme,
+			Theme:      ex.Theme(),
 			Width:      width,
 			Height:     height,
 			PageTitle:  title,

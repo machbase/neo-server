@@ -45,3 +45,15 @@ func (ex *ChartBase) SetAssetHost(path string) {
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
 }
+
+func (ex *ChartBase) Theme() string {
+	if ex.theme == "" {
+		if ex.toJsonOutput {
+			return "-" // client choose 'white' or 'dark'
+		} else {
+			return "white" // echarts default
+		}
+	} else {
+		return ex.theme
+	}
+}

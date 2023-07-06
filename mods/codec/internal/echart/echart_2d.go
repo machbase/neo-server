@@ -7,7 +7,6 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/render"
-	"github.com/go-echarts/go-echarts/v2/types"
 )
 
 type Base2D struct {
@@ -78,10 +77,6 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 		height = ex.height
 	}
 
-	theme := ex.theme
-	if theme == "" {
-		theme = types.ThemeWesteros
-	}
 	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
 	if len(ex.assetHost) > 0 {
 		assetHost = ex.assetHost
@@ -89,7 +84,7 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			AssetsHost: assetHost,
-			Theme:      theme,
+			Theme:      ex.Theme(),
 			Width:      width,
 			Height:     height,
 		}),
