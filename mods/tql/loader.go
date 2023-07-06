@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/machbase/neo-server/mods/connector"
 )
 
 type Loader interface {
@@ -23,6 +25,12 @@ type loader struct {
 
 func NewLoader(dirs []string) Loader {
 	abs := []string{}
+
+	connector.Register(&connector.Define{
+		Type: connector.SQLITE3,
+		Name: "sqlite",
+		Path: "./tmp/connector_sqlite3.db",
+	})
 
 	for _, d := range dirs {
 		ap, err := filepath.Abs(d)

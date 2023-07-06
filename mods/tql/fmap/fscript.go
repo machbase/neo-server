@@ -1,6 +1,7 @@
 package fmap
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
+	"github.com/machbase/neo-server/mods/connector"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
 )
@@ -114,6 +116,9 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 		},
 		"nil": &tengo.UserFunction{
 			Name: "nil", Value: tengof_nil(ctx),
+		},
+		"connector": &tengo.UserFunction{
+			Name: "connector", Value: tengof_connector(ctx),
 		},
 	})
 	s := tengo.NewScript([]byte(content))
@@ -245,6 +250,32 @@ func tengof_nil(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, 
 	}
 }
 
+func tengof_connector(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		var cname string
+		if len(args) == 1 {
+			if v, ok := args[0].(*tengo.String); ok {
+				cname = v.Value
+			}
+		}
+		if len(cname) == 0 {
+			return nil, tengo.ErrInvalidArgumentType{Name: "connector name", Expected: "string"}
+		}
+		c, err := connector.SharedConnector(cname)
+		if err != nil {
+			return tengo.UndefinedValue, err
+		}
+		if sqlC, ok := c.(connector.SqlConnector); ok {
+			conn, err := sqlC.Connect(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &sqlConnector{conn: conn, name: cname}, nil
+		}
+		return nil, nil
+	}
+}
+
 func anyToTengoObject(av any) tengo.Object {
 	switch v := av.(type) {
 	case int:
@@ -297,4 +328,44 @@ func anyToTengoObject(av any) tengo.Object {
 		return arr
 	}
 	return nil
+}
+
+type sqlConnector struct {
+	tengo.ObjectImpl
+	name string
+	conn *sql.Conn
+}
+
+func (c *sqlConnector) TypeName() string {
+	return "connector:sql"
+}
+
+func (c *sqlConnector) String() string {
+	return "connector:sql:" + c.name
+}
+
+func (c *sqlConnector) Copy() tengo.Object {
+	return &sqlConnector{conn: c.conn, name: c.name}
+}
+
+func (tc *sqlConnector) IndexGet(index tengo.Object) (tengo.Object, error) {
+	if o, ok := index.(*tengo.String); ok {
+		switch o.Value {
+		case "query":
+			return &tengo.UserFunction{
+				Name: "query", Value: sqlConnector_query,
+			}, nil
+		default:
+			return nil, nil
+		}
+	} else {
+		return nil, nil
+	}
+}
+
+func sqlConnector_query(args ...tengo.Object) (tengo.Object, error) {
+	for i, a := range args {
+		fmt.Println("query", i, a)
+	}
+	return nil, nil
 }
