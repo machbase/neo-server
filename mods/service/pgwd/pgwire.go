@@ -2,9 +2,11 @@ package pgwd
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	wire "github.com/jeroenrinzema/psql-wire"
 	"github.com/jeroenrinzema/psql-wire/codes"
@@ -98,8 +100,9 @@ func (s *svr) parse(ctx context.Context, query string) (wire.PreparedStatementFn
 	// parameter regex.
 	matches := wire.QueryParameters.FindAllStringSubmatch(query, -1)
 	parameters := make([]oid.Oid, 0, len(matches))
+	paramPositions := make([]int, len(matches))
 
-	for _, match := range matches {
+	for i, match := range matches {
 		// NOTE: we have to check whether the returned match is a
 		// positional parameter or an un-positional parameter.
 		// SELECT * FROM users WHERE id = ?
@@ -111,74 +114,115 @@ func (s *svr) parse(ctx context.Context, query string) (wire.PreparedStatementFn
 		if position > len(parameters) {
 			parameters = parameters[:position]
 		}
+
+		if position > 0 {
+			query = strings.ReplaceAll(query, fmt.Sprintf("$%d", position), "?")
+			paramPositions[i] = position - 1
+		}
 	}
+	isExtendedMode := len(parameters) > 0
+
+	// for _, p := range paramPositions {
+	// 	parameters[p] = oid.T_text
+	// }
 
 	var statement wire.PreparedStatementFn
-	var define wire.Columns
+	var columns wire.Columns
 
 	// check if the query should be handled by fake query handler
 	upperQuery := strings.ToUpper(query)
 	for _, f := range fakeQueryFilters {
-		if define = f(upperQuery); define != nil {
+		if columns = f(upperQuery); columns != nil {
 			statement = func(ctx context.Context, writer wire.DataWriter, parameters []string) error {
 				return s.handleFakeQuery(ctx, query, writer, parameters)
 			}
-			return statement, parameters, define, nil
+			return statement, parameters, columns, nil
 		}
 	}
 
 	// query will be handled by machbase
-	if statement == nil {
-		s.log.Trace("pgwire", query)
+	rows, err := s.db.PrepareQuery(query)
+	if err != nil {
+		s.log.Error(err.Error())
+		err = pgerr.WithCode(err, codes.Internal)
+		err = pgerr.WithSeverity(err, pgerr.LevelFatal)
+		return nil, nil, nil, err
+	}
+	cols, err := rows.Columns()
+	if err != nil {
+		s.log.Error(err.Error())
+		return nil, nil, nil, err
+	}
+	rows.Close()
 
-		params := make([]any, len(parameters))
-		for i, p := range parameters {
-			params[i] = p
+	tableId := 0
+	for _, c := range cols {
+		oidType, format := columnToOid(c)
+		def := wire.Column{
+			Table:  int32(tableId),
+			Name:   c.Name,
+			Oid:    oidType,
+			Width:  int16(c.Size),
+			Format: format,
 		}
-
-		rows, err := s.db.Query(query, params...)
-		if err != nil {
-			s.log.Error(err.Error())
-			err = pgerr.WithCode(err, codes.Internal)
-			err = pgerr.WithSeverity(err, pgerr.LevelFatal)
-			return nil, nil, nil, err
-		}
-
-		cols, err := rows.Columns()
-		if err != nil {
-			s.log.Error(err.Error())
-			return nil, nil, nil, err
-		}
-
-		tableId := 0
-
-		for _, c := range cols {
-			oidType, format := columnToOid(c)
-			def := wire.Column{
-				Table:  int32(tableId),
-				Name:   c.Name,
-				Oid:    oidType,
-				Width:  int16(c.Size),
-				Format: format,
-			}
-			define = append(define, def)
-		}
-
-		values := cols.MakeBuffer()
-
-		statement = func(ctx context.Context, writer wire.DataWriter, parameters []string) error {
-			for rows.Next() {
-				rows.Scan(values...)
-				writer.Row(values)
-			}
-
-			rows.Close()
-
-			return writer.Complete("OK")
-		}
+		columns = append(columns, def)
 	}
 
-	return statement, parameters, define, nil
+	if isExtendedMode && s.log.TraceEnabled() {
+		s.log.Trace("pgwire", query)
+		s.log.Trace("      ", parameters)
+		s.log.Trace("      ", columns)
+	}
+
+	statement = func(ctx context.Context, writer wire.DataWriter, parameters []string) error {
+		params := make([]any, len(paramPositions))
+		for i, pos := range paramPositions {
+			params[i] = parameters[pos]
+		}
+		if isExtendedMode && s.log.TraceEnabled() {
+			s.log.Trace("params", params)
+		}
+		rows, err := s.db.QueryContext(ctx, query, params...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		values := cols.MakeBuffer()
+		nrow := 0
+		for rows.Next() {
+			rows.Scan(values...)
+			nrow++
+			if isExtendedMode {
+				ret := make([]any, len(values))
+				for i, vv := range values {
+					switch v := vv.(type) {
+					case *string:
+						ret[i] = *v
+					case *float32:
+						ret[i] = *v
+					case *float64:
+						ret[i] = *v
+					case *time.Time:
+						ret[i] = *v
+					default:
+						ret[i] = v
+					}
+				}
+				if err := writer.Row(ret); err != nil {
+					s.log.Warn("pgwire", err.Error())
+				}
+			} else {
+				writer.Row(values)
+			}
+		}
+
+		if err = writer.Complete(fmt.Sprintf("SELECT %d", nrow)); err != nil {
+			s.log.Warn("pgwire", err.Error())
+		}
+		return err
+	}
+	return statement, parameters, columns, nil
 }
 
 func columnToOid(c *spi.Column) (oid.Oid, wire.FormatCode) {
@@ -208,6 +252,8 @@ func columnToOid(c *spi.Column) (oid.Oid, wire.FormatCode) {
 	case "binary":
 		oidType = oid.T_bytea
 		format = wire.BinaryFormat
+	default:
+		fmt.Println("ERR-pgwire unsupported oid-" + c.Type)
 	}
 	return oidType, format
 }

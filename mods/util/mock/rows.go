@@ -24,6 +24,9 @@ var _ spi.Rows = &RowsMock{}
 //			ColumnsFunc: func() (spi.Columns, error) {
 //				panic("mock out the Columns method")
 //			},
+//			ExecuteFunc: func(params ...any) error {
+//				panic("mock out the Execute method")
+//			},
 //			IsFetchableFunc: func() bool {
 //				panic("mock out the IsFetchable method")
 //			},
@@ -52,6 +55,9 @@ type RowsMock struct {
 	// ColumnsFunc mocks the Columns method.
 	ColumnsFunc func() (spi.Columns, error)
 
+	// ExecuteFunc mocks the Execute method.
+	ExecuteFunc func(params ...any) error
+
 	// IsFetchableFunc mocks the IsFetchable method.
 	IsFetchableFunc func() bool
 
@@ -75,6 +81,11 @@ type RowsMock struct {
 		// Columns holds details about calls to the Columns method.
 		Columns []struct {
 		}
+		// Execute holds details about calls to the Execute method.
+		Execute []struct {
+			// Params is the params argument value.
+			Params []any
+		}
 		// IsFetchable holds details about calls to the IsFetchable method.
 		IsFetchable []struct {
 		}
@@ -95,6 +106,7 @@ type RowsMock struct {
 	}
 	lockClose        sync.RWMutex
 	lockColumns      sync.RWMutex
+	lockExecute      sync.RWMutex
 	lockIsFetchable  sync.RWMutex
 	lockMessage      sync.RWMutex
 	lockNext         sync.RWMutex
@@ -153,6 +165,38 @@ func (mock *RowsMock) ColumnsCalls() []struct {
 	mock.lockColumns.RLock()
 	calls = mock.calls.Columns
 	mock.lockColumns.RUnlock()
+	return calls
+}
+
+// Execute calls ExecuteFunc.
+func (mock *RowsMock) Execute(params ...any) error {
+	if mock.ExecuteFunc == nil {
+		panic("RowsMock.ExecuteFunc: method is nil but Rows.Execute was just called")
+	}
+	callInfo := struct {
+		Params []any
+	}{
+		Params: params,
+	}
+	mock.lockExecute.Lock()
+	mock.calls.Execute = append(mock.calls.Execute, callInfo)
+	mock.lockExecute.Unlock()
+	return mock.ExecuteFunc(params...)
+}
+
+// ExecuteCalls gets all the calls that were made to Execute.
+// Check the length with:
+//
+//	len(mockedRows.ExecuteCalls())
+func (mock *RowsMock) ExecuteCalls() []struct {
+	Params []any
+} {
+	var calls []struct {
+		Params []any
+	}
+	mock.lockExecute.RLock()
+	calls = mock.calls.Execute
+	mock.lockExecute.RUnlock()
 	return calls
 }
 

@@ -27,9 +27,9 @@ require (
 	github.com/jeroenrinzema/psql-wire v0.6.3
 	github.com/lib/pq v1.10.8
 	github.com/machbase/booter v1.2.2
-	github.com/machbase/neo-engine v1.0.7
-	github.com/machbase/neo-grpc v0.9.0
-	github.com/machbase/neo-spi v1.3.0
+	github.com/machbase/neo-engine v1.0.8-0.20230706055552-a69747cd55ea
+	github.com/machbase/neo-grpc v0.9.1-0.20230706055653-04971f27ff85
+	github.com/machbase/neo-spi v1.3.1-0.20230706055445-08f42aef6899
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0

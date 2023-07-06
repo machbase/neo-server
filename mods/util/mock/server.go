@@ -37,6 +37,9 @@ var _ spi.DatabaseServer = &DatabaseServerMock{}
 //			GetServicePortsFunc: func(service string) ([]*spi.ServicePort, error) {
 //				panic("mock out the GetServicePorts method")
 //			},
+//			PrepareQueryFunc: func(sqlText string) (spi.Rows, error) {
+//				panic("mock out the PrepareQuery method")
+//			},
 //			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 //				panic("mock out the Query method")
 //			},
@@ -79,6 +82,9 @@ type DatabaseServerMock struct {
 
 	// GetServicePortsFunc mocks the GetServicePorts method.
 	GetServicePortsFunc func(service string) ([]*spi.ServicePort, error)
+
+	// PrepareQueryFunc mocks the PrepareQuery method.
+	PrepareQueryFunc func(sqlText string) (spi.Rows, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
@@ -138,6 +144,11 @@ type DatabaseServerMock struct {
 			// Service is the service argument value.
 			Service string
 		}
+		// PrepareQuery holds details about calls to the PrepareQuery method.
+		PrepareQuery []struct {
+			// SqlText is the sqlText argument value.
+			SqlText string
+		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// SqlText is the sqlText argument value.
@@ -183,6 +194,7 @@ type DatabaseServerMock struct {
 	lockExplain         sync.RWMutex
 	lockGetServerInfo   sync.RWMutex
 	lockGetServicePorts sync.RWMutex
+	lockPrepareQuery    sync.RWMutex
 	lockQuery           sync.RWMutex
 	lockQueryContext    sync.RWMutex
 	lockQueryRow        sync.RWMutex
@@ -395,6 +407,38 @@ func (mock *DatabaseServerMock) GetServicePortsCalls() []struct {
 	mock.lockGetServicePorts.RLock()
 	calls = mock.calls.GetServicePorts
 	mock.lockGetServicePorts.RUnlock()
+	return calls
+}
+
+// PrepareQuery calls PrepareQueryFunc.
+func (mock *DatabaseServerMock) PrepareQuery(sqlText string) (spi.Rows, error) {
+	if mock.PrepareQueryFunc == nil {
+		panic("DatabaseServerMock.PrepareQueryFunc: method is nil but DatabaseServer.PrepareQuery was just called")
+	}
+	callInfo := struct {
+		SqlText string
+	}{
+		SqlText: sqlText,
+	}
+	mock.lockPrepareQuery.Lock()
+	mock.calls.PrepareQuery = append(mock.calls.PrepareQuery, callInfo)
+	mock.lockPrepareQuery.Unlock()
+	return mock.PrepareQueryFunc(sqlText)
+}
+
+// PrepareQueryCalls gets all the calls that were made to PrepareQuery.
+// Check the length with:
+//
+//	len(mockedDatabaseServer.PrepareQueryCalls())
+func (mock *DatabaseServerMock) PrepareQueryCalls() []struct {
+	SqlText string
+} {
+	var calls []struct {
+		SqlText string
+	}
+	mock.lockPrepareQuery.RLock()
+	calls = mock.calls.PrepareQuery
+	mock.lockPrepareQuery.RUnlock()
 	return calls
 }
 
