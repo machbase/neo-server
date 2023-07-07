@@ -20,15 +20,15 @@ func init() {
 	})
 }
 
-const helpConnector = `  connector command [options] [args...]
+const helpConnector = `  connector command [options]
   commands:
     list         list registered connectors
-    del <name>   remove connector
     add <name>   add connector
+      options:
+        -t,--type <type>   connector type ['sqlite']
+        -c,--conn <string> connection string
+    del <name>   remove connector
     test <name>  test connectivity of the connector
-  options:
-    -t,--type <type>   connector type ['sqlite']
-    -c,--path <string> connection string
 `
 
 type ConnectorCmd struct {
@@ -39,7 +39,7 @@ type ConnectorCmd struct {
 	Add struct {
 		Name string `arg:"" name:"name"`
 		Type string `name:"type" short:"t" required:"" enum:"sqlite" help:"connector type"`
-		Path string `name:"path" short:"c" help:"connector connection string"`
+		Path string `name:"conn" short:"c" help:"connector connection string"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
@@ -159,5 +159,5 @@ func doConnectorTest(ctx *client.ActionContext, name string) {
 		return
 	}
 
-	ctx.Println("Testing connector", name, rsp.Reason, rsp.Elapse)
+	ctx.Println("Testing connector", name, "...", rsp.Reason, rsp.Elapse)
 }

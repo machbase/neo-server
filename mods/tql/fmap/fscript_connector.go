@@ -2,7 +2,6 @@ package fmap
 
 import (
 	"database/sql"
-	"strings"
 
 	"github.com/d5/tengo/v2"
 	"github.com/machbase/neo-server/mods/connector"
@@ -58,15 +57,54 @@ func (c *sqlConnector) Copy() tengo.Object {
 func (c *sqlConnector) IndexGet(index tengo.Object) (tengo.Object, error) {
 	if o, ok := index.(*tengo.String); ok {
 		switch o.Value {
+		case "exec":
+			return &tengo.UserFunction{
+				Name: "exec", Value: sqlConnector_exec(c),
+			}, nil
 		case "query":
 			return &tengo.UserFunction{
 				Name: "query", Value: sqlConnector_query(c),
 			}, nil
+		case "queryRow":
+			return &tengo.UserFunction{
+				Name: "queryRow", Value: sqlConnector_queryRow(c),
+			}, nil
+		case "close":
+			return &tengo.UserFunction{
+				Name: "close",
+				Value: func(args ...tengo.Object) (tengo.Object, error) {
+					if c.conn == nil {
+						return nil, nil
+					}
+					if err := c.conn.Close(); err != nil {
+						return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+					}
+					return nil, nil
+				},
+			}, nil
 		default:
-			return nil, nil
+			return nil, tengo.ErrInvalidIndexOnError
 		}
 	} else {
 		return nil, nil
+	}
+}
+
+func sqlConnector_exec(c *sqlConnector) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if len(args) < 1 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		queryText, err := tengoObjectToString(args[0])
+		if err != nil {
+			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
+		}
+		params := tengoSliceToAnySlice(args[1:])
+		result, err := c.conn.ExecContext(c.ctx, queryText, params...)
+		if err != nil {
+			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+		}
+		return &sqlResult{ctx: c.ctx, result: result}, nil
 	}
 }
 
@@ -77,71 +115,155 @@ func sqlConnector_query(c *sqlConnector) func(args ...tengo.Object) (tengo.Objec
 		}
 		queryText, err := tengoObjectToString(args[0])
 		if err != nil {
-			return nil, errors.Wrap(err, "queryText missing")
+			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
 		}
 		params := tengoSliceToAnySlice(args[1:])
 		rows, err := c.conn.QueryContext(c.ctx, queryText, params...)
 		if err != nil {
 			return nil, errors.Wrap(err, "query failed")
 		}
+		return &sqlRows{ctx: c.ctx, rows: rows}, nil
+	}
+}
 
-		return &sqlResult{ctx: c.ctx, rows: rows}, nil
+func sqlConnector_queryRow(c *sqlConnector) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if len(args) < 1 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		queryText, err := tengoObjectToString(args[0])
+		if err != nil {
+			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
+		}
+		params := tengoSliceToAnySlice(args[1:])
+		rows, err := c.conn.QueryContext(c.ctx, queryText, params...)
+		if err != nil {
+			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			return tengo.UndefinedValue, nil
+		}
+		columns, err := rows.Columns()
+		if err != nil {
+			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+		}
+		values := make([]any, len(columns))
+		for i := range values {
+			values[i] = new(string)
+		}
+		err = rows.Scan(values...)
+		if err != nil {
+			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+		}
+		ret := &tengo.ImmutableMap{Value: map[string]tengo.Object{}}
+		for i, val := range values {
+			col := columns[i]
+			ret.Value[col] = &tengo.String{Value: *(val.(*string))}
+		}
+		return ret, nil
 	}
 }
 
 type sqlResult struct {
 	tengo.ObjectImpl
+	ctx    *context.Context
+	result sql.Result
+}
+
+func (r *sqlResult) TyepName() string {
+	return "connector:sql-result"
+}
+
+func (r *sqlResult) String() string {
+	return "connector:sql-result"
+}
+
+func (r *sqlResult) Copy() tengo.Object {
+	return &sqlResult{ctx: r.ctx, result: r.result}
+}
+
+func (r *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
+	s, ok := index.(*tengo.String)
+	if !ok {
+		return nil, tengo.ErrIndexOutOfBounds
+	}
+	switch s.Value {
+	case "lastInsertId":
+		if id, err := r.result.LastInsertId(); err != nil {
+			return nil, err
+		} else {
+			return &tengo.Int{Value: id}, nil
+		}
+	case "rowsAffected":
+		if num, err := r.result.RowsAffected(); err != nil {
+			return nil, err
+		} else {
+			return &tengo.Int{Value: num}, nil
+		}
+	default:
+		return nil, tengo.ErrInvalidIndexOnError
+	}
+}
+
+type sqlRows struct {
+	tengo.ObjectImpl
 	ctx  *context.Context
 	rows *sql.Rows
 }
 
-func (c *sqlResult) TypeName() string {
+func (c *sqlRows) TypeName() string {
 	return "connector:sql-rows"
 }
 
-func (c *sqlResult) String() string {
+func (c *sqlRows) String() string {
 	return "connector:sql-rows"
 }
 
-func (c *sqlResult) Copy() tengo.Object {
-	return &sqlResult{ctx: c.ctx, rows: c.rows}
+func (c *sqlRows) Copy() tengo.Object {
+	return &sqlRows{ctx: c.ctx, rows: c.rows}
 }
 
-func (c *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
-	if o, ok := index.(*tengo.String); ok {
-		switch o.Value {
-		case "next":
-			return &tengo.UserFunction{Name: "next", Value: func(args ...tengo.Object) (tengo.Object, error) {
-				if c.rows.Next() {
-					return tengo.TrueValue, nil
-				} else {
-					return tengo.FalseValue, nil
-				}
-			}}, nil
-		case "scan":
-			columns, err := c.rows.Columns()
-			if err != nil {
-				return nil, err
+func (c *sqlRows) IndexGet(index tengo.Object) (tengo.Object, error) {
+	s, ok := index.(*tengo.String)
+	if !ok {
+		return nil, tengo.ErrIndexOutOfBounds
+	}
+
+	switch s.Value {
+	case "next":
+		return &tengo.UserFunction{Name: "next", Value: func(args ...tengo.Object) (tengo.Object, error) {
+			if c.rows.Next() {
+				return tengo.TrueValue, nil
+			} else {
+				return tengo.FalseValue, nil
 			}
-			values := make([]any, len(columns))
-			for i := range values {
-				values[i] = new(string)
-			}
-			return &tengo.UserFunction{Name: "scan", Value: func(args ...tengo.Object) (tengo.Object, error) {
-				c.rows.Scan(values...)
-				// fmt.Println("scan()", values)
-				ret := &tengo.ImmutableMap{Value: map[string]tengo.Object{}}
-				for i, col := range columns {
-					// fmt.Println("scan()", col, *(values[i].(*string)))
-					col = strings.ToLower(col)
-					ret.Value[col] = &tengo.String{Value: *(values[i].(*string))}
-				}
-				return ret, nil
-			}}, nil
-		default:
-			return nil, nil
+		}}, nil
+	case "scan":
+		columns, err := c.rows.Columns()
+		if err != nil {
+			return nil, err
 		}
-	} else {
-		return nil, nil
+		values := make([]any, len(columns))
+		for i := range values {
+			values[i] = new(string)
+		}
+		return &tengo.UserFunction{Name: "scan", Value: func(args ...tengo.Object) (tengo.Object, error) {
+			c.rows.Scan(values...)
+			ret := &tengo.ImmutableMap{Value: map[string]tengo.Object{}}
+			for i, val := range values {
+				col := columns[i]
+				ret.Value[col] = &tengo.String{Value: *(val.(*string))}
+			}
+			return ret, nil
+		}}, nil
+	case "close":
+		return &tengo.UserFunction{Name: "close", Value: func(args ...tengo.Object) (tengo.Object, error) {
+			// fmt.Println("rows.close()")
+			err := c.rows.Close()
+			return nil, err
+		}}, nil
+	default:
+		return nil, tengo.ErrInvalidIndexOnError
 	}
 }

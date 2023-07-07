@@ -264,6 +264,15 @@ func tengoSliceToAnySlice(arr []tengo.Object) []any {
 	return ret
 }
 
+//lint:ignore U1000 keep it for the future uses
+func anySliceToTengoSlice(arr []any) []tengo.Object {
+	ret := make([]tengo.Object, len(arr))
+	for i, o := range arr {
+		ret[i] = anyToTengoObject(o)
+	}
+	return ret
+}
+
 func tengoObjectToAny(obj tengo.Object) any {
 	switch o := obj.(type) {
 	case *tengo.String:
