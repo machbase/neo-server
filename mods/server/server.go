@@ -565,6 +565,8 @@ func (s *svr) Stop() {
 	}
 	mach.Finalize()
 
+	connector.UnregisterAll()
+
 	s.log.Infof("shutdown.")
 }
 

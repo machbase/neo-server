@@ -27,8 +27,6 @@ type Define struct {
 	Path string `json:"path"`
 }
 
-type FactoryFn func(*Define) (Connector, error)
-
 type Connector interface {
 	Type() Type
 	Name() string

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/connector"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -61,6 +62,7 @@ type SqlCmd struct {
 	Rownum       bool           `name:"rownum" negatable:"" default:"true"`
 	Timeformat   string         `name:"timeformat" short:"t"`
 	Precision    int            `name:"precision" short:"p" default:"-1"`
+	Connector    string         `name:"connector"`
 	BoxStyle     string         `kong:"-"`
 	Interactive  bool           `kong:"-"`
 	Help         bool           `kong:"-"`
@@ -162,8 +164,19 @@ func doSql(ctx *client.ActionContext) {
 	}
 	nextPauseRow := int64(pageHeight)
 
+	var database spi.Database
+
+	if len(cmd.Connector) > 0 {
+		database, err = connector.GetDatabaseConnector(cmd.Connector)
+		if err != nil {
+			ctx.Println("ERR", err.Error())
+			return
+		}
+	} else {
+		database = ctx.DB
+	}
 	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
+		DB: database,
 		OnFetchStart: func(cols spi.Columns) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
