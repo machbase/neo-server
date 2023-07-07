@@ -13,16 +13,27 @@ type sqlite3Conn struct {
 	db     *sql.DB
 }
 
+func NewSqlite3Connector(def *Define) Connector {
+	return &sqlite3Conn{define: def}
+}
+
 var _ Connector = &sqlite3Conn{}
 var _ SqlConnector = &sqlite3Conn{}
 
-func sqlite3Connector(def *Define) (Connector, error) {
-	db, err := sql.Open("sqlite3", def.Path)
+func (c *sqlite3Conn) BeforeRegister() error {
+	db, err := sql.Open("sqlite3", c.define.Path)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	conn := &sqlite3Conn{db: db, define: def}
-	return conn, nil
+	c.db = db
+	return nil
+}
+
+func (c *sqlite3Conn) AfterUnregister() error {
+	if c.db == nil {
+		return nil
+	}
+	return c.db.Close()
 }
 
 func (c *sqlite3Conn) Type() Type {
@@ -31,13 +42,6 @@ func (c *sqlite3Conn) Type() Type {
 
 func (c *sqlite3Conn) Name() string {
 	return c.define.Name
-}
-
-func (c *sqlite3Conn) Close() error {
-	if c.db == nil {
-		return nil
-	}
-	return c.db.Close()
 }
 
 func (c *sqlite3Conn) Connect(ctx context.Context) (*sql.Conn, error) {

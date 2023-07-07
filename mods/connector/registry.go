@@ -2,48 +2,32 @@ package connector
 
 import (
 	"fmt"
-	"sync"
 )
 
-var registry = map[string]*Registry{}
+var registry = map[string]Connector{}
 
-var sharedConnectors = map[string]Connector{}
-var sharedConnectorsLock sync.Mutex
-
-func Register(def *Define) error {
-	reg := &Registry{
-		define: def,
-	}
-	switch reg.define.Type {
-	case SQLITE3:
-		reg.factoryFn = sqlite3Connector
+func Register(def *Define) (err error) {
+	var c Connector
+	switch def.Type {
+	case SQLITE:
+		c = NewSqlite3Connector(def)
+		if err = c.BeforeRegister(); err != nil {
+			return
+		}
 	default:
-		return fmt.Errorf("undefined connector type %s", reg.define.Type)
+		return fmt.Errorf("undefined connector type %s", def.Type)
 	}
-	registry[def.Name] = reg
+	registry[def.Name] = c
 	return nil
 }
 
-func NewConnector(name string) (Connector, error) {
-	reg, ok := registry[name]
-	if !ok {
-		return nil, fmt.Errorf("undefined connector '%s'", name)
-	}
-	return reg.factoryFn(reg.define)
+func Unregister(name string) {
+	delete(registry, name)
 }
 
-func SharedConnector(name string) (Connector, error) {
-	if c, ok := sharedConnectors[name]; ok {
+func GetConnector(name string) (Connector, error) {
+	if c, ok := registry[name]; ok {
 		return c, nil
 	}
-
-	sharedConnectorsLock.Lock()
-	defer sharedConnectorsLock.Unlock()
-
-	c, err := NewConnector(name)
-	if err != nil {
-		return nil, err
-	}
-	sharedConnectors[name] = c
-	return c, nil
+	return nil, fmt.Errorf("undefined connector name %s", name)
 }

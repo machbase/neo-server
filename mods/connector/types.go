@@ -3,13 +3,23 @@ package connector
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type Type string
 
 const (
-	SQLITE3 Type = "sqlite3"
+	SQLITE Type = "sqlite"
 )
+
+func ParseType(typ string) (Type, error) {
+	switch typ {
+	case "sqlite":
+		return SQLITE, nil
+	default:
+		return "", fmt.Errorf("unsupported type of connector: %s", typ)
+	}
+}
 
 type Define struct {
 	Type Type   `json:"type"`
@@ -17,17 +27,14 @@ type Define struct {
 	Path string `json:"path"`
 }
 
-type Registry struct {
-	define    *Define
-	factoryFn FactoryFn
-}
-
 type FactoryFn func(*Define) (Connector, error)
 
 type Connector interface {
-	Close() error
 	Type() Type
 	Name() string
+
+	BeforeRegister() error
+	AfterUnregister() error
 }
 
 type SqlConnector interface {

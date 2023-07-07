@@ -21,7 +21,7 @@ func tengof_connector(ctx *context.Context) func(args ...tengo.Object) (tengo.Ob
 		if len(cname) == 0 {
 			return nil, tengo.ErrInvalidArgumentType{Name: "connector name", Expected: "string"}
 		}
-		c, err := connector.SharedConnector(cname)
+		c, err := connector.GetConnector(cname)
 		if err != nil {
 			return tengo.UndefinedValue, err
 		}
