@@ -69,47 +69,33 @@ func Functions() []string {
 }
 
 func mapf_TAKE(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, conv.ErrInvalidNumOfArgs("TAKE", 4, len(args))
-	}
 	ctx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, conv.ErrWrongTypeOfArgs("TAKE", 0, "context", args[0])
 	}
-	if limit, ok := args[3].(float64); ok {
-		if ctx.Nrow > int(limit) {
-			return context.ExecutionCircuitBreak, nil
-		}
-	} else if limit, ok := args[3].(int); ok {
-		if ctx.Nrow > int(limit) {
-			return context.ExecutionCircuitBreak, nil
-		}
-	} else {
-		return nil, conv.ErrWrongTypeOfArgs("TAKE", 3, "int", args[3])
+	limit, err := conv.Int(args, 3, "TAKE", "int")
+	if err != nil {
+		return nil, err
+	}
+	if ctx.Nrow > int(limit) {
+		return context.ExecutionCircuitBreak, nil
 	}
 
 	return &context.Param{K: args[1], V: args[2]}, nil
 }
 
 func mapf_DROP(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, conv.ErrInvalidNumOfArgs("DROP", 4, len(args))
-	}
 	ctx, ok := args[0].(*context.Context)
 	if !ok {
 		return nil, conv.ErrWrongTypeOfArgs("DROP", 0, "context", args[0])
 	}
 
-	if limit, ok := args[3].(float64); ok {
-		if ctx.Nrow <= int(limit) {
-			return nil, nil
-		}
-	} else if limit, ok := args[3].(int); ok {
-		if ctx.Nrow <= int(limit) {
-			return nil, nil
-		}
-	} else {
-		return nil, conv.ErrWrongTypeOfArgs("DROP", 3, "int", args[3])
+	limit, err := conv.Int(args, 3, "DROP", "int")
+	if err != nil {
+		return nil, err
+	}
+	if ctx.Nrow <= int(limit) {
+		return nil, nil
 	}
 
 	return &context.Param{K: args[1], V: args[2]}, nil

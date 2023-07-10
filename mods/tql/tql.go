@@ -74,6 +74,8 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
 		tq.output = sink
+	} else {
+		return nil, errors.New("tql contains no output")
 	}
 
 	// map
