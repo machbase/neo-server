@@ -21,7 +21,7 @@ type fakeSource interface {
 Example)
 
 	 INPUT(
-		FAKE( oscillator() | sphere() )
+		FAKE( oscillator() | meshgrid() | linspace() )
 */
 func src_FAKE(args ...any) (any, error) {
 	if len(args) != 1 {
@@ -79,6 +79,9 @@ func (mg *meshgrid) Gen() <-chan []any {
 
 func (mg *meshgrid) Stop() {
 	mg.alive = false
+	for range mg.ch {
+		// drain remains
+	}
 	mg.closeWait.Wait()
 }
 
@@ -118,6 +121,9 @@ func (ls *linspace) Gen() <-chan []any {
 
 func (ls *linspace) Stop() {
 	ls.alive = false
+	for range ls.ch {
+		// drain remains
+	}
 	ls.closeWait.Wait()
 }
 
@@ -165,6 +171,9 @@ func (sp *sphere) Gen() <-chan []any {
 
 func (sp *sphere) Stop() {
 	sp.alive = false
+	for range sp.ch {
+		// drain remains
+	}
 	sp.closeWait.Wait()
 }
 
