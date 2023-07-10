@@ -67,7 +67,7 @@ func OptionManagementServer(handler mgmt.ManagementServer) Option {
 }
 
 type grpcd struct {
-	machrpc.MachbaseServer
+	machrpc.UnimplementedMachbaseServer
 
 	log logging.Log
 	db  spi.Database

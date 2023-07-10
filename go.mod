@@ -25,7 +25,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.7
-	github.com/machbase/neo-grpc v0.9.1-0.20230707030902-9c2c1b6fc262
+	github.com/machbase/neo-grpc v0.9.1-0.20230710111524-3324c00b6586
 	github.com/machbase/neo-spi v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea

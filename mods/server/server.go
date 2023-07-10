@@ -141,7 +141,7 @@ type Server interface {
 }
 
 type svr struct {
-	mgmt.ManagementServer
+	mgmt.UnimplementedManagementServer
 
 	conf *Config
 	log  logging.Log

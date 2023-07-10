@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
@@ -22,13 +23,16 @@ func init() {
 
 const helpConnector = `  connector command [options]
   commands:
-    list         list registered connectors
-    add <name>   add connector
-      options:
-        -t,--type <type>   connector type ['sqlite']
-        -c,--conn <string> connection string
-    del <name>   remove connector
-    test <name>  test connectivity of the connector
+    list                           shows registered connectors
+    add [options] <name>  <conn>   add connector
+        options:
+            -t,--type <type>        connector type ['sqlite']
+        args:
+            name                    name of the connection
+            conn                    connection string
+    del   <name>                    remove connector
+    test  <name>                    test connectivity of the connector
+    exec  <name> <command>
 `
 
 type ConnectorCmd struct {
@@ -37,18 +41,28 @@ type ConnectorCmd struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"del"`
 	Add struct {
-		Name string `arg:"" name:"name"`
+		Name string `arg:"" name:"name" help:"connector name"`
+		Path string `arg:"" name:"conn" help:"connector connection string"`
 		Type string `name:"type" short:"t" required:"" enum:"sqlite" help:"connector type"`
-		Path string `name:"conn" short:"c" help:"connector connection string"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"test"`
+	Exec struct {
+		Name  string   `arg:"" name:"name"`
+		Query []string `arg:"" name:"command" passthrough:""`
+	} `cmd:"" name:"exec"`
 	Help bool `kong:"-"`
 }
 
 func pcConnector() readline.PrefixCompleterInterface {
-	return readline.PcItem("connector")
+	return readline.PcItem("connector",
+		readline.PcItem("list"),
+		readline.PcItem("add"),
+		readline.PcItem("del"),
+		readline.PcItem("exec"),
+		readline.PcItem("test"),
+	)
 }
 
 func doConnector(ctx *client.ActionContext) {
@@ -70,12 +84,15 @@ func doConnector(ctx *client.ActionContext) {
 	switch parseCtx.Command() {
 	case "list":
 		doConnectorList(ctx)
-	case "add <name>":
+	case "add <name> <conn>":
 		doConnectorAdd(ctx, cmd.Add.Name, cmd.Add.Type, cmd.Add.Path)
 	case "del <name>":
 		doConnectorDel(ctx, cmd.Del.Name)
 	case "test <name>":
 		doConnectorTest(ctx, cmd.Test.Name)
+	case "exec <name> <command>":
+		sqlText := util.StripQuote(strings.Join(cmd.Exec.Query, " "))
+		doConnectorExec(ctx, cmd.Exec.Name, sqlText)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
 		return
@@ -160,4 +177,21 @@ func doConnectorTest(ctx *client.ActionContext, name string) {
 	}
 
 	ctx.Println("Testing connector", name, "...", rsp.Reason, rsp.Elapse)
+}
+
+func doConnectorExec(ctx *client.ActionContext, name string, query string) {
+	var svc machrpc.MachbaseClient
+	if cli, ok := ctx.Client.(machrpc.MachbaseClient); ok {
+		svc = cli
+	} else {
+		ctx.Println("ERR connector service is not avaliable;", fmt.Sprintf("%T", ctx.Client))
+		return
+	}
+	rsp, err := svc.ConnectorExec(ctx, &machrpc.ConnectorExecRequest{Name: name, Command: query})
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	ctx.Println("Exec connector", name, "...", rsp.Reason, rsp.Elapse)
 }
