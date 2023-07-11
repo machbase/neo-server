@@ -175,9 +175,12 @@ func (cli *client) ShutdownServer() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, err = mgmtcli.Shutdown(ctx, &mgmt.ShutdownRequest{})
+	rsp, err := mgmtcli.Shutdown(ctx, &mgmt.ShutdownRequest{})
 	if err != nil {
 		return err
+	}
+	if !rsp.Success {
+		return errors.New(rsp.Reason)
 	}
 	return nil
 }
