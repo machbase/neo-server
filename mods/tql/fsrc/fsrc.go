@@ -77,6 +77,7 @@ var functions = map[string]expression.Function{
 	"CSV":          src_CSV,
 	"file":         src_file,         // CSV()
 	"col":          src_col,          // CSV()
+	"header":       src_header,       // CSV()
 	"datetimeType": src_datetimeType, // col()
 	"stringType":   src_stringType,   // col()
 	"doubleType":   src_doubleType,   // col()
