@@ -112,7 +112,7 @@ endif
 ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
 	@./scripts/build.sh $@ $(nextver) edge
 else
-	@./scripts/build.sh $@ $(nextver) fog
+	@./scripts/build.sh $@ $(nextver) $(EDITION)
 endif
 
 release-%:
