@@ -27,7 +27,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 	// user able to decide shell other than "machbase-neo shell"
 	userShell := ctx.Query("shell")
-	svr.log.Trace("usershell", userShell)
 
 	// current websocket spec requires pass the token through handshake process
 	token := ctx.Query("token")
@@ -254,8 +253,14 @@ type Term struct {
 }
 
 func NewTerm(hostPort string, userShell string, user string, password string) (*Term, error) {
+	var loginString string
+	if len(userShell) > 0 {
+		loginString = fmt.Sprintf("%s:%s", user, userShell)
+	} else {
+		loginString = user
+	}
 	conn, err := ssh.Dial("tcp", hostPort, &ssh.ClientConfig{
-		User: user,
+		User: loginString,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(password),
 		},
