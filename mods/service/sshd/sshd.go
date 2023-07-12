@@ -93,6 +93,12 @@ func OptionMotdMessage(msg string) Option {
 	}
 }
 
+func OptionShellDefinitionProvider(provider func(name string) *ShellDefinition) Option {
+	return func(s *sshd) {
+		s.shellDefinitionProvider = provider
+	}
+}
+
 type sshd struct {
 	log   logging.Log
 	db    spi.Database
@@ -118,6 +124,8 @@ type sshd struct {
 	children     map[int]*os.Process
 
 	shellCmd []string
+
+	shellDefinitionProvider func(name string) *ShellDefinition
 }
 
 type Shell struct {
@@ -296,6 +304,9 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		return false
 	}
 	user := ctx.User()
+	if strings.Contains(user, ":") {
+		user = strings.Split(user, ":")[0]
+	}
 	ok, err := mdb.UserAuth(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())

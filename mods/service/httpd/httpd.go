@@ -88,13 +88,6 @@ func OptionNeoShellAddress(addrs ...string) Option {
 	}
 }
 
-// experiement features
-func OptionExperimentMode(enable bool) Option {
-	return func(s *httpd) {
-		s.experimentMode = enable
-	}
-}
-
 // license file path
 func OptionLicenseFilePath(path string) Option {
 	return func(s *httpd) {
@@ -127,6 +120,25 @@ func OptionDebugMode(isDebug bool) Option {
 	}
 }
 
+// experiement features
+func OptionExperimentModeProvider(provider func() bool) Option {
+	return func(s *httpd) {
+		s.experimentModeProvider = provider
+	}
+}
+
+func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
+	return func(s *httpd) {
+		s.referenceProvider = provider
+	}
+}
+
+func OptionShellProvider(provider func() []WebShell) Option {
+	return func(s *httpd) {
+		s.shellProvider = provider
+	}
+}
+
 type httpd struct {
 	log   logging.Log
 	db    spi.Database
@@ -147,9 +159,11 @@ type httpd struct {
 	tqlLoader tql.Loader
 	serverFs  *ssfs.SSFS
 
-	licenseFilePath string
-	debugMode       bool
-	experimentMode  bool
+	licenseFilePath        string
+	debugMode              bool
+	referenceProvider      func() []WebReferenceGroup
+	shellProvider          func() []WebShell
+	experimentModeProvider func() bool
 }
 
 type HandlerType string

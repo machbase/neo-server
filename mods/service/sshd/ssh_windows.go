@@ -15,8 +15,14 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	svr.log.Debugf("session open %s from %s", ss.User(), ss.RemoteAddr())
-	shell := svr.shellProvider(ss.User())
+	user, shellDef := svr.findShellDefinition(ss)
+	if shellDef != nil {
+		svr.log.Debugf("session open %s (%s) from %s", user, shellDef.Name, ss.RemoteAddr())
+	} else {
+		svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
+	}
+
+	shell := svr.buildShell(user, shellDef)
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
@@ -28,7 +34,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		ss.Exit(1)
 		return
 	}
-	io.WriteString(ss, svr.motdProvider(ss.User()))
+	io.WriteString(ss, svr.motdProvider(user))
 	cpty, err := conpty.New(int16(ptyReq.Window.Width), int16(ptyReq.Window.Height))
 	if err != nil {
 		io.WriteString(ss, fmt.Sprintf("Fail to create ConPTY: %s", err.Error()))
@@ -132,9 +138,9 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	ps, err := process.Wait()
 	if err != nil {
-		svr.log.Infof("session terminated %s from %s %s", ss.User(), ss.RemoteAddr(), err.Error())
+		svr.log.Infof("session terminated %s from %s %s", user, ss.RemoteAddr(), err.Error())
 		return
 	}
 
-	svr.log.Debugf("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), ps)
+	svr.log.Debugf("session close %s from %s '%v' ", user, ss.RemoteAddr(), ps)
 }

@@ -25,6 +25,9 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, "invalid termId")
 		return
 	}
+	// user able to decide shell other than "machbase-neo shell"
+	userShell := ctx.Query("shell")
+
 	// current websocket spec requires pass the token through handshake process
 	token := ctx.Query("token")
 	claim, err := svr.verifyAccessToken(token)
@@ -59,7 +62,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 
-	term, err := NewTerm(termAddress, termLoginName, termPassword)
+	term, err := NewTerm(termAddress, userShell, termLoginName, termPassword)
 	if err != nil {
 		svr.log.Warnf("term conn %s", err.Error())
 		ctx.String(http.StatusBadGateway, err.Error())
@@ -245,11 +248,19 @@ type Term struct {
 
 	conn    *ssh.Client
 	session *ssh.Session
+
+	userShell string
 }
 
-func NewTerm(hostPort string, user string, password string) (*Term, error) {
+func NewTerm(hostPort string, userShell string, user string, password string) (*Term, error) {
+	var loginString string
+	if len(userShell) > 0 {
+		loginString = fmt.Sprintf("%s:%s", user, userShell)
+	} else {
+		loginString = user
+	}
 	conn, err := ssh.Dial("tcp", hostPort, &ssh.ClientConfig{
-		User: user,
+		User: loginString,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(password),
 		},
@@ -266,12 +277,13 @@ func NewTerm(hostPort string, user string, password string) (*Term, error) {
 		return nil, errors.Wrap(err, "NewTerm new session")
 	}
 	term := &Term{
-		Type:    "xterm",
-		Rows:    25,
-		Cols:    80,
-		Since:   time.Now(),
-		conn:    conn,
-		session: session,
+		Type:      "xterm",
+		Rows:      25,
+		Cols:      80,
+		Since:     time.Now(),
+		conn:      conn,
+		session:   session,
+		userShell: userShell,
 	}
 	term.Stdout, err = session.StdoutPipe()
 	if err != nil {
