@@ -29,7 +29,7 @@ func TestDriver(t *testing.T) {
 }
 
 func testDriverDataSource(t *testing.T, dataSourceName string) {
-	db, err := sql.Open("machbase", dataSourceName)
+	db, err := sql.Open(driver.Name, dataSourceName)
 	if err != nil {
 		panic(err)
 	}
