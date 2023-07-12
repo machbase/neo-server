@@ -503,6 +503,7 @@ func (s *svr) Start() error {
 			sshd.OptionAuthServer(s),
 			sshd.OptionGrpcServerAddress(s.conf.Grpc.Listeners...),
 			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+			sshd.OptionShellDefinitionProvider(s.GetShellDef),
 		)
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -845,6 +846,18 @@ func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
 func (s *svr) RemoveShellDef(name string) error {
 	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(name)))
 	return os.Remove(path)
+}
+
+func (s *svr) GetShellDef(name string) (found *sshd.ShellDefinition) {
+	name = strings.ToUpper(name)
+	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+		if def.Name == name {
+			found = def
+			return false
+		}
+		return true
+	})
+	return
 }
 
 // AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
