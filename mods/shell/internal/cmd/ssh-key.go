@@ -74,7 +74,7 @@ func doSshKey(ctx *client.ActionContext) {
 }
 
 func doSshKeyList(ctx *client.ActionContext) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -98,7 +98,7 @@ func doSshKeyList(ctx *client.ActionContext) {
 }
 
 func doSshKeyDel(ctx *client.ActionContext, fingerprint string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -118,7 +118,7 @@ func doSshKeyDel(ctx *client.ActionContext, fingerprint string) {
 }
 
 func doSshKeyAdd(ctx *client.ActionContext, keyType, key, comment string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

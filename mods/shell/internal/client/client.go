@@ -39,6 +39,7 @@ type Client interface {
 
 	Database() spi.Database
 	Pref() *Pref
+	ManagementClient() (mgmt.ManagementClient, error)
 }
 
 type ShutdownServerFunc func() error
@@ -63,14 +64,15 @@ var Formats = struct {
 }
 
 type Config struct {
-	ServerAddr   string
-	Stdin        io.ReadCloser
-	Stdout       io.Writer
-	Stderr       io.Writer
-	Prompt       string
-	PromptCont   string
-	QueryTimeout time.Duration
-	Lang         language.Tag
+	ServerAddr     string
+	ServerCertPath string
+	Stdin          io.ReadCloser
+	Stdout         io.Writer
+	Stderr         io.Writer
+	Prompt         string
+	PromptCont     string
+	QueryTimeout   time.Duration
+	Lang           language.Tag
 }
 
 type client struct {
@@ -134,8 +136,11 @@ func (cli *client) checkDatabase() error {
 		return nil
 	}
 
-	machcli := machrpc.NewClient()
-	err := machcli.Connect(cli.conf.ServerAddr, machrpc.QueryTimeout(cli.conf.QueryTimeout))
+	machcli := machrpc.NewClient(
+		machrpc.WithServer(cli.conf.ServerAddr),
+		machrpc.WithServerCert(cli.conf.ServerCertPath),
+		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
+	err := machcli.Connect()
 	if err != nil {
 		return err
 	}
@@ -167,7 +172,7 @@ func (cli *client) ShutdownServer() error {
 		return errors.New("remote session is not allowed to shutdown")
 	}
 
-	conn, err := machrpc.MakeGrpcConn(cli.conf.ServerAddr)
+	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ServerCertPath)
 	if err != nil {
 		return err
 	}
@@ -183,6 +188,14 @@ func (cli *client) ShutdownServer() error {
 		return errors.New(rsp.Reason)
 	}
 	return nil
+}
+
+func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
+	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ServerCertPath)
+	if err != nil {
+		return nil, err
+	}
+	return mgmt.NewManagementClient(conn), nil
 }
 
 func (cli *client) Run(command string) {

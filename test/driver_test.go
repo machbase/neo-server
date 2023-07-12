@@ -7,14 +7,15 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/machbase/neo-grpc/driver"
+	driver "github.com/machbase/neo-grpc/driver"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDriver(t *testing.T) {
 	t.Logf("Drivers=%#v", sql.Drivers())
 
-	db, err := sql.Open("machbase", "unix://../tmp/mach.sock")
+	driver.RegisterServerCert("test", "../tmp/machbase_pref/cert/machbase_cert.pem")
+	db, err := sql.Open("machbase", "unix://../tmp/mach.sock?tls=test")
 	if err != nil {
 		panic(err)
 	}
@@ -34,14 +35,14 @@ func TestDriver(t *testing.T) {
 
 	if count == 0 {
 		sqlText := fmt.Sprintf(`
-			create tag table %s ( 
-				name            varchar(200) primary key, 
-				time            datetime basetime, 
-				value           double summarized, 
+			create tag table %s (
+				name            varchar(200) primary key,
+				time            datetime basetime,
+				value           double summarized,
 				type            varchar(40),
 				ivalue          long,
 				svalue          varchar(400),
-				id              varchar(80), 
+				id              varchar(80),
 				pname           varchar(80),
 				sampling_period long,
 				payload         json

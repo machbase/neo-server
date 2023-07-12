@@ -1,6 +1,7 @@
 package grpcd
 
 import (
+	"crypto/tls"
 	"runtime"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type Service interface {
@@ -59,6 +61,13 @@ func OptionMaxSendMsgSize(size int) Option {
 	}
 }
 
+func OptionTlsCreds(keyPath string, certPath string) Option {
+	return func(s *grpcd) {
+		s.keyPath = keyPath
+		s.certPath = certPath
+	}
+}
+
 // mgmt implements
 func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	return func(s *grpcd) {
@@ -75,6 +84,8 @@ type grpcd struct {
 	listenAddresses []string
 	maxRecvMsgSize  int
 	maxSendMsgSize  int
+	keyPath         string
+	certPath        string
 
 	mgmtImpl mgmt.ManagementServer
 
@@ -88,6 +99,16 @@ func (svr *grpcd) Start() error {
 		grpc.MaxRecvMsgSize(int(svr.maxRecvMsgSize)),
 		grpc.MaxSendMsgSize(int(svr.maxSendMsgSize)),
 		grpc.StatsHandler(svr),
+	}
+
+	// creds
+	tlsCreds, err := svr.loadTlsCreds()
+	if err != nil {
+		return err
+	}
+	if tlsCreds != nil {
+		grpcOptions = append(grpcOptions, grpc.Creds(tlsCreds))
+		svr.log.Infof("gRPC TLS enabled")
 	}
 
 	// create grpc server
@@ -137,4 +158,19 @@ func (svr *grpcd) Stop() {
 	if svr.mgmtServer != nil {
 		svr.mgmtServer.Stop()
 	}
+}
+
+func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
+	if len(svr.certPath) == 0 && len(svr.keyPath) == 0 {
+		return nil, nil
+	}
+	cert, err := tls.LoadX509KeyPair(svr.certPath, svr.keyPath)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.NoClientCert,
+	}
+	return credentials.NewTLS(tlsConfig), nil
 }

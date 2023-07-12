@@ -11,7 +11,7 @@ import (
 const (
 	TagTableName  = "tagdata"
 	ConfTableName = "tagconf"
-	NeoServeAddr  = "unix://../../../../../../eleven/machbase-neo/mach-grpc.sock"
+	NeoServeAddr  = "unix://../tmp/mach-grpc.sock"
 )
 
 type neo struct {
@@ -21,8 +21,8 @@ type neo struct {
 func TestNeo(t *testing.T) {
 	neo := neo{}
 
-	neo.cli = machrpc.NewClient()
-	err := neo.cli.Connect(NeoServeAddr)
+	neo.cli = machrpc.NewClient(machrpc.WithServer(NeoServeAddr))
+	err := neo.cli.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}

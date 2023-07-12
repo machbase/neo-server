@@ -14,9 +14,10 @@ import (
 )
 
 type ShellCmd struct {
-	Args       []string `arg:"" optional:"" name:"ARGS" passthrough:""`
-	Version    bool     `name:"version" default:"false" help:"show version"`
-	ServerAddr string   `name:"server" short:"s" help:"server address"`
+	Args           []string `arg:"" optional:"" name:"ARGS" passthrough:""`
+	Version        bool     `name:"version" default:"false" help:"show version"`
+	ServerAddr     string   `name:"server" short:"s" help:"server address"`
+	ServerCertPath string   `name:"server-cert" short:"a" help:"path to server certificate"`
 }
 
 var DefaultServerAddress = "tcp://127.0.0.1:5655"
@@ -46,9 +47,17 @@ func Shell(cmd *ShellCmd) {
 			cmd.ServerAddr = "tcp://127.0.0.1:5655"
 		}
 	}
+	if cmd.ServerCertPath == "" {
+		if pref, err := client.LoadPref(); err == nil {
+			cmd.ServerCertPath = pref.ServerCert().Value()
+		} else {
+			cmd.ServerCertPath = ""
+		}
+
+	}
 	clientConf := client.DefaultConfig()
 	clientConf.ServerAddr = cmd.ServerAddr
-
+	clientConf.ServerCertPath = cmd.ServerCertPath
 	var command = ""
 	if len(cmd.Args) > 0 {
 		for i := range cmd.Args {

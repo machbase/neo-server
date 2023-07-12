@@ -59,6 +59,12 @@ func (svr *sshd) buildShell(user string, shellDef *ShellDefinition) *Shell {
 			}
 			shell.Envs["USERPROFILE"] = userHomeDir
 		}
+	} else {
+		if _, ok := shell.Envs["HOME"]; !ok {
+			if userHomeDir, err := os.UserHomeDir(); err == nil {
+				shell.Envs["HOME"] = userHomeDir
+			}
+		}
 	}
 
 	return shell
