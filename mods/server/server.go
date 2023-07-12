@@ -846,8 +846,17 @@ func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
 	if fi, err := os.Stat(binpath); err != nil {
 		return errors.Wrapf(err, "'%s' is not accessible", binpath)
 	} else {
-		if fi.IsDir() || fi.Mode().Perm()&0111 == 0 {
+		if fi.IsDir() {
 			return fmt.Errorf("'%s' is not executable", binpath)
+		}
+		if runtime.GOOS == "windows" {
+			if !strings.HasSuffix(strings.ToLower(binpath), ".exe") && !strings.HasSuffix(strings.ToLower(binpath), ".com") {
+				return fmt.Errorf("'%s' is not executable", binpath)
+			}
+		} else {
+			if fi.Mode().Perm()&0111 == 0 {
+				return fmt.Errorf("'%s' is not executable", binpath)
+			}
 		}
 	}
 	content, err := json.Marshal(def)
