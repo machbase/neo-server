@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -16,32 +15,14 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user := ss.User()
-	var shellDef *ShellDefinition
-	if strings.Contains(user, ":") {
-		userShell := ""
-		toks := strings.SplitN(user, ":", 2)
-		user = toks[0]
-		userShell = toks[1]
-		shellDef = svr.shellDefinitionProvider(userShell)
-	}
-
+	user, shellDef := svr.findShellDefinition(ss)
 	if shellDef != nil {
 		svr.log.Debugf("session open %s (%s) from %s", user, shellDef.Name, ss.RemoteAddr())
 	} else {
 		svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
 	}
 
-	var shell *Shell
-	if shellDef == nil {
-		shell = svr.shellProvider(ss.User())
-	} else {
-		shell = &Shell{}
-		shell.Cmd = shellDef.Args[0]
-		if len(shellDef.Args) > 1 {
-			shell.Args = shellDef.Args[1:]
-		}
-	}
+	shell := svr.buildShell(user, shellDef)
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
