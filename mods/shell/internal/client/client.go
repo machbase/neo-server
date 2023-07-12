@@ -89,7 +89,7 @@ func DefaultConfig() *Config {
 		Stdout:       os.Stdout,
 		Stderr:       os.Stderr,
 		Prompt:       "\033[31mmachbase-neo»\033[0m ",
-		PromptCont:   "\033[37m>\033[0m  ",
+		PromptCont:   "\033[31m>\033[0m  ",
 		QueryTimeout: 0 * time.Second,
 		Lang:         language.English,
 	}
