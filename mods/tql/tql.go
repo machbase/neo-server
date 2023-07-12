@@ -30,7 +30,7 @@ type tagQL struct {
 	pragma []string
 }
 
-func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]string, dataWriter io.Writer) (Tql, error) {
+func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error) {
 	lines, err := readLines(codeReader)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		sink, err := fsink.Compile(sinkLine.text, params, dataWriter)
+		sink, err := fsink.Compile(sinkLine.text, params, dataWriter, toJsonOutput)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
@@ -97,6 +97,9 @@ func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.Res
 	w.Header().Set("Content-Type", tq.output.ContentType())
 	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
 		w.Header().Set("Content-Encoding", contentEncoding)
+	}
+	if tq.output.IsChart() {
+		w.Header().Set("X-Chart-Type", "echarts")
 	}
 	return tq.Execute(ctx, db)
 }

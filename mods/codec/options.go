@@ -127,6 +127,18 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
+type CanSetChartJson interface {
+	SetChartJson(flag bool)
+}
+
+func ChartJson(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetChartJson); ok {
+			o.SetChartJson(flag)
+		}
+	}
+}
+
 type CanSetXAxis interface {
 	SetXAxis(int, string, string)
 }

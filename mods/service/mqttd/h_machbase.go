@@ -245,7 +245,7 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard)
+	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard, false)
 	if err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		return nil

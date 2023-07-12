@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-echarts/go-echarts/v2/types"
+	"github.com/go-echarts/go-echarts/v2/render"
 )
 
 type Base2D struct {
@@ -34,6 +34,9 @@ type Base2D struct {
 }
 
 func (ex *Base2D) ContentType() string {
+	if ex.toJsonOutput {
+		return "application/json"
+	}
 	return "text/html"
 }
 
@@ -74,10 +77,6 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 		height = ex.height
 	}
 
-	theme := ex.theme
-	if theme == "" {
-		theme = types.ThemeWesteros
-	}
 	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
 	if len(ex.assetHost) > 0 {
 		assetHost = ex.assetHost
@@ -85,7 +84,7 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			AssetsHost: assetHost,
-			Theme:      theme,
+			Theme:      ex.Theme(),
 			Width:      width,
 			Height:     height,
 		}),
@@ -188,58 +187,6 @@ func (ex *Base2D) getRenderSeriesLabel(idx int) string {
 	return label
 }
 
-func (ex *Base2D) Close() {
-	switch ex.chartType {
-	case "line":
-		line := charts.NewLine()
-		line.SetGlobalOptions(ex.getGlobalOptions()...)
-		line.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{charts.WithLabelOpts(opts.Label{
-			Show: true,
-		}),
-			charts.WithLineChartOpts(
-				opts.LineChart{
-					Smooth:     true,
-					XAxisIndex: 0,
-				},
-			),
-		}
-		for i, series := range ex.lineSeries {
-			label := ex.getRenderSeriesLabel(i)
-			line.AddSeries(label, series, seriesOpts...)
-		}
-		line.Render(ex.output)
-	case "scatter":
-		scatter := charts.NewScatter()
-		scatter.SetGlobalOptions(ex.getGlobalOptions()...)
-		scatter.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{
-			charts.WithLabelOpts(opts.Label{
-				Show: false,
-			}),
-		}
-		for i, series := range ex.scatterSeries {
-			label := ex.getRenderSeriesLabel(i)
-			scatter.AddSeries(label, series, seriesOpts...)
-		}
-		scatter.Render(ex.output)
-	case "bar":
-		bar := charts.NewBar()
-		bar.SetGlobalOptions(ex.getGlobalOptions()...)
-		bar.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{
-			charts.WithLabelOpts(opts.Label{
-				Show: false,
-			}),
-		}
-		for i, series := range ex.barSeries {
-			label := ex.getRenderSeriesLabel(i)
-			bar.AddSeries(label, series, seriesOpts...)
-		}
-		bar.Render(ex.output)
-	}
-}
-
 type Line struct {
 	Base2D
 }
@@ -251,6 +198,36 @@ func NewLine() *Line {
 			xAxisIdx:  0, xAxisLabel: "x",
 			yAxisIdx: 1, yAxisLabel: "y",
 		},
+	}
+}
+
+func (ex *Line) Close() {
+	line := charts.NewLine()
+	line.SetGlobalOptions(ex.getGlobalOptions()...)
+	line.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{charts.WithLabelOpts(opts.Label{
+		Show: true,
+	}),
+		charts.WithLineChartOpts(
+			opts.LineChart{
+				Smooth:     true,
+				XAxisIndex: 0,
+			},
+		),
+	}
+	for i, series := range ex.lineSeries {
+		label := ex.getRenderSeriesLabel(i)
+		line.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(line, line.Validate)
+	} else {
+		rndr = newChartRender(line, line.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
 	}
 }
 
@@ -268,6 +245,31 @@ func NewScatter() *Scatter {
 	}
 }
 
+func (ex *Scatter) Close() {
+	scatter := charts.NewScatter()
+	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
+	scatter.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{
+		charts.WithLabelOpts(opts.Label{
+			Show: false,
+		}),
+	}
+	for i, series := range ex.scatterSeries {
+		label := ex.getRenderSeriesLabel(i)
+		scatter.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(scatter, scatter.Validate)
+	} else {
+		rndr = newChartRender(scatter, scatter.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
+}
+
 type Bar struct {
 	Base2D
 }
@@ -279,5 +281,30 @@ func NewBar() *Bar {
 			xAxisIdx:  0, xAxisLabel: "x",
 			yAxisIdx: 1, yAxisLabel: "y",
 		},
+	}
+}
+
+func (ex *Bar) Close() {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(ex.getGlobalOptions()...)
+	bar.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{
+		charts.WithLabelOpts(opts.Label{
+			Show: false,
+		}),
+	}
+	for i, series := range ex.barSeries {
+		label := ex.getRenderSeriesLabel(i)
+		bar.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(bar, bar.Validate)
+	} else {
+		rndr = newChartRender(bar, bar.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
 	}
 }

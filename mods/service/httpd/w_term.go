@@ -75,13 +75,22 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	defer func() {
 		svr.log.Debugf("term %s unregister %s", termKey, termAddress)
 		terminals.Unregister(termKey)
-		term.Close()
-		conn.Close()
+		if term != nil {
+			term.Close()
+		}
+		if conn != nil {
+			conn.Close()
+		}
 	}()
 
 	oneceCloseMessage := sync.Once{}
 
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				svr.log.Errorf("term %s recover %s", termKey, e)
+			}
+		}()
 		b := [termBuffSize]byte{}
 		for {
 			n, err := term.Stdout.Read(b[:])
@@ -106,6 +115,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}()
 
 	go func() {
+		defer func() {
+			if e := recover(); e != nil {
+				svr.log.Errorf("term %s recover %s", termKey, e)
+			}
+		}()
 		b := [termBuffSize]byte{}
 		for {
 			n, err := term.Stderr.Read(b[:])
