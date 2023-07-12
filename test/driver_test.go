@@ -14,8 +14,22 @@ import (
 func TestDriver(t *testing.T) {
 	t.Logf("Drivers=%#v", sql.Drivers())
 
-	driver.RegisterServerCert("test", "../tmp/machbase_pref/cert/machbase_cert.pem")
-	db, err := sql.Open("machbase", "unix://../tmp/mach.sock?tls=test")
+	driver.RegisterDataSource("local-unix", &driver.DataSource{
+		ServerAddr: "unix://../tmp/mach.sock",
+		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+	})
+
+	driver.RegisterDataSource("local-tcp", &driver.DataSource{
+		ServerAddr: "tcp://127.0.0.1:6565",
+		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+	})
+
+	testDriverDataSource(t, "local-unix")
+	testDriverDataSource(t, "local-tcp")
+}
+
+func testDriverDataSource(t *testing.T, dataSourceName string) {
+	db, err := sql.Open("machbase", dataSourceName)
 	if err != nil {
 		panic(err)
 	}
