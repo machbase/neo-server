@@ -835,11 +835,26 @@ func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
 }
 
 func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
+	name := strings.ToUpper(def.Name)
+	if name == "SHELL" {
+		return fmt.Errorf("'%s' is not allowed for the custom shell name", name)
+	}
+	if len(def.Args) == 0 {
+		return errors.New("invalid command for the custom shell")
+	}
+	binpath := def.Args[0]
+	if fi, err := os.Stat(binpath); err != nil {
+		return errors.Wrapf(err, "'%s' is not accessible", binpath)
+	} else {
+		if fi.IsDir() || fi.Mode().Perm()&0111 == 0 {
+			return fmt.Errorf("'%s' is not executable", binpath)
+		}
+	}
 	content, err := json.Marshal(def)
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(def.Name)))
+	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", name))
 	return os.WriteFile(path, content, 0600)
 }
 
