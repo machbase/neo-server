@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -153,6 +154,7 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
+	shellDefsDir      string
 	licenseFilePath   string
 	licenseFileTime   time.Time
 
@@ -247,6 +249,11 @@ func (s *svr) Start() error {
 	s.authorizedKeysDir = filepath.Join(s.certdir, "authorized_keys")
 	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
 		return errors.Wrap(err, "authorized keys")
+	}
+
+	s.shellDefsDir = filepath.Join(prefpath, "shell")
+	if err := mkDirIfNotExistsMode(s.shellDefsDir, 0700); err != nil {
+		return errors.Wrap(err, "shell definitions")
 	}
 
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
@@ -428,8 +435,10 @@ func (s *svr) Start() error {
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
 			httpd.OptionServerSideFileSystem(serverFs),
-			httpd.OptionExperimentMode(s.conf.ExperimentMode),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
+			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+			httpd.OptionReferenceProvider(s.WebReferences),
+			httpd.OptionShellProvider(s.WebShells),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -494,6 +503,7 @@ func (s *svr) Start() error {
 			sshd.OptionAuthServer(s),
 			sshd.OptionGrpcServerAddress(s.conf.Grpc.Listeners...),
 			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+			sshd.OptionShellDefinitionProvider(s.GetShellDef),
 		)
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -793,6 +803,63 @@ func (s *svr) checkListenPort(address string) error {
 	return nil
 }
 
+func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
+	if cb == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(s.shellDefsDir)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.shellDefsDir, entry.Name()))
+		if err != nil {
+			s.log.Errorf("ERR file access, %s", err.Error())
+			continue
+		}
+		def := &sshd.ShellDefinition{}
+		if err := json.Unmarshal(content, def); err != nil {
+			s.log.Warnf("ERR invalid shell conf, %s", err.Error())
+			continue
+		}
+		def.Name = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
+		shouldContinue := cb(def)
+		if !shouldContinue {
+			break
+		}
+	}
+	return nil
+}
+
+func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
+	content, err := json.Marshal(def)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(def.Name)))
+	return os.WriteFile(path, content, 0600)
+}
+
+func (s *svr) RemoveShellDef(name string) error {
+	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(name)))
+	return os.Remove(path)
+}
+
+func (s *svr) GetShellDef(name string) (found *sshd.ShellDefinition) {
+	name = strings.ToUpper(name)
+	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+		if def.Name == name {
+			found = def
+			return false
+		}
+		return true
+	})
+	return
+}
+
 // AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
 func (s *svr) AuthorizedCertificate(id string) (*x509.Certificate, error) {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
@@ -1031,4 +1098,44 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// web options
+
+func (s *svr) WebReferences() []httpd.WebReferenceGroup {
+	ret := []httpd.WebReferenceGroup{}
+
+	references := httpd.WebReferenceGroup{Label: "References"}
+	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
+	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"})
+	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
+	ret = append(ret, references)
+
+	tutorials := httpd.WebReferenceGroup{Label: "Tutorials"}
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
+	ret = append(ret, tutorials)
+
+	samples := httpd.WebReferenceGroup{Label: "Samples"}
+	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
+	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
+	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
+	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
+	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
+	ret = append(ret, samples)
+
+	return ret
+}
+
+func (s *svr) WebShells() []httpd.WebShell {
+	var ret []httpd.WebShell
+	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+		ret = append(ret, httpd.WebShell{
+			Label: def.Name,
+			Icon:  "console-network-outline",
+			Id:    strings.ToUpper(def.Name),
+		})
+		return true
+	})
+	return ret
 }

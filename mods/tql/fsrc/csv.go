@@ -26,8 +26,9 @@ type readerSource interface {
 var _ readerSource = &csvSrc{}
 
 type csvSrc struct {
-	fd      io.ReadCloser
-	columns map[int]*columnOpt
+	fd        io.ReadCloser
+	columns   map[int]*columnOpt
+	hasHeader bool
 
 	reader    *csv.Reader
 	ch        chan []any
@@ -45,6 +46,9 @@ func (src *csvSrc) Gen() <-chan []any {
 			fields, err := src.reader.Read()
 			if len(fields) == 0 || err != nil {
 				break
+			}
+			if rownum == 0 && src.hasHeader {
+				continue // skip header
 			}
 			values := make([]any, len(fields))
 			for i := 0; i < len(fields); i++ {
@@ -156,6 +160,8 @@ func src_CSV(args ...any) (any, error) {
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
+		case *headerOpt:
+			ret.hasHeader = v.hasHeader
 		case io.Reader:
 			reader = v
 		case string:
@@ -189,6 +195,18 @@ func src_CSV(args ...any) (any, error) {
 	}
 
 	return ret, nil
+}
+
+type headerOpt struct {
+	hasHeader bool
+}
+
+func src_header(args ...any) (any, error) {
+	flag, err := conv.Bool(args, 0, "header", "boolean")
+	if err != nil {
+		return nil, err
+	}
+	return &headerOpt{hasHeader: flag}, nil
 }
 
 type columnOpt struct {

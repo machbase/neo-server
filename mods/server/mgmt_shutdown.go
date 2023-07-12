@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net"
 	"runtime"
 	"strings"
 	"time"
@@ -16,10 +17,31 @@ func (s *svr) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.Sh
 	tick := time.Now()
 	rsp := &mgmt.ShutdownResponse{}
 	if runtime.GOOS != "windows" {
-		p, _ := peer.FromContext(ctx)
+		p, ok := peer.FromContext(ctx)
+		if !ok {
+			rsp.Success, rsp.Reason = false, "failed to get peer address from ctx"
+			rsp.Elapse = time.Since(tick).String()
+			return rsp, nil
+		}
+		if p.Addr == net.Addr(nil) {
+			rsp.Success, rsp.Reason = false, "failed to get peer address"
+			rsp.Elapse = time.Since(tick).String()
+			return rsp, nil
+		}
+		isUnixAddr := false
+		isTcpLocal := false
+		if addr, ok := p.Addr.(*net.TCPAddr); ok {
+			if strings.HasPrefix(addr.String(), "127.0.0.1:") {
+				isTcpLocal = true
+			} else if strings.HasPrefix(addr.String(), "0:0:0:0:0:0:0:1") {
+				isTcpLocal = true
+			}
+		} else if _, ok := p.Addr.(*net.UnixAddr); ok {
+			isUnixAddr = true
+		}
 		s.log.Infof("shutdown request from %v", p.Addr)
-		if !strings.HasPrefix(p.Addr.String(), "127.0.0.1:") && !strings.HasPrefix(p.Addr.String(), "0:0:0:0:0:0:0:1") {
-			rsp.Success, rsp.Reason = false, "remote access not allowed"
+		if !isUnixAddr && !isTcpLocal {
+			rsp.Success, rsp.Reason = false, "remote shutdown not allowed"
 			rsp.Elapse = time.Since(tick).String()
 			return rsp, nil
 		}

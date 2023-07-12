@@ -15,13 +15,20 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	svr.log.Debugf("session open %s from %s", ss.User(), ss.RemoteAddr())
-	shell := svr.shellProvider(ss.User())
+	user, shellDef := svr.findShellDefinition(ss)
+	if shellDef != nil {
+		svr.log.Debugf("session open %s (%s) from %s", user, shellDef.Name, ss.RemoteAddr())
+	} else {
+		svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
+	}
+
+	shell := svr.buildShell(user, shellDef)
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
 		return
 	}
+
 	cmd := exec.Command(shell.Cmd, shell.Args...)
 	ptyReq, winCh, isPty := ss.Pty()
 	if !isPty {
@@ -29,7 +36,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		ss.Exit(1)
 		return
 	}
-	io.WriteString(ss, svr.motdProvider(ss.User()))
+	io.WriteString(ss, svr.motdProvider(user))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", ptyReq.Term))
 	for k, v := range shell.Envs {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
@@ -84,7 +91,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		}
 	}()
 	cmd.Wait()
-	svr.log.Debugf("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), cmd.ProcessState)
+	svr.log.Debugf("session close %s from %s '%v' ", user, ss.RemoteAddr(), cmd.ProcessState)
 }
 
 func setWinsize(f *os.File, w, h int) {
