@@ -43,22 +43,15 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	defer cpty.Close()
 
+	if _, ok := shell.Envs["TERM"]; !ok {
+		shell.Envs["TERM"] = ptyReq.Term
+	}
+
 	go func() {
 		for win := range winCh {
 			cpty.Resize(uint16(win.Width), uint16(win.Height))
 		}
 	}()
-
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		userHomeDir = "."
-	}
-	env := []string{}
-	env = append(env, "USERPROFILE="+userHomeDir)
-	env = append(env, fmt.Sprintf("TERM=%s", ptyReq.Term))
-	for k, v := range shell.Envs {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
 
 	var process *os.Process
 
@@ -117,6 +110,10 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	path := shell.Cmd
 	argv := []string{filepath.Base(path)}
 	argv = append(argv, shell.Args...)
+	env := []string{}
+	for k, v := range shell.Envs {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
 	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: env})
 	if err != nil {
 		svr.log.Errorf("ConPty spawn: %s", err.Error())

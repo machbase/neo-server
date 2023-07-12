@@ -2,6 +2,8 @@ package sshd
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 
 	"github.com/gliderlabs/ssh"
@@ -36,5 +38,28 @@ func (svr *sshd) buildShell(user string, shellDef *ShellDefinition) *Shell {
 			shell.Args = shellDef.Args[1:]
 		}
 	}
+
+	shell.Envs = map[string]string{}
+	if runtime.GOOS == "windows" {
+		envs := os.Environ()
+		for _, line := range envs {
+			if !strings.Contains(line, "=") {
+				continue
+			}
+			toks := strings.SplitN(line, "=", 2)
+			if len(toks) != 2 {
+				continue
+			}
+			shell.Envs[strings.TrimSpace(toks[0])] = strings.TrimSpace(toks[1])
+		}
+		if _, ok := shell.Envs["USERPROFILE"]; !ok {
+			userHomeDir, err := os.UserHomeDir()
+			if err != nil {
+				userHomeDir = "."
+			}
+			shell.Envs["USERPROFILE"] = userHomeDir
+		}
+	}
+
 	return shell
 }
