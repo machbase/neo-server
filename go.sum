@@ -360,8 +360,8 @@ github.com/machbase/booter v1.2.2 h1:d2aN6dFhBt2j0W6NpLWh8b4LPgn82moMPXnaWmMlXt8
 github.com/machbase/booter v1.2.2/go.mod h1:dWVbZWNAs4puCqiGbVM8ZAl/9bKoHtJlWoLnZKve1VA=
 github.com/machbase/neo-engine v1.0.7 h1:2qy5s4Yt/SCQMocBx+55YXdEF1IYGBsYbD5i1N+W/08=
 github.com/machbase/neo-engine v1.0.7/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
-github.com/machbase/neo-grpc v0.9.0 h1:Ig/o244zRsZbHXzVr/lU/b6uPVyZhrb3DmO9hBgbiLE=
-github.com/machbase/neo-grpc v0.9.0/go.mod h1:j+ZvMVZ/kFGFwAaWLu2w4L44OFYzGvvIuoplJAByZCg=
+github.com/machbase/neo-grpc v0.9.1-0.20230711234244-17c1fe42c615 h1:Qe5snOMEZnY/rXt8qiAG9SGzWQD2BnhU8TtF3exDRAU=
+github.com/machbase/neo-grpc v0.9.1-0.20230711234244-17c1fe42c615/go.mod h1:j+ZvMVZ/kFGFwAaWLu2w4L44OFYzGvvIuoplJAByZCg=
 github.com/machbase/neo-spi v1.3.0 h1:TRo6WghVUPysGak8UJ/z0yNI7+VXa0g1To2zrODE6dk=
 github.com/machbase/neo-spi v1.3.0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
