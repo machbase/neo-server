@@ -25,6 +25,11 @@ const helpShell = `  shell command [options]
     list                                shows registered shells
     add   <name>  <binpath [args...]>   register shell
     del   <name>                        unregister shell
+
+   ex)
+      shell add console  C:\Windows\System32\cmd.exe
+      shell add bashterm /bin/bash
+      shell add terminal /bin/zsh -il
 `
 
 type ShellCmd struct {
