@@ -103,12 +103,26 @@ func (ex *Exporter) Open() error {
 
 func (ex *Exporter) Close() {
 	ex.closeOnce.Do(func() {
+		headLines := []string{}
+		if ex.heading {
+			headLines = append(headLines, "|"+strings.Join(ex.colNames, "|")+"|\n")
+			headLines = append(headLines, strings.Repeat("|:-----", len(ex.colNames))+"|\n")
+		}
+
 		tailLines := []string{}
 		if ex.brief > 0 && ex.rownum > ex.brief {
 			tailLines = append(tailLines, strings.Repeat("| ... ", len(ex.colNames))+"|\n")
 			tailLines = append(tailLines, fmt.Sprintf("\n> *Total* %s *records*\n", util.NumberFormat(ex.rownum)))
+		} else if ex.rownum == 0 {
+			tailLines = append(tailLines, "\n> *No record*\n")
 		}
 		if !ex.htmlRender {
+			for _, line := range headLines {
+				ex.output.Write([]byte(line))
+			}
+			for _, line := range ex.mdLines {
+				ex.output.Write([]byte(line))
+			}
 			for _, line := range tailLines {
 				ex.output.Write([]byte(line))
 			}
@@ -116,6 +130,7 @@ func (ex *Exporter) Close() {
 			return
 		}
 
+		ex.mdLines = append(headLines, ex.mdLines...)
 		ex.mdLines = append(ex.mdLines, tailLines...)
 
 		md := goldmark.New(
@@ -181,18 +196,6 @@ func (ex *Exporter) AddRow(values []any) error {
 	}()
 
 	ex.rownum++
-
-	if ex.rownum == 1 && ex.heading {
-		header := "|" + strings.Join(ex.colNames, "|") + "|\n"
-		headerBorder := strings.Repeat("|:-----", len(ex.colNames)) + "|\n"
-		if ex.htmlRender {
-			ex.mdLines = append(ex.mdLines, header, headerBorder)
-		} else {
-			ex.output.Write([]byte(header))
-			ex.output.Write([]byte(headerBorder))
-		}
-	}
-
 	if ex.brief > 0 && ex.rownum > ex.brief {
 		return nil
 	}
