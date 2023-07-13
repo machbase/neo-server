@@ -146,8 +146,10 @@ func doSql(ctx *client.ActionContext) {
 		headerHeight = 4
 	case "csv":
 		headerHeight = 1
+		cmd.Footer = false
 	case "json":
 		headerHeight = 0
+		cmd.Footer = false
 	}
 
 	windowHeight := 0
