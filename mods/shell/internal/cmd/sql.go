@@ -199,6 +199,8 @@ func doSql(ctx *client.ActionContext) {
 	} else {
 		if cmd.Footer {
 			ctx.Println(msg)
+		} else {
+			ctx.Println()
 		}
 	}
 	client.AddSqlHistory(sqlText)
