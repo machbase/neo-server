@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/booter"
 	_ "github.com/machbase/neo-server/mods/logging"
 	_ "github.com/machbase/neo-server/mods/server"
 	spi "github.com/machbase/neo-spi"

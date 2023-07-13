@@ -1,7 +1,7 @@
 package logging
 
 import (
-	"github.com/machbase/booter"
+	"github.com/machbase/neo-server/booter"
 )
 
 const ModuleId = "machbase.com/neo-logging"

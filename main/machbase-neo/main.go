@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/server"
 	"github.com/machbase/neo-server/mods/shell"

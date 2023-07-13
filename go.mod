@@ -20,10 +20,10 @@ require (
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/hashicorp/hcl/v2 v2.16.2
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jchenry/goldmark-pikchr v0.0.2
 	github.com/jedib0t/go-pretty/v6 v6.4.6
-	github.com/machbase/booter v1.2.2
 	github.com/machbase/neo-engine v1.0.8
 	github.com/machbase/neo-grpc v0.10.1
 	github.com/machbase/neo-spi v1.3.0
@@ -35,6 +35,7 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230406072732-e22ce9588bb4
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/sevlyar/go-daemon v0.1.6
 	github.com/stretchr/testify v1.8.3
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
@@ -42,6 +43,7 @@ require (
 	github.com/tidwall/gjson v1.14.4
 	github.com/yuin/goldmark v1.5.4
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
+	github.com/zclconf/go-cty v1.13.1
 	go.abhg.dev/goldmark/mermaid v0.4.0
 	golang.org/x/crypto v0.10.0
 	golang.org/x/net v0.11.0
@@ -92,7 +94,6 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/hashicorp/hcl/v2 v2.16.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
@@ -114,7 +115,6 @@ require (
 	github.com/pion/udp/v2 v2.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	github.com/sevlyar/go-daemon v0.1.6 // indirect
 	github.com/srwiley/oksvg v0.0.0-20220731023508-a61f04f16b76 // indirect
 	github.com/srwiley/rasterx v0.0.0-20210519020934-456a8d69b780 // indirect
 	github.com/tevino/abool v1.2.0 // indirect
@@ -122,7 +122,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
-	github.com/zclconf/go-cty v1.13.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
