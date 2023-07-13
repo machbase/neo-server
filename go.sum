@@ -358,10 +358,10 @@ github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i
 github.com/lucor/goinfo v0.0.0-20210802170112-c078a2b0f08b/go.mod h1:PRq09yoB+Q2OJReAmwzKivcYyremnibWGbK7WfftHzc=
 github.com/machbase/booter v1.2.2 h1:d2aN6dFhBt2j0W6NpLWh8b4LPgn82moMPXnaWmMlXt8=
 github.com/machbase/booter v1.2.2/go.mod h1:dWVbZWNAs4puCqiGbVM8ZAl/9bKoHtJlWoLnZKve1VA=
-github.com/machbase/neo-engine v1.0.7 h1:2qy5s4Yt/SCQMocBx+55YXdEF1IYGBsYbD5i1N+W/08=
-github.com/machbase/neo-engine v1.0.7/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
-github.com/machbase/neo-grpc v0.10.0 h1:OdJo2F+0rCUqw1paU6ZyBf5TZOmvn/BU6YPVTJChU2Q=
-github.com/machbase/neo-grpc v0.10.0/go.mod h1:j+ZvMVZ/kFGFwAaWLu2w4L44OFYzGvvIuoplJAByZCg=
+github.com/machbase/neo-engine v1.0.8-0.20230713035101-ae6dcfa1fb95 h1:JJhQ1mD3ZMrmhn3rw9gCqGidSPrs9wKAME2CM/9Bxzs=
+github.com/machbase/neo-engine v1.0.8-0.20230713035101-ae6dcfa1fb95/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
+github.com/machbase/neo-grpc v0.10.1-0.20230713035040-e6cb6d287ac3 h1:lomt0GVPLPaJLdig0a0jI+tddveSkZoR+RmrmChydh0=
+github.com/machbase/neo-grpc v0.10.1-0.20230713035040-e6cb6d287ac3/go.mod h1:j+ZvMVZ/kFGFwAaWLu2w4L44OFYzGvvIuoplJAByZCg=
 github.com/machbase/neo-spi v1.3.0 h1:TRo6WghVUPysGak8UJ/z0yNI7+VXa0g1To2zrODE6dk=
 github.com/machbase/neo-spi v1.3.0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
