@@ -368,8 +368,11 @@ func (cli *client) Prompt() {
 			continue
 		}
 		if len(parts) == 0 {
-			if line == "exit" || line == "exit;" || line == "quit" || line == "quit;" {
+			if trimLine(line) == "exit" || trimLine(line) == "quit" {
 				goto exit
+			} else if trimLine(line) == "clear" {
+				cli.Println("\033\143")
+				continue
 			} else if strings.HasPrefix(line, "help") {
 				goto madeline
 			} else if line == "set" || strings.HasPrefix(line, "set ") {
@@ -396,6 +399,10 @@ func (cli *client) Prompt() {
 		time.Sleep(50 * time.Millisecond)
 	}
 exit:
+}
+
+func trimLine(line string) string {
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ";"))
 }
 
 func filterInput(r rune) (rune, bool) {
