@@ -66,6 +66,8 @@ var Formats = struct {
 type Config struct {
 	ServerAddr     string
 	ServerCertPath string
+	ClientCertPath string
+	ClientKeyPath  string
 	Stdin          io.ReadCloser
 	Stdout         io.Writer
 	Stderr         io.Writer
@@ -137,7 +139,8 @@ func (cli *client) checkDatabase() error {
 	}
 
 	machcli := machrpc.NewClient(
-		machrpc.WithServer(cli.conf.ServerAddr, cli.conf.ServerCertPath),
+		machrpc.WithServer(cli.conf.ServerAddr),
+		machrpc.WithCertificate(cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath),
 		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
 	err := machcli.Connect()
 	if err != nil {
@@ -171,7 +174,7 @@ func (cli *client) ShutdownServer() error {
 		return errors.New("remote session is not allowed to shutdown")
 	}
 
-	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ServerCertPath)
+	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
 	if err != nil {
 		return err
 	}
@@ -190,7 +193,7 @@ func (cli *client) ShutdownServer() error {
 }
 
 func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
-	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ServerCertPath)
+	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ const (
 	ConfTableName = "tagconf"
 	NeoServeAddr  = "unix://../tmp/mach-grpc.sock"
 	NeoServerCert = "../tmp/machbase_pref/cert/machbase_cert.pem"
+	NeoServerKey  = "../tmp/machbase_pref/cert/machbase_cert.pem"
 )
 
 type neo struct {
@@ -22,7 +23,9 @@ type neo struct {
 func TestNeo(t *testing.T) {
 	neo := neo{}
 
-	neo.cli = machrpc.NewClient(machrpc.WithServer(NeoServeAddr, NeoServerCert))
+	neo.cli = machrpc.NewClient(
+		machrpc.WithServer(NeoServeAddr),
+		machrpc.WithCertificate(NeoServerKey, NeoServerCert, NeoServerCert))
 	err := neo.cli.Connect()
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,9 @@ package grpcd
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"os"
 	"runtime"
 	"strings"
 
@@ -164,13 +167,30 @@ func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
 	if len(svr.certPath) == 0 && len(svr.keyPath) == 0 {
 		return nil, nil
 	}
+
 	cert, err := tls.LoadX509KeyPair(svr.certPath, svr.keyPath)
 	if err != nil {
 		return nil, err
 	}
+
+	caContent, _ := os.ReadFile(svr.certPath)
+	block, _ := pem.Decode(caContent)
+	caCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to load server CA cert")
+	}
+	caPool := x509.NewCertPool()
+	caPool.AddCert(caCert)
+
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.NoClientCert,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		// VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		// 	// here, we can see peer's cert
+		// 	return nil
+		// },
+		ClientCAs:          caPool,
+		InsecureSkipVerify: true,
 	}
 	return credentials.NewTLS(tlsConfig), nil
 }

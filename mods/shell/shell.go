@@ -17,7 +17,9 @@ type ShellCmd struct {
 	Args           []string `arg:"" optional:"" name:"ARGS" passthrough:""`
 	Version        bool     `name:"version" default:"false" help:"show version"`
 	ServerAddr     string   `name:"server" short:"s" help:"server address"`
-	ServerCertPath string   `name:"server-cert" short:"a" help:"path to server certificate"`
+	ServerCertPath string   `name:"server-cert" help:"path to server certificate"`
+	ClientCertPath string   `name:"client-cert" help:"path to client certificate"`
+	ClientKeyPath  string   `name:"client-key" help:"path to client key"`
 }
 
 var DefaultServerAddress = "tcp://127.0.0.1:5655"
@@ -40,24 +42,30 @@ func Shell(cmd *ShellCmd) {
 		}
 	}
 
+	pref, _ := client.LoadPref()
+
 	if cmd.ServerAddr == "" {
-		if pref, err := client.LoadPref(); err == nil {
+		if pref != nil {
 			cmd.ServerAddr = pref.Server().Value()
 		} else {
 			cmd.ServerAddr = "tcp://127.0.0.1:5655"
 		}
 	}
-	if cmd.ServerCertPath == "" {
-		if pref, err := client.LoadPref(); err == nil {
-			cmd.ServerCertPath = pref.ServerCert().Value()
-		} else {
-			cmd.ServerCertPath = ""
-		}
-
+	if cmd.ServerCertPath == "" && pref != nil {
+		cmd.ServerCertPath = pref.ServerCert().Value()
+	}
+	if cmd.ClientCertPath == "" && pref != nil {
+		cmd.ClientCertPath = pref.ClientCert().Value()
+	}
+	if cmd.ClientKeyPath == "" && pref != nil {
+		cmd.ClientKeyPath = pref.ClientKey().Value()
 	}
 	clientConf := client.DefaultConfig()
 	clientConf.ServerAddr = cmd.ServerAddr
 	clientConf.ServerCertPath = cmd.ServerCertPath
+	clientConf.ClientCertPath = cmd.ClientCertPath
+	clientConf.ClientKeyPath = cmd.ClientKeyPath
+
 	var command = ""
 	if len(cmd.Args) > 0 {
 		for i := range cmd.Args {
