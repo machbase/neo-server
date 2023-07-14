@@ -31,6 +31,8 @@ type Base2D struct {
 
 	TimeLocation *time.Location
 	TimeFormat   string
+
+	markAreaNameCoord []*MarkAreaNameCoord
 }
 
 func (ex *Base2D) ContentType() string {
@@ -65,6 +67,16 @@ func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
 
 func (ex *Base2D) SetSeriesLabels(labels ...string) {
 	ex.seriesLabels = labels
+}
+
+func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64) {
+	ex.markAreaNameCoord = append(ex.markAreaNameCoord, &MarkAreaNameCoord{
+		Label:       label,
+		Coordinate0: []any{from},
+		Coordinate1: []any{to},
+		Color:       color,
+		Opacity:     float32(opacity),
+	})
 }
 
 func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
@@ -115,6 +127,83 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 		)
 	}
 	return globalOptions
+}
+
+func xLabelCompare(x, y any) bool {
+	toInt64 := func(o any) int64 {
+		switch v := o.(type) {
+		case int64:
+			return v
+		case *int64:
+			return *v
+		case float64:
+			return int64(v)
+		case time.Time:
+			return v.UnixNano()
+		default:
+			fmt.Printf("ERR unhandled compare int64====> %T\n", v)
+		}
+		return -1
+	}
+
+	toFloat64 := func(o any) float64 {
+		switch v := o.(type) {
+		case float64:
+			return v
+		case *float64:
+			return *v
+		case int:
+			return float64(v)
+		case time.Time:
+			return float64(v.UnixNano())
+		default:
+			fmt.Printf("ERR unhandled compare float64====> %T\n", v)
+		}
+		return -1.0
+	}
+
+	switch xv := x.(type) {
+	case time.Time:
+		return xv.UnixNano()-toInt64(y) >= 0
+	case int64:
+		return xv-toInt64(y) >= 0
+	case float64:
+		return xv-toFloat64(y) >= 0
+	default:
+		fmt.Printf("ERR unhandled compare x====> %T\n", xv)
+		return false
+	}
+}
+func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
+	var ret []charts.SeriesOpts
+	for _, mark := range ex.markAreaNameCoord {
+		if len(mark.Coordinate0) > 0 && len(mark.Coordinate1) > 0 {
+			var idx0, idx1 int = -1, -1
+			for i, v := range ex.xLabels {
+				if idx0 == -1 && xLabelCompare(v, mark.Coordinate0[0]) {
+					idx0 = i
+				}
+				if idx1 == -1 && xLabelCompare(v, mark.Coordinate1[0]) {
+					idx1 = i
+				}
+				if idx0 != -1 && idx1 != -1 {
+					break
+				}
+			}
+			ret = append(ret,
+				charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
+					Name:        mark.Label,
+					Coordinate0: []any{ex.xLabels[idx0]},
+					Coordinate1: []any{ex.xLabels[idx1]},
+					ItemStyle: &opts.ItemStyle{
+						Color:   mark.Color,
+						Opacity: mark.Opacity,
+					},
+				}),
+			)
+		}
+	}
+	return ret
 }
 
 func (ex *Base2D) AddRow(values []any) error {
@@ -215,6 +304,7 @@ func (ex *Line) Close() {
 			},
 		),
 	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.lineSeries {
 		label := ex.getRenderSeriesLabel(i)
 		line.AddSeries(label, series, seriesOpts...)
@@ -254,6 +344,7 @@ func (ex *Scatter) Close() {
 			Show: false,
 		}),
 	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.scatterSeries {
 		label := ex.getRenderSeriesLabel(i)
 		scatter.AddSeries(label, series, seriesOpts...)
@@ -293,6 +384,7 @@ func (ex *Bar) Close() {
 			Show: false,
 		}),
 	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.barSeries {
 		label := ex.getRenderSeriesLabel(i)
 		bar.AddSeries(label, series, seriesOpts...)
