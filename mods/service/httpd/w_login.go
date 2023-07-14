@@ -77,9 +77,14 @@ type WebReferenceGroup struct {
 }
 
 type WebShell struct {
-	Icon  string `json:"icon,omitempty"`
-	Label string `json:"label"`
-	Id    string `json:"id"`
+	Id        string `json:"id"`
+	Type      string `json:"type"`
+	Icon      string `json:"icon,omitempty"`
+	Label     string `json:"label"`
+	Content   string `jsone:"content"`
+	Cloneable bool   `json:"cloneable"`
+	Removable bool   `json:"removable"`
+	Editable  bool   `json:"editable"`
 }
 
 type ReferenceItem struct {
