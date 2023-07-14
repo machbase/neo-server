@@ -4,6 +4,7 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"strconv"
 	"time"
 
@@ -96,6 +97,13 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			default: // "ns"
 				values[i] = time.Unix(0, ts)
 			}
+		case "float":
+			switch v := field.(type) {
+			case float64:
+				values[i] = float32(v)
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+			}
 		case "double":
 			switch v := field.(type) {
 			case float64:
@@ -110,6 +118,13 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int", dec.nrow, i)
 			}
+		case "int16":
+			switch v := field.(type) {
+			case float64:
+				values[i] = int16(v)
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
+			}
 		case "int32":
 			switch v := field.(type) {
 			case float64:
@@ -123,6 +138,16 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				values[i] = int64(v)
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
+			}
+		case "ipv4":
+			fallthrough
+		case "ipv6":
+			switch v := field.(type) {
+			case string:
+				addr := net.ParseIP(v)
+				values[i] = addr
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
 			}
 		default:
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])

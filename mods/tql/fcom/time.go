@@ -18,8 +18,16 @@ func to_time(args ...any) (any, error) {
 	var delta time.Duration
 
 	if str, ok := args[0].(string); ok {
-		if str == "now" {
+		if strings.HasPrefix(str, "now") {
 			baseTime = standardTimeNow()
+			remain := strings.TrimSpace(str[3:])
+			if len(remain) > 0 {
+				dur, err := time.ParseDuration(remain)
+				if err != nil {
+					return nil, fmt.Errorf("f(time) %s", err.Error())
+				}
+				baseTime = baseTime.Add(dur)
+			}
 		} else {
 			return nil, fmt.Errorf("f(time) first arg should be time, but %s", args[0])
 		}

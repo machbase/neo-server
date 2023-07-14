@@ -82,5 +82,6 @@ func doHelp(ctx *ActionContext) {
 		ctx.Printfln("    %-*s %s", 10, cmd.Name, cmd.Desc)
 	}
 	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "keyboard", "Show shortcut keys"))
+	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "clear", "Reset and clear screen"))
 	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "exit", "Exit shell"))
 }

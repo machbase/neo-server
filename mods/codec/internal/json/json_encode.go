@@ -4,6 +4,7 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -173,6 +174,11 @@ func (ex *Exporter) AddRow(source []any) error {
 			values[i] = ex.encodeFloat64(float64(*v))
 		case float32:
 			values[i] = ex.encodeFloat64(float64(v))
+		case *net.IP:
+			values[i] = v.String()
+		case net.IP:
+			values[i] = v.String()
+
 		}
 	}
 

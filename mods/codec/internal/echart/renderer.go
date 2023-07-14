@@ -64,15 +64,18 @@ func (r *jsonRender) Render(w io.Writer) error {
 	return err
 }
 
+//lint:ignore U1000 type pageRender is unused
 type pageRender struct {
 	c      interface{}
 	before []func()
 }
 
+//lint:ignore U1000 func newPageRender is unused
 func newPageRender(c any, before ...func()) render.Renderer {
 	return &pageRender{c: c, before: before}
 }
 
+//lint:ignore U1000 func (*pageRender).Render is unused
 func (r *pageRender) Render(w io.Writer) error {
 	for _, fn := range r.before {
 		fn()

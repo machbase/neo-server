@@ -21,10 +21,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
