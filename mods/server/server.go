@@ -438,7 +438,7 @@ func (s *svr) Start() error {
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionReferenceProvider(s.WebReferences),
-			httpd.OptionShellProvider(s.WebShells),
+			httpd.OptionWebShellProvider(s),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -1124,15 +1124,15 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	return ret
 }
 
-func (s *svr) WebShells() []httpd.WebShell {
-	var ret []httpd.WebShell
-	ret = append(ret, httpd.WebShell{Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"})
-	ret = append(ret, httpd.WebShell{Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"})
-	ret = append(ret, httpd.WebShell{Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"})
-	ret = append(ret, httpd.WebShell{Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"})
-	ret = append(ret, httpd.WebShell{Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL", Cloneable: true})
+func (s *svr) GetAllWebShells() []*httpd.WebShell {
+	var ret []*httpd.WebShell
+	ret = append(ret, &httpd.WebShell{Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"})
+	ret = append(ret, &httpd.WebShell{Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"})
+	ret = append(ret, &httpd.WebShell{Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"})
+	ret = append(ret, &httpd.WebShell{Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"})
+	ret = append(ret, &httpd.WebShell{Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL", Cloneable: true})
 	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
-		ret = append(ret, httpd.WebShell{
+		ret = append(ret, &httpd.WebShell{
 			Type:      "term",
 			Label:     def.Name,
 			Icon:      "console-network-outline",
@@ -1145,4 +1145,17 @@ func (s *svr) WebShells() []httpd.WebShell {
 		return true
 	})
 	return ret
+}
+
+func (s *svr) GetWebShell(id string) (*httpd.WebShell, error) {
+	return nil, nil
+}
+func (s *svr) CopyWebShell(id string) (*httpd.WebShell, error) {
+	return nil, nil
+}
+func (s *svr) RemoveWebShell(id string) (*httpd.WebShell, error) {
+	return nil, nil
+}
+func (s *svr) UpdateWebShell(sh *httpd.WebShell) error {
+	return nil
 }

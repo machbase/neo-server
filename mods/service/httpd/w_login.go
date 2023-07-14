@@ -68,7 +68,7 @@ type LoginCheckRsp struct {
 	Elapse         string              `json:"elapse"`
 	ExperimentMode bool                `json:"experimentMode"`
 	References     []WebReferenceGroup `json:"references,omitempty"`
-	Shells         []WebShell          `json:"shells,omitempty"`
+	Shells         []*WebShell         `json:"shells,omitempty"`
 }
 
 type WebReferenceGroup struct {
@@ -76,22 +76,31 @@ type WebReferenceGroup struct {
 	Items []ReferenceItem `json:"items"`
 }
 
-type WebShell struct {
-	Id        string `json:"id"`
-	Type      string `json:"type"`
-	Icon      string `json:"icon,omitempty"`
-	Label     string `json:"label"`
-	Content   string `jsone:"content"`
-	Cloneable bool   `json:"cloneable"`
-	Removable bool   `json:"removable"`
-	Editable  bool   `json:"editable"`
-}
-
 type ReferenceItem struct {
 	Type   string `json:"type"`
 	Title  string `json:"title"`
 	Addr   string `json:"address"`
 	Target string `json:"target,omitempty"`
+}
+
+type WebShellProvider interface {
+	GetAllWebShells() []*WebShell
+	GetWebShell(id string) (*WebShell, error)
+	CopyWebShell(id string) (*WebShell, error)
+	RemoveWebShell(id string) (*WebShell, error)
+	UpdateWebShell(s *WebShell) error
+}
+
+type WebShell struct {
+	Id        string `json:"id"`
+	Type      string `json:"type"`
+	Icon      string `json:"icon,omitempty"`
+	Label     string `json:"label"`
+	Content   string `json:"content,omitempty"`
+	Theme     string `json:"theme,omitempty"`
+	Cloneable bool   `json:"cloneable"`
+	Removable bool   `json:"removable"`
+	Editable  bool   `json:"editable"`
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {
@@ -315,8 +324,8 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.referenceProvider != nil {
 		options.References = svr.referenceProvider()
 	}
-	if svr.shellProvider != nil {
-		options.Shells = svr.shellProvider()
+	if svr.webShellProvider != nil {
+		options.Shells = svr.webShellProvider.GetAllWebShells()
 	}
 	options.Elapse = time.Since(tick).String()
 
