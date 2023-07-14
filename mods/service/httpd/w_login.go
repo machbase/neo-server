@@ -92,15 +92,33 @@ type WebShellProvider interface {
 }
 
 type WebShell struct {
-	Id        string `json:"id"`
-	Type      string `json:"type"`
-	Icon      string `json:"icon,omitempty"`
-	Label     string `json:"label"`
-	Content   string `json:"content,omitempty"`
-	Theme     string `json:"theme,omitempty"`
-	Cloneable bool   `json:"cloneable"`
-	Removable bool   `json:"removable"`
-	Editable  bool   `json:"editable"`
+	Id         string              `json:"id"`
+	Type       string              `json:"type"`
+	Icon       string              `json:"icon,omitempty"`
+	Label      string              `json:"label"`
+	Content    string              `json:"content,omitempty"`
+	Theme      string              `json:"theme,omitempty"`
+	Attributes []WebShellAttribute `json:"attributes,omitempty"`
+}
+
+type WebShellAttribute interface {
+	web_shell_attribute()
+}
+
+func (a *WebShellRemovable) web_shell_attribute() {}
+func (a *WebShellCloneable) web_shell_attribute() {}
+func (a *WebShellEditable) web_shell_attribute()  {}
+
+type WebShellRemovable struct {
+	Removable bool `json:"removable"`
+}
+
+type WebShellCloneable struct {
+	Cloneable bool `json:"cloneable"`
+}
+
+type WebShellEditable struct {
+	Editable bool `json:"editable"`
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {

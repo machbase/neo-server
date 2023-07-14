@@ -1130,17 +1130,21 @@ func (s *svr) GetAllWebShells() []*httpd.WebShell {
 	ret = append(ret, &httpd.WebShell{Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"})
 	ret = append(ret, &httpd.WebShell{Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"})
 	ret = append(ret, &httpd.WebShell{Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"})
-	ret = append(ret, &httpd.WebShell{Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL", Cloneable: true})
+	ret = append(ret, &httpd.WebShell{Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL",
+		Attributes: []httpd.WebShellAttribute{&httpd.WebShellCloneable{Cloneable: true}},
+	})
 	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
 		ret = append(ret, &httpd.WebShell{
-			Type:      "term",
-			Label:     def.Name,
-			Icon:      "console-network-outline",
-			Id:        strings.ToUpper(def.Name),
-			Content:   strings.Join(def.Args, " "),
-			Cloneable: true,
-			Removable: true,
-			Editable:  true,
+			Type:    "term",
+			Label:   def.Name,
+			Icon:    "console-network-outline",
+			Id:      strings.ToUpper(def.Name),
+			Content: strings.Join(def.Args, " "),
+			Attributes: []httpd.WebShellAttribute{
+				&httpd.WebShellCloneable{Cloneable: true},
+				&httpd.WebShellRemovable{Removable: true},
+				&httpd.WebShellEditable{Editable: true},
+			},
 		})
 		return true
 	})
