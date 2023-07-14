@@ -70,11 +70,11 @@ func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKey
 	req.Id = strings.ToLower(req.Id)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", req.Id)
 	if !pass {
-		rsp.Reason = fmt.Sprintf("id contains invalid character")
+		rsp.Reason = "id contains invalid character"
 		return rsp, nil
 	}
 	if len(req.Id) > 40 {
-		rsp.Reason = fmt.Sprintf("id is too long, should be shorter than 40 characters")
+		rsp.Reason = "id is too long, should be shorter than 40 characters"
 		return rsp, nil
 	}
 	_, err := s.AuthorizedCertificate(req.Id)
@@ -229,6 +229,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	return certBytes, clientKeyPEM, token, nil
 }
 
+//lint:ignore U1000 unused
 func hashCertificate(cert *x509.Certificate) (string, error) {
 	raw := cert.Raw
 	b64str := base64.StdEncoding.EncodeToString(raw)
