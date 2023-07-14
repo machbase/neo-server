@@ -417,3 +417,15 @@ func Brief(count int) Option {
 		}
 	}
 }
+
+type CanSetMarkAreaNameCoord interface {
+	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
+}
+
+func MarkAreaNameCoord(from any, to any, label string, color string, opacity float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetMarkAreaNameCoord); ok {
+			o.SetMarkAreaNameCoord(from, to, label, color, opacity)
+		}
+	}
+}

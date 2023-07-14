@@ -57,3 +57,11 @@ func (ex *ChartBase) Theme() string {
 		return ex.theme
 	}
 }
+
+type MarkAreaNameCoord struct {
+	Label       string
+	Coordinate0 []any
+	Coordinate1 []any
+	Color       string
+	Opacity     float32
+}
