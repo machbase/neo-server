@@ -18,8 +18,7 @@ func TestGrpcTagTable(t *testing.T) {
 	var tableName = strings.ToUpper("tagdata")
 
 	client := machrpc.NewClient(
-		machrpc.WithServer("unix://../tmp/mach.sock"),
-		machrpc.WithServerCert("../tmp/machbase_pref/cert/machbase_cert.pem"),
+		machrpc.WithServer("unix://../tmp/mach.sock", "../tmp/machbase_pref/cert/machbase_cert.pem"),
 		machrpc.WithQueryTimeout(10*time.Second))
 	err := client.Connect()
 	//err := client.Connect("tcp://127.0.0.1:4056")

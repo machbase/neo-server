@@ -137,8 +137,7 @@ func (cli *client) checkDatabase() error {
 	}
 
 	machcli := machrpc.NewClient(
-		machrpc.WithServer(cli.conf.ServerAddr),
-		machrpc.WithServerCert(cli.conf.ServerCertPath),
+		machrpc.WithServer(cli.conf.ServerAddr, cli.conf.ServerCertPath),
 		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
 	err := machcli.Connect()
 	if err != nil {
