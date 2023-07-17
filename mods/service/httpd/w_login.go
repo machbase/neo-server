@@ -87,7 +87,7 @@ type WebShellProvider interface {
 	GetAllWebShells() []*WebShell
 	GetWebShell(id string) (*WebShell, error)
 	CopyWebShell(id string) (*WebShell, error)
-	RemoveWebShell(id string) (*WebShell, error)
+	RemoveWebShell(id string) error
 	UpdateWebShell(s *WebShell) error
 }
 
