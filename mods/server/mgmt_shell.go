@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/machbase/neo-grpc/mgmt"
@@ -40,14 +39,14 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 	def := &sshd.ShellDefinition{}
 
 	if len(req.Name) > 40 {
-		rsp.Reason = fmt.Sprintf("name is too long, should be shorter than 40 characters")
+		rsp.Reason = "name is too long, should be shorter than 40 characters"
 		return rsp, nil
 	} else {
 		def.Name = req.Name
 	}
 
 	if len(req.Args) == 0 {
-		rsp.Reason = fmt.Sprintf("path is too long, should be shorter than 40 characters")
+		rsp.Reason = "path is too long, should be shorter than 40 characters"
 		return rsp, nil
 	} else {
 		def.Args = req.Args

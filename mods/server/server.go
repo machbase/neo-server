@@ -1047,6 +1047,7 @@ func mkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	return nil
 }
 
+//lint:ignore U1000 ignore unused for now
 func makeListener(addr string) (net.Listener, error) {
 	if strings.HasPrefix(addr, "unix://") {
 		pwd, _ := os.Getwd()
