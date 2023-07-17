@@ -64,12 +64,12 @@ type LoginRsp struct {
 }
 
 type LoginCheckRsp struct {
-	Success        bool                `json:"success"`
-	Reason         string              `json:"reason"`
-	Elapse         string              `json:"elapse"`
-	ExperimentMode bool                `json:"experimentMode"`
-	References     []WebReferenceGroup `json:"references,omitempty"`
-	Shells         []*model.WebShell   `json:"shells,omitempty"`
+	Success        bool                     `json:"success"`
+	Reason         string                   `json:"reason"`
+	Elapse         string                   `json:"elapse"`
+	ExperimentMode bool                     `json:"experimentMode"`
+	References     []WebReferenceGroup      `json:"references,omitempty"`
+	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
 type WebReferenceGroup struct {

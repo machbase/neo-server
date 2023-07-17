@@ -3,61 +3,54 @@ package model
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 )
 
 type ShellDefinition struct {
-	Name string   `json:"-"`
-	Args []string `json:"args"`
-
-	Attributes map[string]string `json:"attributes,omitempty"`
+	Id         string           `json:"id"`
+	Type       string           `json:"type"`
+	Icon       string           `json:"icon,omitempty"`
+	Label      string           `json:"label"`
+	Theme      string           `json:"theme,omitempty"`
+	RawCommand string           `json:"rawCommand,omitempty"`
+	Args       []string         `json:"args,omitempty"`
+	Attributes *ShellAttributes `json:"attributes,omitempty"`
 }
 
 func (def *ShellDefinition) Clone() *ShellDefinition {
-	fmt.Println("---1")
 	ret := &ShellDefinition{}
-	ret.Name = def.Name
-	fmt.Println("---2")
+	ret.Id = def.Id
+	ret.Type = def.Type
+	ret.Icon = def.Icon
+	ret.Label = def.Label
+	ret.Theme = def.Theme
+	ret.RawCommand = def.RawCommand
 	copy(ret.Args, def.Args)
-	fmt.Println("---3")
-	if len(def.Attributes) > 0 {
-		ret.Attributes = map[string]string{}
+	if def.Attributes != nil {
+		ret.Attributes = &ShellAttributes{}
+		ret.Attributes.Cloneable = def.Attributes.Cloneable
+		ret.Attributes.Removable = def.Attributes.Removable
+		ret.Attributes.Editable = def.Attributes.Editable
 	}
-	fmt.Println("---4")
-	for k, v := range def.Attributes {
-		ret.Attributes[k] = v
-	}
-	fmt.Println("---5")
 	return ret
 }
 
-type WebShellProvider interface {
-	GetAllWebShells() []*WebShell
-	GetWebShell(id string) (*WebShell, error)
-	CopyWebShell(id string) (*WebShell, error)
+type ShellProvider interface {
+	GetAllWebShells() []*ShellDefinition
+	GetWebShell(id string) (*ShellDefinition, error)
+	CopyWebShell(id string) (*ShellDefinition, error)
 	RemoveWebShell(id string) error
-	UpdateWebShell(s *WebShell) error
+	UpdateWebShell(s *ShellDefinition) error
 }
 
-type WebShell struct {
-	Id         string              `json:"id"`
-	Type       string              `json:"type"`
-	Icon       string              `json:"icon,omitempty"`
-	Label      string              `json:"label"`
-	Content    string              `json:"content,omitempty"`
-	Theme      string              `json:"theme,omitempty"`
-	Attributes *WebShellAttributes `json:"attributes,omitempty"`
-}
-
-type WebShellAttributes struct {
+type ShellAttributes struct {
 	Removable bool `json:"removable"`
 	Cloneable bool `json:"cloneable"`
 	Editable  bool `json:"editable"`
 }
 
-func (att *WebShellAttributes) MarshalJSON() ([]byte, error) {
+func (att *ShellAttributes) MarshalJSON() ([]byte, error) {
 	itm := []string{}
 	if att.Removable {
 		itm = append(itm, `{"removable":true}`)
@@ -75,7 +68,7 @@ func (att *WebShellAttributes) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (att *WebShellAttributes) UnmarshalJSON(data []byte) error {
+func (att *ShellAttributes) UnmarshalJSON(data []byte) error {
 	maps := []map[string]any{}
 	err := json.Unmarshal(data, &maps)
 	if err != nil {

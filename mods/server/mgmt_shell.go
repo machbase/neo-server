@@ -16,7 +16,7 @@ func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShel
 	}()
 	err := s.IterateShellDefs(func(define *model.ShellDefinition) bool {
 		rsp.Shells = append(rsp.Shells, &mgmt.ShellDefinition{
-			Name: define.Name,
+			Name: define.Id,
 			Args: define.Args,
 		})
 		return true
@@ -42,7 +42,7 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 		rsp.Reason = "name is too long, should be shorter than 40 characters"
 		return rsp, nil
 	} else {
-		def.Name = req.Name
+		def.Id = req.Name
 	}
 
 	if len(req.Args) == 0 {

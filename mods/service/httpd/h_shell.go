@@ -82,7 +82,7 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	shell := &model.WebShell{}
+	shell := &model.ShellDefinition{}
 	err := ctx.Bind(shell)
 	if err != nil {
 		rsp["reason"] = err.Error()

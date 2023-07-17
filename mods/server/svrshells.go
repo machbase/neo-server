@@ -18,13 +18,13 @@ var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SH
 	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
 	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
 
-var reservedWebShellDef = map[string]*model.WebShell{
+var reservedWebShellDef = map[string]*model.ShellDefinition{
 	"SQL": {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"},
 	"TQL": {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"},
 	"WRK": {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"},
 	"TAZ": {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"},
 	"SHELL": {Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL",
-		Attributes: &model.WebShellAttributes{Cloneable: true},
+		Attributes: &model.ShellAttributes{Cloneable: true},
 	},
 }
 
@@ -50,7 +50,22 @@ func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 			s.log.Warnf("ERR invalid shell conf, %s", err.Error())
 			continue
 		}
-		def.Name = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
+		def.Id = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
+		// compatibility old version
+		if def.Type == "" {
+			def.Type = "term"
+		}
+		if def.Icon == "" {
+			def.Icon = "console-network-outline"
+		}
+		if def.Label == "" {
+			def.Label = def.Id
+		}
+		if def.Attributes == nil {
+			def.Attributes = &model.ShellAttributes{
+				Cloneable: true, Removable: true, Editable: true,
+			}
+		}
 		shouldContinue := cb(def)
 		if !shouldContinue {
 			break
@@ -59,10 +74,10 @@ func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 	return nil
 }
 
-func (s *svr) GetShellDef(name string) (found *model.ShellDefinition, err error) {
-	name = strings.ToUpper(name)
+func (s *svr) GetShellDef(id string) (found *model.ShellDefinition, err error) {
+	id = strings.ToUpper(id)
 	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
-		if def.Name == name {
+		if def.Id == id {
 			found = def
 			return false
 		}
@@ -72,10 +87,10 @@ func (s *svr) GetShellDef(name string) (found *model.ShellDefinition, err error)
 }
 
 func (s *svr) SetShellDef(def *model.ShellDefinition) error {
-	name := strings.ToUpper(def.Name)
+	id := strings.ToUpper(def.Id)
 	for _, n := range reservedShellNames {
-		if name == n {
-			return fmt.Errorf("'%s' is not allowed for the custom shell name", name)
+		if id == n {
+			return fmt.Errorf("'%s' is not allowed for the custom shell name", id)
 		}
 	}
 	if len(def.Args) == 0 {
@@ -102,7 +117,7 @@ func (s *svr) SetShellDef(def *model.ShellDefinition) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", name))
+	path := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", id))
 	return os.WriteFile(path, content, 0600)
 }
 
@@ -121,10 +136,10 @@ func (s *svr) RenameShellDef(name string, newName string) error {
 }
 
 // sshd shell provider
-func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
-	name = strings.ToUpper(name)
+func (s *svr) GetSshShell(id string) (found *sshd.Shell) {
+	id = strings.ToUpper(id)
 	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
-		if def.Name == name {
+		if def.Id == id {
 			found = sshShellFrom(def)
 			if found != nil {
 				return false
@@ -135,29 +150,29 @@ func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
 	return
 }
 
-func (s *svr) GetAllWebShells() []*model.WebShell {
-	var ret []*model.WebShell
+func (s *svr) GetAllWebShells() []*model.ShellDefinition {
+	var ret []*model.ShellDefinition
 	ret = append(ret, reservedWebShellDef["SQL"])
 	ret = append(ret, reservedWebShellDef["TQL"])
 	ret = append(ret, reservedWebShellDef["WRK"])
 	ret = append(ret, reservedWebShellDef["TAZ"])
 	ret = append(ret, reservedWebShellDef["SHELL"])
 	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
-		ret = append(ret, webShellFrom(def))
+		ret = append(ret, def)
 		return true
 	})
 	return ret
 }
 
-func (s *svr) GetWebShell(id string) (*model.WebShell, error) {
+func (s *svr) GetWebShell(id string) (*model.ShellDefinition, error) {
 	id = strings.ToUpper(id)
 	ret := reservedWebShellDef[id]
 	if ret != nil {
 		return ret, nil
 	}
 	s.IterateShellDefs(func(sd *model.ShellDefinition) bool {
-		if strings.ToUpper(sd.Name) == id {
-			ret = webShellFrom(sd)
+		if strings.ToUpper(sd.Id) == id {
+			ret = sd
 			return false
 		}
 		return true
@@ -165,12 +180,12 @@ func (s *svr) GetWebShell(id string) (*model.WebShell, error) {
 	return ret, nil
 }
 
-func (s *svr) CopyWebShell(id string) (*model.WebShell, error) {
+func (s *svr) CopyWebShell(id string) (*model.ShellDefinition, error) {
 	id = strings.ToUpper(id)
 	var def *model.ShellDefinition
 	if _, ok := reservedWebShellDef[id]; ok {
 		def = &model.ShellDefinition{}
-		def.Name = "COPY"
+		def.Id = "COPY"
 		if exename, err := os.Executable(); err != nil {
 			def.Args = []string{os.Args[0], "shell"}
 		} else {
@@ -189,10 +204,10 @@ func (s *svr) CopyWebShell(id string) (*model.WebShell, error) {
 	}
 	idx := 1
 	for {
-		cand := fmt.Sprintf("%s-%d", def.Name, idx)
+		cand := fmt.Sprintf("%s-%d", def.Id, idx)
 		exists := false
 		s.IterateShellDefs(func(sd *model.ShellDefinition) bool {
-			if sd.Name == cand {
+			if sd.Id == cand {
 				exists = true
 				return false
 			}
@@ -201,7 +216,7 @@ func (s *svr) CopyWebShell(id string) (*model.WebShell, error) {
 		if exists {
 			idx += 1
 		} else {
-			def.Name = cand
+			def.Id = cand
 			break
 		}
 	}
@@ -209,21 +224,21 @@ func (s *svr) CopyWebShell(id string) (*model.WebShell, error) {
 		s.log.Warnf("shell def not saved", err.Error())
 		return nil, err
 	}
-	return webShellFrom(def), nil
+	return def, nil
 }
 
 func (s *svr) RemoveWebShell(id string) error {
 	return s.RemoveShellDef(id)
 }
 
-func (s *svr) UpdateWebShell(sh *model.WebShell) error {
+func (s *svr) UpdateWebShell(sh *model.ShellDefinition) error {
 	if sh.Id != sh.Label {
 		if err := s.RenameShellDef(sh.Id, sh.Label); err != nil {
 			return err
 		}
 		sh.Id = sh.Label
 	}
-	//fmt.Printf("------->UpdateWehShell:%#v", sh)
+	fmt.Printf("------->UpdateWehShell:%#v", sh)
 
 	return nil
 }
@@ -257,21 +272,6 @@ func sshShellFrom(def *model.ShellDefinition) *sshd.Shell {
 		}
 	}
 	return shell
-}
-
-func webShellFrom(def *model.ShellDefinition) *model.WebShell {
-	return &model.WebShell{
-		Type:    "term",
-		Label:   def.Name,
-		Icon:    "console-network-outline",
-		Id:      strings.ToUpper(def.Name),
-		Content: strings.Join(def.Args, " "),
-		Attributes: &model.WebShellAttributes{
-			Cloneable: true,
-			Removable: true,
-			Editable:  true,
-		},
-	}
 }
 
 func (s *svr) WebReferences() []httpd.WebReferenceGroup {

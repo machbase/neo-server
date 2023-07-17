@@ -134,7 +134,7 @@ func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
 	}
 }
 
-func OptionWebShellProvider(provider model.WebShellProvider) Option {
+func OptionWebShellProvider(provider model.ShellProvider) Option {
 	return func(s *httpd) {
 		s.webShellProvider = provider
 	}
@@ -163,7 +163,7 @@ type httpd struct {
 	licenseFilePath        string
 	debugMode              bool
 	referenceProvider      func() []WebReferenceGroup
-	webShellProvider       model.WebShellProvider
+	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 }
 
