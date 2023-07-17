@@ -17,13 +17,13 @@ var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SH
 	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
 	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
 
-var reservedShellDef = map[string]*httpd.WebShell{
+var reservedWebShellDef = map[string]*httpd.WebShell{
 	"SQL": {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"},
 	"TQL": {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"},
 	"WRK": {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"},
 	"TAZ": {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"},
 	"SHELL": {Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL",
-		Attributes: []httpd.WebShellAttribute{&httpd.WebShellCloneable{Cloneable: true}},
+		Attributes: &httpd.WebShellAttributes{Cloneable: true},
 	},
 }
 
@@ -56,6 +56,18 @@ func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
 		}
 	}
 	return nil
+}
+
+func (s *svr) GetShellDef(name string) (found *sshd.ShellDefinition, err error) {
+	name = strings.ToUpper(name)
+	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+		if def.Name == name {
+			found = def
+			return false
+		}
+		return true
+	})
+	return
 }
 
 func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
@@ -98,6 +110,15 @@ func (s *svr) RemoveShellDef(name string) error {
 	return os.Remove(path)
 }
 
+func (s *svr) RenameShellDef(name string, newName string) error {
+	oldPath := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(name)))
+	newPath := filepath.Join(s.shellDefsDir, fmt.Sprintf("%s.json", strings.ToUpper(newName)))
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("'%s' already exists", newName)
+	}
+	return os.Rename(oldPath, newPath)
+}
+
 // sshd shell provider
 func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
 	name = strings.ToUpper(name)
@@ -115,11 +136,11 @@ func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
 
 func (s *svr) GetAllWebShells() []*httpd.WebShell {
 	var ret []*httpd.WebShell
-	ret = append(ret, reservedShellDef["SQL"])
-	ret = append(ret, reservedShellDef["TQL"])
-	ret = append(ret, reservedShellDef["WRK"])
-	ret = append(ret, reservedShellDef["TAZ"])
-	ret = append(ret, reservedShellDef["SHELL"])
+	ret = append(ret, reservedWebShellDef["SQL"])
+	ret = append(ret, reservedWebShellDef["TQL"])
+	ret = append(ret, reservedWebShellDef["WRK"])
+	ret = append(ret, reservedWebShellDef["TAZ"])
+	ret = append(ret, reservedWebShellDef["SHELL"])
 	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
 		ret = append(ret, webShellFrom(def))
 		return true
@@ -129,7 +150,7 @@ func (s *svr) GetAllWebShells() []*httpd.WebShell {
 
 func (s *svr) GetWebShell(id string) (*httpd.WebShell, error) {
 	id = strings.ToUpper(id)
-	ret := reservedShellDef[id]
+	ret := reservedWebShellDef[id]
 	if ret != nil {
 		return ret, nil
 	}
@@ -144,18 +165,65 @@ func (s *svr) GetWebShell(id string) (*httpd.WebShell, error) {
 }
 
 func (s *svr) CopyWebShell(id string) (*httpd.WebShell, error) {
-	fmt.Println("------->", "CopyWebShell", id)
-	return nil, nil
+	id = strings.ToUpper(id)
+	var def *sshd.ShellDefinition
+	if _, ok := reservedWebShellDef[id]; ok {
+		def = &sshd.ShellDefinition{}
+		def.Name = "COPY"
+		if exename, err := os.Executable(); err != nil {
+			def.Args = []string{os.Args[0], "shell"}
+		} else {
+			def.Args = []string{exename, "shell"}
+		}
+	} else {
+		d, err := s.GetShellDef(id)
+		if err != nil {
+			return nil, err
+		}
+		def = d.Clone()
+	}
+	if def == nil {
+		s.log.Warnf("shell def not found '%s'", id)
+		return nil, fmt.Errorf("shell definition not found '%s'", id)
+	}
+	idx := 1
+	for {
+		cand := fmt.Sprintf("%s-%d", def.Name, idx)
+		exists := false
+		s.IterateShellDefs(func(sd *sshd.ShellDefinition) bool {
+			if sd.Name == cand {
+				exists = true
+				return false
+			}
+			return true
+		})
+		if exists {
+			idx += 1
+		} else {
+			def.Name = cand
+			break
+		}
+	}
+	if err := s.SetShellDef(def); err != nil {
+		s.log.Warnf("shell def not saved", err.Error())
+		return nil, err
+	}
+	return webShellFrom(def), nil
 }
 
 func (s *svr) RemoveWebShell(id string) error {
-	fmt.Println("------->", "RemoveWebShell", id)
-	return nil
-
+	return s.RemoveShellDef(id)
 }
 
 func (s *svr) UpdateWebShell(sh *httpd.WebShell) error {
-	fmt.Println("------->", "UpdateWebShell", sh)
+	if sh.Id != sh.Label {
+		if err := s.RenameShellDef(sh.Id, sh.Label); err != nil {
+			return err
+		}
+		sh.Id = sh.Label
+	}
+	//fmt.Printf("------->UpdateWehShell:%#v", sh)
+
 	return nil
 }
 
@@ -197,10 +265,10 @@ func webShellFrom(def *sshd.ShellDefinition) *httpd.WebShell {
 		Icon:    "console-network-outline",
 		Id:      strings.ToUpper(def.Name),
 		Content: strings.Join(def.Args, " "),
-		Attributes: []httpd.WebShellAttribute{
-			&httpd.WebShellCloneable{Cloneable: true},
-			&httpd.WebShellRemovable{Removable: true},
-			&httpd.WebShellEditable{Editable: true},
+		Attributes: &httpd.WebShellAttributes{
+			Cloneable: true,
+			Removable: true,
+			Editable:  true,
 		},
 	}
 }

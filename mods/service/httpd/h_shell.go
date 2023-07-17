@@ -77,6 +77,7 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 	if shellId == "" {
 		rsp["reason"] = "no id specified"
 		rsp["elapse"] = time.Since(tick).String()
+		svr.log.Debug("update shell def, no id specified")
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -85,12 +86,14 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
+		svr.log.Debug("update shell def, invalid request", err.Error())
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
 	if err := svr.webShellProvider.UpdateWebShell(shell); err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
+		svr.log.Debug("update shell def, internal err", err.Error())
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {

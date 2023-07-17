@@ -1,8 +1,12 @@
 package httpd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -98,27 +102,63 @@ type WebShell struct {
 	Label      string              `json:"label"`
 	Content    string              `json:"content,omitempty"`
 	Theme      string              `json:"theme,omitempty"`
-	Attributes []WebShellAttribute `json:"attributes,omitempty"`
+	Attributes *WebShellAttributes `json:"attributes,omitempty"`
 }
 
-type WebShellAttribute interface {
-	web_shell_attribute()
-}
-
-func (a *WebShellRemovable) web_shell_attribute() {}
-func (a *WebShellCloneable) web_shell_attribute() {}
-func (a *WebShellEditable) web_shell_attribute()  {}
-
-type WebShellRemovable struct {
+type WebShellAttributes struct {
 	Removable bool `json:"removable"`
-}
-
-type WebShellCloneable struct {
 	Cloneable bool `json:"cloneable"`
+	Editable  bool `json:"editable"`
 }
 
-type WebShellEditable struct {
-	Editable bool `json:"editable"`
+func (att *WebShellAttributes) MarshalJSON() ([]byte, error) {
+	itm := []string{}
+	if att.Removable {
+		itm = append(itm, `{"removable":true}`)
+	}
+	if att.Cloneable {
+		itm = append(itm, `{"cloneable":true}`)
+	}
+	if att.Editable {
+		itm = append(itm, `{"editable":true}`)
+	}
+	b := bytes.Buffer{}
+	b.WriteString("[")
+	b.WriteString(strings.Join(itm, ","))
+	b.WriteString("]")
+	return b.Bytes(), nil
+}
+
+func (att *WebShellAttributes) UnmarshalJSON(data []byte) error {
+	maps := []map[string]any{}
+	err := json.Unmarshal(data, &maps)
+	if err != nil {
+		return err
+	}
+	toBool := func(v any) bool {
+		switch vv := v.(type) {
+		case bool:
+			return vv
+		case string:
+			if b, err := strconv.ParseBool(vv); err != nil {
+				return false
+			} else {
+				return b
+			}
+		default:
+			return false
+		}
+	}
+	for _, m := range maps {
+		if v, ok := m["removable"]; ok {
+			att.Removable = toBool(v)
+		} else if v, ok := m["cloneable"]; ok {
+			att.Cloneable = toBool(v)
+		} else if v, ok := m["editable"]; ok {
+			att.Editable = toBool(v)
+		}
+	}
+	return nil
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {
