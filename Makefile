@@ -17,7 +17,7 @@ tmpdir:
 	@mkdir -p tmp
 
 test:
-	@make -f Makefile ARGS="-tags=fog_edition" test-base
+	@make -f Makefile test-base
 
 test-base: tmpdir
 	@go test $(ARGS) \
@@ -46,23 +46,10 @@ test-base: tmpdir
 
 test-all:
 ifeq ($(uname_s),Linux)
-ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm64))
-	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test-base
-endif
-ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
-	make -f Makefile ARGS="-cover -v -count 1 -tags=edge_edition" test-base
-endif
-ifeq ($(uname_m),x86_64)
-	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test-base
-endif
+	make -f Makefile ARGS="-cover -v -count 1" test-base
 endif
 ifeq ($(uname_s),Darwin)
-ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
-	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test-base
-endif
-ifeq ($(uname_m),x86_64)
-	make -f Makefile ARGS="-cover -v -count 1 -tags=fog_edition" test-base
-endif
+	make -f Makefile ARGS="-cover -v -count 1" test-base
 endif
 
 package:
@@ -81,40 +68,32 @@ docker-run:
 
 arm32package-machbase-neo:
 	@echo "package arm 32bit linux"
-	./scripts/package.sh machbase-neo linux arm $(nextver) edge
+	./scripts/package.sh machbase-neo linux arm $(nextver)
 
 package-%:
 	@echo "package" $(uname_s) $(uname_m)
 ifeq ($(uname_s),Linux)
 ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm64))
-	./scripts/package.sh $*  linux  arm64 $(nextver) edge && \
-	./scripts/package.sh $*  linux  arm64 $(nextver) fog
+	./scripts/package.sh $*  linux  arm64 $(nextver)
 endif
 ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
-	./scripts/package.sh $*  linux  arm $(nextver) edge
+	./scripts/package.sh $*  linux  arm $(nextver)
 endif
 ifeq ($(uname_m),x86_64)
-	./scripts/package.sh $*  linux  amd64 $(nextver) edge && \
-	./scripts/package.sh $*  linux  amd64 $(nextver) fog
+	./scripts/package.sh $*  linux  amd64 $(nextver)
 endif
 endif
 ifeq ($(uname_s),Darwin)
 ifeq ($(uname_m),$(filter $(uname_m), aarch64 arm arm64))
-	./scripts/package.sh $*  darwin  arm64 $(nextver) edge && \
-	./scripts/package.sh $*  darwin  arm64 $(nextver) fog
+	./scripts/package.sh $*  darwin  arm64 $(nextver)
 endif
 ifeq ($(uname_m),x86_64)
-	./scripts/package.sh $*  darwin  amd64 $(nextver) edge && \
-	./scripts/package.sh $*  darwin  amd64 $(nextver) fog
+	./scripts/package.sh $*  darwin  amd64 $(nextver)
 endif
 endif
 
 %:
-ifeq ($(uname_m),$(filter $(uname_m), arm armv6l armv7l))
-	@./scripts/build.sh $@ $(nextver) edge
-else
-	@./scripts/build.sh $@ $(nextver) $(EDITION)
-endif
+	@./scripts/build.sh $@ $(nextver)
 
 release-%:
 	@echo "release" $*

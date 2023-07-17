@@ -88,6 +88,8 @@ type MachbaseConfig struct {
 
 	HANDLE_LIMIT int
 
+	TAG_PARTITION_COUNT       int
+	TAG_DATA_PART_SIZE        int
 	TAG_CACHE_MAX_MEMORY_SIZE int
 	DISK_TAG_INDEX_BLOCKS     int
 	STREAM_THREAD_COUNT       int
@@ -163,7 +165,6 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		INDEX_LEVEL_PARTITION_BUILD_THREAD_COUNT: 3,
 		INDEX_LEVEL_PARTITION_AGER_THREAD_COUNT:  1,
 
-		DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE:                 2147483648, // 2GB
 		INDEX_LEVEL_PARTITION_BUILD_MEMORY_HIGH_LIMIT_PCT: 70,
 		VOLATILE_TABLESPACE_MEMORY_MAX_SIZE:               2147483648, // 2GB
 
@@ -201,6 +202,7 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 	}
 	switch preset {
 	case PresetFog:
+		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 2147483648        // 2GB
 		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 8589934592 // 8GB
 		c.PROCESS_MAX_SIZE = 17179869184                        // 16GB
 		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 2147483648      // 2GB
@@ -210,7 +212,10 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.DEFAULT_LSM_MAX_LEVEL = 2
 		c.MAX_QPX_MEM = 1073741824 // 1GB
 		c.ROLLUP_FETCH_COUNT_LIMIT = 3000000
+		c.TAG_PARTITION_COUNT = 4
+		c.TAG_DATA_PART_SIZE = 16777216
 	case PresetEdge:
+		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 134217728        // 128M
 		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 268435456 // 256M
 		c.PROCESS_MAX_SIZE = 4294967296                        // 4GB
 		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 536870912      // 512M
@@ -228,6 +233,8 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.TAG_TABLE_META_MAX_SIZE = 1048576
 		c.DISK_BUFFER_COUNT = 1
 		c.TAG_CACHE_ENABLE = 3
+		c.TAG_PARTITION_COUNT = 1
+		c.TAG_DATA_PART_SIZE = 1048576
 	}
 	return c
 }

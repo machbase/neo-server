@@ -15,13 +15,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/sha3"
 )
 
 func (s *svr) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
@@ -229,16 +227,14 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	return certBytes, clientKeyPEM, token, nil
 }
 
-//lint:ignore U1000 unused
-func hashCertificate(cert *x509.Certificate) (string, error) {
-	raw := cert.Raw
-	b64str := base64.StdEncoding.EncodeToString(raw)
-	b64str = strings.TrimSpace(b64str)
-
-	sha := sha3.New256()
-	sha.Write([]byte(b64str))
-	return hex.EncodeToString(sha.Sum(nil)), nil
-}
+// func hashCertificate(cert *x509.Certificate) (string, error) {
+// 	raw := cert.Raw
+// 	b64str := base64.StdEncoding.EncodeToString(raw)
+// 	b64str = strings.TrimSpace(b64str)
+// 	sha := sha3.New256()
+// 	sha.Write([]byte(b64str))
+// 	return hex.EncodeToString(sha.Sum(nil)), nil
+// }
 
 func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
 	var signature []byte

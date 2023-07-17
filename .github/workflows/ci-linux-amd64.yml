@@ -29,5 +29,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: Packages
-          path: packages/machbase-neo-*-v*.zip
+          path: packages/machbase-neo-v*.zip
           retention-days: 5

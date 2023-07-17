@@ -198,20 +198,13 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	switch mach.Edition() {
-	case "fog":
-		conf.MachbasePreset = PresetFog
-	case "edge":
+	sysCPU := runtime.NumCPU()
+	if sysCPU < 8 {
 		conf.MachbasePreset = PresetEdge
-	default:
-		sysCPU := runtime.NumCPU()
-		conf.MachbasePreset = PresetNone
-		if sysCPU < 8 {
-			conf.MachbasePreset = PresetEdge
-		} else {
-			conf.MachbasePreset = PresetFog
-		}
+	} else {
+		conf.MachbasePreset = PresetFog
 	}
+
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
 	return &conf
 }
@@ -963,6 +956,34 @@ func mkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+//lint:ignore U1000 ignore unused for now
+func makeListener(addr string) (net.Listener, error) {
+	if strings.HasPrefix(addr, "unix://") {
+		pwd, _ := os.Getwd()
+		if strings.HasPrefix(addr, "unix://../") {
+			addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("unix://../"):]))
+		} else if strings.HasPrefix(addr, "../") {
+			addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("../"):]))
+		} else if strings.HasPrefix(addr, "unix://./") {
+			addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("unix://./"):]))
+		} else if strings.HasPrefix(addr, "./") {
+			addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("./"):]))
+		} else if strings.HasPrefix(addr, "/") {
+			addr = fmt.Sprintf("unix://%s", addr)
+		}
+		path := addr[len("unix://"):]
+		// delete existing .sock file
+		if _, err := os.Stat(path); err == nil {
+			os.Remove(path)
+		}
+		return net.Listen("unix", path)
+	} else if strings.HasPrefix(addr, "tcp://") {
+		return net.Listen("tcp", addr[len("tcp://"):])
+	} else {
+		return nil, fmt.Errorf("unuspported listen scheme %s", addr)
+	}
 }
 
 // ////////////////////////////////

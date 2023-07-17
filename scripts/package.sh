@@ -9,19 +9,13 @@ PKGNAME="$1"
 GOOS="$2"
 GOARCH="$3"
 VERSION="$4"
-EDITION="$5"
 
-echo Packaging $PKGNAME $GOOS $GOARCH $VERSION $EDITION
+echo Packaging $PKGNAME $GOOS $GOARCH $VERSION
 
 # Remove previous build directory, if needed.
-bdir=$PKGNAME-$EDITION-$VERSION-$GOOS-$GOARCH
+bdir=$PKGNAME-$VERSION-$GOOS-$GOARCH
 if [ "$GOARCH" == "arm" ]; then
-    bdir="$PKGNAME-$EDITION-$VERSION-$GOOS-arm32"
-fi
-
-# neoshell does not have edition
-if [ "$PKGNAME" == "neoshell" ]; then
-    bdir="$PKGNAME-$VERSION-$GOOS-$GOARCH"
+    bdir="$PKGNAME-$VERSION-$GOOS-arm32"
 fi
 
 echo "    prepare dir $bdir"
@@ -44,12 +38,12 @@ case $PKGNAME in
 esac
 
 for BIN in "${BINS[@]}"; do
-    echo "    make $BIN $VERSION $EDITION"
+    echo "    make $BIN $VERSION"
     # Make the binaries.
     if [ "$GOARCH" == "arm" ]; then
-        GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION ./scripts/buildx.sh $PKGNAME $EDITION $GOOS $GOARCH
+        GOOS=$GOOS GOARCH=$GOARCH ./scripts/buildx.sh $PKGNAME $GOOS $GOARCH
     else
-        GOOS=$GOOS GOARCH=$GOARCH EDITION=$EDITION make $BIN
+        GOOS=$GOOS GOARCH=$GOARCH make $BIN
     fi
     # Copy the executable binaries.
     if [ "$GOOS" == "windows" ]; then
@@ -78,7 +72,7 @@ if [ "$GOOS" == "darwin" ] && [ "$PKGNAME" == "neow" ]; then
     mv neow.app packages/ && \
     mv packages/$bdir/machbase-neo packages/neow.app/Contents/MacOS/
     cd packages
-    zip -r -q neow-$EDITION-$VERSION-$GOOS-$GOARCH.zip neow.app && rm -rf neow.app
+    zip -r -q neow-$VERSION-$GOOS-$GOARCH.zip neow.app && rm -rf neow.app
 else
     cd packages
     zip -r -q $bdir.zip $bdir
