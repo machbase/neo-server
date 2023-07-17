@@ -23,11 +23,7 @@ if [ "$(which go)" == "" ]; then
 	exit 1
 fi
 
-if [ "$3" == "" ]; then
-    EDITION="fog"
-else
-    EDITION="$3"
-fi
+EDITION="standard"
 echo "    set edition $EDITION"
 
 BRANCH=$(git branch --show-current)

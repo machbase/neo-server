@@ -41,7 +41,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           repo_token: ${{ secrets.GIT_PASS }}
-          file: packages/machbase-neo-*-v*.zip
+          file: packages/machbase-neo-v*.zip
           repo_name: machbase/neo-server
           prerelease: true
           tag: ${{ github.ref }}

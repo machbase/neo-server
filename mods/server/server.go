@@ -199,20 +199,13 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	switch mach.Edition() {
-	case "fog":
-		conf.MachbasePreset = PresetFog
-	case "edge":
+	sysCPU := runtime.NumCPU()
+	if sysCPU < 8 {
 		conf.MachbasePreset = PresetEdge
-	default:
-		sysCPU := runtime.NumCPU()
-		conf.MachbasePreset = PresetNone
-		if sysCPU < 8 {
-			conf.MachbasePreset = PresetEdge
-		} else {
-			conf.MachbasePreset = PresetFog
-		}
+	} else {
+		conf.MachbasePreset = PresetFog
 	}
+
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
 	return &conf
 }
