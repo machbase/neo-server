@@ -1,16 +1,13 @@
 package httpd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -72,7 +69,7 @@ type LoginCheckRsp struct {
 	Elapse         string              `json:"elapse"`
 	ExperimentMode bool                `json:"experimentMode"`
 	References     []WebReferenceGroup `json:"references,omitempty"`
-	Shells         []*WebShell         `json:"shells,omitempty"`
+	Shells         []*model.WebShell   `json:"shells,omitempty"`
 }
 
 type WebReferenceGroup struct {
@@ -85,80 +82,6 @@ type ReferenceItem struct {
 	Title  string `json:"title"`
 	Addr   string `json:"address"`
 	Target string `json:"target,omitempty"`
-}
-
-type WebShellProvider interface {
-	GetAllWebShells() []*WebShell
-	GetWebShell(id string) (*WebShell, error)
-	CopyWebShell(id string) (*WebShell, error)
-	RemoveWebShell(id string) error
-	UpdateWebShell(s *WebShell) error
-}
-
-type WebShell struct {
-	Id         string              `json:"id"`
-	Type       string              `json:"type"`
-	Icon       string              `json:"icon,omitempty"`
-	Label      string              `json:"label"`
-	Content    string              `json:"content,omitempty"`
-	Theme      string              `json:"theme,omitempty"`
-	Attributes *WebShellAttributes `json:"attributes,omitempty"`
-}
-
-type WebShellAttributes struct {
-	Removable bool `json:"removable"`
-	Cloneable bool `json:"cloneable"`
-	Editable  bool `json:"editable"`
-}
-
-func (att *WebShellAttributes) MarshalJSON() ([]byte, error) {
-	itm := []string{}
-	if att.Removable {
-		itm = append(itm, `{"removable":true}`)
-	}
-	if att.Cloneable {
-		itm = append(itm, `{"cloneable":true}`)
-	}
-	if att.Editable {
-		itm = append(itm, `{"editable":true}`)
-	}
-	b := bytes.Buffer{}
-	b.WriteString("[")
-	b.WriteString(strings.Join(itm, ","))
-	b.WriteString("]")
-	return b.Bytes(), nil
-}
-
-func (att *WebShellAttributes) UnmarshalJSON(data []byte) error {
-	maps := []map[string]any{}
-	err := json.Unmarshal(data, &maps)
-	if err != nil {
-		return err
-	}
-	toBool := func(v any) bool {
-		switch vv := v.(type) {
-		case bool:
-			return vv
-		case string:
-			if b, err := strconv.ParseBool(vv); err != nil {
-				return false
-			} else {
-				return b
-			}
-		default:
-			return false
-		}
-	}
-	for _, m := range maps {
-		if v, ok := m["removable"]; ok {
-			att.Removable = toBool(v)
-		} else if v, ok := m["cloneable"]; ok {
-			att.Cloneable = toBool(v)
-		} else if v, ok := m["editable"]; ok {
-			att.Editable = toBool(v)
-		}
-	}
-	return nil
 }
 
 func (svr *httpd) handleLogin(ctx *gin.Context) {

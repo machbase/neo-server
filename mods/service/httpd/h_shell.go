@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 // GET /api/shell/:id  - make a copy of the id
@@ -81,7 +82,7 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	shell := &WebShell{}
+	shell := &model.WebShell{}
 	err := ctx.Bind(shell)
 	if err != nil {
 		rsp["reason"] = err.Error()

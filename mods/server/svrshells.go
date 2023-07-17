@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/pkg/errors"
@@ -17,17 +18,17 @@ var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SH
 	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
 	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
 
-var reservedWebShellDef = map[string]*httpd.WebShell{
+var reservedWebShellDef = map[string]*model.WebShell{
 	"SQL": {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"},
 	"TQL": {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"},
 	"WRK": {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"},
 	"TAZ": {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"},
 	"SHELL": {Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL",
-		Attributes: &httpd.WebShellAttributes{Cloneable: true},
+		Attributes: &model.WebShellAttributes{Cloneable: true},
 	},
 }
 
-func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
+func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 	if cb == nil {
 		return nil
 	}
@@ -44,7 +45,7 @@ func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
 			s.log.Errorf("ERR file access, %s", err.Error())
 			continue
 		}
-		def := &sshd.ShellDefinition{}
+		def := &model.ShellDefinition{}
 		if err := json.Unmarshal(content, def); err != nil {
 			s.log.Warnf("ERR invalid shell conf, %s", err.Error())
 			continue
@@ -58,9 +59,9 @@ func (s *svr) IterateShellDefs(cb func(*sshd.ShellDefinition) bool) error {
 	return nil
 }
 
-func (s *svr) GetShellDef(name string) (found *sshd.ShellDefinition, err error) {
+func (s *svr) GetShellDef(name string) (found *model.ShellDefinition, err error) {
 	name = strings.ToUpper(name)
-	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
 		if def.Name == name {
 			found = def
 			return false
@@ -70,7 +71,7 @@ func (s *svr) GetShellDef(name string) (found *sshd.ShellDefinition, err error) 
 	return
 }
 
-func (s *svr) SetShellDef(def *sshd.ShellDefinition) error {
+func (s *svr) SetShellDef(def *model.ShellDefinition) error {
 	name := strings.ToUpper(def.Name)
 	for _, n := range reservedShellNames {
 		if name == n {
@@ -122,7 +123,7 @@ func (s *svr) RenameShellDef(name string, newName string) error {
 // sshd shell provider
 func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
 	name = strings.ToUpper(name)
-	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
 		if def.Name == name {
 			found = sshShellFrom(def)
 			if found != nil {
@@ -134,27 +135,27 @@ func (s *svr) GetSshShell(name string) (found *sshd.Shell) {
 	return
 }
 
-func (s *svr) GetAllWebShells() []*httpd.WebShell {
-	var ret []*httpd.WebShell
+func (s *svr) GetAllWebShells() []*model.WebShell {
+	var ret []*model.WebShell
 	ret = append(ret, reservedWebShellDef["SQL"])
 	ret = append(ret, reservedWebShellDef["TQL"])
 	ret = append(ret, reservedWebShellDef["WRK"])
 	ret = append(ret, reservedWebShellDef["TAZ"])
 	ret = append(ret, reservedWebShellDef["SHELL"])
-	s.IterateShellDefs(func(def *sshd.ShellDefinition) bool {
+	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
 		ret = append(ret, webShellFrom(def))
 		return true
 	})
 	return ret
 }
 
-func (s *svr) GetWebShell(id string) (*httpd.WebShell, error) {
+func (s *svr) GetWebShell(id string) (*model.WebShell, error) {
 	id = strings.ToUpper(id)
 	ret := reservedWebShellDef[id]
 	if ret != nil {
 		return ret, nil
 	}
-	s.IterateShellDefs(func(sd *sshd.ShellDefinition) bool {
+	s.IterateShellDefs(func(sd *model.ShellDefinition) bool {
 		if strings.ToUpper(sd.Name) == id {
 			ret = webShellFrom(sd)
 			return false
@@ -164,11 +165,11 @@ func (s *svr) GetWebShell(id string) (*httpd.WebShell, error) {
 	return ret, nil
 }
 
-func (s *svr) CopyWebShell(id string) (*httpd.WebShell, error) {
+func (s *svr) CopyWebShell(id string) (*model.WebShell, error) {
 	id = strings.ToUpper(id)
-	var def *sshd.ShellDefinition
+	var def *model.ShellDefinition
 	if _, ok := reservedWebShellDef[id]; ok {
-		def = &sshd.ShellDefinition{}
+		def = &model.ShellDefinition{}
 		def.Name = "COPY"
 		if exename, err := os.Executable(); err != nil {
 			def.Args = []string{os.Args[0], "shell"}
@@ -190,7 +191,7 @@ func (s *svr) CopyWebShell(id string) (*httpd.WebShell, error) {
 	for {
 		cand := fmt.Sprintf("%s-%d", def.Name, idx)
 		exists := false
-		s.IterateShellDefs(func(sd *sshd.ShellDefinition) bool {
+		s.IterateShellDefs(func(sd *model.ShellDefinition) bool {
 			if sd.Name == cand {
 				exists = true
 				return false
@@ -215,7 +216,7 @@ func (s *svr) RemoveWebShell(id string) error {
 	return s.RemoveShellDef(id)
 }
 
-func (s *svr) UpdateWebShell(sh *httpd.WebShell) error {
+func (s *svr) UpdateWebShell(sh *model.WebShell) error {
 	if sh.Id != sh.Label {
 		if err := s.RenameShellDef(sh.Id, sh.Label); err != nil {
 			return err
@@ -227,7 +228,7 @@ func (s *svr) UpdateWebShell(sh *httpd.WebShell) error {
 	return nil
 }
 
-func sshShellFrom(def *sshd.ShellDefinition) *sshd.Shell {
+func sshShellFrom(def *model.ShellDefinition) *sshd.Shell {
 	shell := &sshd.Shell{}
 	shell.Cmd = def.Args[0]
 	if len(def.Args) > 1 {
@@ -258,14 +259,14 @@ func sshShellFrom(def *sshd.ShellDefinition) *sshd.Shell {
 	return shell
 }
 
-func webShellFrom(def *sshd.ShellDefinition) *httpd.WebShell {
-	return &httpd.WebShell{
+func webShellFrom(def *model.ShellDefinition) *model.WebShell {
+	return &model.WebShell{
 		Type:    "term",
 		Label:   def.Name,
 		Icon:    "console-network-outline",
 		Id:      strings.ToUpper(def.Name),
 		Content: strings.Join(def.Args, " "),
-		Attributes: &httpd.WebShellAttributes{
+		Attributes: &model.WebShellAttributes{
 			Cloneable: true,
 			Removable: true,
 			Editable:  true,

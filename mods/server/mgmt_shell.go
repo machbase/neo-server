@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-server/mods/service/sshd"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {
@@ -14,7 +14,7 @@ func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShel
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	err := s.IterateShellDefs(func(define *sshd.ShellDefinition) bool {
+	err := s.IterateShellDefs(func(define *model.ShellDefinition) bool {
 		rsp.Shells = append(rsp.Shells, &mgmt.ShellDefinition{
 			Name: define.Name,
 			Args: define.Args,
@@ -36,7 +36,7 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	def := &sshd.ShellDefinition{}
+	def := &model.ShellDefinition{}
 
 	if len(req.Name) > 40 {
 		rsp.Reason = "name is too long, should be shorter than 40 characters"

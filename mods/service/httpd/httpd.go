@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/docs"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
@@ -133,7 +134,7 @@ func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
 	}
 }
 
-func OptionWebShellProvider(provider WebShellProvider) Option {
+func OptionWebShellProvider(provider model.WebShellProvider) Option {
 	return func(s *httpd) {
 		s.webShellProvider = provider
 	}
@@ -162,7 +163,7 @@ type httpd struct {
 	licenseFilePath        string
 	debugMode              bool
 	referenceProvider      func() []WebReferenceGroup
-	webShellProvider       WebShellProvider
+	webShellProvider       model.WebShellProvider
 	experimentModeProvider func() bool
 }
 
