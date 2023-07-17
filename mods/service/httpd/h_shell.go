@@ -32,6 +32,7 @@ func (svr *httpd) handleGetShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	} else {
+		rsp["success"] = true
 		rsp["reason"] = "success"
 		rsp["data"] = shell
 		rsp["elapse"] = time.Since(tick).String()
@@ -63,6 +64,7 @@ func (svr *httpd) handleGetShellCopy(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	} else {
+		rsp["success"] = true
 		rsp["reason"] = "success"
 		rsp["data"] = shell
 		rsp["elapse"] = time.Since(tick).String()
@@ -98,6 +100,7 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
+		rsp["success"] = true
 		rsp["reason"] = "success"
 		rsp["data"] = shell
 		rsp["elapse"] = time.Since(tick).String()
@@ -123,6 +126,7 @@ func (svr *httpd) handleDeleteShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
+		rsp["success"] = true
 		rsp["reason"] = "success"
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)
