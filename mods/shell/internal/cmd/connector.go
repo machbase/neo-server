@@ -100,7 +100,7 @@ func doConnector(ctx *client.ActionContext) {
 }
 
 func doConnectorList(ctx *client.ActionContext) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -124,7 +124,7 @@ func doConnectorList(ctx *client.ActionContext) {
 }
 
 func doConnectorDel(ctx *client.ActionContext, name string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -145,7 +145,7 @@ func doConnectorDel(ctx *client.ActionContext, name string) {
 
 func doConnectorAdd(ctx *client.ActionContext, name string, typ string, path string) {
 	name = strings.ToLower(name)
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -165,7 +165,7 @@ func doConnectorAdd(ctx *client.ActionContext, name string, typ string, path str
 }
 
 func doConnectorTest(ctx *client.ActionContext, name string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
