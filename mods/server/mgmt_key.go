@@ -15,13 +15,11 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/sha3"
 )
 
 func (s *svr) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
@@ -70,11 +68,11 @@ func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKey
 	req.Id = strings.ToLower(req.Id)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", req.Id)
 	if !pass {
-		rsp.Reason = fmt.Sprintf("id contains invalid character")
+		rsp.Reason = "id contains invalid character"
 		return rsp, nil
 	}
 	if len(req.Id) > 40 {
-		rsp.Reason = fmt.Sprintf("id is too long, should be shorter than 40 characters")
+		rsp.Reason = "id is too long, should be shorter than 40 characters"
 		return rsp, nil
 	}
 	_, err := s.AuthorizedCertificate(req.Id)
@@ -229,15 +227,14 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	return certBytes, clientKeyPEM, token, nil
 }
 
-func hashCertificate(cert *x509.Certificate) (string, error) {
-	raw := cert.Raw
-	b64str := base64.StdEncoding.EncodeToString(raw)
-	b64str = strings.TrimSpace(b64str)
-
-	sha := sha3.New256()
-	sha.Write([]byte(b64str))
-	return hex.EncodeToString(sha.Sum(nil)), nil
-}
+// func hashCertificate(cert *x509.Certificate) (string, error) {
+// 	raw := cert.Raw
+// 	b64str := base64.StdEncoding.EncodeToString(raw)
+// 	b64str = strings.TrimSpace(b64str)
+// 	sha := sha3.New256()
+// 	sha.Write([]byte(b64str))
+// 	return hex.EncodeToString(sha.Sum(nil)), nil
+// }
 
 func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
 	var signature []byte

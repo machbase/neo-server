@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -55,17 +56,20 @@ type LoginReq struct {
 }
 
 type LoginRsp struct {
-	Success      bool        `json:"success"`
-	AccessToken  string      `json:"accessToken"`
-	RefreshToken string      `json:"refreshToken"`
-	Reason       string      `json:"reason"`
-	Elapse       string      `json:"elapse"`
-	Options      *WebOptions `json:"option,omitempty"`
+	Success      bool   `json:"success"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	Reason       string `json:"reason"`
+	Elapse       string `json:"elapse"`
 }
 
-type WebOptions struct {
-	ExperimentMode bool                `json:"experimentMode"`
-	References     []WebReferenceGroup `json:"references"`
+type LoginCheckRsp struct {
+	Success        bool                     `json:"success"`
+	Reason         string                   `json:"reason"`
+	Elapse         string                   `json:"elapse"`
+	ExperimentMode bool                     `json:"experimentMode"`
+	References     []WebReferenceGroup      `json:"references,omitempty"`
+	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
 type WebReferenceGroup struct {
@@ -150,10 +154,6 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	rsp.Reason = "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
-	rsp.Options = &WebOptions{
-		ExperimentMode: svr.experimentMode,
-		References:     buildReferences(svr.experimentMode),
-	}
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -238,10 +238,6 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
-	rsp.Options = &WebOptions{
-		ExperimentMode: svr.experimentMode,
-		References:     buildReferences(svr.experimentMode),
-	}
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -288,38 +284,31 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleCheck(ctx *gin.Context) {
-	if o := ctx.Value("jwt-claim"); o != nil {
-		if claim, ok := o.(security.Claim); ok {
-			if err := claim.Valid(); err == nil {
-				ctx.Status(http.StatusNoContent)
-				return
-			}
-		}
+	tick := time.Now()
+	var claim security.Claim
+	if o := ctx.Value("jwt-claim"); o == nil {
+		ctx.JSON(http.StatusUnauthorized, "")
+	} else if c, ok := o.(security.Claim); ok {
+		claim = c
 	}
-	ctx.JSON(http.StatusUnauthorized, "")
-}
+	if claim == nil || claim.Valid() != nil {
+		ctx.JSON(http.StatusUnauthorized, "")
+	}
 
-func buildReferences(experimentMode bool) []WebReferenceGroup {
-	ret := []WebReferenceGroup{}
+	options := &LoginCheckRsp{
+		Success: true,
+		Reason:  "success",
+	}
+	if svr.experimentModeProvider != nil {
+		options.ExperimentMode = svr.experimentModeProvider()
+	}
+	if svr.referenceProvider != nil {
+		options.References = svr.referenceProvider()
+	}
+	if svr.webShellProvider != nil {
+		options.Shells = svr.webShellProvider.GetAllWebShells()
+	}
+	options.Elapse = time.Since(tick).String()
 
-	references := WebReferenceGroup{Label: "References"}
-	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
-	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "http://endoc.machbase.com/", Target: "_blank"})
-	references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
-	ret = append(ret, references)
-
-	tutorials := WebReferenceGroup{Label: "Tutorials"}
-	tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
-	tutorials.Items = append(tutorials.Items, ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
-	ret = append(ret, tutorials)
-
-	samples := WebReferenceGroup{Label: "Samples"}
-	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
-	samples.Items = append(samples.Items, ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
-	ret = append(ret, samples)
-
-	return ret
+	ctx.JSON(http.StatusOK, options)
 }

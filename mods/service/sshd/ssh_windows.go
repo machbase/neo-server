@@ -15,20 +15,22 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	svr.log.Debugf("session open %s from %s", ss.User(), ss.RemoteAddr())
-	shell := svr.shellProvider(ss.User())
+	user, shell := svr.findShell(ss)
+	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
+
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
 		return
 	}
+
 	ptyReq, winCh, isPty := ss.Pty()
 	if !isPty {
 		io.WriteString(ss, "No PTY requested.\n")
 		ss.Exit(1)
 		return
 	}
-	io.WriteString(ss, svr.motdProvider(ss.User()))
+	io.WriteString(ss, svr.motdProvider(user))
 	cpty, err := conpty.New(int16(ptyReq.Window.Width), int16(ptyReq.Window.Height))
 	if err != nil {
 		io.WriteString(ss, fmt.Sprintf("Fail to create ConPTY: %s", err.Error()))
@@ -37,22 +39,15 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	defer cpty.Close()
 
+	if _, ok := shell.Envs["TERM"]; !ok {
+		shell.Envs["TERM"] = ptyReq.Term
+	}
+
 	go func() {
 		for win := range winCh {
 			cpty.Resize(uint16(win.Width), uint16(win.Height))
 		}
 	}()
-
-	userHomeDir, err := os.UserHomeDir()
-	if err != nil {
-		userHomeDir = "."
-	}
-	env := []string{}
-	env = append(env, "USERPROFILE="+userHomeDir)
-	env = append(env, fmt.Sprintf("TERM=%s", ptyReq.Term))
-	for k, v := range shell.Envs {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
 
 	var process *os.Process
 
@@ -111,6 +106,10 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	path := shell.Cmd
 	argv := []string{filepath.Base(path)}
 	argv = append(argv, shell.Args...)
+	env := []string{}
+	for k, v := range shell.Envs {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
 	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: env})
 	if err != nil {
 		svr.log.Errorf("ConPty spawn: %s", err.Error())
@@ -132,9 +131,9 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	ps, err := process.Wait()
 	if err != nil {
-		svr.log.Infof("session terminated %s from %s %s", ss.User(), ss.RemoteAddr(), err.Error())
+		svr.log.Infof("session terminated %s from %s %s", user, ss.RemoteAddr(), err.Error())
 		return
 	}
 
-	svr.log.Debugf("session close %s from %s '%v' ", ss.User(), ss.RemoteAddr(), ps)
+	svr.log.Debugf("session close %s from %s '%v' ", user, ss.RemoteAddr(), ps)
 }

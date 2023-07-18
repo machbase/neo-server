@@ -1,6 +1,10 @@
 package grpcd
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"os"
 	"runtime"
 	"strings"
 
@@ -12,6 +16,7 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type Service interface {
@@ -59,6 +64,13 @@ func OptionMaxSendMsgSize(size int) Option {
 	}
 }
 
+func OptionTlsCreds(keyPath string, certPath string) Option {
+	return func(s *grpcd) {
+		s.keyPath = keyPath
+		s.certPath = certPath
+	}
+}
+
 // mgmt implements
 func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	return func(s *grpcd) {
@@ -75,12 +87,16 @@ type grpcd struct {
 	listenAddresses []string
 	maxRecvMsgSize  int
 	maxSendMsgSize  int
+	keyPath         string
+	certPath        string
 
 	mgmtImpl mgmt.ManagementServer
 
 	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
+
+	mgmtServerInsecure *grpc.Server
 }
 
 func (svr *grpcd) Start() error {
@@ -88,6 +104,19 @@ func (svr *grpcd) Start() error {
 		grpc.MaxRecvMsgSize(int(svr.maxRecvMsgSize)),
 		grpc.MaxSendMsgSize(int(svr.maxSendMsgSize)),
 		grpc.StatsHandler(svr),
+	}
+
+	// create grpc server insecure
+	svr.mgmtServerInsecure = grpc.NewServer(grpcOptions...)
+
+	// creds
+	tlsCreds, err := svr.loadTlsCreds()
+	if err != nil {
+		return err
+	}
+	if tlsCreds != nil {
+		grpcOptions = append(grpcOptions, grpc.Creds(tlsCreds))
+		svr.log.Infof("gRPC TLS enabled")
 	}
 
 	// create grpc server
@@ -98,6 +127,7 @@ func (svr *grpcd) Start() error {
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
 	// mgmtServer is serving general db service + mgmt service
 	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
+	machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr)
 
 	if svr.mgmtImpl != nil {
 		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
@@ -119,7 +149,10 @@ func (svr *grpcd) Start() error {
 			// windows require mgmt service to shutdown process from neow
 			go svr.mgmtServer.Serve(lsnr)
 		} else {
-			if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
+			if strings.HasPrefix(listen, "unix://") {
+				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
+				go svr.mgmtServerInsecure.Serve(lsnr)
+			} else if strings.HasPrefix(listen, "tcp://127.0.0.1:") {
 				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
 				go svr.mgmtServer.Serve(lsnr)
 			} else {
@@ -137,4 +170,39 @@ func (svr *grpcd) Stop() {
 	if svr.mgmtServer != nil {
 		svr.mgmtServer.Stop()
 	}
+	if svr.mgmtServerInsecure != nil {
+		svr.mgmtServerInsecure.Stop()
+	}
+}
+
+func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
+	if len(svr.certPath) == 0 && len(svr.keyPath) == 0 {
+		return nil, nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(svr.certPath, svr.keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caContent, _ := os.ReadFile(svr.certPath)
+	block, _ := pem.Decode(caContent)
+	caCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "fail to load server CA cert")
+	}
+	caPool := x509.NewCertPool()
+	caPool.AddCert(caCert)
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		// VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		// 	// here, we can see peer's cert
+		// 	return nil
+		// },
+		ClientCAs:          caPool,
+		InsecureSkipVerify: true,
+	}
+	return credentials.NewTLS(tlsConfig), nil
 }

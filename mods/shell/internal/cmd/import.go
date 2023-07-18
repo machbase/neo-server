@@ -161,6 +161,7 @@ func doImport(ctx *client.ActionContext) {
 		codec.Table(cmd.Table),
 		codec.Columns(cols.Names(), cols.Types()),
 		codec.Delimiter(cmd.Delimiter),
+		codec.Heading(cmd.HasHeader),
 	)
 
 	capture := ctx.NewCaptureUserInterrupt("")
@@ -228,7 +229,7 @@ func doImport(ctx *client.ActionContext) {
 
 		ctx.Print("\r\n")
 		if cmd.Method == "insert" {
-			ctx.Printf("import total %d record(s) %sed\n", util.NumberFormat(lineno), cmd.Method)
+			ctx.Printf("import total %s record(s) %sed\n", util.NumberFormat(lineno), cmd.Method)
 		} else if appender != nil {
 			succ, fail, err := appender.Close()
 			if err != nil {

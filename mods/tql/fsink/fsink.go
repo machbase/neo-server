@@ -53,9 +53,10 @@ type Output interface {
 	ContentEncoding() string
 	SetHeader(spi.Columns)
 	AddRow([]any) error
+	IsChart() bool
 }
 
-func Compile(code string, params map[string][]string, writer io.Writer) (Output, error) {
+func Compile(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (Output, error) {
 	expr, err := Parse(code)
 	if err != nil {
 		return nil, err
@@ -77,6 +78,10 @@ func Compile(code string, params map[string][]string, writer io.Writer) (Output,
 	ret := &output{}
 	switch v := result.(type) {
 	case codec.RowsEncoder:
+		if o, ok := v.(codec.CanSetChartJson); ok {
+			o.SetChartJson(toJsonOutput)
+			ret.isChart = true
+		}
 		ret.encoder = v
 	case dbSink:
 		ret.dbSink = v
@@ -89,6 +94,7 @@ func Compile(code string, params map[string][]string, writer io.Writer) (Output,
 type output struct {
 	encoder codec.RowsEncoder
 	dbSink  dbSink
+	isChart bool
 }
 
 var _ Output = &output{}
@@ -104,6 +110,10 @@ func (out *output) ContentType() string {
 		return out.encoder.ContentType()
 	}
 	return "application/octet-stream"
+}
+
+func (out *output) IsChart() bool {
+	return out.isChart
 }
 
 func (out *output) ContentEncoding() string {
@@ -169,6 +179,7 @@ var functions = map[string]expression.Function{
 	"showGrid":     sinkf_showGrid,
 	"gridSize":     sinkf_gridSize,
 	"lineWidth":    sinkf_lineWidth,
+	"markArea":     sinkf_markArea,
 	// db options
 	"table": to_table,
 	"tag":   to_tag,
@@ -448,6 +459,34 @@ func sinkf_lineWidth(args ...any) (any, error) {
 	} else {
 		return codec.LineWidth(w), nil
 	}
+}
+
+func sinkf_markArea(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("markArea", 2, len(args))
+	}
+	var err error
+	coord0 := args[0]
+	coord1 := args[1]
+	label := ""
+	color := ""
+	opacity := 1.0
+	if len(args) >= 3 {
+		if label, err = conv.String(args, 2, "markArea", "label"); err != nil {
+			return nil, err
+		}
+	}
+	if len(args) >= 4 {
+		if color, err = conv.String(args, 3, "markArea", "color"); err != nil {
+			return nil, err
+		}
+	}
+	if len(args) >= 5 {
+		if opacity, err = conv.Float64(args, 4, "markArea", "opacity"); err != nil {
+			return nil, err
+		}
+	}
+	return codec.MarkAreaNameCoord(coord0, coord1, label, color, opacity), nil
 }
 
 func availableAxisType(typ string) bool {

@@ -21,10 +21,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/booter"
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/connector"
 	"github.com/machbase/neo-server/mods/do"
@@ -156,6 +156,7 @@ type svr struct {
 	authHandler       AuthHandler
 	authorizedKeysDir string
 	connectorDefsDir  string
+	shellDefsDir      string
 	licenseFilePath   string
 	licenseFileTime   time.Time
 
@@ -200,20 +201,13 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	switch mach.Edition() {
-	case "fog":
-		conf.MachbasePreset = PresetFog
-	case "edge":
+	sysCPU := runtime.NumCPU()
+	if sysCPU <= 4 {
 		conf.MachbasePreset = PresetEdge
-	default:
-		sysCPU := runtime.NumCPU()
-		conf.MachbasePreset = PresetNone
-		if sysCPU < 8 {
-			conf.MachbasePreset = PresetEdge
-		} else {
-			conf.MachbasePreset = PresetFog
-		}
+	} else {
+		conf.MachbasePreset = PresetFog
 	}
+
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
 	return &conf
 }
@@ -250,6 +244,11 @@ func (s *svr) Start() error {
 	s.authorizedKeysDir = filepath.Join(s.certdir, "authorized_keys")
 	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
 		return errors.Wrap(err, "authorized keys")
+	}
+
+	s.shellDefsDir = filepath.Join(prefpath, "shell")
+	if err := mkDirIfNotExistsMode(s.shellDefsDir, 0700); err != nil {
+		return errors.Wrap(err, "shell definitions")
 	}
 
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
@@ -416,6 +415,7 @@ func (s *svr) Start() error {
 			grpcd.OptionListenAddress(s.conf.Grpc.Listeners...),
 			grpcd.OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
 			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
+			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
 		)
 		if err != nil {
@@ -444,8 +444,10 @@ func (s *svr) Start() error {
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
 			httpd.OptionServerSideFileSystem(serverFs),
-			httpd.OptionExperimentMode(s.conf.ExperimentMode),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
+			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+			httpd.OptionReferenceProvider(s.WebReferences),
+			httpd.OptionWebShellProvider(s),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -510,6 +512,7 @@ func (s *svr) Start() error {
 			sshd.OptionAuthServer(s),
 			sshd.OptionGrpcServerAddress(s.conf.Grpc.Listeners...),
 			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+			sshd.OptionCustomShellProvider(s.GetSshShell),
 		)
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -974,6 +977,7 @@ func mkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	return nil
 }
 
+//lint:ignore U1000 ignore unused for now
 func makeListener(addr string) (net.Listener, error) {
 	if strings.HasPrefix(addr, "unix://") {
 		pwd, _ := os.Getwd()

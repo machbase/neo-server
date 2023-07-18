@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/machbase/booter"
+	"github.com/machbase/neo-server/booter"
 )
 
 func init() {

@@ -134,6 +134,9 @@ func (ec *ExecutionChain) start() {
 				ec.output.Open(ec.db)
 				ec.encoderNeedToClose = true
 			}
+			if arr == nil || (len(arr) > 0 && arr[0] == context.ExecutionEOF) {
+				continue
+			}
 			if err := ec.output.AddRow(arr); err != nil {
 				fmt.Println("ERR", err.Error())
 			}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/fcom"
 	spi "github.com/machbase/neo-spi"
 )
@@ -77,6 +78,7 @@ var functions = map[string]expression.Function{
 	"CSV":          src_CSV,
 	"file":         src_file,         // CSV()
 	"col":          src_col,          // CSV()
+	"header":       src_header,       // CSV()
 	"datetimeType": src_datetimeType, // col()
 	"stringType":   src_stringType,   // col()
 	"doubleType":   src_doubleType,   // col()
@@ -118,6 +120,7 @@ func (in *input) Run(deligate InputDeligate) error {
 		return errors.New("nil deligate")
 	}
 
+	fetched := 0
 	executed := false
 	if in.dbSrc != nil {
 		queryCtx := &do.QueryContext{
@@ -126,6 +129,7 @@ func (in *input) Run(deligate InputDeligate) error {
 				deligate.FeedHeader(c)
 			},
 			OnFetch: func(nrow int64, values []any) bool {
+				fetched++
 				if deligate.ShouldStop() {
 					return false
 				} else {
@@ -133,23 +137,27 @@ func (in *input) Run(deligate InputDeligate) error {
 					return true
 				}
 			},
-			OnFetchEnd: func() {
-				deligate.Feed(nil)
-			},
+			OnFetchEnd: func() {},
 			OnExecuted: func(usermsg string, rowsAffected int64) {
 				executed = true
 			},
 		}
-		msg, err := do.Query(queryCtx, in.dbSrc.ToSQL())
-		if err != nil {
+		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
 			deligate.Feed(nil)
+			return err
+		} else {
+			if executed {
+				deligate.FeedHeader(spi.Columns{{Name: "message", Type: "string"}})
+				deligate.Feed([]any{msg})
+				deligate.Feed(nil)
+			} else if fetched == 0 {
+				deligate.Feed([]any{context.ExecutionEOF})
+				deligate.Feed(nil)
+			} else {
+				deligate.Feed(nil)
+			}
+			return nil
 		}
-		if executed {
-			deligate.FeedHeader(spi.Columns{{Name: "message", Type: "string"}})
-			deligate.Feed([]any{msg})
-			deligate.Feed(nil)
-		}
-		return err
 	} else if in.fakeSrc != nil {
 		deligate.FeedHeader(in.fakeSrc.Header())
 		for values := range in.fakeSrc.Gen() {

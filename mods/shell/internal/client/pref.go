@@ -177,6 +177,9 @@ var (
 	prefItem_Heading    = PrefItem{"General", "heading", "on", []string{"on", "off"}, "show heading", nil, nil}
 	prefItem_Format     = PrefItem{"General", "format", "-", []string{"-", "json", "csv"}, "in/output format", nil, nil}
 	prefItem_Server     = PrefItem{"General", "server", defaultServerAddress, []string{}, "default server address", nil, nil}
+	prefItem_ServerCert = PrefItem{"General", "server-cert", defaultServerCertPath, []string{}, "default server cert path", nil, nil}
+	prefItem_ClientCert = PrefItem{"General", "client-cert", defaultClientCertPath, []string{}, "default client cert path", nil, nil}
+	prefItem_ClientKey  = PrefItem{"General", "client-key", defaultClientKeyPath, []string{}, "default client key path", nil, nil}
 )
 
 func defaultServerAddress() string {
@@ -192,12 +195,66 @@ func defaultServerAddress() string {
 	return serverAddr
 }
 
+func defaultServerCertPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+		homeDir = "."
+	}
+	path := filepath.Join(homeDir, ".config", "machbase", "cert", "machbase_cert.pem")
+	if nfo, err := os.Stat(path); err != nil {
+		return ""
+	} else {
+		if nfo.IsDir() {
+			return ""
+		}
+		return path
+	}
+}
+
+func defaultClientCertPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+		homeDir = "."
+	}
+	path := filepath.Join(homeDir, ".config", "machbase", "cert", "machbase_cert.pem")
+	if nfo, err := os.Stat(path); err != nil {
+		return ""
+	} else {
+		if nfo.IsDir() {
+			return ""
+		}
+		return path
+	}
+}
+
+func defaultClientKeyPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+		homeDir = "."
+	}
+	path := filepath.Join(homeDir, ".config", "machbase", "cert", "machbase_key.pem")
+	if nfo, err := os.Stat(path); err != nil {
+		return ""
+	} else {
+		if nfo.IsDir() {
+			return ""
+		}
+		return path
+	}
+}
+
 var prefItems = map[string]*PrefItem{
 	prefItem_BoxStyle.Name:   &prefItem_BoxStyle,
 	prefItem_ViMode.Name:     &prefItem_ViMode,
 	prefItem_TimeZone.Name:   &prefItem_TimeZone,
 	prefItem_Timeformat.Name: &prefItem_Timeformat,
 	prefItem_Server.Name:     &prefItem_Server,
+	prefItem_ServerCert.Name: &prefItem_ServerCert,
+	prefItem_ClientCert.Name: &prefItem_ClientCert,
+	prefItem_ClientKey.Name:  &prefItem_ClientKey,
 	// prefItem_Heading.Name:    &prefItem_Heading,
 	// prefItem_Format.Name:     &prefItem_Format,
 }
@@ -254,6 +311,18 @@ func (p *Pref) Format() *PrefItem {
 
 func (p *Pref) Server() *PrefItem {
 	return p.Item(prefItem_Server.Name)
+}
+
+func (p *Pref) ServerCert() *PrefItem {
+	return p.Item(prefItem_ServerCert.Name)
+}
+
+func (p *Pref) ClientCert() *PrefItem {
+	return p.Item(prefItem_ClientCert.Name)
+}
+
+func (p *Pref) ClientKey() *PrefItem {
+	return p.Item(prefItem_ClientKey.Name)
 }
 
 func timezoneValidate(s string) (string, bool) {

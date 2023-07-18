@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"runtime"
 	"strconv"
 	"strings"
@@ -108,12 +109,20 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+		case "float":
+			if values[i], err = strconv.ParseFloat(field, 32); err != nil {
+				values[i] = math.NaN()
+			}
 		case "double":
 			if values[i], err = strconv.ParseFloat(field, 64); err != nil {
 				values[i] = math.NaN()
 			}
 		case "int":
 			if values[i], err = strconv.ParseInt(field, 10, 32); err != nil {
+				values[i] = math.NaN()
+			}
+		case "int16":
+			if values[i], err = strconv.ParseInt(field, 10, 16); err != nil {
 				values[i] = math.NaN()
 			}
 		case "int32":
@@ -124,6 +133,11 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			if values[i], err = strconv.ParseInt(field, 10, 64); err != nil {
 				values[i] = math.NaN()
 			}
+		case "ipv4":
+			fallthrough
+		case "ipv6":
+			addr := net.ParseIP(field)
+			values[i] = addr
 		default:
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
 		}

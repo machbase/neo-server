@@ -3,6 +3,7 @@ package csv
 import (
 	"encoding/csv"
 	"fmt"
+	"net"
 	"runtime/debug"
 	"strconv"
 	"sync"
@@ -169,6 +170,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
 			cols[i] = strconv.FormatInt(int64(v), 10)
+		case *int16:
+			cols[i] = strconv.FormatInt(int64(*v), 10)
+		case int16:
+			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int32:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int32:
@@ -177,6 +182,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
+		case *net.IP:
+			cols[i] = v.String()
+		case net.IP:
+			cols[i] = v.String()
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

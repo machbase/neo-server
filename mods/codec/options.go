@@ -127,6 +127,18 @@ func Subtitle(subtitle string) Option {
 	}
 }
 
+type CanSetChartJson interface {
+	SetChartJson(flag bool)
+}
+
+func ChartJson(flag bool) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetChartJson); ok {
+			o.SetChartJson(flag)
+		}
+	}
+}
+
 type CanSetXAxis interface {
 	SetXAxis(int, string, string)
 }
@@ -402,6 +414,18 @@ func Brief(count int) Option {
 	return func(one any) {
 		if o, ok := one.(CanSetBrief); ok {
 			o.SetBrief(count)
+		}
+	}
+}
+
+type CanSetMarkAreaNameCoord interface {
+	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
+}
+
+func MarkAreaNameCoord(from any, to any, label string, color string, opacity float64) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetMarkAreaNameCoord); ok {
+			o.SetMarkAreaNameCoord(from, to, label, color, opacity)
 		}
 	}
 }

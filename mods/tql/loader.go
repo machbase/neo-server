@@ -13,7 +13,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer) (Tql, error)
+	Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error)
 	String() string
 }
 
@@ -67,14 +67,14 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer) (Tql, error) {
+func (sc *script) Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	tql, err := Parse(file, dataReader, params, dataWriter)
+	tql, err := Parse(file, dataReader, params, dataWriter, toJsonOutput)
 	if err != nil {
 		return nil, err
 	}

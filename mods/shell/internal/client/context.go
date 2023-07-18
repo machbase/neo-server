@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/net/context"
@@ -91,14 +89,6 @@ func (ctx *ActionContext) Config() *Config {
 
 func (ctx *ActionContext) Pref() *Pref {
 	return ctx.cli.pref
-}
-
-func (ctx *ActionContext) NewManagementClient() (mgmt.ManagementClient, error) {
-	conn, err := machrpc.MakeGrpcConn(ctx.cli.conf.ServerAddr)
-	if err != nil {
-		return nil, err
-	}
-	return mgmt.NewManagementClient(conn), nil
 }
 
 // ShutdownServerFunc returns callable function to shutdown server if this instance has ability of shutdown server

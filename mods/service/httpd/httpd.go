@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/docs"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
@@ -88,13 +89,6 @@ func OptionNeoShellAddress(addrs ...string) Option {
 	}
 }
 
-// experiement features
-func OptionExperimentMode(enable bool) Option {
-	return func(s *httpd) {
-		s.experimentMode = enable
-	}
-}
-
 // license file path
 func OptionLicenseFilePath(path string) Option {
 	return func(s *httpd) {
@@ -127,6 +121,25 @@ func OptionDebugMode(isDebug bool) Option {
 	}
 }
 
+// experiement features
+func OptionExperimentModeProvider(provider func() bool) Option {
+	return func(s *httpd) {
+		s.experimentModeProvider = provider
+	}
+}
+
+func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
+	return func(s *httpd) {
+		s.referenceProvider = provider
+	}
+}
+
+func OptionWebShellProvider(provider model.ShellProvider) Option {
+	return func(s *httpd) {
+		s.webShellProvider = provider
+	}
+}
+
 type httpd struct {
 	log   logging.Log
 	db    spi.Database
@@ -147,9 +160,11 @@ type httpd struct {
 	tqlLoader tql.Loader
 	serverFs  *ssfs.SSFS
 
-	licenseFilePath string
-	debugMode       bool
-	experimentMode  bool
+	licenseFilePath        string
+	debugMode              bool
+	referenceProvider      func() []WebReferenceGroup
+	webShellProvider       model.ShellProvider
+	experimentModeProvider func() bool
 }
 
 type HandlerType string
@@ -270,6 +285,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/shell/:id", svr.handleGetShell)
+			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
+			group.POST("/api/shell/:id", svr.handlePostShell)
+			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
 			group.GET("/api/chart", svr.handleChart)
 			group.POST("/api/chart", svr.handleChart)
 			group.GET("/api/tables", svr.handleTables)

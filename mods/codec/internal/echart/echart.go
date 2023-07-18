@@ -13,7 +13,8 @@ type ChartBase struct {
 	width    string
 	height   string
 
-	assetHost string
+	assetHost    string
+	toJsonOutput bool
 }
 
 func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
@@ -39,4 +40,28 @@ func (ex *ChartBase) SetSubtitle(subtitle string) {
 
 func (ex *ChartBase) SetAssetHost(path string) {
 	ex.assetHost = path
+}
+
+func (ex *ChartBase) SetChartJson(flag bool) {
+	ex.toJsonOutput = flag
+}
+
+func (ex *ChartBase) Theme() string {
+	if ex.theme == "" {
+		if ex.toJsonOutput {
+			return "-" // client choose 'white' or 'dark'
+		} else {
+			return "white" // echarts default
+		}
+	} else {
+		return ex.theme
+	}
+}
+
+type MarkAreaNameCoord struct {
+	Label       string
+	Coordinate0 []any
+	Coordinate1 []any
+	Color       string
+	Opacity     float32
 }

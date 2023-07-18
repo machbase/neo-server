@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/server"
 	. "github.com/machbase/neo-server/mods/server"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +49,7 @@ func TestCert(t *testing.T) {
 	require.True(t, len(svrKeyPEM) > 0)
 
 	// server cert
-	svrCertPEM, err := server.GenerateServerCertificate(svrPri, svrPub)
+	svrCertPEM, err := GenerateServerCertificate(svrPri, svrPub)
 	require.Nil(t, err)
 	require.NotNil(t, svrCertPEM)
 
@@ -73,13 +72,12 @@ func TestCert(t *testing.T) {
 	require.True(t, len(cliKeyPEM) > 0)
 
 	// client cert
-	cliCertPEM, err := server.GenerateClientCertificate(pkix.Name{CommonName: "TheClient"}, time.Now(), time.Now().Add(time.Hour), svrCert, svrPri, cliPub)
+	cliCertPEM, err := GenerateClientCertificate(pkix.Name{CommonName: "TheClient"}, time.Now(), time.Now().Add(time.Hour), svrCert, svrPri, cliPub)
 	require.Nil(t, err)
 	require.NotNil(t, cliCertPEM)
 
 	// configure server TLS
-	var rootCAs *x509.CertPool
-	rootCAs = x509.NewCertPool()
+	var rootCAs *x509.CertPool = x509.NewCertPool()
 	rootCAs.AppendCertsFromPEM(svrCertPEM)
 
 	svrKeyPair, err := tls.X509KeyPair(svrCertPEM, svrKeyPEM)
@@ -122,6 +120,9 @@ func TestCert(t *testing.T) {
 
 	// configure client TLS
 	cliKeyPair, err := tls.X509KeyPair(cliCertPEM, cliKeyPEM)
+	if err != nil {
+		panic(err)
+	}
 	cliTlsConf := &tls.Config{
 		Certificates:       []tls.Certificate{cliKeyPair},
 		RootCAs:            rootCAs,

@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-echarts/go-echarts/v2/types"
+	"github.com/go-echarts/go-echarts/v2/render"
 )
 
 type Base2D struct {
@@ -31,9 +31,14 @@ type Base2D struct {
 
 	TimeLocation *time.Location
 	TimeFormat   string
+
+	markAreaNameCoord []*MarkAreaNameCoord
 }
 
 func (ex *Base2D) ContentType() string {
+	if ex.toJsonOutput {
+		return "application/json"
+	}
 	return "text/html"
 }
 
@@ -64,6 +69,16 @@ func (ex *Base2D) SetSeriesLabels(labels ...string) {
 	ex.seriesLabels = labels
 }
 
+func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64) {
+	ex.markAreaNameCoord = append(ex.markAreaNameCoord, &MarkAreaNameCoord{
+		Label:       label,
+		Coordinate0: []any{from},
+		Coordinate1: []any{to},
+		Color:       color,
+		Opacity:     float32(opacity),
+	})
+}
+
 func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	width := "600px"
 	if ex.width != "" {
@@ -74,10 +89,6 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 		height = ex.height
 	}
 
-	theme := ex.theme
-	if theme == "" {
-		theme = types.ThemeWesteros
-	}
 	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
 	if len(ex.assetHost) > 0 {
 		assetHost = ex.assetHost
@@ -85,7 +96,7 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 	globalOptions := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			AssetsHost: assetHost,
-			Theme:      theme,
+			Theme:      ex.Theme(),
 			Width:      width,
 			Height:     height,
 		}),
@@ -116,6 +127,83 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 		)
 	}
 	return globalOptions
+}
+
+func xLabelCompare(x, y any) bool {
+	toInt64 := func(o any) int64 {
+		switch v := o.(type) {
+		case int64:
+			return v
+		case *int64:
+			return *v
+		case float64:
+			return int64(v)
+		case time.Time:
+			return v.UnixNano()
+		default:
+			fmt.Printf("ERR unhandled compare int64====> %T\n", v)
+		}
+		return -1
+	}
+
+	toFloat64 := func(o any) float64 {
+		switch v := o.(type) {
+		case float64:
+			return v
+		case *float64:
+			return *v
+		case int:
+			return float64(v)
+		case time.Time:
+			return float64(v.UnixNano())
+		default:
+			fmt.Printf("ERR unhandled compare float64====> %T\n", v)
+		}
+		return -1.0
+	}
+
+	switch xv := x.(type) {
+	case time.Time:
+		return xv.UnixNano()-toInt64(y) >= 0
+	case int64:
+		return xv-toInt64(y) >= 0
+	case float64:
+		return xv-toFloat64(y) >= 0
+	default:
+		fmt.Printf("ERR unhandled compare x====> %T\n", xv)
+		return false
+	}
+}
+func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
+	var ret []charts.SeriesOpts
+	for _, mark := range ex.markAreaNameCoord {
+		if len(mark.Coordinate0) > 0 && len(mark.Coordinate1) > 0 {
+			var idx0, idx1 int = -1, -1
+			for i, v := range ex.xLabels {
+				if idx0 == -1 && xLabelCompare(v, mark.Coordinate0[0]) {
+					idx0 = i
+				}
+				if idx1 == -1 && xLabelCompare(v, mark.Coordinate1[0]) {
+					idx1 = i
+				}
+				if idx0 != -1 && idx1 != -1 {
+					break
+				}
+			}
+			ret = append(ret,
+				charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
+					Name:        mark.Label,
+					Coordinate0: []any{ex.xLabels[idx0]},
+					Coordinate1: []any{ex.xLabels[idx1]},
+					ItemStyle: &opts.ItemStyle{
+						Color:   mark.Color,
+						Opacity: mark.Opacity,
+					},
+				}),
+			)
+		}
+	}
+	return ret
 }
 
 func (ex *Base2D) AddRow(values []any) error {
@@ -188,58 +276,6 @@ func (ex *Base2D) getRenderSeriesLabel(idx int) string {
 	return label
 }
 
-func (ex *Base2D) Close() {
-	switch ex.chartType {
-	case "line":
-		line := charts.NewLine()
-		line.SetGlobalOptions(ex.getGlobalOptions()...)
-		line.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{charts.WithLabelOpts(opts.Label{
-			Show: true,
-		}),
-			charts.WithLineChartOpts(
-				opts.LineChart{
-					Smooth:     true,
-					XAxisIndex: 0,
-				},
-			),
-		}
-		for i, series := range ex.lineSeries {
-			label := ex.getRenderSeriesLabel(i)
-			line.AddSeries(label, series, seriesOpts...)
-		}
-		line.Render(ex.output)
-	case "scatter":
-		scatter := charts.NewScatter()
-		scatter.SetGlobalOptions(ex.getGlobalOptions()...)
-		scatter.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{
-			charts.WithLabelOpts(opts.Label{
-				Show: false,
-			}),
-		}
-		for i, series := range ex.scatterSeries {
-			label := ex.getRenderSeriesLabel(i)
-			scatter.AddSeries(label, series, seriesOpts...)
-		}
-		scatter.Render(ex.output)
-	case "bar":
-		bar := charts.NewBar()
-		bar.SetGlobalOptions(ex.getGlobalOptions()...)
-		bar.SetXAxis(ex.xLabels)
-		seriesOpts := []charts.SeriesOpts{
-			charts.WithLabelOpts(opts.Label{
-				Show: false,
-			}),
-		}
-		for i, series := range ex.barSeries {
-			label := ex.getRenderSeriesLabel(i)
-			bar.AddSeries(label, series, seriesOpts...)
-		}
-		bar.Render(ex.output)
-	}
-}
-
 type Line struct {
 	Base2D
 }
@@ -251,6 +287,37 @@ func NewLine() *Line {
 			xAxisIdx:  0, xAxisLabel: "x",
 			yAxisIdx: 1, yAxisLabel: "y",
 		},
+	}
+}
+
+func (ex *Line) Close() {
+	line := charts.NewLine()
+	line.SetGlobalOptions(ex.getGlobalOptions()...)
+	line.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{charts.WithLabelOpts(opts.Label{
+		Show: true,
+	}),
+		charts.WithLineChartOpts(
+			opts.LineChart{
+				Smooth:     true,
+				XAxisIndex: 0,
+			},
+		),
+	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
+	for i, series := range ex.lineSeries {
+		label := ex.getRenderSeriesLabel(i)
+		line.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(line, line.Validate)
+	} else {
+		rndr = newChartRender(line, line.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
 	}
 }
 
@@ -268,6 +335,32 @@ func NewScatter() *Scatter {
 	}
 }
 
+func (ex *Scatter) Close() {
+	scatter := charts.NewScatter()
+	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
+	scatter.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{
+		charts.WithLabelOpts(opts.Label{
+			Show: false,
+		}),
+	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
+	for i, series := range ex.scatterSeries {
+		label := ex.getRenderSeriesLabel(i)
+		scatter.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(scatter, scatter.Validate)
+	} else {
+		rndr = newChartRender(scatter, scatter.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
+}
+
 type Bar struct {
 	Base2D
 }
@@ -279,5 +372,31 @@ func NewBar() *Bar {
 			xAxisIdx:  0, xAxisLabel: "x",
 			yAxisIdx: 1, yAxisLabel: "y",
 		},
+	}
+}
+
+func (ex *Bar) Close() {
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(ex.getGlobalOptions()...)
+	bar.SetXAxis(ex.xLabels)
+	seriesOpts := []charts.SeriesOpts{
+		charts.WithLabelOpts(opts.Label{
+			Show: false,
+		}),
+	}
+	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
+	for i, series := range ex.barSeries {
+		label := ex.getRenderSeriesLabel(i)
+		bar.AddSeries(label, series, seriesOpts...)
+	}
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(bar, bar.Validate)
+	} else {
+		rndr = newChartRender(bar, bar.Validate)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
 	}
 }
