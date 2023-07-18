@@ -199,7 +199,7 @@ func NewConfig() *Config {
 	}
 
 	sysCPU := runtime.NumCPU()
-	if sysCPU < 8 {
+	if sysCPU <= 4 {
 		conf.MachbasePreset = PresetEdge
 	} else {
 		conf.MachbasePreset = PresetFog
