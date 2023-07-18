@@ -78,13 +78,17 @@ type Config struct {
 }
 
 type client struct {
-	conf *Config
-	db   spi.DatabaseClient
-	pref *Pref
+	conf   *Config
+	db     spi.DatabaseClient
+	dbLock sync.Mutex
+	pref   *Pref
 
 	rl            *readline.Instance
 	interactive   bool
 	remoteSession bool
+
+	mgmtClient     mgmt.ManagementClient
+	mgmtClientLock sync.Mutex
 }
 
 func DefaultConfig() *Config {
@@ -138,6 +142,12 @@ func (cli *client) checkDatabase() error {
 		return nil
 	}
 
+	cli.dbLock.Lock()
+	defer cli.dbLock.Unlock()
+	if cli.db != nil {
+		return nil
+	}
+
 	machcli := machrpc.NewClient(
 		machrpc.WithServer(cli.conf.ServerAddr),
 		machrpc.WithCertificate(cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath),
@@ -174,11 +184,10 @@ func (cli *client) ShutdownServer() error {
 		return errors.New("remote session is not allowed to shutdown")
 	}
 
-	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+	mgmtcli, err := cli.ManagementClient()
 	if err != nil {
 		return err
 	}
-	mgmtcli := mgmt.NewManagementClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -193,11 +202,16 @@ func (cli *client) ShutdownServer() error {
 }
 
 func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
-	conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
-	if err != nil {
-		return nil, err
+	cli.mgmtClientLock.Lock()
+	defer cli.mgmtClientLock.Unlock()
+	if cli.mgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.mgmtClient = mgmt.NewManagementClient(conn)
 	}
-	return mgmt.NewManagementClient(conn), nil
+	return cli.mgmtClient, nil
 }
 
 func (cli *client) Run(command string) {

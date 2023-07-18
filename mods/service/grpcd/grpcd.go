@@ -95,6 +95,8 @@ type grpcd struct {
 	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
+
+	mgmtServerInsecure *grpc.Server
 }
 
 func (svr *grpcd) Start() error {
@@ -103,6 +105,9 @@ func (svr *grpcd) Start() error {
 		grpc.MaxSendMsgSize(int(svr.maxSendMsgSize)),
 		grpc.StatsHandler(svr),
 	}
+
+	// create grpc server insecure
+	svr.mgmtServerInsecure = grpc.NewServer(grpcOptions...)
 
 	// creds
 	tlsCreds, err := svr.loadTlsCreds()
@@ -122,6 +127,7 @@ func (svr *grpcd) Start() error {
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
 	// mgmtServer is serving general db service + mgmt service
 	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
+	machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr)
 
 	if svr.mgmtImpl != nil {
 		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
@@ -143,7 +149,10 @@ func (svr *grpcd) Start() error {
 			// windows require mgmt service to shutdown process from neow
 			go svr.mgmtServer.Serve(lsnr)
 		} else {
-			if strings.HasPrefix(listen, "unix://") || strings.HasPrefix(listen, "tcp://127.0.0.1:") {
+			if strings.HasPrefix(listen, "unix://") {
+				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
+				go svr.mgmtServerInsecure.Serve(lsnr)
+			} else if strings.HasPrefix(listen, "tcp://127.0.0.1:") {
 				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
 				go svr.mgmtServer.Serve(lsnr)
 			} else {
@@ -160,6 +169,9 @@ func (svr *grpcd) Stop() {
 	}
 	if svr.mgmtServer != nil {
 		svr.mgmtServer.Stop()
+	}
+	if svr.mgmtServerInsecure != nil {
+		svr.mgmtServerInsecure.Stop()
 	}
 }
 
