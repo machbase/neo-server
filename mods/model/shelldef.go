@@ -13,8 +13,7 @@ type ShellDefinition struct {
 	Icon       string           `json:"icon,omitempty"`
 	Label      string           `json:"label"`
 	Theme      string           `json:"theme,omitempty"`
-	RawCommand string           `json:"rawCommand,omitempty"`
-	Args       []string         `json:"args,omitempty"`
+	Command    string           `json:"rawCommand,omitempty"`
 	Attributes *ShellAttributes `json:"attributes,omitempty"`
 }
 
@@ -25,8 +24,7 @@ func (def *ShellDefinition) Clone() *ShellDefinition {
 	ret.Icon = def.Icon
 	ret.Label = def.Label
 	ret.Theme = def.Theme
-	ret.RawCommand = def.RawCommand
-	copy(ret.Args, def.Args)
+	ret.Command = def.Command
 	if def.Attributes != nil {
 		ret.Attributes = &ShellAttributes{}
 		ret.Attributes.Cloneable = def.Attributes.Cloneable

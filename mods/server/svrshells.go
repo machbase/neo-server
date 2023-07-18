@@ -8,9 +8,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/sshd"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
 
@@ -93,10 +95,14 @@ func (s *svr) SetShellDef(def *model.ShellDefinition) error {
 			return fmt.Errorf("'%s' is not allowed for the custom shell name", id)
 		}
 	}
-	if len(def.Args) == 0 {
+	if len(def.Command) == 0 {
 		return errors.New("invalid command for the custom shell")
 	}
-	binpath := def.Args[0]
+	args := util.SplitFields(def.Command, true)
+	if len(args) == 0 {
+		return errors.New("invalid command for the custom shell")
+	}
+	binpath := args[0]
 	if fi, err := os.Stat(binpath); err != nil {
 		return errors.Wrapf(err, "'%s' is not accessible", binpath)
 	} else {
@@ -182,72 +188,61 @@ func (s *svr) GetWebShell(id string) (*model.ShellDefinition, error) {
 
 func (s *svr) CopyWebShell(id string) (*model.ShellDefinition, error) {
 	id = strings.ToUpper(id)
-	var def *model.ShellDefinition
+	var ret *model.ShellDefinition
 	if _, ok := reservedWebShellDef[id]; ok {
-		def = &model.ShellDefinition{}
-		def.Id = "COPY"
+		ret = &model.ShellDefinition{}
 		if exename, err := os.Executable(); err != nil {
-			def.Args = []string{os.Args[0], "shell"}
+			ret.Command = fmt.Sprintf(`"%s" shell`, os.Args[0])
 		} else {
-			def.Args = []string{exename, "shell"}
+			ret.Command = fmt.Sprintf(`"%s" shell`, exename)
 		}
 	} else {
 		d, err := s.GetShellDef(id)
 		if err != nil {
 			return nil, err
 		}
-		def = d.Clone()
+		ret = d.Clone()
 	}
-	if def == nil {
+	if ret == nil {
 		s.log.Warnf("shell def not found '%s'", id)
 		return nil, fmt.Errorf("shell definition not found '%s'", id)
 	}
-	idx := 1
-	for {
-		cand := fmt.Sprintf("%s-%d", def.Id, idx)
-		exists := false
-		s.IterateShellDefs(func(sd *model.ShellDefinition) bool {
-			if sd.Id == cand {
-				exists = true
-				return false
-			}
-			return true
-		})
-		if exists {
-			idx += 1
-		} else {
-			def.Id = cand
-			break
-		}
+	uid, err := uuid.DefaultGenerator.NewV4()
+	if err != nil {
+		s.log.Warnf("shell def new id, %s", err.Error())
+		return nil, err
 	}
-	if err := s.SetShellDef(def); err != nil {
+	ret.Id = uid.String()
+	ret.Label = "CUSTOM SHELL"
+	if err := s.SetShellDef(ret); err != nil {
 		s.log.Warnf("shell def not saved", err.Error())
 		return nil, err
 	}
-	return def, nil
+	return ret, nil
 }
 
 func (s *svr) RemoveWebShell(id string) error {
 	return s.RemoveShellDef(id)
 }
 
-func (s *svr) UpdateWebShell(sh *model.ShellDefinition) error {
-	if sh.Id != sh.Label {
-		if err := s.RenameShellDef(sh.Id, sh.Label); err != nil {
-			return err
-		}
-		sh.Id = sh.Label
+func (s *svr) UpdateWebShell(def *model.ShellDefinition) error {
+	if err := s.SetShellDef(def); err != nil {
+		s.log.Warnf("shell def not saved, %s", err.Error())
+		return err
 	}
-	fmt.Printf("------->UpdateWehShell:%#v", sh)
-
 	return nil
 }
 
 func sshShellFrom(def *model.ShellDefinition) *sshd.Shell {
 	shell := &sshd.Shell{}
-	shell.Cmd = def.Args[0]
-	if len(def.Args) > 1 {
-		shell.Args = def.Args[1:]
+	args := util.SplitFields(def.Command, true)
+	if len(args) == 0 {
+		return nil
+	}
+
+	shell.Cmd = args[0]
+	if len(args) > 1 {
+		shell.Args = args[1:]
 	}
 
 	shell.Envs = map[string]string{}
