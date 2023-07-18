@@ -231,7 +231,6 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 // 	raw := cert.Raw
 // 	b64str := base64.StdEncoding.EncodeToString(raw)
 // 	b64str = strings.TrimSpace(b64str)
-
 // 	sha := sha3.New256()
 // 	sha.Write([]byte(b64str))
 // 	return hex.EncodeToString(sha.Sum(nil)), nil

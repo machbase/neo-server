@@ -93,9 +93,9 @@ func OptionMotdMessage(msg string) Option {
 	}
 }
 
-func OptionShellDefinitionProvider(provider func(name string) *ShellDefinition) Option {
+func OptionCustomShellProvider(provider func(name string) *Shell) Option {
 	return func(s *sshd) {
-		s.shellDefinitionProvider = provider
+		s.customShellProvider = provider
 	}
 }
 
@@ -125,13 +125,7 @@ type sshd struct {
 
 	shellCmd []string
 
-	shellDefinitionProvider func(name string) *ShellDefinition
-}
-
-type Shell struct {
-	Cmd  string
-	Args []string
-	Envs map[string]string
+	customShellProvider func(name string) *Shell
 }
 
 func (svr *sshd) Start() error {

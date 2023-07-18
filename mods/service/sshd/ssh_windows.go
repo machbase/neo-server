@@ -15,19 +15,15 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shellDef := svr.findShellDefinition(ss)
-	if shellDef != nil {
-		svr.log.Debugf("session open %s (%s) from %s", user, shellDef.Name, ss.RemoteAddr())
-	} else {
-		svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
-	}
+	user, shell := svr.findShell(ss)
+	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
 
-	shell := svr.buildShell(user, shellDef)
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
 		return
 	}
+
 	ptyReq, winCh, isPty := ss.Pty()
 	if !isPty {
 		io.WriteString(ss, "No PTY requested.\n")

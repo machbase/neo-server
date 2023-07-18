@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -63,23 +64,17 @@ type LoginRsp struct {
 }
 
 type LoginCheckRsp struct {
-	Success        bool                `json:"success"`
-	Reason         string              `json:"reason"`
-	Elapse         string              `json:"elapse"`
-	ExperimentMode bool                `json:"experimentMode"`
-	References     []WebReferenceGroup `json:"references,omitempty"`
-	Shells         []WebShell          `json:"shells,omitempty"`
+	Success        bool                     `json:"success"`
+	Reason         string                   `json:"reason"`
+	Elapse         string                   `json:"elapse"`
+	ExperimentMode bool                     `json:"experimentMode"`
+	References     []WebReferenceGroup      `json:"references,omitempty"`
+	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
 type WebReferenceGroup struct {
 	Label string          `json:"label"`
 	Items []ReferenceItem `json:"items"`
-}
-
-type WebShell struct {
-	Icon  string `json:"icon,omitempty"`
-	Label string `json:"label"`
-	Id    string `json:"id"`
 }
 
 type ReferenceItem struct {
@@ -310,8 +305,8 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.referenceProvider != nil {
 		options.References = svr.referenceProvider()
 	}
-	if svr.shellProvider != nil {
-		options.Shells = svr.shellProvider()
+	if svr.webShellProvider != nil {
+		options.Shells = svr.webShellProvider.GetAllWebShells()
 	}
 	options.Elapse = time.Since(tick).String()
 

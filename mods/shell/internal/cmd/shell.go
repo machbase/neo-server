@@ -24,22 +24,24 @@ const helpShell = `  shell command [options]
   commands:
     list                                shows registered shells
     add   <name>  <binpath [args...]>   register shell
-    del   <name>                        unregister shell
+    del   <id>                          unregister shell by given id
 
    ex)
       shell add console  C:\Windows\System32\cmd.exe
       shell add bashterm /bin/bash
       shell add terminal /bin/zsh -il
+    ex)
+      shell del D85CE6E8-24FA-11EE-9B7A-8A17CAD8D69C
 `
 
 type ShellCmd struct {
 	List struct{} `cmd:"" name:"list"`
 	Del  struct {
-		Name string `arg:"" name:"name"`
+		Id string `arg:"" name:"id"`
 	} `cmd:"" name:"del"`
 	Add struct {
-		Name    string   `arg:"" name:"name" help:"shell name"`
-		Binpath []string `arg:"" name:"binpath" passthrough:""`
+		Name    string `arg:"" name:"name" help:"shell name"`
+		Binpath string `arg:"" name:"binpath" passthrough:""`
 	} `cmd:"" name:"add"`
 	Help bool `kong:"-"`
 }
@@ -73,8 +75,8 @@ func doShell(ctx *client.ActionContext) {
 		doShellList(ctx)
 	case "add <name> <binpath>":
 		doShellAdd(ctx, cmd.Add.Name, cmd.Add.Binpath)
-	case "del <name>":
-		doShellDel(ctx, cmd.Del.Name)
+	case "del <id>":
+		doShellDel(ctx, cmd.Del.Id)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
 		return
@@ -98,22 +100,21 @@ func doShellList(ctx *client.ActionContext) {
 		return
 	}
 
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "COMMAND"})
+	box := ctx.NewBox([]string{"ROWNUM", "ID", "NAME", "COMMAND"})
 	for i, c := range rsp.Shells {
-		box.AppendRow(i+1, c.Name, strings.Join(c.Args, " "))
+		box.AppendRow(i+1, c.Id, c.Name, c.Command)
 	}
 	box.Render()
 }
 
-func doShellDel(ctx *client.ActionContext, name string) {
+func doShellDel(ctx *client.ActionContext, id string) {
 	mgmtCli, err := ctx.NewManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.DelShell(ctx, &mgmt.DelShellRequest{
-		Name: name,
-	})
+
+	rsp, err := mgmtCli.DelShell(ctx, &mgmt.DelShellRequest{Id: id})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -125,7 +126,7 @@ func doShellDel(ctx *client.ActionContext, name string) {
 	ctx.Println("deleted")
 }
 
-func doShellAdd(ctx *client.ActionContext, name string, args []string) {
+func doShellAdd(ctx *client.ActionContext, name string, command string) {
 	name = strings.ToLower(name)
 	mgmtCli, err := ctx.NewManagementClient()
 	if err != nil {
@@ -133,7 +134,7 @@ func doShellAdd(ctx *client.ActionContext, name string, args []string) {
 		return
 	}
 	rsp, err := mgmtCli.AddShell(ctx, &mgmt.AddShellRequest{
-		Name: name, Args: args,
+		Name: name, Command: command,
 	})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
