@@ -13,7 +13,7 @@ type ShellDefinition struct {
 	Icon       string           `json:"icon,omitempty"`
 	Label      string           `json:"label"`
 	Theme      string           `json:"theme,omitempty"`
-	Command    string           `json:"rawCommand,omitempty"`
+	Command    string           `json:"command,omitempty"`
 	Attributes *ShellAttributes `json:"attributes,omitempty"`
 }
 

@@ -100,9 +100,9 @@ func doShellList(ctx *client.ActionContext) {
 		return
 	}
 
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "ID", "COMMAND"})
+	box := ctx.NewBox([]string{"ROWNUM", "ID", "NAME", "COMMAND"})
 	for i, c := range rsp.Shells {
-		box.AppendRow(i+1, c.Name, c.Id, c.Command)
+		box.AppendRow(i+1, c.Id, c.Name, c.Command)
 	}
 	box.Render()
 }

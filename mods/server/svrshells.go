@@ -30,6 +30,10 @@ var reservedWebShellDef = map[string]*model.ShellDefinition{
 	},
 }
 
+type OldShellDef struct {
+	Args []string `json:"args,omitempty"`
+}
+
 func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 	if cb == nil {
 		return nil
@@ -56,17 +60,21 @@ func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 		// compatibility old version
 		if def.Type == "" {
 			def.Type = "term"
+			old := &OldShellDef{}
+			if err := json.Unmarshal(content, old); err == nil && len(old.Args) > 0 {
+				def.Command = strings.Join(old.Args, " ")
+			}
+			if def.Attributes == nil {
+				def.Attributes = &model.ShellAttributes{
+					Cloneable: true, Removable: true, Editable: true,
+				}
+			}
 		}
 		if def.Icon == "" {
 			def.Icon = "console-network-outline"
 		}
 		if def.Label == "" {
-			def.Label = def.Id
-		}
-		if def.Attributes == nil {
-			def.Attributes = &model.ShellAttributes{
-				Cloneable: true, Removable: true, Editable: true,
-			}
+			def.Label = "CUSTOM SHELL"
 		}
 		shouldContinue := cb(def)
 		if !shouldContinue {
