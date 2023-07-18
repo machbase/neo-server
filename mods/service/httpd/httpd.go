@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/docs"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
@@ -133,9 +134,9 @@ func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
 	}
 }
 
-func OptionShellProvider(provider func() []WebShell) Option {
+func OptionWebShellProvider(provider model.ShellProvider) Option {
 	return func(s *httpd) {
-		s.shellProvider = provider
+		s.webShellProvider = provider
 	}
 }
 
@@ -162,7 +163,7 @@ type httpd struct {
 	licenseFilePath        string
 	debugMode              bool
 	referenceProvider      func() []WebReferenceGroup
-	shellProvider          func() []WebShell
+	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 }
 
@@ -284,6 +285,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
+			group.GET("/api/shell/:id", svr.handleGetShell)
+			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
+			group.POST("/api/shell/:id", svr.handlePostShell)
+			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
 			group.GET("/api/chart", svr.handleChart)
 			group.POST("/api/chart", svr.handleChart)
 			group.GET("/api/tables", svr.handleTables)

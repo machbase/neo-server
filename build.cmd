@@ -41,10 +41,10 @@
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.versionGitSHA="%GITSHA%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.buildTimestamp="%BUILDTIME%"
 @SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.goVersionString="%GOVERSTR%"
-@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString="fog"
+@SET LDFLAGS=%LDFLAGS% -X %MODNAME%/mods.editionString="standard"
 
 @REM -tags=timetzdata is required for windows users
-go build -ldflags "%LDFLAGS%" -tags=fog_edition,timetzdata -o .\tmp\machbase-neo.exe .\main\machbase-neo
+go build -ldflags "%LDFLAGS%" -tags=timetzdata -o .\tmp\machbase-neo.exe .\main\machbase-neo
 
 @SET CGO_ENABLED=0 
 @REM go build -ldflags "-H=windowsgui" -o .\tmp\neow.exe .\main\neow

@@ -32,20 +32,12 @@ if [ "$1" == "" ]; then
     exit 1
 fi
 
-# 2nd Edition
-if [ "$2" == "" ]; then
-    EDITION="fog"
-else
-    EDITION="$2"
-fi
-echo "    set edition $EDITION"
-
 # 3rd OS
-X_OS="$3"
+X_OS="$2"
 echo "    set os $X_OS"
 
 # 4th Arch
-X_ARCH="$4"
+X_ARCH="$3"
 echo "    set arch $X_ARCH"
 
 VERSION=`$PRJROOT/scripts/buildversion.sh`
@@ -76,7 +68,7 @@ GOVERSTR=$(go version | sed -r 's/go version go(.*)\ .*/\1/')
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.versionString=${VERSION}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.goVersionString=${GOVERSTR}"
 LDFLAGS="$LDFLAGS -X $MODNAME/mods.buildTimestamp=$(date "+%Y-%m-%dT%H:%M:%S")"
-LDFLAGS="$LDFLAGS -X $MODNAME/mods.editionString=${EDITION}"
+LDFLAGS="$LDFLAGS -X $MODNAME/mods.editionString=standard"
 
 #
 # refere to https://ziglang.org/documentation/0.10.1/#Targets
@@ -137,6 +129,5 @@ CC=$X_CC \
 CXX=$X_CXX \
 go build \
     -ldflags "$LDFLAGS" \
-    -tags ${EDITION}_edition \
     -o $PRJROOT/tmp/$1 \
     ./main/$1

@@ -29,7 +29,7 @@ jobs:
         with:
           name: Packages
           path: |
-            packages/machbase-neo-*-v*.zip
-            packages/neow-*-v*.zip
+            packages/machbase-neo-v*.zip
+            packages/neow-v*.zip
           retention-days: 5
 

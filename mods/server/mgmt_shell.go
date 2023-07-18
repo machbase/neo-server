@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-server/mods/service/sshd"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {
@@ -15,10 +17,11 @@ func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShel
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	err := s.IterateShellDefs(func(define *sshd.ShellDefinition) bool {
+	err := s.IterateShellDefs(func(define *model.ShellDefinition) bool {
 		rsp.Shells = append(rsp.Shells, &mgmt.ShellDefinition{
-			Name: define.Name,
-			Args: define.Args,
+			Id:      define.Id,
+			Name:    define.Label,
+			Command: define.Command,
 		})
 		return true
 	})
@@ -37,20 +40,24 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	def := &sshd.ShellDefinition{}
-
-	if len(req.Name) > 40 {
-		rsp.Reason = fmt.Sprintf("name is too long, should be shorter than 40 characters")
+	def := &model.ShellDefinition{}
+	if len(req.Name) > 16 {
+		rsp.Reason = "name is too long, should be shorter than 16 characters"
 		return rsp, nil
 	} else {
-		def.Name = req.Name
+		uid, err := uuid.DefaultGenerator.NewV4()
+		if err != nil {
+			return nil, err
+		}
+		def.Id = uid.String()
+		def.Label = req.Name
 	}
 
-	if len(req.Args) == 0 {
-		rsp.Reason = fmt.Sprintf("path is too long, should be shorter than 40 characters")
+	if len(strings.TrimSpace(req.Command)) == 0 {
+		rsp.Reason = "command not specified"
 		return rsp, nil
 	} else {
-		def.Args = req.Args
+		def.Command = req.Command
 	}
 
 	if err := s.SetShellDef(def); err != nil {
@@ -68,12 +75,10 @@ func (s *svr) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.De
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-
-	if err := s.RemoveShellDef(req.Name); err != nil {
-		rsp.Reason = err.Error()
+	if err := s.RemoveShellDef(req.Id); err != nil {
+		rsp.Reason = fmt.Sprintf("fail to remove %s", req.Id)
 		return rsp, nil
 	}
-
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
 }
