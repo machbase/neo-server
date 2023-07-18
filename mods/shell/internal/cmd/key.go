@@ -84,7 +84,7 @@ func doKey(ctx *client.ActionContext) {
 }
 
 func doKeyList(ctx *client.ActionContext) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -110,7 +110,7 @@ func doKeyList(ctx *client.ActionContext) {
 }
 
 func doKeyDel(ctx *client.ActionContext, id string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -137,7 +137,7 @@ func doKeyGen(ctx *client.ActionContext, name string, output string) {
 		return
 	}
 
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -178,7 +178,7 @@ func doKeyGen(ctx *client.ActionContext, name string, output string) {
 }
 
 func doServerCert(ctx *client.ActionContext, output string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

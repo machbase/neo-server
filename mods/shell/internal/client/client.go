@@ -39,6 +39,7 @@ type Client interface {
 
 	Database() spi.Database
 	Pref() *Pref
+	ManagementClient() (mgmt.ManagementClient, error)
 }
 
 type ShutdownServerFunc func() error
@@ -63,24 +64,31 @@ var Formats = struct {
 }
 
 type Config struct {
-	ServerAddr   string
-	Stdin        io.ReadCloser
-	Stdout       io.Writer
-	Stderr       io.Writer
-	Prompt       string
-	PromptCont   string
-	QueryTimeout time.Duration
-	Lang         language.Tag
+	ServerAddr     string
+	ServerCertPath string
+	ClientCertPath string
+	ClientKeyPath  string
+	Stdin          io.ReadCloser
+	Stdout         io.Writer
+	Stderr         io.Writer
+	Prompt         string
+	PromptCont     string
+	QueryTimeout   time.Duration
+	Lang           language.Tag
 }
 
 type client struct {
-	conf *Config
-	db   spi.DatabaseClient
-	pref *Pref
+	conf   *Config
+	db     spi.DatabaseClient
+	dbLock sync.Mutex
+	pref   *Pref
 
 	rl            *readline.Instance
 	interactive   bool
 	remoteSession bool
+
+	mgmtClient     mgmt.ManagementClient
+	mgmtClientLock sync.Mutex
 }
 
 func DefaultConfig() *Config {
@@ -134,8 +142,17 @@ func (cli *client) checkDatabase() error {
 		return nil
 	}
 
-	machcli := machrpc.NewClient()
-	err := machcli.Connect(cli.conf.ServerAddr, machrpc.QueryTimeout(cli.conf.QueryTimeout))
+	cli.dbLock.Lock()
+	defer cli.dbLock.Unlock()
+	if cli.db != nil {
+		return nil
+	}
+
+	machcli := machrpc.NewClient(
+		machrpc.WithServer(cli.conf.ServerAddr),
+		machrpc.WithCertificate(cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath),
+		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
+	err := machcli.Connect()
 	if err != nil {
 		return err
 	}
@@ -167,11 +184,10 @@ func (cli *client) ShutdownServer() error {
 		return errors.New("remote session is not allowed to shutdown")
 	}
 
-	conn, err := machrpc.MakeGrpcConn(cli.conf.ServerAddr)
+	mgmtcli, err := cli.ManagementClient()
 	if err != nil {
 		return err
 	}
-	mgmtcli := mgmt.NewManagementClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -183,6 +199,19 @@ func (cli *client) ShutdownServer() error {
 		return errors.New(rsp.Reason)
 	}
 	return nil
+}
+
+func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
+	cli.mgmtClientLock.Lock()
+	defer cli.mgmtClientLock.Unlock()
+	if cli.mgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.mgmtClient = mgmt.NewManagementClient(conn)
+	}
+	return cli.mgmtClient, nil
 }
 
 func (cli *client) Run(command string) {

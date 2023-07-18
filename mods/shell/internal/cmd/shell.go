@@ -84,7 +84,7 @@ func doShell(ctx *client.ActionContext) {
 }
 
 func doShellList(ctx *client.ActionContext) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -108,7 +108,7 @@ func doShellList(ctx *client.ActionContext) {
 }
 
 func doShellDel(ctx *client.ActionContext, id string) {
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -128,7 +128,7 @@ func doShellDel(ctx *client.ActionContext, id string) {
 
 func doShellAdd(ctx *client.ActionContext, name string, command string) {
 	name = strings.ToLower(name)
-	mgmtCli, err := ctx.NewManagementClient()
+	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

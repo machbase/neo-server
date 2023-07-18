@@ -399,6 +399,7 @@ func (s *svr) Start() error {
 			grpcd.OptionListenAddress(s.conf.Grpc.Listeners...),
 			grpcd.OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
 			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
+			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
 		)
 		if err != nil {

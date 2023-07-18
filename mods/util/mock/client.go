@@ -22,7 +22,7 @@ var _ spi.DatabaseClient = &DatabaseClientMock{}
 //			AppenderFunc: func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
 //				panic("mock out the Appender method")
 //			},
-//			ConnectFunc: func(serverAddr string, opts ...any) error {
+//			ConnectFunc: func() error {
 //				panic("mock out the Connect method")
 //			},
 //			DisconnectFunc: func()  {
@@ -66,7 +66,7 @@ type DatabaseClientMock struct {
 	AppenderFunc func(tableName string, opts ...spi.AppendOption) (spi.Appender, error)
 
 	// ConnectFunc mocks the Connect method.
-	ConnectFunc func(serverAddr string, opts ...any) error
+	ConnectFunc func() error
 
 	// DisconnectFunc mocks the Disconnect method.
 	DisconnectFunc func()
@@ -109,10 +109,6 @@ type DatabaseClientMock struct {
 		}
 		// Connect holds details about calls to the Connect method.
 		Connect []struct {
-			// ServerAddr is the serverAddr argument value.
-			ServerAddr string
-			// Opts is the opts argument value.
-			Opts []any
 		}
 		// Disconnect holds details about calls to the Disconnect method.
 		Disconnect []struct {
@@ -232,21 +228,16 @@ func (mock *DatabaseClientMock) AppenderCalls() []struct {
 }
 
 // Connect calls ConnectFunc.
-func (mock *DatabaseClientMock) Connect(serverAddr string, opts ...any) error {
+func (mock *DatabaseClientMock) Connect() error {
 	if mock.ConnectFunc == nil {
 		panic("DatabaseClientMock.ConnectFunc: method is nil but DatabaseClient.Connect was just called")
 	}
 	callInfo := struct {
-		ServerAddr string
-		Opts       []any
-	}{
-		ServerAddr: serverAddr,
-		Opts:       opts,
-	}
+	}{}
 	mock.lockConnect.Lock()
 	mock.calls.Connect = append(mock.calls.Connect, callInfo)
 	mock.lockConnect.Unlock()
-	return mock.ConnectFunc(serverAddr, opts...)
+	return mock.ConnectFunc()
 }
 
 // ConnectCalls gets all the calls that were made to Connect.
@@ -254,12 +245,8 @@ func (mock *DatabaseClientMock) Connect(serverAddr string, opts ...any) error {
 //
 //	len(mockedDatabaseClient.ConnectCalls())
 func (mock *DatabaseClientMock) ConnectCalls() []struct {
-	ServerAddr string
-	Opts       []any
 } {
 	var calls []struct {
-		ServerAddr string
-		Opts       []any
 	}
 	mock.lockConnect.RLock()
 	calls = mock.calls.Connect
