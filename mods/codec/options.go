@@ -429,3 +429,27 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 		}
 	}
 }
+
+type CanSetMarkLineXAxisCoord interface {
+	SetMarkLineXAxisCoord(xaxis any, name string)
+}
+
+func MarkLineXAxisCoord(xaxis any, name string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetMarkLineXAxisCoord); ok {
+			o.SetMarkLineXAxisCoord(xaxis, name)
+		}
+	}
+}
+
+type CanSetMarkLineYAxisCoord interface {
+	SetMarkLineYAxisCoord(xaxis any, name string)
+}
+
+func MarkLineYAxisCoord(xaxis any, name string) Option {
+	return func(one any) {
+		if o, ok := one.(CanSetMarkLineYAxisCoord); ok {
+			o.SetMarkLineYAxisCoord(xaxis, name)
+		}
+	}
+}

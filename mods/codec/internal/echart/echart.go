@@ -65,3 +65,13 @@ type MarkAreaNameCoord struct {
 	Color       string
 	Opacity     float32
 }
+
+type MarkLineXAxisCoord struct {
+	Name  string
+	XAxis any
+}
+
+type MarkLineYAxisCoord struct {
+	Name  string
+	YAxis any
+}

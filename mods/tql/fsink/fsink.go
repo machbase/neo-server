@@ -180,6 +180,8 @@ var functions = map[string]expression.Function{
 	"gridSize":     sinkf_gridSize,
 	"lineWidth":    sinkf_lineWidth,
 	"markArea":     sinkf_markArea,
+	"markXAxis":    sinkf_markXAxis,
+	"markYAxis":    sinkf_markYAxis,
 	// db options
 	"table": to_table,
 	"tag":   to_tag,
@@ -487,6 +489,34 @@ func sinkf_markArea(args ...any) (any, error) {
 		}
 	}
 	return codec.MarkAreaNameCoord(coord0, coord1, label, color, opacity), nil
+}
+
+func sinkf_markXAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("markXAxis", 2, len(args))
+	}
+	xAxis := args[0]
+	name := ""
+	if str, err := conv.String(args, 1, "markXAxis", "name"); err != nil {
+		return nil, err
+	} else {
+		name = str
+	}
+	return codec.MarkLineXAxisCoord(xAxis, name), nil
+}
+
+func sinkf_markYAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("markYAxis", 2, len(args))
+	}
+	yAxis := args[0]
+	name := ""
+	if str, err := conv.String(args, 1, "markYAxis", "name"); err != nil {
+		return nil, err
+	} else {
+		name = str
+	}
+	return codec.MarkLineYAxisCoord(yAxis, name), nil
 }
 
 func availableAxisType(typ string) bool {

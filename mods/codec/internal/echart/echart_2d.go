@@ -32,7 +32,9 @@ type Base2D struct {
 	TimeLocation *time.Location
 	TimeFormat   string
 
-	markAreaNameCoord []*MarkAreaNameCoord
+	markAreaNameCoord  []*MarkAreaNameCoord
+	markLineXAxisCoord []*MarkLineXAxisCoord
+	markLineYAxisCoord []*MarkLineYAxisCoord
 }
 
 func (ex *Base2D) ContentType() string {
@@ -76,6 +78,20 @@ func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color str
 		Coordinate1: []any{to},
 		Color:       color,
 		Opacity:     float32(opacity),
+	})
+}
+
+func (ex *Base2D) SetMarkLineXAxisCoord(xaxis any, name string) {
+	ex.markLineXAxisCoord = append(ex.markLineXAxisCoord, &MarkLineXAxisCoord{
+		Name:  name,
+		XAxis: xaxis,
+	})
+}
+
+func (ex *Base2D) SetMarkLineYAxisCoord(yaxis any, name string) {
+	ex.markLineYAxisCoord = append(ex.markLineYAxisCoord, &MarkLineYAxisCoord{
+		Name:  name,
+		YAxis: yaxis,
 	})
 }
 
@@ -203,6 +219,34 @@ func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
 			)
 		}
 	}
+
+	for _, mark := range ex.markLineXAxisCoord {
+		var idx int = -1
+		for i, v := range ex.xLabels {
+			if idx == -1 && xLabelCompare(v, mark.XAxis) {
+				idx = i
+			}
+			if idx != -1 {
+				break
+			}
+		}
+		ret = append(ret,
+			charts.WithMarkLineNameXAxisItemOpts(opts.MarkLineNameXAxisItem{
+				Name:  mark.Name,
+				XAxis: ex.xLabels[idx],
+			}),
+		)
+	}
+
+	for _, mark := range ex.markLineYAxisCoord {
+		ret = append(ret,
+			charts.WithMarkLineNameYAxisItemOpts(opts.MarkLineNameYAxisItem{
+				Name:  mark.Name,
+				YAxis: mark.YAxis,
+			}),
+		)
+	}
+
 	return ret
 }
 
