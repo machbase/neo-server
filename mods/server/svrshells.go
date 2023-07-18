@@ -60,6 +60,7 @@ func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 		// compatibility old version
 		if def.Type == "" {
 			def.Type = "term"
+			def.Label = def.Id
 			old := &OldShellDef{}
 			if err := json.Unmarshal(content, old); err == nil && len(old.Args) > 0 {
 				def.Command = strings.Join(old.Args, " ")
@@ -199,6 +200,8 @@ func (s *svr) CopyWebShell(id string) (*model.ShellDefinition, error) {
 	var ret *model.ShellDefinition
 	if _, ok := reservedWebShellDef[id]; ok {
 		ret = &model.ShellDefinition{}
+		ret.Type = "term"
+		ret.Attributes = &model.ShellAttributes{Removable: true, Editable: true, Cloneable: true}
 		if exename, err := os.Executable(); err != nil {
 			ret.Command = fmt.Sprintf(`"%s" shell`, os.Args[0])
 		} else {
