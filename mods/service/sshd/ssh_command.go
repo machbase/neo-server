@@ -10,8 +10,15 @@ import (
 )
 
 func (svr *sshd) commandHandler(ss ssh.Session) {
-	cmdArr := ss.Command()
-	cmdArr = svr.makeShellCommand(ss.User(), cmdArr...)
+	shell := svr.shell(ss.User(), "SHELL")
+	if shell == nil {
+		io.WriteString(ss, "No shell found\n")
+		ss.Exit(1)
+		return
+	}
+	cmdArr := []string{shell.Cmd}
+	cmdArr = append(cmdArr, shell.Args...)
+	cmdArr = append(cmdArr, ss.Command()...)
 	if len(cmdArr) == 0 {
 		io.WriteString(ss, "Invalid Command\n")
 		ss.Exit(1)

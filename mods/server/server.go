@@ -487,6 +487,9 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// shells initialize
+	s.initShellProvider()
+
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
 		s.sshd, err = sshd.New(s.db,
@@ -494,9 +497,8 @@ func (s *svr) Start() error {
 			sshd.OptionServerKeyPath(s.ServerPrivateKeyPath()),
 			sshd.OptionIdleTimeout(s.conf.Shell.IdleTimeout),
 			sshd.OptionAuthServer(s),
-			sshd.OptionGrpcServerAddress(s.conf.Grpc.Listeners...),
 			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
-			sshd.OptionCustomShellProvider(s.GetSshShell),
+			sshd.OptionShellProvider(s.provideShellForSsh),
 		)
 		if err != nil {
 			return errors.Wrap(err, "shell server")
