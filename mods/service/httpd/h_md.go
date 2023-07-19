@@ -19,15 +19,20 @@ import (
 // POST "/md?darkMode=true"
 func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	darkMode := strBool(ctx.Query("darkMode"), false)
+	highlightingStyle := "onesenterprise"
+	if darkMode {
+		highlightingStyle = "catppuccin-macchiato"
+	}
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
-			&mermaid.Extender{NoScript: true},
+			&mermaid.Extender{RenderMode: mermaid.RenderModeClient, NoScript: true},
 			&pikchr.Extender{DarkMode: darkMode},
 			highlighting.NewHighlighting(
-				highlighting.WithStyle("catppuccin-macchiato"),
+				highlighting.WithStyle(highlightingStyle),
 				highlighting.WithFormatOptions(
 					chromahtml.WithLineNumbers(true),
+					chromahtml.WrapLongLines(true),
 				),
 			),
 		),
