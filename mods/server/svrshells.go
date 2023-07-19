@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/gofrs/uuid"
@@ -16,18 +17,59 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	SHELLID_SQL   = "SQL"
+	SHELLID_TQL   = "TQL"
+	SHELLID_WRK   = "WRK"
+	SHELLID_TAZ   = "TAZ"
+	SHELLID_SHELL = "SHELL"
+)
+
 var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
 	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
 	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
 
 var reservedWebShellDef = map[string]*model.ShellDefinition{
-	"SQL": {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: "SQL"},
-	"TQL": {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: "TQL"},
-	"WRK": {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: "WRK"},
-	"TAZ": {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: "TAZ"},
-	"SHELL": {Type: "term", Label: "SHELL", Icon: "console", Id: "SHELL",
+	SHELLID_SQL: {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: SHELLID_SQL},
+	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: SHELLID_TQL},
+	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
+	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
+	SHELLID_SHELL: {Type: "term", Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
 		Attributes: &model.ShellAttributes{Cloneable: true},
 	},
+}
+
+func (s *svr) initShellProvider() {
+	candidates := []string{}
+	for _, addr := range s.conf.Grpc.Listeners {
+		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
+			continue
+		}
+		candidates = append(candidates, addr)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if strings.HasPrefix(candidates[i], "unix://") {
+			return true
+		}
+		if candidates[i] == "127.0.0.1" || candidates[i] == "localhost" {
+			return true
+		}
+		return false
+	})
+	if len(candidates) == 0 {
+		s.log.Warn("no port found for internal communication")
+		return
+	}
+
+	shellCmd := ""
+	if len(os.Args) > 0 {
+		if exename, err := os.Executable(); err != nil {
+			shellCmd = os.Args[0]
+		} else {
+			shellCmd = exename
+		}
+	}
+	reservedWebShellDef[SHELLID_SHELL].Command = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
 }
 
 type OldShellDef struct {
@@ -151,27 +193,65 @@ func (s *svr) RenameShellDef(name string, newName string) error {
 }
 
 // sshd shell provider
-func (s *svr) GetSshShell(id string) (found *sshd.Shell) {
-	id = strings.ToUpper(id)
-	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
-		if def.Id == id {
-			found = sshShellFrom(def)
-			if found != nil {
+func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
+	shellId = strings.ToUpper(shellId)
+	var shellDef *model.ShellDefinition
+	if shellId == SHELLID_SHELL {
+		shellDef = reservedWebShellDef[SHELLID_SHELL]
+	}
+	if shellDef == nil {
+		s.IterateShellDefs(func(def *model.ShellDefinition) bool {
+			if def.Id == shellId {
+				shellDef = def
 				return false
 			}
+			return true
+		})
+	}
+	if shellDef == nil {
+		return nil
+	}
+
+	parsed := util.SplitFields(shellDef.Command, true)
+	if len(parsed) == 0 {
+		return nil
+	}
+
+	shell := &sshd.Shell{}
+
+	shell.Cmd = parsed[0]
+	if len(parsed) > 1 {
+		shell.Args = parsed[1:]
+	}
+
+	shell.Envs = map[string]string{}
+	envs := os.Environ()
+	for _, line := range envs {
+		toks := strings.SplitN(line, "=", 2)
+		if len(toks) != 2 {
+			continue
 		}
-		return true
-	})
-	return
+		shell.Envs[toks[0]] = toks[1]
+	}
+	if runtime.GOOS == "windows" {
+		if _, ok := shell.Envs["USERPROFILE"]; !ok {
+			userHomeDir, err := os.UserHomeDir()
+			if err != nil {
+				userHomeDir = "."
+			}
+			shell.Envs["USERPROFILE"] = userHomeDir
+		}
+	}
+	return shell
 }
 
 func (s *svr) GetAllWebShells() []*model.ShellDefinition {
 	var ret []*model.ShellDefinition
-	ret = append(ret, reservedWebShellDef["SQL"])
-	ret = append(ret, reservedWebShellDef["TQL"])
-	ret = append(ret, reservedWebShellDef["WRK"])
-	ret = append(ret, reservedWebShellDef["TAZ"])
-	ret = append(ret, reservedWebShellDef["SHELL"])
+	ret = append(ret, reservedWebShellDef[SHELLID_SQL])
+	ret = append(ret, reservedWebShellDef[SHELLID_TQL])
+	ret = append(ret, reservedWebShellDef[SHELLID_WRK])
+	ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
+	ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
 	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
 		ret = append(ret, def)
 		return true
@@ -242,42 +322,6 @@ func (s *svr) UpdateWebShell(def *model.ShellDefinition) error {
 		return err
 	}
 	return nil
-}
-
-func sshShellFrom(def *model.ShellDefinition) *sshd.Shell {
-	shell := &sshd.Shell{}
-	args := util.SplitFields(def.Command, true)
-	if len(args) == 0 {
-		return nil
-	}
-
-	shell.Cmd = args[0]
-	if len(args) > 1 {
-		shell.Args = args[1:]
-	}
-
-	shell.Envs = map[string]string{}
-	if runtime.GOOS == "windows" {
-		envs := os.Environ()
-		for _, line := range envs {
-			if !strings.Contains(line, "=") {
-				continue
-			}
-			toks := strings.SplitN(line, "=", 2)
-			if len(toks) != 2 {
-				continue
-			}
-			shell.Envs[strings.TrimSpace(toks[0])] = strings.TrimSpace(toks[1])
-		}
-		if _, ok := shell.Envs["USERPROFILE"]; !ok {
-			userHomeDir, err := os.UserHomeDir()
-			if err != nil {
-				userHomeDir = "."
-			}
-			shell.Envs["USERPROFILE"] = userHomeDir
-		}
-	}
-	return shell
 }
 
 func (s *svr) WebReferences() []httpd.WebReferenceGroup {

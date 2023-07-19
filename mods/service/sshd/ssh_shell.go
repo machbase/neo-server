@@ -21,21 +21,15 @@ func (svr *sshd) motdProvider(user string) string {
 func (svr *sshd) findShell(ss ssh.Session) (string, *Shell) {
 	user := ss.User()
 	var shell *Shell
-	if strings.Contains(user, ":") {
-		userShell := ""
-		toks := strings.SplitN(user, ":", 2)
-		user = toks[0]
-		userShell = toks[1]
-		if userShell == "SHELL" {
-			shell = svr.shellProvider(user)
-		} else {
-			shell = svr.customShellProvider(userShell)
-		}
-		if shell == nil {
-			return user, nil
-		}
+	var shellId string
+
+	toks := strings.SplitN(user, ":", 2)
+	user = toks[0]
+	if len(toks) == 2 {
+		shellId = toks[1]
 	} else {
-		shell = svr.shellProvider(user)
+		shellId = "SHELL"
 	}
+	shell = svr.shell(user, shellId)
 	return user, shell
 }
