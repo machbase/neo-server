@@ -16,12 +16,14 @@ import (
 )
 
 // POST "/md"
+// POST "/md?darkMode=true"
 func (svr *httpd) handleMarkdown(ctx *gin.Context) {
+	darkMode := strBool(ctx.Query("darkMode"), false)
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
 			&mermaid.Extender{NoScript: true},
-			&pikchr.Extender{},
+			&pikchr.Extender{DarkMode: darkMode},
 			highlighting.NewHighlighting(
 				highlighting.WithStyle("catppuccin-macchiato"),
 				highlighting.WithFormatOptions(
