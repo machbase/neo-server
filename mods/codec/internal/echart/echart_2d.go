@@ -206,17 +206,24 @@ func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
 					break
 				}
 			}
-			ret = append(ret,
-				charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
-					Name:        mark.Label,
-					Coordinate0: []any{ex.xLabels[idx0]},
-					Coordinate1: []any{ex.xLabels[idx1]},
-					ItemStyle: &opts.ItemStyle{
-						Color:   mark.Color,
-						Opacity: mark.Opacity,
-					},
-				}),
-			)
+			if idx0 == -1 && idx1 != -1 {
+				idx0 = 0
+			} else if idx0 != -1 && idx1 == -1 {
+				idx1 = len(ex.xLabels) - 1
+			}
+			if idx0 >= 0 && idx1 >= 0 {
+				ret = append(ret,
+					charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
+						Name:        mark.Label,
+						Coordinate0: []any{ex.xLabels[idx0]},
+						Coordinate1: []any{ex.xLabels[idx1]},
+						ItemStyle: &opts.ItemStyle{
+							Color:   mark.Color,
+							Opacity: mark.Opacity,
+						},
+					}),
+				)
+			}
 		}
 	}
 
@@ -230,12 +237,14 @@ func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
 				break
 			}
 		}
-		ret = append(ret,
-			charts.WithMarkLineNameXAxisItemOpts(opts.MarkLineNameXAxisItem{
-				Name:  mark.Name,
-				XAxis: ex.xLabels[idx],
-			}),
-		)
+		if idx >= 0 {
+			ret = append(ret,
+				charts.WithMarkLineNameXAxisItemOpts(opts.MarkLineNameXAxisItem{
+					Name:  mark.Name,
+					XAxis: ex.xLabels[idx],
+				}),
+			)
+		}
 	}
 
 	for _, mark := range ex.markLineYAxisCoord {
