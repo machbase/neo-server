@@ -25,6 +25,10 @@ const (
 	SHELLID_SHELL = "SHELL"
 )
 
+const (
+	SHELLTYPE_TERM = "term"
+)
+
 var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
 	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
 	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
@@ -34,7 +38,7 @@ var reservedWebShellDef = map[string]*model.ShellDefinition{
 	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: SHELLID_TQL},
 	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
 	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
-	SHELLID_SHELL: {Type: "term", Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
+	SHELLID_SHELL: {Type: SHELLTYPE_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
 		Attributes: &model.ShellAttributes{Cloneable: true},
 	},
 }
@@ -101,7 +105,7 @@ func (s *svr) IterateShellDefs(cb func(*model.ShellDefinition) bool) error {
 		def.Id = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
 		// compatibility old version
 		if def.Type == "" {
-			def.Type = "term"
+			def.Type = SHELLTYPE_TERM
 			def.Label = def.Id
 			old := &OldShellDef{}
 			if err := json.Unmarshal(content, old); err == nil && len(old.Args) > 0 {
@@ -280,7 +284,7 @@ func (s *svr) CopyWebShell(id string) (*model.ShellDefinition, error) {
 	var ret *model.ShellDefinition
 	if _, ok := reservedWebShellDef[id]; ok {
 		ret = &model.ShellDefinition{}
-		ret.Type = "term"
+		ret.Type = SHELLTYPE_TERM
 		ret.Attributes = &model.ShellAttributes{Removable: true, Editable: true, Cloneable: true}
 		if exename, err := os.Executable(); err != nil {
 			ret.Command = fmt.Sprintf(`"%s" shell`, os.Args[0])

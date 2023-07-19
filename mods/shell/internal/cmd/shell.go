@@ -40,8 +40,8 @@ type ShellCmd struct {
 		Id string `arg:"" name:"id"`
 	} `cmd:"" name:"del"`
 	Add struct {
-		Name    string `arg:"" name:"name" help:"shell name"`
-		Binpath string `arg:"" name:"binpath" passthrough:""`
+		Name    string   `arg:"" name:"name" help:"shell name"`
+		Binpath []string `arg:"" name:"binpath" passthrough:""`
 	} `cmd:"" name:"add"`
 	Help bool `kong:"-"`
 }
@@ -126,13 +126,18 @@ func doShellDel(ctx *client.ActionContext, id string) {
 	ctx.Println("deleted")
 }
 
-func doShellAdd(ctx *client.ActionContext, name string, command string) {
+func doShellAdd(ctx *client.ActionContext, name string, args []string) {
+	if len(args) == 0 {
+		ctx.Println("ERR shell command should be specified")
+		return
+	}
 	name = strings.ToLower(name)
 	mgmtCli, err := ctx.Client.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
+	command := strings.Join(args, " ")
 	rsp, err := mgmtCli.AddShell(ctx, &mgmt.AddShellRequest{
 		Name: name, Command: command,
 	})

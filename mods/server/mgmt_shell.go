@@ -44,14 +44,15 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 	if len(req.Name) > 16 {
 		rsp.Reason = "name is too long, should be shorter than 16 characters"
 		return rsp, nil
-	} else {
-		uid, err := uuid.DefaultGenerator.NewV4()
-		if err != nil {
-			return nil, err
-		}
-		def.Id = uid.String()
-		def.Label = req.Name
 	}
+	uid, err := uuid.DefaultGenerator.NewV4()
+	if err != nil {
+		return nil, err
+	}
+	def.Id = uid.String()
+	def.Label = req.Name
+	def.Type = SHELLTYPE_TERM
+	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
 
 	if len(strings.TrimSpace(req.Command)) == 0 {
 		rsp.Reason = "command not specified"
