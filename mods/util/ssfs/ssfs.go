@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/machbase/neo-server/mods/util/glob"
 )
@@ -14,6 +15,10 @@ import (
 // Server Side File System
 type SSFS struct {
 	bases []BaseDir
+
+	recents     []string
+	maxRecents  int
+	recentsLock sync.Mutex
 }
 
 var defaultFs *SSFS
@@ -32,7 +37,7 @@ type BaseDir struct {
 }
 
 func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
-	ret := &SSFS{}
+	ret := &SSFS{maxRecents: 5}
 	for i, dir := range baseDirs {
 		abspath, err := filepath.Abs(dir)
 		if err != nil {
@@ -53,6 +58,38 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 		ret.bases = append(ret.bases, BaseDir{name: name, abspath: abspath})
 	}
 	return ret, nil
+}
+
+func (ssfs *SSFS) GetRecentList() []string {
+	ssfs.recentsLock.Lock()
+	defer ssfs.recentsLock.Unlock()
+	return ssfs.recents
+}
+
+func (ssfs *SSFS) AddRecentList(path string) {
+	ssfs.recentsLock.Lock()
+	defer ssfs.recentsLock.Unlock()
+
+	for i, p := range ssfs.recents {
+		if p == path {
+			if i > 0 {
+				for n := i; n > 0; n-- {
+					ssfs.recents[n] = ssfs.recents[n-1]
+				}
+				ssfs.recents[0] = path
+			}
+			return
+		}
+	}
+
+	ssfs.recents = append(ssfs.recents, "")
+	for n := len(ssfs.recents) - 1; n > 0; n-- {
+		ssfs.recents[n] = ssfs.recents[n-1]
+	}
+	ssfs.recents[0] = path
+	if len(ssfs.recents) > ssfs.maxRecents {
+		ssfs.recents = ssfs.recents[0:ssfs.maxRecents]
+	}
 }
 
 // find longest path matched 'BaseDir'
@@ -205,6 +242,7 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 		if loadContent {
 			if content, err := os.ReadFile(abspath); err == nil {
 				ret.Content = content
+				ssfs.AddRecentList(path)
 				return ret, nil
 			} else {
 				return nil, err

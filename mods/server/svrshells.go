@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 	"github.com/pkg/errors"
 )
 
@@ -330,6 +331,24 @@ func (s *svr) UpdateWebShell(def *model.ShellDefinition) error {
 
 func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	ret := []httpd.WebReferenceGroup{}
+
+	recents := httpd.WebReferenceGroup{Label: "Open recent..."}
+	sf := ssfs.Default()
+	for _, recent := range sf.GetRecentList() {
+		typ := ""
+		if idx := strings.LastIndex(recent, "."); idx > 0 && len(recent) > idx+1 {
+			typ = recent[idx+1:]
+		}
+		if typ == "" {
+			continue
+		}
+		recents.Items = append(recents.Items, httpd.ReferenceItem{
+			Type: typ, Title: strings.TrimPrefix(recent, "/"), Addr: fmt.Sprintf("server-file://%s", recent),
+		})
+	}
+	if len(recents.Items) > 0 {
+		ret = append(ret, recents)
+	}
 
 	references := httpd.WebReferenceGroup{Label: "References"}
 	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
