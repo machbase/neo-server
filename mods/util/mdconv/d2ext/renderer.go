@@ -24,6 +24,7 @@ type HTMLRenderer struct {
 	Layout  func(context.Context, *d2graph.Graph) error
 	ThemeID int64
 	Sketch  bool
+	Pad     int
 }
 
 func (r *HTMLRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
@@ -70,7 +71,7 @@ func (r *HTMLRenderer) Render(w util.BufWriter, src []byte, node ast.Node, enter
 		return ast.WalkContinue, err
 	}
 	out, err := d2svg.Render(diagram, &d2svg.RenderOpts{
-		Pad:           10, // d2svg.DEFAULT_PADDING,
+		Pad:           r.Pad,
 		Sketch:        r.Sketch,
 		ThemeID:       r.ThemeID,
 		SetDimensions: true,

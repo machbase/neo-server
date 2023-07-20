@@ -11,7 +11,6 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"go.abhg.dev/goldmark/mermaid"
-	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
 	"oss.terrastruct.com/d2/d2themes/d2themescatalog"
 )
 
@@ -59,9 +58,7 @@ func (c *Converter) Convert(src []byte, w io.Writer) error {
 					chromahtml.WrapLongLines(true),
 				),
 			),
-			// waiting for PR merged in "github.com/FurqanSoftware/goldmark-d2"
 			&d2ext.Extender{
-				Layout:  d2dagrelayout.DefaultLayout,
 				ThemeID: d2theme,
 				Sketch:  false,
 			},
