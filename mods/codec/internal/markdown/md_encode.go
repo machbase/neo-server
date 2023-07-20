@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -11,14 +10,9 @@ import (
 	"sync"
 	"time"
 
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/yuin/goldmark"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer/html"
-	"go.abhg.dev/goldmark/mermaid"
+	"github.com/machbase/neo-server/mods/util/mdconv"
 )
 
 type Exporter struct {
@@ -33,7 +27,6 @@ type Exporter struct {
 	timeformat   string
 	precision    int
 
-	heading  bool
 	colNames []string
 
 	closeOnce sync.Once
@@ -76,10 +69,6 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
 }
 
-func (ex *Exporter) SetHeading(show bool) {
-	ex.heading = show
-}
-
 func (ex *Exporter) SetColumns(labels []string, types []string) {
 	ex.colNames = labels
 }
@@ -99,17 +88,24 @@ func (ex *Exporter) Open() error {
 	if ex.showRownum && len(ex.colNames) > 0 {
 		ex.colNames = append([]string{"ROWNUM"}, ex.colNames...)
 	}
+
+	headLines := []string{}
+	headLines = append(headLines, "|"+strings.Join(ex.colNames, "|")+"|\n")
+	headLines = append(headLines, strings.Repeat("|:-----", len(ex.colNames))+"|\n")
+
+	if ex.htmlRender {
+		ex.mdLines = append(ex.mdLines, headLines...)
+	} else {
+		for _, l := range headLines {
+			ex.output.Write([]byte(l))
+		}
+	}
+
 	return nil
 }
 
 func (ex *Exporter) Close() {
 	ex.closeOnce.Do(func() {
-		headLines := []string{}
-		if ex.heading {
-			headLines = append(headLines, "|"+strings.Join(ex.colNames, "|")+"|\n")
-			headLines = append(headLines, strings.Repeat("|:-----", len(ex.colNames))+"|\n")
-		}
-
 		tailLines := []string{}
 		if ex.brief > 0 && ex.rownum > ex.brief {
 			tailLines = append(tailLines, strings.Repeat("| ... ", len(ex.colNames))+"|\n")
@@ -118,12 +114,6 @@ func (ex *Exporter) Close() {
 			tailLines = append(tailLines, "\n> *No record*\n")
 		}
 		if !ex.htmlRender {
-			for _, line := range headLines {
-				ex.output.Write([]byte(line))
-			}
-			for _, line := range ex.mdLines {
-				ex.output.Write([]byte(line))
-			}
 			for _, line := range tailLines {
 				ex.output.Write([]byte(line))
 			}
@@ -131,27 +121,11 @@ func (ex *Exporter) Close() {
 			return
 		}
 
-		ex.mdLines = append(headLines, ex.mdLines...)
 		ex.mdLines = append(ex.mdLines, tailLines...)
 
-		md := goldmark.New(
-			goldmark.WithExtensions(
-				extension.GFM,
-				&mermaid.Extender{NoScript: true},
-				highlighting.NewHighlighting(
-					highlighting.WithStyle("catppuccin-macchiato"),
-					highlighting.WithFormatOptions(
-						chromahtml.WithLineNumbers(true),
-					),
-				),
-			),
-			goldmark.WithRendererOptions(
-				html.WithHardWraps(),
-				html.WithXHTML(),
-			),
-		)
+		conv := mdconv.New(mdconv.WithDarkMode(false))
 		ex.output.Write([]byte("<div>"))
-		md.Convert(bytes.NewBufferString(strings.Join(ex.mdLines, "")).Bytes(), ex.output)
+		conv.ConvertString(strings.Join(ex.mdLines, ""), ex.output)
 		ex.output.Write([]byte("</div>"))
 		ex.output.Close()
 	})

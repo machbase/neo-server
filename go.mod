@@ -5,7 +5,6 @@ go 1.19
 require (
 	fyne.io/fyne/v2 v2.3.5
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
-	github.com/FurqanSoftware/goldmark-d2 v0.0.0-20230610044337-4bb7243a55c4
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/chroma/v2 v2.8.0
 	github.com/alecthomas/kong v0.8.0
