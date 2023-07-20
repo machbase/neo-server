@@ -31,7 +31,6 @@ define VARS {
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
-    HTTP_ENABLE_SWAGGER   = flag("--http-enable-swagger", false)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
 
     EXPERIMENT_MODE       = flag("--experiment", false)
@@ -85,7 +84,6 @@ module "machbase.com/neo-server" {
                 { Prefix: "/lakes",      Handler: "lakes" },
                 { Prefix: "/metrics", Handler: "influx" },
                 { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
-                { Prefix: "/swagger", Handler: VARS_HTTP_ENABLE_SWAGGER ? "swagger" : "-" },
             ]
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
