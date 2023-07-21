@@ -68,6 +68,7 @@ type LoginCheckRsp struct {
 	Reason         string                   `json:"reason"`
 	Elapse         string                   `json:"elapse"`
 	ExperimentMode bool                     `json:"experimentMode"`
+	Recents        []WebReferenceGroup      `json:"recents,omitempty"`
 	References     []WebReferenceGroup      `json:"references,omitempty"`
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
@@ -304,6 +305,9 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	}
 	if svr.referenceProvider != nil {
 		options.References = svr.referenceProvider()
+	}
+	if svr.recentsProvider != nil {
+		options.Recents = svr.recentsProvider()
 	}
 	if svr.webShellProvider != nil {
 		options.Shells = svr.webShellProvider.GetAllWebShells()

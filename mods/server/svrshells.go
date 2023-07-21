@@ -329,7 +329,7 @@ func (s *svr) UpdateWebShell(def *model.ShellDefinition) error {
 	return nil
 }
 
-func (s *svr) WebReferences() []httpd.WebReferenceGroup {
+func (s *svr) WebRecents() []httpd.WebReferenceGroup {
 	ret := []httpd.WebReferenceGroup{}
 
 	recents := httpd.WebReferenceGroup{Label: "Open recent..."}
@@ -343,12 +343,19 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 			continue
 		}
 		recents.Items = append(recents.Items, httpd.ReferenceItem{
-			Type: typ, Title: strings.TrimPrefix(recent, "/"), Addr: fmt.Sprintf("server-file://%s", recent),
+			Type:  typ,
+			Title: strings.TrimPrefix(recent, "/"),
+			Addr:  fmt.Sprintf("serverfile://%s", recent),
 		})
 	}
 	if len(recents.Items) > 0 {
 		ret = append(ret, recents)
 	}
+	return ret
+}
+
+func (s *svr) WebReferences() []httpd.WebReferenceGroup {
+	ret := []httpd.WebReferenceGroup{}
 
 	references := httpd.WebReferenceGroup{Label: "References"}
 	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})

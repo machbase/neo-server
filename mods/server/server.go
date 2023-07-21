@@ -430,6 +430,7 @@ func (s *svr) Start() error {
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+			httpd.OptionRecentsProvider(s.WebRecents),
 			httpd.OptionReferenceProvider(s.WebReferences),
 			httpd.OptionWebShellProvider(s),
 		}
