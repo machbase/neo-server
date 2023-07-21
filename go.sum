@@ -372,8 +372,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i
 github.com/lucor/goinfo v0.0.0-20210802170112-c078a2b0f08b/go.mod h1:PRq09yoB+Q2OJReAmwzKivcYyremnibWGbK7WfftHzc=
 github.com/machbase/neo-engine v1.1.0 h1:piob+tblnijvALYoULADFjdYJrA4LCKA/7Wmoh8gAcs=
 github.com/machbase/neo-engine v1.1.0/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
-github.com/machbase/neo-grpc v1.0.0 h1:rpr15fSZWncnsADZjJR1YmnXAg8lxVbUp2kUcpgYONY=
-github.com/machbase/neo-grpc v1.0.0/go.mod h1:4ofWPImwWweiI2FOPztOSOnl7Ab8zyiduB+9Q1gblLw=
+github.com/machbase/neo-grpc v1.0.1-0.20230718054514-b12f084f434b h1:Dn3AMCkxjHCA+AgBdWyzZT3r1/aDj1lZN9GkQUINIbA=
+github.com/machbase/neo-grpc v1.0.1-0.20230718054514-b12f084f434b/go.mod h1:4ofWPImwWweiI2FOPztOSOnl7Ab8zyiduB+9Q1gblLw=
 github.com/machbase/neo-spi v1.4.0 h1:rkQVNWBSF42/6fnZGTCrgBbbFHHihPA5h/Y+ndGaodk=
 github.com/machbase/neo-spi v1.4.0/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
@@ -390,6 +390,8 @@ github.com/mattn/go-isatty v0.0.19/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.13/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/mattn/go-runewidth v0.0.14 h1:+xnbZSEeDbOIg5/mE6JF0w6n9duR1l3/WmbinWVwUuU=
 github.com/mattn/go-runewidth v0.0.14/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
+github.com/mattn/go-sqlite3 v1.14.17 h1:mCRHCLDUBXgpKAqIKsaAaAsrAlbkeomtRFKXh2L6YIM=
+github.com/mattn/go-sqlite3 v1.14.17/go.mod h1:2eHXhiwb8IkHr+BDWZGa96P6+rkvnG63S2DGjv9HUNg=
 github.com/mazznoer/csscolorparser v0.1.3 h1:vug4zh6loQxAUxfU1DZEu70gTPufDPspamZlHAkKcxE=
 github.com/mazznoer/csscolorparser v0.1.3/go.mod h1:Aj22+L/rYN/Y6bj3bYqO3N6g1dtdHtGfQ32xZ5PJQic=
 github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea h1:mQncVDBpKkAecPcH2IMGpKUQYhwowlafQbfkz2QFqkc=

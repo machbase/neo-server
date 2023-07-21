@@ -495,3 +495,30 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 	rsp.Reason = "success"
 	return rsp, nil
 }
+
+func (s *grpcd) ExecConnector(ctx context.Context, req *machrpc.ConnectorExecRequest) (*machrpc.ConnectorExecResponse, error) {
+	rsp := &machrpc.ConnectorExecResponse{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	return rsp, nil
+}
+
+func (s *grpcd) ConnectorResultFetch(ctx context.Context, cr *machrpc.ConnectorResult) (*machrpc.ConnectorResultFetchResponse, error) {
+	rsp := &machrpc.ConnectorResultFetchResponse{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	return rsp, nil
+}
+
+func (s *grpcd) ConnectorResultClose(ctx context.Context, cr *machrpc.ConnectorResult) (*machrpc.ConnectorResultCloseResponse, error) {
+	rsp := &machrpc.ConnectorResultCloseResponse{}
+	tick := time.Now()
+	defer func() {
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	return rsp, nil
+}
