@@ -40,6 +40,7 @@ type Client interface {
 	Database() spi.Database
 	Pref() *Pref
 	ManagementClient() (mgmt.ManagementClient, error)
+	ConnectorClient(ctx context.Context, name string) (Connector, error)
 }
 
 type ShutdownServerFunc func() error

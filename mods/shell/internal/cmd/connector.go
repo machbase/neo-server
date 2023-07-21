@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
@@ -176,22 +175,23 @@ func doConnectorTest(ctx *client.ActionContext, name string) {
 		return
 	}
 
-	ctx.Println("Testing connector", name, "...", rsp.Reason, rsp.Elapse)
+	ctx.Println("Test connector", name, "...", rsp.Reason, rsp.Elapse)
 }
 
 func doConnectorExec(ctx *client.ActionContext, name string, query string) {
-	var svc machrpc.MachbaseClient
-	if cli, ok := ctx.Client.(machrpc.MachbaseClient); ok {
-		svc = cli
+	var connector client.Connector
+	if con, err := ctx.Client.ConnectorClient(ctx, name); err != nil {
+		ctx.Println("ERR connector service is not avaliable;", err.Error())
+		return
 	} else {
-		ctx.Println("ERR connector service is not avaliable;", fmt.Sprintf("%T", ctx.Client))
-		return
+		connector = con
 	}
-	rsp, err := svc.ConnectorExec(ctx, &machrpc.ConnectorExecRequest{Name: name, Command: query})
+	rset, err := connector.Exec(ctx, query)
 	if err != nil {
-		ctx.Println("ERR", err.Error())
+		ctx.Println("ERR", "Exec connector", name, err.Error())
 		return
 	}
+	defer rset.Close()
 
-	ctx.Println("Exec connector", name, "...", rsp.Reason, rsp.Elapse)
+	ctx.Println("Exec connector", name, "...", rset)
 }

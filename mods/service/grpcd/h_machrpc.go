@@ -496,12 +496,14 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 	return rsp, nil
 }
 
-func (s *grpcd) ExecConnector(ctx context.Context, req *machrpc.ConnectorExecRequest) (*machrpc.ConnectorExecResponse, error) {
+func (s *grpcd) ConnectorExec(ctx context.Context, req *machrpc.ConnectorExecRequest) (*machrpc.ConnectorExecResponse, error) {
 	rsp := &machrpc.ConnectorExecResponse{}
 	tick := time.Now()
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
+	rsp.Success, rsp.Reason = true, "success"
+	rsp.Elapse = time.Since(tick).String()
 	return rsp, nil
 }
 
