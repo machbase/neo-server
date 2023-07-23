@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-server/mods/connector"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -502,9 +503,46 @@ func (s *grpcd) ConnectorExec(ctx context.Context, req *machrpc.ConnectorExecReq
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	rsp.Success, rsp.Reason = true, "success"
-	rsp.Elapse = time.Since(tick).String()
-	return rsp, nil
+	conn, err := connector.GetConnector(req.Name)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	switch c := conn.(type) {
+	case connector.SqlConnector:
+		db, err := connector.WrapDatabase(c)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		rows, err := db.QueryContext(ctx, req.Command)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		defer rows.Close()
+		// cols, _ := rows.Columns()
+		// fmt.Printf("%v\n", cols)
+		// for rows.Next() {
+		// 	var id int
+		// 	var name, age, addr string
+		// 	rows.Scan(&id, &name, &age, &addr)
+		// }
+		rsp.Result = &machrpc.ConnectorResult{
+			Handle: "", //fmt.Sprintf("%#v", cols),
+			Fields: []*machrpc.ConnectorResultField{
+				{Name: "name", Type: "string"},
+			},
+		}
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
+	case connector.Connector:
+		rsp.Reason = fmt.Sprintf("connector '%s' (%s) does not support exec", conn.Name(), conn.Type())
+		return rsp, nil
+	default:
+		rsp.Reason = fmt.Sprintf("connector '%s' (%s) is unknown", conn.Name(), conn.Type())
+		return rsp, nil
+	}
 }
 
 func (s *grpcd) ConnectorResultFetch(ctx context.Context, cr *machrpc.ConnectorResult) (*machrpc.ConnectorResultFetchResponse, error) {

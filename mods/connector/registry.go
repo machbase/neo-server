@@ -43,13 +43,18 @@ func GetConnector(name string) (Connector, error) {
 	return nil, fmt.Errorf("undefined connector name '%s'", name)
 }
 
+func WrapDatabase(c SqlConnector) (spi.Database, error) {
+	return &sqlWrap{SqlConnector: c}, nil
+}
+
+// Deprecated: use WrapDatabase() instead
 func GetDatabaseConnector(name string) (spi.Database, error) {
 	c, err := GetConnector(name)
 	if err != nil {
 		return nil, err
 	}
 	if sc, ok := c.(SqlConnector); ok {
-		return &sqlWrap{SqlConnector: sc}, nil
+		return WrapDatabase(sc)
 	} else {
 		return nil, fmt.Errorf("incompatible sql connector '%s'", name)
 	}

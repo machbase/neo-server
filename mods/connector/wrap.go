@@ -81,14 +81,11 @@ func (sw *sqlWrap) QueryContext(ctx context.Context, sqlText string, params ...a
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-
 	rows, err := conn.QueryContext(ctx, sqlText, params...)
 	if err != nil {
 		return nil, err
 	}
-
-	return &sqlWrapRows{rows: rows}, nil
+	return &sqlWrapRows{conn: conn, rows: rows}, nil
 }
 
 type sqlWrapResult struct {
@@ -143,10 +140,14 @@ func (r *sqlWrapRow) Message() string {
 }
 
 type sqlWrapRows struct {
+	conn *sql.Conn
 	rows *sql.Rows
 }
 
 func (r *sqlWrapRows) Next() bool {
+	if r.rows == nil {
+		return false
+	}
 	return r.rows.Next()
 }
 
@@ -155,10 +156,14 @@ func (r *sqlWrapRows) Scan(cols ...any) error {
 }
 
 func (r *sqlWrapRows) Close() error {
-	if r.rows == nil {
+	if r.rows == nil || r.conn == nil {
 		return errors.New("invalid state of rows")
 	}
-	return r.rows.Close()
+	err := r.rows.Close()
+	if err != nil {
+		return err
+	}
+	return r.conn.Close()
 }
 
 func (r *sqlWrapRows) IsFetchable() bool {

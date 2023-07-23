@@ -191,7 +191,7 @@ func doConnectorExec(ctx *client.ActionContext, name string, query string) {
 		ctx.Println("ERR", "Exec connector", name, err.Error())
 		return
 	}
-	defer rset.Close()
+	defer rset.Close(ctx)
 
-	ctx.Println("Exec connector", name, "...", rset)
+	ctx.Println("Exec connector", name, "...", fmt.Sprintf("%#v", rset))
 }

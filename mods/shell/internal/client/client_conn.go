@@ -29,13 +29,15 @@ func (cli *client) ConnectorClient(ctx context.Context, name string) (Connector,
 }
 
 type Connector interface {
-	Exec(ctx context.Context, command string) (*ConnectorResult, error)
+	Exec(ctx context.Context, command string, params ...any) (*ConnectorResult, error)
 }
 
 var _ Connector = &connector{}
 
 type ConnectorResult struct {
 	Elapse string
+	conn   *connector
+	result *machrpc.ConnectorResult
 }
 
 type connector struct {
@@ -43,8 +45,16 @@ type connector struct {
 	rpcClient machrpc.MachbaseClient
 }
 
-func (conn *connector) Exec(ctx context.Context, command string) (*ConnectorResult, error) {
-	req := &machrpc.ConnectorExecRequest{}
+func (conn *connector) Exec(ctx context.Context, command string, params ...any) (*ConnectorResult, error) {
+	req := &machrpc.ConnectorExecRequest{
+		Name:    conn.Name,
+		Command: command,
+	}
+	if arr, err := machrpc.ConvertToDatum(params); err != nil {
+		return nil, err
+	} else {
+		req.Params = arr
+	}
 	rsp, err := conn.rpcClient.ConnectorExec(ctx, req)
 	if err != nil {
 		return nil, err
@@ -54,15 +64,30 @@ func (conn *connector) Exec(ctx context.Context, command string) (*ConnectorResu
 	}
 	ret := &ConnectorResult{
 		Elapse: rsp.Elapse,
+		result: rsp.Result,
+		conn:   conn,
 	}
 	return ret, nil
-
 }
 
 func (rs *ConnectorResult) Fetch(ctx context.Context) ([]any, error) {
-	return nil, fmt.Errorf("not implemented ConnectorResultFetch")
+	rsp, err := rs.conn.rpcClient.ConnectorResultFetch(ctx, rs.result)
+	if err != nil {
+		return nil, err
+	}
+	if !rsp.Success {
+		return nil, fmt.Errorf("connector fetch, %s", rsp.Reason)
+	}
+	return machrpc.ConvertFromDatum(rsp.Values...)
 }
 
-func (rs *ConnectorResult) Close() error {
-	return fmt.Errorf("not implemented ConnectorResultClose")
+func (rs *ConnectorResult) Close(ctx context.Context) error {
+	rsp, err := rs.conn.rpcClient.ConnectorResultClose(ctx, rs.result)
+	if err != nil {
+		return err
+	}
+	if !rsp.Success {
+		return fmt.Errorf("connector close, %s", rsp.Reason)
+	}
+	return nil
 }
