@@ -253,10 +253,12 @@ func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
 func (s *svr) GetAllWebShells() []*model.ShellDefinition {
 	var ret []*model.ShellDefinition
 	ret = append(ret, reservedWebShellDef[SHELLID_SQL])
-	ret = append(ret, reservedWebShellDef[SHELLID_TQL])
-	ret = append(ret, reservedWebShellDef[SHELLID_WRK])
+	// ret = append(ret, reservedWebShellDef[SHELLID_TQL])
+	// ret = append(ret, reservedWebShellDef[SHELLID_WRK])
 	ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
-	ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
+	def := reservedWebShellDef[SHELLID_SHELL]
+	def.Attributes.Cloneable = false
+	ret = append(ret, def)
 	s.IterateShellDefs(func(def *model.ShellDefinition) bool {
 		ret = append(ret, def)
 		return true
@@ -358,23 +360,23 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	ret := []httpd.WebReferenceGroup{}
 
 	references := httpd.WebReferenceGroup{Label: "References"}
-	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
+	// references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
 	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/en/", Target: "_blank"})
 	references.Items = append(references.Items, httpd.ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
 	ret = append(ret, references)
 
-	tutorials := httpd.WebReferenceGroup{Label: "Tutorials"}
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
-	ret = append(ret, tutorials)
+	// tutorials := httpd.WebReferenceGroup{Label: "Tutorials"}
+	// tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
+	// tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
+	// ret = append(ret, tutorials)
 
-	samples := httpd.WebReferenceGroup{Label: "Samples"}
-	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
-	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
-	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
-	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
-	samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
-	ret = append(ret, samples)
+	// samples := httpd.WebReferenceGroup{Label: "Samples"}
+	// samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
+	// samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
+	// samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
+	// samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (1)", Addr: "./tutorials/user-script1.tql"})
+	// samples.Items = append(samples.Items, httpd.ReferenceItem{Type: "tql", Title: "user script in tql (2)", Addr: "./tutorials/user-script2.tql"})
+	// ret = append(ret, samples)
 
 	return ret
 }
