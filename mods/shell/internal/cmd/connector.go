@@ -193,5 +193,12 @@ func doConnectorExec(ctx *client.ActionContext, name string, query string) {
 	}
 	defer rset.Close(ctx)
 
-	ctx.Println("Exec connector", name, "...", fmt.Sprintf("%#v", rset))
+	cols, err := rset.Columns(ctx)
+	if err != nil {
+		ctx.Println("ERR", "Exec connector columns", name, err.Error())
+		return
+	}
+
+	box := ctx.NewBox(append([]string{"ROWNUM"}, cols.Names()...))
+	box.Render()
 }

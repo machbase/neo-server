@@ -183,22 +183,15 @@ func (r *sqlWrapRows) Columns() (spi.Columns, error) {
 	if err != nil {
 		return nil, err
 	}
-	names, err := r.rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-	if len(types) != len(names) {
-		return nil, errors.New("invalid state of rows")
-	}
-	cols := make([]*spi.Column, len(names))
-	for i := range names {
+	cols := make([]*spi.Column, len(types))
+	for i := range types {
 		length, ok := types[i].Length()
 		if !ok {
 			length = 0
 		}
 		cols[i] = &spi.Column{
-			Name:   names[i],
-			Type:   types[i].Name(),
+			Name:   types[i].Name(),
+			Type:   types[i].DatabaseTypeName(),
 			Size:   int(length),
 			Length: int(length),
 		}

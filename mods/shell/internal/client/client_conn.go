@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/machbase/neo-grpc/machrpc"
+	spi "github.com/machbase/neo-spi"
 )
 
 type machbaseClientProvider interface {
@@ -50,7 +51,7 @@ func (conn *connector) Exec(ctx context.Context, command string, params ...any) 
 		Name:    conn.Name,
 		Command: command,
 	}
-	if arr, err := machrpc.ConvertToDatum(params); err != nil {
+	if arr, err := machrpc.ConvertToDatum(params...); err != nil {
 		return nil, err
 	} else {
 		req.Params = arr
@@ -66,6 +67,19 @@ func (conn *connector) Exec(ctx context.Context, command string, params ...any) 
 		Elapse: rsp.Elapse,
 		result: rsp.Result,
 		conn:   conn,
+	}
+	return ret, nil
+}
+
+func (rs *ConnectorResult) Columns(ctx context.Context) (spi.Columns, error) {
+	ret := []*spi.Column{}
+	for _, c := range rs.result.Fields {
+		ret = append(ret, &spi.Column{
+			Name:   c.Name,
+			Type:   c.Type,
+			Size:   int(c.Size),
+			Length: int(c.Length),
+		})
 	}
 	return ret, nil
 }

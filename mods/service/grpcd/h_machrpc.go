@@ -127,8 +127,10 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 		handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
 		// TODO leak detector
 		s.ctxMap.Set(handle, &rowsWrap{
-			id:   handle,
-			rows: realRows,
+			id:         handle,
+			rows:       realRows,
+			enlistTime: time.Now(),
+			enlistInfo: fmt.Sprintf("machbase: %s, %v", req.Sql, params),
 			release: func() {
 				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
 					realRows.Close()
@@ -520,19 +522,41 @@ func (s *grpcd) ConnectorExec(ctx context.Context, req *machrpc.ConnectorExecReq
 			rsp.Reason = err.Error()
 			return rsp, nil
 		}
-		defer rows.Close()
-		// cols, _ := rows.Columns()
-		// fmt.Printf("%v\n", cols)
-		// for rows.Next() {
-		// 	var id int
-		// 	var name, age, addr string
-		// 	rows.Scan(&id, &name, &age, &addr)
-		// }
-		rsp.Result = &machrpc.ConnectorResult{
-			Handle: "", //fmt.Sprintf("%#v", cols),
-			Fields: []*machrpc.ConnectorResultField{
-				{Name: "name", Type: "string"},
-			},
+
+		cols, err := rows.Columns()
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+
+		rsp.Result = &machrpc.ConnectorResult{}
+		for _, c := range cols {
+			rsp.Result.Fields = append(rsp.Result.Fields, &machrpc.ConnectorResultField{
+				Name:   c.Name,
+				Type:   c.Type,
+				Size:   int32(c.Size),
+				Length: int32(c.Length),
+			})
+		}
+
+		if len(cols) > 0 {
+			// Fetchable
+			handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
+			// TODO leak detector
+			s.ctxMap.Set(handle, &rowsWrap{
+				id:         handle,
+				rows:       rows,
+				enlistInfo: fmt.Sprintf("%s: %s", req.Name, req.Command),
+				enlistTime: time.Now(),
+				release: func() {
+					s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
+						rows.Close()
+						return true
+					})
+				},
+			})
+		} else {
+			rows.Close()
 		}
 		rsp.Success, rsp.Reason = true, "success"
 		return rsp, nil
@@ -549,8 +573,52 @@ func (s *grpcd) ConnectorResultFetch(ctx context.Context, cr *machrpc.ConnectorR
 	rsp := &machrpc.ConnectorResultFetchResponse{}
 	tick := time.Now()
 	defer func() {
+		if panic := recover(); panic == nil {
+			s.log.Error("ConnectorResultFetch panic recover", panic)
+		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
+
+	rowsWrapVal, exists := s.ctxMap.Get(cr.Handle)
+	if !exists {
+		rsp.Reason = fmt.Sprintf("handle '%s' not found", cr.Handle)
+		return rsp, nil
+	}
+	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
+	if !ok {
+		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", cr.Handle)
+		return rsp, nil
+	}
+
+	if !rowsWrap.rows.Next() {
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.HasNoRows = true
+		return rsp, nil
+	}
+
+	columns, err := rowsWrap.rows.Columns()
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
+	values := columns.MakeBuffer()
+	err = rowsWrap.rows.Scan(values...)
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	rsp.Values, err = machrpc.ConvertToDatum(values...)
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
 	return rsp, nil
 }
 
