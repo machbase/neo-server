@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-server/mods/connector"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -130,7 +129,7 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 			id:         handle,
 			rows:       realRows,
 			enlistTime: time.Now(),
-			enlistInfo: fmt.Sprintf("machbase: %s, %v", req.Sql, params),
+			enlistInfo: fmt.Sprintf("%s, %v", req.Sql, params),
 			release: func() {
 				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
 					realRows.Close()
@@ -496,137 +495,5 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 	}
 	rsp.Success = true
 	rsp.Reason = "success"
-	return rsp, nil
-}
-
-func (s *grpcd) ConnectorExec(ctx context.Context, req *machrpc.ConnectorExecRequest) (*machrpc.ConnectorExecResponse, error) {
-	rsp := &machrpc.ConnectorExecResponse{}
-	tick := time.Now()
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
-	conn, err := connector.GetConnector(req.Name)
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-	switch c := conn.(type) {
-	case connector.SqlConnector:
-		db, err := connector.WrapDatabase(c)
-		if err != nil {
-			rsp.Reason = err.Error()
-			return rsp, nil
-		}
-		rows, err := db.QueryContext(ctx, req.Command)
-		if err != nil {
-			rsp.Reason = err.Error()
-			return rsp, nil
-		}
-
-		cols, err := rows.Columns()
-		if err != nil {
-			rsp.Reason = err.Error()
-			return rsp, nil
-		}
-
-		rsp.Result = &machrpc.ConnectorResult{}
-		for _, c := range cols {
-			rsp.Result.Fields = append(rsp.Result.Fields, &machrpc.ConnectorResultField{
-				Name:   c.Name,
-				Type:   c.Type,
-				Size:   int32(c.Size),
-				Length: int32(c.Length),
-			})
-		}
-
-		if len(cols) > 0 {
-			// Fetchable
-			handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
-			// TODO leak detector
-			s.ctxMap.Set(handle, &rowsWrap{
-				id:         handle,
-				rows:       rows,
-				enlistInfo: fmt.Sprintf("%s: %s", req.Name, req.Command),
-				enlistTime: time.Now(),
-				release: func() {
-					s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-						rows.Close()
-						return true
-					})
-				},
-			})
-		} else {
-			rows.Close()
-		}
-		rsp.Success, rsp.Reason = true, "success"
-		return rsp, nil
-	case connector.Connector:
-		rsp.Reason = fmt.Sprintf("connector '%s' (%s) does not support exec", conn.Name(), conn.Type())
-		return rsp, nil
-	default:
-		rsp.Reason = fmt.Sprintf("connector '%s' (%s) is unknown", conn.Name(), conn.Type())
-		return rsp, nil
-	}
-}
-
-func (s *grpcd) ConnectorResultFetch(ctx context.Context, cr *machrpc.ConnectorResult) (*machrpc.ConnectorResultFetchResponse, error) {
-	rsp := &machrpc.ConnectorResultFetchResponse{}
-	tick := time.Now()
-	defer func() {
-		if panic := recover(); panic == nil {
-			s.log.Error("ConnectorResultFetch panic recover", panic)
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	rowsWrapVal, exists := s.ctxMap.Get(cr.Handle)
-	if !exists {
-		rsp.Reason = fmt.Sprintf("handle '%s' not found", cr.Handle)
-		return rsp, nil
-	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", cr.Handle)
-		return rsp, nil
-	}
-
-	if !rowsWrap.rows.Next() {
-		rsp.Success = true
-		rsp.Reason = "success"
-		rsp.HasNoRows = true
-		return rsp, nil
-	}
-
-	columns, err := rowsWrap.rows.Columns()
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-
-	values := columns.MakeBuffer()
-	err = rowsWrap.rows.Scan(values...)
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-	rsp.Values, err = machrpc.ConvertToDatum(values...)
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-	rsp.Success = true
-	rsp.Reason = "success"
-	return rsp, nil
-}
-
-func (s *grpcd) ConnectorResultClose(ctx context.Context, cr *machrpc.ConnectorResult) (*machrpc.ConnectorResultCloseResponse, error) {
-	rsp := &machrpc.ConnectorResultCloseResponse{}
-	tick := time.Now()
-	defer func() {
-		rsp.Elapse = time.Since(tick).String()
-	}()
 	return rsp, nil
 }

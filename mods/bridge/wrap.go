@@ -1,4 +1,4 @@
-package connector
+package bridge
 
 import (
 	"context"

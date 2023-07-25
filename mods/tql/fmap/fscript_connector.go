@@ -4,7 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/d5/tengo/v2"
-	"github.com/machbase/neo-server/mods/connector"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/pkg/errors"
 )
@@ -20,11 +20,11 @@ func tengof_connector(ctx *context.Context) func(args ...tengo.Object) (tengo.Ob
 		if len(cname) == 0 {
 			return nil, tengo.ErrInvalidArgumentType{Name: "connector name", Expected: "string"}
 		}
-		c, err := connector.GetConnector(cname)
+		c, err := bridge.GetConnector(cname)
 		if err != nil {
 			return tengo.UndefinedValue, err
 		}
-		if sqlC, ok := c.(connector.SqlConnector); ok {
+		if sqlC, ok := c.(bridge.SqlConnector); ok {
 			conn, err := sqlC.Connect(ctx)
 			if err != nil {
 				return nil, err

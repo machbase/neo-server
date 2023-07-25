@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/util"
@@ -40,7 +41,8 @@ type Client interface {
 	Database() spi.Database
 	Pref() *Pref
 	ManagementClient() (mgmt.ManagementClient, error)
-	ConnectorClient(ctx context.Context, name string) (Connector, error)
+	BridgeManagementClient() (bridge.ManagementClient, error)
+	BridgeRuntimeClient() (bridge.RuntimeClient, error)
 }
 
 type ShutdownServerFunc func() error
@@ -90,6 +92,10 @@ type client struct {
 
 	mgmtClient     mgmt.ManagementClient
 	mgmtClientLock sync.Mutex
+
+	bridgeMgmtClient    bridge.ManagementClient
+	bridgeRuntimeClient bridge.RuntimeClient
+	bridgeClientLock    sync.Mutex
 }
 
 func DefaultConfig() *Config {
@@ -213,6 +219,32 @@ func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
 		cli.mgmtClient = mgmt.NewManagementClient(conn)
 	}
 	return cli.mgmtClient, nil
+}
+
+func (cli *client) BridgeManagementClient() (bridge.ManagementClient, error) {
+	cli.bridgeClientLock.Lock()
+	defer cli.bridgeClientLock.Unlock()
+	if cli.bridgeMgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.bridgeMgmtClient = bridge.NewManagementClient(conn)
+	}
+	return cli.bridgeMgmtClient, nil
+}
+
+func (cli *client) BridgeRuntimeClient() (bridge.RuntimeClient, error) {
+	cli.bridgeClientLock.Lock()
+	defer cli.bridgeClientLock.Unlock()
+	if cli.bridgeRuntimeClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.bridgeRuntimeClient = bridge.NewRuntimeClient(conn)
+	}
+	return cli.bridgeRuntimeClient, nil
 }
 
 func (cli *client) Run(command string) {

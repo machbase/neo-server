@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/mods/logging"
@@ -78,6 +79,18 @@ func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	}
 }
 
+// bridge implements
+func OptionBridgeServer(handler any) Option {
+	return func(s *grpcd) {
+		if o, ok := handler.(bridge.ManagementServer); ok {
+			s.bridgeMgmtImpl = o
+		}
+		if o, ok := handler.(bridge.RuntimeServer); ok {
+			s.bridgeRuntimeImpl = o
+		}
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -90,7 +103,9 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
-	mgmtImpl mgmt.ManagementServer
+	mgmtImpl          mgmt.ManagementServer
+	bridgeMgmtImpl    bridge.ManagementServer
+	bridgeRuntimeImpl bridge.RuntimeServer
 
 	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
@@ -123,8 +138,13 @@ func (svr *grpcd) Start() error {
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
 
-	// rpcServer is serving only db service
+	// rpcServer is serving the db service
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
+
+	// rpcServer can serve bridge runtime service
+	if svr.bridgeRuntimeImpl != nil {
+		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
+	}
 
 	// mgmtServer is serving general db service + mgmt service
 	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
@@ -132,6 +152,12 @@ func (svr *grpcd) Start() error {
 	if svr.mgmtImpl != nil {
 		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
 		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
+	}
+
+	// mgmtServer serves bridge management service
+	if svr.bridgeMgmtImpl != nil {
+		bridge.RegisterManagementServer(svr.mgmtServer, svr.bridgeMgmtImpl)
+		bridge.RegisterManagementServer(svr.mgmtServerInsecure, svr.bridgeMgmtImpl)
 	}
 
 	//listeners

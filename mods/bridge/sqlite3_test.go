@@ -1,4 +1,4 @@
-package connector_test
+package bridge_test
 
 import (
 	"context"
@@ -6,29 +6,29 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/connector"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSqlite3(t *testing.T) {
 	CONN_NAME := "sqlite"
 
-	define := connector.Define{
-		Type: connector.SQLITE,
+	define := bridge.Define{
+		Type: bridge.SQLITE,
 		Name: CONN_NAME,
 		Path: "../../tmp/connector_sqlite3.db",
 	}
 
-	connector.Register(&define)
-	defer connector.Unregister(CONN_NAME)
+	bridge.Register(&define)
+	defer bridge.Unregister(CONN_NAME)
 
-	cr, err := connector.GetConnector(CONN_NAME)
+	cr, err := bridge.GetConnector(CONN_NAME)
 	require.Nil(t, err)
 	require.NotNil(t, cr)
-	require.Equal(t, connector.SQLITE, cr.Type())
+	require.Equal(t, bridge.SQLITE, cr.Type())
 	require.Equal(t, CONN_NAME, cr.Name())
 
-	c := cr.(connector.SqlConnector)
+	c := cr.(bridge.SqlConnector)
 	conn, err := c.Connect(context.TODO())
 	require.Nil(t, err)
 	require.NotNil(t, conn)

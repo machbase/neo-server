@@ -8,7 +8,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -26,7 +25,7 @@ import (
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/connector"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/grpcd"
@@ -152,10 +151,11 @@ type svr struct {
 	httpd httpd.Service
 	sshd  sshd.Service
 
+	bridgeSvc bridge.Service
+
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
-	connectorDefsDir  string
 	shellDefsDir      string
 	licenseFilePath   string
 	licenseFileTime   time.Time
@@ -256,18 +256,11 @@ func (s *svr) Start() error {
 		s.licenseFileTime = stat.ModTime()
 	}
 
-	s.connectorDefsDir = filepath.Join(prefpath, "connectors")
-	if err := mkDirIfNotExists(s.connectorDefsDir); err != nil {
+	bridgeConfDir := filepath.Join(prefpath, "bridges")
+	if err := mkDirIfNotExists(bridgeConfDir); err != nil {
 		return errors.Wrap(err, "connector defs")
 	}
-	s.IterateConnectorDefs(func(define *connector.Define) bool {
-		if err := connector.Register(define); err == nil {
-			s.log.Infof("add connector %s (%s)", define.Name, define.Type)
-		} else {
-			s.log.Errorf("fail to add connector %s (%s) failed %s", define.Name, define.Type, err.Error())
-		}
-		return true
-	})
+	s.bridgeSvc = bridge.NewService(bridgeConfDir)
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
@@ -417,6 +410,7 @@ func (s *svr) Start() error {
 			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
 			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
+			grpcd.OptionBridgeServer(s.bridgeSvc),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -563,16 +557,15 @@ func (s *svr) Stop() {
 	if s.grpcd != nil {
 		s.grpcd.Stop()
 	}
-
+	if s.bridgeSvc != nil {
+		s.bridgeSvc.Stop()
+	}
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 	}
 	mach.Finalize()
-
-	connector.UnregisterAll()
-
 	s.log.Infof("shutdown.")
 }
 
@@ -1056,68 +1049,4 @@ func (s *svr) ValidateSshPublicKey(keyType string, key string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// ////////////////////////////////
-// connectors
-func (s *svr) IterateConnectorDefs(cb func(define *connector.Define) bool) error {
-	if cb == nil {
-		return nil
-	}
-	entries, err := os.ReadDir(s.connectorDefsDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
-			continue
-		}
-
-		content, err := os.ReadFile(filepath.Join(s.connectorDefsDir, entry.Name()))
-		if err != nil {
-			s.log.Warnf("connection def file", err.Error())
-			continue
-		}
-		def := &connector.Define{}
-		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("connection def format", err.Error())
-			continue
-		}
-		flag := cb(def)
-		if !flag {
-			break
-		}
-	}
-	return nil
-}
-
-func (s *svr) GetConnectorDef(name string) (*connector.Define, error) {
-	path := filepath.Join(s.connectorDefsDir, fmt.Sprintf("%s.json", name))
-	content, err := os.ReadFile(path)
-	if err != nil {
-		s.log.Warnf("connection def file", err.Error())
-		return nil, err
-	}
-	def := &connector.Define{}
-	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warnf("connection def format", err.Error())
-		return nil, err
-	}
-	return def, nil
-}
-
-func (s *svr) SetConnectorDef(def *connector.Define) error {
-	buf, err := json.Marshal(def)
-	if err != nil {
-		s.log.Warnf("connection def file", err.Error())
-		return err
-	}
-
-	path := filepath.Join(s.connectorDefsDir, fmt.Sprintf("%s.json", def.Name))
-	return os.WriteFile(path, buf, 00600)
-}
-
-func (s *svr) RemoveConnectorDef(name string) error {
-	path := filepath.Join(s.connectorDefsDir, fmt.Sprintf("%s.json", name))
-	return os.Remove(path)
 }
