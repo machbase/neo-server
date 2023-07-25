@@ -51,6 +51,8 @@ const helpChart = `  chart [options] <tag_path>...
        --subtitle <title>    sub title text for html output (default:"")
        --width <string>      chart width for html output (default:"1600")
        --height <string>     chart height (default:"900")
+
+  DEPRECATED: Use TQL instead.
 `
 
 type ChartCmd struct {
@@ -200,4 +202,5 @@ func doChart(ctx *client.ActionContext) {
 		scheduler.Stop()
 		ctx.Cancel()
 	}
+	ctx.Println("Thise 'chart' command is deprecated. Use TQL instead.")
 }

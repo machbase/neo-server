@@ -34,6 +34,8 @@ const helpWalk = `  walk [options] <sql query>
                              consult "help timeformat"
         --tz                 timezone for handling datetime
                              consult "help tz"
+
+  DEPRECATED: Use TQL instead.
 `
 
 type WalkCmd struct {
@@ -106,6 +108,7 @@ func doWalk(ctx *client.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
+	ctx.Println("Thise 'walk' command is deprecated. Use TQL instead.")
 }
 
 type Walker struct {
