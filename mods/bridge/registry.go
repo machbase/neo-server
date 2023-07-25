@@ -14,8 +14,13 @@ func Register(def *Define) (err error) {
 		if err = c.BeforeRegister(); err != nil {
 			return err
 		}
+	case POSTGRES:
+		c = NewPostgresBridge(def)
+		if err = c.BeforeRegister(); err != nil {
+			return err
+		}
 	default:
-		return fmt.Errorf("undefined bridge type %s", def.Type)
+		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
 	}
 	registry[def.Name] = c
 	return nil

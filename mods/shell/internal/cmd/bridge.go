@@ -13,11 +13,12 @@ import (
 
 func init() {
 	client.RegisterCmd(&client.Cmd{
-		Name:   "bridge",
-		PcFunc: pcBridge,
-		Action: doBridge,
-		Desc:   "Manage bridges",
-		Usage:  helpBridge,
+		Name:         "bridge",
+		PcFunc:       pcBridge,
+		Action:       doBridge,
+		Desc:         "Manage bridges",
+		Usage:        helpBridge,
+		Experimental: true,
 	})
 }
 
@@ -26,7 +27,7 @@ const helpBridge = `  bridge command [options]
     list                            shows registered bridges
     add [options] <name>  <conn>    add bridage
         options:
-            -t,--type <type>        bridge type ['sqlite']
+            -t,--type <type>        bridge type [ sqlite, postgres ]
         args:
             name                    name of the connection
             conn                    connection string
@@ -44,7 +45,7 @@ type BridgeCmd struct {
 	Add struct {
 		Name string `arg:"" name:"name" help:"bridge name"`
 		Path string `arg:"" name:"conn" help:"bridge connection string"`
-		Type string `name:"type" short:"t" required:"" enum:"sqlite" help:"bridge type"`
+		Type string `name:"type" short:"t" required:"" enum:"sqlite,postgres" help:"bridge type"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
@@ -91,7 +92,7 @@ func doBridge(ctx *client.ActionContext) {
 	case "list":
 		doBridgeList(ctx)
 	case "add <name> <conn>":
-		doBridgeAdd(ctx, cmd.Add.Name, cmd.Add.Type, cmd.Add.Path)
+		doBridgeAdd(ctx, cmd.Add.Name, cmd.Add.Type, util.StripQuote(cmd.Add.Path))
 	case "del <name>":
 		doBridgeDel(ctx, cmd.Del.Name)
 	case "test <name>":

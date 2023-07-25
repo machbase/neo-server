@@ -257,7 +257,12 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 			rsp.Reason = err.Error()
 			return rsp, nil
 		}
-		conn.Close()
+		defer conn.Close()
+		err = conn.PingContext(ctx)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
 	default:
 	}
 	rsp.Success = true

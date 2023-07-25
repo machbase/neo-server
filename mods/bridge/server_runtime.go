@@ -72,10 +72,14 @@ func (s *svr) execSqlBridge(br SqlBridge, ctx context.Context, req *bridgerpc.Ex
 		return rsp, nil
 	}
 	ret := &bridgerpc.SqlExecResult{}
-	ret.LastInsertedId, err = result.LastInsertId()
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
+	if br.SupportLastInsertId() {
+		ret.LastInsertedId, err = result.LastInsertId()
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+	} else {
+		ret.LastInsertedId = -1
 	}
 	ret.RowsAffected, err = result.RowsAffected()
 	if err != nil {

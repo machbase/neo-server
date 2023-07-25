@@ -17,7 +17,6 @@ func NewSqlite3Bridge(def *Define) Bridge {
 	return &sqlite3Bridge{define: def}
 }
 
-var _ Bridge = &sqlite3Bridge{}
 var _ SqlBridge = &sqlite3Bridge{}
 
 func (c *sqlite3Bridge) BeforeRegister() error {
@@ -50,3 +49,5 @@ func (c *sqlite3Bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	}
 	return c.db.Conn(ctx)
 }
+
+func (c *sqlite3Bridge) SupportLastInsertId() bool { return true }

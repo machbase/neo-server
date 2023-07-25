@@ -13,13 +13,18 @@ import (
 type Type string
 
 const (
-	SQLITE Type = "sqlite"
+	SQLITE   Type = "sqlite"
+	POSTGRES Type = "postgres"
 )
 
 func ParseType(typ string) (Type, error) {
 	switch typ {
 	case "sqlite":
 		return SQLITE, nil
+	case "postgresql":
+		fallthrough
+	case "postgres":
+		return POSTGRES, nil
 	default:
 		return "", fmt.Errorf("unsupported bridge type: %s", typ)
 	}
@@ -40,7 +45,9 @@ type Bridge interface {
 }
 
 type SqlBridge interface {
+	Bridge
 	Connect(ctx context.Context) (*sql.Conn, error)
+	SupportLastInsertId() bool
 }
 
 func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {
@@ -55,6 +62,8 @@ func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {
 			}
 		case int32:
 			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VInt32{VInt32: v}}
+		case *int32:
+			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VInt32{VInt32: *v}}
 		case *sql.NullInt32:
 			if v.Valid {
 				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VInt32{VInt32: v.Int32}}
@@ -85,6 +94,8 @@ func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {
 			}
 		case string:
 			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VString{VString: v}}
+		case *string:
+			ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VString{VString: *v}}
 		case *sql.NullString:
 			if v.Valid {
 				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VString{VString: v.String}}
