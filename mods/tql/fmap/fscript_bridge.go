@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func tengof_connector(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_bridge(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		var cname string
 		if len(args) == 1 {
@@ -20,54 +20,54 @@ func tengof_connector(ctx *context.Context) func(args ...tengo.Object) (tengo.Ob
 		if len(cname) == 0 {
 			return nil, tengo.ErrInvalidArgumentType{Name: "connector name", Expected: "string"}
 		}
-		c, err := bridge.GetConnector(cname)
+		br, err := bridge.GetBridge(cname)
 		if err != nil {
 			return tengo.UndefinedValue, err
 		}
-		if sqlC, ok := c.(bridge.SqlConnector); ok {
+		if sqlC, ok := br.(bridge.SqlBridge); ok {
 			conn, err := sqlC.Connect(ctx)
 			if err != nil {
 				return nil, err
 			}
-			return &sqlConnector{ctx: ctx, conn: conn, name: cname}, nil
+			return &sqlBridge{ctx: ctx, conn: conn, name: cname}, nil
 		}
 		return nil, nil
 	}
 }
 
-type sqlConnector struct {
+type sqlBridge struct {
 	tengo.ObjectImpl
 	ctx  *context.Context
 	name string
 	conn *sql.Conn
 }
 
-func (c *sqlConnector) TypeName() string {
-	return "connector:sql"
+func (c *sqlBridge) TypeName() string {
+	return "bridge:sql"
 }
 
-func (c *sqlConnector) String() string {
-	return "connector:sql:" + c.name
+func (c *sqlBridge) String() string {
+	return "bridge:sql:" + c.name
 }
 
-func (c *sqlConnector) Copy() tengo.Object {
-	return &sqlConnector{ctx: c.ctx, conn: c.conn, name: c.name}
+func (c *sqlBridge) Copy() tengo.Object {
+	return &sqlBridge{ctx: c.ctx, conn: c.conn, name: c.name}
 }
 
-func (c *sqlConnector) IndexGet(index tengo.Object) (tengo.Object, error) {
+func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 	if o, ok := index.(*tengo.String); ok {
 		switch o.Value {
 		case "exec":
 			return &tengo.UserFunction{
-				Name: "exec", Value: sqlConnector_exec(c),
+				Name: "exec", Value: sqlBridge_exec(c),
 			}, nil
 		case "query":
 			return &tengo.UserFunction{
-				Name: "query", Value: sqlConnector_query(c),
+				Name: "query", Value: sqlBridge_query(c),
 			}, nil
 		case "queryRow":
 			return &tengo.UserFunction{
-				Name: "queryRow", Value: sqlConnector_queryRow(c),
+				Name: "queryRow", Value: sqlBridge_queryRow(c),
 			}, nil
 		case "close":
 			return &tengo.UserFunction{
@@ -90,7 +90,7 @@ func (c *sqlConnector) IndexGet(index tengo.Object) (tengo.Object, error) {
 	}
 }
 
-func sqlConnector_exec(c *sqlConnector) func(args ...tengo.Object) (tengo.Object, error) {
+func sqlBridge_exec(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments
@@ -108,7 +108,7 @@ func sqlConnector_exec(c *sqlConnector) func(args ...tengo.Object) (tengo.Object
 	}
 }
 
-func sqlConnector_query(c *sqlConnector) func(args ...tengo.Object) (tengo.Object, error) {
+func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments
@@ -126,7 +126,7 @@ func sqlConnector_query(c *sqlConnector) func(args ...tengo.Object) (tengo.Objec
 	}
 }
 
-func sqlConnector_queryRow(c *sqlConnector) func(args ...tengo.Object) (tengo.Object, error) {
+func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments

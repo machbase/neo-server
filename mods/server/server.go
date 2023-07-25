@@ -399,6 +399,9 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// start bridge service
+	s.bridgeSvc.Start()
+
 	// native port
 	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
 

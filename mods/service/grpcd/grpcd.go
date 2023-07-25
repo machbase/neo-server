@@ -141,11 +141,6 @@ func (svr *grpcd) Start() error {
 	// rpcServer is serving the db service
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
 
-	// rpcServer can serve bridge runtime service
-	if svr.bridgeRuntimeImpl != nil {
-		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
-	}
-
 	// mgmtServer is serving general db service + mgmt service
 	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
 	machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr)
@@ -158,6 +153,13 @@ func (svr *grpcd) Start() error {
 	if svr.bridgeMgmtImpl != nil {
 		bridge.RegisterManagementServer(svr.mgmtServer, svr.bridgeMgmtImpl)
 		bridge.RegisterManagementServer(svr.mgmtServerInsecure, svr.bridgeMgmtImpl)
+	}
+
+	// rpcServer can serve bridge runtime service
+	if svr.bridgeRuntimeImpl != nil {
+		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServerInsecure, svr.bridgeRuntimeImpl)
 	}
 
 	//listeners

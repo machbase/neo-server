@@ -115,8 +115,8 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 		"nil": &tengo.UserFunction{
 			Name: "nil", Value: tengof_nil(ctx),
 		},
-		"connector": &tengo.UserFunction{
-			Name: "connector", Value: tengof_connector(ctx),
+		"bridge": &tengo.UserFunction{
+			Name: "bridge", Value: tengof_bridge(ctx),
 		},
 	})
 	s := tengo.NewScript([]byte(content))

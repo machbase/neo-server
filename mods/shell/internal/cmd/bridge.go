@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/readline"
@@ -29,9 +30,10 @@ const helpBridge = `  bridge command [options]
         args:
             name                    name of the connection
             conn                    connection string
-    del   <name>                    remove bridage
-    test  <name>                    test connectivity of the bridage
-    exec  <name> <command>
+    del      <name>                 remove bridage
+    test     <name>                 test connectivity of the bridage
+    exec     <name> <command>       execute on the bridge
+    query    <name> <command>       query on the bridge
 `
 
 type BridgeCmd struct {
@@ -51,6 +53,10 @@ type BridgeCmd struct {
 		Name  string   `arg:"" name:"name"`
 		Query []string `arg:"" name:"command" passthrough:""`
 	} `cmd:"" name:"exec"`
+	Query struct {
+		Name  string   `arg:"" name:"name"`
+		Query []string `arg:"" name:"command" passthrough:""`
+	} `cmd:"" name:"query"`
 	Help bool `kong:"-"`
 }
 
@@ -59,8 +65,9 @@ func pcBridge() readline.PrefixCompleterInterface {
 		readline.PcItem("list"),
 		readline.PcItem("add"),
 		readline.PcItem("del"),
-		readline.PcItem("exec"),
 		readline.PcItem("test"),
+		readline.PcItem("exec"),
+		readline.PcItem("query"),
 	)
 }
 
@@ -92,6 +99,9 @@ func doBridge(ctx *client.ActionContext) {
 	case "exec <name> <command>":
 		sqlText := util.StripQuote(strings.Join(cmd.Exec.Query, " "))
 		doBridgeExec(ctx, cmd.Exec.Name, sqlText)
+	case "query <name> <command>":
+		sqlText := util.StripQuote(strings.Join(cmd.Query.Query, " "))
+		doBridgeQuery(ctx, cmd.Query.Name, sqlText)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
 		return
@@ -104,7 +114,7 @@ func doBridgeList(ctx *client.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.ListBridge(ctx, &bridge.ListBridgeRequest{})
+	rsp, err := mgmtCli.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -128,7 +138,7 @@ func doBridgeDel(ctx *client.ActionContext, name string) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.DelBridge(ctx, &bridge.DelBridgeRequest{
+	rsp, err := mgmtCli.DelBridge(ctx, &bridgerpc.DelBridgeRequest{
 		Name: name,
 	})
 	if err != nil {
@@ -149,7 +159,7 @@ func doBridgeAdd(ctx *client.ActionContext, name string, typ string, path string
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.AddBridge(ctx, &bridge.AddBridgeRequest{
+	rsp, err := mgmtCli.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
 		Name: name, Type: typ, Path: path,
 	})
 	if err != nil {
@@ -169,7 +179,7 @@ func doBridgeTest(ctx *client.ActionContext, name string) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.TestBridge(ctx, &bridge.TestBridgeRequest{Name: name})
+	rsp, err := mgmtCli.TestBridge(ctx, &bridgerpc.TestBridgeRequest{Name: name})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -184,33 +194,78 @@ func doBridgeExec(ctx *client.ActionContext, name string, command string) {
 		ctx.Println("ERR bridge service is not avaliable;", err.Error())
 		return
 	}
-	rsp, err := bridgeRuntime.Exec(ctx, &bridge.ExecRequest{Name: name, Command: command})
+	cmd := &bridgerpc.ExecRequest_SqlExec{SqlExec: &bridgerpc.SqlRequest{}}
+	cmd.SqlExec.SqlText = command
+	rsp, err := bridgeRuntime.Exec(ctx, &bridgerpc.ExecRequest{Name: name, Command: cmd})
 	if err != nil {
-		ctx.Println("ERR", "Exec bridge", name, err.Error())
+		ctx.Println("ERR", "exec bridge", name, err.Error())
 		return
 	}
-	defer bridgeRuntime.ResultClose(ctx, rsp.Result)
+	if !rsp.Success {
+		ctx.Println("ERR", "exec bridge fail", rsp.Reason)
+		return
+	}
+	result := rsp.GetSqlExecResult()
+	if result != nil {
+		ctx.Println("executed.")
+		return
+	}
+}
 
-	// cols, err := rsp.Result.Columns(ctx)
-	// if err != nil {
-	// 	ctx.Println("ERR", "Exec connector columns", name, err.Error())
-	// 	return
-	// }
+func doBridgeQuery(ctx *client.ActionContext, name string, command string) {
+	bridgeRuntime, err := ctx.Client.BridgeRuntimeClient()
+	if err != nil {
+		ctx.Println("ERR bridge service is not avaliable;", err.Error())
+		return
+	}
+	cmd := &bridgerpc.ExecRequest_SqlQuery{SqlQuery: &bridgerpc.SqlRequest{}}
+	cmd.SqlQuery.SqlText = command
+	rsp, err := bridgeRuntime.Exec(ctx, &bridgerpc.ExecRequest{Name: name, Command: cmd})
+	if err != nil {
+		ctx.Println("ERR", "query bridge", name, err.Error())
+		return
+	}
+	if !rsp.Success {
+		ctx.Println("ERR", "query bridge fail", rsp.Reason)
+		return
+	}
+	result := rsp.GetSqlQueryResult()
+	defer bridgeRuntime.SqlQueryResultClose(ctx, result)
 
-	// box := ctx.NewBox(append([]string{"ROWNUM"}, cols.Names()...))
-	// for {
-	// 	vals, err0 := rset.Fetch(ctx)
-	// 	if err0 != nil {
-	// 		err = err0
-	// 		break
-	// 	}
-	// 	if vals == nil {
-	// 		break
-	// 	}
-	// 	box.AppendRow(vals...)
-	// }
-	// box.Render()
-	// if err != nil {
-	// 	ctx.Println("ERR", err.Error())
-	// }
+	if rsp.Result != nil && len(result.Fields) == 0 {
+		ctx.Println("executed.")
+		return
+	}
+
+	header := []string{}
+	for _, col := range result.Fields {
+		header = append(header, col.Name)
+	}
+	rownum := 0
+	box := ctx.NewBox(header)
+	for {
+		fetch, err0 := bridgeRuntime.SqlQueryResultFetch(ctx, result)
+		if err0 != nil {
+			err = err0
+			break
+		}
+		if !fetch.Success {
+			err = fmt.Errorf("fetch failed; %s", fetch.Reason)
+			break
+		}
+		if fetch.HasNoRows {
+			break
+		}
+		rownum++
+		vals, err0 := bridge.ConvertFromDatum(fetch.Values...)
+		if err0 != nil {
+			err = err0
+			break
+		}
+		box.AppendRow(vals...)
+	}
+	box.Render()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+	}
 }

@@ -8,19 +8,19 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type sqlite3Conn struct {
+type sqlite3Bridge struct {
 	define *Define
 	db     *sql.DB
 }
 
-func NewSqlite3Connector(def *Define) Connector {
-	return &sqlite3Conn{define: def}
+func NewSqlite3Bridge(def *Define) Bridge {
+	return &sqlite3Bridge{define: def}
 }
 
-var _ Connector = &sqlite3Conn{}
-var _ SqlConnector = &sqlite3Conn{}
+var _ Bridge = &sqlite3Bridge{}
+var _ SqlBridge = &sqlite3Bridge{}
 
-func (c *sqlite3Conn) BeforeRegister() error {
+func (c *sqlite3Bridge) BeforeRegister() error {
 	db, err := sql.Open("sqlite3", c.define.Path)
 	if err != nil {
 		return err
@@ -29,24 +29,24 @@ func (c *sqlite3Conn) BeforeRegister() error {
 	return nil
 }
 
-func (c *sqlite3Conn) AfterUnregister() error {
+func (c *sqlite3Bridge) AfterUnregister() error {
 	if c.db == nil {
 		return nil
 	}
 	return c.db.Close()
 }
 
-func (c *sqlite3Conn) Type() Type {
+func (c *sqlite3Bridge) Type() Type {
 	return c.define.Type
 }
 
-func (c *sqlite3Conn) Name() string {
+func (c *sqlite3Bridge) Name() string {
 	return c.define.Name
 }
 
-func (c *sqlite3Conn) Connect(ctx context.Context) (*sql.Conn, error) {
+func (c *sqlite3Bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	if c.db == nil {
-		return nil, fmt.Errorf("connector '%s' is not initialized", c.define.Name)
+		return nil, fmt.Errorf("bridge '%s' is not initialized", c.define.Name)
 	}
 	return c.db.Conn(ctx)
 }

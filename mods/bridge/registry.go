@@ -2,22 +2,20 @@ package bridge
 
 import (
 	"fmt"
-
-	spi "github.com/machbase/neo-spi"
 )
 
-var registry = map[string]Connector{}
+var registry = map[string]Bridge{}
 
 func Register(def *Define) (err error) {
-	var c Connector
+	var c Bridge
 	switch def.Type {
 	case SQLITE:
-		c = NewSqlite3Connector(def)
+		c = NewSqlite3Bridge(def)
 		if err = c.BeforeRegister(); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("undefined connector type %s", def.Type)
+		return fmt.Errorf("undefined bridge type %s", def.Type)
 	}
 	registry[def.Name] = c
 	return nil
@@ -36,26 +34,9 @@ func UnregisterAll() {
 	}
 }
 
-func GetConnector(name string) (Connector, error) {
+func GetBridge(name string) (Bridge, error) {
 	if c, ok := registry[name]; ok {
 		return c, nil
 	}
-	return nil, fmt.Errorf("undefined connector name '%s'", name)
-}
-
-func WrapDatabase(c SqlConnector) (spi.Database, error) {
-	return &sqlWrap{SqlConnector: c}, nil
-}
-
-// Deprecated: use WrapDatabase() instead
-func GetDatabaseConnector(name string) (spi.Database, error) {
-	c, err := GetConnector(name)
-	if err != nil {
-		return nil, err
-	}
-	if sc, ok := c.(SqlConnector); ok {
-		return WrapDatabase(sc)
-	} else {
-		return nil, fmt.Errorf("incompatible sql connector '%s'", name)
-	}
+	return nil, fmt.Errorf("undefined bridge name '%s'", name)
 }
