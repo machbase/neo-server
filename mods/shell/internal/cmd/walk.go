@@ -23,6 +23,9 @@ func init() {
 		Action: doWalk,
 		Desc:   "Execute query then walk-through the results",
 		Usage:  helpWalk,
+
+		Deprecated:        true,
+		DeprecatedMessage: "Use TQL instead.",
 	})
 }
 
@@ -34,8 +37,6 @@ const helpWalk = `  walk [options] <sql query>
                              consult "help timeformat"
         --tz                 timezone for handling datetime
                              consult "help tz"
-
-  DEPRECATED: Use TQL instead.
 `
 
 type WalkCmd struct {
