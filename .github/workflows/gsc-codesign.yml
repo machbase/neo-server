@@ -1,0 +1,44 @@
+name: CI windows-amd64
+
+on:
+  push:
+    branches:
+      - 'work/gsc'
+
+jobs:
+  builds:
+    runs-on: [ windows-2022 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Setup go compiler
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.19.11'
+      - name: Install Fyne
+        run: go install fyne.io/fyne/v2/cmd/fyne@latest
+      - name: Build
+        run: build.cmd
+        shell: cmd
+      - name: Codesign
+        uses: dlemstra/code-sign-action@v1
+        with:
+          certificate: '${{ secrets.CODESIGN_WIN_CERTIFICATE }}' 
+          password: '${{ secrets.CODESIGN_WIN_PASS }}'
+          folder: './tmp'
+          recursive: false
+          files: |
+            machbase-neo.exe
+            neow.exe
+      - name: Package
+        run: buildpkg.cmd
+        shell: cmd
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Packages
+          path: packages/machbase-neo-*.zip
+          retention-days: 5
+
