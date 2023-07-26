@@ -274,6 +274,9 @@ type Cmd struct {
 	ClientAction bool
 	// if the Cmd is an experimental feature
 	Experimental bool
+	// Deprecated
+	Deprecated        bool
+	DeprecatedMessage string
 }
 
 var commands = make(map[string]*Cmd)
@@ -369,6 +372,11 @@ func (cli *client) Process(line string) {
 	defer actCtx.cancelFunc()
 
 	cmd.Action(actCtx)
+
+	if cmd.Deprecated {
+		cli.Println()
+		cli.Printfln("    '%s' is deprecated, %s", cmd.Name, cmd.DeprecatedMessage)
+	}
 }
 
 func (cli *client) Prompt() {
