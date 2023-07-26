@@ -5,7 +5,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
-	"sync"
+	"strconv"
+	"strings"
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
@@ -20,10 +21,11 @@ type bridge struct {
 	client     paho.Client
 	clientOpts *paho.ClientOptions
 	alive      bool
-	runWait    sync.WaitGroup
+	stopSig    chan bool
 
 	serverAddresses    []string
 	keepAlive          time.Duration
+	cleanSession       bool
 	certPath           string
 	keyPath            string
 	caCertPath         string
@@ -37,8 +39,13 @@ type bridge struct {
 
 func New(name string, path string) *bridge {
 	return &bridge{
-		name: name,
-		path: path,
+		log:     logging.GetLog("mqtt-bridge"),
+		name:    name,
+		path:    path,
+		stopSig: make(chan bool),
+
+		keepAlive:    30 * time.Second,
+		cleanSession: true,
 
 		reconnectMaxWait:   10 * time.Second,
 		connectTimeout:     5 * time.Second,
@@ -49,12 +56,52 @@ func New(name string, path string) *bridge {
 }
 
 func (c *bridge) BeforeRegister() error {
+	fields := strings.Fields(c.path)
+	for _, field := range fields {
+		kv := strings.SplitN(field, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(kv[0])
+		val := strings.TrimSpace(kv[1])
+		switch key {
+		case "broker":
+			fallthrough
+		case "host":
+			fallthrough
+		case "server":
+			c.serverAddresses = append(c.serverAddresses, val)
+		case "id":
+			c.clientId = val
+		case "k":
+			fallthrough
+		case "keepalive":
+			if k, err := time.ParseDuration(val); err == nil {
+				c.keepAlive = k
+			}
+		case "c":
+		case "cleansession":
+			if flag, err := strconv.ParseBool(val); err == nil {
+				c.cleanSession = flag
+			}
+		case "cafile":
+			c.caCertPath = val
+		case "key":
+			c.keyPath = val
+		case "cert":
+			c.certPath = val
+		default:
+			c.log.Infof("unknown option, %s=%s", key, val)
+		}
+	}
 	cfg := paho.NewClientOptions()
-	cfg.SetKeepAlive(c.keepAlive)
-	cfg.SetCleanSession(true)
+	cfg.SetProtocolVersion(4)
 	cfg.SetConnectRetry(false)
 	cfg.SetAutoReconnect(false)
-	cfg.SetProtocolVersion(4)
+	cfg.SetCleanSession(c.cleanSession)
+	if c.keepAlive >= 1*time.Second {
+		cfg.SetKeepAlive(c.keepAlive)
+	}
 	for _, addr := range c.serverAddresses {
 		cfg.AddBroker(addr)
 	}
@@ -86,14 +133,17 @@ func (c *bridge) BeforeRegister() error {
 	}
 
 	c.clientOpts = cfg
-	c.alive = true
-	go c.run()
+	if len(c.serverAddresses) > 0 {
+		c.alive = true
+		go c.run()
+	}
 
 	return nil
 }
 
 func (c *bridge) AfterUnregister() error {
 	c.alive = false
+	c.stopSig <- true
 	if c.client == nil && c.client.IsConnected() {
 		c.client.Disconnect(100)
 	}
@@ -110,42 +160,39 @@ func (c *bridge) Name() string {
 
 func (c *bridge) run() {
 	var fallbackWait = 1 * time.Second
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 	for c.alive {
-		c.log.Tracef("reconnecting... %v", c.clientOpts.Servers)
-		c.client = paho.NewClient(c.clientOpts)
-		clientToken := c.client.Connect()
-		if clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
-			fallbackWait = 1 * time.Second
-		} else {
-			c.log.Tracef("reconnecting fallback wait %s.", fallbackWait)
-			time.Sleep(fallbackWait)
-			fallbackWait *= 2
-			if fallbackWait > c.reconnectMaxWait {
-				fallbackWait = c.reconnectMaxWait
+		select {
+		case <-ticker.C:
+			if c.client == nil || !c.client.IsConnected() {
+				c.log.Tracef("connecting... %v", c.clientOpts.Servers)
+				c.client = paho.NewClient(c.clientOpts)
+				clientToken := c.client.Connect()
+				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
+					c.log.Trace("connected.")
+					ticker.Reset(10 * time.Second)
+					fallbackWait = 1 * time.Second
+				} else {
+					if beforeTimedout {
+						c.log.Trace("connect rejected")
+					} else {
+						c.log.Trace("connect timed out")
+					}
+					c.log.Tracef("connecting fallback wait %s.", fallbackWait)
+					ticker.Reset(fallbackWait)
+					fallbackWait *= 2
+					if fallbackWait > c.reconnectMaxWait {
+						fallbackWait = c.reconnectMaxWait
+					}
+				}
 			}
-			continue
-		}
-
-		c.log.Trace("connected.")
-
-		c.runWait.Add(1)
-		c.sentinel()
-		c.runWait.Wait()
-		if c.alive {
-			c.log.Tracef("reconnecting...")
+		case <-c.stopSig:
+			c.log.Tracef("stop")
+			return
 		}
 	}
-}
-
-func (c *bridge) sentinel() {
-	go func() {
-		for c.alive {
-			time.Sleep(10 * time.Second)
-			if !c.client.IsConnected() {
-				c.runWait.Done()
-			}
-		}
-	}()
 }
 
 func (c *bridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {
