@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/gofrs/uuid"
 	schedrpc "github.com/machbase/neo-grpc/schedule"
 )
 
@@ -15,8 +16,16 @@ func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*sch
 	}()
 	err := s.iterateConfigs(func(define *Define) bool {
 		rsp.Schedules = append(rsp.Schedules, &schedrpc.Schedule{
-			Name: define.Name,
-			Type: string(define.Type),
+			Id:        define.Id,
+			Name:      define.Name,
+			Type:      define.Type,
+			AutoStart: define.AutoStart,
+			State:     UNKNOWN.String(),
+			Task:      define.Task,
+			Schedule:  define.Schedule,
+			Bridge:    define.Bridge,
+			Topic:     define.Topic,
+			QoS:       int32(define.QoS),
 		})
 		return true
 	})
@@ -38,8 +47,16 @@ func (s *svr) GetSchedule(ctx context.Context, req *schedrpc.GetScheduleRequest)
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Schedule = &schedrpc.Schedule{
-			Name: define.Name,
-			Type: string(define.Type),
+			Id:        define.Id,
+			Name:      define.Name,
+			Type:      define.Type,
+			AutoStart: define.AutoStart,
+			State:     UNKNOWN.String(),
+			Task:      define.Task,
+			Schedule:  define.Schedule,
+			Bridge:    define.Bridge,
+			Topic:     define.Topic,
+			QoS:       int32(define.QoS),
 		}
 		rsp.Success, rsp.Reason = true, "success"
 	}
@@ -54,7 +71,11 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 	}()
 
 	def := &Define{}
-
+	if uid, err := uuid.DefaultGenerator.NewV4(); err != nil {
+		return nil, err
+	} else {
+		def.Id = uid.String()
+	}
 	if len(req.Name) > 40 {
 		rsp.Reason = "name is too long, should be shorter than 40 characters"
 		return rsp, nil
@@ -62,12 +83,20 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		def.Name = req.Name
 	}
 
-	if err := Register(def); err != nil {
+	def.AutoStart = req.AutoStart
+	def.Bridge = req.Bridge
+	def.QoS = int(req.QoS)
+	def.Schedule = req.Schedule
+	def.Task = req.Task
+	def.Topic = req.Topic
+	def.Type = req.Type
+
+	if err := s.saveConfig(def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	if err := s.saveConfig(def); err != nil {
+	if err := Register(def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}

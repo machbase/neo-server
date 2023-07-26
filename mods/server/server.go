@@ -428,6 +428,7 @@ func (s *svr) Start() error {
 			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
 			grpcd.OptionBridgeServer(s.bridgeSvc),
+			grpcd.OptionScheduleServer(s.schedSvc),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")

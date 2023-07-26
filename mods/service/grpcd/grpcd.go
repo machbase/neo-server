@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/schedule"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	spi "github.com/machbase/neo-spi"
@@ -91,6 +92,13 @@ func OptionBridgeServer(handler any) Option {
 	}
 }
 
+// schedule
+func OptionScheduleServer(handler schedule.ManagementServer) Option {
+	return func(s *grpcd) {
+		s.schedMgmtImpl = handler
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -106,6 +114,7 @@ type grpcd struct {
 	mgmtImpl          mgmt.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
 	bridgeRuntimeImpl bridge.RuntimeServer
+	schedMgmtImpl     schedule.ManagementServer
 
 	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
@@ -162,7 +171,13 @@ func (svr *grpcd) Start() error {
 		bridge.RegisterRuntimeServer(svr.mgmtServerInsecure, svr.bridgeRuntimeImpl)
 	}
 
-	//listeners
+	// schedServer management service
+	if svr.schedMgmtImpl != nil {
+		schedule.RegisterManagementServer(svr.mgmtServer, svr.schedMgmtImpl)
+		schedule.RegisterManagementServer(svr.mgmtServerInsecure, svr.schedMgmtImpl)
+	}
+
+	// listeners
 	for _, listen := range svr.listenAddresses {
 		if runtime.GOOS == "windows" && strings.HasPrefix(listen, "unix://") {
 			// s.log.Debugf("gRPC unable %s on Windows", listen)

@@ -27,11 +27,27 @@ type Entry interface {
 type State int
 
 const (
-	STOP State = iota
+	UNKNOWN State = iota
+	STOP
 	STOPPING
 	STARTING
 	RUNNING
 )
+
+func (st State) String() string {
+	switch st {
+	default:
+		return "UNKNOWN"
+	case STOP:
+		return "STOP"
+	case STOPPING:
+		return "STOPPING"
+	case STARTING:
+		return "STARTING"
+	case RUNNING:
+		return "RUNNING"
+	}
+}
 
 type BaseEntry struct {
 	state State
