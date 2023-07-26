@@ -23,7 +23,7 @@
 @cd > .\tmp\cwd.txt
 
 @REM SET /p VERSION=<.\tmp\version.txt
-SET VERSION=v8.0.0
+@SET /p VERSION=v8.0.0
 @SET /p GITSHA=<.\tmp\gitsha.txt
 @SET /p BUILDTIME=<.\tmp\buildtime.txt
 @SET /p GOVERSTR=<.\tmp\goverstr.txt
