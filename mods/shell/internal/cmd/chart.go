@@ -21,6 +21,9 @@ func init() {
 		Action: doChart,
 		Desc:   "Rendering chart from tag table",
 		Usage:  helpChart,
+
+		Deprecated:        true,
+		DeprecatedMessage: "Use TQL instead.",
 	})
 }
 
@@ -200,4 +203,5 @@ func doChart(ctx *client.ActionContext) {
 		scheduler.Stop()
 		ctx.Cancel()
 	}
+	ctx.Println("Thise 'chart' command is deprecated. Use TQL instead.")
 }

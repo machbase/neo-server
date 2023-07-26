@@ -23,6 +23,9 @@ func init() {
 		Action: doWalk,
 		Desc:   "Execute query then walk-through the results",
 		Usage:  helpWalk,
+
+		Deprecated:        true,
+		DeprecatedMessage: "Use TQL instead.",
 	})
 }
 
@@ -106,6 +109,7 @@ func doWalk(ctx *client.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
+	ctx.Println("Thise 'walk' command is deprecated. Use TQL instead.")
 }
 
 type Walker struct {

@@ -79,7 +79,11 @@ func doHelp(ctx *ActionContext) {
 			// do not expose experimental command
 			continue
 		}
-		ctx.Printfln("    %-*s %s", 10, cmd.Name, cmd.Desc)
+		aux := ""
+		if cmd.Deprecated {
+			aux = "// DEPRECATED"
+		}
+		ctx.Printfln("    %-*s %s %s", 10, cmd.Name, cmd.Desc, aux)
 	}
 	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "keyboard", "Show shortcut keys"))
 	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "clear", "Reset and clear screen"))
