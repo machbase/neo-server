@@ -12,6 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         with:
+          ref: 'work/gsc'
           fetch-depth: 0
       - name: Setup go compiler
         uses: actions/setup-go@v3
