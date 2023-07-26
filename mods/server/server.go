@@ -28,6 +28,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttd"
@@ -152,6 +153,7 @@ type svr struct {
 	sshd  sshd.Service
 
 	bridgeSvc bridge.Service
+	schedSvc  scheduler.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -261,6 +263,7 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "connector defs")
 	}
 	s.bridgeSvc = bridge.NewService(bridgeConfDir)
+	s.schedSvc = scheduler.NewService()
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
@@ -400,7 +403,13 @@ func (s *svr) Start() error {
 	}
 
 	// start bridge service
-	s.bridgeSvc.Start()
+	if err := s.bridgeSvc.Start(); err != nil {
+		return err
+	}
+	// start scheduler service
+	if err := s.schedSvc.Start(); err != nil {
+		return err
+	}
 
 	// native port
 	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
@@ -559,6 +568,9 @@ func (s *svr) Stop() {
 	}
 	if s.grpcd != nil {
 		s.grpcd.Stop()
+	}
+	if s.schedSvc != nil {
+		s.schedSvc.Stop()
 	}
 	if s.bridgeSvc != nil {
 		s.bridgeSvc.Stop()
