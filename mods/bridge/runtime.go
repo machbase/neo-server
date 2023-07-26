@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -10,6 +11,19 @@ import (
 
 	bridgerpc "github.com/machbase/neo-grpc/bridge"
 )
+
+type rowsWrap struct {
+	id      string
+	conn    *sql.Conn
+	rows    *sql.Rows
+	ctx     context.Context
+	release func()
+
+	enlistInfo string
+	enlistTime time.Time
+}
+
+var contextIdSerial int64
 
 // ////////////////////////////
 // runtime service
@@ -30,16 +44,16 @@ func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.
 		case *bridgerpc.ExecRequest_SqlQuery:
 			return s.querySqlBridge(br, req)
 		default:
-			rsp.Reason = fmt.Sprintf("bridge '%s' (type=%s) does not support %T", conn.Name(), conn.Type(), cmd)
+			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
 			rsp.Elapse = time.Since(tick).String()
 			return rsp, nil
 		}
 	case Bridge:
-		rsp.Reason = fmt.Sprintf("bridge '%s' (type=%s) does not support exec", conn.Name(), conn.Type())
+		rsp.Reason = fmt.Sprintf("%s does not support exec", conn.String())
 		rsp.Elapse = time.Since(tick).String()
 		return rsp, nil
 	default:
-		rsp.Reason = fmt.Sprintf("bridge '%s' (type=%s) is unknown", conn.Name(), conn.Type())
+		rsp.Reason = fmt.Sprintf("%s is unknown", conn.String())
 		rsp.Elapse = time.Since(tick).String()
 		return rsp, nil
 	}

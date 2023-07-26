@@ -17,22 +17,23 @@ func TestSqlite3(t *testing.T) {
 	define := bridge.Define{
 		Type: bridge.SQLITE,
 		Name: BRIDGE_NAME,
-		Path: "../../tmp/connector_sqlite3.db",
+		Path: "file:../../tmp/connector_sqlite3.db?cache=shared",
 	}
 
 	bridge.Register(&define)
 	defer bridge.Unregister(BRIDGE_NAME)
 
-	cr, err := bridge.GetBridge(BRIDGE_NAME)
+	br, err := bridge.GetBridge(BRIDGE_NAME)
 	require.Nil(t, err)
-	require.NotNil(t, cr)
-	require.Equal(t, bridge.SQLITE, cr.Type())
-	require.Equal(t, BRIDGE_NAME, cr.Name())
+	require.NotNil(t, br)
+	_, ok := br.(bridge.SqlBridge)
+	require.True(t, ok)
+	require.Equal(t, BRIDGE_NAME, br.Name())
 
 	ctx := context.TODO()
 
-	c := cr.(bridge.SqlBridge)
-	conn, err := c.Connect(ctx)
+	sqlBr := br.(bridge.SqlBridge)
+	conn, err := sqlBr.Connect(ctx)
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 	defer conn.Close()

@@ -2,28 +2,33 @@ package bridge
 
 import (
 	"fmt"
+
+	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
 )
 
 var registry = map[string]Bridge{}
 
 func Register(def *Define) (err error) {
-	var c Bridge
+	var sqlBr SqlBridge
 	switch def.Type {
 	case SQLITE:
-		c = NewSqlite3Bridge(def)
-		if err = c.BeforeRegister(); err != nil {
-			return err
-		}
+		sqlBr = sqlite3.New(def.Name, def.Path)
 	case POSTGRES:
-		c = NewPostgresBridge(def)
-		if err = c.BeforeRegister(); err != nil {
-			return err
-		}
+		sqlBr = postgres.New(def.Name, def.Path)
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
 	}
-	registry[def.Name] = c
-	return nil
+	if sqlBr != nil {
+		if err = sqlBr.BeforeRegister(); err != nil {
+			return err
+		}
+		registry[def.Name] = sqlBr
+		return nil
+	} else {
+		// never happen, for now.
+		return nil
+	}
 }
 
 func Unregister(name string) {
@@ -44,4 +49,17 @@ func GetBridge(name string) (Bridge, error) {
 		return c, nil
 	}
 	return nil, fmt.Errorf("undefined bridge name '%s'", name)
+}
+
+func GetSqlBridge(name string) (SqlBridge, error) {
+	br, err := GetBridge(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if sqlBr, ok := br.(SqlBridge); ok {
+		return sqlBr, nil
+	} else {
+		return nil, fmt.Errorf("'%s' is not a SqlBridge", name)
+	}
 }
