@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	schedrpc "github.com/machbase/neo-grpc/schedule"
 	logging "github.com/machbase/neo-server/mods/logging"
 	"github.com/robfig/cron/v3"
 )
@@ -26,6 +27,7 @@ func NewService(confDir string) Service {
 }
 
 type Service interface {
+	schedrpc.ManagementServer
 	Start() error
 	Stop()
 
