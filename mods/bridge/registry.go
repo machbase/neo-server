@@ -3,6 +3,7 @@ package bridge
 import (
 	"fmt"
 
+	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
 	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
 )
@@ -16,6 +17,8 @@ func Register(def *Define) (err error) {
 		sqlBr = sqlite3.New(def.Name, def.Path)
 	case POSTGRES:
 		sqlBr = postgres.New(def.Name, def.Path)
+	case MYSQL:
+		sqlBr = mysql.New(def.Name, def.Path)
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
 	}

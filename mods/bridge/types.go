@@ -11,6 +11,7 @@ type Type string
 const (
 	SQLITE   Type = "sqlite"
 	POSTGRES Type = "postgres"
+	MYSQL    Type = "mysql"
 )
 
 func ParseType(typ string) (Type, error) {
@@ -21,6 +22,8 @@ func ParseType(typ string) (Type, error) {
 		fallthrough
 	case "postgres":
 		return POSTGRES, nil
+	case "mysql":
+		return MYSQL, nil
 	default:
 		return "", fmt.Errorf("unsupported bridge type: %s", typ)
 	}
