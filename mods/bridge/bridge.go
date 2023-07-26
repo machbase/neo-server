@@ -42,7 +42,7 @@ func (s *svr) Start() error {
 		if err := Register(define); err == nil {
 			s.log.Infof("add bridge %s type=%s", define.Name, define.Type)
 		} else {
-			s.log.Errorf("fail to add bridge %s type=%s failed %s", define.Name, define.Type, err.Error())
+			s.log.Errorf("fail to add bridge %s type=%s, %s", define.Name, define.Type, err.Error())
 		}
 		return true
 	})
@@ -68,12 +68,12 @@ func (s *svr) iterateConfigs(cb func(define *Define) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.confDir, entry.Name()))
 		if err != nil {
-			s.log.Warnf("connection def file", err.Error())
+			s.log.Warnf("bridge def file", err.Error())
 			continue
 		}
 		def := &Define{}
 		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("connection def format", err.Error())
+			s.log.Warnf("bridge def format", err.Error())
 			continue
 		}
 		flag := cb(def)
@@ -88,12 +88,12 @@ func (s *svr) loadConfig(name string) (*Define, error) {
 	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		s.log.Warnf("connection def file", err.Error())
+		s.log.Warnf("bridge def file", err.Error())
 		return nil, err
 	}
 	def := &Define{}
 	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warnf("connection def format", err.Error())
+		s.log.Warnf("bridge def format", err.Error())
 		return nil, err
 	}
 	return def, nil
@@ -102,7 +102,7 @@ func (s *svr) loadConfig(name string) (*Define, error) {
 func (s *svr) saveConfig(def *Define) error {
 	buf, err := json.MarshalIndent(def, "", "\t")
 	if err != nil {
-		s.log.Warnf("connection def file", err.Error())
+		s.log.Warnf("bridge def file", err.Error())
 		return err
 	}
 

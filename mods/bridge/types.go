@@ -54,4 +54,5 @@ type SqlBridge interface {
 
 type MqttBridge interface {
 	Bridge
+	Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error)
 }

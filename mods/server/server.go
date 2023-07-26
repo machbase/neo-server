@@ -260,10 +260,15 @@ func (s *svr) Start() error {
 
 	bridgeConfDir := filepath.Join(prefpath, "bridges")
 	if err := mkDirIfNotExists(bridgeConfDir); err != nil {
-		return errors.Wrap(err, "connector defs")
+		return errors.Wrap(err, "bridge defs")
 	}
 	s.bridgeSvc = bridge.NewService(bridgeConfDir)
-	s.schedSvc = scheduler.NewService()
+
+	schedConfDir := filepath.Join(prefpath, "schedules")
+	if err := mkDirIfNotExists(schedConfDir); err != nil {
+		return errors.Wrap(err, "schedule defs")
+	}
+	s.schedSvc = scheduler.NewService(schedConfDir)
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
