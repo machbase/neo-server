@@ -16,8 +16,7 @@
 
 @if not exist .\tmp md tmp
 
-@git describe --tags --abbrev=0 > .\tmp\version.txt
-@git rev-parse --short main > .\tmp\gitsha.txt
+@git rev-parse --short work/gsc > .\tmp\gitsha.txt
 @date /T > .\tmp\buildtime.txt
 @go version > .\tmp\goverstr.txt
 @cd > .\tmp\cwd.txt
