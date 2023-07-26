@@ -12,6 +12,7 @@ const (
 	SQLITE   Type = "sqlite"
 	POSTGRES Type = "postgres"
 	MYSQL    Type = "mysql"
+	MQTT     Type = "mqtt"
 )
 
 func ParseType(typ string) (Type, error) {
@@ -24,6 +25,8 @@ func ParseType(typ string) (Type, error) {
 		return POSTGRES, nil
 	case "mysql":
 		return MYSQL, nil
+	case "mqtt":
+		return MQTT, nil
 	default:
 		return "", fmt.Errorf("unsupported bridge type: %s", typ)
 	}
@@ -47,4 +50,8 @@ type SqlBridge interface {
 	Bridge
 	Connect(ctx context.Context) (*sql.Conn, error)
 	SupportLastInsertId() bool
+}
+
+type MqttBridge interface {
+	Bridge
 }

@@ -2,31 +2,44 @@ package bridge
 
 import (
 	"fmt"
+	"sync"
 
+	"github.com/machbase/neo-server/mods/bridge/internal/mqtt"
 	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
 	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
 )
 
 var registry = map[string]Bridge{}
+var registryLock sync.RWMutex
 
 func Register(def *Define) (err error) {
-	var sqlBr SqlBridge
+	registryLock.Lock()
+	defer registryLock.Unlock()
+
+	var br Bridge
 	switch def.Type {
 	case SQLITE:
-		sqlBr = sqlite3.New(def.Name, def.Path)
+		var b SqlBridge = sqlite3.New(def.Name, def.Path)
+		br = b
 	case POSTGRES:
-		sqlBr = postgres.New(def.Name, def.Path)
+		var b SqlBridge = postgres.New(def.Name, def.Path)
+		br = b
 	case MYSQL:
-		sqlBr = mysql.New(def.Name, def.Path)
+		var b SqlBridge = mysql.New(def.Name, def.Path)
+		br = b
+	case MQTT:
+		var b MqttBridge = mqtt.New(def.Name, def.Path)
+		br = b
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
 	}
-	if sqlBr != nil {
-		if err = sqlBr.BeforeRegister(); err != nil {
+
+	if br != nil {
+		if err = br.BeforeRegister(); err != nil {
 			return err
 		}
-		registry[def.Name] = sqlBr
+		registry[def.Name] = br
 		return nil
 	} else {
 		// never happen, for now.
@@ -35,6 +48,9 @@ func Register(def *Define) (err error) {
 }
 
 func Unregister(name string) {
+	registryLock.Lock()
+	defer registryLock.Unlock()
+
 	if c, ok := registry[name]; ok {
 		delete(registry, name)
 		c.AfterUnregister()
@@ -48,6 +64,9 @@ func UnregisterAll() {
 }
 
 func GetBridge(name string) (Bridge, error) {
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+
 	if c, ok := registry[name]; ok {
 		return c, nil
 	}
