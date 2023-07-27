@@ -1,11 +1,14 @@
 package scheduler
 
-import "sync"
+import (
+	"errors"
+	"strings"
+	"sync"
+)
 
 type Define struct {
-	Id        string `json:"-"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
+	Name      string `json:"-"`
+	Type      Type   `json:"type"`
 	AutoStart bool   `json:"autoStart"`
 	Task      string `json:"task"`
 
@@ -17,17 +20,11 @@ type Define struct {
 	QoS    int    `json:"qos,omitempty"`
 }
 
-type Entry interface {
-	Start(*svr) error
-	Stop(*svr) error
-	Status() State
-	AutoStart() bool
-}
-
 type State int
 
 const (
 	UNKNOWN State = iota
+	FAILED
 	STOP
 	STOPPING
 	STARTING
@@ -38,6 +35,8 @@ func (st State) String() string {
 	switch st {
 	default:
 		return "UNKNOWN"
+	case FAILED:
+		return "FAILED"
 	case STOP:
 		return "STOP"
 	case STOPPING:
@@ -49,16 +48,62 @@ func (st State) String() string {
 	}
 }
 
+type Type string
+
+const (
+	UNDEFINED Type = ""
+	TIMER     Type = "timer"
+	LISTENER  Type = "listener"
+)
+
+func (typ Type) String() string {
+	switch typ {
+	default:
+		return "UNDEFINED"
+	case TIMER:
+		return "TIMER"
+	case LISTENER:
+		return "LISTENER"
+	}
+}
+
+func ParseType(typ string) Type {
+	switch strings.ToUpper(typ) {
+	default:
+		return UNDEFINED
+	case "TIMER":
+		return TIMER
+	case "LISTENER":
+		return LISTENER
+	}
+}
+
+type Entry interface {
+	Name() string
+	Start() error
+	Stop() error
+	Status() State
+	AutoStart() bool
+	Error() error
+}
+
 type BaseEntry struct {
-	state State
+	name      string
+	state     State
+	autoStart bool
+	err       error
 }
 
-func (e *BaseEntry) Start(*svr) error {
-	return nil
+func (e *BaseEntry) Name() string {
+	return e.name
 }
 
-func (e *BaseEntry) Stop(*svr) error {
-	return nil
+func (e *BaseEntry) Start() error {
+	return errors.New("Start() is not implemented")
+}
+
+func (e *BaseEntry) Stop() error {
+	return errors.New("Stop() is not implemented")
 }
 
 func (e *BaseEntry) Status() State {
@@ -66,25 +111,70 @@ func (e *BaseEntry) Status() State {
 }
 
 func (e *BaseEntry) AutoStart() bool {
-	return false
+	return e.autoStart
+}
+
+func (e *BaseEntry) Error() error {
+	return e.err
 }
 
 var registry = map[string]Entry{}
 var registryLock sync.RWMutex
 
-func Register(def *Define) (err error) {
+func Register(s *svr, def *Define) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
-	return
+
+	var ent Entry
+	var err error
+	switch def.Type {
+	case TIMER:
+		ent, err = NewTimerEntry(s, def)
+	case LISTENER:
+		ent, err = NewListenerEntry(s, def)
+	default:
+		err = errors.New("undefined schedule type")
+	}
+	if err != nil {
+		return err
+	}
+
+	name := strings.ToUpper(ent.Name())
+	registry[name] = ent
+
+	if ent.AutoStart() {
+		if err := ent.Start(); err != nil {
+			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
+		}
+	}
+
+	return nil
 }
 
-func Unregister(id string) {
+func Unregister(name string) {
 	registryLock.Lock()
 	defer registryLock.Unlock()
+
+	name = strings.ToUpper(name)
+	if ent, ok := registry[name]; ok {
+		ent.Stop()
+		delete(registry, name)
+	}
 }
 
 func UnregisterAll() {
-	for id := range registry {
-		Unregister(id)
+	for name := range registry {
+		Unregister(name)
+	}
+}
+
+func GetEntry(name string) Entry {
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+	name = strings.ToUpper(name)
+	if ent, ok := registry[name]; ok {
+		return ent
+	} else {
+		return nil
 	}
 }

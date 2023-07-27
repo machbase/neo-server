@@ -10,13 +10,17 @@ import (
 
 	schedrpc "github.com/machbase/neo-grpc/schedule"
 	logging "github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/tql"
+	spi "github.com/machbase/neo-spi"
 	"github.com/robfig/cron/v3"
 )
 
-func NewService(confDir string) Service {
+func NewService(opts ...Option) Service {
 	ret := &svr{
-		log:     logging.GetLog("scheduler"),
-		confDir: confDir,
+		log: logging.GetLog("scheduler"),
+	}
+	for _, o := range opts {
+		o(ret)
 	}
 	ret.crons = cron.New(
 		cron.WithLocation(time.Local),
@@ -36,14 +40,43 @@ type Service interface {
 
 type svr struct {
 	Service
-	log     logging.Log
-	confDir string
-	crons   *cron.Cron
+	log       logging.Log
+	confDir   string
+	crons     *cron.Cron
+	tqlLoader tql.Loader
+	db        spi.Database
+	verbose   bool
+}
+
+type Option func(*svr)
+
+func WithConfigDirPath(path string) Option {
+	return func(s *svr) {
+		s.confDir = path
+	}
+}
+
+func WithTqlLoader(ldr tql.Loader) Option {
+	return func(s *svr) {
+		s.tqlLoader = ldr
+	}
+}
+
+func WithDatabase(db spi.Database) Option {
+	return func(s *svr) {
+		s.db = db
+	}
+}
+
+func WithVerbose(flag bool) Option {
+	return func(s *svr) {
+		s.verbose = flag
+	}
 }
 
 func (s *svr) Start() error {
 	s.iterateConfigs(func(define *Define) bool {
-		if err := Register(define); err == nil {
+		if err := Register(s, define); err == nil {
 			s.log.Infof("add schedule %s type=%s", define.Name, define.Type)
 		} else {
 			s.log.Errorf("fail to add schedule %s type=%s, %s", define.Name, define.Type, err.Error())
@@ -85,7 +118,8 @@ func (s *svr) iterateConfigs(cb func(define *Define) bool) error {
 			s.log.Warnf("schedule def format", err.Error())
 			continue
 		}
-		def.Id = strings.TrimSuffix(entry.Name(), ".json")
+		def.Name = strings.TrimSuffix(entry.Name(), ".json")
+		def.Type = Type(strings.ToLower(string(def.Type)))
 		flag := cb(def)
 		if !flag {
 			break
@@ -94,8 +128,9 @@ func (s *svr) iterateConfigs(cb func(define *Define) bool) error {
 	return nil
 }
 
-func (s *svr) loadConfig(id string) (*Define, error) {
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", id))
+func (s *svr) loadConfig(name string) (*Define, error) {
+	name = strings.ToUpper(name)
+	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
 		s.log.Warnf("bridge def file", err.Error())
@@ -106,7 +141,7 @@ func (s *svr) loadConfig(id string) (*Define, error) {
 		s.log.Warnf("bridge def format", err.Error())
 		return nil, err
 	}
-	def.Id = id
+	def.Name = name
 	return def, nil
 }
 
@@ -117,18 +152,26 @@ func (s *svr) saveConfig(def *Define) error {
 		return err
 	}
 
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", def.Id))
+	name := strings.ToUpper(def.Name)
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, "'", "_")
+	name = strings.ReplaceAll(name, "$", "_")
+	name = strings.ReplaceAll(name, "*", "_")
+	name = strings.ReplaceAll(name, "?", "_")
+	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
 	return os.WriteFile(path, buf, 00600)
 }
 
-func (s *svr) removeConfig(id string) error {
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", id))
+func (s *svr) removeConfig(name string) error {
+	name = strings.ToUpper(name)
+	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
 	return os.Remove(path)
 }
 
 func (s *svr) AddEntry(entry Entry) error {
 	if entry.AutoStart() {
-		if err := entry.Start(s); err != nil {
+		if err := entry.Start(); err != nil {
 			return err
 		}
 	}
@@ -137,6 +180,9 @@ func (s *svr) AddEntry(entry Entry) error {
 
 // implements cron.Log
 func (s *svr) Info(msg string, keysAndValues ...any) {
+	if !s.verbose {
+		return
+	}
 	var next time.Time
 	var entryId int = -1
 	var extra []string
@@ -155,9 +201,9 @@ func (s *svr) Info(msg string, keysAndValues ...any) {
 		}
 	}
 	if entryId == -1 {
-		s.log.Trace(msg)
+		s.log.Debug(msg)
 	} else {
-		s.log.Tracef("%s entry[%d] next=%s %s", msg, entryId, next, strings.Join(extra, ","))
+		s.log.Debugf("%s entry[%d] next=%s %s", msg, entryId, next, strings.Join(extra, ","))
 	}
 }
 

@@ -23,6 +23,9 @@ type bridge struct {
 	alive      bool
 	stopSig    chan bool
 
+	connectListeners    []func(any)
+	disconnectListeners []func(any)
+
 	serverAddresses    []string
 	keepAlive          time.Duration
 	cleanSession       bool
@@ -172,6 +175,7 @@ func (c *bridge) run() {
 				clientToken := c.client.Connect()
 				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
 					c.log.Trace("connected.")
+					go c.notifyConnectListeners()
 					ticker.Reset(10 * time.Second)
 					fallbackWait = 1 * time.Second
 				} else {
@@ -181,6 +185,7 @@ func (c *bridge) run() {
 						c.log.Trace("connect timed out")
 					}
 					c.log.Tracef("connecting fallback wait %s.", fallbackWait)
+					go c.notifyDisconnectListeners()
 					ticker.Reset(fallbackWait)
 					fallbackWait *= 2
 					if fallbackWait > c.reconnectMaxWait {
@@ -193,6 +198,26 @@ func (c *bridge) run() {
 			return
 		}
 	}
+}
+
+func (c *bridge) notifyConnectListeners() {
+	for _, cb := range c.connectListeners {
+		cb(c)
+	}
+}
+
+func (c *bridge) notifyDisconnectListeners() {
+	for _, cb := range c.disconnectListeners {
+		cb(c)
+	}
+}
+
+func (c *bridge) OnConnect(cb func(br any)) {
+	c.connectListeners = append(c.connectListeners, cb)
+}
+
+func (c *bridge) OnDisconnect(cb func(br any)) {
+	c.disconnectListeners = append(c.disconnectListeners, cb)
 }
 
 func (c *bridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {

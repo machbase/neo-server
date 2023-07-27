@@ -15,6 +15,7 @@ import (
 	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/schedule"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
@@ -43,6 +44,7 @@ type Client interface {
 	ManagementClient() (mgmt.ManagementClient, error)
 	BridgeManagementClient() (bridge.ManagementClient, error)
 	BridgeRuntimeClient() (bridge.RuntimeClient, error)
+	ScheduleManagementClient() (schedule.ManagementClient, error)
 }
 
 type ShutdownServerFunc func() error
@@ -96,6 +98,9 @@ type client struct {
 	bridgeMgmtClient    bridge.ManagementClient
 	bridgeRuntimeClient bridge.RuntimeClient
 	bridgeClientLock    sync.Mutex
+
+	schedMgmtClient schedule.ManagementClient
+	schedClientLock sync.Mutex
 }
 
 func DefaultConfig() *Config {
@@ -245,6 +250,19 @@ func (cli *client) BridgeRuntimeClient() (bridge.RuntimeClient, error) {
 		cli.bridgeRuntimeClient = bridge.NewRuntimeClient(conn)
 	}
 	return cli.bridgeRuntimeClient, nil
+}
+
+func (cli *client) ScheduleManagementClient() (schedule.ManagementClient, error) {
+	cli.schedClientLock.Lock()
+	defer cli.schedClientLock.Unlock()
+	if cli.schedMgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.schedMgmtClient = schedule.NewManagementClient(conn)
+	}
+	return cli.schedMgmtClient, nil
 }
 
 func (cli *client) Run(command string) {

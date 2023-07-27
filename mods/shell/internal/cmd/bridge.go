@@ -126,9 +126,9 @@ func doBridgeList(ctx *client.ActionContext) {
 		return
 	}
 
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "CONNECTION"})
-	for i, c := range rsp.Bridges {
-		box.AppendRow(i+1, c.Name, c.Type, c.Path)
+	box := ctx.NewBox([]string{"NAME", "TYPE", "CONNECTION"})
+	for _, c := range rsp.Bridges {
+		box.AppendRow(c.Name, c.Type, c.Path)
 	}
 	box.Render()
 }

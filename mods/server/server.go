@@ -262,13 +262,11 @@ func (s *svr) Start() error {
 	if err := mkDirIfNotExists(bridgeConfDir); err != nil {
 		return errors.Wrap(err, "bridge defs")
 	}
-	s.bridgeSvc = bridge.NewService(bridgeConfDir)
 
 	schedConfDir := filepath.Join(prefpath, "schedules")
 	if err := mkDirIfNotExists(schedConfDir); err != nil {
 		return errors.Wrap(err, "schedule defs")
 	}
-	s.schedSvc = scheduler.NewService(schedConfDir)
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
 	if err != nil {
@@ -407,6 +405,24 @@ func (s *svr) Start() error {
 		}
 	}
 
+	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
+	ssfs.SetDefault(serverFs)
+
+	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+
+	s.bridgeSvc = bridge.NewService(bridgeConfDir)
+
+	s.schedSvc = scheduler.NewService(
+		scheduler.WithVerbose(false),
+		scheduler.WithConfigDirPath(schedConfDir),
+		scheduler.WithTqlLoader(tqlLoader),
+		scheduler.WithDatabase(s.db),
+	)
+
 	// start bridge service
 	if err := s.bridgeSvc.Start(); err != nil {
 		return err
@@ -439,14 +455,6 @@ func (s *svr) Start() error {
 		}
 	}
 
-	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
-	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return errors.Wrap(err, "server side file system")
-	}
-	ssfs.SetDefault(serverFs)
-
-	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
