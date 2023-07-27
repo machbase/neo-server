@@ -24,3 +24,11 @@ func (br *bridge) BeforeRegister() error {
 func (br *bridge) AfterUnregister() error {
 	return errors.New("not supported")
 }
+
+func (br *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
+	return nil, errors.New("not supported")
+}
+
+func (br *bridge) SupportLastInsertId() bool {
+	return false
+}
