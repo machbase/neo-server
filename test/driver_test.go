@@ -17,11 +17,15 @@ func TestDriver(t *testing.T) {
 	driver.RegisterDataSource("local-unix", &driver.DataSource{
 		ServerAddr: "unix://../tmp/mach.sock",
 		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+		ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
+		ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
 	})
 
 	driver.RegisterDataSource("local-tcp", &driver.DataSource{
 		ServerAddr: "tcp://127.0.0.1:6565",
 		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+		ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
+		ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
 	})
 
 	testDriverDataSource(t, "local-unix")

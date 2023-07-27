@@ -126,8 +126,10 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 		handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
 		// TODO leak detector
 		s.ctxMap.Set(handle, &rowsWrap{
-			id:   handle,
-			rows: realRows,
+			id:         handle,
+			rows:       realRows,
+			enlistTime: time.Now(),
+			enlistInfo: fmt.Sprintf("%s, %v", req.Sql, params),
 			release: func() {
 				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
 					realRows.Close()

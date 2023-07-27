@@ -1,7 +1,6 @@
 package fmap
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/pkg/errors"
 )
 
 // SCRIPT(CTX, K, V, {block})
@@ -114,6 +114,9 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 		},
 		"nil": &tengo.UserFunction{
 			Name: "nil", Value: tengof_nil(ctx),
+		},
+		"bridge": &tengo.UserFunction{
+			Name: "bridge", Value: tengof_bridge(ctx),
 		},
 	})
 	s := tengo.NewScript([]byte(content))
@@ -242,6 +245,46 @@ func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object,
 func tengof_nil(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		return tengo.UndefinedValue, nil
+	}
+}
+
+func tengoObjectToString(obj tengo.Object) (string, error) {
+	if o, ok := obj.(*tengo.String); ok {
+		return o.Value, nil
+	} else {
+		return "", errors.New("not a string")
+	}
+}
+
+func tengoSliceToAnySlice(arr []tengo.Object) []any {
+	ret := make([]any, len(arr))
+	for i, o := range arr {
+		ret[i] = tengoObjectToAny(o)
+	}
+	return ret
+}
+
+//lint:ignore U1000 keep it for the future uses
+func anySliceToTengoSlice(arr []any) []tengo.Object {
+	ret := make([]tengo.Object, len(arr))
+	for i, o := range arr {
+		ret[i] = anyToTengoObject(o)
+	}
+	return ret
+}
+
+func tengoObjectToAny(obj tengo.Object) any {
+	switch o := obj.(type) {
+	case *tengo.String:
+		return o.Value
+	case *tengo.Float:
+		return o.Value
+	case *tengo.Int:
+		return o.Value
+	case *tengo.Bool:
+		return !o.IsFalsy()
+	default:
+		return obj.String()
 	}
 }
 

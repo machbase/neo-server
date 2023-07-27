@@ -25,8 +25,10 @@ import (
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttd"
@@ -139,7 +141,7 @@ type Server interface {
 }
 
 type svr struct {
-	mgmt.ManagementServer
+	mgmt.UnimplementedManagementServer
 
 	conf *Config
 	log  logging.Log
@@ -149,6 +151,9 @@ type svr struct {
 	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
+
+	bridgeSvc bridge.Service
+	schedSvc  scheduler.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -251,6 +256,16 @@ func (s *svr) Start() error {
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
 	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
 		s.licenseFileTime = stat.ModTime()
+	}
+
+	bridgeConfDir := filepath.Join(prefpath, "bridges")
+	if err := mkDirIfNotExists(bridgeConfDir); err != nil {
+		return errors.Wrap(err, "bridge defs")
+	}
+
+	schedConfDir := filepath.Join(prefpath, "schedules")
+	if err := mkDirIfNotExists(schedConfDir); err != nil {
+		return errors.Wrap(err, "schedule defs")
 	}
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
@@ -390,6 +405,33 @@ func (s *svr) Start() error {
 		}
 	}
 
+	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
+	ssfs.SetDefault(serverFs)
+
+	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+
+	s.bridgeSvc = bridge.NewService(bridgeConfDir)
+
+	s.schedSvc = scheduler.NewService(
+		scheduler.WithVerbose(false),
+		scheduler.WithConfigDirPath(schedConfDir),
+		scheduler.WithTqlLoader(tqlLoader),
+		scheduler.WithDatabase(s.db),
+	)
+
+	// start bridge service
+	if err := s.bridgeSvc.Start(); err != nil {
+		return err
+	}
+	// start scheduler service
+	if err := s.schedSvc.Start(); err != nil {
+		return err
+	}
+
 	// native port
 	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
 
@@ -401,6 +443,8 @@ func (s *svr) Start() error {
 			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
 			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
+			grpcd.OptionBridgeServer(s.bridgeSvc),
+			grpcd.OptionScheduleServer(s.schedSvc),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -411,14 +455,6 @@ func (s *svr) Start() error {
 		}
 	}
 
-	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
-	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return errors.Wrap(err, "server side file system")
-	}
-	ssfs.SetDefault(serverFs)
-
-	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
@@ -547,14 +583,18 @@ func (s *svr) Stop() {
 	if s.grpcd != nil {
 		s.grpcd.Stop()
 	}
-
+	if s.schedSvc != nil {
+		s.schedSvc.Stop()
+	}
+	if s.bridgeSvc != nil {
+		s.bridgeSvc.Stop()
+	}
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 	}
 	mach.Finalize()
-
 	s.log.Infof("shutdown.")
 }
 

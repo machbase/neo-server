@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	spi "github.com/machbase/neo-spi"
 	"google.golang.org/grpc/stats"
@@ -45,6 +46,9 @@ type rowsWrap struct {
 	id      string
 	rows    spi.Rows
 	release func()
+
+	enlistInfo string
+	enlistTime time.Time
 }
 
 const contextCtxKey = "machrpc-client-context"

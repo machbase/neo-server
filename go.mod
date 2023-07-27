@@ -17,6 +17,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gliderlabs/ssh v0.3.5
 	github.com/go-echarts/go-echarts/v2 v2.2.6
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
@@ -24,9 +25,11 @@ require (
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
-	github.com/machbase/neo-engine v1.1.0
-	github.com/machbase/neo-grpc v1.0.0
+	github.com/lib/pq v1.10.9
+	github.com/machbase/neo-engine v1.1.1
+	github.com/machbase/neo-grpc v1.0.1
 	github.com/machbase/neo-spi v1.4.0
+	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0

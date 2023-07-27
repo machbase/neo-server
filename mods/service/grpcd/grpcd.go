@@ -8,8 +8,10 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/schedule"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	spi "github.com/machbase/neo-spi"
@@ -78,8 +80,27 @@ func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	}
 }
 
+// bridge implements
+func OptionBridgeServer(handler any) Option {
+	return func(s *grpcd) {
+		if o, ok := handler.(bridge.ManagementServer); ok {
+			s.bridgeMgmtImpl = o
+		}
+		if o, ok := handler.(bridge.RuntimeServer); ok {
+			s.bridgeRuntimeImpl = o
+		}
+	}
+}
+
+// schedule
+func OptionScheduleServer(handler schedule.ManagementServer) Option {
+	return func(s *grpcd) {
+		s.schedMgmtImpl = handler
+	}
+}
+
 type grpcd struct {
-	machrpc.MachbaseServer
+	machrpc.UnimplementedMachbaseServer
 
 	log logging.Log
 	db  spi.Database
@@ -90,7 +111,10 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
-	mgmtImpl mgmt.ManagementServer
+	mgmtImpl          mgmt.ManagementServer
+	bridgeMgmtImpl    bridge.ManagementServer
+	bridgeRuntimeImpl bridge.RuntimeServer
+	schedMgmtImpl     schedule.ManagementServer
 
 	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
@@ -123,7 +147,7 @@ func (svr *grpcd) Start() error {
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
 
-	// rpcServer is serving only db service
+	// rpcServer is serving the db service
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
 
 	// mgmtServer is serving general db service + mgmt service
@@ -134,7 +158,26 @@ func (svr *grpcd) Start() error {
 		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
 	}
 
-	//listeners
+	// mgmtServer serves bridge management service
+	if svr.bridgeMgmtImpl != nil {
+		bridge.RegisterManagementServer(svr.mgmtServer, svr.bridgeMgmtImpl)
+		bridge.RegisterManagementServer(svr.mgmtServerInsecure, svr.bridgeMgmtImpl)
+	}
+
+	// rpcServer can serve bridge runtime service
+	if svr.bridgeRuntimeImpl != nil {
+		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServerInsecure, svr.bridgeRuntimeImpl)
+	}
+
+	// schedServer management service
+	if svr.schedMgmtImpl != nil {
+		schedule.RegisterManagementServer(svr.mgmtServer, svr.schedMgmtImpl)
+		schedule.RegisterManagementServer(svr.mgmtServerInsecure, svr.schedMgmtImpl)
+	}
+
+	// listeners
 	for _, listen := range svr.listenAddresses {
 		if runtime.GOOS == "windows" && strings.HasPrefix(listen, "unix://") {
 			// s.log.Debugf("gRPC unable %s on Windows", listen)

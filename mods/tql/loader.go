@@ -23,7 +23,6 @@ type loader struct {
 
 func NewLoader(dirs []string) Loader {
 	abs := []string{}
-
 	for _, d := range dirs {
 		ap, err := filepath.Abs(d)
 		if err != nil {
