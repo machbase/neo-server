@@ -18,7 +18,7 @@ func tengof_bridge(ctx *context.Context) func(args ...tengo.Object) (tengo.Objec
 			}
 		}
 		if len(cname) == 0 {
-			return nil, tengo.ErrInvalidArgumentType{Name: "connector name", Expected: "string"}
+			return nil, tengo.ErrInvalidArgumentType{Name: "bridge name", Expected: "string"}
 		}
 		br, err := bridge.GetBridge(cname)
 		if err != nil {
@@ -30,8 +30,71 @@ func tengof_bridge(ctx *context.Context) func(args ...tengo.Object) (tengo.Objec
 				return nil, err
 			}
 			return &sqlBridge{ctx: ctx, conn: conn, name: cname}, nil
+		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
+			return &pubBridge{
+				ctx:       ctx,
+				name:      cname,
+				publisher: mqttC,
+			}, nil
 		}
 		return nil, nil
+	}
+}
+
+type Publisher interface {
+	Publish(topic string, payload any) (bool, error)
+}
+
+type pubBridge struct {
+	tengo.ObjectImpl
+	ctx       *context.Context
+	name      string
+	publisher Publisher
+}
+
+func (c *pubBridge) TypeName() string {
+	return "bridge:publisher"
+}
+
+func (c *pubBridge) String() string {
+	return "bridge:publisher:" + c.name
+}
+
+func (c *pubBridge) Copy() tengo.Object {
+	return &pubBridge{ctx: c.ctx, name: c.name, publisher: c.publisher}
+}
+
+func (c *pubBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
+	if o, ok := index.(*tengo.String); ok {
+		switch o.Value {
+		case "publish":
+			return &tengo.UserFunction{
+				Name: "publish", Value: pubBridge_publish(c),
+			}, nil
+		default:
+			return nil, tengo.ErrInvalidIndexOnError
+		}
+	} else {
+		return nil, nil
+	}
+}
+
+func pubBridge_publish(c *pubBridge) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		if len(args) != 2 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		topic, err := tengoObjectToString(args[0])
+		if err != nil {
+			return nil, tengo.ErrInvalidArgumentType{Name: "topic", Expected: "string", Found: args[0].TypeName()}
+		}
+		payload := tengoObjectToAny(args[1])
+
+		ok, err := c.publisher.Publish(topic, payload)
+		if err != nil {
+			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
+		}
+		return tengo.FromInterface(ok)
 	}
 }
 
