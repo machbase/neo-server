@@ -7,6 +7,34 @@ import (
 	"strings"
 )
 
+type ShellType string
+
+const (
+	SHELL_TERM = "term"
+)
+
+const (
+	SHELLID_SQL   = "SQL"
+	SHELLID_TQL   = "TQL"
+	SHELLID_WRK   = "WRK"
+	SHELLID_TAZ   = "TAZ"
+	SHELLID_SHELL = "SHELL"
+)
+
+var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
+	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
+	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
+
+var reservedWebShellDef = map[string]*ShellDefinition{
+	SHELLID_SQL: {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: SHELLID_SQL},
+	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: SHELLID_TQL},
+	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
+	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
+	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
+		Attributes: &ShellAttributes{Cloneable: true},
+	},
+}
+
 type ShellDefinition struct {
 	Id         string           `json:"id"`
 	Type       string           `json:"type"`
@@ -35,11 +63,12 @@ func (def *ShellDefinition) Clone() *ShellDefinition {
 }
 
 type ShellProvider interface {
-	GetAllWebShells() []*ShellDefinition
-	GetWebShell(id string) (*ShellDefinition, error)
-	CopyWebShell(id string) (*ShellDefinition, error)
-	RemoveWebShell(id string) error
-	UpdateWebShell(s *ShellDefinition) error
+	SetDefaultShellCommand(cmd string)
+	GetAllShells(includeWebShells bool) []*ShellDefinition
+	GetShell(id string, includeWebShells bool) (found *ShellDefinition, err error)
+	CopyShell(id string) (*ShellDefinition, error)
+	SaveShell(def *ShellDefinition) error
+	RemoveShell(id string) error
 }
 
 type ShellAttributes struct {

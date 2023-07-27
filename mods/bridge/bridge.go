@@ -1,22 +1,19 @@
 package bridge
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-
 	bridgerpc "github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
-func NewService(defDir string) Service {
+func NewService(opts ...Option) Service {
 	s := &svr{
-		log:     logging.GetLog("bridge"),
-		confDir: defDir,
-		ctxMap:  cmap.New(),
+		log:    logging.GetLog("bridge"),
+		ctxMap: cmap.New(),
+	}
+	for _, o := range opts {
+		o(s)
 	}
 	return s
 }
@@ -29,88 +26,39 @@ type Service interface {
 	Stop()
 }
 
+type Option func(*svr)
+
+func WithProvider(provider model.BridgeProvider) Option {
+	return func(s *svr) {
+		s.models = provider
+	}
+}
+
 type svr struct {
 	Service
 
-	log     logging.Log
-	confDir string
-	ctxMap  cmap.ConcurrentMap
+	log    logging.Log
+	ctxMap cmap.ConcurrentMap
+
+	models model.BridgeProvider
 }
 
 func (s *svr) Start() error {
-	s.iterateConfigs(func(define *Define) bool {
+	lst, err := s.models.LoadAllBridges()
+	if err != nil {
+		return err
+	}
+	for _, define := range lst {
 		if err := Register(define); err == nil {
 			s.log.Infof("add bridge %s type=%s", define.Name, define.Type)
 		} else {
 			s.log.Errorf("fail to add bridge %s type=%s, %s", define.Name, define.Type, err.Error())
 		}
-		return true
-	})
+	}
 	return nil
 }
 
 func (s *svr) Stop() {
 	UnregisterAll()
 	s.log.Info("closed.")
-}
-
-func (s *svr) iterateConfigs(cb func(define *Define) bool) error {
-	if cb == nil {
-		return nil
-	}
-	entries, err := os.ReadDir(s.confDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(filepath.Join(s.confDir, entry.Name()))
-		if err != nil {
-			s.log.Warnf("bridge def file", err.Error())
-			continue
-		}
-		def := &Define{}
-		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("bridge def format", err.Error())
-			continue
-		}
-		flag := cb(def)
-		if !flag {
-			break
-		}
-	}
-	return nil
-}
-
-func (s *svr) loadConfig(name string) (*Define, error) {
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
-	content, err := os.ReadFile(path)
-	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
-		return nil, err
-	}
-	def := &Define{}
-	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warnf("bridge def format", err.Error())
-		return nil, err
-	}
-	return def, nil
-}
-
-func (s *svr) saveConfig(def *Define) error {
-	buf, err := json.MarshalIndent(def, "", "\t")
-	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
-		return err
-	}
-
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", def.Name))
-	return os.WriteFile(path, buf, 00600)
-}
-
-func (s *svr) removeConfig(name string) error {
-	path := filepath.Join(s.confDir, fmt.Sprintf("%s.json", name))
-	return os.Remove(path)
 }

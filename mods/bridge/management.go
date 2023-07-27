@@ -5,6 +5,7 @@ import (
 	"time"
 
 	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridgerpc.ListBridgeResponse, error) {
@@ -13,20 +14,20 @@ func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridge
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	err := s.iterateConfigs(func(define *Define) bool {
-		rsp.Bridges = append(rsp.Bridges, &bridgerpc.Bridge{
-			Name: define.Name,
-			Type: string(define.Type),
-			Path: define.Path,
-		})
-		return true
-	})
-	if err != nil {
+	if lst, err := s.models.LoadAllBridges(); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
+	} else {
+		for _, define := range lst {
+			rsp.Bridges = append(rsp.Bridges, &bridgerpc.Bridge{
+				Name: define.Name,
+				Type: string(define.Type),
+				Path: define.Path,
+			})
+		}
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
 	}
-	rsp.Success, rsp.Reason = true, "success"
-	return rsp, nil
 }
 
 func (s *svr) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*bridgerpc.GetBridgeResponse, error) {
@@ -35,7 +36,7 @@ func (s *svr) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if define, err := s.loadConfig(req.Name); err != nil {
+	if define, err := s.models.LoadBridge(req.Name); err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Bridge = &bridgerpc.Bridge{
@@ -55,7 +56,7 @@ func (s *svr) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	def := &Define{}
+	def := &model.BridgeDefinition{}
 
 	if len(req.Name) > 40 {
 		rsp.Reason = "name is too long, should be shorter than 40 characters"
@@ -64,7 +65,7 @@ func (s *svr) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*
 		def.Name = req.Name
 	}
 
-	if t, err := ParseType(req.Type); err != nil {
+	if t, err := model.ParseBridgeType(req.Type); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	} else {
@@ -83,7 +84,7 @@ func (s *svr) AddBridge(ctx context.Context, req *bridgerpc.AddBridgeRequest) (*
 		return rsp, nil
 	}
 
-	if err := s.saveConfig(def); err != nil {
+	if err := s.models.SaveBridge(def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
@@ -99,7 +100,7 @@ func (s *svr) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if err := s.removeConfig(req.Name); err != nil {
+	if err := s.models.RemoveBridge(req.Name); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}

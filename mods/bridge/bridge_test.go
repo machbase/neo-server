@@ -8,14 +8,15 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSqlite3(t *testing.T) {
 	BRIDGE_NAME := "sqlite"
 
-	define := bridge.Define{
-		Type: bridge.SQLITE,
+	define := model.BridgeDefinition{
+		Type: model.BRIDGE_SQLITE,
 		Name: BRIDGE_NAME,
 		Path: "file:../../tmp/connector_sqlite3.db?cache=shared",
 	}

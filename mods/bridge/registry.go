@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 
@@ -8,27 +10,51 @@ import (
 	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
 	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
+	"github.com/machbase/neo-server/mods/model"
 )
+
+type Bridge interface {
+	Name() string
+	String() string
+
+	BeforeRegister() error
+	AfterUnregister() error
+}
+
+type SqlBridge interface {
+	Bridge
+	Connect(ctx context.Context) (*sql.Conn, error)
+	SupportLastInsertId() bool
+}
+
+type MqttBridge interface {
+	Bridge
+	OnConnect(cb func(bridge any))
+	OnDisconnect(cb func(bridge any))
+	Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error)
+	Unsubscribe(topics ...string) (bool, error)
+	Publish(topic string, payload any) (bool, error)
+}
 
 var registry = map[string]Bridge{}
 var registryLock sync.RWMutex
 
-func Register(def *Define) (err error) {
+func Register(def *model.BridgeDefinition) (err error) {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
 	var br Bridge
 	switch def.Type {
-	case SQLITE:
+	case model.BRIDGE_SQLITE:
 		var b SqlBridge = sqlite3.New(def.Name, def.Path)
 		br = b
-	case POSTGRES:
+	case model.BRIDGE_POSTGRES:
 		var b SqlBridge = postgres.New(def.Name, def.Path)
 		br = b
-	case MYSQL:
+	case model.BRIDGE_MYSQL:
 		var b SqlBridge = mysql.New(def.Name, def.Path)
 		br = b
-	case MQTT:
+	case model.BRIDGE_MQTT:
 		var b MqttBridge = mqtt.New(def.Name, def.Path)
 		br = b
 	default:

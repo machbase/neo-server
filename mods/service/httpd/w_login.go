@@ -310,7 +310,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		options.Recents = svr.recentsProvider()
 	}
 	if svr.webShellProvider != nil {
-		options.Shells = svr.webShellProvider.GetAllWebShells()
+		options.Shells = svr.webShellProvider.GetAllShells(true)
 	}
 	options.Elapse = time.Since(tick).String()
 

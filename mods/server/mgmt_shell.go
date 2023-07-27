@@ -17,17 +17,13 @@ func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShel
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	err := s.IterateShellDefs(func(define *model.ShellDefinition) bool {
+	lst := s.models.ShellProvider().GetAllShells(false)
+	for _, define := range lst {
 		rsp.Shells = append(rsp.Shells, &mgmt.ShellDefinition{
 			Id:      define.Id,
 			Name:    define.Label,
 			Command: define.Command,
 		})
-		return true
-	})
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
 	}
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
@@ -51,7 +47,7 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 	}
 	def.Id = uid.String()
 	def.Label = req.Name
-	def.Type = SHELLTYPE_TERM
+	def.Type = model.SHELL_TERM
 	def.Attributes = &model.ShellAttributes{Removable: true, Cloneable: true, Editable: true}
 
 	if len(strings.TrimSpace(req.Command)) == 0 {
@@ -61,7 +57,7 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 		def.Command = req.Command
 	}
 
-	if err := s.SetShellDef(def); err != nil {
+	if err := s.models.ShellProvider().SaveShell(def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
@@ -76,7 +72,7 @@ func (s *svr) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.De
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if err := s.RemoveShellDef(req.Id); err != nil {
+	if err := s.models.ShellProvider().RemoveShell(req.Id); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to remove %s", req.Id)
 		return rsp, nil
 	}

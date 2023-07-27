@@ -6,6 +6,7 @@ import (
 	"time"
 
 	schedrpc "github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*schedrpc.ListScheduleResponse, error) {
@@ -14,7 +15,12 @@ func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*sch
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	err := s.iterateConfigs(func(define *Define) bool {
+	lst, err := s.models.LoadAllSchedules()
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	for _, define := range lst {
 		sched := &schedrpc.Schedule{
 			Name:      define.Name,
 			Type:      define.Type.String(),
@@ -34,8 +40,7 @@ func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*sch
 			}
 		}
 		rsp.Schedules = append(rsp.Schedules, sched)
-		return true
-	})
+	}
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -50,7 +55,7 @@ func (s *svr) GetSchedule(ctx context.Context, req *schedrpc.GetScheduleRequest)
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if define, err := s.loadConfig(req.Name); err != nil {
+	if define, err := s.models.LoadSchedule(req.Name); err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Schedule = &schedrpc.Schedule{
@@ -79,7 +84,7 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	def := &Define{}
+	def := &model.ScheduleDefinition{}
 	if len(req.Name) > 40 {
 		rsp.Reason = "name is too long, should be shorter than 40 characters"
 		return rsp, nil
@@ -93,13 +98,13 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 	def.Schedule = req.Schedule
 	def.Task = req.Task
 	def.Topic = req.Topic
-	def.Type = ParseType(req.Type)
+	def.Type = model.ParseScheduleType(req.Type)
 
 	switch def.Type {
-	case UNDEFINED:
+	case model.SCHEDULE_UNDEFINED:
 		rsp.Reason = fmt.Sprintf("schedule type '%s' is undefined", req.Type)
 		return rsp, nil
-	case TIMER:
+	case model.SCHEDULE_TIMER:
 		if def.Schedule == "" {
 			rsp.Reason = "schedule of timer type should be spcified with timer spec"
 			return rsp, nil
@@ -108,7 +113,7 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 			rsp.Reason = "destination task (tql path) is not specified"
 			return rsp, nil
 		}
-	case LISTENER:
+	case model.SCHEDULE_LISTENER:
 		if def.Bridge == "" || def.Topic == "" {
 			rsp.Reason = "schedule of listener type should be specified with bridge and topic"
 			return rsp, nil
@@ -118,7 +123,7 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 			return rsp, nil
 		}
 	}
-	if err := s.saveConfig(def); err != nil {
+	if err := s.models.SaveSchedule(def); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
@@ -139,7 +144,7 @@ func (s *svr) DelSchedule(ctx context.Context, req *schedrpc.DelScheduleRequest)
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if err := s.removeConfig(req.Name); err != nil {
+	if err := s.models.RemoveSchedule(req.Name); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}

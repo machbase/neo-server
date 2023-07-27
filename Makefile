@@ -20,7 +20,7 @@ test:
 	@make -f Makefile test-base
 
 test-base: tmpdir
-	@go test $(ARGS) \
+	@go test $(ARGS) -cover \
 		./booter \
 		./mods/util \
 		./mods/util/glob \
@@ -45,12 +45,7 @@ test-base: tmpdir
 		./test
 
 test-all:
-ifeq ($(uname_s),Linux)
-	make -f Makefile ARGS="-cover -v -count 1" test-base
-endif
-ifeq ($(uname_s),Darwin)
-	make -f Makefile ARGS="-cover -v -count 1" test-base
-endif
+	make -f Makefile ARGS="-v -count 1" test-base
 
 package:
 	@make -f Makefile package-machbase-neo

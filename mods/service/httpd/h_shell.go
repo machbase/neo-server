@@ -8,7 +8,7 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 )
 
-// GET /api/shell/:id  - make a copy of the id
+// GET /api/shell/:id  - get the id
 func (svr *httpd) handleGetShell(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
@@ -19,7 +19,7 @@ func (svr *httpd) handleGetShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	shell, err := svr.webShellProvider.GetWebShell(shellId)
+	shell, err := svr.webShellProvider.GetShell(shellId, false)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -51,7 +51,7 @@ func (svr *httpd) handleGetShellCopy(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	shell, err := svr.webShellProvider.CopyWebShell(shellId)
+	shell, err := svr.webShellProvider.CopyShell(shellId)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
@@ -93,7 +93,7 @@ func (svr *httpd) handlePostShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	if err := svr.webShellProvider.UpdateWebShell(shell); err != nil {
+	if err := svr.webShellProvider.SaveShell(shell); err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		svr.log.Debug("update shell def, internal err", err.Error())
@@ -119,7 +119,7 @@ func (svr *httpd) handleDeleteShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	err := svr.webShellProvider.RemoveWebShell(shellId)
+	err := svr.webShellProvider.RemoveShell(shellId)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
