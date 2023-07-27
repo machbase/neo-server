@@ -29,6 +29,7 @@ func tengof_bridge(ctx *context.Context) func(args ...tengo.Object) (tengo.Objec
 			if err != nil {
 				return nil, err
 			}
+			ctx.LazyClose(conn)
 			return &sqlBridge{ctx: ctx, conn: conn, name: cname}, nil
 		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
 			return &pubBridge{
@@ -139,6 +140,7 @@ func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 					if c.conn == nil {
 						return nil, nil
 					}
+					defer c.ctx.CancelClose(c.conn)
 					if err := c.conn.Close(); err != nil {
 						return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 					}
@@ -185,6 +187,7 @@ func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, err
 		if err != nil {
 			return nil, errors.Wrap(err, "query failed")
 		}
+		c.ctx.LazyClose(rows)
 		return &sqlRows{ctx: c.ctx, rows: rows}, nil
 	}
 }
@@ -324,6 +327,7 @@ func (c *sqlRows) IndexGet(index tengo.Object) (tengo.Object, error) {
 		return &tengo.UserFunction{Name: "close", Value: func(args ...tengo.Object) (tengo.Object, error) {
 			// fmt.Println("rows.close()")
 			err := c.rows.Close()
+			defer c.ctx.CancelClose(c.rows)
 			return nil, err
 		}}, nil
 	default:

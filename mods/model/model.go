@@ -176,15 +176,12 @@ func (s *svr) SetDefaultShellCommand(cmd string) {
 	reservedWebShellDef[SHELLID_SHELL].Command = cmd
 }
 
-func (s *svr) GetShell(id string, includeWebShells bool) (*ShellDefinition, error) {
+func (s *svr) GetShell(id string) (*ShellDefinition, error) {
 	id = strings.ToUpper(id)
-	if includeWebShells {
-		ret := reservedWebShellDef[id]
-		if ret != nil {
-			return ret, nil
-		}
+	ret := reservedWebShellDef[id]
+	if ret != nil {
+		return ret, nil
 	}
-	var ret *ShellDefinition
 	s.iterateShellDefs(func(sd *ShellDefinition) bool {
 		if strings.ToUpper(sd.Id) == id {
 			ret = sd
@@ -224,7 +221,7 @@ func (s *svr) CopyShell(id string) (*ShellDefinition, error) {
 			ret.Command = fmt.Sprintf(`"%s" shell`, exename)
 		}
 	} else {
-		d, err := s.GetShell(id, true)
+		d, err := s.GetShell(id)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +370,7 @@ func (s *svr) iterateBridgeDefs(cb func(*BridgeDefinition) bool) error {
 	if cb == nil {
 		return nil
 	}
-	entries, err := os.ReadDir(s.shellDir)
+	entries, err := os.ReadDir(s.bridgeDir)
 	if err != nil {
 		return err
 	}
@@ -381,7 +378,7 @@ func (s *svr) iterateBridgeDefs(cb func(*BridgeDefinition) bool) error {
 		if !strings.HasSuffix(entry.Name(), ".json") || entry.IsDir() {
 			continue
 		}
-		content, err := os.ReadFile(filepath.Join(s.shellDir, entry.Name()))
+		content, err := os.ReadFile(filepath.Join(s.bridgeDir, entry.Name()))
 		if err != nil {
 			s.log.Warnf("bridge def file", err.Error())
 			continue

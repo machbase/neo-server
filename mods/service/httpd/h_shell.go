@@ -19,7 +19,7 @@ func (svr *httpd) handleGetShell(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	shell, err := svr.webShellProvider.GetShell(shellId, false)
+	shell, err := svr.webShellProvider.GetShell(shellId)
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()

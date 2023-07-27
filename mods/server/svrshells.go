@@ -49,7 +49,7 @@ func (s *svr) initShellProvider() {
 // sshd shell provider
 func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
 	shellId = strings.ToUpper(shellId)
-	shellDef, _ := s.models.ShellProvider().GetShell(shellId, false)
+	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
 	if shellDef == nil {
 		return nil
 	}

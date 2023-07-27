@@ -65,7 +65,7 @@ func (def *ShellDefinition) Clone() *ShellDefinition {
 type ShellProvider interface {
 	SetDefaultShellCommand(cmd string)
 	GetAllShells(includeWebShells bool) []*ShellDefinition
-	GetShell(id string, includeWebShells bool) (found *ShellDefinition, err error)
+	GetShell(id string) (found *ShellDefinition, err error)
 	CopyShell(id string) (*ShellDefinition, error)
 	SaveShell(def *ShellDefinition) error
 	RemoveShell(id string) error

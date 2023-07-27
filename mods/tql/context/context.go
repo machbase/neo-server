@@ -23,6 +23,12 @@ type Context struct {
 	Debug  bool
 
 	closeWg sync.WaitGroup
+	closers []Closer
+	mutex   sync.Mutex
+}
+
+type Closer interface {
+	Close() error
 }
 
 func (ctx *Context) Get(name string) (any, bool) {
@@ -146,4 +152,31 @@ func (ctx *Context) Stop() {
 		ctx.closeWg.Wait()
 		close(ctx.Src)
 	}
+	for i := len(ctx.closers) - 1; i >= 0; i-- {
+		c := ctx.closers[i]
+		if err := c.Close(); err != nil {
+			fmt.Println("ERR context closer", err.Error())
+		}
+	}
+}
+
+func (ctx *Context) LazyClose(c Closer) {
+	ctx.mutex.Lock()
+	ctx.closers = append(ctx.closers, c)
+	ctx.mutex.Unlock()
+}
+
+func (ctx *Context) CancelClose(c Closer) {
+	ctx.mutex.Lock()
+	idx := -1
+	for i, cl := range ctx.closers {
+		if c == cl {
+			idx = i
+			break
+		}
+	}
+	if idx >= 0 {
+		ctx.closers = append(ctx.closers[:idx], ctx.closers[idx+1:]...)
+	}
+	ctx.mutex.Unlock()
 }
