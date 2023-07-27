@@ -3,6 +3,8 @@
 
 package sqlite3
 
+import "errors"
+
 type bridge struct {
 }
 
@@ -17,8 +19,8 @@ func (br *bridge) String() string {
 	return ""
 }
 func (br *bridge) BeforeRegister() error {
-	return errors.New("unimplmeneted")
+	return errors.New("not supported")
 }
 func (br *bridge) AfterUnregister() error {
-	return errors.New("unimplmeneted")
+	return errors.New("not supported")
 }
