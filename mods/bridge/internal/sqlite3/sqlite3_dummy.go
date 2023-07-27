@@ -3,7 +3,11 @@
 
 package sqlite3
 
-import "errors"
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
 
 type bridge struct {
 }
