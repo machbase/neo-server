@@ -42,8 +42,7 @@ func Register(def *Define) (err error) {
 		registry[def.Name] = br
 		return nil
 	} else {
-		// never happen, for now.
-		return nil
+		return fmt.Errorf("unsupported bridge type %s", def.Type)
 	}
 }
 

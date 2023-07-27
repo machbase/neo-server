@@ -1,3 +1,6 @@
+//go:build !linux || !arm
+// +build !linux !arm
+
 package sqlite3
 
 import (
