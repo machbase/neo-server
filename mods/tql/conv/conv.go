@@ -82,6 +82,27 @@ func Int(args []any, idx int, fname string, expect string) (int, error) {
 	}
 }
 
+func Int64(args []any, idx int, fname string, expect string) (int64, error) {
+	if idx >= len(args) {
+		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
+	switch v := raw.(type) {
+	case float64:
+		return int64(v), nil
+	case *float64:
+		return int64(*v), nil
+	case string:
+		if fv, err := strconv.ParseInt(v, 10, 64); err != nil {
+			return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+		} else {
+			return fv, nil
+		}
+	default:
+		return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
 func Float64(args []any, idx int, fname string, expect string) (float64, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))

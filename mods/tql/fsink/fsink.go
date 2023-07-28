@@ -205,6 +205,9 @@ func init() {
 	for k, v := range fcom.Functions {
 		functions[k] = v
 	}
+	for k, v := range fcom.GenFunctions {
+		functions[k] = v
+	}
 }
 
 func Functions() []string {

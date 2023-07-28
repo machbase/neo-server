@@ -111,24 +111,3 @@ func roundTime(args ...any) (any, error) {
 	}
 	return ret, nil
 }
-
-// `round(number, number)`
-func round(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(round) invalid args 'round(int, int)', (n:%d)", len(args))
-	}
-	var num int64
-	var mod int64
-	if d, ok := args[0].(float64); ok {
-		num = int64(d)
-	} else {
-		return nil, fmt.Errorf("f(round) arg should be non-zero int")
-	}
-	if d, ok := args[1].(float64); ok {
-		mod = int64(d)
-	} else {
-		return nil, fmt.Errorf("f(round) arg should be non-zero int")
-	}
-
-	return float64((num / mod) * mod), nil
-}

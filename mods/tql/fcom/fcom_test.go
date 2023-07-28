@@ -175,11 +175,11 @@ func TestRoundTime(t *testing.T) {
 }
 
 func TestRound(t *testing.T) {
-	TestCase{f: round,
+	TestCase{f: gen_round,
 		args:      []any{},
-		expectErr: "f(round) invalid args 'round(int, int)', (n:0)",
+		expectErr: "f(round) invalid number of args; expect:2, actual:0",
 	}.run(t)
-	TestCase{f: round,
+	TestCase{f: gen_round,
 		args:   []any{123.4567, 2.0},
 		expect: float64(122),
 	}.run(t)

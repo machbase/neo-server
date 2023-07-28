@@ -98,6 +98,9 @@ release-%:
 	./scripts/package.sh $* darwin amd64 $(nextver)
 	./scripts/package.sh $* windows amd64 $(nextver)
 
+generate:
+	@go generate ./...
+
 ## Require https://github.com/matryer/moq
 regen-mock:
 	moq -out ./mods/util/mock/database.go -pkg mock ../neo-spi Database
