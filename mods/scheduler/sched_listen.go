@@ -10,6 +10,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 type ListenerEntry struct {
@@ -28,7 +29,7 @@ type ListenerEntry struct {
 
 var _ Entry = &ListenerEntry{}
 
-func NewListenerEntry(s *svr, def *Define) (*ListenerEntry, error) {
+func NewListenerEntry(s *svr, def *model.ScheduleDefinition) (*ListenerEntry, error) {
 	ret := &ListenerEntry{
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,

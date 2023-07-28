@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/robfig/cron/v3"
 )
 
@@ -22,7 +23,7 @@ type TimerEntry struct {
 
 var _ Entry = &TimerEntry{}
 
-func NewTimerEntry(s *svr, def *Define) (*TimerEntry, error) {
+func NewTimerEntry(s *svr, def *model.ScheduleDefinition) (*TimerEntry, error) {
 	ret := &TimerEntry{
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,

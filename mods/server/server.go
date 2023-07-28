@@ -28,6 +28,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
@@ -158,9 +159,10 @@ type svr struct {
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
-	shellDefsDir      string
 	licenseFilePath   string
 	licenseFileTime   time.Time
+
+	models model.Service
 
 	cachedServerPrivateKey crypto.PrivateKey
 
@@ -248,24 +250,14 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "authorized keys")
 	}
 
-	s.shellDefsDir = filepath.Join(prefpath, "shell")
-	if err := mkDirIfNotExistsMode(s.shellDefsDir, 0700); err != nil {
-		return errors.Wrap(err, "shell definitions")
-	}
-
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
 	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
 		s.licenseFileTime = stat.ModTime()
 	}
 
-	bridgeConfDir := filepath.Join(prefpath, "bridges")
-	if err := mkDirIfNotExists(bridgeConfDir); err != nil {
-		return errors.Wrap(err, "bridge defs")
-	}
-
-	schedConfDir := filepath.Join(prefpath, "schedules")
-	if err := mkDirIfNotExists(schedConfDir); err != nil {
-		return errors.Wrap(err, "schedule defs")
+	s.models = model.NewService(model.WithConfigDirPath(prefpath))
+	if err := s.models.Start(); err != nil {
+		return err
 	}
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
@@ -414,11 +406,13 @@ func (s *svr) Start() error {
 
 	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 
-	s.bridgeSvc = bridge.NewService(bridgeConfDir)
+	s.bridgeSvc = bridge.NewService(
+		bridge.WithProvider(s.models.BridgeProvider()),
+	)
 
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
-		scheduler.WithConfigDirPath(schedConfDir),
+		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tqlLoader),
 		scheduler.WithDatabase(s.db),
 	)
@@ -468,7 +462,7 @@ func (s *svr) Start() error {
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionRecentsProvider(s.WebRecents),
 			httpd.OptionReferenceProvider(s.WebReferences),
-			httpd.OptionWebShellProvider(s),
+			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -588,6 +582,9 @@ func (s *svr) Stop() {
 	}
 	if s.bridgeSvc != nil {
 		s.bridgeSvc.Stop()
+	}
+	if s.models != nil {
+		s.models.Stop()
 	}
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Shutdown(); err != nil {

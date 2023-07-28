@@ -240,10 +240,11 @@ func (c *bridge) Unsubscribe(topics ...string) (bool, error) {
 	return success, nil
 }
 
-func (c *bridge) Publish(topic string, qos byte, payload []byte) (bool, error) {
+func (c *bridge) Publish(topic string, payload any) (bool, error) {
 	if c.client == nil || !c.client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}
+	var qos byte = 1
 	token := c.client.Publish(topic, qos, false, payload)
 	success := token.WaitTimeout(c.publishTimeout)
 	return success, nil

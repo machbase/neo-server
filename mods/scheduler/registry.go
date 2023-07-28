@@ -4,21 +4,9 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	"github.com/machbase/neo-server/mods/model"
 )
-
-type Define struct {
-	Name      string `json:"-"`
-	Type      Type   `json:"type"`
-	AutoStart bool   `json:"autoStart"`
-	Task      string `json:"task"`
-
-	// periodic task
-	Schedule string `json:"schedule,omitempty"`
-	// listener task
-	Bridge string `json:"bridge,omitempty"`
-	Topic  string `json:"topic,omitempty"`
-	QoS    int    `json:"qos,omitempty"`
-}
 
 type State int
 
@@ -45,36 +33,6 @@ func (st State) String() string {
 		return "STARTING"
 	case RUNNING:
 		return "RUNNING"
-	}
-}
-
-type Type string
-
-const (
-	UNDEFINED Type = ""
-	TIMER     Type = "timer"
-	LISTENER  Type = "listener"
-)
-
-func (typ Type) String() string {
-	switch typ {
-	default:
-		return "UNDEFINED"
-	case TIMER:
-		return "TIMER"
-	case LISTENER:
-		return "LISTENER"
-	}
-}
-
-func ParseType(typ string) Type {
-	switch strings.ToUpper(typ) {
-	default:
-		return UNDEFINED
-	case "TIMER":
-		return TIMER
-	case "LISTENER":
-		return LISTENER
 	}
 }
 
@@ -121,16 +79,16 @@ func (e *BaseEntry) Error() error {
 var registry = map[string]Entry{}
 var registryLock sync.RWMutex
 
-func Register(s *svr, def *Define) error {
+func Register(s *svr, def *model.ScheduleDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
 	var ent Entry
 	var err error
 	switch def.Type {
-	case TIMER:
+	case model.SCHEDULE_TIMER:
 		ent, err = NewTimerEntry(s, def)
-	case LISTENER:
+	case model.SCHEDULE_LISTENER:
 		ent, err = NewListenerEntry(s, def)
 	default:
 		err = errors.New("undefined schedule type")
