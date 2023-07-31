@@ -110,7 +110,7 @@ func main() {
 						Signature:  fmt.Sprintf("%s", strings.Join(params, ", ")),
 						ParamNames: paramNames,
 						ParamTypes: paramTypes,
-						Sources:    []string{"mods/codec/" + fileSet.Position(function.Pos()).String()},
+						Sources:    []string{"mods/codec/" + strings.TrimPrefix(fileSet.Position(function.Pos()).String(), "../")},
 					}
 					if prev, exists := resultSets[setx.Name]; exists {
 						if strings.Join(prev.ParamTypes, ",") != strings.Join(setx.ParamTypes, ",") {
@@ -245,6 +245,7 @@ func writeFunction(w io.Writer, def *SetX) {
 	lines := []string{
 		fmt.Sprintf(`// %s`, def.Name),
 	}
+	sort.Slice(def.Sources, func(i, j int) bool { return def.Sources[i] < def.Sources[j] })
 	for _, src := range def.Sources {
 		lines = append(lines, fmt.Sprintf(`//   %s`, src))
 	}
