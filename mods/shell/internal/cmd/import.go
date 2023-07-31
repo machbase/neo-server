@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -155,13 +156,13 @@ func doImport(ctx *client.ActionContext) {
 
 	cols := desc.Columns.Columns()
 	decoder := codec.NewDecoder(cmd.InputFormat,
-		codec.InputStream(in),
-		codec.Timeformat(cmd.Timeformat),
-		codec.TimeLocation(cmd.TimeLocation),
-		codec.Table(cmd.Table),
-		codec.Columns(cols.Names(), cols.Types()),
-		codec.Delimiter(cmd.Delimiter),
-		codec.Heading(cmd.HasHeader),
+		opts.InputStream(in),
+		opts.Timeformat(cmd.Timeformat),
+		opts.TimeLocation(cmd.TimeLocation),
+		opts.Table(cmd.Table),
+		opts.Columns(cols.Names(), cols.Types()),
+		opts.Delimiter(cmd.Delimiter),
+		opts.Heading(cmd.HasHeader),
 	)
 
 	capture := ctx.NewCaptureUserInterrupt("")

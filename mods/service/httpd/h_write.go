@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
@@ -87,25 +88,25 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
-	codecOpts := []codec.Option{
-		codec.InputStream(in),
-		codec.Table(tableName),
-		codec.Columns(desc.Columns.Columns().Names(), desc.Columns.Columns().Types()),
-		codec.Timeformat(timeformat),
-		codec.TimeLocation(timeLocation),
-		codec.Delimiter(delimiter),
-		codec.Heading(heading),
+	codecOpts := []opts.Option{
+		opts.InputStream(in),
+		opts.Table(tableName),
+		opts.Columns(desc.Columns.Columns().Names(), desc.Columns.Columns().Types()),
+		opts.Timeformat(timeformat),
+		opts.TimeLocation(timeLocation),
+		opts.Delimiter(delimiter),
+		opts.Heading(heading),
 	}
 
 	if len(trans) > 0 {
-		opts := []transcoder.Option{}
+		transcoderOpts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
-			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
-		opts = append(opts, transcoder.OptionPname("http"))
-		trans := transcoder.New(trans, opts...)
+		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("http"))
+		trans := transcoder.New(trans, transcoderOpts...)
 
-		codecOpts = append(codecOpts, codec.Transcoder(trans))
+		codecOpts = append(codecOpts, opts.Transcoder(trans))
 	}
 	decoder := codec.NewDecoder(format, codecOpts...)
 

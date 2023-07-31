@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
@@ -90,16 +91,16 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	}
 
 	encoder := codec.NewEncoder(req.Format,
-		codec.OutputStream(output),
-		codec.Timeformat(req.Timeformat),
-		codec.Precision(req.Precision),
-		codec.Rownum(req.Rownum),
-		codec.Heading(req.Heading),
-		codec.TimeLocation(timeLocation),
-		codec.Delimiter(","),
-		codec.BoxStyle("default"),
-		codec.BoxSeparateColumns(true),
-		codec.BoxDrawBorder(true),
+		opts.OutputStream(output),
+		opts.Timeformat(req.Timeformat),
+		opts.Precision(req.Precision),
+		opts.Rownum(req.Rownum),
+		opts.Heading(req.Heading),
+		opts.TimeLocation(timeLocation),
+		opts.Delimiter(","),
+		opts.BoxStyle("default"),
+		opts.BoxSeparateColumns(true),
+		opts.BoxDrawBorder(true),
 	)
 
 	queryCtx := &do.QueryContext{

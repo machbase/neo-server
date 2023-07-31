@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -78,7 +79,7 @@ func Compile(code string, params map[string][]string, writer io.Writer, toJsonOu
 	ret := &output{}
 	switch v := result.(type) {
 	case codec.RowsEncoder:
-		if o, ok := v.(codec.CanSetChartJson); ok {
+		if o, ok := v.(opts.CanSetChartJson); ok {
 			o.SetChartJson(toJsonOutput)
 			ret.isChart = true
 		}
@@ -236,9 +237,9 @@ func sinkf_tz(args ...any) (any, error) {
 			if err != nil {
 				return nil, fmt.Errorf("f(tz) %s", err.Error())
 			}
-			return codec.TimeLocation(timeLocation), nil
+			return opts.TimeLocation(timeLocation), nil
 		} else {
-			return codec.TimeLocation(timeLocation), nil
+			return opts.TimeLocation(timeLocation), nil
 		}
 	}
 }
@@ -248,7 +249,7 @@ func sinkf_timeformat(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
 	}
 	if timeformat, ok := args[0].(string); ok {
-		return codec.Timeformat(timeformat), nil
+		return opts.Timeformat(timeformat), nil
 	} else {
 		return nil, fmt.Errorf("f(timeformat) invalid arg `timeformat(string)`")
 	}
@@ -261,7 +262,7 @@ func sinkf_heading(args ...any) (any, error) {
 	if flag, ok := args[0].(bool); !ok {
 		return nil, fmt.Errorf("f(heading) invalid arg `heading(bool)`")
 	} else {
-		return codec.Heading(flag), nil
+		return opts.Heading(flag), nil
 	}
 }
 
@@ -274,7 +275,7 @@ func sinkf_columns(args ...any) (any, error) {
 			cols = append(cols, str)
 		}
 	}
-	return codec.Columns(cols, []string{}), nil
+	return opts.Columns(cols, []string{}), nil
 }
 
 func sinkf_rownum(args ...any) (any, error) {
@@ -284,7 +285,7 @@ func sinkf_rownum(args ...any) (any, error) {
 	if flag, ok := args[0].(bool); !ok {
 		return nil, fmt.Errorf("f(rownum) invalid arg `rownum(bool)`")
 	} else {
-		return codec.Rownum(flag), nil
+		return opts.Rownum(flag), nil
 	}
 }
 
@@ -295,7 +296,7 @@ func sinkf_transpose(args ...any) (any, error) {
 	if flag, err := conv.Bool(args, 0, "transpose", "boolean"); err != nil {
 		return nil, err
 	} else {
-		return codec.Transpose(flag), nil
+		return opts.Transpose(flag), nil
 	}
 }
 
@@ -306,7 +307,7 @@ func sinkf_precision(args ...any) (any, error) {
 	if prec, ok := args[0].(float64); !ok {
 		return nil, fmt.Errorf("f(precision) invalid arg `precision(int)`")
 	} else {
-		return codec.Precision(int(prec)), nil
+		return opts.Precision(int(prec)), nil
 	}
 }
 func sinkf_size(args ...any) (any, error) {
@@ -322,14 +323,14 @@ func sinkf_size(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(size) invalid height, should be string, but '%T'", args[1])
 	}
 
-	return codec.Size(width, height), nil
+	return opts.Size(width, height), nil
 }
 
 func sinkf_assetHost(args ...any) (any, error) {
 	if str, err := conv.String(args, 0, "assetHost", "string"); err != nil {
 		return nil, err
 	} else {
-		return codec.AssetHost(str), nil
+		return opts.AssetHost(str), nil
 	}
 }
 
@@ -341,7 +342,7 @@ func sinkf_title(args ...any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("f(title) invalid title, should be string, but '%T'", args[0])
 	}
-	return codec.Title(str), nil
+	return opts.Title(str), nil
 }
 
 func sinkf_subtitle(args ...any) (any, error) {
@@ -352,7 +353,7 @@ func sinkf_subtitle(args ...any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("f(subtitle) invalid title, should be string, but '%T'", args[0])
 	}
-	return codec.Subtitle(str), nil
+	return opts.Subtitle(str), nil
 }
 
 func sinkf_theme(args ...any) (any, error) {
@@ -363,7 +364,7 @@ func sinkf_theme(args ...any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("f(theme) invalid theme, should be string, but '%T'", args[0])
 	}
-	return codec.Theme(str), nil
+	return opts.Theme(str), nil
 }
 
 // `series('value', 'rms-value')`
@@ -377,7 +378,7 @@ func sinkf_seriesLabels(args ...any) (any, error) {
 		}
 	}
 
-	return codec.Series(labels...), nil
+	return opts.SeriesLabels(labels...), nil
 }
 
 func sinkf_dataZoom(args ...any) (any, error) {
@@ -397,7 +398,7 @@ func sinkf_dataZoom(args ...any) (any, error) {
 	if d, ok := args[2].(float64); ok {
 		end = float32(d)
 	}
-	return codec.DataZoom(typ, start, end), nil
+	return opts.DataZoom(typ, start, end), nil
 }
 
 func sinkf_visualMap(args ...any) (any, error) {
@@ -411,7 +412,7 @@ func sinkf_visualMap(args ...any) (any, error) {
 	if d, ok := args[1].(float64); ok {
 		maxValue = d
 	}
-	return codec.VisualMap(minValue, maxValue), nil
+	return opts.VisualMap(minValue, maxValue), nil
 }
 
 func sinkf_opacity(args ...any) (any, error) {
@@ -422,7 +423,7 @@ func sinkf_opacity(args ...any) (any, error) {
 	if d, ok := args[0].(float64); ok {
 		value = d
 	}
-	return codec.Opacity(value), nil
+	return opts.Opacity(value), nil
 }
 
 func sinkf_autoRotate(args ...any) (any, error) {
@@ -434,7 +435,7 @@ func sinkf_autoRotate(args ...any) (any, error) {
 			speed = d
 		}
 	}
-	return codec.AutoRotate(speed), nil
+	return opts.AutoRotate(speed), nil
 }
 
 func sinkf_showGrid(args ...any) (any, error) {
@@ -443,7 +444,7 @@ func sinkf_showGrid(args ...any) (any, error) {
 		return nil, err
 	}
 	// go-echarts bug? not working
-	return codec.ShowGrid(flag), nil
+	return opts.ShowGrid(flag), nil
 }
 
 func sinkf_gridSize(args ...any) (any, error) {
@@ -455,14 +456,14 @@ func sinkf_gridSize(args ...any) (any, error) {
 			whd = append(whd, gs)
 		}
 	}
-	return codec.GridSize(whd...), nil
+	return opts.GridSize(whd...), nil
 }
 
 func sinkf_lineWidth(args ...any) (any, error) {
 	if w, err := conv.Float64(args, 0, "lineWidth", "number"); err != nil {
 		return nil, err
 	} else {
-		return codec.LineWidth(w), nil
+		return opts.LineWidth(w), nil
 	}
 }
 
@@ -491,7 +492,7 @@ func sinkf_markArea(args ...any) (any, error) {
 			return nil, err
 		}
 	}
-	return codec.MarkAreaNameCoord(coord0, coord1, label, color, opacity), nil
+	return opts.MarkAreaNameCoord(coord0, coord1, label, color, opacity), nil
 }
 
 func sinkf_markXAxis(args ...any) (any, error) {
@@ -505,7 +506,7 @@ func sinkf_markXAxis(args ...any) (any, error) {
 	} else {
 		name = str
 	}
-	return codec.MarkLineXAxisCoord(xAxis, name), nil
+	return opts.MarkLineXAxisCoord(xAxis, name), nil
 }
 
 func sinkf_markYAxis(args ...any) (any, error) {
@@ -519,7 +520,7 @@ func sinkf_markYAxis(args ...any) (any, error) {
 	} else {
 		name = str
 	}
-	return codec.MarkLineYAxisCoord(yAxis, name), nil
+	return opts.MarkLineYAxisCoord(yAxis, name), nil
 }
 
 func availableAxisType(typ string) bool {
@@ -567,7 +568,7 @@ func sinkf_xAxis(args ...any) (any, error) {
 			}
 		}
 	}
-	return codec.XAxis(idx, label, typ), nil
+	return opts.XAxis(idx, label, typ), nil
 }
 
 func sinkf_yaxis(args ...any) (any, error) {
@@ -604,7 +605,7 @@ func sinkf_yAxis(args ...any) (any, error) {
 			}
 		}
 	}
-	return codec.YAxis(idx, label, typ), nil
+	return opts.YAxis(idx, label, typ), nil
 }
 
 func sinkf_zAxis(args ...any) (any, error) {
@@ -636,12 +637,12 @@ func sinkf_zAxis(args ...any) (any, error) {
 			}
 		}
 	}
-	return codec.ZAxis(idx, label, typ), nil
+	return opts.ZAxis(idx, label, typ), nil
 }
 
 type Encoder struct {
 	format string
-	opts   []codec.Option
+	opts   []opts.Option
 }
 
 func newEncoder(format string, args ...any) (*Encoder, error) {
@@ -649,7 +650,7 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		format: format,
 	}
 	for _, arg := range args {
-		if opt, ok := arg.(codec.Option); ok {
+		if opt, ok := arg.(opts.Option); ok {
 			ret.opts = append(ret.opts, opt)
 		}
 	}
@@ -669,7 +670,7 @@ func sinkf_brief(args ...any) (any, error) {
 			}
 		}
 	}
-	return codec.Brief(count), nil
+	return opts.Brief(count), nil
 }
 
 func sinkf_html(args ...any) (any, error) {
@@ -677,7 +678,7 @@ func sinkf_html(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return codec.HtmlRender(flag), nil
+	return opts.HtmlRender(flag), nil
 }
 
 func MARKDOWN(args ...any) (any, error) {
@@ -732,19 +733,19 @@ func OUTPUT(args ...any) (any, error) {
 
 	switch sink := args[1].(type) {
 	case *Encoder:
-		opts := []codec.Option{
-			codec.AssetHost("/web/echarts/"),
-			codec.OutputStream(outstream),
+		codecOpts := []opts.Option{
+			opts.AssetHost("/web/echarts/"),
+			opts.OutputStream(outstream),
 		}
-		opts = append(opts, sink.opts...)
+		codecOpts = append(codecOpts, sink.opts...)
 		for i, arg := range args[2:] {
-			if op, ok := arg.(codec.Option); !ok {
+			if op, ok := arg.(opts.Option); !ok {
 				return nil, fmt.Errorf("f(OUTPUT) invalid option %d %T", i, arg)
 			} else {
-				opts = append(opts, op)
+				codecOpts = append(codecOpts, op)
 			}
 		}
-		ret := codec.NewEncoder(sink.format, opts...)
+		ret := codec.NewEncoder(sink.format, codecOpts...)
 		return ret, nil
 	case dbSink:
 		sink.SetOutputStream(outstream)

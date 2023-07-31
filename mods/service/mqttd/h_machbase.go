@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
@@ -168,24 +169,24 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	codecOpts := []codec.Option{
-		codec.InputStream(instream),
-		codec.Timeformat("ns"),
-		codec.TimeLocation(time.UTC),
-		codec.Table(wp.Table),
-		codec.Columns(cols.Names(), cols.Types()),
-		codec.Delimiter(","),
-		codec.Heading(false),
+	codecOpts := []opts.Option{
+		opts.InputStream(instream),
+		opts.Timeformat("ns"),
+		opts.TimeLocation(time.UTC),
+		opts.Table(wp.Table),
+		opts.Columns(cols.Names(), cols.Types()),
+		opts.Delimiter(","),
+		opts.Heading(false),
 	}
 
 	if len(wp.Transform) > 0 {
-		opts := []transcoder.Option{}
+		transcoderOpts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
-			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
-		opts = append(opts, transcoder.OptionPname("mqtt"))
-		trans := transcoder.New(wp.Transform, opts...)
-		codecOpts = append(codecOpts, codec.Transcoder(trans))
+		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("mqtt"))
+		trans := transcoder.New(wp.Transform, transcoderOpts...)
+		codecOpts = append(codecOpts, opts.Transcoder(trans))
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
