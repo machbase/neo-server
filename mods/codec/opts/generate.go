@@ -32,7 +32,6 @@ var ignores = []string{
 
 func main() {
 	genDefs := false
-	fmt.Println(os.Args)
 	if len(os.Args) == 2 && os.Args[1] == "defs" {
 		genDefs = true
 		for i := range scanDirs {
@@ -52,7 +51,6 @@ func main() {
 			if strings.HasSuffix(pkg.Name, "_test") {
 				continue
 			}
-			fmt.Println("package:", pkg.Name)
 			for _, file := range pkg.Files {
 				fileImports := map[string]*ImportX{}
 				for _, imp := range file.Imports {

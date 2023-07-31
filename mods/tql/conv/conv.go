@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/transcoder"
 )
 
 func ErrInvalidNumOfArgs(name string, expect int, actual int) error {
@@ -31,11 +34,51 @@ func Context(args []any, idx int, fname string) (*context.Context, error) {
 	return nil, ErrWrongTypeOfArgs(fname, idx, "Context", raw)
 }
 
+func InputStream(args []any, idx int, fname string, expect string) (spec.InputStream, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(spec.InputStream); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func OutputStream(args []any, idx int, fname string, expect string) (spec.OutputStream, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(spec.OutputStream); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
 func Any(args []any, idx int, fname string, expect string) (any, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	return args[idx], nil
+}
+
+func TimeLocation(args []any, idx int, fname string, expect string) (*time.Location, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(*time.Location); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func Transcoder(args []any, idx int, fname string, expect string) (transcoder.Transcoder, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(transcoder.Transcoder); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
 func String(args []any, idx int, fname string, expect string) (string, error) {
@@ -97,6 +140,27 @@ func Int64(args []any, idx int, fname string, expect string) (int64, error) {
 			return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
 		} else {
 			return fv, nil
+		}
+	default:
+		return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+	}
+}
+
+func Float32(args []any, idx int, fname string, expect string) (float32, error) {
+	if idx >= len(args) {
+		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	raw := args[idx]
+	switch v := raw.(type) {
+	case float64:
+		return float32(v), nil
+	case *float64:
+		return float32(*v), nil
+	case string:
+		if fv, err := strconv.ParseFloat(v, 32); err != nil {
+			return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
+		} else {
+			return float32(fv), nil
 		}
 	default:
 		return 0, ErrWrongTypeOfArgs(fname, idx, expect, raw)
