@@ -51,12 +51,12 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, typ string) {
+func (ex *Base2D) SetXAxis(idx int, label string, typ ...string) {
 	ex.xAxisIdx = idx
 	ex.xAxisLabel = label
 }
 
-func (ex *Base2D) SetYAxis(idx int, label string, typ string) {
+func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
 	ex.yAxisLabel = label
 }

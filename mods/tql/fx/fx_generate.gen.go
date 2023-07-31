@@ -474,12 +474,9 @@ func gen_delimiter(args ...any) (any, error) {
 //
 // syntax: gridSize(...float64)
 func gen_gridSize(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, conv.ErrInvalidNumOfArgs("gridSize", 1, len(args))
-	}
 	p0 := []float64{}
 	for n := 0; n < len(args); n++ {
-		argv, err := conv.Float64(args, 0, "gridSize", "float64")
+		argv, err := conv.Float64(args, 0, "gridSize", "...float64")
 		if err != nil {
 			return nil, err
 		}
@@ -682,12 +679,9 @@ func gen_rownum(args ...any) (any, error) {
 //
 // syntax: seriesLabels(...string)
 func gen_seriesLabels(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, conv.ErrInvalidNumOfArgs("seriesLabels", 1, len(args))
-	}
 	p0 := []string{}
 	for n := 0; n < len(args); n++ {
-		argv, err := conv.String(args, 0, "seriesLabels", "string")
+		argv, err := conv.String(args, 0, "seriesLabels", "...string")
 		if err != nil {
 			return nil, err
 		}
@@ -872,10 +866,10 @@ func gen_visualMap(args ...any) (any, error) {
 
 // gen_xAxis
 //
-// syntax: xAxis(int, string, string)
+// syntax: xAxis(int, string, ...string)
 func gen_xAxis(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, conv.ErrInvalidNumOfArgs("xAxis", 3, len(args))
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("xAxis", 2, len(args))
 	}
 	p0, err := conv.Int(args, 0, "xAxis", "int")
 	if err != nil {
@@ -885,20 +879,24 @@ func gen_xAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := conv.String(args, 2, "xAxis", "string")
-	if err != nil {
-		return nil, err
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.String(args, 2, "xAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
 	}
-	ret := opts.XAxis(p0, p1, p2)
+	ret := opts.XAxis(p0, p1, p2...)
 	return ret, nil
 }
 
 // gen_yAxis
 //
-// syntax: yAxis(int, string, string)
+// syntax: yAxis(int, string, ...string)
 func gen_yAxis(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, conv.ErrInvalidNumOfArgs("yAxis", 3, len(args))
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("yAxis", 2, len(args))
 	}
 	p0, err := conv.Int(args, 0, "yAxis", "int")
 	if err != nil {
@@ -908,20 +906,24 @@ func gen_yAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := conv.String(args, 2, "yAxis", "string")
-	if err != nil {
-		return nil, err
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.String(args, 2, "yAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
 	}
-	ret := opts.YAxis(p0, p1, p2)
+	ret := opts.YAxis(p0, p1, p2...)
 	return ret, nil
 }
 
 // gen_zAxis
 //
-// syntax: zAxis(int, string, string)
+// syntax: zAxis(int, string, ...string)
 func gen_zAxis(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, conv.ErrInvalidNumOfArgs("zAxis", 3, len(args))
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("zAxis", 2, len(args))
 	}
 	p0, err := conv.Int(args, 0, "zAxis", "int")
 	if err != nil {
@@ -931,10 +933,14 @@ func gen_zAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := conv.String(args, 2, "zAxis", "string")
-	if err != nil {
-		return nil, err
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.String(args, 2, "zAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
 	}
-	ret := opts.ZAxis(p0, p1, p2)
+	ret := opts.ZAxis(p0, p1, p2...)
 	return ret, nil
 }

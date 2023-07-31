@@ -27,7 +27,7 @@ func AssetHost(path string) Option {
 
 // SetAutoRotate
 //
-//	mods/codec/internal/echart/echart_3d.go:77:1
+//	mods/codec/internal/echart/echart_3d.go:83:1
 type CanSetAutoRotate interface {
 	SetAutoRotate(speed float64)
 }
@@ -168,7 +168,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGridSize
 //
-//	mods/codec/internal/echart/echart_3d.go:91:1
+//	mods/codec/internal/echart/echart_3d.go:97:1
 type CanSetGridSize interface {
 	SetGridSize(args ...float64)
 }
@@ -232,7 +232,7 @@ func InputStream(in spec.InputStream) Option {
 
 // SetLineWidth
 //
-//	mods/codec/internal/echart/echart_3d.go:103:1
+//	mods/codec/internal/echart/echart_3d.go:109:1
 type CanSetLineWidth interface {
 	SetLineWidth(width float64)
 }
@@ -292,7 +292,7 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 
 // SetOpacity
 //
-//	mods/codec/internal/echart/echart_3d.go:99:1
+//	mods/codec/internal/echart/echart_3d.go:105:1
 type CanSetOpacity interface {
 	SetOpacity(opacity float64)
 }
@@ -377,7 +377,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetShowGrid
 //
-//	mods/codec/internal/echart/echart_3d.go:87:1
+//	mods/codec/internal/echart/echart_3d.go:93:1
 type CanSetShowGrid interface {
 	SetShowGrid(flag bool)
 }
@@ -538,7 +538,7 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/echart/echart_3d.go:71:1
+//	mods/codec/internal/echart/echart_3d.go:77:1
 type CanSetVisualMap interface {
 	SetVisualMap(minValue float64, maxValue float64)
 }
@@ -556,13 +556,13 @@ func VisualMap(minValue float64, maxValue float64) Option {
 //	mods/codec/internal/echart/echart_2d.go:54:1
 //	mods/codec/internal/echart/echart_3d.go:53:1
 type CanSetXAxis interface {
-	SetXAxis(idx int, label string, typ string)
+	SetXAxis(idx int, label string, typ ...string)
 }
 
-func XAxis(idx int, label string, typ string) Option {
+func XAxis(idx int, label string, typ ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetXAxis); ok {
-			_o.SetXAxis(idx, label, typ)
+			_o.SetXAxis(idx, label, typ...)
 		}
 	}
 }
@@ -570,30 +570,30 @@ func XAxis(idx int, label string, typ string) Option {
 // SetYAxis
 //
 //	mods/codec/internal/echart/echart_2d.go:59:1
-//	mods/codec/internal/echart/echart_3d.go:59:1
+//	mods/codec/internal/echart/echart_3d.go:61:1
 type CanSetYAxis interface {
-	SetYAxis(idx int, label string, typ string)
+	SetYAxis(idx int, label string, typ ...string)
 }
 
-func YAxis(idx int, label string, typ string) Option {
+func YAxis(idx int, label string, typ ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetYAxis); ok {
-			_o.SetYAxis(idx, label, typ)
+			_o.SetYAxis(idx, label, typ...)
 		}
 	}
 }
 
 // SetZAxis
 //
-//	mods/codec/internal/echart/echart_3d.go:65:1
+//	mods/codec/internal/echart/echart_3d.go:69:1
 type CanSetZAxis interface {
-	SetZAxis(idx int, label string, typ string)
+	SetZAxis(idx int, label string, typ ...string)
 }
 
-func ZAxis(idx int, label string, typ string) Option {
+func ZAxis(idx int, label string, typ ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetZAxis); ok {
-			_o.SetZAxis(idx, label, typ)
+			_o.SetZAxis(idx, label, typ...)
 		}
 	}
 }

@@ -179,11 +179,14 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		fmt.Sprintf(`func %s(args ...any) (any, error) {`, wrapFuncName),
 	)
 	if strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
-		lines = append(lines,
-			fmt.Sprintf(`if len(args) < %d {`, numParams),
-			fmt.Sprintf(`return nil, conv.ErrInvalidNumOfArgs("%s", %d, len(args))`, name, numParams),
-			`}`,
-		)
+		// the last parameter is variadic
+		if numParams > 1 { // if func takes only variadic param, there no need to check
+			lines = append(lines,
+				fmt.Sprintf(`if len(args) < %d {`, numParams-1),
+				fmt.Sprintf(`return nil, conv.ErrInvalidNumOfArgs("%s", %d, len(args))`, name, numParams-1),
+				`}`,
+			)
+		}
 	} else {
 		lines = append(lines,
 			fmt.Sprintf(`if len(args) != %d {`, numParams),
