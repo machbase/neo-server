@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var standardTimeNow func() time.Time = time.Now
+var StandardTimeNow func() time.Time = time.Now
 
 func to_time(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {
@@ -19,7 +19,7 @@ func to_time(args ...any) (any, error) {
 
 	if str, ok := args[0].(string); ok {
 		if strings.HasPrefix(str, "now") {
-			baseTime = standardTimeNow()
+			baseTime = StandardTimeNow()
 			remain := strings.TrimSpace(str[3:])
 			if len(remain) > 0 {
 				dur, err := time.ParseDuration(remain)
@@ -78,36 +78,4 @@ func to_time(args ...any) (any, error) {
 	}
 
 	return baseTime.Add(delta), nil
-}
-
-// `roundTime(time, duration)`
-func roundTime(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("f(roundTime) invalud args 'roundTime(time, 'duration')' (n:%d)", len(args))
-	}
-	var dur time.Duration
-	if str, ok := args[1].(string); ok {
-		if d, err := time.ParseDuration(str); err != nil {
-			return nil, fmt.Errorf("f(roundTime) 2nd arg should be duration")
-		} else {
-			dur = d
-		}
-	} else if num, ok := args[1].(float64); ok {
-		dur = time.Duration(int64(num))
-	}
-	if dur == 0 {
-		return nil, fmt.Errorf("f(roundTime) zero duration")
-	}
-
-	var ret time.Time
-	if ts, ok := args[0].(time.Time); ok {
-		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
-	} else if ts, ok := args[0].(*time.Time); ok {
-		ret = time.Unix(0, (ts.UnixNano()/int64(dur))*int64(dur))
-	} else if ts, ok := args[0].(float64); ok {
-		ret = time.Unix(0, (int64(ts)/int64(dur))*int64(dur))
-	} else {
-		return nil, fmt.Errorf("f(roundTime) 1st arg should be time, but %T", args[0])
-	}
-	return ret, nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/fcom"
+	"github.com/machbase/neo-server/mods/tql/fx"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -94,7 +95,7 @@ func init() {
 	for k, v := range fcom.Functions {
 		functions[k] = v
 	}
-	for k, v := range fcom.GenFunctions {
+	for k, v := range fx.GenFunctions {
 		functions[k] = v
 	}
 }

@@ -23,12 +23,12 @@ func TestMapFunc_roundTime(t *testing.T) {
 	MapFuncTestCase{
 		input:     `roundTime()`,
 		params:    FuncParamMock(1, ""),
-		expectErr: "f(roundTime) invalud args 'roundTime(time, 'duration')' (n:0)",
+		expectErr: "f(roundTime) invalid number of args; expect:2, actual:0",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `roundTime(123, '1x')`,
 		params:    FuncParamMock(1, ""),
-		expectErr: "f(roundTime) 2nd arg should be duration",
+		expectErr: "time: unknown unit \"x\" in duration \"1x\"",
 	}.run(t)
 }
 
