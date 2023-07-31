@@ -1,10 +1,10 @@
-package fcom_test
+package tql_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql/fcom"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/stretchr/testify/require"
 )
@@ -85,36 +85,36 @@ func TestElement(t *testing.T) {
 
 func TestTime(t *testing.T) {
 	tick := time.Now()
-	fcom.StandardTimeNow = func() time.Time { return tick }
+	nums.StandardTimeNow = func() time.Time { return tick }
 	// invalid number of args
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{},
-		expectErr: "f(time) invalid number of args (n:0)",
+		expectErr: "f(time) invalid number of args; expect:1, actual:0",
 	}.run(t)
 	// first args should be time, but %s",
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{"last"},
-		expectErr: "f(time) first arg should be time, but last",
+		expectErr: "invalid time expression 'last'",
 	}.run(t)
 	// first args should be time, but
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{true},
-		expectErr: "f(time) first arg should be time, but bool",
+		expectErr: "invalid time expression 'true bool'",
 	}.run(t)
 	// f(time) second args should be time, but %s
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{"oned2h"},
-		expectErr: "f(time) first arg should be time, but oned2h",
+		expectErr: "invalid time expression 'oned2h'",
 	}.run(t)
 	// f(time) second args should be time, but %s
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{"1d27h"},
-		expectErr: "f(time) first arg should be time, but 1d27h",
+		expectErr: "invalid time expression '1d27h'",
 	}.run(t)
 	// f(time) second args should be duration, but %s
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:      []any{tick, "-2x"},
-		expectErr: "f(time) second arg should be duration, but -2x",
+		expectErr: "invalid delta expression '-2x string'",
 	}.run(t)
 	TestCase{f: fx.GetFunction("time"),
 		args:   []any{123456789.0},
@@ -124,23 +124,23 @@ func TestTime(t *testing.T) {
 		args:   []any{"now"},
 		expect: tick,
 	}.run(t)
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:   []any{"now", "1s"},
 		expect: tick.Add(1 * time.Second),
 	}.run(t)
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:   []any{"now", "1d"},
 		expect: tick.Add(24 * time.Hour),
 	}.run(t)
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:   []any{"now", "-2d"},
 		expect: tick.Add(-24 * 2 * time.Hour),
 	}.run(t)
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:   []any{"now", "-1d12h"},
 		expect: tick.Add(-24 * 1.5 * time.Hour),
 	}.run(t)
-	TestCase{f: fx.GetFunction("time"),
+	TestCase{f: fx.GetFunction("timeAdd"),
 		args:   []any{"now", "-1d2h3m4s"},
 		expect: tick.Add(-24*1*time.Hour - 2*time.Hour - 3*time.Minute - 4*time.Second),
 	}.run(t)

@@ -20,6 +20,14 @@ import (
 var EOL = "\n"
 
 func main() {
+	definitions := []fx.Definition{}
+	for _, def := range fx.MathDefinitions {
+		definitions = append(definitions, def)
+	}
+	definitions = append(definitions, fx.Definition{Name: "// codec.opts"})
+	for _, def := range fx.Definitions {
+		definitions = append(definitions, def)
+	}
 	header := []string{
 		`//go:generate go run fx_generate.go`,
 		``,
@@ -31,9 +39,9 @@ func main() {
 		`   "math"`,
 		``,
 		`	"github.com/machbase/neo-server/mods/expression"`,
-		`	"github.com/machbase/neo-server/mods/tql/conv"`,
-		`   "github.com/machbase/neo-server/mods/tql/fcom"`,
 		`	"github.com/machbase/neo-server/mods/codec/opts"`,
+		`	"github.com/machbase/neo-server/mods/nums"`,
+		`	"github.com/machbase/neo-server/mods/tql/conv"`,
 		`)`,
 		``,
 		`var GenFunctions = map[string]expression.Function{`,
@@ -41,19 +49,27 @@ func main() {
 	}
 	w := &bytes.Buffer{}
 	fmt.Fprintf(w, strings.Join(header, EOL))
-	for _, def := range fx.MathDefinitions {
-		fmt.Fprintf(w, `	"%s": gen_%s,`+EOL, def.Name, def.Name)
-	}
-	for _, def := range fx.Definitions {
-		fmt.Fprintf(w, `   "%s": gen_%s,`+EOL, def.Name, def.Name)
+	for _, def := range definitions {
+		if strings.HasPrefix(def.Name, "//") {
+			fmt.Fprintf(w, "%s%s", def.Name, EOL)
+			continue
+		}
+		if expr, ok := def.Func.(string); ok {
+			fmt.Fprintf(w, `	"%s": %s,%s`, def.Name, expr, EOL)
+		} else {
+			fmt.Fprintf(w, `	"%s": gen_%s,%s`, def.Name, def.Name, EOL)
+		}
 	}
 	fmt.Fprintf(w, `}`+EOL)
 
-	for _, def := range fx.MathDefinitions {
-		writeMapFunc(w, def.Name, def.Func)
-	}
-	for _, def := range fx.Definitions {
-		writeMapFunc(w, def.Name, def.Func)
+	for _, def := range definitions {
+		if _, ok := def.Func.(string); ok {
+			continue
+		} else if strings.HasPrefix(def.Name, "//") {
+			continue
+		} else {
+			writeMapFunc(w, def.Name, def.Func)
+		}
 	}
 
 	content := w.Bytes()
@@ -101,7 +117,6 @@ func writeMapFunc(w io.Writer, name string, f any) {
 			ptype := param.Name()
 			typeParams = append(typeParams, ptype)
 			convFunc := ""
-			convOptionalFunc := ""
 			switch ptype {
 			case "float32":
 				convFunc = "Float32"
@@ -115,8 +130,6 @@ func writeMapFunc(w io.Writer, name string, f any) {
 				convFunc = "Int64"
 			case "bool":
 				convFunc = "Bool"
-			case "OptionInt":
-				convOptionalFunc = "Int"
 			default:
 				switch param.String() {
 				case "interface {}":
@@ -133,26 +146,12 @@ func writeMapFunc(w io.Writer, name string, f any) {
 					panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", param, ptype, realFuncName))
 				}
 			}
-			if convFunc == "" {
-				convParams = append(convParams,
-					fmt.Sprintf(`p%d := conv.Empty%s()`, i, convOptionalFunc),
-					fmt.Sprintf(`if len(args) >= %d {`, i+1),
-					fmt.Sprintf(`v, err := conv.%s(args, %d, "%s", "%s")`, convOptionalFunc, i, name, ptype),
-					`if err != nil {`,
-					`return nil, err`,
-					`} else {`,
-					fmt.Sprintf(`p%d = conv.OptionInt{Value:v}`, i),
-					`}`,
-					`}`,
-				)
-			} else {
-				convParams = append(convParams,
-					fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, i, convFunc, i, name, ptype),
-					`if err != nil {`,
-					`return nil, err`,
-					`}`,
-				)
-			}
+			convParams = append(convParams,
+				fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, i, convFunc, i, name, ptype),
+				`if err != nil {`,
+				`return nil, err`,
+				`}`,
+			)
 		}
 	}
 

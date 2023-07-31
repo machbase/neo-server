@@ -1,11 +1,15 @@
-package fcom
+package nums
 
 import (
 	"fmt"
 	"time"
 )
 
-func to_len(args ...any) (any, error) {
+func Count(args ...any) (any, error) {
+	return float64(len(args)), nil
+}
+
+func Len(args ...any) (any, error) {
 	if arr, ok := args[0].([]any); ok {
 		return float64(len(arr)), nil
 	} else if arr, ok := args[0].([]string); ok {
@@ -17,7 +21,7 @@ func to_len(args ...any) (any, error) {
 	}
 }
 
-func element(args ...any) (any, error) {
+func Element(args ...any) (any, error) {
 	if len(args) < 3 {
 		return nil, fmt.Errorf("f(element) invalud number of args (n:%d)", len(args))
 	}

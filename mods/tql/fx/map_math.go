@@ -3,11 +3,11 @@ package fx
 import (
 	"math"
 
-	"github.com/machbase/neo-server/mods/tql/fcom"
+	"github.com/machbase/neo-server/mods/nums"
 )
 
 var MathDefinitions = []Definition{
-	// math
+	{"// math", nil}, // math
 	{"sin", math.Sin},
 	{"cos", math.Cos},
 	{"tan", math.Tan},
@@ -15,10 +15,16 @@ var MathDefinitions = []Definition{
 	{"exp2", math.Exp2},
 	{"log", math.Log},
 	{"log10", math.Log10},
-	{"round", fcom.Round},
-	{"linspace", fcom.Linspace},
-	{"meshgrid", fcom.Meshgrid},
-	// time
-	{"roundTime", fcom.RoundTime},
+	{"// nums", nil}, // nums
+	{"count", "nums.Count"},
+	{"len", "nums.Len"},
+	{"element", "nums.Element"},
+	{"round", nums.Round},
+	{"linspace", nums.Linspace},
+	{"linspace50", nums.Linspace50},
+	{"meshgrid", nums.Meshgrid},
+	{"roundTime", nums.RoundTime},
+	{"time", nums.Time},
+	{"timeAdd", nums.TimeAdd},
 	// other
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/conv"
-	"github.com/machbase/neo-server/mods/tql/fcom"
 	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -204,9 +203,6 @@ var functions = map[string]expression.Function{
 }
 
 func init() {
-	for k, v := range fcom.Functions {
-		functions[k] = v
-	}
 	for k, v := range fx.GenFunctions {
 		functions[k] = v
 	}

@@ -2,7 +2,6 @@ package fx
 
 import (
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fcom"
 )
 
 type Definition struct {
@@ -11,9 +10,5 @@ type Definition struct {
 }
 
 func GetFunction(name string) expression.Function {
-	ret := GenFunctions[name]
-	if ret == nil {
-		ret = fcom.Functions[name]
-	}
-	return ret
+	return GenFunctions[name]
 }

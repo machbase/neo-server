@@ -9,22 +9,31 @@ import (
 
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/tql/conv"
-	"github.com/machbase/neo-server/mods/tql/fcom"
 )
 
 var GenFunctions = map[string]expression.Function{
-	"sin":                gen_sin,
-	"cos":                gen_cos,
-	"tan":                gen_tan,
-	"exp":                gen_exp,
-	"exp2":               gen_exp2,
-	"log":                gen_log,
-	"log10":              gen_log10,
-	"round":              gen_round,
-	"linspace":           gen_linspace,
-	"meshgrid":           gen_meshgrid,
-	"roundTime":          gen_roundTime,
+	// math
+	"sin":   gen_sin,
+	"cos":   gen_cos,
+	"tan":   gen_tan,
+	"exp":   gen_exp,
+	"exp2":  gen_exp2,
+	"log":   gen_log,
+	"log10": gen_log10,
+	// nums
+	"count":      nums.Count,
+	"len":        nums.Len,
+	"element":    nums.Element,
+	"round":      gen_round,
+	"linspace":   gen_linspace,
+	"linspace50": gen_linspace50,
+	"meshgrid":   gen_meshgrid,
+	"roundTime":  gen_roundTime,
+	"time":       gen_time,
+	"timeAdd":    gen_timeAdd,
+	// codec.opts
 	"assetHost":          gen_assetHost,
 	"autoRotate":         gen_autoRotate,
 	"boxDrawBorder":      gen_boxDrawBorder,
@@ -184,13 +193,13 @@ func gen_round(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := fcom.Round(p0, p1)
+	ret := nums.Round(p0, p1)
 	return ret, nil
 }
 
 // gen_linspace
 //
-// syntax: linspace(float64, float64, OptionInt)
+// syntax: linspace(float64, float64, int)
 func gen_linspace(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, conv.ErrInvalidNumOfArgs("linspace", 3, len(args))
@@ -203,16 +212,31 @@ func gen_linspace(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2 := conv.EmptyInt()
-	if len(args) >= 3 {
-		v, err := conv.Int(args, 2, "linspace", "OptionInt")
-		if err != nil {
-			return nil, err
-		} else {
-			p2 = conv.OptionInt{Value: v}
-		}
+	p2, err := conv.Int(args, 2, "linspace", "int")
+	if err != nil {
+		return nil, err
 	}
-	return fcom.Linspace(p0, p1, p2)
+	ret := nums.Linspace(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_linspace50
+//
+// syntax: linspace50(float64, float64)
+func gen_linspace50(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, conv.ErrInvalidNumOfArgs("linspace50", 2, len(args))
+	}
+	p0, err := conv.Float64(args, 0, "linspace50", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Float64(args, 1, "linspace50", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := nums.Linspace50(p0, p1)
+	return ret, nil
 }
 
 // gen_meshgrid
@@ -230,7 +254,8 @@ func gen_meshgrid(args ...any) (any, error) {
 	if !ok {
 		return nil, conv.ErrWrongTypeOfArgs("meshgrid", 1, "[]float64", args[1])
 	}
-	return fcom.Meshgrid(p0, p1)
+	ret := nums.Meshgrid(p0, p1)
+	return ret, nil
 }
 
 // gen_roundTime
@@ -248,7 +273,39 @@ func gen_roundTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fcom.RoundTime(p0, p1)
+	return nums.RoundTime(p0, p1)
+}
+
+// gen_time
+//
+// syntax: time()
+func gen_time(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("time", 1, len(args))
+	}
+	p0, err := conv.Any(args, 0, "time", "")
+	if err != nil {
+		return nil, err
+	}
+	return nums.Time(p0)
+}
+
+// gen_timeAdd
+//
+// syntax: timeAdd(, )
+func gen_timeAdd(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, conv.ErrInvalidNumOfArgs("timeAdd", 2, len(args))
+	}
+	p0, err := conv.Any(args, 0, "timeAdd", "")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "timeAdd", "")
+	if err != nil {
+		return nil, err
+	}
+	return nums.TimeAdd(p0, p1)
 }
 
 // gen_assetHost

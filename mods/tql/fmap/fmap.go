@@ -10,7 +10,6 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
-	"github.com/machbase/neo-server/mods/tql/fcom"
 	"github.com/machbase/neo-server/mods/tql/fx"
 	"gonum.org/v1/gonum/dsp/fourier"
 )
@@ -56,9 +55,6 @@ var functions = map[string]expression.Function{
 }
 
 func init() {
-	for k, v := range fcom.Functions {
-		functions[k] = v
-	}
 	for k, v := range fx.GenFunctions {
 		functions[k] = v
 	}
