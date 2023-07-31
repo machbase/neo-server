@@ -10,65 +10,17 @@ import (
 	"time"
 )
 
-// SetGridSize
+// SetAssetHost
 //
-//	mods/codec/../internal/echart/echart_3d.go:91:1
-type CanSetGridSize interface {
-	SetGridSize(args ...float64)
+//	mods/codec/../internal/echart/echart.go:41:1
+type CanSetAssetHost interface {
+	SetAssetHost(path string)
 }
 
-func GridSize(args ...float64) Option {
+func AssetHost(path string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetGridSize); ok {
-			_o.SetGridSize(args...)
-		}
-	}
-}
-
-// SetRownum
-//
-//	mods/codec/../internal/box/box_encode.go:59:1
-//	mods/codec/../internal/csv/csv_encode.go:62:1
-//	mods/codec/../internal/json/json_encode.go:55:1
-//	mods/codec/../internal/markdown/md_encode.go:68:1
-type CanSetRownum interface {
-	SetRownum(show bool)
-}
-
-func Rownum(show bool) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetRownum); ok {
-			_o.SetRownum(show)
-		}
-	}
-}
-
-// SetSize
-//
-//	mods/codec/../internal/echart/echart.go:24:1
-type CanSetSize interface {
-	SetSize(width string, height string)
-}
-
-func Size(width string, height string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetSize); ok {
-			_o.SetSize(width, height)
-		}
-	}
-}
-
-// SetZAxis
-//
-//	mods/codec/../internal/echart/echart_3d.go:65:1
-type CanSetZAxis interface {
-	SetZAxis(idx int, label string, typ string)
-}
-
-func ZAxis(idx int, label string, typ string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetZAxis); ok {
-			_o.SetZAxis(idx, label, typ)
+		if _o, ok := _one.(CanSetAssetHost); ok {
+			_o.SetAssetHost(path)
 		}
 	}
 }
@@ -88,32 +40,62 @@ func AutoRotate(speed float64) Option {
 	}
 }
 
-// SetLineWidth
+// SetBoxDrawBorder
 //
-//	mods/codec/../internal/echart/echart_3d.go:103:1
-type CanSetLineWidth interface {
-	SetLineWidth(width float64)
+//	mods/codec/../internal/box/box_encode.go:75:1
+type CanSetBoxDrawBorder interface {
+	SetBoxDrawBorder(flag bool)
 }
 
-func LineWidth(width float64) Option {
+func BoxDrawBorder(flag bool) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetLineWidth); ok {
-			_o.SetLineWidth(width)
+		if _o, ok := _one.(CanSetBoxDrawBorder); ok {
+			_o.SetBoxDrawBorder(flag)
 		}
 	}
 }
 
-// SetTheme
+// SetBoxSeparateColumns
 //
-//	mods/codec/../internal/echart/echart.go:29:1
-type CanSetTheme interface {
-	SetTheme(theme string)
+//	mods/codec/../internal/box/box_encode.go:71:1
+type CanSetBoxSeparateColumns interface {
+	SetBoxSeparateColumns(flag bool)
 }
 
-func Theme(theme string) Option {
+func BoxSeparateColumns(flag bool) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetTheme); ok {
-			_o.SetTheme(theme)
+		if _o, ok := _one.(CanSetBoxSeparateColumns); ok {
+			_o.SetBoxSeparateColumns(flag)
+		}
+	}
+}
+
+// SetBoxStyle
+//
+//	mods/codec/../internal/box/box_encode.go:67:1
+type CanSetBoxStyle interface {
+	SetBoxStyle(style string)
+}
+
+func BoxStyle(style string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetBoxStyle); ok {
+			_o.SetBoxStyle(style)
+		}
+	}
+}
+
+// SetBrief
+//
+//	mods/codec/../internal/markdown/md_encode.go:80:1
+type CanSetBrief interface {
+	SetBrief(count int)
+}
+
+func Brief(count int) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetBrief); ok {
+			_o.SetBrief(count)
 		}
 	}
 }
@@ -133,22 +115,68 @@ func ChartJson(flag bool) Option {
 	}
 }
 
-// SetTimeformat
+// SetColumns
 //
-//	mods/codec/../internal/box/box_encode.go:47:1
-//	mods/codec/../internal/csv/csv_encode.go:50:1
-//	mods/codec/../internal/csv/csv_decode.go:42:1
-//	mods/codec/../internal/json/json_decode.go:34:1
-//	mods/codec/../internal/json/json_encode.go:43:1
-//	mods/codec/../internal/markdown/md_encode.go:56:1
-type CanSetTimeformat interface {
-	SetTimeformat(format string)
+//	mods/codec/../internal/box/box_encode.go:79:1
+//	mods/codec/../internal/csv/csv_encode.go:75:1
+//	mods/codec/../internal/csv/csv_decode.go:67:1
+//	mods/codec/../internal/json/json_decode.go:46:1
+//	mods/codec/../internal/json/json_encode.go:63:1
+//	mods/codec/../internal/markdown/md_encode.go:72:1
+type CanSetColumns interface {
+	SetColumns(names []string, types []string)
 }
 
-func Timeformat(format string) Option {
+func Columns(names []string, types []string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetTimeformat); ok {
-			_o.SetTimeformat(format)
+		if _o, ok := _one.(CanSetColumns); ok {
+			_o.SetColumns(names, types)
+		}
+	}
+}
+
+// SetDataZoom
+//
+//	mods/codec/../internal/echart/echart_2d.go:64:1
+type CanSetDataZoom interface {
+	SetDataZoom(typ string, start float32, end float32)
+}
+
+func DataZoom(typ string, start float32, end float32) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetDataZoom); ok {
+			_o.SetDataZoom(typ, start, end)
+		}
+	}
+}
+
+// SetDelimiter
+//
+//	mods/codec/../internal/csv/csv_encode.go:70:1
+//	mods/codec/../internal/csv/csv_decode.go:54:1
+type CanSetDelimiter interface {
+	SetDelimiter(delimiter string)
+}
+
+func Delimiter(delimiter string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetDelimiter); ok {
+			_o.SetDelimiter(delimiter)
+		}
+	}
+}
+
+// SetGridSize
+//
+//	mods/codec/../internal/echart/echart_3d.go:91:1
+type CanSetGridSize interface {
+	SetGridSize(args ...float64)
+}
+
+func GridSize(args ...float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGridSize); ok {
+			_o.SetGridSize(args...)
 		}
 	}
 }
@@ -167,6 +195,97 @@ func Heading(show bool) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetHeading); ok {
 			_o.SetHeading(show)
+		}
+	}
+}
+
+// SetHtmlRender
+//
+//	mods/codec/../internal/markdown/md_encode.go:76:1
+type CanSetHtmlRender interface {
+	SetHtmlRender(flag bool)
+}
+
+func HtmlRender(flag bool) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetHtmlRender); ok {
+			_o.SetHtmlRender(flag)
+		}
+	}
+}
+
+// SetInputStream
+//
+//	mods/codec/../internal/csv/csv_decode.go:38:1
+//	mods/codec/../internal/json/json_decode.go:30:1
+type CanSetInputStream interface {
+	SetInputStream(in spec.InputStream)
+}
+
+func InputStream(in spec.InputStream) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetInputStream); ok {
+			_o.SetInputStream(in)
+		}
+	}
+}
+
+// SetLineWidth
+//
+//	mods/codec/../internal/echart/echart_3d.go:103:1
+type CanSetLineWidth interface {
+	SetLineWidth(width float64)
+}
+
+func LineWidth(width float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetLineWidth); ok {
+			_o.SetLineWidth(width)
+		}
+	}
+}
+
+// SetMarkAreaNameCoord
+//
+//	mods/codec/../internal/echart/echart_2d.go:74:1
+type CanSetMarkAreaNameCoord interface {
+	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
+}
+
+func MarkAreaNameCoord(from any, to any, label string, color string, opacity float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMarkAreaNameCoord); ok {
+			_o.SetMarkAreaNameCoord(from, to, label, color, opacity)
+		}
+	}
+}
+
+// SetMarkLineXAxisCoord
+//
+//	mods/codec/../internal/echart/echart_2d.go:84:1
+type CanSetMarkLineXAxisCoord interface {
+	SetMarkLineXAxisCoord(xaxis any, name string)
+}
+
+func MarkLineXAxisCoord(xaxis any, name string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMarkLineXAxisCoord); ok {
+			_o.SetMarkLineXAxisCoord(xaxis, name)
+		}
+	}
+}
+
+// SetMarkLineYAxisCoord
+//
+//	mods/codec/../internal/echart/echart_2d.go:91:1
+type CanSetMarkLineYAxisCoord interface {
+	SetMarkLineYAxisCoord(yaxis any, name string)
+}
+
+func MarkLineYAxisCoord(yaxis any, name string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMarkLineYAxisCoord); ok {
+			_o.SetMarkLineYAxisCoord(yaxis, name)
 		}
 	}
 }
@@ -205,48 +324,83 @@ func OutputStream(o spec.OutputStream) Option {
 	}
 }
 
-// SetXAxis
+// SetPrecision
 //
-//	mods/codec/../internal/echart/echart_3d.go:53:1
-//	mods/codec/../internal/echart/echart_2d.go:54:1
-type CanSetXAxis interface {
-	SetXAxis(idx int, label string, typ string)
+//	mods/codec/../internal/box/box_encode.go:55:1
+//	mods/codec/../internal/csv/csv_encode.go:58:1
+//	mods/codec/../internal/json/json_encode.go:51:1
+//	mods/codec/../internal/markdown/md_encode.go:64:1
+type CanSetPrecision interface {
+	SetPrecision(precision int)
 }
 
-func XAxis(idx int, label string, typ string) Option {
+func Precision(precision int) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetXAxis); ok {
-			_o.SetXAxis(idx, label, typ)
+		if _o, ok := _one.(CanSetPrecision); ok {
+			_o.SetPrecision(precision)
 		}
 	}
 }
 
-// SetVisualMap
+// SetRownum
 //
-//	mods/codec/../internal/echart/echart_3d.go:71:1
-type CanSetVisualMap interface {
-	SetVisualMap(minValue float64, maxValue float64)
+//	mods/codec/../internal/box/box_encode.go:59:1
+//	mods/codec/../internal/csv/csv_encode.go:62:1
+//	mods/codec/../internal/json/json_encode.go:55:1
+//	mods/codec/../internal/markdown/md_encode.go:68:1
+type CanSetRownum interface {
+	SetRownum(show bool)
 }
 
-func VisualMap(minValue float64, maxValue float64) Option {
+func Rownum(show bool) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetVisualMap); ok {
-			_o.SetVisualMap(minValue, maxValue)
+		if _o, ok := _one.(CanSetRownum); ok {
+			_o.SetRownum(show)
 		}
 	}
 }
 
-// SetTitle
+// SetSeriesLabels
 //
-//	mods/codec/../internal/echart/echart.go:33:1
-type CanSetTitle interface {
-	SetTitle(title string)
+//	mods/codec/../internal/echart/echart_2d.go:70:1
+type CanSetSeriesLabels interface {
+	SetSeriesLabels(labels ...string)
 }
 
-func Title(title string) Option {
+func SeriesLabels(labels ...string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetTitle); ok {
-			_o.SetTitle(title)
+		if _o, ok := _one.(CanSetSeriesLabels); ok {
+			_o.SetSeriesLabels(labels...)
+		}
+	}
+}
+
+// SetShowGrid
+//
+//	mods/codec/../internal/echart/echart_3d.go:87:1
+type CanSetShowGrid interface {
+	SetShowGrid(flag bool)
+}
+
+func ShowGrid(flag bool) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetShowGrid); ok {
+			_o.SetShowGrid(flag)
+		}
+	}
+}
+
+// SetSize
+//
+//	mods/codec/../internal/echart/echart.go:24:1
+type CanSetSize interface {
+	SetSize(width string, height string)
+}
+
+func Size(width string, height string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetSize); ok {
+			_o.SetSize(width, height)
 		}
 	}
 }
@@ -262,24 +416,6 @@ func Subtitle(subtitle string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetSubtitle); ok {
 			_o.SetSubtitle(subtitle)
-		}
-	}
-}
-
-// SetPrecision
-//
-//	mods/codec/../internal/box/box_encode.go:55:1
-//	mods/codec/../internal/csv/csv_encode.go:58:1
-//	mods/codec/../internal/json/json_encode.go:51:1
-//	mods/codec/../internal/markdown/md_encode.go:64:1
-type CanSetPrecision interface {
-	SetPrecision(precision int)
-}
-
-func Precision(precision int) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetPrecision); ok {
-			_o.SetPrecision(precision)
 		}
 	}
 }
@@ -300,127 +436,17 @@ func Table(tableName string) Option {
 	}
 }
 
-// SetBrief
+// SetTheme
 //
-//	mods/codec/../internal/markdown/md_encode.go:80:1
-type CanSetBrief interface {
-	SetBrief(count int)
+//	mods/codec/../internal/echart/echart.go:29:1
+type CanSetTheme interface {
+	SetTheme(theme string)
 }
 
-func Brief(count int) Option {
+func Theme(theme string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetBrief); ok {
-			_o.SetBrief(count)
-		}
-	}
-}
-
-// SetBoxSeparateColumns
-//
-//	mods/codec/../internal/box/box_encode.go:71:1
-type CanSetBoxSeparateColumns interface {
-	SetBoxSeparateColumns(flag bool)
-}
-
-func BoxSeparateColumns(flag bool) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetBoxSeparateColumns); ok {
-			_o.SetBoxSeparateColumns(flag)
-		}
-	}
-}
-
-// SetColumns
-//
-//	mods/codec/../internal/box/box_encode.go:79:1
-//	mods/codec/../internal/csv/csv_encode.go:75:1
-//	mods/codec/../internal/csv/csv_decode.go:67:1
-//	mods/codec/../internal/json/json_decode.go:46:1
-//	mods/codec/../internal/json/json_encode.go:63:1
-//	mods/codec/../internal/markdown/md_encode.go:72:1
-type CanSetColumns interface {
-	SetColumns(names []string, types []string)
-}
-
-func Columns(names []string, types []string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetColumns); ok {
-			_o.SetColumns(names, types)
-		}
-	}
-}
-
-// SetShowGrid
-//
-//	mods/codec/../internal/echart/echart_3d.go:87:1
-type CanSetShowGrid interface {
-	SetShowGrid(flag bool)
-}
-
-func ShowGrid(flag bool) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetShowGrid); ok {
-			_o.SetShowGrid(flag)
-		}
-	}
-}
-
-// SetAssetHost
-//
-//	mods/codec/../internal/echart/echart.go:41:1
-type CanSetAssetHost interface {
-	SetAssetHost(path string)
-}
-
-func AssetHost(path string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetAssetHost); ok {
-			_o.SetAssetHost(path)
-		}
-	}
-}
-
-// SetDataZoom
-//
-//	mods/codec/../internal/echart/echart_2d.go:64:1
-type CanSetDataZoom interface {
-	SetDataZoom(typ string, start float32, end float32)
-}
-
-func DataZoom(typ string, start float32, end float32) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetDataZoom); ok {
-			_o.SetDataZoom(typ, start, end)
-		}
-	}
-}
-
-// SetSeriesLabels
-//
-//	mods/codec/../internal/echart/echart_2d.go:70:1
-type CanSetSeriesLabels interface {
-	SetSeriesLabels(labels ...string)
-}
-
-func SeriesLabels(labels ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetSeriesLabels); ok {
-			_o.SetSeriesLabels(labels...)
-		}
-	}
-}
-
-// SetMarkLineXAxisCoord
-//
-//	mods/codec/../internal/echart/echart_2d.go:84:1
-type CanSetMarkLineXAxisCoord interface {
-	SetMarkLineXAxisCoord(xaxis any, name string)
-}
-
-func MarkLineXAxisCoord(xaxis any, name string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkLineXAxisCoord); ok {
-			_o.SetMarkLineXAxisCoord(xaxis, name)
+		if _o, ok := _one.(CanSetTheme); ok {
+			_o.SetTheme(theme)
 		}
 	}
 }
@@ -445,33 +471,37 @@ func TimeLocation(tz *time.Location) Option {
 	}
 }
 
-// SetBoxStyle
+// SetTimeformat
 //
-//	mods/codec/../internal/box/box_encode.go:67:1
-type CanSetBoxStyle interface {
-	SetBoxStyle(style string)
+//	mods/codec/../internal/box/box_encode.go:47:1
+//	mods/codec/../internal/csv/csv_encode.go:50:1
+//	mods/codec/../internal/csv/csv_decode.go:42:1
+//	mods/codec/../internal/json/json_decode.go:34:1
+//	mods/codec/../internal/json/json_encode.go:43:1
+//	mods/codec/../internal/markdown/md_encode.go:56:1
+type CanSetTimeformat interface {
+	SetTimeformat(format string)
 }
 
-func BoxStyle(style string) Option {
+func Timeformat(format string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetBoxStyle); ok {
-			_o.SetBoxStyle(style)
+		if _o, ok := _one.(CanSetTimeformat); ok {
+			_o.SetTimeformat(format)
 		}
 	}
 }
 
-// SetDelimiter
+// SetTitle
 //
-//	mods/codec/../internal/csv/csv_encode.go:70:1
-//	mods/codec/../internal/csv/csv_decode.go:54:1
-type CanSetDelimiter interface {
-	SetDelimiter(delimiter string)
+//	mods/codec/../internal/echart/echart.go:33:1
+type CanSetTitle interface {
+	SetTitle(title string)
 }
 
-func Delimiter(delimiter string) Option {
+func Title(title string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetDelimiter); ok {
-			_o.SetDelimiter(delimiter)
+		if _o, ok := _one.(CanSetTitle); ok {
+			_o.SetTitle(title)
 		}
 	}
 }
@@ -506,6 +536,37 @@ func Transpose(flag bool) Option {
 	}
 }
 
+// SetVisualMap
+//
+//	mods/codec/../internal/echart/echart_3d.go:71:1
+type CanSetVisualMap interface {
+	SetVisualMap(minValue float64, maxValue float64)
+}
+
+func VisualMap(minValue float64, maxValue float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetVisualMap); ok {
+			_o.SetVisualMap(minValue, maxValue)
+		}
+	}
+}
+
+// SetXAxis
+//
+//	mods/codec/../internal/echart/echart_3d.go:53:1
+//	mods/codec/../internal/echart/echart_2d.go:54:1
+type CanSetXAxis interface {
+	SetXAxis(idx int, label string, typ string)
+}
+
+func XAxis(idx int, label string, typ string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetXAxis); ok {
+			_o.SetXAxis(idx, label, typ)
+		}
+	}
+}
+
 // SetYAxis
 //
 //	mods/codec/../internal/echart/echart_3d.go:59:1
@@ -522,78 +583,17 @@ func YAxis(idx int, label string, typ string) Option {
 	}
 }
 
-// SetMarkAreaNameCoord
+// SetZAxis
 //
-//	mods/codec/../internal/echart/echart_2d.go:74:1
-type CanSetMarkAreaNameCoord interface {
-	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
+//	mods/codec/../internal/echart/echart_3d.go:65:1
+type CanSetZAxis interface {
+	SetZAxis(idx int, label string, typ string)
 }
 
-func MarkAreaNameCoord(from any, to any, label string, color string, opacity float64) Option {
+func ZAxis(idx int, label string, typ string) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkAreaNameCoord); ok {
-			_o.SetMarkAreaNameCoord(from, to, label, color, opacity)
-		}
-	}
-}
-
-// SetMarkLineYAxisCoord
-//
-//	mods/codec/../internal/echart/echart_2d.go:91:1
-type CanSetMarkLineYAxisCoord interface {
-	SetMarkLineYAxisCoord(yaxis any, name string)
-}
-
-func MarkLineYAxisCoord(yaxis any, name string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkLineYAxisCoord); ok {
-			_o.SetMarkLineYAxisCoord(yaxis, name)
-		}
-	}
-}
-
-// SetBoxDrawBorder
-//
-//	mods/codec/../internal/box/box_encode.go:75:1
-type CanSetBoxDrawBorder interface {
-	SetBoxDrawBorder(flag bool)
-}
-
-func BoxDrawBorder(flag bool) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetBoxDrawBorder); ok {
-			_o.SetBoxDrawBorder(flag)
-		}
-	}
-}
-
-// SetInputStream
-//
-//	mods/codec/../internal/csv/csv_decode.go:38:1
-//	mods/codec/../internal/json/json_decode.go:30:1
-type CanSetInputStream interface {
-	SetInputStream(in spec.InputStream)
-}
-
-func InputStream(in spec.InputStream) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetInputStream); ok {
-			_o.SetInputStream(in)
-		}
-	}
-}
-
-// SetHtmlRender
-//
-//	mods/codec/../internal/markdown/md_encode.go:76:1
-type CanSetHtmlRender interface {
-	SetHtmlRender(flag bool)
-}
-
-func HtmlRender(flag bool) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetHtmlRender); ok {
-			_o.SetHtmlRender(flag)
+		if _o, ok := _one.(CanSetZAxis); ok {
+			_o.SetZAxis(idx, label, typ)
 		}
 	}
 }

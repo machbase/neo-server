@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -217,7 +218,14 @@ func generates(sets map[string]*SetX, imports map[string]*ImportX) {
 	)
 	w := &bytes.Buffer{}
 	fmt.Fprintf(w, strings.Join(header, EOL))
+	orderedNames := []string{}
 	for _, def := range sets {
+		orderedNames = append(orderedNames, def.Name)
+	}
+	sort.Slice(orderedNames, func(i, j int) bool { return orderedNames[i] < orderedNames[j] })
+
+	for _, name := range orderedNames {
+		def := sets[name]
 		writeFunction(w, def)
 	}
 	content, err := format.Source(w.Bytes())
@@ -230,7 +238,6 @@ func generates(sets map[string]*SetX, imports map[string]*ImportX) {
 		panic(err)
 	}
 	file.Write(content)
-	file.Seek(0, os.SEEK_SET)
 	file.Close()
 }
 
