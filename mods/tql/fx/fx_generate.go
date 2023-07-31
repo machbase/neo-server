@@ -106,13 +106,28 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		}
 		if param.Kind() == reflect.Slice {
 			elmType := param.Elem()
-			typeParams = append(typeParams, fmt.Sprintf("[]%s", elmType))
-			convParams = append(convParams,
-				fmt.Sprintf(`p%d, ok := args[%d].([]%s)`, i, i, elmType),
-				`if !ok {`,
-				fmt.Sprintf(`return nil, conv.ErrWrongTypeOfArgs("%s", %d, "[]%s", args[%d])`, name, i, elmType, i),
-				`}`,
-			)
+			if i == numParams-1 && methodType.IsVariadic() {
+				typeParams = append(typeParams, fmt.Sprintf("...%s", elmType))
+				typeConvFunc := getConvFunc(elmType.String(), param.Name(), realFuncName)
+				convParams = append(convParams,
+					fmt.Sprintf(`p%d := []%s{}`, i, elmType),
+					fmt.Sprintf(`for n := %d; n < len(args); n++ {`, i),
+					fmt.Sprintf(`argv, err := conv.%s(args, %d, "%s", "...%s")`, typeConvFunc, i, name, elmType),
+					`if err != nil {`,
+					`return nil, err`,
+					`}`,
+					fmt.Sprintf(`p%d = append(p%d, argv)`, i, i),
+					`}`,
+				)
+			} else {
+				typeParams = append(typeParams, fmt.Sprintf("[]%s", elmType))
+				convParams = append(convParams,
+					fmt.Sprintf(`p%d, ok := args[%d].([]%s)`, i, i, elmType),
+					`if !ok {`,
+					fmt.Sprintf(`return nil, conv.ErrWrongTypeOfArgs("%s", %d, "[]%s", args[%d])`, name, i, elmType, i),
+					`}`,
+				)
+			}
 		} else {
 			ptype := param.Name()
 			typeParams = append(typeParams, ptype)
@@ -162,10 +177,20 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		`//`,
 		fmt.Sprintf(`// syntax: %s(%s)`, name, strings.Join(typeParams, ", ")),
 		fmt.Sprintf(`func %s(args ...any) (any, error) {`, wrapFuncName),
-		fmt.Sprintf(`if len(args) != %d {`, numParams),
-		fmt.Sprintf(`return nil, conv.ErrInvalidNumOfArgs("%s", %d, len(args))`, name, numParams),
-		`}`,
 	)
+	if strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
+		lines = append(lines,
+			fmt.Sprintf(`if len(args) < %d {`, numParams),
+			fmt.Sprintf(`return nil, conv.ErrInvalidNumOfArgs("%s", %d, len(args))`, name, numParams),
+			`}`,
+		)
+	} else {
+		lines = append(lines,
+			fmt.Sprintf(`if len(args) != %d {`, numParams),
+			fmt.Sprintf(`return nil, conv.ErrInvalidNumOfArgs("%s", %d, len(args))`, name, numParams),
+			`}`,
+		)
+	}
 	lines = append(lines, convParams...)
 
 	strCall := fmt.Sprintf(`	%s(%s)`, realFuncName, strings.Join(strParams, ","))
@@ -183,4 +208,23 @@ func writeMapFunc(w io.Writer, name string, f any) {
 	lines = append(lines, `}`, ``)
 
 	fmt.Fprintf(w, strings.Join(lines, EOL))
+}
+
+func getConvFunc(ptype string, pname string, funcName string) string {
+	switch ptype {
+	case "float32":
+		return "Float32"
+	case "float64":
+		return "Float64"
+	case "string":
+		return "String"
+	case "int":
+		return "Int"
+	case "int64":
+		return "Int64"
+	case "bool":
+		return "Bool"
+	default:
+		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
+	}
 }

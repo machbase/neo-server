@@ -3,15 +3,14 @@ package fmap
 import (
 	"fmt"
 	"math"
-	"math/cmplx"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/nums/fft"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/tql/fx"
-	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 var mapFunctionsMacro = [][2]string{
@@ -351,34 +350,15 @@ func mapf_FFT(args ...any) (any, error) {
 		}
 	}
 
-	samplesDuration := sampleTimes[lenSamples-1].Sub(sampleTimes[0])
-	period := float64(lenSamples) / (float64(samplesDuration) / float64(time.Second))
-	fft := fourier.NewFFT(lenSamples)
-
-	// amplifier := func(v float64) float64 { return v }
-	amplifier := func(v float64) float64 {
-		return v * 2.0 / float64(lenSamples)
-	}
-
-	coeff := fft.Coefficients(nil, sampleValues)
+	freqs, values := fft.FastFourierTransform(sampleTimes, sampleValues)
 
 	newVal := [][]any{}
-	// newVal := make([][]any, len(coeff))
-	for i, c := range coeff {
-		hz := fft.Freq(i) * period
-		if hz == 0 {
-			// newVal[i] = []any{0., 0.}
+	for i := range freqs {
+		hz := freqs[i]
+		amplitude := values[i]
+		if hz == 0 || hz < minHz || hz > maxHz {
 			continue
 		}
-		if hz < minHz {
-			continue
-		}
-		if hz > maxHz {
-			continue
-		}
-		magnitude := cmplx.Abs(c)
-		amplitude := amplifier(magnitude)
-		// phase = cmplx.Phase(c)
 		newVal = append(newVal, []any{hz, amplitude})
 	}
 

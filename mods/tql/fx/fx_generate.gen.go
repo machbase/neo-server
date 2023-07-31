@@ -472,14 +472,18 @@ func gen_delimiter(args ...any) (any, error) {
 
 // gen_gridSize
 //
-// syntax: gridSize([]float64)
+// syntax: gridSize(...float64)
 func gen_gridSize(args ...any) (any, error) {
-	if len(args) != 1 {
+	if len(args) < 1 {
 		return nil, conv.ErrInvalidNumOfArgs("gridSize", 1, len(args))
 	}
-	p0, ok := args[0].([]float64)
-	if !ok {
-		return nil, conv.ErrWrongTypeOfArgs("gridSize", 0, "[]float64", args[0])
+	p0 := []float64{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Float64(args, 0, "gridSize", "float64")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
 	ret := opts.GridSize(p0...)
 	return ret, nil
@@ -676,14 +680,18 @@ func gen_rownum(args ...any) (any, error) {
 
 // gen_seriesLabels
 //
-// syntax: seriesLabels([]string)
+// syntax: seriesLabels(...string)
 func gen_seriesLabels(args ...any) (any, error) {
-	if len(args) != 1 {
+	if len(args) < 1 {
 		return nil, conv.ErrInvalidNumOfArgs("seriesLabels", 1, len(args))
 	}
-	p0, ok := args[0].([]string)
-	if !ok {
-		return nil, conv.ErrWrongTypeOfArgs("seriesLabels", 0, "[]string", args[0])
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.String(args, 0, "seriesLabels", "string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
 	ret := opts.SeriesLabels(p0...)
 	return ret, nil
