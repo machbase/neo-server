@@ -72,6 +72,18 @@ var FxDefinitions = []Definition{
 	{"minHz", maps.ToMinHz},
 	{"maxHz", maps.ToMaxHz},
 	{"FFT", maps.FastFourierTransform},
+	// maps.encoder
+	{"// maps.encoder", nil},
+	{"CSV", maps.ToCsv},
+	{"JSON", maps.ToJson},
+	{"MARKDOWN", maps.ToMarkdown},
+	{"CHART_LINE", maps.ChartLine},
+	{"CHART_SCATTER", maps.ChartScatter},
+	{"CHART_BAR", maps.ChartBar},
+	{"CHART_LINE3D", maps.ChartLine3D},
+	{"CHART_BAR3D", maps.ChartBar3D},
+	{"CHART_SURFACE3D", maps.ChartSurface3D},
+	{"CHART_SCATTER3D", maps.ChartScatter3D},
 	// aliases
 	{"// aliases", nil},
 	{"markArea", "markArea"},

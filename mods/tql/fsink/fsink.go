@@ -12,6 +12,7 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -147,19 +148,9 @@ func (out *output) Close() {
 
 var functions = map[string]expression.Function{
 	// sink functions
-	"OUTPUT":          OUTPUT,
-	"CSV":             CSV,
-	"JSON":            JSON,
-	"MARKDOWN":        MARKDOWN,
-	"INSERT":          INSERT,
-	"APPEND":          APPEND,
-	"CHART_LINE":      CHART_LINE,
-	"CHART_SCATTER":   CHART_SCATTER,
-	"CHART_BAR":       CHART_BAR,
-	"CHART_LINE3D":    CHART_LINE3D,
-	"CHART_BAR3D":     CHART_BAR3D,
-	"CHART_SURFACE3D": CHART_SURFACE3D,
-	"CHART_SCATTER3D": CHART_SCATTER3D,
+	"OUTPUT": OUTPUT,
+	"INSERT": INSERT,
+	"APPEND": APPEND,
 }
 
 func init() {
@@ -176,63 +167,6 @@ func Functions() []string {
 	return ret
 }
 
-type Encoder struct {
-	format string
-	opts   []opts.Option
-}
-
-func newEncoder(format string, args ...any) (*Encoder, error) {
-	ret := &Encoder{
-		format: format,
-	}
-	for _, arg := range args {
-		if opt, ok := arg.(opts.Option); ok {
-			ret.opts = append(ret.opts, opt)
-		}
-	}
-	return ret, nil
-}
-
-func MARKDOWN(args ...any) (any, error) {
-	return newEncoder("markdown", args...)
-}
-
-func CSV(args ...any) (any, error) {
-	return newEncoder("csv", args...)
-}
-
-func JSON(args ...any) (any, error) {
-	return newEncoder("json", args...)
-}
-
-func CHART_LINE(args ...any) (any, error) {
-	return newEncoder("echart.line", args...)
-}
-
-func CHART_SCATTER(args ...any) (any, error) {
-	return newEncoder("echart.scatter", args...)
-}
-
-func CHART_BAR(args ...any) (any, error) {
-	return newEncoder("echart.bar", args...)
-}
-
-func CHART_LINE3D(args ...any) (any, error) {
-	return newEncoder("echart.line3d", args...)
-}
-
-func CHART_BAR3D(args ...any) (any, error) {
-	return newEncoder("echart.bar3d", args...)
-}
-
-func CHART_SURFACE3D(args ...any) (any, error) {
-	return newEncoder("echart.surface3d", args...)
-}
-
-func CHART_SCATTER3D(args ...any) (any, error) {
-	return newEncoder("echart.scatter3d", args...)
-}
-
 // `sink=OUTPUT(encoder)`
 func OUTPUT(args ...any) (any, error) {
 	if len(args) < 2 {
@@ -244,20 +178,8 @@ func OUTPUT(args ...any) (any, error) {
 	}
 
 	switch sink := args[1].(type) {
-	case *Encoder:
-		codecOpts := []opts.Option{
-			opts.AssetHost("/web/echarts/"),
-			opts.OutputStream(outstream),
-		}
-		codecOpts = append(codecOpts, sink.opts...)
-		for i, arg := range args[2:] {
-			if op, ok := arg.(opts.Option); !ok {
-				return nil, fmt.Errorf("f(OUTPUT) invalid option %d %T", i, arg)
-			} else {
-				codecOpts = append(codecOpts, op)
-			}
-		}
-		ret := codec.NewEncoder(sink.format, codecOpts...)
+	case *maps.Encoder:
+		ret := sink.New(outstream)
 		return ret, nil
 	case dbSink:
 		sink.SetOutputStream(outstream)

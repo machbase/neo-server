@@ -60,6 +60,17 @@ var GenFunctions = map[string]expression.Function{
 	"minHz": gen_minHz,
 	"maxHz": gen_maxHz,
 	"FFT":   gen_FFT,
+	// maps.encoder
+	"CSV":             gen_CSV,
+	"JSON":            gen_JSON,
+	"MARKDOWN":        gen_MARKDOWN,
+	"CHART_LINE":      gen_CHART_LINE,
+	"CHART_SCATTER":   gen_CHART_SCATTER,
+	"CHART_BAR":       gen_CHART_BAR,
+	"CHART_LINE3D":    gen_CHART_LINE3D,
+	"CHART_BAR3D":     gen_CHART_BAR3D,
+	"CHART_SURFACE3D": gen_CHART_SURFACE3D,
+	"CHART_SCATTER3D": gen_CHART_SCATTER3D,
 	// aliases
 	"markArea":  markArea,
 	"markXAxis": gen_markLineXAxisCoord,
@@ -811,6 +822,166 @@ func gen_FFT(args ...any) (any, error) {
 		p3 = append(p3, argv)
 	}
 	return maps.FastFourierTransform(p0, p1, p2, p3...)
+}
+
+// gen_CSV
+//
+// syntax: CSV(...interface {})
+func gen_CSV(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CSV", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ToCsv(p0...)
+	return ret, nil
+}
+
+// gen_JSON
+//
+// syntax: JSON(...interface {})
+func gen_JSON(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "JSON", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ToJson(p0...)
+	return ret, nil
+}
+
+// gen_MARKDOWN
+//
+// syntax: MARKDOWN(...interface {})
+func gen_MARKDOWN(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "MARKDOWN", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ToMarkdown(p0...)
+	return ret, nil
+}
+
+// gen_CHART_LINE
+//
+// syntax: CHART_LINE(...interface {})
+func gen_CHART_LINE(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_LINE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartLine(p0...)
+	return ret, nil
+}
+
+// gen_CHART_SCATTER
+//
+// syntax: CHART_SCATTER(...interface {})
+func gen_CHART_SCATTER(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_SCATTER", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartScatter(p0...)
+	return ret, nil
+}
+
+// gen_CHART_BAR
+//
+// syntax: CHART_BAR(...interface {})
+func gen_CHART_BAR(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_BAR", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartBar(p0...)
+	return ret, nil
+}
+
+// gen_CHART_LINE3D
+//
+// syntax: CHART_LINE3D(...interface {})
+func gen_CHART_LINE3D(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_LINE3D", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartLine3D(p0...)
+	return ret, nil
+}
+
+// gen_CHART_BAR3D
+//
+// syntax: CHART_BAR3D(...interface {})
+func gen_CHART_BAR3D(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_BAR3D", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartBar3D(p0...)
+	return ret, nil
+}
+
+// gen_CHART_SURFACE3D
+//
+// syntax: CHART_SURFACE3D(...interface {})
+func gen_CHART_SURFACE3D(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_SURFACE3D", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartSurface3D(p0...)
+	return ret, nil
+}
+
+// gen_CHART_SCATTER3D
+//
+// syntax: CHART_SCATTER3D(...interface {})
+func gen_CHART_SCATTER3D(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "CHART_SCATTER3D", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ChartScatter3D(p0...)
+	return ret, nil
 }
 
 // gen_tz
