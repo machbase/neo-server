@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/tql/maps"
 )
 
 var GenFunctions = map[string]expression.Function{
@@ -33,6 +34,9 @@ var GenFunctions = map[string]expression.Function{
 	"roundTime":  gen_roundTime,
 	"time":       gen_time,
 	"timeAdd":    gen_timeAdd,
+	// maps
+	"TAKE": gen_TAKE,
+	"DROP": gen_DROP,
 	// codec.opts
 	"assetHost":          gen_assetHost,
 	"autoRotate":         gen_autoRotate,
@@ -265,11 +269,11 @@ func gen_roundTime(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, conv.ErrInvalidNumOfArgs("roundTime", 2, len(args))
 	}
-	p0, err := conv.Any(args, 0, "roundTime", "")
+	p0, err := conv.Any(args, 0, "roundTime", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := conv.Any(args, 1, "roundTime", "")
+	p1, err := conv.Any(args, 1, "roundTime", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +287,7 @@ func gen_time(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("time", 1, len(args))
 	}
-	p0, err := conv.Any(args, 0, "time", "")
+	p0, err := conv.Any(args, 0, "time", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -297,15 +301,69 @@ func gen_timeAdd(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, conv.ErrInvalidNumOfArgs("timeAdd", 2, len(args))
 	}
-	p0, err := conv.Any(args, 0, "timeAdd", "")
+	p0, err := conv.Any(args, 0, "timeAdd", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := conv.Any(args, 1, "timeAdd", "")
+	p1, err := conv.Any(args, 1, "timeAdd", "interface {}")
 	if err != nil {
 		return nil, err
 	}
 	return nums.TimeAdd(p0, p1)
+}
+
+// gen_TAKE
+//
+// syntax: TAKE(, , , int)
+func gen_TAKE(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("TAKE", 4, len(args))
+	}
+	p0, err := conv.Context(args, 0, "TAKE", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "TAKE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "TAKE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := conv.Int(args, 3, "TAKE", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.Take(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_DROP
+//
+// syntax: DROP(, , , int)
+func gen_DROP(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("DROP", 4, len(args))
+	}
+	p0, err := conv.Context(args, 0, "DROP", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "DROP", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "DROP", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := conv.Int(args, 3, "DROP", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.Drop(p0, p1, p2, p3)
+	return ret, nil
 }
 
 // gen_assetHost
@@ -523,7 +581,7 @@ func gen_inputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("inputStream", 1, len(args))
 	}
-	p0, err := conv.InputStream(args, 0, "inputStream", "InputStream")
+	p0, err := conv.InputStream(args, 0, "inputStream", "spec.InputStream")
 	if err != nil {
 		return nil, err
 	}
@@ -553,11 +611,11 @@ func gen_markAreaNameCoord(args ...any) (any, error) {
 	if len(args) != 5 {
 		return nil, conv.ErrInvalidNumOfArgs("markAreaNameCoord", 5, len(args))
 	}
-	p0, err := conv.Any(args, 0, "markAreaNameCoord", "")
+	p0, err := conv.Any(args, 0, "markAreaNameCoord", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := conv.Any(args, 1, "markAreaNameCoord", "")
+	p1, err := conv.Any(args, 1, "markAreaNameCoord", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +642,7 @@ func gen_markLineXAxisCoord(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, conv.ErrInvalidNumOfArgs("markLineXAxisCoord", 2, len(args))
 	}
-	p0, err := conv.Any(args, 0, "markLineXAxisCoord", "")
+	p0, err := conv.Any(args, 0, "markLineXAxisCoord", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -603,7 +661,7 @@ func gen_markLineYAxisCoord(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, conv.ErrInvalidNumOfArgs("markLineYAxisCoord", 2, len(args))
 	}
-	p0, err := conv.Any(args, 0, "markLineYAxisCoord", "")
+	p0, err := conv.Any(args, 0, "markLineYAxisCoord", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -637,7 +695,7 @@ func gen_outputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("outputStream", 1, len(args))
 	}
-	p0, err := conv.OutputStream(args, 0, "outputStream", "OutputStream")
+	p0, err := conv.OutputStream(args, 0, "outputStream", "spec.OutputStream")
 	if err != nil {
 		return nil, err
 	}
@@ -777,7 +835,7 @@ func gen_timeLocation(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("timeLocation", 1, len(args))
 	}
-	p0, err := conv.TimeLocation(args, 0, "timeLocation", "")
+	p0, err := conv.TimeLocation(args, 0, "timeLocation", "*time.Location")
 	if err != nil {
 		return nil, err
 	}
@@ -822,7 +880,7 @@ func gen_transcoder(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("transcoder", 1, len(args))
 	}
-	p0, err := conv.Transcoder(args, 0, "transcoder", "Transcoder")
+	p0, err := conv.Transcoder(args, 0, "transcoder", "transcoder.Transcoder")
 	if err != nil {
 		return nil, err
 	}

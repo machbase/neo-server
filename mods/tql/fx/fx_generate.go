@@ -21,7 +21,7 @@ var EOL = "\n"
 
 func main() {
 	definitions := []fx.Definition{}
-	for _, def := range fx.MathDefinitions {
+	for _, def := range fx.TqlDefinitions {
 		definitions = append(definitions, def)
 	}
 	definitions = append(definitions, fx.Definition{Name: "// codec.opts"})
@@ -42,6 +42,7 @@ func main() {
 		`	"github.com/machbase/neo-server/mods/codec/opts"`,
 		`	"github.com/machbase/neo-server/mods/nums"`,
 		`	"github.com/machbase/neo-server/mods/tql/conv"`,
+		`	"github.com/machbase/neo-server/mods/tql/maps"`,
 		`)`,
 		``,
 		`var GenFunctions = map[string]expression.Function{`,
@@ -131,42 +132,43 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		} else {
 			ptype := param.Name()
 			typeParams = append(typeParams, ptype)
-			convFunc := ""
-			switch ptype {
-			case "float32":
-				convFunc = "Float32"
-			case "float64":
-				convFunc = "Float64"
-			case "string":
-				convFunc = "String"
-			case "int":
-				convFunc = "Int"
-			case "int64":
-				convFunc = "Int64"
-			case "bool":
-				convFunc = "Bool"
-			default:
-				switch param.String() {
-				case "interface {}":
-					convFunc = "Any"
-				case "*time.Location":
-					convFunc = "TimeLocation"
-				case "spec.OutputStream":
-					convFunc = "OutputStream"
-				case "spec.InputStream":
-					convFunc = "InputStream"
-				case "transcoder.Transcoder":
-					convFunc = "Transcoder"
-				default:
-					panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", param, ptype, realFuncName))
-				}
-			}
-			convParams = append(convParams,
-				fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, i, convFunc, i, name, ptype),
-				`if err != nil {`,
-				`return nil, err`,
-				`}`,
-			)
+			convParams = append(convParams, getConvStatement(param.String(), i, param.Name(), name))
+			//convFunc := getConvStatement(param.String(), i, param.Name(), realFuncName)
+			// switch ptype {
+			// case "float32":
+			// 	convFunc = "Float32"
+			// case "float64":
+			// 	convFunc = "Float64"
+			// case "string":
+			// 	convFunc = "String"
+			// case "int":
+			// 	convFunc = "Int"
+			// case "int64":
+			// 	convFunc = "Int64"
+			// case "bool":
+			// 	convFunc = "Bool"
+			// default:
+			// 	switch param.String() {
+			// 	case "interface {}":
+			// 		convFunc = "Any"
+			// 	case "*time.Location":
+			// 		convFunc = "TimeLocation"
+			// 	case "spec.OutputStream":
+			// 		convFunc = "OutputStream"
+			// 	case "spec.InputStream":
+			// 		convFunc = "InputStream"
+			// 	case "transcoder.Transcoder":
+			// 		convFunc = "Transcoder"
+			// 	default:
+			// 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", param, ptype, realFuncName))
+			// 	}
+			// }
+			// convParams = append(convParams,
+			// 	fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, i, convFunc, i, name, ptype),
+			// 	`if err != nil {`,
+			// 	`return nil, err`,
+			// 	`}`,
+			// )
 		}
 	}
 
@@ -230,4 +232,49 @@ func getConvFunc(ptype string, pname string, funcName string) string {
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}
+}
+
+func getConvStatement(ptype string, idx int, pname string, funcName string) string {
+	var convFunc string
+	switch ptype {
+	case "float32":
+		convFunc = "Float32"
+	case "float64":
+		convFunc = "Float64"
+	case "string":
+		convFunc = "String"
+	case "int":
+		convFunc = "Int"
+	case "int64":
+		convFunc = "Int64"
+	case "bool":
+		convFunc = "Bool"
+	case "interface {}":
+		convFunc = "Any"
+	case "*time.Location":
+		convFunc = "TimeLocation"
+	case "spec.OutputStream":
+		convFunc = "OutputStream"
+	case "spec.InputStream":
+		convFunc = "InputStream"
+	case "transcoder.Transcoder":
+		convFunc = "Transcoder"
+	case "*context.Context":
+		convFunc = "Context"
+	default:
+		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
+	}
+
+	lines := []string{}
+	if convFunc != "" {
+		lines = []string{
+			fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, idx, convFunc, idx, funcName, ptype),
+			`if err != nil {`,
+			`return nil, err`,
+			`}`,
+		}
+	} else {
+		return ""
+	}
+	return strings.Join(lines, EOL)
 }

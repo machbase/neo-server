@@ -4,10 +4,12 @@ import (
 	"math"
 
 	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/mods/tql/maps"
 )
 
-var MathDefinitions = []Definition{
-	{"// math", nil}, // math
+var TqlDefinitions = []Definition{
+	// math
+	{"// math", nil},
 	{"sin", math.Sin},
 	{"cos", math.Cos},
 	{"tan", math.Tan},
@@ -15,7 +17,8 @@ var MathDefinitions = []Definition{
 	{"exp2", math.Exp2},
 	{"log", math.Log},
 	{"log10", math.Log10},
-	{"// nums", nil}, // nums
+	// nums
+	{"// nums", nil},
 	{"count", "nums.Count"},
 	{"len", "nums.Len"},
 	{"element", "nums.Element"},
@@ -26,5 +29,9 @@ var MathDefinitions = []Definition{
 	{"roundTime", nums.RoundTime},
 	{"time", nums.Time},
 	{"timeAdd", nums.TimeAdd},
+	// maps
+	{"// maps", nil},
+	{"TAKE", maps.Take},
+	{"DROP", maps.Drop},
 	// other
 }

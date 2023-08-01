@@ -23,7 +23,6 @@ var mapFunctionsMacro = [][2]string{
 	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
 	{"FILTER(", "FILTER(CTX,K,V,"},
 	{"FFT(", "FFT(CTX,K,V,"},
-	{"STAT(", "STAT(CTX,K,V,"},
 }
 
 func Parse(text string) (*expression.Expression, error) {
@@ -39,18 +38,13 @@ var functions = map[string]expression.Function{
 	"maxHz":      optf_maxHz,
 	"minHz":      optf_minHz,
 	"lazy":       optf_lazy,
-	"mean":       optf_stat_mean,
-	"stddev":     optf_stat_stddev,
 	"SCRIPT":     mapf_SCRIPT,
-	"TAKE":       mapf_TAKE,
-	"DROP":       mapf_DROP,
 	"PUSHKEY":    mapf_PUSHKEY,
 	"POPKEY":     mapf_POPKEY,
 	"GROUPBYKEY": mapf_GROUPBYKEY,
 	"FLATTEN":    mapf_FLATTEN,
 	"FILTER":     mapf_FILTER,
 	"FFT":        mapf_FFT,
-	"STAT":       mapf_STAT,
 }
 
 func init() {
@@ -67,6 +61,7 @@ func Functions() []string {
 	return ret
 }
 
+/*
 func mapf_TAKE(args ...any) (any, error) {
 	ctx, ok := args[0].(*context.Context)
 	if !ok {
@@ -99,6 +94,7 @@ func mapf_DROP(args ...any) (any, error) {
 
 	return &context.Param{K: args[1], V: args[2]}, nil
 }
+*/
 
 // Merge all incoming values into a single key,
 // incresing dimension of vector as result.
@@ -177,7 +173,7 @@ func mapf_GROUPBYKEY(args ...any) (any, error) {
 	if lenArgs != 3 && lenArgs != 4 {
 		return nil, conv.ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
 	}
-	ctx, err := conv.Context(args, 0, "GROUPBYKEY")
+	ctx, err := conv.Context(args, 0, "GROUPBYKEY", "context")
 	if err != nil {
 		return nil, err
 	}
