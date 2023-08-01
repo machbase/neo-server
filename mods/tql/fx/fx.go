@@ -67,6 +67,8 @@ var FxDefinitions = []Definition{
 	{"// maps.dbsink", nil},
 	{"table", maps.ToTable},
 	{"tag", maps.ToTag},
+	{"INSERT", maps.ToInsert},
+	{"APPEND", maps.ToAppend},
 	// maps.fourier
 	{"// maps.fourier", nil},
 	{"minHz", maps.ToMinHz},
@@ -84,12 +86,27 @@ var FxDefinitions = []Definition{
 	{"CHART_BAR3D", maps.ChartBar3D},
 	{"CHART_SURFACE3D", maps.ChartSurface3D},
 	{"CHART_SCATTER3D", maps.ChartScatter3D},
+	// maps.bytes
+	{"// maps.bytes", nil},
+	{"separator", maps.ToSeparator},
+	{"file", maps.ToFile},
+	{"STRING", maps.String},
+	{"BYTES", maps.Bytes},
+	// maps.fake
+	{"freq", maps.ToFreq},
+	{"oscillator", maps.Oscillator},
+	{"sphere", maps.Sphere},
+	{"FAKE", maps.Fake},
+	// input, output
+	{"// maps.output", nil},
+	{"OUTPUT", maps.OUTPUT},
 	// aliases
 	{"// aliases", nil},
 	{"markArea", "markArea"},
 	{"markXAxis", "gen_markLineXAxisCoord"},
 	{"markYAxis", "gen_markLineYAxisCoord"},
 	{"tz", maps.TimeLocation},
+	{"sep", maps.ToSeparator},
 }
 
 var genFunctionNames []string

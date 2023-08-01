@@ -1,24 +1,8 @@
 package maps
 
 import (
-	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/stream/spec"
 )
-
-type Encoder struct {
-	format string
-	opts   []opts.Option
-}
-
-func (enc *Encoder) New(out spec.OutputStream) codec.RowsEncoder {
-	codecOpts := []opts.Option{
-		opts.AssetHost("/web/echarts/"),
-		opts.OutputStream(out),
-	}
-	codecOpts = append(codecOpts, enc.opts...)
-	return codec.NewEncoder(enc.format, codecOpts...)
-}
 
 func newEncoder(format string, args ...any) *Encoder {
 	ret := &Encoder{

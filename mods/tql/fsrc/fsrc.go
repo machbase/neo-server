@@ -67,20 +67,12 @@ func Compile(code string, dataReader io.Reader, params map[string][]string) (Inp
 }
 
 var functions = map[string]expression.Function{
-	"freq":         srcf_freq,
-	"oscillator":   src_oscillator,
-	"sphere":       src_sphere,
-	"FAKE":         src_FAKE,
 	"CSV":          src_CSV,
-	"file":         src_file,         // CSV()
 	"col":          src_col,          // CSV()
 	"header":       src_header,       // CSV()
 	"datetimeType": src_datetimeType, // col()
 	"stringType":   src_stringType,   // col()
 	"doubleType":   src_doubleType,   // col()
-	"STRING":       src_STRING,
-	"BYTES":        src_BYTES,
-	"delimiter":    srcf_delimiter,
 	"INPUT":        srcf_INPUT,
 }
 
@@ -99,9 +91,9 @@ func Functions() []string {
 }
 
 type input struct {
-	dbSrc     dbSource
-	fakeSrc   fakeSource
-	readerSrc readerSource
+	dbSrc     maps.DatabaseSource
+	fakeSrc   maps.FakeSource
+	readerSrc maps.ReaderSource
 }
 
 var _ Input = &input{}
@@ -184,27 +176,20 @@ func srcf_INPUT(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("f(INPUT) invalid number of args (n:%d)", len(args))
 	}
-	if s, ok := args[0].(dbSource); ok {
+	switch src := args[0].(type) {
+	case maps.DatabaseSource:
 		return &input{
-			dbSrc: s,
+			dbSrc: src,
 		}, nil
-	} else if s, ok := args[0].(fakeSource); ok {
+	case maps.FakeSource:
 		return &input{
-			fakeSrc: s,
+			fakeSrc: src,
 		}, nil
-	} else if s, ok := args[0].(readerSource); ok {
+	case maps.ReaderSource:
 		return &input{
-			readerSrc: s,
+			readerSrc: src,
 		}, nil
-	} else {
+	default:
 		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
 	}
 }
-
-type dbSource interface {
-	ToSQL() string
-}
-
-var _ dbSource = &maps.Sql{}
-
-var _ dbSource = &maps.Query{}

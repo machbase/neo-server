@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fsink"
+	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fsrc"
 	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -22,7 +26,7 @@ type Tql interface {
 
 type tagQL struct {
 	input    fsrc.Input
-	output   fsink.Output
+	output   *output
 	mapExprs []string
 	params   map[string][]string
 
@@ -70,7 +74,7 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		sink, err := fsink.Compile(sinkLine.text, params, dataWriter, toJsonOutput)
+		sink, err := CompileSink(sinkLine.text, params, dataWriter, toJsonOutput)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
@@ -144,4 +148,122 @@ func ParseMap(text string) (*expression.Expression, error) {
 	text = strings.ReplaceAll(text, ",V,)", ",V)")
 	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
 	return expression.NewWithFunctions(text, fx.GenFunctions)
+}
+
+func ParseSink(text string) (*expression.Expression, error) {
+	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
+	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")
+	return expression.NewWithFunctions(text, fx.GenFunctions)
+}
+
+func CompileSink(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (*output, error) {
+	expr, err := ParseSink(code)
+	if err != nil {
+		return nil, err
+	}
+	var outputStream spec.OutputStream
+	if writer == nil {
+		outputStream, err = stream.NewOutputStream("-")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		outputStream = &stream.WriterOutputStream{Writer: writer}
+	}
+	result, err := expr.Eval(&OutputContext{Output: outputStream, Params: params})
+	if err != nil {
+		return nil, err
+	}
+
+	ret := &output{}
+	switch v := result.(type) {
+	case codec.RowsEncoder:
+		if o, ok := v.(opts.CanSetChartJson); ok {
+			o.SetChartJson(toJsonOutput)
+			ret.isChart = true
+		}
+		ret.encoder = v
+	case maps.DatabaseSink:
+		ret.dbSink = v
+	default:
+		return nil, fmt.Errorf("invalid sink type: %T", result)
+	}
+	return ret, nil
+}
+
+type OutputContext struct {
+	Output spec.OutputStream
+	Params map[string][]string
+}
+
+func (ctx *OutputContext) Get(name string) (any, error) {
+	if name == "CTX" {
+		return ctx, nil
+	} else if name == "outstream" {
+		return ctx.Output, nil
+	} else if name == "nil" {
+		return nil, nil
+	} else if strings.HasPrefix(name, "$") {
+		if p, ok := ctx.Params[strings.TrimPrefix(name, "$")]; ok {
+			if len(p) > 0 {
+				return p[len(p)-1], nil
+			}
+		}
+		return nil, nil
+	}
+	return nil, fmt.Errorf("undefined variable '%s'", name)
+}
+
+type output struct {
+	encoder codec.RowsEncoder
+	dbSink  maps.DatabaseSink
+	isChart bool
+}
+
+func (out *output) SetHeader(cols spi.Columns) {
+	if out.encoder != nil {
+		codec.SetEncoderColumns(out.encoder, cols)
+	}
+}
+
+func (out *output) ContentType() string {
+	if out.encoder != nil {
+		return out.encoder.ContentType()
+	}
+	return "application/octet-stream"
+}
+
+func (out *output) IsChart() bool {
+	return out.isChart
+}
+
+func (out *output) ContentEncoding() string {
+	//ex: return "gzip" for  Content-Encoding: gzip
+	return ""
+}
+
+func (out *output) AddRow(vals []any) error {
+	if out.encoder != nil {
+		return out.encoder.AddRow(vals)
+	} else if out.dbSink != nil {
+		return out.dbSink.AddRow(vals)
+	}
+	return errors.New("no output encoder")
+}
+
+func (out *output) Open(db spi.Database) error {
+	if out.encoder != nil {
+		return out.encoder.Open()
+	} else if out.dbSink != nil {
+		return out.dbSink.Open(db)
+	}
+	return errors.New("no output encoder")
+}
+
+func (out *output) Close() {
+	if out.encoder != nil {
+		out.encoder.Close()
+	} else if out.dbSink != nil {
+		out.dbSink.Close()
+	}
 }

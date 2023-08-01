@@ -54,8 +54,10 @@ var GenFunctions = map[string]expression.Function{
 	"QUERY":   gen_QUERY,
 	"SQL":     gen_SQL,
 	// maps.dbsink
-	"table": gen_table,
-	"tag":   gen_tag,
+	"table":  gen_table,
+	"tag":    gen_tag,
+	"INSERT": gen_INSERT,
+	"APPEND": gen_APPEND,
 	// maps.fourier
 	"minHz": gen_minHz,
 	"maxHz": gen_maxHz,
@@ -71,11 +73,22 @@ var GenFunctions = map[string]expression.Function{
 	"CHART_BAR3D":     gen_CHART_BAR3D,
 	"CHART_SURFACE3D": gen_CHART_SURFACE3D,
 	"CHART_SCATTER3D": gen_CHART_SCATTER3D,
+	// maps.bytes
+	"separator":  gen_separator,
+	"STRING":     gen_STRING,
+	"BYTES":      gen_BYTES,
+	"freq":       gen_freq,
+	"oscillator": gen_oscillator,
+	"sphere":     gen_sphere,
+	"FAKE":       gen_FAKE,
+	// maps.output
+	"OUTPUT": gen_OUTPUT,
 	// aliases
 	"markArea":  markArea,
 	"markXAxis": gen_markLineXAxisCoord,
 	"markYAxis": gen_markLineYAxisCoord,
 	"tz":        gen_tz,
+	"sep":       gen_sep,
 	// codec.opts
 	"assetHost":          gen_assetHost,
 	"autoRotate":         gen_autoRotate,
@@ -764,6 +777,36 @@ func gen_tag(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_INSERT
+//
+// syntax: INSERT(...interface {})
+func gen_INSERT(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "INSERT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToInsert(p0...)
+}
+
+// gen_APPEND
+//
+// syntax: APPEND(...interface {})
+func gen_APPEND(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "APPEND", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToAppend(p0...)
+}
+
 // gen_minHz
 //
 // syntax: minHz(float64)
@@ -984,6 +1027,150 @@ func gen_CHART_SCATTER3D(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_separator
+//
+// syntax: separator(uint8)
+func gen_separator(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("separator", 1, len(args))
+	}
+	p0, err := conv.Byte(args, 0, "separator", "uint8")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToSeparator(p0)
+	return ret, nil
+}
+
+// gen_STRING
+//
+// syntax: STRING(, ...interface {})
+func gen_STRING(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, conv.ErrInvalidNumOfArgs("STRING", 1, len(args))
+	}
+	p0, err := conv.Any(args, 0, "STRING", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "STRING", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return maps.String(p0, p1...)
+}
+
+// gen_BYTES
+//
+// syntax: BYTES(, ...interface {})
+func gen_BYTES(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, conv.ErrInvalidNumOfArgs("BYTES", 1, len(args))
+	}
+	p0, err := conv.Any(args, 0, "BYTES", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "BYTES", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return maps.Bytes(p0, p1...)
+}
+
+// gen_freq
+//
+// syntax: freq(float64, float64, ...float64)
+func gen_freq(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("freq", 2, len(args))
+	}
+	p0, err := conv.Float64(args, 0, "freq", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Float64(args, 1, "freq", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []float64{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.Float64(args, n, "freq", "...float64")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := maps.ToFreq(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_oscillator
+//
+// syntax: oscillator(...interface {})
+func gen_oscillator(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "oscillator", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.Oscillator(p0...)
+}
+
+// gen_sphere
+//
+// syntax: sphere()
+func gen_sphere(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, conv.ErrInvalidNumOfArgs("sphere", 0, len(args))
+	}
+	ret := maps.Sphere()
+	return ret, nil
+}
+
+// gen_FAKE
+//
+// syntax: FAKE()
+func gen_FAKE(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("FAKE", 1, len(args))
+	}
+	p0, err := conv.Any(args, 0, "FAKE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return maps.Fake(p0)
+}
+
+// gen_OUTPUT
+//
+// syntax: OUTPUT(OutputStream, )
+func gen_OUTPUT(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, conv.ErrInvalidNumOfArgs("OUTPUT", 2, len(args))
+	}
+	p0, err := conv.OutputStream(args, 0, "OUTPUT", "spec.OutputStream")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "OUTPUT", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return maps.OUTPUT(p0, p1)
+}
+
 // gen_tz
 //
 // syntax: tz(string)
@@ -996,6 +1183,21 @@ func gen_tz(args ...any) (any, error) {
 		return nil, err
 	}
 	return maps.TimeLocation(p0)
+}
+
+// gen_sep
+//
+// syntax: sep(uint8)
+func gen_sep(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("sep", 1, len(args))
+	}
+	p0, err := conv.Byte(args, 0, "sep", "uint8")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToSeparator(p0)
+	return ret, nil
 }
 
 // gen_assetHost

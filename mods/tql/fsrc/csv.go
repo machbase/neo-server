@@ -13,17 +13,12 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
-type readerSource interface {
-	Header() spi.Columns
-	Gen() <-chan []any
-	Stop()
-}
-
-var _ readerSource = &csvSrc{}
+var _ maps.ReaderSource = &csvSrc{}
 
 type csvSrc struct {
 	fd        io.ReadCloser
@@ -151,12 +146,12 @@ INPUT( CSV( file('./path.csv') ))
 func src_CSV(args ...any) (any, error) {
 	ret := &csvSrc{columns: make(map[int]*columnOpt)}
 
-	var file *fileOption
+	var file *maps.FilePath
 	var reader io.Reader
 
 	for _, arg := range args {
 		switch v := arg.(type) {
-		case *fileOption:
+		case *maps.FilePath:
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
@@ -178,7 +173,7 @@ func src_CSV(args ...any) (any, error) {
 	if reader != nil {
 		ret.reader = csv.NewReader(reader)
 	} else if file != nil {
-		stat, err := os.Stat(file.abspath)
+		stat, err := os.Stat(file.AbsPath)
 		if err != nil {
 			return nil, err
 		}
@@ -186,7 +181,7 @@ func src_CSV(args ...any) (any, error) {
 			return nil, errors.New("f(CSV) file path is a directory")
 		}
 
-		if fd, err := os.Open(file.abspath); err != nil {
+		if fd, err := os.Open(file.AbsPath); err != nil {
 			return nil, err
 		} else {
 			ret.fd = fd

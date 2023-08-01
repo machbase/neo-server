@@ -1,4 +1,4 @@
-package fsrc
+package maps
 
 import (
 	"errors"
@@ -8,15 +8,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
-	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 )
-
-type fakeSource interface {
-	Header() spi.Columns
-	Gen() <-chan []any
-	Stop()
-}
 
 /*
 Example)
@@ -24,22 +17,18 @@ Example)
 	 INPUT(
 		FAKE( oscillator() | meshgrid() | linspace() )
 */
-func src_FAKE(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("FAKE", 1, len(args))
-	}
-	if gen, ok := args[0].(fakeSource); ok {
+func Fake(origin any) (any, error) {
+	switch gen := origin.(type) {
+	case FakeSource:
 		return gen, nil
-	} else if arr, ok := args[0].([][][]float64); ok {
-		return &meshgrid{vals: arr}, nil
-	} else if arr, ok := args[0].([]float64); ok {
-		return &linspace{vals: arr}, nil
-	} else {
-		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", args[0])
+	case [][][]float64:
+		return &meshgrid{vals: gen}, nil
+	case []float64:
+		return &linspace{vals: gen}, nil
+	default:
+		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 }
-
-var _ fakeSource = &meshgrid{}
 
 type meshgrid struct {
 	vals [][][]float64
@@ -86,8 +75,6 @@ func (mg *meshgrid) Stop() {
 	mg.closeWait.Wait()
 }
 
-var _ fakeSource = &linspace{}
-
 type linspace struct {
 	vals []float64
 
@@ -128,14 +115,12 @@ func (ls *linspace) Stop() {
 	ls.closeWait.Wait()
 }
 
-func src_sphere(args ...any) (any, error) {
+func Sphere() *sphere {
 	return &sphere{
 		latStep: 36,
 		lonStep: 18,
-	}, nil
+	}
 }
-
-var _ fakeSource = &sphere{}
 
 type sphere struct {
 	latStep float64
@@ -184,7 +169,7 @@ func (sp *sphere) Stop() {
 // //		freq(240, amplitude [,phase [, bias]]),
 // //	)
 // // )
-func src_oscillator(args ...any) (any, error) {
+func Oscillator(args ...any) (any, error) {
 	ret := &oscillator{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -192,14 +177,13 @@ func src_oscillator(args ...any) (any, error) {
 			return nil, fmt.Errorf("f(oscillator) invalid arg type '%T'", v)
 		case *freq:
 			ret.frequencies = append(ret.frequencies, v)
-		case *maps.TimeRange:
+		case *TimeRange:
 			if ret.timeRange != nil {
 				return nil, fmt.Errorf("f(oscillator) duplicated time range, %v", v)
 			}
 			ret.timeRange = v
 		}
 	}
-
 	if ret.timeRange == nil {
 		return nil, errors.New("f(oscillator) no time range is defined")
 	}
@@ -210,14 +194,12 @@ func src_oscillator(args ...any) (any, error) {
 }
 
 type oscillator struct {
-	timeRange   *maps.TimeRange
+	timeRange   *TimeRange
 	frequencies []*freq
 	ch          chan []any
 	alive       bool
 	closeWait   sync.WaitGroup
 }
-
-var _ fakeSource = &oscillator{}
 
 func (fs *oscillator) Header() spi.Columns {
 	return []*spi.Column{{Name: "time", Type: "datetime"}, {Name: "value", Type: "double"}}
@@ -269,35 +251,16 @@ func (fr *freq) Value(x float64) float64 {
 }
 
 // freq(240, amplitude [, bias [, phase]])
-func srcf_freq(args ...any) (any, error) {
-	if len(args) < 2 || len(args) > 4 {
-		return nil, conv.ErrInvalidNumOfArgs("freq", 2, len(args))
+func ToFreq(frequency float64, amplitude float64, args ...float64) *freq {
+	ret := &freq{
+		hertz:     frequency,
+		amplitude: amplitude,
 	}
-	var err error
-	ret := &freq{}
-
-	ret.hertz, err = conv.Float64(args, 0, "freq", "frequency(float64)")
-	if err != nil {
-		return nil, err
+	if len(args) > 0 {
+		ret.bias = args[0]
 	}
-
-	ret.amplitude, err = conv.Float64(args, 1, "freq", "amplitude(float64)")
-	if err != nil {
-		return nil, err
+	if len(args) > 1 {
+		ret.phase = args[1]
 	}
-
-	if len(args) >= 3 {
-		ret.bias, err = conv.Float64(args, 2, "freq", "bias(float64)")
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if len(args) >= 4 {
-		ret.bias, err = conv.Float64(args, 3, "freq", "phase(float64)")
-		if err != nil {
-			return nil, err
-		}
-	}
-	return ret, nil
+	return ret
 }

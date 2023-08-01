@@ -144,7 +144,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		fmt.Sprintf(`// syntax: %s(%s)`, name, strings.Join(typeParams, ", ")),
 		fmt.Sprintf(`func %s(args ...any) (any, error) {`, wrapFuncName),
 	)
-	if strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
+	if len(typeParams) > 0 && strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
 		// the last parameter is variadic
 		if numParams > 1 { // if func takes only variadic param, there no need to check
 			lines = append(lines,
@@ -203,6 +203,8 @@ func getConvFunc(ptype string, pname string, funcName string) string {
 func getConvStatement(ptype string, idx int, pname string, funcName string) string {
 	var convFunc string
 	switch ptype {
+	case "uint8":
+		convFunc = "Byte"
 	case "float32":
 		convFunc = "Float32"
 	case "float64":
