@@ -89,13 +89,28 @@ func BoxStyle(style string) Option {
 //
 //	mods/codec/internal/markdown/md_encode.go:80:1
 type CanSetBrief interface {
-	SetBrief(count int)
+	SetBrief(flag bool)
 }
 
-func Brief(count int) Option {
+func Brief(flag bool) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetBrief); ok {
-			_o.SetBrief(count)
+			_o.SetBrief(flag)
+		}
+	}
+}
+
+// SetBriefCount
+//
+//	mods/codec/internal/markdown/md_encode.go:88:1
+type CanSetBriefCount interface {
+	SetBriefCount(count int)
+}
+
+func BriefCount(count int) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetBriefCount); ok {
+			_o.SetBriefCount(count)
 		}
 	}
 }
@@ -199,17 +214,17 @@ func Heading(show bool) Option {
 	}
 }
 
-// SetHtmlRender
+// SetHtml
 //
 //	mods/codec/internal/markdown/md_encode.go:76:1
-type CanSetHtmlRender interface {
-	SetHtmlRender(flag bool)
+type CanSetHtml interface {
+	SetHtml(flag bool)
 }
 
-func HtmlRender(flag bool) Option {
+func Html(flag bool) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetHtmlRender); ok {
-			_o.SetHtmlRender(flag)
+		if _o, ok := _one.(CanSetHtml); ok {
+			_o.SetHtml(flag)
 		}
 	}
 }
