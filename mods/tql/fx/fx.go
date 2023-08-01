@@ -38,11 +38,14 @@ var FxDefinitions = []Definition{
 	{"linspace", nums.Linspace},
 	{"linspace50", nums.Linspace50},
 	{"meshgrid", nums.Meshgrid},
-	{"roundTime", nums.RoundTime},
-	{"time", nums.Time},
-	{"timeAdd", nums.TimeAdd},
-	// monad
-	{"// monad", nil},
+	// maps.time
+	{"// maps.time", nil},
+	{"time", maps.Time},
+	{"timeAdd", maps.TimeAdd},
+	{"roundTime", maps.RoundTime},
+	{"range", maps.ToTimeRange},
+	// maps.monad
+	{"// maps.monad", nil},
 	{"TAKE", maps.Take},
 	{"DROP", maps.Drop},
 	{"FILTER", maps.Filter},
@@ -51,11 +54,21 @@ var FxDefinitions = []Definition{
 	{"POPKEY", maps.PopKey},
 	{"PUSHKEY", maps.PushKey},
 	{"SCRIPT", maps.ScriptTengo},
-	// maps
-	{"// maps", nil},
+	{"lazy", maps.ToLazy},
+	// maps.dbsrc
+	{"// maps.dbsrc", nil},
+	{"from", maps.ToFrom},
+	{"limit", maps.ToLimit},
+	{"between", maps.ToBetween},
+	{"dump", maps.ToDump},
+	{"QUERY", maps.ToQuery},
+	{"SQL", maps.ToSql},
+	// maps.dbsink
+	{"// maps.dbsink", nil},
 	{"table", maps.ToTable},
 	{"tag", maps.ToTag},
-	{"lazy", maps.ToLazy},
+	// maps.fourier
+	{"// maps.fourier", nil},
 	{"minHz", maps.ToMinHz},
 	{"maxHz", maps.ToMaxHz},
 	{"FFT", maps.FastFourierTransform},

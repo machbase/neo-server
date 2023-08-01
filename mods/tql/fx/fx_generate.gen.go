@@ -31,10 +31,12 @@ var GenFunctions = map[string]expression.Function{
 	"linspace":   gen_linspace,
 	"linspace50": gen_linspace50,
 	"meshgrid":   gen_meshgrid,
-	"roundTime":  gen_roundTime,
-	"time":       gen_time,
-	"timeAdd":    gen_timeAdd,
-	// monad
+	// maps.time
+	"time":      gen_time,
+	"timeAdd":   gen_timeAdd,
+	"roundTime": gen_roundTime,
+	"range":     gen_range,
+	// maps.monad
 	"TAKE":       gen_TAKE,
 	"DROP":       gen_DROP,
 	"FILTER":     gen_FILTER,
@@ -43,10 +45,18 @@ var GenFunctions = map[string]expression.Function{
 	"POPKEY":     gen_POPKEY,
 	"PUSHKEY":    gen_PUSHKEY,
 	"SCRIPT":     gen_SCRIPT,
-	// maps
+	"lazy":       gen_lazy,
+	// maps.dbsrc
+	"from":    gen_from,
+	"limit":   gen_limit,
+	"between": gen_between,
+	"dump":    gen_dump,
+	"QUERY":   gen_QUERY,
+	"SQL":     gen_SQL,
+	// maps.dbsink
 	"table": gen_table,
 	"tag":   gen_tag,
-	"lazy":  gen_lazy,
+	// maps.fourier
 	"minHz": gen_minHz,
 	"maxHz": gen_maxHz,
 	"FFT":   gen_FFT,
@@ -282,24 +292,6 @@ func gen_meshgrid(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_roundTime
-//
-// syntax: roundTime(, )
-func gen_roundTime(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, conv.ErrInvalidNumOfArgs("roundTime", 2, len(args))
-	}
-	p0, err := conv.Any(args, 0, "roundTime", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := conv.Any(args, 1, "roundTime", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return nums.RoundTime(p0, p1)
-}
-
 // gen_time
 //
 // syntax: time()
@@ -311,7 +303,7 @@ func gen_time(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nums.Time(p0)
+	return maps.Time(p0)
 }
 
 // gen_timeAdd
@@ -329,7 +321,51 @@ func gen_timeAdd(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return nums.TimeAdd(p0, p1)
+	return maps.TimeAdd(p0, p1)
+}
+
+// gen_roundTime
+//
+// syntax: roundTime(, )
+func gen_roundTime(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, conv.ErrInvalidNumOfArgs("roundTime", 2, len(args))
+	}
+	p0, err := conv.Any(args, 0, "roundTime", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "roundTime", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return maps.RoundTime(p0, p1)
+}
+
+// gen_range
+//
+// syntax: range(, , ...interface {})
+func gen_range(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("range", 2, len(args))
+	}
+	p0, err := conv.Any(args, 0, "range", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "range", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "range", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return maps.ToTimeRange(p0, p1, p2...)
 }
 
 // gen_TAKE
@@ -549,6 +585,136 @@ func gen_SCRIPT(args ...any) (any, error) {
 	return maps.ScriptTengo(p0, p1, p2, p3)
 }
 
+// gen_lazy
+//
+// syntax: lazy(bool)
+func gen_lazy(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("lazy", 1, len(args))
+	}
+	p0, err := conv.Bool(args, 0, "lazy", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToLazy(p0)
+	return ret, nil
+}
+
+// gen_from
+//
+// syntax: from(string, string, ...string)
+func gen_from(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("from", 2, len(args))
+	}
+	p0, err := conv.String(args, 0, "from", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.String(args, 1, "from", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.String(args, n, "from", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := maps.ToFrom(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_limit
+//
+// syntax: limit(...int)
+func gen_limit(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Int(args, n, "limit", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ToLimit(p0...)
+	return ret, nil
+}
+
+// gen_between
+//
+// syntax: between(, , ...interface {})
+func gen_between(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, conv.ErrInvalidNumOfArgs("between", 2, len(args))
+	}
+	p0, err := conv.Any(args, 0, "between", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "between", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "between", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return maps.ToBetween(p0, p1, p2...)
+}
+
+// gen_dump
+//
+// syntax: dump(...bool)
+func gen_dump(args ...any) (any, error) {
+	p0 := []bool{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Bool(args, n, "dump", "...bool")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := maps.ToDump(p0...)
+	return ret, nil
+}
+
+// gen_QUERY
+//
+// syntax: QUERY(...interface {})
+func gen_QUERY(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "QUERY", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToQuery(p0...)
+}
+
+// gen_SQL
+//
+// syntax: SQL(string)
+func gen_SQL(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("SQL", 1, len(args))
+	}
+	p0, err := conv.String(args, 0, "SQL", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToSql(p0)
+	return ret, nil
+}
+
 // gen_table
 //
 // syntax: table(string)
@@ -584,21 +750,6 @@ func gen_tag(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := maps.ToTag(p0, p1...)
-	return ret, nil
-}
-
-// gen_lazy
-//
-// syntax: lazy(bool)
-func gen_lazy(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("lazy", 1, len(args))
-	}
-	p0, err := conv.Bool(args, 0, "lazy", "bool")
-	if err != nil {
-		return nil, err
-	}
-	ret := maps.ToLazy(p0)
 	return ret, nil
 }
 

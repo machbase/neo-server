@@ -1,11 +1,88 @@
-package nums
+package maps
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/mods/tql/conv"
 )
+
+type TimeRange struct {
+	Time     time.Time
+	Duration time.Duration
+	Period   time.Duration
+}
+
+func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
+	ret := &TimeRange{}
+	switch val := ts.(type) {
+	case string:
+		if val != "now" {
+			return nil, conv.ErrWrongTypeOfArgs("range", 0, "now", val)
+		}
+		ret.Time = StandardTimeNow()
+	case float64:
+		ret.Time = time.Unix(0, int64(val))
+	case *float64:
+		ret.Time = time.Unix(0, int64(*val))
+	case int64:
+		ret.Time = time.Unix(0, val)
+	case *int64:
+		ret.Time = time.Unix(0, *val)
+	case time.Time:
+		ret.Time = val
+	case *time.Time:
+		ret.Time = *val
+	default:
+		return nil, conv.ErrWrongTypeOfArgs("range", 0, "time", val)
+	}
+	switch val := dur.(type) {
+	case string:
+		if d, err := time.ParseDuration(val); err != nil {
+			return nil, conv.ErrWrongTypeOfArgs("range", 1, "duration", dur)
+		} else {
+			ret.Duration = d
+		}
+	case float64:
+		ret.Duration = time.Duration(int64(val))
+	case *float64:
+		ret.Duration = time.Duration(int64(*val))
+	case int64:
+		ret.Duration = time.Duration(val)
+	case *int64:
+		ret.Duration = time.Duration(*val)
+	default:
+		return nil, conv.ErrWrongTypeOfArgs("range", 1, "duration", val)
+	}
+	if len(period) == 0 {
+		return ret, nil
+	}
+	switch val := period[0].(type) {
+	case string:
+		if d, err := time.ParseDuration(val); err != nil {
+			return nil, conv.ErrWrongTypeOfArgs("range", 2, "period", val)
+		} else {
+			ret.Period = d
+		}
+	case float64:
+		ret.Period = time.Duration(int64(val))
+	case *float64:
+		ret.Period = time.Duration(int64(*val))
+	case int64:
+		ret.Period = time.Duration(val)
+	case *int64:
+		ret.Period = time.Duration(*val)
+	default:
+		return nil, conv.ErrWrongTypeOfArgs("range", 2, "period", val)
+	}
+	if ret.Duration <= ret.Period {
+		return nil, conv.ErrArgs("range", 2, "period should be smaller than duration")
+	}
+
+	return ret, nil
+}
 
 // ts : string | float64 | int64
 // duration :  time.Time | *time.Time | float64 | int64

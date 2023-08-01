@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,7 +85,7 @@ func TestElement(t *testing.T) {
 
 func TestTime(t *testing.T) {
 	tick := time.Now()
-	nums.StandardTimeNow = func() time.Time { return tick }
+	maps.StandardTimeNow = func() time.Time { return tick }
 	// invalid number of args
 	TestCase{f: fx.GetFunction("time"),
 		args:      []any{},

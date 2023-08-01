@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -191,7 +192,7 @@ func src_oscillator(args ...any) (any, error) {
 			return nil, fmt.Errorf("f(oscillator) invalid arg type '%T'", v)
 		case *freq:
 			ret.frequencies = append(ret.frequencies, v)
-		case *timeRange:
+		case *maps.TimeRange:
 			if ret.timeRange != nil {
 				return nil, fmt.Errorf("f(oscillator) duplicated time range, %v", v)
 			}
@@ -202,14 +203,14 @@ func src_oscillator(args ...any) (any, error) {
 	if ret.timeRange == nil {
 		return nil, errors.New("f(oscillator) no time range is defined")
 	}
-	if ret.timeRange.period <= 0 {
+	if ret.timeRange.Period <= 0 {
 		return nil, errors.New("f(oscillator) period should be positive")
 	}
 	return ret, nil
 }
 
 type oscillator struct {
-	timeRange   *timeRange
+	timeRange   *maps.TimeRange
 	frequencies []*freq
 	ch          chan []any
 	alive       bool
@@ -229,13 +230,13 @@ func (fs *oscillator) Gen() <-chan []any {
 	go func() {
 		var from int64
 		var to int64
-		var step int64 = int64(fs.timeRange.period)
-		if fs.timeRange.duration < 0 {
-			from = fs.timeRange.tsTime.Add(fs.timeRange.duration).UnixNano()
-			to = fs.timeRange.tsTime.UnixNano()
+		var step int64 = int64(fs.timeRange.Period)
+		if fs.timeRange.Duration < 0 {
+			from = fs.timeRange.Time.Add(fs.timeRange.Duration).UnixNano()
+			to = fs.timeRange.Time.UnixNano()
 		} else {
-			from = fs.timeRange.tsTime.UnixNano()
-			to = fs.timeRange.tsTime.Add(fs.timeRange.duration).UnixNano()
+			from = fs.timeRange.Time.UnixNano()
+			to = fs.timeRange.Time.Add(fs.timeRange.Duration).UnixNano()
 		}
 
 		for x := from; fs.alive && x < to; x += step {
@@ -298,65 +299,5 @@ func srcf_freq(args ...any) (any, error) {
 			return nil, err
 		}
 	}
-	return ret, nil
-}
-
-type timeRange struct {
-	tsTime   time.Time
-	duration time.Duration
-	period   time.Duration
-}
-
-func srcf_range(args ...any) (any, error) {
-	if len(args) != 2 && len(args) != 3 {
-		return nil, fmt.Errorf("f(range) invalid number of args (n:%d)", len(args))
-	}
-	ret := &timeRange{}
-	if str, ok := args[0].(string); ok {
-		if str != "now" {
-			return nil, fmt.Errorf("f(range) 1st arg should be time or 'now', but %T", args[0])
-		}
-		ret.tsTime = time.Now()
-	} else {
-		if num, ok := args[0].(float64); ok {
-			ret.tsTime = time.Unix(0, int64(num))
-		} else {
-			if ts, ok := args[0].(time.Time); ok {
-				ret.tsTime = ts
-			} else {
-				return nil, fmt.Errorf("f(range) 1st arg should be time or 'now', but %T", args[0])
-			}
-		}
-	}
-	if str, ok := args[1].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.duration = d
-		} else {
-			return nil, fmt.Errorf("f(range) 2nd arg should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[1].(float64); ok {
-		ret.duration = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 2nd arg should be duration, but %T", args[1])
-	}
-	if len(args) == 2 {
-		return ret, nil
-	}
-
-	if str, ok := args[2].(string); ok {
-		if d, err := time.ParseDuration(str); err == nil {
-			ret.period = d
-		} else {
-			return nil, fmt.Errorf("f(range) 3rd arg should be duration, %s", err.Error())
-		}
-	} else if d, ok := args[2].(float64); ok {
-		ret.period = time.Duration(int64(d))
-	} else {
-		return nil, fmt.Errorf("f(range) 3rd arg should be duration, but %T", args[1])
-	}
-	if ret.duration <= ret.period {
-		return nil, fmt.Errorf("f(range) 3rd arg should be smaller than 2nd")
-	}
-
 	return ret, nil
 }

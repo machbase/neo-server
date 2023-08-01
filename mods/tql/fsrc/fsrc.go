@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -66,11 +67,6 @@ func Compile(code string, dataReader io.Reader, params map[string][]string) (Inp
 }
 
 var functions = map[string]expression.Function{
-	"from":         srcf_from,
-	"range":        srcf_range,
-	"between":      srcf_between,
-	"limit":        srcf_limit,
-	"dump":         srcf_dump,
 	"freq":         srcf_freq,
 	"oscillator":   src_oscillator,
 	"sphere":       src_sphere,
@@ -85,8 +81,6 @@ var functions = map[string]expression.Function{
 	"STRING":       src_STRING,
 	"BYTES":        src_BYTES,
 	"delimiter":    srcf_delimiter,
-	"QUERY":        srcf_QUERY,
-	"SQL":          src_SQL,
 	"INPUT":        srcf_INPUT,
 }
 
@@ -206,3 +200,11 @@ func srcf_INPUT(args ...any) (any, error) {
 		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", args[0])
 	}
 }
+
+type dbSource interface {
+	ToSQL() string
+}
+
+var _ dbSource = &maps.Sql{}
+
+var _ dbSource = &maps.Query{}
