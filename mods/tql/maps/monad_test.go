@@ -1,4 +1,4 @@
-package fmap_test
+package maps_test
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/tql/context"
-	"github.com/machbase/neo-server/mods/tql/fmap"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,7 +45,7 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
 		params:    FuncParamMock(extime, []any{1, 2, 3}),
-		expectErr: "f(PUSHKEY) invalid number of args (n:3)",
+		expectErr: "f(PUSHKEY) invalid number of args; expect:4, actual:3",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `PUSHKEY('err')`,
@@ -152,7 +152,7 @@ func TestMapFunc_GROUPBYKEY(t *testing.T) {
 
 func (tc MapFuncTestCase) run(t *testing.T) {
 	msg := fmt.Sprintf("TestCase %s", tc.input)
-	expr, err := fmap.Parse(tc.input)
+	expr, err := tql.ParseMap(tc.input)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 

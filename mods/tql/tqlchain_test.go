@@ -8,7 +8,6 @@ import (
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
-	"github.com/machbase/neo-server/mods/tql/fmap"
 )
 
 func TestNewContextChain(t *testing.T) {
@@ -18,7 +17,8 @@ func TestNewContextChain(t *testing.T) {
 	}
 	exprs := make([]*expression.Expression, len(strExprs))
 	for i, str := range strExprs {
-		exprs[i], _ = fmap.Parse(str)
+		exprs[i], _ = ParseMap(str)
+		require.NotNil(t, exprs[i], str)
 	}
 	chain, err := newExecutionChain(context.TODO(), nil, nil, nil, exprs, nil)
 	require.Nil(t, err)

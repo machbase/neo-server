@@ -69,7 +69,7 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 

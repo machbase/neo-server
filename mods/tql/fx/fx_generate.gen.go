@@ -34,13 +34,27 @@ var GenFunctions = map[string]expression.Function{
 	"roundTime":  gen_roundTime,
 	"time":       gen_time,
 	"timeAdd":    gen_timeAdd,
+	// monad
+	"TAKE":       gen_TAKE,
+	"DROP":       gen_DROP,
+	"FILTER":     gen_FILTER,
+	"FLATTEN":    gen_FLATTEN,
+	"GROUPBYKEY": gen_GROUPBYKEY,
+	"POPKEY":     gen_POPKEY,
+	"PUSHKEY":    gen_PUSHKEY,
+	"SCRIPT":     gen_SCRIPT,
 	// maps
-	"TAKE": gen_TAKE,
-	"DROP": gen_DROP,
+	"table": gen_table,
+	"tag":   gen_tag,
+	"lazy":  gen_lazy,
+	"minHz": gen_minHz,
+	"maxHz": gen_maxHz,
+	"FFT":   gen_FFT,
 	// aliases
 	"markArea":  markArea,
 	"markXAxis": gen_markLineXAxisCoord,
 	"markYAxis": gen_markLineYAxisCoord,
+	"tz":        gen_tz,
 	// codec.opts
 	"assetHost":          gen_assetHost,
 	"autoRotate":         gen_autoRotate,
@@ -50,6 +64,7 @@ var GenFunctions = map[string]expression.Function{
 	"brief":              gen_brief,
 	"briefCount":         gen_briefCount,
 	"chartJson":          gen_chartJson,
+	"columnTypes":        gen_columnTypes,
 	"columns":            gen_columns,
 	"dataZoom":           gen_dataZoom,
 	"delimiter":          gen_delimiter,
@@ -69,7 +84,7 @@ var GenFunctions = map[string]expression.Function{
 	"showGrid":           gen_showGrid,
 	"size":               gen_size,
 	"subtitle":           gen_subtitle,
-	"table":              gen_table,
+	"tableName":          gen_tableName,
 	"theme":              gen_theme,
 	"timeLocation":       gen_timeLocation,
 	"timeformat":         gen_timeformat,
@@ -371,6 +386,296 @@ func gen_DROP(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_FILTER
+//
+// syntax: FILTER(, , , bool)
+func gen_FILTER(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("FILTER", 4, len(args))
+	}
+	p0, err := conv.Context(args, 0, "FILTER", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "FILTER", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "FILTER", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := conv.Bool(args, 3, "FILTER", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.Filter(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_FLATTEN
+//
+// syntax: FLATTEN(, , )
+func gen_FLATTEN(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, conv.ErrInvalidNumOfArgs("FLATTEN", 3, len(args))
+	}
+	p0, err := conv.Context(args, 0, "FLATTEN", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "FLATTEN", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "FLATTEN", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.Flatten(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_GROUPBYKEY
+//
+// syntax: GROUPBYKEY(, , , ...interface {})
+func gen_GROUPBYKEY(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, conv.ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
+	}
+	p0, err := conv.Context(args, 0, "GROUPBYKEY", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "GROUPBYKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "GROUPBYKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "GROUPBYKEY", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := maps.GroupByKey(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_POPKEY
+//
+// syntax: POPKEY(, , , ...int)
+func gen_POPKEY(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, conv.ErrInvalidNumOfArgs("POPKEY", 3, len(args))
+	}
+	p0, err := conv.Context(args, 0, "POPKEY", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "POPKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "POPKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []int{}
+	for n := 3; n < len(args); n++ {
+		argv, err := conv.Int(args, n, "POPKEY", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	return maps.PopKey(p0, p1, p2, p3...)
+}
+
+// gen_PUSHKEY
+//
+// syntax: PUSHKEY(, , , )
+func gen_PUSHKEY(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("PUSHKEY", 4, len(args))
+	}
+	p0, err := conv.Context(args, 0, "PUSHKEY", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "PUSHKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "PUSHKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := conv.Any(args, 3, "PUSHKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return maps.PushKey(p0, p1, p2, p3)
+}
+
+// gen_SCRIPT
+//
+// syntax: SCRIPT(, , , string)
+func gen_SCRIPT(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, conv.ErrInvalidNumOfArgs("SCRIPT", 4, len(args))
+	}
+	p0, err := conv.Context(args, 0, "SCRIPT", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "SCRIPT", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := conv.Any(args, 2, "SCRIPT", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := conv.String(args, 3, "SCRIPT", "string")
+	if err != nil {
+		return nil, err
+	}
+	return maps.ScriptTengo(p0, p1, p2, p3)
+}
+
+// gen_table
+//
+// syntax: table(string)
+func gen_table(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("table", 1, len(args))
+	}
+	p0, err := conv.String(args, 0, "table", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToTable(p0)
+	return ret, nil
+}
+
+// gen_tag
+//
+// syntax: tag(string, ...string)
+func gen_tag(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, conv.ErrInvalidNumOfArgs("tag", 1, len(args))
+	}
+	p0, err := conv.String(args, 0, "tag", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []string{}
+	for n := 1; n < len(args); n++ {
+		argv, err := conv.String(args, n, "tag", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := maps.ToTag(p0, p1...)
+	return ret, nil
+}
+
+// gen_lazy
+//
+// syntax: lazy(bool)
+func gen_lazy(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("lazy", 1, len(args))
+	}
+	p0, err := conv.Bool(args, 0, "lazy", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToLazy(p0)
+	return ret, nil
+}
+
+// gen_minHz
+//
+// syntax: minHz(float64)
+func gen_minHz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("minHz", 1, len(args))
+	}
+	p0, err := conv.Float64(args, 0, "minHz", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToMinHz(p0)
+	return ret, nil
+}
+
+// gen_maxHz
+//
+// syntax: maxHz(float64)
+func gen_maxHz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("maxHz", 1, len(args))
+	}
+	p0, err := conv.Float64(args, 0, "maxHz", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := maps.ToMaxHz(p0)
+	return ret, nil
+}
+
+// gen_FFT
+//
+// syntax: FFT(, , []interface {}, ...interface {})
+func gen_FFT(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, conv.ErrInvalidNumOfArgs("FFT", 3, len(args))
+	}
+	p0, err := conv.Context(args, 0, "FFT", "*context.Context")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := conv.Any(args, 1, "FFT", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, ok := args[2].([]interface{})
+	if !ok {
+		return nil, conv.ErrWrongTypeOfArgs("FFT", 2, "[]interface {}", args[2])
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "FFT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	return maps.FastFourierTransform(p0, p1, p2, p3...)
+}
+
+// gen_tz
+//
+// syntax: tz(string)
+func gen_tz(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("tz", 1, len(args))
+	}
+	p0, err := conv.String(args, 0, "tz", "string")
+	if err != nil {
+		return nil, err
+	}
+	return maps.TimeLocation(p0)
+}
+
 // gen_assetHost
 //
 // syntax: assetHost(string)
@@ -491,22 +796,35 @@ func gen_chartJson(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_columnTypes
+//
+// syntax: columnTypes(...string)
+func gen_columnTypes(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.String(args, n, "columnTypes", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.ColumnTypes(p0...)
+	return ret, nil
+}
+
 // gen_columns
 //
-// syntax: columns([]string, []string)
+// syntax: columns(...string)
 func gen_columns(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, conv.ErrInvalidNumOfArgs("columns", 2, len(args))
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.String(args, n, "columns", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, ok := args[0].([]string)
-	if !ok {
-		return nil, conv.ErrWrongTypeOfArgs("columns", 0, "[]string", args[0])
-	}
-	p1, ok := args[1].([]string)
-	if !ok {
-		return nil, conv.ErrWrongTypeOfArgs("columns", 1, "[]string", args[1])
-	}
-	ret := opts.Columns(p0, p1)
+	ret := opts.Columns(p0...)
 	return ret, nil
 }
 
@@ -818,18 +1136,18 @@ func gen_subtitle(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_table
+// gen_tableName
 //
-// syntax: table(string)
-func gen_table(args ...any) (any, error) {
+// syntax: tableName(string)
+func gen_tableName(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("table", 1, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("tableName", 1, len(args))
 	}
-	p0, err := conv.String(args, 0, "table", "string")
+	p0, err := conv.String(args, 0, "tableName", "string")
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.Table(p0)
+	ret := opts.TableName(p0)
 	return ret, nil
 }
 

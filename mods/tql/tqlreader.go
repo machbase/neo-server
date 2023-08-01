@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fmap"
 	"github.com/machbase/neo-server/mods/tql/fsink"
 	"github.com/machbase/neo-server/mods/tql/fsrc"
 )
@@ -20,9 +19,9 @@ func init() {
 	for _, f := range fsink.Functions() {
 		tqlFunctions[f] = nil
 	}
-	for _, f := range fmap.Functions() {
-		tqlFunctions[f] = nil
-	}
+	// for _, f := range fx.FunctionNames() {
+	// 	tqlFunctions[f] = nil
+	// }
 }
 
 type Line struct {

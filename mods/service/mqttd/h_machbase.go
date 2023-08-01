@@ -173,8 +173,9 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		opts.InputStream(instream),
 		opts.Timeformat("ns"),
 		opts.TimeLocation(time.UTC),
-		opts.Table(wp.Table),
-		opts.Columns(cols.Names(), cols.Types()),
+		opts.TableName(wp.Table),
+		opts.Columns(cols.Names()...),
+		opts.ColumnTypes(cols.Types()...),
 		opts.Delimiter(","),
 		opts.Heading(false),
 	}

@@ -41,15 +41,42 @@ var FxDefinitions = []Definition{
 	{"roundTime", nums.RoundTime},
 	{"time", nums.Time},
 	{"timeAdd", nums.TimeAdd},
-	// maps
-	{"// maps", nil},
+	// monad
+	{"// monad", nil},
 	{"TAKE", maps.Take},
 	{"DROP", maps.Drop},
+	{"FILTER", maps.Filter},
+	{"FLATTEN", maps.Flatten},
+	{"GROUPBYKEY", maps.GroupByKey},
+	{"POPKEY", maps.PopKey},
+	{"PUSHKEY", maps.PushKey},
+	{"SCRIPT", maps.ScriptTengo},
+	// maps
+	{"// maps", nil},
+	{"table", maps.ToTable},
+	{"tag", maps.ToTag},
+	{"lazy", maps.ToLazy},
+	{"minHz", maps.ToMinHz},
+	{"maxHz", maps.ToMaxHz},
+	{"FFT", maps.FastFourierTransform},
 	// aliases
 	{"// aliases", nil},
 	{"markArea", "markArea"},
 	{"markXAxis", "gen_markLineXAxisCoord"},
 	{"markYAxis", "gen_markLineYAxisCoord"},
+	{"tz", maps.TimeLocation},
+}
+
+var genFunctionNames []string
+
+func init() {
+	for k := range GenFunctions {
+		genFunctionNames = append(genFunctionNames, k)
+	}
+}
+
+func FunctionNames() []string {
+	return genFunctionNames
 }
 
 func markArea(args ...any) (any, error) {

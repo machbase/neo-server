@@ -1,4 +1,4 @@
-package fmap
+package maps
 
 import (
 	"fmt"
@@ -9,29 +9,8 @@ import (
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-server/mods/tql/context"
-	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/pkg/errors"
 )
-
-// SCRIPT(CTX, K, V, {block})
-func mapf_SCRIPT(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, conv.ErrInvalidNumOfArgs("SCRIPT", 4, len(args))
-	}
-	ctx, ok := args[0].(*context.Context)
-	if !ok {
-		return nil, conv.ErrWrongTypeOfArgs("SCRIPT", 0, "context", args[0])
-	}
-	k := args[1]
-	v := args[2]
-
-	content, err := conv.String(args, 3, "SCRIPT", "block")
-	if err != nil {
-		return nil, err
-	}
-
-	return script_tengo(ctx, k, v, content)
-}
 
 type scriptlet struct {
 	script   *tengo.Script
@@ -43,7 +22,7 @@ type scriptlet struct {
 	yields []*context.Param
 }
 
-func script_tengo(ctx *context.Context, K any, V any, content string) (any, error) {
+func ScriptTengo(ctx *context.Context, K any, V any, content string) (any, error) {
 	var slet *scriptlet
 	if obj, ok := ctx.Get(tengo_script_key); ok {
 		if sl, ok := obj.(*scriptlet); ok {

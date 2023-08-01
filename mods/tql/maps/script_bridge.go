@@ -1,4 +1,4 @@
-package fmap
+package maps
 
 import (
 	"database/sql"

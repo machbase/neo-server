@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
@@ -13,7 +12,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql/fx"
-	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -148,12 +146,6 @@ func (out *output) Close() {
 }
 
 var functions = map[string]expression.Function{
-	// csv, json options
-	"tz":      sinkf_tz,
-	"columns": sinkf_columns,
-	// db options
-	"table": to_table,
-	"tag":   to_tag,
 	// sink functions
 	"OUTPUT":          OUTPUT,
 	"CSV":             CSV,
@@ -182,43 +174,6 @@ func Functions() []string {
 		ret = append(ret, k)
 	}
 	return ret
-}
-
-func sinkf_tz(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
-	}
-	if timezone, ok := args[0].(string); !ok {
-		return nil, fmt.Errorf("f(tz) invalid arg `tz(string)`")
-	} else {
-		switch strings.ToUpper(timezone) {
-		case "LOCAL":
-			timezone = "Local"
-		case "UTC":
-			timezone = "UTC"
-		}
-		if timeLocation, err := time.LoadLocation(timezone); err != nil {
-			timeLocation, err := util.GetTimeLocation(timezone)
-			if err != nil {
-				return nil, fmt.Errorf("f(tz) %s", err.Error())
-			}
-			return opts.TimeLocation(timeLocation), nil
-		} else {
-			return opts.TimeLocation(timeLocation), nil
-		}
-	}
-}
-
-func sinkf_columns(args ...any) (any, error) {
-	cols := []string{}
-	for _, a := range args {
-		if str, ok := a.(string); !ok {
-			return nil, fmt.Errorf("f(columns) invalid arg `columns(string...)`")
-		} else {
-			cols = append(cols, str)
-		}
-	}
-	return opts.Columns(cols, []string{}), nil
 }
 
 type Encoder struct {

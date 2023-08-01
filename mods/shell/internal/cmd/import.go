@@ -159,8 +159,9 @@ func doImport(ctx *client.ActionContext) {
 		opts.InputStream(in),
 		opts.Timeformat(cmd.Timeformat),
 		opts.TimeLocation(cmd.TimeLocation),
-		opts.Table(cmd.Table),
-		opts.Columns(cols.Names(), cols.Types()),
+		opts.TableName(cmd.Table),
+		opts.Columns(cols.Names()...),
+		opts.ColumnTypes(cols.Types()...),
 		opts.Delimiter(cmd.Delimiter),
 		opts.Heading(cmd.HasHeader),
 	)

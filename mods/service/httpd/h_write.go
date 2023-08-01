@@ -90,8 +90,9 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 
 	codecOpts := []opts.Option{
 		opts.InputStream(in),
-		opts.Table(tableName),
-		opts.Columns(desc.Columns.Columns().Names(), desc.Columns.Columns().Types()),
+		opts.TableName(tableName),
+		opts.Columns(desc.Columns.Columns().Names()...),
+		opts.ColumnTypes(desc.Columns.Columns().Types()...),
 		opts.Timeformat(timeformat),
 		opts.TimeLocation(timeLocation),
 		opts.Delimiter(delimiter),

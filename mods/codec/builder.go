@@ -102,6 +102,9 @@ func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *ti
 		colTypes = append(colTypes, c.Type)
 	}
 	if enc, ok := encoder.(opts.CanSetColumns); ok {
-		enc.SetColumns(colNames, colTypes)
+		enc.SetColumns(colNames...)
+	}
+	if enc, ok := encoder.(opts.CanSetColumnTypes); ok {
+		enc.SetColumnTypes(colTypes...)
 	}
 }

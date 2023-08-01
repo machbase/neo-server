@@ -193,6 +193,8 @@ func getConvFunc(ptype string, pname string, funcName string) string {
 		return "Int64"
 	case "bool":
 		return "Bool"
+	case "interface {}":
+		return "Any"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}

@@ -28,8 +28,8 @@ test-base: tmpdir
 		./mods/util/ssfs \
 		./mods/expression \
 		./mods/tql \
-		./mods/tql/fmap \
 		./mods/tql/fsrc \
+		./mods/tql/maps \
 		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \
