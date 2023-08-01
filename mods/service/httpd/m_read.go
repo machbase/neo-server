@@ -948,6 +948,20 @@ func (svr *httpd) GetStatData(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+/*
+[Calculate - TAGDATA]
+
+SELECT NAME, TO_TIMESTAMP(DATE_TRUNC('SEC', TIME, 38)/1000000) AS TIME, AVG(VALUE) AS VALUE
+FROM (
+
+	SELECT NAME, TIME, DECODE(type, 'float64', value, ivalue) as VALUE FROM TAGDATA WHERE NAME IN('tag1')  AND TIME BETWEEN
+	FROM_TIMESTAMP(1690864685000000000) AND FROM_TIMESTAMP(1690875485000000000)
+	)
+
+GROUP BY NAME, TIME
+ORDER BY TIME
+LIMIT 1000
+*/
 func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start GetCalculateData()")
@@ -1093,37 +1107,53 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	columnList := []string{"TIME", "NAME"}
 
-	sqlText := "SELECT NAME, "
-	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
-	sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
-	sqlText += "FROM "
+	var sqlText string
+	if param.TableName == "TAG" {
+		sqlText += "SELECT NAME, "
+		sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
+		sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
+		sqlText += "FROM "
 
-	// sub
-	sqlText += "(SELECT NAME, "
-	sqlText += makeRollupHint("TIME", param.IntervalType, param.CalcMode, "VALUE") + " "
-	sqlText += "FROM " + "TAG" + " "
-	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
+		// sub
+		sqlText += "(SELECT NAME, "
+		sqlText += makeRollupHint("TIME", param.IntervalType, param.CalcMode, "VALUE") + " "
+		sqlText += "FROM " + "TAG" + " "
+		sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
 
-	if param.StartType == "date" {
-		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
-	} else {
-		sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + " "
+		if param.StartType == "date" {
+			sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
+		} else {
+			sqlText += makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true) + " "
+		}
+		sqlText += makeGroupBy(columnList) + ") "
+
+		// sub(end)
+		sqlText += makeGroupBy(columnList) + " "
+
+		sortList := make([]string, 0)
+		if param.Direction != "" {
+			columnList = []string{"TIME"}
+			sortList = append(sortList, param.Direction)
+			sqlText += makeOrderBy(columnList, sortList) + " "
+		}
+		sqlText += makeLimit(param.Offset, param.Limit)
+
+	} else if param.TableName == "TAGDATA" { //TAGDATA 테이블인 경우 롤업이 없으므로 DateTrunc 함수 사용
+		sqlText = fmt.Sprintf(SqlTidy(`
+		SELECT NAME, %s, %s(VALUE) AS VALUE
+		FROM (
+				SELECT NAME, TIME, DECODE(type, 'float64', value, ivalue) as VALUE
+				FROM TAGDATA
+				WHERE %s %s
+			)
+		GROUP BY NAME, TIME
+		ORDER BY TIME
+		`),
+			makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME"), param.CalcMode,
+			makeInCondition("NAME", param.TagList, false, true),
+			makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true)+" ")
+		sqlText += " " + makeLimit(param.Offset, param.Limit) // space 여백이 하나 들어감
 	}
-	sqlText += makeGroupBy(columnList) + ") "
-
-	// sub(end)
-	sqlText += makeGroupBy(columnList) + " "
-
-	sortList := make([]string, 0)
-	if param.Direction != "" {
-		columnList = []string{"TIME"}
-		sortList = append(sortList, param.Direction)
-		sqlText += makeOrderBy(columnList, sortList) + " "
-	}
-
-	sqlText += makeLimit(param.Offset, param.Limit)
-
-	// svr.log.Debug(trackId, "query : ", sqlText)
 	svr.log.Infof(trackId, "query : ", sqlText)
 
 	dbData, err := svr.getData(sqlText, param.Scale)
@@ -1142,6 +1172,14 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	svr.log.Trace(trackId, "select calculate data success")
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+func SqlTidy(sqlText string) string {
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.TrimSpace(strings.Join(lines, " "))
 }
 
 func (svr *httpd) GetPivotData(ctx *gin.Context) {
@@ -1279,7 +1317,7 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 	sqlText += "SELECT NAME, "
 	sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
 	sqlText += "VALUE "
-	sqlText += "FROM " + "TAG" + " "
+	sqlText += "FROM " + param.TableName + " "
 	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true)
 	if param.StartType == "date" {
 		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + ") "
@@ -1466,8 +1504,6 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 	if err != nil {
 		return result, err
 	}
-	svr.log.Infof("cols : %+v", cols.Names())
-
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
 
@@ -1489,7 +1525,7 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 		buffer := cols.MakeBuffer()
 		err = rows.Scan(buffer...)
 		if err != nil {
-			svr.log.Warn("rows.Scan error : ", err.Error())
+			svr.log.Warn("scan error : ", err.Error())
 			return result, err
 		}
 		result.Data = append(result.Data, buffer)
@@ -1858,6 +1894,7 @@ type (
 		TagList      []string
 		ColumnList   []string
 		AliasList    []string
+		TableName    string `form:"table_name,default=TAG" json:"table_name"`
 	}
 	SelectCalc struct {
 		Timezone      string `form:"timezone" json:"timezone"`
@@ -1878,6 +1915,7 @@ type (
 		StartType     string
 		EndType       string
 		TagList       []string
+		TableName     string `form:"table_name,default=TAG" json:"table_name"`
 	}
 )
 
