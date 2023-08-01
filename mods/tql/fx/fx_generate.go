@@ -21,7 +21,7 @@ var EOL = "\n"
 
 func main() {
 	definitions := []fx.Definition{}
-	for _, def := range fx.TqlDefinitions {
+	for _, def := range fx.FxDefinitions {
 		definitions = append(definitions, def)
 	}
 	definitions = append(definitions, fx.Definition{Name: "// codec.opts"})
@@ -113,7 +113,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 				convParams = append(convParams,
 					fmt.Sprintf(`p%d := []%s{}`, i, elmType),
 					fmt.Sprintf(`for n := %d; n < len(args); n++ {`, i),
-					fmt.Sprintf(`argv, err := conv.%s(args, %d, "%s", "...%s")`, typeConvFunc, i, name, elmType),
+					fmt.Sprintf(`argv, err := conv.%s(args, n, "%s", "...%s")`, typeConvFunc, name, elmType),
 					`if err != nil {`,
 					`return nil, err`,
 					`}`,
@@ -133,42 +133,6 @@ func writeMapFunc(w io.Writer, name string, f any) {
 			ptype := param.Name()
 			typeParams = append(typeParams, ptype)
 			convParams = append(convParams, getConvStatement(param.String(), i, param.Name(), name))
-			//convFunc := getConvStatement(param.String(), i, param.Name(), realFuncName)
-			// switch ptype {
-			// case "float32":
-			// 	convFunc = "Float32"
-			// case "float64":
-			// 	convFunc = "Float64"
-			// case "string":
-			// 	convFunc = "String"
-			// case "int":
-			// 	convFunc = "Int"
-			// case "int64":
-			// 	convFunc = "Int64"
-			// case "bool":
-			// 	convFunc = "Bool"
-			// default:
-			// 	switch param.String() {
-			// 	case "interface {}":
-			// 		convFunc = "Any"
-			// 	case "*time.Location":
-			// 		convFunc = "TimeLocation"
-			// 	case "spec.OutputStream":
-			// 		convFunc = "OutputStream"
-			// 	case "spec.InputStream":
-			// 		convFunc = "InputStream"
-			// 	case "transcoder.Transcoder":
-			// 		convFunc = "Transcoder"
-			// 	default:
-			// 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", param, ptype, realFuncName))
-			// 	}
-			// }
-			// convParams = append(convParams,
-			// 	fmt.Sprintf(`p%d, err := conv.%s(args, %d, "%s", "%s")`, i, convFunc, i, name, ptype),
-			// 	`if err != nil {`,
-			// 	`return nil, err`,
-			// 	`}`,
-			// )
 		}
 	}
 

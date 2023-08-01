@@ -37,6 +37,10 @@ var GenFunctions = map[string]expression.Function{
 	// maps
 	"TAKE": gen_TAKE,
 	"DROP": gen_DROP,
+	// aliases
+	"markArea":  markArea,
+	"markXAxis": gen_markLineXAxisCoord,
+	"markYAxis": gen_markLineYAxisCoord,
 	// codec.opts
 	"assetHost":          gen_assetHost,
 	"autoRotate":         gen_autoRotate,
@@ -44,13 +48,14 @@ var GenFunctions = map[string]expression.Function{
 	"boxSeparateColumns": gen_boxSeparateColumns,
 	"boxStyle":           gen_boxStyle,
 	"brief":              gen_brief,
+	"briefCount":         gen_briefCount,
 	"chartJson":          gen_chartJson,
 	"columns":            gen_columns,
 	"dataZoom":           gen_dataZoom,
 	"delimiter":          gen_delimiter,
 	"gridSize":           gen_gridSize,
 	"heading":            gen_heading,
-	"htmlRender":         gen_htmlRender,
+	"html":               gen_html,
 	"inputStream":        gen_inputStream,
 	"lineWidth":          gen_lineWidth,
 	"markAreaNameCoord":  gen_markAreaNameCoord,
@@ -443,16 +448,31 @@ func gen_boxStyle(args ...any) (any, error) {
 
 // gen_brief
 //
-// syntax: brief(int)
+// syntax: brief(bool)
 func gen_brief(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("brief", 1, len(args))
 	}
-	p0, err := conv.Int(args, 0, "brief", "int")
+	p0, err := conv.Bool(args, 0, "brief", "bool")
 	if err != nil {
 		return nil, err
 	}
 	ret := opts.Brief(p0)
+	return ret, nil
+}
+
+// gen_briefCount
+//
+// syntax: briefCount(int)
+func gen_briefCount(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("briefCount", 1, len(args))
+	}
+	p0, err := conv.Int(args, 0, "briefCount", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.BriefCount(p0)
 	return ret, nil
 }
 
@@ -534,7 +554,7 @@ func gen_delimiter(args ...any) (any, error) {
 func gen_gridSize(args ...any) (any, error) {
 	p0 := []float64{}
 	for n := 0; n < len(args); n++ {
-		argv, err := conv.Float64(args, 0, "gridSize", "...float64")
+		argv, err := conv.Float64(args, n, "gridSize", "...float64")
 		if err != nil {
 			return nil, err
 		}
@@ -559,18 +579,18 @@ func gen_heading(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_htmlRender
+// gen_html
 //
-// syntax: htmlRender(bool)
-func gen_htmlRender(args ...any) (any, error) {
+// syntax: html(bool)
+func gen_html(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("htmlRender", 1, len(args))
+		return nil, conv.ErrInvalidNumOfArgs("html", 1, len(args))
 	}
-	p0, err := conv.Bool(args, 0, "htmlRender", "bool")
+	p0, err := conv.Bool(args, 0, "html", "bool")
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.HtmlRender(p0)
+	ret := opts.Html(p0)
 	return ret, nil
 }
 
@@ -739,7 +759,7 @@ func gen_rownum(args ...any) (any, error) {
 func gen_seriesLabels(args ...any) (any, error) {
 	p0 := []string{}
 	for n := 0; n < len(args); n++ {
-		argv, err := conv.String(args, 0, "seriesLabels", "...string")
+		argv, err := conv.String(args, n, "seriesLabels", "...string")
 		if err != nil {
 			return nil, err
 		}
@@ -939,7 +959,7 @@ func gen_xAxis(args ...any) (any, error) {
 	}
 	p2 := []string{}
 	for n := 2; n < len(args); n++ {
-		argv, err := conv.String(args, 2, "xAxis", "...string")
+		argv, err := conv.String(args, n, "xAxis", "...string")
 		if err != nil {
 			return nil, err
 		}
@@ -966,7 +986,7 @@ func gen_yAxis(args ...any) (any, error) {
 	}
 	p2 := []string{}
 	for n := 2; n < len(args); n++ {
-		argv, err := conv.String(args, 2, "yAxis", "...string")
+		argv, err := conv.String(args, n, "yAxis", "...string")
 		if err != nil {
 			return nil, err
 		}
@@ -993,7 +1013,7 @@ func gen_zAxis(args ...any) (any, error) {
 	}
 	p2 := []string{}
 	for n := 2; n < len(args); n++ {
-		argv, err := conv.String(args, 2, "zAxis", "...string")
+		argv, err := conv.String(args, n, "zAxis", "...string")
 		if err != nil {
 			return nil, err
 		}
