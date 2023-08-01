@@ -3,6 +3,7 @@ package context
 import (
 	gocontext "context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
@@ -100,6 +101,7 @@ func (ctx *Context) Start() {
 			ctx.closeWg.Done()
 			if o := recover(); o != nil {
 				fmt.Println("panic", ctx.Name, o)
+				debug.PrintStack()
 			}
 		}()
 
@@ -125,7 +127,9 @@ func (ctx *Context) Start() {
 					} else if rs == ExecutionCircuitBreak {
 						ctx.Sink <- ExecutionCircuitBreak
 					} else {
-						resultset = []*Param{rs}
+						if rs != nil {
+							resultset = []*Param{rs}
+						}
 					}
 				case []*Param:
 					resultset = rs
