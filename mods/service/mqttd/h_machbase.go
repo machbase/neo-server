@@ -18,7 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -248,7 +248,7 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	task := fx.NewTaskContext(context.TODO())
+	task := tql.NewTaskContext(context.TODO())
 	task.SetDataReader(bytes.NewBuffer(payload))
 	task.SetParams(params)
 	task.SetDataWriter(io.Discard)

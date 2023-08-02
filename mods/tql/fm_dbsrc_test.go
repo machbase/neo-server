@@ -1,4 +1,4 @@
-package maps_test
+package tql_test
 
 import (
 	"fmt"
@@ -7,11 +7,10 @@ import (
 
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 func TestTagQLFile(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	text := `QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"))`
 	ret, err := tql.CompileSource(task, text)
 	require.Nil(t, err)
@@ -147,7 +146,7 @@ func normalize(ret string) string {
 }
 
 func (tc TagQLTestCase) run(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	ret, err := tql.CompileSource(task, tc.tq)
 	if err != nil {
 		t.Fatalf("tq:'%s' parse err:%s", tc.tq, err.Error())

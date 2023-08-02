@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"errors"
@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql/conv"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -17,7 +16,7 @@ Example)
 	 INPUT(
 		FAKE( oscillator() | meshgrid() | linspace() )
 */
-func Fake(origin any) (any, error) {
+func fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
 	case ChannelSource:
 		return gen, nil
@@ -26,7 +25,7 @@ func Fake(origin any) (any, error) {
 	case []float64:
 		return &linspace{vals: gen}, nil
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
+		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 }
 
@@ -115,7 +114,7 @@ func (ls *linspace) Stop() {
 	ls.closeWait.Wait()
 }
 
-func Sphere() *sphere {
+func fmSphere() *sphere {
 	return &sphere{
 		latStep: 36,
 		lonStep: 18,
@@ -169,7 +168,7 @@ func (sp *sphere) Stop() {
 // //		freq(240, amplitude [,phase [, bias]]),
 // //	)
 // // )
-func Oscillator(args ...any) (any, error) {
+func fmOscillator(args ...any) (any, error) {
 	ret := &oscillator{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -251,7 +250,7 @@ func (fr *freq) Value(x float64) float64 {
 }
 
 // freq(240, amplitude [, bias [, phase]])
-func ToFreq(frequency float64, amplitude float64, args ...float64) *freq {
+func fmFreq(frequency float64, amplitude float64, args ...float64) *freq {
 	ret := &freq{
 		hertz:     frequency,
 		amplitude: amplitude,

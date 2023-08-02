@@ -1,4 +1,4 @@
-package conv
+package tql
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/transcoder"
 )
 
@@ -23,18 +22,18 @@ func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
 }
 
-func Context(args []any, idx int, fname string, expect string) (*context.Context, error) {
+func convContext(args []any, idx int, fname string, expect string) (*SubContext, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	raw := args[idx]
-	if ctx, ok := raw.(*context.Context); ok {
+	if ctx, ok := raw.(*SubContext); ok {
 		return ctx, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, "Context", raw)
 }
 
-func InputStream(args []any, idx int, fname string, expect string) (spec.InputStream, error) {
+func convInputStream(args []any, idx int, fname string, expect string) (spec.InputStream, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -44,7 +43,7 @@ func InputStream(args []any, idx int, fname string, expect string) (spec.InputSt
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func OutputStream(args []any, idx int, fname string, expect string) (spec.OutputStream, error) {
+func convOutputStream(args []any, idx int, fname string, expect string) (spec.OutputStream, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -54,14 +53,14 @@ func OutputStream(args []any, idx int, fname string, expect string) (spec.Output
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func Any(args []any, idx int, fname string, expect string) (any, error) {
+func convAny(args []any, idx int, fname string, expect string) (any, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	return args[idx], nil
 }
 
-func TimeLocation(args []any, idx int, fname string, expect string) (*time.Location, error) {
+func convTimeLocation(args []any, idx int, fname string, expect string) (*time.Location, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -71,7 +70,7 @@ func TimeLocation(args []any, idx int, fname string, expect string) (*time.Locat
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func Transcoder(args []any, idx int, fname string, expect string) (transcoder.Transcoder, error) {
+func convTranscoder(args []any, idx int, fname string, expect string) (transcoder.Transcoder, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -81,7 +80,7 @@ func Transcoder(args []any, idx int, fname string, expect string) (transcoder.Tr
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func String(args []any, idx int, fname string, expect string) (string, error) {
+func convString(args []any, idx int, fname string, expect string) (string, error) {
 	if idx >= len(args) {
 		return "", ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -104,7 +103,7 @@ func String(args []any, idx int, fname string, expect string) (string, error) {
 	}
 }
 
-func Int(args []any, idx int, fname string, expect string) (int, error) {
+func convInt(args []any, idx int, fname string, expect string) (int, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -125,7 +124,7 @@ func Int(args []any, idx int, fname string, expect string) (int, error) {
 	}
 }
 
-func Int64(args []any, idx int, fname string, expect string) (int64, error) {
+func convInt64(args []any, idx int, fname string, expect string) (int64, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -146,7 +145,7 @@ func Int64(args []any, idx int, fname string, expect string) (int64, error) {
 	}
 }
 
-func Float32(args []any, idx int, fname string, expect string) (float32, error) {
+func convFloat32(args []any, idx int, fname string, expect string) (float32, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -167,7 +166,7 @@ func Float32(args []any, idx int, fname string, expect string) (float32, error) 
 	}
 }
 
-func Float64(args []any, idx int, fname string, expect string) (float64, error) {
+func convFloat64(args []any, idx int, fname string, expect string) (float64, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -188,7 +187,8 @@ func Float64(args []any, idx int, fname string, expect string) (float64, error) 
 	}
 }
 
-func Array(args []any, idx int, fname string) ([]any, error) {
+//lint:ignore U1000 reserved
+func convArray(args []any, idx int, fname string) ([]any, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -201,7 +201,7 @@ func Array(args []any, idx int, fname string) ([]any, error) {
 	}
 }
 
-func Bool(args []any, idx int, fname string, expect string) (bool, error) {
+func convBool(args []any, idx int, fname string, expect string) (bool, error) {
 	if idx >= len(args) {
 		return false, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -220,7 +220,8 @@ func Bool(args []any, idx int, fname string, expect string) (bool, error) {
 	}
 }
 
-func Reader(args []any, idx int, fname string, expect string) (io.Reader, error) {
+//lint:ignore U1000 reserved
+func convReader(args []any, idx int, fname string, expect string) (io.Reader, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -233,7 +234,7 @@ func Reader(args []any, idx int, fname string, expect string) (io.Reader, error)
 	}
 }
 
-func Byte(args []any, idx int, fname string, expect string) (byte, error) {
+func convByte(args []any, idx int, fname string, expect string) (byte, error) {
 	if idx >= len(args) {
 		return 0, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}

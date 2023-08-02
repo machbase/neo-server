@@ -7,10 +7,9 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
-func NewSubContext(x fx.Task) *SubContext {
+func NewSubContext(x Task) *SubContext {
 	return &SubContext{
 		task: x,
 	}
@@ -26,7 +25,7 @@ type SubContext struct {
 	Params map[string][]string
 	Nrow   int
 
-	task   fx.Task
+	task   Task
 	values map[string]any
 	buffer map[any][]any
 	Debug  bool
@@ -38,6 +37,22 @@ type SubContext struct {
 
 type Closer interface {
 	Close() error
+}
+
+func (ctx *SubContext) NewRecord(k, v any) *Record {
+	return &Record{ctx: ctx, key: k, value: v}
+}
+
+func (ctx *SubContext) NewEOF() *Record {
+	return &Record{ctx: ctx, eof: true}
+}
+
+func NewEOF() *Record {
+	return &Record{eof: true}
+}
+
+func (ctx *SubContext) NewCircuitBreak() *Record {
+	return &Record{ctx: ctx, circuitBreak: true}
 }
 
 func (ctx *SubContext) Get(name string) (any, bool) {

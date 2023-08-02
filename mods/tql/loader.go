@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 type Loader interface {
@@ -14,7 +12,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse(task fx.Task) (*Tql, error)
+	Parse(task Task) (*Tql, error)
 	String() string
 }
 
@@ -68,7 +66,7 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse(task fx.Task) (*Tql, error) {
+func (sc *script) Parse(task Task) (*Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err

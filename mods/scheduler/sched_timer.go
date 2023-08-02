@@ -9,7 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/robfig/cron/v3"
 )
 
@@ -91,7 +91,7 @@ func (ent *TimerEntry) doTask() {
 		ent.Stop()
 		return
 	}
-	fxTask := fx.NewTaskContext(context.TODO())
+	fxTask := tql.NewTaskContext(context.TODO())
 	fxTask.SetParams(nil)
 	fxTask.SetDataReader(nil)
 	fxTask.SetDataWriter(io.Discard)

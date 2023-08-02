@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"fmt"
@@ -6,22 +6,21 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums/fft"
-	"github.com/machbase/neo-server/mods/tql/context"
 )
 
 type maxHzOption float64
 
-func ToMaxHz(freq float64) maxHzOption {
+func fmMaxHz(freq float64) maxHzOption {
 	return maxHzOption(freq)
 }
 
 type minHzOption float64
 
-func ToMinHz(freq float64) minHzOption {
+func fmMinHz(freq float64) minHzOption {
 	return minHzOption(freq)
 }
 
-func FastFourierTransform(ctx *context.Context, key any, value []any, args ...any) (any, error) {
+func fmFastFourierTransform(ctx *SubContext, key any, value []any, args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
@@ -78,10 +77,6 @@ func FastFourierTransform(ctx *context.Context, key any, value []any, args ...an
 		newVal = append(newVal, []any{hz, amplitude})
 	}
 
-	ret := &context.Param{
-		K: key,
-		V: newVal,
-	}
-
+	ret := ctx.NewRecord(key, newVal)
 	return ret, nil
 }

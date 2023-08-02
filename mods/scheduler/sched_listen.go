@@ -11,7 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql"
 )
 
 type ListenerEntry struct {
@@ -157,7 +157,7 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 	params["MSGID"] = []string{fmt.Sprintf("%d", msgId)}
 	params["DUP"] = []string{fmt.Sprintf("%t", dup)}
 	params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
-	fxTask := fx.NewTaskContext(context.TODO())
+	fxTask := tql.NewTaskContext(context.TODO())
 	fxTask.SetDataReader(bytes.NewBuffer(payload))
 	fxTask.SetParams(params)
 	fxTask.SetDataWriter(io.Discard)

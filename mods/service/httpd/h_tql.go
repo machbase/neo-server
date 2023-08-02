@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 // POST "/tql"
@@ -39,7 +38,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		input = ctx.Request.Body
 	}
 
-	task := fx.NewTaskContext(ctx)
+	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetDataWriter(ctx.Writer)
 	task.SetJsonOutput(true)
@@ -92,7 +91,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	task := fx.NewTaskContext(ctx)
+	task := tql.NewTaskContext(ctx)
 	task.SetDataReader(ctx.Request.Body)
 	task.SetParams(params)
 	task.SetDataWriter(ctx.Writer)

@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/util"
 )
 
@@ -17,12 +16,12 @@ type TimeRange struct {
 	Period   time.Duration
 }
 
-func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
+func fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	ret := &TimeRange{}
 	switch val := ts.(type) {
 	case string:
 		if val != "now" {
-			return nil, conv.ErrWrongTypeOfArgs("range", 0, "now", val)
+			return nil, ErrWrongTypeOfArgs("range", 0, "now", val)
 		}
 		ret.Time = StandardTimeNow()
 	case float64:
@@ -38,12 +37,12 @@ func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	case *time.Time:
 		ret.Time = *val
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("range", 0, "time", val)
+		return nil, ErrWrongTypeOfArgs("range", 0, "time", val)
 	}
 	switch val := dur.(type) {
 	case string:
 		if d, err := time.ParseDuration(val); err != nil {
-			return nil, conv.ErrWrongTypeOfArgs("range", 1, "duration", dur)
+			return nil, ErrWrongTypeOfArgs("range", 1, "duration", dur)
 		} else {
 			ret.Duration = d
 		}
@@ -56,7 +55,7 @@ func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	case *int64:
 		ret.Duration = time.Duration(*val)
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("range", 1, "duration", val)
+		return nil, ErrWrongTypeOfArgs("range", 1, "duration", val)
 	}
 	if len(period) == 0 {
 		return ret, nil
@@ -64,7 +63,7 @@ func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	switch val := period[0].(type) {
 	case string:
 		if d, err := time.ParseDuration(val); err != nil {
-			return nil, conv.ErrWrongTypeOfArgs("range", 2, "period", val)
+			return nil, ErrWrongTypeOfArgs("range", 2, "period", val)
 		} else {
 			ret.Period = d
 		}
@@ -77,10 +76,10 @@ func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	case *int64:
 		ret.Period = time.Duration(*val)
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("range", 2, "period", val)
+		return nil, ErrWrongTypeOfArgs("range", 2, "period", val)
 	}
 	if ret.Duration <= ret.Period {
-		return nil, conv.ErrArgs("range", 2, "period should be smaller than duration")
+		return nil, ErrArgs("range", 2, "period should be smaller than duration")
 	}
 
 	return ret, nil
@@ -88,7 +87,7 @@ func ToTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 
 // ts : string | float64 | int64
 // duration :  time.Time | *time.Time | float64 | int64
-func RoundTime(ts any, duration any) (time.Time, error) {
+func fmRoundTime(ts any, duration any) (time.Time, error) {
 	var dur time.Duration
 	switch val := duration.(type) {
 	case string:
@@ -121,13 +120,13 @@ func RoundTime(ts any, duration any) (time.Time, error) {
 	return ret, nil
 }
 
-func Time(ts any) (time.Time, error) {
-	return TimeAdd(ts, int64(0))
+func fmTime(ts any) (time.Time, error) {
+	return fmTimeAdd(ts, int64(0))
 }
 
 var StandardTimeNow func() time.Time = time.Now
 
-func TimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
+func fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	var baseTime time.Time
 	var delta time.Duration
 

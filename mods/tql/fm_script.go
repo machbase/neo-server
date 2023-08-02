@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
-	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/pkg/errors"
 )
 
@@ -18,18 +17,18 @@ type scriptlet struct {
 	err      error
 
 	drop   bool
-	param  *context.Param
-	yields []*context.Param
+	param  *Record
+	yields []*Record
 }
 
-func ScriptTengo(ctx *context.Context, K any, V any, content string) (any, error) {
+func fmScriptTengo(ctx *SubContext, K any, V any, content string) (any, error) {
 	var slet *scriptlet
 	if obj, ok := ctx.Get(tengo_script_key); ok {
 		if sl, ok := obj.(*scriptlet); ok {
 			slet = sl
 		}
 	} else {
-		slet = &scriptlet{param: &context.Param{}}
+		slet = &scriptlet{param: &Record{}}
 		if s, c, err := script_compile(content, ctx); err != nil {
 			// script compile error
 			fmt.Println("SCRIPT", err.Error())
@@ -48,7 +47,7 @@ func ScriptTengo(ctx *context.Context, K any, V any, content string) (any, error
 	}
 	slet.drop = false
 	slet.yields = slet.yields[:0]
-	slet.param.K, slet.param.V = K, V
+	slet.param.key, slet.param.value = K, V
 
 	slet.err = slet.compiled.RunContext(ctx)
 	if slet.err != nil {
@@ -68,7 +67,7 @@ func ScriptTengo(ctx *context.Context, K any, V any, content string) (any, error
 const tengo_script_key = "$tengo_script"
 const tengo_uuid_key = "$tengo_uuid"
 
-func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo.Compiled, error) {
+func script_compile(content string, ctx *SubContext) (*tengo.Script, *tengo.Compiled, error) {
 	modules := stdlib.GetModuleMap([]string{
 		"math", "text", "times", "rand", "fmt", "json", "base64", "hex",
 	}...)
@@ -104,35 +103,35 @@ func script_compile(content string, ctx *context.Context) (*tengo.Script, *tengo
 	return s, compiled, err
 }
 
-func tengof_key(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_key(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) != 0 {
 			return nil, tengo.ErrWrongNumArguments
 		}
 		if obj, ok := ctx.Get(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				return anyToTengoObject(slet.param.K), nil
+				return anyToTengoObject(slet.param.key), nil
 			}
 		}
 		return nil, nil
 	}
 }
 
-func tengof_value(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_value(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) != 0 {
 			return nil, tengo.ErrWrongNumArguments
 		}
 		if obj, ok := ctx.Get(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				return anyToTengoObject(slet.param.V), nil
+				return anyToTengoObject(slet.param.value), nil
 			}
 		}
 		return nil, nil
 	}
 }
 
-func tengof_drop(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_drop(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if obj, ok := ctx.Get(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
@@ -143,7 +142,7 @@ func tengof_drop(ctx *context.Context) func(args ...tengo.Object) (tengo.Object,
 	}
 }
 
-func tengof_yieldKey(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_yieldKey(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		vargs := make([]any, len(args))
 		for i, v := range args {
@@ -155,9 +154,9 @@ func tengof_yieldKey(ctx *context.Context) func(args ...tengo.Object) (tengo.Obj
 		if obj, ok := ctx.Get(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
 				if len(vargs) == 1 { // change key only
-					slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: slet.param.V})
+					slet.yields = append(slet.yields, ctx.NewRecord(vargs[0], slet.param.value))
 				} else { // change key and values
-					slet.yields = append(slet.yields, &context.Param{K: vargs[0], V: vargs[1:]})
+					slet.yields = append(slet.yields, ctx.NewRecord(vargs[0], vargs[1:]))
 				}
 			}
 		}
@@ -165,7 +164,7 @@ func tengof_yieldKey(ctx *context.Context) func(args ...tengo.Object) (tengo.Obj
 	}
 }
 
-func tengof_yield(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_yield(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		vargs := make([]any, len(args))
 		for i, v := range args {
@@ -173,14 +172,14 @@ func tengof_yield(ctx *context.Context) func(args ...tengo.Object) (tengo.Object
 		}
 		if obj, ok := ctx.Get(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				slet.yields = append(slet.yields, &context.Param{K: slet.param.K, V: vargs})
+				slet.yields = append(slet.yields, ctx.NewRecord(slet.param.key, vargs))
 			}
 		}
 		return nil, nil
 	}
 }
 
-func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_uuid(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		ver := 4
 		if len(args) == 1 {
@@ -221,7 +220,7 @@ func tengof_uuid(ctx *context.Context) func(args ...tengo.Object) (tengo.Object,
 	}
 }
 
-func tengof_nil(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_nil(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		return tengo.UndefinedValue, nil
 	}

@@ -1,15 +1,14 @@
-package maps
+package tql
 
 import (
 	"database/sql"
 
 	"github.com/d5/tengo/v2"
 	"github.com/machbase/neo-server/mods/bridge"
-	"github.com/machbase/neo-server/mods/tql/context"
 	"github.com/pkg/errors"
 )
 
-func tengof_bridge(ctx *context.Context) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_bridge(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		var cname string
 		if len(args) == 1 {
@@ -48,7 +47,7 @@ type Publisher interface {
 
 type pubBridge struct {
 	tengo.ObjectImpl
-	ctx       *context.Context
+	ctx       *SubContext
 	name      string
 	publisher Publisher
 }
@@ -101,7 +100,7 @@ func pubBridge_publish(c *pubBridge) func(args ...tengo.Object) (tengo.Object, e
 
 type sqlBridge struct {
 	tengo.ObjectImpl
-	ctx  *context.Context
+	ctx  *SubContext
 	name string
 	conn *sql.Conn
 }
@@ -233,7 +232,7 @@ func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, 
 
 type sqlResult struct {
 	tengo.ObjectImpl
-	ctx    *context.Context
+	ctx    *SubContext
 	result sql.Result
 }
 
@@ -274,7 +273,7 @@ func (r *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
 
 type sqlRows struct {
 	tengo.ObjectImpl
-	ctx  *context.Context
+	ctx  *SubContext
 	rows *sql.Rows
 }
 

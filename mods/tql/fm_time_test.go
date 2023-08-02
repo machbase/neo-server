@@ -1,11 +1,10 @@
-package maps_test
+package tql_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql/fx"
-	"github.com/machbase/neo-server/mods/tql/maps"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,10 +16,10 @@ type TestCase struct {
 }
 
 func TestTime(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 
 	tick := time.Now()
-	maps.StandardTimeNow = func() time.Time { return tick }
+	tql.StandardTimeNow = func() time.Time { return tick }
 	// invalid number of args
 	TestCase{f: task.GetFunction("time"),
 		args:      []any{},
@@ -100,7 +99,7 @@ func TestTime(t *testing.T) {
 }
 
 func TestRoundTime(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	TestCase{f: task.GetFunction("roundTime"),
 		args:   []any{time.Unix(123, 456789123), "1s"},
 		expect: time.Unix(123, 000000000),

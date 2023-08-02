@@ -1,12 +1,10 @@
-package maps
+package tql
 
 import (
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/mods/tql/conv"
 )
 
 type QueryFrom struct {
@@ -15,7 +13,7 @@ type QueryFrom struct {
 	BaseTime string
 }
 
-func ToFrom(table string, tag string, baseTime ...string) *QueryFrom {
+func fmFrom(table string, tag string, baseTime ...string) *QueryFrom {
 	ret := &QueryFrom{
 		Table:    table,
 		Tag:      tag,
@@ -33,7 +31,7 @@ type QueryLimit struct {
 }
 
 // limit([offset ,] limit)
-func ToLimit(args ...int) *QueryLimit {
+func fmLimit(args ...int) *QueryLimit {
 	ret := &QueryLimit{}
 	if len(args) == 2 {
 		ret.Offset = args[0]
@@ -49,7 +47,7 @@ type QueryDump struct {
 	Escape bool
 }
 
-func ToDump(args ...bool) *QueryDump {
+func fmDump(args ...bool) *QueryDump {
 	ret := &QueryDump{}
 	if len(args) == 0 {
 		return ret
@@ -138,7 +136,7 @@ func parseBetweenTime(str string) (string, time.Duration, error) {
 	}
 }
 
-func ToBetween(begin any, end any, period ...any) (*QueryBetween, error) {
+func fmBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 	ret := &QueryBetween{}
 	switch val := begin.(type) {
 	case string:
@@ -153,7 +151,7 @@ func ToBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 	case time.Time:
 		ret.aTime = val
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("between", 0, "time, 'now' or 'last", val)
+		return nil, ErrWrongTypeOfArgs("between", 0, "time, 'now' or 'last", val)
 	}
 	switch val := end.(type) {
 	case string:
@@ -168,7 +166,7 @@ func ToBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 	case time.Time:
 		ret.bTime = val
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("between", 1, "time, 'now' or 'last", val)
+		return nil, ErrWrongTypeOfArgs("between", 1, "time, 'now' or 'last", val)
 	}
 	if len(period) == 0 {
 		return ret, nil
@@ -183,18 +181,18 @@ func ToBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 	case float64:
 		ret.period = time.Duration(int64(val))
 	default:
-		return nil, conv.ErrWrongTypeOfArgs("between", 2, "duration", val)
+		return nil, ErrWrongTypeOfArgs("between", 2, "duration", val)
 	}
 	return ret, nil
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func ToQuery(args ...any) (*querySource, error) {
-	between, _ := ToBetween("last-1s", "last")
+func fmQuery(args ...any) (*querySource, error) {
+	between, _ := fmBetween("last-1s", "last")
 	ret := &querySource{
 		columns: []string{},
 		between: between,
-		limit:   ToLimit(1000000),
+		limit:   fmLimit(1000000),
 	}
 	for i, arg := range args {
 		switch tok := arg.(type) {
@@ -209,11 +207,11 @@ func ToQuery(args ...any) (*querySource, error) {
 		case *QueryDump:
 			ret.dump = tok
 		default:
-			return nil, conv.ErrArgs("QUERY", i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
+			return nil, ErrArgs("QUERY", i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
 		}
 	}
 	if ret.from == nil {
-		return nil, conv.ErrArgs("QUERY", 0, "'from' should be specified")
+		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
 	}
 	return ret, nil
 }
@@ -305,7 +303,7 @@ type sqlSource struct {
 }
 
 // SQL('select ....')
-func ToSql(text string) *sqlSource {
+func fmSql(text string) *sqlSource {
 	return &sqlSource{text: text}
 }
 

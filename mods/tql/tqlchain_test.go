@@ -8,11 +8,10 @@ import (
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 func TestNewContextChain(t *testing.T) {
-	task := fx.NewTaskContext(context.TODO())
+	task := NewTaskContext(context.TODO())
 	strExprs := []string{
 		"PUSHKEY('tt')",
 		"FFT()",
@@ -47,7 +46,7 @@ func TestFFTChain(t *testing.T) {
 	reader := strings.NewReader(strings.Join(strExprs, "\n"))
 	output, _ := stream.NewOutputStream("-")
 
-	task := fx.NewTaskContext(context.TODO())
+	task := NewTaskContext(context.TODO())
 	task.SetOutputStream(output)
 	tq, err := Parse(task, reader)
 	require.Nil(t, err)

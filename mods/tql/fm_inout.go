@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tql/conv"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -60,19 +59,19 @@ func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
 }
 
 // Deprecated: no more required
-func INPUT(args ...any) (any, error) {
+func fmINPUT(args ...any) (any, error) {
 	fmt.Println("WARN INPUT() is deprecated. no more need to use")
 	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("INPUT", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("INPUT", 1, len(args))
 	}
 	return args[0], nil
 }
 
 // Deprecated: no more required
-func OUTPUT(args ...any) (any, error) {
+func fmOUTPUT(args ...any) (any, error) {
 	fmt.Println("WARN OUTPUT() is deprecated. no more need to use")
 	if len(args) != 1 {
-		return nil, conv.ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
 	}
 	return args[0], nil
 }

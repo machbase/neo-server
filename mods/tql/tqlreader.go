@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 type Line struct {
@@ -15,7 +14,7 @@ type Line struct {
 	isComment bool
 }
 
-func readLines(task fx.Task, codeReader io.Reader) ([]*Line, error) {
+func readLines(task Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}

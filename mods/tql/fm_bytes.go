@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"bufio"
@@ -7,20 +7,19 @@ import (
 	"os"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 )
 
 // STRING(CTX.Body | 'string' | file('path') [, separator()])
-func String(origin any, args ...any) (any, error) {
+func fmString(origin any, args ...any) (any, error) {
 	ret := &bytesSource{toString: true}
 	err := ret.init(origin, args...)
 	return ret, err
 }
 
 // BYTES(CTX.Body | 'string' | file('path') [, separator()])
-func Bytes(origin any, args ...any) (any, error) {
+func fmBytes(origin any, args ...any) (any, error) {
 	ret := &bytesSource{}
 	err := ret.init(origin, args...)
 	return ret, err
@@ -39,7 +38,7 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 		}
 		ret.reader = bytes.NewBuffer(content)
 	default:
-		return conv.ErrArgs("BYTES", 0, "reader or string")
+		return ErrArgs("BYTES", 0, "reader or string")
 	}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -54,7 +53,7 @@ type FilePath struct {
 	AbsPath string
 }
 
-func ToFile(path string) (*FilePath, error) {
+func fmFile(path string) (*FilePath, error) {
 	serverFs := ssfs.Default()
 	if serverFs == nil {
 		return nil, os.ErrNotExist
@@ -70,7 +69,7 @@ type separator struct {
 	c byte
 }
 
-func ToSeparator(c byte) *separator {
+func fmSeparator(c byte) *separator {
 	return &separator{c: c}
 }
 

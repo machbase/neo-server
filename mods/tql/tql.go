@@ -10,9 +10,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
-	tqlcontext "github.com/machbase/neo-server/mods/tql/context"
-	"github.com/machbase/neo-server/mods/tql/fx"
-	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -23,7 +20,7 @@ type Tql struct {
 	mapExprs []string
 }
 
-func (tq *Tql) ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error {
+func (tq *Tql) ExecuteHandler(task Task, db spi.Database, w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", tq.output.ContentType())
 	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
 		w.Header().Set("Content-Encoding", contentEncoding)
@@ -34,7 +31,7 @@ func (tq *Tql) ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWrit
 	return tq.Execute(task, db)
 }
 
-func (tq *Tql) Execute(task fx.Task, db spi.Database) (err error) {
+func (tq *Tql) Execute(task Task, db spi.Database) (err error) {
 	exprs := []*expression.Expression{}
 	for _, str := range tq.mapExprs {
 		expr, err := ParseMap(task, str)
@@ -54,7 +51,7 @@ func (tq *Tql) Execute(task fx.Task, db spi.Database) (err error) {
 	return chain.Run()
 }
 
-func Parse(task fx.Task, codeReader io.Reader) (*Tql, error) {
+func Parse(task Task, codeReader io.Reader) (*Tql, error) {
 	lines, err := readLines(task, codeReader)
 	if err != nil {
 		return nil, err
@@ -128,7 +125,7 @@ var mapFunctionsMacro = [][2]string{
 	{"FFT(", "FFT(CTX,K,V,"},
 }
 
-func ParseMap(task fx.Task, text string) (*expression.Expression, error) {
+func ParseMap(task Task, text string) (*expression.Expression, error) {
 	for _, f := range mapFunctionsMacro {
 		text = strings.ReplaceAll(text, f[0], f[1])
 	}
@@ -137,15 +134,15 @@ func ParseMap(task fx.Task, text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func ParseSource(task fx.Task, text string) (*expression.Expression, error) {
+func ParseSource(task Task, text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func ParseSink(task fx.Task, text string) (*expression.Expression, error) {
+func ParseSink(task Task, text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func CompileSource(task fx.Task, code string) (*input, error) {
+func CompileSource(task Task, code string) (*input, error) {
 	expr, err := ParseSource(task, code)
 	if err != nil {
 		return nil, err
@@ -156,9 +153,9 @@ func CompileSource(task fx.Task, code string) (*input, error) {
 	}
 	var ret *input
 	switch src := src.(type) {
-	case maps.DatabaseSource:
+	case DatabaseSource:
 		ret = &input{dbSrc: src}
-	case maps.ChannelSource:
+	case ChannelSource:
 		ret = &input{chSrc: src}
 	default:
 		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
@@ -167,8 +164,8 @@ func CompileSource(task fx.Task, code string) (*input, error) {
 }
 
 type input struct {
-	dbSrc maps.DatabaseSource
-	chSrc maps.ChannelSource
+	dbSrc DatabaseSource
+	chSrc ChannelSource
 }
 
 // for test and debug purpose
@@ -218,7 +215,7 @@ func (in *input) Run(deligate InputDeligate) error {
 				deligate.Feed([]any{msg})
 				deligate.Feed(nil)
 			} else if fetched == 0 {
-				deligate.Feed([]any{tqlcontext.ExecutionEOF})
+				deligate.Feed([]any{&Record{eof: true}})
 				deligate.Feed(nil)
 			} else {
 				deligate.Feed(nil)
@@ -281,7 +278,7 @@ func (w *InputDelegateWrapper) Feed(v []any) {
 	}
 }
 
-func CompileSink(task fx.Task, code string) (*output, error) {
+func CompileSink(task Task, code string) (*output, error) {
 	expr, err := ParseSink(task, code)
 	if err != nil {
 		return nil, err
@@ -292,7 +289,7 @@ func CompileSink(task fx.Task, code string) (*output, error) {
 	}
 
 	switch val := sink.(type) {
-	case *maps.Encoder:
+	case *Encoder:
 		ret := &output{}
 		ret.encoder = val.RowEncoder(
 			opts.OutputStream(task.OutputStream()),
@@ -303,7 +300,7 @@ func CompileSink(task fx.Task, code string) (*output, error) {
 			ret.isChart = true
 		}
 		return ret, nil
-	case maps.DatabaseSink:
+	case DatabaseSink:
 		ret := &output{}
 		ret.dbSink = val
 		ret.dbSink.SetOutputStream(task.OutputStream())
@@ -315,7 +312,7 @@ func CompileSink(task fx.Task, code string) (*output, error) {
 
 type output struct {
 	encoder codec.RowsEncoder
-	dbSink  maps.DatabaseSink
+	dbSink  DatabaseSink
 	isChart bool
 }
 

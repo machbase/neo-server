@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/context"
-	"github.com/machbase/neo-server/mods/tql/fx"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -19,8 +17,8 @@ type ExecutionChain struct {
 
 	encoderNeedToClose bool
 
-	nodes    []*context.Context
-	headNode *context.Context
+	nodes    []*SubContext
+	headNode *SubContext
 	nodesWg  sync.WaitGroup
 
 	resultCh    chan any
@@ -32,18 +30,18 @@ type ExecutionChain struct {
 	circuitBreaker bool
 }
 
-func newExecutionChain(task fx.Task, db spi.Database, input *input, output *output, exprs []*expression.Expression) (*ExecutionChain, error) {
+func newExecutionChain(task Task, db spi.Database, input *input, output *output, exprs []*expression.Expression) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.resultCh = make(chan any)
 	ret.encoderCh = make(chan []any)
 
-	nodes := make([]*context.Context, len(exprs))
+	nodes := make([]*SubContext, len(exprs))
 	for n, expr := range exprs {
-		nodes[n] = &context.Context{
+		nodes[n] = &SubContext{
 			Name:    expr.String(),
 			Context: task.Context(),
 			Expr:    expr,
-			Src:     make(chan *context.Param),
+			Src:     make(chan *Record),
 			Sink:    ret.resultCh,
 			Next:    nil,
 			Params:  task.Params(),
@@ -132,7 +130,10 @@ func (ec *ExecutionChain) start() {
 				ec.output.Open(ec.db)
 				ec.encoderNeedToClose = true
 			}
-			if arr == nil || (len(arr) > 0 && arr[0] == context.ExecutionEOF) {
+			if len(arr) == 0 {
+				continue
+			}
+			if rec, ok := arr[0].(*Record); ok && rec.IsEOF() {
 				continue
 			}
 			if err := ec.output.AddRow(arr); err != nil {
@@ -165,38 +166,38 @@ func (ec *ExecutionChain) start() {
 	go func() {
 		for ret := range ec.resultCh {
 			switch castV := ret.(type) {
-			case *context.Param:
-				if castV == context.ExecutionEOF {
+			case *Record:
+				if castV.IsEOF() {
 					ec.nodesWg.Done()
-				} else if castV == context.ExecutionCircuitBreak {
+				} else if castV.IsCircuitBreak() {
 					ec.circuitBreaker = true
 				} else {
-					switch tV := castV.V.(type) {
+					switch tV := castV.value.(type) {
 					case []any:
 						if len(tV) == 0 {
-							sink1(castV.K, tV)
+							sink1(castV.key, tV)
 						} else {
 							if subarr, ok := tV[0].([][]any); ok {
-								sink2(castV.K, subarr)
+								sink2(castV.key, subarr)
 							} else {
-								sink1(castV.K, tV)
+								sink1(castV.key, tV)
 							}
 						}
 					case [][]any:
-						sink2(castV.K, tV)
+						sink2(castV.key, tV)
 					default:
-						sink0(castV.K, castV.V)
+						sink0(castV.key, castV.value)
 					}
 				}
-			case []*context.Param:
+			case []*Record:
 				for _, v := range castV {
-					switch tV := v.V.(type) {
+					switch tV := v.value.(type) {
 					case []any:
-						sink1(v.K, tV)
+						sink1(v.key, tV)
 					case [][]any:
-						sink2(v.K, tV)
+						sink2(v.key, tV)
 					default:
-						sink0(v.K, tV)
+						sink0(v.key, tV)
 					}
 				}
 			case error:
@@ -220,9 +221,9 @@ func (ec *ExecutionChain) start() {
 		FeedFunc: func(values []any) {
 			if ec.headNode != nil {
 				if values != nil {
-					ec.headNode.Src <- &context.Param{Ctx: ec.headNode, K: values[0], V: values[1:]}
+					ec.headNode.Src <- ec.headNode.NewRecord(values[0], values[1:])
 				} else {
-					ec.headNode.Src <- context.ExecutionEOF
+					ec.headNode.Src <- ec.headNode.NewEOF()
 				}
 			} else {
 				// there is no chain, just forward input data to sink directly

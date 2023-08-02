@@ -1,11 +1,10 @@
-package maps
+package tql
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tql/conv"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -14,7 +13,7 @@ type Table struct {
 	Name string
 }
 
-func ToTable(tableName string) *Table {
+func fmTable(tableName string) *Table {
 	return &Table{Name: tableName}
 }
 
@@ -23,7 +22,7 @@ type Tag struct {
 	Column string
 }
 
-func ToTag(name string, column ...string) *Tag {
+func fmTag(name string, column ...string) *Tag {
 	if len(column) == 0 {
 		return &Tag{Name: name, Column: "name"}
 	} else {
@@ -31,7 +30,7 @@ func ToTag(name string, column ...string) *Tag {
 	}
 }
 
-func ToInsert(args ...any) (*insert, error) {
+func fmInsert(args ...any) (*insert, error) {
 	ret := &insert{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -44,7 +43,7 @@ func ToInsert(args ...any) (*insert, error) {
 		}
 	}
 	if ret.table == nil {
-		return nil, conv.ErrArgs("INSERT", 0, "table is not specified")
+		return nil, ErrArgs("INSERT", 0, "table is not specified")
 	}
 	if ret.tag != nil {
 		ret.columns = append([]string{ret.tag.Column}, ret.columns...)
@@ -100,7 +99,7 @@ func (ins *insert) AddRow(values []any) error {
 	return err
 }
 
-func ToAppend(args ...any) (*appender, error) {
+func fmAppend(args ...any) (*appender, error) {
 	ret := &appender{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -109,7 +108,7 @@ func ToAppend(args ...any) (*appender, error) {
 		}
 	}
 	if ret.table == nil {
-		return nil, conv.ErrArgs("APPEND", 0, "table is not specified")
+		return nil, ErrArgs("APPEND", 0, "table is not specified")
 	}
 	return ret, nil
 }

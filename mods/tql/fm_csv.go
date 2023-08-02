@@ -1,4 +1,4 @@
-package maps
+package tql
 
 import (
 	"bytes"
@@ -11,13 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql/conv"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
-func ToCsv(args ...any) (any, error) {
+func fmCsv(args ...any) (any, error) {
 	isSource := false
 	if len(args) > 0 {
 		switch args[0].(type) {
@@ -204,7 +203,7 @@ type headerOpt struct {
 }
 
 func ToHeader(args ...any) (any, error) {
-	flag, err := conv.Bool(args, 0, "header", "boolean")
+	flag, err := convBool(args, 0, "header", "boolean")
 	if err != nil {
 		return nil, err
 	}
@@ -218,14 +217,14 @@ type columnOpt struct {
 }
 
 // Deprecated: use ToField() instead
-func ToCol(args ...any) (any, error) {
+func fmCol(args ...any) (any, error) {
 	fmt.Println("WARN col() is deprecated. use field() instead")
-	return ToField(args...)
+	return fmField(args...)
 }
 
-func ToField(args ...any) (any, error) {
+func fmField(args ...any) (any, error) {
 	if len(args) != 3 {
-		return nil, conv.ErrInvalidNumOfArgs("col", 3, len(args))
+		return nil, ErrInvalidNumOfArgs("col", 3, len(args))
 	}
 	col := &columnOpt{}
 	if d, ok := args[0].(float64); ok {
@@ -267,7 +266,7 @@ type stringOpt struct{}
 
 func (o *stringOpt) spiType() string { return "string" }
 
-func ToStringType(args ...any) (any, error) {
+func fmStringType(args ...any) (any, error) {
 	return &stringOpt{}, nil
 }
 
@@ -275,7 +274,7 @@ type doubleOpt struct{}
 
 func (o *doubleOpt) spiType() string { return "double" }
 
-func ToDoubleType(args ...any) (any, error) {
+func fmDoubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
 }
 
@@ -292,13 +291,13 @@ type datetimeOpt struct {
 
 func (o *datetimeOpt) spiType() string { return "datetime" }
 
-func ToDatetimeType(args ...any) (any, error) {
+func fmDatetimeType(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {
-		return nil, conv.ErrInvalidNumOfArgs("datetime", 2, len(args))
+		return nil, ErrInvalidNumOfArgs("datetime", 2, len(args))
 	}
 	var err error
 	ret := &datetimeOpt{timeformat: "ns", timeLocation: time.UTC}
-	if ret.timeformat, err = conv.String(args, 0, "datetime", "string"); err != nil {
+	if ret.timeformat, err = convString(args, 0, "datetime", "string"); err != nil {
 		return ret, err
 	}
 	switch ret.timeformat {
@@ -314,7 +313,7 @@ func ToDatetimeType(args ...any) (any, error) {
 
 	if len(args) == 2 {
 		var tz string
-		if tz, err = conv.String(args, 1, "datetime", "string"); err != nil {
+		if tz, err = convString(args, 1, "datetime", "string"); err != nil {
 			return ret, err
 		} else {
 			switch strings.ToUpper(tz) {

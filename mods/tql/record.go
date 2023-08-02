@@ -6,29 +6,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fx"
 )
-
-func (ctx *SubContext) NewRecord(k, v any) *Record {
-	return &Record{task: ctx.task, ctx: ctx, key: k, value: v}
-}
-
-func (ctx *SubContext) NewEOF() *Record {
-	return &Record{task: ctx.task, ctx: ctx, eof: true}
-}
-
-func (ctx *SubContext) NewCircuitBreak() *Record {
-	return &Record{task: ctx.task, ctx: ctx, circuitBreak: true}
-}
 
 type Record struct {
 	expression.Parameters
 	ctx *SubContext
 
-	task  fx.Task
 	key   any
 	value any
-	node  *SubContext
 
 	eof          bool
 	circuitBreak bool
@@ -59,9 +44,13 @@ func (r *Record) Get(name string) (any, error) {
 	case "V":
 		return r.value, nil
 	case "CTX":
-		return r.node, nil
+		return r.ctx, nil
 	default:
-		return r.task.Get(name)
+		if r.ctx != nil && r.ctx.task != nil {
+			return r.ctx.task.Get(name)
+		} else {
+			return nil, nil
+		}
 	}
 }
 

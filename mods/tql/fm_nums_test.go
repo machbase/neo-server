@@ -1,14 +1,14 @@
-package maps_test
+package tql_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql/fx"
+	"github.com/machbase/neo-server/mods/tql"
 )
 
 func TestLen(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	TestCase{f: task.GetFunction("len"),
 		args:   []any{[]string{"1", "2", "3", "4"}},
 		expect: 4.0,
@@ -20,7 +20,7 @@ func TestLen(t *testing.T) {
 }
 
 func TestElement(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	// invalid number of args
 	TestCase{f: task.GetFunction("element"),
 		args:      []any{1, 2},
@@ -77,7 +77,7 @@ func TestElement(t *testing.T) {
 }
 
 func TestRound(t *testing.T) {
-	task := fx.NewTask()
+	task := tql.NewTask()
 	TestCase{f: task.GetFunction("round"),
 		args:      []any{},
 		expectErr: "f(round) invalid number of args; expect:2, actual:0",
