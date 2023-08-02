@@ -98,7 +98,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 	fullFuncName := runtime.FuncForPC(fv.Pointer()).Name()
 	realFuncName := filepath.Base(fullFuncName)
 	if strings.HasPrefix(realFuncName, "tql.") {
-		realFuncName = strings.TrimPrefix(filepath.Ext(realFuncName), ".")
+		realFuncName = fmt.Sprintf("x%s", filepath.Ext(realFuncName))
 	}
 	wrapFuncName := fmt.Sprintf("gen_%s", name)
 
@@ -151,7 +151,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		fmt.Sprintf(`// %s`, wrapFuncName),
 		`//`,
 		fmt.Sprintf(`// syntax: %s(%s)`, name, strings.Join(typeParams, ", ")),
-		fmt.Sprintf(`func (_ *task) %s(args ...any) (any, error) {`, wrapFuncName),
+		fmt.Sprintf(`func (x *task) %s(args ...any) (any, error) {`, wrapFuncName),
 	)
 	if len(typeParams) > 0 && strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
 		// the last parameter is variadic

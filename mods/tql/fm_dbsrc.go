@@ -13,7 +13,7 @@ type QueryFrom struct {
 	BaseTime string
 }
 
-func fmFrom(table string, tag string, baseTime ...string) *QueryFrom {
+func (x *task) fmFrom(table string, tag string, baseTime ...string) *QueryFrom {
 	ret := &QueryFrom{
 		Table:    table,
 		Tag:      tag,
@@ -31,7 +31,7 @@ type QueryLimit struct {
 }
 
 // limit([offset ,] limit)
-func fmLimit(args ...int) *QueryLimit {
+func (x *task) fmLimit(args ...int) *QueryLimit {
 	ret := &QueryLimit{}
 	if len(args) == 2 {
 		ret.Offset = args[0]
@@ -47,7 +47,7 @@ type QueryDump struct {
 	Escape bool
 }
 
-func fmDump(args ...bool) *QueryDump {
+func (x *task) fmDump(args ...bool) *QueryDump {
 	ret := &QueryDump{}
 	if len(args) == 0 {
 		return ret
@@ -136,7 +136,7 @@ func parseBetweenTime(str string) (string, time.Duration, error) {
 	}
 }
 
-func fmBetween(begin any, end any, period ...any) (*QueryBetween, error) {
+func (x *task) fmBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 	ret := &QueryBetween{}
 	switch val := begin.(type) {
 	case string:
@@ -187,12 +187,12 @@ func fmBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func fmQuery(args ...any) (*querySource, error) {
-	between, _ := fmBetween("last-1s", "last")
+func (x *task) fmQuery(args ...any) (*querySource, error) {
+	between, _ := x.fmBetween("last-1s", "last")
 	ret := &querySource{
 		columns: []string{},
 		between: between,
-		limit:   fmLimit(1000000),
+		limit:   x.fmLimit(1000000),
 	}
 	for i, arg := range args {
 		switch tok := arg.(type) {
@@ -303,7 +303,7 @@ type sqlSource struct {
 }
 
 // SQL('select ....')
-func fmSql(text string) *sqlSource {
+func (x *task) fmSql(text string) *sqlSource {
 	return &sqlSource{text: text}
 }
 

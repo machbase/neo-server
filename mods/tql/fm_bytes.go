@@ -12,14 +12,14 @@ import (
 )
 
 // STRING(CTX.Body | 'string' | file('path') [, separator()])
-func fmString(origin any, args ...any) (any, error) {
+func (x *task) fmString(origin any, args ...any) (any, error) {
 	ret := &bytesSource{toString: true}
 	err := ret.init(origin, args...)
 	return ret, err
 }
 
 // BYTES(CTX.Body | 'string' | file('path') [, separator()])
-func fmBytes(origin any, args ...any) (any, error) {
+func (x *task) fmBytes(origin any, args ...any) (any, error) {
 	ret := &bytesSource{}
 	err := ret.init(origin, args...)
 	return ret, err
@@ -53,7 +53,7 @@ type FilePath struct {
 	AbsPath string
 }
 
-func fmFile(path string) (*FilePath, error) {
+func (x *task) fmFile(path string) (*FilePath, error) {
 	serverFs := ssfs.Default()
 	if serverFs == nil {
 		return nil, os.ErrNotExist
@@ -69,7 +69,7 @@ type separator struct {
 	c byte
 }
 
-func fmSeparator(c byte) *separator {
+func (x *task) fmSeparator(c byte) *separator {
 	return &separator{c: c}
 }
 

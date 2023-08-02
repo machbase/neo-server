@@ -21,7 +21,7 @@ type scriptlet struct {
 	yields []*Record
 }
 
-func fmScriptTengo(ctx *SubContext, K any, V any, content string) (any, error) {
+func (x *task) fmScriptTengo(ctx *SubContext, K any, V any, content string) (any, error) {
 	var slet *scriptlet
 	if obj, ok := ctx.Get(tengo_script_key); ok {
 		if sl, ok := obj.(*scriptlet); ok {
