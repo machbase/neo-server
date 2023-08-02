@@ -1,6 +1,8 @@
 package maps
 
 import (
+	"fmt"
+
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -10,6 +12,7 @@ import (
 
 // Deprecated: no more required
 func OUTPUT(args ...any) (any, error) {
+	fmt.Println("WARN OUTPUT() is deprecated. no more need to use")
 	if len(args) != 1 {
 		return nil, conv.ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
 	}

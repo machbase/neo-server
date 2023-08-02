@@ -94,7 +94,7 @@ var FxDefinitions = []Definition{
 	{"BYTES", maps.Bytes},
 	// maps.csv
 	{"// maps.csv", nil},
-	{"col", maps.ToCol_deprecated},
+	{"col", maps.ToCol},
 	{"field", maps.ToField},
 	{"header", maps.ToHeader},
 	{"datetimeType", maps.ToDatetimeType},

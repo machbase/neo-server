@@ -186,7 +186,13 @@ func TimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 		delta = time.Duration(sig * (day*24*int64(time.Hour) + int64(hour)))
 	case float64:
 		delta = time.Duration(int64(val))
+	case float32:
+		delta = time.Duration(int64(val))
 	case int64:
+		delta = time.Duration(val)
+	case int32:
+		delta = time.Duration(val)
+	case int:
 		delta = time.Duration(val)
 	default:
 		return baseTime, fmt.Errorf("invalid delta expression '%v %T'", val, val)

@@ -1121,7 +1121,7 @@ func gen_col(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	return maps.ToCol_deprecated(p0...)
+	return maps.ToCol(p0...)
 }
 
 // gen_field

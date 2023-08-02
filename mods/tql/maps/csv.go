@@ -70,22 +70,14 @@ func (src *csvSource) Gen() <-chan []any {
 					switch dataType := colOpt.dataType.(type) {
 					case *anyOpt:
 						switch dataType.typeName {
-						case "float":
-							fallthrough
-						case "float32":
-							fallthrough
-						case "float64":
-							fallthrough
-						case "double":
+						case "float", "float32", "float64", "double":
 							dataType.typeName = "double"
 							values[i], err = strconv.ParseFloat(fields[i], 64)
 							if err != nil {
 								src.ch <- nil
 								break
 							}
-						case "boolean":
-							fallthrough
-						case "bool":
+						case "bool", "boolean":
 							dataType.typeName = "boolean"
 							values[i], err = strconv.ParseBool(fields[i])
 							if err != nil {
@@ -225,7 +217,8 @@ type columnOpt struct {
 	label    string
 }
 
-func ToCol_deprecated(args ...any) (any, error) {
+// Deprecated: use ToField() instead
+func ToCol(args ...any) (any, error) {
 	fmt.Println("WARN col() is deprecated. use field() instead")
 	return ToField(args...)
 }

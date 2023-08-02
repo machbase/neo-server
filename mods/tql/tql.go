@@ -124,6 +124,7 @@ func ParseMap(text string) (*expression.Expression, error) {
 func ParseSource(text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, fx.GenFunctions)
 }
+
 func ParseSink(text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, fx.GenFunctions)
 }
@@ -172,12 +173,10 @@ func CompileSource(code string, dataReader io.Reader, params map[string][]string
 	switch src := src.(type) {
 	case maps.DatabaseSource:
 		ret = &input{dbSrc: src}
-	case maps.FakeSource:
-		ret = &input{fakeSrc: src}
-	case maps.ReaderSource:
-		ret = &input{readerSrc: src}
+	case maps.ChannelSource:
+		ret = &input{chSrc: src}
 	default:
-		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", src)
+		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
 	}
 	return ret, nil
 }
@@ -210,9 +209,8 @@ func (p *inputContext) Get(name string) (any, error) {
 }
 
 type input struct {
-	dbSrc     maps.DatabaseSource
-	fakeSrc   maps.FakeSource
-	readerSrc maps.ReaderSource
+	dbSrc maps.DatabaseSource
+	chSrc maps.ChannelSource
 }
 
 // for test and debug purpose
@@ -224,7 +222,7 @@ func (in *input) ToSQL() string {
 }
 
 func (in *input) Run(deligate InputDeligate) error {
-	if in.dbSrc == nil && in.fakeSrc == nil && in.readerSrc == nil {
+	if in.dbSrc == nil && in.chSrc == nil {
 		return errors.New("nil source")
 	}
 	if deligate == nil {
@@ -269,23 +267,12 @@ func (in *input) Run(deligate InputDeligate) error {
 			}
 			return nil
 		}
-	} else if in.fakeSrc != nil {
-		deligate.FeedHeader(in.fakeSrc.Header())
-		for values := range in.fakeSrc.Gen() {
+	} else if in.chSrc != nil {
+		deligate.FeedHeader(in.chSrc.Header())
+		for values := range in.chSrc.Gen() {
 			deligate.Feed(values)
 			if deligate.ShouldStop() {
-				in.fakeSrc.Stop()
-				break
-			}
-		}
-		deligate.Feed(nil)
-		return nil
-	} else if in.readerSrc != nil {
-		deligate.FeedHeader(in.readerSrc.Header())
-		for values := range in.readerSrc.Gen() {
-			deligate.Feed(values)
-			if deligate.ShouldStop() {
-				in.readerSrc.Stop()
+				in.chSrc.Stop()
 				break
 			}
 		}
@@ -373,7 +360,7 @@ func CompileSink(code string, params map[string][]string, writer io.Writer, toJs
 		ret.dbSink.SetOutputStream(outputStream)
 		return ret, nil
 	default:
-		return nil, fmt.Errorf("invalid sink type: %T", val)
+		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
 	}
 }
 

@@ -77,6 +77,14 @@ func TestTime(t *testing.T) {
 		args:   []any{"now", "-1d2h3m4s"},
 		expect: tick.Add(-24*1*time.Hour - 2*time.Hour - 3*time.Minute - 4*time.Second),
 	}.run(t)
+	TestCase{f: fx.GetFunction("timeAdd"),
+		args:   []any{"now-1s", 1000000000},
+		expect: tick,
+	}.run(t)
+	TestCase{f: fx.GetFunction("timeAdd"),
+		args:      []any{"now-1x", 1000000000},
+		expectErr: "time: unknown unit \"x\" in duration \"-1x\"",
+	}.run(t)
 	// time.Time
 	TestCase{f: fx.GetFunction("time"),
 		args:   []any{tick},
