@@ -18,7 +18,9 @@ import (
 */
 
 func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
-	columns := []string{"name", "time", "value"}
+	columns := descColumns.Columns().Names()
+	columns = columns[:3]
+
 	colTypes := descColumns.Columns().Types()
 	for idx, val := range descColumns.Columns().Names() {
 		if _, ok := tags[val]; ok {
@@ -32,13 +34,9 @@ func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescrip
 	values := make([]any, 0)
 
 	for k, v := range fields {
-		//name
 		values = append(values, fmt.Sprintf("%s.%s", measurement, k))
-
-		//time
 		values = append(values, ts)
 
-		//value
 		switch val := v.(type) {
 		case float32:
 			values = append(values, float64(val))

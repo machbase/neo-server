@@ -47,7 +47,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 			if key == nil {
 				break
 			}
-			tags[string(key)] = string(val)
+			tags[strings.ToUpper(string(key))] = string(val)
 		}
 
 		for {

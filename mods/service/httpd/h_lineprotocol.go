@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -92,7 +93,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			if key == nil {
 				break
 			}
-			tags[string(key)] = string(val)
+			tags[strings.ToUpper(string(key))] = string(val)
 		}
 
 		for {
