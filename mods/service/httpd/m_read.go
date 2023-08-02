@@ -1688,8 +1688,8 @@ func (svr *httpd) makeFromTimestamp(ctx *gin.Context, times string) string {
 			times = times[0:13]
 		}
 
-		sRes = fmt.Sprintf("FROM_TIMESTAMP(%s)", sTime)
 		if sTime = svr.makeNanoTimeStamp(ctx, times); sTime != "" {
+			sRes = fmt.Sprintf("FROM_TIMESTAMP(%s)", sTime)
 		}
 	}
 
