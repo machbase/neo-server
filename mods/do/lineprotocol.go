@@ -17,33 +17,49 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(db spi.Database, dbName string, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
-	columns := make([]string, 0)
-	rows := make([][]any, 0)
+func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
+	columns := []string{"name", "time", "value"}
+	colTypes := descColumns.Columns().Types()
+	for idx, val := range descColumns.Columns().Names() {
+		if _, ok := tags[val]; ok {
+			if colTypes[idx] == spi.ColumnBufferTypeString {
+				columns = append(columns, val)
+			}
+		}
+	}
 
-	columns = append(columns, "name", "time", "value")
+	rows := make([][]any, 0)
+	values := make([]any, 0)
 
 	for k, v := range fields {
-		name := fmt.Sprintf("%s.%s", measurement, k)
-		value := float64(0)
-		timestamp := ts
+		//name
+		values = append(values, fmt.Sprintf("%s.%s", measurement, k))
 
+		//time
+		values = append(values, ts)
+
+		//value
 		switch val := v.(type) {
 		case float32:
-			value = float64(val)
+			values = append(values, float64(val))
 		case float64:
-			value = val
+			values = append(values, val)
 		case int:
-			value = float64(val)
+			values = append(values, float64(val))
 		case int32:
-			value = float64(val)
+			values = append(values, float64(val))
 		case int64:
-			value = float64(val)
+			values = append(values, float64(val))
 		default:
 			// fmt.Printf("unsupproted value type '%T' of field '%s'\n", val, k)
 			continue
 		}
-		rows = append(rows, []any{name, timestamp, value})
+
+		for i := 3; i < len(columns); i++ {
+			values = append(values, tags[columns[i]])
+		}
+
+		rows = append(rows, values)
 	}
 
 	return Insert(db, dbName, columns, rows)
