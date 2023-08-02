@@ -8,12 +8,7 @@ import (
 )
 
 type Loader interface {
-	Load(path string) (Script, error)
-}
-
-type Script interface {
-	Parse(task Task) (*Tql, error)
-	String() string
+	Load(path string) (*Script, error)
 }
 
 type loader struct {
@@ -34,8 +29,8 @@ func NewLoader(dirs []string) Loader {
 	}
 }
 
-func (ld *loader) Load(path string) (Script, error) {
-	var ret *script
+func (ld *loader) Load(path string) (*Script, error) {
+	var ret *Script
 	for _, d := range ld.dirs {
 		joined := filepath.Join(d, path)
 		stat, err := os.Stat(joined)
@@ -47,7 +42,7 @@ func (ld *loader) Load(path string) (Script, error) {
 			continue
 		}
 
-		ret = &script{
+		ret = &Script{
 			path: joined,
 		}
 		break
@@ -58,24 +53,10 @@ func (ld *loader) Load(path string) (Script, error) {
 	return ret, nil
 }
 
-type script struct {
+type Script struct {
 	path string
 }
 
-func (sc *script) String() string {
+func (sc *Script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
-}
-
-func (sc *script) Parse(task Task) (*Tql, error) {
-	file, err := os.Open(sc.path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	tql, err := Parse(task, file)
-	if err != nil {
-		return nil, err
-	}
-	return tql, nil
 }

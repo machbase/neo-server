@@ -9,7 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 )
 
-func NewSubContext(x Task) *SubContext {
+func NewSubContext(x *Task) *SubContext {
 	return &SubContext{
 		task: x,
 	}
@@ -25,7 +25,7 @@ type SubContext struct {
 	Params map[string][]string
 	Nrow   int
 
-	task   Task
+	task   *Task
 	values map[string]any
 	buffer map[any][]any
 	Debug  bool

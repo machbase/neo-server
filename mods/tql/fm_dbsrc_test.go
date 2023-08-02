@@ -12,7 +12,7 @@ import (
 func TestTagQLFile(t *testing.T) {
 	task := tql.NewTask()
 	text := `QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"))`
-	ret, err := tql.CompileSource(task, text)
+	ret, err := task.CompileSource(text)
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t,
@@ -147,7 +147,7 @@ func normalize(ret string) string {
 
 func (tc TagQLTestCase) run(t *testing.T) {
 	task := tql.NewTask()
-	ret, err := tql.CompileSource(task, tc.tq)
+	ret, err := task.CompileSource(tc.tq)
 	if err != nil {
 		t.Fatalf("tq:'%s' parse err:%s", tc.tq, err.Error())
 	}

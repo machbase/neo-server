@@ -14,7 +14,7 @@ type Line struct {
 	isComment bool
 }
 
-func readLines(task Task, codeReader io.Reader) ([]*Line, error) {
+func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}

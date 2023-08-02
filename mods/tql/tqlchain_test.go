@@ -48,9 +48,8 @@ func TestFFTChain(t *testing.T) {
 
 	task := NewTaskContext(context.TODO())
 	task.SetOutputStream(output)
-	tq, err := Parse(task, reader)
+	err := task.Compile(reader)
 	require.Nil(t, err)
-	require.NotNil(t, tq)
 
-	tq.Execute(task, nil)
+	task.Execute(nil)
 }

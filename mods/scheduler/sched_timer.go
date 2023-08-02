@@ -91,19 +91,18 @@ func (ent *TimerEntry) doTask() {
 		ent.Stop()
 		return
 	}
-	fxTask := tql.NewTaskContext(context.TODO())
-	fxTask.SetParams(nil)
-	fxTask.SetDataReader(nil)
-	fxTask.SetDataWriter(io.Discard)
-	fxTask.SetJsonOutput(true)
-	task, err := sc.Parse(fxTask)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetParams(nil)
+	task.SetInputReader(nil)
+	task.SetOutputWriter(io.Discard)
+	task.SetJsonOutput(true)
+	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()
 		return
 	}
-	if err := task.Execute(fxTask, ent.s.db); err != nil {
+	if err := task.Execute(ent.s.db); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

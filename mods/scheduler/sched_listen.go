@@ -157,19 +157,18 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 	params["MSGID"] = []string{fmt.Sprintf("%d", msgId)}
 	params["DUP"] = []string{fmt.Sprintf("%t", dup)}
 	params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
-	fxTask := tql.NewTaskContext(context.TODO())
-	fxTask.SetDataReader(bytes.NewBuffer(payload))
-	fxTask.SetParams(params)
-	fxTask.SetDataWriter(io.Discard)
-	fxTask.SetJsonOutput(true)
-	task, err := sc.Parse(fxTask)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetInputReader(bytes.NewBuffer(payload))
+	task.SetOutputWriter(io.Discard)
+	task.SetParams(params)
+	task.SetJsonOutput(true)
+	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()
 		return
 	}
-	if err := task.Execute(fxTask, ent.s.db); err != nil {
+	if err := task.Execute(ent.s.db); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

@@ -30,7 +30,7 @@ type ExecutionChain struct {
 	circuitBreaker bool
 }
 
-func newExecutionChain(task Task, db spi.Database, input *input, output *output, exprs []*expression.Expression) (*ExecutionChain, error) {
+func newExecutionChain(task *Task, db spi.Database, input *input, output *output, exprs []*expression.Expression) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.resultCh = make(chan any)
 	ret.encoderCh = make(chan []any)

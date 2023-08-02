@@ -12,8 +12,8 @@ import (
 	"github.com/machbase/neo-server/mods/nums"
 )
 
-func NewTask() Task {
-	x := &task{}
+func NewTask() *Task {
+	x := &Task{}
 	x.functions = map[string]expression.Function{
 		// math
 		"sin":   x.gen_sin,
@@ -146,7 +146,7 @@ func NewTask() Task {
 // gen_sin
 //
 // syntax: sin(float64)
-func (x *task) gen_sin(args ...any) (any, error) {
+func (x *Task) gen_sin(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("sin", 1, len(args))
 	}
@@ -161,7 +161,7 @@ func (x *task) gen_sin(args ...any) (any, error) {
 // gen_cos
 //
 // syntax: cos(float64)
-func (x *task) gen_cos(args ...any) (any, error) {
+func (x *Task) gen_cos(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("cos", 1, len(args))
 	}
@@ -176,7 +176,7 @@ func (x *task) gen_cos(args ...any) (any, error) {
 // gen_tan
 //
 // syntax: tan(float64)
-func (x *task) gen_tan(args ...any) (any, error) {
+func (x *Task) gen_tan(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("tan", 1, len(args))
 	}
@@ -191,7 +191,7 @@ func (x *task) gen_tan(args ...any) (any, error) {
 // gen_exp
 //
 // syntax: exp(float64)
-func (x *task) gen_exp(args ...any) (any, error) {
+func (x *Task) gen_exp(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("exp", 1, len(args))
 	}
@@ -206,7 +206,7 @@ func (x *task) gen_exp(args ...any) (any, error) {
 // gen_exp2
 //
 // syntax: exp2(float64)
-func (x *task) gen_exp2(args ...any) (any, error) {
+func (x *Task) gen_exp2(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("exp2", 1, len(args))
 	}
@@ -221,7 +221,7 @@ func (x *task) gen_exp2(args ...any) (any, error) {
 // gen_log
 //
 // syntax: log(float64)
-func (x *task) gen_log(args ...any) (any, error) {
+func (x *Task) gen_log(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("log", 1, len(args))
 	}
@@ -236,7 +236,7 @@ func (x *task) gen_log(args ...any) (any, error) {
 // gen_log10
 //
 // syntax: log10(float64)
-func (x *task) gen_log10(args ...any) (any, error) {
+func (x *Task) gen_log10(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("log10", 1, len(args))
 	}
@@ -251,7 +251,7 @@ func (x *task) gen_log10(args ...any) (any, error) {
 // gen_round
 //
 // syntax: round(int64, int64)
-func (x *task) gen_round(args ...any) (any, error) {
+func (x *Task) gen_round(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("round", 2, len(args))
 	}
@@ -270,7 +270,7 @@ func (x *task) gen_round(args ...any) (any, error) {
 // gen_linspace
 //
 // syntax: linspace(float64, float64, int)
-func (x *task) gen_linspace(args ...any) (any, error) {
+func (x *Task) gen_linspace(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("linspace", 3, len(args))
 	}
@@ -293,7 +293,7 @@ func (x *task) gen_linspace(args ...any) (any, error) {
 // gen_linspace50
 //
 // syntax: linspace50(float64, float64)
-func (x *task) gen_linspace50(args ...any) (any, error) {
+func (x *Task) gen_linspace50(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("linspace50", 2, len(args))
 	}
@@ -312,7 +312,7 @@ func (x *task) gen_linspace50(args ...any) (any, error) {
 // gen_meshgrid
 //
 // syntax: meshgrid([]float64, []float64)
-func (x *task) gen_meshgrid(args ...any) (any, error) {
+func (x *Task) gen_meshgrid(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("meshgrid", 2, len(args))
 	}
@@ -331,7 +331,7 @@ func (x *task) gen_meshgrid(args ...any) (any, error) {
 // gen_time
 //
 // syntax: time()
-func (x *task) gen_time(args ...any) (any, error) {
+func (x *Task) gen_time(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("time", 1, len(args))
 	}
@@ -345,7 +345,7 @@ func (x *task) gen_time(args ...any) (any, error) {
 // gen_timeAdd
 //
 // syntax: timeAdd(, )
-func (x *task) gen_timeAdd(args ...any) (any, error) {
+func (x *Task) gen_timeAdd(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("timeAdd", 2, len(args))
 	}
@@ -363,7 +363,7 @@ func (x *task) gen_timeAdd(args ...any) (any, error) {
 // gen_roundTime
 //
 // syntax: roundTime(, )
-func (x *task) gen_roundTime(args ...any) (any, error) {
+func (x *Task) gen_roundTime(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("roundTime", 2, len(args))
 	}
@@ -381,7 +381,7 @@ func (x *task) gen_roundTime(args ...any) (any, error) {
 // gen_range
 //
 // syntax: range(, , ...interface {})
-func (x *task) gen_range(args ...any) (any, error) {
+func (x *Task) gen_range(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("range", 2, len(args))
 	}
@@ -407,7 +407,7 @@ func (x *task) gen_range(args ...any) (any, error) {
 // gen_TAKE
 //
 // syntax: TAKE(, , , int)
-func (x *task) gen_TAKE(args ...any) (any, error) {
+func (x *Task) gen_TAKE(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("TAKE", 4, len(args))
 	}
@@ -434,7 +434,7 @@ func (x *task) gen_TAKE(args ...any) (any, error) {
 // gen_DROP
 //
 // syntax: DROP(, , , int)
-func (x *task) gen_DROP(args ...any) (any, error) {
+func (x *Task) gen_DROP(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("DROP", 4, len(args))
 	}
@@ -461,7 +461,7 @@ func (x *task) gen_DROP(args ...any) (any, error) {
 // gen_FILTER
 //
 // syntax: FILTER(, , , bool)
-func (x *task) gen_FILTER(args ...any) (any, error) {
+func (x *Task) gen_FILTER(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("FILTER", 4, len(args))
 	}
@@ -488,7 +488,7 @@ func (x *task) gen_FILTER(args ...any) (any, error) {
 // gen_FLATTEN
 //
 // syntax: FLATTEN(, , )
-func (x *task) gen_FLATTEN(args ...any) (any, error) {
+func (x *Task) gen_FLATTEN(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("FLATTEN", 3, len(args))
 	}
@@ -511,7 +511,7 @@ func (x *task) gen_FLATTEN(args ...any) (any, error) {
 // gen_GROUPBYKEY
 //
 // syntax: GROUPBYKEY(, , , ...interface {})
-func (x *task) gen_GROUPBYKEY(args ...any) (any, error) {
+func (x *Task) gen_GROUPBYKEY(args ...any) (any, error) {
 	if len(args) < 3 {
 		return nil, ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
 	}
@@ -542,7 +542,7 @@ func (x *task) gen_GROUPBYKEY(args ...any) (any, error) {
 // gen_POPKEY
 //
 // syntax: POPKEY(, , , ...int)
-func (x *task) gen_POPKEY(args ...any) (any, error) {
+func (x *Task) gen_POPKEY(args ...any) (any, error) {
 	if len(args) < 3 {
 		return nil, ErrInvalidNumOfArgs("POPKEY", 3, len(args))
 	}
@@ -572,7 +572,7 @@ func (x *task) gen_POPKEY(args ...any) (any, error) {
 // gen_PUSHKEY
 //
 // syntax: PUSHKEY(, , , )
-func (x *task) gen_PUSHKEY(args ...any) (any, error) {
+func (x *Task) gen_PUSHKEY(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("PUSHKEY", 4, len(args))
 	}
@@ -598,7 +598,7 @@ func (x *task) gen_PUSHKEY(args ...any) (any, error) {
 // gen_SCRIPT
 //
 // syntax: SCRIPT(, , , string)
-func (x *task) gen_SCRIPT(args ...any) (any, error) {
+func (x *Task) gen_SCRIPT(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("SCRIPT", 4, len(args))
 	}
@@ -624,7 +624,7 @@ func (x *task) gen_SCRIPT(args ...any) (any, error) {
 // gen_lazy
 //
 // syntax: lazy(bool)
-func (x *task) gen_lazy(args ...any) (any, error) {
+func (x *Task) gen_lazy(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("lazy", 1, len(args))
 	}
@@ -639,7 +639,7 @@ func (x *task) gen_lazy(args ...any) (any, error) {
 // gen_from
 //
 // syntax: from(string, string, ...string)
-func (x *task) gen_from(args ...any) (any, error) {
+func (x *Task) gen_from(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("from", 2, len(args))
 	}
@@ -666,7 +666,7 @@ func (x *task) gen_from(args ...any) (any, error) {
 // gen_limit
 //
 // syntax: limit(...int)
-func (x *task) gen_limit(args ...any) (any, error) {
+func (x *Task) gen_limit(args ...any) (any, error) {
 	p0 := []int{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convInt(args, n, "limit", "...int")
@@ -682,7 +682,7 @@ func (x *task) gen_limit(args ...any) (any, error) {
 // gen_between
 //
 // syntax: between(, , ...interface {})
-func (x *task) gen_between(args ...any) (any, error) {
+func (x *Task) gen_between(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("between", 2, len(args))
 	}
@@ -708,7 +708,7 @@ func (x *task) gen_between(args ...any) (any, error) {
 // gen_dump
 //
 // syntax: dump(...bool)
-func (x *task) gen_dump(args ...any) (any, error) {
+func (x *Task) gen_dump(args ...any) (any, error) {
 	p0 := []bool{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convBool(args, n, "dump", "...bool")
@@ -724,7 +724,7 @@ func (x *task) gen_dump(args ...any) (any, error) {
 // gen_QUERY
 //
 // syntax: QUERY(...interface {})
-func (x *task) gen_QUERY(args ...any) (any, error) {
+func (x *Task) gen_QUERY(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "QUERY", "...interface {}")
@@ -739,7 +739,7 @@ func (x *task) gen_QUERY(args ...any) (any, error) {
 // gen_SQL
 //
 // syntax: SQL(string)
-func (x *task) gen_SQL(args ...any) (any, error) {
+func (x *Task) gen_SQL(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, len(args))
 	}
@@ -754,7 +754,7 @@ func (x *task) gen_SQL(args ...any) (any, error) {
 // gen_table
 //
 // syntax: table(string)
-func (x *task) gen_table(args ...any) (any, error) {
+func (x *Task) gen_table(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("table", 1, len(args))
 	}
@@ -769,7 +769,7 @@ func (x *task) gen_table(args ...any) (any, error) {
 // gen_tag
 //
 // syntax: tag(string, ...string)
-func (x *task) gen_tag(args ...any) (any, error) {
+func (x *Task) gen_tag(args ...any) (any, error) {
 	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("tag", 1, len(args))
 	}
@@ -792,7 +792,7 @@ func (x *task) gen_tag(args ...any) (any, error) {
 // gen_INSERT
 //
 // syntax: INSERT(...interface {})
-func (x *task) gen_INSERT(args ...any) (any, error) {
+func (x *Task) gen_INSERT(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "INSERT", "...interface {}")
@@ -807,7 +807,7 @@ func (x *task) gen_INSERT(args ...any) (any, error) {
 // gen_APPEND
 //
 // syntax: APPEND(...interface {})
-func (x *task) gen_APPEND(args ...any) (any, error) {
+func (x *Task) gen_APPEND(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "APPEND", "...interface {}")
@@ -822,7 +822,7 @@ func (x *task) gen_APPEND(args ...any) (any, error) {
 // gen_minHz
 //
 // syntax: minHz(float64)
-func (x *task) gen_minHz(args ...any) (any, error) {
+func (x *Task) gen_minHz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("minHz", 1, len(args))
 	}
@@ -837,7 +837,7 @@ func (x *task) gen_minHz(args ...any) (any, error) {
 // gen_maxHz
 //
 // syntax: maxHz(float64)
-func (x *task) gen_maxHz(args ...any) (any, error) {
+func (x *Task) gen_maxHz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("maxHz", 1, len(args))
 	}
@@ -852,7 +852,7 @@ func (x *task) gen_maxHz(args ...any) (any, error) {
 // gen_FFT
 //
 // syntax: FFT(, , []interface {}, ...interface {})
-func (x *task) gen_FFT(args ...any) (any, error) {
+func (x *Task) gen_FFT(args ...any) (any, error) {
 	if len(args) < 3 {
 		return nil, ErrInvalidNumOfArgs("FFT", 3, len(args))
 	}
@@ -882,7 +882,7 @@ func (x *task) gen_FFT(args ...any) (any, error) {
 // gen_CSV
 //
 // syntax: CSV(...interface {})
-func (x *task) gen_CSV(args ...any) (any, error) {
+func (x *Task) gen_CSV(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CSV", "...interface {}")
@@ -897,7 +897,7 @@ func (x *task) gen_CSV(args ...any) (any, error) {
 // gen_JSON
 //
 // syntax: JSON(...interface {})
-func (x *task) gen_JSON(args ...any) (any, error) {
+func (x *Task) gen_JSON(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "JSON", "...interface {}")
@@ -913,7 +913,7 @@ func (x *task) gen_JSON(args ...any) (any, error) {
 // gen_MARKDOWN
 //
 // syntax: MARKDOWN(...interface {})
-func (x *task) gen_MARKDOWN(args ...any) (any, error) {
+func (x *Task) gen_MARKDOWN(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "MARKDOWN", "...interface {}")
@@ -929,7 +929,7 @@ func (x *task) gen_MARKDOWN(args ...any) (any, error) {
 // gen_CHART_LINE
 //
 // syntax: CHART_LINE(...interface {})
-func (x *task) gen_CHART_LINE(args ...any) (any, error) {
+func (x *Task) gen_CHART_LINE(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_LINE", "...interface {}")
@@ -945,7 +945,7 @@ func (x *task) gen_CHART_LINE(args ...any) (any, error) {
 // gen_CHART_SCATTER
 //
 // syntax: CHART_SCATTER(...interface {})
-func (x *task) gen_CHART_SCATTER(args ...any) (any, error) {
+func (x *Task) gen_CHART_SCATTER(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_SCATTER", "...interface {}")
@@ -961,7 +961,7 @@ func (x *task) gen_CHART_SCATTER(args ...any) (any, error) {
 // gen_CHART_BAR
 //
 // syntax: CHART_BAR(...interface {})
-func (x *task) gen_CHART_BAR(args ...any) (any, error) {
+func (x *Task) gen_CHART_BAR(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_BAR", "...interface {}")
@@ -977,7 +977,7 @@ func (x *task) gen_CHART_BAR(args ...any) (any, error) {
 // gen_CHART_LINE3D
 //
 // syntax: CHART_LINE3D(...interface {})
-func (x *task) gen_CHART_LINE3D(args ...any) (any, error) {
+func (x *Task) gen_CHART_LINE3D(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_LINE3D", "...interface {}")
@@ -993,7 +993,7 @@ func (x *task) gen_CHART_LINE3D(args ...any) (any, error) {
 // gen_CHART_BAR3D
 //
 // syntax: CHART_BAR3D(...interface {})
-func (x *task) gen_CHART_BAR3D(args ...any) (any, error) {
+func (x *Task) gen_CHART_BAR3D(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_BAR3D", "...interface {}")
@@ -1009,7 +1009,7 @@ func (x *task) gen_CHART_BAR3D(args ...any) (any, error) {
 // gen_CHART_SURFACE3D
 //
 // syntax: CHART_SURFACE3D(...interface {})
-func (x *task) gen_CHART_SURFACE3D(args ...any) (any, error) {
+func (x *Task) gen_CHART_SURFACE3D(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_SURFACE3D", "...interface {}")
@@ -1025,7 +1025,7 @@ func (x *task) gen_CHART_SURFACE3D(args ...any) (any, error) {
 // gen_CHART_SCATTER3D
 //
 // syntax: CHART_SCATTER3D(...interface {})
-func (x *task) gen_CHART_SCATTER3D(args ...any) (any, error) {
+func (x *Task) gen_CHART_SCATTER3D(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "CHART_SCATTER3D", "...interface {}")
@@ -1041,7 +1041,7 @@ func (x *task) gen_CHART_SCATTER3D(args ...any) (any, error) {
 // gen_separator
 //
 // syntax: separator(uint8)
-func (x *task) gen_separator(args ...any) (any, error) {
+func (x *Task) gen_separator(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("separator", 1, len(args))
 	}
@@ -1056,7 +1056,7 @@ func (x *task) gen_separator(args ...any) (any, error) {
 // gen_file
 //
 // syntax: file(string)
-func (x *task) gen_file(args ...any) (any, error) {
+func (x *Task) gen_file(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("file", 1, len(args))
 	}
@@ -1070,7 +1070,7 @@ func (x *task) gen_file(args ...any) (any, error) {
 // gen_STRING
 //
 // syntax: STRING(, ...interface {})
-func (x *task) gen_STRING(args ...any) (any, error) {
+func (x *Task) gen_STRING(args ...any) (any, error) {
 	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("STRING", 1, len(args))
 	}
@@ -1092,7 +1092,7 @@ func (x *task) gen_STRING(args ...any) (any, error) {
 // gen_BYTES
 //
 // syntax: BYTES(, ...interface {})
-func (x *task) gen_BYTES(args ...any) (any, error) {
+func (x *Task) gen_BYTES(args ...any) (any, error) {
 	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("BYTES", 1, len(args))
 	}
@@ -1114,7 +1114,7 @@ func (x *task) gen_BYTES(args ...any) (any, error) {
 // gen_col
 //
 // syntax: col(...interface {})
-func (x *task) gen_col(args ...any) (any, error) {
+func (x *Task) gen_col(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "col", "...interface {}")
@@ -1129,7 +1129,7 @@ func (x *task) gen_col(args ...any) (any, error) {
 // gen_field
 //
 // syntax: field(...interface {})
-func (x *task) gen_field(args ...any) (any, error) {
+func (x *Task) gen_field(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "field", "...interface {}")
@@ -1144,7 +1144,7 @@ func (x *task) gen_field(args ...any) (any, error) {
 // gen_header
 //
 // syntax: header(...interface {})
-func (x *task) gen_header(args ...any) (any, error) {
+func (x *Task) gen_header(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "header", "...interface {}")
@@ -1159,7 +1159,7 @@ func (x *task) gen_header(args ...any) (any, error) {
 // gen_datetimeType
 //
 // syntax: datetimeType(...interface {})
-func (x *task) gen_datetimeType(args ...any) (any, error) {
+func (x *Task) gen_datetimeType(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "datetimeType", "...interface {}")
@@ -1174,7 +1174,7 @@ func (x *task) gen_datetimeType(args ...any) (any, error) {
 // gen_stringType
 //
 // syntax: stringType(...interface {})
-func (x *task) gen_stringType(args ...any) (any, error) {
+func (x *Task) gen_stringType(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "stringType", "...interface {}")
@@ -1189,7 +1189,7 @@ func (x *task) gen_stringType(args ...any) (any, error) {
 // gen_doubleType
 //
 // syntax: doubleType(...interface {})
-func (x *task) gen_doubleType(args ...any) (any, error) {
+func (x *Task) gen_doubleType(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "doubleType", "...interface {}")
@@ -1204,7 +1204,7 @@ func (x *task) gen_doubleType(args ...any) (any, error) {
 // gen_freq
 //
 // syntax: freq(float64, float64, ...float64)
-func (x *task) gen_freq(args ...any) (any, error) {
+func (x *Task) gen_freq(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("freq", 2, len(args))
 	}
@@ -1231,7 +1231,7 @@ func (x *task) gen_freq(args ...any) (any, error) {
 // gen_oscillator
 //
 // syntax: oscillator(...interface {})
-func (x *task) gen_oscillator(args ...any) (any, error) {
+func (x *Task) gen_oscillator(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "oscillator", "...interface {}")
@@ -1246,7 +1246,7 @@ func (x *task) gen_oscillator(args ...any) (any, error) {
 // gen_sphere
 //
 // syntax: sphere()
-func (x *task) gen_sphere(args ...any) (any, error) {
+func (x *Task) gen_sphere(args ...any) (any, error) {
 	if len(args) != 0 {
 		return nil, ErrInvalidNumOfArgs("sphere", 0, len(args))
 	}
@@ -1257,7 +1257,7 @@ func (x *task) gen_sphere(args ...any) (any, error) {
 // gen_FAKE
 //
 // syntax: FAKE()
-func (x *task) gen_FAKE(args ...any) (any, error) {
+func (x *Task) gen_FAKE(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("FAKE", 1, len(args))
 	}
@@ -1271,7 +1271,7 @@ func (x *task) gen_FAKE(args ...any) (any, error) {
 // gen_INPUT
 //
 // syntax: INPUT(...interface {})
-func (x *task) gen_INPUT(args ...any) (any, error) {
+func (x *Task) gen_INPUT(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "INPUT", "...interface {}")
@@ -1286,7 +1286,7 @@ func (x *task) gen_INPUT(args ...any) (any, error) {
 // gen_OUTPUT
 //
 // syntax: OUTPUT(...interface {})
-func (x *task) gen_OUTPUT(args ...any) (any, error) {
+func (x *Task) gen_OUTPUT(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "OUTPUT", "...interface {}")
@@ -1301,7 +1301,7 @@ func (x *task) gen_OUTPUT(args ...any) (any, error) {
 // gen_tz
 //
 // syntax: tz(string)
-func (x *task) gen_tz(args ...any) (any, error) {
+func (x *Task) gen_tz(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("tz", 1, len(args))
 	}
@@ -1315,7 +1315,7 @@ func (x *task) gen_tz(args ...any) (any, error) {
 // gen_sep
 //
 // syntax: sep(uint8)
-func (x *task) gen_sep(args ...any) (any, error) {
+func (x *Task) gen_sep(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("sep", 1, len(args))
 	}
@@ -1330,7 +1330,7 @@ func (x *task) gen_sep(args ...any) (any, error) {
 // gen_assetHost
 //
 // syntax: assetHost(string)
-func (x *task) gen_assetHost(args ...any) (any, error) {
+func (x *Task) gen_assetHost(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("assetHost", 1, len(args))
 	}
@@ -1345,7 +1345,7 @@ func (x *task) gen_assetHost(args ...any) (any, error) {
 // gen_autoRotate
 //
 // syntax: autoRotate(float64)
-func (x *task) gen_autoRotate(args ...any) (any, error) {
+func (x *Task) gen_autoRotate(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("autoRotate", 1, len(args))
 	}
@@ -1360,7 +1360,7 @@ func (x *task) gen_autoRotate(args ...any) (any, error) {
 // gen_boxDrawBorder
 //
 // syntax: boxDrawBorder(bool)
-func (x *task) gen_boxDrawBorder(args ...any) (any, error) {
+func (x *Task) gen_boxDrawBorder(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("boxDrawBorder", 1, len(args))
 	}
@@ -1375,7 +1375,7 @@ func (x *task) gen_boxDrawBorder(args ...any) (any, error) {
 // gen_boxSeparateColumns
 //
 // syntax: boxSeparateColumns(bool)
-func (x *task) gen_boxSeparateColumns(args ...any) (any, error) {
+func (x *Task) gen_boxSeparateColumns(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("boxSeparateColumns", 1, len(args))
 	}
@@ -1390,7 +1390,7 @@ func (x *task) gen_boxSeparateColumns(args ...any) (any, error) {
 // gen_boxStyle
 //
 // syntax: boxStyle(string)
-func (x *task) gen_boxStyle(args ...any) (any, error) {
+func (x *Task) gen_boxStyle(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("boxStyle", 1, len(args))
 	}
@@ -1405,7 +1405,7 @@ func (x *task) gen_boxStyle(args ...any) (any, error) {
 // gen_brief
 //
 // syntax: brief(bool)
-func (x *task) gen_brief(args ...any) (any, error) {
+func (x *Task) gen_brief(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("brief", 1, len(args))
 	}
@@ -1420,7 +1420,7 @@ func (x *task) gen_brief(args ...any) (any, error) {
 // gen_briefCount
 //
 // syntax: briefCount(int)
-func (x *task) gen_briefCount(args ...any) (any, error) {
+func (x *Task) gen_briefCount(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("briefCount", 1, len(args))
 	}
@@ -1435,7 +1435,7 @@ func (x *task) gen_briefCount(args ...any) (any, error) {
 // gen_chartJson
 //
 // syntax: chartJson(bool)
-func (x *task) gen_chartJson(args ...any) (any, error) {
+func (x *Task) gen_chartJson(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("chartJson", 1, len(args))
 	}
@@ -1450,7 +1450,7 @@ func (x *task) gen_chartJson(args ...any) (any, error) {
 // gen_columnTypes
 //
 // syntax: columnTypes(...string)
-func (x *task) gen_columnTypes(args ...any) (any, error) {
+func (x *Task) gen_columnTypes(args ...any) (any, error) {
 	p0 := []string{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convString(args, n, "columnTypes", "...string")
@@ -1466,7 +1466,7 @@ func (x *task) gen_columnTypes(args ...any) (any, error) {
 // gen_columns
 //
 // syntax: columns(...string)
-func (x *task) gen_columns(args ...any) (any, error) {
+func (x *Task) gen_columns(args ...any) (any, error) {
 	p0 := []string{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convString(args, n, "columns", "...string")
@@ -1482,7 +1482,7 @@ func (x *task) gen_columns(args ...any) (any, error) {
 // gen_dataZoom
 //
 // syntax: dataZoom(string, float32, float32)
-func (x *task) gen_dataZoom(args ...any) (any, error) {
+func (x *Task) gen_dataZoom(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("dataZoom", 3, len(args))
 	}
@@ -1505,7 +1505,7 @@ func (x *task) gen_dataZoom(args ...any) (any, error) {
 // gen_delimiter
 //
 // syntax: delimiter(string)
-func (x *task) gen_delimiter(args ...any) (any, error) {
+func (x *Task) gen_delimiter(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("delimiter", 1, len(args))
 	}
@@ -1520,7 +1520,7 @@ func (x *task) gen_delimiter(args ...any) (any, error) {
 // gen_gridSize
 //
 // syntax: gridSize(...float64)
-func (x *task) gen_gridSize(args ...any) (any, error) {
+func (x *Task) gen_gridSize(args ...any) (any, error) {
 	p0 := []float64{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convFloat64(args, n, "gridSize", "...float64")
@@ -1536,7 +1536,7 @@ func (x *task) gen_gridSize(args ...any) (any, error) {
 // gen_heading
 //
 // syntax: heading(bool)
-func (x *task) gen_heading(args ...any) (any, error) {
+func (x *Task) gen_heading(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("heading", 1, len(args))
 	}
@@ -1551,7 +1551,7 @@ func (x *task) gen_heading(args ...any) (any, error) {
 // gen_html
 //
 // syntax: html(bool)
-func (x *task) gen_html(args ...any) (any, error) {
+func (x *Task) gen_html(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("html", 1, len(args))
 	}
@@ -1566,7 +1566,7 @@ func (x *task) gen_html(args ...any) (any, error) {
 // gen_inputStream
 //
 // syntax: inputStream(InputStream)
-func (x *task) gen_inputStream(args ...any) (any, error) {
+func (x *Task) gen_inputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("inputStream", 1, len(args))
 	}
@@ -1581,7 +1581,7 @@ func (x *task) gen_inputStream(args ...any) (any, error) {
 // gen_lineWidth
 //
 // syntax: lineWidth(float64)
-func (x *task) gen_lineWidth(args ...any) (any, error) {
+func (x *Task) gen_lineWidth(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("lineWidth", 1, len(args))
 	}
@@ -1596,7 +1596,7 @@ func (x *task) gen_lineWidth(args ...any) (any, error) {
 // gen_markAreaNameCoord
 //
 // syntax: markAreaNameCoord(, , string, string, float64)
-func (x *task) gen_markAreaNameCoord(args ...any) (any, error) {
+func (x *Task) gen_markAreaNameCoord(args ...any) (any, error) {
 	if len(args) != 5 {
 		return nil, ErrInvalidNumOfArgs("markAreaNameCoord", 5, len(args))
 	}
@@ -1627,7 +1627,7 @@ func (x *task) gen_markAreaNameCoord(args ...any) (any, error) {
 // gen_markLineXAxisCoord
 //
 // syntax: markLineXAxisCoord(, string)
-func (x *task) gen_markLineXAxisCoord(args ...any) (any, error) {
+func (x *Task) gen_markLineXAxisCoord(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("markLineXAxisCoord", 2, len(args))
 	}
@@ -1646,7 +1646,7 @@ func (x *task) gen_markLineXAxisCoord(args ...any) (any, error) {
 // gen_markLineYAxisCoord
 //
 // syntax: markLineYAxisCoord(, string)
-func (x *task) gen_markLineYAxisCoord(args ...any) (any, error) {
+func (x *Task) gen_markLineYAxisCoord(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("markLineYAxisCoord", 2, len(args))
 	}
@@ -1665,7 +1665,7 @@ func (x *task) gen_markLineYAxisCoord(args ...any) (any, error) {
 // gen_opacity
 //
 // syntax: opacity(float64)
-func (x *task) gen_opacity(args ...any) (any, error) {
+func (x *Task) gen_opacity(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("opacity", 1, len(args))
 	}
@@ -1680,7 +1680,7 @@ func (x *task) gen_opacity(args ...any) (any, error) {
 // gen_outputStream
 //
 // syntax: outputStream(OutputStream)
-func (x *task) gen_outputStream(args ...any) (any, error) {
+func (x *Task) gen_outputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("outputStream", 1, len(args))
 	}
@@ -1695,7 +1695,7 @@ func (x *task) gen_outputStream(args ...any) (any, error) {
 // gen_precision
 //
 // syntax: precision(int)
-func (x *task) gen_precision(args ...any) (any, error) {
+func (x *Task) gen_precision(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("precision", 1, len(args))
 	}
@@ -1710,7 +1710,7 @@ func (x *task) gen_precision(args ...any) (any, error) {
 // gen_rownum
 //
 // syntax: rownum(bool)
-func (x *task) gen_rownum(args ...any) (any, error) {
+func (x *Task) gen_rownum(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("rownum", 1, len(args))
 	}
@@ -1725,7 +1725,7 @@ func (x *task) gen_rownum(args ...any) (any, error) {
 // gen_seriesLabels
 //
 // syntax: seriesLabels(...string)
-func (x *task) gen_seriesLabels(args ...any) (any, error) {
+func (x *Task) gen_seriesLabels(args ...any) (any, error) {
 	p0 := []string{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convString(args, n, "seriesLabels", "...string")
@@ -1741,7 +1741,7 @@ func (x *task) gen_seriesLabels(args ...any) (any, error) {
 // gen_showGrid
 //
 // syntax: showGrid(bool)
-func (x *task) gen_showGrid(args ...any) (any, error) {
+func (x *Task) gen_showGrid(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("showGrid", 1, len(args))
 	}
@@ -1756,7 +1756,7 @@ func (x *task) gen_showGrid(args ...any) (any, error) {
 // gen_size
 //
 // syntax: size(string, string)
-func (x *task) gen_size(args ...any) (any, error) {
+func (x *Task) gen_size(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("size", 2, len(args))
 	}
@@ -1775,7 +1775,7 @@ func (x *task) gen_size(args ...any) (any, error) {
 // gen_subtitle
 //
 // syntax: subtitle(string)
-func (x *task) gen_subtitle(args ...any) (any, error) {
+func (x *Task) gen_subtitle(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("subtitle", 1, len(args))
 	}
@@ -1790,7 +1790,7 @@ func (x *task) gen_subtitle(args ...any) (any, error) {
 // gen_tableName
 //
 // syntax: tableName(string)
-func (x *task) gen_tableName(args ...any) (any, error) {
+func (x *Task) gen_tableName(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("tableName", 1, len(args))
 	}
@@ -1805,7 +1805,7 @@ func (x *task) gen_tableName(args ...any) (any, error) {
 // gen_theme
 //
 // syntax: theme(string)
-func (x *task) gen_theme(args ...any) (any, error) {
+func (x *Task) gen_theme(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("theme", 1, len(args))
 	}
@@ -1820,7 +1820,7 @@ func (x *task) gen_theme(args ...any) (any, error) {
 // gen_timeLocation
 //
 // syntax: timeLocation()
-func (x *task) gen_timeLocation(args ...any) (any, error) {
+func (x *Task) gen_timeLocation(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("timeLocation", 1, len(args))
 	}
@@ -1835,7 +1835,7 @@ func (x *task) gen_timeLocation(args ...any) (any, error) {
 // gen_timeformat
 //
 // syntax: timeformat(string)
-func (x *task) gen_timeformat(args ...any) (any, error) {
+func (x *Task) gen_timeformat(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("timeformat", 1, len(args))
 	}
@@ -1850,7 +1850,7 @@ func (x *task) gen_timeformat(args ...any) (any, error) {
 // gen_title
 //
 // syntax: title(string)
-func (x *task) gen_title(args ...any) (any, error) {
+func (x *Task) gen_title(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("title", 1, len(args))
 	}
@@ -1865,7 +1865,7 @@ func (x *task) gen_title(args ...any) (any, error) {
 // gen_transcoder
 //
 // syntax: transcoder(Transcoder)
-func (x *task) gen_transcoder(args ...any) (any, error) {
+func (x *Task) gen_transcoder(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("transcoder", 1, len(args))
 	}
@@ -1880,7 +1880,7 @@ func (x *task) gen_transcoder(args ...any) (any, error) {
 // gen_transpose
 //
 // syntax: transpose(bool)
-func (x *task) gen_transpose(args ...any) (any, error) {
+func (x *Task) gen_transpose(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("transpose", 1, len(args))
 	}
@@ -1895,7 +1895,7 @@ func (x *task) gen_transpose(args ...any) (any, error) {
 // gen_visualMap
 //
 // syntax: visualMap(float64, float64)
-func (x *task) gen_visualMap(args ...any) (any, error) {
+func (x *Task) gen_visualMap(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("visualMap", 2, len(args))
 	}
@@ -1914,7 +1914,7 @@ func (x *task) gen_visualMap(args ...any) (any, error) {
 // gen_xAxis
 //
 // syntax: xAxis(int, string, ...string)
-func (x *task) gen_xAxis(args ...any) (any, error) {
+func (x *Task) gen_xAxis(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("xAxis", 2, len(args))
 	}
@@ -1941,7 +1941,7 @@ func (x *task) gen_xAxis(args ...any) (any, error) {
 // gen_yAxis
 //
 // syntax: yAxis(int, string, ...string)
-func (x *task) gen_yAxis(args ...any) (any, error) {
+func (x *Task) gen_yAxis(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("yAxis", 2, len(args))
 	}
@@ -1968,7 +1968,7 @@ func (x *task) gen_yAxis(args ...any) (any, error) {
 // gen_zAxis
 //
 // syntax: zAxis(int, string, ...string)
-func (x *task) gen_zAxis(args ...any) (any, error) {
+func (x *Task) gen_zAxis(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("zAxis", 2, len(args))
 	}

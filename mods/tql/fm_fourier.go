@@ -10,17 +10,17 @@ import (
 
 type maxHzOption float64
 
-func (x *task) fmMaxHz(freq float64) maxHzOption {
+func (x *Task) fmMaxHz(freq float64) maxHzOption {
 	return maxHzOption(freq)
 }
 
 type minHzOption float64
 
-func (x *task) fmMinHz(freq float64) minHzOption {
+func (x *Task) fmMinHz(freq float64) minHzOption {
 	return minHzOption(freq)
 }
 
-func (x *task) fmFastFourierTransform(ctx *SubContext, key any, value []any, args ...any) (any, error) {
+func (x *Task) fmFastFourierTransform(ctx *SubContext, key any, value []any, args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
