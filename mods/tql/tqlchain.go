@@ -9,12 +9,11 @@ import (
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
-	"github.com/machbase/neo-server/mods/tql/fsrc"
 	spi "github.com/machbase/neo-spi"
 )
 
 type ExecutionChain struct {
-	input  fsrc.Input
+	input  *input
 	output *output
 	db     spi.Database
 
@@ -33,7 +32,7 @@ type ExecutionChain struct {
 	circuitBreaker bool
 }
 
-func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input fsrc.Input, output *output, exprs []*expression.Expression, params map[string][]string) (*ExecutionChain, error) {
+func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input *input, output *output, exprs []*expression.Expression, params map[string][]string) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.resultCh = make(chan any)
 	ret.encoderCh = make(chan []any)
@@ -208,7 +207,7 @@ func (ec *ExecutionChain) start() {
 
 	////////////////////////////////
 	// input source
-	deligate := &fsrc.InputDelegateWrapper{
+	deligate := &InputDelegateWrapper{
 		DatabaseFunc: func() spi.Database {
 			return ec.db
 		},

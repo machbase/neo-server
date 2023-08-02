@@ -8,21 +8,12 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func OUTPUT(outstream spec.OutputStream, sink any) (any, error) {
-	switch sink := sink.(type) {
-	case *Encoder:
-		codecOpts := []opts.Option{
-			opts.AssetHost("/web/echarts/"),
-			opts.OutputStream(outstream),
-		}
-		codecOpts = append(codecOpts, sink.opts...)
-		return codec.NewEncoder(sink.format, codecOpts...), nil
-	case DatabaseSink:
-		sink.SetOutputStream(outstream)
-		return sink, nil
-	default:
-		return nil, conv.ErrWrongTypeOfArgs("OUTPUT", 1, "encoder or dbsink", sink)
+// Deprecated: no more required
+func OUTPUT(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
 	}
+	return args[0], nil
 }
 
 type DatabaseSink interface {
@@ -33,11 +24,18 @@ type DatabaseSink interface {
 	SetOutputStream(spec.OutputStream)
 }
 
-var _ DatabaseSink = &insert{}
-
-var _ DatabaseSink = &appender{}
+var (
+	_ DatabaseSink = &insert{}
+	_ DatabaseSink = &appender{}
+)
 
 type Encoder struct {
 	format string
 	opts   []opts.Option
+}
+
+func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
+	e.opts = append(e.opts, args...)
+	ret := codec.NewEncoder(e.format, e.opts...)
+	return ret
 }

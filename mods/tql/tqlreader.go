@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fsrc"
+	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 var tqlFunctions = map[string]expression.Function{}
 
 func init() {
-	for _, f := range fsrc.Functions() {
+	for f := range fx.GenFunctions {
 		tqlFunctions[f] = nil
 	}
 }

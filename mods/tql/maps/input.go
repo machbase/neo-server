@@ -1,6 +1,9 @@
 package maps
 
-import spi "github.com/machbase/neo-spi"
+import (
+	"github.com/machbase/neo-server/mods/tql/conv"
+	spi "github.com/machbase/neo-spi"
+)
 
 type FakeSource interface {
 	Header() spi.Columns
@@ -10,10 +13,12 @@ type FakeSource interface {
 	implFakeSource()
 }
 
-var _ FakeSource = &meshgrid{}
-var _ FakeSource = &linspace{}
-var _ FakeSource = &sphere{}
-var _ FakeSource = &oscillator{}
+var (
+	_ FakeSource = &meshgrid{}
+	_ FakeSource = &linspace{}
+	_ FakeSource = &sphere{}
+	_ FakeSource = &oscillator{}
+)
 
 func (*meshgrid) implFakeSource()   {}
 func (*linspace) implFakeSource()   {}
@@ -26,12 +31,24 @@ type ReaderSource interface {
 	Stop()
 }
 
-var _ ReaderSource = &bytesSource{}
+var (
+	_ ReaderSource = &bytesSource{}
+	_ ReaderSource = &csvSource{}
+)
 
 type DatabaseSource interface {
 	ToSQL() string
 }
 
-var _ DatabaseSource = &Sql{}
+var (
+	_ DatabaseSource = &Sql{}
+	_ DatabaseSource = &Query{}
+)
 
-var _ DatabaseSource = &Query{}
+// Deprecated: no more required
+func INPUT(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("INPUT", 1, len(args))
+	}
+	return args[0], nil
+}

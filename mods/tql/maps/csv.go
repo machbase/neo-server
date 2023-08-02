@@ -1,9 +1,8 @@
-package fsrc
+package maps
 
 import (
 	"bytes"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,14 +12,33 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/tql/conv"
-	"github.com/machbase/neo-server/mods/tql/maps"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 )
 
-var _ maps.ReaderSource = &csvSrc{}
+func ToCsv(args ...any) (any, error) {
+	isSource := false
+	if len(args) > 0 {
+		switch args[0].(type) {
+		case *FilePath:
+			isSource = true
+		case io.Reader:
+			isSource = true
+		case string:
+			isSource = true
+		}
+	}
+	if isSource {
+		ret, err := newCsvSource(args...)
+		return ret, err
+	} else {
+		ret := newEncoder("csv", args...)
+		return ret, nil
+	}
+}
 
-type csvSrc struct {
+type csvSource struct {
 	fd        io.ReadCloser
 	columns   map[int]*columnOpt
 	hasHeader bool
@@ -31,7 +49,7 @@ type csvSrc struct {
 	closeWait sync.WaitGroup
 }
 
-func (src *csvSrc) Gen() <-chan []any {
+func (src *csvSource) Gen() <-chan []any {
 	src.ch = make(chan []any)
 	src.alive = true
 	src.closeWait.Add(1)
@@ -114,7 +132,7 @@ func (src *csvSrc) Gen() <-chan []any {
 	return src.ch
 }
 
-func (src *csvSrc) Stop() {
+func (src *csvSource) Stop() {
 	src.alive = false
 	src.closeWait.Wait()
 	if src.fd != nil {
@@ -122,7 +140,7 @@ func (src *csvSrc) Stop() {
 	}
 }
 
-func (fs *csvSrc) Header() spi.Columns {
+func (fs *csvSource) Header() spi.Columns {
 	if len(fs.columns) == 0 {
 		return []*spi.Column{}
 	}
@@ -140,18 +158,15 @@ func (fs *csvSrc) Header() spi.Columns {
 	return ret
 }
 
-/*
-INPUT( CSV( file('./path.csv') ))
-*/
-func src_CSV(args ...any) (any, error) {
-	ret := &csvSrc{columns: make(map[int]*columnOpt)}
+func newCsvSource(args ...any) (*csvSource, error) {
+	ret := &csvSource{columns: make(map[int]*columnOpt)}
 
-	var file *maps.FilePath
+	var file *FilePath
 	var reader io.Reader
 
 	for _, arg := range args {
 		switch v := arg.(type) {
-		case *maps.FilePath:
+		case *FilePath:
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
@@ -196,7 +211,7 @@ type headerOpt struct {
 	hasHeader bool
 }
 
-func src_header(args ...any) (any, error) {
+func ToHeader(args ...any) (any, error) {
 	flag, err := conv.Bool(args, 0, "header", "boolean")
 	if err != nil {
 		return nil, err
@@ -210,7 +225,12 @@ type columnOpt struct {
 	label    string
 }
 
-func src_col(args ...any) (any, error) {
+func ToCol_deprecated(args ...any) (any, error) {
+	fmt.Println("WARN col() is deprecated. use field() instead")
+	return ToField(args...)
+}
+
+func ToField(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, conv.ErrInvalidNumOfArgs("col", 3, len(args))
 	}
@@ -254,7 +274,7 @@ type stringOpt struct{}
 
 func (o *stringOpt) spiType() string { return "string" }
 
-func src_stringType(args ...any) (any, error) {
+func ToStringType(args ...any) (any, error) {
 	return &stringOpt{}, nil
 }
 
@@ -262,7 +282,7 @@ type doubleOpt struct{}
 
 func (o *doubleOpt) spiType() string { return "double" }
 
-func src_doubleType(args ...any) (any, error) {
+func ToDoubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
 }
 
@@ -279,7 +299,7 @@ type datetimeOpt struct {
 
 func (o *datetimeOpt) spiType() string { return "datetime" }
 
-func src_datetimeType(args ...any) (any, error) {
+func ToDatetimeType(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {
 		return nil, conv.ErrInvalidNumOfArgs("datetime", 2, len(args))
 	}

@@ -74,13 +74,23 @@ var GenFunctions = map[string]expression.Function{
 	"CHART_SURFACE3D": gen_CHART_SURFACE3D,
 	"CHART_SCATTER3D": gen_CHART_SCATTER3D,
 	// maps.bytes
-	"separator":  gen_separator,
-	"STRING":     gen_STRING,
-	"BYTES":      gen_BYTES,
-	"freq":       gen_freq,
-	"oscillator": gen_oscillator,
-	"sphere":     gen_sphere,
-	"FAKE":       gen_FAKE,
+	"separator": gen_separator,
+	"file":      gen_file,
+	"STRING":    gen_STRING,
+	"BYTES":     gen_BYTES,
+	// maps.csv
+	"col":          gen_col,
+	"field":        gen_field,
+	"header":       gen_header,
+	"datetimeType": gen_datetimeType,
+	"stringType":   gen_stringType,
+	"doubleType":   gen_doubleType,
+	"freq":         gen_freq,
+	"oscillator":   gen_oscillator,
+	"sphere":       gen_sphere,
+	"FAKE":         gen_FAKE,
+	// maps.input
+	"INPUT": gen_INPUT,
 	// maps.output
 	"OUTPUT": gen_OUTPUT,
 	// aliases
@@ -879,8 +889,7 @@ func gen_CSV(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := maps.ToCsv(p0...)
-	return ret, nil
+	return maps.ToCsv(p0...)
 }
 
 // gen_JSON
@@ -1042,6 +1051,20 @@ func gen_separator(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_file
+//
+// syntax: file(string)
+func gen_file(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, conv.ErrInvalidNumOfArgs("file", 1, len(args))
+	}
+	p0, err := conv.String(args, 0, "file", "string")
+	if err != nil {
+		return nil, err
+	}
+	return maps.ToFile(p0)
+}
+
 // gen_STRING
 //
 // syntax: STRING(, ...interface {})
@@ -1084,6 +1107,96 @@ func gen_BYTES(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	return maps.Bytes(p0, p1...)
+}
+
+// gen_col
+//
+// syntax: col(...interface {})
+func gen_col(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "col", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToCol_deprecated(p0...)
+}
+
+// gen_field
+//
+// syntax: field(...interface {})
+func gen_field(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "field", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToField(p0...)
+}
+
+// gen_header
+//
+// syntax: header(...interface {})
+func gen_header(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "header", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToHeader(p0...)
+}
+
+// gen_datetimeType
+//
+// syntax: datetimeType(...interface {})
+func gen_datetimeType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "datetimeType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToDatetimeType(p0...)
+}
+
+// gen_stringType
+//
+// syntax: stringType(...interface {})
+func gen_stringType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "stringType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToStringType(p0...)
+}
+
+// gen_doubleType
+//
+// syntax: doubleType(...interface {})
+func gen_doubleType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "doubleType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.ToDoubleType(p0...)
 }
 
 // gen_freq
@@ -1153,22 +1266,34 @@ func gen_FAKE(args ...any) (any, error) {
 	return maps.Fake(p0)
 }
 
+// gen_INPUT
+//
+// syntax: INPUT(...interface {})
+func gen_INPUT(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "INPUT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return maps.INPUT(p0...)
+}
+
 // gen_OUTPUT
 //
-// syntax: OUTPUT(OutputStream, )
+// syntax: OUTPUT(...interface {})
 func gen_OUTPUT(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, conv.ErrInvalidNumOfArgs("OUTPUT", 2, len(args))
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := conv.Any(args, n, "OUTPUT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := conv.OutputStream(args, 0, "OUTPUT", "spec.OutputStream")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := conv.Any(args, 1, "OUTPUT", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return maps.OUTPUT(p0, p1)
+	return maps.OUTPUT(p0...)
 }
 
 // gen_tz

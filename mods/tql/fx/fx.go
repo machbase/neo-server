@@ -92,12 +92,22 @@ var FxDefinitions = []Definition{
 	{"file", maps.ToFile},
 	{"STRING", maps.String},
 	{"BYTES", maps.Bytes},
+	// maps.csv
+	{"// maps.csv", nil},
+	{"col", maps.ToCol_deprecated},
+	{"field", maps.ToField},
+	{"header", maps.ToHeader},
+	{"datetimeType", maps.ToDatetimeType},
+	{"stringType", maps.ToStringType},
+	{"doubleType", maps.ToDoubleType},
 	// maps.fake
 	{"freq", maps.ToFreq},
 	{"oscillator", maps.Oscillator},
 	{"sphere", maps.Sphere},
 	{"FAKE", maps.Fake},
 	// input, output
+	{"// maps.input", nil},
+	{"INPUT", maps.INPUT},
 	{"// maps.output", nil},
 	{"OUTPUT", maps.OUTPUT},
 	// aliases

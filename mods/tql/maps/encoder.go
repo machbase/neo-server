@@ -20,10 +20,6 @@ func ToMarkdown(args ...any) *Encoder {
 	return newEncoder("markdown", args...)
 }
 
-func ToCsv(args ...any) *Encoder {
-	return newEncoder("csv", args...)
-}
-
 func ToJson(args ...any) *Encoder {
 	return newEncoder("json", args...)
 }

@@ -32,6 +32,18 @@ type RowsEncoder interface {
 	ContentType() string
 }
 
+var (
+	_ RowsEncoder = &box.Exporter{}
+	_ RowsEncoder = &csv.Exporter{}
+	_ RowsEncoder = &markdown.Exporter{}
+	_ RowsEncoder = &echart.Line{}
+	_ RowsEncoder = &echart.Bar{}
+	_ RowsEncoder = &echart.Scatter{}
+	_ RowsEncoder = &echart.Line3D{}
+	_ RowsEncoder = &echart.Bar3D{}
+	_ RowsEncoder = &echart.Scatter3D{}
+)
+
 type RowsDecoder interface {
 	Open()
 	NextRow() ([]any, error)

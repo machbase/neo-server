@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/tql/fsrc"
+	tqlcontext "github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/machbase/neo-server/mods/tql/maps"
 	spi "github.com/machbase/neo-spi"
@@ -25,7 +27,7 @@ type Tql interface {
 }
 
 type tagQL struct {
-	input    fsrc.Input
+	input    *input
 	output   *output
 	mapExprs []string
 	params   map[string][]string
@@ -63,7 +65,7 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		src, err := fsrc.Compile(srcLine.text, dataReader, params)
+		src, err := CompileSource(srcLine.text, dataReader, params)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
@@ -98,6 +100,34 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	return tq, nil
 }
 
+var mapFunctionsMacro = [][2]string{
+	{"SCRIPT(", "SCRIPT(CTX,K,V,"},
+	{"TAKE(", "TAKE(CTX,K,V,"},
+	{"DROP(", "DROP(CTX,K,V,"},
+	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
+	{"POPKEY(", "POPKEY(CTX,K,V,"},
+	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
+	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
+	{"FILTER(", "FILTER(CTX,K,V,"},
+	{"FFT(", "FFT(CTX,K,V,"},
+}
+
+func ParseMap(text string) (*expression.Expression, error) {
+	for _, f := range mapFunctionsMacro {
+		text = strings.ReplaceAll(text, f[0], f[1])
+	}
+	text = strings.ReplaceAll(text, ",V,)", ",V)")
+	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
+	return expression.NewWithFunctions(text, fx.GenFunctions)
+}
+
+func ParseSource(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, fx.GenFunctions)
+}
+func ParseSink(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, fx.GenFunctions)
+}
+
 func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", tq.output.ContentType())
 	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
@@ -129,31 +159,181 @@ func (tq *tagQL) Execute(ctx context.Context, db spi.Database) (err error) {
 	return chain.Run()
 }
 
-var mapFunctionsMacro = [][2]string{
-	{"SCRIPT(", "SCRIPT(CTX,K,V,"},
-	{"TAKE(", "TAKE(CTX,K,V,"},
-	{"DROP(", "DROP(CTX,K,V,"},
-	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
-	{"POPKEY(", "POPKEY(CTX,K,V,"},
-	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
-	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
-	{"FILTER(", "FILTER(CTX,K,V,"},
-	{"FFT(", "FFT(CTX,K,V,"},
-}
-
-func ParseMap(text string) (*expression.Expression, error) {
-	for _, f := range mapFunctionsMacro {
-		text = strings.ReplaceAll(text, f[0], f[1])
+func CompileSource(code string, dataReader io.Reader, params map[string][]string) (*input, error) {
+	expr, err := ParseSource(code)
+	if err != nil {
+		return nil, err
 	}
-	text = strings.ReplaceAll(text, ",V,)", ",V)")
-	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
-	return expression.NewWithFunctions(text, fx.GenFunctions)
+	src, err := expr.Eval(&inputContext{Body: dataReader, params: params})
+	if err != nil {
+		return nil, err
+	}
+	var ret *input
+	switch src := src.(type) {
+	case maps.DatabaseSource:
+		ret = &input{dbSrc: src}
+	case maps.FakeSource:
+		ret = &input{fakeSrc: src}
+	case maps.ReaderSource:
+		ret = &input{readerSrc: src}
+	default:
+		return nil, fmt.Errorf("f(INPUT) unknown type of arg, %T", src)
+	}
+	return ret, nil
 }
 
-func ParseSink(text string) (*expression.Expression, error) {
-	text = strings.ReplaceAll(text, "OUTPUT(", "OUTPUT(outstream,")
-	text = strings.ReplaceAll(text, "outputstream,)", "outputstream)")
-	return expression.NewWithFunctions(text, fx.GenFunctions)
+type inputContext struct {
+	Body   io.Reader
+	params map[string][]string
+}
+
+func (p *inputContext) Get(name string) (any, error) {
+	if strings.HasPrefix(name, "$") {
+		if p, ok := p.params[strings.TrimPrefix(name, "$")]; ok {
+			if len(p) > 0 {
+				return p[len(p)-1], nil
+			}
+		}
+		return nil, nil
+	} else {
+		switch name {
+		default:
+			return nil, fmt.Errorf("undefined variable '%s'", name)
+		case "CTX":
+			return p, nil
+		case "PI":
+			return math.Pi, nil
+		case "nil":
+			return nil, nil
+		}
+	}
+}
+
+type input struct {
+	dbSrc     maps.DatabaseSource
+	fakeSrc   maps.FakeSource
+	readerSrc maps.ReaderSource
+}
+
+// for test and debug purpose
+func (in *input) ToSQL() string {
+	if in.dbSrc == nil {
+		return ""
+	}
+	return in.dbSrc.ToSQL()
+}
+
+func (in *input) Run(deligate InputDeligate) error {
+	if in.dbSrc == nil && in.fakeSrc == nil && in.readerSrc == nil {
+		return errors.New("nil source")
+	}
+	if deligate == nil {
+		return errors.New("nil deligate")
+	}
+
+	fetched := 0
+	executed := false
+	if in.dbSrc != nil {
+		queryCtx := &do.QueryContext{
+			DB: deligate.Database(),
+			OnFetchStart: func(c spi.Columns) {
+				deligate.FeedHeader(c)
+			},
+			OnFetch: func(nrow int64, values []any) bool {
+				fetched++
+				if deligate.ShouldStop() {
+					return false
+				} else {
+					deligate.Feed(values)
+					return true
+				}
+			},
+			OnFetchEnd: func() {},
+			OnExecuted: func(usermsg string, rowsAffected int64) {
+				executed = true
+			},
+		}
+		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
+			deligate.Feed(nil)
+			return err
+		} else {
+			if executed {
+				deligate.FeedHeader(spi.Columns{{Name: "message", Type: "string"}})
+				deligate.Feed([]any{msg})
+				deligate.Feed(nil)
+			} else if fetched == 0 {
+				deligate.Feed([]any{tqlcontext.ExecutionEOF})
+				deligate.Feed(nil)
+			} else {
+				deligate.Feed(nil)
+			}
+			return nil
+		}
+	} else if in.fakeSrc != nil {
+		deligate.FeedHeader(in.fakeSrc.Header())
+		for values := range in.fakeSrc.Gen() {
+			deligate.Feed(values)
+			if deligate.ShouldStop() {
+				in.fakeSrc.Stop()
+				break
+			}
+		}
+		deligate.Feed(nil)
+		return nil
+	} else if in.readerSrc != nil {
+		deligate.FeedHeader(in.readerSrc.Header())
+		for values := range in.readerSrc.Gen() {
+			deligate.Feed(values)
+			if deligate.ShouldStop() {
+				in.readerSrc.Stop()
+				break
+			}
+		}
+		deligate.Feed(nil)
+		return nil
+	} else {
+		return errors.New("no source")
+	}
+}
+
+type InputDeligate interface {
+	Database() spi.Database
+	ShouldStop() bool
+	FeedHeader(spi.Columns)
+	Feed([]any)
+}
+
+type InputDelegateWrapper struct {
+	DatabaseFunc   func() spi.Database
+	ShouldStopFunc func() bool
+	FeedHeaderFunc func(spi.Columns)
+	FeedFunc       func([]any)
+}
+
+func (w *InputDelegateWrapper) Database() spi.Database {
+	if w.DatabaseFunc == nil {
+		return nil
+	}
+	return w.DatabaseFunc()
+}
+
+func (w *InputDelegateWrapper) ShouldStop() bool {
+	if w.ShouldStopFunc == nil {
+		return false
+	}
+	return w.ShouldStopFunc()
+}
+
+func (w *InputDelegateWrapper) FeedHeader(c spi.Columns) {
+	if w.FeedHeaderFunc != nil {
+		w.FeedHeaderFunc(c)
+	}
+}
+
+func (w *InputDelegateWrapper) Feed(v []any) {
+	if w.FeedFunc != nil {
+		w.FeedFunc(v)
+	}
 }
 
 func CompileSink(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (*output, error) {
@@ -170,25 +350,31 @@ func CompileSink(code string, params map[string][]string, writer io.Writer, toJs
 	} else {
 		outputStream = &stream.WriterOutputStream{Writer: writer}
 	}
-	result, err := expr.Eval(&OutputContext{Output: outputStream, Params: params})
+	sink, err := expr.Eval(&OutputContext{Output: outputStream, Params: params})
 	if err != nil {
 		return nil, err
 	}
 
-	ret := &output{}
-	switch v := result.(type) {
-	case codec.RowsEncoder:
-		if o, ok := v.(opts.CanSetChartJson); ok {
-			o.SetChartJson(toJsonOutput)
+	switch val := sink.(type) {
+	case *maps.Encoder:
+		ret := &output{}
+		ret.encoder = val.RowEncoder(
+			opts.OutputStream(outputStream),
+			opts.AssetHost("/web/echarts/"),
+			opts.ChartJson(toJsonOutput),
+		)
+		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
 		}
-		ret.encoder = v
+		return ret, nil
 	case maps.DatabaseSink:
-		ret.dbSink = v
+		ret := &output{}
+		ret.dbSink = val
+		ret.dbSink.SetOutputStream(outputStream)
+		return ret, nil
 	default:
-		return nil, fmt.Errorf("invalid sink type: %T", result)
+		return nil, fmt.Errorf("invalid sink type: %T", val)
 	}
-	return ret, nil
 }
 
 type OutputContext struct {
