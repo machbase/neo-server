@@ -293,7 +293,7 @@ func generatesFx(sets map[string]*SetX, imports map[string]*ImportX) {
 		`"github.com/machbase/neo-server/mods/codec/opts"`,
 		`)`,
 		``,
-		`var Definitions = []Definition {`,
+		`var CodecOptsDefinitions = []Definition {`,
 		``,
 	}
 
@@ -322,7 +322,7 @@ func generatesFx(sets map[string]*SetX, imports map[string]*ImportX) {
 	if err != nil {
 		panic(err)
 	}
-	file, err := os.Create("./map_codec_opts.go")
+	file, err := os.Create("./codec_opts.gen.go")
 	if err != nil {
 		panic(err)
 	}

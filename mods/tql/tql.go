@@ -1,10 +1,8 @@
 package tql
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strings"
 
@@ -12,8 +10,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/stream"
-	"github.com/machbase/neo-server/mods/stream/spec"
 	tqlcontext "github.com/machbase/neo-server/mods/tql/context"
 	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/machbase/neo-server/mods/tql/maps"
@@ -22,23 +18,18 @@ import (
 )
 
 type Tql interface {
-	Execute(ctx context.Context, db spi.Database) error
-	ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error
+	Execute(task fx.Task, db spi.Database) error
+	ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error
 }
 
 type tagQL struct {
 	input    *input
 	output   *output
 	mapExprs []string
-	params   map[string][]string
-
-	// comments start with plus(+) symbold and sperated by comma.
-	// ex) => `// +brief, markdown`
-	pragma []string
 }
 
-func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error) {
-	lines, err := readLines(codeReader)
+func Parse(task fx.Task, codeReader io.Reader) (Tql, error) {
+	lines, err := readLines(task, codeReader)
 	if err != nil {
 		return nil, err
 	}
@@ -47,13 +38,12 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	}
 
 	var exprs []*Line
-	var pragma []string
 	for _, line := range lines {
 		if line.isComment {
 			if strings.HasPrefix(line.text, "+") {
 				toks := strings.Split(line.text[1:], ",")
 				for _, t := range toks {
-					pragma = append(pragma, strings.TrimSpace(t))
+					task.AddPragma(strings.TrimSpace(t))
 				}
 			}
 		} else {
@@ -61,11 +51,11 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 		}
 	}
 
-	tq := &tagQL{params: params, pragma: pragma}
+	tq := &tagQL{}
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		src, err := CompileSource(srcLine.text, dataReader, params)
+		src, err := CompileSource(task, srcLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", srcLine.line)
 		}
@@ -76,7 +66,7 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		sink, err := CompileSink(sinkLine.text, params, dataWriter, toJsonOutput)
+		sink, err := CompileSink(task, sinkLine.text)
 		if err != nil {
 			return nil, errors.Wrapf(err, "at line %d", sinkLine.line)
 		}
@@ -90,7 +80,7 @@ func Parse(codeReader io.Reader, dataReader io.Reader, params map[string][]strin
 		exprs = exprs[1 : len(exprs)-1]
 		for _, mapLine := range exprs {
 			// validates the syntax
-			_, err := ParseMap(mapLine.text)
+			_, err := ParseMap(task, mapLine.text)
 			if err != nil {
 				return nil, errors.Wrapf(err, "at line %d", mapLine.line)
 			}
@@ -112,24 +102,24 @@ var mapFunctionsMacro = [][2]string{
 	{"FFT(", "FFT(CTX,K,V,"},
 }
 
-func ParseMap(text string) (*expression.Expression, error) {
+func ParseMap(task fx.Task, text string) (*expression.Expression, error) {
 	for _, f := range mapFunctionsMacro {
 		text = strings.ReplaceAll(text, f[0], f[1])
 	}
 	text = strings.ReplaceAll(text, ",V,)", ",V)")
 	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
-	return expression.NewWithFunctions(text, fx.GenFunctions)
+	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func ParseSource(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, fx.GenFunctions)
+func ParseSource(task fx.Task, text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func ParseSink(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, fx.GenFunctions)
+func ParseSink(task fx.Task, text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, task.Functions())
 }
 
-func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.ResponseWriter) error {
+func (tq *tagQL) ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", tq.output.ContentType())
 	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
 		w.Header().Set("Content-Encoding", contentEncoding)
@@ -137,13 +127,13 @@ func (tq *tagQL) ExecuteHandler(ctx context.Context, db spi.Database, w http.Res
 	if tq.output.IsChart() {
 		w.Header().Set("X-Chart-Type", "echarts")
 	}
-	return tq.Execute(ctx, db)
+	return tq.Execute(task, db)
 }
 
-func (tq *tagQL) Execute(ctx context.Context, db spi.Database) (err error) {
+func (tq *tagQL) Execute(task fx.Task, db spi.Database) (err error) {
 	exprs := []*expression.Expression{}
 	for _, str := range tq.mapExprs {
-		expr, err := ParseMap(str)
+		expr, err := ParseMap(task, str)
 		if err != nil {
 			return errors.Wrapf(err, "at %s", str)
 		}
@@ -153,19 +143,19 @@ func (tq *tagQL) Execute(ctx context.Context, db spi.Database) (err error) {
 		exprs = append(exprs, expr)
 	}
 
-	chain, err := newExecutionChain(ctx, db, tq.input, tq.output, exprs, tq.params)
+	chain, err := newExecutionChain(task, db, tq.input, tq.output, exprs)
 	if err != nil {
 		return err
 	}
 	return chain.Run()
 }
 
-func CompileSource(code string, dataReader io.Reader, params map[string][]string) (*input, error) {
-	expr, err := ParseSource(code)
+func CompileSource(task fx.Task, code string) (*input, error) {
+	expr, err := ParseSource(task, code)
 	if err != nil {
 		return nil, err
 	}
-	src, err := expr.Eval(&inputContext{Body: dataReader, params: params})
+	src, err := expr.Eval(task)
 	if err != nil {
 		return nil, err
 	}
@@ -179,33 +169,6 @@ func CompileSource(code string, dataReader io.Reader, params map[string][]string
 		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
 	}
 	return ret, nil
-}
-
-type inputContext struct {
-	Body   io.Reader
-	params map[string][]string
-}
-
-func (p *inputContext) Get(name string) (any, error) {
-	if strings.HasPrefix(name, "$") {
-		if p, ok := p.params[strings.TrimPrefix(name, "$")]; ok {
-			if len(p) > 0 {
-				return p[len(p)-1], nil
-			}
-		}
-		return nil, nil
-	} else {
-		switch name {
-		default:
-			return nil, fmt.Errorf("undefined variable '%s'", name)
-		case "CTX":
-			return p, nil
-		case "PI":
-			return math.Pi, nil
-		case "nil":
-			return nil, nil
-		}
-	}
 }
 
 type input struct {
@@ -323,21 +286,12 @@ func (w *InputDelegateWrapper) Feed(v []any) {
 	}
 }
 
-func CompileSink(code string, params map[string][]string, writer io.Writer, toJsonOutput bool) (*output, error) {
-	expr, err := ParseSink(code)
+func CompileSink(task fx.Task, code string) (*output, error) {
+	expr, err := ParseSink(task, code)
 	if err != nil {
 		return nil, err
 	}
-	var outputStream spec.OutputStream
-	if writer == nil {
-		outputStream, err = stream.NewOutputStream("-")
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		outputStream = &stream.WriterOutputStream{Writer: writer}
-	}
-	sink, err := expr.Eval(&OutputContext{Output: outputStream, Params: params})
+	sink, err := expr.Eval(task)
 	if err != nil {
 		return nil, err
 	}
@@ -346,9 +300,9 @@ func CompileSink(code string, params map[string][]string, writer io.Writer, toJs
 	case *maps.Encoder:
 		ret := &output{}
 		ret.encoder = val.RowEncoder(
-			opts.OutputStream(outputStream),
+			opts.OutputStream(task.OutputStream()),
 			opts.AssetHost("/web/echarts/"),
-			opts.ChartJson(toJsonOutput),
+			opts.ChartJson(task.ShouldJsonOutput()),
 		)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
@@ -357,34 +311,11 @@ func CompileSink(code string, params map[string][]string, writer io.Writer, toJs
 	case maps.DatabaseSink:
 		ret := &output{}
 		ret.dbSink = val
-		ret.dbSink.SetOutputStream(outputStream)
+		ret.dbSink.SetOutputStream(task.OutputStream())
 		return ret, nil
 	default:
 		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
 	}
-}
-
-type OutputContext struct {
-	Output spec.OutputStream
-	Params map[string][]string
-}
-
-func (ctx *OutputContext) Get(name string) (any, error) {
-	if name == "CTX" {
-		return ctx, nil
-	} else if name == "outstream" {
-		return ctx.Output, nil
-	} else if name == "nil" {
-		return nil, nil
-	} else if strings.HasPrefix(name, "$") {
-		if p, ok := ctx.Params[strings.TrimPrefix(name, "$")]; ok {
-			if len(p) > 0 {
-				return p[len(p)-1], nil
-			}
-		}
-		return nil, nil
-	}
-	return nil, fmt.Errorf("undefined variable '%s'", name)
 }
 
 type output struct {

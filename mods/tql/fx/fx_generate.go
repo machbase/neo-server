@@ -25,7 +25,7 @@ func main() {
 		definitions = append(definitions, def)
 	}
 	definitions = append(definitions, fx.Definition{Name: "// codec.opts"})
-	for _, def := range fx.Definitions {
+	for _, def := range fx.CodecOptsDefinitions {
 		definitions = append(definitions, def)
 	}
 	header := []string{
@@ -45,7 +45,15 @@ func main() {
 		`	"github.com/machbase/neo-server/mods/tql/maps"`,
 		`)`,
 		``,
-		`var GenFunctions = map[string]expression.Function{`,
+		`func NewTask() Task {`,
+		`  x := &task{}`,
+		`  x.functions = map[string]expression.Function {`,
+		``,
+	}
+	footer := []string{
+		`  }`,
+		`  return x`,
+		`}`,
 		``,
 	}
 	w := &bytes.Buffer{}
@@ -58,10 +66,10 @@ func main() {
 		if expr, ok := def.Func.(string); ok {
 			fmt.Fprintf(w, `	"%s": %s,%s`, def.Name, expr, EOL)
 		} else {
-			fmt.Fprintf(w, `	"%s": gen_%s,%s`, def.Name, def.Name, EOL)
+			fmt.Fprintf(w, `	"%s": x.gen_%s,%s`, def.Name, def.Name, EOL)
 		}
 	}
-	fmt.Fprintf(w, `}`+EOL)
+	fmt.Fprintf(w, strings.Join(footer, EOL))
 
 	for _, def := range definitions {
 		if _, ok := def.Func.(string); ok {
@@ -142,7 +150,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		fmt.Sprintf(`// %s`, wrapFuncName),
 		`//`,
 		fmt.Sprintf(`// syntax: %s(%s)`, name, strings.Join(typeParams, ", ")),
-		fmt.Sprintf(`func %s(args ...any) (any, error) {`, wrapFuncName),
+		fmt.Sprintf(`func (_ *task) %s(args ...any) (any, error) {`, wrapFuncName),
 	)
 	if len(typeParams) > 0 && strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
 		// the last parameter is variadic

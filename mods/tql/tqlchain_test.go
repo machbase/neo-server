@@ -8,19 +8,21 @@ import (
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 func TestNewContextChain(t *testing.T) {
+	task := fx.NewTaskContext(context.TODO())
 	strExprs := []string{
 		"PUSHKEY('tt')",
 		"FFT()",
 	}
 	exprs := make([]*expression.Expression, len(strExprs))
 	for i, str := range strExprs {
-		exprs[i], _ = ParseMap(str)
+		exprs[i], _ = ParseMap(task, str)
 		require.NotNil(t, exprs[i], str)
 	}
-	chain, err := newExecutionChain(context.TODO(), nil, nil, nil, exprs, nil)
+	chain, err := newExecutionChain(task, nil, nil, nil, exprs)
 	require.Nil(t, err)
 	require.NotNil(t, chain)
 	require.Equal(t, 2, len(chain.nodes))
@@ -45,9 +47,11 @@ func TestFFTChain(t *testing.T) {
 	reader := strings.NewReader(strings.Join(strExprs, "\n"))
 	output, _ := stream.NewOutputStream("-")
 
-	tq, err := Parse(reader, nil, nil, output, false)
+	task := fx.NewTaskContext(context.TODO())
+	task.SetOutputStream(output)
+	tq, err := Parse(task, reader)
 	require.Nil(t, err)
 	require.NotNil(t, tq)
 
-	tq.Execute(context.TODO(), nil)
+	tq.Execute(task, nil)
 }

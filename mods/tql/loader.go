@@ -2,10 +2,11 @@ package tql
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 type Loader interface {
@@ -13,7 +14,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error)
+	Parse(task fx.Task) (Tql, error)
 	String() string
 }
 
@@ -67,14 +68,14 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse(dataReader io.Reader, params map[string][]string, dataWriter io.Writer, toJsonOutput bool) (Tql, error) {
+func (sc *script) Parse(task fx.Task) (Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	tql, err := Parse(file, dataReader, params, dataWriter, toJsonOutput)
+	tql, err := Parse(task, file)
 	if err != nil {
 		return nil, err
 	}

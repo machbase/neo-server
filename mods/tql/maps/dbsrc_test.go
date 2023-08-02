@@ -7,11 +7,13 @@ import (
 
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
 func TestTagQLFile(t *testing.T) {
+	task := fx.NewTask()
 	text := `QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"))`
-	ret, err := tql.CompileSource(text, nil, nil)
+	ret, err := tql.CompileSource(task, text)
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t,
@@ -145,7 +147,8 @@ func normalize(ret string) string {
 }
 
 func (tc TagQLTestCase) run(t *testing.T) {
-	ret, err := tql.CompileSource(tc.tq, nil, nil)
+	task := fx.NewTask()
+	ret, err := tql.CompileSource(task, tc.tq)
 	if err != nil {
 		t.Fatalf("tq:'%s' parse err:%s", tc.tq, err.Error())
 	}

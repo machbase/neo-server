@@ -1,7 +1,6 @@
 package tql
 
 import (
-	gocontext "context"
 	"fmt"
 	"runtime/debug"
 	"sync"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fx"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -32,7 +32,7 @@ type ExecutionChain struct {
 	circuitBreaker bool
 }
 
-func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input *input, output *output, exprs []*expression.Expression, params map[string][]string) (*ExecutionChain, error) {
+func newExecutionChain(task fx.Task, db spi.Database, input *input, output *output, exprs []*expression.Expression) (*ExecutionChain, error) {
 	ret := &ExecutionChain{}
 	ret.resultCh = make(chan any)
 	ret.encoderCh = make(chan []any)
@@ -41,12 +41,12 @@ func newExecutionChain(ctxCtx gocontext.Context, db spi.Database, input *input, 
 	for n, expr := range exprs {
 		nodes[n] = &context.Context{
 			Name:    expr.String(),
-			Context: ctxCtx,
+			Context: task.Context(),
 			Expr:    expr,
 			Src:     make(chan *context.Param),
 			Sink:    ret.resultCh,
 			Next:    nil,
-			Params:  params,
+			Params:  task.Params(),
 		}
 		if n > 0 {
 			nodes[n-1].Next = nodes[n]

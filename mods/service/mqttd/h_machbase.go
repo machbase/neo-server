@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -247,13 +248,17 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard, false)
+	task := fx.NewTaskContext(context.TODO())
+	task.SetDataReader(bytes.NewBuffer(payload))
+	task.SetParams(params)
+	task.SetDataWriter(io.Discard)
+	tql, err := script.Parse(task)
 	if err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		return nil
 	}
 
-	if err := tql.Execute(context.TODO(), svr.db); err != nil {
+	if err := tql.Execute(task, svr.db); err != nil {
 		svr.log.Error("tql execute fail", path, err.Error())
 		return nil
 	}

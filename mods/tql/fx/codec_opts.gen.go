@@ -8,7 +8,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/opts"
 )
 
-var Definitions = []Definition{
+var CodecOptsDefinitions = []Definition{
 	{Name: "assetHost", Func: opts.AssetHost},
 	{Name: "autoRotate", Func: opts.AutoRotate},
 	{Name: "boxDrawBorder", Func: opts.BoxDrawBorder},

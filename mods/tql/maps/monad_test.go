@@ -8,6 +8,7 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/tql/context"
+	"github.com/machbase/neo-server/mods/tql/fx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -151,8 +152,9 @@ func TestMapFunc_GROUPBYKEY(t *testing.T) {
 }
 
 func (tc MapFuncTestCase) run(t *testing.T) {
+	task := fx.NewTask()
 	msg := fmt.Sprintf("TestCase %s", tc.input)
-	expr, err := tql.ParseMap(tc.input)
+	expr, err := tql.ParseMap(task, tc.input)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 

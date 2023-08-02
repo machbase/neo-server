@@ -9,21 +9,13 @@ import (
 	"github.com/machbase/neo-server/mods/tql/fx"
 )
 
-var tqlFunctions = map[string]expression.Function{}
-
-func init() {
-	for f := range fx.GenFunctions {
-		tqlFunctions[f] = nil
-	}
-}
-
 type Line struct {
 	text      string
 	line      int
 	isComment bool
 }
 
-func readLines(codeReader io.Reader) ([]*Line, error) {
+func readLines(task fx.Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}
@@ -69,7 +61,7 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 		}
 
 		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, tqlFunctions)
+		_, err = expression.ParseTokens(aStmt, task.Functions())
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue
