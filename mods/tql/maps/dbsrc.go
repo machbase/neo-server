@@ -189,9 +189,9 @@ func ToBetween(begin any, end any, period ...any) (*QueryBetween, error) {
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func ToQuery(args ...any) (*Query, error) {
+func ToQuery(args ...any) (*querySource, error) {
 	between, _ := ToBetween("last-1s", "last")
-	ret := &Query{
+	ret := &querySource{
 		columns: []string{},
 		between: between,
 		limit:   ToLimit(1000000),
@@ -218,7 +218,7 @@ func ToQuery(args ...any) (*Query, error) {
 	return ret, nil
 }
 
-type Query struct {
+type querySource struct {
 	columns []string
 	from    *QueryFrom
 	between *QueryBetween
@@ -226,7 +226,7 @@ type Query struct {
 	dump    *QueryDump
 }
 
-func (si *Query) ToSQL() string {
+func (si *querySource) ToSQL() string {
 	var ret string
 	if si.from == nil {
 		return "ERROR 'from()' missing"
@@ -248,7 +248,7 @@ func (si *Query) ToSQL() string {
 	return ret
 }
 
-func (si *Query) toSql() string {
+func (si *querySource) toSql() string {
 	table := strings.ToUpper(si.from.Table)
 	tag := si.from.Tag
 	baseTime := si.from.BaseTime
@@ -270,7 +270,7 @@ func (si *Query) toSql() string {
 	return ret
 }
 
-func (si *Query) toSqlGroup() string {
+func (si *querySource) toSqlGroup() string {
 	table := strings.ToUpper(si.from.Table)
 	tag := si.from.Tag
 	baseTime := si.from.BaseTime
@@ -300,15 +300,15 @@ func (si *Query) toSqlGroup() string {
 	return ret
 }
 
-type Sql struct {
+type sqlSource struct {
 	text string
 }
 
 // SQL('select ....')
-func ToSql(text string) *Sql {
-	return &Sql{text: text}
+func ToSql(text string) *sqlSource {
+	return &sqlSource{text: text}
 }
 
-func (s *Sql) ToSQL() string {
+func (s *sqlSource) ToSQL() string {
 	return s.text
 }

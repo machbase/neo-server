@@ -17,18 +17,44 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Tql interface {
-	Execute(task fx.Task, db spi.Database) error
-	ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error
-}
-
-type tagQL struct {
+type Tql struct {
 	input    *input
 	output   *output
 	mapExprs []string
 }
 
-func Parse(task fx.Task, codeReader io.Reader) (Tql, error) {
+func (tq *Tql) ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", tq.output.ContentType())
+	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
+		w.Header().Set("Content-Encoding", contentEncoding)
+	}
+	if tq.output.IsChart() {
+		w.Header().Set("X-Chart-Type", "echarts")
+	}
+	return tq.Execute(task, db)
+}
+
+func (tq *Tql) Execute(task fx.Task, db spi.Database) (err error) {
+	exprs := []*expression.Expression{}
+	for _, str := range tq.mapExprs {
+		expr, err := ParseMap(task, str)
+		if err != nil {
+			return errors.Wrapf(err, "at %s", str)
+		}
+		if expr == nil {
+			return fmt.Errorf("compile error at %s", str)
+		}
+		exprs = append(exprs, expr)
+	}
+
+	chain, err := newExecutionChain(task, db, tq.input, tq.output, exprs)
+	if err != nil {
+		return err
+	}
+	return chain.Run()
+}
+
+func Parse(task fx.Task, codeReader io.Reader) (*Tql, error) {
 	lines, err := readLines(task, codeReader)
 	if err != nil {
 		return nil, err
@@ -51,7 +77,7 @@ func Parse(task fx.Task, codeReader io.Reader) (Tql, error) {
 		}
 	}
 
-	tq := &tagQL{}
+	tq := &Tql{}
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
@@ -117,37 +143,6 @@ func ParseSource(task fx.Task, text string) (*expression.Expression, error) {
 
 func ParseSink(task fx.Task, text string) (*expression.Expression, error) {
 	return expression.NewWithFunctions(text, task.Functions())
-}
-
-func (tq *tagQL) ExecuteHandler(task fx.Task, db spi.Database, w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", tq.output.ContentType())
-	if contentEncoding := tq.output.ContentEncoding(); len(contentEncoding) > 0 {
-		w.Header().Set("Content-Encoding", contentEncoding)
-	}
-	if tq.output.IsChart() {
-		w.Header().Set("X-Chart-Type", "echarts")
-	}
-	return tq.Execute(task, db)
-}
-
-func (tq *tagQL) Execute(task fx.Task, db spi.Database) (err error) {
-	exprs := []*expression.Expression{}
-	for _, str := range tq.mapExprs {
-		expr, err := ParseMap(task, str)
-		if err != nil {
-			return errors.Wrapf(err, "at %s", str)
-		}
-		if expr == nil {
-			return fmt.Errorf("compile error at %s", str)
-		}
-		exprs = append(exprs, expr)
-	}
-
-	chain, err := newExecutionChain(task, db, tq.input, tq.output, exprs)
-	if err != nil {
-		return err
-	}
-	return chain.Run()
 }
 
 func CompileSource(task fx.Task, code string) (*input, error) {

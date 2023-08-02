@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/tql/conv"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type TimeRange struct {
@@ -198,4 +200,22 @@ func TimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 		return baseTime, fmt.Errorf("invalid delta expression '%v %T'", val, val)
 	}
 	return baseTime.Add(delta), nil
+}
+
+func TimeLocation(timezone string) (opts.Option, error) {
+	switch strings.ToUpper(timezone) {
+	case "LOCAL":
+		timezone = "Local"
+	case "UTC":
+		timezone = "UTC"
+	}
+	if timeLocation, err := time.LoadLocation(timezone); err != nil {
+		timeLocation, err := util.GetTimeLocation(timezone)
+		if err != nil {
+			return nil, fmt.Errorf("f(tz) %s", err.Error())
+		}
+		return opts.TimeLocation(timeLocation), nil
+	} else {
+		return opts.TimeLocation(timeLocation), nil
+	}
 }

@@ -14,7 +14,7 @@ type Loader interface {
 }
 
 type Script interface {
-	Parse(task fx.Task) (Tql, error)
+	Parse(task fx.Task) (*Tql, error)
 	String() string
 }
 
@@ -68,7 +68,7 @@ func (sc *script) String() string {
 	return fmt.Sprintf("path: %s", sc.path)
 }
 
-func (sc *script) Parse(task fx.Task) (Tql, error) {
+func (sc *script) Parse(task fx.Task) (*Tql, error) {
 	file, err := os.Open(sc.path)
 	if err != nil {
 		return nil, err
