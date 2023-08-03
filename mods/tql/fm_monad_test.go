@@ -46,7 +46,7 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
 		params:    FuncParamMock(extime, []any{1, 2, 3}),
-		expectErr: "f(PUSHKEY) invalid number of args; expect:4, actual:3",
+		expectErr: "f(PUSHKEY) invalid number of args; expect:2, actual:1",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `PUSHKEY('err')`,

@@ -241,23 +241,22 @@ func (x *Task) compile(codeReader io.Reader) error {
 }
 
 var mapFunctionsMacro = [][2]string{
-	{"SCRIPT(", "SCRIPT(CTX,K,V,"},
-	{"TAKE(", "TAKE(CTX,K,V,"},
-	{"DROP(", "DROP(CTX,K,V,"},
-	{"PUSHKEY(", "PUSHKEY(CTX,K,V,"},
-	{"POPKEY(", "POPKEY(CTX,K,V,"},
-	{"GROUPBYKEY(", "GROUPBYKEY(CTX,K,V,"},
-	{"FLATTEN(", "FLATTEN(CTX,K,V,"},
-	{"FILTER(", "FILTER(CTX,K,V,"},
-	{"FFT(", "FFT(CTX,K,V,"},
+	{"SCRIPT(", "SCRIPT(CTX,"},
+	{"TAKE(", "TAKE(CTX,"},
+	{"DROP(", "DROP(CTX,"},
+	{"PUSHKEY(", "PUSHKEY(CTX,"},
+	{"POPKEY(", "POPKEY(CTX,"},
+	{"GROUPBYKEY(", "GROUPBYKEY(CTX,"},
+	{"FLATTEN(", "FLATTEN(CTX,"},
+	{"FILTER(", "FILTER(CTX,"},
+	{"FFT(", "FFT(CTX,"},
 }
 
 func (x *Task) Parse(text string) (*expression.Expression, error) {
 	for _, f := range mapFunctionsMacro {
 		text = strings.ReplaceAll(text, f[0], f[1])
 	}
-	text = strings.ReplaceAll(text, ",V,)", ",V)")
-	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
+	text = strings.ReplaceAll(text, "(CTX,)", "(CTX)")
 	return expression.NewWithFunctions(text, x.functions)
 }
 

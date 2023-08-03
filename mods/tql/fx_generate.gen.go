@@ -406,177 +406,136 @@ func (x *Task) gen_range(args ...any) (any, error) {
 
 // gen_TAKE
 //
-// syntax: TAKE(, , , int)
+// syntax: TAKE(, int)
 func (x *Task) gen_TAKE(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("TAKE", 4, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("TAKE", 2, len(args))
 	}
-	p0, err := convContext(args, 0, "TAKE", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "TAKE", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "TAKE", "interface {}")
+	p1, err := convInt(args, 1, "TAKE", "int")
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convAny(args, 2, "TAKE", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3, err := convInt(args, 3, "TAKE", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmTake(p0, p1, p2, p3)
+	ret := x.fmTake(p0, p1)
 	return ret, nil
 }
 
 // gen_DROP
 //
-// syntax: DROP(, , , int)
+// syntax: DROP(, int)
 func (x *Task) gen_DROP(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("DROP", 4, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("DROP", 2, len(args))
 	}
-	p0, err := convContext(args, 0, "DROP", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "DROP", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "DROP", "interface {}")
+	p1, err := convInt(args, 1, "DROP", "int")
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convAny(args, 2, "DROP", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3, err := convInt(args, 3, "DROP", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmDrop(p0, p1, p2, p3)
+	ret := x.fmDrop(p0, p1)
 	return ret, nil
 }
 
 // gen_FILTER
 //
-// syntax: FILTER(, , , bool)
+// syntax: FILTER(, bool)
 func (x *Task) gen_FILTER(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("FILTER", 4, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("FILTER", 2, len(args))
 	}
-	p0, err := convContext(args, 0, "FILTER", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "FILTER", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "FILTER", "interface {}")
+	p1, err := convBool(args, 1, "FILTER", "bool")
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convAny(args, 2, "FILTER", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3, err := convBool(args, 3, "FILTER", "bool")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmFilter(p0, p1, p2, p3)
+	ret := x.fmFilter(p0, p1)
 	return ret, nil
 }
 
 // gen_FLATTEN
 //
-// syntax: FLATTEN(, , )
+// syntax: FLATTEN()
 func (x *Task) gen_FLATTEN(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("FLATTEN", 3, len(args))
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("FLATTEN", 1, len(args))
 	}
-	p0, err := convContext(args, 0, "FLATTEN", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "FLATTEN", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "FLATTEN", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "FLATTEN", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmFlatten(p0, p1, p2)
+	ret := x.fmFlatten(p0)
 	return ret, nil
 }
 
 // gen_GROUPBYKEY
 //
-// syntax: GROUPBYKEY(, , , ...interface {})
+// syntax: GROUPBYKEY(, ...interface {})
 func (x *Task) gen_GROUPBYKEY(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("GROUPBYKEY", 3, len(args))
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("GROUPBYKEY", 1, len(args))
 	}
-	p0, err := convContext(args, 0, "GROUPBYKEY", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "GROUPBYKEY", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "GROUPBYKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "GROUPBYKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3 := []interface{}{}
-	for n := 3; n < len(args); n++ {
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
 		argv, err := convAny(args, n, "GROUPBYKEY", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p3 = append(p3, argv)
+		p1 = append(p1, argv)
 	}
-	ret := x.fmGroupByKey(p0, p1, p2, p3...)
+	ret := x.fmGroupByKey(p0, p1...)
 	return ret, nil
 }
 
 // gen_POPKEY
 //
-// syntax: POPKEY(, , , ...int)
+// syntax: POPKEY(, ...int)
 func (x *Task) gen_POPKEY(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("POPKEY", 3, len(args))
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("POPKEY", 1, len(args))
 	}
-	p0, err := convContext(args, 0, "POPKEY", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "POPKEY", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "POPKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "POPKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3 := []int{}
-	for n := 3; n < len(args); n++ {
+	p1 := []int{}
+	for n := 1; n < len(args); n++ {
 		argv, err := convInt(args, n, "POPKEY", "...int")
 		if err != nil {
 			return nil, err
 		}
-		p3 = append(p3, argv)
+		p1 = append(p1, argv)
 	}
-	return x.fmPopKey(p0, p1, p2, p3...)
+	return x.fmPopKey(p0, p1...)
 }
 
 // gen_PUSHKEY
 //
-// syntax: PUSHKEY(, , , )
+// syntax: PUSHKEY(, )
 func (x *Task) gen_PUSHKEY(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("PUSHKEY", 4, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("PUSHKEY", 2, len(args))
 	}
-	p0, err := convContext(args, 0, "PUSHKEY", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "PUSHKEY", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
@@ -584,15 +543,7 @@ func (x *Task) gen_PUSHKEY(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convAny(args, 2, "PUSHKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3, err := convAny(args, 3, "PUSHKEY", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmPushKey(p0, p1, p2, p3)
+	return x.fmPushKey(p0, p1)
 }
 
 // gen_SCRIPT
@@ -602,7 +553,8 @@ func (x *Task) gen_SCRIPT(args ...any) (any, error) {
 	if len(args) != 4 {
 		return nil, ErrInvalidNumOfArgs("SCRIPT", 4, len(args))
 	}
-	p0, err := convContext(args, 0, "SCRIPT", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "SCRIPT", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
@@ -851,32 +803,25 @@ func (x *Task) gen_maxHz(args ...any) (any, error) {
 
 // gen_FFT
 //
-// syntax: FFT(, , []interface {}, ...interface {})
+// syntax: FFT(, ...interface {})
 func (x *Task) gen_FFT(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("FFT", 3, len(args))
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("FFT", 1, len(args))
 	}
-	p0, err := convContext(args, 0, "FFT", "*tql.SubContext")
+	/* args[0] *tql.Node */
+	p0, err := convNode(args, 0, "FFT", "*tql.Node")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "FFT", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, ok := args[2].([]interface{})
-	if !ok {
-		return nil, ErrWrongTypeOfArgs("FFT", 2, "[]interface {}", args[2])
-	}
-	p3 := []interface{}{}
-	for n := 3; n < len(args); n++ {
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
 		argv, err := convAny(args, n, "FFT", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p3 = append(p3, argv)
+		p1 = append(p1, argv)
 	}
-	return x.fmFastFourierTransform(p0, p1, p2, p3...)
+	return x.fmFastFourierTransform(p0, p1...)
 }
 
 // gen_CSV

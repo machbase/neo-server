@@ -22,7 +22,7 @@ func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
 }
 
-func convContext(args []any, idx int, fname string, expect string) (*Node, error) {
+func convNode(args []any, idx int, fname string, expect string) (*Node, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -30,7 +30,7 @@ func convContext(args []any, idx int, fname string, expect string) (*Node, error
 	if ctx, ok := raw.(*Node); ok {
 		return ctx, nil
 	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, "Context", raw)
+	return nil, ErrWrongTypeOfArgs(fname, idx, "*Node", raw)
 }
 
 func convInputStream(args []any, idx int, fname string, expect string) (spec.InputStream, error) {

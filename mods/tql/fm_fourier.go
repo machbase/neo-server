@@ -20,7 +20,7 @@ func (x *Task) fmMinHz(freq float64) minHzOption {
 	return minHzOption(freq)
 }
 
-func (x *Task) fmFastFourierTransform(node *Node, key any, value []any, args ...any) (any, error) {
+func (x *Task) fmFastFourierTransform(node *Node, args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
@@ -33,6 +33,14 @@ func (x *Task) fmFastFourierTransform(node *Node, key any, value []any, args ...
 		}
 	}
 
+	// key any, value []any,
+	key := node.Record().key
+	var value []any
+	if v, ok := node.Record().value.([]any); ok {
+		value = v
+	} else {
+		value = []any{v}
+	}
 	lenSamples := len(value)
 	if lenSamples < 16 {
 		// fmt.Errorf("f(FFT) samples should be more than 16")
@@ -45,7 +53,7 @@ func (x *Task) fmFastFourierTransform(node *Node, key any, value []any, args ...
 	for i := range value {
 		tuple, ok := value[i].([]any)
 		if !ok {
-			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but %T", value[i])
+			return nil, fmt.Errorf("f(FFT) sample should be a tuple of (time, value), but %T (%v)", value[i], value[i])
 		}
 		sampleTimes[i], ok = tuple[0].(time.Time)
 		if !ok {

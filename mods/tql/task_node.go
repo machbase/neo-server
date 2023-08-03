@@ -137,34 +137,34 @@ func (ctx *Node) yield(key any, values []any) {
 	}
 }
 
-func (ctx *Node) Start() {
-	ctx.closeWg.Add(1)
+func (node *Node) Start() {
+	node.closeWg.Add(1)
 	go func() {
 		defer func() {
-			if ctx.Next != nil {
-				ctx.Next.Src <- EofRecord
+			if node.Next != nil {
+				node.Next.Src <- EofRecord
 			}
-			ctx.Sink <- EofRecord
-			ctx.closeWg.Done()
+			node.Sink <- EofRecord
+			node.closeWg.Done()
 			if o := recover(); o != nil {
-				ctx.task.LogError("panic %s %v", ctx.Name, o)
+				node.task.LogError("panic %s %v", node.Name, o)
 			}
 		}()
 
 		drop := func(p *Record) {
-			if ctx.Debug {
-				ctx.task.LogDebugString("--", ctx.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
+			if node.Debug {
+				node.task.LogDebugString("--", node.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
 			}
 		}
 
-		for rec := range ctx.Src {
+		for rec := range node.Src {
 			if rec.IsEOF() {
 				break
 			}
-			ctx.Nrow++
-			ctx.SetRecord(rec)
-			if ret, err := ctx.Expr.Eval(ctx); err != nil {
-				ctx.Sink <- err
+			node.Nrow++
+			node.SetRecord(rec)
+			if ret, err := node.Expr.Eval(node); err != nil {
+				node.Sink <- err
 			} else if ret != nil {
 				var resultset []*Record
 				switch rs := ret.(type) {
@@ -172,7 +172,7 @@ func (ctx *Node) Start() {
 					if rs.IsEOF() {
 						break
 					} else if rs.IsCircuitBreak() {
-						ctx.Sink <- rs
+						node.Sink <- rs
 					} else {
 						if rs != nil {
 							resultset = []*Record{rs}
@@ -181,19 +181,19 @@ func (ctx *Node) Start() {
 				case []*Record:
 					resultset = rs
 				default:
-					ctx.Sink <- fmt.Errorf("func returns invalid type: %T (%s)", ret, ctx.Name)
+					node.Sink <- fmt.Errorf("func returns invalid type: %T (%s)", ret, node.Name)
 				}
 
 				for _, record := range resultset {
-					ctx.yield(record.key, []any{record.value})
+					node.yield(record.key, []any{record.value})
 				}
 			} else {
 				drop(rec)
 			}
 		}
 
-		for k, v := range ctx.buffer {
-			ctx.yield(k, v)
+		for k, v := range node.buffer {
+			node.yield(k, v)
 		}
 	}()
 }

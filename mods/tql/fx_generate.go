@@ -142,8 +142,12 @@ func writeMapFunc(w io.Writer, name string, f any) {
 			}
 		} else {
 			ptype := param.Name()
+			strParam := param.String()
 			typeParams = append(typeParams, ptype)
-			convParams = append(convParams, getConvStatement(param.String(), i, param.Name(), name))
+			convParams = append(convParams, getConvStatement(strParam, i, param.Name(), name))
+			if i == 0 && strParam == "*tql.Node" {
+				convParams[len(convParams)-1] = fmt.Sprintf("/* args[%d] %s */%s", i, strParam, EOL) + convParams[len(convParams)-1]
+			}
 		}
 	}
 
@@ -238,6 +242,8 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "InputStream"
 	case "transcoder.Transcoder":
 		convFunc = "Transcoder"
+	case "*tql.Node":
+		convFunc = "Node"
 	case "*tql.SubContext":
 		convFunc = "Context"
 	default:
