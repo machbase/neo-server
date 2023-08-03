@@ -12,9 +12,8 @@ import (
 func TestTagQLFile(t *testing.T) {
 	task := tql.NewTask()
 	text := `QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"))`
-	ret, err := task.CompileSource(text)
+	err := task.CompileString(text)
 	require.Nil(t, err)
-	require.NotNil(t, ret)
 	require.Equal(t,
 		normalize(`SELECT time, value 
 			FROM TABLE WHERE name = 'tag' 
@@ -22,7 +21,7 @@ func TestTagQLFile(t *testing.T) {
 					(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
 				AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
 			LIMIT 0, 1000000`),
-		normalize(ret.ToSQL()), "./test/simple.tql")
+		normalize(task.DumpSQL()), "./test/simple.tql")
 }
 
 type TagQLTestCase struct {
@@ -147,11 +146,7 @@ func normalize(ret string) string {
 
 func (tc TagQLTestCase) run(t *testing.T) {
 	task := tql.NewTask()
-	ret, err := task.CompileSource(tc.tq)
-	if err != nil {
-		t.Fatalf("tq:'%s' parse err:%s", tc.tq, err.Error())
-	}
-	require.NotNil(t, ret)
+	err := task.CompileString(tc.tq)
 	if len(tc.err) > 0 {
 		require.NotNil(t, err)
 		require.Equal(t, tc.err, err.Error())
@@ -159,6 +154,5 @@ func (tc TagQLTestCase) run(t *testing.T) {
 	}
 	msg := fmt.Sprintf("%v", tc.tq)
 	require.Nil(t, err, msg)
-	require.NotNil(t, ret, msg)
-	require.Equal(t, normalize(tc.expect), normalize(ret.ToSQL()), msg)
+	require.Equal(t, normalize(tc.expect), normalize(task.DumpSQL()), msg)
 }

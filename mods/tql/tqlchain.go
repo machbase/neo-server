@@ -231,7 +231,7 @@ func (ec *ExecutionChain) start() {
 			}
 		},
 	}
-	if err := ec.input.Run(deligate); err != nil {
+	if err := ec.input.run(deligate); err != nil {
 		ec.lastError = err
 	}
 }

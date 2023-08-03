@@ -18,7 +18,7 @@ func TestNewContextChain(t *testing.T) {
 	}
 	exprs := make([]*expression.Expression, len(strExprs))
 	for i, str := range strExprs {
-		exprs[i], _ = ParseMap(task, str)
+		exprs[i], _ = task.Parse(str)
 		require.NotNil(t, exprs[i], str)
 	}
 	chain, err := newExecutionChain(task, nil, nil, nil, exprs)

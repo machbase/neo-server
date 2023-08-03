@@ -60,7 +60,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 		}
 
 		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, task.Functions())
+		_, err = expression.ParseTokens(aStmt, task.functions)
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue

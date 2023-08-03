@@ -156,7 +156,7 @@ func TestMapFunc_GROUPBYKEY(t *testing.T) {
 func (tc MapFuncTestCase) run(t *testing.T) {
 	task := tql.NewTask()
 	msg := fmt.Sprintf("TestCase %s", tc.input)
-	expr, err := tql.ParseMap(task, tc.input)
+	expr, err := task.Parse(tc.input)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 

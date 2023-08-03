@@ -53,11 +53,7 @@ func (x *Task) Context() context.Context {
 	return x.ctx
 }
 
-func (x *Task) Functions() map[string]expression.Function {
-	return x.functions
-}
-
-func (x *Task) GetFunction(name string) expression.Function {
+func (x *Task) Function(name string) expression.Function {
 	return x.functions[name]
 }
 
@@ -187,7 +183,7 @@ func (x *Task) Compile(codeReader io.Reader) error {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
-		src, err := x.CompileSource(srcLine.text)
+		src, err := x.compileSource(srcLine.text)
 		if err != nil {
 			x.compileErr = errors.Wrapf(err, "at line %d", srcLine.line)
 			return x.compileErr
@@ -199,15 +195,12 @@ func (x *Task) Compile(codeReader io.Reader) error {
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
 		// validates the syntax
-		sink, err := x.CompileSink(sinkLine.text)
+		sink, err := x.compileSink(sinkLine.text)
 		if err != nil {
 			x.compileErr = errors.Wrapf(err, "at line %d", sinkLine.line)
 			return x.compileErr
 		}
 		x.output = sink
-	} else {
-		x.compileErr = errors.New("tql contains no output")
-		return x.compileErr
 	}
 
 	// map
@@ -215,7 +208,7 @@ func (x *Task) Compile(codeReader io.Reader) error {
 		exprs = exprs[1 : len(exprs)-1]
 		for _, mapLine := range exprs {
 			// validates the syntax
-			_, err := ParseMap(x, mapLine.text)
+			_, err := x.Parse(mapLine.text)
 			if err != nil {
 				x.compileErr = errors.Wrapf(err, "at line %d", mapLine.line)
 				return x.compileErr
@@ -238,21 +231,29 @@ var mapFunctionsMacro = [][2]string{
 	{"FFT(", "FFT(CTX,K,V,"},
 }
 
-func ParseMap(task *Task, text string) (*expression.Expression, error) {
+func (x *Task) Parse(text string) (*expression.Expression, error) {
 	for _, f := range mapFunctionsMacro {
 		text = strings.ReplaceAll(text, f[0], f[1])
 	}
 	text = strings.ReplaceAll(text, ",V,)", ",V)")
 	text = strings.ReplaceAll(text, "K,V,K,V", "K,V")
-	return expression.NewWithFunctions(text, task.Functions())
+	return expression.NewWithFunctions(text, x.functions)
 }
 
-func parseSource(task *Task, text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, task.Functions())
+func (x *Task) parseSource(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, x.functions)
 }
 
-func parseSink(task *Task, text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, task.Functions())
+func (x *Task) parseSink(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, x.functions)
+}
+
+// DumpSQL returns the generated SQL statement if the input source database source
+func (x *Task) DumpSQL() string {
+	if x.input == nil || x.input.dbSrc == nil {
+		return ""
+	}
+	return x.input.dbSrc.ToSQL()
 }
 
 func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
@@ -269,7 +270,7 @@ func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
 func (x *Task) Execute(db spi.Database) (err error) {
 	exprs := []*expression.Expression{}
 	for _, str := range x.mapExprs {
-		expr, err := ParseMap(x, str)
+		expr, err := x.Parse(str)
 		if err != nil {
 			return errors.Wrapf(err, "at %s", str)
 		}
@@ -286,8 +287,8 @@ func (x *Task) Execute(db spi.Database) (err error) {
 	return chain.Run()
 }
 
-func (x *Task) CompileSource(code string) (*input, error) {
-	expr, err := parseSource(x, code)
+func (x *Task) compileSource(code string) (*input, error) {
+	expr, err := x.parseSource(code)
 	if err != nil {
 		return nil, err
 	}
@@ -312,15 +313,7 @@ type input struct {
 	chSrc ChannelSource
 }
 
-// for test and debug purpose
-func (in *input) ToSQL() string {
-	if in.dbSrc == nil {
-		return ""
-	}
-	return in.dbSrc.ToSQL()
-}
-
-func (in *input) Run(deligate InputDeligate) error {
+func (in *input) run(deligate InputDeligate) error {
 	if in.dbSrc == nil && in.chSrc == nil {
 		return errors.New("nil source")
 	}
@@ -422,8 +415,8 @@ func (w *InputDelegateWrapper) Feed(v []any) {
 	}
 }
 
-func (x *Task) CompileSink(code string) (*output, error) {
-	expr, err := parseSink(x, code)
+func (x *Task) compileSink(code string) (*output, error) {
+	expr, err := x.parseSink(code)
 	if err != nil {
 		return nil, err
 	}
