@@ -22,12 +22,12 @@ func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
 }
 
-func convContext(args []any, idx int, fname string, expect string) (*SubContext, error) {
+func convContext(args []any, idx int, fname string, expect string) (*Node, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	raw := args[idx]
-	if ctx, ok := raw.(*SubContext); ok {
+	if ctx, ok := raw.(*Node); ok {
 		return ctx, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, "Context", raw)

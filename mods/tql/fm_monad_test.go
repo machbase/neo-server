@@ -32,7 +32,7 @@ func TestMapFunc_roundTime(t *testing.T) {
 }
 
 func TestMapFunc_TAKE(t *testing.T) {
-	ctx := tql.NewSubContext(nil)
+	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:  `TAKE(1)`,
 		params: FuncParamMock("sam", []any{1, 2, 3}),
@@ -41,7 +41,7 @@ func TestMapFunc_TAKE(t *testing.T) {
 }
 
 func TestMapFunc_PUSHKEY(t *testing.T) {
-	ctx := tql.NewSubContext(nil)
+	ctx := tql.NewNode(nil)
 	extime := time.Unix(123, 0)
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
@@ -68,7 +68,7 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 }
 
 func TestMapFunc_POPKEY(t *testing.T) {
-	ctx := tql.NewSubContext(nil)
+	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:     `POPKEY()`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
@@ -97,7 +97,7 @@ func TestMapFunc_POPKEY(t *testing.T) {
 }
 
 func TestMapFunc_FILTER(t *testing.T) {
-	ctx := tql.NewSubContext(nil)
+	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:  `FILTER(10<100)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
@@ -163,7 +163,7 @@ func (tc MapFuncTestCase) run(t *testing.T) {
 	ret, err := expr.Eval(tc.params)
 	if tc.expectErr != "" {
 		require.NotNil(t, err, msg)
-		require.Equal(t, tc.expectErr, err.Error(), msg)
+		require.Equal(t, tc.expectErr, err.Error(), fmt.Sprintf(`"%s"`, msg))
 		return
 	}
 	require.Nil(t, err, msg)
@@ -190,8 +190,11 @@ func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameter
 }
 
 func FuncParamMock(k any, v any) expression.Parameters {
-	ctx := &tql.SubContext{}
-	return ctx.NewRecord(k, v)
+	ctx := &tql.Node{}
+	ctx.SetRecord(tql.NewRecord(k, v))
+	task := tql.NewTask()
+	task.AddNode(ctx)
+	return ctx
 }
 
 type paramMock struct {

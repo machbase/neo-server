@@ -1,6 +1,7 @@
 package tql
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/d5/tengo/v2"
@@ -8,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func tengof_bridge(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		var cname string
 		if len(args) == 1 {
@@ -24,15 +25,21 @@ func tengof_bridge(ctx *SubContext) func(args ...tengo.Object) (tengo.Object, er
 			return tengo.UndefinedValue, err
 		}
 		if sqlC, ok := br.(bridge.SqlBridge); ok {
+			var ctx context.Context
+			if node.task != nil && node.task.ctx != nil {
+				ctx = node.task.ctx
+			} else {
+				ctx = context.TODO()
+			}
 			conn, err := sqlC.Connect(ctx)
 			if err != nil {
 				return nil, err
 			}
-			ctx.LazyClose(conn)
-			return &sqlBridge{ctx: ctx, conn: conn, name: cname}, nil
+			node.LazyClose(conn)
+			return &sqlBridge{node: node, conn: conn, name: cname}, nil
 		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
 			return &pubBridge{
-				ctx:       ctx,
+				node:      node,
 				name:      cname,
 				publisher: mqttC,
 			}, nil
@@ -47,7 +54,7 @@ type Publisher interface {
 
 type pubBridge struct {
 	tengo.ObjectImpl
-	ctx       *SubContext
+	node      *Node
 	name      string
 	publisher Publisher
 }
@@ -61,7 +68,7 @@ func (c *pubBridge) String() string {
 }
 
 func (c *pubBridge) Copy() tengo.Object {
-	return &pubBridge{ctx: c.ctx, name: c.name, publisher: c.publisher}
+	return &pubBridge{node: c.node, name: c.name, publisher: c.publisher}
 }
 
 func (c *pubBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
@@ -100,7 +107,7 @@ func pubBridge_publish(c *pubBridge) func(args ...tengo.Object) (tengo.Object, e
 
 type sqlBridge struct {
 	tengo.ObjectImpl
-	ctx  *SubContext
+	node *Node
 	name string
 	conn *sql.Conn
 }
@@ -114,7 +121,7 @@ func (c *sqlBridge) String() string {
 }
 
 func (c *sqlBridge) Copy() tengo.Object {
-	return &sqlBridge{ctx: c.ctx, conn: c.conn, name: c.name}
+	return &sqlBridge{node: c.node, conn: c.conn, name: c.name}
 }
 
 func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
@@ -139,7 +146,7 @@ func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 					if c.conn == nil {
 						return nil, nil
 					}
-					defer c.ctx.CancelClose(c.conn)
+					defer c.node.CancelClose(c.conn)
 					if err := c.conn.Close(); err != nil {
 						return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 					}
@@ -164,11 +171,17 @@ func sqlBridge_exec(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, erro
 			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
 		}
 		params := tengoSliceToAnySlice(args[1:])
-		result, err := c.conn.ExecContext(c.ctx, queryText, params...)
+		var ctx context.Context
+		if c.node != nil && c.node.task != nil && c.node.task.ctx != nil {
+			ctx = c.node.task.ctx
+		} else {
+			ctx = context.TODO()
+		}
+		result, err := c.conn.ExecContext(ctx, queryText, params...)
 		if err != nil {
 			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 		}
-		return &sqlResult{ctx: c.ctx, result: result}, nil
+		return &sqlResult{ctx: c.node, result: result}, nil
 	}
 }
 
@@ -182,12 +195,18 @@ func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, err
 			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
 		}
 		params := tengoSliceToAnySlice(args[1:])
-		rows, err := c.conn.QueryContext(c.ctx, queryText, params...)
+		var ctx context.Context
+		if c.node != nil && c.node.task != nil && c.node.task.ctx != nil {
+			ctx = c.node.task.ctx
+		} else {
+			ctx = context.TODO()
+		}
+		rows, err := c.conn.QueryContext(ctx, queryText, params...)
 		if err != nil {
 			return nil, errors.Wrap(err, "query failed")
 		}
-		c.ctx.LazyClose(rows)
-		return &sqlRows{ctx: c.ctx, rows: rows}, nil
+		c.node.LazyClose(rows)
+		return &sqlRows{ctx: c.node, rows: rows}, nil
 	}
 }
 
@@ -201,7 +220,13 @@ func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, 
 			return nil, tengo.ErrInvalidArgumentType{Name: "sqlText", Expected: "string", Found: args[0].TypeName()}
 		}
 		params := tengoSliceToAnySlice(args[1:])
-		rows, err := c.conn.QueryContext(c.ctx, queryText, params...)
+		var ctx context.Context
+		if c.node != nil && c.node.task != nil && c.node.task.ctx != nil {
+			ctx = c.node.task.ctx
+		} else {
+			ctx = context.TODO()
+		}
+		rows, err := c.conn.QueryContext(ctx, queryText, params...)
 		if err != nil {
 			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 		}
@@ -232,7 +257,7 @@ func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, 
 
 type sqlResult struct {
 	tengo.ObjectImpl
-	ctx    *SubContext
+	ctx    *Node
 	result sql.Result
 }
 
@@ -273,7 +298,7 @@ func (r *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
 
 type sqlRows struct {
 	tengo.ObjectImpl
-	ctx  *SubContext
+	ctx  *Node
 	rows *sql.Rows
 }
 

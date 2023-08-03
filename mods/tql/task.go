@@ -8,11 +8,11 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/machbase/neo-server/mods/codec"
-	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -39,18 +39,31 @@ type Task struct {
 	input      *input
 	output     *output
 	mapExprs   []string
+
+	// runtime
+	db       spi.Database
+	nodes    []*Node
+	headNode *Node
+	nodesWg  sync.WaitGroup
+
+	resultCh           chan any
+	encoderCh          chan []any
+	encoderChWg        sync.WaitGroup
+	encoderNeedToClose bool
+
+	closeOnce      sync.Once
+	lastError      error
+	circuitBreaker bool
 }
 
-var _ expression.Parameters = &Task{}
+var (
+	_ expression.Parameters = &Task{}
+)
 
 func NewTaskContext(ctx context.Context) *Task {
 	ret := NewTask()
 	ret.ctx = ctx
 	return ret
-}
-
-func (x *Task) Context() context.Context {
-	return x.ctx
 }
 
 func (x *Task) Function(name string) expression.Function {
@@ -155,6 +168,14 @@ func (x *Task) CompileString(code string) error {
 }
 
 func (x *Task) Compile(codeReader io.Reader) error {
+	err := x.compile(codeReader)
+	if err != nil {
+		x.LogError("Compile %s", err.Error())
+	}
+	return err
+}
+
+func (x *Task) compile(codeReader io.Reader) error {
 	x.compiled = true
 	lines, err := readLines(x, codeReader)
 	if err != nil {
@@ -256,6 +277,35 @@ func (x *Task) DumpSQL() string {
 	return x.input.dbSrc.ToSQL()
 }
 
+func (x *Task) LogDebug(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[DEBUG] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[DEBUG]", msg)
+	}
+}
+
+func (x *Task) LogDebugString(args ...string) {
+	fmt.Println("[DEBUG]", strings.Join(args, " "))
+}
+
+func (x *Task) LogInfo(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[INFO] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[INFO]", msg)
+	}
+}
+
+func (x *Task) LogError(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[ERROR] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[ERROR]", msg)
+	}
+	debug.PrintStack()
+}
+
 func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", x.output.ContentType())
 	if contentEncoding := x.output.ContentEncoding(); len(contentEncoding) > 0 {
@@ -267,7 +317,15 @@ func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
 	return x.Execute(db)
 }
 
-func (x *Task) Execute(db spi.Database) (err error) {
+func (x *Task) Execute(db spi.Database) error {
+	err := x.execute(db)
+	if err != nil {
+		x.LogError("Execute %s", err.Error())
+	}
+	return err
+}
+
+func (x *Task) execute(db spi.Database) (err error) {
 	exprs := []*expression.Expression{}
 	for _, str := range x.mapExprs {
 		expr, err := x.Parse(str)
@@ -280,11 +338,37 @@ func (x *Task) Execute(db spi.Database) (err error) {
 		exprs = append(exprs, expr)
 	}
 
-	chain, err := newExecutionChain(x, db, x.input, x.output, exprs)
-	if err != nil {
-		return err
+	x.resultCh = make(chan any)
+	x.encoderCh = make(chan []any)
+	x.db = db
+
+	x.nodes = make([]*Node, len(exprs))
+	for n, expr := range exprs {
+		x.nodes[n] = &Node{
+			id:   n,
+			Name: expr.String(),
+			Expr: expr,
+			Src:  make(chan *Record),
+			Sink: x.resultCh,
+			Next: nil,
+			task: x,
+		}
+		if n > 0 {
+			x.nodes[n-1].Next = x.nodes[n]
+		}
 	}
-	return chain.Run()
+	if len(x.nodes) > 0 {
+		x.headNode = x.nodes[0]
+	}
+	x.start()
+	x.wait()
+	x.stop()
+	return x.lastError
+}
+
+func (x *Task) AddNode(node *Node) {
+	node.id = len(x.nodes)
+	x.nodes = append(x.nodes, node)
 }
 
 func (x *Task) compileSource(code string) (*input, error) {
@@ -308,195 +392,183 @@ func (x *Task) compileSource(code string) (*input, error) {
 	return ret, nil
 }
 
-type input struct {
-	dbSrc DatabaseSource
-	chSrc ChannelSource
-}
-
-func (in *input) run(deligate InputDeligate) error {
-	if in.dbSrc == nil && in.chSrc == nil {
-		return errors.New("nil source")
-	}
-	if deligate == nil {
-		return errors.New("nil deligate")
-	}
-
-	fetched := 0
-	executed := false
-	if in.dbSrc != nil {
-		queryCtx := &do.QueryContext{
-			DB: deligate.Database(),
-			OnFetchStart: func(c spi.Columns) {
-				deligate.FeedHeader(c)
-			},
-			OnFetch: func(nrow int64, values []any) bool {
-				fetched++
-				if deligate.ShouldStop() {
-					return false
-				} else {
-					deligate.Feed(values)
-					return true
+func (x *Task) start() {
+	////////////////////////////////
+	// encoder
+	x.encoderChWg.Add(1)
+	var cols spi.Columns
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if err, ok := r.(error); ok {
+					x.LogError(err.Error())
 				}
-			},
-			OnFetchEnd: func() {},
-			OnExecuted: func(usermsg string, rowsAffected int64) {
-				executed = true
-			},
+			}
+			x.encoderChWg.Done()
+		}()
+		for arr := range x.encoderCh {
+			if !x.encoderNeedToClose {
+				if len(cols) == 0 {
+					for i, v := range arr {
+						cols = append(cols, &spi.Column{
+							Name: fmt.Sprintf("C%02d", i),
+							Type: x.columnTypeName(v)})
+					}
+				}
+				x.output.SetHeader(cols)
+				x.output.Open(x.db)
+				x.encoderNeedToClose = true
+			}
+			if len(arr) == 0 {
+				continue
+			}
+			if rec, ok := arr[0].(*Record); ok && rec.IsEOF() {
+				continue
+			}
+			if err := x.output.AddRow(arr); err != nil {
+				x.LogError(err.Error())
+			}
 		}
-		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
-			deligate.Feed(nil)
-			return err
-		} else {
-			if executed {
-				deligate.FeedHeader(spi.Columns{{Name: "message", Type: "string"}})
-				deligate.Feed([]any{msg})
-				deligate.Feed(nil)
-			} else if fetched == 0 {
-				deligate.Feed([]any{&Record{eof: true}})
-				deligate.Feed(nil)
+	}()
+
+	////////////////////////////////
+	// nodes
+	for _, child := range x.nodes {
+		x.nodesWg.Add(1)
+		child.Start()
+	}
+
+	sink0 := func(k any, v any) {
+		x.sendToEncoder([]any{k, v})
+	}
+
+	sink1 := func(k any, v []any) {
+		x.sendToEncoder(append([]any{k}, v...))
+	}
+
+	sink2 := func(k any, v [][]any) {
+		for _, row := range v {
+			sink1(k, row)
+		}
+	}
+
+	go func() {
+		for ret := range x.resultCh {
+			switch castV := ret.(type) {
+			case *Record:
+				if castV.IsEOF() {
+					x.nodesWg.Done()
+				} else if castV.IsCircuitBreak() {
+					x.circuitBreaker = true
+				} else {
+					switch tV := castV.value.(type) {
+					case []any:
+						if len(tV) == 0 {
+							sink1(castV.key, tV)
+						} else {
+							if subarr, ok := tV[0].([][]any); ok {
+								sink2(castV.key, subarr)
+							} else {
+								sink1(castV.key, tV)
+							}
+						}
+					case [][]any:
+						sink2(castV.key, tV)
+					default:
+						sink0(castV.key, castV.value)
+					}
+				}
+			case []*Record:
+				for _, v := range castV {
+					switch tV := v.value.(type) {
+					case []any:
+						sink1(v.key, tV)
+					case [][]any:
+						sink2(v.key, tV)
+					default:
+						sink0(v.key, tV)
+					}
+				}
+			case error:
+				x.lastError = castV
+			}
+		}
+	}()
+
+	////////////////////////////////
+	// input source
+	deligate := &InputDelegateWrapper{
+		DatabaseFunc: func() spi.Database {
+			return x.db
+		},
+		ShouldStopFunc: func() bool {
+			return x.circuitBreaker || x.lastError != nil
+		},
+		FeedHeaderFunc: func(c spi.Columns) {
+			cols = c
+		},
+		FeedFunc: func(values []any) {
+			if x.headNode != nil {
+				if values != nil {
+					x.headNode.Src <- x.headNode.NewRecord(values[0], values[1:])
+				} else {
+					x.headNode.Src <- EofRecord
+				}
 			} else {
-				deligate.Feed(nil)
+				// there is no chain, just forward input data to sink directly
+				x.sendToEncoder(values)
 			}
-			return nil
+		},
+	}
+	if err := x.input.run(deligate); err != nil {
+		x.lastError = err
+	}
+}
+
+func (x *Task) stop() {
+	x.nodesWg.Wait()
+}
+
+func (x *Task) wait() {
+	x.closeOnce.Do(func() {
+		for _, ctx := range x.nodes {
+			ctx.Stop()
 		}
-	} else if in.chSrc != nil {
-		deligate.FeedHeader(in.chSrc.Header())
-		for values := range in.chSrc.Gen() {
-			deligate.Feed(values)
-			if deligate.ShouldStop() {
-				in.chSrc.Stop()
-				break
-			}
+		close(x.resultCh)
+		close(x.encoderCh)
+		x.encoderChWg.Wait()
+		if x.output != nil && x.encoderNeedToClose {
+			x.output.Close()
 		}
-		deligate.Feed(nil)
-		return nil
-	} else {
-		return errors.New("no source")
-	}
+	})
 }
 
-type InputDeligate interface {
-	Database() spi.Database
-	ShouldStop() bool
-	FeedHeader(spi.Columns)
-	Feed([]any)
-}
-
-type InputDelegateWrapper struct {
-	DatabaseFunc   func() spi.Database
-	ShouldStopFunc func() bool
-	FeedHeaderFunc func(spi.Columns)
-	FeedFunc       func([]any)
-}
-
-func (w *InputDelegateWrapper) Database() spi.Database {
-	if w.DatabaseFunc == nil {
-		return nil
-	}
-	return w.DatabaseFunc()
-}
-
-func (w *InputDelegateWrapper) ShouldStop() bool {
-	if w.ShouldStopFunc == nil {
-		return false
-	}
-	return w.ShouldStopFunc()
-}
-
-func (w *InputDelegateWrapper) FeedHeader(c spi.Columns) {
-	if w.FeedHeaderFunc != nil {
-		w.FeedHeaderFunc(c)
-	}
-}
-
-func (w *InputDelegateWrapper) Feed(v []any) {
-	if w.FeedFunc != nil {
-		w.FeedFunc(v)
-	}
-}
-
-func (x *Task) compileSink(code string) (*output, error) {
-	expr, err := x.parseSink(code)
-	if err != nil {
-		return nil, err
-	}
-	sink, err := expr.Eval(x)
-	if err != nil {
-		return nil, err
-	}
-
-	switch val := sink.(type) {
-	case *Encoder:
-		ret := &output{}
-		ret.encoder = val.RowEncoder(
-			opts.OutputStream(x.OutputStream()),
-			opts.AssetHost("/web/echarts/"),
-			opts.ChartJson(x.ShouldJsonOutput()),
-		)
-		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
-			ret.isChart = true
+func (x *Task) sendToEncoder(values []any) {
+	if len(values) > 0 {
+		if t, ok := values[0].(*time.Time); ok {
+			values[0] = *t
 		}
-		return ret, nil
-	case DatabaseSink:
-		ret := &output{}
-		ret.dbSink = val
-		ret.dbSink.SetOutputStream(x.OutputStream())
-		return ret, nil
+		x.encoderCh <- values
+	}
+}
+
+func (x *Task) columnTypeName(v any) string {
+	switch v.(type) {
 	default:
-		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
-	}
-}
-
-type output struct {
-	encoder codec.RowsEncoder
-	dbSink  DatabaseSink
-	isChart bool
-}
-
-func (out *output) SetHeader(cols spi.Columns) {
-	if out.encoder != nil {
-		codec.SetEncoderColumns(out.encoder, cols)
-	}
-}
-
-func (out *output) ContentType() string {
-	if out.encoder != nil {
-		return out.encoder.ContentType()
-	}
-	return "application/octet-stream"
-}
-
-func (out *output) IsChart() bool {
-	return out.isChart
-}
-
-func (out *output) ContentEncoding() string {
-	//ex: return "gzip" for  Content-Encoding: gzip
-	return ""
-}
-
-func (out *output) AddRow(vals []any) error {
-	if out.encoder != nil {
-		return out.encoder.AddRow(vals)
-	} else if out.dbSink != nil {
-		return out.dbSink.AddRow(vals)
-	}
-	return errors.New("no output encoder")
-}
-
-func (out *output) Open(db spi.Database) error {
-	if out.encoder != nil {
-		return out.encoder.Open()
-	} else if out.dbSink != nil {
-		return out.dbSink.Open(db)
-	}
-	return errors.New("no output encoder")
-}
-
-func (out *output) Close() {
-	if out.encoder != nil {
-		out.encoder.Close()
-	} else if out.dbSink != nil {
-		out.dbSink.Close()
+		return fmt.Sprintf("%T", v)
+	case string:
+		return "string"
+	case *time.Time:
+		return "datetime"
+	case time.Time:
+		return "datetime"
+	case *float32:
+		return "float"
+	case float32:
+		return "float"
+	case *float64:
+		return "double"
+	case float64:
+		return "double"
 	}
 }

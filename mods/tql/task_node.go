@@ -1,29 +1,26 @@
 package tql
 
 import (
-	"context"
 	"fmt"
-	"runtime/debug"
 	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
 )
 
-func NewSubContext(x *Task) *SubContext {
-	return &SubContext{
+func NewNode(x *Task) *Node {
+	return &Node{
 		task: x,
 	}
 }
 
-type SubContext struct {
-	context.Context
-	Name   string
-	Expr   *expression.Expression
-	Src    chan *Record
-	Sink   chan<- any
-	Next   *SubContext
-	Params map[string][]string
-	Nrow   int
+type Node struct {
+	id   int
+	Name string
+	Expr *expression.Expression
+	Src  chan *Record
+	Sink chan<- any
+	Next *Node
+	Nrow int
 
 	task   *Task
 	values map[string]any
@@ -33,29 +30,50 @@ type SubContext struct {
 	closeWg sync.WaitGroup
 	closers []Closer
 	mutex   sync.Mutex
+
+	currentRecord *Record
 }
+
+var _ expression.Parameters = &Node{}
 
 type Closer interface {
 	Close() error
 }
 
-func (ctx *SubContext) NewRecord(k, v any) *Record {
-	return &Record{ctx: ctx, key: k, value: v}
+func (ctx *Node) NewRecord(k, v any) *Record {
+	return &Record{key: k, value: v}
 }
 
-func (ctx *SubContext) NewEOF() *Record {
-	return &Record{ctx: ctx, eof: true}
+func (ctx *Node) SetRecord(rec *Record) {
+	ctx.currentRecord = rec
 }
 
-func NewEOF() *Record {
-	return &Record{eof: true}
+func (ctx *Node) Record() *Record {
+	return ctx.currentRecord
 }
 
-func (ctx *SubContext) NewCircuitBreak() *Record {
-	return &Record{ctx: ctx, circuitBreak: true}
+// Get implements expression.Parameters
+func (ctx *Node) Get(name string) (any, error) {
+	switch name {
+	case "K":
+		if ctx.currentRecord != nil {
+			return ctx.currentRecord.key, nil
+		}
+	case "V":
+		if ctx.currentRecord != nil {
+			return ctx.currentRecord.value, nil
+		}
+	case "CTX":
+		return ctx, nil
+	default:
+		if ctx.task != nil {
+			return ctx.task.Get(name)
+		}
+	}
+	return nil, nil
 }
 
-func (ctx *SubContext) Get(name string) (any, bool) {
+func (ctx *Node) GetValue(name string) (any, bool) {
 	if ctx.values == nil {
 		return nil, false
 	}
@@ -63,14 +81,14 @@ func (ctx *SubContext) Get(name string) (any, bool) {
 	return ret, ok
 }
 
-func (ctx *SubContext) Set(name string, value any) {
+func (ctx *Node) SetValue(name string, value any) {
 	if ctx.values == nil {
 		ctx.values = make(map[string]any)
 	}
 	ctx.values[name] = value
 }
 
-func (ctx *SubContext) Buffer(key any, value any) {
+func (ctx *Node) Buffer(key any, value any) {
 	if ctx.buffer == nil {
 		ctx.buffer = map[any][]any{}
 	}
@@ -81,7 +99,7 @@ func (ctx *SubContext) Buffer(key any, value any) {
 	}
 }
 
-func (ctx *SubContext) YieldBuffer(key any) {
+func (ctx *Node) YieldBuffer(key any) {
 	values, ok := ctx.buffer[key]
 	if !ok {
 		return
@@ -90,7 +108,7 @@ func (ctx *SubContext) YieldBuffer(key any) {
 	delete(ctx.buffer, key)
 }
 
-func (ctx *SubContext) yield(key any, values []any) {
+func (ctx *Node) yield(key any, values []any) {
 	if len(values) == 0 {
 		return
 	}
@@ -102,7 +120,7 @@ func (ctx *SubContext) yield(key any, values []any) {
 			yieldValue = ctx.Next.NewRecord(key, values)
 		}
 		if ctx.Debug {
-			fmt.Println("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String())
+			ctx.task.LogDebugString("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String(), " ")
 		}
 		ctx.Next.Src <- yieldValue
 	} else {
@@ -119,33 +137,33 @@ func (ctx *SubContext) yield(key any, values []any) {
 	}
 }
 
-func (ctx *SubContext) Start() {
+func (ctx *Node) Start() {
 	ctx.closeWg.Add(1)
 	go func() {
 		defer func() {
 			if ctx.Next != nil {
-				ctx.Next.Src <- ctx.NewEOF()
+				ctx.Next.Src <- EofRecord
 			}
-			ctx.Sink <- ctx.NewEOF()
+			ctx.Sink <- EofRecord
 			ctx.closeWg.Done()
 			if o := recover(); o != nil {
-				fmt.Println("panic", ctx.Name, o)
-				debug.PrintStack()
+				ctx.task.LogError("panic %s %v", ctx.Name, o)
 			}
 		}()
 
 		drop := func(p *Record) {
 			if ctx.Debug {
-				fmt.Println("--", ctx.Name, "DROP", p.key, p.StringValueTypes())
+				ctx.task.LogDebugString("--", ctx.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
 			}
 		}
 
-		for p := range ctx.Src {
-			if p.IsEOF() {
+		for rec := range ctx.Src {
+			if rec.IsEOF() {
 				break
 			}
 			ctx.Nrow++
-			if ret, err := ctx.Expr.Eval(p); err != nil {
+			ctx.SetRecord(rec)
+			if ret, err := ctx.Expr.Eval(ctx); err != nil {
 				ctx.Sink <- err
 			} else if ret != nil {
 				var resultset []*Record
@@ -170,7 +188,7 @@ func (ctx *SubContext) Start() {
 					ctx.yield(record.key, []any{record.value})
 				}
 			} else {
-				drop(p)
+				drop(rec)
 			}
 		}
 
@@ -180,7 +198,7 @@ func (ctx *SubContext) Start() {
 	}()
 }
 
-func (ctx *SubContext) Stop() {
+func (ctx *Node) Stop() {
 	if ctx.Src != nil {
 		ctx.closeWg.Wait()
 		close(ctx.Src)
@@ -188,18 +206,18 @@ func (ctx *SubContext) Stop() {
 	for i := len(ctx.closers) - 1; i >= 0; i-- {
 		c := ctx.closers[i]
 		if err := c.Close(); err != nil {
-			fmt.Println("ERR context closer", err.Error())
+			ctx.task.LogError("context closer %s", err.Error())
 		}
 	}
 }
 
-func (ctx *SubContext) LazyClose(c Closer) {
+func (ctx *Node) LazyClose(c Closer) {
 	ctx.mutex.Lock()
 	ctx.closers = append(ctx.closers, c)
 	ctx.mutex.Unlock()
 }
 
-func (ctx *SubContext) CancelClose(c Closer) {
+func (ctx *Node) CancelClose(c Closer) {
 	ctx.mutex.Lock()
 	idx := -1
 	for i, cl := range ctx.closers {

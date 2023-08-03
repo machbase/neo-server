@@ -4,29 +4,29 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/mods/expression"
 )
 
-type Record struct {
-	expression.Parameters
-	ctx *SubContext
+const kEOF = "f0ec1dea-03e8-4121-8c98-0b78704e009d"
+const kBREAK = "5bd2e423-4536-4a8d-a80d-c11567fc296f"
 
+var EofRecord = &Record{key: kEOF}
+var BreakRecord = &Record{key: kBREAK}
+
+type Record struct {
 	key   any
 	value any
-
-	eof          bool
-	circuitBreak bool
 }
 
-var _ expression.Parameters = &Record{}
+func NewRecord(k, v any) *Record {
+	return &Record{key: k, value: v}
+}
 
 func (r *Record) IsEOF() bool {
-	return r.eof
+	return r.key == kEOF
 }
 
 func (r *Record) IsCircuitBreak() bool {
-	return r.circuitBreak
+	return r.key == kBREAK
 }
 
 func (r *Record) Key() any {
@@ -35,23 +35,6 @@ func (r *Record) Key() any {
 
 func (r *Record) Value() any {
 	return r.value
-}
-
-func (r *Record) Get(name string) (any, error) {
-	switch name {
-	case "K":
-		return r.key, nil
-	case "V":
-		return r.value, nil
-	case "CTX":
-		return r.ctx, nil
-	default:
-		if r.ctx != nil && r.ctx.task != nil {
-			return r.ctx.task.Get(name)
-		} else {
-			return nil, nil
-		}
-	}
 }
 
 func (r *Record) String() string {

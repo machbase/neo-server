@@ -20,7 +20,7 @@ func (x *Task) fmMinHz(freq float64) minHzOption {
 	return minHzOption(freq)
 }
 
-func (x *Task) fmFastFourierTransform(ctx *SubContext, key any, value []any, args ...any) (any, error) {
+func (x *Task) fmFastFourierTransform(node *Node, key any, value []any, args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
@@ -77,6 +77,6 @@ func (x *Task) fmFastFourierTransform(ctx *SubContext, key any, value []any, arg
 		newVal = append(newVal, []any{hz, amplitude})
 	}
 
-	ret := ctx.NewRecord(key, newVal)
+	ret := node.NewRecord(key, newVal)
 	return ret, nil
 }

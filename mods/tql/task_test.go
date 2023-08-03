@@ -1,0 +1,30 @@
+package tql
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/d5/tengo/v2/require"
+	"github.com/machbase/neo-server/mods/stream"
+)
+
+func TestFFTChain(t *testing.T) {
+	strExprs := []string{
+		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",
+		"PUSHKEY('samples')",
+		"GROUPBYKEY()",
+		"FFT(minHz(0), maxHz(60))",
+		"POPKEY()",
+		"CSV()",
+	}
+	reader := strings.NewReader(strings.Join(strExprs, "\n"))
+	output, _ := stream.NewOutputStream("-")
+
+	task := NewTaskContext(context.TODO())
+	task.SetOutputStream(output)
+	err := task.Compile(reader)
+	require.Nil(t, err)
+
+	task.Execute(nil)
+}
