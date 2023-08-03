@@ -313,6 +313,7 @@ func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
 	case "group":
 		svr.GetGroupData(ctx)
 	case "last":
+		svr.GetLastData(ctx)
 	case "current":
 		svr.GetCurrentData(ctx)
 	case "pivoted":
@@ -732,7 +733,7 @@ type SelectGroup struct {
 	EndTime       string `form:"end_time" json:"end_time"`
 	CalculateMode string `form:"calc_mode" json:"calc_mode"`
 	IntervalType  string `form:"interval_type" json:"interval_type"`
-	IntervalValue string `form:"interval_value" json:"interval_valuej"`
+	IntervalValue string `form:"interval_value" json:"interval_value"`
 }
 
 func (svr *httpd) GetGroupData(ctx *gin.Context) {
@@ -805,6 +806,149 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 	svr.log.Trace(trackId, "select group data success")
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+type SelectLast struct {
+	TagName       string `form:"tag_name" json:"tag_name"`
+	StartTime     string `form:"start_time" json:"start_time"`
+	EndTime       string `form:"end_time" json:"end_time"`
+	CalculateMode string `form:"calc_mode" json:"calc_mode"`
+}
+
+func (svr *httpd) GetLastData(ctx *gin.Context) {
+	trackId := ctx.GetString(HTTP_TRACKID)
+	svr.log.Trace(trackId, "start GetLastData()")
+
+	rsp := ResSet{Status: "fall"}
+	param := SelectLast{}
+
+	err := ctx.ShouldBind(&param)
+	if err != nil {
+		svr.log.Info(trackId, "bind error: ", err.Error())
+		rsp.Message = "get parameter failed"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	var tagList []string
+	if param.TagName != "" {
+		tagList = strings.Split(param.TagName, ",")
+	} else {
+		svr.log.Info("tag name is empty")
+		rsp.Message = "tag name is empty"
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	selectStr := ""
+	calcMode := strings.ToUpper(param.CalculateMode)
+	switch calcMode {
+	case "SUM", "MIN", "MAX", "AVG", "SUMSQ", "STDDEV", "STDDEV_POP", "VARIANCE", "VAR_POP":
+		selectStr = fmt.Sprintf("TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, %s(VALUE) AS VALUE", calcMode)
+	case "COUNT", "CNT":
+		selectStr = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, COUNT(*) AS VALUE"
+	case "FIRST":
+		selectStr = "TO_CHAR(FIRST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, FIRST(TIME, VALUE) AS VALUE"
+	case "LAST":
+		selectStr = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, LAST(TIME, VALUE) AS VALUE"
+	default:
+		svr.log.Infof("invalid calculate mode : %q", calcMode)
+		rsp.Message = fmt.Sprintf("invalid calculate mode : %q", calcMode)
+		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+		return
+	}
+
+	sqlText := fmt.Sprintf(SqlTidy(`
+		SELECT %s 
+		FROM TAGDATA
+		WHERE %s AND %s
+	`), selectStr,
+		makeInCondition("NAME", tagList, false, true),
+		makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), false))
+
+	svr.log.Infof(trackId, "query : ", sqlText)
+
+	data, err := svr.selectData(sqlText, tagList)
+	if err != nil {
+		svr.log.Info(trackId, "select data error : ", err.Error())
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusFailedDependency, rsp)
+		return
+	}
+	data.CalcMode = calcMode
+
+	rsp.Status = "success"
+	rsp.Data = data
+
+	svr.log.Trace(trackId, "select last data success")
+
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+// type dataReturn struct {
+// 	Name  string  `json:"NAME"`
+// 	VALUE float64 `json:"VALUE"`
+// }
+
+// tagname이 2개 이상일 경우는 어떻게 처리 할 것인지
+// tagList []string 으로 매개변수 변경 후, split 된 길이를 체크 한 후에 2개 이상일 시 if문 추가
+func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, error) {
+	result := &SelectReturn{}
+
+	rows, err := svr.db.Query(sqlText)
+	if err != nil {
+		return nil, err
+	}
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	colsLen := len(cols.Names())
+	colsList := make([]MachbaseColumn, colsLen)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		for i, col := range cols {
+			colsList[i].Name = col.Name
+			colsList[i].Type = ColumnTypeConvert(col.Type)
+			colsList[i].Length = col.Length
+		}
+	}()
+
+	datas := []map[string]interface{}{}
+	for rows.Next() {
+		data := map[string]interface{}{}
+		buffer := cols.MakeBuffer()
+		err = rows.Scan(buffer...)
+		if err != nil {
+			svr.log.Warn("scan error: ", err.Error())
+			return nil, err
+		}
+		for i, col := range cols {
+			data[col.Name] = buffer[i]
+		}
+		datas = append(datas, data)
+	}
+
+	wg.Wait()
+
+	tagName := strings.Join(tagList, ",")
+
+	result.Columns = colsList
+	result.Samples = []map[string]interface{}{
+		{
+			"tag_name": tagName,
+			"data":     datas,
+		},
+	}
+
+	return result, nil
 }
 
 func SqlTidy(sqlText string) string {
