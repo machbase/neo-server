@@ -37,8 +37,9 @@ type Task struct {
 	compileErr error
 	input      *input
 	output     *output
-	inputNode  *Node
-	outputNode *Node
+
+	// result data
+	resultColumns spi.Columns
 
 	// runtime
 	db       spi.Database
@@ -176,7 +177,6 @@ func (x *Task) Compile(codeReader io.Reader) error {
 }
 
 func (x *Task) compile(codeReader io.Reader) error {
-	x.compiled = true
 	lines, err := readLines(x, codeReader)
 	if err != nil {
 		x.compileErr = err
@@ -190,6 +190,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 	var exprs []*Line
 	for _, line := range lines {
 		if line.isComment {
+			// //+pragma
 			if strings.HasPrefix(line.text, "+") {
 				toks := strings.Split(line.text[1:], ",")
 				for _, t := range toks {
@@ -203,27 +204,24 @@ func (x *Task) compile(codeReader io.Reader) error {
 
 	// src
 	if len(exprs) >= 1 {
-		srcLine := exprs[0]
-		x.inputNode = NewNode(x)
-		src, err := x.compileSource(srcLine.text)
+		x.input, err = NewNode(x).compileSource(exprs[0].text)
 		if err != nil {
-			x.compileErr = errors.Wrapf(err, "at line %d", srcLine.line)
+			x.compileErr = errors.Wrapf(err, "at line %d", exprs[0].line)
 			return x.compileErr
 		}
-		x.input = src
 	}
 
 	// sink
 	if len(exprs) >= 2 {
-		sinkLine := exprs[len(exprs)-1]
-		x.outputNode = NewNode(x)
-		sink, err := x.compileSink(sinkLine.text)
+		x.output, err = NewNode(x).compileSink(exprs[len(exprs)-1].text)
 		if err != nil {
-			x.compileErr = errors.Wrapf(err, "at line %d", sinkLine.line)
+			x.compileErr = errors.Wrapf(err, "at line %d", exprs[len(exprs)-1].line)
 			return x.compileErr
 		}
-		x.output = sink
 	}
+
+	x.resultCh = make(chan any)
+	x.encoderCh = make(chan []any)
 
 	// map
 	if len(exprs) >= 3 {
@@ -246,12 +244,17 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if n > 0 {
 				x.nodes[n-1].Next = x.nodes[n]
 			}
-
-			if len(x.nodes) > 0 {
-				x.headNode = x.nodes[0]
-			}
 		}
 	}
+	if len(x.nodes) > 0 {
+		x.headNode = x.nodes[0]
+		x.input.next = x.nodes[0]
+	} else {
+		if x.input != nil && x.output != nil {
+			x.input.next = x.output.selfNode
+		}
+	}
+	x.compiled = true
 	return nil
 }
 
@@ -312,8 +315,6 @@ func (x *Task) Execute(db spi.Database) error {
 }
 
 func (x *Task) execute(db spi.Database) (err error) {
-	x.resultCh = make(chan any)
-	x.encoderCh = make(chan []any)
 	x.db = db
 
 	x.start()
@@ -331,7 +332,6 @@ func (x *Task) start() {
 	////////////////////////////////
 	// encoder
 	x.encoderChWg.Add(1)
-	var cols spi.Columns
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -343,14 +343,14 @@ func (x *Task) start() {
 		}()
 		for arr := range x.encoderCh {
 			if !x.encoderNeedToClose {
-				if len(cols) == 0 {
+				if len(x.resultColumns) == 0 {
 					for i, v := range arr {
-						cols = append(cols, &spi.Column{
+						x.resultColumns = append(x.resultColumns, &spi.Column{
 							Name: fmt.Sprintf("C%02d", i),
 							Type: x.columnTypeName(v)})
 					}
 				}
-				x.output.SetHeader(cols)
+				x.output.SetHeader(x.resultColumns)
 				x.output.Open(x.db)
 				x.encoderNeedToClose = true
 			}
@@ -370,7 +370,7 @@ func (x *Task) start() {
 	// nodes
 	for _, child := range x.nodes {
 		x.nodesWg.Add(1)
-		child.Start()
+		child.start()
 	}
 
 	sink0 := func(k any, v any) {
@@ -432,32 +432,26 @@ func (x *Task) start() {
 
 	////////////////////////////////
 	// input source
-	deligate := &InputDelegateWrapper{
-		DatabaseFunc: func() spi.Database {
-			return x.db
-		},
-		ShouldStopFunc: func() bool {
-			return x.circuitBreaker || x.lastError != nil
-		},
-		FeedHeaderFunc: func(c spi.Columns) {
-			cols = c
-		},
-		FeedFunc: func(values []any) {
-			if x.headNode != nil {
-				if values != nil {
-					x.headNode.Src <- NewRecord(values[0], values[1:])
-				} else {
-					x.headNode.Src <- EofRecord
-				}
-			} else {
-				// there is no chain, just forward input data to sink directly
-				x.sendToEncoder(values)
-			}
-		},
-	}
-	if err := x.input.run(deligate); err != nil {
+	if err := x.input.run(); err != nil {
 		x.lastError = err
 	}
+}
+
+func (x *Task) feedNodes(values []any) {
+	if x.headNode != nil {
+		if values != nil {
+			x.headNode.Src <- NewRecord(values[0], values[1:])
+		} else {
+			x.headNode.Src <- EofRecord
+		}
+	} else {
+		// there is no chain, just forward input data to sink directly
+		x.sendToEncoder(values)
+	}
+}
+
+func (x *Task) shouldStopNodes() bool {
+	return x.circuitBreaker || x.lastError != nil
 }
 
 func (x *Task) stop() {

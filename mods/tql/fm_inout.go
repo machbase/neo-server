@@ -1,8 +1,6 @@
 package tql
 
 import (
-	"fmt"
-
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -59,8 +57,8 @@ func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
 }
 
 // Deprecated: no more required
-func (x *Node) fmINPUT(args ...any) (any, error) {
-	fmt.Println("WARN INPUT() is deprecated. no more need to use")
+func (node *Node) fmINPUT(args ...any) (any, error) {
+	node.LogWarnf("INPUT() is deprecated. no more need to use")
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("INPUT", 1, len(args))
 	}
@@ -68,8 +66,8 @@ func (x *Node) fmINPUT(args ...any) (any, error) {
 }
 
 // Deprecated: no more required
-func (x *Node) fmOUTPUT(args ...any) (any, error) {
-	fmt.Println("WARN OUTPUT() is deprecated. no more need to use")
+func (node *Node) fmOUTPUT(args ...any) (any, error) {
+	node.LogWarnf("OUTPUT() is deprecated. no more need to use")
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
 	}

@@ -9,39 +9,40 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (x *Task) compileSink(code string) (*output, error) {
-	expr, err := x.outputNode.Parse(code)
+func (node *Node) compileSink(code string) (*output, error) {
+	expr, err := node.Parse(code)
 	if err != nil {
 		return nil, err
 	}
-	sink, err := expr.Eval(x)
+	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
 	}
 
+	ret := &output{}
 	switch val := sink.(type) {
 	case *Encoder:
-		ret := &output{}
 		ret.encoder = val.RowEncoder(
-			opts.OutputStream(x.OutputStream()),
+			opts.OutputStream(node.task.OutputStream()),
 			opts.AssetHost("/web/echarts/"),
-			opts.ChartJson(x.ShouldJsonOutput()),
+			opts.ChartJson(node.task.ShouldJsonOutput()),
 		)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
 		}
-		return ret, nil
 	case DatabaseSink:
-		ret := &output{}
 		ret.dbSink = val
-		ret.dbSink.SetOutputStream(x.OutputStream())
-		return ret, nil
+		ret.dbSink.SetOutputStream(node.task.OutputStream())
 	default:
 		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
 	}
+	ret.selfNode = node
+	return ret, nil
 }
 
 type output struct {
+	selfNode *Node
+
 	encoder codec.RowsEncoder
 	dbSink  DatabaseSink
 	isChart bool

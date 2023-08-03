@@ -67,8 +67,8 @@ func TestLinspaceMonad(t *testing.T) {
 		"CSV()",
 	}
 	resultLines := []string{
-		"1,0.000000",
-		"2,1.000000",
+		"sample,1,0.000000",
+		"sample,2,1.000000",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -95,7 +95,6 @@ func runTest(t *testing.T, codeLines []string, expect []string) {
 		t.Fatal("time out!!!")
 		cancel()
 	case <-doneCh:
-		fmt.Println("done")
 		cancel()
 	}
 	result := out.String()

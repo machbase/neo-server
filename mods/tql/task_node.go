@@ -51,11 +51,30 @@ func (node *Node) Record() *Record {
 	return node.currentRecord
 }
 
+func (node *Node) Logf(format string, args ...any) {
+	if node.task != nil {
+		node.task.LogInfo("[INFO] "+format, args...)
+	} else {
+		fmt.Printf("[INFO] "+format+"\n", args...)
+	}
+}
+
+func (node *Node) LogDebug(args ...string) {
+	if !node.Debug {
+		return
+	}
+	node.task.LogDebugString(args...)
+}
+
+func (node *Node) LogWarnf(format string, args ...any) {
+	if node.task != nil {
+		node.task.LogInfo("[WARN] "+format, args...)
+	} else {
+		fmt.Printf("[WARN] "+format+"\n", args...)
+	}
+}
+
 func (node *Node) Parse(text string) (*expression.Expression, error) {
-	// for _, f := range mapFunctionsMacro {
-	// 	text = strings.ReplaceAll(text, f[0], f[1])
-	// }
-	// text = strings.ReplaceAll(text, "(CTX,)", "(CTX)")
 	return expression.NewWithFunctions(text, node.functions)
 }
 
@@ -144,12 +163,11 @@ func (node *Node) yield(key any, values []any) {
 	}
 }
 
-func (node *Node) Start() {
+func (node *Node) start() {
 	node.closeWg.Add(1)
 	go func() {
 		defer func() {
 			if node.Next != nil {
-				fmt.Println("=======> ToNext", node.Name, node.Next.Name)
 				node.Next.Src <- EofRecord
 			}
 			node.Sink <- EofRecord
@@ -157,18 +175,14 @@ func (node *Node) Start() {
 			if o := recover(); o != nil {
 				node.task.LogError("panic %s %v", node.Name, o)
 			}
-			fmt.Println("=======> Done", node.Name)
 		}()
 
 		drop := func(p *Record) {
-			if node.Debug {
-				node.task.LogDebugString("--", node.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
-			}
+			node.LogDebug("--", node.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
 		}
 
 		for rec := range node.Src {
 			if rec.IsEOF() {
-				fmt.Println("=======> EOF", node.Name)
 				break
 			}
 			node.Nrow++
@@ -205,7 +219,6 @@ func (node *Node) Start() {
 		for k, v := range node.buffer {
 			node.yield(k, v)
 		}
-		fmt.Println("=======> END", node.Name)
 	}()
 }
 
