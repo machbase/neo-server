@@ -16,7 +16,7 @@ Example)
 	 INPUT(
 		FAKE( oscillator() | meshgrid() | linspace() )
 */
-func (x *Task) fmFake(origin any) (any, error) {
+func (x *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
 	case ChannelSource:
 		return gen, nil
@@ -114,7 +114,7 @@ func (ls *linspace) Stop() {
 	ls.closeWait.Wait()
 }
 
-func (x *Task) fmSphere() *sphere {
+func (x *Node) fmSphere() *sphere {
 	return &sphere{
 		latStep: 36,
 		lonStep: 18,
@@ -168,7 +168,7 @@ func (sp *sphere) Stop() {
 // //		freq(240, amplitude [,phase [, bias]]),
 // //	)
 // // )
-func (x *Task) fmOscillator(args ...any) (any, error) {
+func (x *Node) fmOscillator(args ...any) (any, error) {
 	ret := &oscillator{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -250,7 +250,7 @@ func (fr *freq) Value(x float64) float64 {
 }
 
 // freq(240, amplitude [, bias [, phase]])
-func (x *Task) fmFreq(frequency float64, amplitude float64, args ...float64) *freq {
+func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *freq {
 	ret := &freq{
 		hertz:     frequency,
 		amplitude: amplitude,

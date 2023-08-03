@@ -11,7 +11,7 @@ type Definition struct {
 	Func any
 }
 
-var defTask = &Task{}
+var defTask = &Node{}
 
 var FxDefinitions = []Definition{
 	// math
@@ -109,6 +109,6 @@ var FxDefinitions = []Definition{
 	{"markArea", "x.fmMarkArea"},
 	{"markXAxis", "x.gen_markLineXAxisCoord"},
 	{"markYAxis", "x.gen_markLineYAxisCoord"},
-	{"tz", defTask.TimeLocation},
+	{"tz", defTask.fmTimeLocation},
 	{"sep", defTask.fmSeparator},
 }

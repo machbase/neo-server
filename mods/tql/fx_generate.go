@@ -43,8 +43,8 @@ func main() {
 		`	"github.com/machbase/neo-server/mods/nums"`,
 		`)`,
 		``,
-		`func NewTask() *Task {`,
-		`  x := &Task{}`,
+		`func NewNode(task *Task) *Node {`,
+		`  x := &Node{task: task}`,
 		`  x.functions = map[string]expression.Function {`,
 		``,
 	}
@@ -97,8 +97,8 @@ func writeMapFunc(w io.Writer, name string, f any) {
 	fv := reflect.ValueOf(f)
 	fullFuncName := runtime.FuncForPC(fv.Pointer()).Name()
 	realFuncName := filepath.Base(fullFuncName)
-	if strings.HasPrefix(realFuncName, "tql.(*Task).") {
-		realFuncName = strings.TrimPrefix(realFuncName, "tql.(*Task).")
+	if strings.HasPrefix(realFuncName, "tql.(*Node).") {
+		realFuncName = strings.TrimPrefix(realFuncName, "tql.(*Node).")
 		realFuncName = strings.TrimSuffix(realFuncName, "-fm")
 		realFuncName = fmt.Sprintf("x.%s", realFuncName)
 	}
@@ -157,7 +157,7 @@ func writeMapFunc(w io.Writer, name string, f any) {
 		fmt.Sprintf(`// %s`, wrapFuncName),
 		`//`,
 		fmt.Sprintf(`// syntax: %s(%s)`, name, strings.Join(typeParams, ", ")),
-		fmt.Sprintf(`func (x *Task) %s(args ...any) (any, error) {`, wrapFuncName),
+		fmt.Sprintf(`func (x *Node) %s(args ...any) (any, error) {`, wrapFuncName),
 	)
 	if len(typeParams) > 0 && strings.HasPrefix(typeParams[len(typeParams)-1], "...") {
 		// the last parameter is variadic

@@ -1,19 +1,23 @@
-package tql
+package tql_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/mods/tql"
 )
 
 func TestFFTChain(t *testing.T) {
 	strExprs := []string{
 		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",
 		"PUSHKEY('samples')",
-		"GROUPBYKEY()",
+		"GROUPBYKEY(lazy(false))",
 		"FFT(minHz(0), maxHz(60))",
 		"POPKEY()",
 		"CSV()",
@@ -21,10 +25,79 @@ func TestFFTChain(t *testing.T) {
 	reader := strings.NewReader(strings.Join(strExprs, "\n"))
 	output, _ := stream.NewOutputStream("-")
 
-	task := NewTaskContext(context.TODO())
-	task.SetOutputStream(output)
-	err := task.Compile(reader)
-	require.Nil(t, err)
+	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	doneCh := make(chan bool)
 
-	task.Execute(nil)
+	go func() {
+		task := tql.NewTaskContext(timeCtx)
+		task.SetOutputStream(output)
+		err := task.Compile(reader)
+		require.Nil(t, err)
+		err = task.Execute(nil)
+		require.Nil(t, err)
+		doneCh <- true
+	}()
+
+	select {
+	case <-timeCtx.Done():
+		t.Fatal("time out!!!")
+		cancel()
+	case <-doneCh:
+		fmt.Println("done")
+		cancel()
+	}
+}
+
+func TestLinspace2(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 1, 2))",
+		"CSV()",
+	}
+	resultLines := []string{
+		"1,0.000000",
+		"2,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestLinspaceMonad(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 1, 2))",
+		"PUSHKEY('sample')",
+		"CSV()",
+	}
+	resultLines := []string{
+		"1,0.000000",
+		"2,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func runTest(t *testing.T, codeLines []string, expect []string) {
+	code := strings.Join(codeLines, "\n")
+	out := &bytes.Buffer{}
+
+	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	doneCh := make(chan bool)
+
+	go func() {
+		task := tql.NewTaskContext(timeCtx)
+		task.SetOutputWriter(out)
+		err := task.CompileString(code)
+		require.Nil(t, err)
+		err = task.Execute(nil)
+		require.Nil(t, err)
+		doneCh <- true
+	}()
+
+	select {
+	case <-timeCtx.Done():
+		t.Fatal("time out!!!")
+		cancel()
+	case <-doneCh:
+		fmt.Println("done")
+		cancel()
+	}
+	result := out.String()
+	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
 }

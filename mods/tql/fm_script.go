@@ -21,7 +21,7 @@ type scriptlet struct {
 	yields []*Record
 }
 
-func (x *Task) fmScriptTengo(node *Node, K any, V any, content string) (any, error) {
+func (node *Node) fmScriptTengo(content string) (any, error) {
 	var slet *scriptlet
 	if obj, ok := node.GetValue(tengo_script_key); ok {
 		if sl, ok := obj.(*scriptlet); ok {
@@ -47,9 +47,9 @@ func (x *Task) fmScriptTengo(node *Node, K any, V any, content string) (any, err
 	}
 	slet.drop = false
 	slet.yields = slet.yields[:0]
-	slet.param.key, slet.param.value = K, V
+	slet.param.key, slet.param.value = node.Record().key, node.Record().value
 
-	slet.err = slet.compiled.RunContext(x.ctx)
+	slet.err = slet.compiled.RunContext(node.task.ctx)
 	if slet.err != nil {
 		fmt.Println("SCRIPT", slet.err.Error())
 		return nil, slet.err
@@ -154,9 +154,9 @@ func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error
 		if obj, ok := node.GetValue(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
 				if len(vargs) == 1 { // change key only
-					slet.yields = append(slet.yields, node.NewRecord(vargs[0], slet.param.value))
+					slet.yields = append(slet.yields, NewRecord(vargs[0], slet.param.value))
 				} else { // change key and values
-					slet.yields = append(slet.yields, node.NewRecord(vargs[0], vargs[1:]))
+					slet.yields = append(slet.yields, NewRecord(vargs[0], vargs[1:]))
 				}
 			}
 		}
@@ -172,7 +172,7 @@ func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 		}
 		if obj, ok := node.GetValue(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				slet.yields = append(slet.yields, node.NewRecord(slet.param.key, vargs))
+				slet.yields = append(slet.yields, NewRecord(slet.param.key, vargs))
 			}
 		}
 		return nil, nil

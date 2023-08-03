@@ -16,43 +16,43 @@ func newEncoder(format string, args ...any) *Encoder {
 	return ret
 }
 
-func (x *Task) fmMarkdown(args ...any) *Encoder {
+func (node *Node) fmMarkdown(args ...any) *Encoder {
 	return newEncoder("markdown", args...)
 }
 
-func (x *Task) fmJson(args ...any) *Encoder {
+func (node *Node) fmJson(args ...any) *Encoder {
 	return newEncoder("json", args...)
 }
 
-func (x *Task) fmChartLine(args ...any) *Encoder {
+func (node *Node) fmChartLine(args ...any) *Encoder {
 	return newEncoder("echart.line", args...)
 }
 
-func (x *Task) fmChartScatter(args ...any) *Encoder {
+func (node *Node) fmChartScatter(args ...any) *Encoder {
 	return newEncoder("echart.scatter", args...)
 }
 
-func (x *Task) fmChartBar(args ...any) *Encoder {
+func (node *Node) fmChartBar(args ...any) *Encoder {
 	return newEncoder("echart.bar", args...)
 }
 
-func (x *Task) fmChartLine3D(args ...any) *Encoder {
+func (node *Node) fmChartLine3D(args ...any) *Encoder {
 	return newEncoder("echart.line3d", args...)
 }
 
-func (x *Task) fmChartBar3D(args ...any) *Encoder {
+func (node *Node) fmChartBar3D(args ...any) *Encoder {
 	return newEncoder("echart.bar3d", args...)
 }
 
-func (x *Task) fmChartSurface3D(args ...any) *Encoder {
+func (node *Node) fmChartSurface3D(args ...any) *Encoder {
 	return newEncoder("echart.surface3d", args...)
 }
 
-func (x *Task) fmChartScatter3D(args ...any) *Encoder {
+func (node *Node) fmChartScatter3D(args ...any) *Encoder {
 	return newEncoder("echart.scatter3d", args...)
 }
 
-func (x *Task) fmMarkArea(args ...any) (any, error) {
+func (node *Node) fmMarkArea(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("markArea", 2, len(args))
 	}

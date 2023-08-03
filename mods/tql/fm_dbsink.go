@@ -13,7 +13,7 @@ type Table struct {
 	Name string
 }
 
-func (x *Task) fmTable(tableName string) *Table {
+func (x *Node) fmTable(tableName string) *Table {
 	return &Table{Name: tableName}
 }
 
@@ -22,7 +22,7 @@ type Tag struct {
 	Column string
 }
 
-func (x *Task) fmTag(name string, column ...string) *Tag {
+func (x *Node) fmTag(name string, column ...string) *Tag {
 	if len(column) == 0 {
 		return &Tag{Name: name, Column: "name"}
 	} else {
@@ -30,7 +30,7 @@ func (x *Task) fmTag(name string, column ...string) *Tag {
 	}
 }
 
-func (x *Task) fmInsert(args ...any) (*insert, error) {
+func (x *Node) fmInsert(args ...any) (*insert, error) {
 	ret := &insert{}
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -99,7 +99,7 @@ func (ins *insert) AddRow(values []any) error {
 	return err
 }
 
-func (x *Task) fmAppend(args ...any) (*appender, error) {
+func (x *Node) fmAppend(args ...any) (*appender, error) {
 	ret := &appender{}
 	for _, arg := range args {
 		switch v := arg.(type) {

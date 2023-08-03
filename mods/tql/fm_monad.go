@@ -8,32 +8,32 @@ type lazyOption struct {
 	flag bool
 }
 
-func (x *Task) fmLazy(flag bool) *lazyOption {
+func (node *Node) fmLazy(flag bool) *lazyOption {
 	return &lazyOption{flag: flag}
 }
 
-func (x *Task) fmTake(node *Node, limit int) *Record {
+func (node *Node) fmTake(limit int) *Record {
 	if node.Nrow > limit {
 		return BreakRecord
 	}
 	return node.Record()
 }
 
-func (x *Task) fmDrop(node *Node, limit int) *Record {
+func (node *Node) fmDrop(limit int) *Record {
 	if node.Nrow <= limit {
 		return nil
 	}
 	return node.Record()
 }
 
-func (x *Task) fmFilter(node *Node, flag bool) *Record {
+func (node *Node) fmFilter(flag bool) *Record {
 	if !flag {
 		return nil // drop this vector
 	}
 	return node.Record()
 }
 
-func (x *Task) fmFlatten(node *Node) any {
+func (node *Node) fmFlatten() any {
 	key := node.Record().key
 	value := node.Record().key
 	if arr, ok := value.([]any); ok {
@@ -41,25 +41,25 @@ func (x *Task) fmFlatten(node *Node) any {
 		for _, elm := range arr {
 			if subarr, ok := elm.([]any); ok {
 				for _, subelm := range subarr {
-					ret = append(ret, node.NewRecord(key, subelm))
+					ret = append(ret, NewRecord(key, subelm))
 				}
 			} else if subarr, ok := elm.([][]any); ok {
 				for _, subelm := range subarr {
-					ret = append(ret, node.NewRecord(key, subelm))
+					ret = append(ret, NewRecord(key, subelm))
 				}
 			} else {
-				ret = append(ret, node.NewRecord(key, elm))
+				ret = append(ret, NewRecord(key, elm))
 			}
 		}
 		return ret
 	} else {
-		return node.NewRecord(key, value)
+		return NewRecord(key, value)
 	}
 }
 
-func (x *Task) fmGroupByKey(node *Node, args ...any) any {
+func (node *Node) fmGroupByKey(args ...any) any {
 	key := node.Record().key
-	value := node.Record().key
+	value := node.Record().value
 	lazy := false
 	if len(args) > 0 {
 		for _, arg := range args {
@@ -96,7 +96,7 @@ func (x *Task) fmGroupByKey(node *Node, args ...any) any {
 // `map=POPKEY(V, 0)` produces
 // 1 dimension : `K: [V1, V2, V3...]` ==> `V1 : [V2, V3, .... ]`
 // 2 dimension : `K: [[V11, V12, V13...],[V21, V22, V23...], ...] ==> `V11: [V12, V13...]` and `V21: [V22, V23...]` ...
-func (x *Task) fmPopKey(node *Node, args ...int) (any, error) {
+func (node *Node) fmPopKey(args ...int) (any, error) {
 	var nth = 0
 	if len(args) > 0 {
 		nth = args[0]
@@ -113,7 +113,7 @@ func (x *Task) fmPopKey(node *Node, args ...int) (any, error) {
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
-		ret := node.NewRecord(newKey, newVal)
+		ret := NewRecord(newKey, newVal)
 		return ret, nil
 	case [][]any:
 		ret := make([]*Record, len(val))
@@ -122,9 +122,9 @@ func (x *Task) fmPopKey(node *Node, args ...int) (any, error) {
 				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
 			}
 			if len(v) == 2 {
-				ret[i] = node.NewRecord(v[0], v[1])
+				ret[i] = NewRecord(v[0], v[1])
 			} else {
-				ret[i] = node.NewRecord(v[0], v[1:])
+				ret[i] = NewRecord(v[0], v[1:])
 			}
 		}
 		return ret, nil
@@ -134,14 +134,17 @@ func (x *Task) fmPopKey(node *Node, args ...int) (any, error) {
 // Merge all incoming values into a single key,
 // incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
-func (x *Task) fmPushKey(node *Node, newKey any) (any, error) {
-	key := node.Record().key
-	value := node.Record().value
+func (node *Node) fmPushKey(newKey any) (any, error) {
+	rec := node.Record()
+	if rec == nil {
+		return nil, nil
+	}
+	key, value := rec.key, rec.value
 	var newVal []any
 	if val, ok := value.([]any); ok {
 		newVal = append([]any{key}, val...)
 	} else {
-		return nil, fmt.Errorf("f(PUSHKEY) V should be []any, but %T", value)
+		return nil, ErrArgs("PUSHKEY", 0, fmt.Sprintf("Value should be array, but %T", value))
 	}
-	return node.NewRecord(newKey, newVal), nil
+	return NewRecord(newKey, newVal), nil
 }

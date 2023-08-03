@@ -7,12 +7,6 @@ import (
 	"github.com/machbase/neo-server/mods/expression"
 )
 
-func NewNode(x *Task) *Node {
-	return &Node{
-		task: x,
-	}
-}
-
 type Node struct {
 	id   int
 	Name string
@@ -22,10 +16,11 @@ type Node struct {
 	Next *Node
 	Nrow int
 
-	task   *Task
-	values map[string]any
-	buffer map[any][]any
-	Debug  bool
+	task      *Task
+	functions map[string]expression.Function
+	values    map[string]any
+	buffer    map[any][]any
+	Debug     bool
 
 	closeWg sync.WaitGroup
 	closers []Closer
@@ -40,100 +35,112 @@ type Closer interface {
 	Close() error
 }
 
-func (ctx *Node) NewRecord(k, v any) *Record {
-	return &Record{key: k, value: v}
+func (node *Node) SetRecord(rec *Record) {
+	node.currentRecord = rec
 }
 
-func (ctx *Node) SetRecord(rec *Record) {
-	ctx.currentRecord = rec
+func (node *Node) Task() *Task {
+	return node.task
 }
 
-func (ctx *Node) Record() *Record {
-	return ctx.currentRecord
+func (node *Node) Function(name string) expression.Function {
+	return node.functions[name]
+}
+
+func (node *Node) Record() *Record {
+	return node.currentRecord
+}
+
+func (node *Node) Parse(text string) (*expression.Expression, error) {
+	// for _, f := range mapFunctionsMacro {
+	// 	text = strings.ReplaceAll(text, f[0], f[1])
+	// }
+	// text = strings.ReplaceAll(text, "(CTX,)", "(CTX)")
+	return expression.NewWithFunctions(text, node.functions)
 }
 
 // Get implements expression.Parameters
-func (ctx *Node) Get(name string) (any, error) {
+func (node *Node) Get(name string) (any, error) {
 	switch name {
 	case "K":
-		if ctx.currentRecord != nil {
-			return ctx.currentRecord.key, nil
+		if node.currentRecord != nil {
+			return node.currentRecord.key, nil
 		}
 	case "V":
-		if ctx.currentRecord != nil {
-			return ctx.currentRecord.value, nil
+		if node.currentRecord != nil {
+			return node.currentRecord.value, nil
 		}
 	case "CTX":
-		return ctx, nil
+		return node, nil
 	default:
-		if ctx.task != nil {
-			return ctx.task.Get(name)
+		if node.task != nil {
+			return node.task.Get(name)
 		}
 	}
 	return nil, nil
 }
 
-func (ctx *Node) GetValue(name string) (any, bool) {
-	if ctx.values == nil {
+func (node *Node) GetValue(name string) (any, bool) {
+	if node.values == nil {
 		return nil, false
 	}
-	ret, ok := ctx.values[name]
+	ret, ok := node.values[name]
 	return ret, ok
 }
 
-func (ctx *Node) SetValue(name string, value any) {
-	if ctx.values == nil {
-		ctx.values = make(map[string]any)
+func (node *Node) SetValue(name string, value any) {
+	if node.values == nil {
+		node.values = make(map[string]any)
 	}
-	ctx.values[name] = value
+	node.values[name] = value
 }
 
-func (ctx *Node) Buffer(key any, value any) {
-	if ctx.buffer == nil {
-		ctx.buffer = map[any][]any{}
+func (node *Node) Buffer(key any, value any) {
+	if node.buffer == nil {
+		node.buffer = map[any][]any{}
 	}
-	if values, ok := ctx.buffer[key]; ok {
-		ctx.buffer[key] = append(values, value)
+	if values, ok := node.buffer[key]; ok {
+		node.buffer[key] = append(values, value)
 	} else {
-		ctx.buffer[key] = []any{value}
+		node.buffer[key] = []any{value}
 	}
 }
 
-func (ctx *Node) YieldBuffer(key any) {
-	values, ok := ctx.buffer[key]
+func (node *Node) YieldBuffer(key any) {
+	values, ok := node.buffer[key]
 	if !ok {
 		return
 	}
-	ctx.yield(key, values)
-	delete(ctx.buffer, key)
+	node.yield(key, values)
+	delete(node.buffer, key)
 }
 
-func (ctx *Node) yield(key any, values []any) {
+func (node *Node) yield(key any, values []any) {
 	if len(values) == 0 {
 		return
 	}
-	if ctx.Next != nil {
+	if node.Next != nil {
 		var yieldValue *Record
 		if len(values) == 1 {
-			yieldValue = ctx.Next.NewRecord(key, values[0])
+			yieldValue = NewRecord(key, values[0])
 		} else {
-			yieldValue = ctx.Next.NewRecord(key, values)
+			yieldValue = NewRecord(key, values)
 		}
-		if ctx.Debug {
-			ctx.task.LogDebugString("++", ctx.Name, "-->", ctx.Next.Name, yieldValue.String(), " ")
+		if node.Debug {
+			node.task.LogDebugString("++", node.Name, "-->", node.Next.Name, yieldValue.String(), " ")
 		}
-		ctx.Next.Src <- yieldValue
+		node.Next.Src <- yieldValue
 	} else {
 		var yieldValue *Record
 		if len(values) == 1 {
-			yieldValue = ctx.NewRecord(key, values[0])
+			yieldValue = NewRecord(key, values[0])
 		} else {
-			yieldValue = ctx.NewRecord(key, values)
+			yieldValue = NewRecord(key, values)
 		}
-		if ctx.Debug {
-			fmt.Println("++", ctx.Name, "==> SINK", yieldValue.String())
+		if node.Debug {
+			node.task.LogDebugString("++", node.Name, "==> SINK", yieldValue.String())
 		}
-		ctx.Sink <- yieldValue
+		node.Sink <- yieldValue
 	}
 }
 
@@ -142,6 +149,7 @@ func (node *Node) Start() {
 	go func() {
 		defer func() {
 			if node.Next != nil {
+				fmt.Println("=======> ToNext", node.Name, node.Next.Name)
 				node.Next.Src <- EofRecord
 			}
 			node.Sink <- EofRecord
@@ -149,6 +157,7 @@ func (node *Node) Start() {
 			if o := recover(); o != nil {
 				node.task.LogError("panic %s %v", node.Name, o)
 			}
+			fmt.Println("=======> Done", node.Name)
 		}()
 
 		drop := func(p *Record) {
@@ -159,6 +168,7 @@ func (node *Node) Start() {
 
 		for rec := range node.Src {
 			if rec.IsEOF() {
+				fmt.Println("=======> EOF", node.Name)
 				break
 			}
 			node.Nrow++
@@ -195,39 +205,40 @@ func (node *Node) Start() {
 		for k, v := range node.buffer {
 			node.yield(k, v)
 		}
+		fmt.Println("=======> END", node.Name)
 	}()
 }
 
-func (ctx *Node) Stop() {
-	if ctx.Src != nil {
-		ctx.closeWg.Wait()
-		close(ctx.Src)
+func (node *Node) Stop() {
+	if node.Src != nil {
+		node.closeWg.Wait()
+		close(node.Src)
 	}
-	for i := len(ctx.closers) - 1; i >= 0; i-- {
-		c := ctx.closers[i]
+	for i := len(node.closers) - 1; i >= 0; i-- {
+		c := node.closers[i]
 		if err := c.Close(); err != nil {
-			ctx.task.LogError("context closer %s", err.Error())
+			node.task.LogError("context closer %s", err.Error())
 		}
 	}
 }
 
-func (ctx *Node) LazyClose(c Closer) {
-	ctx.mutex.Lock()
-	ctx.closers = append(ctx.closers, c)
-	ctx.mutex.Unlock()
+func (node *Node) LazyClose(c Closer) {
+	node.mutex.Lock()
+	node.closers = append(node.closers, c)
+	node.mutex.Unlock()
 }
 
-func (ctx *Node) CancelClose(c Closer) {
-	ctx.mutex.Lock()
+func (node *Node) CancelClose(c Closer) {
+	node.mutex.Lock()
 	idx := -1
-	for i, cl := range ctx.closers {
+	for i, cl := range node.closers {
 		if c == cl {
 			idx = i
 			break
 		}
 	}
 	if idx >= 0 {
-		ctx.closers = append(ctx.closers[:idx], ctx.closers[idx+1:]...)
+		node.closers = append(node.closers[:idx], node.closers[idx+1:]...)
 	}
-	ctx.mutex.Unlock()
+	node.mutex.Unlock()
 }

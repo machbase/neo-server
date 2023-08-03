@@ -13,7 +13,7 @@ import (
 // TestCase
 type MapFuncTestCase struct {
 	input     string
-	params    expression.Parameters
+	params    *tql.Node // expression.Parameters
 	expect    *tql.Record
 	expectErr string
 }
@@ -32,43 +32,40 @@ func TestMapFunc_roundTime(t *testing.T) {
 }
 
 func TestMapFunc_TAKE(t *testing.T) {
-	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:  `TAKE(1)`,
 		params: FuncParamMock("sam", []any{1, 2, 3}),
-		expect: ctx.NewRecord("sam", []any{1, 2, 3}),
+		expect: tql.NewRecord("sam", []any{1, 2, 3}),
 	}.run(t)
 }
 
 func TestMapFunc_PUSHKEY(t *testing.T) {
-	ctx := tql.NewNode(nil)
 	extime := time.Unix(123, 0)
 	MapFuncTestCase{
 		input:     `PUSHKEY()`,
 		params:    FuncParamMock(extime, []any{1, 2, 3}),
-		expectErr: "f(PUSHKEY) invalid number of args; expect:2, actual:1",
+		expectErr: "f(PUSHKEY) invalid number of args; expect:1, actual:0",
 	}.run(t)
 	MapFuncTestCase{
 		input:     `PUSHKEY('err')`,
 		params:    FuncParamMock(extime, []int{1, 2, 3}),
-		expectErr: "f(PUSHKEY) V should be []any, but []int",
+		expectErr: "f(PUSHKEY) arg(0) Value should be array, but []int",
 	}.run(t)
 	MapFuncTestCase{
 		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(extime, []any{1, 2, 3}),
-		expect: ctx.NewRecord("sam", []any{extime, 1, 2, 3}),
+		expect: tql.NewRecord("sam", []any{extime, 1, 2, 3}),
 	}.run(t)
 	tick := time.Now()
 	tick100ms := time.Unix(0, (tick.UnixNano()/100000000)*100000000)
 	MapFuncTestCase{
 		input:  `PUSHKEY(roundTime(K, '100ms'))`,
 		params: FuncParamMock(tick, []any{"v"}),
-		expect: ctx.NewRecord(tick100ms, []any{tick, "v"}),
+		expect: tql.NewRecord(tick100ms, []any{tick, "v"}),
 	}.run(t)
 }
 
 func TestMapFunc_POPKEY(t *testing.T) {
-	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:     `POPKEY()`,
 		params:    FuncParamMock("x", []int{1, 2, 3}),
@@ -77,12 +74,12 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord(1, []any{2, 3}),
+		expect: tql.NewRecord(1, []any{2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `POPKEY()`,
 		params: FuncParamMock("x", []any{[]int{10, 11, 12}, []int{20, 21, 22}, []int{30, 31, 32}}),
-		expect: ctx.NewRecord([]int{10, 11, 12}, []any{[]int{20, 21, 22}, []int{30, 31, 32}}),
+		expect: tql.NewRecord([]int{10, 11, 12}, []any{[]int{20, 21, 22}, []int{30, 31, 32}}),
 	}.run(t)
 	MapFuncTestCase{
 		input:     `POPKEY(0)`,
@@ -92,16 +89,15 @@ func TestMapFunc_POPKEY(t *testing.T) {
 	MapFuncTestCase{
 		input:  `POPKEY(1)`,
 		params: FuncParamMock("x", []any{"K", 1, 2}),
-		expect: ctx.NewRecord(1, []any{"K", 2}),
+		expect: tql.NewRecord(1, []any{"K", 2}),
 	}.run(t)
 }
 
 func TestMapFunc_FILTER(t *testing.T) {
-	ctx := tql.NewNode(nil)
 	MapFuncTestCase{
 		input:  `FILTER(10<100)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(10>100)`,
@@ -111,7 +107,7 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(K == 'x')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(K != 'x')`,
@@ -121,12 +117,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(K != 'y')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(V) > 2)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(len(V) > 4)`,
@@ -136,12 +132,12 @@ func TestMapFunc_FILTER(t *testing.T) {
 	MapFuncTestCase{
 		input:  `FILTER(element(V, 0) >= 1)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
 		input:  `FILTER(element(V, 0) > 0)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
-		expect: ctx.NewRecord("x", []any{1, 2, 3}),
+		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 }
 
@@ -154,9 +150,8 @@ func TestMapFunc_GROUPBYKEY(t *testing.T) {
 }
 
 func (tc MapFuncTestCase) run(t *testing.T) {
-	task := tql.NewTask()
 	msg := fmt.Sprintf("TestCase %s", tc.input)
-	expr, err := task.Parse(tc.input)
+	expr, err := tc.params.Parse(tc.input)
 	require.Nil(t, err, msg)
 	require.NotNil(t, expr, msg)
 
@@ -189,12 +184,12 @@ func FuncParamMockFunc(back func(name string) (any, error)) expression.Parameter
 	}
 }
 
-func FuncParamMock(k any, v any) expression.Parameters {
-	ctx := &tql.Node{}
-	ctx.SetRecord(tql.NewRecord(k, v))
+func FuncParamMock(k any, v any) *tql.Node {
 	task := tql.NewTask()
-	task.AddNode(ctx)
-	return ctx
+	node := tql.NewNode(task)
+	node.SetRecord(tql.NewRecord(k, v))
+	task.AddNode(node)
+	return node
 }
 
 type paramMock struct {

@@ -16,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (x *Task) fmCsv(args ...any) (any, error) {
+func (x *Node) fmCsv(args ...any) (any, error) {
 	isSource := false
 	if len(args) > 0 {
 		switch args[0].(type) {
@@ -202,7 +202,7 @@ type headerOpt struct {
 	hasHeader bool
 }
 
-func (x *Task) fmHeader(args ...any) (any, error) {
+func (x *Node) fmHeader(args ...any) (any, error) {
 	flag, err := convBool(args, 0, "header", "boolean")
 	if err != nil {
 		return nil, err
@@ -217,12 +217,12 @@ type columnOpt struct {
 }
 
 // Deprecated: use ToField() instead
-func (x *Task) fmCol(args ...any) (any, error) {
+func (x *Node) fmCol(args ...any) (any, error) {
 	fmt.Println("WARN col() is deprecated. use field() instead")
 	return x.fmField(args...)
 }
 
-func (x *Task) fmField(args ...any) (any, error) {
+func (x *Node) fmField(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("col", 3, len(args))
 	}
@@ -266,7 +266,7 @@ type stringOpt struct{}
 
 func (o *stringOpt) spiType() string { return "string" }
 
-func (x *Task) fmStringType(args ...any) (any, error) {
+func (x *Node) fmStringType(args ...any) (any, error) {
 	return &stringOpt{}, nil
 }
 
@@ -274,7 +274,7 @@ type doubleOpt struct{}
 
 func (o *doubleOpt) spiType() string { return "double" }
 
-func (x *Task) fmDoubleType(args ...any) (any, error) {
+func (x *Node) fmDoubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
 }
 
@@ -291,7 +291,7 @@ type datetimeOpt struct {
 
 func (o *datetimeOpt) spiType() string { return "datetime" }
 
-func (x *Task) fmDatetimeType(args ...any) (any, error) {
+func (x *Node) fmDatetimeType(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("datetime", 2, len(args))
 	}

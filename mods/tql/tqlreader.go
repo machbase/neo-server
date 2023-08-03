@@ -14,6 +14,8 @@ type Line struct {
 	isComment bool
 }
 
+var functions = NewNode(nil).functions
+
 func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
@@ -60,7 +62,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 		}
 
 		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, task.functions)
+		_, err = expression.ParseTokens(aStmt, functions)
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue

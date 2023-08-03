@@ -16,7 +16,7 @@ type TimeRange struct {
 	Period   time.Duration
 }
 
-func (x *Task) fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
+func (x *Node) fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	ret := &TimeRange{}
 	switch val := ts.(type) {
 	case string:
@@ -87,7 +87,7 @@ func (x *Task) fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 
 // ts : string | float64 | int64
 // duration :  time.Time | *time.Time | float64 | int64
-func (x *Task) fmRoundTime(ts any, duration any) (time.Time, error) {
+func (x *Node) fmRoundTime(ts any, duration any) (time.Time, error) {
 	var dur time.Duration
 	switch val := duration.(type) {
 	case string:
@@ -120,13 +120,13 @@ func (x *Task) fmRoundTime(ts any, duration any) (time.Time, error) {
 	return ret, nil
 }
 
-func (x *Task) fmTime(ts any) (time.Time, error) {
+func (x *Node) fmTime(ts any) (time.Time, error) {
 	return x.fmTimeAdd(ts, int64(0))
 }
 
 var StandardTimeNow func() time.Time = time.Now
 
-func (x *Task) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
+func (x *Node) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	var baseTime time.Time
 	var delta time.Duration
 
@@ -201,7 +201,7 @@ func (x *Task) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	return baseTime.Add(delta), nil
 }
 
-func (x *Task) TimeLocation(timezone string) (opts.Option, error) {
+func (x *Node) fmTimeLocation(timezone string) (opts.Option, error) {
 	switch strings.ToUpper(timezone) {
 	case "LOCAL":
 		timezone = "Local"

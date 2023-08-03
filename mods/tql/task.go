@@ -22,7 +22,6 @@ import (
 
 type Task struct {
 	ctx          context.Context
-	functions    map[string]expression.Function
 	params       map[string][]string
 	inputReader  io.Reader
 	outputWriter io.Writer
@@ -38,7 +37,8 @@ type Task struct {
 	compileErr error
 	input      *input
 	output     *output
-	mapExprs   []string
+	inputNode  *Node
+	outputNode *Node
 
 	// runtime
 	db       spi.Database
@@ -60,14 +60,14 @@ var (
 	_ expression.Parameters = &Task{}
 )
 
-func NewTaskContext(ctx context.Context) *Task {
-	ret := NewTask()
-	ret.ctx = ctx
-	return ret
+func NewTask() *Task {
+	return &Task{}
 }
 
-func (x *Task) Function(name string) expression.Function {
-	return x.functions[name]
+func NewTaskContext(ctx context.Context) *Task {
+	ret := &Task{}
+	ret.ctx = ctx
+	return ret
 }
 
 func (x *Task) SetInputReader(r io.Reader) {
@@ -204,6 +204,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 	// src
 	if len(exprs) >= 1 {
 		srcLine := exprs[0]
+		x.inputNode = NewNode(x)
 		src, err := x.compileSource(srcLine.text)
 		if err != nil {
 			x.compileErr = errors.Wrapf(err, "at line %d", srcLine.line)
@@ -215,7 +216,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 	// sink
 	if len(exprs) >= 2 {
 		sinkLine := exprs[len(exprs)-1]
-		// validates the syntax
+		x.outputNode = NewNode(x)
 		sink, err := x.compileSink(sinkLine.text)
 		if err != nil {
 			x.compileErr = errors.Wrapf(err, "at line %d", sinkLine.line)
@@ -227,45 +228,31 @@ func (x *Task) compile(codeReader io.Reader) error {
 	// map
 	if len(exprs) >= 3 {
 		exprs = exprs[1 : len(exprs)-1]
-		for _, mapLine := range exprs {
-			// validates the syntax
-			_, err := x.Parse(mapLine.text)
+		for n, mapLine := range exprs {
+			node := NewNode(x)
+			expr, err := node.Parse(mapLine.text)
 			if err != nil {
-				x.compileErr = errors.Wrapf(err, "at line %d", mapLine.line)
-				return x.compileErr
+				return errors.Wrapf(err, "at %s", mapLine.text)
 			}
-			x.mapExprs = append(x.mapExprs, mapLine.text)
+			if expr == nil {
+				return fmt.Errorf("compile error at %s", mapLine.text)
+			}
+			x.nodes = append(x.nodes, node)
+			node.id = n
+			node.Name = expr.String()
+			node.Expr = expr
+			node.Src = make(chan *Record)
+			node.Sink = x.resultCh
+			if n > 0 {
+				x.nodes[n-1].Next = x.nodes[n]
+			}
+
+			if len(x.nodes) > 0 {
+				x.headNode = x.nodes[0]
+			}
 		}
 	}
 	return nil
-}
-
-var mapFunctionsMacro = [][2]string{
-	{"SCRIPT(", "SCRIPT(CTX,"},
-	{"TAKE(", "TAKE(CTX,"},
-	{"DROP(", "DROP(CTX,"},
-	{"PUSHKEY(", "PUSHKEY(CTX,"},
-	{"POPKEY(", "POPKEY(CTX,"},
-	{"GROUPBYKEY(", "GROUPBYKEY(CTX,"},
-	{"FLATTEN(", "FLATTEN(CTX,"},
-	{"FILTER(", "FILTER(CTX,"},
-	{"FFT(", "FFT(CTX,"},
-}
-
-func (x *Task) Parse(text string) (*expression.Expression, error) {
-	for _, f := range mapFunctionsMacro {
-		text = strings.ReplaceAll(text, f[0], f[1])
-	}
-	text = strings.ReplaceAll(text, "(CTX,)", "(CTX)")
-	return expression.NewWithFunctions(text, x.functions)
-}
-
-func (x *Task) parseSource(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, x.functions)
-}
-
-func (x *Task) parseSink(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, x.functions)
 }
 
 // DumpSQL returns the generated SQL statement if the input source database source
@@ -325,40 +312,10 @@ func (x *Task) Execute(db spi.Database) error {
 }
 
 func (x *Task) execute(db spi.Database) (err error) {
-	exprs := []*expression.Expression{}
-	for _, str := range x.mapExprs {
-		expr, err := x.Parse(str)
-		if err != nil {
-			return errors.Wrapf(err, "at %s", str)
-		}
-		if expr == nil {
-			return fmt.Errorf("compile error at %s", str)
-		}
-		exprs = append(exprs, expr)
-	}
-
 	x.resultCh = make(chan any)
 	x.encoderCh = make(chan []any)
 	x.db = db
 
-	x.nodes = make([]*Node, len(exprs))
-	for n, expr := range exprs {
-		x.nodes[n] = &Node{
-			id:   n,
-			Name: expr.String(),
-			Expr: expr,
-			Src:  make(chan *Record),
-			Sink: x.resultCh,
-			Next: nil,
-			task: x,
-		}
-		if n > 0 {
-			x.nodes[n-1].Next = x.nodes[n]
-		}
-	}
-	if len(x.nodes) > 0 {
-		x.headNode = x.nodes[0]
-	}
 	x.start()
 	x.wait()
 	x.stop()
@@ -368,27 +325,6 @@ func (x *Task) execute(db spi.Database) (err error) {
 func (x *Task) AddNode(node *Node) {
 	node.id = len(x.nodes)
 	x.nodes = append(x.nodes, node)
-}
-
-func (x *Task) compileSource(code string) (*input, error) {
-	expr, err := x.parseSource(code)
-	if err != nil {
-		return nil, err
-	}
-	src, err := expr.Eval(x)
-	if err != nil {
-		return nil, err
-	}
-	var ret *input
-	switch src := src.(type) {
-	case DatabaseSource:
-		ret = &input{dbSrc: src}
-	case ChannelSource:
-		ret = &input{chSrc: src}
-	default:
-		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
-	}
-	return ret, nil
 }
 
 func (x *Task) start() {
@@ -509,7 +445,7 @@ func (x *Task) start() {
 		FeedFunc: func(values []any) {
 			if x.headNode != nil {
 				if values != nil {
-					x.headNode.Src <- x.headNode.NewRecord(values[0], values[1:])
+					x.headNode.Src <- NewRecord(values[0], values[1:])
 				} else {
 					x.headNode.Src <- EofRecord
 				}

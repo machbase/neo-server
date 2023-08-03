@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"fmt"
+
 	"github.com/machbase/neo-server/mods/do"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -9,6 +11,27 @@ import (
 type input struct {
 	dbSrc DatabaseSource
 	chSrc ChannelSource
+}
+
+func (x *Task) compileSource(code string) (*input, error) {
+	expr, err := x.inputNode.Parse(code)
+	if err != nil {
+		return nil, err
+	}
+	src, err := expr.Eval(x)
+	if err != nil {
+		return nil, err
+	}
+	var ret *input
+	switch src := src.(type) {
+	case DatabaseSource:
+		ret = &input{dbSrc: src}
+	case ChannelSource:
+		ret = &input{chSrc: src}
+	default:
+		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
+	}
+	return ret, nil
 }
 
 func (in *input) run(deligate InputDeligate) error {

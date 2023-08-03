@@ -10,7 +10,7 @@ import (
 )
 
 func (x *Task) compileSink(code string) (*output, error) {
-	expr, err := x.parseSink(code)
+	expr, err := x.outputNode.Parse(code)
 	if err != nil {
 		return nil, err
 	}

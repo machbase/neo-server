@@ -10,17 +10,17 @@ import (
 
 type maxHzOption float64
 
-func (x *Task) fmMaxHz(freq float64) maxHzOption {
+func (x *Node) fmMaxHz(freq float64) maxHzOption {
 	return maxHzOption(freq)
 }
 
 type minHzOption float64
 
-func (x *Task) fmMinHz(freq float64) minHzOption {
+func (node *Node) fmMinHz(freq float64) minHzOption {
 	return minHzOption(freq)
 }
 
-func (x *Task) fmFastFourierTransform(node *Node, args ...any) (any, error) {
+func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 	minHz := math.NaN()
 	maxHz := math.NaN()
 	// options
@@ -85,6 +85,6 @@ func (x *Task) fmFastFourierTransform(node *Node, args ...any) (any, error) {
 		newVal = append(newVal, []any{hz, amplitude})
 	}
 
-	ret := node.NewRecord(key, newVal)
+	ret := NewRecord(key, newVal)
 	return ret, nil
 }
