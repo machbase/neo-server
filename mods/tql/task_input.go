@@ -11,6 +11,7 @@ import (
 type input struct {
 	selfNode *Node
 	next     *Node
+	db       spi.Database
 
 	dbSrc DatabaseSource
 	chSrc ChannelSource
@@ -38,7 +39,7 @@ func (node *Node) compileSource(code string) (*input, error) {
 	return ret, nil
 }
 
-func (in *input) run() error {
+func (in *input) start() error {
 	if in.dbSrc == nil && in.chSrc == nil {
 		return errors.New("nil source")
 	}
@@ -46,7 +47,7 @@ func (in *input) run() error {
 		fetched := 0
 		executed := false
 		queryCtx := &do.QueryContext{
-			DB: in.next.task.db,
+			DB: in.db,
 			OnFetchStart: func(c spi.Columns) {
 				in.selfNode.task.output.resultColumns = c
 			},
@@ -55,7 +56,7 @@ func (in *input) run() error {
 				if in.selfNode.task.shouldStopNodes() {
 					return false
 				} else {
-					in.selfNode.task.feedNodes(values)
+					in.feedNodes(values)
 					return true
 				}
 			},
@@ -65,33 +66,46 @@ func (in *input) run() error {
 			},
 		}
 		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
-			in.selfNode.task.feedNodes(nil)
+			in.feedNodes(nil)
 			return err
 		} else {
 			if executed {
 				in.selfNode.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
-				in.selfNode.task.feedNodes([]any{msg})
-				in.selfNode.task.feedNodes(nil)
+				in.feedNodes([]any{msg})
+				in.feedNodes(nil)
 			} else if fetched == 0 {
-				in.selfNode.task.feedNodes([]any{EofRecord})
-				in.selfNode.task.feedNodes(nil)
+				in.feedNodes([]any{EofRecord})
+				in.feedNodes(nil)
 			} else {
-				in.selfNode.task.feedNodes(nil)
+				in.feedNodes(nil)
 			}
 			return nil
 		}
 	} else if in.chSrc != nil {
 		in.selfNode.task.output.resultColumns = in.chSrc.Header()
 		for values := range in.chSrc.Gen() {
-			in.selfNode.task.feedNodes(values)
+			in.feedNodes(values)
 			if in.selfNode.task.shouldStopNodes() {
 				in.chSrc.Stop()
 				break
 			}
 		}
-		in.selfNode.task.feedNodes(nil)
+		in.feedNodes(nil)
 		return nil
 	} else {
 		return errors.New("no source")
+	}
+}
+
+func (in *input) feedNodes(values []any) {
+	if in.next != nil {
+		if values != nil {
+			in.next.Src <- NewRecord(values[0], values[1:])
+		} else {
+			in.next.Src <- EofRecord
+		}
+	} else {
+		// there is no chain, just forward input data to sink directly
+		in.selfNode.task.sendToEncoder(values)
 	}
 }

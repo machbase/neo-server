@@ -35,7 +35,7 @@ func (node *Node) fmFilter(flag bool) *Record {
 
 func (node *Node) fmFlatten() any {
 	key := node.Record().key
-	value := node.Record().key
+	value := node.Record().value
 	if arr, ok := value.([]any); ok {
 		ret := []*Record{}
 		for _, elm := range arr {

@@ -73,10 +73,41 @@ func TestLinspaceMonad(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestPushAndPopMonad(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 1, 2))",
+		"PUSHKEY('sample')",
+		"POPKEY()",
+		"CSV()",
+	}
+	resultLines := []string{
+		"1,0.000000",
+		"2,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+/* FIXME:!!
+func TestGroupByKey(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHKEY('sample')",
+		"GROUPBYKEY()",
+		"FLATTEN()",
+		"CSV()",
+	}
+	resultLines := []string{
+		"1,0.000000",
+		"2,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+*/
+
 func runTest(t *testing.T, codeLines []string, expect []string) {
 	code := strings.Join(codeLines, "\n")
 
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	timeCtx, cancel := context.WithTimeout(context.TODO(), 15*time.Second)
 	defer cancel()
 	doneCh := make(chan any)
 

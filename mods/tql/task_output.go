@@ -21,7 +21,6 @@ func (node *Node) compileSink(code string) (*output, error) {
 	ret := &output{}
 	switch val := sink.(type) {
 	case *Encoder:
-		fmt.Println("xxxxxxxxxx")
 		ret.encoder = val.RowEncoder(
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.AssetHost("/web/echarts/"),
@@ -42,6 +41,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 
 type output struct {
 	selfNode *Node
+	db       spi.Database
 
 	encoder codec.RowsEncoder
 	dbSink  DatabaseSink
@@ -94,9 +94,7 @@ func (out *output) start() {
 
 	if encoderNeedToClose {
 		if out.encoder != nil {
-			fmt.Println("before close")
 			out.encoder.Close()
-			fmt.Println("after close")
 		} else if out.dbSink != nil {
 			out.dbSink.Close()
 		}
@@ -133,7 +131,7 @@ func (out *output) openEncoder() error {
 	if out.encoder != nil {
 		return out.encoder.Open()
 	} else if out.dbSink != nil {
-		return out.dbSink.Open(out.selfNode.task.db)
+		return out.dbSink.Open(out.db)
 	} else {
 		return errors.New("no output encoder")
 	}

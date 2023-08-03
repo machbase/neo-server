@@ -38,10 +38,8 @@ type Task struct {
 	output     *output
 
 	// runtime
-	db       spi.Database
-	nodes    []*Node
-	headNode *Node
-	nodesWg  sync.WaitGroup
+	nodes   []*Node
+	nodesWg sync.WaitGroup
 
 	resultCh chan any
 
@@ -230,12 +228,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 		}
 	}
 	if len(x.nodes) > 0 {
-		x.headNode = x.nodes[0]
 		x.input.next = x.nodes[0]
-	} else {
-		if x.input != nil && x.output != nil {
-			x.input.next = x.output.selfNode
-		}
 	}
 	x.compiled = true
 	return nil
@@ -265,7 +258,12 @@ func (x *Task) AddNode(node *Node) {
 }
 
 func (x *Task) execute(db spi.Database) (err error) {
-	x.db = db
+	if x.input != nil {
+		x.input.db = db
+	}
+	if x.output != nil {
+		x.output.db = db
+	}
 	x.resultCh = make(chan any)
 
 	////////////////////////////////
@@ -343,7 +341,7 @@ func (x *Task) execute(db spi.Database) (err error) {
 
 	////////////////////////////////
 	// input source
-	if err := x.input.run(); err != nil {
+	if err := x.input.start(); err != nil {
 		x.lastError = err
 	}
 
@@ -359,19 +357,6 @@ func (x *Task) execute(db spi.Database) (err error) {
 	x.nodesWg.Wait()
 
 	return x.lastError
-}
-
-func (x *Task) feedNodes(values []any) {
-	if x.headNode != nil {
-		if values != nil {
-			x.headNode.Src <- NewRecord(values[0], values[1:])
-		} else {
-			x.headNode.Src <- EofRecord
-		}
-	} else {
-		// there is no chain, just forward input data to sink directly
-		x.sendToEncoder(values)
-	}
 }
 
 func (x *Task) shouldStopNodes() bool {
