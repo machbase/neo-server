@@ -48,7 +48,7 @@ func (in *input) run() error {
 		queryCtx := &do.QueryContext{
 			DB: in.next.task.db,
 			OnFetchStart: func(c spi.Columns) {
-				in.selfNode.task.resultColumns = c
+				in.selfNode.task.output.resultColumns = c
 			},
 			OnFetch: func(nrow int64, values []any) bool {
 				fetched++
@@ -69,7 +69,7 @@ func (in *input) run() error {
 			return err
 		} else {
 			if executed {
-				in.selfNode.task.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
+				in.selfNode.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
 				in.selfNode.task.feedNodes([]any{msg})
 				in.selfNode.task.feedNodes(nil)
 			} else if fetched == 0 {
@@ -81,7 +81,7 @@ func (in *input) run() error {
 			return nil
 		}
 	} else if in.chSrc != nil {
-		in.selfNode.task.resultColumns = in.chSrc.Header()
+		in.selfNode.task.output.resultColumns = in.chSrc.Header()
 		for values := range in.chSrc.Gen() {
 			in.selfNode.task.feedNodes(values)
 			if in.selfNode.task.shouldStopNodes() {

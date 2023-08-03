@@ -30,7 +30,7 @@ func TestFFTChain(t *testing.T) {
 
 	go func() {
 		task := tql.NewTaskContext(timeCtx)
-		task.SetOutputStream(output)
+		task.SetOutputWriter(output)
 		err := task.Compile(reader)
 		require.Nil(t, err)
 		err = task.Execute(nil)
@@ -75,16 +75,19 @@ func TestLinspaceMonad(t *testing.T) {
 
 func runTest(t *testing.T, codeLines []string, expect []string) {
 	code := strings.Join(codeLines, "\n")
-	out := &bytes.Buffer{}
 
 	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-	doneCh := make(chan bool)
+	defer cancel()
+	doneCh := make(chan any)
+
+	out := &bytes.Buffer{}
+
+	task := tql.NewTaskContext(timeCtx)
+	task.SetOutputWriter(out)
+	err := task.CompileString(code)
+	require.Nil(t, err)
 
 	go func() {
-		task := tql.NewTaskContext(timeCtx)
-		task.SetOutputWriter(out)
-		err := task.CompileString(code)
-		require.Nil(t, err)
 		err = task.Execute(nil)
 		require.Nil(t, err)
 		doneCh <- true
@@ -92,10 +95,8 @@ func runTest(t *testing.T, codeLines []string, expect []string) {
 
 	select {
 	case <-timeCtx.Done():
-		t.Fatal("time out!!!")
-		cancel()
+		t.Fatal("ERROR time out!!!")
 	case <-doneCh:
-		cancel()
 	}
 	result := out.String()
 	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))

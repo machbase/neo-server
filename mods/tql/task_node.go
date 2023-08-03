@@ -8,7 +8,6 @@ import (
 )
 
 type Node struct {
-	id   int
 	Name string
 	Expr *expression.Expression
 	Src  chan *Record
@@ -71,6 +70,14 @@ func (node *Node) LogWarnf(format string, args ...any) {
 		node.task.LogInfo("[WARN] "+format, args...)
 	} else {
 		fmt.Printf("[WARN] "+format+"\n", args...)
+	}
+}
+
+func (node *Node) LogErrorf(format string, args ...any) {
+	if node.task != nil {
+		node.task.LogError(format, args...)
+	} else {
+		fmt.Printf("[ERROR] "+format+"\n", args...)
 	}
 }
 

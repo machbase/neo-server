@@ -24,8 +24,7 @@ type Task struct {
 	ctx          context.Context
 	params       map[string][]string
 	inputReader  io.Reader
-	outputWriter io.Writer
-	outputStream spec.OutputStream
+	outputWriter spec.OutputStream
 	toJsonOutput bool
 
 	// comments start with plus(+) symbold and sperated by comma.
@@ -38,19 +37,13 @@ type Task struct {
 	input      *input
 	output     *output
 
-	// result data
-	resultColumns spi.Columns
-
 	// runtime
 	db       spi.Database
 	nodes    []*Node
 	headNode *Node
 	nodesWg  sync.WaitGroup
 
-	resultCh           chan any
-	encoderCh          chan []any
-	encoderChWg        sync.WaitGroup
-	encoderNeedToClose bool
+	resultCh chan any
 
 	closeOnce      sync.Once
 	lastError      error
@@ -81,29 +74,24 @@ func (x *Task) InputReader() io.Reader {
 
 func (x *Task) SetOutputWriter(w io.Writer) error {
 	var err error
-	x.outputWriter = w
 	if w == nil {
-		x.outputStream, err = stream.NewOutputStream("-")
+		x.outputWriter, err = stream.NewOutputStream("-")
 		if err != nil {
 			return err
 		}
+	} else if o, ok := w.(spec.OutputStream); ok {
+		x.outputWriter = o
 	} else {
-		x.outputStream = &stream.WriterOutputStream{Writer: w}
+		x.outputWriter = &stream.WriterOutputStream{Writer: w}
 	}
 	return nil
 }
 
-func (x *Task) OutputWriter() io.Writer {
+func (x *Task) OutputWriter() spec.OutputStream {
+	if x.outputWriter == nil {
+		x.outputWriter, _ = stream.NewOutputStream("-")
+	}
 	return x.outputWriter
-}
-
-func (x *Task) SetOutputStream(o spec.OutputStream) {
-	x.outputStream = o
-	x.outputWriter = o
-}
-
-func (x *Task) OutputStream() spec.OutputStream {
-	return x.outputStream
 }
 
 func (x *Task) SetJsonOutput(flag bool) {
@@ -144,7 +132,7 @@ func (x *Task) Get(name string) (any, error) {
 		case "PI":
 			return math.Pi, nil
 		case "outputstream":
-			return x.outputStream, nil
+			return x.outputWriter, nil
 		case "nil":
 			return nil, nil
 		}
@@ -220,9 +208,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 		}
 	}
 
-	x.resultCh = make(chan any)
-	x.encoderCh = make(chan []any)
-
 	// map
 	if len(exprs) >= 3 {
 		exprs = exprs[1 : len(exprs)-1]
@@ -236,11 +221,9 @@ func (x *Task) compile(codeReader io.Reader) error {
 				return fmt.Errorf("compile error at %s", mapLine.text)
 			}
 			x.nodes = append(x.nodes, node)
-			node.id = n
 			node.Name = expr.String()
 			node.Expr = expr
 			node.Src = make(chan *Record)
-			node.Sink = x.resultCh
 			if n > 0 {
 				x.nodes[n-1].Next = x.nodes[n]
 			}
@@ -256,43 +239,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 	}
 	x.compiled = true
 	return nil
-}
-
-// DumpSQL returns the generated SQL statement if the input source database source
-func (x *Task) DumpSQL() string {
-	if x.input == nil || x.input.dbSrc == nil {
-		return ""
-	}
-	return x.input.dbSrc.ToSQL()
-}
-
-func (x *Task) LogDebug(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[DEBUG] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[DEBUG]", msg)
-	}
-}
-
-func (x *Task) LogDebugString(args ...string) {
-	fmt.Println("[DEBUG]", strings.Join(args, " "))
-}
-
-func (x *Task) LogInfo(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[INFO] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[INFO]", msg)
-	}
-}
-
-func (x *Task) LogError(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[ERROR] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[ERROR]", msg)
-	}
-	debug.PrintStack()
 }
 
 func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
@@ -314,62 +260,27 @@ func (x *Task) Execute(db spi.Database) error {
 	return err
 }
 
-func (x *Task) execute(db spi.Database) (err error) {
-	x.db = db
-
-	x.start()
-	x.wait()
-	x.stop()
-	return x.lastError
-}
-
 func (x *Task) AddNode(node *Node) {
-	node.id = len(x.nodes)
 	x.nodes = append(x.nodes, node)
 }
 
-func (x *Task) start() {
+func (x *Task) execute(db spi.Database) (err error) {
+	x.db = db
+	x.resultCh = make(chan any)
+
 	////////////////////////////////
-	// encoder
-	x.encoderChWg.Add(1)
+	// start encoder
+	x.nodesWg.Add(1)
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				if err, ok := r.(error); ok {
-					x.LogError(err.Error())
-				}
-			}
-			x.encoderChWg.Done()
-		}()
-		for arr := range x.encoderCh {
-			if !x.encoderNeedToClose {
-				if len(x.resultColumns) == 0 {
-					for i, v := range arr {
-						x.resultColumns = append(x.resultColumns, &spi.Column{
-							Name: fmt.Sprintf("C%02d", i),
-							Type: x.columnTypeName(v)})
-					}
-				}
-				x.output.SetHeader(x.resultColumns)
-				x.output.Open(x.db)
-				x.encoderNeedToClose = true
-			}
-			if len(arr) == 0 {
-				continue
-			}
-			if rec, ok := arr[0].(*Record); ok && rec.IsEOF() {
-				continue
-			}
-			if err := x.output.AddRow(arr); err != nil {
-				x.LogError(err.Error())
-			}
-		}
+		x.output.start()
+		x.nodesWg.Done()
 	}()
 
 	////////////////////////////////
-	// nodes
+	// start nodes
 	for _, child := range x.nodes {
 		x.nodesWg.Add(1)
+		child.Sink = x.resultCh
 		child.start()
 	}
 
@@ -435,6 +346,19 @@ func (x *Task) start() {
 	if err := x.input.run(); err != nil {
 		x.lastError = err
 	}
+
+	// wait all nodes are finished
+	x.closeOnce.Do(func() {
+		for _, child := range x.nodes {
+			child.Stop()
+		}
+		close(x.resultCh)
+		x.output.stop()
+	})
+
+	x.nodesWg.Wait()
+
+	return x.lastError
 }
 
 func (x *Task) feedNodes(values []any) {
@@ -454,30 +378,12 @@ func (x *Task) shouldStopNodes() bool {
 	return x.circuitBreaker || x.lastError != nil
 }
 
-func (x *Task) stop() {
-	x.nodesWg.Wait()
-}
-
-func (x *Task) wait() {
-	x.closeOnce.Do(func() {
-		for _, ctx := range x.nodes {
-			ctx.Stop()
-		}
-		close(x.resultCh)
-		close(x.encoderCh)
-		x.encoderChWg.Wait()
-		if x.output != nil && x.encoderNeedToClose {
-			x.output.Close()
-		}
-	})
-}
-
 func (x *Task) sendToEncoder(values []any) {
 	if len(values) > 0 {
 		if t, ok := values[0].(*time.Time); ok {
 			values[0] = *t
 		}
-		x.encoderCh <- values
+		x.output.encoderCh <- values
 	}
 }
 
@@ -500,4 +406,41 @@ func (x *Task) columnTypeName(v any) string {
 	case float64:
 		return "double"
 	}
+}
+
+// DumpSQL returns the generated SQL statement if the input source database source
+func (x *Task) DumpSQL() string {
+	if x.input == nil || x.input.dbSrc == nil {
+		return ""
+	}
+	return x.input.dbSrc.ToSQL()
+}
+
+func (x *Task) LogDebug(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[DEBUG] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[DEBUG]", msg)
+	}
+}
+
+func (x *Task) LogDebugString(args ...string) {
+	fmt.Println("[DEBUG]", strings.Join(args, " "))
+}
+
+func (x *Task) LogInfo(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[INFO] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[INFO]", msg)
+	}
+}
+
+func (x *Task) LogError(msg string, args ...any) {
+	if len(args) > 0 {
+		fmt.Printf("[ERROR] "+msg+"\n", args...)
+	} else {
+		fmt.Println("[ERROR]", msg)
+	}
+	debug.PrintStack()
 }
