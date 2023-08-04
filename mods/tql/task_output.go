@@ -1,7 +1,9 @@
 package tql
 
 import (
+	"bytes"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -10,6 +12,22 @@ import (
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
+
+type output struct {
+	task *Task
+	name string
+
+	src chan *Record
+	db  spi.Database
+
+	encoder       codec.RowsEncoder
+	dbSink        DatabaseSink
+	isChart       bool
+	resultColumns spi.Columns
+
+	closeWg   sync.WaitGroup
+	lastError error
+}
 
 func (node *Node) compileSink(code string) (*output, error) {
 	expr, err := node.Parse(code)
@@ -37,90 +55,73 @@ func (node *Node) compileSink(code string) (*output, error) {
 	default:
 		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
 	}
-	ret.selfNode = node
 	ret.name = code
+	ret.task = node.task
+	ret.src = make(chan *Record)
 	return ret, nil
 }
 
-type output struct {
-	log      TaskLog
-	selfNode *Node
-	name     string
-	db       spi.Database
-
-	encoder codec.RowsEncoder
-	dbSink  DatabaseSink
-	isChart bool
-
-	// result data
-	resultColumns spi.Columns
-
-	closeWg   sync.WaitGroup
-	encoderCh chan *Record
-
-	lastError error
-}
-
 func (out *output) start() {
-	out.encoderCh = make(chan *Record)
 	out.closeWg.Add(1)
 	go func() {
 		defer func() {
-			out.closeWg.Done()
 			if r := recover(); r != nil {
-				if err, ok := r.(error); ok {
-					out.log.LogErrorf(err.Error())
-				}
+				w := &bytes.Buffer{}
+				w.Write(debug.Stack())
+				out.task.LogErrorf("panic %s %v\n%s", out.name, r, w.String())
 			}
 		}()
 
-		encoderNeedToClose := false
-		for rec := range out.encoderCh {
-			if rec.IsEOF() || rec.IsCircuitBreak() {
-				break
-			} else if rec.IsError() {
-				out.lastError = rec.Error()
-				continue
-			}
-
-			if !encoderNeedToClose {
-				if len(out.resultColumns) == 0 {
-					arr := rec.Flatten()
-					for i, v := range arr {
-						out.resultColumns = append(out.resultColumns,
-							&spi.Column{
-								Name: fmt.Sprintf("C%02d", i),
-								Type: out.columnTypeName(v),
-							})
+		shouldClose := false
+	loop:
+		for {
+			select {
+			case <-out.task.ctx.Done():
+				// task has been cancelled.
+				break loop
+			case rec := <-out.src:
+				if rec.IsEOF() || rec.IsCircuitBreak() {
+					break loop
+				} else if rec.IsError() {
+					out.lastError = rec.Error()
+					continue
+				}
+				if !shouldClose {
+					if len(out.resultColumns) == 0 {
+						arr := rec.Flatten()
+						for i, v := range arr {
+							out.resultColumns = append(out.resultColumns,
+								&spi.Column{
+									Name: fmt.Sprintf("C%02d", i),
+									Type: out.columnTypeName(v),
+								})
+						}
 					}
-				}
-				out.setHeader(out.resultColumns)
-				if err := out.openEncoder(); err != nil {
-					out.log.LogErrorf(err.Error())
-				}
-				encoderNeedToClose = true
-			}
-
-			if rec.IsArray() {
-				for _, v := range rec.Array() {
-					if err := out.addRow(v); err != nil {
-						out.log.LogErrorf(err.Error())
+					out.setHeader(out.resultColumns)
+					if err := out.openEncoder(); err != nil {
+						out.lastError = err
+						out.task.LogErrorf(err.Error())
 					}
+					shouldClose = true
 				}
-			} else if rec.IsTuple() {
-				if err := out.addRow(rec); err != nil {
-					out.log.LogErrorf(err.Error())
+				if rec.IsArray() {
+					for _, v := range rec.Array() {
+						if err := out.addRow(v); err != nil {
+							out.task.LogErrorf(err.Error())
+						}
+					}
+				} else if rec.IsTuple() {
+					if err := out.addRow(rec); err != nil {
+						out.task.LogErrorf(err.Error())
+					}
 				}
 			}
 		}
 
-		if encoderNeedToClose {
-			if out.encoder != nil {
-				out.encoder.Close()
-			} else if out.dbSink != nil {
-				out.dbSink.Close()
-			}
+		if shouldClose {
+			out.closeEncoder()
 		}
+		out.closeWg.Done()
 	}()
 }
 
@@ -129,11 +130,13 @@ func (out *output) Name() string {
 }
 
 func (out *output) Receive(rec *Record) {
-	out.encoderCh <- rec
+	out.src <- rec
 }
 
 func (out *output) stop() {
-	close(out.encoderCh)
+	if out.src != nil {
+		close(out.src)
+	}
 	out.closeWg.Wait()
 }
 
@@ -169,6 +172,14 @@ func (out *output) openEncoder() error {
 	}
 }
 
+func (out *output) closeEncoder() {
+	if out.encoder != nil {
+		out.encoder.Close()
+	} else if out.dbSink != nil {
+		out.dbSink.Close()
+	}
+}
+
 func (out *output) addRow(rec *Record) error {
 	if rec.IsArray() {
 		for _, r := range rec.Array() {
@@ -176,7 +187,7 @@ func (out *output) addRow(rec *Record) error {
 		}
 		return nil
 	} else if !rec.IsTuple() {
-		return fmt.Errorf("OUTPUT can not write %v", rec)
+		return fmt.Errorf("%s can not write %v", out.name, rec)
 	}
 
 	var addfunc func([]any) error
@@ -185,7 +196,7 @@ func (out *output) addRow(rec *Record) error {
 	} else if out.dbSink != nil {
 		addfunc = out.dbSink.AddRow
 	} else {
-		return errors.New("OUTPUT has no destination")
+		return fmt.Errorf("%s has no destination", out.name)
 	}
 
 	switch v := rec.Value().(type) {

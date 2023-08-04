@@ -41,7 +41,7 @@ func (node *Node) compileSource(code string) (*input, error) {
 	return ret, nil
 }
 
-func (in *input) start() error {
+func (in *input) execute() error {
 	if in.dbSrc == nil && in.chSrc == nil {
 		return errors.New("nil source")
 	}
@@ -73,7 +73,7 @@ func (in *input) start() error {
 			return err
 		} else {
 			if executed {
-				in.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
+				in.task.SetResultColumns(spi.Columns{{Name: "message", Type: "string"}})
 				NewRecord(msg, "").Tell(in.next)
 			}
 			EofRecord.Tell(in.next)

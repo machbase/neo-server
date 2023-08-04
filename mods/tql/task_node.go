@@ -1,7 +1,9 @@
 package tql
 
 import (
+	"bytes"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
@@ -9,15 +11,14 @@ import (
 )
 
 type Node struct {
-	log TaskLog
-
+	task *Task
 	name string
-	expr *expression.Expression
-	src  chan *Record
 	next Receiver
+
+	src  chan *Record
+	expr *expression.Expression
 	nrow int
 
-	task      *Task
 	functions map[string]expression.Function
 	values    map[string]any
 	buffer    map[any][]any
@@ -140,7 +141,7 @@ func (node *Node) yield(key any, values []any) {
 		yieldRec = NewRecord(key, values)
 	}
 	if node.debug {
-		node.log.LogDebug("++", node.Name(), "-->", node.next.Name(), yieldRec.String(), " ")
+		node.task.LogDebug("++", node.name, "-->", node.next.Name(), yieldRec.String(), " ")
 	}
 	yieldRec.Tell(node.next)
 }
@@ -151,7 +152,9 @@ func (node *Node) start() {
 		var lastWill *Record
 		defer func() {
 			if o := recover(); o != nil {
-				node.task.LogError("panic %s %v", node.Name, o)
+				w := &bytes.Buffer{}
+				w.Write(debug.Stack())
+				node.task.LogErrorf("panic %s %v\n%s", node.name, o, w.String())
 			}
 		}()
 	loop:
@@ -171,7 +174,7 @@ func (node *Node) start() {
 				node.nrow++
 				node.SetInflight(rec)
 				if node.debug {
-					node.log.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
+					node.task.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
 				}
 				ret, err := node.expr.Eval(node)
 				if err != nil {
@@ -211,9 +214,10 @@ func (node *Node) start() {
 
 func (node *Node) stop() {
 	if node.src != nil {
-		node.closeWg.Wait()
 		close(node.src)
 	}
+	node.closeWg.Wait()
+
 	for i := len(node.closers) - 1; i >= 0; i-- {
 		c := node.closers[i]
 		if err := c.Close(); err != nil {

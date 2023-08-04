@@ -187,7 +187,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 			x.compileErr = errors.Wrapf(err, "at line %d", exprs[len(exprs)-1].line)
 			return x.compileErr
 		}
-		x.output.log = x
 	}
 
 	// map
@@ -198,7 +197,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if err := node.compile(mapLine.text); err != nil {
 				return err
 			}
-			node.log = x
 			x.nodes = append(x.nodes, node)
 			if n > 0 {
 				x.nodes[n-1].next = x.nodes[n]
@@ -241,6 +239,13 @@ func (x *Task) execute(db spi.Database) (err error) {
 	if x.input == nil || x.output == nil {
 		return errors.New("task has no input or output")
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			w := &bytes.Buffer{}
+			w.Write(debug.Stack())
+			x.LogErrorf("panic %v\n%s", r, w.String())
+		}
+	}()
 
 	x.input.db = db
 	x.output.db = db
@@ -251,7 +256,7 @@ func (x *Task) execute(db spi.Database) (err error) {
 		child.start()
 	}
 	// run input
-	err = x.input.start()
+	err = x.input.execute()
 
 	// wait all nodes are finished
 	for _, child := range x.nodes {
@@ -263,6 +268,12 @@ func (x *Task) execute(db spi.Database) (err error) {
 		err = x.output.lastError
 	}
 	return
+}
+
+func (x *Task) SetResultColumns(cols spi.Columns) {
+	if x.output != nil {
+		x.output.resultColumns = cols
+	}
 }
 
 // DumpSQL returns the generated SQL statement if the input source is a database source
