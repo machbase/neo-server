@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/tql"
 )
 
 type ListenerEntry struct {
@@ -156,15 +157,17 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 	params["MSGID"] = []string{fmt.Sprintf("%d", msgId)}
 	params["DUP"] = []string{fmt.Sprintf("%t", dup)}
 	params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
-	task, err := sc.Parse(bytes.NewBuffer(payload), params, io.Discard, true)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetInputReader(bytes.NewBuffer(payload))
+	task.SetOutputWriterJson(io.Discard, true)
+	task.SetParams(params)
+	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()
 		return
 	}
-	ctx := context.TODO()
-	if err := task.Execute(ctx, ent.s.db); err != nil {
+	if err := task.Execute(ent.s.db); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

@@ -38,15 +38,17 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		input = ctx.Request.Body
 	}
 
-	tql, err := tql.Parse(input, nil, params, ctx.Writer, true)
-	if err != nil {
+	task := tql.NewTaskContext(ctx)
+	task.SetParams(params)
+	task.SetOutputWriterJson(ctx.Writer, true)
+	if err := task.Compile(input); err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	if err := tql.ExecuteHandler(ctx, svr.db, ctx.Writer); err != nil {
+	if err := task.ExecuteHandler(svr.db, ctx.Writer); err != nil {
 		svr.log.Error("tql execute error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -87,8 +89,11 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	tql, err := script.Parse(ctx.Request.Body, params, ctx.Writer, false)
-	if err != nil {
+	task := tql.NewTaskContext(ctx)
+	task.SetInputReader(ctx.Request.Body)
+	task.SetOutputWriter(ctx.Writer)
+	task.SetParams(params)
+	if err := task.CompileScript(script); err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -96,7 +101,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	if err := tql.ExecuteHandler(ctx, svr.db, ctx.Writer); err != nil {
+	if err := task.ExecuteHandler(svr.db, ctx.Writer); err != nil {
 		svr.log.Error("tql execute fail", path, err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

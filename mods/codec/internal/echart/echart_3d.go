@@ -50,22 +50,28 @@ func (ex *Base3D) Open() error {
 func (ex *Base3D) Flush(heading bool) {
 }
 
-func (ex *Base3D) SetXAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetXAxis(idx int, label string, typ ...string) {
 	ex.xAxisIdx = idx
 	ex.xAxisLabel = label
-	ex.xAxisType = typ
+	if len(typ) > 0 {
+		ex.xAxisType = typ[0]
+	}
 }
 
-func (ex *Base3D) SetYAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
 	ex.yAxisLabel = label
-	ex.yAxisType = typ
+	if len(typ) > 0 {
+		ex.yAxisType = typ[0]
+	}
 }
 
-func (ex *Base3D) SetZAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetZAxis(idx int, label string, typ ...string) {
 	ex.zAxisIdx = idx
 	ex.zAxisLabel = label
-	ex.zAxisType = typ
+	if len(typ) > 0 {
+		ex.zAxisType = typ[0]
+	}
 }
 
 func (ex *Base3D) SetVisualMap(minValue float64, maxValue float64) {

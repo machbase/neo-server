@@ -9,6 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/robfig/cron/v3"
 )
 
@@ -90,15 +91,17 @@ func (ent *TimerEntry) doTask() {
 		ent.Stop()
 		return
 	}
-	task, err := sc.Parse(nil, nil, io.Discard, true)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetParams(nil)
+	task.SetInputReader(nil)
+	task.SetOutputWriterJson(io.Discard, true)
+	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()
 		return
 	}
-	ctx := context.TODO()
-	if err := task.Execute(ctx, ent.s.db); err != nil {
+	if err := task.Execute(ent.s.db); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

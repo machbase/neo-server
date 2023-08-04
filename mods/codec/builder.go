@@ -8,6 +8,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -31,14 +32,24 @@ type RowsEncoder interface {
 	ContentType() string
 }
 
+var (
+	_ RowsEncoder = &box.Exporter{}
+	_ RowsEncoder = &csv.Exporter{}
+	_ RowsEncoder = &markdown.Exporter{}
+	_ RowsEncoder = &echart.Line{}
+	_ RowsEncoder = &echart.Bar{}
+	_ RowsEncoder = &echart.Scatter{}
+	_ RowsEncoder = &echart.Line3D{}
+	_ RowsEncoder = &echart.Bar3D{}
+	_ RowsEncoder = &echart.Scatter3D{}
+)
+
 type RowsDecoder interface {
 	Open()
 	NextRow() ([]any, error)
 }
 
-type Option func(enc any)
-
-func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
+func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	var ret RowsEncoder
 	switch encoderType {
 	case BOX:
@@ -70,7 +81,7 @@ func NewEncoder(encoderType string, opts ...Option) RowsEncoder {
 	return ret
 }
 
-func NewDecoder(decoderType string, opts ...Option) RowsDecoder {
+func NewDecoder(decoderType string, opts ...opts.Option) RowsDecoder {
 	var ret RowsDecoder
 	switch decoderType {
 	case CSV:
@@ -102,7 +113,10 @@ func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *ti
 	for _, c := range cols {
 		colTypes = append(colTypes, c.Type)
 	}
-	if enc, ok := encoder.(CanSetColumns); ok {
-		enc.SetColumns(colNames, colTypes)
+	if enc, ok := encoder.(opts.CanSetColumns); ok {
+		enc.SetColumns(colNames...)
+	}
+	if enc, ok := encoder.(opts.CanSetColumnTypes); ok {
+		enc.SetColumnTypes(colTypes...)
 	}
 }

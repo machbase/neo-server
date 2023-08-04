@@ -6,24 +6,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql/fmap"
-	"github.com/machbase/neo-server/mods/tql/fsink"
-	"github.com/machbase/neo-server/mods/tql/fsrc"
 )
-
-var tqlFunctions = map[string]expression.Function{}
-
-func init() {
-	for _, f := range fsrc.Functions() {
-		tqlFunctions[f] = nil
-	}
-	for _, f := range fsink.Functions() {
-		tqlFunctions[f] = nil
-	}
-	for _, f := range fmap.Functions() {
-		tqlFunctions[f] = nil
-	}
-}
 
 type Line struct {
 	text      string
@@ -31,7 +14,9 @@ type Line struct {
 	isComment bool
 }
 
-func readLines(codeReader io.Reader) ([]*Line, error) {
+var functions = NewNode(nil).functions
+
+func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}
@@ -77,7 +62,7 @@ func readLines(codeReader io.Reader) ([]*Line, error) {
 		}
 
 		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, tqlFunctions)
+		_, err = expression.ParseTokens(aStmt, functions)
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue
