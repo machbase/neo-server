@@ -33,6 +33,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	if err != nil {
 		return nil, err
 	}
+	node.name = expr.String()
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
@@ -52,7 +53,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 		ret.dbSink = val
 		ret.dbSink.SetOutputStream(node.task.OutputWriter())
 	default:
-		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
+		return nil, fmt.Errorf("type (%T) is not applicable for OUTPUT", val)
 	}
 	ret.name = code
 	ret.task = node.task

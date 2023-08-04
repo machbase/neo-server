@@ -145,7 +145,7 @@ func (x *Task) CompileString(code string) error {
 func (x *Task) Compile(codeReader io.Reader) error {
 	err := x.compile(codeReader)
 	if err != nil {
-		x.LogError("Compile %s", err.Error())
+		x.LogError("Compile", err.Error())
 	}
 	return err
 }
@@ -180,7 +180,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 	if len(exprs) >= 1 {
 		x.input, err = NewNode(x).compileSource(exprs[0].text)
 		if err != nil {
-			x.compileErr = errors.Wrapf(err, "at line %d", exprs[0].line)
+			x.compileErr = errors.Wrapf(err, "line %d", exprs[0].line)
 			return x.compileErr
 		}
 	}
@@ -189,7 +189,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 	if len(exprs) >= 2 {
 		x.output, err = NewNode(x).compileSink(exprs[len(exprs)-1].text)
 		if err != nil {
-			x.compileErr = errors.Wrapf(err, "at line %d", exprs[len(exprs)-1].line)
+			x.compileErr = errors.Wrapf(err, "line %d", exprs[len(exprs)-1].line)
 			return x.compileErr
 		}
 	}

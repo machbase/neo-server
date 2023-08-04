@@ -45,21 +45,21 @@ func TestMeshgrid(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-/* TODO
 func TestScriptSource(t *testing.T) {
 	codeLines := []string{
 		"SCRIPT(`",
 		`ctx := import("context")`,
 		`for i := 0; i < 10; i++ {`,
-		`  ctx.yield(i)`,
+		`  ctx.yieldKey(i, i*10)`,
 		`}`,
 		"`)",
 		"CSV()",
 	}
-	resultLines := []string{}
+	resultLines := []string{
+		"0,0", "1,10", "2,20", "3,30", "4,40", "5,50", "6,60", "7,70", "8,80", "9,90",
+	}
 	runTest(t, codeLines, resultLines)
 }
-*/
 
 func TestPushKey(t *testing.T) {
 	codeLines := []string{
