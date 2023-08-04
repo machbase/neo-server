@@ -18,7 +18,7 @@ Example)
 */
 func (x *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
-	case ChannelSource:
+	case DataSource:
 		return gen, nil
 	case [][][]float64:
 		return &meshgrid{vals: gen}, nil

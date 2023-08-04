@@ -5,10 +5,20 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/mods/bridge"
 	spi "github.com/machbase/neo-spi"
 )
+
+type bridgeName struct {
+	name string
+}
+
+// bridge('name')
+func (x *Node) fmBridge(name string) *bridgeName {
+	return &bridgeName{name: name}
+}
 
 type bridgeNode struct {
 	name     string
@@ -22,6 +32,7 @@ type bridgeNode struct {
 	task *Task
 }
 
+// TODO not registered yet
 // BRIDGE_QUERY('my-sqlite', 'select * from table where id=?', 123)
 func (x *Node) fmBridgeQuery(name string, command string, params ...any) *bridgeNode {
 	ret := &bridgeNode{name: name, command: command, params: params}
@@ -93,10 +104,22 @@ func (bn *bridgeNode) genQuery() <-chan *Record {
 				values := make([]any, len(columns))
 				for i, c := range columns {
 					switch c.ScanType().String() {
+					case "sql.NullBool":
+						values[i] = new(bool)
+					case "sql.NullByte":
+						values[i] = new(uint8)
+					case "sql.NullFloat64":
+						values[i] = new(float64)
+					case "sql.NullInt16":
+						values[i] = new(int16)
+					case "sql.NullInt32":
+						values[i] = new(int32)
 					case "sql.NullInt64":
 						values[i] = new(int64)
 					case "sql.NullString":
 						values[i] = new(string)
+					case "sql.NullTime":
+						values[i] = new(time.Time)
 					default:
 						// fmt.Println("---", i, c.Name(), c.ScanType().String())
 						values[i] = new(string)

@@ -18,7 +18,6 @@ type output struct {
 	name string
 
 	src chan *Record
-	db  spi.Database
 
 	encoder       codec.RowsEncoder
 	dbSink        DatabaseSink
@@ -166,7 +165,7 @@ func (out *output) openEncoder() error {
 	if out.encoder != nil {
 		return out.encoder.Open()
 	} else if out.dbSink != nil {
-		return out.dbSink.Open(out.db)
+		return out.dbSink.Open(out.task.db)
 	} else {
 		return errors.New("no output encoder")
 	}

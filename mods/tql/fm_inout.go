@@ -7,7 +7,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-type ChannelSource interface {
+type DataSource interface {
 	Header() spi.Columns
 	Gen() <-chan *Record
 	Stop()
@@ -15,24 +15,16 @@ type ChannelSource interface {
 
 var (
 	// fake sources
-	_ ChannelSource = &meshgrid{}
-	_ ChannelSource = &linspace{}
-	_ ChannelSource = &sphere{}
-	_ ChannelSource = &oscillator{}
+	_ DataSource = &meshgrid{}
+	_ DataSource = &linspace{}
+	_ DataSource = &sphere{}
+	_ DataSource = &oscillator{}
 	// reader sources
-	_ ChannelSource = &bytesSource{}
-	_ ChannelSource = &csvSource{}
-	_ ChannelSource = &bridgeNode{}
-)
-
-type DatabaseSource interface {
-	ToSQL() string
-	Params() []any
-}
-
-var (
-	_ DatabaseSource = &sqlSource{}
-	_ DatabaseSource = &querySource{}
+	_ DataSource = &bytesSource{}
+	_ DataSource = &csvSource{}
+	_ DataSource = &bridgeNode{}
+	// database sources
+	_ DataSource = &databaseSource{}
 )
 
 type DatabaseSink interface {

@@ -59,6 +59,7 @@ func NewNode(task *Task) *Node {
 		"INSERT": x.gen_INSERT,
 		"APPEND": x.gen_APPEND,
 		// maps.bridge
+		"bridge":       x.gen_bridge,
 		"BRIDGE_QUERY": x.gen_BRIDGE_QUERY,
 		// maps.fourier
 		"minHz": x.gen_minHz,
@@ -638,25 +639,17 @@ func (x *Node) gen_QUERY(args ...any) (any, error) {
 
 // gen_SQL
 //
-// syntax: SQL(string, ...interface {})
+// syntax: SQL(...interface {})
 func (x *Node) gen_SQL(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("SQL", 1, len(args))
-	}
-	p0, err := convString(args, 0, "SQL", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1 := []interface{}{}
-	for n := 1; n < len(args); n++ {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "SQL", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p1 = append(p1, argv)
+		p0 = append(p0, argv)
 	}
-	ret := x.fmSql(p0, p1...)
-	return ret, nil
+	return x.fmSql(p0...)
 }
 
 // gen_table
@@ -725,6 +718,21 @@ func (x *Node) gen_APPEND(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmAppend(p0...)
+}
+
+// gen_bridge
+//
+// syntax: bridge(string)
+func (x *Node) gen_bridge(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("bridge", 1, len(args))
+	}
+	p0, err := convString(args, 0, "bridge", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmBridge(p0)
+	return ret, nil
 }
 
 // gen_BRIDGE_QUERY

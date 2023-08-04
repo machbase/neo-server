@@ -45,6 +45,22 @@ func TestMeshgrid(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+/* TODO
+func TestScriptSource(t *testing.T) {
+	codeLines := []string{
+		"SCRIPT(`",
+		`ctx := import("context")`,
+		`for i := 0; i < 10; i++ {`,
+		`  ctx.yield(i)`,
+		`}`,
+		"`)",
+		"CSV()",
+	}
+	resultLines := []string{}
+	runTest(t, codeLines, resultLines)
+}
+*/
+
 func TestPushKey(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 1, 2))",
@@ -177,6 +193,41 @@ func TestBridgeQuerySqlite(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestBridgeSql(t *testing.T) {
+	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
+	require.Nil(t, err)
+
+	codeLines := []string{
+		"SQL(bridge('sqlite'), `select * from example_sql`)",
+		"CSV(heading(true))",
+	}
+	resultLines := []string{
+		"id,name,age,address",
+		"100,alpha,10,street-100",
+		"200,bravo,20,street-200",
+	}
+	runTest(t, codeLines, resultLines, "no such table: example_sql")
+
+	br, err := bridge.GetSqlBridge("sqlite")
+	require.Nil(t, err)
+	require.NotNil(t, br)
+	ctx := context.TODO()
+	conn, err := br.Connect(ctx)
+	require.Nil(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
+	_, err = conn.ExecContext(ctx, `create table if not exists example_sql (
+		id INTEGER NOT NULL PRIMARY KEY, name TEXT, age TEXT, address TEXT, UNIQUE(name)
+	)`)
+	require.Nil(t, err)
+	_, err = conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?)`, 100, "alpha", "10", "street-100")
+	require.Nil(t, err)
+	_, err = conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?)`, 200, "bravo", "20", "street-200")
+	require.Nil(t, err)
+
+	runTest(t, codeLines, resultLines)
+}
+
 func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...string) {
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
@@ -191,7 +242,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...str
 
 	var executeErr error
 	go func() {
-		executeErr = task.Execute(nil)
+		executeErr = task.Execute()
 		doneCh <- true
 	}()
 

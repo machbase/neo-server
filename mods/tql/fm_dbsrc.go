@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/machbase/neo-server/mods/do"
+	spi "github.com/machbase/neo-spi"
 )
 
 type QueryFrom struct {
@@ -187,7 +191,7 @@ func (x *Node) fmBetween(begin any, end any, period ...any) (*QueryBetween, erro
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func (x *Node) fmQuery(args ...any) (*querySource, error) {
+func (x *Node) fmQuery(args ...any) (*databaseSource, error) {
 	between, _ := x.fmBetween("last-1s", "last")
 	ret := &querySource{
 		columns: []string{},
@@ -213,7 +217,7 @@ func (x *Node) fmQuery(args ...any) (*querySource, error) {
 	if ret.from == nil {
 		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
 	}
-	return ret, nil
+	return &databaseSource{task: x.task, sqlText: ret.ToSQL()}, nil
 }
 
 type querySource struct {
@@ -302,20 +306,89 @@ func (si *querySource) toSqlGroup() string {
 	return ret
 }
 
-type sqlSource struct {
-	text   string
-	params []any
+type databaseSource struct {
+	task    *Task
+	sqlText string
+	params  []any
+
+	columns       spi.Columns
+	fetched       int
+	shouldStopNow bool
+	executed      bool
+
+	closeWait sync.WaitGroup
 }
 
-// SQL('select ....')
-func (x *Node) fmSql(text string, params ...any) *sqlSource {
-	return &sqlSource{text: text, params: params}
+func (dc *databaseSource) Header() spi.Columns {
+	return dc.columns
 }
 
-func (s *sqlSource) ToSQL() string {
-	return s.text
+func (dc *databaseSource) Gen() <-chan *Record {
+	ch := make(chan *Record)
+	dc.closeWait.Add(1)
+	go func() {
+		queryCtx := &do.QueryContext{
+			DB: dc.task.db,
+			OnFetchStart: func(cols spi.Columns) {
+				dc.columns = cols
+				dc.task.SetResultColumns(cols)
+			},
+			OnFetch: func(nrow int64, values []any) bool {
+				dc.fetched++
+				if dc.shouldStopNow {
+					return false
+				} else {
+					ch <- NewRecord(dc.fetched, values)
+					return true
+				}
+			},
+			OnFetchEnd: func() {},
+			OnExecuted: func(usermsg string, rowsAffected int64) {
+				dc.executed = true
+			},
+		}
+		if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+			ch <- ErrorRecord(err)
+		} else {
+			if dc.executed {
+				dc.columns = spi.Columns{{Name: "message", Type: "string"}}
+				ch <- NewRecord(msg, "")
+			}
+			ch <- EofRecord
+		}
+		close(ch)
+		dc.closeWait.Done()
+	}()
+
+	return ch
 }
 
-func (s *sqlSource) Params() []any {
-	return s.params
+func (dc *databaseSource) Stop() {
+	dc.shouldStopNow = true
+	dc.closeWait.Wait()
+}
+
+// SQL('select ....', arg1, arg2)
+// SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
+func (x *Node) fmSql(args ...any) (DataSource, error) {
+	//func (x *Node) fmSql(text string, params ...any) *databaseChannel {
+	if len(args) == 0 {
+		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
+	}
+	switch v := args[0].(type) {
+	case string:
+		return &databaseSource{task: x.task, sqlText: v, params: args[1:]}, nil
+	case *bridgeName:
+		if len(args) > 1 {
+			if text, ok := args[1].(string); ok {
+				ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
+				ret.execType = "query"
+				ret.task = x.task
+				return ret, nil
+			} else {
+				return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
+			}
+		}
+	}
+	return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
 }

@@ -158,6 +158,7 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 	params["DUP"] = []string{fmt.Sprintf("%t", dup)}
 	params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
 	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(ent.s.db)
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriterJson(io.Discard, true)
 	task.SetParams(params)
@@ -167,7 +168,7 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 		ent.Stop()
 		return
 	}
-	if err := task.Execute(ent.s.db); err != nil {
+	if err := task.Execute(); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

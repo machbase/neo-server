@@ -3,8 +3,6 @@ package tql
 import (
 	"fmt"
 
-	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -12,10 +10,8 @@ type input struct {
 	task *Task
 	name string
 	next Receiver
-	db   spi.Database
 
-	dbSrc DatabaseSource
-	chSrc ChannelSource
+	chSrc DataSource
 }
 
 func (node *Node) compileSource(code string) (*input, error) {
@@ -29,9 +25,7 @@ func (node *Node) compileSource(code string) (*input, error) {
 	}
 	var ret *input
 	switch src := src.(type) {
-	case DatabaseSource:
-		ret = &input{dbSrc: src}
-	case ChannelSource:
+	case DataSource:
 		ret = &input{chSrc: src}
 	default:
 		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
@@ -42,44 +36,11 @@ func (node *Node) compileSource(code string) (*input, error) {
 }
 
 func (in *input) execute() error {
-	if in.dbSrc == nil && in.chSrc == nil {
+	if in.chSrc == nil {
 		return errors.New("nil source")
 	}
 	shouldStopNow := false
-	if in.dbSrc != nil {
-		fetched := 0
-		executed := false
-		queryCtx := &do.QueryContext{
-			DB: in.db,
-			OnFetchStart: func(c spi.Columns) {
-				in.task.output.resultColumns = c
-			},
-			OnFetch: func(nrow int64, values []any) bool {
-				fetched++
-				if shouldStopNow {
-					return false
-				} else {
-					NewRecord(fetched, values).Tell(in.next)
-					return true
-				}
-			},
-			OnFetchEnd: func() {},
-			OnExecuted: func(usermsg string, rowsAffected int64) {
-				executed = true
-			},
-		}
-		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL(), in.dbSrc.Params()...); err != nil {
-			ErrorRecord(err).Tell(in.next)
-			return err
-		} else {
-			if executed {
-				in.task.SetResultColumns(spi.Columns{{Name: "message", Type: "string"}})
-				NewRecord(msg, "").Tell(in.next)
-			}
-			EofRecord.Tell(in.next)
-			return nil
-		}
-	} else if in.chSrc != nil {
+	if in.chSrc != nil {
 		in.task.output.resultColumns = in.chSrc.Header()
 		for rec := range in.chSrc.Gen() {
 			if rec.IsEOF() || rec.IsCircuitBreak() {
