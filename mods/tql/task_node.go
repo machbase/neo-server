@@ -10,6 +10,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+type Closer interface {
+	Close() error
+}
+
 type Node struct {
 	task *Task
 	name string
@@ -31,11 +35,9 @@ type Node struct {
 	inflight *Record
 }
 
-var _ expression.Parameters = &Node{}
-
-type Closer interface {
-	Close() error
-}
+var (
+	_ expression.Parameters = &Node{}
+)
 
 func (node *Node) compile(code string) error {
 	expr, err := node.Parse(code)
@@ -186,16 +188,17 @@ func (node *Node) start() {
 				}
 				switch rs := ret.(type) {
 				case *Record:
-					if rs.IsEOF() || rs.IsCircuitBreak() {
-						lastWill = rs
+					if alive, will := node.tellNext(rs); !alive {
+						lastWill = will
 						break loop
-					} else if rs.IsError() {
-						rs.Tell(node.next)
-					} else {
-						rs.Tell(node.next)
 					}
 				case []*Record:
-					ArrayRecord(rs).Tell(node.next)
+					for _, rec := range rs {
+						if alive, will := node.tellNext(rec); !alive {
+							lastWill = will
+							break loop
+						}
+					}
 				default:
 					errRec := ErrorRecord(fmt.Errorf("func '%s' returns invalid type: %T", node.Name(), ret))
 					errRec.Tell(node.next)
@@ -210,6 +213,17 @@ func (node *Node) start() {
 		}
 		node.closeWg.Done()
 	}()
+}
+
+func (node *Node) tellNext(rec *Record) (bool, *Record) {
+	if rec.IsEOF() || rec.IsCircuitBreak() {
+		return false, rec
+	} else if rec.IsError() {
+		rec.Tell(node.next)
+	} else {
+		rec.Tell(node.next)
+	}
+	return true, nil
 }
 
 func (node *Node) stop() {
