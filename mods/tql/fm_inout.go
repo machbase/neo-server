@@ -8,9 +8,8 @@ import (
 )
 
 type DataSource interface {
-	Header() spi.Columns
 	Gen() <-chan *Record
-	Stop()
+	stop()
 }
 
 var (
@@ -22,9 +21,9 @@ var (
 	// reader sources
 	_ DataSource = &bytesSource{}
 	_ DataSource = &csvSource{}
-	_ DataSource = &bridgeNode{}
 	// database sources
 	_ DataSource = &databaseSource{}
+	_ DataSource = &bridgeNode{}
 )
 
 type DatabaseSink interface {

@@ -13,14 +13,14 @@ import (
 
 // STRING(CTX.Body | 'string' | file('path') [, separator()])
 func (x *Node) fmString(origin any, args ...any) (any, error) {
-	ret := &bytesSource{toString: true}
+	ret := &bytesSource{task: x.task, toString: true}
 	err := ret.init(origin, args...)
 	return ret, err
 }
 
 // BYTES(CTX.Body | 'string' | file('path') [, separator()])
 func (x *Node) fmBytes(origin any, args ...any) (any, error) {
-	ret := &bytesSource{}
+	ret := &bytesSource{task: x.task}
 	err := ret.init(origin, args...)
 	return ret, err
 }
@@ -74,6 +74,7 @@ func (x *Node) fmSeparator(c byte) *separator {
 }
 
 type bytesSource struct {
+	task      *Task
 	toString  bool
 	delimiter byte
 
@@ -90,6 +91,9 @@ func (src *bytesSource) Gen() <-chan *Record {
 	buff := bufio.NewReader(src.reader)
 	num := 0
 	go func() {
+		src.task.SetResultColumns([]*spi.Column{{
+			Name: "string", Type: spi.ColumnBufferTypeString,
+		}})
 		for src.alive {
 			var str any
 			var err error
@@ -124,13 +128,7 @@ func (src *bytesSource) Gen() <-chan *Record {
 	return src.ch
 }
 
-func (src *bytesSource) Stop() {
+func (src *bytesSource) stop() {
 	src.alive = false
 	src.closeWait.Wait()
-}
-
-func (src *bytesSource) Header() spi.Columns {
-	return []*spi.Column{{
-		Name: "string", Type: spi.ColumnBufferTypeString,
-	}}
 }

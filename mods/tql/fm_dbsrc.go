@@ -363,7 +363,7 @@ func (dc *databaseSource) Gen() <-chan *Record {
 	return ch
 }
 
-func (dc *databaseSource) Stop() {
+func (dc *databaseSource) stop() {
 	dc.shouldStopNow = true
 	dc.closeWait.Wait()
 }

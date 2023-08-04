@@ -30,6 +30,7 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 	}
 	if isSource {
 		ret, err := newCsvSource(args...)
+		ret.task = x.task
 		return ret, err
 	} else {
 		ret := newEncoder("csv", args...)
@@ -38,6 +39,7 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 }
 
 type csvSource struct {
+	task      *Task
 	fd        io.ReadCloser
 	columns   map[int]*columnOpt
 	hasHeader bool
@@ -62,6 +64,7 @@ func (src *csvSource) Gen() <-chan *Record {
 			if rownum == 0 && src.hasHeader {
 				continue // skip header
 			}
+			src.task.SetResultColumns(src.header())
 			values := make([]any, len(fields))
 			for i := 0; i < len(fields); i++ {
 				colOpt := src.columns[i]
@@ -123,7 +126,7 @@ func (src *csvSource) Gen() <-chan *Record {
 	return src.ch
 }
 
-func (src *csvSource) Stop() {
+func (src *csvSource) stop() {
 	src.alive = false
 	src.closeWait.Wait()
 	if src.fd != nil {
@@ -131,7 +134,7 @@ func (src *csvSource) Stop() {
 	}
 }
 
-func (fs *csvSource) Header() spi.Columns {
+func (fs *csvSource) header() spi.Columns {
 	if len(fs.columns) == 0 {
 		return []*spi.Column{}
 	}

@@ -21,23 +21,20 @@ func (x *Node) fmFake(origin any) (any, error) {
 	case DataSource:
 		return gen, nil
 	case [][][]float64:
-		return &meshgrid{vals: gen}, nil
+		return &meshgrid{task: x.task, vals: gen}, nil
 	case []float64:
-		return &linspace{vals: gen}, nil
+		return &linspace{task: x.task, vals: gen}, nil
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 }
 
 type meshgrid struct {
+	task *Task
 	vals [][][]float64
 
 	alive     bool
 	closeWait sync.WaitGroup
-}
-
-func (mg *meshgrid) Header() spi.Columns {
-	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
 }
 
 func (mg *meshgrid) Gen() <-chan *Record {
@@ -45,6 +42,11 @@ func (mg *meshgrid) Gen() <-chan *Record {
 	mg.alive = true
 	mg.closeWait.Add(1)
 	go func() {
+		mg.task.SetResultColumns([]*spi.Column{
+			{Name: "id", Type: "int"},
+			{Name: "x", Type: "double"},
+			{Name: "y", Type: "double"},
+		})
 		id := 0
 		for x := range mg.vals {
 			for y := range mg.vals[x] {
@@ -65,12 +67,13 @@ func (mg *meshgrid) Gen() <-chan *Record {
 	return ch
 }
 
-func (mg *meshgrid) Stop() {
+func (mg *meshgrid) stop() {
 	mg.alive = false
 	mg.closeWait.Wait()
 }
 
 type linspace struct {
+	task *Task
 	vals []float64
 
 	ch        chan *Record
@@ -78,15 +81,15 @@ type linspace struct {
 	closeWait sync.WaitGroup
 }
 
-func (ls *linspace) Header() spi.Columns {
-	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
-}
-
 func (ls *linspace) Gen() <-chan *Record {
 	ls.ch = make(chan *Record)
 	ls.alive = true
 	ls.closeWait.Add(1)
 	go func() {
+		ls.task.SetResultColumns([]*spi.Column{
+			{Name: "id", Type: "int"},
+			{Name: "x", Type: "double"},
+		})
 		id := 0
 		for _, v := range ls.vals {
 			if !ls.alive {
@@ -102,7 +105,7 @@ func (ls *linspace) Gen() <-chan *Record {
 	return ls.ch
 }
 
-func (ls *linspace) Stop() {
+func (ls *linspace) stop() {
 	ls.alive = false
 	for range ls.ch {
 		// drain remains
@@ -112,12 +115,14 @@ func (ls *linspace) Stop() {
 
 func (x *Node) fmSphere() *sphere {
 	return &sphere{
+		task:    x.task,
 		latStep: 36,
 		lonStep: 18,
 	}
 }
 
 type sphere struct {
+	task    *Task
 	latStep float64
 	lonStep float64
 
@@ -125,15 +130,16 @@ type sphere struct {
 	closeWait sync.WaitGroup
 }
 
-func (sp *sphere) Header() spi.Columns {
-	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
-}
-
 func (sp *sphere) Gen() <-chan *Record {
 	ch := make(chan *Record)
 	sp.alive = true
 	sp.closeWait.Add(1)
 	go func() {
+		sp.task.SetResultColumns([]*spi.Column{
+			{Name: "x", Type: "double"},
+			{Name: "y", Type: "double"},
+			{Name: "z", Type: "double"},
+		})
 		var u, v float64
 		for u = 0; sp.alive && u < 2.0*math.Pi; u += (2.0 * math.Pi) / sp.latStep {
 			for v = 0; sp.alive && v < math.Pi; v += math.Pi / sp.lonStep {
@@ -149,7 +155,7 @@ func (sp *sphere) Gen() <-chan *Record {
 	return ch
 }
 
-func (sp *sphere) Stop() {
+func (sp *sphere) stop() {
 	sp.alive = false
 	sp.closeWait.Wait()
 }
@@ -161,7 +167,7 @@ func (sp *sphere) Stop() {
 // //	)
 // // )
 func (x *Node) fmOscillator(args ...any) (any, error) {
-	ret := &oscillator{}
+	ret := &oscillator{task: x.task}
 	for _, arg := range args {
 		switch v := arg.(type) {
 		default:
@@ -185,15 +191,12 @@ func (x *Node) fmOscillator(args ...any) (any, error) {
 }
 
 type oscillator struct {
+	task        *Task
 	timeRange   *TimeRange
 	frequencies []*freq
 	ch          chan *Record
 	alive       bool
 	closeWait   sync.WaitGroup
-}
-
-func (fs *oscillator) Header() spi.Columns {
-	return []*spi.Column{{Name: "time", Type: "datetime"}, {Name: "value", Type: "double"}}
 }
 
 func (fs *oscillator) Gen() <-chan *Record {
@@ -212,6 +215,10 @@ func (fs *oscillator) Gen() <-chan *Record {
 			to = fs.timeRange.Time.Add(fs.timeRange.Duration).UnixNano()
 		}
 
+		fs.task.SetResultColumns([]*spi.Column{
+			{Name: "time", Type: "datetime"},
+			{Name: "value", Type: "double"},
+		})
 		for x := from; fs.alive && x < to; x += step {
 			value := 0.0
 			for _, fr := range fs.frequencies {
@@ -225,7 +232,7 @@ func (fs *oscillator) Gen() <-chan *Record {
 	return fs.ch
 }
 
-func (fs *oscillator) Stop() {
+func (fs *oscillator) stop() {
 	fs.alive = false
 	fs.closeWait.Wait()
 }

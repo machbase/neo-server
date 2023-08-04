@@ -41,10 +41,6 @@ func (x *Node) fmBridgeQuery(name string, command string, params ...any) *bridge
 	return ret
 }
 
-func (bn *bridgeNode) Header() spi.Columns {
-	return nil
-}
-
 func (bn *bridgeNode) Gen() <-chan *Record {
 	switch bn.execType {
 	case "query":
@@ -137,7 +133,7 @@ func (bn *bridgeNode) genQuery() <-chan *Record {
 	return ch
 }
 
-func (bn *bridgeNode) Stop() {
+func (bn *bridgeNode) stop() {
 	bn.alive = false
 	bn.closeWait.Wait()
 }

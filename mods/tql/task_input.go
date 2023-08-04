@@ -41,7 +41,6 @@ func (in *input) execute() error {
 	}
 	shouldStopNow := false
 	if in.chSrc != nil {
-		in.task.output.resultColumns = in.chSrc.Header()
 		for rec := range in.chSrc.Gen() {
 			if rec.IsEOF() || rec.IsCircuitBreak() {
 				break
@@ -52,7 +51,7 @@ func (in *input) execute() error {
 			}
 			rec.Tell(in.next)
 			if shouldStopNow {
-				in.chSrc.Stop()
+				in.chSrc.stop()
 				break
 			}
 		}
