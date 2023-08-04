@@ -227,7 +227,7 @@ func (x *Task) ExecuteHandler(db spi.Database, w http.ResponseWriter) error {
 func (x *Task) Execute(db spi.Database) error {
 	err := x.execute(db)
 	if err != nil {
-		x.LogError("Execute %s", err.Error())
+		x.LogError("execute error", err.Error())
 	}
 	return err
 }

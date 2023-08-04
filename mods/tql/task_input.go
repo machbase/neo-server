@@ -68,7 +68,7 @@ func (in *input) execute() error {
 				executed = true
 			},
 		}
-		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
+		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL(), in.dbSrc.Params()...); err != nil {
 			ErrorRecord(err).Tell(in.next)
 			return err
 		} else {
@@ -81,11 +81,15 @@ func (in *input) execute() error {
 		}
 	} else if in.chSrc != nil {
 		in.task.output.resultColumns = in.chSrc.Header()
-		for values := range in.chSrc.Gen() {
-			if len(values) == 0 {
-				continue
+		for rec := range in.chSrc.Gen() {
+			if rec.IsEOF() || rec.IsCircuitBreak() {
+				break
 			}
-			NewRecord(values[0], values[1:]).Tell(in.next)
+			if rec.IsError() {
+				rec.Tell(in.next)
+				break
+			}
+			rec.Tell(in.next)
 			if shouldStopNow {
 				in.chSrc.Stop()
 				break

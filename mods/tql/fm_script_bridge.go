@@ -36,7 +36,7 @@ func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) 
 				return nil, err
 			}
 			node.AddCloser(conn)
-			return &sqlBridge{node: node, conn: conn, name: cname}, nil
+			return &scSqlBridge{node: node, conn: conn, name: cname}, nil
 		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
 			return &pubBridge{
 				node:      node,
@@ -105,39 +105,39 @@ func pubBridge_publish(c *pubBridge) func(args ...tengo.Object) (tengo.Object, e
 	}
 }
 
-type sqlBridge struct {
+type scSqlBridge struct {
 	tengo.ObjectImpl
 	node *Node
 	name string
 	conn *sql.Conn
 }
 
-func (c *sqlBridge) TypeName() string {
+func (c *scSqlBridge) TypeName() string {
 	return "bridge:sql"
 }
 
-func (c *sqlBridge) String() string {
+func (c *scSqlBridge) String() string {
 	return "bridge:sql:" + c.name
 }
 
-func (c *sqlBridge) Copy() tengo.Object {
-	return &sqlBridge{node: c.node, conn: c.conn, name: c.name}
+func (c *scSqlBridge) Copy() tengo.Object {
+	return &scSqlBridge{node: c.node, conn: c.conn, name: c.name}
 }
 
-func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
+func (c *scSqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 	if o, ok := index.(*tengo.String); ok {
 		switch o.Value {
 		case "exec":
 			return &tengo.UserFunction{
-				Name: "exec", Value: sqlBridge_exec(c),
+				Name: "exec", Value: scSqlBridge_exec(c),
 			}, nil
 		case "query":
 			return &tengo.UserFunction{
-				Name: "query", Value: sqlBridge_query(c),
+				Name: "query", Value: scSqlBridge_query(c),
 			}, nil
 		case "queryRow":
 			return &tengo.UserFunction{
-				Name: "queryRow", Value: sqlBridge_queryRow(c),
+				Name: "queryRow", Value: scSqlBridge_queryRow(c),
 			}, nil
 		case "close":
 			return &tengo.UserFunction{
@@ -161,7 +161,7 @@ func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 	}
 }
 
-func sqlBridge_exec(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
+func scSqlBridge_exec(c *scSqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments
@@ -181,11 +181,11 @@ func sqlBridge_exec(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, erro
 		if err != nil {
 			return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 		}
-		return &sqlResult{ctx: c.node, result: result}, nil
+		return &scSqlResult{ctx: c.node, result: result}, nil
 	}
 }
 
-func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
+func scSqlBridge_query(c *scSqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments
@@ -206,11 +206,11 @@ func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, err
 			return nil, errors.Wrap(err, "query failed")
 		}
 		c.node.AddCloser(rows)
-		return &sqlRows{ctx: c.node, rows: rows}, nil
+		return &scSqlRows{ctx: c.node, rows: rows}, nil
 	}
 }
 
-func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
+func scSqlBridge_queryRow(c *scSqlBridge) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		if len(args) < 1 {
 			return nil, tengo.ErrWrongNumArguments
@@ -255,25 +255,25 @@ func sqlBridge_queryRow(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, 
 	}
 }
 
-type sqlResult struct {
+type scSqlResult struct {
 	tengo.ObjectImpl
 	ctx    *Node
 	result sql.Result
 }
 
-func (r *sqlResult) TyepName() string {
+func (r *scSqlResult) TyepName() string {
 	return "connector:sql-result"
 }
 
-func (r *sqlResult) String() string {
+func (r *scSqlResult) String() string {
 	return "connector:sql-result"
 }
 
-func (r *sqlResult) Copy() tengo.Object {
-	return &sqlResult{ctx: r.ctx, result: r.result}
+func (r *scSqlResult) Copy() tengo.Object {
+	return &scSqlResult{ctx: r.ctx, result: r.result}
 }
 
-func (r *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
+func (r *scSqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
 	s, ok := index.(*tengo.String)
 	if !ok {
 		return nil, tengo.ErrIndexOutOfBounds
@@ -296,25 +296,25 @@ func (r *sqlResult) IndexGet(index tengo.Object) (tengo.Object, error) {
 	}
 }
 
-type sqlRows struct {
+type scSqlRows struct {
 	tengo.ObjectImpl
 	ctx  *Node
 	rows *sql.Rows
 }
 
-func (c *sqlRows) TypeName() string {
+func (c *scSqlRows) TypeName() string {
 	return "connector:sql-rows"
 }
 
-func (c *sqlRows) String() string {
+func (c *scSqlRows) String() string {
 	return "connector:sql-rows"
 }
 
-func (c *sqlRows) Copy() tengo.Object {
-	return &sqlRows{ctx: c.ctx, rows: c.rows}
+func (c *scSqlRows) Copy() tengo.Object {
+	return &scSqlRows{ctx: c.ctx, rows: c.rows}
 }
 
-func (c *sqlRows) IndexGet(index tengo.Object) (tengo.Object, error) {
+func (c *scSqlRows) IndexGet(index tengo.Object) (tengo.Object, error) {
 	s, ok := index.(*tengo.String)
 	if !ok {
 		return nil, tengo.ErrIndexOutOfBounds

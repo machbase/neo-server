@@ -9,7 +9,7 @@ import (
 
 type ChannelSource interface {
 	Header() spi.Columns
-	Gen() <-chan []any
+	Gen() <-chan *Record
 	Stop()
 }
 
@@ -22,10 +22,12 @@ var (
 	// reader sources
 	_ ChannelSource = &bytesSource{}
 	_ ChannelSource = &csvSource{}
+	_ ChannelSource = &bridgeNode{}
 )
 
 type DatabaseSource interface {
 	ToSQL() string
+	Params() []any
 }
 
 var (

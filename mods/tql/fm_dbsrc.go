@@ -246,6 +246,10 @@ func (si *querySource) ToSQL() string {
 	return ret
 }
 
+func (si *querySource) Params() []any {
+	return []any{}
+}
+
 func (si *querySource) toSql() string {
 	table := strings.ToUpper(si.from.Table)
 	tag := si.from.Tag
@@ -299,14 +303,19 @@ func (si *querySource) toSqlGroup() string {
 }
 
 type sqlSource struct {
-	text string
+	text   string
+	params []any
 }
 
 // SQL('select ....')
-func (x *Node) fmSql(text string) *sqlSource {
-	return &sqlSource{text: text}
+func (x *Node) fmSql(text string, params ...any) *sqlSource {
+	return &sqlSource{text: text, params: params}
 }
 
 func (s *sqlSource) ToSQL() string {
 	return s.text
+}
+
+func (s *sqlSource) Params() []any {
+	return s.params
 }

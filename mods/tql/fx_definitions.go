@@ -63,6 +63,9 @@ var FxDefinitions = []Definition{
 	{"tag", defTask.fmTag},
 	{"INSERT", defTask.fmInsert},
 	{"APPEND", defTask.fmAppend},
+	// maps.bridge
+	{"// maps.bridge", nil},
+	{"BRIDGE_QUERY", defTask.fmBridgeQuery},
 	// maps.fourier
 	{"// maps.fourier", nil},
 	{"minHz", defTask.fmMinHz},

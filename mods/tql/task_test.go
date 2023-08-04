@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/d5/tengo/v2/require"
+	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 )
 
@@ -120,7 +122,43 @@ func TestFFT3D(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines)
 }
-func runTest(t *testing.T, codeLines []string, expect []string) {
+
+func TestBridgeQuerySqlite(t *testing.T) {
+	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
+	require.Nil(t, err)
+
+	codeLines := []string{
+		"BRIDGE_QUERY('sqlite', `select * from example`)",
+		"CSV(heading(true))",
+	}
+	resultLines := []string{
+		"id,name,age,address",
+		"100,alpha,10,street-100",
+		"200,bravo,20,street-200",
+	}
+	runTest(t, codeLines, resultLines, "no such table: example")
+
+	br, err := bridge.GetSqlBridge("sqlite")
+	require.Nil(t, err)
+	require.NotNil(t, br)
+	ctx := context.TODO()
+	conn, err := br.Connect(ctx)
+	require.Nil(t, err)
+	require.NotNil(t, conn)
+	defer conn.Close()
+	_, err = conn.ExecContext(ctx, `create table if not exists example (
+		id INTEGER NOT NULL PRIMARY KEY, name TEXT, age TEXT, address TEXT, UNIQUE(name)
+	)`)
+	require.Nil(t, err)
+	_, err = conn.ExecContext(ctx, `insert into example values(?, ?, ?, ?)`, 100, "alpha", "10", "street-100")
+	require.Nil(t, err)
+	_, err = conn.ExecContext(ctx, `insert into example values(?, ?, ?, ?)`, 200, "bravo", "20", "street-200")
+	require.Nil(t, err)
+
+	runTest(t, codeLines, resultLines)
+}
+
+func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...string) {
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
@@ -132,9 +170,9 @@ func runTest(t *testing.T, codeLines []string, expect []string) {
 	err := task.CompileString(code)
 	require.Nil(t, err)
 
+	var executeErr error
 	go func() {
-		err = task.Execute(nil)
-		require.Nil(t, err)
+		executeErr = task.Execute(nil)
 		doneCh <- true
 	}()
 
@@ -145,6 +183,14 @@ func runTest(t *testing.T, codeLines []string, expect []string) {
 	case <-doneCh:
 		cancel()
 	}
-	result := w.String()
-	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+	if len(expectErr) == 1 {
+		// case error
+		require.NotNil(t, executeErr)
+		require.Equal(t, expectErr[0], executeErr.Error())
+	} else {
+		// case success
+		require.Nil(t, err)
+		result := w.String()
+		require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+	}
 }

@@ -32,7 +32,7 @@ func (x *Node) fmFake(origin any) (any, error) {
 type meshgrid struct {
 	vals [][][]float64
 
-	ch        chan []any
+	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
@@ -41,8 +41,8 @@ func (mg *meshgrid) Header() spi.Columns {
 	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
 }
 
-func (mg *meshgrid) Gen() <-chan []any {
-	mg.ch = make(chan []any)
+func (mg *meshgrid) Gen() <-chan *Record {
+	mg.ch = make(chan *Record)
 	mg.alive = true
 	mg.closeWait.Add(1)
 	go func() {
@@ -55,7 +55,7 @@ func (mg *meshgrid) Gen() <-chan []any {
 				elm := mg.vals[x][y]
 				if len(elm) == 2 {
 					id++
-					mg.ch <- []any{id, elm[0], elm[1]}
+					mg.ch <- NewRecord(id, []float64{elm[0], elm[1]})
 				}
 			}
 		}
@@ -77,7 +77,7 @@ func (mg *meshgrid) Stop() {
 type linspace struct {
 	vals []float64
 
-	ch        chan []any
+	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
@@ -86,8 +86,8 @@ func (ls *linspace) Header() spi.Columns {
 	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
 }
 
-func (ls *linspace) Gen() <-chan []any {
-	ls.ch = make(chan []any)
+func (ls *linspace) Gen() <-chan *Record {
+	ls.ch = make(chan *Record)
 	ls.alive = true
 	ls.closeWait.Add(1)
 	go func() {
@@ -97,7 +97,7 @@ func (ls *linspace) Gen() <-chan []any {
 				goto done
 			}
 			id++
-			ls.ch <- []any{id, v}
+			ls.ch <- NewRecord(id, []any{v})
 		}
 	done:
 		close(ls.ch)
@@ -125,7 +125,7 @@ type sphere struct {
 	latStep float64
 	lonStep float64
 
-	ch        chan []any
+	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
@@ -134,8 +134,8 @@ func (sp *sphere) Header() spi.Columns {
 	return []*spi.Column{{Name: "x", Type: "double"}, {Name: "y", Type: "double"}, {Name: "z", Type: "double"}}
 }
 
-func (sp *sphere) Gen() <-chan []any {
-	sp.ch = make(chan []any)
+func (sp *sphere) Gen() <-chan *Record {
+	sp.ch = make(chan *Record)
 	sp.alive = true
 	sp.closeWait.Add(1)
 	go func() {
@@ -145,7 +145,7 @@ func (sp *sphere) Gen() <-chan []any {
 				x := math.Cos(u) * math.Sin(v)
 				y := math.Sin(u) * math.Sin(v)
 				z := math.Cos(v)
-				sp.ch <- []any{x, y, z}
+				sp.ch <- NewRecord(x, []float64{y, z})
 			}
 		}
 		close(sp.ch)
@@ -195,7 +195,7 @@ func (x *Node) fmOscillator(args ...any) (any, error) {
 type oscillator struct {
 	timeRange   *TimeRange
 	frequencies []*freq
-	ch          chan []any
+	ch          chan *Record
 	alive       bool
 	closeWait   sync.WaitGroup
 }
@@ -204,8 +204,8 @@ func (fs *oscillator) Header() spi.Columns {
 	return []*spi.Column{{Name: "time", Type: "datetime"}, {Name: "value", Type: "double"}}
 }
 
-func (fs *oscillator) Gen() <-chan []any {
-	fs.ch = make(chan []any)
+func (fs *oscillator) Gen() <-chan *Record {
+	fs.ch = make(chan *Record)
 	fs.alive = true
 	fs.closeWait.Add(1)
 	go func() {
@@ -225,7 +225,7 @@ func (fs *oscillator) Gen() <-chan []any {
 			for _, fr := range fs.frequencies {
 				value += fr.Value(float64(x) / float64(time.Second))
 			}
-			fs.ch <- []any{time.Unix(0, x), value}
+			fs.ch <- NewRecord(time.Unix(0, x), []any{value})
 		}
 		close(fs.ch)
 		fs.closeWait.Done()

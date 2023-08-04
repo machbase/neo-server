@@ -43,13 +43,13 @@ type csvSource struct {
 	hasHeader bool
 
 	reader    *csv.Reader
-	ch        chan []any
+	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
 
-func (src *csvSource) Gen() <-chan []any {
-	src.ch = make(chan []any)
+func (src *csvSource) Gen() <-chan *Record {
+	src.ch = make(chan *Record)
 	src.alive = true
 	src.closeWait.Add(1)
 	go func() {
@@ -115,7 +115,7 @@ func (src *csvSource) Gen() <-chan []any {
 				}
 			}
 			rownum++
-			src.ch <- values
+			src.ch <- NewRecord(values[0], values[1:])
 		}
 		close(src.ch)
 		src.closeWait.Done()

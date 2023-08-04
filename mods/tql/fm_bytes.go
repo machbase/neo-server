@@ -78,13 +78,13 @@ type bytesSource struct {
 	delimiter byte
 
 	reader    io.Reader
-	ch        chan []any
+	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
 
-func (src *bytesSource) Gen() <-chan []any {
-	src.ch = make(chan []any)
+func (src *bytesSource) Gen() <-chan *Record {
+	src.ch = make(chan *Record)
 	src.alive = true
 	src.closeWait.Add(1)
 	buff := bufio.NewReader(src.reader)
@@ -111,7 +111,7 @@ func (src *bytesSource) Gen() <-chan []any {
 			if err != nil && err != io.EOF {
 				break
 			}
-			src.ch <- []any{num, str}
+			src.ch <- NewRecord(num, str)
 			num++
 			if err == io.EOF {
 				break
