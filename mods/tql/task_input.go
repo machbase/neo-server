@@ -9,9 +9,10 @@ import (
 )
 
 type input struct {
-	selfNode *Node
-	next     *Node
-	db       spi.Database
+	task *Task
+	name string
+	next Receiver
+	db   spi.Database
 
 	dbSrc DatabaseSource
 	chSrc ChannelSource
@@ -35,7 +36,8 @@ func (node *Node) compileSource(code string) (*input, error) {
 	default:
 		return nil, fmt.Errorf("%T is not applicable for INPUT", src)
 	}
-	ret.selfNode = node
+	ret.task = node.task
+	ret.name = code
 	return ret, nil
 }
 
@@ -43,20 +45,21 @@ func (in *input) start() error {
 	if in.dbSrc == nil && in.chSrc == nil {
 		return errors.New("nil source")
 	}
+	shouldStopNow := false
 	if in.dbSrc != nil {
 		fetched := 0
 		executed := false
 		queryCtx := &do.QueryContext{
 			DB: in.db,
 			OnFetchStart: func(c spi.Columns) {
-				in.selfNode.task.output.resultColumns = c
+				in.task.output.resultColumns = c
 			},
 			OnFetch: func(nrow int64, values []any) bool {
 				fetched++
-				if in.selfNode.task.shouldStopNodes() {
+				if shouldStopNow {
 					return false
 				} else {
-					in.feedNodes(values)
+					NewRecord(fetched, values).Tell(in.next)
 					return true
 				}
 			},
@@ -66,46 +69,33 @@ func (in *input) start() error {
 			},
 		}
 		if msg, err := do.Query(queryCtx, in.dbSrc.ToSQL()); err != nil {
-			in.feedNodes(nil)
+			ErrorRecord(err).Tell(in.next)
 			return err
 		} else {
 			if executed {
-				in.selfNode.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
-				in.feedNodes([]any{msg})
-				in.feedNodes(nil)
-			} else if fetched == 0 {
-				in.feedNodes([]any{EofRecord})
-				in.feedNodes(nil)
+				in.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
+				NewRecord(msg, "").Tell(in.next)
+				EofRecord.Tell(in.next)
 			} else {
-				in.feedNodes(nil)
+				EofRecord.Tell(in.next)
 			}
 			return nil
 		}
 	} else if in.chSrc != nil {
-		in.selfNode.task.output.resultColumns = in.chSrc.Header()
+		in.task.output.resultColumns = in.chSrc.Header()
 		for values := range in.chSrc.Gen() {
-			in.feedNodes(values)
-			if in.selfNode.task.shouldStopNodes() {
+			if len(values) == 0 {
+				continue
+			}
+			NewRecord(values[0], values[1:]).Tell(in.next)
+			if shouldStopNow {
 				in.chSrc.Stop()
 				break
 			}
 		}
-		in.feedNodes(nil)
+		EofRecord.Tell(in.next)
 		return nil
 	} else {
 		return errors.New("no source")
-	}
-}
-
-func (in *input) feedNodes(values []any) {
-	if in.next != nil {
-		if values != nil {
-			in.next.Src <- NewRecord(values[0], values[1:])
-		} else {
-			in.next.Src <- EofRecord
-		}
-	} else {
-		// there is no chain, just forward input data to sink directly
-		in.selfNode.task.sendToEncoder(values)
 	}
 }

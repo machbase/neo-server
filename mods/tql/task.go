@@ -10,8 +10,6 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
@@ -38,14 +36,7 @@ type Task struct {
 	output     *output
 
 	// runtime
-	nodes   []*Node
-	nodesWg sync.WaitGroup
-
-	resultCh chan any
-
-	closeOnce      sync.Once
-	lastError      error
-	circuitBreaker bool
+	nodes []*Node
 }
 
 var (
@@ -204,6 +195,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 			x.compileErr = errors.Wrapf(err, "at line %d", exprs[len(exprs)-1].line)
 			return x.compileErr
 		}
+		x.output.log = x
 	}
 
 	// map
@@ -211,24 +203,21 @@ func (x *Task) compile(codeReader io.Reader) error {
 		exprs = exprs[1 : len(exprs)-1]
 		for n, mapLine := range exprs {
 			node := NewNode(x)
-			expr, err := node.Parse(mapLine.text)
-			if err != nil {
-				return errors.Wrapf(err, "at %s", mapLine.text)
+			if err := node.compile(mapLine.text); err != nil {
+				return err
 			}
-			if expr == nil {
-				return fmt.Errorf("compile error at %s", mapLine.text)
-			}
+			node.log = x
 			x.nodes = append(x.nodes, node)
-			node.Name = expr.String()
-			node.Expr = expr
-			node.Src = make(chan *Record)
 			if n > 0 {
-				x.nodes[n-1].Next = x.nodes[n]
+				x.nodes[n-1].next = x.nodes[n]
 			}
+			x.nodes[n].next = x.output
 		}
 	}
 	if len(x.nodes) > 0 {
 		x.input.next = x.nodes[0]
+	} else {
+		x.input.next = x.output
 	}
 	x.compiled = true
 	return nil
@@ -264,133 +253,28 @@ func (x *Task) execute(db spi.Database) (err error) {
 	if x.output != nil {
 		x.output.db = db
 	}
-	x.resultCh = make(chan any)
 
-	////////////////////////////////
-	// start encoder
-	x.nodesWg.Add(1)
-	go func() {
-		x.output.start()
-		x.nodesWg.Done()
-	}()
+	// start output
+	x.output.start()
 
-	////////////////////////////////
 	// start nodes
 	for _, child := range x.nodes {
-		x.nodesWg.Add(1)
-		child.Sink = x.resultCh
 		child.start()
 	}
 
-	sink0 := func(k any, v any) {
-		x.sendToEncoder([]any{k, v})
-	}
-
-	sink1 := func(k any, v []any) {
-		x.sendToEncoder(append([]any{k}, v...))
-	}
-
-	sink2 := func(k any, v [][]any) {
-		for _, row := range v {
-			sink1(k, row)
-		}
-	}
-
-	go func() {
-		for ret := range x.resultCh {
-			switch castV := ret.(type) {
-			case *Record:
-				if castV.IsEOF() {
-					x.nodesWg.Done()
-				} else if castV.IsCircuitBreak() {
-					x.circuitBreaker = true
-				} else {
-					switch tV := castV.value.(type) {
-					case []any:
-						if len(tV) == 0 {
-							sink1(castV.key, tV)
-						} else {
-							if subarr, ok := tV[0].([][]any); ok {
-								sink2(castV.key, subarr)
-							} else {
-								sink1(castV.key, tV)
-							}
-						}
-					case [][]any:
-						sink2(castV.key, tV)
-					default:
-						sink0(castV.key, castV.value)
-					}
-				}
-			case []*Record:
-				for _, v := range castV {
-					switch tV := v.value.(type) {
-					case []any:
-						sink1(v.key, tV)
-					case [][]any:
-						sink2(v.key, tV)
-					default:
-						sink0(v.key, tV)
-					}
-				}
-			case error:
-				x.lastError = castV
-			}
-		}
-	}()
-
-	////////////////////////////////
-	// input source
-	if err := x.input.start(); err != nil {
-		x.lastError = err
-	}
+	// run input
+	err = x.input.start()
 
 	// wait all nodes are finished
-	x.closeOnce.Do(func() {
-		for _, child := range x.nodes {
-			child.Stop()
-		}
-		close(x.resultCh)
-		x.output.stop()
-	})
-
-	x.nodesWg.Wait()
-
-	return x.lastError
-}
-
-func (x *Task) shouldStopNodes() bool {
-	return x.circuitBreaker || x.lastError != nil
-}
-
-func (x *Task) sendToEncoder(values []any) {
-	if len(values) > 0 {
-		if t, ok := values[0].(*time.Time); ok {
-			values[0] = *t
-		}
-		x.output.encoderCh <- values
+	for _, child := range x.nodes {
+		child.stop()
 	}
-}
+	x.output.stop()
 
-func (x *Task) columnTypeName(v any) string {
-	switch v.(type) {
-	default:
-		return fmt.Sprintf("%T", v)
-	case string:
-		return "string"
-	case *time.Time:
-		return "datetime"
-	case time.Time:
-		return "datetime"
-	case *float32:
-		return "float"
-	case float32:
-		return "float"
-	case *float64:
-		return "double"
-	case float64:
-		return "double"
+	if err == nil {
+		err = x.output.lastError
 	}
+	return
 }
 
 // DumpSQL returns the generated SQL statement if the input source database source
@@ -401,31 +285,55 @@ func (x *Task) DumpSQL() string {
 	return x.input.dbSrc.ToSQL()
 }
 
-func (x *Task) LogDebug(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[DEBUG] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[DEBUG]", msg)
-	}
+type TaskLog interface {
+	Logf(format string, args ...any)
+	Log(args ...any)
+	LogDebugf(format string, args ...any)
+	LogDebug(args ...any)
+	LogWarnf(format string, args ...any)
+	LogWarn(args ...any)
+	LogErrorf(format string, args ...any)
+	LogError(args ...any)
 }
 
-func (x *Task) LogDebugString(args ...string) {
-	fmt.Println("[DEBUG]", strings.Join(args, " "))
+func (x *Task) Logf(format string, args ...any) {
+	fmt.Printf("[INFO] "+format+"\n", args...)
 }
 
-func (x *Task) LogInfo(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[INFO] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[INFO]", msg)
-	}
+func (x *Task) Log(args ...any) {
+	fmt.Println(append([]any{"[INFO]"}, args...)...)
 }
 
-func (x *Task) LogError(msg string, args ...any) {
-	if len(args) > 0 {
-		fmt.Printf("[ERROR] "+msg+"\n", args...)
-	} else {
-		fmt.Println("[ERROR]", msg)
-	}
+func (x *Task) LogDebugf(format string, args ...any) {
+	fmt.Printf("[DEBUG] "+format+"\n", args...)
+}
+
+func (x *Task) LogDebug(args ...any) {
+	fmt.Println(append([]any{"[DEBUG]"}, args...)...)
+}
+
+func (x *Task) LogWarnf(format string, args ...any) {
+	fmt.Printf("[WARN] "+format+"\n", args...)
+}
+
+func (x *Task) LogWarn(args ...any) {
+	fmt.Println(append([]any{"[WARN]"}, args...)...)
+}
+
+func (x *Task) LogErrorf(format string, args ...any) {
+	fmt.Printf("[ERROR] "+format+"\n", args...)
+}
+
+func (x *Task) LogError(args ...any) {
+	fmt.Println(append([]any{"[ERROR]"}, args...)...)
+}
+
+func (x *Task) LogFatalf(format string, args ...any) {
+	fmt.Printf("[FATAL] "+format+"\n", args...)
+	debug.PrintStack()
+}
+
+func (x *Task) LogFatal(args ...any) {
+	fmt.Println(append([]any{"[FATAL]"}, args...)...)
 	debug.PrintStack()
 }

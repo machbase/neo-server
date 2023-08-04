@@ -34,9 +34,9 @@ func (node *Node) fmFastFourierTransform(args ...any) (any, error) {
 	}
 
 	// key any, value []any,
-	key := node.Record().key
+	key := node.Inflight().key
 	var value []any
-	if v, ok := node.Record().value.([]any); ok {
+	if v, ok := node.Inflight().value.([]any); ok {
 		value = v
 	} else {
 		value = []any{v}

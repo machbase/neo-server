@@ -6,11 +6,21 @@ import (
 	"time"
 )
 
+type Receiver interface {
+	Name() string
+	Receive(*Record)
+}
+
 const kEOF = "f0ec1dea-03e8-4121-8c98-0b78704e009d"
 const kBREAK = "5bd2e423-4536-4a8d-a80d-c11567fc296f"
+const kERR = "0fd184f8-0f4a-4d05-bf0f-77bd31642eae"
+const kARR = "057f1cb0-df9f-41d3-b003-ba7c1ef8f497"
 
 var EofRecord = &Record{key: kEOF}
 var BreakRecord = &Record{key: kBREAK}
+
+func ErrorRecord(err error) *Record     { return &Record{key: kERR, value: err} }
+func ArrayRecord(arr []*Record) *Record { return &Record{key: kARR, value: arr} }
 
 type Record struct {
 	key   any
@@ -29,12 +39,62 @@ func (r *Record) IsCircuitBreak() bool {
 	return r.key == kBREAK
 }
 
+func (r *Record) IsError() bool {
+	return r.key == kERR
+}
+
+func (r *Record) Error() error {
+	if r.key == kERR {
+		return r.value.(error)
+	} else {
+		return nil
+	}
+}
+
+func (r *Record) IsArray() bool {
+	return r.key == kARR
+}
+
+func (r *Record) IsTuple() bool {
+	switch r.key {
+	case kEOF, kBREAK, kERR, kARR:
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *Record) Array() []*Record {
+	if r.key == kARR {
+		return r.value.([]*Record)
+	} else {
+		return nil
+	}
+}
+
 func (r *Record) Key() any {
 	return r.key
 }
 
 func (r *Record) Value() any {
 	return r.value
+}
+
+func (r *Record) Flatten() []any {
+	k := r.Key()
+	v := r.Value()
+	switch vv := v.(type) {
+	case []any:
+		return append([]any{k}, vv...)
+	case any:
+		return []any{k, vv}
+	default:
+		return []any{k, fmt.Sprintf("Record: unsupported value type(%T)", vv)}
+	}
+}
+
+func (r *Record) Tell(receiver Receiver) {
+	receiver.Receive(r)
 }
 
 func (r *Record) String() string {

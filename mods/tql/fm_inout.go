@@ -58,7 +58,7 @@ func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
 
 // Deprecated: no more required
 func (node *Node) fmINPUT(args ...any) (any, error) {
-	node.LogWarnf("INPUT() is deprecated. no more need to use")
+	node.task.LogWarnf("INPUT() is deprecated.")
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("INPUT", 1, len(args))
 	}
@@ -67,7 +67,7 @@ func (node *Node) fmINPUT(args ...any) (any, error) {
 
 // Deprecated: no more required
 func (node *Node) fmOUTPUT(args ...any) (any, error) {
-	node.LogWarnf("OUTPUT() is deprecated. no more need to use")
+	node.task.LogWarnf("OUTPUT() is deprecated.")
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
 	}

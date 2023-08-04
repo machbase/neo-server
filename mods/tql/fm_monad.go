@@ -13,53 +13,66 @@ func (node *Node) fmLazy(flag bool) *lazyOption {
 }
 
 func (node *Node) fmTake(limit int) *Record {
-	if node.Nrow > limit {
+	if node.nrow > limit {
 		return BreakRecord
 	}
-	return node.Record()
+	return node.Inflight()
 }
 
 func (node *Node) fmDrop(limit int) *Record {
-	if node.Nrow <= limit {
+	if node.nrow <= limit {
 		return nil
 	}
-	return node.Record()
+	return node.Inflight()
 }
 
 func (node *Node) fmFilter(flag bool) *Record {
 	if !flag {
 		return nil // drop this vector
 	}
-	return node.Record()
+	return node.Inflight()
 }
 
 func (node *Node) fmFlatten() any {
-	key := node.Record().key
-	value := node.Record().value
-	if arr, ok := value.([]any); ok {
+	rec := node.Inflight()
+	if rec.IsArray() {
 		ret := []*Record{}
-		for _, elm := range arr {
-			if subarr, ok := elm.([]any); ok {
-				for _, subelm := range subarr {
-					ret = append(ret, NewRecord(key, subelm))
+		for _, r := range rec.Array() {
+			k := r.Key()
+			switch value := r.Value().(type) {
+			case []any:
+				for _, v := range value {
+					ret = append(ret, NewRecord(k, v))
 				}
-			} else if subarr, ok := elm.([][]any); ok {
-				for _, subelm := range subarr {
-					ret = append(ret, NewRecord(key, subelm))
-				}
-			} else {
-				ret = append(ret, NewRecord(key, elm))
+			case any:
+				ret = append(ret, r)
+			default:
+				ret = append(ret, ErrorRecord(fmt.Errorf("fmtFlatten() unknown type '%T' in array record", value)))
 			}
 		}
 		return ret
+	} else if rec.IsTuple() {
+		switch value := rec.Value().(type) {
+		case []any:
+			k := rec.Key()
+			ret := []*Record{}
+			for _, v := range value {
+				ret = append(ret, NewRecord(k, v))
+			}
+			return ret
+		case any:
+			return rec
+		default:
+			return ErrorRecord(fmt.Errorf("fmtFlatten() unknown type '%T' in array record", value))
+		}
 	} else {
-		return NewRecord(key, value)
+		return rec
 	}
 }
 
 func (node *Node) fmGroupByKey(args ...any) any {
-	key := node.Record().key
-	value := node.Record().value
+	key := node.Inflight().key
+	value := node.Inflight().value
 	lazy := false
 	if len(args) > 0 {
 		for _, arg := range args {
@@ -103,7 +116,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 	}
 
 	// V : value
-	value := node.Record().value
+	value := node.Inflight().value
 	switch val := value.(type) {
 	default:
 		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
@@ -135,7 +148,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 // incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
 func (node *Node) fmPushKey(newKey any) (any, error) {
-	rec := node.Record()
+	rec := node.Inflight()
 	if rec == nil {
 		return nil, nil
 	}

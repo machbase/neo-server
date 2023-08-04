@@ -5,15 +5,17 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
+	"github.com/pkg/errors"
 )
 
 type Node struct {
-	Name string
-	Expr *expression.Expression
-	Src  chan *Record
-	Sink chan<- any
-	Next *Node
-	Nrow int
+	log TaskLog
+
+	name string
+	expr *expression.Expression
+	src  chan *Record
+	next Receiver
+	nrow int
 
 	task      *Task
 	functions map[string]expression.Function
@@ -25,7 +27,7 @@ type Node struct {
 	closers []Closer
 	mutex   sync.Mutex
 
-	currentRecord *Record
+	inflight *Record
 }
 
 var _ expression.Parameters = &Node{}
@@ -34,8 +36,22 @@ type Closer interface {
 	Close() error
 }
 
-func (node *Node) SetRecord(rec *Record) {
-	node.currentRecord = rec
+func (node *Node) compile(code string) error {
+	expr, err := node.Parse(code)
+	if err != nil {
+		return errors.Wrapf(err, "at %s", code)
+	}
+	if expr == nil {
+		return fmt.Errorf("compile error at %s", code)
+	}
+	node.name = expr.String()
+	node.expr = expr
+	node.src = make(chan *Record)
+	return nil
+}
+
+func (node *Node) SetInflight(rec *Record) {
+	node.inflight = rec
 }
 
 func (node *Node) Task() *Task {
@@ -46,39 +62,16 @@ func (node *Node) Function(name string) expression.Function {
 	return node.functions[name]
 }
 
-func (node *Node) Record() *Record {
-	return node.currentRecord
+func (node *Node) Name() string {
+	return node.name
 }
 
-func (node *Node) Logf(format string, args ...any) {
-	if node.task != nil {
-		node.task.LogInfo("[INFO] "+format, args...)
-	} else {
-		fmt.Printf("[INFO] "+format+"\n", args...)
-	}
+func (node *Node) Inflight() *Record {
+	return node.inflight
 }
 
-func (node *Node) LogDebug(args ...string) {
-	if !node.Debug {
-		return
-	}
-	node.task.LogDebugString(args...)
-}
-
-func (node *Node) LogWarnf(format string, args ...any) {
-	if node.task != nil {
-		node.task.LogInfo("[WARN] "+format, args...)
-	} else {
-		fmt.Printf("[WARN] "+format+"\n", args...)
-	}
-}
-
-func (node *Node) LogErrorf(format string, args ...any) {
-	if node.task != nil {
-		node.task.LogError(format, args...)
-	} else {
-		fmt.Printf("[ERROR] "+format+"\n", args...)
-	}
+func (node *Node) Receive(rec *Record) {
+	node.src <- rec
 }
 
 func (node *Node) Parse(text string) (*expression.Expression, error) {
@@ -89,12 +82,12 @@ func (node *Node) Parse(text string) (*expression.Expression, error) {
 func (node *Node) Get(name string) (any, error) {
 	switch name {
 	case "K":
-		if node.currentRecord != nil {
-			return node.currentRecord.key, nil
+		if node.inflight != nil {
+			return node.inflight.key, nil
 		}
 	case "V":
-		if node.currentRecord != nil {
-			return node.currentRecord.value, nil
+		if node.inflight != nil {
+			return node.inflight.value, nil
 		}
 	case "CTX":
 		return node, nil
@@ -145,39 +138,23 @@ func (node *Node) yield(key any, values []any) {
 	if len(values) == 0 {
 		return
 	}
-	if node.Next != nil {
-		var yieldValue *Record
-		if len(values) == 1 {
-			yieldValue = NewRecord(key, values[0])
-		} else {
-			yieldValue = NewRecord(key, values)
-		}
-		if node.Debug {
-			node.task.LogDebugString("++", node.Name, "-->", node.Next.Name, yieldValue.String(), " ")
-		}
-		node.Next.Src <- yieldValue
+	var yieldValue *Record
+	if len(values) == 1 {
+		yieldValue = NewRecord(key, values[0])
 	} else {
-		var yieldValue *Record
-		if len(values) == 1 {
-			yieldValue = NewRecord(key, values[0])
-		} else {
-			yieldValue = NewRecord(key, values)
-		}
-		if node.Debug {
-			node.task.LogDebugString("++", node.Name, "==> SINK", yieldValue.String())
-		}
-		node.Sink <- yieldValue
+		yieldValue = NewRecord(key, values)
 	}
+	if node.Debug {
+		node.log.LogDebug("++", node.Name(), "-->", node.next.Name(), yieldValue.String(), " ")
+	}
+	yieldValue.Tell(node.next)
 }
 
 func (node *Node) start() {
 	node.closeWg.Add(1)
 	go func() {
 		defer func() {
-			if node.Next != nil {
-				node.Next.Src <- EofRecord
-			}
-			node.Sink <- EofRecord
+			EofRecord.Tell(node.next)
 			node.closeWg.Done()
 			if o := recover(); o != nil {
 				node.task.LogError("panic %s %v", node.Name, o)
@@ -185,41 +162,40 @@ func (node *Node) start() {
 		}()
 
 		drop := func(p *Record) {
-			node.LogDebug("--", node.Name, "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
+			if node.Debug {
+				node.log.LogDebug("--", node.Name(), "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
+			}
 		}
 
-		for rec := range node.Src {
+		for rec := range node.src {
 			if rec.IsEOF() {
 				break
 			}
-			node.Nrow++
-			node.SetRecord(rec)
-			if ret, err := node.Expr.Eval(node); err != nil {
-				node.Sink <- err
-			} else if ret != nil {
-				var resultset []*Record
+			node.nrow++
+			node.SetInflight(rec)
+			if ret, err := node.expr.Eval(node); err != nil {
+				ErrorRecord(err).Tell(node.next)
+			} else {
+				if ret == nil {
+					drop(rec)
+					continue
+				}
 				switch rs := ret.(type) {
 				case *Record:
-					if rs.IsEOF() {
+					if rs.IsEOF() || rs.IsCircuitBreak() {
+						rs.Tell(node.next)
 						break
-					} else if rs.IsCircuitBreak() {
-						node.Sink <- rs
+					} else if rs.IsError() {
+						rs.Tell(node.next)
 					} else {
-						if rs != nil {
-							resultset = []*Record{rs}
-						}
+						rs.Tell(node.next)
 					}
 				case []*Record:
-					resultset = rs
+					ArrayRecord(rs).Tell(node.next)
 				default:
-					node.Sink <- fmt.Errorf("func returns invalid type: %T (%s)", ret, node.Name)
+					errRec := ErrorRecord(fmt.Errorf("func returns invalid type: %T (%s)", ret, node.Name()))
+					errRec.Tell(node.next)
 				}
-
-				for _, record := range resultset {
-					node.yield(record.key, []any{record.value})
-				}
-			} else {
-				drop(rec)
 			}
 		}
 
@@ -229,10 +205,10 @@ func (node *Node) start() {
 	}()
 }
 
-func (node *Node) Stop() {
-	if node.Src != nil {
+func (node *Node) stop() {
+	if node.src != nil {
 		node.closeWg.Wait()
-		close(node.Src)
+		close(node.src)
 	}
 	for i := len(node.closers) - 1; i >= 0; i-- {
 		c := node.closers[i]

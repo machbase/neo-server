@@ -47,7 +47,7 @@ func (node *Node) fmScriptTengo(content string) (any, error) {
 	}
 	slet.drop = false
 	slet.yields = slet.yields[:0]
-	slet.param.key, slet.param.value = node.Record().key, node.Record().value
+	slet.param.key, slet.param.value = node.Inflight().key, node.Inflight().value
 
 	slet.err = slet.compiled.RunContext(node.task.ctx)
 	if slet.err != nil {
