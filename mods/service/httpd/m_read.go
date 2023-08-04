@@ -22,6 +22,8 @@ const (
 	MACHLAKE_PLAN_ENTERPRISE = "ENTERPRISE"
 
 	HTTP_TRACKID = "cemlib/trackid"
+
+	EDGE_SELECT_LIMIT = 10000
 )
 
 type planLimit struct {
@@ -343,6 +345,8 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		return
 	}
 
+	svr.log.Infof("param: %+v", param)
+
 	// svr.log.Debugf("request param : %+v", param)
 
 	timezone, err := svr.makeTimezone(ctx, param.Timezone)
@@ -439,27 +443,39 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		}
 	}
 
+	param.TableName = strings.ToUpper(param.TableName)
+
 	// limit count
-	if param.Limit != "" {
-		if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
-			rsp.Message = check
-			ctx.JSON(http.StatusUnprocessableEntity, rsp)
-			return
+	if param.TableName == "TAG" {
+		if param.Limit != "" {
+			if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
+				rsp.Message = check
+				ctx.JSON(http.StatusUnprocessableEntity, rsp)
+				return
+			}
+		} else { // 일반적으로 limit을 param으로 받아오는지?
+			param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
 		}
-	} else { // 일반적으로 limit을 param으로 받아오는지?
-		param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
+	} else if param.TableName == "TAGDATA" {
+		if param.Limit == "" {
+			param.Limit = fmt.Sprintf("%d", EDGE_SELECT_LIMIT) //default 5000, 10000
+		}
 	}
 
 	// get direction type
-	if param.Direction != "" {
-		if param.Direction != "0" && param.Direction != "1" {
-			svr.log.Info("direction range over")
-			rsp.Message = "Wrong Parameter. (direction) : must be 0, 1"
-			ctx.JSON(http.StatusUnprocessableEntity, rsp)
-			return
+	if param.TableName == "TAG" {
+		if param.Direction != "" {
+			if param.Direction != "0" && param.Direction != "1" {
+				svr.log.Info("direction range over")
+				rsp.Message = "Wrong Parameter. (direction) : must be 0, 1"
+				ctx.JSON(http.StatusUnprocessableEntity, rsp)
+				return
+			}
+		} else {
+			// nfx #128 해결 후 삭제 예정
+			param.Direction = "0"
 		}
-	} else {
-		// nfx #128 해결 후 삭제 예정
+	} else if param.TableName == "TAGDATA" {
 		param.Direction = "0"
 	}
 
@@ -478,7 +494,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	sqlText += makeAndCondition(param.AndCondition, param.Separator, true)
 	sqlText += makeLimit(param.Offset, param.Limit)
 
-	svr.log.Debug(trackId, "query : ", sqlText)
+	svr.log.Info(trackId, "query : ", sqlText)
 
 	// scale의 수만큼 소수점 자릿수를 보여줌
 	// 기존 Lake getDataCli() 에서는 scale 을 설정하는 함수가 존재
