@@ -468,7 +468,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	sqlText += "NAME, "                                                       // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME,
 	sqlText += makeTimeColumn("TIME", param.DateFormat, "TIME")               // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME
 	sqlText += makeValueColumn(param.ColumnList, param.AliasList) + " "       // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME , "value" AS "value"
-	sqlText += "FROM " + "TAG" + " "                                          // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME , "value" AS "value" FROM TAG
+	sqlText += "FROM " + param.TableName + " "                                // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME , "value" AS "value" FROM TAG
 	sqlText += "WHERE " + makeInCondition("NAME", param.TagList, false, true) // SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME , "value" AS "value" FROM TAG WHERE NAME IN(val, val, val)
 	if param.StartType == "date" {
 		sqlText += makeBetweenCondition("TIME", makeToDate(param.StartTime), makeToDate(param.EndTime), true) + " "
