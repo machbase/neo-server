@@ -21,7 +21,7 @@ func TestTagQLFile(t *testing.T) {
 					(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
 				AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
 			LIMIT 0, 1000000`),
-		normalize(task.DumpSQL()), "./test/simple.tql")
+		normalize(task.DumpSQL()))
 }
 
 type TagQLTestCase struct {

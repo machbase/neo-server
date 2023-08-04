@@ -35,7 +35,7 @@ func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) 
 			if err != nil {
 				return nil, err
 			}
-			node.LazyClose(conn)
+			node.AddCloser(conn)
 			return &sqlBridge{node: node, conn: conn, name: cname}, nil
 		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
 			return &pubBridge{
@@ -146,7 +146,7 @@ func (c *sqlBridge) IndexGet(index tengo.Object) (tengo.Object, error) {
 					if c.conn == nil {
 						return nil, nil
 					}
-					defer c.node.CancelClose(c.conn)
+					defer c.node.CancelCloser(c.conn)
 					if err := c.conn.Close(); err != nil {
 						return &tengo.Error{Value: &tengo.String{Value: err.Error()}}, nil
 					}
@@ -205,7 +205,7 @@ func sqlBridge_query(c *sqlBridge) func(args ...tengo.Object) (tengo.Object, err
 		if err != nil {
 			return nil, errors.Wrap(err, "query failed")
 		}
-		c.node.LazyClose(rows)
+		c.node.AddCloser(rows)
 		return &sqlRows{ctx: c.node, rows: rows}, nil
 	}
 }
@@ -351,7 +351,7 @@ func (c *sqlRows) IndexGet(index tengo.Object) (tengo.Object, error) {
 		return &tengo.UserFunction{Name: "close", Value: func(args ...tengo.Object) (tengo.Object, error) {
 			// fmt.Println("rows.close()")
 			err := c.rows.Close()
-			defer c.ctx.CancelClose(c.rows)
+			defer c.ctx.CancelCloser(c.rows)
 			return nil, err
 		}}, nil
 	default:

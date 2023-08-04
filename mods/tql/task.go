@@ -34,9 +34,7 @@ type Task struct {
 	compileErr error
 	input      *input
 	output     *output
-
-	// runtime
-	nodes []*Node
+	nodes      []*Node
 }
 
 var (
@@ -76,19 +74,16 @@ func (x *Task) SetOutputWriter(w io.Writer) error {
 	return nil
 }
 
+func (x *Task) SetOutputWriterJson(w io.Writer, json bool) {
+	x.SetOutputWriter(w)
+	x.toJsonOutput = json
+}
+
 func (x *Task) OutputWriter() spec.OutputStream {
 	if x.outputWriter == nil {
 		x.outputWriter, _ = stream.NewOutputStream("-")
 	}
 	return x.outputWriter
-}
-
-func (x *Task) SetJsonOutput(flag bool) {
-	x.toJsonOutput = flag
-}
-
-func (x *Task) ShouldJsonOutput() bool {
-	return x.toJsonOutput
 }
 
 func (x *Task) SetParams(p map[string][]string) {
@@ -104,6 +99,7 @@ func (x *Task) Params() map[string][]string {
 	return x.params
 }
 
+// Get implements expression.Parameters
 func (x *Task) Get(name string) (any, error) {
 	if strings.HasPrefix(name, "$") {
 		if p, ok := x.params[strings.TrimPrefix(name, "$")]; ok {
@@ -126,10 +122,6 @@ func (x *Task) Get(name string) (any, error) {
 			return nil, nil
 		}
 	}
-}
-
-func (x *Task) AddPragma(p string) {
-	x.pragma = append(x.pragma, p)
 }
 
 func (x *Task) CompileScript(sc *Script) error {
@@ -171,7 +163,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if strings.HasPrefix(line.text, "+") {
 				toks := strings.Split(line.text[1:], ",")
 				for _, t := range toks {
-					x.AddPragma(strings.TrimSpace(t))
+					x.pragma = append(x.pragma, strings.TrimSpace(t))
 				}
 			}
 		} else {
@@ -242,26 +234,22 @@ func (x *Task) Execute(db spi.Database) error {
 	return err
 }
 
-func (x *Task) AddNode(node *Node) {
-	x.nodes = append(x.nodes, node)
-}
-
 func (x *Task) execute(db spi.Database) (err error) {
-	if x.input != nil {
-		x.input.db = db
+	if !x.compiled {
+		return errors.New("not compiled task")
 	}
-	if x.output != nil {
-		x.output.db = db
+	if x.input == nil || x.output == nil {
+		return errors.New("task has no input or output")
 	}
 
+	x.input.db = db
+	x.output.db = db
 	// start output
 	x.output.start()
-
 	// start nodes
 	for _, child := range x.nodes {
 		child.start()
 	}
-
 	// run input
 	err = x.input.start()
 
@@ -277,7 +265,7 @@ func (x *Task) execute(db spi.Database) (err error) {
 	return
 }
 
-// DumpSQL returns the generated SQL statement if the input source database source
+// DumpSQL returns the generated SQL statement if the input source is a database source
 func (x *Task) DumpSQL() string {
 	if x.input == nil || x.input.dbSrc == nil {
 		return ""

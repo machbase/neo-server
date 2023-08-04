@@ -188,7 +188,6 @@ func FuncParamMock(k any, v any) *tql.Node {
 	task := tql.NewTask()
 	node := tql.NewNode(task)
 	node.SetInflight(tql.NewRecord(k, v))
-	task.AddNode(node)
 	return node
 }
 

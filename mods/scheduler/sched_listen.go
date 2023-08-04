@@ -159,9 +159,8 @@ func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bo
 	params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
 	task := tql.NewTaskContext(context.TODO())
 	task.SetInputReader(bytes.NewBuffer(payload))
-	task.SetOutputWriter(io.Discard)
+	task.SetOutputWriterJson(io.Discard, true)
 	task.SetParams(params)
-	task.SetJsonOutput(true)
 	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED

@@ -26,7 +26,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 		ret.encoder = val.RowEncoder(
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.AssetHost("/web/echarts/"),
-			opts.ChartJson(node.task.ShouldJsonOutput()),
+			opts.ChartJson(node.task.toJsonOutput),
 		)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
@@ -76,6 +76,13 @@ func (out *output) start() {
 
 		encoderNeedToClose := false
 		for rec := range out.encoderCh {
+			if rec.IsEOF() || rec.IsCircuitBreak() {
+				break
+			} else if rec.IsError() {
+				out.lastError = rec.Error()
+				continue
+			}
+
 			if !encoderNeedToClose {
 				if len(out.resultColumns) == 0 {
 					arr := rec.Flatten()
@@ -93,19 +100,14 @@ func (out *output) start() {
 				}
 				encoderNeedToClose = true
 			}
-			if rec.IsEOF() || rec.IsCircuitBreak() {
-				break
-			} else if rec.IsError() {
-				out.lastError = rec.Error()
-				continue
-			} else if rec.IsArray() {
+
+			if rec.IsArray() {
 				for _, v := range rec.Array() {
 					if err := out.addRow(v); err != nil {
 						out.log.LogErrorf(err.Error())
-
 					}
 				}
-			} else {
+			} else if rec.IsTuple() {
 				if err := out.addRow(rec); err != nil {
 					out.log.LogErrorf(err.Error())
 				}

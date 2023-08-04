@@ -94,8 +94,7 @@ func (ent *TimerEntry) doTask() {
 	task := tql.NewTaskContext(context.TODO())
 	task.SetParams(nil)
 	task.SetInputReader(nil)
-	task.SetOutputWriter(io.Discard)
-	task.SetJsonOutput(true)
+	task.SetOutputWriterJson(io.Discard, true)
 	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED

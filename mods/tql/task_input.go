@@ -75,10 +75,8 @@ func (in *input) start() error {
 			if executed {
 				in.task.output.resultColumns = spi.Columns{{Name: "message", Type: "string"}}
 				NewRecord(msg, "").Tell(in.next)
-				EofRecord.Tell(in.next)
-			} else {
-				EofRecord.Tell(in.next)
 			}
+			EofRecord.Tell(in.next)
 			return nil
 		}
 	} else if in.chSrc != nil {

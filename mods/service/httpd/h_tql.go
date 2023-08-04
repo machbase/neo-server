@@ -40,8 +40,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
-	task.SetOutputWriter(ctx.Writer)
-	task.SetJsonOutput(true)
+	task.SetOutputWriterJson(ctx.Writer, true)
 	if err := task.Compile(input); err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()

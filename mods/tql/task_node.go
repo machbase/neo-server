@@ -21,7 +21,7 @@ type Node struct {
 	functions map[string]expression.Function
 	values    map[string]any
 	buffer    map[any][]any
-	Debug     bool
+	debug     bool
 
 	closeWg sync.WaitGroup
 	closers []Closer
@@ -50,12 +50,12 @@ func (node *Node) compile(code string) error {
 	return nil
 }
 
-func (node *Node) SetInflight(rec *Record) {
-	node.inflight = rec
+func (node *Node) Parse(text string) (*expression.Expression, error) {
+	return expression.NewWithFunctions(text, node.functions)
 }
 
-func (node *Node) Task() *Task {
-	return node.task
+func (node *Node) SetInflight(rec *Record) {
+	node.inflight = rec
 }
 
 func (node *Node) Function(name string) expression.Function {
@@ -72,10 +72,6 @@ func (node *Node) Inflight() *Record {
 
 func (node *Node) Receive(rec *Record) {
 	node.src <- rec
-}
-
-func (node *Node) Parse(text string) (*expression.Expression, error) {
-	return expression.NewWithFunctions(text, node.functions)
 }
 
 // Get implements expression.Parameters
@@ -135,56 +131,61 @@ func (node *Node) YieldBuffer(key any) {
 }
 
 func (node *Node) yield(key any, values []any) {
+	var yieldRec *Record
 	if len(values) == 0 {
-		return
-	}
-	var yieldValue *Record
-	if len(values) == 1 {
-		yieldValue = NewRecord(key, values[0])
+		yieldRec = NewRecord(key, []any{})
+	} else if len(values) == 1 {
+		yieldRec = NewRecord(key, values[0])
 	} else {
-		yieldValue = NewRecord(key, values)
+		yieldRec = NewRecord(key, values)
 	}
-	if node.Debug {
-		node.log.LogDebug("++", node.Name(), "-->", node.next.Name(), yieldValue.String(), " ")
+	if node.debug {
+		node.log.LogDebug("++", node.Name(), "-->", node.next.Name(), yieldRec.String(), " ")
 	}
-	yieldValue.Tell(node.next)
+	yieldRec.Tell(node.next)
 }
 
 func (node *Node) start() {
 	node.closeWg.Add(1)
 	go func() {
+		var lastWill *Record
 		defer func() {
-			EofRecord.Tell(node.next)
-			node.closeWg.Done()
 			if o := recover(); o != nil {
 				node.task.LogError("panic %s %v", node.Name, o)
 			}
 		}()
-
-		drop := func(p *Record) {
-			if node.Debug {
-				node.log.LogDebug("--", node.Name(), "DROP", fmt.Sprintf("%v", p.key), p.StringValueTypes(), " ")
-			}
-		}
-
-		for rec := range node.src {
-			if rec.IsEOF() {
-				break
-			}
-			node.nrow++
-			node.SetInflight(rec)
-			if ret, err := node.expr.Eval(node); err != nil {
-				ErrorRecord(err).Tell(node.next)
-			} else {
+	loop:
+		for {
+			select {
+			case <-node.task.ctx.Done():
+				// task has benn cancelled.
+				break loop
+			case rec := <-node.src:
+				if rec.IsEOF() || rec.IsCircuitBreak() {
+					lastWill = rec
+					break loop
+				} else if rec.IsError() {
+					rec.Tell(node.next)
+					continue
+				}
+				node.nrow++
+				node.SetInflight(rec)
+				if node.debug {
+					node.log.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
+				}
+				ret, err := node.expr.Eval(node)
+				if err != nil {
+					ErrorRecord(err).Tell(node.next)
+					continue
+				}
 				if ret == nil {
-					drop(rec)
 					continue
 				}
 				switch rs := ret.(type) {
 				case *Record:
 					if rs.IsEOF() || rs.IsCircuitBreak() {
-						rs.Tell(node.next)
-						break
+						lastWill = rs
+						break loop
 					} else if rs.IsError() {
 						rs.Tell(node.next)
 					} else {
@@ -193,15 +194,18 @@ func (node *Node) start() {
 				case []*Record:
 					ArrayRecord(rs).Tell(node.next)
 				default:
-					errRec := ErrorRecord(fmt.Errorf("func returns invalid type: %T (%s)", ret, node.Name()))
+					errRec := ErrorRecord(fmt.Errorf("func '%s' returns invalid type: %T", node.Name(), ret))
 					errRec.Tell(node.next)
 				}
 			}
 		}
-
 		for k, v := range node.buffer {
 			node.yield(k, v)
 		}
+		if lastWill != nil {
+			lastWill.Tell(node.next)
+		}
+		node.closeWg.Done()
 	}()
 }
 
@@ -213,18 +217,18 @@ func (node *Node) stop() {
 	for i := len(node.closers) - 1; i >= 0; i-- {
 		c := node.closers[i]
 		if err := c.Close(); err != nil {
-			node.task.LogError("context closer %s", err.Error())
+			node.task.LogError(node.name, "context closer", err.Error())
 		}
 	}
 }
 
-func (node *Node) LazyClose(c Closer) {
+func (node *Node) AddCloser(c Closer) {
 	node.mutex.Lock()
 	node.closers = append(node.closers, c)
 	node.mutex.Unlock()
 }
 
-func (node *Node) CancelClose(c Closer) {
+func (node *Node) CancelCloser(c Closer) {
 	node.mutex.Lock()
 	idx := -1
 	for i, cl := range node.closers {
