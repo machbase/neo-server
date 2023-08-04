@@ -26,6 +26,25 @@ func TestLinspace(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMeshgrid(t *testing.T) {
+	codeLines := []string{
+		"FAKE( meshgrid(linspace(0, 2, 3), linspace(0, 2, 3)) )",
+		"CSV()",
+	}
+	resultLines := []string{
+		"1,0.000000,0.000000",
+		"2,0.000000,1.000000",
+		"3,0.000000,2.000000",
+		"4,1.000000,0.000000",
+		"5,1.000000,1.000000",
+		"6,1.000000,2.000000",
+		"7,2.000000,0.000000",
+		"8,2.000000,1.000000",
+		"9,2.000000,2.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestPushKey(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 1, 2))",

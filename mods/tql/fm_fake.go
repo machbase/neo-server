@@ -32,7 +32,6 @@ func (x *Node) fmFake(origin any) (any, error) {
 type meshgrid struct {
 	vals [][][]float64
 
-	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
@@ -42,7 +41,7 @@ func (mg *meshgrid) Header() spi.Columns {
 }
 
 func (mg *meshgrid) Gen() <-chan *Record {
-	mg.ch = make(chan *Record)
+	ch := make(chan *Record)
 	mg.alive = true
 	mg.closeWait.Add(1)
 	go func() {
@@ -55,22 +54,19 @@ func (mg *meshgrid) Gen() <-chan *Record {
 				elm := mg.vals[x][y]
 				if len(elm) == 2 {
 					id++
-					mg.ch <- NewRecord(id, []float64{elm[0], elm[1]})
+					ch <- NewRecord(id, []any{elm[0], elm[1]})
 				}
 			}
 		}
 	done:
-		close(mg.ch)
+		close(ch)
 		mg.closeWait.Done()
 	}()
-	return mg.ch
+	return ch
 }
 
 func (mg *meshgrid) Stop() {
 	mg.alive = false
-	for range mg.ch {
-		// drain remains
-	}
 	mg.closeWait.Wait()
 }
 
@@ -125,7 +121,6 @@ type sphere struct {
 	latStep float64
 	lonStep float64
 
-	ch        chan *Record
 	alive     bool
 	closeWait sync.WaitGroup
 }
@@ -135,7 +130,7 @@ func (sp *sphere) Header() spi.Columns {
 }
 
 func (sp *sphere) Gen() <-chan *Record {
-	sp.ch = make(chan *Record)
+	ch := make(chan *Record)
 	sp.alive = true
 	sp.closeWait.Add(1)
 	go func() {
@@ -145,20 +140,17 @@ func (sp *sphere) Gen() <-chan *Record {
 				x := math.Cos(u) * math.Sin(v)
 				y := math.Sin(u) * math.Sin(v)
 				z := math.Cos(v)
-				sp.ch <- NewRecord(x, []float64{y, z})
+				ch <- NewRecord(x, []any{y, z})
 			}
 		}
-		close(sp.ch)
+		close(ch)
 		sp.closeWait.Done()
 	}()
-	return sp.ch
+	return ch
 }
 
 func (sp *sphere) Stop() {
 	sp.alive = false
-	for range sp.ch {
-		// drain remains
-	}
 	sp.closeWait.Wait()
 }
 
