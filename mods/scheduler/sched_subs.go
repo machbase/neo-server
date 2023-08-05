@@ -14,7 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/tql"
 )
 
-type ListenerEntry struct {
+type SubscriberEntry struct {
 	BaseEntry
 	TaskTql string
 	Bridge  string
@@ -24,32 +24,32 @@ type ListenerEntry struct {
 	s   *svr
 	log logging.Log
 
-	didOnConnectListener bool
-	shouldSubscribe      bool
+	didOnConnectSubscriber bool
+	shouldSubscribe        bool
 }
 
-var _ Entry = &ListenerEntry{}
+var _ Entry = &SubscriberEntry{}
 
-func NewListenerEntry(s *svr, def *model.ScheduleDefinition) (*ListenerEntry, error) {
-	ret := &ListenerEntry{
+func NewSubscriberEntry(s *svr, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
+	ret := &SubscriberEntry{
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,
 		Bridge:    def.Bridge,
 		Topic:     def.Topic,
 		QoS:       def.QoS,
 		s:         s,
-		log:       logging.GetLog(fmt.Sprintf("scheduler-%s", strings.ToLower(def.Name))),
+		log:       logging.GetLog(fmt.Sprintf("subscriber-%s", strings.ToLower(def.Name))),
 	}
 
 	return ret, nil
 }
 
-func (ent *ListenerEntry) Start() error {
+func (ent *SubscriberEntry) Start() error {
 	ent.state = STARTING
 	ent.err = nil
 	ent.shouldSubscribe = true
 
-	if ent.didOnConnectListener {
+	if ent.didOnConnectSubscriber {
 		return nil
 	}
 	var br bridge.MqttBridge
@@ -62,17 +62,17 @@ func (ent *ListenerEntry) Start() error {
 			br = b
 		} else {
 			ent.state = FAILED
-			ent.err = fmt.Errorf("%s is not a listenable bridge", br0.String())
+			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
 			return ent.err
 		}
 	}
 	if ent.Topic == "" {
 		ent.state = FAILED
-		ent.err = fmt.Errorf("empty topic is not allowed, listen to %s", br.String())
+		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
 		return ent.err
 	}
 
-	ent.didOnConnectListener = true
+	ent.didOnConnectSubscriber = true
 	br.OnConnect(func(bridge any) {
 		if !ent.shouldSubscribe {
 			return
@@ -100,7 +100,7 @@ func (ent *ListenerEntry) Start() error {
 	return nil
 }
 
-func (ent *ListenerEntry) Stop() error {
+func (ent *SubscriberEntry) Stop() error {
 	ent.state = STOPPING
 	ent.err = nil
 	ent.shouldSubscribe = false
@@ -115,7 +115,7 @@ func (ent *ListenerEntry) Stop() error {
 			br = b
 		} else {
 			ent.state = FAILED
-			ent.err = fmt.Errorf("%s is not a listenable bridge", br0.String())
+			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
 			return ent.err
 		}
 	}
@@ -135,7 +135,7 @@ func (ent *ListenerEntry) Stop() error {
 	return nil
 }
 
-func (ent *ListenerEntry) doTask(topic string, payload []byte, msgId int, dup bool, retain bool) {
+func (ent *SubscriberEntry) doTask(topic string, payload []byte, msgId int, dup bool, retain bool) {
 	tick := time.Now()
 	ent.log.Info(ent.name, ent.TaskTql, "topic =", topic, "msgid =", msgId, "dup =", dup, "retain =", retain)
 	defer func() {

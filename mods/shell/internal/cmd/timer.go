@@ -12,11 +12,11 @@ import (
 
 func init() {
 	client.RegisterCmd(&client.Cmd{
-		Name:         "scheduler",
-		PcFunc:       pcScheduler,
-		Action:       doScheduler,
-		Desc:         "Manage schedulers",
-		Usage:        helpScheduler,
+		Name:         "timer",
+		PcFunc:       pcTimer,
+		Action:       doTimer,
+		Desc:         "Manage schedule of timers",
+		Usage:        helpTimer,
 		Experimental: true,
 	})
 }
@@ -73,26 +73,26 @@ func init() {
 //	@every <duration>      where "duration" is a string accepted by time.ParseDuration
 //	                       (http://golang.org/pkg/time/#ParseDuration).
 
-const helpScheduler = `  scheduler command [options]
+const helpTimer = `  timer command [options]
   commands:
-    list                            shows registered schedulers
-    del <name>                      remove scheduler
-	start <name>                    start the scheduler if it is not in RUNNING state
-	stop <name>                     stop the scheduler if it is in RUNNING state
+    list                            shows registered timers
+    del <name>                      remove timer
+	start <name>                    start the timer if it is not in RUNNING state
+	stop <name>                     stop the timer if it is in RUNNING state
 	add [options] <name> <spec> <tql-path>
-									add a scheduler that executes the specified tql script in the given period.
+									add a timer that executes the specified tql script in the given period.
         options:
             --autostart             enable auto start
         args:
-            name                    name of the scheduler
-			spec                    timing spec
+            name                    name of the timer
+			spec                    timer spec
 				                    ex) '@every 60s' '@daily' '@hourly' '0 30 * * * *'
 			tql-path                the relative path of tql script
 		ex)
-			scheduler add-timer --auto-start my_sched '@every 10s' /hello.tql
+			timer add-timer --auto-start my_sched '@every 10s' /hello.tql
 `
 
-type SchedulerCmd struct {
+type TimerCmd struct {
 	List struct{} `cmd:"" name:"list"`
 	Del  struct {
 		Name string `arg:"" name:"name"`
@@ -103,31 +103,31 @@ type SchedulerCmd struct {
 	Stop struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"stop"`
-	Add  SchedulerAddCmd `cmd:"" name:"add"`
-	Help bool            `kong:"-"`
+	Add  TimerAddCmd `cmd:"" name:"add"`
+	Help bool        `kong:"-"`
 }
 
-type SchedulerAddCmd struct {
-	Name      string `arg:"" name:"name" help:"scheduler name"`
-	Spec      string `arg:"" name:"spec" help:"timing spec"`
+type TimerAddCmd struct {
+	Name      string `arg:"" name:"name" help:"timer name"`
+	Spec      string `arg:"" name:"spec" help:"timer spec"`
 	TqlPath   string `arg:"" name:"tql-path" help:"relative path to tql script"`
 	AutoStart bool   `name:"autostart"`
 }
 
-func pcScheduler() readline.PrefixCompleterInterface {
-	return readline.PcItem("scheduler",
-		readline.PcItem("list"),
+func pcTimer() readline.PrefixCompleterInterface {
+	return readline.PcItem("timer",
 		readline.PcItem("add"),
+		readline.PcItem("list"),
 		readline.PcItem("del"),
 		readline.PcItem("start"),
 		readline.PcItem("stop"),
 	)
 }
 
-func doScheduler(ctx *client.ActionContext) {
-	cmd := &SchedulerCmd{}
+func doTimer(ctx *client.ActionContext) {
+	cmd := &TimerCmd{}
 	parser, err := client.Kong(cmd, func() error {
-		ctx.Println(strings.ReplaceAll(helpScheduler, "\t", "    "))
+		ctx.Println(strings.ReplaceAll(helpTimer, "\t", "    "))
 		cmd.Help = true
 		return nil
 	})
@@ -146,22 +146,22 @@ func doScheduler(ctx *client.ActionContext) {
 
 	switch parseCtx.Command() {
 	case "list":
-		doSchedulerList(ctx)
+		doTimerList(ctx)
 	case "del <name>":
-		doSchedulerDel(ctx, cmd.Del.Name)
+		doTimerDel(ctx, cmd.Del.Name)
 	case "start <name>":
-		doSchedulerStart(ctx, cmd.Start.Name)
+		doTimerStart(ctx, cmd.Start.Name)
 	case "stop <name>":
-		doSchedulerStop(ctx, cmd.Stop.Name)
+		doTimerStop(ctx, cmd.Stop.Name)
 	case "add <name> <spec> <tql-path>":
-		doSchedulerAdd(ctx, &cmd.Add)
+		doTimerAdd(ctx, &cmd.Add)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
 		return
 	}
 }
 
-func doSchedulerList(ctx *client.ActionContext) {
+func doTimerList(ctx *client.ActionContext) {
 	mgmtCli, err := ctx.Client.ScheduleManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
@@ -196,7 +196,7 @@ func doSchedulerList(ctx *client.ActionContext) {
 	box.Render()
 }
 
-func doSchedulerDel(ctx *client.ActionContext, name string) {
+func doTimerDel(ctx *client.ActionContext, name string) {
 	mgmtCli, err := ctx.Client.ScheduleManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
@@ -216,7 +216,7 @@ func doSchedulerDel(ctx *client.ActionContext, name string) {
 	ctx.Println("deleted")
 }
 
-func doSchedulerStart(ctx *client.ActionContext, name string) {
+func doTimerStart(ctx *client.ActionContext, name string) {
 	mgmtCli, err := ctx.Client.ScheduleManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
@@ -236,7 +236,7 @@ func doSchedulerStart(ctx *client.ActionContext, name string) {
 	ctx.Println("start", name)
 }
 
-func doSchedulerStop(ctx *client.ActionContext, name string) {
+func doTimerStop(ctx *client.ActionContext, name string) {
 	mgmtCli, err := ctx.Client.ScheduleManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
@@ -256,7 +256,7 @@ func doSchedulerStop(ctx *client.ActionContext, name string) {
 	ctx.Println("stop", name)
 }
 
-func doSchedulerAdd(ctx *client.ActionContext, cmd *SchedulerAddCmd) {
+func doTimerAdd(ctx *client.ActionContext, cmd *TimerAddCmd) {
 	mgmtCli, err := ctx.Client.ScheduleManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())

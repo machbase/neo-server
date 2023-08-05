@@ -113,9 +113,9 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 			rsp.Reason = "destination task (tql path) is not specified"
 			return rsp, nil
 		}
-	case model.SCHEDULE_LISTENER:
+	case model.SCHEDULE_SUBSCRIBER:
 		if def.Bridge == "" || def.Topic == "" {
-			rsp.Reason = "schedule of listener type should be specified with bridge and topic"
+			rsp.Reason = "schedule of subscriber type should be specified with bridge and topic"
 			return rsp, nil
 		}
 		if def.Task == "" {

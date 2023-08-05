@@ -29,7 +29,7 @@ func NewTimerEntry(s *svr, def *model.ScheduleDefinition) (*TimerEntry, error) {
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,
 		Schedule:  def.Schedule,
-		log:       logging.GetLog(fmt.Sprintf("scheduler-%s", strings.ToLower(def.Name))),
+		log:       logging.GetLog(fmt.Sprintf("timer-%s", strings.ToLower(def.Name))),
 		s:         s,
 	}
 

@@ -67,10 +67,9 @@ type SubscriberAddCmd struct {
 }
 
 func pcSubscriber() readline.PrefixCompleterInterface {
-	return readline.PcItem("schedule",
+	return readline.PcItem("subscriber",
+		readline.PcItem("add"),
 		readline.PcItem("list"),
-		readline.PcItem("add-timer"),
-		readline.PcItem("add-listener"),
 		readline.PcItem("del"),
 		readline.PcItem("start"),
 		readline.PcItem("stop"),
@@ -137,7 +136,6 @@ func doSubscriberList(ctx *client.ActionContext) {
 		}
 		lst = append(lst, c)
 	}
-	ctx.Println("Listeners")
 	box := ctx.NewBox([]string{
 		"NAME", "BRIDGE", "TOPIC", "TQL", "AUTOSTART", "STATE",
 	})
