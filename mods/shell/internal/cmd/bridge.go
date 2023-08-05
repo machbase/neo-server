@@ -25,16 +25,27 @@ func init() {
 const helpBridge = `  bridge command [options]
   commands:
     list                            shows registered bridges
-    add [options] <name>  <conn>    add bridage
+    add [options] <name>  <conn>    add bridge
         options:
-            -t,--type <type>        bridge type [ sqlite, postgres, mysql, mqtt ]
+            -t,--type <type>        bridge type [ sqlite, mqtt, ... (see below) ]
         args:
             name                    name of the connection
             conn                    connection string
-    del      <name>                 remove bridage
-    test     <name>                 test connectivity of the bridage
+    del      <name>                 remove bridge
+    test     <name>                 test connectivity of the bridge
     exec     <name> <command>       execute on the bridge
     query    <name> <command>       query on the bridge
+
+  bridge types (-t,--type):
+    sqlite        SQLite            https://sqlite.org
+	    ex) bridge add -t sqlite my_memory file::memory:?cache=shared
+			bridge add -t sqlite my_sqlite file:/tmp/sqlitefile.db
+	postgres      PostgreSQL        https://postgresql.org
+	    ex) bridge add -t postgres my_pg host=127.0.0.1 port=5432 user=dbuser dbname=postgres sslmode=disable
+	mysql         MySQL             https://mysql.com
+		ex) bridge add -t mysql my_sql root:pwd@tcp(127.0.0.1:3306)/testdb
+	mqtt          MQTT (v3.1.1)     https://mqtt.org
+		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
 `
 
 type BridgeCmd struct {
@@ -74,7 +85,11 @@ func pcBridge() readline.PrefixCompleterInterface {
 
 func doBridge(ctx *client.ActionContext) {
 	cmd := &BridgeCmd{}
-	parser, err := client.Kong(cmd, func() error { ctx.Println(helpBridge); cmd.Help = true; return nil })
+	parser, err := client.Kong(cmd, func() error {
+		ctx.Println(strings.ReplaceAll(helpBridge, "\t", "    "))
+		cmd.Help = true
+		return nil
+	})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
