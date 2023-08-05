@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/mods/nums"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -16,148 +16,124 @@ Example)
 	 INPUT(
 		FAKE( oscillator() | meshgrid() | linspace() )
 */
-func (x *Node) fmFake(origin any) (any, error) {
+func (node *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
-	case DataSource:
-		return gen, nil
-	case [][][]float64:
-		return &meshgrid{task: x.task, vals: gen}, nil
-	case []float64:
-		return &linspace{task: x.task, vals: gen}, nil
+	case *linspace:
+		genLinspace(node, gen)
+	case *meshgrid:
+		genMeshgrid(node, gen)
+	case *sphere:
+		genSphere(node, gen)
+	case *oscillator:
+		genOscillator(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
+	return nil, nil
 }
 
-type meshgrid struct {
-	task *Task
-	vals [][][]float64
-
-	alive     bool
-	closeWait sync.WaitGroup
+func (node *Node) fmLinspace(start float64, stop float64, num int) *linspace {
+	return &linspace{start: start, stop: stop, num: num}
 }
 
-func (mg *meshgrid) Gen() <-chan *Record {
-	ch := make(chan *Record)
-	mg.alive = true
-	mg.closeWait.Add(1)
-	go func() {
-		mg.task.SetResultColumns([]*spi.Column{
-			{Name: "id", Type: "int"},
-			{Name: "x", Type: "double"},
-			{Name: "y", Type: "double"},
-		})
-		id := 0
-		for x := range mg.vals {
-			for y := range mg.vals[x] {
-				if !mg.alive {
-					goto done
-				}
-				elm := mg.vals[x][y]
-				if len(elm) == 2 {
-					id++
-					ch <- NewRecord(id, []any{elm[0], elm[1]})
-				}
-			}
-		}
-	done:
-		close(ch)
-		mg.closeWait.Done()
-	}()
-	return ch
-}
-
-func (mg *meshgrid) stop() {
-	mg.alive = false
-	mg.closeWait.Wait()
+func (node *Node) fmLinspace50(start float64, stop float64) *linspace {
+	return &linspace{start: start, stop: stop, num: 50}
 }
 
 type linspace struct {
-	task *Task
-	vals []float64
-
-	ch        chan *Record
-	alive     bool
-	closeWait sync.WaitGroup
+	start float64
+	stop  float64
+	num   int
 }
 
-func (ls *linspace) Gen() <-chan *Record {
-	ls.ch = make(chan *Record)
-	ls.alive = true
-	ls.closeWait.Add(1)
-	go func() {
-		ls.task.SetResultColumns([]*spi.Column{
-			{Name: "id", Type: "int"},
-			{Name: "x", Type: "double"},
-		})
-		id := 0
-		for _, v := range ls.vals {
-			if !ls.alive {
-				goto done
+func genLinspace(node *Node, ls *linspace) {
+	node.task.SetResultColumns([]*spi.Column{
+		{Name: "id", Type: "int"},
+		{Name: "x", Type: "double"},
+	})
+	vals := nums.Linspace(ls.start, ls.stop, ls.num)
+	for i, v := range vals {
+		rec := NewRecord(i+1, []any{v})
+		node.tellNext(rec)
+	}
+}
+
+func (node *Node) fmMeshgrid(x any, y any) *meshgrid {
+	return &meshgrid{x: x, y: y}
+}
+
+type meshgrid struct {
+	x any
+	y any
+}
+
+func genMeshgrid(node *Node, ms *meshgrid) {
+	var xv []float64
+	var yv []float64
+	switch v := ms.x.(type) {
+	case *linspace:
+		xv = nums.Linspace(v.start, v.stop, v.num)
+	case []float64:
+		xv = v
+	}
+	switch v := ms.y.(type) {
+	case *linspace:
+		yv = nums.Linspace(v.start, v.stop, v.num)
+	case []float64:
+		yv = v
+	}
+	vals := nums.Meshgrid(xv, yv)
+
+	node.task.SetResultColumns([]*spi.Column{
+		{Name: "id", Type: "int"},
+		{Name: "x", Type: "double"},
+		{Name: "y", Type: "double"},
+	})
+	id := 0
+	for x := range vals {
+		for y := range vals[x] {
+			elm := vals[x][y]
+			if len(elm) == 2 {
+				id++
+				node.tellNext(NewRecord(id, []any{elm[0], elm[1]}))
 			}
-			id++
-			ls.ch <- NewRecord(id, []any{v})
 		}
-	done:
-		close(ls.ch)
-		ls.closeWait.Done()
-	}()
-	return ls.ch
+	}
 }
 
-func (ls *linspace) stop() {
-	ls.alive = false
-	for range ls.ch {
-		// drain remains
+func (node *Node) fmSphere(lonStep float64, latStep float64) *sphere {
+	if lonStep == 0 {
+		lonStep = 18
 	}
-	ls.closeWait.Wait()
-}
-
-func (x *Node) fmSphere() *sphere {
-	return &sphere{
-		task:    x.task,
-		latStep: 36,
-		lonStep: 18,
+	if latStep == 0 {
+		latStep = 36
 	}
+	return &sphere{lonStep: lonStep, latStep: latStep}
 }
 
 type sphere struct {
-	task    *Task
-	latStep float64
 	lonStep float64
-
-	alive     bool
-	closeWait sync.WaitGroup
+	latStep float64
 }
 
-func (sp *sphere) Gen() <-chan *Record {
-	ch := make(chan *Record)
-	sp.alive = true
-	sp.closeWait.Add(1)
-	go func() {
-		sp.task.SetResultColumns([]*spi.Column{
-			{Name: "x", Type: "double"},
-			{Name: "y", Type: "double"},
-			{Name: "z", Type: "double"},
-		})
-		var u, v float64
-		for u = 0; sp.alive && u < 2.0*math.Pi; u += (2.0 * math.Pi) / sp.latStep {
-			for v = 0; sp.alive && v < math.Pi; v += math.Pi / sp.lonStep {
-				x := math.Cos(u) * math.Sin(v)
-				y := math.Sin(u) * math.Sin(v)
-				z := math.Cos(v)
-				ch <- NewRecord(x, []any{y, z})
-			}
+func genSphere(node *Node, sp *sphere) {
+	node.task.SetResultColumns([]*spi.Column{
+		{Name: "id", Type: "int"},
+		{Name: "x", Type: "double"},
+		{Name: "y", Type: "double"},
+		{Name: "z", Type: "double"},
+	})
+	var u, v float64
+	var id = 0
+	for u = 0; u < 2.0*math.Pi; u += (2.0 * math.Pi) / sp.latStep {
+		for v = 0; v < math.Pi; v += math.Pi / sp.lonStep {
+			x := math.Cos(u) * math.Sin(v)
+			y := math.Sin(u) * math.Sin(v)
+			z := math.Cos(v)
+			id++
+			node.tellNext(NewRecord(id, []any{x, y, z}))
 		}
-		close(ch)
-		sp.closeWait.Done()
-	}()
-	return ch
-}
-
-func (sp *sphere) stop() {
-	sp.alive = false
-	sp.closeWait.Wait()
+	}
 }
 
 // // oscillator(
@@ -166,8 +142,9 @@ func (sp *sphere) stop() {
 // //		freq(240, amplitude [,phase [, bias]]),
 // //	)
 // // )
-func (x *Node) fmOscillator(args ...any) (any, error) {
-	ret := &oscillator{task: x.task}
+func (node *Node) fmOscillator(args ...any) (*oscillator, error) {
+	ret := &oscillator{}
+	var timeRange *TimeRange
 	for _, arg := range args {
 		switch v := arg.(type) {
 		default:
@@ -175,66 +152,48 @@ func (x *Node) fmOscillator(args ...any) (any, error) {
 		case *freq:
 			ret.frequencies = append(ret.frequencies, v)
 		case *TimeRange:
-			if ret.timeRange != nil {
+			if timeRange != nil {
 				return nil, fmt.Errorf("f(oscillator) duplicated time range, %v", v)
 			}
-			ret.timeRange = v
+			timeRange = v
 		}
 	}
-	if ret.timeRange == nil {
+	if timeRange == nil {
 		return nil, errors.New("f(oscillator) no time range is defined")
 	}
-	if ret.timeRange.Period <= 0 {
+	if timeRange.Period <= 0 {
 		return nil, errors.New("f(oscillator) period should be positive")
 	}
+	if timeRange.Duration < 0 {
+		ret.from = timeRange.Time.Add(timeRange.Duration).UnixNano()
+		ret.to = timeRange.Time.UnixNano()
+	} else {
+		ret.from = timeRange.Time.UnixNano()
+		ret.to = timeRange.Time.Add(timeRange.Duration).UnixNano()
+	}
+	ret.step = int64(timeRange.Period)
 	return ret, nil
 }
 
 type oscillator struct {
-	task        *Task
-	timeRange   *TimeRange
 	frequencies []*freq
-	ch          chan *Record
-	alive       bool
-	closeWait   sync.WaitGroup
+	from        int64
+	to          int64
+	step        int64
 }
 
-func (fs *oscillator) Gen() <-chan *Record {
-	fs.ch = make(chan *Record)
-	fs.alive = true
-	fs.closeWait.Add(1)
-	go func() {
-		var from int64
-		var to int64
-		var step int64 = int64(fs.timeRange.Period)
-		if fs.timeRange.Duration < 0 {
-			from = fs.timeRange.Time.Add(fs.timeRange.Duration).UnixNano()
-			to = fs.timeRange.Time.UnixNano()
-		} else {
-			from = fs.timeRange.Time.UnixNano()
-			to = fs.timeRange.Time.Add(fs.timeRange.Duration).UnixNano()
+func genOscillator(node *Node, gen *oscillator) {
+	node.task.SetResultColumns([]*spi.Column{
+		{Name: "time", Type: "datetime"},
+		{Name: "value", Type: "double"},
+	})
+	for x := gen.from; x < gen.to; x += gen.step {
+		value := 0.0
+		for _, fr := range gen.frequencies {
+			value += fr.Value(float64(x) / float64(time.Second))
 		}
-
-		fs.task.SetResultColumns([]*spi.Column{
-			{Name: "time", Type: "datetime"},
-			{Name: "value", Type: "double"},
-		})
-		for x := from; fs.alive && x < to; x += step {
-			value := 0.0
-			for _, fr := range fs.frequencies {
-				value += fr.Value(float64(x) / float64(time.Second))
-			}
-			fs.ch <- NewRecord(time.Unix(0, x), []any{value})
-		}
-		close(fs.ch)
-		fs.closeWait.Done()
-	}()
-	return fs.ch
-}
-
-func (fs *oscillator) stop() {
-	fs.alive = false
-	fs.closeWait.Wait()
+		node.tellNext(NewRecord(time.Unix(0, x), []any{value}))
+	}
 }
 
 type freq struct {

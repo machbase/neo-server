@@ -13,12 +13,95 @@ import (
 	"github.com/machbase/neo-server/mods/tql"
 )
 
+func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...string) {
+	code := strings.Join(codeLines, "\n")
+	w := &bytes.Buffer{}
+
+	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	doneCh := make(chan any)
+
+	task := tql.NewTaskContext(timeCtx)
+	task.SetOutputWriter(w)
+	err := task.CompileString(code)
+	require.Nil(t, err)
+
+	var executeErr error
+	go func() {
+		executeErr = task.Execute()
+		doneCh <- true
+	}()
+
+	select {
+	case <-timeCtx.Done():
+		t.Fatal("ERROR time out!!!")
+		cancel()
+	case <-doneCh:
+		cancel()
+	}
+	if len(expectErr) == 1 {
+		// case error
+		require.NotNil(t, executeErr)
+		require.Equal(t, expectErr[0], executeErr.Error())
+	} else {
+		// case success
+		require.Nil(t, err)
+		result := w.String()
+		require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+	}
+}
+
+func TestString(t *testing.T) {
+	codeLines := []string{
+		`STRING("line1\nline2\n\nline4", separator("\n"))`,
+		"CSV( heading(true) )",
+	}
+	resultLines := []string{
+		"id,string",
+		"1,line1",
+		"2,line2",
+		"3,",
+		"4,line4",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestBytes(t *testing.T) {
+	codeLines := []string{
+		`BYTES("line1\nline2\n\nline4", separator("\n"))`,
+		"CSV( heading(true) )",
+	}
+	resultLines := []string{
+		"id,bytes",
+		`1,\x6C\x69\x6E\x65\x31`,
+		`2,\x6C\x69\x6E\x65\x32`,
+		`3,`,
+		`4,\x6C\x69\x6E\x65\x34`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestCsvCsv(t *testing.T) {
+	codeLines := []string{
+		`CSV("1,line1\n2,line2\n3,\n4,line4")`,
+		"CSV( heading(true) )",
+	}
+	resultLines := []string{
+		"C00,C01",
+		"1,line1",
+		"2,line2",
+		"3,",
+		"4,line4",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",
-		"CSV()",
+		"CSV( heading(true) )",
 	}
 	resultLines := []string{
+		"id,x",
 		"1,0.000000",
 		"2,1.000000",
 		"3,2.000000",
@@ -29,9 +112,10 @@ func TestLinspace(t *testing.T) {
 func TestMeshgrid(t *testing.T) {
 	codeLines := []string{
 		"FAKE( meshgrid(linspace(0, 2, 3), linspace(0, 2, 3)) )",
-		"CSV()",
+		"CSV( heading(true) )",
 	}
 	resultLines := []string{
+		"id,x,y",
 		"1,0.000000,0.000000",
 		"2,0.000000,1.000000",
 		"3,0.000000,2.000000",
@@ -41,6 +125,33 @@ func TestMeshgrid(t *testing.T) {
 		"7,2.000000,0.000000",
 		"8,2.000000,1.000000",
 		"9,2.000000,2.000000",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestSphere(t *testing.T) {
+	codeLines := []string{
+		"FAKE( sphere(4, 4) )",
+		"CSV( heading(true) )",
+	}
+	resultLines := []string{
+		"id,x,y,z",
+		"1,0.000000,0.000000,1.000000",
+		"2,0.707107,0.000000,0.707107",
+		"3,1.000000,0.000000,0.000000",
+		"4,0.707107,0.000000,-0.707107",
+		"5,0.000000,0.000000,1.000000",
+		"6,0.000000,0.707107,0.707107",
+		"7,0.000000,1.000000,0.000000",
+		"8,0.000000,0.707107,-0.707107",
+		"9,-0.000000,0.000000,1.000000",
+		"10,-0.707107,0.000000,0.707107",
+		"11,-1.000000,0.000000,0.000000",
+		"12,-0.707107,0.000000,-0.707107",
+		"13,-0.000000,-0.000000,1.000000",
+		"14,-0.000000,-0.707107,0.707107",
+		"15,-0.000000,-1.000000,0.000000",
+		"16,-0.000000,-0.707107,-0.707107",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -228,39 +339,158 @@ func TestBridgeSql(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...string) {
-	code := strings.Join(codeLines, "\n")
-	w := &bytes.Buffer{}
-
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-	doneCh := make(chan any)
-
-	task := tql.NewTaskContext(timeCtx)
-	task.SetOutputWriter(w)
-	err := task.CompileString(code)
-	require.Nil(t, err)
-
-	var executeErr error
-	go func() {
-		executeErr = task.Execute()
-		doneCh <- true
-	}()
-
-	select {
-	case <-timeCtx.Done():
-		t.Fatal("ERROR time out!!!")
-		cancel()
-	case <-doneCh:
-		cancel()
+func TestQuerySql(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`QUERY('value', between('last-10s', 'last'), from("table", "tag", "time"), dump(true))`,
+		`CSV()`,
 	}
-	if len(expectErr) == 1 {
-		// case error
-		require.NotNil(t, executeErr)
-		require.Equal(t, expectErr[0], executeErr.Error())
+	resultLines = []string{normalize(`
+		SELECT time, value 
+		FROM TABLE WHERE name = 'tag' 
+		AND time BETWEEN 
+				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
+			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
+		LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// basic
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val1', 'val2' , from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// between()
+	codeLines = []string{
+		`QUERY( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000000)*1000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// GroupBy time
+	codeLines = []string{
+		`QUERY('STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`QUERY('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`)}
+	runTest(t, codeLines, resultLines)
+}
+
+func normalize(ret string) string {
+	csvQuote := true
+	lines := []string{}
+	for _, str := range strings.Split(ret, "\n") {
+		l := strings.TrimSpace(str)
+		if l == "" {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	text := strings.Join(lines, " ")
+	if csvQuote {
+		return `"` + text + `"`
 	} else {
-		// case success
-		require.Nil(t, err)
-		result := w.String()
-		require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+		return text
 	}
 }

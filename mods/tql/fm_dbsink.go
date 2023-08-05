@@ -4,10 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
+
+// Deprecated: no more required
+func (node *Node) fmOUTPUT(args ...any) (any, error) {
+	node.task.LogWarnf("OUTPUT() is deprecated.")
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
+	}
+	return args[0], nil
+}
 
 type Table struct {
 	Name string
@@ -55,9 +63,8 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 }
 
 type insert struct {
-	db     spi.Database
-	writer spec.OutputStream
-	nrows  int
+	db    spi.Database
+	nrows int
 
 	columns      []string
 	placeHolders []string
@@ -71,14 +78,8 @@ func (ins *insert) Open(db spi.Database) error {
 	return nil
 }
 
-func (ins *insert) Close() {
-	if ins.writer != nil {
-		ins.writer.Write([]byte(fmt.Sprintf("%d rows inserted.", ins.nrows)))
-	}
-}
-
-func (ins *insert) SetOutputStream(w spec.OutputStream) {
-	ins.writer = w
+func (ins *insert) Close() string {
+	return fmt.Sprintf("%d rows inserted.", ins.nrows)
 }
 
 func (ins *insert) AddRow(values []any) error {
@@ -114,9 +115,8 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 }
 
 type appender struct {
-	db     spi.Database
-	writer spec.OutputStream
-	nrows  int
+	db    spi.Database
+	nrows int
 
 	dbAppender spi.Appender
 
@@ -129,23 +129,17 @@ func (app *appender) Open(db spi.Database) (err error) {
 	return
 }
 
-func (app *appender) Close() {
+func (app *appender) Close() string {
 	var succ, fail int64
 	var err error
 	if app.dbAppender != nil {
 		succ, fail, err = app.dbAppender.Close()
 	}
-	if app.writer != nil {
-		if err != nil {
-			app.writer.Write([]byte(fmt.Sprintf("append fail, %s", err.Error())))
-		} else {
-			app.writer.Write([]byte(fmt.Sprintf("append %d rows (success %d, fail %d).", app.nrows, succ, fail)))
-		}
+	if err != nil {
+		return fmt.Sprintf("append fail, %s", err.Error())
+	} else {
+		return fmt.Sprintf("append %d rows (success %d, fail %d).", app.nrows, succ, fail)
 	}
-}
-
-func (app *appender) SetOutputStream(w spec.OutputStream) {
-	app.writer = w
 }
 
 func (app *appender) AddRow(values []any) error {

@@ -226,12 +226,15 @@ func (node *Node) tellNext(rec *Record) (bool, *Record) {
 	return true, nil
 }
 
+func (node *Node) wait() {
+	node.closeWg.Wait()
+}
+
 func (node *Node) stop() {
 	if node.src != nil {
 		close(node.src)
 	}
-	node.closeWg.Wait()
-
+	node.wait()
 	for i := len(node.closers) - 1; i >= 0; i-- {
 		c := node.closers[i]
 		if err := c.Close(); err != nil {

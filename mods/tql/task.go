@@ -33,7 +33,6 @@ type Task struct {
 	// compiled result
 	compiled   bool
 	compileErr error
-	input      *input
 	output     *output
 	nodes      []*Node
 }
@@ -176,28 +175,13 @@ func (x *Task) compile(codeReader io.Reader) error {
 		}
 	}
 
-	// src
-	if len(exprs) >= 1 {
-		x.input, err = NewNode(x).compileSource(exprs[0].text)
-		if err != nil {
-			x.compileErr = errors.Wrapf(err, "line %d", exprs[0].line)
-			return x.compileErr
-		}
+	lastIdx := -1
+	if len(exprs) > 1 {
+		lastIdx = len(exprs) - 1
 	}
-
-	// sink
-	if len(exprs) >= 2 {
-		x.output, err = NewNode(x).compileSink(exprs[len(exprs)-1].text)
-		if err != nil {
-			x.compileErr = errors.Wrapf(err, "line %d", exprs[len(exprs)-1].line)
-			return x.compileErr
-		}
-	}
-
-	// map
-	if len(exprs) >= 3 {
-		exprs = exprs[1 : len(exprs)-1]
-		for n, mapLine := range exprs {
+	for n, mapLine := range exprs {
+		if n != lastIdx {
+			// src and map
 			node := NewNode(x)
 			if err := node.compile(mapLine.text); err != nil {
 				return err
@@ -206,14 +190,17 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if n > 0 {
 				x.nodes[n-1].next = x.nodes[n]
 			}
-			x.nodes[n].next = x.output
+		} else {
+			// sink
+			x.output, err = NewNode(x).compileSink(exprs[len(exprs)-1].text)
+			if err != nil {
+				x.compileErr = errors.Wrapf(err, "line %d", exprs[len(exprs)-1].line)
+				return x.compileErr
+			}
+			x.nodes[len(exprs)-2].next = x.output
 		}
 	}
-	if len(x.nodes) > 0 {
-		x.input.next = x.nodes[0]
-	} else {
-		x.input.next = x.output
-	}
+
 	x.compiled = true
 	return nil
 }
@@ -241,9 +228,6 @@ func (x *Task) execute() (err error) {
 	if !x.compiled {
 		return errors.New("not compiled task")
 	}
-	if x.input == nil || x.output == nil {
-		return errors.New("task has no input or output")
-	}
 	defer func() {
 		if r := recover(); r != nil {
 			w := &bytes.Buffer{}
@@ -258,8 +242,8 @@ func (x *Task) execute() (err error) {
 	for _, child := range x.nodes {
 		child.start()
 	}
-	// run input
-	err = x.input.execute()
+	NewRecord("", nil).Tell(x.nodes[0])
+	EofRecord.Tell(x.nodes[0])
 
 	// wait all nodes are finished
 	for _, child := range x.nodes {
@@ -277,17 +261,6 @@ func (x *Task) SetResultColumns(cols spi.Columns) {
 	if x.output != nil {
 		x.output.resultColumns = cols
 	}
-}
-
-// DumpSQL returns the generated SQL statement if the input source is a database source
-func (x *Task) DumpSQL() string {
-	if x.input == nil || x.input.chSrc == nil {
-		return ""
-	}
-	if dbChan, ok := x.input.chSrc.(*databaseSource); ok {
-		return dbChan.sqlText
-	}
-	return ""
 }
 
 type TaskLog interface {
