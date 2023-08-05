@@ -89,6 +89,9 @@ func (r *Record) Flatten() []any {
 	case any:
 		return []any{k, vv}
 	default:
+		if vv == nil {
+			return []any{k}
+		}
 		return []any{k, fmt.Sprintf("Record: unsupported value type(%T)", vv)}
 	}
 }

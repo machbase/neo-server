@@ -59,6 +59,7 @@ func NewNode(task *Task) *Node {
 		"INSERT": x.gen_INSERT,
 		"APPEND": x.gen_APPEND,
 		// maps.bridge
+		"bridge":       x.gen_bridge,
 		"BRIDGE_QUERY": x.gen_BRIDGE_QUERY,
 		// maps.fourier
 		"minHz": x.gen_minHz,
@@ -288,7 +289,7 @@ func (x *Node) gen_linspace(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := nums.Linspace(p0, p1, p2)
+	ret := x.fmLinspace(p0, p1, p2)
 	return ret, nil
 }
 
@@ -307,26 +308,26 @@ func (x *Node) gen_linspace50(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := nums.Linspace50(p0, p1)
+	ret := x.fmLinspace50(p0, p1)
 	return ret, nil
 }
 
 // gen_meshgrid
 //
-// syntax: meshgrid([]float64, []float64)
+// syntax: meshgrid(, )
 func (x *Node) gen_meshgrid(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("meshgrid", 2, len(args))
 	}
-	p0, ok := args[0].([]float64)
-	if !ok {
-		return nil, ErrWrongTypeOfArgs("meshgrid", 0, "[]float64", args[0])
+	p0, err := convAny(args, 0, "meshgrid", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	p1, ok := args[1].([]float64)
-	if !ok {
-		return nil, ErrWrongTypeOfArgs("meshgrid", 1, "[]float64", args[1])
+	p1, err := convAny(args, 1, "meshgrid", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.Meshgrid(p0, p1)
+	ret := x.fmMeshgrid(p0, p1)
 	return ret, nil
 }
 
@@ -638,25 +639,17 @@ func (x *Node) gen_QUERY(args ...any) (any, error) {
 
 // gen_SQL
 //
-// syntax: SQL(string, ...interface {})
+// syntax: SQL(...interface {})
 func (x *Node) gen_SQL(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("SQL", 1, len(args))
-	}
-	p0, err := convString(args, 0, "SQL", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1 := []interface{}{}
-	for n := 1; n < len(args); n++ {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "SQL", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p1 = append(p1, argv)
+		p0 = append(p0, argv)
 	}
-	ret := x.fmSql(p0, p1...)
-	return ret, nil
+	return x.fmSql(p0...)
 }
 
 // gen_table
@@ -727,6 +720,21 @@ func (x *Node) gen_APPEND(args ...any) (any, error) {
 	return x.fmAppend(p0...)
 }
 
+// gen_bridge
+//
+// syntax: bridge(string)
+func (x *Node) gen_bridge(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("bridge", 1, len(args))
+	}
+	p0, err := convString(args, 0, "bridge", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmBridge(p0)
+	return ret, nil
+}
+
 // gen_BRIDGE_QUERY
 //
 // syntax: BRIDGE_QUERY(string, string, ...interface {})
@@ -750,8 +758,7 @@ func (x *Node) gen_BRIDGE_QUERY(args ...any) (any, error) {
 		}
 		p2 = append(p2, argv)
 	}
-	ret := x.fmBridgeQuery(p0, p1, p2...)
-	return ret, nil
+	return x.fmBridgeQuery(p0, p1, p2...)
 }
 
 // gen_minHz
@@ -1165,12 +1172,20 @@ func (x *Node) gen_oscillator(args ...any) (any, error) {
 
 // gen_sphere
 //
-// syntax: sphere()
+// syntax: sphere(float64, float64)
 func (x *Node) gen_sphere(args ...any) (any, error) {
-	if len(args) != 0 {
-		return nil, ErrInvalidNumOfArgs("sphere", 0, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("sphere", 2, len(args))
 	}
-	ret := x.fmSphere()
+	p0, err := convFloat64(args, 0, "sphere", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "sphere", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmSphere(p0, p1)
 	return ret, nil
 }
 

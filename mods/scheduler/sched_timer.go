@@ -92,6 +92,7 @@ func (ent *TimerEntry) doTask() {
 		return
 	}
 	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(ent.s.db)
 	task.SetParams(nil)
 	task.SetInputReader(nil)
 	task.SetOutputWriterJson(io.Discard, true)
@@ -101,7 +102,7 @@ func (ent *TimerEntry) doTask() {
 		ent.Stop()
 		return
 	}
-	if err := task.Execute(ent.s.db); err != nil {
+	if err := task.Execute(); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

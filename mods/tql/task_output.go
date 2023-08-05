@@ -13,12 +13,33 @@ import (
 	"github.com/pkg/errors"
 )
 
+type DatabaseSink interface {
+	Open(db spi.Database) error
+	Close() string
+	AddRow([]any) error
+}
+
+var (
+	_ DatabaseSink = &insert{}
+	_ DatabaseSink = &appender{}
+)
+
+type Encoder struct {
+	format string
+	opts   []opts.Option
+}
+
+func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
+	e.opts = append(e.opts, args...)
+	ret := codec.NewEncoder(e.format, e.opts...)
+	return ret
+}
+
 type output struct {
 	task *Task
 	name string
 
 	src chan *Record
-	db  spi.Database
 
 	encoder       codec.RowsEncoder
 	dbSink        DatabaseSink
@@ -34,6 +55,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	if err != nil {
 		return nil, err
 	}
+	node.name = expr.String()
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
@@ -51,9 +73,8 @@ func (node *Node) compileSink(code string) (*output, error) {
 		}
 	case DatabaseSink:
 		ret.dbSink = val
-		ret.dbSink.SetOutputStream(node.task.OutputWriter())
 	default:
-		return nil, fmt.Errorf("%T is not applicable for OUTPUT", val)
+		return nil, fmt.Errorf("type (%T) is not applicable for OUTPUT", val)
 	}
 	ret.name = code
 	ret.task = node.task
@@ -166,7 +187,7 @@ func (out *output) openEncoder() error {
 	if out.encoder != nil {
 		return out.encoder.Open()
 	} else if out.dbSink != nil {
-		return out.dbSink.Open(out.db)
+		return out.dbSink.Open(out.task.db)
 	} else {
 		return errors.New("no output encoder")
 	}
@@ -176,7 +197,8 @@ func (out *output) closeEncoder() {
 	if out.encoder != nil {
 		out.encoder.Close()
 	} else if out.dbSink != nil {
-		out.dbSink.Close()
+		resultMessage := out.dbSink.Close()
+		out.task.outputWriter.Write([]byte(resultMessage))
 	}
 }
 
@@ -199,15 +221,20 @@ func (out *output) addRow(rec *Record) error {
 		return fmt.Errorf("%s has no destination", out.name)
 	}
 
-	switch v := rec.Value().(type) {
-	case [][]any:
-		for n := range v {
-			addfunc(append([]any{rec.Key()}, v[n]...))
+	if value := rec.Value(); value == nil {
+		// if the value of the record is nil, yield key only
+		addfunc([]any{rec.Key()})
+	} else {
+		switch v := value.(type) {
+		case [][]any:
+			for n := range v {
+				addfunc(append([]any{rec.Key()}, v[n]...))
+			}
+		case []any:
+			addfunc(append([]any{rec.Key()}, v...))
+		case any:
+			addfunc([]any{rec.Key(), v})
 		}
-	case []any:
-		addfunc(append([]any{rec.Key()}, v...))
-	case any:
-		addfunc([]any{rec.Key(), v})
 	}
 	return nil
 }

@@ -5,7 +5,201 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/mods/do"
+	spi "github.com/machbase/neo-spi"
 )
+
+// Deprecated: no more required
+func (node *Node) fmINPUT(args ...any) (any, error) {
+	node.task.LogWarnf("INPUT() is deprecated.")
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("INPUT", 1, len(args))
+	}
+	return args[0], nil
+}
+
+// QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
+func (x *Node) fmQuery(args ...any) (any, error) {
+	between, _ := x.fmBetween("last-1s", "last")
+	ret := &querySource{
+		columns: []string{},
+		between: between,
+		limit:   x.fmLimit(1000000),
+	}
+	for i, arg := range args {
+		switch tok := arg.(type) {
+		case string:
+			ret.columns = append(ret.columns, tok)
+		case *QueryFrom:
+			ret.from = tok
+		case *QueryBetween:
+			ret.between = tok
+		case *QueryLimit:
+			ret.limit = tok
+		case *QueryDump:
+			ret.dump = tok
+		default:
+			return nil, ErrArgs("QUERY", i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
+		}
+	}
+	if ret.from == nil {
+		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
+	}
+
+	if ret.dump == nil || !ret.dump.Flag {
+		ds := &databaseSource{task: x.task, sqlText: ret.ToSQL()}
+		ds.gen(x)
+	} else {
+		var text string
+		if ret.between != nil {
+			if ret.between.HasPeriod() {
+				text = ret.toSqlGroup()
+			} else {
+				text = ret.toSql()
+			}
+		}
+		if ret.dump.Escape {
+			text = url.QueryEscape(text)
+		}
+		x.tellNext(NewRecord(text, nil))
+		return nil, nil
+	}
+	return nil, nil
+}
+
+type querySource struct {
+	columns []string
+	from    *QueryFrom
+	between *QueryBetween
+	limit   *QueryLimit
+	dump    *QueryDump
+}
+
+func (si *querySource) ToSQL() string {
+	var ret string
+	if si.from == nil {
+		return "ERROR 'from()' missing"
+	}
+	if si.between != nil {
+		if si.between.HasPeriod() {
+			ret = si.toSqlGroup()
+		} else {
+			ret = si.toSql()
+		}
+	}
+	return ret
+}
+
+func (si *querySource) toSql() string {
+	table := strings.ToUpper(si.from.Table)
+	tag := si.from.Tag
+	baseTime := si.from.BaseTime
+	ret := ""
+	columns := "value"
+	if len(si.columns) > 0 {
+		columns = strings.Join(si.columns, ", ")
+	}
+	aPart := si.between.BeginPart(table, tag)
+	bPart := si.between.EndPart(table, tag)
+
+	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
+		baseTime, columns, table,
+		tag,
+		baseTime, aPart, bPart,
+		si.limit.Offset, si.limit.Limit,
+	)
+
+	return ret
+}
+
+func (si *querySource) toSqlGroup() string {
+	table := strings.ToUpper(si.from.Table)
+	tag := si.from.Tag
+	baseTime := si.from.BaseTime
+	ret := ""
+	columns := "value"
+	if len(si.columns) > 0 {
+		columns = strings.Join(si.columns, ", ")
+	}
+	aPart := si.between.BeginPart(table, tag)
+	bPart := si.between.EndPart(table, tag)
+
+	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
+		baseTime, si.between.Period(), si.between.Period(), baseTime, columns, table,
+		tag,
+		baseTime, aPart, bPart,
+		baseTime,
+		baseTime,
+		si.limit.Offset, si.limit.Limit,
+	)
+	return ret
+}
+
+type databaseSource struct {
+	task    *Task
+	sqlText string
+	params  []any
+
+	fetched       int
+	shouldStopNow bool
+	executed      bool
+}
+
+func (dc *databaseSource) gen(node *Node) {
+	queryCtx := &do.QueryContext{
+		DB: dc.task.db,
+		OnFetchStart: func(cols spi.Columns) {
+			dc.task.SetResultColumns(cols)
+		},
+		OnFetch: func(nrow int64, values []any) bool {
+			dc.fetched++
+			if dc.shouldStopNow {
+				return false
+			} else {
+				node.tellNext(NewRecord(dc.fetched, values))
+				return true
+			}
+		},
+		OnFetchEnd: func() {},
+		OnExecuted: func(usermsg string, rowsAffected int64) {
+			dc.executed = true
+		},
+	}
+	if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+		node.tellNext(ErrorRecord(err))
+	} else {
+		if dc.executed {
+			dc.task.SetResultColumns(spi.Columns{
+				{Name: "message", Type: "string"},
+			})
+			node.tellNext(NewRecord(msg, nil))
+		}
+	}
+}
+
+// SQL('select ....', arg1, arg2)
+// SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
+func (x *Node) fmSql(args ...any) (any, error) {
+	if len(args) == 0 {
+		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
+	}
+	switch v := args[0].(type) {
+	case string:
+		return &databaseSource{task: x.task, sqlText: v, params: args[1:]}, nil
+	case *bridgeName:
+		if len(args) == 0 {
+			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
+		}
+		if text, ok := args[1].(string); ok {
+			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
+			ret.execType = "query"
+			ret.gen(x)
+			return nil, nil
+		}
+	}
+	return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
+}
 
 type QueryFrom struct {
 	Table    string
@@ -184,138 +378,4 @@ func (x *Node) fmBetween(begin any, end any, period ...any) (*QueryBetween, erro
 		return nil, ErrWrongTypeOfArgs("between", 2, "duration", val)
 	}
 	return ret, nil
-}
-
-// QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func (x *Node) fmQuery(args ...any) (*querySource, error) {
-	between, _ := x.fmBetween("last-1s", "last")
-	ret := &querySource{
-		columns: []string{},
-		between: between,
-		limit:   x.fmLimit(1000000),
-	}
-	for i, arg := range args {
-		switch tok := arg.(type) {
-		case string:
-			ret.columns = append(ret.columns, tok)
-		case *QueryFrom:
-			ret.from = tok
-		case *QueryBetween:
-			ret.between = tok
-		case *QueryLimit:
-			ret.limit = tok
-		case *QueryDump:
-			ret.dump = tok
-		default:
-			return nil, ErrArgs("QUERY", i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
-		}
-	}
-	if ret.from == nil {
-		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
-	}
-	return ret, nil
-}
-
-type querySource struct {
-	columns []string
-	from    *QueryFrom
-	between *QueryBetween
-	limit   *QueryLimit
-	dump    *QueryDump
-}
-
-func (si *querySource) ToSQL() string {
-	var ret string
-	if si.from == nil {
-		return "ERROR 'from()' missing"
-	}
-	if si.between != nil {
-		if si.between.HasPeriod() {
-			ret = si.toSqlGroup()
-		} else {
-			ret = si.toSql()
-		}
-	}
-	if si.dump != nil && si.dump.Flag {
-		if si.dump.Escape {
-			fmt.Printf("\n%s\n", url.QueryEscape(ret))
-		} else {
-			fmt.Printf("\n%s\n", ret)
-		}
-	}
-	return ret
-}
-
-func (si *querySource) Params() []any {
-	return []any{}
-}
-
-func (si *querySource) toSql() string {
-	table := strings.ToUpper(si.from.Table)
-	tag := si.from.Tag
-	baseTime := si.from.BaseTime
-	ret := ""
-	columns := "value"
-	if len(si.columns) > 0 {
-		columns = strings.Join(si.columns, ", ")
-	}
-	aPart := si.between.BeginPart(table, tag)
-	bPart := si.between.EndPart(table, tag)
-
-	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
-		baseTime, columns, table,
-		tag,
-		baseTime, aPart, bPart,
-		si.limit.Offset, si.limit.Limit,
-	)
-
-	return ret
-}
-
-func (si *querySource) toSqlGroup() string {
-	table := strings.ToUpper(si.from.Table)
-	tag := si.from.Tag
-	baseTime := si.from.BaseTime
-	ret := ""
-	columns := "value"
-	if len(si.columns) > 0 {
-		columns = strings.Join(si.columns, ", ")
-	}
-	aPart := si.between.BeginPart(table, tag)
-	bPart := si.between.EndPart(table, tag)
-
-	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s
-		WHERE
-			name = '%s'
-		AND %s BETWEEN %s AND %s
-		GROUP BY %s
-		ORDER BY %s
-		LIMIT %d, %d
-		`,
-		baseTime, si.between.Period(), si.between.Period(), baseTime, columns, table,
-		tag,
-		baseTime, aPart, bPart,
-		baseTime,
-		baseTime,
-		si.limit.Offset, si.limit.Limit,
-	)
-	return ret
-}
-
-type sqlSource struct {
-	text   string
-	params []any
-}
-
-// SQL('select ....')
-func (x *Node) fmSql(text string, params ...any) *sqlSource {
-	return &sqlSource{text: text, params: params}
-}
-
-func (s *sqlSource) ToSQL() string {
-	return s.text
-}
-
-func (s *sqlSource) Params() []any {
-	return s.params
 }

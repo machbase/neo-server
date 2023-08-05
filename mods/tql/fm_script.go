@@ -31,7 +31,7 @@ func (node *Node) fmScriptTengo(content string) (any, error) {
 		slet = &scriptlet{param: &Record{}}
 		if s, c, err := script_compile(content, node); err != nil {
 			// script compile error
-			fmt.Println("SCRIPT", err.Error())
+			node.task.LogError("SCRIPT", err.Error())
 			fallbackCode := fmt.Sprintf(`import("context").yield(%s)`, strconv.Quote(err.Error()))
 			s, c, _ = script_compile(fallbackCode, node)
 			slet.script = s
@@ -47,11 +47,13 @@ func (node *Node) fmScriptTengo(content string) (any, error) {
 	}
 	slet.drop = false
 	slet.yields = slet.yields[:0]
-	slet.param.key, slet.param.value = node.Inflight().key, node.Inflight().value
+	if inflight := node.Inflight(); inflight != nil {
+		slet.param.key, slet.param.value = inflight.key, inflight.value
+	}
 
 	slet.err = slet.compiled.RunContext(node.task.ctx)
 	if slet.err != nil {
-		fmt.Println("SCRIPT", slet.err.Error())
+		node.task.LogError("SCRIPT", slet.err.Error())
 		return nil, slet.err
 	}
 

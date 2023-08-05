@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/mods/util"
@@ -30,7 +29,8 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 	}
 	if isSource {
 		ret, err := newCsvSource(args...)
-		return ret, err
+		ret.gen(x)
+		return nil, err
 	} else {
 		ret := newEncoder("csv", args...)
 		return ret, nil
@@ -42,96 +42,76 @@ type csvSource struct {
 	columns   map[int]*columnOpt
 	hasHeader bool
 
-	reader    *csv.Reader
-	ch        chan *Record
-	alive     bool
-	closeWait sync.WaitGroup
+	reader *csv.Reader
 }
 
-func (src *csvSource) Gen() <-chan *Record {
-	src.ch = make(chan *Record)
-	src.alive = true
-	src.closeWait.Add(1)
-	go func() {
-		rownum := 0
-		for src.alive {
-			fields, err := src.reader.Read()
-			if len(fields) == 0 || err != nil {
-				break
+func (src *csvSource) gen(node *Node) {
+	rownum := 0
+	for {
+		fields, err := src.reader.Read()
+		if err != nil {
+			if err != io.EOF {
+				node.task.LogErrorf("invalid input, %s", err.Error())
 			}
-			if rownum == 0 && src.hasHeader {
-				continue // skip header
+			return
+		}
+		if len(fields) == 0 {
+			node.task.LogError("invalid input")
+			return
+		}
+		if rownum == 0 && src.hasHeader {
+			continue // skip header
+		}
+		node.task.SetResultColumns(src.header())
+		values := make([]any, len(fields))
+		for i := 0; i < len(fields); i++ {
+			colOpt := src.columns[i]
+			if colOpt == nil {
+				values[i] = fields[i]
+				continue
 			}
-			values := make([]any, len(fields))
-			for i := 0; i < len(fields); i++ {
-				colOpt := src.columns[i]
-				if colOpt != nil {
-					switch dataType := colOpt.dataType.(type) {
-					case *anyOpt:
-						switch dataType.typeName {
-						case "float", "float32", "float64", "double":
-							dataType.typeName = "double"
-							values[i], err = strconv.ParseFloat(fields[i], 64)
-							if err != nil {
-								src.ch <- nil
-								break
-							}
-						case "bool", "boolean":
-							dataType.typeName = "boolean"
-							values[i], err = strconv.ParseBool(fields[i])
-							if err != nil {
-								src.ch <- nil
-								break
-							}
-						case "string":
-							values[i] = fields[i]
-						default:
-							values[i] = fields[i]
-						}
-					case *stringOpt:
-						values[i] = fields[i]
-					case *doubleOpt:
-						values[i], err = strconv.ParseFloat(fields[i], 64)
-						if err != nil {
-							src.ch <- nil
-							break
-						}
-					case *epochtimeOpt:
-						if t, err := strconv.ParseInt(fields[i], 10, 64); err != nil {
-							src.ch <- nil
-							break
-						} else {
-							values[i] = t * dataType.unit
-						}
-					case *datetimeOpt:
-						values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
-						if err != nil {
-							src.ch <- nil
-							break
-						}
-					}
-				} else {
+			switch dataType := colOpt.dataType.(type) {
+			case *anyOpt:
+				switch dataType.typeName {
+				case "float", "float32", "float64", "double":
+					dataType.typeName = "double"
+					values[i], err = strconv.ParseFloat(fields[i], 64)
+				case "bool", "boolean":
+					dataType.typeName = "boolean"
+					values[i], err = strconv.ParseBool(fields[i])
+				case "string":
+					values[i] = fields[i]
+				default:
 					values[i] = fields[i]
 				}
+			case *stringOpt:
+				values[i] = fields[i]
+			case *doubleOpt:
+				values[i], err = strconv.ParseFloat(fields[i], 64)
+			case *epochtimeOpt:
+				var parsed int64
+				parsed, err = strconv.ParseInt(fields[i], 10, 64)
+				if err == nil {
+					values[i] = parsed * dataType.unit
+				}
+			case *datetimeOpt:
+				values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 			}
-			rownum++
-			src.ch <- NewRecord(values[0], values[1:])
+			if err != nil {
+				node.task.LogWarnf("invalid number format (at %d)", rownum)
+				break
+			}
 		}
-		close(src.ch)
-		src.closeWait.Done()
-	}()
-	return src.ch
-}
-
-func (src *csvSource) Stop() {
-	src.alive = false
-	src.closeWait.Wait()
-	if src.fd != nil {
-		src.fd.Close()
+		rownum++
+		if err == nil {
+			node.tellNext(NewRecord(values[0], values[1:]))
+		} else {
+			err = nil
+		}
 	}
 }
 
-func (fs *csvSource) Header() spi.Columns {
+func (fs *csvSource) header() spi.Columns {
 	if len(fs.columns) == 0 {
 		return []*spi.Column{}
 	}

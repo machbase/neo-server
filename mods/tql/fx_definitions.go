@@ -29,9 +29,9 @@ var FxDefinitions = []Definition{
 	{"len", "nums.Len"},
 	{"element", "nums.Element"},
 	{"round", nums.Round},
-	{"linspace", nums.Linspace},
-	{"linspace50", nums.Linspace50},
-	{"meshgrid", nums.Meshgrid},
+	{"linspace", defTask.fmLinspace},
+	{"linspace50", defTask.fmLinspace50},
+	{"meshgrid", defTask.fmMeshgrid},
 	// maps.time
 	{"// maps.time", nil},
 	{"time", defTask.fmTime},
@@ -65,7 +65,8 @@ var FxDefinitions = []Definition{
 	{"APPEND", defTask.fmAppend},
 	// maps.bridge
 	{"// maps.bridge", nil},
-	{"BRIDGE_QUERY", defTask.fmBridgeQuery},
+	{"bridge", defTask.fmBridge},
+	{"BRIDGE_QUERY", defTask.fmBridgeQuery}, // do not use, under development...
 	// maps.fourier
 	{"// maps.fourier", nil},
 	{"minHz", defTask.fmMinHz},

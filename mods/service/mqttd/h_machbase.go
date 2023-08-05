@@ -249,6 +249,7 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 	}
 
 	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(svr.db)
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriter(io.Discard)
 	task.SetParams(params)
@@ -257,7 +258,7 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	if err := task.Execute(svr.db); err != nil {
+	if err := task.Execute(); err != nil {
 		svr.log.Error("tql execute fail", path, err.Error())
 		return nil
 	}
