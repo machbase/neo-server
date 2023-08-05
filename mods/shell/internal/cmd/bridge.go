@@ -31,10 +31,10 @@ const helpBridge = `  bridge command [options]
         args:
             name                    name of the connection
             conn                    connection string
-    del      <name>                 remove bridge
-    test     <name>                 test connectivity of the bridge
-    exec     <name> <command>       execute on the bridge
-    query    <name> <command>       query on the bridge
+    del     <name>                 remove bridge
+    test    <name>                 test connectivity of the bridge
+    exec    <name> <command>       execute command on the bridge
+    query   <name> <command>       query the bridge with command
 
   bridge types (-t,--type):
     sqlite        SQLite            https://sqlite.org
