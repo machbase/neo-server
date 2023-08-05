@@ -13,10 +13,11 @@ import (
 // Deprecated: no more required
 func (node *Node) fmINPUT(args ...any) (any, error) {
 	node.task.LogWarnf("INPUT() is deprecated.")
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("INPUT", 1, len(args))
+	if len(args) == 0 {
+		return nil, nil
+	} else {
+		return args[0], nil
 	}
-	return args[0], nil
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
@@ -157,7 +158,9 @@ func (dc *databaseSource) gen(node *Node) {
 			if dc.shouldStopNow {
 				return false
 			} else {
-				node.tellNext(NewRecord(dc.fetched, values))
+				if len(values) > 0 {
+					node.tellNext(NewRecord(values[0], values[1:]))
+				}
 				return true
 			}
 		},
@@ -186,7 +189,9 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	}
 	switch v := args[0].(type) {
 	case string:
-		return &databaseSource{task: x.task, sqlText: v, params: args[1:]}, nil
+		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
+		ds.gen(x)
+		return nil, nil
 	case *bridgeName:
 		if len(args) == 0 {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
