@@ -17,9 +17,10 @@ Machbase is the fastest time-series database for [IoT in the world](https://www.
 
 ## Build from sources
 
-- Install Go 1.19 or higher and `make`
+- Install Go 1.19 or higher 
+- Install `make`
 - Checkout machbase/neo-server
-- Run `make`
+- Run `make machbase-neo`
 - Find the executable binary `./tmp/machbase-neo`
 
 ### Dependency
