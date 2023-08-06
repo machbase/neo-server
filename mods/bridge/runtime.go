@@ -48,6 +48,15 @@ func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.
 			rsp.Elapse = time.Since(tick).String()
 			return rsp, nil
 		}
+	case PythonBridge:
+		switch cmd := req.Command.(type) {
+		case *bridgerpc.ExecRequest_Invoke:
+			return s.execPythonBridge(br, ctx, cmd)
+		default:
+			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
+			rsp.Elapse = time.Since(tick).String()
+			return rsp, nil
+		}
 	case Bridge:
 		rsp.Reason = fmt.Sprintf("%s does not support exec", conn.String())
 		rsp.Elapse = time.Since(tick).String()
@@ -267,5 +276,30 @@ func (s *svr) SqlQueryResultClose(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	rowsWrap.release()
 	rsp.Success = true
 	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *svr) execPythonBridge(br PythonBridge, ctx context.Context, req *bridgerpc.ExecRequest_Invoke) (*bridgerpc.ExecResponse, error) {
+	rsp := &bridgerpc.ExecResponse{}
+
+	tick := time.Now()
+	defer func() {
+		if err := recover(); err != nil {
+			s.log.Error("panic recover", err)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	exitCode, stdout, stderr, err := br.Invoke(ctx, req.Invoke.Args, req.Invoke.Stdin)
+	if err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		rsp.Success, rsp.Reason = true, "success"
+	}
+	rsp.Result = &bridgerpc.ExecResponse_InvokeResult{InvokeResult: &bridgerpc.InvokeResult{
+		ExitCode: int32(exitCode),
+		Stdout:   stdout,
+		Stderr:   stderr,
+	}}
 	return rsp, nil
 }

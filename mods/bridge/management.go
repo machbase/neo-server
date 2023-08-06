@@ -2,6 +2,8 @@ package bridge
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"time"
 
 	bridgerpc "github.com/machbase/neo-grpc/bridge"
@@ -113,6 +115,11 @@ func (s *svr) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*
 }
 
 func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) (*bridgerpc.TestBridgeResponse, error) {
+	defer func() {
+		if o := recover(); o != nil {
+			fmt.Printf("panic %s\n%s", o, debug.Stack())
+		}
+	}()
 	tick := time.Now()
 	rsp := &bridgerpc.TestBridgeResponse{Reason: "unspecified"}
 	defer func() {
@@ -138,10 +145,18 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 			rsp.Reason = err.Error()
 			return rsp, nil
 		}
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
+	case PythonBridge:
+		ver, err := con.Version(ctx)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		rsp.Success, rsp.Reason = true, fmt.Sprintf("%s success", ver)
+		return rsp, nil
 	default:
+		rsp.Reason = fmt.Sprintf("bridge '%s' does not support testing", br.Name())
+		return rsp, nil
 	}
-	rsp.Success = true
-	rsp.Reason = "success"
-	return rsp, nil
-
 }
