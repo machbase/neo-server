@@ -77,6 +77,7 @@ var FxDefinitions = []Definition{
 	{"CSV", defTask.fmCsv},
 	{"JSON", defTask.fmJson},
 	{"MARKDOWN", defTask.fmMarkdown},
+	{"HTML", defTask.fmHtml},
 	{"CHART_LINE", defTask.fmChartLine},
 	{"CHART_SCATTER", defTask.fmChartScatter},
 	{"CHART_BAR", defTask.fmChartBar},

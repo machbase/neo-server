@@ -43,6 +43,12 @@ func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) 
 	case bridge.PythonBridge:
 		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, nil)
 		if err != nil {
+			if len(stdout) > 0 {
+				node.task.Log(string(stderr))
+			}
+			if len(stderr) > 0 {
+				node.task.LogWarn(string(stderr))
+			}
 			return nil, err
 		}
 		if len(stderr) > 0 {
@@ -51,12 +57,48 @@ func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) 
 		if exitCode != 0 {
 			node.task.LogWarn(fmt.Sprintf("script: exit %d", exitCode))
 		}
-		text := string(stdout)
-		node.tellNext(NewRecord("stdout", text))
+		if len(stdout) > 0 {
+			if isPng(stdout) {
+				node.tellNext(NewImageRecord(stdout, "image/png"))
+			} else if isJpeg(stdout) {
+				node.tellNext(NewImageRecord(stdout, "image/jpeg"))
+			} else {
+				// yield the output from python's stdout as bytes chunk
+				node.tellNext(NewBytesRecord(stdout))
+			}
+		}
 	default:
 		return nil, fmt.Errorf(`script: bridge '%s' is not support for SCRIPT()`, name.name)
 	}
 	return nil, nil
+}
+
+func isJpeg(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	matched := true
+	for i, b := range []byte{0xFF, 0xD8, 0xFF} { // jpg
+		if data[i] != b {
+			matched = false
+			break
+		}
+	}
+	return matched
+}
+
+func isPng(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	matched := true
+	for i, b := range []byte{0x89, 0x50, 0x4E, 0x47} { // png
+		if data[i] != b {
+			matched = false
+			break
+		}
+	}
+	return matched
 }
 
 type scriptlet struct {

@@ -135,6 +135,10 @@ func (out *output) start() {
 					if err := out.addRow(rec); err != nil {
 						out.task.LogErrorf(err.Error())
 					}
+				} else if rec.IsImage() {
+					if err := out.addRow(rec); err != nil {
+						out.task.LogErrorf(err.Error())
+					}
 				}
 			}
 		}
@@ -203,15 +207,6 @@ func (out *output) closeEncoder() {
 }
 
 func (out *output) addRow(rec *Record) error {
-	if rec.IsArray() {
-		for _, r := range rec.Array() {
-			out.addRow(r)
-		}
-		return nil
-	} else if !rec.IsTuple() {
-		return fmt.Errorf("%s can not write %v", out.name, rec)
-	}
-
 	var addfunc func([]any) error
 	if out.encoder != nil {
 		addfunc = out.encoder.AddRow
@@ -219,6 +214,23 @@ func (out *output) addRow(rec *Record) error {
 		addfunc = out.dbSink.AddRow
 	} else {
 		return fmt.Errorf("%s has no destination", out.name)
+	}
+
+	if rec.IsArray() {
+		for _, r := range rec.Array() {
+			out.addRow(r)
+		}
+		return nil
+	} else if rec.IsImage() && rec.Value() != nil {
+		value := rec.Value()
+		if raw, ok := value.([]byte); ok {
+			addfunc([]any{rec.contentType, raw})
+		} else {
+			return fmt.Errorf("%s can not write invalid image data (%T)", out.name, value)
+		}
+		return nil
+	} else if !rec.IsTuple() {
+		return fmt.Errorf("%s can not write %v", out.name, rec)
 	}
 
 	if value := rec.Value(); value == nil {

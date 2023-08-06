@@ -39,13 +39,13 @@ func (c *bridge) BeforeRegister() error {
 		toks := strings.SplitN(f, "=", 2)
 		k := strings.TrimSpace(toks[0])
 		v := strings.TrimSpace(toks[1])
+		v = util.StripQuote(v)
 		switch k {
 		case "bin":
 			c.binPath = v
 		case "dir":
 			c.dirPath = v
 		case "env":
-			v = util.StripQuote(v)
 			c.envs = append(c.envs, v)
 		default:
 			return fmt.Errorf("bridge '%s' contains unknown option '%s' in connection string", c.name, k)

@@ -69,6 +69,7 @@ func NewNode(task *Task) *Node {
 		"CSV":             x.gen_CSV,
 		"JSON":            x.gen_JSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
+		"HTML":            x.gen_HTML,
 		"CHART_LINE":      x.gen_CHART_LINE,
 		"CHART_SCATTER":   x.gen_CHART_SCATTER,
 		"CHART_BAR":       x.gen_CHART_BAR,
@@ -851,6 +852,22 @@ func (x *Node) gen_MARKDOWN(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := x.fmMarkdown(p0...)
+	return ret, nil
+}
+
+// gen_HTML
+//
+// syntax: HTML(...interface {})
+func (x *Node) gen_HTML(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "HTML", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmHtml(p0...)
 	return ret, nil
 }
 

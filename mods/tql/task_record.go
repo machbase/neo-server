@@ -13,6 +13,8 @@ type Receiver interface {
 
 const kEOF = "f0ec1dea-03e8-4121-8c98-0b78704e009d"
 const kBREAK = "5bd2e423-4536-4a8d-a80d-c11567fc296f"
+const kBYTES = "a6cd7131-63cc-4f83-9cbb-709a3d317780"
+const kIMAGE = "f2f79e86-44dc-4721-95e0-ba42ebe1fe88"
 const kERR = "0fd184f8-0f4a-4d05-bf0f-77bd31642eae"
 const kARR = "057f1cb0-df9f-41d3-b003-ba7c1ef8f497"
 
@@ -23,12 +25,21 @@ func ErrorRecord(err error) *Record     { return &Record{key: kERR, value: err} 
 func ArrayRecord(arr []*Record) *Record { return &Record{key: kARR, value: arr} }
 
 type Record struct {
-	key   any
-	value any
+	key         any
+	value       any
+	contentType string
 }
 
 func NewRecord(k, v any) *Record {
 	return &Record{key: k, value: v}
+}
+
+func NewBytesRecord(raw []byte) *Record {
+	return &Record{key: kBYTES, value: raw}
+}
+
+func NewImageRecord(raw []byte, contentType string) *Record {
+	return &Record{key: kIMAGE, value: raw, contentType: contentType}
 }
 
 func (r *Record) IsEOF() bool {
@@ -41,6 +52,14 @@ func (r *Record) IsCircuitBreak() bool {
 
 func (r *Record) IsError() bool {
 	return r.key == kERR
+}
+
+func (r *Record) IsBytes() bool {
+	return r.key == kBYTES
+}
+
+func (r *Record) IsImage() bool {
+	return r.key == kIMAGE
 }
 
 func (r *Record) Error() error {
@@ -57,7 +76,7 @@ func (r *Record) IsArray() bool {
 
 func (r *Record) IsTuple() bool {
 	switch r.key {
-	case kEOF, kBREAK, kERR, kARR:
+	case kEOF, kBREAK, kBYTES, kIMAGE, kERR, kARR:
 		return false
 	default:
 		return true

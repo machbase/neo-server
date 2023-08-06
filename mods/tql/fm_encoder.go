@@ -16,6 +16,10 @@ func newEncoder(format string, args ...any) *Encoder {
 	return ret
 }
 
+func (node *Node) fmHtml(args ...any) *Encoder {
+	return newEncoder("html", args...)
+}
+
 func (node *Node) fmMarkdown(args ...any) *Encoder {
 	return newEncoder("markdown", args...)
 }

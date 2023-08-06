@@ -36,6 +36,8 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 	switch src := origin.(type) {
 	case string:
 		ret.reader = bytes.NewBufferString(src)
+	case []byte:
+		ret.reader = bytes.NewBuffer(src)
 	case io.Reader:
 		ret.reader = src
 	case *FilePath:
