@@ -47,7 +47,7 @@ var FxDefinitions = []Definition{
 	{"GROUPBYKEY", defTask.fmGroupByKey},
 	{"POPKEY", defTask.fmPopKey},
 	{"PUSHKEY", defTask.fmPushKey},
-	{"SCRIPT", defTask.fmScriptTengo},
+	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},

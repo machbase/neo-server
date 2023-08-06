@@ -8,8 +8,56 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/pkg/errors"
 )
+
+func (node *Node) fmScript(args ...any) (any, error) {
+	if len(args) == 2 {
+		name, ok := args[0].(*bridgeName)
+		if !ok {
+			goto syntaxerr
+		}
+		text, ok := args[1].(string)
+		if !ok {
+			goto syntaxerr
+		}
+		return node.fmScriptBridge(name, text)
+	} else if len(args) == 1 {
+		text, ok := args[0].(string)
+		if !ok {
+			goto syntaxerr
+		}
+		return node.fmScriptTengo(text)
+	}
+syntaxerr:
+	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [bridge("name"),] script_text )`)
+}
+
+func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) {
+	br, err := bridge.GetBridge(name.name)
+	if err != nil || br == nil {
+		return nil, fmt.Errorf(`script: bridge '%s' not found`, name.name)
+	}
+	switch engine := br.(type) {
+	case bridge.PythonBridge:
+		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(stderr) > 0 {
+			node.task.LogWarn(string(stderr))
+		}
+		if exitCode != 0 {
+			node.task.LogWarn(fmt.Sprintf("script: exit %d", exitCode))
+		}
+		text := string(stdout)
+		node.tellNext(NewRecord("stdout", text))
+	default:
+		return nil, fmt.Errorf(`script: bridge '%s' is not support for SCRIPT()`, name.name)
+	}
+	return nil, nil
+}
 
 type scriptlet struct {
 	script   *tengo.Script
