@@ -40,12 +40,12 @@ func (bn *bridgeNode) gen(node *Node) {
 	case "query":
 		br, err := bridge.GetBridge(bn.name)
 		if err != nil {
-			node.tellNext(ErrorRecord(err))
+			ErrorRecord(err).Tell(node.next)
 			return
 		}
 		sqlBridge, ok := br.(bridge.SqlBridge)
 		if !ok {
-			node.tellNext(ErrorRecord(fmt.Errorf("bridge '%s' is not a sql type", bn.name)))
+			ErrorRecord(fmt.Errorf("bridge '%s' is not a sql type", bn.name)).Tell(node.next)
 			return
 		}
 		bn.genBridgeQuery(node, sqlBridge)
@@ -64,19 +64,19 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 
 	conn, err := br.Connect(node.task.ctx)
 	if err != nil {
-		node.tellNext(ErrorRecord(err))
+		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer conn.Close()
 	rows, err := conn.QueryContext(node.task.ctx, bn.command, bn.params...)
 	if err != nil {
-		node.tellNext(ErrorRecord(err))
+		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer rows.Close()
 	columns, err := rows.ColumnTypes()
 	if err != nil {
-		node.tellNext(ErrorRecord(err))
+		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	var cols spi.Columns = make([]*spi.Column, len(columns))
@@ -111,6 +111,6 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 			}
 		}
 		rows.Scan(values...)
-		node.tellNext(NewRecord(values[0], values[1:]))
+		NewRecord(values[0], values[1:]).Tell(node.next)
 	}
 }

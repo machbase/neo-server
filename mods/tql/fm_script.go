@@ -59,12 +59,12 @@ func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) 
 		}
 		if len(stdout) > 0 {
 			if isPng(stdout) {
-				node.tellNext(NewImageRecord(stdout, "image/png"))
+				NewImageRecord(stdout, "image/png").Tell(node.next)
 			} else if isJpeg(stdout) {
-				node.tellNext(NewImageRecord(stdout, "image/jpeg"))
+				NewImageRecord(stdout, "image/jpeg").Tell(node.next)
 			} else {
 				// yield the output from python's stdout as bytes chunk
-				node.tellNext(NewBytesRecord(stdout))
+				NewBytesRecord(stdout).Tell(node.next)
 			}
 		}
 	default:

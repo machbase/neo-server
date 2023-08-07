@@ -13,8 +13,7 @@ import (
 /*
 Example)
 
-	 INPUT(
-		FAKE( oscillator() | meshgrid() | linspace() )
+	FAKE( oscillator() | meshgrid() | linspace() )
 */
 func (node *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
@@ -54,7 +53,7 @@ func genLinspace(node *Node, ls *linspace) {
 	vals := nums.Linspace(ls.start, ls.stop, ls.num)
 	for i, v := range vals {
 		rec := NewRecord(i+1, []any{v})
-		node.tellNext(rec)
+		rec.Tell(node.next)
 	}
 }
 
@@ -95,7 +94,7 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 			elm := vals[x][y]
 			if len(elm) == 2 {
 				id++
-				node.tellNext(NewRecord(id, []any{elm[0], elm[1]}))
+				NewRecord(id, []any{elm[0], elm[1]}).Tell(node.next)
 			}
 		}
 	}
@@ -131,7 +130,7 @@ func genSphere(node *Node, sp *sphere) {
 			y := math.Sin(u) * math.Sin(v)
 			z := math.Cos(v)
 			id++
-			node.tellNext(NewRecord(id, []any{x, y, z}))
+			NewRecord(id, []any{x, y, z}).Tell(node.next)
 		}
 	}
 }
@@ -192,7 +191,7 @@ func genOscillator(node *Node, gen *oscillator) {
 		for _, fr := range gen.frequencies {
 			value += fr.Value(float64(x) / float64(time.Second))
 		}
-		node.tellNext(NewRecord(time.Unix(0, x), []any{value}))
+		NewRecord(time.Unix(0, x), []any{value}).Tell(node.next)
 	}
 }
 

@@ -21,12 +21,12 @@ func (node *Node) fmINPUT(args ...any) (any, error) {
 }
 
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
-func (x *Node) fmQuery(args ...any) (any, error) {
-	between, _ := x.fmBetween("last-1s", "last")
+func (node *Node) fmQuery(args ...any) (any, error) {
+	between, _ := node.fmBetween("last-1s", "last")
 	ret := &querySource{
 		columns: []string{},
 		between: between,
-		limit:   x.fmLimit(1000000),
+		limit:   node.fmLimit(1000000),
 	}
 	for i, arg := range args {
 		switch tok := arg.(type) {
@@ -49,8 +49,8 @@ func (x *Node) fmQuery(args ...any) (any, error) {
 	}
 
 	if ret.dump == nil || !ret.dump.Flag {
-		ds := &databaseSource{task: x.task, sqlText: ret.ToSQL()}
-		ds.gen(x)
+		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		ds.gen(node)
 	} else {
 		var text string
 		if ret.between != nil {
@@ -63,7 +63,7 @@ func (x *Node) fmQuery(args ...any) (any, error) {
 		if ret.dump.Escape {
 			text = url.QueryEscape(text)
 		}
-		x.tellNext(NewRecord(text, nil))
+		NewRecord(text, nil).Tell(node.next)
 		return nil, nil
 	}
 	return nil, nil
@@ -142,9 +142,8 @@ type databaseSource struct {
 	sqlText string
 	params  []any
 
-	fetched       int
-	shouldStopNow bool
-	executed      bool
+	fetched  int
+	executed bool
 }
 
 func (dc *databaseSource) gen(node *Node) {
@@ -154,15 +153,11 @@ func (dc *databaseSource) gen(node *Node) {
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
-			dc.fetched++
-			if dc.shouldStopNow {
-				return false
-			} else {
-				if len(values) > 0 {
-					node.tellNext(NewRecord(values[0], values[1:]))
-				}
-				return true
+			if !dc.task.shouldStop && len(values) > 0 {
+				dc.fetched++
+				NewRecord(values[0], values[1:]).Tell(node.next)
 			}
+			return !dc.task.shouldStop
 		},
 		OnFetchEnd: func() {},
 		OnExecuted: func(usermsg string, rowsAffected int64) {
@@ -170,13 +165,13 @@ func (dc *databaseSource) gen(node *Node) {
 		},
 	}
 	if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
-		node.tellNext(ErrorRecord(err))
+		ErrorRecord(err).Tell(node.next)
 	} else {
 		if dc.executed {
 			dc.task.SetResultColumns(spi.Columns{
 				{Name: "message", Type: "string"},
 			})
-			node.tellNext(NewRecord(msg, nil))
+			NewRecord(msg, nil).Tell(node.next)
 		}
 	}
 }

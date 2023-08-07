@@ -120,7 +120,24 @@ func (r *Record) Tell(receiver Receiver) {
 }
 
 func (r *Record) String() string {
-	return fmt.Sprintf("K:%T(%v) V:%s", r.key, r.key, r.StringValueTypes())
+	if r == nil {
+		return "<nil>"
+	}
+	if r.key == kEOF {
+		return "EOF"
+	} else if r.key == kBREAK {
+		return "CIRCUITEBREAK"
+	} else if r.key == kBYTES {
+		return "BYTES"
+	} else if r.key == kIMAGE {
+		return "IMAGE"
+	} else if r.key == kERR {
+		return fmt.Sprintf("ERROR %s", r.value)
+	} else if r.key == kARR {
+		return "ARRAY"
+	} else {
+		return fmt.Sprintf("K:%T(%s) V:%s", r.key, r.key, r.StringValueTypes())
+	}
 }
 
 func (p *Record) StringValueTypes() string {

@@ -20,6 +20,7 @@ import (
 
 type Task struct {
 	ctx          context.Context
+	ctxCancel    context.CancelFunc
 	params       map[string][]string
 	db           spi.Database
 	inputReader  io.Reader
@@ -35,6 +36,8 @@ type Task struct {
 	compileErr error
 	output     *output
 	nodes      []*Node
+
+	shouldStop bool
 }
 
 var (
@@ -42,12 +45,12 @@ var (
 )
 
 func NewTask() *Task {
-	return &Task{}
+	return NewTaskContext(context.Background())
 }
 
 func NewTaskContext(ctx context.Context) *Task {
 	ret := &Task{}
-	ret.ctx = ctx
+	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
 	return ret
 }
 
@@ -255,6 +258,11 @@ func (x *Task) execute() (err error) {
 		err = x.output.lastError
 	}
 	return
+}
+
+func (x *Task) onCircuitBreak(fromNode *Node) {
+	fmt.Println("CircuitBreak from", fromNode.name)
+	x.shouldStop = true
 }
 
 func (x *Task) SetResultColumns(cols spi.Columns) {

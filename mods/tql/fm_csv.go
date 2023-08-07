@@ -106,7 +106,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		rownum++
 		if err == nil {
-			node.tellNext(NewRecord(values[0], values[1:]))
+			NewRecord(values[0], values[1:]).Tell(node.next)
 		} else {
 			err = nil
 		}
