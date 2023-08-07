@@ -155,7 +155,13 @@ func (dc *databaseSource) gen(node *Node) {
 		OnFetch: func(nrow int64, values []any) bool {
 			if !dc.task.shouldStop() && len(values) > 0 {
 				dc.fetched++
-				NewRecord(values[0], values[1:]).Tell(node.next)
+				if len(values) == 1 {
+					NewRecord(values[0], []any{}).Tell(node.next)
+				} else if len(values) == 2 {
+					NewRecord(values[0], []any{values[1]}).Tell(node.next)
+				} else if len(values) > 2 {
+					NewRecord(values[0], values[1:]).Tell(node.next)
+				}
 			}
 			return !dc.task.shouldStop()
 		},

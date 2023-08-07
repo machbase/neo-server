@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
 	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +44,24 @@ func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) 
 	}
 	switch engine := br.(type) {
 	case bridge.PythonBridge:
-		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, nil)
+		var input []byte
+		rec := node.Inflight()
+		if rec != nil {
+			b := &bytes.Buffer{}
+			w := csv.NewWriter(b)
+			if rec.IsArray() {
+				for _, r := range rec.Array() {
+					fields := util.StringFields(r.Fields(), "ns", nil, -1)
+					w.Write(fields)
+				}
+			} else {
+				fields := util.StringFields(rec.Fields(), "ns", nil, -1)
+				w.Write(fields)
+			}
+			w.Flush()
+			input = b.Bytes()
+		}
+		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, input)
 		if err != nil {
 			if len(stdout) > 0 {
 				node.task.Log(string(stderr))
@@ -59,12 +79,13 @@ func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) 
 		}
 		if len(stdout) > 0 {
 			if isPng(stdout) {
-				NewImageRecord(stdout, "image/png").Tell(node.next)
+				return NewImageRecord(stdout, "image/png"), nil
 			} else if isJpeg(stdout) {
-				NewImageRecord(stdout, "image/jpeg").Tell(node.next)
+				return NewImageRecord(stdout, "image/jpeg"), nil
 			} else {
 				// yield the output from python's stdout as bytes chunk
-				NewBytesRecord(stdout).Tell(node.next)
+				//fmt.Println("output", string(stdout))
+				return NewBytesRecord(stdout), nil
 			}
 		}
 	default:

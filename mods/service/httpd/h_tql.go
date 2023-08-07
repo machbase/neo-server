@@ -49,7 +49,12 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	if err := task.ExecuteHandler(ctx.Writer); err != nil {
+	ctx.Writer.Header().Set("Content-Type", task.OutputContentType())
+	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
+	if chart := task.OutputChartType(); len(chart) > 0 {
+		ctx.Writer.Header().Set("X-Chart-Type", chart)
+	}
+	if err := task.Execute(); err != nil {
 		svr.log.Error("tql execute error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -103,7 +108,18 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		return
 	}
 
-	if err := task.ExecuteHandler(ctx.Writer); err != nil {
+	contentType := task.OutputContentType()
+	switch contentType {
+	case "application/xhtml+xml":
+		ctx.Writer.Header().Set("Content-Type", "text/html")
+	default:
+		ctx.Writer.Header().Set("Content-Type", contentType)
+	}
+	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
+	if chart := task.OutputChartType(); len(chart) > 0 {
+		ctx.Writer.Header().Set("X-Chart-Type", chart)
+	}
+	if err := task.Execute(); err != nil {
 		svr.log.Error("tql execute fail", path, err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

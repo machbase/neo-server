@@ -116,6 +116,9 @@ func (r *Record) Flatten() []any {
 }
 
 func (r *Record) Tell(receiver Receiver) {
+	if receiver == nil {
+		return
+	}
 	receiver.Receive(r)
 }
 
@@ -138,6 +141,26 @@ func (r *Record) String() string {
 	} else {
 		return fmt.Sprintf("K:%T(%s) V:%s", r.key, r.key, r.StringValueTypes())
 	}
+}
+
+func (r *Record) Fields() []any {
+	var ret []any
+	if value := r.Value(); value == nil {
+		// if the value of the record is nil, yield key only
+		ret = []any{r.Key()}
+	} else {
+		switch v := value.(type) {
+		case [][]any:
+			for n := range v {
+				ret = append([]any{r.Key()}, v[n]...)
+			}
+		case []any:
+			ret = append([]any{r.Key()}, v...)
+		case any:
+			ret = []any{r.Key(), v}
+		}
+	}
+	return ret
 }
 
 func (p *Record) StringValueTypes() string {

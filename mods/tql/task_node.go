@@ -32,7 +32,7 @@ type Node struct {
 	closers []Closer
 	mutex   sync.Mutex
 
-	inflight *Record
+	_inflight *Record
 }
 
 var (
@@ -58,7 +58,7 @@ func (node *Node) Parse(text string) (*expression.Expression, error) {
 }
 
 func (node *Node) SetInflight(rec *Record) {
-	node.inflight = rec
+	node._inflight = rec
 }
 
 func (node *Node) Function(name string) expression.Function {
@@ -70,7 +70,7 @@ func (node *Node) Name() string {
 }
 
 func (node *Node) Inflight() *Record {
-	return node.inflight
+	return node._inflight
 }
 
 func (node *Node) Receive(rec *Record) {
@@ -81,12 +81,12 @@ func (node *Node) Receive(rec *Record) {
 func (node *Node) Get(name string) (any, error) {
 	switch name {
 	case "K":
-		if node.inflight != nil {
-			return node.inflight.key, nil
+		if node._inflight != nil {
+			return node._inflight.key, nil
 		}
 	case "V":
-		if node.inflight != nil {
-			return node.inflight.value, nil
+		if node._inflight != nil {
+			return node._inflight.value, nil
 		}
 	case "CTX":
 		return node, nil
@@ -156,7 +156,7 @@ func (node *Node) start() {
 			if o := recover(); o != nil {
 				w := &bytes.Buffer{}
 				w.Write(debug.Stack())
-				node.task.LogErrorf("panic %s inflight:%s %v\n%s", node.name, node.inflight.String(), o, w.String())
+				node.task.LogErrorf("panic %s inflight:%s %v\n%s", node.name, node._inflight.String(), o, w.String())
 			}
 		}()
 	loop:

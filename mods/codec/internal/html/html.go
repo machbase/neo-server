@@ -41,8 +41,10 @@ func (ex *Exporter) AddRow(values []any) error {
 		if head != "" {
 			switch v := values[1].(type) {
 			case []byte:
-				base64Encoding := head + base64.StdEncoding.EncodeToString(v)
-				ex.output.Write([]byte(fmt.Sprintf(`<div><img src="%s"/></div>`, base64Encoding)))
+				enc := base64.NewEncoder(base64.StdEncoding, ex.output)
+				ex.output.Write([]byte(fmt.Sprintf(`<div><img src="%s`, head)))
+				enc.Write(v)
+				ex.output.Write([]byte(`"/></div>`))
 			default:
 				return fmt.Errorf("invalid image data type (%T)", v)
 			}

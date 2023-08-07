@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -210,17 +209,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 	return nil
 }
 
-func (x *Task) ExecuteHandler(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", x.output.ContentType())
-	if contentEncoding := x.output.ContentEncoding(); len(contentEncoding) > 0 {
-		w.Header().Set("Content-Encoding", contentEncoding)
-	}
-	if x.output.IsChart() {
-		w.Header().Set("X-Chart-Type", "echarts")
-	}
-	return x.Execute()
-}
-
 func (x *Task) Execute() error {
 	err := x.execute()
 	if err != nil {
@@ -242,7 +230,9 @@ func (x *Task) execute() (err error) {
 	}()
 
 	// start output
-	x.output.start()
+	if x.output != nil {
+		x.output.start()
+	}
 	// start nodes
 	for _, child := range x.nodes {
 		child.start()
@@ -254,9 +244,11 @@ func (x *Task) execute() (err error) {
 	for _, child := range x.nodes {
 		child.stop()
 	}
-	x.output.stop()
+	if x.output != nil {
+		x.output.stop()
+	}
 
-	if err == nil {
+	if err == nil && x.output != nil {
 		err = x.output.lastError
 	}
 	return
@@ -279,6 +271,30 @@ func (x *Task) SetResultColumns(cols spi.Columns) {
 	if x.output != nil {
 		x.output.resultColumns = cols
 	}
+}
+
+func (x *Task) OutputContentType() string {
+	if x.output != nil {
+		ret := x.output.ContentType()
+		return ret
+	}
+	return "application/octet-stram"
+}
+
+func (x *Task) OutputContentEncoding() string {
+	if x.output != nil {
+		if contentEncoding := x.output.ContentEncoding(); len(contentEncoding) > 0 {
+			return contentEncoding
+		}
+	}
+	return "identity"
+}
+
+func (x *Task) OutputChartType() string {
+	if x.output != nil && x.output.IsChart() {
+		return "echarts"
+	}
+	return ""
 }
 
 type TaskLog interface {
