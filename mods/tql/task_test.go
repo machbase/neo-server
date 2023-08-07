@@ -216,6 +216,21 @@ func TestGroupByKey(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestDropTake(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(50)",
+		"TAKE(3)",
+		"CSV()",
+	}
+	resultLines := []string{
+		"51,1.010101",
+		"52,1.030303",
+		"53,1.050505",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestFFT2D(t *testing.T) {
 	codeLines := []string{
 		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",

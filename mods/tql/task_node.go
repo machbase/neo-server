@@ -172,7 +172,7 @@ func (node *Node) start() {
 				} else if rec.IsError() {
 					rec.Tell(node.next)
 					continue
-				} else if !node.task.shouldStop {
+				} else if !node.task.shouldStop() {
 					node.nrow++
 					node.SetInflight(rec)
 					if node.debug {

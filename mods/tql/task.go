@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
@@ -37,7 +38,8 @@ type Task struct {
 	output     *output
 	nodes      []*Node
 
-	shouldStop bool
+	_shouldStop     bool
+	_shouldStopLock sync.RWMutex
 }
 
 var (
@@ -261,8 +263,16 @@ func (x *Task) execute() (err error) {
 }
 
 func (x *Task) onCircuitBreak(fromNode *Node) {
-	fmt.Println("CircuitBreak from", fromNode.name)
-	x.shouldStop = true
+	x._shouldStopLock.Lock()
+	x._shouldStop = true
+	x._shouldStopLock.Unlock()
+}
+
+func (x *Task) shouldStop() bool {
+	x._shouldStopLock.RLock()
+	ret := x._shouldStop
+	x._shouldStopLock.RUnlock()
+	return ret
 }
 
 func (x *Task) SetResultColumns(cols spi.Columns) {

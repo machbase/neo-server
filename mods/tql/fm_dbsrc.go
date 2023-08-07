@@ -153,11 +153,11 @@ func (dc *databaseSource) gen(node *Node) {
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
-			if !dc.task.shouldStop && len(values) > 0 {
+			if !dc.task.shouldStop() && len(values) > 0 {
 				dc.fetched++
 				NewRecord(values[0], values[1:]).Tell(node.next)
 			}
-			return !dc.task.shouldStop
+			return !dc.task.shouldStop()
 		},
 		OnFetchEnd: func() {},
 		OnExecuted: func(usermsg string, rowsAffected int64) {
