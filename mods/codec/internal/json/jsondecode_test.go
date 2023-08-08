@@ -25,10 +25,10 @@ func TestDecoder(t *testing.T) {
 	}`)
 
 	dec := &json.Decoder{}
-	dec.SetTable("test")
+	dec.SetTableName("test")
 	dec.SetTimeformat("s")
 	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
-	dec.SetColumns([]string{"NAME", "TIME", "VALUE"}, []string{"string", "datetime", "double"})
+	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
 	rec, err := dec.NextRow()
@@ -54,10 +54,10 @@ func TestRowsOnlyDecoder(t *testing.T) {
 	]`)
 
 	dec := &json.Decoder{}
-	dec.SetTable("test")
+	dec.SetTableName("test")
 	dec.SetTimeformat("s")
 	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
-	dec.SetColumns([]string{"NAME", "TIME", "VALUE"}, []string{"string", "datetime", "double"})
+	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
 	rec, err := dec.NextRow()
@@ -80,8 +80,8 @@ func TestSingleRowDecoder(t *testing.T) {
 	input := bytes.NewBufferString(`["name1", 1676528839, 0.1234]`)
 
 	dec := &json.Decoder{}
-	dec.SetTable("test")
-	dec.SetColumns([]string{"NAME", "TIME", "VALUE"}, []string{"string", "datetime", "double"})
+	dec.SetTableName("test")
+	dec.SetColumnTypes("string", "datetime", "double")
 	dec.SetTimeformat("s")
 	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
 	dec.Open()

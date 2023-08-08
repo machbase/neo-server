@@ -56,7 +56,7 @@ func (dec *Decoder) SetDelimiter(delimiter string) {
 	dec.comma = delmiter
 }
 
-func (dec *Decoder) SetTable(tableName string) {
+func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
 }
 
@@ -64,8 +64,11 @@ func (dec *Decoder) SetTranscoder(trans transcoder.Transcoder) {
 	dec.translator = trans
 }
 
-func (dec *Decoder) SetColumns(names []string, types []string) {
+func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
+}
+
+func (dec *Decoder) SetColumnTypes(types ...string) {
 	dec.columnTypes = types
 }
 

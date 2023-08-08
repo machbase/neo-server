@@ -39,11 +39,11 @@ func (dec *Decoder) SetTimeLocation(tz *time.Location) {
 	dec.timeLocation = tz
 }
 
-func (dec *Decoder) SetTable(tableName string) {
+func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
 }
 
-func (dec *Decoder) SetColumns(labels []string, types []string) {
+func (dec *Decoder) SetColumnTypes(types ...string) {
 	dec.columnTypes = types
 }
 

@@ -60,8 +60,11 @@ func (ex *Exporter) SetHeading(show bool) {
 	ex.Heading = show
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
+}
+
+func (ex *Exporter) SetColumnTypes(types ...string) {
 	ex.colTypes = types
 }
 

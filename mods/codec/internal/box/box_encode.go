@@ -25,7 +25,6 @@ type Exporter struct {
 	precision       int
 
 	colNames []string
-	colTypes []string
 }
 
 func NewEncoder() *Exporter {
@@ -76,9 +75,8 @@ func (ex *Exporter) SetBoxDrawBorder(flag bool) {
 	ex.drawBorder = flag
 }
 
-func (ex *Exporter) SetColumns(names []string, types []string) {
+func (ex *Exporter) SetColumns(names ...string) {
 	ex.colNames = names
-	ex.colTypes = types
 }
 
 func (ex *Exporter) Open() error {

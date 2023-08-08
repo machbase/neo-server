@@ -27,7 +27,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-engine v1.1.1
-	github.com/machbase/neo-grpc v1.0.1
+	github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad
 	github.com/machbase/neo-spi v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea

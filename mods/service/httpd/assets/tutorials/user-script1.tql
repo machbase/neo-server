@@ -1,4 +1,4 @@
-INPUT( FAKE(meshgrid(linspace(-1.0,1.0,200), linspace(-1.0, 1.0, 200))) )
+FAKE(meshgrid(linspace(-1.0,1.0,200), linspace(-1.0, 1.0, 200)))
 SCRIPT({
   math := import("math")
   ctx := import("context")
@@ -8,12 +8,10 @@ SCRIPT({
   z := math.sin(10*(math.pow(x,2) + math.pow(y,2)))/10
   ctx.yieldKey(x, y, z)
 })
-OUTPUT(
-  CHART_LINE3D(
-    size('1000px', '600px'),
-    lineWidth(4), 
-    gridSize(100, 30, 100), 
-    visualMap(-0.12, 0.12), 
-    autoRotate(20)
-  )
+CHART_LINE3D(
+  size('1000px', '600px'),
+  lineWidth(4), 
+  gridSize(100, 30, 100), 
+  visualMap(-0.12, 0.12), 
+  autoRotate(20)
 )

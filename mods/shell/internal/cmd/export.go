@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -113,16 +114,16 @@ func doExport(ctx *client.ActionContext) {
 	}
 
 	encoder := codec.NewEncoder(cmd.Format,
-		codec.OutputStream(output),
-		codec.Timeformat(cmd.Timeformat),
-		codec.Precision(cmd.Precision),
-		codec.Rownum(false),
-		codec.Heading(cmd.Heading),
-		codec.TimeLocation(cmd.TimeLocation),
-		codec.Delimiter(cmd.Delimiter),
-		codec.BoxStyle("light"),
-		codec.BoxSeparateColumns(true),
-		codec.BoxDrawBorder(true),
+		opts.OutputStream(output),
+		opts.Timeformat(cmd.Timeformat),
+		opts.Precision(cmd.Precision),
+		opts.Rownum(false),
+		opts.Heading(cmd.Heading),
+		opts.TimeLocation(cmd.TimeLocation),
+		opts.Delimiter(cmd.Delimiter),
+		opts.BoxStyle("light"),
+		opts.BoxSeparateColumns(true),
+		opts.BoxDrawBorder(true),
 	)
 
 	alive := true

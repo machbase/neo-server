@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -72,7 +73,7 @@ func (ex *Exporter) SetDelimiter(delimiter string) {
 	ex.comma = delmiter
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
@@ -186,6 +187,18 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case *[]uint8:
+			strs := []string{}
+			for _, c := range *v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
+		case []uint8:
+			strs := []string{}
+			for _, c := range v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

@@ -17,10 +17,12 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	ctx.Writer.Header().Set("Content-Type", "text/html")
+	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
+	ctx.Writer.Write([]byte("<div>"))
 	err = conv.Convert(src, ctx.Writer)
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, fmt.Sprintf(`<p>%s</p>`, err.Error()))
 	}
+	ctx.Writer.Write([]byte("</div>"))
 }

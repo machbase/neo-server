@@ -69,15 +69,23 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
-func (ex *Exporter) SetHtmlRender(flag bool) {
+func (ex *Exporter) SetHtml(flag bool) {
 	ex.htmlRender = flag
 }
 
-func (ex *Exporter) SetBrief(count int) {
+func (ex *Exporter) SetBrief(flag bool) {
+	if flag {
+		ex.SetBriefCount(5)
+	} else {
+		ex.SetBriefCount(0)
+	}
+}
+
+func (ex *Exporter) SetBriefCount(count int) {
 	ex.brief = int64(count)
 }
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -25,17 +26,32 @@ func init() {
 const helpBridge = `  bridge command [options]
   commands:
     list                            shows registered bridges
-    add [options] <name>  <conn>    add bridage
+    add [options] <name>  <conn>    add bridge
         options:
-            -t,--type <type>        bridge type [ sqlite, postgres, mysql, mqtt ]
+            -t,--type <type>        bridge type [ sqlite, mqtt, ... (see below) ]
         args:
             name                    name of the connection
             conn                    connection string
-    del      <name>                 remove bridage
-    test     <name>                 test connectivity of the bridage
-    exec     <name> <command>       execute on the bridge
-    query    <name> <command>       query on the bridge
+    del     <name>                 remove bridge
+    test    <name>                 test connectivity of the bridge
+    exec    <name> <command>       execute command on the bridge
+    query   <name> <command>       query the bridge with command
+
+  bridge types (-t,--type):
+    sqlite        SQLite            https://sqlite.org
+	    ex) bridge add -t sqlite my_memory file::memory:?cache=shared
+			bridge add -t sqlite my_sqlite file:/tmp/sqlitefile.db
+	postgres      PostgreSQL        https://postgresql.org
+	    ex) bridge add -t postgres my_pg host=127.0.0.1 port=5432 user=dbuser dbname=postgres sslmode=disable
+	mysql         MySQL             https://mysql.com
+		ex) bridge add -t mysql my_sql root:pwd@tcp(127.0.0.1:3306)/testdb
+	mqtt          MQTT (v3.1.1)     https://mqtt.org
+		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
 `
+
+// python        Python            https://python.org
+// 		ex) bridge add -t python py-local bin=/usr/local/bin/python3
+// 		ex) bridge add -t python py-myenv bin=/bin/python dir=/work env="API_KEY=api_token" env="VAR=VALUE"
 
 type BridgeCmd struct {
 	List struct{} `cmd:"" name:"list"`
@@ -43,9 +59,9 @@ type BridgeCmd struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"del"`
 	Add struct {
-		Name string `arg:"" name:"name" help:"bridge name"`
-		Path string `arg:"" name:"conn" help:"bridge connection string"`
-		Type string `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mqtt" help:"bridge type"`
+		Name string   `arg:"" name:"name" help:"bridge name"`
+		Path []string `arg:"" name:"conn" passthrough:"" help:"connection string"`
+		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mqtt,python" help:"bridge type"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
@@ -64,7 +80,14 @@ type BridgeCmd struct {
 func pcBridge() readline.PrefixCompleterInterface {
 	return readline.PcItem("bridge",
 		readline.PcItem("list"),
-		readline.PcItem("add"),
+		readline.PcItem("add",
+			readline.PcItem("--type",
+				readline.PcItem("sqlite"),
+				readline.PcItem("poastgres"),
+				readline.PcItem("mysql"),
+				readline.PcItem("mqtt"),
+				readline.PcItem("python"),
+			)),
 		readline.PcItem("del"),
 		readline.PcItem("test"),
 		readline.PcItem("exec"),
@@ -74,7 +97,11 @@ func pcBridge() readline.PrefixCompleterInterface {
 
 func doBridge(ctx *client.ActionContext) {
 	cmd := &BridgeCmd{}
-	parser, err := client.Kong(cmd, func() error { ctx.Println(helpBridge); cmd.Help = true; return nil })
+	parser, err := client.Kong(cmd, func() error {
+		ctx.Println(strings.ReplaceAll(helpBridge, "\t", "    "))
+		cmd.Help = true
+		return nil
+	})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -92,7 +119,7 @@ func doBridge(ctx *client.ActionContext) {
 	case "list":
 		doBridgeList(ctx)
 	case "add <name> <conn>":
-		doBridgeAdd(ctx, cmd.Add.Name, cmd.Add.Type, util.StripQuote(cmd.Add.Path))
+		doBridgeAdd(ctx, cmd.Add.Name, cmd.Add.Type, util.StripQuote(strings.Join(cmd.Add.Path, " ")))
 	case "del <name>":
 		doBridgeDel(ctx, cmd.Del.Name)
 	case "test <name>":
@@ -131,6 +158,26 @@ func doBridgeList(ctx *client.ActionContext) {
 		box.AppendRow(c.Name, c.Type, c.Path)
 	}
 	box.Render()
+}
+
+func getBridgeType(ctx *client.ActionContext, name string) (string, error) {
+	mgmtCli, err := ctx.Client.BridgeManagementClient()
+	if err != nil {
+		return "", err
+	}
+	rsp, err := mgmtCli.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
+	if err != nil {
+		return "", err
+	}
+	if !rsp.Success {
+		return "", errors.New(rsp.Reason)
+	}
+	for _, c := range rsp.Bridges {
+		if strings.EqualFold(c.Name, name) {
+			return c.Type, nil
+		}
+	}
+	return "", fmt.Errorf("bridge '%s' not found", name)
 }
 
 func doBridgeDel(ctx *client.ActionContext, name string) {
@@ -195,21 +242,47 @@ func doBridgeExec(ctx *client.ActionContext, name string, command string) {
 		ctx.Println("ERR bridge service is not avaliable;", err.Error())
 		return
 	}
-	cmd := &bridgerpc.ExecRequest_SqlExec{SqlExec: &bridgerpc.SqlRequest{}}
-	cmd.SqlExec.SqlText = command
-	rsp, err := bridgeRuntime.Exec(ctx, &bridgerpc.ExecRequest{Name: name, Command: cmd})
+	brType, err := getBridgeType(ctx, name)
 	if err != nil {
-		ctx.Println("ERR", "exec bridge", name, err.Error())
+		ctx.Println("ERR %s;", err.Error())
 		return
 	}
-	if !rsp.Success {
-		ctx.Println("ERR", "exec bridge fail", rsp.Reason)
-		return
-	}
-	result := rsp.GetSqlExecResult()
-	if result != nil {
-		ctx.Println("executed.")
-		return
+	switch brType {
+	case "python":
+		cmd := &bridgerpc.ExecRequest_Invoke{Invoke: &bridgerpc.InvokeRequest{}}
+		cmd.Invoke.Args = []string{command}
+		rsp, err := bridgeRuntime.Exec(ctx, &bridgerpc.ExecRequest{Name: name, Command: cmd})
+		result := rsp.GetInvokeResult()
+		if result != nil && len(result.Stdout) > 0 {
+			ctx.Println("stdout", string(result.Stdout))
+		}
+		if result != nil && len(result.Stderr) > 0 {
+			ctx.Println("stderr", string(result.Stderr))
+		}
+		if err != nil {
+			ctx.Println("ERR", "exec bridge", name, err.Error())
+			return
+		}
+		if !rsp.Success {
+			ctx.Println("ERR", "exec bridge fail,", rsp.Reason)
+			return
+		}
+	default:
+		cmd := &bridgerpc.ExecRequest_SqlExec{SqlExec: &bridgerpc.SqlRequest{}}
+		cmd.SqlExec.SqlText = command
+		rsp, err := bridgeRuntime.Exec(ctx, &bridgerpc.ExecRequest{Name: name, Command: cmd})
+		if err != nil {
+			ctx.Println("ERR", "exec bridge", name, err.Error())
+			return
+		}
+		if !rsp.Success {
+			ctx.Println("ERR", "exec bridge fail,", rsp.Reason)
+			return
+		}
+		result := rsp.GetSqlExecResult()
+		if result != nil {
+			ctx.Println("executed.")
+		}
 	}
 }
 

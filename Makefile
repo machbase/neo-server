@@ -20,7 +20,7 @@ test:
 	@make -f Makefile test-base
 
 test-base: tmpdir
-	@go test $(ARGS) -cover \
+	@go test $(ARGS) -cover -race \
 		./booter \
 		./mods/util \
 		./mods/util/glob \
@@ -28,9 +28,6 @@ test-base: tmpdir
 		./mods/util/ssfs \
 		./mods/expression \
 		./mods/tql \
-		./mods/tql/fcom \
-		./mods/tql/fmap \
-		./mods/tql/fsrc \
 		./mods/nums/opensimplex \
 		./mods/script \
 		./mods/transcoder \
@@ -97,6 +94,9 @@ release-%:
 	./scripts/package.sh $* darwin arm64 $(nextver)
 	./scripts/package.sh $* darwin amd64 $(nextver)
 	./scripts/package.sh $* windows amd64 $(nextver)
+
+generate:
+	@go generate ./...
 
 ## Require https://github.com/matryer/moq
 regen-mock:
