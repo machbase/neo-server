@@ -61,6 +61,13 @@ func New(name string, path string) *bridge {
 }
 
 func (c *bridge) BeforeRegister() error {
+	cfg := paho.NewClientOptions()
+	cfg.SetCleanSession(true)
+	cfg.SetProtocolVersion(4)
+	cfg.SetConnectRetry(false)
+	cfg.SetAutoReconnect(false)
+	cfg.SetKeepAlive(30 * time.Second)
+
 	fields := strings.Fields(c.path)
 	for _, field := range fields {
 		kv := strings.SplitN(field, "=", 2)
@@ -96,10 +103,6 @@ func (c *bridge) BeforeRegister() error {
 			c.log.Infof("unknown option, %s=%s", key, val)
 		}
 	}
-	cfg := paho.NewClientOptions()
-	cfg.SetProtocolVersion(4)
-	cfg.SetConnectRetry(false)
-	cfg.SetAutoReconnect(false)
 	cfg.SetCleanSession(c.cleanSession)
 	if len(c.username) > 0 {
 		cfg.SetUsername(c.username)
@@ -142,7 +145,6 @@ func (c *bridge) BeforeRegister() error {
 
 	c.clientOpts = cfg
 	if len(c.serverAddresses) > 0 {
-		c.alive = true
 		go c.run()
 	}
 
@@ -150,11 +152,7 @@ func (c *bridge) BeforeRegister() error {
 }
 
 func (c *bridge) AfterUnregister() error {
-	c.alive = false
 	c.stopSig <- true
-	if c.client == nil && c.client.IsConnected() {
-		c.client.Disconnect(100)
-	}
 	return nil
 }
 
@@ -175,9 +173,8 @@ func (c *bridge) IsConnected() bool {
 
 func (c *bridge) run() {
 	var fallbackWait = 1 * time.Second
-
 	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	c.alive = true
 	for c.alive {
 		select {
 		case <-ticker.C:
@@ -186,7 +183,7 @@ func (c *bridge) run() {
 				c.client = paho.NewClient(c.clientOpts)
 				clientToken := c.client.Connect()
 				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
-					c.log.Trace("bridge [%s] connected.", c.name)
+					c.log.Tracef("bridge [%s] connected.", c.name)
 					go c.notifyConnectListeners()
 					ticker.Reset(10 * time.Second)
 					fallbackWait = 1 * time.Second
@@ -194,7 +191,7 @@ func (c *bridge) run() {
 					if beforeTimedout {
 						c.log.Tracef("bridge [%s] connect rejected", c.name)
 					} else {
-						c.log.Trace("bridge [%s] connect timed out", c.name)
+						c.log.Tracef("bridge [%s] connect timed out", c.name)
 					}
 					c.log.Tracef("bridge [%s] connecting fallback wait %s.", c.name, fallbackWait)
 					go c.notifyDisconnectListeners()
@@ -207,8 +204,12 @@ func (c *bridge) run() {
 			}
 		case <-c.stopSig:
 			c.log.Tracef("bridge [%s] stop", c.name)
-			return
+			c.alive = false
 		}
+	}
+	ticker.Stop()
+	if c.client != nil && c.client.IsConnected() {
+		c.client.Disconnect(300)
 	}
 }
 
