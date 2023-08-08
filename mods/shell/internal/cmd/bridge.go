@@ -47,10 +47,11 @@ const helpBridge = `  bridge command [options]
 		ex) bridge add -t mysql my_sql root:pwd@tcp(127.0.0.1:3306)/testdb
 	mqtt          MQTT (v3.1.1)     https://mqtt.org
 		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
-	python        Python            https://python.org
-		ex) bridge add -t python py-local bin=/usr/local/bin/python3
-		ex) bridge add -t python py-myenv bin=/bin/python dir=/work env="API_KEY=api_token" env="VAR=VALUE"
 `
+
+// python        Python            https://python.org
+// 		ex) bridge add -t python py-local bin=/usr/local/bin/python3
+// 		ex) bridge add -t python py-myenv bin=/bin/python dir=/work env="API_KEY=api_token" env="VAR=VALUE"
 
 type BridgeCmd struct {
 	List struct{} `cmd:"" name:"list"`
