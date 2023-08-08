@@ -32,7 +32,7 @@ type Node struct {
 	closers []Closer
 	mutex   sync.Mutex
 
-	inflight *Record
+	_inflight *Record
 }
 
 var (
@@ -58,7 +58,7 @@ func (node *Node) Parse(text string) (*expression.Expression, error) {
 }
 
 func (node *Node) SetInflight(rec *Record) {
-	node.inflight = rec
+	node._inflight = rec
 }
 
 func (node *Node) Function(name string) expression.Function {
@@ -70,7 +70,7 @@ func (node *Node) Name() string {
 }
 
 func (node *Node) Inflight() *Record {
-	return node.inflight
+	return node._inflight
 }
 
 func (node *Node) Receive(rec *Record) {
@@ -81,12 +81,12 @@ func (node *Node) Receive(rec *Record) {
 func (node *Node) Get(name string) (any, error) {
 	switch name {
 	case "K":
-		if node.inflight != nil {
-			return node.inflight.key, nil
+		if node._inflight != nil {
+			return node._inflight.key, nil
 		}
 	case "V":
-		if node.inflight != nil {
-			return node.inflight.value, nil
+		if node._inflight != nil {
+			return node._inflight.value, nil
 		}
 	case "CTX":
 		return node, nil
@@ -156,7 +156,7 @@ func (node *Node) start() {
 			if o := recover(); o != nil {
 				w := &bytes.Buffer{}
 				w.Write(debug.Stack())
-				node.task.LogErrorf("panic %s %v\n%s", node.name, o, w.String())
+				node.task.LogErrorf("panic %s inflight:%s %v\n%s", node.name, node._inflight.String(), o, w.String())
 			}
 		}()
 	loop:
@@ -172,36 +172,49 @@ func (node *Node) start() {
 				} else if rec.IsError() {
 					rec.Tell(node.next)
 					continue
-				}
-				node.nrow++
-				node.SetInflight(rec)
-				if node.debug {
-					node.task.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
-				}
-				ret, err := node.expr.Eval(node)
-				if err != nil {
-					ErrorRecord(err).Tell(node.next)
-					continue
-				}
-				if ret == nil {
-					continue
-				}
-				switch rs := ret.(type) {
-				case *Record:
-					if alive, will := node.tellNext(rs); !alive {
-						lastWill = will
-						break loop
+				} else if !node.task.shouldStop() {
+					node.nrow++
+					node.SetInflight(rec)
+					if node.debug {
+						node.task.LogDebug("->", node.Name(), "RECV", fmt.Sprintf("%v", rec.key), rec.StringValueTypes(), " ")
 					}
-				case []*Record:
-					for _, rec := range rs {
-						if alive, will := node.tellNext(rec); !alive {
-							lastWill = will
-							break loop
+					ret, err := node.expr.Eval(node)
+					if err != nil {
+						ErrorRecord(err).Tell(node.next)
+						continue
+					}
+					if ret == nil {
+						continue
+					}
+
+					to_next := func(rec *Record) bool {
+						if rec == nil {
+							return true
+						}
+						if rec.IsEOF() {
+							rec.Tell(node.next)
+							return false
+						} else if rec.IsCircuitBreak() {
+							node.task.onCircuitBreak(node)
+							return false
+						} else {
+							rec.Tell(node.next)
+							return true
 						}
 					}
-				default:
-					errRec := ErrorRecord(fmt.Errorf("func '%s' returns invalid type: %T", node.Name(), ret))
-					errRec.Tell(node.next)
+					switch rs := ret.(type) {
+					case *Record:
+						to_next(rs)
+					case []*Record:
+						for _, rec := range rs {
+							if alive := to_next(rec); !alive {
+								break
+							}
+						}
+					default:
+						errRec := ErrorRecord(fmt.Errorf("func '%s' returns invalid type: %T", node.Name(), ret))
+						errRec.Tell(node.next)
+					}
 				}
 			}
 		}
@@ -213,17 +226,6 @@ func (node *Node) start() {
 		}
 		node.closeWg.Done()
 	}()
-}
-
-func (node *Node) tellNext(rec *Record) (bool, *Record) {
-	if rec.IsEOF() || rec.IsCircuitBreak() {
-		return false, rec
-	} else if rec.IsError() {
-		rec.Tell(node.next)
-	} else {
-		rec.Tell(node.next)
-	}
-	return true, nil
 }
 
 func (node *Node) wait() {

@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge/internal/mqtt"
 	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/mods/bridge/internal/python3"
 	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
 	"github.com/machbase/neo-server/mods/model"
 )
@@ -36,6 +37,12 @@ type MqttBridge interface {
 	Publish(topic string, payload any) (bool, error)
 }
 
+type PythonBridge interface {
+	Bridge
+	Invoke(ctx context.Context, args []string, stdin []byte) (exitCode int, stdout []byte, stderr []byte, err error)
+	Version(ctx context.Context) (string, error)
+}
+
 var registry = map[string]Bridge{}
 var registryLock sync.RWMutex
 
@@ -56,6 +63,9 @@ func Register(def *model.BridgeDefinition) (err error) {
 		br = b
 	case model.BRIDGE_MQTT:
 		var b MqttBridge = mqtt.New(def.Name, def.Path)
+		br = b
+	case model.BRIDGE_PYTHON:
+		var b PythonBridge = python3.New(def.Name, def.Path)
 		br = b
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)

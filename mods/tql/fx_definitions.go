@@ -47,7 +47,7 @@ var FxDefinitions = []Definition{
 	{"GROUPBYKEY", defTask.fmGroupByKey},
 	{"POPKEY", defTask.fmPopKey},
 	{"PUSHKEY", defTask.fmPushKey},
-	{"SCRIPT", defTask.fmScriptTengo},
+	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},
@@ -77,6 +77,7 @@ var FxDefinitions = []Definition{
 	{"CSV", defTask.fmCsv},
 	{"JSON", defTask.fmJson},
 	{"MARKDOWN", defTask.fmMarkdown},
+	{"HTML", defTask.fmHtml},
 	{"CHART_LINE", defTask.fmChartLine},
 	{"CHART_SCATTER", defTask.fmChartScatter},
 	{"CHART_BAR", defTask.fmChartBar},

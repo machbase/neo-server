@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"time"
@@ -8,8 +10,117 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid"
+	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
+
+func (node *Node) fmScript(args ...any) (any, error) {
+	if len(args) == 2 {
+		name, ok := args[0].(*bridgeName)
+		if !ok {
+			goto syntaxerr
+		}
+		text, ok := args[1].(string)
+		if !ok {
+			goto syntaxerr
+		}
+		return node.fmScriptBridge(name, text)
+	} else if len(args) == 1 {
+		text, ok := args[0].(string)
+		if !ok {
+			goto syntaxerr
+		}
+		return node.fmScriptTengo(text)
+	}
+syntaxerr:
+	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [bridge("name"),] script_text )`)
+}
+
+func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) {
+	br, err := bridge.GetBridge(name.name)
+	if err != nil || br == nil {
+		return nil, fmt.Errorf(`script: bridge '%s' not found`, name.name)
+	}
+	switch engine := br.(type) {
+	case bridge.PythonBridge:
+		var input []byte
+		rec := node.Inflight()
+		if rec != nil {
+			b := &bytes.Buffer{}
+			w := csv.NewWriter(b)
+			if rec.IsArray() {
+				for _, r := range rec.Array() {
+					fields := util.StringFields(r.Fields(), "ns", nil, -1)
+					w.Write(fields)
+				}
+			} else {
+				fields := util.StringFields(rec.Fields(), "ns", nil, -1)
+				w.Write(fields)
+			}
+			w.Flush()
+			input = b.Bytes()
+		}
+		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, input)
+		if err != nil {
+			if len(stdout) > 0 {
+				node.task.Log(string(stderr))
+			}
+			if len(stderr) > 0 {
+				node.task.LogWarn(string(stderr))
+			}
+			return nil, err
+		}
+		if len(stderr) > 0 {
+			node.task.LogWarn(string(stderr))
+		}
+		if exitCode != 0 {
+			node.task.LogWarn(fmt.Sprintf("script: exit %d", exitCode))
+		}
+		if len(stdout) > 0 {
+			if isPng(stdout) {
+				return NewImageRecord(stdout, "image/png"), nil
+			} else if isJpeg(stdout) {
+				return NewImageRecord(stdout, "image/jpeg"), nil
+			} else {
+				// yield the output from python's stdout as bytes chunk
+				//fmt.Println("output", string(stdout))
+				return NewBytesRecord(stdout), nil
+			}
+		}
+	default:
+		return nil, fmt.Errorf(`script: bridge '%s' is not support for SCRIPT()`, name.name)
+	}
+	return nil, nil
+}
+
+func isJpeg(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	matched := true
+	for i, b := range []byte{0xFF, 0xD8, 0xFF} { // jpg
+		if data[i] != b {
+			matched = false
+			break
+		}
+	}
+	return matched
+}
+
+func isPng(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	matched := true
+	for i, b := range []byte{0x89, 0x50, 0x4E, 0x47} { // png
+		if data[i] != b {
+			matched = false
+			break
+		}
+	}
+	return matched
+}
 
 type scriptlet struct {
 	script   *tengo.Script

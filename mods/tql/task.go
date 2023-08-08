@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net/http"
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
@@ -20,11 +20,13 @@ import (
 
 type Task struct {
 	ctx          context.Context
+	ctxCancel    context.CancelFunc
 	params       map[string][]string
 	db           spi.Database
 	inputReader  io.Reader
 	outputWriter spec.OutputStream
 	toJsonOutput bool
+	logWriter    io.Writer
 
 	// comments start with plus(+) symbold and sperated by comma.
 	// ex) => `// +brief, markdown`
@@ -35,6 +37,10 @@ type Task struct {
 	compileErr error
 	output     *output
 	nodes      []*Node
+
+	_shouldStop    bool
+	_resultColumns spi.Columns
+	_stateLock     sync.RWMutex
 }
 
 var (
@@ -42,12 +48,12 @@ var (
 )
 
 func NewTask() *Task {
-	return &Task{}
+	return NewTaskContext(context.Background())
 }
 
 func NewTaskContext(ctx context.Context) *Task {
 	ret := &Task{}
-	ret.ctx = ctx
+	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
 	return ret
 }
 
@@ -88,6 +94,10 @@ func (x *Task) OutputWriter() spec.OutputStream {
 		x.outputWriter, _ = stream.NewOutputStream("-")
 	}
 	return x.outputWriter
+}
+
+func (x *Task) SetLogWriter(w io.Writer) {
+	x.logWriter = w
 }
 
 func (x *Task) SetParams(p map[string][]string) {
@@ -205,17 +215,6 @@ func (x *Task) compile(codeReader io.Reader) error {
 	return nil
 }
 
-func (x *Task) ExecuteHandler(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", x.output.ContentType())
-	if contentEncoding := x.output.ContentEncoding(); len(contentEncoding) > 0 {
-		w.Header().Set("Content-Encoding", contentEncoding)
-	}
-	if x.output.IsChart() {
-		w.Header().Set("X-Chart-Type", "echarts")
-	}
-	return x.Execute()
-}
-
 func (x *Task) Execute() error {
 	err := x.execute()
 	if err != nil {
@@ -237,7 +236,9 @@ func (x *Task) execute() (err error) {
 	}()
 
 	// start output
-	x.output.start()
+	if x.output != nil {
+		x.output.start()
+	}
 	// start nodes
 	for _, child := range x.nodes {
 		child.start()
@@ -249,18 +250,64 @@ func (x *Task) execute() (err error) {
 	for _, child := range x.nodes {
 		child.stop()
 	}
-	x.output.stop()
+	if x.output != nil {
+		x.output.stop()
+	}
 
-	if err == nil {
+	if err == nil && x.output != nil {
 		err = x.output.lastError
 	}
 	return
 }
 
+func (x *Task) onCircuitBreak(fromNode *Node) {
+	x._stateLock.Lock()
+	x._shouldStop = true
+	x._stateLock.Unlock()
+}
+
+func (x *Task) shouldStop() bool {
+	x._stateLock.RLock()
+	ret := x._shouldStop
+	x._stateLock.RUnlock()
+	return ret
+}
+
 func (x *Task) SetResultColumns(cols spi.Columns) {
+	x._stateLock.Lock()
+	x._resultColumns = cols
+	x._stateLock.Unlock()
+}
+
+func (x *Task) ResultColumns() spi.Columns {
+	x._stateLock.RLock()
+	ret := x._resultColumns
+	x._stateLock.RUnlock()
+	return ret
+}
+
+func (x *Task) OutputContentType() string {
 	if x.output != nil {
-		x.output.resultColumns = cols
+		ret := x.output.ContentType()
+		return ret
 	}
+	return "application/octet-stream"
+}
+
+func (x *Task) OutputContentEncoding() string {
+	if x.output != nil {
+		if contentEncoding := x.output.ContentEncoding(); len(contentEncoding) > 0 {
+			return contentEncoding
+		}
+	}
+	return "identity"
+}
+
+func (x *Task) OutputChartType() string {
+	if x.output != nil && x.output.IsChart() {
+		return "echarts"
+	}
+	return ""
 }
 
 type TaskLog interface {
@@ -274,44 +321,40 @@ type TaskLog interface {
 	LogError(args ...any)
 }
 
-func (x *Task) Logf(format string, args ...any) {
-	fmt.Printf("[INFO] "+format+"\n", args...)
-}
+func (x *Task) Logf(format string, args ...any)      { x._logf("INFO", format, args...) }
+func (x *Task) LogDebugf(format string, args ...any) { x._logf("DEBUG", format, args...) }
+func (x *Task) LogWarnf(format string, args ...any)  { x._logf("WARN", format, args...) }
+func (x *Task) LogErrorf(format string, args ...any) { x._logf("ERROR", format, args...) }
 
-func (x *Task) Log(args ...any) {
-	fmt.Println(append([]any{"[INFO]"}, args...)...)
-}
-
-func (x *Task) LogDebugf(format string, args ...any) {
-	fmt.Printf("[DEBUG] "+format+"\n", args...)
-}
-
-func (x *Task) LogDebug(args ...any) {
-	fmt.Println(append([]any{"[DEBUG]"}, args...)...)
-}
-
-func (x *Task) LogWarnf(format string, args ...any) {
-	fmt.Printf("[WARN] "+format+"\n", args...)
-}
-
-func (x *Task) LogWarn(args ...any) {
-	fmt.Println(append([]any{"[WARN]"}, args...)...)
-}
-
-func (x *Task) LogErrorf(format string, args ...any) {
-	fmt.Printf("[ERROR] "+format+"\n", args...)
-}
-
-func (x *Task) LogError(args ...any) {
-	fmt.Println(append([]any{"[ERROR]"}, args...)...)
-}
+func (x *Task) Log(args ...any)      { x._log("INFO", args...) }
+func (x *Task) LogDebug(args ...any) { x._log("DEBUG", args...) }
+func (x *Task) LogWarn(args ...any)  { x._log("WARN", args...) }
+func (x *Task) LogError(args ...any) { x._log("ERROR", args...) }
 
 func (x *Task) LogFatalf(format string, args ...any) {
-	fmt.Printf("[FATAL] "+format+"\n", args...)
-	debug.PrintStack()
+	stack := string(debug.Stack())
+	x._logf("FATAL", format+"\n%s", append(args, stack))
 }
 
 func (x *Task) LogFatal(args ...any) {
-	fmt.Println(append([]any{"[FATAL]"}, args...)...)
-	debug.PrintStack()
+	stack := string(debug.Stack())
+	x._log("FATAL", append(args, "\n", stack))
+}
+
+func (x *Task) _log(prefix string, args ...any) {
+	if x.logWriter == nil {
+		fmt.Println(append([]any{prefix}, args...)...)
+	} else {
+		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		x.logWriter.Write([]byte(line))
+	}
+}
+
+func (x *Task) _logf(prefix string, format string, args ...any) {
+	if x.logWriter == nil {
+		fmt.Printf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
+	} else {
+		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		x.logWriter.Write([]byte(line))
+	}
 }

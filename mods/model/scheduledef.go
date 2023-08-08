@@ -5,9 +5,9 @@ import "strings"
 type ScheduleType string
 
 const (
-	SCHEDULE_UNDEFINED ScheduleType = ""
-	SCHEDULE_TIMER     ScheduleType = "timer"
-	SCHEDULE_LISTENER  ScheduleType = "listener"
+	SCHEDULE_UNDEFINED  ScheduleType = ""
+	SCHEDULE_TIMER      ScheduleType = "timer"
+	SCHEDULE_SUBSCRIBER ScheduleType = "subscriber"
 )
 
 func (typ ScheduleType) String() string {
@@ -16,8 +16,8 @@ func (typ ScheduleType) String() string {
 		return "UNDEFINED"
 	case SCHEDULE_TIMER:
 		return "TIMER"
-	case SCHEDULE_LISTENER:
-		return "LISTENER"
+	case SCHEDULE_SUBSCRIBER:
+		return "SUBSCRIBER"
 	}
 }
 
@@ -27,8 +27,8 @@ func ParseScheduleType(typ string) ScheduleType {
 		return SCHEDULE_UNDEFINED
 	case "TIMER":
 		return SCHEDULE_TIMER
-	case "LISTENER":
-		return SCHEDULE_LISTENER
+	case "SUBSCRIBER":
+		return SCHEDULE_SUBSCRIBER
 	}
 }
 
@@ -40,7 +40,7 @@ type ScheduleDefinition struct {
 
 	// timer task
 	Schedule string `json:"schedule,omitempty"`
-	// listener task
+	// subscriber task
 	Bridge string `json:"bridge,omitempty"`
 	Topic  string `json:"topic,omitempty"`
 	QoS    int    `json:"qos,omitempty"`

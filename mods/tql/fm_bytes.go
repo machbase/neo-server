@@ -36,6 +36,8 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 	switch src := origin.(type) {
 	case string:
 		ret.reader = bytes.NewBufferString(src)
+	case []byte:
+		ret.reader = bytes.NewBuffer(src)
 	case io.Reader:
 		ret.reader = src
 	case *FilePath:
@@ -109,7 +111,7 @@ func (src *bytesSource) gen(node *Node) {
 			for len(v) > 0 && v[len(v)-1] == src.delimiter {
 				v = v[0 : len(v)-1]
 			}
-			node.tellNext(NewRecord(num, v))
+			NewRecord(num, v).Tell(node.next)
 			if err != nil {
 				break
 			}
@@ -118,7 +120,7 @@ func (src *bytesSource) gen(node *Node) {
 			for len(v) > 0 && v[len(v)-1] == src.delimiter {
 				v = v[0 : len(v)-1]
 			}
-			node.tellNext(NewRecord(num, v))
+			NewRecord(num, v).Tell(node.next)
 			if err != nil {
 				break
 			}

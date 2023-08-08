@@ -20,7 +20,7 @@ test:
 	@make -f Makefile test-base
 
 test-base: tmpdir
-	@go test $(ARGS) -cover \
+	@go test $(ARGS) -cover -race \
 		./booter \
 		./mods/util \
 		./mods/util/glob \

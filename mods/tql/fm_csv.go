@@ -25,6 +25,8 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 			isSource = true
 		case string:
 			isSource = true
+		case []byte:
+			isSource = true
 		}
 	}
 	if isSource {
@@ -104,7 +106,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		rownum++
 		if err == nil {
-			node.tellNext(NewRecord(values[0], values[1:]))
+			NewRecord(values[0], values[1:]).Tell(node.next)
 		} else {
 			err = nil
 		}
@@ -147,6 +149,8 @@ func newCsvSource(args ...any) (*csvSource, error) {
 			reader = v
 		case string:
 			reader = bytes.NewBufferString(v)
+		case []byte:
+			reader = bytes.NewBuffer(v)
 		default:
 			return nil, fmt.Errorf("f(CSV) unknown argument, %T", v)
 		}
