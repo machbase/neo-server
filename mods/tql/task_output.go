@@ -41,10 +41,9 @@ type output struct {
 
 	src chan *Record
 
-	encoder       codec.RowsEncoder
-	dbSink        DatabaseSink
-	isChart       bool
-	resultColumns spi.Columns
+	encoder codec.RowsEncoder
+	dbSink  DatabaseSink
+	isChart bool
 
 	closeWg   sync.WaitGroup
 	lastError error
@@ -108,17 +107,18 @@ func (out *output) start() {
 					continue
 				}
 				if !shouldClose {
-					if len(out.resultColumns) == 0 {
+					resultColumns := out.task.ResultColumns()
+					if len(resultColumns) == 0 {
 						arr := rec.Flatten()
 						for i, v := range arr {
-							out.resultColumns = append(out.resultColumns,
+							resultColumns = append(resultColumns,
 								&spi.Column{
 									Name: fmt.Sprintf("C%02d", i),
 									Type: out.columnTypeName(v),
 								})
 						}
 					}
-					out.setHeader(out.resultColumns)
+					out.setHeader(resultColumns)
 					if err := out.openEncoder(); err != nil {
 						out.lastError = err
 						out.task.LogErrorf(err.Error())

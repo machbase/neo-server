@@ -26,6 +26,7 @@ type Task struct {
 	inputReader  io.Reader
 	outputWriter spec.OutputStream
 	toJsonOutput bool
+	logWriter    io.Writer
 
 	// comments start with plus(+) symbold and sperated by comma.
 	// ex) => `// +brief, markdown`
@@ -37,8 +38,9 @@ type Task struct {
 	output     *output
 	nodes      []*Node
 
-	_shouldStop     bool
-	_shouldStopLock sync.RWMutex
+	_shouldStop    bool
+	_resultColumns spi.Columns
+	_stateLock     sync.RWMutex
 }
 
 var (
@@ -92,6 +94,10 @@ func (x *Task) OutputWriter() spec.OutputStream {
 		x.outputWriter, _ = stream.NewOutputStream("-")
 	}
 	return x.outputWriter
+}
+
+func (x *Task) SetLogWriter(w io.Writer) {
+	x.logWriter = w
 }
 
 func (x *Task) SetParams(p map[string][]string) {
@@ -255,22 +261,29 @@ func (x *Task) execute() (err error) {
 }
 
 func (x *Task) onCircuitBreak(fromNode *Node) {
-	x._shouldStopLock.Lock()
+	x._stateLock.Lock()
 	x._shouldStop = true
-	x._shouldStopLock.Unlock()
+	x._stateLock.Unlock()
 }
 
 func (x *Task) shouldStop() bool {
-	x._shouldStopLock.RLock()
+	x._stateLock.RLock()
 	ret := x._shouldStop
-	x._shouldStopLock.RUnlock()
+	x._stateLock.RUnlock()
 	return ret
 }
 
 func (x *Task) SetResultColumns(cols spi.Columns) {
-	if x.output != nil {
-		x.output.resultColumns = cols
-	}
+	x._stateLock.Lock()
+	x._resultColumns = cols
+	x._stateLock.Unlock()
+}
+
+func (x *Task) ResultColumns() spi.Columns {
+	x._stateLock.RLock()
+	ret := x._resultColumns
+	x._stateLock.RUnlock()
+	return ret
 }
 
 func (x *Task) OutputContentType() string {
@@ -278,7 +291,7 @@ func (x *Task) OutputContentType() string {
 		ret := x.output.ContentType()
 		return ret
 	}
-	return "application/octet-stram"
+	return "application/octet-stream"
 }
 
 func (x *Task) OutputContentEncoding() string {
@@ -308,44 +321,40 @@ type TaskLog interface {
 	LogError(args ...any)
 }
 
-func (x *Task) Logf(format string, args ...any) {
-	fmt.Printf("[INFO] "+format+"\n", args...)
-}
+func (x *Task) Logf(format string, args ...any)      { x._logf("INFO", format, args...) }
+func (x *Task) LogDebugf(format string, args ...any) { x._logf("DEBUG", format, args...) }
+func (x *Task) LogWarnf(format string, args ...any)  { x._logf("WARN", format, args...) }
+func (x *Task) LogErrorf(format string, args ...any) { x._logf("ERROR", format, args...) }
 
-func (x *Task) Log(args ...any) {
-	fmt.Println(append([]any{"[INFO]"}, args...)...)
-}
-
-func (x *Task) LogDebugf(format string, args ...any) {
-	fmt.Printf("[DEBUG] "+format+"\n", args...)
-}
-
-func (x *Task) LogDebug(args ...any) {
-	fmt.Println(append([]any{"[DEBUG]"}, args...)...)
-}
-
-func (x *Task) LogWarnf(format string, args ...any) {
-	fmt.Printf("[WARN] "+format+"\n", args...)
-}
-
-func (x *Task) LogWarn(args ...any) {
-	fmt.Println(append([]any{"[WARN]"}, args...)...)
-}
-
-func (x *Task) LogErrorf(format string, args ...any) {
-	fmt.Printf("[ERROR] "+format+"\n", args...)
-}
-
-func (x *Task) LogError(args ...any) {
-	fmt.Println(append([]any{"[ERROR]"}, args...)...)
-}
+func (x *Task) Log(args ...any)      { x._log("INFO", args...) }
+func (x *Task) LogDebug(args ...any) { x._log("DEBUG", args...) }
+func (x *Task) LogWarn(args ...any)  { x._log("WARN", args...) }
+func (x *Task) LogError(args ...any) { x._log("ERROR", args...) }
 
 func (x *Task) LogFatalf(format string, args ...any) {
-	fmt.Printf("[FATAL] "+format+"\n", args...)
-	debug.PrintStack()
+	stack := string(debug.Stack())
+	x._logf("FATAL", format+"\n%s", append(args, stack))
 }
 
 func (x *Task) LogFatal(args ...any) {
-	fmt.Println(append([]any{"[FATAL]"}, args...)...)
-	debug.PrintStack()
+	stack := string(debug.Stack())
+	x._log("FATAL", append(args, "\n", stack))
+}
+
+func (x *Task) _log(prefix string, args ...any) {
+	if x.logWriter == nil {
+		fmt.Println(append([]any{prefix}, args...)...)
+	} else {
+		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		x.logWriter.Write([]byte(line))
+	}
+}
+
+func (x *Task) _logf(prefix string, format string, args ...any) {
+	if x.logWriter == nil {
+		fmt.Printf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
+	} else {
+		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		x.logWriter.Write([]byte(line))
+	}
 }
