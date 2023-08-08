@@ -14,6 +14,13 @@ type Definition struct {
 var defTask = &Node{}
 
 var FxDefinitions = []Definition{
+	// context
+	{"// context", nil},
+	{"context", defTask.GetContext},
+	{"key", defTask.GetRecordKey},
+	{"value", defTask.GetRecordValue},
+	{"param", defTask.GetRequestParam},
+	{"payload", defTask.GetRequestPayload},
 	// math
 	{"// math", nil},
 	{"sin", math.Sin},

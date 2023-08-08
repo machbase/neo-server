@@ -110,6 +110,7 @@ func (x *Task) Params() map[string][]string {
 func (x *Task) GetVariable(name string) (any, error) {
 	if strings.HasPrefix(name, "$") {
 		if p, ok := x.params[strings.TrimPrefix(name, "$")]; ok {
+			x.LogWarnf("'$' expression is deprecated, use param(\"%s\") instead", name)
 			if len(p) > 0 {
 				return p[len(p)-1], nil
 			}
@@ -325,9 +326,9 @@ func (x *Task) LogFatal(args ...any) {
 
 func (x *Task) _log(prefix string, args ...any) {
 	if x.logWriter == nil {
-		fmt.Println(append([]any{prefix}, args...)...)
+		fmt.Println(append([]any{"[" + prefix + "]"}, args...)...)
 	} else {
-		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...) + "\n"
 		x.logWriter.Write([]byte(line))
 	}
 }
@@ -336,7 +337,7 @@ func (x *Task) _logf(prefix string, format string, args ...any) {
 	if x.logWriter == nil {
 		fmt.Printf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
 	} else {
-		line := fmt.Sprintln(append([]any{prefix}, args...)...) + "\n"
+		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...) + "\n"
 		x.logWriter.Write([]byte(line))
 	}
 }
