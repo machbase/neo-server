@@ -35,6 +35,7 @@ type MqttBridge interface {
 	Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error)
 	Unsubscribe(topics ...string) (bool, error)
 	Publish(topic string, payload any) (bool, error)
+	IsConnected() bool
 }
 
 type PythonBridge interface {

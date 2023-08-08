@@ -33,6 +33,8 @@ type bridge struct {
 	keyPath            string
 	caCertPath         string
 	clientId           string
+	username           string
+	password           string
 	reconnectMaxWait   time.Duration
 	connectTimeout     time.Duration
 	subscribeTimeout   time.Duration
@@ -59,6 +61,13 @@ func New(name string, path string) *bridge {
 }
 
 func (c *bridge) BeforeRegister() error {
+	cfg := paho.NewClientOptions()
+	cfg.SetCleanSession(true)
+	cfg.SetProtocolVersion(4)
+	cfg.SetConnectRetry(false)
+	cfg.SetAutoReconnect(false)
+	cfg.SetKeepAlive(30 * time.Second)
+
 	fields := strings.Fields(c.path)
 	for _, field := range fields {
 		kv := strings.SplitN(field, "=", 2)
@@ -68,22 +77,19 @@ func (c *bridge) BeforeRegister() error {
 		key := strings.TrimSpace(kv[0])
 		val := strings.TrimSpace(kv[1])
 		switch key {
-		case "broker":
-			fallthrough
-		case "host":
-			fallthrough
-		case "server":
+		case "broker", "host", "server":
 			c.serverAddresses = append(c.serverAddresses, val)
 		case "id":
 			c.clientId = val
-		case "k":
-			fallthrough
-		case "keepalive":
+		case "username":
+			c.username = val
+		case "password":
+			c.password = val
+		case "keepalive", "k":
 			if k, err := time.ParseDuration(val); err == nil {
 				c.keepAlive = k
 			}
-		case "c":
-		case "cleansession":
+		case "cleansession", "c":
 			if flag, err := strconv.ParseBool(val); err == nil {
 				c.cleanSession = flag
 			}
@@ -97,11 +103,13 @@ func (c *bridge) BeforeRegister() error {
 			c.log.Infof("unknown option, %s=%s", key, val)
 		}
 	}
-	cfg := paho.NewClientOptions()
-	cfg.SetProtocolVersion(4)
-	cfg.SetConnectRetry(false)
-	cfg.SetAutoReconnect(false)
 	cfg.SetCleanSession(c.cleanSession)
+	if len(c.username) > 0 {
+		cfg.SetUsername(c.username)
+	}
+	if len(c.password) > 0 {
+		cfg.SetPassword(c.password)
+	}
 	if c.keepAlive >= 1*time.Second {
 		cfg.SetKeepAlive(c.keepAlive)
 	}
@@ -137,7 +145,6 @@ func (c *bridge) BeforeRegister() error {
 
 	c.clientOpts = cfg
 	if len(c.serverAddresses) > 0 {
-		c.alive = true
 		go c.run()
 	}
 
@@ -145,11 +152,7 @@ func (c *bridge) BeforeRegister() error {
 }
 
 func (c *bridge) AfterUnregister() error {
-	c.alive = false
 	c.stopSig <- true
-	if c.client == nil && c.client.IsConnected() {
-		c.client.Disconnect(100)
-	}
 	return nil
 }
 
@@ -161,30 +164,36 @@ func (c *bridge) Name() string {
 	return c.name
 }
 
+func (c *bridge) IsConnected() bool {
+	if !c.alive || c.client == nil || !c.client.IsConnected() {
+		return false
+	}
+	return true
+}
+
 func (c *bridge) run() {
 	var fallbackWait = 1 * time.Second
-
 	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	c.alive = true
 	for c.alive {
 		select {
 		case <-ticker.C:
 			if c.client == nil || !c.client.IsConnected() {
-				c.log.Tracef("connecting... %v", c.clientOpts.Servers)
+				c.log.Tracef("bridge [%s] connecting... %v", c.name, c.clientOpts.Servers)
 				c.client = paho.NewClient(c.clientOpts)
 				clientToken := c.client.Connect()
 				if beforeTimedout := clientToken.WaitTimeout(c.connectTimeout); c.client.IsConnected() {
-					c.log.Trace("connected.")
+					c.log.Tracef("bridge [%s] connected.", c.name)
 					go c.notifyConnectListeners()
 					ticker.Reset(10 * time.Second)
 					fallbackWait = 1 * time.Second
 				} else {
 					if beforeTimedout {
-						c.log.Trace("connect rejected")
+						c.log.Tracef("bridge [%s] connect rejected", c.name)
 					} else {
-						c.log.Trace("connect timed out")
+						c.log.Tracef("bridge [%s] connect timed out", c.name)
 					}
-					c.log.Tracef("connecting fallback wait %s.", fallbackWait)
+					c.log.Tracef("bridge [%s] connecting fallback wait %s.", c.name, fallbackWait)
 					go c.notifyDisconnectListeners()
 					ticker.Reset(fallbackWait)
 					fallbackWait *= 2
@@ -194,9 +203,13 @@ func (c *bridge) run() {
 				}
 			}
 		case <-c.stopSig:
-			c.log.Tracef("stop")
-			return
+			c.log.Tracef("bridge [%s] stop", c.name)
+			c.alive = false
 		}
+	}
+	ticker.Stop()
+	if c.client != nil && c.client.IsConnected() {
+		c.client.Disconnect(300)
 	}
 }
 
