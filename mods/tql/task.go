@@ -5,13 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
@@ -42,10 +40,6 @@ type Task struct {
 	_resultColumns spi.Columns
 	_stateLock     sync.RWMutex
 }
-
-var (
-	_ expression.Parameters = &Task{}
-)
 
 func NewTask() *Task {
 	return NewTaskContext(context.Background())
@@ -113,8 +107,7 @@ func (x *Task) Params() map[string][]string {
 	return x.params
 }
 
-// Get implements expression.Parameters
-func (x *Task) Get(name string) (any, error) {
+func (x *Task) GetVariable(name string) (any, error) {
 	if strings.HasPrefix(name, "$") {
 		if p, ok := x.params[strings.TrimPrefix(name, "$")]; ok {
 			if len(p) > 0 {
@@ -123,18 +116,7 @@ func (x *Task) Get(name string) (any, error) {
 		}
 		return nil, nil
 	} else {
-		switch name {
-		default:
-			return nil, fmt.Errorf("undefined variable '%s'", name)
-		case "CTX":
-			return x, nil
-		case "PI":
-			return math.Pi, nil
-		case "outputstream":
-			return x.outputWriter, nil
-		case "nil":
-			return nil, nil
-		}
+		return nil, fmt.Errorf("undefined variable '%s'", name)
 	}
 }
 

@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"sync"
 
@@ -33,6 +34,8 @@ type Node struct {
 	mutex   sync.Mutex
 
 	_inflight *Record
+
+	Body io.Reader
 }
 
 var (
@@ -89,10 +92,15 @@ func (node *Node) Get(name string) (any, error) {
 			return node._inflight.value, nil
 		}
 	case "CTX":
+		if node.Body == nil {
+			node.Body = node.task.inputReader
+		}
 		return node, nil
+	case "nil":
+		return nil, nil
 	default:
 		if node.task != nil {
-			return node.task.Get(name)
+			return node.task.GetVariable(name)
 		}
 	}
 	return nil, nil
