@@ -85,7 +85,7 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 	}
 	node.task.SetResultColumns(cols)
 
-	for rows.Next() {
+	for rows.Next() && !node.task.shouldStop() {
 		values := make([]any, len(columns))
 		for i, c := range columns {
 			switch c.ScanType().String() {
@@ -105,8 +105,10 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 				values[i] = new(string)
 			case "sql.NullTime":
 				values[i] = new(time.Time)
+			case "sql.RawBytes":
+				values[i] = new([]byte)
 			default:
-				// fmt.Println("---", i, c.Name(), c.ScanType().String())
+				node.task.LogWarnf("genBridgeQuery can not handle column '%s' type '%s'", c.Name(), c.ScanType().String())
 				values[i] = new(string)
 			}
 		}

@@ -20,8 +20,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...str
 	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	doneCh := make(chan any)
 
+	logBuf := &bytes.Buffer{}
+
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
+	task.SetLogWriter(logBuf)
 	err := task.CompileString(code)
 	require.Nil(t, err)
 
@@ -38,15 +41,23 @@ func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...str
 	case <-doneCh:
 		cancel()
 	}
+	logString := strings.TrimSpace(logBuf.String())
 	if len(expectErr) == 1 {
 		// case error
 		require.NotNil(t, executeErr)
 		require.Equal(t, expectErr[0], executeErr.Error())
+		require.Equal(t, "", logString)
+	} else if len(expectErr) == 2 {
+		// case error and log message
+		require.NotNil(t, executeErr)
+		require.Equal(t, expectErr[0], executeErr.Error())
+		require.Equal(t, expectErr[1], logString)
 	} else {
 		// case success
 		require.Nil(t, err)
 		result := w.String()
 		require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+		require.Equal(t, "", logString)
 	}
 }
 
@@ -297,7 +308,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example")
+	runTest(t, codeLines, resultLines, "no such table: example", `ERROR execute error no such table: example`)
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -319,7 +330,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestBridgeSql(t *testing.T) {
+func TestBridgeSqlite(t *testing.T) {
 	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
 	require.Nil(t, err)
 
@@ -332,7 +343,7 @@ func TestBridgeSql(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example_sql")
+	runTest(t, codeLines, resultLines, "no such table: example_sql", "ERROR execute error no such table: example_sql")
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -343,14 +354,77 @@ func TestBridgeSql(t *testing.T) {
 	require.NotNil(t, conn)
 	defer conn.Close()
 	_, err = conn.ExecContext(ctx, `create table if not exists example_sql (
-		id INTEGER NOT NULL PRIMARY KEY, name TEXT, age TEXT, address TEXT, UNIQUE(name)
+		id INTEGER NOT NULL PRIMARY KEY,
+		name TEXT,
+		age INTEGER,
+		address TEXT,
+		weight REAL,
+		memo BLOB,
+		UNIQUE(name)
 	)`)
 	require.Nil(t, err)
-	_, err = conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?)`, 100, "alpha", "10", "street-100")
+	_, err = conn.ExecContext(ctx, `insert into example_sql (id, name, age, address) values(?, ?, ?, ?)`,
+		100, "alpha", "10", "street-100")
 	require.Nil(t, err)
-	_, err = conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?)`, 200, "bravo", "20", "street-200")
+	_, err = conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?, ?, ?)`,
+		200, "bravo", 20, "street-200", 56.789, []byte{0, 1, 0xFF})
 	require.Nil(t, err)
 
+	// select all
+	codeLines = []string{
+		"SQL(bridge('sqlite'), `select * from example_sql`)",
+		"CSV(heading(true))",
+	}
+	resultLines = []string{
+		"id,name,age,address,weight,memo",
+		"100,alpha,10,street-100,0.000000,",
+		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	// update
+	codeLines = []string{
+		`SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)`,
+		"CSV(heading(false))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"SQL(bridge('sqlite'), `select * from example_sql`)",
+		"CSV(heading(true))",
+	}
+	resultLines = []string{
+		"id,name,age,address,weight,memo",
+		"100,alpha,10,street-100,45.670000,",
+		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	// delete - syntax error
+	codeLines = []string{
+		`SQL(bridge('sqlite'), 'delete example_sql where id = ?', 100)`,
+		"CSV(heading(false))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines, "near \"example_sql\": syntax error", `ERROR execute error near "example_sql": syntax error`)
+
+	// delete
+	codeLines = []string{
+		`SQL(bridge('sqlite'), 'delete from example_sql where id = ?', 100)`,
+		"CSV(heading(false))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"SQL(bridge('sqlite'), `select * from example_sql`)",
+		"CSV(heading(true))",
+	}
+	resultLines = []string{
+		"id,name,age,address,weight,memo",
+		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+	}
 	runTest(t, codeLines, resultLines)
 }
 
