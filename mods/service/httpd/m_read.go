@@ -39,10 +39,10 @@ type planLimit struct {
 	defaultTagCount  int64
 }
 type MachbaseResult struct {
-	ErrorCode    int              `json:"errorCode"`
-	ErrorMessage string           `json:"errorMessage"`
-	Columns      []MachbaseColumn `json:"columns"`
-	Data         [][]interface{}  `json:"data"` // chqd <----> lake , data struct =  map[string]interface{}
+	ErrorCode    int             `json:"errorCode"`
+	ErrorMessage string          `json:"errorMessage"`
+	Columns      []Column        `json:"columns"`
+	Data         [][]interface{} `json:"data"` // chqd <----> lake , data struct =  map[string]interface{}
 }
 
 type MetaResult struct {
@@ -58,17 +58,38 @@ type ResSet struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-type MachbaseColumn struct {
-	Name string `json:"name"`
-	// Type   string `json:"type"` // 기존은 int 형,
-	Type   int `json:"type"` // 기존은 int 형,
-	Length int `json:"length"`
+type Resp struct {
+	Status  string        `json:"status"`
+	Message string        `json:"message,omitempty"`
+	Data    *SelectReturn `json:"data,omitempty"`
+}
+
+type oldSelectReturn struct {
+	CalcMode string      `json:"calc_mode"`
+	Columns  []Column    `json:"columns"`
+	Samples  interface{} `json:"samples"`
 }
 
 type SelectReturn struct {
-	CalcMode string           `json:"calc_mode"`
-	Columns  []MachbaseColumn `json:"columns"`
-	Samples  interface{}      `json:"samples"`
+	CalcMode string   `json:"calc_mode"`
+	Columns  []Column `json:"columns"`
+	Samples  []Sample `json:"samples"`
+	Title    string   `json:"title"`
+}
+
+type Column struct {
+	Name   string `json:"name"`
+	Type   int    `json:"type"`
+	Length int    `json:"length"`
+}
+type Sample struct {
+	TagName string    `json:"tag_name"`
+	Datas   []TagData `json:"data"`
+}
+
+type TagData struct {
+	Time  interface{} `json:"TIME"`  // alias 미지정시 기본 값("TIME").
+	Value float64     `json:"VALUE"` // alias 미지정시 기본 값("VALUE").
 }
 
 // type SelectReturn struct {
@@ -335,7 +356,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start RawData()")
 
-	rsp := ResSet{Status: "fail", Message: "not specified"}
+	rsp := Resp{Status: "fail", Message: "not specified"}
 
 	param := SelectRaw{}
 	err := ctx.ShouldBind(&param)
@@ -363,9 +384,10 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		svr.log.Trace(trackId, "return type ok")
 	default:
 		svr.log.Info(trackId, "return form range over")
-		rsp.Data = map[string]interface{}{
-			"title": "Wrong Parameter. (value_return_form) : must be 0,1",
-		}
+		rsp.Message = "Wrong Parameter. (value_return_form) : must be 0,1"
+		// rsp.Data = map[string]interface{}{
+		// 	"title": "Wrong Parameter. (value_return_form) : must be 0,1",
+		// }
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
@@ -508,6 +530,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	// rsp.Status = "success"
 	// rsp.Data = data
 
+	t := time.Now()
 	data, err := svr.selectData(sqlText, param.TagList)
 	if err != nil {
 		svr.log.Info(trackId, "select data error : ", err.Error())
@@ -515,6 +538,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		ctx.JSON(http.StatusFailedDependency, rsp)
 		return
 	}
+	svr.log.Info("elapse: ", time.Since(t))
 
 	rsp.Status = "success"
 	rsp.Data = data
@@ -542,9 +566,9 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start GetCalculateData()")
 
-	rsp := ResSet{Status: "fail"}
-	param := SelectCalc{}
+	rsp := Resp{Status: "fail"}
 
+	param := SelectCalc{}
 	err := ctx.ShouldBind(&param)
 	if err != nil {
 		svr.log.Info(trackId, "bind error : ", err.Error())
@@ -715,13 +739,13 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	} else if param.TableName == "TAGDATA" { //TAGDATA 테이블인 경우 롤업이 없으므로 DateTrunc 함수 사용
 		sqlText = fmt.Sprintf(SqlTidy(`
-		SELECT NAME, %s, %s(VALUE) AS VALUE
+		SELECT  %s, %s(VALUE) AS VALUE
 		FROM (
-				SELECT NAME, TIME, DECODE(type, 'float64', value, ivalue) as VALUE
+				SELECT TIME, DECODE(type, 'float64', value, ivalue) as VALUE
 				FROM TAGDATA
 				WHERE %s %s
 			)
-		GROUP BY NAME, TIME
+		GROUP BY TIME
 		ORDER BY TIME
 		`),
 			makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME"), param.CalcMode,
@@ -741,6 +765,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	// data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "tag", param.TagList)
 
+	t := time.Now()
 	data, err := svr.selectData(sqlText, param.TagList)
 	if err != nil {
 		svr.log.Info(trackId, "select data error : ", err.Error())
@@ -748,6 +773,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		ctx.JSON(http.StatusFailedDependency, rsp)
 		return
 	}
+	svr.log.Info("elapse: ", time.Since(t))
 	data.CalcMode = param.CalcMode
 
 	rsp.Status = "success"
@@ -822,15 +848,24 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 
 	svr.log.Infof(trackId, "query : ", sqlText)
 
-	dbData, err := svr.getData(sqlText, 0)
+	// dbData, err := svr.getData(sqlText, 0)
+	// if err != nil {
+	// 	svr.log.Info(trackId, "get data error : ", err.Error())
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusFailedDependency, rsp)
+	// 	return
+	// }
+
+	// data := MakeReturnFormat(dbData, param.CalculateMode, "0", "tag", tagList)
+	t := time.Now()
+	data, err := svr.selectData(sqlText, tagList)
 	if err != nil {
-		svr.log.Info(trackId, "get data error : ", err.Error())
+		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
 		ctx.JSON(http.StatusFailedDependency, rsp)
 		return
 	}
-
-	data := MakeReturnFormat(dbData, param.CalculateMode, "0", "tag", tagList)
+	svr.log.Info("elapse: ", time.Since(t))
 
 	rsp.Status = "success"
 	rsp.Data = data
@@ -851,7 +886,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start GetLastData()")
 
-	rsp := ResSet{Status: "fall"}
+	rsp := Resp{Status: "fall"}
 	param := SelectLast{}
 
 	err := ctx.ShouldBind(&param)
@@ -932,7 +967,7 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 		return nil, err
 	}
 	columnsLen := len(columns.Names())
-	columnsList := make([]MachbaseColumn, columnsLen)
+	columnsList := make([]Column, columnsLen)
 
 	for i, col := range columns {
 		columnsList[i].Name = col.Name
@@ -940,30 +975,22 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 		columnsList[i].Length = col.Length
 	}
 
-	dataList := []map[string]interface{}{}
+	dataList := []TagData{}
 	for rows.Next() {
-		data := map[string]interface{}{}
-		buffer := columns.MakeBuffer()
-		err = rows.Scan(buffer...)
+		data := TagData{}
+		err = rows.Scan(&data.Time, &data.Value)
 		if err != nil {
 			svr.log.Error("scan error: ", err.Error())
 			return nil, err
 		}
-		for i, col := range columns {
-			data[col.Name] = buffer[i]
-		}
 		dataList = append(dataList, data)
 	}
-
-	tagName := strings.Join(tagList, ",")
+	sample := Sample{}
+	sample.TagName = strings.Join(tagList, ",")
+	sample.Datas = dataList
 
 	result.Columns = columnsList
-	result.Samples = []map[string]interface{}{
-		{
-			"tag_name": tagName,
-			"data":     dataList,
-		},
-	}
+	result.Samples = append(result.Samples, sample)
 
 	return result, nil
 }
@@ -1366,6 +1393,14 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 
 	data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "log", param.TagList)
 
+	// data, err := svr.selectData(sqlText, param.TagList)
+	// if err != nil {
+	// 	svr.log.Info(trackId, "select data error : ", err.Error())
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusFailedDependency, rsp)
+	// 	return
+	// }
+
 	rsp.Status = "success"
 	rsp.Data = data
 
@@ -1417,8 +1452,8 @@ func ColumnTypeConvert(colType string) int {
 	return result
 }
 
-func MakeReturnFormat(dbData *MachbaseResult, mode, format, dataType string, tagList []string) *SelectReturn {
-	resultData := &SelectReturn{}
+func MakeReturnFormat(dbData *MachbaseResult, mode, format, dataType string, tagList []string) *oldSelectReturn {
+	resultData := &oldSelectReturn{}
 
 	resultData.CalcMode = mode
 	if len(dbData.Columns) > 0 {
@@ -1750,7 +1785,7 @@ func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
 		return result, err
 	}
 	colsLen := len(cols.Names())
-	colsList := make([]MachbaseColumn, colsLen)
+	colsList := make([]Column, colsLen)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
