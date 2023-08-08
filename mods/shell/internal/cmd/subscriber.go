@@ -53,8 +53,8 @@ type SubscriberCmd struct {
 	Stop struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"stop"`
-	AddListener SubscriberAddCmd `cmd:"" name:"add"`
-	Help        bool             `kong:"-"`
+	Add  SubscriberAddCmd `cmd:"" name:"add"`
+	Help bool             `kong:"-"`
 }
 
 type SubscriberAddCmd struct {
@@ -62,7 +62,7 @@ type SubscriberAddCmd struct {
 	Bridge    string `arg:"" name:"bridge" help:"name of bridge"`
 	Topic     string `arg:"" name:"topic" help:"topic to subscribe"`
 	TqlPath   string `arg:"" name:"tql-path" help:"relative path to tql script"`
-	AutoStart bool   `name:"autotstart"`
+	AutoStart bool   `name:"autostart"`
 	QoS       int    `name:"qos" help:"(mqtt bridge only) QoS to subscribe"`
 }
 
@@ -106,7 +106,7 @@ func doSubscriber(ctx *client.ActionContext) {
 	case "stop <name>":
 		doSubscriberStop(ctx, cmd.Stop.Name)
 	case "add <name> <bridge> <topic> <tql-path>":
-		doSubscriberAdd(ctx, &cmd.AddListener)
+		doSubscriberAdd(ctx, &cmd.Add)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
 		return
@@ -131,7 +131,7 @@ func doSubscriberList(ctx *client.ActionContext) {
 	lst := []*schedrpc.Schedule{}
 	for _, c := range rsp.Schedules {
 		typ := strings.ToUpper(c.Type)
-		if typ != "LISTENER" {
+		if typ != "SUBSCRIBER" {
 			continue
 		}
 		lst = append(lst, c)
@@ -215,7 +215,7 @@ func doSubscriberAdd(ctx *client.ActionContext, cmd *SubscriberAddCmd) {
 	}
 	rsp, err := mgmtCli.AddSchedule(ctx, &schedrpc.AddScheduleRequest{
 		Name:      strings.ToLower(cmd.Name),
-		Type:      "listener",
+		Type:      "subscriber",
 		AutoStart: cmd.AutoStart,
 		Bridge:    cmd.Bridge,
 		Topic:     cmd.Topic,

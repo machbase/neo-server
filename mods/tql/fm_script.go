@@ -237,7 +237,13 @@ func tengof_value(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 		}
 		if obj, ok := node.GetValue(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				return anyToTengoObject(slet.param.value), nil
+				obj := anyToTengoObject(slet.param.value)
+				// value of a record should be always a tuple (= array).
+				if _, ok := obj.(*tengo.Array); ok {
+					return obj, nil
+				} else {
+					return &tengo.Array{Value: []tengo.Object{obj}}, nil
+				}
 			}
 		}
 		return nil, nil
