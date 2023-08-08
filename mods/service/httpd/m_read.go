@@ -374,8 +374,6 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		param.Separator = ","
 	}
 
-	// currentPlan := gradeMap[localPlan]
-
 	currentPlan := lakePlanMap[localPlan]
 
 	// plan을 알아야 LimitSelTag 값을 알 수 있음
