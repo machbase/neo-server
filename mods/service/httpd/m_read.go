@@ -347,8 +347,6 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 
 	svr.log.Infof("param: %+v", param)
 
-	// svr.log.Debugf("request param : %+v", param)
-
 	timezone, err := svr.makeTimezone(ctx, param.Timezone)
 	if err != nil {
 		rsp.Message = err.Error()
@@ -499,15 +497,26 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	// scale의 수만큼 소수점 자릿수를 보여줌
 	// 기존 Lake getDataCli() 에서는 scale 을 설정하는 함수가 존재
 	// Neo는 scale 설정이 없으므로 데이터를 scan 후에 scale만큼 소수점을 잘라주고 리턴
-	dbData, err := svr.getData(sqlText, param.Scale)
+	// dbData, err := svr.getData(sqlText, param.Scale)
+	// if err != nil {
+	// 	svr.log.Info(trackId, "get Data error : ", err.Error())
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusBadRequest, rsp)
+	// 	return
+	// }
+
+	// data := MakeReturnFormat(dbData, "raw", param.ReturnType, "tag", param.TagList)
+
+	// rsp.Status = "success"
+	// rsp.Data = data
+
+	data, err := svr.selectData(sqlText, param.TagList)
 	if err != nil {
-		svr.log.Info(trackId, "get Data error : ", err.Error())
+		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
-		ctx.JSON(http.StatusBadRequest, rsp)
+		ctx.JSON(http.StatusFailedDependency, rsp)
 		return
 	}
-
-	data := MakeReturnFormat(dbData, "raw", param.ReturnType, "tag", param.TagList)
 
 	rsp.Status = "success"
 	rsp.Data = data
@@ -566,7 +575,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
-	svr.log.Info(timezone) // 에러 방지
+	svr.log.Info("timezone: ", timezone) // 에러 방지
 
 	if param.Separator == "" {
 		param.Separator = ","
@@ -576,7 +585,6 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	if param.TagName != "" {
 		param.TagList = strings.Split(param.TagName, param.Separator)
-		svr.log.Info("param.TagList : ", param.TagList)
 		if len(param.TagList) > currentPlan.limitSelectTag {
 			rsp.Message = fmt.Sprintf("tag count over. (parameter:%d, Available:%d)", len(param.TagList), currentPlan.limitSelectTag)
 			svr.log.Info(trackId, rsp.Message)
@@ -721,19 +729,28 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 			makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME"), param.CalcMode,
 			makeInCondition("NAME", param.TagList, false, true),
 			makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true)+" ")
-		sqlText += " " + makeLimit(param.Offset, param.Limit) // space 여백이 하나 들어감
+		sqlText += " " + makeLimit(param.Offset, param.Limit) // add space
 	}
-	svr.log.Infof(trackId, "query : ", sqlText)
+	svr.log.Info(trackId, "query : ", sqlText)
 
-	dbData, err := svr.getData(sqlText, param.Scale)
+	// dbData, err := svr.getData(sqlText, param.Scale)
+	// if err != nil {
+	// 	svr.log.Info(trackId, "get data error : ", err.Error())
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusFailedDependency, rsp)
+	// 	return
+	// }
+
+	// data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "tag", param.TagList)
+
+	data, err := svr.selectData(sqlText, param.TagList)
 	if err != nil {
-		svr.log.Info(trackId, "get data error : ", err.Error())
+		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
 		ctx.JSON(http.StatusFailedDependency, rsp)
 		return
 	}
-
-	data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "tag", param.TagList)
+	data.CalcMode = param.CalcMode
 
 	rsp.Status = "success"
 	rsp.Data = data
@@ -767,10 +784,11 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 		return
 	}
 
+	svr.log.Debugf("%s param: %+v", trackId, param)
+
 	var tagList []string
 	if param.TagName != "" {
 		tagList = strings.Split(param.TagName, ",")
-		svr.log.Info("param.TagList : ", tagList)
 	} else {
 		svr.log.Info(trackId, "tag name is empty")
 		rsp.Message = "tag name is empty"
@@ -782,8 +800,8 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 	switch calcMode {
 	case "MIN", "MAX", "AVG", "SUM", "COUNT", "SUMSQ":
 	default:
-		svr.log.Infof(trackId, "invalid calculate_mode: %q", calcMode)
-		rsp.Message = fmt.Sprintf("invalid calculate_mode: %q", calcMode)
+		svr.log.Infof(trackId, "invalid calculate mode: %q", calcMode)
+		rsp.Message = fmt.Sprintf("invalid calculate mode: %q", calcMode)
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
@@ -856,17 +874,17 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 		return
 	}
 
-	selectStr := ""
+	selectText := ""
 	calcMode := strings.ToUpper(param.CalculateMode)
 	switch calcMode {
 	case "SUM", "MIN", "MAX", "AVG", "SUMSQ", "STDDEV", "STDDEV_POP", "VARIANCE", "VAR_POP":
-		selectStr = fmt.Sprintf("TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, %s(VALUE) AS VALUE", calcMode)
+		selectText = fmt.Sprintf("TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, %s(VALUE) AS VALUE", calcMode)
 	case "COUNT", "CNT":
-		selectStr = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, COUNT(*) AS VALUE"
+		selectText = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, COUNT(*) AS VALUE"
 	case "FIRST":
-		selectStr = "TO_CHAR(FIRST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, FIRST(TIME, VALUE) AS VALUE"
+		selectText = "TO_CHAR(FIRST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, FIRST(TIME, VALUE) AS VALUE"
 	case "LAST":
-		selectStr = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, LAST(TIME, VALUE) AS VALUE"
+		selectText = "TO_CHAR(LAST(TIME, TIME), 'YYYY-MM-DD HH:MI:SS') AS TIME, LAST(TIME, VALUE) AS VALUE"
 	default:
 		svr.log.Infof("invalid calculate mode : %q", calcMode)
 		rsp.Message = fmt.Sprintf("invalid calculate mode : %q", calcMode)
@@ -878,7 +896,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 		SELECT %s 
 		FROM TAGDATA
 		WHERE %s AND %s
-	`), selectStr,
+	`), selectText,
 		makeInCondition("NAME", tagList, false, true),
 		makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), false))
 
@@ -901,12 +919,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-// type dataReturn struct {
-// 	Name  string  `json:"NAME"`
-// 	VALUE float64 `json:"VALUE"`
-// }
-
-// tagname이 2개 이상일 경우는 어떻게 처리 할 것인지
+// struct 를 이용한 데이터 receive or map[string]interface => 모든 api에서 name,time,value일 경우
 // tagList []string 으로 매개변수 변경 후, split 된 길이를 체크 한 후에 2개 이상일 시 if문 추가
 func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, error) {
 	result := &SelectReturn{}
@@ -916,51 +929,41 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 		return nil, err
 	}
 
-	cols, err := rows.Columns()
+	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
+	columnsLen := len(columns.Names())
+	columnsList := make([]MachbaseColumn, columnsLen)
 
-	colsLen := len(cols.Names())
-	colsList := make([]MachbaseColumn, colsLen)
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		for i, col := range cols {
-			colsList[i].Name = col.Name
-			colsList[i].Type = ColumnTypeConvert(col.Type)
-			colsList[i].Length = col.Length
-		}
-	}()
-
-	datas := []map[string]interface{}{}
-	for rows.Next() {
-		data := map[string]interface{}{}
-		buffer := cols.MakeBuffer()
-		err = rows.Scan(buffer...)
-		if err != nil {
-			svr.log.Warn("scan error: ", err.Error())
-			return nil, err
-		}
-		for i, col := range cols {
-			data[col.Name] = buffer[i]
-		}
-		datas = append(datas, data)
+	for i, col := range columns {
+		columnsList[i].Name = col.Name
+		columnsList[i].Type = ColumnTypeConvert(col.Type)
+		columnsList[i].Length = col.Length
 	}
 
-	wg.Wait()
+	dataList := []map[string]interface{}{}
+	for rows.Next() {
+		data := map[string]interface{}{}
+		buffer := columns.MakeBuffer()
+		err = rows.Scan(buffer...)
+		if err != nil {
+			svr.log.Error("scan error: ", err.Error())
+			return nil, err
+		}
+		for i, col := range columns {
+			data[col.Name] = buffer[i]
+		}
+		dataList = append(dataList, data)
+	}
 
 	tagName := strings.Join(tagList, ",")
 
-	result.Columns = colsList
+	result.Columns = columnsList
 	result.Samples = []map[string]interface{}{
 		{
 			"tag_name": tagName,
-			"data":     datas,
+			"data":     dataList,
 		},
 	}
 
@@ -1001,7 +1004,7 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 		return
 	}
 
-	svr.log.Info(timezone) // 에러 방지
+	svr.log.Info("timezone: ", timezone) // 에러 방지
 
 	if param.Separator == "" {
 		param.Separator = ","
