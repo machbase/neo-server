@@ -10,7 +10,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-// STRING(CTX.Body | 'string' | file('path') [, separator()])
+// STRING(payload() | 'string' | file('path') [, separator()])
 func (x *Node) fmString(origin any, args ...any) (any, error) {
 	ret := &bytesSource{toString: true}
 	err := ret.init(origin, args...)
@@ -21,7 +21,7 @@ func (x *Node) fmString(origin any, args ...any) (any, error) {
 	return nil, err
 }
 
-// BYTES(CTX.Body | 'string' | file('path') [, separator()])
+// BYTES(payload() | 'string' | file('path') [, separator()])
 func (x *Node) fmBytes(origin any, args ...any) (any, error) {
 	ret := &bytesSource{}
 	err := ret.init(origin, args...)
@@ -33,6 +33,11 @@ func (x *Node) fmBytes(origin any, args ...any) (any, error) {
 }
 
 func (ret *bytesSource) init(origin any, args ...any) error {
+	fnName := "BYTES"
+	if ret.toString {
+		fnName = "STRING"
+	}
+
 	switch src := origin.(type) {
 	case string:
 		ret.reader = bytes.NewBufferString(src)
@@ -47,14 +52,14 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 		}
 		ret.reader = bytes.NewBuffer(content)
 	default:
-		return ErrArgs("BYTES", 0, "reader or string")
+		return ErrArgs(fnName, 0, "reader or string")
 	}
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case *separator:
 			ret.delimiter = v.c
 		default:
-			return ErrArgs("BYTES", 1, "require separator()")
+			return ErrArgs(fnName, 1, "require the separator() option")
 		}
 	}
 	return nil

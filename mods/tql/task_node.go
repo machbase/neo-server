@@ -35,7 +35,11 @@ type Node struct {
 
 	_inflight *Record
 
-	Body io.Reader
+	// Deprecated
+	Body      io.Reader
+	warnedCtx bool
+	warnedK   bool
+	warnedV   bool
 }
 
 var (
@@ -84,14 +88,26 @@ func (node *Node) Receive(rec *Record) {
 func (node *Node) Get(name string) (any, error) {
 	switch name {
 	case "K":
+		if !node.warnedK {
+			node.task.LogWarn("The tql variable 'K' is deprecated, use 'key()' instead")
+			node.warnedK = true
+		}
 		if node._inflight != nil {
 			return node._inflight.key, nil
 		}
 	case "V":
+		if !node.warnedV {
+			node.task.LogWarn("The tql variable 'V' is deprecated, use 'value()' instead")
+			node.warnedV = true
+		}
 		if node._inflight != nil {
 			return node._inflight.value, nil
 		}
 	case "CTX":
+		if !node.warnedCtx {
+			node.task.LogWarn("The tql variable 'CTX' is deprecated, use 'context()'. And 'payload()' for 'CTX.Body'")
+			node.warnedCtx = true
+		}
 		if node.Body == nil {
 			node.Body = node.task.inputReader
 		}

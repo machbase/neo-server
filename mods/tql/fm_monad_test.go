@@ -59,7 +59,7 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 	tick := time.Now()
 	tick100ms := time.Unix(0, (tick.UnixNano()/100000000)*100000000)
 	MapFuncTestCase{
-		input:  `PUSHKEY(roundTime(K, '100ms'))`,
+		input:  `PUSHKEY(roundTime(key(), '100ms'))`,
 		params: FuncParamMock(tick, []any{"v"}),
 		expect: tql.NewRecord(tick100ms, []any{tick, "v"}),
 	}.run(t)
@@ -105,37 +105,37 @@ func TestMapFunc_FILTER(t *testing.T) {
 		expect: nil,
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(K == 'x')`,
+		input:  `FILTER(key() == 'x')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(K != 'x')`,
+		input:  `FILTER(key() != 'x')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: nil,
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(K != 'y')`,
+		input:  `FILTER(key() != 'y')`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(len(V) > 2)`,
+		input:  `FILTER(len(value()) > 2)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(len(V) > 4)`,
+		input:  `FILTER(len(value()) > 4)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: nil,
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(element(V, 0) >= 1)`,
+		input:  `FILTER(element(value(), 0) >= 1)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
 	MapFuncTestCase{
-		input:  `FILTER(element(V, 0) > 0)`,
+		input:  `FILTER(element(value(), 0) > 0)`,
 		params: FuncParamMock("x", []any{1, 2, 3}),
 		expect: tql.NewRecord("x", []any{1, 2, 3}),
 	}.run(t)
