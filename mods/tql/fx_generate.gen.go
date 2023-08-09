@@ -15,6 +15,12 @@ import (
 func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
+		// context
+		"context": x.gen_context,
+		"key":     x.gen_key,
+		"value":   x.gen_value,
+		"param":   x.gen_param,
+		"payload": x.gen_payload,
 		// math
 		"sin":   x.gen_sin,
 		"cos":   x.gen_cos,
@@ -145,6 +151,69 @@ func NewNode(task *Task) *Node {
 		"zAxis":              x.gen_zAxis,
 	}
 	return x
+}
+
+// gen_context
+//
+// syntax: context()
+func (x *Node) gen_context(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("context", 0, len(args))
+	}
+	ret := x.GetContext()
+	return ret, nil
+}
+
+// gen_key
+//
+// syntax: key()
+func (x *Node) gen_key(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("key", 0, len(args))
+	}
+	ret := x.GetRecordKey()
+	return ret, nil
+}
+
+// gen_value
+//
+// syntax: value(...interface {})
+func (x *Node) gen_value(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "value", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.GetRecordValue(p0...)
+}
+
+// gen_param
+//
+// syntax: param(string)
+func (x *Node) gen_param(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("param", 1, len(args))
+	}
+	p0, err := convString(args, 0, "param", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.GetRequestParam(p0)
+	return ret, nil
+}
+
+// gen_payload
+//
+// syntax: payload()
+func (x *Node) gen_payload(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("payload", 0, len(args))
+	}
+	ret := x.GetRequestPayload()
+	return ret, nil
 }
 
 // gen_sin

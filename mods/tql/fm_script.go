@@ -182,7 +182,7 @@ const tengo_uuid_key = "$tengo_uuid"
 
 func script_compile(content string, node *Node) (*tengo.Script, *tengo.Compiled, error) {
 	modules := stdlib.GetModuleMap([]string{
-		"math", "text", "times", "rand", "fmt", "json", "base64", "hex",
+		"math", "text", "times", "rand", "fmt", "json", "base64", "hex", "os", "enum",
 	}...)
 	modules.AddBuiltinModule("context", map[string]tengo.Object{
 		"key": &tengo.UserFunction{

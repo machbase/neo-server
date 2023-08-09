@@ -265,7 +265,7 @@ func TestFFT2D(t *testing.T) {
 func TestFFT3D(t *testing.T) {
 	codeLines := []string{
 		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",
-		"PUSHKEY( roundTime(K, '500ms') )",
+		"PUSHKEY( roundTime(key(), '500ms') )",
 		"GROUPBYKEY()",
 		"FFT(maxHz(60))",
 		"CSV()",
@@ -308,7 +308,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example", `ERROR execute error no such table: example`)
+	runTest(t, codeLines, resultLines, "no such table: example", `[ERROR] execute error no such table: example`)
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -343,7 +343,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example_sql", "ERROR execute error no such table: example_sql")
+	runTest(t, codeLines, resultLines, "no such table: example_sql", "[ERROR] execute error no such table: example_sql")
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -407,7 +407,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"CSV(heading(false))",
 	}
 	resultLines = []string{}
-	runTest(t, codeLines, resultLines, "near \"example_sql\": syntax error", `ERROR execute error near "example_sql": syntax error`)
+	runTest(t, codeLines, resultLines, "near \"example_sql\": syntax error", `[ERROR] execute error near "example_sql": syntax error`)
 
 	// delete
 	codeLines = []string{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/bridge"
@@ -107,6 +108,24 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 				values[i] = new(time.Time)
 			case "sql.RawBytes":
 				values[i] = new([]byte)
+			case "bool":
+				values[i] = new(bool)
+			case "int32":
+				values[i] = new(int32)
+			case "string":
+				values[i] = new(string)
+			case "time.Time":
+				values[i] = new(time.Time)
+			case "interface {}":
+				switch strings.ToUpper(c.DatabaseTypeName()) {
+				case "FLOAT4": // postgresql
+					values[i] = new(float32)
+				case "UUID": // postgresql
+					values[i] = new(string)
+				default:
+					node.task.LogWarnf("genBridgeQuery can not handle column '%s' database-type '%s'", c.Name(), c.DatabaseTypeName())
+					values[i] = new(string)
+				}
 			default:
 				node.task.LogWarnf("genBridgeQuery can not handle column '%s' type '%s'", c.Name(), c.ScanType().String())
 				values[i] = new(string)

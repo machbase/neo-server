@@ -224,28 +224,32 @@ func (out *output) addRow(rec *Record) error {
 	} else if rec.IsImage() && rec.Value() != nil {
 		value := rec.Value()
 		if raw, ok := value.([]byte); ok {
-			addfunc([]any{rec.contentType, raw})
+			return addfunc([]any{rec.contentType, raw})
 		} else {
 			return fmt.Errorf("%s can not write invalid image data (%T)", out.name, value)
 		}
-		return nil
 	} else if !rec.IsTuple() {
 		return fmt.Errorf("%s can not write %v", out.name, rec)
 	}
 
 	if value := rec.Value(); value == nil {
 		// if the value of the record is nil, yield key only
-		addfunc([]any{rec.Key()})
+		return addfunc([]any{rec.Key()})
 	} else {
 		switch v := value.(type) {
 		case [][]any:
+			var err error
 			for n := range v {
-				addfunc(append([]any{rec.Key()}, v[n]...))
+				err = addfunc(append([]any{rec.Key()}, v[n]...))
+				if err != nil {
+					break
+				}
 			}
+			return err
 		case []any:
-			addfunc(append([]any{rec.Key()}, v...))
+			return addfunc(append([]any{rec.Key()}, v...))
 		case any:
-			addfunc([]any{rec.Key(), v})
+			return addfunc([]any{rec.Key(), v})
 		}
 	}
 	return nil

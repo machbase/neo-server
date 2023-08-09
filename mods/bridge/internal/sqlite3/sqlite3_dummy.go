@@ -33,6 +33,5 @@ func (br *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	return nil, errors.New("not supported")
 }
 
-func (br *bridge) SupportLastInsertId() bool {
-	return false
-}
+func (c *bridge) SupportLastInsertId() bool      { return true }
+func (c *bridge) ParameterMarker(idx int) string { return "?" }

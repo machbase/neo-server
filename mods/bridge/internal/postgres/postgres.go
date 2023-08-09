@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	_ "github.com/lib/pq"
 )
@@ -49,4 +50,5 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	return c.db.Conn(ctx)
 }
 
-func (c *bridge) SupportLastInsertId() bool { return false }
+func (c *bridge) SupportLastInsertId() bool      { return false }
+func (c *bridge) ParameterMarker(idx int) string { return "$" + strconv.Itoa(idx+1) }
