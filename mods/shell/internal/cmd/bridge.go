@@ -44,7 +44,7 @@ const helpBridge = `  bridge command [options]
 	postgres      PostgreSQL        https://postgresql.org
 	    ex) bridge add -t postgres my_pg host=127.0.0.1 port=5432 user=dbuser dbname=postgres sslmode=disable
 	mysql         MySQL             https://mysql.com
-		ex) bridge add -t mysql my_sql root:pwd@tcp(127.0.0.1:3306)/testdb
+		ex) bridge add -t mysql my_sql root:passwd@tcp(127.0.0.1:3306)/testdb?parseTime=true
 	mqtt          MQTT (v3.1.1)     https://mqtt.org
 		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
 `

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
-	"time"
 
 	"github.com/machbase/neo-server/mods/bridge"
 	spi "github.com/machbase/neo-spi"
@@ -89,45 +88,11 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 	for rows.Next() && !node.task.shouldStop() {
 		values := make([]any, len(columns))
 		for i, c := range columns {
-			switch c.ScanType().String() {
-			case "sql.NullBool":
-				values[i] = new(bool)
-			case "sql.NullByte":
-				values[i] = new(uint8)
-			case "sql.NullFloat64":
-				values[i] = new(float64)
-			case "sql.NullInt16":
-				values[i] = new(int16)
-			case "sql.NullInt32":
-				values[i] = new(int32)
-			case "sql.NullInt64":
-				values[i] = new(int64)
-			case "sql.NullString":
-				values[i] = new(string)
-			case "sql.NullTime":
-				values[i] = new(time.Time)
-			case "sql.RawBytes":
-				values[i] = new([]byte)
-			case "bool":
-				values[i] = new(bool)
-			case "int32":
-				values[i] = new(int32)
-			case "string":
-				values[i] = new(string)
-			case "time.Time":
-				values[i] = new(time.Time)
-			case "interface {}":
-				switch strings.ToUpper(c.DatabaseTypeName()) {
-				case "FLOAT4": // postgresql
-					values[i] = new(float32)
-				case "UUID": // postgresql
-					values[i] = new(string)
-				default:
-					node.task.LogWarnf("genBridgeQuery can not handle column '%s' database-type '%s'", c.Name(), c.DatabaseTypeName())
-					values[i] = new(string)
-				}
-			default:
-				node.task.LogWarnf("genBridgeQuery can not handle column '%s' type '%s'", c.Name(), c.ScanType().String())
+			scanType := c.ScanType().String()
+			typeName := strings.ToUpper(c.DatabaseTypeName())
+			values[i] = br.NewScanType(scanType, typeName)
+			if values[i] == nil {
+				node.task.LogWarnf("genBridgeQuery can not handle column '%s' type '%s/%s'", c.Name(), scanType, typeName)
 				values[i] = new(string)
 			}
 		}

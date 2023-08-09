@@ -7,9 +7,12 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq"
+	"github.com/machbase/neo-server/mods/bridge/internal"
 )
 
 type bridge struct {
+	internal.SqlBridgeBase
+
 	name string
 	path string
 	db   *sql.DB
@@ -52,3 +55,16 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 
 func (c *bridge) SupportLastInsertId() bool      { return false }
 func (c *bridge) ParameterMarker(idx int) string { return "$" + strconv.Itoa(idx+1) }
+
+func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
+	switch reflectType {
+	case "interface {}":
+		switch databaseTypeName {
+		case "FLOAT4":
+			return new(float32)
+		case "UUID":
+			return new(string)
+		}
+	}
+	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
+}

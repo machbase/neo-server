@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"net"
@@ -203,6 +204,54 @@ func (ex *Exporter) AddRow(values []any) error {
 				strs = append(strs, fmt.Sprintf("\\x%02X", c))
 			}
 			cols[i] = strings.Join(strs, "")
+		case *sql.NullBool:
+			if v.Valid {
+				cols[i] = strconv.FormatBool(v.Bool)
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullByte:
+			if v.Valid {
+				cols[i] = strconv.Itoa(int(v.Byte))
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				cols[i] = ex.encodeFloat64(float64(v.Float64))
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullInt16:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int16), 10)
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullInt32:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(int64(v.Int32), 10)
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				cols[i] = strconv.FormatInt(v.Int64, 10)
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullString:
+			if v.Valid {
+				cols[i] = v.String
+			} else {
+				cols[i] = ""
+			}
+		case *sql.NullTime:
+			if v.Valid {
+				cols[i] = ex.encodeTime(v.Time)
+			} else {
+				cols[i] = ""
+			}
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

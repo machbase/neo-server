@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +19,7 @@ type rowsWrap struct {
 	ctx     context.Context
 	release func()
 
+	bridge     SqlBridge
 	enlistInfo string
 	enlistTime time.Time
 }
@@ -172,6 +173,7 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 			conn:       conn,
 			rows:       rows,
 			ctx:        ctx,
+			bridge:     br,
 			enlistInfo: fmt.Sprintf("%s: %s", req.Name, cmd.SqlText),
 			enlistTime: time.Now(),
 			release: func() {
@@ -235,7 +237,8 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 
 	fields := make([]any, len(columns))
 	for i, c := range columns {
-		fields[i] = reflect.New(c.ScanType()).Interface()
+		fields[i] = rowsWrap.bridge.NewScanType(c.ScanType().String(), strings.ToUpper(c.DatabaseTypeName()))
+		//fields[i] = reflect.New(c.ScanType()).Interface()
 	}
 	err = rowsWrap.rows.Scan(fields...)
 	if err != nil {

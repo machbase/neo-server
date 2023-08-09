@@ -232,21 +232,42 @@ func tengof_key(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 
 func tengof_value(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
+		indexed := -1
 		if len(args) != 0 {
-			return nil, tengo.ErrWrongNumArguments
-		}
-		if obj, ok := node.GetValue(tengo_script_key); ok {
-			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				obj := anyToTengoObject(slet.param.value)
-				// value of a record should be always a tuple (= array).
-				if _, ok := obj.(*tengo.Array); ok {
-					return obj, nil
-				} else {
-					return &tengo.Array{Value: []tengo.Object{obj}}, nil
-				}
+			if i, ok := tengo.ToInt(args[0]); ok {
+				indexed = i
+			} else {
+				return nil, tengo.ErrInvalidIndexType
 			}
 		}
-		return nil, nil
+		scriptObj, ok := node.GetValue(tengo_script_key)
+		if !ok {
+			return nil, nil
+		}
+		slet, ok := scriptObj.(*scriptlet)
+		if !ok || slet.param == nil {
+			return nil, nil
+		}
+
+		obj := anyToTengoObject(slet.param.value)
+		// value of a record should be always a tuple (= array).
+		if arr, ok := obj.(*tengo.Array); ok {
+			if indexed >= 0 {
+				if indexed >= len(arr.Value) {
+					return nil, tengo.ErrIndexOutOfBounds
+				}
+				return arr.Value[indexed], nil
+			} else {
+				return obj, nil
+			}
+		} else {
+			if indexed == 0 {
+				return obj, nil
+			} else if indexed > 0 {
+				return nil, tengo.ErrIndexOutOfBounds
+			}
+			return &tengo.Array{Value: []tengo.Object{obj}}, nil
+		}
 	}
 }
 
@@ -285,6 +306,7 @@ func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error
 
 func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
+		node.task.LogWarn("'yield()' is deprecated, use 'yieldKey()`")
 		vargs := make([]any, len(args))
 		for i, v := range args {
 			vargs[i] = tengo.ToInterface(v)
