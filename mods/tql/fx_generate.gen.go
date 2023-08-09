@@ -177,13 +177,17 @@ func (x *Node) gen_key(args ...any) (any, error) {
 
 // gen_value
 //
-// syntax: value()
+// syntax: value(...interface {})
 func (x *Node) gen_value(args ...any) (any, error) {
-	if len(args) != 0 {
-		return nil, ErrInvalidNumOfArgs("value", 0, len(args))
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "value", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	ret := x.GetRecordValue()
-	return ret, nil
+	return x.GetRecordValue(p0...)
 }
 
 // gen_param

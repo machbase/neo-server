@@ -1,5 +1,10 @@
 package tql
 
+import (
+	"fmt"
+	"strconv"
+)
+
 type NodeContext struct {
 	// Key  any
 	node *Node
@@ -14,18 +19,48 @@ func (node *Node) GetContext() *NodeContext {
 
 // tql function: key()
 func (node *Node) GetRecordKey() any {
-	if inflight := node.Inflight(); inflight != nil {
-		return inflight.key
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil
 	}
-	return nil
+	return inflight.key
 }
 
 // tql function: value()
-func (node *Node) GetRecordValue() any {
-	if inflight := node.Inflight(); inflight != nil {
-		return inflight.value
+func (node *Node) GetRecordValue(args ...any) (any, error) {
+	inflight := node.Inflight()
+	if inflight == nil || inflight.value == nil {
+		return nil, nil
 	}
-	return nil
+	if len(args) == 0 {
+		return inflight.value, nil
+	}
+	idx := 0
+	switch v := args[0].(type) {
+	case int:
+		idx = v
+	case float32:
+		idx = int(v)
+	case float64:
+		idx = int(v)
+	case string:
+		if parsed, err := strconv.ParseInt(v, 10, 32); err != nil {
+			return nil, err
+		} else {
+			idx = int(parsed)
+		}
+	default:
+		return nil, ErrWrongTypeOfArgs("value", 0, "index of value tuple", v)
+	}
+	switch val := inflight.value.(type) {
+	case []any:
+		if idx >= len(val) {
+			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d)", idx, len(val)))
+		}
+		return val[idx], nil
+	default:
+		return nil, ErrArgs("value", 0, "out of index value tuple")
+	}
 }
 
 // tql function: payload()

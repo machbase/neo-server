@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/bridge"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
@@ -42,6 +43,8 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 	ret := &insert{}
 	for _, arg := range args {
 		switch v := arg.(type) {
+		case *bridgeName:
+			ret.bridge = v
 		case string:
 			ret.columns = append(ret.columns, v)
 		case *Table:
@@ -53,21 +56,22 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 	if ret.table == nil {
 		return nil, ErrArgs("INSERT", 0, "table is not specified")
 	}
-	if ret.tag != nil {
+	if ret.bridge == nil && ret.tag != nil {
 		ret.columns = append([]string{ret.tag.Column}, ret.columns...)
 	}
-	for range ret.columns {
-		ret.placeHolders = append(ret.placeHolders, "?")
-	}
+	ret.node = x
 	return ret, nil
 }
 
 type insert struct {
-	db    spi.Database
-	nrows int
+	db spi.Database
 
-	columns      []string
-	placeHolders []string
+	rowsAffected int64
+	lastInsertId int64
+
+	node    *Node
+	bridge  *bridgeName
+	columns []string
 
 	table *Table
 	tag   *Tag
@@ -79,11 +83,64 @@ func (ins *insert) Open(db spi.Database) error {
 }
 
 func (ins *insert) Close() string {
-	return fmt.Sprintf("%d rows inserted.", ins.nrows)
+	return fmt.Sprintf("%d rows inserted.", ins.rowsAffected)
 }
 
 func (ins *insert) AddRow(values []any) error {
-	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", ins.table.Name, strings.Join(ins.columns, ","), strings.Join(ins.placeHolders, ","))
+	if ins.bridge != nil {
+		return ins._addRowBridge(values)
+	} else {
+		return ins._addRow(values)
+	}
+
+}
+func (ins *insert) _addRowBridge(values []any) error {
+	br, err := bridge.GetSqlBridge(ins.bridge.name)
+	if err != nil {
+		return err
+	}
+
+	placeHolders := []string{}
+	for idx := range ins.columns {
+		placeHolders = append(placeHolders, br.ParameterMarker(idx))
+	}
+	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)",
+		ins.table.Name,
+		strings.Join(ins.columns, ","),
+		strings.Join(placeHolders, ","))
+	conn, err := br.Connect(ins.node.task.ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	result, err := conn.ExecContext(ins.node.task.ctx, sqlText, values...)
+	if err != nil {
+		return errors.Wrapf(err, sqlText)
+	}
+	if br.SupportLastInsertId() {
+		lastInsertId, err := result.LastInsertId()
+		if err != nil {
+			return errors.Wrapf(err, sqlText)
+		}
+		ins.lastInsertId = lastInsertId
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errors.Wrapf(err, sqlText)
+	}
+	ins.rowsAffected = rowsAffected
+	return nil
+}
+
+func (ins *insert) _addRow(values []any) error {
+	placeHolders := []string{}
+	for range ins.columns {
+		placeHolders = append(placeHolders, "?")
+	}
+	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)",
+		ins.table.Name,
+		strings.Join(ins.columns, ","),
+		strings.Join(placeHolders, ","))
 	var err error
 	if ins.tag == nil {
 		if result := ins.db.Exec(sqlText, values...); result.Err() != nil {
@@ -95,17 +152,19 @@ func (ins *insert) AddRow(values []any) error {
 		}
 	}
 	if err == nil {
-		ins.nrows++
+		ins.rowsAffected++
 	}
 	return err
 }
 
 func (x *Node) fmAppend(args ...any) (*appender, error) {
 	ret := &appender{}
-	for _, arg := range args {
+	for i, arg := range args {
 		switch v := arg.(type) {
 		case *Table:
 			ret.table = v
+		case *bridgeName:
+			return nil, ErrArgs("APPEND", i, "cannot use with a bridge")
 		}
 	}
 	if ret.table == nil {
