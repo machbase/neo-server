@@ -55,4 +55,5 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	return c.db.Conn(ctx)
 }
 
-func (c *bridge) SupportLastInsertId() bool { return true }
+func (c *bridge) SupportLastInsertId() bool      { return true }
+func (c *bridge) ParameterMarker(idx int) string { return "?" }

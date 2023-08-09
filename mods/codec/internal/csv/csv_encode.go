@@ -183,6 +183,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
+		case *bool:
+			cols[i] = strconv.FormatBool(*v)
+		case bool:
+			cols[i] = strconv.FormatBool(v)
 		case *net.IP:
 			cols[i] = v.String()
 		case net.IP:
