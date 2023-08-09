@@ -13,7 +13,33 @@ import (
 	"github.com/machbase/neo-server/mods/tql"
 )
 
-func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...string) {
+type ExpectErr string
+type ExpectLog string
+type Param = struct {
+	name  string
+	value string
+}
+
+func runTest(t *testing.T, codeLines []string, expect []string, options ...any) {
+	var expectErr string
+	var expectLog string
+	var params map[string][]string
+	for _, o := range options {
+		switch v := o.(type) {
+		case ExpectErr:
+			expectErr = string(v)
+		case ExpectLog:
+			expectLog = string(v)
+		case Param:
+			if params == nil {
+				params = map[string][]string{}
+			}
+			arr := params[v.name]
+			arr = append(arr, v.value)
+			params[v.name] = arr
+		}
+	}
+
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
@@ -25,6 +51,9 @@ func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...str
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
+	if len(params) > 0 {
+		task.SetParams(params)
+	}
 	err := task.CompileString(code)
 	require.Nil(t, err)
 
@@ -42,17 +71,17 @@ func runTest(t *testing.T, codeLines []string, expect []string, expectErr ...str
 		cancel()
 	}
 	logString := strings.TrimSpace(logBuf.String())
-	if len(expectErr) == 1 {
+	if expectErr != "" {
 		// case error
 		require.NotNil(t, executeErr)
-		require.Equal(t, expectErr[0], executeErr.Error())
-		require.Equal(t, "", logString)
-	} else if len(expectErr) == 2 {
-		// case error and log message
-		require.NotNil(t, executeErr)
-		require.Equal(t, expectErr[0], executeErr.Error())
-		require.Equal(t, expectErr[1], logString)
-	} else {
+		require.Equal(t, expectErr, executeErr.Error())
+	}
+	if expectLog != "" {
+		// log message
+		require.Equal(t, expectLog, logString)
+	}
+
+	if expectErr == "" && expectLog == "" {
 		// case success
 		require.Nil(t, err)
 		result := w.String()
@@ -308,7 +337,9 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example", `[ERROR] execute error no such table: example`)
+	expectErr := ExpectErr("no such table: example")
+	expectLog := ExpectLog(`[ERROR] execute error no such table: example`)
+	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -343,7 +374,9 @@ func TestBridgeSqlite(t *testing.T) {
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
 	}
-	runTest(t, codeLines, resultLines, "no such table: example_sql", "[ERROR] execute error no such table: example_sql")
+	expectErr := ExpectErr("no such table: example_sql")
+	expectLog := ExpectLog("[ERROR] execute error no such table: example_sql")
+	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
 	require.Nil(t, err)
@@ -407,15 +440,33 @@ func TestBridgeSqlite(t *testing.T) {
 		"CSV(heading(false))",
 	}
 	resultLines = []string{}
-	runTest(t, codeLines, resultLines, "near \"example_sql\": syntax error", `[ERROR] execute error near "example_sql": syntax error`)
+	expectErr = ExpectErr("near \"example_sql\": syntax error")
+	expectLog = ExpectLog(`[ERROR] execute error near "example_sql": syntax error`)
+	runTest(t, codeLines, resultLines, expectErr, expectLog)
+
+	// before delete
+	codeLines = []string{
+		`SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))`,
+		"CSV(heading(false))",
+	}
+	resultLines = []string{"1"}
+	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	// delete
 	codeLines = []string{
-		`SQL(bridge('sqlite'), 'delete from example_sql where id = ?', 100)`,
+		`SQL(bridge('sqlite'), 'delete from example_sql where id = ?', param('id'))`,
 		"CSV(heading(false))",
 	}
 	resultLines = []string{}
-	runTest(t, codeLines, resultLines)
+	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
+
+	// after delete
+	codeLines = []string{
+		`SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))`,
+		"CSV(heading(false))",
+	}
+	resultLines = []string{"0"}
+	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	codeLines = []string{
 		"SQL(bridge('sqlite'), `select * from example_sql`)",

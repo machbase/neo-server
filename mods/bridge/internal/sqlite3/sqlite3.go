@@ -59,3 +59,12 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 
 func (c *bridge) SupportLastInsertId() bool      { return true }
 func (c *bridge) ParameterMarker(idx int) string { return "?" }
+
+func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
+	if reflectType == "*interface {}" && databaseTypeName == "" {
+		// Case: When query like "select count(*) from ...."
+		// So, just bind it into string
+		return new(string)
+	}
+	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
+}
