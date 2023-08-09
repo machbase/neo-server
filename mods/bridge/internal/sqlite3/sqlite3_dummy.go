@@ -7,9 +7,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/machbase/neo-server/mods/bridge/internal"
 )
 
 type bridge struct {
+	internal.SqlBridgeBase
 }
 
 func New(name string, path string) *bridge {

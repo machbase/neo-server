@@ -25,6 +25,7 @@ type Bridge interface {
 type SqlBridge interface {
 	Bridge
 	Connect(ctx context.Context) (*sql.Conn, error)
+	NewScanType(reflectType string, databaseTypeName string) any
 	ParameterMarker(idx int) string
 	SupportLastInsertId() bool
 }

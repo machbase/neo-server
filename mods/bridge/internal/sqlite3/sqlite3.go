@@ -8,10 +8,12 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/machbase/neo-server/mods/bridge/internal"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type bridge struct {
+	internal.SqlBridgeBase
 	name string
 	path string
 	db   *sql.DB
