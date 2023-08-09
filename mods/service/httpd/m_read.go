@@ -920,6 +920,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 // struct 를 이용한 데이터 receive or map[string]interface => 모든 api에서 name,time,value일 경우
 // tagList []string 으로 매개변수 변경 후, split 된 길이를 체크 한 후에 2개 이상일 시 if문 추가
 func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, error) {
+	t := time.Now()
 	result := &SelectReturn{}
 
 	rows, err := svr.db.Query(sqlText)
@@ -934,11 +935,18 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 	columnsLen := len(columns.Names())
 	columnsList := make([]MachbaseColumn, columnsLen)
 
-	for i, col := range columns {
-		columnsList[i].Name = col.Name
-		columnsList[i].Type = ColumnTypeConvert(col.Type)
-		columnsList[i].Length = col.Length
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		for i, col := range columns {
+			columnsList[i].Name = col.Name
+			columnsList[i].Type = ColumnTypeConvert(col.Type)
+			columnsList[i].Length = col.Length
+		}
+	}()
 
 	dataList := []map[string]interface{}{}
 	for rows.Next() {
@@ -955,6 +963,8 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 		dataList = append(dataList, data)
 	}
 
+	wg.Wait()
+
 	tagName := strings.Join(tagList, ",")
 
 	result.Columns = columnsList
@@ -965,6 +975,7 @@ func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, e
 		},
 	}
 
+	svr.log.Info("Elapse : ", time.Since(t).String())
 	return result, nil
 }
 
