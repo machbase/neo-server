@@ -326,6 +326,9 @@ func TestFFT3D(t *testing.T) {
 
 func TestBridgeQuerySqlite(t *testing.T) {
 	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
+	if err == bridge.ErrBridgeDisabled {
+		return
+	}
 	require.Nil(t, err)
 
 	codeLines := []string{
@@ -363,6 +366,9 @@ func TestBridgeQuerySqlite(t *testing.T) {
 
 func TestBridgeSqlite(t *testing.T) {
 	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
+	if err == bridge.ErrBridgeDisabled {
+		return
+	}
 	require.Nil(t, err)
 
 	codeLines := []string{
