@@ -1,6 +1,7 @@
 package json
 
 import (
+	"database/sql"
 	gojson "encoding/json"
 	"fmt"
 	"math"
@@ -163,8 +164,6 @@ func (ex *Exporter) AddRow(source []any) error {
 	values := make([]any, len(source))
 	for i, field := range source {
 		switch v := field.(type) {
-		default:
-			values[i] = field
 		case *time.Time:
 			values[i] = ex.encodeTime(*v)
 		case time.Time:
@@ -181,7 +180,40 @@ func (ex *Exporter) AddRow(source []any) error {
 			values[i] = v.String()
 		case net.IP:
 			values[i] = v.String()
-
+		case *sql.NullBool:
+			if v.Valid {
+				values[i] = v.Bool
+			}
+		case *sql.NullByte:
+			if v.Valid {
+				values[i] = v.Byte
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				values[i] = v.Float64
+			}
+		case *sql.NullInt16:
+			if v.Valid {
+				values[i] = v.Int16
+			}
+		case *sql.NullInt32:
+			if v.Valid {
+				values[i] = v.Int32
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				values[i] = v.Int64
+			}
+		case *sql.NullString:
+			if v.Valid {
+				values[i] = v.String
+			}
+		case *sql.NullTime:
+			if v.Valid {
+				values[i] = ex.encodeTime(v.Time)
+			}
+		default:
+			values[i] = field
 		}
 	}
 

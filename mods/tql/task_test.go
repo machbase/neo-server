@@ -416,7 +416,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
-		"100,alpha,10,street-100,0.000000,",
+		"100,alpha,10,street-100,,",
 		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)

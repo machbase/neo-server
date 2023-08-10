@@ -258,7 +258,32 @@ func (x *Task) shouldStop() bool {
 
 func (x *Task) SetResultColumns(cols spi.Columns) {
 	x._stateLock.Lock()
-	x._resultColumns = cols
+	types := make([]*spi.Column, len(cols))
+	for i, c := range cols {
+		x := *c
+		switch x.Type {
+		case "sql.RawBytes":
+			x.Type = spi.ColumnBufferTypeBinary
+		case "sql.NullBool":
+			x.Type = spi.ColumnBufferTypeBoolean
+		case "sql.NullByte":
+			x.Type = spi.ColumnBufferTypeByte
+		case "sql.NullFloat64":
+			x.Type = spi.ColumnBufferTypeDouble
+		case "sql.NullInt16":
+			x.Type = spi.ColumnBufferTypeInt16
+		case "sql.NullInt32":
+			x.Type = spi.ColumnBufferTypeInt32
+		case "sql.NullInt64":
+			x.Type = spi.ColumnBufferTypeInt64
+		case "sql.NullString":
+			x.Type = spi.ColumnBufferTypeString
+		case "sql.NullTime":
+			x.Type = spi.ColumnBufferTypeDatetime
+		}
+		types[i] = &x
+	}
+	x._resultColumns = types
 	x._stateLock.Unlock()
 }
 
