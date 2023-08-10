@@ -17,6 +17,7 @@ tmpdir:
 	@mkdir -p tmp
 
 test:
+	@[ -d ./tmp ] || mkdir -p ./tmp
 	go test ./... -cover -race -coverprofile ./tmp/cover.out
 	@go tool cover -func ./tmp/cover.out |grep total:
 
