@@ -100,6 +100,14 @@ func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {
 			} else {
 				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VNull{VNull: true}}
 			}
+		case *[]uint8:
+			if v == nil {
+				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VBytes{}}
+			} else {
+				dst := make([]byte, len(*v))
+				copy(dst, *v)
+				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VBytes{VBytes: dst}}
+			}
 		case *sql.RawBytes:
 			if v == nil {
 				ret[i] = &bridgerpc.Datum{Value: &bridgerpc.Datum_VBytes{}}

@@ -58,10 +58,37 @@ func (c *bridge) SupportLastInsertId() bool      { return true }
 func (c *bridge) ParameterMarker(idx int) string { return "?" }
 
 func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
-	if reflectType == "*interface {}" && databaseTypeName == "" {
-		// Case: When query like "select count(*) from ...."
-		// So, just bind it into string
-		return new(string)
+	switch reflectType {
+	case "sql.RawBytes": // BLOB
+		switch databaseTypeName {
+		case "BLOB":
+			return new([]byte)
+		default:
+			return new([]byte)
+		}
+	case "sql.NullBool": // BOOLEAN
+		return new(sql.NullBool)
+	case "sql.NullByte":
+		return new(sql.NullByte)
+	case "sql.NullFloat64": // REAL
+		return new(sql.NullFloat64)
+	case "sql.NullInt16":
+		return new(sql.NullInt16)
+	case "sql.NullInt32":
+		return new(sql.NullInt32)
+	case "sql.NullInt64": // INTEGER
+		return new(sql.NullInt64)
+	case "sql.NullString": // TEXT
+		return new(sql.NullString)
+	case "sql.NullTime": // DATETIME
+		return new(sql.NullTime)
+	case "*interface {}":
+		if databaseTypeName == "" {
+			// Case: When query like "select count(*) from ...."
+			// SQLite bind count(*) fields on this case
+			// so, just bind it into string
+			return new(string)
+		}
 	}
 	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
 }
