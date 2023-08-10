@@ -18,7 +18,11 @@ tmpdir:
 
 test:
 	@[ -d ./tmp ] || mkdir -p ./tmp
+ifeq ($(uname_s), Linux)
+	go test `go list ./... | grep -v main/neow` -cover -race -coverprofile ./tmp/cover.out
+else
 	go test ./... -cover -race -coverprofile ./tmp/cover.out
+endif
 	@go tool cover -func ./tmp/cover.out |grep total:
 
 test-all:
