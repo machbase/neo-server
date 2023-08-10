@@ -337,7 +337,7 @@ func (x *Task) _logf(prefix string, format string, args ...any) {
 	if x.logWriter == nil {
 		fmt.Printf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
 	} else {
-		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...) + "\n"
+		line := fmt.Sprintf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
 		x.logWriter.Write([]byte(line))
 	}
 }

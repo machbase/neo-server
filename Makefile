@@ -17,32 +17,16 @@ tmpdir:
 	@mkdir -p tmp
 
 test:
-	@make -f Makefile test-base
-
-test-base: tmpdir
-	@go test $(ARGS) -cover -race \
-		./booter \
-		./mods/util \
-		./mods/util/glob \
-		./mods/util/ini \
-		./mods/util/ssfs \
-		./mods/expression \
-		./mods/tql \
-		./mods/nums/opensimplex \
-		./mods/script \
-		./mods/transcoder \
-		./mods/codec/internal/json \
-		./main/machbase-neo \
-		./mods/do \
-		./mods/service/security \
-		./mods/service/mqttd/mqtt \
-		./mods/service/httpd \
-		./mods/server \
-		./mods/shell \
-		./test
+	@[ -d ./tmp ] || mkdir -p ./tmp
+ifeq ($(uname_s), Linux)
+	go test `go list ./... | grep -v main/neow` -cover -race -coverprofile ./tmp/cover.out
+else
+	go test ./... -cover -race -coverprofile ./tmp/cover.out
+endif
+	@go tool cover -func ./tmp/cover.out |grep total:
 
 test-all:
-	make -f Makefile ARGS="-v -count 1" test-base
+	go test ./... -v -count 1 -cover -race
 
 package:
 	@make -f Makefile package-machbase-neo

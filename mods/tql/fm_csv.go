@@ -31,10 +31,16 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 	}
 	if isSource {
 		ret, err := newCsvSource(args...)
+		if err != nil {
+			return nil, err
+		}
 		ret.gen(x)
 		return nil, err
 	} else {
-		ret := newEncoder("csv", args...)
+		ret, err := newEncoder("csv", args...)
+		if err != nil {
+			return nil, err
+		}
 		return ret, nil
 	}
 }
@@ -94,13 +100,14 @@ func (src *csvSource) gen(node *Node) {
 				var parsed int64
 				parsed, err = strconv.ParseInt(fields[i], 10, 64)
 				if err == nil {
-					values[i] = parsed * dataType.unit
+					ts := parsed * dataType.unit
+					values[i] = time.Unix(0, ts)
 				}
 			case *datetimeOpt:
 				values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 			}
 			if err != nil {
-				node.task.LogWarnf("invalid number format (at %d)", rownum)
+				node.task.LogWarnf("invalid number format (at line %d)", rownum)
 				break
 			}
 		}
@@ -208,13 +215,13 @@ func (x *Node) fmCol(args ...any) (any, error) {
 
 func (x *Node) fmField(args ...any) (any, error) {
 	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("col", 3, len(args))
+		return nil, ErrInvalidNumOfArgs("field", 3, len(args))
 	}
 	col := &columnOpt{}
 	if d, ok := args[0].(float64); ok {
 		col.idx = int(d)
 	} else {
-		return nil, errors.New("f(col) first argument should be int")
+		return nil, errors.New("f(field) first argument should be int")
 	}
 
 	if v, ok := args[1].(colOpt); ok {
@@ -223,14 +230,14 @@ func (x *Node) fmField(args ...any) (any, error) {
 		if str, ok := args[1].(string); ok {
 			col.dataType = &anyOpt{typeName: str}
 		} else {
-			return nil, errors.New("f(col) second argument should be data type")
+			return nil, errors.New("f(field) second argument should be data type")
 		}
 	}
 
 	if str, ok := args[2].(string); ok {
 		col.label = str
 	} else {
-		return nil, errors.New("f(col) third argument should be label")
+		return nil, errors.New("f(field) third argument should be label")
 	}
 
 	return col, nil

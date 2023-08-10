@@ -2,58 +2,71 @@ package tql
 
 import (
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/pkg/errors"
 )
 
-func newEncoder(format string, args ...any) *Encoder {
+func newEncoder(format string, args ...any) (*Encoder, error) {
 	ret := &Encoder{
 		format: format,
 	}
 	for _, arg := range args {
 		if opt, ok := arg.(opts.Option); ok {
 			ret.opts = append(ret.opts, opt)
+		} else {
+			return nil, errors.New("invalid option")
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 func (node *Node) fmHtml(args ...any) *Encoder {
-	return newEncoder("html", args...)
+	enc, _ := newEncoder("html", args...)
+	return enc
 }
 
 func (node *Node) fmMarkdown(args ...any) *Encoder {
-	return newEncoder("markdown", args...)
+	enc, _ := newEncoder("markdown", args...)
+	return enc
 }
 
 func (node *Node) fmJson(args ...any) *Encoder {
-	return newEncoder("json", args...)
+	enc, _ := newEncoder("json", args...)
+	return enc
 }
 
 func (node *Node) fmChartLine(args ...any) *Encoder {
-	return newEncoder("echart.line", args...)
+	enc, _ := newEncoder("echart.line", args...)
+	return enc
 }
 
 func (node *Node) fmChartScatter(args ...any) *Encoder {
-	return newEncoder("echart.scatter", args...)
+	enc, _ := newEncoder("echart.scatter", args...)
+	return enc
 }
 
 func (node *Node) fmChartBar(args ...any) *Encoder {
-	return newEncoder("echart.bar", args...)
+	enc, _ := newEncoder("echart.bar", args...)
+	return enc
 }
 
 func (node *Node) fmChartLine3D(args ...any) *Encoder {
-	return newEncoder("echart.line3d", args...)
+	enc, _ := newEncoder("echart.line3d", args...)
+	return enc
 }
 
 func (node *Node) fmChartBar3D(args ...any) *Encoder {
-	return newEncoder("echart.bar3d", args...)
+	enc, _ := newEncoder("echart.bar3d", args...)
+	return enc
 }
 
 func (node *Node) fmChartSurface3D(args ...any) *Encoder {
-	return newEncoder("echart.surface3d", args...)
+	enc, _ := newEncoder("echart.surface3d", args...)
+	return enc
 }
 
 func (node *Node) fmChartScatter3D(args ...any) *Encoder {
-	return newEncoder("echart.scatter3d", args...)
+	enc, _ := newEncoder("echart.scatter3d", args...)
+	return enc
 }
 
 func (node *Node) fmMarkArea(args ...any) (any, error) {
