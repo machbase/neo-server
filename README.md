@@ -5,7 +5,7 @@
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml)
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml)
 [![](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml)
-
+[![](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm32.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm32.yml)
 # neo-server
 
 Machbase is the fastest time-series database for [IoT in the world](https://www.tpc.org/tpcx-iot/results/tpcxiot_perf_results5.asp?version=2) implemented in C++. 
