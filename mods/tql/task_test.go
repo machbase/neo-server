@@ -11,10 +11,13 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
 type ExpectErr string
 type ExpectLog string
+type Payload string
+
 type Param = struct {
 	name  string
 	value string
@@ -23,6 +26,7 @@ type Param = struct {
 func runTest(t *testing.T, codeLines []string, expect []string, options ...any) {
 	var expectErr string
 	var expectLog string
+	var payload []byte
 	var params map[string][]string
 	for _, o := range options {
 		switch v := o.(type) {
@@ -30,6 +34,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			expectErr = string(v)
 		case ExpectLog:
 			expectLog = string(v)
+		case Payload:
+			payload = []byte(v)
 		case Param:
 			if params == nil {
 				params = map[string][]string{}
@@ -51,6 +57,9 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
+	if len(payload) > 0 {
+		task.SetInputReader(bytes.NewBuffer(payload))
+	}
 	if len(params) > 0 {
 		task.SetParams(params)
 	}
@@ -79,6 +88,14 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	if expectLog != "" {
 		// log message
 		require.Equal(t, expectLog, logString)
+	} else {
+		if len(logString) > 0 {
+			t.Log("LOG OUTPUT:", logString)
+		}
+	}
+
+	if expectErr == "" {
+		require.Nil(t, executeErr)
 	}
 
 	if expectErr == "" && expectLog == "" {
@@ -324,6 +341,62 @@ func TestFFT3D(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestSourceCSV1(t *testing.T) {
+	codeLines := []string{
+		`CSV(payload(),
+			field(0, stringType(), "name"),
+			field(1, datetimeType("s"), "time"),
+			field(2, doubleType(), "value"),
+			field(3, stringType(), "active")
+		)`,
+		`CSV(timeformat("s"), heading(true))`,
+	}
+	payload := []string{
+		`temp.name,1691662156,123.456789,true`,
+	}
+	resultLines := []string{
+		`name,time,value,active`,
+		`temp.name,1691662156,123.456789,true`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestSourceCSV2(t *testing.T) {
+	codeLines := []string{
+		`CSV(payload(),
+			field(0, stringType(), "name"),
+			field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
+			field(2, doubleType(), "value"),
+			field(3, stringType(), "active")
+		)`,
+		`CSV(timeformat("s"), heading(true))`,
+	}
+	payload := []string{
+		`temp.name,2023/08/10 19:09:16,123.456789,true`,
+	}
+	resultLines := []string{
+		`name,time,value,active`,
+		`temp.name,1691662156,123.456789,true`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestSourceCSVFile(t *testing.T) {
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+	codeLines := []string{
+		`CSV(file('/iris.data'))`,
+		`DROP(10)`,
+		`TAKE(2)`,
+		`CSV()`,
+	}
+	resultLines := []string{
+		`5.4,3.7,1.5,0.2,Iris-setosa`,
+		`4.8,3.4,1.6,0.2,Iris-setosa`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestBridgeQuerySqlite(t *testing.T) {
 	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
 	if err == bridge.ErrBridgeDisabled {
@@ -365,7 +438,11 @@ func TestBridgeQuerySqlite(t *testing.T) {
 }
 
 func TestBridgeSqlite(t *testing.T) {
-	err := bridge.Register(&model.BridgeDefinition{Type: model.BRIDGE_SQLITE, Name: "sqlite", Path: "file::memory:?cache=shared"})
+	err := bridge.Register(&model.BridgeDefinition{
+		Type: model.BRIDGE_SQLITE,
+		Name: "sqlite",
+		Path: "file::memory:?cache=shared",
+	})
 	if err == bridge.ErrBridgeDisabled {
 		return
 	}
