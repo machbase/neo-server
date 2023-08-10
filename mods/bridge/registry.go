@@ -1,6 +1,3 @@
-//go:build !linux || !arm
-// +build !linux !arm
-
 package bridge
 
 import (
