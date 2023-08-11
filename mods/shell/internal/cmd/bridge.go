@@ -49,6 +49,8 @@ const helpBridge = `  bridge command [options]
 		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
 `
 
+// mssql         MSSQL
+//      ex) bridge add -t mssql  ms server=127.0.0.1:1433 user=sa pass=changeme database=master connection-timeout=5 dial-timeout=3 encrypt=disable
 // python        Python            https://python.org
 // 		ex) bridge add -t python py-local bin=/usr/local/bin/python3
 // 		ex) bridge add -t python py-myenv bin=/bin/python dir=/work env="API_KEY=api_token" env="VAR=VALUE"
@@ -61,7 +63,7 @@ type BridgeCmd struct {
 	Add struct {
 		Name string   `arg:"" name:"name" help:"bridge name"`
 		Path []string `arg:"" name:"conn" passthrough:"" help:"connection string"`
-		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mqtt,python" help:"bridge type"`
+		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mssql,mqtt,python" help:"bridge type"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`

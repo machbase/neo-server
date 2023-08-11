@@ -31,6 +31,7 @@ require (
 	github.com/machbase/neo-spi v1.4.1-0.20230810064159-c4cbca068ee5
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
+	github.com/microsoft/go-mssqldb v1.5.0
 	github.com/mum4k/termdash v0.18.0
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
@@ -45,11 +46,11 @@ require (
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
 	github.com/zclconf/go-cty v1.13.2
 	go.abhg.dev/goldmark/mermaid v0.4.0
-	golang.org/x/crypto v0.11.0
+	golang.org/x/crypto v0.12.0
 	golang.org/x/net v0.12.0
-	golang.org/x/sys v0.10.0
-	golang.org/x/term v0.10.0
-	golang.org/x/text v0.11.0
+	golang.org/x/sys v0.11.0
+	golang.org/x/term v0.11.0
+	golang.org/x/text v0.12.0
 	gonum.org/v1/gonum v0.13.0
 	google.golang.org/grpc v1.56.2
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -93,6 +94,8 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/goki/freetype v0.0.0-20220119013949-7a161fd3728c // indirect
+	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
+	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect

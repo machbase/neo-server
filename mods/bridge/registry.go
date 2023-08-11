@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/mods/bridge/internal/mqtt"
+	"github.com/machbase/neo-server/mods/bridge/internal/mssql"
 	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
 	"github.com/machbase/neo-server/mods/bridge/internal/python3"
@@ -29,6 +30,9 @@ func Register(def *model.BridgeDefinition) (err error) {
 		br = b
 	case model.BRIDGE_MYSQL:
 		var b SqlBridge = mysql.New(def.Name, def.Path)
+		br = b
+	case model.BRIDGE_MSSQL:
+		var b SqlBridge = mssql.New(def.Name, def.Path)
 		br = b
 	case model.BRIDGE_MQTT:
 		var b MqttBridge = mqtt.New(def.Name, def.Path)
