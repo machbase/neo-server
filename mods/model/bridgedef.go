@@ -10,6 +10,7 @@ const (
 	BRIDGE_SQLITE   BridgeType = "sqlite"
 	BRIDGE_POSTGRES BridgeType = "postgres"
 	BRIDGE_MYSQL    BridgeType = "mysql"
+	BRIDGE_MSSQL    BridgeType = "mssql"
 	BRIDGE_MQTT     BridgeType = "mqtt"
 	BRIDGE_PYTHON   BridgeType = "python"
 )
@@ -22,6 +23,8 @@ func ParseBridgeType(typ string) (BridgeType, error) {
 		return BRIDGE_POSTGRES, nil
 	case "mysql":
 		return BRIDGE_MYSQL, nil
+	case "mssql":
+		return BRIDGE_MSSQL, nil
 	case "mqtt":
 		return BRIDGE_MQTT, nil
 	case "python":
