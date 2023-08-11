@@ -27,6 +27,8 @@ func (b *SqlBridgeBase) NewScanType(reflectType string, databaseTypeName string)
 		return new(time.Time)
 	case "sql.RawBytes":
 		return new([]byte)
+	case "[]uint8":
+		return new([]byte)
 	case "bool":
 		return new(bool)
 	case "int32":

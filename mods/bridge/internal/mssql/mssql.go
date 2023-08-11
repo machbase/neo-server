@@ -25,7 +25,6 @@ func New(name string, path string) *bridge {
 
 func (c *bridge) BeforeRegister() error {
 	server := ""
-	appName := "neo-bridge"
 
 	q := url.Values{}
 	fields := strings.Fields(c.path)
@@ -48,14 +47,22 @@ func (c *bridge) BeforeRegister() error {
 		case "dial timeout", "dial-timeout":
 			q.Add("dial timeout", val)
 		case "app name", "app-name":
-			appName = val
+			q.Add("app name", val)
 		case "encrypt":
 			q.Add("encrypt", val)
 		case "server":
 			server = val
 		}
 	}
-	q.Add("app name", appName)
+	if !q.Has("dial timeout") {
+		q.Add("dial timeout", "3")
+	}
+	if !q.Has("connection timeout") {
+		q.Add("connection timeout", "5")
+	}
+	if q.Has("app name") {
+		q.Add("app name", "neo-bridge")
+	}
 	u := &url.URL{
 		Scheme:   "sqlserver",
 		Host:     server,
@@ -65,11 +72,6 @@ func (c *bridge) BeforeRegister() error {
 	if err != nil {
 		return err
 	}
-	conn, err := db.Conn(context.TODO())
-	if err != nil {
-		return err
-	}
-	conn.Close()
 	c.db = db
 	return nil
 }
@@ -97,13 +99,21 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 }
 
 func (c *bridge) SupportLastInsertId() bool { return false }
+
 func (c *bridge) ParameterMarker(idx int) string {
-	// question mark bind parameter is deprecated
-	return "?"
-	// TODO
-	// instead, should use "@ID" with sql.Named("ID", 100)
+	return fmt.Sprintf("@p%d", idx+1)
 }
 
 func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
+	switch databaseTypeName {
+	case "INT", "SMALLINT":
+		return new(sql.NullInt64)
+	case "DECIMAL", "REAL":
+		return new(sql.NullFloat64)
+	case "VARCHAR", "TEXT":
+		return new(sql.NullString)
+	case "DATETIME":
+		return new(sql.NullTime)
+	}
 	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
 }
