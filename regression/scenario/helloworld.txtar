@@ -1,0 +1,6 @@
+exec echo 'hello world'
+cmp stdout result-version.txt
+
+-- result-version.txt --
+hello world
+-- end.txt --
