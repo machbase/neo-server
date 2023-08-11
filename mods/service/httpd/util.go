@@ -44,8 +44,8 @@ func strTimeLocation(str string, def *time.Location) *time.Location {
 	} else if tz == "utc" {
 		return time.UTC
 	} else {
-		if loc, err := time.LoadLocation(str); err != nil {
-			loc, err := util.GetTimeLocation(str)
+		if loc, err := util.GetTimeLocation(str); err != nil {
+			loc, err := time.LoadLocation(str)
 			if err != nil {
 				return def
 			}
