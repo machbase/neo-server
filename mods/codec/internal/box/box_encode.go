@@ -8,6 +8,7 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
@@ -161,13 +162,49 @@ func (ex *Exporter) AddRow(values []any) error {
 				if ex.timeLocation == nil {
 					ex.timeLocation = time.UTC
 				}
-				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
+				format := util.GetTimeformat(ex.timeformat)
+				cols[i] = v.In(ex.timeLocation).Format(format)
+			}
+		case time.Time:
+			switch ex.timeformat {
+			case "ns":
+				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
+			case "ms":
+				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
+			case "us":
+				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
+			case "s":
+				cols[i] = strconv.FormatInt(v.Unix(), 10)
+			default:
+				if ex.timeLocation == nil {
+					ex.timeLocation = time.UTC
+				}
+				format := util.GetTimeformat(ex.timeformat)
+				cols[i] = v.In(ex.timeLocation).Format(format)
+			}
+		case *float32:
+			if ex.precision < 0 {
+				cols[i] = fmt.Sprintf("%f", *v)
+			} else {
+				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
+			}
+		case float32:
+			if ex.precision < 0 {
+				cols[i] = fmt.Sprintf("%f", v)
+			} else {
+				cols[i] = fmt.Sprintf("%.*f", ex.precision, v)
 			}
 		case *float64:
 			if ex.precision < 0 {
 				cols[i] = fmt.Sprintf("%f", *v)
 			} else {
 				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
+			}
+		case float64:
+			if ex.precision < 0 {
+				cols[i] = fmt.Sprintf("%f", v)
+			} else {
+				cols[i] = fmt.Sprintf("%.*f", ex.precision, v)
 			}
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)

@@ -31,6 +31,8 @@ type WriterOutputStream struct {
 	Writer io.Writer
 }
 
+var _ spec.OutputStream = &WriterOutputStream{}
+
 func (out *WriterOutputStream) Write(buf []byte) (int, error) {
 	return out.Writer.Write(buf)
 }
