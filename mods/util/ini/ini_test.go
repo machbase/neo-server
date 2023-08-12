@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSection(t *testing.T) {
@@ -15,6 +17,107 @@ func TestSection(t *testing.T) {
 	ini := Load(data)
 	if !ini.HasSection("section1") || !ini.HasSection("section2") {
 		t.Error("fail to load ini file")
+	}
+	if ini.DefaultSectionName() != "default" {
+		t.Error("fail to default section name")
+	}
+	sect := NewSection("newsect")
+	sect.Add("key1", "value1")
+	sect.Add("bool1", "true")
+	sect.Add("bool2", "false")
+	sect.Add("i64", "123456")
+
+	ini.AddSection(sect)
+	if !ini.HasSection("newsect") {
+		t.Error("fail to add new section")
+	}
+	sect, err := ini.Section("newsect")
+	require.Nil(t, err)
+	require.Equal(t, 4, len(sect.Keys()))
+
+	if sect.GetValueWithDefault("key1", "") != "value1" {
+		t.Error("fail to get new section field")
+	}
+
+	if ret, err := sect.GetBool("bool1"); true {
+		require.Nil(t, err)
+		require.Equal(t, true, ret)
+	}
+
+	require.Equal(t, true, sect.GetBoolWithDefault("bool0", true))
+	require.Equal(t, true, sect.GetBoolWithDefault("bool1", false))
+	require.Equal(t, false, sect.GetBoolWithDefault("bool2", true))
+	require.Equal(t, int64(123456), sect.GetInt64WithDefault("i64", 0))
+	require.Equal(t, int64(99), sect.GetInt64WithDefault("i64_x", 99))
+	require.Equal(t, int(123456), sect.GetIntWithDefault("i64", 0))
+	require.Equal(t, int(99), sect.GetIntWithDefault("i64_x", 99))
+	require.Equal(t, uint(123456), sect.GetUintWithDefault("i64", 0))
+	require.Equal(t, uint(99), sect.GetUintWithDefault("i64_x", 99))
+	require.Equal(t, float32(123456), sect.GetFloat32WithDefault("i64", 0))
+	require.Equal(t, float32(99), sect.GetFloat32WithDefault("i64_x", 99))
+	require.Equal(t, float64(123456), sect.GetFloat64WithDefault("i64", 0))
+
+	require.Equal(t, true, ini.GetBoolWithDefault("newsect", "bool0", true))
+	require.Equal(t, true, ini.GetBoolWithDefault("newsect", "bool1", false))
+	require.Equal(t, false, ini.GetBoolWithDefault("newsect", "bool2", true))
+	require.Equal(t, float64(99), ini.GetFloat64WithDefault("newsect", "i64_x", 99))
+	require.Equal(t, int64(123456), ini.GetInt64WithDefault("newsect", "i64", 0))
+	require.Equal(t, int64(99), ini.GetInt64WithDefault("newsect", "i64_x", 99))
+	require.Equal(t, int(123456), ini.GetIntWithDefault("newsect", "i64", 0))
+	require.Equal(t, int(99), ini.GetIntWithDefault("newsect", "i64_x", 99))
+	require.Equal(t, uint(123456), ini.GetUintWithDefault("newsect", "i64", 0))
+	require.Equal(t, uint(99), ini.GetUintWithDefault("newsect", "i64_x", 99))
+	require.Equal(t, float32(123456), ini.GetFloat32WithDefault("newsect", "i64", 0))
+	require.Equal(t, float32(99), ini.GetFloat32WithDefault("newsect", "i64_x", 99))
+	require.Equal(t, float64(123456), ini.GetFloat64WithDefault("newsect", "i64", 0))
+	require.Equal(t, float64(99), ini.GetFloat64WithDefault("newsect", "i64_x", 99))
+
+	if ret, err := ini.GetBool("newsect", "bool1"); true {
+		require.Nil(t, err)
+		require.Equal(t, true, ret)
+	}
+	if _, err := ini.GetBool("newsect", "bool0"); true {
+		require.NotNil(t, err)
+	}
+
+	if _, err := ini.GetFloat64("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+	}
+	if ret, err := ini.GetInt64("newsect", "i64"); true {
+		require.Nil(t, err)
+		require.Equal(t, int64(123456), ret)
+	}
+	if _, err := ini.GetInt64("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+	}
+	if ret, err := ini.GetInt("newsect", "i64"); true {
+		require.Nil(t, err)
+		require.Equal(t, int(123456), ret)
+	}
+	if _, err := ini.GetInt("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+	}
+	if ret, err := ini.GetUint("newsect", "i64"); true {
+		require.Nil(t, err)
+		require.Equal(t, uint(123456), ret)
+	}
+	if _, err := ini.GetUint("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+	}
+	if ret, err := ini.GetFloat32("newsect", "i64"); true {
+		require.Nil(t, err)
+		require.Equal(t, float32(123456), ret)
+	}
+	if _, err := ini.GetFloat32("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+	}
+	if ret, err := ini.GetFloat64("newsect", "i64"); true {
+		require.Nil(t, err)
+		require.Equal(t, float64(123456), ret)
+	}
+	if _, err := ini.GetFloat64("newsect", "i64_x"); true {
+		require.NotNil(t, err)
+
 	}
 }
 
