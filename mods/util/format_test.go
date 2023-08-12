@@ -5,16 +5,12 @@ import (
 
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/language"
 )
 
 type NumberTestCase struct {
 	v      int64
 	expect string
-}
-
-func (tc NumberTestCase) run(t *testing.T) {
-	s := util.NumberFormat(tc.v)
-	require.Equal(t, tc.expect, s)
 }
 
 func TestNumber(t *testing.T) {
@@ -34,6 +30,21 @@ func TestNumber(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		tc.run(t)
+		s := util.NumberFormat(tc.v)
+		require.Equal(t, tc.expect, s)
 	}
+}
+
+func TestBytesUnit(t *testing.T) {
+	var ret string
+	ret = util.BytesUnit(512, language.German)
+	require.Equal(t, "512,0", ret)
+	ret = util.BytesUnit(1024+512, language.Greek)
+	require.Equal(t, "1,5 KB", ret)
+	ret = util.BytesUnit((1024+512)*1024, language.BritishEnglish)
+	require.Equal(t, "1.5 MB", ret)
+	ret = util.BytesUnit((1024+512)*1024*1024, language.BritishEnglish)
+	require.Equal(t, "1.5 GB", ret)
+	ret = util.BytesUnit((1024+512)*1024*1024*1024, language.BritishEnglish)
+	require.Equal(t, "1.5 TB", ret)
 }

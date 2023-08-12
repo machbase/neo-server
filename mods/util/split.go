@@ -79,11 +79,33 @@ func StringFields(values []any, timeformat string, timeLocation *time.Location, 
 				}
 				cols[i] = v.In(timeLocation).Format(timeformat)
 			}
+		case time.Time:
+			switch timeformat {
+			case "", "ns":
+				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
+			case "ms":
+				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
+			case "us":
+				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
+			case "s":
+				cols[i] = strconv.FormatInt(v.Unix(), 10)
+			default:
+				if timeLocation == nil {
+					timeLocation = time.UTC
+				}
+				cols[i] = v.In(timeLocation).Format(timeformat)
+			}
 		case *float64:
 			if precision < 0 {
 				cols[i] = fmt.Sprintf("%f", *v)
 			} else {
 				cols[i] = fmt.Sprintf("%.*f", precision, *v)
+			}
+		case float64:
+			if precision < 0 {
+				cols[i] = fmt.Sprintf("%f", v)
+			} else {
+				cols[i] = fmt.Sprintf("%.*f", precision, v)
 			}
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
@@ -110,8 +132,16 @@ func StringFields(values []any, timeformat string, timeLocation *time.Location, 
 		case net.IP:
 			cols[i] = v.String()
 		default:
-			cols[i] = fmt.Sprintf("%T", r)
+			if o, ok := r.(Stringify); ok {
+				cols[i] = o.String()
+			} else {
+				cols[i] = fmt.Sprintf("%T", r)
+			}
 		}
 	}
 	return cols
+}
+
+type Stringify interface {
+	String() string
 }

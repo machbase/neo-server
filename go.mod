@@ -28,7 +28,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-engine v1.1.1
 	github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad
-	github.com/machbase/neo-spi v1.4.1-0.20230810064159-c4cbca068ee5
+	github.com/machbase/neo-spi v1.4.1
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/microsoft/go-mssqldb v1.5.0

@@ -401,8 +401,8 @@ github.com/machbase/neo-engine v1.1.1 h1:EP4dPKKy21/V4cDyT6lt3qi4nB2dzpcsPSQhsYL
 github.com/machbase/neo-engine v1.1.1/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
 github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad h1:JZpguqxcGHHJWdw75e9zy9e8EO4DMA0ysoVfj5JoavY=
 github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad/go.mod h1:4ofWPImwWweiI2FOPztOSOnl7Ab8zyiduB+9Q1gblLw=
-github.com/machbase/neo-spi v1.4.1-0.20230810064159-c4cbca068ee5 h1:P8bQcALVxN8xt3itQmsBf74vk1PHJk2xBEYvd6shTzU=
-github.com/machbase/neo-spi v1.4.1-0.20230810064159-c4cbca068ee5/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
+github.com/machbase/neo-spi v1.4.1 h1:wbqbDYT0XYKlwWEyWC0GnwvQGvc89apacvuv8v/BCBk=
+github.com/machbase/neo-spi v1.4.1/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaOChaDxuIBZU=
 github.com/mattn/go-colorable v0.1.9/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
