@@ -3,6 +3,8 @@ package runes
 import (
 	"reflect"
 	"testing"
+
+	"github.com/d5/tengo/v2/require"
 )
 
 type twidth struct {
@@ -15,6 +17,8 @@ func TestRuneWidth(t *testing.T) {
 		{[]rune("☭"), 1},
 		{[]rune("a"), 1},
 		{[]rune("你"), 2},
+		{[]rune("속"), 2},
+		{[]rune(""), 0},
 		{ColorFilter([]rune("☭\033[13;1m你")), 3},
 	}
 	for _, r := range runes {
@@ -65,4 +69,39 @@ func TestAggRunes(t *testing.T) {
 			t.Fatal("result not expect")
 		}
 	}
+}
+
+func TestEqual(t *testing.T) {
+	b := Equal([]rune("fedcba"), []rune("fedcb"))
+	require.False(t, b)
+
+	b = Equal([]rune("fedcba"), []rune("fedcbz"))
+	require.False(t, b)
+
+	b = Equal([]rune("fedcba"), []rune("fedcba"))
+	require.True(t, b)
+}
+
+func TestIndexAllBack(t *testing.T) {
+	i := IndexAllBack([]rune("fedcba"), []rune("dc"))
+	require.Equal(t, 2, i)
+
+	i = IndexAllBack([]rune("fedcba"), []rune("dcx"))
+	require.Equal(t, -1, i)
+}
+
+func TestIndexAll(t *testing.T) {
+	i := IndexAll([]rune("fedcba"), []rune("dc"))
+	require.Equal(t, 2, i)
+
+	i = IndexAll([]rune("fedcba"), []rune("dcx"))
+	require.Equal(t, -1, i)
+}
+
+func TestHasPrefix(t *testing.T) {
+	b := HasPrefix([]rune("fedcba"), []rune("ed"))
+	require.False(t, b)
+
+	b = HasPrefix([]rune("fedcba"), []rune("fed"))
+	require.True(t, b)
 }

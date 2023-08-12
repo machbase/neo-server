@@ -21,7 +21,7 @@ func Equal(a, b []rune) bool {
 }
 
 // Search in runes from end to front
-func IndexAllBck(r, sub []rune) int {
+func IndexAllBack(r, sub []rune) int {
 	for i := len(r) - len(sub); i >= 0; i-- {
 		found := true
 		for j := 0; j < len(sub); j++ {

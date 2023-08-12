@@ -1,2 +1,2 @@
-ORIGIN: github.com/machbase/neo-server/mods/util/readline
+ORIGIN: github.com/chzyer/readline
 PATCH:  github.com/cloudian/readline branch "readline-cloudian-patches-4"
