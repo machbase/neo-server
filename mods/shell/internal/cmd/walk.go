@@ -109,7 +109,7 @@ func doWalk(ctx *client.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	ctx.Println("Thise 'walk' command is deprecated. Use TQL instead.")
+	ctx.Println("This 'walk' command is deprecated. Use TQL instead.")
 }
 
 type Walker struct {
