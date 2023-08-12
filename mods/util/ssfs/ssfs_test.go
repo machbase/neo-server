@@ -1,6 +1,7 @@
 package ssfs
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,6 +99,18 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "test.txt", ret.Name)
 	require.Equal(t, "Hello World", string(ret.Content))
 
+	// subdir sort
+	ret, err = ssfs.MkDir("/data1/newdir2")
+	require.Nil(t, err)
+	require.NotNil(t, ret)
+	require.Equal(t, true, ret.IsDir)
+	require.Equal(t, "newdir2", ret.Name)
+
+	ret, err = ssfs.Get("/data1/")
+	require.Nil(t, err)
+	require.Equal(t, "newdir", ret.Children[0].Name)
+	require.Equal(t, "newdir2", ret.Children[1].Name)
+
 	// delete file
 	err = ssfs.Remove("/data1/newdir/test.txt")
 	require.Nil(t, err)
@@ -105,4 +118,19 @@ func TestFsGET(t *testing.T) {
 	// delete directory
 	err = ssfs.Remove("/data1/newdir")
 	require.Nil(t, err)
+	err = ssfs.Remove("/data1/newdir2")
+	require.Nil(t, err)
+
+	// RealPath()
+	realpath, err := ssfs.RealPath("/data1/simple.tql")
+	require.Nil(t, err)
+	abspath, _ := filepath.Abs("test/data1/simple.tql")
+	require.Equal(t, realpath, abspath)
+
+	// recent list
+	ssfs.AddRecentList("test1.txt")
+	ssfs.AddRecentList("test2.txt")
+	ssfs.AddRecentList("test1.txt")
+	require.Equal(t, "test1.txt", ssfs.GetRecentList()[0])
+	require.Equal(t, "test2.txt", ssfs.GetRecentList()[1])
 }
