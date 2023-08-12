@@ -113,8 +113,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				return nil, err
 			}
 		case "float":
-			if values[i], err = strconv.ParseFloat(field, 32); err != nil {
+			if val, err := strconv.ParseFloat(field, 32); err != nil {
 				values[i] = math.NaN()
+			} else {
+				values[i] = float32(val)
 			}
 		case "double":
 			if values[i], err = strconv.ParseFloat(field, 64); err != nil {
