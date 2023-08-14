@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +31,7 @@ func TestTime(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 
 	tick := time.Now()
-	tql.StandardTimeNow = func() time.Time { return tick }
+	util.StandardTimeNow = func() time.Time { return tick }
 	// invalid number of args
 	FunctionTestCase{f: node.Function("time"),
 		args:      []any{},
@@ -39,27 +40,27 @@ func TestTime(t *testing.T) {
 	// first args should be time, but %s",
 	FunctionTestCase{f: node.Function("time"),
 		args:      []any{"last"},
-		expectErr: "invalid time expression 'last'",
+		expectErr: "invalid time expression: incompatible conv 'last' (string) to time.Time",
 	}.run(t)
 	// first args should be time, but
 	FunctionTestCase{f: node.Function("time"),
 		args:      []any{true},
-		expectErr: "invalid time expression 'true bool'",
+		expectErr: "invalid time expression: incompatible conv 'true' (bool) to time.Time",
 	}.run(t)
 	// f(time) second args should be time, but %s
 	FunctionTestCase{f: node.Function("time"),
 		args:      []any{"oned2h"},
-		expectErr: "invalid time expression 'oned2h'",
+		expectErr: "invalid time expression: incompatible conv 'oned2h' (string) to time.Time",
 	}.run(t)
 	// f(time) second args should be time, but %s
 	FunctionTestCase{f: node.Function("time"),
 		args:      []any{"1d27h"},
-		expectErr: "invalid time expression '1d27h'",
+		expectErr: "invalid time expression: incompatible conv '1d27h' (string) to time.Time",
 	}.run(t)
 	// f(time) second args should be duration, but %s
 	FunctionTestCase{f: node.Function("timeAdd"),
 		args:      []any{tick, "-2x"},
-		expectErr: "invalid delta expression '-2x string'",
+		expectErr: "invalid time expression: time: unknown unit \"x\" in duration \"-2x\"",
 	}.run(t)
 	FunctionTestCase{f: node.Function("time"),
 		args:   []any{123456789.0},
@@ -95,7 +96,7 @@ func TestTime(t *testing.T) {
 	}.run(t)
 	FunctionTestCase{f: node.Function("timeAdd"),
 		args:      []any{"now-1x", 1000000000},
-		expectErr: "time: unknown unit \"x\" in duration \"-1x\"",
+		expectErr: "invalid time expression: incompatible conv 'now-1x', time: unknown unit \"x\" in duration \"1x\"",
 	}.run(t)
 	// time.Time
 	FunctionTestCase{f: node.Function("time"),

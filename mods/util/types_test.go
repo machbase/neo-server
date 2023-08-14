@@ -2,10 +2,280 @@ package util_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/stretchr/testify/require"
 )
+
+func TestToFloat32(t *testing.T) {
+	testOne := func(o any, expect float32, expectErr string) {
+		ret, err := util.ToFloat32(o)
+		if expectErr == "" {
+			require.Nil(t, err)
+			require.Equal(t, expect, ret)
+		} else {
+			require.NotNil(t, err)
+			require.Equal(t, expectErr, err.Error())
+		}
+	}
+	testErr := func(o any, expectErr string) {
+		testOne(o, -1, expectErr)
+	}
+	testIt := func(o any, expect float32) {
+		testOne(o, expect, "")
+	}
+
+	str := "2s"
+	testErr(true, "incompatible conv 'true' (bool) to float32")
+	testErr(str, "incompatible conv '0' (float64) to float32, strconv.ParseFloat: parsing \"2s\": invalid syntax")
+	testErr(&str, "incompatible conv '0' (float64) to float32, strconv.ParseFloat: parsing \"2s\": invalid syntax")
+
+	str = "1.23"
+	testIt(str, float32(1.23))
+	testIt(&str, float32(1.23))
+
+	f32 := float32(3.1415)
+	testIt(f32, float32(3.1415))
+	testIt(&f32, float32(3.1415))
+
+	f64 := 3.1415
+	testIt(f64, float32(3.1415))
+	testIt(&f64, float32(3.1415))
+
+	ival := 123
+	testIt(ival, float32(123))
+	testIt(&ival, float32(123))
+}
+
+func TestToFloat64(t *testing.T) {
+	testOne := func(o any, expect float64, expectErr string) {
+		ret, err := util.ToFloat64(o)
+		if expectErr == "" {
+			require.Nil(t, err)
+			require.Equal(t, expect, ret)
+		} else {
+			require.NotNil(t, err)
+			require.Equal(t, expectErr, err.Error())
+		}
+	}
+	testErr := func(o any, expectErr string) {
+		testOne(o, -1, expectErr)
+	}
+	testIt := func(o any, expect float64) {
+		testOne(o, expect, "")
+	}
+
+	str := "2s"
+	testErr(true, "incompatible conv 'true' (bool) to float64")
+	testErr(str, "incompatible conv '0' (float64) to float64, strconv.ParseFloat: parsing \"2s\": invalid syntax")
+	testErr(&str, "incompatible conv '0' (float64) to float64, strconv.ParseFloat: parsing \"2s\": invalid syntax")
+
+	str = "1.23"
+	testIt(str, float64(1.23))
+	testIt(&str, float64(1.23))
+
+	// f32 := float32(3.14150)
+	// testIt(f32, float64(3.1415))
+	// testIt(&f32, float64(3.1415))
+
+	f64 := 3.1415
+	testIt(f64, 3.1415)
+	testIt(&f64, 3.1415)
+
+	ival := 123
+	testIt(ival, float64(123))
+	testIt(&ival, float64(123))
+}
+
+func TestConvTime(t *testing.T) {
+	ts := time.Now()
+	util.StandardTimeNow = func() time.Time { return ts }
+
+	var ret time.Time
+	var err error
+
+	_, err = util.ToTime("wrong")
+	require.NotNil(t, err)
+	require.Equal(t, "incompatible conv 'wrong' (string) to time.Time", err.Error())
+
+	_, err = util.ToTime(true)
+	require.NotNil(t, err)
+	require.Equal(t, "incompatible conv 'true' (bool) to time.Time", err.Error())
+
+	_, err = util.ToTime("now * 2s")
+	require.NotNil(t, err)
+	require.Equal(t, "incompatible conv 'now * 2s' (string) to time.Time", err.Error())
+
+	_, err = util.ToTime("now - 2?")
+	require.NotNil(t, err)
+	require.Equal(t, "incompatible conv 'now - 2?', time: unknown unit \"?\" in duration \"2?\"", err.Error())
+
+	ret, err = util.ToTime("now")
+	require.Nil(t, err)
+	require.Equal(t, ts, ret)
+
+	ret, err = util.ToTime(" now ")
+	require.Nil(t, err)
+	require.Equal(t, ts, ret)
+
+	ret, err = util.ToTime("now + 12.5s")
+	require.Nil(t, err)
+	require.Equal(t, ts.Add(12500*time.Millisecond), ret)
+
+	ret, err = util.ToTime("now - 12.5s")
+	require.Nil(t, err)
+	require.Equal(t, ts.Add(-1*12500*time.Millisecond), ret)
+
+	sval := "now - -12.5s"
+	ret, err = util.ToTime(&sval)
+	require.Nil(t, err)
+	require.Equal(t, ts.Add(12500*time.Millisecond), ret)
+
+	fval := float64(ts.UnixNano())
+	ret, err = util.ToTime(fval)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixMilli(), ret.UnixMilli())
+
+	ret, err = util.ToTime(&fval)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixMilli(), ret.UnixMilli())
+
+	ival := ts.UnixNano()
+	ret, err = util.ToTime(ival)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixNano(), ret.UnixNano())
+
+	ret, err = util.ToTime(&ival)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixNano(), ret.UnixNano())
+
+	ret, err = util.ToTime(int32(ival))
+	require.Nil(t, err)
+	require.Equal(t, int32(ts.UnixNano()), int32(ret.UnixNano()))
+
+	ret, err = util.ToTime(int16(ival))
+	require.Nil(t, err)
+	require.Equal(t, int16(ts.UnixNano()), int16(ret.UnixNano()))
+
+	ret, err = util.ToTime(int8(ival))
+	require.Nil(t, err)
+	require.Equal(t, int8(ts.UnixNano()), int8(ret.UnixNano()))
+
+	ret, err = util.ToTime(int(ival))
+	require.Nil(t, err)
+	require.Equal(t, int(ts.UnixNano()), int(ret.UnixNano()))
+
+	ret, err = util.ToTime(ts)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixNano(), ret.UnixNano())
+
+	ret, err = util.ToTime(&ts)
+	require.Nil(t, err)
+	require.Equal(t, ts.UnixNano(), ret.UnixNano())
+}
+
+func TestTimeFormat(t *testing.T) {
+	var ret time.Time
+	var err error
+
+	ret, err = util.ParseTime("1691800174123456789", "ns", nil)
+	require.Nil(t, err)
+	ts := time.Unix(1691800174, 123456789)
+	require.Equal(t, ts, ret)
+
+	ret, err = util.ParseTime("1691800174123456", "us", nil)
+	require.Nil(t, err)
+	ts = time.Unix(1691800174, 123456000)
+	require.Equal(t, ts, ret)
+
+	ret, err = util.ParseTime("1691800174123", "ms", nil)
+	require.Nil(t, err)
+	ts = time.Unix(1691800174, 123000000)
+	require.Equal(t, ts, ret)
+
+	ret, err = util.ParseTime("1691800174", "s", nil)
+	require.Nil(t, err)
+	ts = time.Unix(1691800174, 0)
+	require.Equal(t, ts, ret)
+
+	require.Nil(t, err)
+	ret, err = util.ParseTime("2023-08-12 00:29:34.123", "2006-01-02 15:04:05.999", time.UTC)
+	require.Nil(t, err)
+	ts = time.Unix(1691800174, 123000000).UTC()
+	require.Equal(t, ts, ret)
+}
+
+func TestConvDuration(t *testing.T) {
+	var ret time.Duration
+	var err error
+
+	_, err = util.ToDuration("wrong")
+	require.NotNil(t, err)
+	require.Equal(t, "time: invalid duration \"wrong\"", err.Error())
+
+	_, err = util.ToDuration(true)
+	require.NotNil(t, err)
+	require.Equal(t, "incompatible conv 'true' (bool) to time.Duration", err.Error())
+
+	ret, err = util.ToDuration("1d")
+	require.Nil(t, err)
+	require.Equal(t, 24*time.Hour, ret)
+
+	ret, err = util.ToDuration("-1d2h3m")
+	require.Nil(t, err)
+	require.Equal(t, -1*(24*time.Hour+2*time.Hour+3*time.Minute), ret)
+
+	ret, err = util.ToDuration("1s")
+	require.Nil(t, err)
+	require.Equal(t, time.Second, ret)
+
+	dur := time.Duration(123*time.Second + 456*time.Millisecond)
+
+	i64 := int64(dur)
+	ret, err = util.ToDuration(i64)
+	require.Nil(t, err)
+	require.Equal(t, dur, ret)
+
+	ret, err = util.ToDuration(&i64)
+	require.Nil(t, err)
+	require.Equal(t, dur, ret)
+
+	ret, err = util.ToDuration(int32(i64))
+	require.Nil(t, err)
+	require.Equal(t, int32(dur), int32(ret))
+
+	ret, err = util.ToDuration(int16(i64))
+	require.Nil(t, err)
+	require.Equal(t, int16(dur), int16(ret))
+
+	ret, err = util.ToDuration(int8(i64))
+	require.Nil(t, err)
+	require.Equal(t, int8(dur), int8(ret))
+
+	ret, err = util.ToDuration(int(i64))
+	require.Nil(t, err)
+	require.Equal(t, int(dur), int(ret))
+
+	f64 := float64(dur)
+	ret, err = util.ToDuration(f64)
+	require.Nil(t, err)
+	require.Equal(t, dur, ret)
+
+	ret, err = util.ToDuration(&f64)
+	require.Nil(t, err)
+	require.Equal(t, dur, ret)
+
+	f32 := float32(123*time.Second + 456*time.Millisecond)
+	ret, err = util.ToDuration(f32)
+	require.Nil(t, err)
+	require.Equal(t, f32, float32(ret.Nanoseconds()))
+
+	ret, err = util.ToDuration(&f32)
+	require.Nil(t, err)
+	require.Equal(t, f32, float32(ret.Nanoseconds()))
+
+}
 
 func TestTimeZone(t *testing.T) {
 	// for k, v := range util.Timezones {

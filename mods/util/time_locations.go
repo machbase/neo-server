@@ -5,22 +5,6 @@ import (
 	"time"
 )
 
-func HelpTimeZones() string {
-	return `    abbreviations
-      UTC
-      Local
-      Europe/London
-      America/New_York
-      ...
-    location examples
-      America/Los_Angeles
-      Europe/Paris
-      ...
-    Time Coordinates examples
-      UTC+9
-`
-}
-
 func GetTimeLocation(tzName string) (*time.Location, error) {
 	var err error
 	var tz *time.Location
@@ -35,6 +19,22 @@ func GetTimeLocation(tzName string) (*time.Location, error) {
 		}
 	}
 	return nil, fmt.Errorf("unknown timezone '%s'", tzName)
+}
+
+func HelpTimeZones() string {
+	return `    abbreviations
+      UTC
+      Local
+      Europe/London
+      America/New_York
+      ...
+    location examples
+      America/Los_Angeles
+      Europe/Paris
+      ...
+    Time Coordinates examples
+      UTC+9
+`
 }
 
 var Timezones = map[string][]string{
