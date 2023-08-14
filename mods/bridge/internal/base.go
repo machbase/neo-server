@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -41,4 +42,62 @@ func (b *SqlBridgeBase) NewScanType(reflectType string, databaseTypeName string)
 		return new(time.Time)
 	}
 	return nil
+}
+
+func (c *SqlBridgeBase) NormalizeType(values []any) []any {
+	for i, val := range values {
+		switch v := val.(type) {
+		case sql.RawBytes:
+			values[i] = []byte(v)
+		case *sql.NullBool:
+			if v.Valid {
+				values[i] = v.Bool
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullByte:
+			if v.Valid {
+				values[i] = v.Byte
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				values[i] = v.Float64
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullInt16:
+			if v.Valid {
+				values[i] = v.Int16
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullInt32:
+			if v.Valid {
+				values[i] = v.Int32
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				values[i] = v.Int64
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullString:
+			if v.Valid {
+				values[i] = v.String
+			} else {
+				values[i] = nil
+			}
+		case *sql.NullTime:
+			if v.Valid {
+				values[i] = v.Time
+			} else {
+				values[i] = nil
+			}
+		}
+	}
+	return values
 }

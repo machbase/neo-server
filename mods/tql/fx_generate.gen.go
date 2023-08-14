@@ -137,6 +137,7 @@ func NewNode(task *Task) *Node {
 		"seriesLabels":       x.gen_seriesLabels,
 		"showGrid":           x.gen_showGrid,
 		"size":               x.gen_size,
+		"substituteNull":     x.gen_substituteNull,
 		"subtitle":           x.gen_subtitle,
 		"tableName":          x.gen_tableName,
 		"theme":              x.gen_theme,
@@ -1791,6 +1792,21 @@ func (x *Node) gen_size(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Size(p0, p1)
+	return ret, nil
+}
+
+// gen_substituteNull
+//
+// syntax: substituteNull(string)
+func (x *Node) gen_substituteNull(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("substituteNull", 1, len(args))
+	}
+	p0, err := convString(args, 0, "substituteNull", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.SubstituteNull(p0)
 	return ret, nil
 }
 

@@ -489,11 +489,11 @@ func TestBridgeSqlite(t *testing.T) {
 	// select all
 	codeLines = []string{
 		"SQL(bridge('sqlite'), `select * from example_sql`)",
-		"CSV(heading(true))",
+		"CSV(heading(true), substituteNull('<NULL>'))",
 	}
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
-		"100,alpha,10,street-100,,",
+		"100,alpha,10,street-100,<NULL>,",
 		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)

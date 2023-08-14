@@ -53,7 +53,8 @@ func TestCsvEncoder(t *testing.T) {
 	enc.Close()
 
 	expects := []string{
-		"ROWNUM,col1,col2,col3,col4,col5,col6\n1,int8,3.142,text some,KITCHEN,98765,16",
+		"ROWNUM,col1,col2,col3,col4,col5,col6",
+		"1,1,3.142,text some,KITCHEN,98765,16",
 		"2,1,3.142,text some,KITCHEN,98765,NULL",
 		"",
 	}

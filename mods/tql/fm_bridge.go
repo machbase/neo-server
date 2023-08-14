@@ -96,7 +96,11 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 				values[i] = new(string)
 			}
 		}
-		rows.Scan(values...)
-		NewRecord(values[0], values[1:]).Tell(node.next)
+		if err := rows.Scan(values...); err == nil {
+			values = br.NormalizeType(values)
+			NewRecord(values[0], values[1:]).Tell(node.next)
+		} else {
+			ErrorRecord(err).Tell(node.next)
+		}
 	}
 }
