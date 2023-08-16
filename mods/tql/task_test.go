@@ -173,13 +173,13 @@ func TestCsvCsv(t *testing.T) {
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",
-		"CSV( heading(true) )",
+		"CSV( heading(true), precision(1) )",
 	}
 	resultLines := []string{
 		"id,x",
-		"1,0.000000",
-		"2,1.000000",
-		"3,2.000000",
+		"1,0.0",
+		"2,1.0",
+		"3,2.0",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -187,7 +187,7 @@ func TestLinspace(t *testing.T) {
 func TestMeshgrid(t *testing.T) {
 	codeLines := []string{
 		"FAKE( meshgrid(linspace(0, 2, 3), linspace(0, 2, 3)) )",
-		"CSV( heading(true) )",
+		"CSV( heading(true), precision(6) )",
 	}
 	resultLines := []string{
 		"id,x,y",
@@ -207,7 +207,7 @@ func TestMeshgrid(t *testing.T) {
 func TestSphere(t *testing.T) {
 	codeLines := []string{
 		"FAKE( sphere(4, 4) )",
-		"CSV( heading(true) )",
+		"CSV( header(true), precision(6) )",
 	}
 	resultLines := []string{
 		"id,x,y,z",
@@ -254,8 +254,8 @@ func TestPushKey(t *testing.T) {
 		"CSV()",
 	}
 	resultLines := []string{
-		"sample,1,0.000000",
-		"sample,2,1.000000",
+		"sample,1,0",
+		"sample,2,1",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -265,12 +265,12 @@ func TestPushAndPopMonad(t *testing.T) {
 		"FAKE( linspace(0, 1, 3))",
 		"PUSHKEY('sample')",
 		"POPKEY()",
-		"CSV()",
+		"CSV(precision(1))",
 	}
 	resultLines := []string{
-		"1,0.000000",
-		"2,0.500000",
-		"3,1.000000",
+		"1,0.0",
+		"2,0.5",
+		"3,1.0",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -281,7 +281,7 @@ func TestGroupByKey(t *testing.T) {
 		"PUSHKEY('sample')",
 		"GROUPBYKEY()",
 		"FLATTEN()",
-		"CSV()",
+		"CSV(precision(6))",
 	}
 	resultLines := []string{
 		"sample,1,0.000000",
@@ -296,7 +296,7 @@ func TestDropTake(t *testing.T) {
 		"FAKE( linspace(0, 2, 100))",
 		"DROP(50)",
 		"TAKE(3)",
-		"CSV()",
+		"CSV(precision(6))",
 	}
 	resultLines := []string{
 		"51,1.010101",
@@ -313,7 +313,7 @@ func TestFFT2D(t *testing.T) {
 		"GROUPBYKEY(lazy(false))",
 		"FFT(minHz(0), maxHz(60))",
 		"POPKEY()",
-		"CSV()",
+		"CSV(precision(6))",
 	}
 	resultLines := []string{
 		"1.000100,0.000000", "2.000200,0.000000", "3.000300,0.000000", "4.000400,0.000000", "5.000500,0.000000", "6.000600,0.000000", "7.000700,0.000000", "8.000800,0.000000", "9.000900,0.000000", "10.001000,1.000000",
@@ -332,7 +332,7 @@ func TestFFT3D(t *testing.T) {
 		"PUSHKEY( roundTime(key(), '500ms') )",
 		"GROUPBYKEY()",
 		"FFT(maxHz(60))",
-		"CSV()",
+		"CSV(precision(6))",
 	}
 	resultLines := []string{
 		"1685714510000000000,2.000400,0.000000", "1685714510000000000,4.000800,0.000000", "1685714510000000000,6.001200,0.000000",
@@ -512,7 +512,7 @@ func TestBridgeSqlite(t *testing.T) {
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
 		"100,alpha,10,street-100,<NULL>,",
-		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -530,8 +530,8 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
-		"100,alpha,10,street-100,45.670000,",
-		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+		"100,alpha,10,street-100,45.67,",
+		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -575,7 +575,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
-		`200,bravo,20,street-200,56.789000,\x00\x01\xFF`,
+		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)
 }
