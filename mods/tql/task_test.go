@@ -120,6 +120,15 @@ func TestString(t *testing.T) {
 		"4,line4",
 	}
 	runTest(t, codeLines, resultLines)
+
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+
+	codeLines = []string{
+		`STRING(file("/lines.txt"), separator("\n"))`,
+		"CSV( header(true) )",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestBytes(t *testing.T) {
@@ -133,6 +142,15 @@ func TestBytes(t *testing.T) {
 		`2,\x6C\x69\x6E\x65\x32`,
 		`3,`,
 		`4,\x6C\x69\x6E\x65\x34`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+
+	codeLines = []string{
+		`BYTES(file("/lines.txt"), separator("\n"))`,
+		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)
 }
