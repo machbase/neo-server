@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	codecOpts "github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -120,6 +121,11 @@ func (src *csvSource) gen(node *Node) {
 	}
 }
 
+// implments codec.opts.CanSetHeading
+func (src *csvSource) SetHeading(has bool) {
+	src.hasHeader = has
+}
+
 func (fs *csvSource) header() spi.Columns {
 	if len(fs.columns) == 0 {
 		return []*spi.Column{}
@@ -152,6 +158,8 @@ func newCsvSource(args ...any) (*csvSource, error) {
 			ret.columns[v.idx] = v
 		case *headerOpt:
 			ret.hasHeader = v.hasHeader
+		case codecOpts.Option:
+			v(ret)
 		case io.Reader:
 			reader = v
 		case string:
@@ -198,7 +206,7 @@ func (x *Node) fmHeader(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &headerOpt{hasHeader: flag}, nil
+	return codecOpts.Heading(flag), nil
 }
 
 type columnOpt struct {
