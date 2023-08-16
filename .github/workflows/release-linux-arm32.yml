@@ -1,4 +1,4 @@
-name: Release linux-amd64
+name: Release linux-arm32
 
 on:
   push:
