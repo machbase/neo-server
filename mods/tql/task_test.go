@@ -170,6 +170,121 @@ func TestCsvCsv(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMath(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(sin(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines := []string{
+		"0.000000,0.000000",
+		"0.785398,0.707107",
+		"1.570796,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(cos(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,1.000000",
+		"0.785398,0.707107",
+		"1.570796,0.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(tan(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,0.000000",
+		"0.785398,1.000000",
+		"1.570796,3060023.306953",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.135335",
+		"-1.000000,0.367879",
+		"0.000000,1.000000",
+		"1.000000,2.718282",
+		"2.000000,7.389056",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp2(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.250000",
+		"-1.000000,0.500000",
+		"0.000000,1.000000",
+		"1.000000,2.000000",
+		"2.000000,4.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.693147",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log10(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.301030",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",
