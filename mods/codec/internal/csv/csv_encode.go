@@ -132,14 +132,6 @@ func (ex *Exporter) encodeTime(v time.Time) string {
 	}
 }
 
-func (ex *Exporter) encodeFloat64(v float64) string {
-	if ex.precision < 0 {
-		return fmt.Sprintf("%f", v)
-	} else {
-		return fmt.Sprintf("%.*f", ex.precision, v)
-	}
-}
-
 func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
@@ -166,13 +158,13 @@ func (ex *Exporter) AddRow(values []any) error {
 		case time.Time:
 			cols[i] = ex.encodeTime(v)
 		case *float64:
-			cols[i] = ex.encodeFloat64(*v)
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
-			cols[i] = ex.encodeFloat64(v)
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *float32:
-			cols[i] = ex.encodeFloat64(float64(*v))
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
-			cols[i] = ex.encodeFloat64(float64(v))
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

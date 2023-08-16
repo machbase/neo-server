@@ -33,6 +33,7 @@ func NewEncoder() *Exporter {
 		style:           "default",
 		separateColumns: true,
 		drawBorder:      true,
+		precision:       -1,
 	}
 }
 
@@ -183,29 +184,13 @@ func (ex *Exporter) AddRow(values []any) error {
 				cols[i] = v.In(ex.timeLocation).Format(format)
 			}
 		case *float32:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", *v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
-			}
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, v)
-			}
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", *v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
-			}
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, v)
-			}
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
