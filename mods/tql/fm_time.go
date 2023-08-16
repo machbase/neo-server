@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
@@ -77,7 +76,11 @@ func (x *Node) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	return baseTime.Add(delta), nil
 }
 
-func (x *Node) fmTimeLocation(timezone string) (opts.Option, error) {
+func (x *Node) fmParseTime(expr string, format string, tz *time.Location) (time.Time, error) {
+	return util.ParseTime(expr, format, tz)
+}
+
+func (x *Node) fmTZ(timezone string) (*time.Location, error) {
 	switch strings.ToUpper(timezone) {
 	case "LOCAL":
 		timezone = "Local"
@@ -85,12 +88,8 @@ func (x *Node) fmTimeLocation(timezone string) (opts.Option, error) {
 		timezone = "UTC"
 	}
 	if timeLocation, err := time.LoadLocation(timezone); err != nil {
-		timeLocation, err := util.GetTimeLocation(timezone)
-		if err != nil {
-			return nil, fmt.Errorf("f(tz) %s", err.Error())
-		}
-		return opts.TimeLocation(timeLocation), nil
+		return util.GetTimeLocation(timezone)
 	} else {
-		return opts.TimeLocation(timeLocation), nil
+		return timeLocation, nil
 	}
 }

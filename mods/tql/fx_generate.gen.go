@@ -39,6 +39,7 @@ func NewNode(task *Task) *Node {
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
 		"time":      x.gen_time,
+		"parseTime": x.gen_parseTime,
 		"timeAdd":   x.gen_timeAdd,
 		"roundTime": x.gen_roundTime,
 		"range":     x.gen_range,
@@ -414,6 +415,28 @@ func (x *Node) gen_time(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmTime(p0)
+}
+
+// gen_parseTime
+//
+// syntax: parseTime(string, string, )
+func (x *Node) gen_parseTime(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("parseTime", 3, len(args))
+	}
+	p0, err := convString(args, 0, "parseTime", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "parseTime", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convTimeLocation(args, 2, "parseTime", "*time.Location")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmParseTime(p0, p1, p2)
 }
 
 // gen_timeAdd
@@ -1332,7 +1355,7 @@ func (x *Node) gen_tz(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x.fmTimeLocation(p0)
+	return x.fmTZ(p0)
 }
 
 // gen_sep

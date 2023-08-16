@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 func ErrInvalidNumOfArgs(name string, expect int, actual int) error {
@@ -53,10 +55,24 @@ func convTimeLocation(args []any, idx int, fname string, expect string) (*time.L
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
-	if o, ok := args[idx].(*time.Location); ok {
-		return o, nil
+	switch v := args[idx].(type) {
+	case *time.Location:
+		return v, nil
+	case string:
+		switch strings.ToUpper(v) {
+		case "LOCAL":
+			v = "Local"
+		case "UTC":
+			v = "UTC"
+		}
+		if timeLocation, err := time.LoadLocation(v); err != nil {
+			return util.GetTimeLocation(v)
+		} else {
+			return timeLocation, nil
+		}
+	default:
+		return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
 func convTranscoder(args []any, idx int, fname string, expect string) (transcoder.Transcoder, error) {

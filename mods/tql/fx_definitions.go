@@ -42,6 +42,7 @@ var FxDefinitions = []Definition{
 	// maps.time
 	{"// maps.time", nil},
 	{"time", defTask.fmTime},
+	{"parseTime", defTask.fmParseTime},
 	{"timeAdd", defTask.fmTimeAdd},
 	{"roundTime", defTask.fmRoundTime},
 	{"range", defTask.fmTimeRange},
@@ -121,6 +122,6 @@ var FxDefinitions = []Definition{
 	{"markArea", "x.fmMarkArea"},
 	{"markXAxis", "x.gen_markLineXAxisCoord"},
 	{"markYAxis", "x.gen_markLineYAxisCoord"},
-	{"tz", defTask.fmTimeLocation},
+	{"tz", defTask.fmTZ},
 	{"sep", defTask.fmSeparator},
 }

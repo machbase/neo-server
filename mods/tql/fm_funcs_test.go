@@ -110,6 +110,18 @@ func TestTime(t *testing.T) {
 	}.run(t)
 }
 
+func TestParseTime(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("tz"),
+		args:   []any{"local"},
+		expect: time.Local,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseTime"),
+		args:   []any{"2023-03-01 14:01:02", "DEFAULT", time.Local},
+		expect: time.Time(time.Date(2023, time.March, 1, 14, 1, 2, 0, time.Local)),
+	}.run(t)
+}
+
 func TestRoundTime(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("roundTime"),
