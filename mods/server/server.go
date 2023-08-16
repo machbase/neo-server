@@ -98,6 +98,8 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
+	MachbaseInitOption mach.InitOption
+	// deprecated, use mach.InitOption instead
 	EnableMachbaseSigHandler bool
 }
 
@@ -332,13 +334,13 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase.conf")
 	}
 
-	initOption := mach.OPT_SIGHANDLER_DISABLE // default, it is required to shutdown by SIGTERM
+	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
 	if s.conf.EnableMachbaseSigHandler {
-		// internal use only, for debuging call stack
-		initOption = mach.OPT_NONE
+		// internal use only, for debuging call stack raised inside the engine
+		s.conf.MachbaseInitOption = mach.OPT_SIGHANDLER_ON
 	}
-	s.log.Infof("apply machbase init option: %d", initOption)
-	if err := mach.InitializeOption(homepath, initOption); err != nil {
+	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
+	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
