@@ -52,6 +52,8 @@ func (c *bridge) BeforeRegister() error {
 			q.Add("encrypt", val)
 		case "server":
 			server = val
+		default:
+			q.Add(key, val)
 		}
 	}
 	if !q.Has("dial timeout") {
@@ -60,7 +62,7 @@ func (c *bridge) BeforeRegister() error {
 	if !q.Has("connection timeout") {
 		q.Add("connection timeout", "5")
 	}
-	if q.Has("app name") {
+	if !q.Has("app name") {
 		q.Add("app name", "neo-bridge")
 	}
 	u := &url.URL{
