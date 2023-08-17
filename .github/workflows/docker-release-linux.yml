@@ -2,8 +2,8 @@ name: Docker Release for Linux
 
 on:
   push:
-    branches:
-      - test/docker-ci*
+    tags:
+      - v*
 
 jobs:
   arm64:
