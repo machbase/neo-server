@@ -14,21 +14,21 @@ Machbase is the fastest time-series database for [IoT in the world](https://www.
 
 API and Interfaces
 
-    - [x] HTTP : Applications and Sensors read/write data via HTTP REST API
-    - [x] MQTT : Sensors write data via MQTT protocol
-    - [x] gRPC : The first class API for extensions
-    - [x] SSH : Command line interface for human and batch process
-    - [x] WEB UI : Human GUI
+- [x] HTTP : Applications and Sensors read/write data via HTTP REST API
+- [x] MQTT : Sensors write data via MQTT protocol
+- [x] gRPC : The first class API for extensions
+- [x] SSH : Command line interface for human and batch process
+- [x] WEB UI : GUI
 
-Supports Bridges: 
+Bridges integrated with external systems
 
-    - [x] SQLite
-    - [x] PostgreSQL
-    - [x] MySQL
-    - [x] MS-SQL
-    - [x] MQTT Broker
-    - [ ] Kafka
-    - [ ] NATS
+- [x] SQLite
+- [x] PostgreSQL
+- [x] MySQL
+- [x] MS-SQL
+- [x] MQTT Broker
+- [ ] Kafka
+- [ ] NATS
 
 ## Documents
 
