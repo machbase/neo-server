@@ -35,6 +35,11 @@ type MqttBridge interface {
 	IsConnected() bool
 }
 
+type KafkaBridge interface {
+	Bridge
+	Subscribe(topic string) error
+}
+
 type PythonBridge interface {
 	Bridge
 	Invoke(ctx context.Context, args []string, stdin []byte) (exitCode int, stdout []byte, stderr []byte, err error)

@@ -100,7 +100,7 @@ func (c *bridge) BeforeRegister() error {
 		case "cert":
 			c.certPath = val
 		default:
-			c.log.Infof("unknown option, %s=%s", key, val)
+			c.log.Warnf("bridge '%s' unknown option, %s=%s", c.name, key, val)
 		}
 	}
 	cfg.SetCleanSession(c.cleanSession)

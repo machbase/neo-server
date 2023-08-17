@@ -45,12 +45,14 @@ const helpBridge = `  bridge command [options]
 	    ex) bridge add -t postgres my_pg host=127.0.0.1 port=5432 user=dbuser dbname=postgres sslmode=disable
 	mysql         MySQL             https://mysql.com
 		ex) bridge add -t mysql my_sql root:passwd@tcp(127.0.0.1:3306)/testdb?parseTime=true
+	mssql         MSSQL
+		ex) bridge add -t mssql  ms server=127.0.0.1:1433 user=sa pass=changeme database=master encrypt=disable
 	mqtt          MQTT (v3.1.1)     https://mqtt.org
 		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
 `
 
-// mssql         MSSQL
-//      ex) bridge add -t mssql  ms server=127.0.0.1:1433 user=sa pass=changeme database=master connection-timeout=5 dial-timeout=3 encrypt=disable
+// kafka         Kafka             https://kafka.apache.org
+//      ex) bridge add -t kafka  kafka    borkers=192.168.1.100:2099,92.168.200:2099
 // python        Python            https://python.org
 // 		ex) bridge add -t python py-local bin=/usr/local/bin/python3
 // 		ex) bridge add -t python py-myenv bin=/bin/python dir=/work env="API_KEY=api_token" env="VAR=VALUE"
@@ -63,7 +65,7 @@ type BridgeCmd struct {
 	Add struct {
 		Name string   `arg:"" name:"name" help:"bridge name"`
 		Path []string `arg:"" name:"conn" passthrough:"" help:"connection string"`
-		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mssql,mqtt,python" help:"bridge type"`
+		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mssql,mqtt,kafka,python" help:"bridge type"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
@@ -87,8 +89,8 @@ func pcBridge() readline.PrefixCompleterInterface {
 				readline.PcItem("sqlite"),
 				readline.PcItem("poastgres"),
 				readline.PcItem("mysql"),
+				readline.PcItem("mssql"),
 				readline.PcItem("mqtt"),
-				readline.PcItem("python"),
 			)),
 		readline.PcItem("del"),
 		readline.PcItem("test"),
