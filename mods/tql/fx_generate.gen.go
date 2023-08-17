@@ -928,8 +928,7 @@ func (x *Node) gen_JSON(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmJson(p0...)
-	return ret, nil
+	return x.fmJson(p0...)
 }
 
 // gen_MARKDOWN
@@ -944,8 +943,7 @@ func (x *Node) gen_MARKDOWN(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmMarkdown(p0...)
-	return ret, nil
+	return x.fmMarkdown(p0...)
 }
 
 // gen_HTML
@@ -960,8 +958,7 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmHtml(p0...)
-	return ret, nil
+	return x.fmHtml(p0...)
 }
 
 // gen_CHART_LINE
@@ -976,8 +973,7 @@ func (x *Node) gen_CHART_LINE(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartLine(p0...)
-	return ret, nil
+	return x.fmChartLine(p0...)
 }
 
 // gen_CHART_SCATTER
@@ -992,8 +988,7 @@ func (x *Node) gen_CHART_SCATTER(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartScatter(p0...)
-	return ret, nil
+	return x.fmChartScatter(p0...)
 }
 
 // gen_CHART_BAR
@@ -1008,8 +1003,7 @@ func (x *Node) gen_CHART_BAR(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartBar(p0...)
-	return ret, nil
+	return x.fmChartBar(p0...)
 }
 
 // gen_CHART_LINE3D
@@ -1024,8 +1018,7 @@ func (x *Node) gen_CHART_LINE3D(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartLine3D(p0...)
-	return ret, nil
+	return x.fmChartLine3D(p0...)
 }
 
 // gen_CHART_BAR3D
@@ -1040,8 +1033,7 @@ func (x *Node) gen_CHART_BAR3D(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartBar3D(p0...)
-	return ret, nil
+	return x.fmChartBar3D(p0...)
 }
 
 // gen_CHART_SURFACE3D
@@ -1056,8 +1048,7 @@ func (x *Node) gen_CHART_SURFACE3D(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartSurface3D(p0...)
-	return ret, nil
+	return x.fmChartSurface3D(p0...)
 }
 
 // gen_CHART_SCATTER3D
@@ -1072,8 +1063,7 @@ func (x *Node) gen_CHART_SCATTER3D(args ...any) (any, error) {
 		}
 		p0 = append(p0, argv)
 	}
-	ret := x.fmChartScatter3D(p0...)
-	return ret, nil
+	return x.fmChartScatter3D(p0...)
 }
 
 // gen_separator

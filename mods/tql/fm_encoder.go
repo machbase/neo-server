@@ -1,10 +1,10 @@
 package tql
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/pkg/errors"
 )
 
 func newEncoder(format string, args ...any) (*Encoder, error) {
@@ -20,60 +20,50 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		if opt, ok := arg.(opts.Option); ok {
 			ret.opts = append(ret.opts, opt)
 		} else {
-			return nil, errors.New("invalid option")
+			return nil, fmt.Errorf("encoder '%s' invalid option %v (%T)", format, arg, arg)
 		}
 	}
 	return ret, nil
 }
 
-func (node *Node) fmHtml(args ...any) *Encoder {
-	enc, _ := newEncoder("html", args...)
-	return enc
+func (node *Node) fmHtml(args ...any) (*Encoder, error) {
+	return newEncoder("html", args...)
 }
 
-func (node *Node) fmMarkdown(args ...any) *Encoder {
-	enc, _ := newEncoder("markdown", args...)
-	return enc
+func (node *Node) fmMarkdown(args ...any) (*Encoder, error) {
+	return newEncoder("markdown", args...)
 }
 
-func (node *Node) fmJson(args ...any) *Encoder {
-	enc, _ := newEncoder("json", args...)
-	return enc
+func (node *Node) fmJson(args ...any) (*Encoder, error) {
+	return newEncoder("json", args...)
 }
 
-func (node *Node) fmChartLine(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.line", args...)
-	return enc
+func (node *Node) fmChartLine(args ...any) (*Encoder, error) {
+	return newEncoder("echart.line", args...)
 }
 
-func (node *Node) fmChartScatter(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.scatter", args...)
-	return enc
+func (node *Node) fmChartScatter(args ...any) (*Encoder, error) {
+	return newEncoder("echart.scatter", args...)
 }
 
-func (node *Node) fmChartBar(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.bar", args...)
-	return enc
+func (node *Node) fmChartBar(args ...any) (*Encoder, error) {
+	return newEncoder("echart.bar", args...)
 }
 
-func (node *Node) fmChartLine3D(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.line3d", args...)
-	return enc
+func (node *Node) fmChartLine3D(args ...any) (*Encoder, error) {
+	return newEncoder("echart.line3d", args...)
 }
 
-func (node *Node) fmChartBar3D(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.bar3d", args...)
-	return enc
+func (node *Node) fmChartBar3D(args ...any) (*Encoder, error) {
+	return newEncoder("echart.bar3d", args...)
 }
 
-func (node *Node) fmChartSurface3D(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.surface3d", args...)
-	return enc
+func (node *Node) fmChartSurface3D(args ...any) (*Encoder, error) {
+	return newEncoder("echart.surface3d", args...)
 }
 
-func (node *Node) fmChartScatter3D(args ...any) *Encoder {
-	enc, _ := newEncoder("echart.scatter3d", args...)
-	return enc
+func (node *Node) fmChartScatter3D(args ...any) (*Encoder, error) {
+	return newEncoder("echart.scatter3d", args...)
 }
 
 func (node *Node) fmMarkArea(args ...any) (any, error) {
