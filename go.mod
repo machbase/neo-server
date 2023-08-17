@@ -30,6 +30,7 @@ require (
 	github.com/machbase/neo-engine v1.1.2
 	github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad
 	github.com/machbase/neo-spi v1.4.1
+	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/microsoft/go-mssqldb v1.5.0

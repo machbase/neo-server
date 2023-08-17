@@ -430,6 +430,8 @@ github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad h1:JZpguqxcGHH
 github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad/go.mod h1:4ofWPImwWweiI2FOPztOSOnl7Ab8zyiduB+9Q1gblLw=
 github.com/machbase/neo-spi v1.4.1 h1:wbqbDYT0XYKlwWEyWC0GnwvQGvc89apacvuv8v/BCBk=
 github.com/machbase/neo-spi v1.4.1/go.mod h1:jmzExsS84LOY0f097WhbXw1avVgl64/tHm6CdW/P+zM=
+github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
+github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/matryer/is v1.2.0 h1:92UTHpy8CDwaJ08GqLDzhhuixiBUUD1p3AU6PHddz4A=
 github.com/matryer/is v1.2.0/go.mod h1:2fLPjFQM9rhQ15aVEtbuwhJinnOqrmgXPNdZsdwlWXA=
