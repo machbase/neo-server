@@ -2,7 +2,7 @@ name: Docker Release for Linux
 
 on:
   push:
-    tags:
+    branches:
       - test/docker-ci*
 
 jobs:
