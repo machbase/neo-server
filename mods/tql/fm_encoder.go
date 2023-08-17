@@ -1,6 +1,8 @@
 package tql
 
 import (
+	"time"
+
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/pkg/errors"
 )
@@ -10,6 +12,11 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		format: format,
 	}
 	for _, arg := range args {
+		switch v := arg.(type) {
+		case *time.Location:
+			arg = opts.TimeLocation(v)
+		}
+
 		if opt, ok := arg.(opts.Option); ok {
 			ret.opts = append(ret.opts, opt)
 		} else {

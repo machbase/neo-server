@@ -62,6 +62,9 @@ func (node *Node) compileSink(code string) (*output, error) {
 	ret := &output{}
 	switch val := sink.(type) {
 	case *Encoder:
+		if val == nil {
+			return nil, errors.New("no encoder found")
+		}
 		ret.encoder = val.RowEncoder(
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.AssetHost("/web/echarts/"),
