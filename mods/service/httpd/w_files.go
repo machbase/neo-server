@@ -161,7 +161,23 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				return
 			}
 		} else {
-			entry, err := svr.serverFs.MkDir(path)
+			content, err := io.ReadAll(ctx.Request.Body)
+			if err != nil {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusInternalServerError, rsp)
+				return
+			}
+			var entry *ssfs.Entry
+			if len(content) > 0 && ctx.ContentType() == "application/json" {
+				cloneReq := GitCloneReq{}
+				err = json.Unmarshal(content, &cloneReq)
+				if err == nil {
+					entry, err = svr.serverFs.GitClone(path, cloneReq.Url)
+				}
+			} else {
+				entry, err = svr.serverFs.MkDir(path)
+			}
 			if err == nil {
 				rsp.Success, rsp.Reason = true, "success"
 				rsp.Elapse = time.Since(tick).String()
@@ -176,4 +192,8 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			}
 		}
 	}
+}
+
+type GitCloneReq struct {
+	Url string `json:"url"`
 }

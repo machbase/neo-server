@@ -134,3 +134,23 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "test1.txt", ssfs.GetRecentList()[0])
 	require.Equal(t, "test2.txt", ssfs.GetRecentList()[1])
 }
+
+func TestFsGit(t *testing.T) {
+	ssfs, err := NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
+	require.Nil(t, err)
+	require.NotNil(t, ssfs)
+
+	dest := "/data1/neo-samples"
+	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git")
+	if err != nil {
+		t.Log("ERR", err.Error())
+	}
+	require.Nil(t, err)
+	require.NotNil(t, entry)
+
+	require.True(t, entry.IsDir)
+	require.True(t, len(entry.Children) > 0)
+
+	err = ssfs.RemoveRecursive(dest)
+	require.Nil(t, err)
+}

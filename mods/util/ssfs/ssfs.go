@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	git "github.com/go-git/go-git/v5"
 	"github.com/machbase/neo-server/mods/util/glob"
 )
 
@@ -93,8 +94,11 @@ func (ssfs *SSFS) AddRecentList(path string) {
 }
 
 // find longest path matched 'BaseDir'
+//
 // returns index of baseDirs, name, abstract-path
+//
 // returns index of baseDirs and absolute path of the give path
+//
 // returns -1 if it doesn't match any dir
 func (ssfs *SSFS) findDir(path string) (int, string, string) {
 	separatorString := "/"
@@ -273,6 +277,14 @@ func (ssfs *SSFS) Remove(path string) error {
 	return os.Remove(abspath)
 }
 
+func (ssfs *SSFS) RemoveRecursive(path string) error {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	return os.RemoveAll(abspath)
+}
+
 func (ssfs *SSFS) Set(path string, content []byte) error {
 	idx, _, abspath := ssfs.findDir(path)
 	if idx == -1 {
@@ -285,4 +297,44 @@ func (ssfs *SSFS) Set(path string, content []byte) error {
 	}
 
 	return os.WriteFile(abspath, content, 0644)
+}
+
+// git clone int the given path, it discards all local changes.
+func (ssfs *SSFS) GitClone(path string, gitUrl string) (*Entry, error) {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return nil, os.ErrNotExist
+	}
+
+	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
+		URL:          gitUrl,
+		SingleBranch: true,
+		RemoteName:   "origin",
+		Progress:     os.Stdout,
+	})
+	if err != nil {
+		if err == git.ErrRepositoryAlreadyExists {
+			repo, err = git.PlainOpen(abspath)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	ref, err := repo.Head()
+	if err != nil {
+		return nil, err
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	err = w.Checkout(&git.CheckoutOptions{
+		Hash:  ref.Hash(),
+		Force: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ssfs.Get(path)
 }
