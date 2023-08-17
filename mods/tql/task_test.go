@@ -14,9 +14,11 @@ import (
 	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
+type CompileErr string
 type ExpectErr string
 type ExpectLog string
 type Payload string
+type MatchPrefix bool
 
 type Param = struct {
 	name  string
@@ -24,12 +26,17 @@ type Param = struct {
 }
 
 func runTest(t *testing.T, codeLines []string, expect []string, options ...any) {
+	var compileErr string
 	var expectErr string
 	var expectLog string
 	var payload []byte
 	var params map[string][]string
+	var matchPrefix bool
+
 	for _, o := range options {
 		switch v := o.(type) {
+		case CompileErr:
+			compileErr = string(v)
 		case ExpectErr:
 			expectErr = string(v)
 		case ExpectLog:
@@ -43,6 +50,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			arr := params[v.name]
 			arr = append(arr, v.value)
 			params[v.name] = arr
+		case MatchPrefix:
+			matchPrefix = bool(v)
 		}
 	}
 
@@ -64,7 +73,14 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		task.SetParams(params)
 	}
 	err := task.CompileString(code)
-	require.Nil(t, err)
+	if compileErr != "" {
+		require.NotNil(t, err)
+		require.Equal(t, compileErr, err.Error())
+		cancel()
+		return
+	} else {
+		require.Nil(t, err)
+	}
 
 	var executeErr error
 	go func() {
@@ -102,7 +118,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		// case success
 		require.Nil(t, err)
 		result := w.String()
-		require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+		if matchPrefix {
+			require.True(t, strings.HasPrefix(strings.TrimSpace(result), strings.Join(expect, "\n")))
+		} else {
+			require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+		}
 		require.Equal(t, "", logString)
 	}
 }
@@ -166,6 +186,121 @@ func TestCsvCsv(t *testing.T) {
 		"2,line2",
 		"3,",
 		"4,line4",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMath(t *testing.T) {
+	codeLines := []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(sin(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines := []string{
+		"0.000000,0.000000",
+		"0.785398,0.707107",
+		"1.570796,1.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(cos(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,1.000000",
+		"0.785398,0.707107",
+		"1.570796,0.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 3.141592/2, 3))",
+		"PUSHKEY(tan(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"0.000000,0.000000",
+		"0.785398,1.000000",
+		"1.570796,3060023.306953",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.135335",
+		"-1.000000,0.367879",
+		"0.000000,1.000000",
+		"1.000000,2.718282",
+		"2.000000,7.389056",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(exp2(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,0.250000",
+		"-1.000000,0.500000",
+		"0.000000,1.000000",
+		"1.000000,2.000000",
+		"2.000000,4.000000",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.693147",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(-2, 2, 5))",
+		"PUSHKEY(log10(value(0)))",
+		"PUSHKEY(0)",
+		"POPKEY(1)",
+		"POPKEY(1)",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"-2.000000,NaN",
+		"-1.000000,NaN",
+		"0.000000,-Inf",
+		"1.000000,0.000000",
+		"2.000000,0.301030",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -411,6 +546,77 @@ func TestSourceCSVFile(t *testing.T) {
 	resultLines := []string{
 		`5.4,3.7,1.5,0.2,Iris-setosa`,
 		`4.8,3.4,1.6,0.2,Iris-setosa`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`CSV(file('/iris.data'))`,
+		`DROP(10)`,
+		`TAKE(2)`,
+		`JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))`,
+	}
+	resultLines = []string{
+		`{"data":{"columns":["C00","C01","C02","C03","C04"],"types":["string","string","string","string","string"],"rows":[["5.4","3.7","1.5","0.2","Iris-setosa"]`,
+	}
+	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestSinkMarkdown(t *testing.T) {
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+	codeLines := []string{
+		"STRING(file('/lines.txt'), separator('\\n'))",
+		"MARKDOWN(true)",
+	}
+	resultLines := []string{}
+	runTest(t, codeLines, resultLines, CompileErr("line 2: encoder 'markdown' invalid option true (bool)"))
+
+	codeLines = []string{
+		"STRING(file('/lines.txt'), separator('\\n'))",
+		"MARKDOWN(html(true))",
+	}
+	resultLines = []string{
+		"<div><table>",
+		"<thead>",
+		"<tr>",
+		"<th align=\"left\">id</th>",
+		"<th align=\"left\">string</th>",
+		"</tr>",
+		"</thead>",
+		"<tbody>",
+		"<tr>",
+		"<td align=\"left\">1</td>",
+		"<td align=\"left\">line1</td>",
+		"</tr>",
+		"<tr>",
+		"<td align=\"left\">2</td>",
+		"<td align=\"left\">line2</td>",
+		"</tr>",
+		"<tr>",
+		"<td align=\"left\">3</td>",
+		"<td></td>",
+		"</tr>",
+		"<tr>",
+		"<td align=\"left\">4</td>",
+		"<td align=\"left\">line4</td>",
+		"</tr>",
+		"</tbody>",
+		"</table>",
+		"</div>",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"STRING(file('/lines.txt'), separator('\\n'))",
+		"MARKDOWN(html(false))",
+	}
+	resultLines = []string{
+		"|id|string|",
+		"|:-----|:-----|",
+		"|1|line1|",
+		"|2|line2|",
+		"|3||",
+		"|4|line4|",
 	}
 	runTest(t, codeLines, resultLines)
 }
