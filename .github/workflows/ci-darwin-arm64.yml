@@ -3,7 +3,7 @@ name: CI darwin-arm64
 on:
   push:
     branches:
-      - 'main'
+      - 'xxxx'
 
 jobs:
   builds:
