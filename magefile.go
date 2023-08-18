@@ -41,7 +41,7 @@ func Build() error {
 
 func BuildNeow() error {
 	mg.Deps(GetVersion)
-	return build("neow")
+	return buildNeoW()
 }
 
 func BuildNeoShell() error {
@@ -78,6 +78,7 @@ func build(target string) error {
 	}
 	// executable file
 	if runtime.GOOS == "windows" {
+		args = append(args, "-tags=timetzdata")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
 	} else {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
@@ -92,6 +93,35 @@ func build(target string) error {
 	err := sh.RunWithV(env, "go", args...)
 	if err != nil {
 		return err
+	}
+	fmt.Println("Build done.")
+	return nil
+}
+
+func buildNeoW() error {
+	fmt.Println("Build", "neow", vBuildVersion, "...")
+	env := map[string]string{
+		"GO111MODULE": "on",
+		"CGO_ENABLE":  "0",
+	}
+	appIcon, err := filepath.Abs(filepath.Join(".", "main", "neow", "res", "appicon.png"))
+	if err != nil {
+		return err
+	}
+	args := []string{
+		"package",
+		"--os", "windows",
+		"--src", filepath.Join(".", "main", "neow"),
+		"--icon", appIcon,
+		"--id", "com.machbase.neow",
+	}
+	if err := sh.RunWithV(env, "fyne", args...); err != nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		os.Rename("./main/neow/neow.exe", "./tmp/neow.exe")
+	} else {
+		os.Rename("./main/neow/neow", "./tmp/neow")
 	}
 	fmt.Println("Build done.")
 	return nil
@@ -121,11 +151,15 @@ func Package() error {
 	}
 
 	if runtime.GOOS == "windows" {
-		if err := build("neow"); err != nil {
+		if err := buildNeoW(); err != nil {
 			return err
 		}
-		os.Rename("./tmp/machbase-neo.exe", filepath.Join("./packages", bdir, "machbase-neo.exe"))
-		os.Rename("./tmp/neow.exe", filepath.Join("./packages", bdir, "neow.exe"))
+		if err := os.Rename("./tmp/machbase-neo.exe", filepath.Join("./packages", bdir, "machbase-neo.exe")); err != nil {
+			return err
+		}
+		if err := os.Rename("./tmp/neow.exe", filepath.Join("./packages", bdir, "neow.exe")); err != nil {
+			return err
+		}
 	} else {
 		err := os.Rename("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo"))
 		if err != nil {
@@ -151,7 +185,7 @@ func archivePackage(dst string, src ...string) error {
 	zipWriter := zip.NewWriter(archive)
 
 	for _, file := range src {
-		archiveAddEntry(zipWriter, file, "packages/")
+		archiveAddEntry(zipWriter, file, fmt.Sprintf("packages%s", string(os.PathSeparator)))
 	}
 	return zipWriter.Close()
 }
@@ -177,7 +211,7 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		defer fd.Close()
 
 		entryName := strings.TrimPrefix(entry, prefix)
-		fmt.Println("Add", entryName)
+		fmt.Println("Archive", entryName)
 		w, err := zipWriter.Create(entryName)
 		if err != nil {
 			return err
