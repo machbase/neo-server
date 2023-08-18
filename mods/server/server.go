@@ -651,10 +651,8 @@ func GenBanner() string {
 	machbase, _ := fig.Render("Machbase")
 	logo, _ := fig.RenderOpts("neo", options)
 
-	v := mods.GetVersion()
-
 	lines := strings.Split(logo, "\n")
-	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
 	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
