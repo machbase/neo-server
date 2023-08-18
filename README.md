@@ -1,11 +1,7 @@
 
 [![](https://img.shields.io/github/v/release/machbase/neo-server?sort=semver)](https://github.com/machbase/neo-server/releases)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm64.yml)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-linux-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-linux-amd64.yml)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-arm64.yml)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-darwin-amd64.yml)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-windows-amd64.yml)
-[![](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm32.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-linux-arm32.yml)
+[![](https://github.com/machbase/neo-server/actions/workflows/ci-main.yml/badge.svg)](https://github.com/machbase/neo-server/actions/workflows/ci-main.yml)
+[![codecov](https://codecov.io/gh/machbase/neo-server/graph/badge.svg?token=4IJ83M8R0B)](https://codecov.io/gh/machbase/neo-server)
 
 # neo-server
 

@@ -3,7 +3,7 @@ name: Release linux-arm64
 on:
   push:
     tags:
-      - v*
+      - vxyz*
 
 jobs:
   builds:

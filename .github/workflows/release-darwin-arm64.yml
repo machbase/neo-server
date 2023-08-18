@@ -3,7 +3,7 @@ name: Release darwin-arm64
 on:
   push:
     tags:
-      - v*
+      - vyz*
 
 jobs:
   builds:
