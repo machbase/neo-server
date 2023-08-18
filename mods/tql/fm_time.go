@@ -33,7 +33,13 @@ func (x *Node) fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	if err != nil {
 		return nil, ErrWrongTypeOfArgs("range", 2, "period", period[0])
 	}
-	if ret.Duration <= ret.Period {
+	abs := func(d time.Duration) time.Duration {
+		if d < 0 {
+			return d * -1
+		}
+		return d
+	}
+	if abs(ret.Duration) <= abs(ret.Period) {
 		return nil, ErrArgs("range", 2, "period should be smaller than duration")
 	}
 	return ret, nil
