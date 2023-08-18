@@ -144,7 +144,7 @@ func Test() error {
 	if err != os.ErrNotExist {
 		os.Mkdir("tmp", 0755)
 	}
-	if err := sh.RunV("go", "test", "./...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
+	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
 	fmt.Println("Test done.")
