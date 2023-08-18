@@ -159,7 +159,7 @@ func Package() error {
 	if err != os.ErrNotExist {
 		os.RemoveAll(filepath.Join("packages", bdir))
 	}
-	os.Mkdir(filepath.Join("packages", bdir), 0755)
+	os.MkdirAll(filepath.Join("packages", bdir), 0755)
 
 	if runtime.GOOS == "windows" {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
@@ -234,7 +234,9 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 func CleanPackage() error {
 	entries, err := os.ReadDir("./packages")
 	if err != nil {
-		return err
+		if err != os.ErrNotExist {
+			return nil
+		}
 	}
 
 	for _, ent := range entries {
