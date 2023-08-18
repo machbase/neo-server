@@ -17,13 +17,8 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: '1.20.7'
-      - name: Test
-        run: make test
       - name: Build
-        run: |
-          make cleanpackage && \
-          make package-machbase-neo && \
-          make package-neow
+        run: go run mage.go test machbase-neo package
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -43,12 +38,8 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: '1.20.7'
-      - name: Test
-        run: make test
       - name: Build
-        run: |
-          make cleanpackage && \
-          make package-machbase-neo
+        run: go run mage.go test machbase-neo package
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -66,12 +57,8 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: '1.20.7'
-      - name: Test
-        run: make test
       - name: Build
-        run: |
-          make cleanpackage && \
-          make package-machbase-neo
+        run: go run mage.go test machbase-neo package
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -111,17 +98,12 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: '1.20.7'
-      - name: Test
-        run: make test
+      - name: Build
+        run: go run mage.go test machbase-neo package
       - name: Codecov
         uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Build
-        run: |
-          make cleanpackage && \
-          make package-machbase-neo && \
-          make package-neow
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
