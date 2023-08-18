@@ -118,6 +118,14 @@ func TestParseTime(t *testing.T) {
 		args:   []any{"local"},
 		expect: time.Local,
 	}.run(t)
+	FunctionTestCase{f: node.Function("tz"),
+		args:   []any{"utc"},
+		expect: time.UTC,
+	}.run(t)
+	FunctionTestCase{f: node.Function("tz"),
+		args:      []any{"wrong/place"},
+		expectErr: "unknown timezone 'wrong/place'",
+	}.run(t)
 	FunctionTestCase{f: node.Function("parseTime"),
 		args:   []any{"2023-03-01 14:01:02", "DEFAULT", time.Local},
 		expect: time.Time(time.Date(2023, time.March, 1, 14, 1, 2, 0, time.Local)),
@@ -131,6 +139,14 @@ func TestParseTime(t *testing.T) {
 
 func TestRoundTime(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("roundTime"),
+		args:      []any{time.Unix(123, 456789123), "0s"},
+		expectErr: "f(roundTime) arg(1) zero duration is not allowed",
+	}.run(t)
+	FunctionTestCase{f: node.Function("roundTime"),
+		args:      []any{true, "500ms"},
+		expectErr: "f(roundTime) arg(0) incompatible conv 'true' (bool) to time.Time",
+	}.run(t)
 	FunctionTestCase{f: node.Function("roundTime"),
 		args:   []any{time.Unix(123, 456789123), "1s"},
 		expect: time.Unix(123, 000000000),
@@ -146,6 +162,30 @@ func TestRoundTime(t *testing.T) {
 	FunctionTestCase{f: node.Function("roundTime"),
 		args:   []any{123456789123.0, "10us"},
 		expect: time.Unix(123, 456780000),
+	}.run(t)
+}
+
+func TestRangeTime(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("range"),
+		args:      []any{false, "1s", "100ms"},
+		expectErr: "f(range) arg(0) should be time, but bool",
+	}.run(t)
+	FunctionTestCase{f: node.Function("range"),
+		args:      []any{0, "1x", "100ms"},
+		expectErr: "f(range) arg(1) should be duration, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("range"),
+		args:      []any{0, "1s", "100x"},
+		expectErr: "f(range) arg(2) should be period, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("range"),
+		args:      []any{0, "500ms", "1s"},
+		expectErr: "f(range) arg(2) period should be smaller than duration",
+	}.run(t)
+	FunctionTestCase{f: node.Function("range"),
+		args:   []any{0, "1s"},
+		expect: &tql.TimeRange{Time: time.Unix(0, 0), Duration: time.Second},
 	}.run(t)
 }
 

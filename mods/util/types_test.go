@@ -75,9 +75,9 @@ func TestToFloat64(t *testing.T) {
 	testIt(str, float64(1.23))
 	testIt(&str, float64(1.23))
 
-	// f32 := float32(3.14150)
-	// testIt(f32, float64(3.1415))
-	// testIt(&f32, float64(3.1415))
+	f32 := float32(3.14150)
+	testIt(f32, float64(float32(3.14150)))
+	testIt(&f32, float64(float32(3.14150)))
 
 	f64 := 3.1415
 	testIt(f64, 3.1415)
@@ -86,6 +86,52 @@ func TestToFloat64(t *testing.T) {
 	ival := 123
 	testIt(ival, float64(123))
 	testIt(&ival, float64(123))
+}
+
+func TestParseInt(t *testing.T) {
+	_, err := util.ParseInt("12.1")
+	require.NotNil(t, err)
+
+	v, err := util.ParseInt("12")
+	require.Nil(t, err)
+	require.Equal(t, 12, v)
+
+	_, err = util.ParseInt8("12.1")
+	require.NotNil(t, err)
+
+	v8, err := util.ParseInt8("12")
+	require.Nil(t, err)
+	require.Equal(t, int8(12), v8)
+
+	_, err = util.ParseInt16("12.1")
+	require.NotNil(t, err)
+
+	v16, err := util.ParseInt16("12")
+	require.Nil(t, err)
+	require.Equal(t, int16(12), v16)
+
+	_, err = util.ParseInt16("12.1")
+	require.NotNil(t, err)
+
+	v32, err := util.ParseInt32("12")
+	require.Nil(t, err)
+	require.Equal(t, int32(12), v32)
+
+	_, err = util.ParseInt16("12.1")
+	require.NotNil(t, err)
+
+	v64, err := util.ParseInt64("12")
+	require.Nil(t, err)
+	require.Equal(t, int64(12), v64)
+}
+
+func TestParseIP(t *testing.T) {
+	_, err := util.ParseIP("127.0.0.300")
+	require.NotNil(t, err)
+
+	ip, err := util.ParseIP("127.0.0.1")
+	require.Nil(t, err)
+	require.Equal(t, "127.0.0.1", ip.String())
 }
 
 func TestConvTime(t *testing.T) {

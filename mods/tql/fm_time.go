@@ -1,7 +1,6 @@
 package tql
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -53,11 +52,11 @@ func (x *Node) fmRoundTime(ts any, duration any) (time.Time, error) {
 		return time.Time{}, err
 	}
 	if dur == 0 {
-		return time.Time{}, fmt.Errorf("zero duration is not allowed")
+		return time.Time{}, ErrArgs("roundTime", 1, "zero duration is not allowed")
 	}
 	t, err := util.ToTime(ts)
 	if err != nil {
-		return t, err
+		return t, ErrArgs("roundTime", 0, err.Error())
 	}
 	ret := time.Unix(0, (t.UnixNano()/int64(dur))*int64(dur))
 	return ret, nil

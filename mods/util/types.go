@@ -281,5 +281,8 @@ func ParseInt64(val string) (int64, error) {
 
 func ParseIP(val string) (net.IP, error) {
 	addr := net.ParseIP(val)
+	if addr == nil {
+		return nil, fmt.Errorf("incompatible conv '%v' (%T) to IP", val, val)
+	}
 	return addr, nil
 }
