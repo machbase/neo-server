@@ -146,14 +146,7 @@ func Package() error {
 	os.RemoveAll(filepath.Join("./packages", bdir))
 	os.Mkdir(filepath.Join("./packages", bdir), 0755)
 
-	if err := build("machbase-neo"); err != nil {
-		return err
-	}
-
 	if runtime.GOOS == "windows" {
-		if err := buildNeoW(); err != nil {
-			return err
-		}
 		if err := os.Rename("./tmp/machbase-neo.exe", filepath.Join("./packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
