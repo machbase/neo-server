@@ -140,6 +140,12 @@ func buildNeoW() error {
 }
 
 func Test() error {
+	_, err := os.Stat("tmp")
+	if err == os.ErrNotExist {
+		os.Mkdir("tmp", 0755)
+	} else if err != nil {
+		return err
+	}
 	if err := sh.RunV("go", "test", "./...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
