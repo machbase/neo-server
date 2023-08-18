@@ -1,6 +1,8 @@
 package ssfs
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -16,7 +18,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/", ret.Name)
+	require.Equal(t, string(os.PathSeparator), ret.Name)
 	require.Equal(t, 2, len(ret.Children))
 	require.Equal(t, "hello.sql", ret.Children[0].Name)
 	require.Equal(t, ".sql", ret.Children[0].Type)
@@ -31,9 +33,9 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/", ret.Name)
+	require.Equal(t, string(os.PathSeparator), ret.Name)
 	require.Equal(t, 4, len(ret.Children))
-	require.Equal(t, "/data1", ret.Children[0].Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Children[0].Name)
 	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
 	require.Equal(t, "example.tql", ret.Children[1].Name)
@@ -67,7 +69,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/data1", ret.Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
@@ -77,7 +79,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/data1", ret.Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
