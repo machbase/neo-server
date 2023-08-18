@@ -116,16 +116,24 @@ func buildNeoW() error {
 		"--id", "com.machbase.neow",
 	}
 	if err := sh.RunWithV(env, "fyne", args...); err != nil {
-		return nil
+		return err
 	}
 	if runtime.GOOS == "windows" {
 		os.Rename("./main/neow/neow.exe", "./tmp/neow.exe")
 	} else if runtime.GOOS == "darwin" {
-		os.Rename("neow.app", "./tmp/neow.app")
-		build("machbase-neo")
-		os.Rename("./tmp/machbase-neo", "./tmp/neow.app/Contents/MacOS/machbase-neo")
+		if err := os.Rename("neow.app", "./tmp/neow.app"); err != nil {
+			return err
+		}
+		if err := build("machbase-neo"); err != nil {
+			return err
+		}
+		if err := os.Rename("./tmp/machbase-neo", "./tmp/neow.app/Contents/MacOS/machbase-neo"); err != nil {
+			return err
+		}
 	} else {
-		os.Rename("./main/neow/neow", "./tmp/neow")
+		if err := os.Rename("./main/neow/neow", "./tmp/neow"); err != nil {
+			return err
+		}
 	}
 	fmt.Println("Build done.")
 	return nil
@@ -147,7 +155,10 @@ func Package() error {
 	if runtime.GOARCH == "arm" {
 		bdir = fmt.Sprintf("%s-%s-%s-arm32", target, vBuildVersion, runtime.GOOS)
 	}
-	os.RemoveAll(filepath.Join("packages", bdir))
+	_, err := os.Stat("packages")
+	if err != os.ErrNotExist {
+		os.RemoveAll(filepath.Join("packages", bdir))
+	}
 	os.Mkdir(filepath.Join("packages", bdir), 0755)
 
 	if runtime.GOOS == "windows" {
@@ -164,12 +175,12 @@ func Package() error {
 		}
 	}
 
-	err := archivePackage(fmt.Sprintf("./packages/%s.zip", bdir), filepath.Join("./packages", bdir))
+	err = archivePackage(fmt.Sprintf("./packages/%s.zip", bdir), filepath.Join("./packages", bdir))
 	if err != nil {
 		return err
 	}
 
-	os.RemoveAll(filepath.Join("./packages", bdir))
+	os.RemoveAll(filepath.Join("packages", bdir))
 	return nil
 }
 
