@@ -3,7 +3,9 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,14 +133,59 @@ func Package() error {
 		}
 	}
 
-	err := sh.RunV("zip", "-r", "-q",
-		fmt.Sprintf("./packages/%s.zip", bdir),
-		filepath.Join("./packages", bdir))
+	err := archivePackage(fmt.Sprintf("./packages/%s.zip", bdir), filepath.Join("./packages", bdir))
 	if err != nil {
 		return err
 	}
 
 	os.RemoveAll(filepath.Join("./packages", bdir))
+	return nil
+}
+
+func archivePackage(dst string, src ...string) error {
+	archive, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	zipWriter := zip.NewWriter(archive)
+
+	for _, file := range src {
+		archiveAddEntry(zipWriter, file, "packages/")
+	}
+	return zipWriter.Close()
+}
+
+func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
+	stat, err := os.Stat(entry)
+	if err != nil {
+		return err
+	}
+	if stat.IsDir() {
+		entries, err := os.ReadDir(entry)
+		if err != nil {
+			return err
+		}
+		for _, ent := range entries {
+			archiveAddEntry(zipWriter, filepath.Join(entry, ent.Name()), prefix)
+		}
+	} else {
+		fd, err := os.Open(entry)
+		if err != nil {
+			return err
+		}
+		defer fd.Close()
+
+		entryName := strings.TrimPrefix(entry, prefix)
+		fmt.Println("Add", entryName)
+		w, err := zipWriter.Create(entryName)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(w, fd); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -149,7 +196,7 @@ func CleanPackage() error {
 	}
 
 	for _, ent := range entries {
-		if err = os.Remove(filepath.Join("./packages", ent.Name())); err != nil {
+		if err = os.RemoveAll(filepath.Join("./packages", ent.Name())); err != nil {
 			return err
 		}
 	}
@@ -165,11 +212,6 @@ func GetVersion() error {
 	if err != nil {
 		return err
 	}
-	// if headRef.Name().IsBranch() {
-	// 	fmt.Println("branch  ", headRef.Name().Short())
-	// } else if headRef.Name().IsTag() {
-	// 	fmt.Println("tag     ", headRef.Name().Short())
-	// }
 
 	commit, err := repo.CommitObject(headRef.Hash())
 	if err != nil {

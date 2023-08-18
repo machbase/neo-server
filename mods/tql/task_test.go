@@ -352,7 +352,7 @@ func TestSphere(t *testing.T) {
 
 	codeLines = []string{
 		"FAKE( sphere(0, 0) )",
-		"CSV(header(false))",
+		"CSV(header(false), precision(6))",
 	}
 	resultLines = loadLines("./test/sphere_0_0.csv")
 	runTest(t, codeLines, resultLines)
