@@ -35,17 +35,17 @@ var vIsNightly bool
 var vBuildVersion string
 
 func Build() error {
-	mg.Deps(GetVersion)
+	mg.Deps(GetVersion, CheckTmp)
 	return build("machbase-neo")
 }
 
 func BuildNeow() error {
-	mg.Deps(GetVersion)
+	mg.Deps(GetVersion, CheckTmp)
 	return buildNeoW()
 }
 
 func BuildNeoShell() error {
-	mg.Deps(GetVersion)
+	mg.Deps(GetVersion, CheckTmp)
 	return build("neoshell")
 }
 
@@ -139,11 +139,109 @@ func buildNeoW() error {
 	return nil
 }
 
-func Test() error {
-	_, err := os.Stat("tmp")
-	if err != os.ErrNotExist {
-		os.Mkdir("tmp", 0755)
+func Buildx(target string, targetOS string, targetArch string) error {
+	mg.Deps(GetVersion, CheckTmp)
+	fmt.Println("Build", target, vBuildVersion, "...")
+
+	zigVer, err := sh.Output("zig", "version")
+	if err != nil {
+		fmt.Println("error: Zig is not installed. Please download and follow installation")
+		fmt.Println("instructions at https://ziglang.org/ to continue.")
+		return err
 	}
+	fmt.Println("zig", zigVer)
+
+	mod := "github.com/machbase/neo-server"
+	edition := "standard"
+	timestamp := time.Now().Format("2006-01-02T15:04:05")
+	gitSHA := vLastCommit[0:8]
+	goVersion := strings.TrimPrefix(runtime.Version(), "go")
+
+	env := map[string]string{"GO111MODULE": "on"}
+	if target != "neoshell" {
+		env["CGO_ENABLE"] = "1"
+	} else {
+		env["CGO_ENABLE"] = "0"
+	}
+	env["GOOS"] = targetOS
+	env["GOARCH"] = targetArch
+	switch targetOS {
+	case "linux":
+		switch targetArch {
+		case "arm64":
+			env["CC"] = "zig cc -target aarch64-linux-gnu"
+			env["CXX"] = "zig c++ -target aarch64-linux-gnu"
+		case "amd64":
+			env["CC"] = "zig cc -target x86_64-linux-gnu"
+			env["CXX"] = "zig c++ -target x86_64-linux-gnu"
+		case "arm":
+			env["CC"] = "zig cc -target arm-linux-gnueabihf"
+			env["CXX"] = "zig cc -target arm-linux-gnueabihf"
+		case "386":
+			env["CC"] = "zig cc -target i386-linux-gnu"
+			env["CXX"] = "zig c++ -target i386-linux-gnu"
+		default:
+			return fmt.Errorf("error: unsupproted linux/%s", targetArch)
+		}
+	case "darwin":
+		sysroot, err := sh.Output("xcrun", "--sdk", "macosx", "--show-sdk-path")
+		if err != nil {
+			return err
+		}
+		sysflags := fmt.Sprintf("-v --sysroot=%s -I/usr/include, -F/System/Library/Frameworks -L/usr/lib", sysroot)
+		switch targetArch {
+		case "arm64":
+			env["CC"] = "zig cc -target aarch64-macos.13-none " + sysflags
+			env["CXX"] = "zig c++ -target aarch64-macos.13-none " + sysflags
+		case "amd64":
+			env["CC"] = "zig cc -target x86_64-macos.13-none " + sysflags
+			env["CXX"] = "zig c++ -target x86_64-macos.13-none " + sysflags
+		default:
+			return fmt.Errorf("error: unsupproted darwin/%s", targetArch)
+		}
+	case "windows":
+		env["CC"] = "zig cc -target x86_64-windows-none"
+		env["CXX"] = "zig c++ -target x86_64-windows-none"
+	default:
+		return fmt.Errorf("error: unsupproted os %s", targetOS)
+	}
+
+	args := []string{"build"}
+	if target != "neow" {
+		ldflags := strings.Join([]string{
+			"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
+			"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
+			"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
+			"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
+			"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		}, " ")
+		args = append(args, "-ldflags", ldflags)
+	}
+	// executable file
+	if runtime.GOOS == "windows" {
+		args = append(args, "-tags=timetzdata")
+		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
+	} else {
+		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
+	}
+	// source directory
+	args = append(args, fmt.Sprintf("./main/%s", target))
+
+	if err := sh.RunV("go", "mod", "tidy"); err != nil {
+		return err
+	}
+
+	err = sh.RunWithV(env, "go", args...)
+	if err != nil {
+		fmt.Println("ENV", env)
+		return err
+	}
+	fmt.Println("Build done.")
+	return nil
+}
+
+func Test() error {
+	mg.Deps(CheckTmp)
 	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
@@ -151,9 +249,19 @@ func Test() error {
 	return nil
 }
 
+func CheckTmp() error {
+	_, err := os.Stat("tmp")
+	if err != nil && err != os.ErrNotExist {
+		err = os.Mkdir("tmp", 0755)
+	} else if err != nil && err == os.ErrExist {
+		return nil
+	}
+	return err
+}
+
 func Package() error {
 	target := "machbase-neo"
-	mg.Deps(CleanPackage, GetVersion)
+	mg.Deps(CleanPackage, GetVersion, CheckTmp)
 
 	bdir := fmt.Sprintf("%s-%s-%s-%s", target, vBuildVersion, runtime.GOOS, runtime.GOARCH)
 	if runtime.GOARCH == "arm" {
