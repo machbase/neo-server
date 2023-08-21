@@ -52,7 +52,6 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 	case "ms":
 		precision = lineprotocol.Millisecond
 	}
-
 	var body io.Reader
 	switch ctx.Request.Header.Get("Content-Encoding") {
 	default:
@@ -136,7 +135,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 		}
 
 		result := do.WriteLineProtocol(svr.db, dbName, desc.Columns, measurement, fields, tags, ts)
-		if result.Err() != nil {
+		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(
 				http.StatusBadRequest,
