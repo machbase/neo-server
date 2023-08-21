@@ -22,8 +22,9 @@ const (
 )
 
 var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
-	/*and more for future uses*/ "WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE",
-	/*and more for future uses*/ "MONITOR", "CHART", "DASHBOARD", "LOG", "HOME", "PLAYGROUND"}
+	/*and more for future uses*/
+	"WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE", "MONITOR", "CHART",
+	"DASHBOARD", "LOG", "HOME", "PLAYGROUND", "GRAPH", "FLOW", "DIAGRAM", "PLOT"}
 
 var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_SQL: {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: SHELLID_SQL},

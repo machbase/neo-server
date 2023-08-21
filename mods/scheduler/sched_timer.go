@@ -9,6 +9,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/robfig/cron/v3"
 )
 
@@ -28,7 +29,7 @@ func NewTimerEntry(s *svr, def *model.ScheduleDefinition) (*TimerEntry, error) {
 		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
 		TaskTql:   def.Task,
 		Schedule:  def.Schedule,
-		log:       logging.GetLog(fmt.Sprintf("scheduler-%s", strings.ToLower(def.Name))),
+		log:       logging.GetLog(fmt.Sprintf("timer-%s", strings.ToLower(def.Name))),
 		s:         s,
 	}
 
@@ -90,15 +91,18 @@ func (ent *TimerEntry) doTask() {
 		ent.Stop()
 		return
 	}
-	task, err := sc.Parse(nil, nil, io.Discard, true)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(ent.s.db)
+	task.SetParams(nil)
+	task.SetInputReader(nil)
+	task.SetOutputWriterJson(io.Discard, true)
+	if err := task.CompileScript(sc); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()
 		return
 	}
-	ctx := context.TODO()
-	if err := task.Execute(ctx, ent.s.db); err != nil {
+	if err := task.Execute(); err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

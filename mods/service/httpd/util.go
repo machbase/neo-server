@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/mods/util"
 )
 
 func strBool(str string, def bool) bool {
@@ -42,8 +44,12 @@ func strTimeLocation(str string, def *time.Location) *time.Location {
 	} else if tz == "utc" {
 		return time.UTC
 	} else {
-		if loc, err := time.LoadLocation(str); err != nil {
-			return def
+		if loc, err := util.GetTimeLocation(str); err != nil {
+			loc, err := time.LoadLocation(str)
+			if err != nil {
+				return def
+			}
+			return loc
 		} else {
 			return loc
 		}

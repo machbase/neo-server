@@ -27,8 +27,6 @@ type Service interface {
 	Stop()
 }
 
-type Option func(s *httpd)
-
 // Factory
 func New(db spi.Database, options ...Option) (Service, error) {
 	s := &httpd{
@@ -42,105 +40,6 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		opt(s)
 	}
 	return s, nil
-}
-
-// ListenAddresses
-func OptionListenAddress(addrs ...string) Option {
-	return func(s *httpd) {
-		s.listenAddresses = append(s.listenAddresses, addrs...)
-	}
-}
-
-// AuthServer
-func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
-	return func(s *httpd) {
-		s.authServer = authSvc
-		s.enableTokenAUth = enabled
-		if enabled {
-			s.log.Infof("HTTP token authentication enabled")
-		} else {
-			s.log.Infof("HTTP token authentication disabled")
-		}
-	}
-}
-
-// neo-shell address
-func OptionNeoShellAddress(addrs ...string) Option {
-	return func(s *httpd) {
-		candidates := []string{}
-		for _, addr := range addrs {
-			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
-				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
-				// if loopback is available, use it for web-terminal
-				// eliminate other candiates
-				candidates = candidates[:0]
-				break
-			} else if strings.HasPrefix(addr, "tcp://") {
-				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
-			}
-		}
-		if len(candidates) > 0 {
-			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
-			s.neoShellAddress = candidates[0]
-		}
-	}
-}
-
-// license file path
-func OptionLicenseFilePath(path string) Option {
-	return func(s *httpd) {
-		s.licenseFilePath = path
-	}
-}
-
-// Handler
-func OptionHandler(prefix string, handler HandlerType) Option {
-	return func(s *httpd) {
-		s.handlers = append(s.handlers, &HandlerConfig{Prefix: prefix, Handler: handler})
-	}
-}
-
-func OptionTqlLoader(loader tql.Loader) Option {
-	return func(s *httpd) {
-		s.tqlLoader = loader
-	}
-}
-
-func OptionServerSideFileSystem(ssfs *ssfs.SSFS) Option {
-	return func(s *httpd) {
-		s.serverFs = ssfs
-	}
-}
-
-func OptionDebugMode(isDebug bool) Option {
-	return func(s *httpd) {
-		s.debugMode = isDebug
-	}
-}
-
-// experiement features
-func OptionExperimentModeProvider(provider func() bool) Option {
-	return func(s *httpd) {
-		s.experimentModeProvider = provider
-	}
-}
-
-func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.referenceProvider = provider
-	}
-}
-
-func OptionRecentsProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.recentsProvider = provider
-	}
-}
-
-func OptionWebShellProvider(provider model.ShellProvider) Option {
-	return func(s *httpd) {
-		s.webShellProvider = provider
-	}
 }
 
 type httpd struct {
@@ -300,6 +199,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/logs", svr.handleLakeGetLogs)
 			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
+			// group.POST("/execquery",svr.handleLakeExecQuery)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {

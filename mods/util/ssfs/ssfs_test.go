@@ -1,6 +1,9 @@
 package ssfs
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,7 +18,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/", ret.Name)
+	require.Equal(t, string(os.PathSeparator), ret.Name)
 	require.Equal(t, 2, len(ret.Children))
 	require.Equal(t, "hello.sql", ret.Children[0].Name)
 	require.Equal(t, ".sql", ret.Children[0].Type)
@@ -30,9 +33,9 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/", ret.Name)
+	require.Equal(t, string(os.PathSeparator), ret.Name)
 	require.Equal(t, 4, len(ret.Children))
-	require.Equal(t, "/data1", ret.Children[0].Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Children[0].Name)
 	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
 	require.Equal(t, "example.tql", ret.Children[1].Name)
@@ -66,7 +69,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/data1", ret.Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
@@ -76,7 +79,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, "/data1", ret.Name)
+	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
@@ -98,11 +101,58 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "test.txt", ret.Name)
 	require.Equal(t, "Hello World", string(ret.Content))
 
+	// subdir sort
+	ret, err = ssfs.MkDir("/data1/newdir2")
+	require.Nil(t, err)
+	require.NotNil(t, ret)
+	require.Equal(t, true, ret.IsDir)
+	require.Equal(t, "newdir2", ret.Name)
+
+	ret, err = ssfs.Get("/data1/")
+	require.Nil(t, err)
+	require.Equal(t, "newdir", ret.Children[0].Name)
+	require.Equal(t, "newdir2", ret.Children[1].Name)
+
 	// delete file
 	err = ssfs.Remove("/data1/newdir/test.txt")
 	require.Nil(t, err)
 
 	// delete directory
 	err = ssfs.Remove("/data1/newdir")
+	require.Nil(t, err)
+	err = ssfs.Remove("/data1/newdir2")
+	require.Nil(t, err)
+
+	// RealPath()
+	realpath, err := ssfs.RealPath("/data1/simple.tql")
+	require.Nil(t, err)
+	abspath, _ := filepath.Abs("test/data1/simple.tql")
+	require.Equal(t, realpath, abspath)
+
+	// recent list
+	ssfs.AddRecentList("test1.txt")
+	ssfs.AddRecentList("test2.txt")
+	ssfs.AddRecentList("test1.txt")
+	require.Equal(t, "test1.txt", ssfs.GetRecentList()[0])
+	require.Equal(t, "test2.txt", ssfs.GetRecentList()[1])
+}
+
+func TestFsGit(t *testing.T) {
+	ssfs, err := NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
+	require.Nil(t, err)
+	require.NotNil(t, ssfs)
+
+	dest := "/data1/neo-samples"
+	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git")
+	if err != nil {
+		t.Log("ERR", err.Error())
+	}
+	require.Nil(t, err)
+	require.NotNil(t, entry)
+
+	require.True(t, entry.IsDir)
+	require.True(t, len(entry.Children) > 0)
+
+	err = ssfs.RemoveRecursive(dest)
 	require.Nil(t, err)
 }

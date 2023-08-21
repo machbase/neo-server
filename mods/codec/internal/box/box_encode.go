@@ -8,6 +8,7 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
@@ -25,7 +26,6 @@ type Exporter struct {
 	precision       int
 
 	colNames []string
-	colTypes []string
 }
 
 func NewEncoder() *Exporter {
@@ -33,6 +33,7 @@ func NewEncoder() *Exporter {
 		style:           "default",
 		separateColumns: true,
 		drawBorder:      true,
+		precision:       -1,
 	}
 }
 
@@ -76,9 +77,8 @@ func (ex *Exporter) SetBoxDrawBorder(flag bool) {
 	ex.drawBorder = flag
 }
 
-func (ex *Exporter) SetColumns(names []string, types []string) {
+func (ex *Exporter) SetColumns(names ...string) {
 	ex.colNames = names
-	ex.colTypes = types
 }
 
 func (ex *Exporter) Open() error {
@@ -163,14 +163,34 @@ func (ex *Exporter) AddRow(values []any) error {
 				if ex.timeLocation == nil {
 					ex.timeLocation = time.UTC
 				}
-				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
+				format := util.GetTimeformat(ex.timeformat)
+				cols[i] = v.In(ex.timeLocation).Format(format)
 			}
+		case time.Time:
+			switch ex.timeformat {
+			case "ns":
+				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
+			case "ms":
+				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
+			case "us":
+				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
+			case "s":
+				cols[i] = strconv.FormatInt(v.Unix(), 10)
+			default:
+				if ex.timeLocation == nil {
+					ex.timeLocation = time.UTC
+				}
+				format := util.GetTimeformat(ex.timeformat)
+				cols[i] = v.In(ex.timeLocation).Format(format)
+			}
+		case *float32:
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
+		case float32:
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", *v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
-			}
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
+		case float64:
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

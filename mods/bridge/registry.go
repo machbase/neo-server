@@ -1,40 +1,17 @@
 package bridge
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 
 	"github.com/machbase/neo-server/mods/bridge/internal/mqtt"
+	"github.com/machbase/neo-server/mods/bridge/internal/mssql"
 	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/mods/bridge/internal/python3"
 	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
 	"github.com/machbase/neo-server/mods/model"
 )
-
-type Bridge interface {
-	Name() string
-	String() string
-
-	BeforeRegister() error
-	AfterUnregister() error
-}
-
-type SqlBridge interface {
-	Bridge
-	Connect(ctx context.Context) (*sql.Conn, error)
-	SupportLastInsertId() bool
-}
-
-type MqttBridge interface {
-	Bridge
-	OnConnect(cb func(bridge any))
-	OnDisconnect(cb func(bridge any))
-	Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error)
-	Unsubscribe(topics ...string) (bool, error)
-	Publish(topic string, payload any) (bool, error)
-}
 
 var registry = map[string]Bridge{}
 var registryLock sync.RWMutex
@@ -54,8 +31,14 @@ func Register(def *model.BridgeDefinition) (err error) {
 	case model.BRIDGE_MYSQL:
 		var b SqlBridge = mysql.New(def.Name, def.Path)
 		br = b
+	case model.BRIDGE_MSSQL:
+		var b SqlBridge = mssql.New(def.Name, def.Path)
+		br = b
 	case model.BRIDGE_MQTT:
 		var b MqttBridge = mqtt.New(def.Name, def.Path)
+		br = b
+	case model.BRIDGE_PYTHON:
+		var b PythonBridge = python3.New(def.Name, def.Path)
 		br = b
 	default:
 		return fmt.Errorf("undefined bridge type %s, unable to register", def.Type)
@@ -108,5 +91,18 @@ func GetSqlBridge(name string) (SqlBridge, error) {
 		return sqlBr, nil
 	} else {
 		return nil, fmt.Errorf("'%s' is not a SqlBridge", name)
+	}
+}
+
+func GetMqttBridge(name string) (MqttBridge, error) {
+	br, err := GetBridge(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if mqttBr, ok := br.(MqttBridge); ok {
+		return mqttBr, nil
+	} else {
+		return nil, fmt.Errorf("'%s' is not a MqttBridge", name)
 	}
 }

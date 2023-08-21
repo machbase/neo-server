@@ -3,7 +3,7 @@ name: Release linux-amd64
 on:
   push:
     tags:
-      - v*
+      - vxyz*
 
 jobs:
   builds:
@@ -16,15 +16,13 @@ jobs:
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
-          go-version: '1.19.11'
+          go-version: '1.20.7'
       - name: Test
         run: make test
       - name: Build
         run: |
           make cleanpackage && \
           make package-machbase-neo
-      - name: Build arm32 package
-        run: make arm32package-machbase-neo
       - name: Release files
         uses: svenstaro/upload-release-action@v2
         if: startsWith(github.ref, 'refs/tags/v')

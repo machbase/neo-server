@@ -88,8 +88,8 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	switch def.Type {
 	case model.SCHEDULE_TIMER:
 		ent, err = NewTimerEntry(s, def)
-	case model.SCHEDULE_LISTENER:
-		ent, err = NewListenerEntry(s, def)
+	case model.SCHEDULE_SUBSCRIBER:
+		ent, err = NewSubscriberEntry(s, def)
 	default:
 		err = errors.New("undefined schedule type")
 	}

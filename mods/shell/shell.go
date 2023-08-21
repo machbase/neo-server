@@ -13,6 +13,17 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 )
 
+func Main() int {
+	var cli ShellCmd
+	_ = kong.Parse(&cli,
+		kong.HelpOptions{NoAppSummary: false, Compact: true, FlagsLast: true},
+		kong.UsageOnError(),
+		kong.Help(HelpKong),
+	)
+	Shell(&cli)
+	return 0
+}
+
 type ShellCmd struct {
 	Args           []string `arg:"" optional:"" name:"ARGS" passthrough:""`
 	Version        bool     `name:"version" default:"false" help:"show version"`

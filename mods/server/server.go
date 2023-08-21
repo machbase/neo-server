@@ -98,6 +98,8 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
+	MachbaseInitOption mach.InitOption
+	// deprecated, use mach.InitOption instead
 	EnableMachbaseSigHandler bool
 }
 
@@ -332,13 +334,13 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase.conf")
 	}
 
-	initOption := mach.OPT_SIGHANDLER_DISABLE // default, it is required to shutdown by SIGTERM
+	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
 	if s.conf.EnableMachbaseSigHandler {
-		// internal use only, for debuging call stack
-		initOption = mach.OPT_NONE
+		// internal use only, for debuging call stack raised inside the engine
+		s.conf.MachbaseInitOption = mach.OPT_SIGHANDLER_ON
 	}
-	s.log.Infof("apply machbase init option: %d", initOption)
-	if err := mach.InitializeOption(homepath, initOption); err != nil {
+	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
+	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
@@ -649,10 +651,8 @@ func GenBanner() string {
 	machbase, _ := fig.Render("Machbase")
 	logo, _ := fig.RenderOpts("neo", options)
 
-	v := mods.GetVersion()
-
 	lines := strings.Split(logo, "\n")
-	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
 	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")

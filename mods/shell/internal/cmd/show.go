@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -418,10 +419,10 @@ func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
 	defer output.Close()
 
 	encoder := codec.NewEncoder(codec.BOX,
-		codec.OutputStream(output),
-		codec.Rownum(true),
-		codec.Heading(true),
-		codec.BoxStyle(ctx.Pref().BoxStyle().Value()),
+		opts.OutputStream(output),
+		opts.Rownum(true),
+		opts.Heading(true),
+		opts.BoxStyle(ctx.Pref().BoxStyle().Value()),
 	)
 
 	queryCtx := &do.QueryContext{

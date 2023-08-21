@@ -12,17 +12,20 @@ func BytesUnit(v uint64, lang language.Tag) string {
 	f := float64(v)
 	u := ""
 	switch {
+	case v > 1024*1024*1024*1024:
+		f = f / (1024 * 1024 * 1024 * 1024)
+		u = " TB"
 	case v > 1024*1024*1024:
 		f = f / (1024 * 1024 * 1024)
-		u = "GB"
+		u = " GB"
 	case v > 1024*1024:
 		f = f / (1024 * 1024)
-		u = "MB"
+		u = " MB"
 	case v > 1024:
 		f = f / 1024
-		u = "KB"
+		u = " KB"
 	}
-	return p.Sprintf("%.1f %s", f, u)
+	return p.Sprintf("%.1f%s", f, u)
 }
 
 func NumberFormat[T int | uint | int8 | uint8 | int16 | uint16 | int32 | uint32 | int64 | uint64](n T) string {

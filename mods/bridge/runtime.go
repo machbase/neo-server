@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +19,7 @@ type rowsWrap struct {
 	ctx     context.Context
 	release func()
 
+	bridge     SqlBridge
 	enlistInfo string
 	enlistTime time.Time
 }
@@ -43,6 +44,15 @@ func (s *svr) Exec(ctx context.Context, req *bridgerpc.ExecRequest) (*bridgerpc.
 			return s.execSqlBridge(br, ctx, req)
 		case *bridgerpc.ExecRequest_SqlQuery:
 			return s.querySqlBridge(br, req)
+		default:
+			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
+			rsp.Elapse = time.Since(tick).String()
+			return rsp, nil
+		}
+	case PythonBridge:
+		switch cmd := req.Command.(type) {
+		case *bridgerpc.ExecRequest_Invoke:
+			return s.execPythonBridge(br, ctx, cmd)
 		default:
 			rsp.Reason = fmt.Sprintf("%s does not support %T", conn.String(), cmd)
 			rsp.Elapse = time.Since(tick).String()
@@ -163,6 +173,7 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 			conn:       conn,
 			rows:       rows,
 			ctx:        ctx,
+			bridge:     br,
 			enlistInfo: fmt.Sprintf("%s: %s", req.Name, cmd.SqlText),
 			enlistTime: time.Now(),
 			release: func() {
@@ -226,7 +237,8 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 
 	fields := make([]any, len(columns))
 	for i, c := range columns {
-		fields[i] = reflect.New(c.ScanType()).Interface()
+		fields[i] = rowsWrap.bridge.NewScanType(c.ScanType().String(), strings.ToUpper(c.DatabaseTypeName()))
+		//fields[i] = reflect.New(c.ScanType()).Interface()
 	}
 	err = rowsWrap.rows.Scan(fields...)
 	if err != nil {
@@ -267,5 +279,30 @@ func (s *svr) SqlQueryResultClose(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	rowsWrap.release()
 	rsp.Success = true
 	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *svr) execPythonBridge(br PythonBridge, ctx context.Context, req *bridgerpc.ExecRequest_Invoke) (*bridgerpc.ExecResponse, error) {
+	rsp := &bridgerpc.ExecResponse{}
+
+	tick := time.Now()
+	defer func() {
+		if err := recover(); err != nil {
+			s.log.Error("panic recover", err)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	exitCode, stdout, stderr, err := br.Invoke(ctx, req.Invoke.Args, req.Invoke.Stdin)
+	if err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		rsp.Success, rsp.Reason = true, "success"
+	}
+	rsp.Result = &bridgerpc.ExecResponse_InvokeResult{InvokeResult: &bridgerpc.InvokeResult{
+		ExitCode: int32(exitCode),
+		Stdout:   stdout,
+		Stderr:   stderr,
+	}}
 	return rsp, nil
 }

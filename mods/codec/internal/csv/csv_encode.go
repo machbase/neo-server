@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -19,11 +20,12 @@ type Exporter struct {
 	writer *csv.Writer
 	comma  rune
 
-	timeLocation *time.Location
-	output       spec.OutputStream
-	showRownum   bool
-	timeformat   string
-	precision    int
+	timeLocation   *time.Location
+	output         spec.OutputStream
+	showRownum     bool
+	timeformat     string
+	precision      int
+	substituteNull string
 
 	heading  bool
 	colNames []string
@@ -33,8 +35,9 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	rr := &Exporter{
-		precision:  -1,
-		timeformat: "ns",
+		precision:      -1,
+		timeformat:     "ns",
+		substituteNull: "NULL",
 	}
 	return rr
 }
@@ -72,8 +75,12 @@ func (ex *Exporter) SetDelimiter(delimiter string) {
 	ex.comma = delmiter
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
+}
+
+func (ex *Exporter) SetSubstituteNull(nullString string) {
+	ex.substituteNull = nullString
 }
 
 func (ex *Exporter) Open() error {
@@ -125,14 +132,6 @@ func (ex *Exporter) encodeTime(v time.Time) string {
 	}
 }
 
-func (ex *Exporter) encodeFloat64(v float64) string {
-	if ex.precision < 0 {
-		return fmt.Sprintf("%f", v)
-	} else {
-		return fmt.Sprintf("%.*f", ex.precision, v)
-	}
-}
-
 func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
@@ -146,7 +145,7 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	for i, r := range values {
 		if r == nil {
-			cols[i] = "NULL"
+			cols[i] = ex.substituteNull
 			continue
 		}
 		switch v := r.(type) {
@@ -159,16 +158,20 @@ func (ex *Exporter) AddRow(values []any) error {
 		case time.Time:
 			cols[i] = ex.encodeTime(v)
 		case *float64:
-			cols[i] = ex.encodeFloat64(*v)
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
-			cols[i] = ex.encodeFloat64(v)
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *float32:
-			cols[i] = ex.encodeFloat64(float64(*v))
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
-			cols[i] = ex.encodeFloat64(float64(v))
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case *int8:
+			cols[i] = strconv.FormatInt(int64(*v), 10)
+		case int8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int16:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
@@ -182,10 +185,28 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
+		case *bool:
+			cols[i] = strconv.FormatBool(*v)
+		case bool:
+			cols[i] = strconv.FormatBool(v)
 		case *net.IP:
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case uint8:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case *[]uint8:
+			strs := []string{}
+			for _, c := range *v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
+		case []uint8:
+			strs := []string{}
+			for _, c := range v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}
