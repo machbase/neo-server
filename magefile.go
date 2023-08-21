@@ -276,7 +276,24 @@ func CheckTmp() error {
 }
 
 func CheckFyne() error {
-	return sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+	if verout, err := sh.Output("fyne", "--version"); err != nil {
+		err = sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+	} else {
+		// fyne version v2.3.5
+		tok := strings.Fields(verout)
+		if len(tok) != 3 {
+			return fmt.Errorf("invalid fyne verison: %s", verout)
+		}
+		ver, err := semver.NewVersion(tok[2])
+		if err != nil {
+			return err
+		}
+		expectedFyneVer, _ := semver.NewVersion("v2.3.5")
+		if ver.Compare(expectedFyneVer) < 0 {
+			err = sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+		}
+	}
+	return nil
 }
 
 func Generate() error {
