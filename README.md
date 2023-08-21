@@ -50,10 +50,9 @@ https://hub.docker.com/r/machbase/machbase-neo
 
 ## Build from sources
 
-- Install Go 1.19 or higher 
-- Install `make`
+- Install Go 1.20 or higher 
 - Checkout machbase/neo-server
-- Run `make machbase-neo`
+- Execute `go run mage.go machbase-neo`
 - Find the executable binary `./tmp/machbase-neo`
 
 ### Dependency

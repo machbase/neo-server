@@ -80,7 +80,7 @@ jobs:
         with:
           version: 0.11.0
       - name: Build
-        run: make arm32package-machbase-neo
+        run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
