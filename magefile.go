@@ -276,8 +276,10 @@ func CheckTmp() error {
 }
 
 func CheckFyne() error {
+	const fyneVersion = "v2.3.5"
+	const fyneRepo = "fyne.io/fyne/v2/cmd/fyne@latest"
 	if verout, err := sh.Output("fyne", "--version"); err != nil {
-		err = sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+		err = sh.RunV("go", "install", fyneRepo)
 	} else {
 		// fyne version v2.3.5
 		tok := strings.Fields(verout)
@@ -288,9 +290,9 @@ func CheckFyne() error {
 		if err != nil {
 			return err
 		}
-		expectedFyneVer, _ := semver.NewVersion("v2.3.5")
+		expectedFyneVer, _ := semver.NewVersion(fyneVersion)
 		if ver.Compare(expectedFyneVer) < 0 {
-			err = sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+			err = sh.RunV("go", "install", fyneRepo)
 		}
 	}
 	return nil
