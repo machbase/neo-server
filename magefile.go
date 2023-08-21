@@ -23,10 +23,15 @@ import (
 var Default = Build
 
 var Aliases = map[string]any{
-	"machbase-neo": Build,
-	"neow":         BuildNeow,
-	"neoshell":     BuildNeoShell,
-	"cleanpackage": CleanPackage,
+	"machbase-neo":         Build,
+	"neow":                 BuildNeow,
+	"neoshell":             BuildNeoShell,
+	"package-machbase-neo": Package,
+	"package-neow":         PackageNeow,
+	"package-neoshell":     PackageNeoShell,
+	"cleanpackage":         CleanPackage,
+	"buildversion":         BuildVersion,
+	"regen-mock":           RegenMock,
 }
 
 var vLastVersion string
@@ -34,13 +39,18 @@ var vLastCommit string
 var vIsNightly bool
 var vBuildVersion string
 
+func BuildVersion() {
+	mg.Deps(GetVersion)
+	fmt.Println(vBuildVersion)
+}
+
 func Build() error {
 	mg.Deps(GetVersion, CheckTmp)
 	return build("machbase-neo")
 }
 
 func BuildNeow() error {
-	mg.Deps(GetVersion, CheckTmp)
+	mg.Deps(GetVersion, CheckTmp, CheckFyne)
 	return buildNeoW()
 }
 
@@ -121,6 +131,7 @@ func buildNeoW() error {
 	if runtime.GOOS == "windows" {
 		os.Rename("./main/neow/neow.exe", "./tmp/neow.exe")
 	} else if runtime.GOOS == "darwin" {
+		os.RemoveAll("./tmp/neow.app")
 		if err := os.Rename("neow.app", "./tmp/neow.app"); err != nil {
 			return err
 		}
@@ -244,6 +255,12 @@ func Test() error {
 	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
+	if output, err := sh.Output("go", "tool", "cover", "-func=./tmp/cover.out"); err != nil {
+		return err
+	} else {
+		lines := strings.Split(output, "\n")
+		fmt.Println(lines[len(lines)-1])
+	}
 	fmt.Println("Test done.")
 	return nil
 }
@@ -258,8 +275,47 @@ func CheckTmp() error {
 	return err
 }
 
+func CheckFyne() error {
+	return sh.RunV("go", "install", "fyne.io/fyne/v2/cmd/fyne@latest")
+}
+
+func Generate() error {
+	return sh.RunV("go", "generate", "./...")
+}
+
+func RegenMock() error {
+	mocks := map[string]string{
+		"./mods/util/mock/database.go": "Database",
+		"./mods/util/mock/server.go":   "DatabaseClient",
+		"./mods/util/mock/client.go":   "DatabaseClient",
+		"./mods/util/mock/auth.go":     "DatabaseAuth",
+		"./mods/util/mock/result.go":   "Result",
+		"./mods/util/mock/rows.go":     "Rows",
+		"./mods/util/mock/row.go":      "Row",
+		"./mods/util/mock/appender.go": "Appender",
+	}
+	for out, inf := range mocks {
+		if err := sh.RunV("moq", "-out", out, "-pkg", "mock", "../neo-spi", inf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Package() error {
-	return PackageX("machbase-neo", runtime.GOOS, runtime.GOARCH)
+	return package0("machbase-neo")
+}
+
+func PackageNeow() error {
+	return package0("neow")
+}
+
+func PackageNeoShell() error {
+	return package0("neoshell")
+}
+
+func package0(target string) error {
+	return PackageX(target, runtime.GOOS, runtime.GOARCH)
 }
 
 func PackageX(target string, targetOS string, targetArch string) error {
@@ -274,11 +330,16 @@ func PackageX(target string, targetOS string, targetArch string) error {
 	}
 	os.MkdirAll(filepath.Join("packages", bdir), 0755)
 
-	if runtime.GOOS == "windows" {
+	if targetOS == "windows" {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
 		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
+			return err
+		}
+	} else if targetOS == "darwin" && target == "neow" {
+		err := os.Rename("./tmp/neow.app", filepath.Join("./packages", bdir, "neow.app"))
+		if err != nil {
 			return err
 		}
 	} else {

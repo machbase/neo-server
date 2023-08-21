@@ -18,7 +18,7 @@ jobs:
         with:
           go-version: '1.20.7'
       - name: Build
-        run: go run mage.go test machbase-neo package
+        run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -39,7 +39,7 @@ jobs:
         with:
           go-version: '1.20.7'
       - name: Build
-        run: go run mage.go test machbase-neo package
+        run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -58,7 +58,7 @@ jobs:
         with:
           go-version: '1.20.7'
       - name: Build
-        run: go run mage.go test machbase-neo package
+        run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -99,7 +99,7 @@ jobs:
         with:
           go-version: '1.20.7'
       - name: Build
-        run: go run mage.go test machbase-neo package
+        run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
       - name: Codecov
         uses: codecov/codecov-action@v3
         env:
@@ -123,8 +123,6 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: '1.20.7'
-      - name: Install Fyne
-        run: go install fyne.io/fyne/v2/cmd/fyne@latest
       - name: Build
         run: go run mage.go machbase-neo neow
         shell: cmd
@@ -139,7 +137,7 @@ jobs:
             machbase-neo.exe
             neow.exe
       - name: Package
-        run: go run mage.go package
+        run: go run mage.go package-machbase-neo
         shell: cmd
       - name: Upload Artifact
         uses: actions/upload-artifact@v3

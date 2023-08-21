@@ -21,18 +21,13 @@ jobs:
 
       - name: Get Next Version
         id: get_version
-        run: echo "ver=$(./scripts/buildversion.sh)" >> $GITHUB_OUTPUT
+        run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
         shell: bash
-
-      - name: Neo Test
-        run: make test
 
       - name: Package for arm64
         run: |
-          make cleanpackage && \
-          ./scripts/package.sh machbase-neo linux arm64 ${{ steps.get_version.outputs.ver }} && \
-          unzip packages/machbase-neo-v*.zip && \
-          scp machbase-neo-v*/machbase-neo ${{ secrets.DOCKER_HOST }}:/home/ubuntu/docker-build/arm64/
+          go run mage.go test machbase-neo && \
+          scp tmp/machbase-neo ${{ secrets.DOCKER_HOST }}:/home/ubuntu/docker-build/arm64/
 
   amd64:
     runs-on: [ self-hosted, linux, X64, ubuntu18 ]
@@ -56,7 +51,7 @@ jobs:
 
       - name: Get Next Version
         id: get_version
-        run: echo "ver=$(./scripts/buildversion.sh)" >> $GITHUB_OUTPUT
+        run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Neo Test
@@ -64,10 +59,8 @@ jobs:
 
       - name: Package for amd64
         run: |
-          make cleanpackage && \
-          ./scripts/package.sh machbase-neo linux amd64 ${{ steps.get_version.outputs.ver }} && \
-          unzip packages/machbase-neo-v*.zip && \
-          mv machbase-neo-v*/machbase-neo /home/ubuntu/docker-build/amd64/
+          go run mage.go test machbase-neo && \
+          mv tmp/machbase-neo /home/ubuntu/docker-build/amd64/
       
       - name: Docker Login
         uses: docker/login-action@v2
