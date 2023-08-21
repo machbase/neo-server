@@ -44,8 +44,7 @@ docker-run:
 
 arm32package-machbase-neo:
 	@echo "package arm 32bit linux"
-	go run mage.go buildx machbase-neo linux arm
-#	./scripts/package.sh machbase-neo linux arm $(nextver)
+	./scripts/package.sh machbase-neo linux arm $(nextver)
 
 package-%:
 	@echo "package" $(uname_s) $(uname_m)
