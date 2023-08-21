@@ -31,9 +31,9 @@ func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescrip
 	}
 
 	rows := make([][]any, 0)
-	values := make([]any, 0)
 
 	for k, v := range fields {
+		values := make([]any, 0)
 		values = append(values, fmt.Sprintf("%s.%s", measurement, k))
 		values = append(values, ts)
 
