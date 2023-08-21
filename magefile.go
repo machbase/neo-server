@@ -4,6 +4,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -35,17 +36,17 @@ var vIsNightly bool
 var vBuildVersion string
 
 func Build() error {
-	mg.Deps(GetVersion)
+	mg.Deps(CheckTmp, GetVersion)
 	return build("machbase-neo")
 }
 
 func BuildNeow() error {
-	mg.Deps(GetVersion)
+	mg.Deps(CheckTmp, GetVersion)
 	return buildNeoW()
 }
 
 func BuildNeoShell() error {
-	mg.Deps(GetVersion)
+	mg.Deps(CheckTmp, GetVersion)
 	return build("neoshell")
 }
 
@@ -139,13 +140,34 @@ func buildNeoW() error {
 	return nil
 }
 
-func Test() error {
+func CheckTmp() error {
 	_, err := os.Stat("tmp")
-	if err != os.ErrNotExist {
-		os.Mkdir("tmp", 0755)
+	if err != nil && err != os.ErrNotExist {
+		return os.Mkdir("tmp", 0755)
 	}
+	return err
+}
+
+func Test() error {
+	mg.Deps(CheckTmp)
 	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
+	}
+	env := map[string]string{}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if _, err := sh.Exec(env, stdout, stderr, "go", "tool", "cover", "-func", "./tmp/cover.out"); err != nil {
+		return err
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if !strings.HasPrefix(line, "total:") {
+			continue
+		}
+		// line = 'total: (statements)   00.0%'
+		percent := strings.Fields(line)
+		if len(percent) == 3 {
+			fmt.Printf("Total coverage: %s\n", percent[2])
+		}
 	}
 	fmt.Println("Test done.")
 	return nil
@@ -231,6 +253,13 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		if _, err := io.Copy(w, fd); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func Generate() error {
+	if err := sh.RunV("go", "generate", "./..."); err != nil {
+		return err
 	}
 	return nil
 }
