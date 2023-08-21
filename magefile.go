@@ -139,7 +139,7 @@ func buildNeoW() error {
 	return nil
 }
 
-func Buildx(target string, targetOS string, targetArch string) error {
+func BuildX(target string, targetOS string, targetArch string) error {
 	mg.Deps(GetVersion, CheckTmp)
 	fmt.Println("Build", target, vBuildVersion, "...")
 
@@ -159,9 +159,9 @@ func Buildx(target string, targetOS string, targetArch string) error {
 
 	env := map[string]string{"GO111MODULE": "on"}
 	if target != "neoshell" {
-		env["CGO_ENABLE"] = "1"
+		env["CGO_ENABLED"] = "1"
 	} else {
-		env["CGO_ENABLE"] = "0"
+		env["CGO_ENABLED"] = "0"
 	}
 	env["GOOS"] = targetOS
 	env["GOARCH"] = targetArch
@@ -176,10 +176,10 @@ func Buildx(target string, targetOS string, targetArch string) error {
 			env["CXX"] = "zig c++ -target x86_64-linux-gnu"
 		case "arm":
 			env["CC"] = "zig cc -target arm-linux-gnueabihf"
-			env["CXX"] = "zig cc -target arm-linux-gnueabihf"
+			env["CXX"] = "zig c++ -target arm-linux-gnueabihf"
 		case "386":
-			env["CC"] = "zig cc -target i386-linux-gnu"
-			env["CXX"] = "zig c++ -target i386-linux-gnu"
+			env["CC"] = "zig cc -target x86-linux-gnu"
+			env["CXX"] = "zig c++ -target x86-linux-gnu"
 		default:
 			return fmt.Errorf("error: unsupproted linux/%s", targetArch)
 		}
@@ -218,7 +218,7 @@ func Buildx(target string, targetOS string, targetArch string) error {
 		args = append(args, "-ldflags", ldflags)
 	}
 	// executable file
-	if runtime.GOOS == "windows" {
+	if targetOS == "windows" {
 		args = append(args, "-tags=timetzdata")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
 	} else {
@@ -233,7 +233,6 @@ func Buildx(target string, targetOS string, targetArch string) error {
 
 	err = sh.RunWithV(env, "go", args...)
 	if err != nil {
-		fmt.Println("ENV", env)
 		return err
 	}
 	fmt.Println("Build done.")
@@ -260,12 +259,14 @@ func CheckTmp() error {
 }
 
 func Package() error {
-	target := "machbase-neo"
-	mg.Deps(CleanPackage, GetVersion, CheckTmp)
+	return PackageX("machbase-neo", runtime.GOOS, runtime.GOARCH)
+}
 
-	bdir := fmt.Sprintf("%s-%s-%s-%s", target, vBuildVersion, runtime.GOOS, runtime.GOARCH)
-	if runtime.GOARCH == "arm" {
-		bdir = fmt.Sprintf("%s-%s-%s-arm32", target, vBuildVersion, runtime.GOOS)
+func PackageX(target string, targetOS string, targetArch string) error {
+	mg.Deps(CleanPackage, GetVersion, CheckTmp)
+	bdir := fmt.Sprintf("%s-%s-%s-%s", target, vBuildVersion, targetOS, targetArch)
+	if targetArch == "arm" {
+		bdir = fmt.Sprintf("%s-%s-%s-arm32", target, vBuildVersion, targetOS)
 	}
 	_, err := os.Stat("packages")
 	if err != os.ErrNotExist {
