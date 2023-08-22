@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/booter"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -35,7 +36,7 @@ func doService(sc *Service) {
 	}
 
 	if len(sc.Args) == 0 {
-		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop, pause, continue]")
+		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop]")
 		return
 	}
 
@@ -52,10 +53,10 @@ func doService(sc *Service) {
 		err = startService(svcName)
 	case "stop":
 		err = controlService(svcName, svc.Stop, svc.Stopped)
-	case "pause":
-		err = controlService(svcName, svc.Pause, svc.Paused)
-	case "continue":
-		err = controlService(svcName, svc.Continue, svc.Running)
+	// case "pause":
+	// 	err = controlService(svcName, svc.Pause, svc.Paused)
+	// case "continue":
+	// 	err = controlService(svcName, svc.Continue, svc.Running)
 	default:
 		fmt.Println("unknown command:", sc.Args[0])
 		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop, pause, continue]")
@@ -86,17 +87,21 @@ func installService(name string, desc string, args ...string) error {
 		return fmt.Errorf("service %s is already exists", name)
 	}
 	conf := mgr.Config{
-		Description: desc,
-		//		DelayedAutoStart: true,
+		Description:      desc,
+		DelayedAutoStart: true,
 	}
+
+	// do not modify this first args
+	baseArgs := []string{"service", "run", exepath, "serve"}
+	// pass to service from as args
 	if len(args) == 0 {
-		args = []string{
-			"service", "run", // <- do not modify this first two args
-			exepath, "serve",
+		args = append(baseArgs, []string{
 			"--host", "0.0.0.0",
 			"--log-filename", filepath.Join(filepath.Dir(exepath), "machbase-neo.log"),
 			"--log-level", "TRACE",
-		}
+		}...)
+	} else {
+		args = append(baseArgs, args...)
 	}
 
 	s, err = m.CreateService(name, exepath, conf, args...)
@@ -213,47 +218,38 @@ type proxyService struct {
 }
 
 func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
-	const cmdsAccepts = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPauseAndContinue
-	changes <- svc.Status{State: svc.StartPending}
-	fasttick := time.Tick(500 * time.Millisecond)
-	slowtick := time.Tick(2 * time.Second)
-	tick := fasttick
-	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
+	const cmdsAccepts = svc.AcceptStop | svc.AcceptShutdown /*| svc.AcceptPauseAndContinue */
 	elog.Info(1, fmt.Sprintf("running... %v", m.args))
+	changes <- svc.Status{State: svc.StartPending}
+
+	os.Args = m.args
+	serveWg := sync.WaitGroup{}
+	serveWg.Add(1)
+	go func() {
+		changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
+		doServe()
+		serveWg.Done()
+	}()
 loop:
-	for {
-		select {
-		case <-tick:
-			beep()
-			elog.Info(1, "beep")
-		case c := <-r:
-			switch c.Cmd {
-			case svc.Interrogate:
-				changes <- c.CurrentStatus
-				time.Sleep(100 * time.Millisecond)
-				changes <- c.CurrentStatus
-			case svc.Stop, svc.Shutdown:
-				output := strings.Join(args, "-")
-				output += fmt.Sprintf("-%d", c.Context)
-				elog.Info(1, output)
-				break loop
-			case svc.Pause:
-				changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepts}
-				tick = slowtick
-			case svc.Continue:
-				changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-				tick = fasttick
-			default:
-				elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
-			}
+	for c := range r {
+		switch c.Cmd {
+		case svc.Interrogate:
+			changes <- c.CurrentStatus
+			time.Sleep(100 * time.Millisecond)
+			changes <- c.CurrentStatus
+		case svc.Stop, svc.Shutdown:
+			booter.NotifySignal()
+			elog.Info(1, "shutting down...")
+			serveWg.Wait()
+			break loop
+		case svc.Pause:
+			changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepts}
+		case svc.Continue:
+			changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
+		default:
+			elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
 		}
 	}
 	changes <- svc.Status{State: svc.StopPending}
 	return
-}
-
-var beepFunc = syscall.MustLoadDLL("user32.dll").MustFindProc("MessageBeep")
-
-func beep() {
-	beepFunc.Call(0xffffffff)
 }
