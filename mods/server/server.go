@@ -615,6 +615,9 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 			s.servicePortsLock.Unlock()
 		}
 	} else {
+		if strings.HasPrefix(addr, "unix://") && runtime.GOOS == "windows" {
+			return nil
+		}
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
 		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
