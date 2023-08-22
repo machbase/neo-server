@@ -1,4 +1,4 @@
-name: CI windows-amd64
+name: CI gsc-amd64
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'work/gsc'
 
 jobs:
-  builds:
+  windows:
     runs-on: [ windows-2022 ]
     steps:
       - name: Checkout
@@ -42,4 +42,26 @@ jobs:
           name: Packages
           path: packages/machbase-neo-*.zip
           retention-days: 5
-
+  linux-amd64:
+    runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Setup go compiler
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.19.11'
+      - name: Test
+        run: make test
+      - name: Build
+        run: |
+          make cleanpackage && \
+          make package-machbase-neo
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Packages
+          path: packages/machbase-neo-v*.zip
+          retention-days: 5
