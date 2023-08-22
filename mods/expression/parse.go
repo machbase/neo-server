@@ -219,7 +219,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 		}
 
 		if !isNotQuote(character) {
-			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuote)
+			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuoteMatch(character))
 
 			if !completed {
 				return Token{}, errors.New("unclosed string literal"), false
@@ -477,6 +477,12 @@ func isNumeric(character rune) bool {
 
 func isNotQuote(character rune) bool {
 	return character != '\'' && character != '"' && character != '`' && character != '{'
+}
+
+func isNotQuoteMatch(openQuote rune) func(rune) bool {
+	return func(c rune) bool {
+		return c != openQuote
+	}
 }
 
 func isNotAlphanumeric(character rune) bool {

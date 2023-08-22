@@ -544,7 +544,7 @@ func TestComparatorParsing(test *testing.T) {
 			},
 		},
 		{
-			Name:  "String concatenation (2)",
+			Name:  "String concatenation (3)",
 			Input: "'foo'+{bar}",
 			Expected: []Token{
 				{Kind: STRING, Value: "foo"},
@@ -680,6 +680,27 @@ func TestModifierParsing(test *testing.T) {
 
 	tokenParsingTests = combineWhitespaceExpressions(tokenParsingTests)
 	runTokenParsingTest(tokenParsingTests, test)
+}
+
+func TestNestedQuote(test *testing.T) {
+	testCases := []TokenParsingTest{
+		{
+			Name:  "String nested quote (1)",
+			Input: "'foo\"bar\"'",
+			Expected: []Token{
+				{Kind: STRING, Value: `foo"bar"`},
+			},
+		},
+		{
+			Name:  "String nested quote (2)",
+			Input: "\"foo'bar'\"",
+			Expected: []Token{
+				{Kind: STRING, Value: `foo'bar'`},
+			},
+		},
+	}
+	testCases = combineWhitespaceExpressions(testCases)
+	runTokenParsingTest(testCases, test)
 }
 
 func TestPrefixParsing(test *testing.T) {
