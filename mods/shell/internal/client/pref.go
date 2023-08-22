@@ -332,13 +332,11 @@ func (p *Pref) ClientKey() *PrefItem {
 }
 
 func timezoneValidate(s string) (string, bool) {
-	switch s {
-	case "utc":
-		s = "UTC"
+	switch strings.ToLower(s) {
 	case "local":
 		s = "Local"
-	case "gmt":
-		s = "GMT"
+	case "utc":
+		s = "UTC"
 	}
 	tz, err := time.LoadLocation(s)
 	if err == nil {
@@ -348,8 +346,6 @@ func timezoneValidate(s string) (string, bool) {
 	if err == nil {
 		return tz.String(), true
 	}
-
-	fmt.Println(err.Error())
 	return "", false
 }
 
