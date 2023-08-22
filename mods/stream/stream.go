@@ -27,6 +27,10 @@ func NewOutputStream(output string) (out spec.OutputStream, err error) {
 	return
 }
 
+func NewOutputStreamWriter(w io.Writer) spec.OutputStream {
+	return &WriterOutputStream{Writer: w}
+}
+
 type WriterOutputStream struct {
 	Writer io.Writer
 }

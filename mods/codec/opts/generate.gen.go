@@ -168,7 +168,7 @@ func Columns(names ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/echart/echart_2d.go:64:1
+//	mods/codec/internal/echart/echart_2d.go:80:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
 }
@@ -278,7 +278,7 @@ func LineWidth(width float64) Option {
 
 // SetMarkAreaNameCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:74:1
+//	mods/codec/internal/echart/echart_2d.go:90:1
 type CanSetMarkAreaNameCoord interface {
 	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
 }
@@ -293,7 +293,7 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 
 // SetMarkLineXAxisCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:84:1
+//	mods/codec/internal/echart/echart_2d.go:100:1
 type CanSetMarkLineXAxisCoord interface {
 	SetMarkLineXAxisCoord(xaxis any, name string)
 }
@@ -308,7 +308,7 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 
 // SetMarkLineYAxisCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:91:1
+//	mods/codec/internal/echart/echart_2d.go:107:1
 type CanSetMarkLineYAxisCoord interface {
 	SetMarkLineYAxisCoord(yaxis any, name string)
 }
@@ -393,7 +393,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart_2d.go:70:1
+//	mods/codec/internal/echart/echart_2d.go:86:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -502,6 +502,7 @@ func Theme(theme string) Option {
 //	mods/codec/internal/box/box_encode.go:52:1
 //	mods/codec/internal/csv/csv_decode.go:43:1
 //	mods/codec/internal/csv/csv_encode.go:57:1
+//	mods/codec/internal/echart/echart_2d.go:76:1
 //	mods/codec/internal/json/json_decode.go:38:1
 //	mods/codec/internal/json/json_encode.go:48:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
@@ -522,6 +523,7 @@ func TimeLocation(tz *time.Location) Option {
 //	mods/codec/internal/box/box_encode.go:48:1
 //	mods/codec/internal/csv/csv_decode.go:39:1
 //	mods/codec/internal/csv/csv_encode.go:53:1
+//	mods/codec/internal/echart/echart_2d.go:72:1
 //	mods/codec/internal/json/json_decode.go:34:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
@@ -599,7 +601,7 @@ func VisualMap(minValue float64, maxValue float64) Option {
 
 // SetXAxis
 //
-//	mods/codec/internal/echart/echart_2d.go:54:1
+//	mods/codec/internal/echart/echart_2d.go:56:1
 //	mods/codec/internal/echart/echart_3d.go:53:1
 type CanSetXAxis interface {
 	SetXAxis(idx int, label string, typ ...string)
@@ -615,7 +617,7 @@ func XAxis(idx int, label string, typ ...string) Option {
 
 // SetYAxis
 //
-//	mods/codec/internal/echart/echart_2d.go:59:1
+//	mods/codec/internal/echart/echart_2d.go:64:1
 //	mods/codec/internal/echart/echart_3d.go:61:1
 type CanSetYAxis interface {
 	SetYAxis(idx int, label string, typ ...string)
