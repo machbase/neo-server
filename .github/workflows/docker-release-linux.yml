@@ -3,7 +3,7 @@ name: Docker Release for Linux
 on:
   push:
     tags:
-      - v*
+      - v-deprecated*
 
 jobs:
   arm64:
