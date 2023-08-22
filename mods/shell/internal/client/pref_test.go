@@ -97,3 +97,8 @@ func TestPrefDir(t *testing.T) {
 	items := pref.Items()
 	require.Equal(t, 8, len(items))
 }
+
+func TestClient(t *testing.T) {
+	cmd := client.FindCmd("help")
+	require.NotNil(t, cmd)
+}
