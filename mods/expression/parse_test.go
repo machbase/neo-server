@@ -24,190 +24,147 @@ func TestConstantParsing(test *testing.T) {
 			Name:  "Single numeric",
 			Input: "1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Single two-digit numeric",
 			Input: "50",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 50.0,
-				},
+				{Kind: NUMERIC, Value: 50.0},
 			},
 		},
 		{
 			Name:  "Zero",
 			Input: "0",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 0.0,
-				},
+				{Kind: NUMERIC, Value: 0.0},
 			},
 		},
 		{
 			Name:  "One digit hex",
 			Input: "0x1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Two digit hex",
 			Input: "0x10",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 16.0,
-				},
+				{Kind: NUMERIC, Value: 16.0},
 			},
 		},
 		{
 			Name:  "Hex with lowercase",
 			Input: "0xabcdef",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 11259375.0,
-				},
+				{Kind: NUMERIC, Value: 11259375.0},
 			},
 		},
 		{
 			Name:  "Hex with uppercase",
 			Input: "0xABCDEF",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 11259375.0,
-				},
+				{Kind: NUMERIC, Value: 11259375.0},
 			},
 		},
 		{
 			Name:  "Single string",
 			Input: "'foo'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
+				{Kind: STRING, Value: "foo"},
+			},
+		},
+		{
+			Name:  "Backtick string",
+			Input: "`foo\"bar\"`",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo\"bar\""},
+			},
+		},
+		{
+			Name:  "Clause string",
+			Input: "{foo}",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo"},
 			},
 		},
 		{
 			Name:  "Single string with carrage return",
 			Input: `'foo\nbar'`,
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo\nbar",
-				},
+				{Kind: STRING, Value: "foo\nbar"},
 			},
 		},
 		{
 			Name:  "Single time, RFC3339, only date",
 			Input: "'2014-01-02'",
 			Expected: []Token{
-				{
-					Kind:  TIME,
-					Value: time.Date(2014, time.January, 2, 0, 0, 0, 0, time.Local),
-				},
+				{Kind: TIME, Value: time.Date(2014, time.January, 2, 0, 0, 0, 0, time.Local)},
 			},
 		},
 		{
 			Name:  "Single time, RFC3339, with hh:mm",
 			Input: "'2014-01-02 14:12'",
 			Expected: []Token{
-				{
-					Kind:  TIME,
-					Value: time.Date(2014, time.January, 2, 14, 12, 0, 0, time.Local),
-				},
+				{Kind: TIME, Value: time.Date(2014, time.January, 2, 14, 12, 0, 0, time.Local)},
 			},
 		},
 		{
 			Name:  "Single time, RFC3339, with hh:mm:ss",
 			Input: "'2014-01-02 14:12:22'",
 			Expected: []Token{
-				{
-					Kind:  TIME,
-					Value: time.Date(2014, time.January, 2, 14, 12, 22, 0, time.Local),
-				},
+				{Kind: TIME, Value: time.Date(2014, time.January, 2, 14, 12, 22, 0, time.Local)},
 			},
 		},
 		{
 			Name:  "Single boolean",
 			Input: "true",
 			Expected: []Token{
-				{
-					Kind:  BOOLEAN,
-					Value: true,
-				},
+				{Kind: BOOLEAN, Value: true},
 			},
 		},
 		{
 			Name:  "Single large numeric",
 			Input: "1234567890",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1234567890.0,
-				},
+				{Kind: NUMERIC, Value: 1234567890.0},
 			},
 		},
 		{
 			Name:  "Single floating-point",
 			Input: "0.5",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 0.5,
-				},
+				{Kind: NUMERIC, Value: 0.5},
 			},
 		},
 		{
 			Name:  "Single large floating point",
 			Input: "3.14567471",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 3.14567471,
-				},
+				{Kind: NUMERIC, Value: 3.14567471},
 			},
 		},
 		{
 			Name:  "Single false boolean",
 			Input: "false",
 			Expected: []Token{
-				{
-					Kind:  BOOLEAN,
-					Value: false,
-				},
+				{Kind: BOOLEAN, Value: false},
 			},
 		},
 		{
 			Name:  "Single internationalized string",
 			Input: "'ÆŦǽഈᚥஇคٸ'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "ÆŦǽഈᚥஇคٸ",
-				},
+				{Kind: STRING, Value: "ÆŦǽഈᚥஇคٸ"},
 			},
 		},
 		{
 			Name:  "Single internationalized parameter",
 			Input: "ÆŦǽഈᚥஇคٸ",
 			Expected: []Token{
-				{
-					Kind:  VARIABLE,
-					Value: "ÆŦǽഈᚥஇคٸ",
-				},
+				{Kind: VARIABLE, Value: "ÆŦǽഈᚥஇคٸ"},
 			},
 		},
 		{
@@ -215,16 +172,9 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo()",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -232,20 +182,10 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo('bar')",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "bar",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "bar"},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -253,27 +193,12 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo('bar', 1.0)",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "bar",
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "bar"},
+				{Kind: SEPARATOR},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -281,54 +206,20 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo(foo('bar'), 1.0, foo(2.0))",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "bar",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "bar"},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: SEPARATOR},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: SEPARATOR},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: NUMERIC, Value: 2.0},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -336,24 +227,11 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo() + 1",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "+",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
@@ -361,82 +239,40 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "(foo()-1) > 3",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "-",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: ">",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 3.0,
-				},
+				{Kind: CLAUSE},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: MODIFIER, Value: "-"},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: COMPARATOR, Value: ">"},
+				{Kind: NUMERIC, Value: 3.0},
 			},
 		},
 		{
 			Name:  "Double-quoted string added to square-brackted param (#59)",
 			Input: "\"a\" + [foo]",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "a",
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "+",
-				},
-				{
-					Kind:  VARIABLE,
-					Value: "foo",
-				},
+				{Kind: STRING, Value: "a"},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: VARIABLE, Value: "foo"},
 			},
 		},
 		{
 			Name:  "Accessor variable",
 			Input: "foo.Var",
 			Expected: []Token{
-				{
-					Kind:  ACCESSOR,
-					Value: []string{"foo", "Var"},
-				},
+				{Kind: ACCESSOR, Value: []string{"foo", "Var"}},
 			},
 		},
 		{
 			Name:  "Accessor function",
 			Input: "foo.Operation()",
 			Expected: []Token{
-				{
-					Kind:  ACCESSOR,
-					Value: []string{"foo", "Operation"},
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: ACCESSOR, Value: []string{"foo", "Operation"}},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -444,16 +280,9 @@ func TestConstantParsing(test *testing.T) {
 			Input:     "foo() // this is comment",
 			Functions: map[string]Function{"foo": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 	}
@@ -469,20 +298,10 @@ func TestScriptBlock(test *testing.T) {
 			Input:     "script({l = a + b\n return l\n})",
 			Functions: map[string]Function{"script": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING, //BLOCK,
-					Value: "l = a + b\n return l\n",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "l = a + b\n return l\n"},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
@@ -490,27 +309,12 @@ func TestScriptBlock(test *testing.T) {
 			Input:     "script('tengo', {l = a + b\n return l\n})",
 			Functions: map[string]Function{"script": noop},
 			Expected: []Token{
-				{
-					Kind:  FUNCTION,
-					Value: noop,
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "tengo",
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  STRING, // BLOCK,
-					Value: "l = a + b\n return l\n",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "tengo"},
+				{Kind: SEPARATOR},
+				{Kind: STRING, Value: "l = a + b\n return l\n"},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 	}
@@ -523,62 +327,29 @@ func TestLogicalOperatorParsing(test *testing.T) {
 			Name:  "Boolean AND",
 			Input: "true && false",
 			Expected: []Token{
-				{
-					Kind:  BOOLEAN,
-					Value: true,
-				},
-				{
-					Kind:  LOGICALOP,
-					Value: "&&",
-				},
-				{
-					Kind:  BOOLEAN,
-					Value: false,
-				},
+				{Kind: BOOLEAN, Value: true},
+				{Kind: LOGICALOP, Value: "&&"},
+				{Kind: BOOLEAN, Value: false},
 			},
 		},
 		{
 			Name:  "Boolean OR",
 			Input: "true || false",
 			Expected: []Token{
-				{
-					Kind:  BOOLEAN,
-					Value: true,
-				},
-				{
-					Kind:  LOGICALOP,
-					Value: "||",
-				},
-				{
-					Kind:  BOOLEAN,
-					Value: false,
-				},
+				{Kind: BOOLEAN, Value: true},
+				{Kind: LOGICALOP, Value: "||"},
+				{Kind: BOOLEAN, Value: false},
 			},
 		},
 		{
 			Name:  "Multiple logical operators",
 			Input: "true || false && true",
 			Expected: []Token{
-				{
-					Kind:  BOOLEAN,
-					Value: true,
-				},
-				{
-					Kind:  LOGICALOP,
-					Value: "||",
-				},
-				{
-					Kind:  BOOLEAN,
-					Value: false,
-				},
-				{
-					Kind:  LOGICALOP,
-					Value: "&&",
-				},
-				{
-					Kind:  BOOLEAN,
-					Value: true,
-				},
+				{Kind: BOOLEAN, Value: true},
+				{Kind: LOGICALOP, Value: "||"},
+				{Kind: BOOLEAN, Value: false},
+				{Kind: LOGICALOP, Value: "&&"},
+				{Kind: BOOLEAN, Value: true},
 			},
 		},
 	}
@@ -593,387 +364,218 @@ func TestComparatorParsing(test *testing.T) {
 			Name:  "Numeric EQ",
 			Input: "1 == 2",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: NUMERIC, Value: 2.0},
 			},
 		},
 		{
 			Name:  "Numeric NEQ",
 			Input: "1 != 2",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "!=",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: "!="},
+				{Kind: NUMERIC, Value: 2.0},
 			},
 		},
 		{
 			Name:  "Numeric GT",
 			Input: "1 > 0",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: ">",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 0.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: ">"},
+				{Kind: NUMERIC, Value: 0.0},
 			},
 		},
 		{
 			Name:  "Numeric LT",
 			Input: "1 < 2",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "<",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: "<"},
+				{Kind: NUMERIC, Value: 2.0},
 			},
 		},
 		{
 			Name:  "Numeric GTE",
 			Input: "1 >= 2",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: ">=",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: ">="},
+				{Kind: NUMERIC, Value: 2.0},
 			},
 		},
 		{
 			Name:  "Numeric LTE",
 			Input: "1 <= 2",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "<=",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 2.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: COMPARATOR, Value: "<="},
+				{Kind: NUMERIC, Value: 2.0},
 			},
 		},
 		{
 			Name:  "String LT",
 			Input: "'ab.cd' < 'abc.def'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "ab.cd",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "<",
-				},
-				{
-					Kind:  STRING,
-					Value: "abc.def",
-				},
+				{Kind: STRING, Value: "ab.cd"},
+				{Kind: COMPARATOR, Value: "<"},
+				{Kind: STRING, Value: "abc.def"},
 			},
 		},
 		{
 			Name:  "String LTE",
 			Input: "'ab.cd' <= 'abc.def'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "ab.cd",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "<=",
-				},
-				{
-					Kind:  STRING,
-					Value: "abc.def",
-				},
+				{Kind: STRING, Value: "ab.cd"},
+				{Kind: COMPARATOR, Value: "<="},
+				{Kind: STRING, Value: "abc.def"},
 			},
 		},
 		{
 			Name:  "String GT",
 			Input: "'ab.cd' > 'abc.def'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "ab.cd",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: ">",
-				},
-				{
-					Kind:  STRING,
-					Value: "abc.def",
-				},
+				{Kind: STRING, Value: "ab.cd"},
+				{Kind: COMPARATOR, Value: ">"},
+				{Kind: STRING, Value: "abc.def"},
 			},
 		},
 		{
 			Name:  "String GTE",
 			Input: "'ab.cd' >= 'abc.def'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "ab.cd",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: ">=",
-				},
-				{
-					Kind:  STRING,
-					Value: "abc.def",
-				},
+				{Kind: STRING, Value: "ab.cd"},
+				{Kind: COMPARATOR, Value: ">="},
+				{Kind: STRING, Value: "abc.def"},
 			},
 		},
 		{
 			Name:  "String REQ",
 			Input: "'foobar' =~ 'bar'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foobar",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "=~",
-				},
-
-				// it's not particularly clean to test for the contents of a pattern, (since it means modifying the harness below)
+				{Kind: STRING, Value: "foobar"},
+				{Kind: COMPARATOR, Value: "=~"},
+				// it's not particularly clean to test for the contents of a pattern,
+				// (since it means modifying the harness below)
 				// so pattern contents are left untested.
-				{
-					Kind: PATTERN,
-				},
+				{Kind: PATTERN},
 			},
 		},
 		{
 			Name:  "String NREQ",
 			Input: "'foobar' !~ 'bar'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foobar",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "!~",
-				},
-				{
-					Kind: PATTERN,
-				},
+				{Kind: STRING, Value: "foobar"},
+				{Kind: COMPARATOR, Value: "!~"},
+				{Kind: PATTERN},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string additive (#22)",
+			Name:  "Comparator against modifier string additive",
 			Input: "'foo' == '+'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: "+",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: "+"},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string multiplicative (#22)",
+			Name:  "Comparator against modifier string multiplicative",
 			Input: "'foo' == '/'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: "/",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: "/"},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string exponential (#22)",
+			Name:  "Comparator against modifier string exponential",
 			Input: "'foo' == '**'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: "**",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: "**"},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string bitwise (#22)",
+			Name:  "Comparator against modifier string bitwise",
 			Input: "'foo' == '^'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: "^",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: "^"},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string shift (#22)",
+			Name:  "Comparator against modifier string shift",
 			Input: "'foo' == '>>'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: ">>",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: ">>"},
 			},
 		},
 		{
-			Name:  "Comparator against modifier string ternary (#22)",
+			Name:  "Comparator against modifier string ternary",
 			Input: "'foo' == '?'",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "==",
-				},
-				{
-					Kind:  STRING,
-					Value: "?",
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "=="},
+				{Kind: STRING, Value: "?"},
+			},
+		},
+		{
+			Name:  "String concatenation",
+			Input: "'foo'+'bar'",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo"},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: STRING, Value: "bar"},
+			},
+		},
+		{
+			Name:  "String concatenation (2)",
+			Input: "'foo'+`bar`",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo"},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: STRING, Value: "bar"},
+			},
+		},
+		{
+			Name:  "String concatenation (2)",
+			Input: "'foo'+{bar}",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo"},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: STRING, Value: "bar"},
 			},
 		},
 		{
 			Name:  "Array membership lowercase",
 			Input: "'foo' in ('foo', 'bar')",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "in",
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  STRING,
-					Value: "bar",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "in"},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "foo"},
+				{Kind: SEPARATOR},
+				{Kind: STRING, Value: "bar"},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 		{
 			Name:  "Array membership uppercase",
 			Input: "'foo' IN ('foo', 'bar')",
 			Expected: []Token{
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind:  COMPARATOR,
-					Value: "in",
-				},
-				{
-					Kind: CLAUSE,
-				},
-				{
-					Kind:  STRING,
-					Value: "foo",
-				},
-				{
-					Kind: SEPARATOR,
-				},
-				{
-					Kind:  STRING,
-					Value: "bar",
-				},
-				{
-					Kind: CLAUSE_CLOSE,
-				},
+				{Kind: STRING, Value: "foo"},
+				{Kind: COMPARATOR, Value: "in"},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "foo"},
+				{Kind: SEPARATOR},
+				{Kind: STRING, Value: "bar"},
+				{Kind: CLAUSE_CLOSE},
 			},
 		},
 	}
@@ -988,180 +590,90 @@ func TestModifierParsing(test *testing.T) {
 			Name:  "Numeric PLUS",
 			Input: "1 + 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "+",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric MINUS",
 			Input: "1 - 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "-",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "-"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric MULTIPLY",
 			Input: "1 * 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "*",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "*"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric DIVIDE",
 			Input: "1 / 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "/",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "/"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric MODULUS",
 			Input: "1 % 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "%",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "%"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric BITWISE_AND",
 			Input: "1 & 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "&",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "&"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric BITWISE_OR",
 			Input: "1 | 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "|",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "|"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric BITWISE_XOR",
 			Input: "1 ^ 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "^",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "^"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric BITWISE_LSHIFT",
 			Input: "1 << 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: "<<",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "<<"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 		{
 			Name:  "Numeric BITWISE_RSHIFT",
 			Input: "1 >> 1",
 			Expected: []Token{
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
-				{
-					Kind:  MODIFIER,
-					Value: ">>",
-				},
-				{
-					Kind:  NUMERIC,
-					Value: 1.0,
-				},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: ">>"},
+				{Kind: NUMERIC, Value: 1.0},
 			},
 		},
 	}
