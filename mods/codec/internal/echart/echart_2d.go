@@ -7,6 +7,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/render"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Base2D struct {
@@ -15,9 +16,11 @@ type Base2D struct {
 	chartType string
 
 	xAxisIdx   int
-	yAxisIdx   int
 	xAxisLabel string
+	xAxisType  string
+	yAxisIdx   int
 	yAxisLabel string
+	yAxisType  string
 
 	xLabels       []any
 	lineSeries    [][]opts.LineData
@@ -30,7 +33,7 @@ type Base2D struct {
 	dataZoomEnd   float32 // 0 ~ 100 %
 
 	TimeLocation *time.Location
-	TimeFormat   string
+	Timeformat   string
 
 	markAreaNameCoord  []*MarkAreaNameCoord
 	markLineXAxisCoord []*MarkLineXAxisCoord
@@ -54,11 +57,25 @@ func (ex *Base2D) Flush(heading bool) {
 func (ex *Base2D) SetXAxis(idx int, label string, typ ...string) {
 	ex.xAxisIdx = idx
 	ex.xAxisLabel = label
+	if len(typ) > 0 {
+		ex.xAxisType = typ[0]
+	}
 }
 
 func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
 	ex.yAxisLabel = label
+	if len(typ) > 0 {
+		ex.yAxisType = typ[0]
+	}
+}
+
+func (ex *Base2D) SetTimeformat(format string) {
+	ex.Timeformat = util.GetTimeformat(format)
+}
+
+func (ex *Base2D) SetTimeLocation(tz *time.Location) {
+	ex.TimeLocation = tz
 }
 
 func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
@@ -289,7 +306,32 @@ func (ex *Base2D) AddRow(values []any) error {
 			}
 		}
 	}
-	ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
+	switch ex.xAxisType {
+	case "time":
+		var tv *time.Time
+		if t, ok := values[ex.xAxisIdx].(time.Time); ok {
+			tv = &t
+		} else {
+			if t, ok := values[ex.xAxisIdx].(*time.Time); ok {
+				tv = t
+			}
+		}
+		if ex.Timeformat != "" && tv != nil {
+			tz := ex.TimeLocation
+			if tz == nil {
+				tz = time.UTC
+			}
+			ex.xLabels = append(ex.xLabels, tv.In(tz).Format(ex.Timeformat))
+		} else {
+			ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
+		}
+	case "value":
+		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
+	case "category":
+		fallthrough
+	default:
+		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
+	}
 	seriesIdx := -1
 	for n, v := range values {
 		if n == ex.xAxisIdx {

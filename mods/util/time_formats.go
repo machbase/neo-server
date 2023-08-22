@@ -31,6 +31,9 @@ var _timeformats = map[string]string{
 	"STAMPMILLI":  "Jan _2 15:04:05.000",
 	"STAMPMICRO":  "Jan _2 15:04:05.000000",
 	"STAMPNANO":   "Jan _2 15:04:05.000000000",
+	"S_NS":        "05.999999999",
+	"S_US":        "05.999999",
+	"S_MS":        "05.999",
 }
 
 func HelpTimeformats() string {
@@ -39,6 +42,9 @@ func HelpTimeformats() string {
       us             microseconds
       ms             milliseconds
       s              seconds
+      s_ns           sec.nanoseconds
+      s_us           sec.microseconds
+      s_ms           sec.milliseconds
     abbreviations
       Default,-      2006-01-02 15:04:05.999
       Numeric        01/02 03:04:05PM '06 -0700
