@@ -6,7 +6,7 @@ on:
       - 'work/gsc'
 
 jobs:
-  windows:
+  windows-amd64:
     runs-on: [ windows-2022 ]
     steps:
       - name: Checkout
