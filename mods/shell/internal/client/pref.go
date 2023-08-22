@@ -23,7 +23,11 @@ type Pref struct {
 func PrefDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		homeDir = "."
+		if binPath, err := os.Executable(); err == nil {
+			homeDir = filepath.Dir(binPath)
+		} else {
+			homeDir = "."
+		}
 	}
 	prefDir := filepath.Join(homeDir, ".config", "machbase", "neoshell")
 	return prefDir
@@ -35,7 +39,10 @@ func LoadPref() (*Pref, error) {
 		fmt.Println(err.Error())
 		return nil, err
 	}
+	return LoadPrefDir(prefDir)
+}
 
+func LoadPrefDir(prefDir string) (*Pref, error) {
 	pref := &Pref{
 		store:     ini.New(),
 		storePath: filepath.Join(prefDir, "neoshell.ini"),
@@ -53,7 +60,6 @@ func LoadPref() (*Pref, error) {
 
 	return pref, nil
 }
-
 func (p *Pref) Save() error {
 	return p.store.WriteToFile(p.storePath)
 }
