@@ -298,14 +298,24 @@ func CheckFyne() error {
 	return nil
 }
 
+func CheckMoq() error {
+	const moqVersion = "v0.3.2"
+	const moqRepo = "github.com/matryer/moq@latest"
+	if _, err := sh.Output("moq", "-version"); err != nil {
+		err = sh.RunV("go", "install", moqRepo)
+	}
+	return nil
+}
+
 func Generate() error {
 	return sh.RunV("go", "generate", "./...")
 }
 
 func RegenMock() error {
+	mg.Deps(CheckMoq)
 	mocks := map[string]string{
 		"./mods/util/mock/database.go": "Database",
-		"./mods/util/mock/server.go":   "DatabaseClient",
+		"./mods/util/mock/server.go":   "DatabaseServer",
 		"./mods/util/mock/client.go":   "DatabaseClient",
 		"./mods/util/mock/auth.go":     "DatabaseAuth",
 		"./mods/util/mock/result.go":   "Result",
