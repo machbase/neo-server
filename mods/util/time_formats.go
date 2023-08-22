@@ -34,6 +34,9 @@ var _timeformats = map[string]string{
 	"S_NS":        "05.999999999",
 	"S_US":        "05.999999",
 	"S_MS":        "05.999",
+	"S.NS":        "05.000000000",
+	"S.US":        "05.000000",
+	"S.MS":        "05.000",
 }
 
 func HelpTimeformats() string {

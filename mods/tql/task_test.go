@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -13,7 +14,9 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/machbase/neo-server/mods/util/ssfs"
+	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,6 +72,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
+	task.SetDatabase(&mockDb)
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
 	}
@@ -128,6 +132,76 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		}
 		require.Equal(t, "", logString)
 	}
+}
+
+var mockDbResult [][]any
+var mockDbCursor = 0
+var mockDb = mock.DatabaseMock{
+	QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
+		switch sqlText {
+		case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
+			fallthrough
+		case `select time, value from example where name = 'tag1'`:
+			return &mock.RowsMock{
+				IsFetchableFunc: func() bool { return true },
+				NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
+				CloseFunc:       func() error { return nil },
+				ColumnsFunc: func() (spi.Columns, error) {
+					return []*spi.Column{
+						{Name: "time", Type: "datetime"},
+						{Name: "value", Type: "double"},
+					}, nil
+				},
+				MessageFunc: func() string { return "no rows selected." },
+				ScanFunc: func(cols ...any) error {
+					cols[0] = mockDbResult[mockDbCursor-1][0]
+					cols[1] = mockDbResult[mockDbCursor-1][1]
+					return nil
+				},
+			}, nil
+		default:
+			fmt.Println("===>", sqlText)
+			return &mock.RowsMock{
+				IsFetchableFunc: func() bool { return true },
+				NextFunc:        func() bool { return false },
+				CloseFunc:       func() error { return nil },
+			}, nil
+		}
+	},
+}
+
+func TestDBSql(t *testing.T) {
+	mockDbCursor = 0
+	mockDbResult = [][]any{
+		{1692686707380411000, 0.1},
+		{1692686708380411000, 0.2},
+	}
+	codeLines := []string{
+		`SQL("select time, value from example where name = 'tag1'")`,
+		`CSV( precision(3) )`,
+	}
+	resultLines := []string{
+		"1692686707380411000,0.100",
+		"1692686708380411000,0.200",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestDBQuery(t *testing.T) {
+	mockDbCursor = 0
+	mockDbResult = [][]any{
+		{1692686707380411000, 0.1},
+		{1692686708380411000, 0.2},
+	}
+	codeLines := []string{
+		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`CSV( precision(3) )`,
+	}
+	resultLines := []string{
+		"1692686707380411000,0.100",
+		"1692686708380411000,0.200",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {
