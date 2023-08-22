@@ -3,9 +3,8 @@
 
 package args
 
-type Service struct {
-}
+import "fmt"
 
 func doService(svc *Service) {
-	return nil
+	fmt.Println("command 'service' is only available on Windows")
 }

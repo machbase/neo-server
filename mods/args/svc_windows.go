@@ -18,10 +18,6 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-type Service struct {
-	Args []string `arg:"" optional:"" name:"ARGS" passthrough:""`
-}
-
 const svcName = "machbase-neo"
 
 func doService(sc *Service) {

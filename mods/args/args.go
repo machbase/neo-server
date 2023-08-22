@@ -119,6 +119,10 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 	return cli, nil
 }
 
+type Service struct {
+	Args []string `arg:"" optional:"" name:"ARGS" passthrough:""`
+}
+
 func parseService(cli *NeoCommand) (*NeoCommand, error) {
 	cli.Service.Args = cli.args
 	return cli, nil
