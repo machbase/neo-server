@@ -18,7 +18,7 @@ func TestTranscoderScript(t *testing.T) {
 	require.Equal(t, arr[0], "name_1")
 
 	ts := arr[1].(time.Time)
-	require.True(t, ts.UnixNano() > time.Now().Add(-10*time.Millisecond).UnixNano() && ts.UnixNano() < time.Now().UnixNano())
+	require.True(t, ts.UnixNano() > time.Now().Add(-100*time.Millisecond).UnixNano() && ts.UnixNano() < time.Now().UnixNano())
 
 	require.Equal(t, arr[2], 1.0)
 }

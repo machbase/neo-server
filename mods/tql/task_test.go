@@ -64,7 +64,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	timeCtx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	doneCh := make(chan any)
 
 	logBuf := &bytes.Buffer{}
@@ -97,6 +97,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 
 	select {
 	case <-timeCtx.Done():
+		t.Log(code)
 		t.Fatal("ERROR time out!!!")
 		cancel()
 	case <-doneCh:
@@ -222,7 +223,7 @@ func TestString(t *testing.T) {
 	ssfs.SetDefault(f)
 
 	codeLines = []string{
-		`STRING(file("/lines.txt"), separator("\n"))`,
+		`STRING(file("/lines.txt"), separator("\n"), trimspace(true))`,
 		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
@@ -58,6 +59,8 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 		switch v := arg.(type) {
 		case *separator:
 			ret.delimiter = v.c
+		case *trimspace:
+			ret.trimspace = v.flag
 		default:
 			return ErrArgs(fnName, 1, "require the separator() option")
 		}
@@ -89,10 +92,19 @@ func (x *Node) fmSeparator(c byte) *separator {
 	return &separator{c: c}
 }
 
+type trimspace struct {
+	flag bool
+}
+
+func (x *Node) fmTrimSpace(b bool) *trimspace {
+	return &trimspace{flag: b}
+}
+
 type bytesSource struct {
 	toString  bool
 	delimiter byte
 	reader    io.Reader
+	trimspace bool
 }
 
 func (src *bytesSource) gen(node *Node) {
@@ -113,8 +125,17 @@ func (src *bytesSource) gen(node *Node) {
 	for {
 		if src.toString {
 			v, err := buff.ReadString(src.delimiter)
-			for len(v) > 0 && v[len(v)-1] == src.delimiter {
-				v = v[0 : len(v)-1]
+			vlen := len(v)
+			for vlen > 0 && v[vlen-1] == src.delimiter {
+				if src.delimiter == '\n' && vlen > 1 && v[vlen-2] == '\r' {
+					v = v[0 : vlen-2]
+				} else {
+					v = v[0 : vlen-1]
+				}
+				vlen = len(v)
+			}
+			if src.trimspace {
+				v = strings.TrimSpace(v)
 			}
 			NewRecord(num, v).Tell(node.next)
 			if err != nil {
@@ -122,8 +143,14 @@ func (src *bytesSource) gen(node *Node) {
 			}
 		} else {
 			v, err := buff.ReadBytes(src.delimiter)
-			for len(v) > 0 && v[len(v)-1] == src.delimiter {
-				v = v[0 : len(v)-1]
+			vlen := len(v)
+			for vlen > 0 && v[vlen-1] == src.delimiter {
+				if src.delimiter == '\n' && vlen > 1 && v[vlen-2] == '\r' {
+					v = v[0 : vlen-2]
+				} else {
+					v = v[0 : vlen-1]
+				}
+				vlen = len(v)
 			}
 			NewRecord(num, v).Tell(node.next)
 			if err != nil {

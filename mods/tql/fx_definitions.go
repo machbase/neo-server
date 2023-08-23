@@ -96,6 +96,7 @@ var FxDefinitions = []Definition{
 	// maps.bytes
 	{"// maps.bytes", nil},
 	{"separator", defTask.fmSeparator},
+	{"trimspace", defTask.fmTrimSpace},
 	{"file", defTask.fmFile},
 	{"STRING", defTask.fmString},
 	{"BYTES", defTask.fmBytes},
