@@ -121,19 +121,6 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		if err != nil {
-			ctx.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": fmt.Sprintf("unsupproted data type tags %s", err.Error())})
-			return
-		}
-		if err != nil {
-			ctx.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": fmt.Sprintf("unsupproted data type fields %s", err.Error())})
-			return
-		}
-
 		result := do.WriteLineProtocol(svr.db, dbName, desc.Columns, measurement, fields, tags, ts)
 		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())

@@ -177,5 +177,14 @@ func TestLineprotocol(t *testing.T) {
 	expectStatus = http.StatusBadRequest
 	require.Equal(t, expectStatus, w.Code)
 
+	//wrong case - time format wrong request
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/metrics/write?db=tag&precision=ms", bytes.NewBufferString(LINEPROTOCOLDATA))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	router.ServeHTTP(w, req)
+
+	expectStatus = http.StatusBadRequest
+	require.Equal(t, expectStatus, w.Code)
+
 	return
 }
