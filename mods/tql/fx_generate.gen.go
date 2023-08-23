@@ -86,6 +86,7 @@ func NewNode(task *Task) *Node {
 		"CHART_SCATTER3D": x.gen_CHART_SCATTER3D,
 		// maps.bytes
 		"separator": x.gen_separator,
+		"trimspace": x.gen_trimspace,
 		"file":      x.gen_file,
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
@@ -1078,6 +1079,21 @@ func (x *Node) gen_separator(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmSeparator(p0)
+	return ret, nil
+}
+
+// gen_trimspace
+//
+// syntax: trimspace(bool)
+func (x *Node) gen_trimspace(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("trimspace", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "trimspace", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmTrimSpace(p0)
 	return ret, nil
 }
 
