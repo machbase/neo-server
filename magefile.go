@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	_ "github.com/magefile/mage/mage"
 	"github.com/magefile/mage/mg"
@@ -466,8 +468,15 @@ func GetVersion() error {
 	}
 
 	var lastTag *object.Tag
-	tagiter, err := repo.TagObjects()
-	err = tagiter.ForEach(func(tag *object.Tag) error {
+	tagiter, err := repo.Tags()
+	if err != nil {
+		return err
+	}
+	err = tagiter.ForEach(func(tagRef *plumbing.Reference) error {
+		tag, err := repo.TagObject(tagRef.Hash())
+		if err != nil {
+			return err
+		}
 		tagCommit, err := tag.Commit()
 		if err != nil {
 			return err
@@ -482,9 +491,6 @@ func GetVersion() error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 	lastTagCommit, err := lastTag.Commit()
 	if err != nil {
 		return err
@@ -492,19 +498,32 @@ func GetVersion() error {
 	vLastVersion = lastTag.Name
 	vLastCommit = commit.Hash.String()
 	vIsNightly = lastTagCommit.Hash.String() != vLastCommit
-	lastVer, err := semver.NewVersion(vLastVersion)
+	lastTagSemVer, err := semver.NewVersion(vLastVersion)
 	if err != nil {
 		return err
 	}
-	v2, _ := semver.NewVersion("v2.0.0")
-	if lastVer.Compare(v2) >= 0 {
-		if vIsNightly {
-			vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastVer.Major(), lastVer.Minor(), lastVer.Patch()+1)
+	v2 := semver.New(2, 0, 0, "", "")
+	if lastTagSemVer.Compare(v2) >= 0 {
+		if lastTagSemVer.Prerelease() == "" {
+			if vIsNightly {
+				vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch()+1)
+			} else {
+				vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch())
+			}
 		} else {
-			vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastVer.Major(), lastVer.Minor(), lastVer.Patch())
+			suffix := lastTagSemVer.Prerelease()
+			if vIsNightly && strings.HasPrefix(suffix, "rc") {
+				n, _ := strconv.Atoi(suffix[2:])
+				suffix = fmt.Sprintf("rc%d-snapshot", n+1)
+			}
+			vBuildVersion = fmt.Sprintf("v%d.%d.%d-%s", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch(), suffix)
 		}
 	} else {
-		vBuildVersion = "v2.0.0-snapshot"
+		if vIsNightly {
+			vBuildVersion = "v2.0.0-snapshot"
+		} else {
+			vBuildVersion = lastTag.Name
+		}
 	}
 
 	return nil
