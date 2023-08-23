@@ -27,13 +27,39 @@ var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SH
 	"DASHBOARD", "LOG", "HOME", "PLAYGROUND", "GRAPH", "FLOW", "DIAGRAM", "PLOT"}
 
 var reservedWebShellDef = map[string]*ShellDefinition{
-	SHELLID_SQL: {Type: "sql", Label: "SQL", Icon: "file-document-outline", Id: SHELLID_SQL},
-	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: SHELLID_TQL},
-	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
-	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
-	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
+	SHELLID_SQL: {Type: "sql", Label: "SQL", Icon: convShellIcon("SQL"), Id: SHELLID_SQL},
+	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: convShellIcon("TQL"), Id: SHELLID_TQL},
+	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: convShellIcon("WRK"), Id: SHELLID_WRK},
+	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: convShellIcon("TAZ"), Id: SHELLID_TAZ},
+	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: convShellIcon("SHELL"), Id: SHELLID_SHELL,
 		Attributes: &ShellAttributes{Cloneable: true},
 	},
+}
+
+func convShellIcon(name string) string {
+	switch name {
+	case "SQL", "file-document-outline":
+		return "VscFile"
+	case "TQL", "chart-scatter-plot":
+		return "VscGraphScatter"
+	case "WRK", "clipboard-text-play-outline":
+		return "VscNotebook"
+	case "TAZ", "chart-line":
+		return "VscGraphLine"
+	case "SHELL", "console":
+		return "VscTerminal"
+	// Custom shell terminals
+	case "console-network-outline":
+		return "VscWindow"
+	case "database", "database-outline":
+		return "VscDatabase"
+	case "console-line":
+		return "VscVm"
+	case "powershell":
+		return "VscTerminalPowershell"
+	default:
+		return name
+	}
 }
 
 type ShellDefinition struct {
@@ -50,7 +76,7 @@ func (def *ShellDefinition) Clone() *ShellDefinition {
 	ret := &ShellDefinition{}
 	ret.Id = def.Id
 	ret.Type = def.Type
-	ret.Icon = def.Icon
+	ret.Icon = convShellIcon(def.Icon)
 	ret.Label = def.Label
 	ret.Theme = def.Theme
 	ret.Command = def.Command

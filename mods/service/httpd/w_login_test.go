@@ -145,4 +145,15 @@ func TestLoginRoute(t *testing.T) {
 	err = dec.Decode(logoutRsp)
 	require.Nil(t, err, w.Body.String())
 	require.True(t, logoutRsp.Success, w.Body.String())
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/web/api/check", b)
+	req.Header.Set("Authorization", "Bearer "+reRsp.AccessToken)
+	router.ServeHTTP(w, req)
+	require.Equal(t, expectStatus, w.Code, w.Body.String())
+	dec = json.NewDecoder(w.Body)
+	checkRsp := &LoginCheckRsp{}
+	err = dec.Decode(checkRsp)
+	require.Nil(t, err, w.Body.String())
+	require.True(t, checkRsp.Success, w.Body.String())
 }
