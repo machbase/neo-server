@@ -355,6 +355,7 @@ func (s *svr) iterateShellDefs(cb func(*ShellDefinition) bool) error {
 		if def.Icon == "" {
 			def.Icon = "console-network-outline"
 		}
+		def.Icon = convShellIcon(def.Icon)
 		if def.Label == "" {
 			def.Label = "CUSTOM SHELL"
 		}

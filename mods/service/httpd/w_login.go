@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
@@ -56,21 +57,27 @@ type LoginReq struct {
 }
 
 type LoginRsp struct {
-	Success      bool   `json:"success"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	Reason       string `json:"reason"`
-	Elapse       string `json:"elapse"`
+	Success      bool        `json:"success"`
+	AccessToken  string      `json:"accessToken"`
+	RefreshToken string      `json:"refreshToken"`
+	Reason       string      `json:"reason"`
+	Elapse       string      `json:"elapse"`
+	ServerInfo   *ServerInfo `json:"server,omitempty"`
 }
 
 type LoginCheckRsp struct {
 	Success        bool                     `json:"success"`
 	Reason         string                   `json:"reason"`
 	Elapse         string                   `json:"elapse"`
+	ServerInfo     *ServerInfo              `json:"server,omitempty"`
 	ExperimentMode bool                     `json:"experimentMode"`
 	Recents        []WebReferenceGroup      `json:"recents,omitempty"`
 	References     []WebReferenceGroup      `json:"references,omitempty"`
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
+}
+
+type ServerInfo struct {
+	Version string `json:"version"`
 }
 
 type WebReferenceGroup struct {
@@ -88,8 +95,9 @@ type ReferenceItem struct {
 func (svr *httpd) handleLogin(ctx *gin.Context) {
 	var req = &LoginReq{}
 	var rsp = &LoginRsp{
-		Success: false,
-		Reason:  "not specified",
+		Success:    false,
+		Reason:     "not specified",
+		ServerInfo: svr.getServerInfo(),
 	}
 
 	tick := time.Now()
@@ -169,8 +177,9 @@ type ReLoginRsp LoginRsp
 func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	var req ReLoginReq
 	var rsp = &ReLoginRsp{
-		Success: false,
-		Reason:  "not specified",
+		Success:    false,
+		Reason:     "not specified",
+		ServerInfo: svr.getServerInfo(),
 	}
 
 	tick := time.Now()
@@ -300,6 +309,7 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		Success: true,
 		Reason:  "success",
 	}
+	options.ServerInfo = svr.getServerInfo()
 	if svr.experimentModeProvider != nil {
 		options.ExperimentMode = svr.experimentModeProvider()
 	}
@@ -315,4 +325,10 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	options.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, options)
+}
+
+func (svr *httpd) getServerInfo() *ServerInfo {
+	return &ServerInfo{
+		Version: mods.DisplayVersion(),
+	}
 }
