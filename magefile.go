@@ -496,10 +496,15 @@ func GetVersion() error {
 	if err != nil {
 		return err
 	}
-	if vIsNightly {
-		vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastVer.Major(), lastVer.Minor(), lastVer.Patch()+1)
+	v2, _ := semver.NewVersion("v2.0.0")
+	if lastVer.Compare(v2) >= 0 {
+		if vIsNightly {
+			vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastVer.Major(), lastVer.Minor(), lastVer.Patch()+1)
+		} else {
+			vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastVer.Major(), lastVer.Minor(), lastVer.Patch())
+		}
 	} else {
-		vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastVer.Major(), lastVer.Minor(), lastVer.Patch())
+		vBuildVersion = "v2.0.0-snapshot"
 	}
 
 	return nil
