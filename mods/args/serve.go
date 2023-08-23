@@ -36,6 +36,8 @@ func Main() int {
 		doServe()
 	case "shell":
 		shell.Shell(&cli.Shell)
+	case "service":
+		doService(&cli.Service)
 	case "help <command> <sub-command>":
 	}
 	return 0
