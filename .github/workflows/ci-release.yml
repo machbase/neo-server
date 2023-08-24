@@ -23,61 +23,61 @@ jobs:
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
             with:
-                repo_token: ${{ secrets.GIT_PASS }}
-                file: packages/*neo*-v*.zip
-                repo_name: machbase/neo-server
-                prerelease: true
-                tag: ${{ github.ref }}
-                overwrite: true
-                file_glob: true
+              repo_token: ${{ secrets.GIT_PASS }}
+              file: packages/*neo*-v*.zip
+              repo_name: machbase/neo-server
+              prerelease: true
+              tag: ${{ github.ref }}
+              overwrite: true
+              file_glob: true
     darwin-amd64:
         runs-on: [ macos-12 ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
             with:
-                fetch-depth: 0
+              fetch-depth: 0
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-                go-version: '1.20.7'
+              go-version: '1.20.7'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
           - name: Release files
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
             with:
-                repo_token: ${{ secrets.GIT_PASS }}
-                file: packages/*neo*-v*.zip
-                repo_name: machbase/neo-server
-                prerelease: true
-                tag: ${{ github.ref }}
-                overwrite: true
-                file_glob: true
+              repo_token: ${{ secrets.GIT_PASS }}
+              file: packages/*neo*-v*.zip
+              repo_name: machbase/neo-server
+              prerelease: true
+              tag: ${{ github.ref }}
+              overwrite: true
+              file_glob: true
     linux-amd64:
         runs-on: [ self-hosted, linux, X64, ubuntu18 ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
             with:
-                fetch-depth: 0
+              fetch-depth: 0
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-                go-version: '1.20.7'
+              go-version: '1.20.7'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo
           - name: Release files
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
             with:
-                repo_token: ${{ secrets.GIT_PASS }}
-                file: packages/machbase-neo-v*.zip
-                repo_name: machbase/neo-server
-                prerelease: true
-                tag: ${{ github.ref }}
-                overwrite: true
-                file_glob: true
+              repo_token: ${{ secrets.GIT_PASS }}
+              file: packages/machbase-neo-v*.zip
+              repo_name: machbase/neo-server
+              prerelease: true
+              tag: ${{ github.ref }}
+              overwrite: true
+              file_glob: true
     linux-arm64:
         runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
         steps:
@@ -108,27 +108,27 @@ jobs:
           - name: Checkout
             uses: actions/checkout@v3
             with:
-                fetch-depth: 0
+              fetch-depth: 0
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-                go-version: '1.20.7'
+              go-version: '1.20.7'
           - uses: goto-bus-stop/setup-zig@v2
             with:
-                version: 0.11.0
+              version: 0.11.0
           - name: Build
             run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
           - name: Release files
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
             with:
-                repo_token: ${{ secrets.GIT_PASS }}
-                file: packages/machbase-neo-v*.zip
-                repo_name: machbase/neo-server
-                prerelease: true
-                tag: ${{ github.ref }}
-                overwrite: true
-                file_glob: true
+              repo_token: ${{ secrets.GIT_PASS }}
+              file: packages/machbase-neo-v*.zip
+              repo_name: machbase/neo-server
+              prerelease: true
+              tag: ${{ github.ref }}
+              overwrite: true
+              file_glob: true
 
     windows-amd64:
         runs-on: [ windows-2022 ]
@@ -137,7 +137,6 @@ jobs:
             uses: actions/checkout@v3
             with:
               fetch-depth: 0
-              ref: main
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
@@ -177,20 +176,13 @@ jobs:
           uses: actions/checkout@v3
           with:
             fetch-depth: 0
-
         - name: Set up go compiler
           uses: actions/setup-go@v3
           with:
             go-version: '1.20.7'
-
-        - name: Get Next Version
-          id: get_version
-          run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
-          shell: bash
-
         - name: Package for arm64
           run: |
-            go run mage.go test machbase-neo && \
+            go run mage.go machbase-neo && \
             scp tmp/machbase-neo ${{ secrets.DOCKER_HOST }}:/home/ubuntu/docker-build/arm64/
     docker-amd64:
       runs-on: [ self-hosted, linux, X64, ubuntu18 ]
@@ -200,45 +192,46 @@ jobs:
           uses: actions/checkout@v3
           with:
             fetch-depth: 0
-  
         - name: Set up go compiler
           uses: actions/setup-go@v3
           with:
             go-version: '1.20.7'
-        
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v2
-        
         - name: Docker version
           run: docker -v
-  
         - name: Get Next Version
           id: get_version
           run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
           shell: bash
-  
-        - name: Neo Test
-          run: make test
-  
         - name: Package for amd64
           run: |
-            go run mage.go test machbase-neo && \
+            go run mage.go machbase-neo && \
             mv tmp/machbase-neo /home/ubuntu/docker-build/amd64/
-        
         - name: Docker Login
           uses: docker/login-action@v2
           with:
-              username: ${{ secrets.DOCKER_USERNAME }}
-              password: ${{ secrets.DOCKER_PASSWORD }}
-        
-        - name: Docker Build and Push
+            username: ${{ secrets.DOCKER_USERNAME }}
+            password: ${{ secrets.DOCKER_PASSWORD }}
+        - name: Docker Build and Push (Latest)
           uses: docker/build-push-action@v4
+          if: (!contains(github.ref, 'snapshot') && !contains(github.ref, 'rc'))
           with:
-              context: /home/ubuntu/docker-build
-              file: ./scripts/Dockerfile
-              platforms: linux/arm64,linux/amd64
-              push: true
-              tags: |
-                machbase/machbase-neo:${{ steps.get_version.outputs.ver }}
-                machbase/machbase-neo:latest
-          
+            context: /home/ubuntu/docker-build
+            file: ./scripts/Dockerfile
+            platforms: linux/arm64,linux/amd64
+            push: true
+            tags: |
+              machbase/machbase-neo:${{ steps.get_version.outputs.ver }}
+              machbase/machbase-neo:latest
+        - name: Docker Build and Push (Snapshot)
+          uses: docker/build-push-action@v4
+          if: (contains(github.ref, 'snapshot') || contains(github.ref, 'rc'))
+          with:
+            context: /home/ubuntu/docker-build
+            file: ./scripts/Dockerfile
+            platforms: linux/arm64,linux/amd64
+            push: true
+            tags: |
+              machbase/machbase-neo:${{ steps.get_version.outputs.ver }}
+              
