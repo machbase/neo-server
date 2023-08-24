@@ -325,13 +325,13 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "machbase.conf")
 	}
 
-	initOption := mach.OPT_SIGHANDLER_DISABLE // default, it is required to shutdown by SIGTERM
+	initOption := mach.OPT_SIGHANDLER_OFF // default, it is required to shutdown by SIGTERM
 	if s.conf.EnableMachbaseSigHandler {
 		// internal use only, for debuging call stack
-		initOption = mach.OPT_NONE
+		initOption = mach.OPT_SIGHANDLER_ON
 	}
 	s.log.Infof("apply machbase init option: %d", initOption)
-	if err := mach.InitializeOption(homepath, initOption); err != nil {
+	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, initOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {

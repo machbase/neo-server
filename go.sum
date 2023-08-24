@@ -370,8 +370,8 @@ github.com/leodido/go-urn v1.2.4/go.mod h1:7ZrI8mTSeBSHl/UaRyKQW1qZeMgak41ANeCNa
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/lucor/goinfo v0.0.0-20210802170112-c078a2b0f08b/go.mod h1:PRq09yoB+Q2OJReAmwzKivcYyremnibWGbK7WfftHzc=
-github.com/machbase/neo-engine v1.1.0 h1:piob+tblnijvALYoULADFjdYJrA4LCKA/7Wmoh8gAcs=
-github.com/machbase/neo-engine v1.1.0/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
+github.com/machbase/neo-engine v1.1.2 h1:mxNQz6TbzlIEoyhtKDpk9LHfZkJ+uVmeJY50ZUQrM/U=
+github.com/machbase/neo-engine v1.1.2/go.mod h1:NNgFQE64t8yadocjrOLKfR0x7nEujFZ8NBgupwmNklU=
 github.com/machbase/neo-grpc v1.0.0 h1:rpr15fSZWncnsADZjJR1YmnXAg8lxVbUp2kUcpgYONY=
 github.com/machbase/neo-grpc v1.0.0/go.mod h1:4ofWPImwWweiI2FOPztOSOnl7Ab8zyiduB+9Q1gblLw=
 github.com/machbase/neo-spi v1.4.0 h1:rkQVNWBSF42/6fnZGTCrgBbbFHHihPA5h/Y+ndGaodk=
