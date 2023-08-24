@@ -329,7 +329,9 @@ func (cli *client) Process(line string) {
 			DisableAutoSaveHistory: true,
 			InterruptPrompt:        "^C",
 		})
-		defer rl.Close()
+		if cli.interactive {
+			defer rl.Close()
+		}
 		actCtx.ReadLine = rl
 	}
 
