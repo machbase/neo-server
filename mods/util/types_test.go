@@ -8,6 +8,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestTimeFormatter(t *testing.T) {
+	ts := time.Unix(0, 1692907084548634123)
+
+	// Format
+	tf := util.NewTimeFormatter(util.Timeformat("ns"), util.TimeLocation(time.UTC))
+	result := tf.Format(ts)
+	require.Equal(t, "1692907084548634123", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("us"), util.TimeLocation(time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "1692907084548634", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("ms"), util.TimeLocation(time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "1692907084548", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("s"), util.TimeLocation(time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "1692907084", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeLocation(nil))
+	result = tf.Format(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeZoneFallback("Wrong TZ", time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeZoneFallback("KST", time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "2023-08-25 04:58:04.548", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("RFC822"), util.TimeZoneFallback("KST", time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "25 Aug 23 04:58 KST", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("RFC3339"), util.TimeZoneFallback("KST", time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "2023-08-25T04:58:04+09:00", result)
+
+	tf = util.NewTimeFormatter(util.Timeformat("RFC3339NANO"), util.TimeZoneFallback("KST", time.UTC))
+	result = tf.Format(ts)
+	require.Equal(t, "2023-08-25T04:58:04.548634123+09:00", result)
+
+	// EpochOrFormat
+	tf = util.NewTimeFormatter(util.Timeformat("ns"), util.TimeLocation(time.UTC))
+	obj := tf.FormatEpoch(ts)
+	require.Equal(t, int64(1692907084548634123), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("us"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, int64(1692907084548634), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("ms"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, int64(1692907084548), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("s"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, int64(1692907084), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeLocation(nil))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548", obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeZoneFallback("Wrong TZ", time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548", obj)
+}
+
 func TestToFloat32(t *testing.T) {
 	testOne := func(o any, expect float32, expectErr string) {
 		ret, err := util.ToFloat32(o)

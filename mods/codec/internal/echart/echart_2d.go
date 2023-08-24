@@ -32,8 +32,7 @@ type Base2D struct {
 	dataZoomStart float32 // 0 ~ 100 %
 	dataZoomEnd   float32 // 0 ~ 100 %
 
-	TimeLocation *time.Location
-	Timeformat   string
+	timeformatter *util.TimeFormatter
 
 	markAreaNameCoord  []*MarkAreaNameCoord
 	markLineXAxisCoord []*MarkLineXAxisCoord
@@ -71,11 +70,17 @@ func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 }
 
 func (ex *Base2D) SetTimeformat(format string) {
-	ex.Timeformat = util.GetTimeformat(format)
+	if ex.timeformatter == nil {
+		ex.timeformatter = util.NewTimeFormatter()
+	}
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Base2D) SetTimeLocation(tz *time.Location) {
-	ex.TimeLocation = tz
+	if ex.timeformatter == nil {
+		ex.timeformatter = util.NewTimeFormatter()
+	}
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
@@ -316,12 +321,9 @@ func (ex *Base2D) AddRow(values []any) error {
 				tv = t
 			}
 		}
-		if ex.Timeformat != "" && tv != nil {
-			tz := ex.TimeLocation
-			if tz == nil {
-				tz = time.UTC
-			}
-			ex.xLabels = append(ex.xLabels, tv.In(tz).Format(ex.Timeformat))
+		if ex.timeformatter != nil && tv != nil {
+			str := ex.timeformatter.Format(*tv)
+			ex.xLabels = append(ex.xLabels, str)
 		} else {
 			ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
 		}

@@ -127,7 +127,9 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		require.Nil(t, err)
 		result := w.String()
 		if matchPrefix {
-			require.True(t, strings.HasPrefix(strings.TrimSpace(result), strings.Join(expect, "\n")))
+			strexpect := strings.Join(expect, "\n")
+			strresult := strings.TrimSpace(result)[0:len(strexpect)]
+			require.Equal(t, strexpect, strresult)
 		} else {
 			require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
 		}

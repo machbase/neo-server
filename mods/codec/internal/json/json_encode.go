@@ -9,18 +9,18 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
 	tick time.Time
 	nrow int
 
-	TimeLocation *time.Location
-	output       spec.OutputStream
-	Rownum       bool
-	Heading      bool
-	timeformat   string
-	precision    int
+	output        spec.OutputStream
+	Rownum        bool
+	Heading       bool
+	precision     int
+	timeformatter *util.TimeFormatter
 
 	colNames []string
 	colTypes []string
@@ -30,7 +30,10 @@ type Exporter struct {
 }
 
 func NewEncoder() *Exporter {
-	return &Exporter{tick: time.Now()}
+	return &Exporter{
+		tick:          time.Now(),
+		timeformatter: util.NewTimeFormatter(),
+	}
 }
 
 func (ex *Exporter) ContentType() string {
@@ -42,11 +45,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformat = format
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.TimeLocation = tz
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -123,26 +126,6 @@ func (ex *Exporter) Flush(heading bool) {
 	ex.output.Flush()
 }
 
-func (ex *Exporter) encodeTime(t time.Time) any {
-	switch ex.timeformat {
-	case "":
-		fallthrough
-	case "ns":
-		return t.UnixNano()
-	case "ms":
-		return t.UnixMilli()
-	case "us":
-		return t.UnixMicro()
-	case "s":
-		return t.Unix()
-	default:
-		if ex.TimeLocation == nil {
-			ex.TimeLocation = time.UTC
-		}
-		return t.In(ex.TimeLocation).Format(ex.timeformat)
-	}
-}
-
 func (ex *Exporter) encodeFloat64(v float64) any {
 	if math.IsNaN(v) {
 		return "NaN"
@@ -157,17 +140,13 @@ func (ex *Exporter) encodeFloat64(v float64) any {
 func (ex *Exporter) AddRow(source []any) error {
 	ex.nrow++
 
-	if ex.TimeLocation == nil {
-		ex.TimeLocation = time.UTC
-	}
-
 	values := make([]any, len(source))
 	for i, field := range source {
 		switch v := field.(type) {
 		case *time.Time:
-			values[i] = ex.encodeTime(*v)
+			values[i] = ex.timeformatter.FormatEpoch(*v)
 		case time.Time:
-			values[i] = ex.encodeTime(v)
+			values[i] = ex.timeformatter.FormatEpoch(v)
 		case *float64:
 			values[i] = ex.encodeFloat64(*v)
 		case float64:
@@ -210,7 +189,7 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullTime:
 			if v.Valid {
-				values[i] = ex.encodeTime(v.Time)
+				values[i] = ex.timeformatter.Format(v.Time)
 			}
 		default:
 			values[i] = field

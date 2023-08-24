@@ -48,6 +48,9 @@ func HelpTimeformats() string {
       s_ns           sec.nanoseconds
       s_us           sec.microseconds
       s_ms           sec.milliseconds
+      s.ns           sec.nanoseconds (zero padding)
+      s.us           sec.microseconds (zero padding)
+      s.ms           sec.milliseconds (zero padding)
     abbreviations
       Default,-      2006-01-02 15:04:05.999
       Numeric        01/02 03:04:05PM '06 -0700

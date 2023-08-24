@@ -16,6 +16,88 @@ func ErrIncompatible(dstType string, src any) error {
 
 var StandardTimeNow func() time.Time = time.Now
 
+type TimeFormatter struct {
+	format   string
+	location *time.Location
+}
+
+type TimeFormatterOption func(tf *TimeFormatter)
+
+func NewTimeFormatter(opts ...TimeFormatterOption) *TimeFormatter {
+	tf := &TimeFormatter{
+		format:   "ns",
+		location: time.UTC,
+	}
+	for _, o := range opts {
+		o(tf)
+	}
+	return tf
+}
+
+func Timeformat(f string) TimeFormatterOption {
+	return func(tf *TimeFormatter) {
+		tf.format = f
+	}
+}
+
+func TimeLocation(tz *time.Location) TimeFormatterOption {
+	return func(tf *TimeFormatter) {
+		tf.location = tz
+	}
+}
+
+func TimeZoneFallback(tz string, fallback *time.Location) TimeFormatterOption {
+	if loc, err := GetTimeLocation(tz); err == nil {
+		return TimeLocation(loc)
+	} else {
+		return TimeLocation(fallback)
+	}
+}
+
+func (tf *TimeFormatter) Set(opt TimeFormatterOption) {
+	opt(tf)
+}
+
+func (tf *TimeFormatter) Format(ts time.Time) string {
+	switch tf.format {
+	case "ns":
+		return strconv.FormatInt(ts.UnixNano(), 10)
+	case "us":
+		return strconv.FormatInt(ts.UnixMicro(), 10)
+	case "ms":
+		return strconv.FormatInt(ts.UnixMilli(), 10)
+	case "s":
+		return strconv.FormatInt(ts.Unix(), 10)
+	default:
+		format := GetTimeformat(tf.format)
+		if tf.location == nil {
+			return ts.In(time.UTC).Format(format)
+		} else {
+			return ts.In(tf.location).Format(format)
+		}
+	}
+}
+
+func (tf *TimeFormatter) FormatEpoch(ts time.Time) any {
+	switch tf.format {
+	case "ns":
+		return ts.UnixNano()
+	case "us":
+		return ts.UnixMicro()
+	case "ms":
+		return ts.UnixMilli()
+	case "s":
+		return ts.Unix()
+	default:
+		format := GetTimeformat(tf.format)
+		if tf.location == nil {
+			return ts.In(time.UTC).Format(format)
+		} else {
+			return ts.In(tf.location).Format(format)
+		}
+	}
+}
+
 // ToTime converts to time.Time
 //
 // ex) "now" converts into current time,

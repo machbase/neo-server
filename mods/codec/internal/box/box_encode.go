@@ -18,12 +18,11 @@ type Exporter struct {
 	style           string
 	separateColumns bool
 	drawBorder      bool
-	timeLocation    *time.Location
 	output          spec.OutputStream
 	showRownum      bool
 	heading         bool
-	timeformat      string
 	precision       int
+	timeformatter   *util.TimeFormatter
 
 	colNames []string
 }
@@ -34,6 +33,7 @@ func NewEncoder() *Exporter {
 		separateColumns: true,
 		drawBorder:      true,
 		precision:       -1,
+		timeformatter:   util.NewTimeFormatter(),
 	}
 }
 
@@ -46,11 +46,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformat = format
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.timeLocation = tz
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -150,39 +150,9 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			switch ex.timeformat {
-			case "ns":
-				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
-			case "ms":
-				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
-			case "us":
-				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
-			case "s":
-				cols[i] = strconv.FormatInt(v.Unix(), 10)
-			default:
-				if ex.timeLocation == nil {
-					ex.timeLocation = time.UTC
-				}
-				format := util.GetTimeformat(ex.timeformat)
-				cols[i] = v.In(ex.timeLocation).Format(format)
-			}
+			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:
-			switch ex.timeformat {
-			case "ns":
-				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
-			case "ms":
-				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
-			case "us":
-				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
-			case "s":
-				cols[i] = strconv.FormatInt(v.Unix(), 10)
-			default:
-				if ex.timeLocation == nil {
-					ex.timeLocation = time.UTC
-				}
-				format := util.GetTimeformat(ex.timeformat)
-				cols[i] = v.In(ex.timeLocation).Format(format)
-			}
+			cols[i] = ex.timeformatter.Format(v)
 		case *float32:
 			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
