@@ -502,28 +502,20 @@ func GetVersion() error {
 	if err != nil {
 		return err
 	}
-	v2 := semver.New(2, 0, 0, "", "")
-	if lastTagSemVer.Compare(v2) >= 0 {
-		if lastTagSemVer.Prerelease() == "" {
-			if vIsNightly {
-				vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch()+1)
-			} else {
-				vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch())
-			}
+
+	if lastTagSemVer.Prerelease() == "" {
+		if vIsNightly {
+			vBuildVersion = fmt.Sprintf("v%d.%d.%d-snapshot", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch()+1)
 		} else {
-			suffix := lastTagSemVer.Prerelease()
-			if vIsNightly && strings.HasPrefix(suffix, "rc") {
-				n, _ := strconv.Atoi(suffix[2:])
-				suffix = fmt.Sprintf("rc%d-snapshot", n+1)
-			}
-			vBuildVersion = fmt.Sprintf("v%d.%d.%d-%s", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch(), suffix)
+			vBuildVersion = fmt.Sprintf("v%d.%d.%d", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch())
 		}
 	} else {
-		if vIsNightly {
-			vBuildVersion = "v2.0.0-snapshot"
-		} else {
-			vBuildVersion = lastTag.Name
+		suffix := lastTagSemVer.Prerelease()
+		if vIsNightly && strings.HasPrefix(suffix, "rc") {
+			n, _ := strconv.Atoi(suffix[2:])
+			suffix = fmt.Sprintf("rc%d-snapshot", n+1)
 		}
+		vBuildVersion = fmt.Sprintf("v%d.%d.%d-%s", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch(), suffix)
 	}
 
 	return nil
