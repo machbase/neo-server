@@ -19,7 +19,7 @@ SCRIPT({
 })
 CHART_LINE3D(
   // chart size in HTML syntax
-  size('1000px', '600px'),
+  size('800px', '600px'),
   // width, height, depth grids in percentage
   gridSize(100,50,100),
   lineWidth(5), visualMap(-0.1, 1),
