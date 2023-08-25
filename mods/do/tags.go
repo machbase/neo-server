@@ -17,8 +17,9 @@ func Tags(db spi.Database, table string, callback func(string, error) bool) {
 	defer rows.Close()
 
 	for rows.Next() {
+		id := 0
 		name := ""
-		err := rows.Scan(&name)
+		err := rows.Scan(&id, &name)
 		if err != nil {
 			callback("", err)
 			return
