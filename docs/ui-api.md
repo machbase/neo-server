@@ -1,7 +1,11 @@
 
-# Web UI API
+# User Interface API
+
+All user interface API are authorizing client with JWT based authentication.
 
 ## LOGIN
+
+### POST /web/api/login
 
 - `LoginReq`
 ```json
@@ -19,14 +23,46 @@
     "refreshToken": "jwt refresh token",
     "reason": "string",
     "elapse": "string",
+    "server": {
+        "version": "v2.0.0"
+    }
 }
 ```
 
-### POST /web/api/login
-
 ### POST /web/api/relogin
 
+- `ReLoginReq`
+
+```json
+{
+    "refreshToken": "refresh token that was issued by 'login'"
+}
+```
+
+- `ReLoginRsp`
+
+```json
+{
+    "success": true,
+    "accessToken": "jwt access token",
+    "refreshToken": "jwt refresh token",
+    "reason": "string",
+    "elapse": "string",
+    "server": {
+        "version": "v2.0.0"
+    }
+}
+```
+
 ### POST /web/api/logout
+
+- `LogoutReq`:
+
+```json
+{
+    "refreshToken": "refresh token that was issued by 'login'"
+}
+```
 
 ### GET /web/api/check
 
@@ -95,9 +131,9 @@
 
 ## SHELL & TERMINAL
 
-### GET /web/api/term/:term_id/data
+### ws:///web/api/term/:term_id/data
 
-Web socket
+Web socket for terminal
 
 ### POST /web/api/term/:term_id/windowsize
 
@@ -168,7 +204,7 @@ refer the section of 'Content-types of TQL' for the response
 
 Post markdown as content payload, sever will response the rendering result in xhtml
 
-## ANY /web/machbase
+## GET,POST /web/machbase
 
 It works as same as `/db/query` API, the difference is the way of authentication.
 The `/db/query` authorize the client by API Token (for client applications).
@@ -238,7 +274,7 @@ Returns the stat of tag of the table
 }
 ```
 
-## ANY /web/api/files/*path
+## GET,POST /web/api/files/*path
 
 - file types and content-type
 
@@ -327,7 +363,4 @@ Install license file
 
 ## Deprecated
 
-- GET /web/api/chart
-
-- POST /web/api/chart
-
+- GET,POST /web/api/chart

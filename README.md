@@ -14,7 +14,8 @@ API and Interfaces
 - [x] MQTT : Sensors write data via MQTT protocol
 - [x] gRPC : The first class API for extensions
 - [x] SSH : Command line interface for human and batch process
-- [x] WEB UI : GUI
+- [x] WEB UI (Batteries included)
+- [x] [UI API](./docs/ui-api.md) to build custom UI (Batteries replaceable)
 
 Bridges integrated with external systems
 
@@ -50,7 +51,8 @@ https://hub.docker.com/r/machbase/machbase-neo
 
 ## Build from sources
 
-- Install Go 1.20 or higher 
+- Install Go 1.20 or higher
+- Require C compiler and linker (e.g: gcc) 
 - Checkout machbase/neo-server
 - Execute `go run mage.go machbase-neo`
 - Find the executable binary `./tmp/machbase-neo`
