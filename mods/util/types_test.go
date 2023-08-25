@@ -76,6 +76,23 @@ func TestTimeFormatter(t *testing.T) {
 	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeZoneFallback("Wrong TZ", time.UTC))
 	obj = tf.FormatEpoch(ts)
 	require.Equal(t, "2023-08-24 19:58:04.548", obj)
+
+	// Sql Timeformat
+	sqltf := util.ToTimeformatSql("YYYY-MM-DD HH24:MI:SS.nnnnnnnnn")
+	require.Equal(t, "2006-01-02 15:04:05.999999999", sqltf)
+
+	sqltf = util.ToTimeformatSql("YYYY-MM-DD HH24:MI:SS.mmmuuunnn")
+	require.Equal(t, "2006-01-02 15:04:05.999999999", sqltf)
+
+	tf = util.NewTimeFormatter(util.Timeformat(sqltf), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548634123", obj)
+
+	// Ansi Timeformat
+	ansitf := util.ToTimeformatAnsi("yyyy-mm-dd hh:nn:ss.fffffffff")
+	tf = util.NewTimeFormatter(util.Timeformat(ansitf), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548634123", obj)
 }
 
 func TestToFloat32(t *testing.T) {

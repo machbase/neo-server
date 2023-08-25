@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
@@ -97,4 +98,12 @@ func (x *Node) fmTZ(timezone string) (*time.Location, error) {
 	} else {
 		return timeLocation, nil
 	}
+}
+
+func (x *Node) fmSqlTimeformat(format string) opts.Option {
+	return opts.Timeformat(util.ToTimeformatSql(format))
+}
+
+func (x *Node) fmAnsiTimeformat(format string) opts.Option {
+	return opts.Timeformat(util.ToTimeformatAnsi(format))
 }

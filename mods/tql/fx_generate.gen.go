@@ -38,11 +38,13 @@ func NewNode(task *Task) *Node {
 		"linspace50": x.gen_linspace50,
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
-		"time":      x.gen_time,
-		"parseTime": x.gen_parseTime,
-		"timeAdd":   x.gen_timeAdd,
-		"roundTime": x.gen_roundTime,
-		"range":     x.gen_range,
+		"time":           x.gen_time,
+		"parseTime":      x.gen_parseTime,
+		"timeAdd":        x.gen_timeAdd,
+		"roundTime":      x.gen_roundTime,
+		"range":          x.gen_range,
+		"sqlTimeformat":  x.gen_sqlTimeformat,
+		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.monad
 		"TAKE":       x.gen_TAKE,
 		"DROP":       x.gen_DROP,
@@ -500,6 +502,36 @@ func (x *Node) gen_range(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	return x.fmTimeRange(p0, p1, p2...)
+}
+
+// gen_sqlTimeformat
+//
+// syntax: sqlTimeformat(string)
+func (x *Node) gen_sqlTimeformat(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("sqlTimeformat", 1, len(args))
+	}
+	p0, err := convString(args, 0, "sqlTimeformat", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmSqlTimeformat(p0)
+	return ret, nil
+}
+
+// gen_ansiTimeformat
+//
+// syntax: ansiTimeformat(string)
+func (x *Node) gen_ansiTimeformat(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("ansiTimeformat", 1, len(args))
+	}
+	p0, err := convString(args, 0, "ansiTimeformat", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmAnsiTimeformat(p0)
+	return ret, nil
 }
 
 // gen_TAKE
