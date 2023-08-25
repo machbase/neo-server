@@ -40,6 +40,44 @@ func Timeformat(f string) TimeFormatterOption {
 	}
 }
 
+func TimeformatSql(format string) TimeFormatterOption {
+	return func(tf *TimeFormatter) {
+		tf.format = ToTimeformatSql(format)
+	}
+}
+
+func ToTimeformatSql(format string) string {
+	format = strings.ReplaceAll(format, "YYYY", "2006")
+	format = strings.ReplaceAll(format, "YY", "06")
+	format = strings.ReplaceAll(format, "MM", "01")
+	format = strings.ReplaceAll(format, "MMM", "Mon")
+	format = strings.ReplaceAll(format, "DAY", "EEE")
+	format = strings.ReplaceAll(format, "DD", "02")
+	format = strings.ReplaceAll(format, "HH24", "15")
+	format = strings.ReplaceAll(format, "HH12", "03")
+	format = strings.ReplaceAll(format, "HH", "3")
+	format = strings.ReplaceAll(format, "MI", "04")
+	format = strings.ReplaceAll(format, "SS", "05")
+	format = strings.ReplaceAll(format, "AM", "a")
+	format = strings.ReplaceAll(format, "mmm", "999")
+	format = strings.ReplaceAll(format, "uuu", "999")
+	format = strings.ReplaceAll(format, "n", "9")
+	return format
+}
+
+func ToTimeformatAnsi(format string) string {
+	format = strings.ReplaceAll(format, "yyyy", "2006")
+	format = strings.ReplaceAll(format, "mm", "01")
+	format = strings.ReplaceAll(format, "dd", "02")
+	format = strings.ReplaceAll(format, "hh", "15")
+	format = strings.ReplaceAll(format, "th", "03")
+	format = strings.ReplaceAll(format, "nn", "04")
+	format = strings.ReplaceAll(format, "tm", "04")
+	format = strings.ReplaceAll(format, "ss", "05")
+	format = strings.ReplaceAll(format, "f", "9")
+	return format
+}
+
 func TimeLocation(tz *time.Location) TimeFormatterOption {
 	return func(tf *TimeFormatter) {
 		tf.location = tz

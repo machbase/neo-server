@@ -46,6 +46,8 @@ var FxDefinitions = []Definition{
 	{"timeAdd", defTask.fmTimeAdd},
 	{"roundTime", defTask.fmRoundTime},
 	{"range", defTask.fmTimeRange},
+	{"sqlTimeformat", defTask.fmSqlTimeformat},
+	{"ansiTimeformat", defTask.fmAnsiTimeformat},
 	// maps.monad
 	{"// maps.monad", nil},
 	{"TAKE", defTask.fmTake},
