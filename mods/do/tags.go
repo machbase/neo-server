@@ -8,7 +8,7 @@ import (
 )
 
 func Tags(db spi.Database, table string, callback func(string, error) bool) {
-	sqlText := fmt.Sprintf("select * from _%s_META", strings.ToUpper(table))
+	sqlText := fmt.Sprintf(`select * from _%s_META`, strings.ToUpper(table))
 	rows, err := db.Query(sqlText)
 	if err != nil {
 		callback("", err)
