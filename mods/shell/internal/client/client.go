@@ -170,7 +170,8 @@ func (cli *client) checkDatabase() error {
 	}
 
 	// check connectivity to server
-	serverInfo, err := machcli.GetServerInfo()
+	aux := machcli.(spi.DatabaseAux)
+	serverInfo, err := aux.GetServerInfo()
 	if err != nil {
 		return err
 	}

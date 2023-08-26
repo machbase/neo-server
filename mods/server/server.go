@@ -27,6 +27,7 @@ import (
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/scheduler"
@@ -350,6 +351,11 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// leak detector
+	leakDetector := leak.NewDetector(leak.Timer(10 * time.Second))
+	mach.DefaultDetective = leakDetector
+
+	// create database instance
 	s.db, err = spi.NewDatabase(mach.FactoryName)
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
@@ -441,6 +447,7 @@ func (s *svr) Start() error {
 			grpcd.OptionManagementServer(s),
 			grpcd.OptionBridgeServer(s.bridgeSvc),
 			grpcd.OptionScheduleServer(s.schedSvc),
+			grpcd.OptionLeakDetector(leakDetector),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -542,8 +549,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if enabledWebUI {
-		svcPorts, err := s.db.GetServicePorts("http")
+	if aux, ok := s.db.(spi.DatabaseAux); ok && enabledWebUI {
+		svcPorts, err := aux.GetServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
 		}
