@@ -104,6 +104,8 @@ func doShow(ctx *client.ActionContext) {
 		doShowInfo(ctx)
 	case "inflights":
 		doShowInflights(ctx)
+	case "postflights":
+		doShowPostflights(ctx)
 	case "ports":
 		doShowPorts(ctx)
 	case "users":
@@ -584,6 +586,31 @@ func doShowInflights(ctx *client.ActionContext) {
 			sqlText = sqlText[0:40] + "..."
 		}
 		box.AppendRow(itm.Id, itm.Type, itm.Elapsed.String(), sqlText)
+	}
+	box.Render()
+}
+
+func doShowPostflights(ctx *client.ActionContext) {
+	aux, ok := ctx.DB.(spi.DatabaseAux)
+	if !ok {
+		ctx.Println("ERR server postflighs is unavailable")
+		return
+	}
+
+	postflights, err := aux.GetPostflights()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	box := ctx.NewBox([]string{"COUNT", "AVG. TIME", "TOTAL TIME", "STATEMENT"})
+	for _, itm := range postflights {
+		sqlText := itm.SqlText
+		if len(sqlText) > 40 {
+			sqlText = sqlText[0:40] + "..."
+		}
+		avgTime := time.Duration(int64(itm.TotalTime) / itm.Count)
+		box.AppendRow(itm.Count, avgTime.String(), itm.TotalTime.String(), sqlText)
 	}
 	box.Render()
 }

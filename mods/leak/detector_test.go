@@ -67,5 +67,12 @@ func TestDetector(t *testing.T) {
 	}
 	require.Equal(t, 0, count)
 
+	count = 0
+	for i, item := range det.Postflights() {
+		count++
+		fmt.Println(i, item.Count, item.SqlText)
+	}
+	require.Equal(t, 2, count)
+
 	det.Stop()
 }

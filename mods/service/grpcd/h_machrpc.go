@@ -410,7 +410,19 @@ func (s *grpcd) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoReque
 				ElapsedTime: int64(items[i].Elapsed),
 			}
 		}
-	} else {
+	}
+	if req.Postflights {
+		items := s.leakDetector.Postflights()
+		rsp.Postflights = make([]*machrpc.Postflight, len(items))
+		for i := range items {
+			rsp.Postflights[i] = &machrpc.Postflight{
+				SqlText:   items[i].SqlText,
+				Count:     items[i].Count,
+				TotalTime: int64(items[i].TotalTime),
+			}
+		}
+	}
+	if !req.Inflights && !req.Postflights {
 		rsp.Runtime.OS = nfo.Runtime.OS
 		rsp.Runtime.Arch = nfo.Runtime.Arch
 		rsp.Runtime.Pid = nfo.Runtime.Pid
