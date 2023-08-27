@@ -132,9 +132,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			case float64:
 				values[i] = int(v)
 			case gojson.Number:
-				values[i], err = v.Int64()
-				if err != nil {
+				if ival, err := v.Int64(); err != nil {
 					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+				} else {
+					values[i] = int(ival)
 				}
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int", dec.nrow, i)
@@ -144,9 +145,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			case float64:
 				values[i] = int16(v)
 			case gojson.Number:
-				values[i], err = v.Int64()
-				if err != nil {
+				if ival, err := v.Int64(); err != nil {
 					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+				} else {
+					values[i] = int16(ival)
 				}
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
@@ -156,9 +158,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			case float64:
 				values[i] = int32(v)
 			case gojson.Number:
-				values[i], err = v.Int64()
-				if err != nil {
+				if ival, err := v.Int64(); err != nil {
 					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+				} else {
+					values[i] = int32(ival)
 				}
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)

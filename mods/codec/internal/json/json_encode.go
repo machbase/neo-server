@@ -117,7 +117,7 @@ func (ex *Exporter) Close() {
 			ex.output.Write(recJson)
 		}
 	}
-	footer := fmt.Sprintf(`]}, "success":true, "reason":"success", "elapse":"%s"}`, time.Since(ex.tick).String())
+	footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
 	ex.output.Write([]byte(footer))
 	ex.output.Close()
 }
