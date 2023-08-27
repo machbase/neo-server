@@ -481,11 +481,15 @@ func GetVersion() error {
 		if err != nil {
 			return err
 		}
+
+		if !strings.HasPrefix(tag.Name, "v") {
+			return nil
+		}
 		if lastTag == nil {
 			lastTag = tag
 		} else {
 			lastCommit, _ := lastTag.Commit()
-			if tagCommit.Committer.When.Sub(lastCommit.Committer.When) > 0 {
+			if tagCommit.Author.When.Sub(lastCommit.Author.When) > 0 {
 				lastTag = tag
 			}
 		}
