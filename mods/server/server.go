@@ -163,6 +163,7 @@ type svr struct {
 	authorizedKeysDir string
 	licenseFilePath   string
 	licenseFileTime   time.Time
+	databaseCreated   bool
 
 	models model.Service
 
@@ -348,6 +349,7 @@ func (s *svr) Start() error {
 		if err := mach.CreateDatabase(); err != nil {
 			return errors.Wrap(err, "create database failed")
 		}
+		s.databaseCreated = true
 	}
 
 	s.db, err = spi.NewDatabase(mach.FactoryName)
@@ -557,8 +559,15 @@ func (s *svr) Start() error {
 			}
 			readyMsg = append(readyMsg, addr)
 		}
-		s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-			strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+		dbInitInfo := ""
+		if s.databaseCreated {
+			dbInitInfo = strings.Join([]string{
+				fmt.Sprintf("\n\n >> New database created at '%s'", homepath),
+				"\n >> Open web browser, login username 'sys' password 'manager'.",
+			}, "\n")
+		}
+		s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
 	} else {
 		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
 	}
