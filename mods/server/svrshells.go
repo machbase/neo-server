@@ -124,6 +124,14 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials := httpd.WebReferenceGroup{Label: "Tutorials"}
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
+
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-1 : Glance TQL", Addr: "./tutorials/TQL-Glance.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-2 : Fast Fourier Transform in TQL", Addr: "./tutorials/TQL-FFT.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-3 : User Script in TQL", Addr: "./tutorials/TQL-User-Script.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-4 : User data formats in TQL", Addr: "./tutorials/TQL-User-Data-Format.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-5 : Query Parameter in TQL", Addr: "./tutorials/TQL-Query-Parameter.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-6 : Time Manipulation in TQL", Addr: "./tutorials/TQL-Time-Manipulation.wrk"})
+
 	ret = append(ret, tutorials)
 
 	samples := httpd.WebReferenceGroup{Label: "Samples"}
