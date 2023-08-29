@@ -136,6 +136,8 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-4 : How to draw chart on terminal", Addr: "./tutorials/SHELL-Chart-Terminal.wrk"})
 
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-1 : How to create and drop table via http", Addr: "./tutorials/HTTP-Create-Drop.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-2 : How to insert table via http", Addr: "./tutorials/HTTP-Insert.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-3 : How to select table via http", Addr: "./tutorials/HTTP-Select.wrk"})
 
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-1 : Glance TQL", Addr: "./tutorials/TQL-Glance.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-2 : Fast Fourier Transform in TQL", Addr: "./tutorials/TQL-FFT.wrk"})
@@ -168,8 +170,6 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Project-1 : Installing Neo on Raspberry Pi and run", Addr: "./tutorials/RaspberryPI-Server.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "CONN-1 : How to insert data from line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "", Addr: "./tutorials/"})
 
 	ret = append(ret, tutorials)
 
