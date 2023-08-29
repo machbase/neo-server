@@ -154,24 +154,28 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-2 : Export data to file via TQL", Addr: "./tutorials/Export-TQL.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-3 : Export data to bridge via TQL", Addr: "./tutorials/Export-Bridge.wrk"})
 
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TIMER-1 : How to use timer in general", Addr: "./tutorials/Timer-Glance.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-1 : What is a Bridge and how to call SQLite in Neo", Addr: "./tutorials/Bridge.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-2 : How to call PostgreSQL in Neo", Addr: "./tutorials/Bridge-PostgreSQL.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-1 : How to communicate with Neo via HTTP in Go", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-2 : How to communicate with Neo via gRPC in Go", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go-3 : Implementing a Go drive for Neo", Addr: "./tutorials/Go-Driver.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "JAVA-1 : Implementing a JDBC driver for Neo", Addr: "./tutorials/JDBC-Driver.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-1 : How to make chart", Addr: "./tutorials/Python-Chart.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-2 : How to use pandas", Addr: "./tutorials/Python-Read-CSV-Pandas.wrk"})
-
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Project-1 : Installing Neo on Raspberry Pi and run", Addr: "./tutorials/RaspberryPI-Server.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "CONN-1 : How to insert data from line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
-
 	ret = append(ret, tutorials)
+
+	advancedTutorials := httpd.WebReferenceGroup{Label: "Advanced Tutorials"}
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TIMER-1 : How to use timer in general", Addr: "./tutorials/Timer-Glance.wrk"})
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-1 : What is a Bridge and how to call SQLite in Neo", Addr: "./tutorials/Bridge.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-2 : How to call PostgreSQL in Neo", Addr: "./tutorials/Bridge-PostgreSQL.wrk"})
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-1 : How to communicate with Neo via HTTP in Go", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-2 : How to communicate with Neo via gRPC in Go", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go-3 : Implementing a Go drive for Neo", Addr: "./tutorials/Go-Driver.wrk"})
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "JAVA-1 : Implementing a JDBC driver for Neo", Addr: "./tutorials/JDBC-Driver.wrk"})
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-1 : How to make chart", Addr: "./tutorials/Python-Chart.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-2 : How to use pandas", Addr: "./tutorials/Python-Read-CSV-Pandas.wrk"})
+
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Project-1 : Installing Neo on Raspberry Pi and run", Addr: "./tutorials/RaspberryPI-Server.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "CONN-1 : How to insert data from line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
+
+	ret = append(ret, advancedTutorials)
 
 	return ret
 }
