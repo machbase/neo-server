@@ -133,11 +133,10 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-1 : Glance Shell", Addr: "./tutorials/SHELL-Glance.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-2 : How to write wave in shell", Addr: "./tutorials/SHELL-Write-waves.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-3 : How to read wave in shell", Addr: "./tutorials/SHELL-Read-waves.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-4 : How to draw chart on terminal", Addr: "./tutorials/SHELL-Chart-Terminal.wrk"})
 
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-1 : How to create and drop table via http", Addr: "./tutorials/HTTP-Create-Drop.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-2 : How to insert table via http", Addr: "./tutorials/HTTP-Insert.wrk"})
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-3 : How to select table via http", Addr: "./tutorials/HTTP-Select.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-1 : How to create and drop table", Addr: "./tutorials/HTTP-Create-Drop.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-2 : How to insert table", Addr: "./tutorials/HTTP-Insert.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "HTTP-3 : How to select table", Addr: "./tutorials/HTTP-Select.wrk"})
 
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-1 : Glance TQL", Addr: "./tutorials/TQL-Glance.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-2 : Fast Fourier Transform in TQL", Addr: "./tutorials/TQL-FFT.wrk"})
@@ -158,22 +157,22 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 
 	advancedTutorials := httpd.WebReferenceGroup{Label: "Advanced Tutorials"}
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TIMER-1 : How to use timer in general", Addr: "./tutorials/Timer-Glance.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "How to use TIMER in general", Addr: "./tutorials/Timer-Glance.wrk"})
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-1 : What is a Bridge and how to call SQLite in Neo", Addr: "./tutorials/Bridge.wrk"})
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-2 : How to call PostgreSQL in Neo", Addr: "./tutorials/Bridge-PostgreSQL.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "What is a Bridge and how to call SQLite", Addr: "./tutorials/Bridge.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "How to call PostgreSQL", Addr: "./tutorials/Bridge-PostgreSQL.wrk"})
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-1 : How to communicate with Neo via HTTP in Go", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-2 : How to communicate with Neo via gRPC in Go", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go-3 : Implementing a Go drive for Neo", Addr: "./tutorials/Go-Driver.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO : How to use HTTP API", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO : How to use gRPC API", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go : Go driver", Addr: "./tutorials/Go-Driver.wrk"})
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "JAVA-1 : Implementing a JDBC driver for Neo", Addr: "./tutorials/JDBC-Driver.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "JAVA : JDBC driver", Addr: "./tutorials/JDBC-Driver.wrk"})
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-1 : How to make chart", Addr: "./tutorials/Python-Chart.wrk"})
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-2 : How to use pandas", Addr: "./tutorials/Python-Read-CSV-Pandas.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python : How to plot a chart", Addr: "./tutorials/Python-Chart.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python : How to use pandas", Addr: "./tutorials/Python-Read-CSV-Pandas.wrk"})
 
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Project-1 : Installing Neo on Raspberry Pi and run", Addr: "./tutorials/RaspberryPI-Server.wrk"})
-	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "CONN-1 : How to insert data from line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Installing on Raspberry Pi", Addr: "./tutorials/RaspberryPI-Server.wrk"})
+	advancedTutorials.Items = append(advancedTutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "How to write data with line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
 
 	ret = append(ret, advancedTutorials)
 
