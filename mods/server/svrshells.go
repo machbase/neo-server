@@ -152,6 +152,11 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-2 : Export data to file via TQL", Addr: "./tutorials/Export-TQL.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-3 : Export data to bridge via TQL", Addr: "./tutorials/Export-Bridge.wrk"})
 
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TIMER-1 : How to use timer in general", Addr: "./tutorials/Timer-Glance.wrk"})
+
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-1 : What is a Bridge and how to call SQLite in Neo", Addr: "./tutorials/Bridge.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "BRIDGE-2 : How to call PostgreSQL in Neo", Addr: "./tutorials/Bridge-PostgreSQL.wrk"})
+
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-1 : How to communicate with Neo via HTTP in Go", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-2 : How to communicate with Neo via gRPC in Go", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go-3 : Implementing a Go drive for Neo", Addr: "./tutorials/Go-Driver.wrk"})
