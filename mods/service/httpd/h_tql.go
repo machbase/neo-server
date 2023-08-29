@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 )
@@ -38,8 +39,16 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		input = ctx.Request.Body
 	}
 
+	var claim *jwt.RegisteredClaims
+	if val, exists := ctx.Get("jwt-claim"); exists {
+		claim = val.(*jwt.RegisteredClaims)
+	}
+
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
+	if claim != nil {
+		task.SetConsole(claim.Subject, ctx.GetHeader("X-Console-Id"))
+	}
 	task.SetOutputWriterJson(ctx.Writer, true)
 	task.SetDatabase(svr.db)
 	if err := task.Compile(input); err != nil {

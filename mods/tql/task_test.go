@@ -1,5 +1,7 @@
 package tql_test
 
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Rows
+
 import (
 	"bufio"
 	"bytes"
@@ -14,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
@@ -139,13 +140,13 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 
 var mockDbResult [][]any
 var mockDbCursor = 0
-var mockDb = mock.DatabaseMock{
+var mockDb = DatabaseMock{
 	QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 		switch sqlText {
 		case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
 			fallthrough
 		case `select time, value from example where name = 'tag1'`:
-			return &mock.RowsMock{
+			return &RowsMock{
 				IsFetchableFunc: func() bool { return true },
 				NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
 				CloseFunc:       func() error { return nil },
@@ -164,7 +165,7 @@ var mockDb = mock.DatabaseMock{
 			}, nil
 		default:
 			fmt.Println("===>", sqlText)
-			return &mock.RowsMock{
+			return &RowsMock{
 				IsFetchableFunc: func() bool { return true },
 				NextFunc:        func() bool { return false },
 				CloseFunc:       func() error { return nil },

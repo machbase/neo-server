@@ -168,6 +168,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
 			if svr.tqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql/*path", svr.handleTagQL)

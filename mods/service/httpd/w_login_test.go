@@ -10,13 +10,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/mods/service/security"
-	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/stretchr/testify/require"
 )
 
 type TestServerMock struct {
-	mock.DatabaseServerMock
-	mock.DatabaseAuthMock
+	DatabaseServerMock
+	DatabaseAuthMock
 }
 
 func TestLoginRoute(t *testing.T) {
