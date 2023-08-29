@@ -163,6 +163,12 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "JAVA-1 : Implementing a JDBC driver for Neo", Addr: "./tutorials/JDBC-Driver.wrk"})
 
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-1 : How to make chart", Addr: "./tutorials/Python-Chart.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Python-2 : How to use pandas", Addr: "./tutorials/Python-Read-CSV-Pandas.wrk"})
+
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Project-1 : Installing Neo on Raspberry Pi and run", Addr: "./tutorials/RaspberryPI-Server.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "CONN-1 : How to insert data from line protocol", Addr: "./tutorials/Line-Protocol.wrk"})
+
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "", Addr: "./tutorials/"})
 
 	ret = append(ret, tutorials)
