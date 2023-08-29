@@ -21,10 +21,18 @@ func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescrip
 	columns := descColumns.Columns().Names()
 	columns = columns[:3]
 
-	colTypes := descColumns.Columns().Types()
-	for idx, val := range descColumns.Columns().Names() {
+	/*
+		Machbase : name, time, value, host
+		influxdb : tags key[DC, HOST, NAME, SYSTEM]
+		=> HOST append / DC, NAME, SYSTEM not append
+	*/
+	compareNames := descColumns.Columns().Names()
+	compareTypes := descColumns.Columns().Types()
+	compareNames = compareNames[3:]
+	compareTypes = compareTypes[3:]
+	for idx, val := range compareNames {
 		if _, ok := tags[val]; ok {
-			if colTypes[idx] == spi.ColumnBufferTypeString {
+			if compareTypes[idx] == spi.ColumnBufferTypeString {
 				columns = append(columns, val)
 			}
 		}
