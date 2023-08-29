@@ -144,6 +144,14 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-5 : Query Parameter in TQL", Addr: "./tutorials/TQL-Query-Parameter.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "TQL-6 : Time Manipulation in TQL", Addr: "./tutorials/TQL-Time-Manipulation.wrk"})
 
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Import-1 : Import data from File", Addr: "./tutorials/Import-Shell.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Import-2 : Import data from file via TQL", Addr: "./tutorials/Import-TQL.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Import-3 : Import data from bridge via TQL", Addr: "./tutorials/Import-Bridge.wrk"})
+
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-1 : Export data to File", Addr: "./tutorials/Export-Shell.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-2 : Export data to file via TQL", Addr: "./tutorials/Export-TQL.wrk"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Export-3 : Export data to bridge via TQL", Addr: "./tutorials/Export-Bridge.wrk"})
+
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-1 : How to communicate with Neo via HTTP in Go", Addr: "./tutorials/Go-HTTP-Writing.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "GO-2 : How to communicate with Neo via gRPC in Go", Addr: "./tutorials/Go-gRPC-Writing.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Go-3 : Implementing a Go drive for Neo", Addr: "./tutorials/Go-Driver.wrk"})
