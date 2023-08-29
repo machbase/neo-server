@@ -130,7 +130,7 @@ func (s *svr) WebReferences() []httpd.WebReferenceGroup {
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Waves in TQL", Addr: "./tutorials/waves_in_tql.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "Fast Fourier Transform in TQL", Addr: "./tutorials/fft_in_tql.wrk"})
 
-	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-1 : Glance TQL", Addr: "./tutorials/"})
+	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-1 : Glance Shell", Addr: "./tutorials/SHELL-Glance.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-2 : How to write wave in shell", Addr: "./tutorials/SHELL-Write-waves.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-3 : How to read wave in shell", Addr: "./tutorials/SHELL-Read-waves.wrk"})
 	tutorials.Items = append(tutorials.Items, httpd.ReferenceItem{Type: "wrk", Title: "SHELL-4 : How to draw chart on terminal", Addr: "./tutorials/SHELL-Chart-Terminal.wrk"})
