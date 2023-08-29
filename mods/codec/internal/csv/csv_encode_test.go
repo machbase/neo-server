@@ -54,8 +54,8 @@ func TestCsvEncoder(t *testing.T) {
 
 	expects := []string{
 		"ROWNUM,col1,col2,col3,col4,col5,col6",
-		"1,1,3.142,text some,KITCHEN,98765,16",
-		"2,1,3.142,text some,KITCHEN,98765,NULL",
+		"1,1,3.142,text some,12:29:34AM,98765,16",
+		"2,1,3.142,text some,12:29:34AM,98765,NULL",
 		"",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), w.String())

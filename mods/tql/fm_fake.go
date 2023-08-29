@@ -152,7 +152,7 @@ func (node *Node) fmOscillator(args ...any) (*oscillator, error) {
 			ret.frequencies = append(ret.frequencies, v)
 		case *TimeRange:
 			if timeRange != nil {
-				return nil, fmt.Errorf("f(oscillator) duplicated time range, %v", v)
+				return nil, fmt.Errorf("f(oscillator) duplicated time range")
 			}
 			timeRange = v
 		}

@@ -118,7 +118,11 @@ func TestBoot(t *testing.T) {
 	require.Equal(t, 202, def.Priority)
 	require.Equal(t, false, def.Disabled)
 	bconf := b.GetConfig(BmodId).(*BmodConf)
-	require.Equal(t, fmt.Sprintf("%s/./tmp/cmqd00.log", os.Getenv("HOME")), bconf.Filename)
+	home := "."
+	if str := os.Getenv("HOME"); str != "" {
+		home = str
+	}
+	require.Equal(t, fmt.Sprintf("%s/./tmp/cmqd00.log", home), bconf.Filename)
 	require.Equal(t, true, bconf.Append)
 	require.Equal(t, "@midnight", bconf.RotateSchedule)
 	require.Equal(t, 3, bconf.MaxBackups)

@@ -129,7 +129,7 @@ func (r *Record) String() string {
 	if r.key == kEOF {
 		return "EOF"
 	} else if r.key == kBREAK {
-		return "CIRCUITEBREAK"
+		return "CIRCUITBREAK"
 	} else if r.key == kBYTES {
 		return "BYTES"
 	} else if r.key == kIMAGE {
@@ -151,8 +151,9 @@ func (r *Record) Fields() []any {
 	} else {
 		switch v := value.(type) {
 		case [][]any:
+			ret = []any{r.Key()}
 			for n := range v {
-				ret = append([]any{r.Key()}, v[n]...)
+				ret = append(ret, v[n]...)
 			}
 		case []any:
 			ret = append([]any{r.Key()}, v...)

@@ -29,6 +29,13 @@ func (th *appTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) c
 			return color.NRGBA{R: 0xaa, G: 0xaa, B: 0xaa, A: 0xf6}
 		}
 		return color.NRGBA{R: 0x0a, G: 0x0a, B: 0x0a, A: 0xf6}
+	case theme.ColorNameDisabled:
+		if variant == theme.VariantLight {
+			// default: color.NRGBA{R: 0xe3, G: 0xe3, B: 0xe3, A: 0xff}
+			return color.NRGBA{R: 0xa3, G: 0xa3, B: 0xa3, A: 0xff}
+		}
+		// default: color.NRGBA{R: 0x39, G: 0x39, B: 0x3a, A: 0xff}
+		return color.NRGBA{R: 0x79, G: 0x79, B: 0x7a, A: 0xff}
 	}
 	// variant = theme.VariantLight, theme.VariantDark
 	return th.base.Color(name, variant)

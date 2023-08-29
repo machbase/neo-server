@@ -9,7 +9,7 @@ SCRIPT({
   ctx.yieldKey(x, y, z)
 })
 CHART_LINE3D(
-  size('1000px', '600px'),
+  size('800px', '600px'),
   lineWidth(4), 
   gridSize(100, 30, 100), 
   visualMap(-0.12, 0.12), 

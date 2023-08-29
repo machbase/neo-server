@@ -1,10 +1,10 @@
 package tql
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
@@ -33,7 +33,13 @@ func (x *Node) fmTimeRange(ts any, dur any, period ...any) (*TimeRange, error) {
 	if err != nil {
 		return nil, ErrWrongTypeOfArgs("range", 2, "period", period[0])
 	}
-	if ret.Duration <= ret.Period {
+	abs := func(d time.Duration) time.Duration {
+		if d < 0 {
+			return d * -1
+		}
+		return d
+	}
+	if abs(ret.Duration) <= abs(ret.Period) {
 		return nil, ErrArgs("range", 2, "period should be smaller than duration")
 	}
 	return ret, nil
@@ -47,11 +53,11 @@ func (x *Node) fmRoundTime(ts any, duration any) (time.Time, error) {
 		return time.Time{}, err
 	}
 	if dur == 0 {
-		return time.Time{}, fmt.Errorf("zero duration is not allowed")
+		return time.Time{}, ErrArgs("roundTime", 1, "zero duration is not allowed")
 	}
 	t, err := util.ToTime(ts)
 	if err != nil {
-		return t, err
+		return t, ErrArgs("roundTime", 0, err.Error())
 	}
 	ret := time.Unix(0, (t.UnixNano()/int64(dur))*int64(dur))
 	return ret, nil
@@ -92,4 +98,12 @@ func (x *Node) fmTZ(timezone string) (*time.Location, error) {
 	} else {
 		return timeLocation, nil
 	}
+}
+
+func (x *Node) fmSqlTimeformat(format string) opts.Option {
+	return opts.Timeformat(util.ToTimeformatSql(format))
+}
+
+func (x *Node) fmAnsiTimeformat(format string) opts.Option {
+	return opts.Timeformat(util.ToTimeformatAnsi(format))
 }

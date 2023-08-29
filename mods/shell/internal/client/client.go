@@ -380,7 +380,10 @@ func (cli *client) Process(line string) {
 			DisableAutoSaveHistory: true,
 			InterruptPrompt:        "^C",
 		})
-		defer rl.Close()
+		if cli.interactive {
+			// avoid print-out ansi-code on terminal when it runs on batch mode
+			defer rl.Close()
+		}
 		actCtx.ReadLine = rl
 	}
 

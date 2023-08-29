@@ -18,7 +18,7 @@ func TestGetInterfaceAddr(t *testing.T) {
 func TestFindAllAddresses(t *testing.T) {
 	lst := util.FindAllAddresses(net.IPv4(127, 0, 0, 1))
 	require.Equal(t, 1, len(lst))
-	require.True(t, lst[0].Interface == "lo0" || lst[0].Interface == "lo")
+	require.True(t, lst[0].IP.IsLoopback())
 }
 
 func TestFindAllAddressesAllBind(t *testing.T) {

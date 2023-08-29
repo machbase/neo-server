@@ -3,6 +3,7 @@ package args
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/shell"
@@ -18,6 +19,8 @@ type NeoCommand struct {
 		Command    string
 		SubCommand string
 	}
+
+	Service Service
 
 	args []string
 }
@@ -65,6 +68,12 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 		return parseGenConfig(cli)
 	case "version":
 		return parseVersion(cli)
+	case "service":
+		if runtime.GOOS == "windows" {
+			return parseService(cli)
+		} else {
+			return nil, fmt.Errorf("command 'service' is only available on Windows")
+		}
 	default:
 		return nil, fmt.Errorf("unknown command '%s'", cli.Command)
 	}
@@ -107,5 +116,14 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 			cli.Shell.Args = append(cli.Shell.Args, s)
 		}
 	}
+	return cli, nil
+}
+
+type Service struct {
+	Args []string `arg:"" optional:"" name:"ARGS" passthrough:""`
+}
+
+func parseService(cli *NeoCommand) (*NeoCommand, error) {
+	cli.Service.Args = cli.args
 	return cli, nil
 }

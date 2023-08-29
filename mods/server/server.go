@@ -163,6 +163,7 @@ type svr struct {
 	authorizedKeysDir string
 	licenseFilePath   string
 	licenseFileTime   time.Time
+	databaseCreated   bool
 
 	models model.Service
 
@@ -348,6 +349,7 @@ func (s *svr) Start() error {
 		if err := mach.CreateDatabase(); err != nil {
 			return errors.Wrap(err, "create database failed")
 		}
+		s.databaseCreated = true
 	}
 
 	s.db, err = spi.NewDatabase(mach.FactoryName)
@@ -557,8 +559,15 @@ func (s *svr) Start() error {
 			}
 			readyMsg = append(readyMsg, addr)
 		}
-		s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-			strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+		dbInitInfo := ""
+		if s.databaseCreated {
+			dbInitInfo = strings.Join([]string{
+				fmt.Sprintf("\n\n >> New database created at '%s'", homepath),
+				"\n >> Open web browser, login username 'sys' password 'manager'.",
+			}, "\n")
+		}
+		s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
 	} else {
 		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
 	}
@@ -615,6 +624,9 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 			s.servicePortsLock.Unlock()
 		}
 	} else {
+		if strings.HasPrefix(addr, "unix://") && runtime.GOOS == "windows" {
+			return nil
+		}
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
 		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
@@ -651,10 +663,8 @@ func GenBanner() string {
 	machbase, _ := fig.Render("Machbase")
 	logo, _ := fig.RenderOpts("neo", options)
 
-	v := mods.GetVersion()
-
 	lines := strings.Split(logo, "\n")
-	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
 	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")

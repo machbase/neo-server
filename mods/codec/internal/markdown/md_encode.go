@@ -21,11 +21,10 @@ type Exporter struct {
 	rownum     int64
 	mdLines    []string
 
-	timeLocation *time.Location
-	output       spec.OutputStream
-	showRownum   bool
-	timeformat   string
-	precision    int
+	output        spec.OutputStream
+	showRownum    bool
+	precision     int
+	timeformatter *util.TimeFormatter
 
 	colNames []string
 
@@ -34,9 +33,9 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	ret := &Exporter{
-		precision:  -1,
-		timeformat: "ns",
-		brief:      0,
+		precision:     -1,
+		timeformatter: util.NewTimeFormatter(),
+		brief:         0,
 	}
 	return ret
 }
@@ -54,11 +53,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformat = format
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.timeLocation = tz
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -143,24 +142,6 @@ func (ex *Exporter) Flush(heading bool) {
 	ex.output.Flush()
 }
 
-func (ex *Exporter) encodeTime(v time.Time) string {
-	switch ex.timeformat {
-	case "ns":
-		return strconv.FormatInt(v.UnixNano(), 10)
-	case "ms":
-		return strconv.FormatInt(v.UnixMilli(), 10)
-	case "us":
-		return strconv.FormatInt(v.UnixMicro(), 10)
-	case "s":
-		return strconv.FormatInt(v.Unix(), 10)
-	default:
-		if ex.timeLocation == nil {
-			ex.timeLocation = time.UTC
-		}
-		return v.In(ex.timeLocation).Format(ex.timeformat)
-	}
-}
-
 func (ex *Exporter) encodeFloat64(v float64) string {
 	if ex.precision < 0 {
 		return fmt.Sprintf("%f", v)
@@ -196,9 +177,9 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			cols[i] = ex.encodeTime(*v)
+			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:
-			cols[i] = ex.encodeTime(v)
+			cols[i] = ex.timeformatter.Format(v)
 		case *float64:
 			cols[i] = ex.encodeFloat64(*v)
 		case float64:

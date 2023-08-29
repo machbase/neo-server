@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,16 @@ func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 	dbName := ctx.Query("db")
 
+	var desc *do.TableDescription
+	if desc0, err := do.Describe(svr.db, dbName, false); err != nil {
+		ctx.JSON(
+			http.StatusBadRequest,
+			gin.H{"error": fmt.Sprintf("column error: %s", err.Error())})
+		return
+	} else {
+		desc = desc0.(*do.TableDescription)
+	}
+
 	precision := lineprotocol.Nanosecond
 	switch ctx.Query("precision") {
 	case "us":
@@ -41,7 +52,6 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 	case "ms":
 		precision = lineprotocol.Millisecond
 	}
-
 	var body io.Reader
 	switch ctx.Request.Header.Get("Content-Encoding") {
 	default:
@@ -82,7 +92,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			if key == nil {
 				break
 			}
-			tags[string(key)] = string(val)
+			tags[strings.ToUpper(string(key))] = string(val)
 		}
 
 		for {
@@ -111,21 +121,8 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		if err != nil {
-			ctx.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": fmt.Sprintf("unsupproted data type tags %s", err.Error())})
-			return
-		}
-		if err != nil {
-			ctx.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": fmt.Sprintf("unsupproted data type fields %s", err.Error())})
-			return
-		}
-
-		result := do.WriteLineProtocol(svr.db, dbName, measurement, fields, tags, ts)
-		if result.Err() != nil {
+		result := do.WriteLineProtocol(svr.db, dbName, desc.Columns, measurement, fields, tags, ts)
+		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(
 				http.StatusBadRequest,
