@@ -36,6 +36,24 @@ func TestParseServe(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, cli)
 	require.Equal(t, "serve", cli.Command)
+
+	args = []string{
+		"test", "serve", "--preset", "fog",
+	}
+	cli, err = ParseCommand(args)
+	require.Nil(t, err)
+	require.NotNil(t, cli)
+	require.Equal(t, "serve", cli.Command)
+	require.Equal(t, "fog", cli.Serve.Preset)
+
+	args = []string{
+		"test", "serve", "--preset=edge",
+	}
+	cli, err = ParseCommand(args)
+	require.Nil(t, err)
+	require.NotNil(t, cli)
+	require.Equal(t, "serve", cli.Command)
+	require.Equal(t, "edge", cli.Serve.Preset)
 }
 
 func TestParseShell(t *testing.T) {
