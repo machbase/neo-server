@@ -15,7 +15,6 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	_ "github.com/magefile/mage/mage"
 	"github.com/magefile/mage/mg"
@@ -442,45 +441,38 @@ func GetVersion() error {
 		return err
 	}
 
-	commit, err := repo.CommitObject(headRef.Hash())
+	headCommit, err := repo.CommitObject(headRef.Hash())
 	if err != nil {
 		return err
 	}
 
 	var lastTag *object.Tag
-	tagiter, err := repo.Tags()
+	iter, err := repo.TagObjects()
 	if err != nil {
 		return err
 	}
-	err = tagiter.ForEach(func(tagRef *plumbing.Reference) error {
-		tag, err := repo.TagObject(tagRef.Hash())
-		if err != nil {
-			return err
-		}
-		tagCommit, err := tag.Commit()
-		if err != nil {
-			return err
-		}
-
-		if !strings.HasPrefix(tag.Name, "v") {
+	iter.ForEach(func(tagObj *object.Tag) error {
+		if !strings.HasPrefix(tagObj.Name, "v") {
 			return nil
 		}
 		if lastTag == nil {
-			lastTag = tag
+			lastTag = tagObj
 		} else {
 			lastCommit, _ := lastTag.Commit()
+			tagCommit, _ := tagObj.Commit()
 			if tagCommit.Author.When.Sub(lastCommit.Author.When) > 0 {
-				lastTag = tag
+				lastTag = tagObj
 			}
 		}
 		return nil
 	})
+
 	lastTagCommit, err := lastTag.Commit()
 	if err != nil {
 		return err
 	}
 	vLastVersion = lastTag.Name
-	vLastCommit = commit.Hash.String()
+	vLastCommit = headCommit.Hash.String()
 	vIsNightly = lastTagCommit.Hash.String() != vLastCommit
 	lastTagSemVer, err := semver.NewVersion(vLastVersion)
 	if err != nil {
