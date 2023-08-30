@@ -202,7 +202,8 @@ func runService(name string, debugMode bool, args ...string) {
 		run = debug.Run
 	}
 	elog.Info(1, fmt.Sprintf("%s service starting", name))
-	err = run(name, &proxyService{args: args})
+	// TODO parse '--preset' flag in advance
+	err = run(name, &proxyService{args: args, preset: "auto"})
 	if err != nil {
 		elog.Error(1, fmt.Sprintf("%s service failed: %v", name, err))
 	}
@@ -210,7 +211,8 @@ func runService(name string, debugMode bool, args ...string) {
 }
 
 type proxyService struct {
-	args []string
+	args   []string
+	preset string
 }
 
 func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (ssec bool, errno uint32) {
@@ -218,12 +220,14 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	elog.Info(1, fmt.Sprintf("running... %v", m.args))
 	changes <- svc.Status{State: svc.StartPending}
 
+	cli, err := ParseCommand(m.args)
+
 	os.Args = m.args
 	serveWg := sync.WaitGroup{}
 	serveWg.Add(1)
 	go func() {
 		changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-		doServe()
+		doServe(m.preset)
 		serveWg.Done()
 	}()
 loop:
