@@ -73,7 +73,7 @@ func (cons *Console) run() {
 	defer func() {
 		cons.Close()
 		if e := recover(); e != nil {
-			cons.log.Errorf("panic recover %s", e)
+			cons.log.Error("panic recover %s", e)
 		}
 	}()
 
@@ -82,7 +82,7 @@ func (cons *Console) run() {
 		err := cons.conn.ReadJSON(evt)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				cons.log.Warnf("ERR", err.Error())
+				cons.log.Warn("ERR", err.Error())
 			}
 			cons.connMutex.Lock()
 			cons.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
@@ -104,7 +104,7 @@ func (cons *Console) sendMessage(evt *eventbus.Event) {
 	err := cons.conn.WriteJSON(evt)
 	cons.connMutex.Unlock()
 	if err != nil {
-		cons.log.Warnf("ERR", err.Error())
+		cons.log.Warn("ERR", err.Error())
 		cons.Close()
 	}
 }
