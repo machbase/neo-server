@@ -201,9 +201,14 @@ func runService(name string, debugMode bool, args ...string) {
 	if debugMode {
 		run = debug.Run
 	}
+	cli, err := ParseCommand(append([]string{"machbase-neo", "serve"}, args...))
+	if err != nil {
+		elog.Warning(1, err.Error())
+		return
+	}
+
 	elog.Info(1, fmt.Sprintf("%s service starting", name))
-	// TODO parse '--preset' flag in advance
-	err = run(name, &proxyService{args: args, preset: "auto"})
+	err = run(name, &proxyService{args: args, preset: cli.Serve.Preset})
 	if err != nil {
 		elog.Error(1, fmt.Sprintf("%s service failed: %v", name, err))
 	}
@@ -219,8 +224,6 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	const cmdsAccepts = svc.AcceptStop | svc.AcceptShutdown /*| svc.AcceptPauseAndContinue */
 	elog.Info(1, fmt.Sprintf("running... %v", m.args))
 	changes <- svc.Status{State: svc.StartPending}
-
-	cli, err := ParseCommand(m.args)
 
 	os.Args = m.args
 	serveWg := sync.WaitGroup{}
