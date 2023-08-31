@@ -176,6 +176,8 @@ type svr struct {
 	authorizedSshKeysLock sync.RWMutex
 }
 
+var PreferredPreset string = "auto"
+
 func NewConfig() *Config {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -209,11 +211,18 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	sysCPU := runtime.NumCPU()
-	if sysCPU <= 4 {
-		conf.MachbasePreset = PresetEdge
-	} else {
+	switch strings.ToLower(PreferredPreset) {
+	case "fog":
 		conf.MachbasePreset = PresetFog
+	case "edge":
+		conf.MachbasePreset = PresetEdge
+	default:
+		sysCPU := runtime.NumCPU()
+		if sysCPU <= 4 {
+			conf.MachbasePreset = PresetEdge
+		} else {
+			conf.MachbasePreset = PresetFog
+		}
 	}
 
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
@@ -471,7 +480,6 @@ func (s *svr) Start() error {
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
-			httpd.OptionRecentsProvider(s.WebRecents),
 			httpd.OptionReferenceProvider(s.WebReferences),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 		}
