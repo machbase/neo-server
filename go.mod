@@ -27,9 +27,9 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine v1.1.3-0.20230830033137-f9d591aae629
-	github.com/machbase/neo-grpc v1.0.2-0.20230806065347-dda911058cad
-	github.com/machbase/neo-spi v1.4.1
+	github.com/machbase/neo-engine v1.1.3
+	github.com/machbase/neo-grpc v1.0.3
+	github.com/machbase/neo-spi v1.4.2
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
