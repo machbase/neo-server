@@ -3,6 +3,7 @@ package tql
 import (
 	"fmt"
 	"strconv"
+	"time"
 )
 
 type NodeContext struct {
@@ -23,7 +24,30 @@ func (node *Node) GetRecordKey() any {
 	if inflight == nil {
 		return nil
 	}
-	return inflight.key
+	switch v := inflight.key.(type) {
+	case *int:
+		return *v
+	case *int8:
+		return *v
+	case *int16:
+		return *v
+	case *int32:
+		return *v
+	case *int64:
+		return *v
+	case *float32:
+		return *v
+	case *float64:
+		return *v
+	case *string:
+		return *v
+	case *time.Time:
+		return *v
+	case *bool:
+		return *v
+	default:
+		return v
+	}
 }
 
 // tql function: value()
@@ -57,7 +81,30 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		if idx >= len(val) {
 			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d)", idx, len(val)))
 		}
-		return val[idx], nil
+		switch v := val[idx].(type) {
+		case *int:
+			return *v, nil
+		case *int8:
+			return *v, nil
+		case *int16:
+			return *v, nil
+		case *int32:
+			return *v, nil
+		case *int64:
+			return *v, nil
+		case *float32:
+			return *v, nil
+		case *float64:
+			return *v, nil
+		case *string:
+			return *v, nil
+		case *time.Time:
+			return *v, nil
+		case *bool:
+			return *v, nil
+		default:
+			return val[idx], nil
+		}
 	default:
 		return nil, ErrArgs("value", 0, "out of index value tuple")
 	}

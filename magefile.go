@@ -404,7 +404,15 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 
 		entryName := strings.TrimPrefix(entry, prefix)
 		fmt.Println("Archive", entryName)
-		w, err := zipWriter.Create(entryName)
+		finfo, _ := fd.Stat()
+		hdr := &zip.FileHeader{
+			Name:               entryName,
+			UncompressedSize64: uint64(finfo.Size()),
+			Modified:           finfo.ModTime(),
+		}
+		hdr.SetMode(finfo.Mode())
+
+		w, err := zipWriter.CreateHeader(hdr)
 		if err != nil {
 			return err
 		}
