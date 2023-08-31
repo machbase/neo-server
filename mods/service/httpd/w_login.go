@@ -316,9 +316,6 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	if svr.referenceProvider != nil {
 		options.References = svr.referenceProvider()
 	}
-	if svr.recentsProvider != nil {
-		options.Recents = svr.recentsProvider()
-	}
 	if svr.webShellProvider != nil {
 		options.Shells = svr.webShellProvider.GetAllShells(true)
 	}
