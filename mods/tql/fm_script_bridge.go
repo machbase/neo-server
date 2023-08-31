@@ -9,6 +9,60 @@ import (
 	"github.com/pkg/errors"
 )
 
+func tengof_print(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		printArgs, err := tengof_getPrintArgs(args...)
+		if err != nil {
+			return nil, err
+		}
+		node.task.Log(printArgs...)
+		return nil, nil
+	}
+}
+
+func tengof_printf(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		numArgs := len(args)
+		if numArgs == 0 {
+			return nil, tengo.ErrWrongNumArguments
+		}
+		format, ok := args[0].(*tengo.String)
+		if !ok {
+			return nil, tengo.ErrInvalidArgumentType{
+				Name:     "format",
+				Expected: "string",
+				Found:    args[0].TypeName(),
+			}
+		}
+		if numArgs == 1 {
+			node.task.Log(format)
+			return nil, nil
+		}
+		s, err := tengo.Format(format.Value, args[1:]...)
+		if err != nil {
+			return nil, err
+		}
+		node.task.Log(s)
+		return nil, nil
+	}
+}
+
+func tengof_getPrintArgs(args ...tengo.Object) ([]interface{}, error) {
+	var printArgs []interface{}
+	l := 0
+	for _, arg := range args {
+		s, _ := tengo.ToString(arg)
+		slen := len(s)
+		// make sure length does not exceed the limit
+		if l+slen > tengo.MaxStringLen {
+			return nil, tengo.ErrStringLimit
+		}
+		l += slen
+		printArgs = append(printArgs, s)
+	}
+	return printArgs, nil
+}
+
 func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		var cname string

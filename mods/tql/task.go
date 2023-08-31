@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	spi "github.com/machbase/neo-spi"
@@ -25,6 +26,9 @@ type Task struct {
 	outputWriter spec.OutputStream
 	toJsonOutput bool
 	logWriter    io.Writer
+	consoleUser  string
+	consoleId    string
+	consoleTopic string
 
 	// comments start with plus(+) symbold and sperated by comma.
 	// ex) => `// +brief, markdown`
@@ -92,6 +96,14 @@ func (x *Task) OutputWriter() spec.OutputStream {
 
 func (x *Task) SetLogWriter(w io.Writer) {
 	x.logWriter = w
+}
+
+func (x *Task) SetConsole(user string, id string) {
+	x.consoleUser = user
+	x.consoleId = id
+	if user != "" && id != "" {
+		x.consoleTopic = fmt.Sprintf("console:%s:%s", user, id)
+	}
 }
 
 func (x *Task) SetParams(p map[string][]string) {
@@ -350,19 +362,25 @@ func (x *Task) LogFatal(args ...any) {
 }
 
 func (x *Task) _log(prefix string, args ...any) {
-	if x.logWriter == nil {
-		fmt.Println(append([]any{"[" + prefix + "]"}, args...)...)
-	} else {
-		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...) + "\n"
+	if x.logWriter != nil {
+		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...)
 		x.logWriter.Write([]byte(line))
+	}
+	if x.consoleTopic != "" {
+		toks := []string{}
+		for _, arg := range args {
+			toks = append(toks, fmt.Sprintf("%v", arg))
+		}
+		eventbus.PublishLog(x.consoleTopic, prefix, strings.Join(toks, " "))
 	}
 }
 
 func (x *Task) _logf(prefix string, format string, args ...any) {
-	if x.logWriter == nil {
-		fmt.Printf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
-	} else {
+	if x.logWriter != nil {
 		line := fmt.Sprintf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
 		x.logWriter.Write([]byte(line))
+	}
+	if x.consoleTopic != "" {
+		eventbus.PublishLog(x.consoleTopic, prefix, fmt.Sprintf(format, args...))
 	}
 }

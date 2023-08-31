@@ -77,7 +77,7 @@ type LoginCheckRsp struct {
 }
 
 type ServerInfo struct {
-	Version string `json:"version"`
+	Version string `json:"version,omitempty"`
 }
 
 type WebReferenceGroup struct {
@@ -95,9 +95,8 @@ type ReferenceItem struct {
 func (svr *httpd) handleLogin(ctx *gin.Context) {
 	var req = &LoginReq{}
 	var rsp = &LoginRsp{
-		Success:    false,
-		Reason:     "not specified",
-		ServerInfo: svr.getServerInfo(),
+		Success: false,
+		Reason:  "not specified",
 	}
 
 	tick := time.Now()
@@ -163,6 +162,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	rsp.Reason = "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	rsp.ServerInfo = svr.getServerInfo()
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -177,9 +177,8 @@ type ReLoginRsp LoginRsp
 func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	var req ReLoginReq
 	var rsp = &ReLoginRsp{
-		Success:    false,
-		Reason:     "not specified",
-		ServerInfo: svr.getServerInfo(),
+		Success: false,
+		Reason:  "not specified",
 	}
 
 	tick := time.Now()
@@ -248,6 +247,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	rsp.ServerInfo = svr.getServerInfo()
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)

@@ -32,7 +32,6 @@ var Aliases = map[string]any{
 	"package-neoshell":     PackageNeoShell,
 	"cleanpackage":         CleanPackage,
 	"buildversion":         BuildVersion,
-	"regen-mock":           RegenMock,
 }
 
 var vLastVersion string
@@ -309,27 +308,8 @@ func CheckMoq() error {
 }
 
 func Generate() error {
-	return sh.RunV("go", "generate", "./...")
-}
-
-func RegenMock() error {
 	mg.Deps(CheckMoq)
-	mocks := map[string]string{
-		"./mods/util/mock/database.go": "Database",
-		"./mods/util/mock/server.go":   "DatabaseServer",
-		"./mods/util/mock/client.go":   "DatabaseClient",
-		"./mods/util/mock/auth.go":     "DatabaseAuth",
-		"./mods/util/mock/result.go":   "Result",
-		"./mods/util/mock/rows.go":     "Rows",
-		"./mods/util/mock/row.go":      "Row",
-		"./mods/util/mock/appender.go": "Appender",
-	}
-	for out, inf := range mocks {
-		if err := sh.RunV("moq", "-out", out, "-pkg", "mock", "../neo-spi", inf); err != nil {
-			return err
-		}
-	}
-	return nil
+	return sh.RunV("go", "generate", "./...")
 }
 
 func Package() error {
