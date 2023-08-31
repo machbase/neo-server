@@ -64,7 +64,6 @@ type httpd struct {
 
 	licenseFilePath        string
 	debugMode              bool
-	recentsProvider        func() []WebReferenceGroup
 	referenceProvider      func() []WebReferenceGroup
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool

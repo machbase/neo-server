@@ -23,7 +23,7 @@ func Main() int {
 		return 1
 	}
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
-		return doServe()
+		return doServe(cli.Serve.Preset)
 	}
 	switch cli.Command {
 	case "gen-config":
@@ -33,7 +33,7 @@ func Main() int {
 	case "help":
 		doHelp(cli.Help.Command, cli.Help.SubCommand)
 	case "serve":
-		doServe()
+		doServe(cli.Serve.Preset)
 	case "shell":
 		shell.Shell(&cli.Shell)
 	case "service":
@@ -43,7 +43,9 @@ func Main() int {
 	return 0
 }
 
-func doServe() int {
+func doServe(preset string) int {
+	server.PreferredPreset = preset
+
 	booter.SetConfiFileSuffix(".conf")
 	booter.SetFallbackConfig(server.DefaultFallbackConfig)
 	booter.SetFallbackPname(server.DefaultFallbackPname)
