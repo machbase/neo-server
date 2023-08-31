@@ -10,7 +10,6 @@ import (
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
 func (s *svr) initShellProvider() {
@@ -85,31 +84,6 @@ func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
 		}
 	}
 	return shell
-}
-
-func (s *svr) WebRecents() []httpd.WebReferenceGroup {
-	ret := []httpd.WebReferenceGroup{}
-
-	recents := httpd.WebReferenceGroup{Label: "Open recent..."}
-	sf := ssfs.Default()
-	for _, recent := range sf.GetRecentList() {
-		typ := ""
-		if idx := strings.LastIndex(recent, "."); idx > 0 && len(recent) > idx+1 {
-			typ = recent[idx+1:]
-		}
-		if typ == "" {
-			continue
-		}
-		recents.Items = append(recents.Items, httpd.ReferenceItem{
-			Type:  typ,
-			Title: strings.TrimPrefix(recent, "/"),
-			Addr:  fmt.Sprintf("serverfile://%s", recent),
-		})
-	}
-	if len(recents.Items) > 0 {
-		ret = append(ret, recents)
-	}
-	return ret
 }
 
 func (s *svr) WebReferences() []httpd.WebReferenceGroup {

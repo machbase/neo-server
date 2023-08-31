@@ -128,13 +128,6 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	abspath, _ := filepath.Abs("test/data1/simple.tql")
 	require.Equal(t, realpath, abspath)
-
-	// recent list
-	ssfs.AddRecentList("test1.txt")
-	ssfs.AddRecentList("test2.txt")
-	ssfs.AddRecentList("test1.txt")
-	require.Equal(t, "test1.txt", ssfs.GetRecentList()[0])
-	require.Equal(t, "test2.txt", ssfs.GetRecentList()[1])
 }
 
 func TestFsGit(t *testing.T) {

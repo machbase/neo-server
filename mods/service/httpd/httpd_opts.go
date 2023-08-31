@@ -98,12 +98,6 @@ func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
 	}
 }
 
-func OptionRecentsProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.recentsProvider = provider
-	}
-}
-
 func OptionWebShellProvider(provider model.ShellProvider) Option {
 	return func(s *httpd) {
 		s.webShellProvider = provider
