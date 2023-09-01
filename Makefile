@@ -38,7 +38,3 @@ package-%:
 
 generate:
 	@go run mage.go generate
-
-## Require https://github.com/matryer/moq
-regen-mock:
-	@go run mage.go regenMock
