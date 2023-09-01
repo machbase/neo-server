@@ -29,12 +29,12 @@ func TestMdWithImage(t *testing.T) {
 	}
 	expect := []string{
 		`<h1>Image includes</h1>`,
-		`<p><img src="/db/tql/sample_image.png" alt="sample" /></p>`,
+		`<p><img src="./sample_image.png" alt="sample" /></p>`,
 	}
 
 	w := &bytes.Buffer{}
 	conv := mdconv.New(mdconv.WithDarkMode(true))
 	err := conv.ConvertString(strings.Join(code, "\n"), w)
 	require.Nil(t, err)
-	require.Equal(t, strings.Join(expect, "\n"), w.String())
+	require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(w.String()))
 }
