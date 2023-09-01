@@ -390,7 +390,7 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 			continue
 		}
 		tok := h[7:]
-		svr.log.Infof("tok ==>", tok)
+		svr.log.Infof("tok ==> %s", tok)
 		result, err := svr.authServer.ValidateClientToken(tok)
 		if err != nil {
 			svr.log.Errorf("client private key %s", err.Error())

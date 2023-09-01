@@ -237,6 +237,10 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		svr.log.Errorf("user auth", err.Error())
 		return false
 	}
+	if !ok {
+		svr.log.Tracef("'%s' login fail password mis-matched", user)
+	}
+
 	return ok
 }
 
