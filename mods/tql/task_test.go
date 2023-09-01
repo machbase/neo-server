@@ -112,7 +112,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}
 	if expectLog != "" {
 		// log message
-		require.Equal(t, expectLog, logString)
+		if !strings.Contains(logString, expectLog) {
+			t.Log("LOG OUTPUT:", logString)
+			t.Log("LOG EXPECT:", expectLog)
+			t.Fail()
+		}
 	} else {
 		if len(logString) > 0 && expectErr == "" {
 			t.Log("LOG OUTPUT:", logString)
@@ -134,7 +138,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		} else {
 			require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
 		}
-		require.Equal(t, "", logString)
+		if strings.Contains(logString, "ERROR") || strings.Contains(logString, "WARN") {
+			t.Log("LOG OUTPUT:", logString)
+			t.Fail()
+		}
 	}
 }
 

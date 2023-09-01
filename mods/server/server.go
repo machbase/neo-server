@@ -117,6 +117,7 @@ type GrpcConfig struct {
 type HttpConfig struct {
 	Listeners []string
 	Handlers  []httpd.HandlerConfig
+	WebDir    string
 
 	EnableTokenAuth bool
 	DebugMode       bool
@@ -495,6 +496,16 @@ func (s *svr) Start() error {
 			shellAddrs = append(shellAddrs, sp.Address)
 		}
 		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
+		if s.conf.Http.WebDir != "" {
+			stat, err := os.Stat(s.conf.Http.WebDir)
+			if err != nil {
+				return err
+			}
+			if !stat.IsDir() {
+				return fmt.Errorf("web ui path is not a directory")
+			}
+			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
+		}
 		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")

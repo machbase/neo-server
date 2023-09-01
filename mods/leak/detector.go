@@ -341,7 +341,6 @@ func (det *Detector) addHistoryRows(rp *RowsParole) {
 		rowsStat.lock.Lock()
 		rowsStat.count += 1
 		rowsStat.ageTotal += age
-		fmt.Println("History ", rowsStat.String())
 		rowsStat.lock.Unlock()
 	}
 }

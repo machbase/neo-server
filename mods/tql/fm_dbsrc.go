@@ -48,7 +48,13 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
 	}
 
+	tick := time.Now()
+	defer func() {
+		node.task.LogDebug("Elapsed", time.Since(tick).String())
+	}()
+
 	if ret.dump == nil || !ret.dump.Flag {
+		node.task.LogDebug("QUERY:", ret.ToSQL())
 		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
@@ -188,8 +194,13 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	if len(args) == 0 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
+	tick := time.Now()
+	defer func() {
+		x.task.LogDebug("Elapsed", time.Since(tick).String())
+	}()
 	switch v := args[0].(type) {
 	case string:
+		x.task.LogDebug("SQL:", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
 		return nil, nil
@@ -198,6 +209,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if text, ok := args[1].(string); ok {
+			x.task.LogDebugf("SQL(%s): %s", v.name, text)
 			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
 			ret.execType = "query"
 			ret.gen(x)

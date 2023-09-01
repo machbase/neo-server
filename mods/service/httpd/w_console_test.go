@@ -87,7 +87,8 @@ func TestTqlLog(t *testing.T) {
 	go func() {
 		for i := 0; i < expectCount; i++ {
 			evt := eventbus.Event{}
-			ws.ReadJSON(&evt)
+			err := ws.ReadJSON(&evt)
+			require.Nil(t, err, "read websocket failed")
 			require.Equal(t, expectLines[i], evt.Log.Message)
 		}
 		wg.Done()
