@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -52,11 +53,25 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		node.task.LogDebug("Elapsed", time.Since(tick).String())
 	}()
 
-	if ret.dump != nil && ret.dump.Flag {
+	if ret.dump == nil || !ret.dump.Flag {
 		node.task.LogDebug("QUERY:", ret.ToSQL())
+		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		ds.gen(node)
+	} else {
+		var text string
+		if ret.between != nil {
+			if ret.between.HasPeriod() {
+				text = ret.toSqlGroup()
+			} else {
+				text = ret.toSql()
+			}
+		}
+		if ret.dump.Escape {
+			text = url.QueryEscape(text)
+		}
+		NewRecord(text, nil).Tell(node.next)
+		return nil, nil
 	}
-	ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
-	ds.gen(node)
 	return nil, nil
 }
 
