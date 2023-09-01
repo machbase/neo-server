@@ -13,6 +13,7 @@ define VARS {
     PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
     FILE_DIR          = flag("--file", "${execDir()}")
+    UI_DIR            = flag("--ui", "")
     MACH_LISTEN_HOST  = flag("--mach-listen-host", DEF_LISTEN_HOST)
     MACH_LISTEN_PORT  = flag("--mach-listen-port", DEF_MACH_PORT)
     SHELL_LISTEN_HOST = flag("--shell-listen-host", DEF_LISTEN_HOST)
@@ -86,6 +87,7 @@ module "machbase.com/neo-server" {
                 { Prefix: "/metrics", Handler: "influx" },
                 { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
             ]
+            WebDir           = VARS_UI_DIR
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
         }

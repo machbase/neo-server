@@ -67,6 +67,7 @@ type httpd struct {
 	referenceProvider      func() []WebReferenceGroup
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
+	uiContentFs            http.FileSystem
 }
 
 type HandlerType string
@@ -163,7 +164,11 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
 			})
-			group.StaticFS(contentBase, GetAssets(contentBase))
+			if svr.uiContentFs != nil {
+				group.StaticFS(contentBase, svr.uiContentFs)
+			} else {
+				group.StaticFS(contentBase, GetAssets(contentBase))
+			}
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
