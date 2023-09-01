@@ -1,9 +1,12 @@
 package httpd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,5 +109,12 @@ func (cons *Console) sendMessage(evt *eventbus.Event) {
 	if err != nil {
 		cons.log.Warn("ERR", err.Error())
 		cons.Close()
+	} else {
+		if cons.log.TraceEnabled() {
+			w := &bytes.Buffer{}
+			enc := json.NewEncoder(w)
+			enc.Encode(evt)
+			cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+		}
 	}
 }

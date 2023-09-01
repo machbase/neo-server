@@ -150,6 +150,8 @@ type databaseSource struct {
 
 	fetched  int
 	executed bool
+
+	resultMsg string
 }
 
 func (dc *databaseSource) gen(node *Node) {
@@ -177,8 +179,10 @@ func (dc *databaseSource) gen(node *Node) {
 		},
 	}
 	if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
 	} else {
+		dc.resultMsg = msg
 		if dc.executed {
 			dc.task.SetResultColumns(spi.Columns{
 				{Name: "message", Type: "string"},
@@ -195,24 +199,23 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
 	tick := time.Now()
-	defer func() {
-		x.task.LogDebug("Elapsed", time.Since(tick).String())
-	}()
 	switch v := args[0].(type) {
 	case string:
-		x.task.LogDebug("SQL:", v)
+		x.task.LogInfo("╭─ ", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
+		x.task.LogInfo("╰─➤ ", ds.resultMsg, time.Since(tick).String())
 		return nil, nil
 	case *bridgeName:
 		if len(args) == 0 {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if text, ok := args[1].(string); ok {
-			x.task.LogDebugf("SQL(%s): %s", v.name, text)
+			x.task.LogInfof("╭─ SQL(%s): %s", v.name, text)
 			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
 			ret.execType = "query"
 			ret.gen(x)
+			x.task.LogInfo("╰─➤ Elapsed", time.Since(tick).String())
 			return nil, nil
 		}
 	}
