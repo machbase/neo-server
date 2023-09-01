@@ -18,5 +18,9 @@ func TestImageFiles(t *testing.T) {
 	require.Equal(t, "image/bmp", contentTypeOfFile("some/dir/file.BMP"))
 	require.Equal(t, "image/x-icon", contentTypeOfFile("some/dir/file.ico"))
 	require.Equal(t, "image/tiff", contentTypeOfFile("some/dir/file.tiff"))
-	require.Equal(t, "", contentTypeOfFile("some/dir/file.txt"))
+	require.Equal(t, "text/plain", contentTypeOfFile("some/dir/file.txt"))
+	require.Equal(t, "text/csv", contentTypeOfFile("some/dir/file.csv"))
+	require.Equal(t, "application/json", contentTypeOfFile("some/dir/file.json"))
+	require.Equal(t, "text/markdown", contentTypeOfFile("some/dir/file.md"))
+	require.Equal(t, "text/markdown", contentTypeOfFile("some/dir/file.markdown"))
 }

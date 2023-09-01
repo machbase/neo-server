@@ -70,7 +70,7 @@ func contentTypeOfFile(name string) string {
 		return "application/json"
 	case ".csv":
 		return "text/csv"
-	case ".md":
+	case ".md", ".markdown":
 		return "text/markdown"
 	}
 }
