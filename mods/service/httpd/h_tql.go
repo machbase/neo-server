@@ -81,6 +81,13 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 
 	path := ctx.Param("path")
 	if !strings.HasSuffix(path, ".tql") {
+		contentType := contentTypeOfFile(path)
+		if contentType != "" && ctx.Request.Method == http.MethodGet {
+			if ent, err := svr.serverFs.Get(path); err == nil && !ent.IsDir {
+				ctx.Data(http.StatusOK, contentType, ent.Content)
+				return
+			}
+		}
 		rsp.Reason = "no tql found"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)

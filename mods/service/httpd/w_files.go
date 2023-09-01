@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,18 +27,58 @@ func isFsFile(path string) bool {
 		strings.HasSuffix(path, ".wrk")
 }
 
-func contentTypeOfFile(name string) string {
-	if strings.HasSuffix(name, ".sql") {
-		return "text/plain"
-	} else if strings.HasSuffix(name, ".tql") {
-		return "text/plain"
-	} else if strings.HasSuffix(name, ".taz") {
-		return "application/json"
-	} else if strings.HasSuffix(name, ".wrk") {
-		return "application/json"
-	} else {
-		return "application/octet-stream"
+// returns supproted content-type of the given file path (name),
+// if the name is an unsupported file type, it returns empty string
+func contentTypeOfFileFallback(name string, fallback string) string {
+	ret := contentTypeOfFile(name)
+	if ret == "" {
+		ret = fallback
 	}
+	return ret
+}
+
+func contentTypeOfFile(name string) string {
+	ext := filepath.Ext(name)
+	switch strings.ToLower(ext) {
+	default:
+		return ""
+	case ".sql":
+		return "text/plain"
+	case ".tql":
+		return "text/plain"
+	case ".taz":
+		return "application/json"
+	case ".wrk":
+		return "application/json"
+	case ".apng":
+		return "image/apng"
+	case ".avif":
+		return "image/avif"
+	case ".gif":
+		return "image/gif"
+	case ".jpeg", ".jpg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".svg":
+		return "image/svg+xml"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".ico":
+		return "image/x-icon"
+	case ".tiff":
+		return "image/tiff"
+	}
+}
+
+var ignores = map[string]bool{
+	".git":          true,
+	"machbase_home": true,
+	"node_modules":  true,
+	".pnp":          true,
+	".DS_Store":     true,
 }
 
 func (svr *httpd) handleFiles(ctx *gin.Context) {
@@ -54,11 +95,14 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ent, err = svr.serverFs.GetGlob(path, filter)
 		} else {
 			ent, err = svr.serverFs.GetFilter(path, func(se *ssfs.SubEntry) bool {
+				base := filepath.Base(path)
+				if ignores[base] {
+					return false
+				}
 				if se.IsDir {
 					return true
-				} else {
-					return isFsFile(se.Name)
 				}
+				return contentTypeOfFile(se.Name) != ""
 			})
 		}
 		if err != nil {
@@ -67,21 +111,23 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, rsp)
 			return
 		}
-		if ent.IsDir {
-			rsp.Success, rsp.Reason = true, "success"
-			rsp.Elapse = time.Since(tick).String()
-			rsp.Data = ent
-			ctx.JSON(http.StatusOK, rsp)
-			return
-		} else if isFsFile(path) {
-			ctx.Data(http.StatusOK, contentTypeOfFile(ent.Name), ent.Content)
-			return
-		} else {
-			rsp.Reason = fmt.Sprintf("not found: %s", path)
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusNotFound, rsp)
-			return
+		if ent != nil {
+			if ent.IsDir {
+				rsp.Success, rsp.Reason = true, "success"
+				rsp.Elapse = time.Since(tick).String()
+				rsp.Data = ent
+				ctx.JSON(http.StatusOK, rsp)
+				return
+			}
+			if contentType := contentTypeOfFile(ent.Name); contentType != "" {
+				ctx.Data(http.StatusOK, contentType, ent.Content)
+				return
+			}
 		}
+		rsp.Reason = fmt.Sprintf("not found: %s", path)
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusNotFound, rsp)
+		return
 	case http.MethodDelete:
 		ent, err := svr.serverFs.Get(path)
 		if err != nil {
