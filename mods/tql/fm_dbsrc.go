@@ -2,7 +2,6 @@ package tql
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -48,24 +47,16 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
 	}
 
-	if ret.dump == nil || !ret.dump.Flag {
-		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
-		ds.gen(node)
-	} else {
-		var text string
-		if ret.between != nil {
-			if ret.between.HasPeriod() {
-				text = ret.toSqlGroup()
-			} else {
-				text = ret.toSql()
-			}
-		}
-		if ret.dump.Escape {
-			text = url.QueryEscape(text)
-		}
-		NewRecord(text, nil).Tell(node.next)
-		return nil, nil
+	tick := time.Now()
+	defer func() {
+		node.task.LogDebug("Elapsed", time.Since(tick).String())
+	}()
+
+	if ret.dump != nil && ret.dump.Flag {
+		node.task.LogDebug("QUERY:", ret.ToSQL())
 	}
+	ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+	ds.gen(node)
 	return nil, nil
 }
 
@@ -188,8 +179,13 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	if len(args) == 0 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
+	tick := time.Now()
+	defer func() {
+		x.task.LogDebug("Elapsed", time.Since(tick).String())
+	}()
 	switch v := args[0].(type) {
 	case string:
+		x.task.LogDebug("SQL:", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
 		return nil, nil
@@ -198,6 +194,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if text, ok := args[1].(string); ok {
+			x.task.LogDebugf("SQL(%s): %s", v.name, text)
 			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
 			ret.execType = "query"
 			ret.gen(x)

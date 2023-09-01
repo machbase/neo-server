@@ -342,11 +342,13 @@ type TaskLog interface {
 }
 
 func (x *Task) Logf(format string, args ...any)      { x._logf("INFO", format, args...) }
+func (x *Task) LogTracef(format string, args ...any) { x._logf("TRACE", format, args...) }
 func (x *Task) LogDebugf(format string, args ...any) { x._logf("DEBUG", format, args...) }
 func (x *Task) LogWarnf(format string, args ...any)  { x._logf("WARN", format, args...) }
 func (x *Task) LogErrorf(format string, args ...any) { x._logf("ERROR", format, args...) }
 
 func (x *Task) Log(args ...any)      { x._log("INFO", args...) }
+func (x *Task) LogTrace(args ...any) { x._log("TRACE", args...) }
 func (x *Task) LogDebug(args ...any) { x._log("DEBUG", args...) }
 func (x *Task) LogWarn(args ...any)  { x._log("WARN", args...) }
 func (x *Task) LogError(args ...any) { x._log("ERROR", args...) }
