@@ -329,6 +329,9 @@ func (rs *RowsStat) String() string {
 }
 
 func (det *Detector) addHistoryRows(rp *RowsParole) {
+	if rp == nil || rp.sqlText == "" {
+		return
+	}
 	text := rp.sqlText
 	age := rp.releaseTime.Sub(rp.createTime)
 
