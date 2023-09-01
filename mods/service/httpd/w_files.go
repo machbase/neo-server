@@ -29,14 +29,6 @@ func isFsFile(path string) bool {
 
 // returns supproted content-type of the given file path (name),
 // if the name is an unsupported file type, it returns empty string
-func contentTypeOfFileFallback(name string, fallback string) string {
-	ret := contentTypeOfFile(name)
-	if ret == "" {
-		ret = fallback
-	}
-	return ret
-}
-
 func contentTypeOfFile(name string) string {
 	ext := filepath.Ext(name)
 	switch strings.ToLower(ext) {
@@ -50,6 +42,7 @@ func contentTypeOfFile(name string) string {
 		return "application/json"
 	case ".wrk":
 		return "application/json"
+	// image files
 	case ".apng":
 		return "image/apng"
 	case ".avif":
@@ -70,6 +63,15 @@ func contentTypeOfFile(name string) string {
 		return "image/x-icon"
 	case ".tiff":
 		return "image/tiff"
+	// text files
+	case ".txt":
+		return "text/plain"
+	case ".json":
+		return "application/json"
+	case ".csv":
+		return "text/csv"
+	case ".md":
+		return "text/markdown"
 	}
 }
 
