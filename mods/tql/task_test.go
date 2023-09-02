@@ -73,6 +73,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
+	task.SetLogLevel(tql.INFO)
+	task.SetConsoleLogLevel(tql.FATAL)
 	task.SetDatabase(&mockDb)
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
@@ -726,7 +728,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example")
-	expectLog := ExpectLog(`[ERROR] execute error no such table: example`)
+	expectLog := ExpectLog(`[ERROR] no such table: example`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -770,7 +772,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example_sql")
-	expectLog := ExpectLog("[ERROR] execute error no such table: example_sql")
+	expectLog := ExpectLog("[ERROR] no such table: example_sql")
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -836,7 +838,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{}
 	expectErr = ExpectErr("near \"example_sql\": syntax error")
-	expectLog = ExpectLog(`[ERROR] execute error near "example_sql": syntax error`)
+	expectLog = ExpectLog(`[ERROR] near "example_sql": syntax error`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	// before delete

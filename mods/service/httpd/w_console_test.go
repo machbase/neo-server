@@ -106,7 +106,7 @@ func TestTqlLog(t *testing.T) {
 
 	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
 	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	ctx.Request.Header.Set("X-Console-Id", "123456")
+	ctx.Request.Header.Set("X-Console-Id", "123456 console-log-level=INFO log-level=ERROR")
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
 	require.Equal(t, strings.Join([]string{"1,0.00", "2,0.25", "3,0.50", "4,0.75", "5,1.00", ""}, "\n"), w.Body.String())

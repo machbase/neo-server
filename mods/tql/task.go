@@ -34,6 +34,9 @@ type Task struct {
 	// ex) => `// +brief, markdown`
 	pragma []string
 
+	logLevel        Level
+	consoleLogLevel Level
+
 	// compiled result
 	compiled   bool
 	compileErr error
@@ -106,6 +109,14 @@ func (x *Task) SetConsole(user string, id string) {
 	}
 }
 
+func (x *Task) SetConsoleLogLevel(level Level) {
+	x.consoleLogLevel = level
+}
+
+func (x *Task) SetLogLevel(level Level) {
+	x.consoleLogLevel = level
+}
+
 func (x *Task) SetParams(p map[string][]string) {
 	if x.params == nil {
 		x.params = map[string][]string{}
@@ -150,6 +161,10 @@ func (x *Task) Compile(codeReader io.Reader) error {
 	err := x.compile(codeReader)
 	if err != nil {
 		x.LogError("Compile", err.Error())
+	} else {
+		for i, n := range x.nodes {
+			x.LogTracef("[%d] %s", i, n.Name())
+		}
 	}
 	return err
 }
@@ -341,50 +356,73 @@ type TaskLog interface {
 	LogError(args ...any)
 }
 
-func (x *Task) Logf(format string, args ...any)      { x._logf("INFO", format, args...) }
-func (x *Task) LogInfof(format string, args ...any)  { x._logf("INFO", format, args...) }
-func (x *Task) LogTracef(format string, args ...any) { x._logf("TRACE", format, args...) }
-func (x *Task) LogDebugf(format string, args ...any) { x._logf("DEBUG", format, args...) }
-func (x *Task) LogWarnf(format string, args ...any)  { x._logf("WARN", format, args...) }
-func (x *Task) LogErrorf(format string, args ...any) { x._logf("ERROR", format, args...) }
+func (x *Task) Logf(format string, args ...any)      { x._logf(INFO, format, args...) }
+func (x *Task) LogInfof(format string, args ...any)  { x._logf(INFO, format, args...) }
+func (x *Task) LogTracef(format string, args ...any) { x._logf(TRACE, format, args...) }
+func (x *Task) LogDebugf(format string, args ...any) { x._logf(DEBUG, format, args...) }
+func (x *Task) LogWarnf(format string, args ...any)  { x._logf(WARN, format, args...) }
+func (x *Task) LogErrorf(format string, args ...any) { x._logf(ERROR, format, args...) }
 
-func (x *Task) Log(args ...any)      { x._log("INFO", args...) }
-func (x *Task) LogInfo(args ...any)  { x._log("INFO", args...) }
-func (x *Task) LogTrace(args ...any) { x._log("TRACE", args...) }
-func (x *Task) LogDebug(args ...any) { x._log("DEBUG", args...) }
-func (x *Task) LogWarn(args ...any)  { x._log("WARN", args...) }
-func (x *Task) LogError(args ...any) { x._log("ERROR", args...) }
+func (x *Task) Log(args ...any)      { x._log(INFO, args...) }
+func (x *Task) LogInfo(args ...any)  { x._log(INFO, args...) }
+func (x *Task) LogTrace(args ...any) { x._log(TRACE, args...) }
+func (x *Task) LogDebug(args ...any) { x._log(DEBUG, args...) }
+func (x *Task) LogWarn(args ...any)  { x._log(WARN, args...) }
+func (x *Task) LogError(args ...any) { x._log(ERROR, args...) }
 
 func (x *Task) LogFatalf(format string, args ...any) {
 	stack := string(debug.Stack())
-	x._logf("FATAL", format+"\n%s", append(args, stack))
+	x._logf(FATAL, format+"\n%s", append(args, stack))
 }
 
 func (x *Task) LogFatal(args ...any) {
 	stack := string(debug.Stack())
-	x._log("FATAL", append(args, "\n", stack))
+	x._log(FATAL, append(args, "\n", stack))
 }
 
-func (x *Task) _log(prefix string, args ...any) {
-	if x.logWriter != nil {
-		line := fmt.Sprintln(append([]any{"[" + prefix + "]"}, args...)...)
+func (x *Task) _log(level Level, args ...any) {
+	if x.logWriter != nil && level >= x.logLevel {
+		line := fmt.Sprintln(append([]any{"[" + Levels[level] + "]"}, args...)...)
 		x.logWriter.Write([]byte(line))
 	}
-	if x.consoleTopic != "" {
+	if x.consoleTopic != "" && level >= x.consoleLogLevel {
 		toks := []string{}
 		for _, arg := range args {
 			toks = append(toks, fmt.Sprintf("%v", arg))
 		}
-		eventbus.PublishLog(x.consoleTopic, prefix, strings.Join(toks, " "))
+		eventbus.PublishLog(x.consoleTopic, Levels[level], strings.Join(toks, " "))
 	}
 }
 
-func (x *Task) _logf(prefix string, format string, args ...any) {
-	if x.logWriter != nil {
-		line := fmt.Sprintf("[%s] "+format+"\n", append([]any{prefix}, args...)...)
+func (x *Task) _logf(level Level, format string, args ...any) {
+	if x.logWriter != nil && level >= x.logLevel {
+		line := fmt.Sprintf("[%s] "+format+"\n", append([]any{Levels[level]}, args...)...)
 		x.logWriter.Write([]byte(line))
 	}
-	if x.consoleTopic != "" {
-		eventbus.PublishLog(x.consoleTopic, prefix, fmt.Sprintf(format, args...))
+	if x.consoleTopic != "" && level >= x.consoleLogLevel {
+		eventbus.PublishLog(x.consoleTopic, Levels[level], fmt.Sprintf(format, args...))
 	}
+}
+
+var Levels = []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
+
+type Level int
+
+const (
+	TRACE Level = iota
+	DEBUG
+	INFO
+	WARN
+	ERROR
+	FATAL
+)
+
+func ParseLogLevel(str string) Level {
+	s := strings.ToUpper(str)
+	for i := range Levels {
+		if s == Levels[i] {
+			return Level(i)
+		}
+	}
+	return FATAL
 }
