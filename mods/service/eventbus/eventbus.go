@@ -30,8 +30,9 @@ type Ping struct {
 }
 
 type Log struct {
-	Level   string `json:"level"`
-	Message string `json:"message"`
+	Timestmap int64  `json:"timestamp"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
 }
 
 func NewPingTime(tick time.Time) *Event {
@@ -53,8 +54,9 @@ func NewLog(level string, message string) *Event {
 	return &Event{
 		Type: EVT_LOG,
 		Log: &Log{
-			Level:   level,
-			Message: message,
+			Timestmap: time.Now().UnixNano(),
+			Level:     level,
+			Message:   message,
 		},
 	}
 }
