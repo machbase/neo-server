@@ -15,6 +15,8 @@ import (
 // Server Side File System
 type SSFS struct {
 	bases []BaseDir
+
+	ignores map[string]bool
 }
 
 var defaultFs *SSFS
@@ -52,6 +54,13 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 			}
 		}
 		ret.bases = append(ret.bases, BaseDir{name: name, abspath: abspath})
+	}
+	ret.ignores = map[string]bool{
+		".git":          true,
+		"machbase_home": true,
+		"node_modules":  true,
+		".pnp":          true,
+		".DS_Store":     true,
 	}
 	return ret, nil
 }
@@ -179,6 +188,9 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				Type:               entType,
 				Size:               nfo.Size(),
 				LastModifiedMillis: nfo.ModTime().UnixMilli(),
+			}
+			if ssfs.ignores[subEnt.Name] {
+				continue
 			}
 			if filter != nil {
 				if !filter(subEnt) {

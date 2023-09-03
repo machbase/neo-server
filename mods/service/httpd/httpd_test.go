@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/logging"
@@ -66,7 +67,10 @@ func (fda *mockServer) RefreshToken() string {
 	return fda.refreshToken
 }
 
+var singleMockServer sync.Mutex
+
 func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gin.Engine) {
+	singleMockServer.Lock()
 	ret := &mockServer{}
 	svr := &httpd{
 		log:             logging.GetLog("httpd-fake"),
@@ -90,4 +94,5 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 
 func (fds *mockServer) Shutdown() {
 	fds.svr.Close()
+	singleMockServer.Unlock()
 }

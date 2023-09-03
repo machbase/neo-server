@@ -75,14 +75,6 @@ func contentTypeOfFile(name string) string {
 	}
 }
 
-var ignores = map[string]bool{
-	".git":          true,
-	"machbase_home": true,
-	"node_modules":  true,
-	".pnp":          true,
-	".DS_Store":     true,
-}
-
 func (svr *httpd) handleFiles(ctx *gin.Context) {
 	rsp := &SsfsResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
@@ -97,10 +89,6 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			ent, err = svr.serverFs.GetGlob(path, filter)
 		} else {
 			ent, err = svr.serverFs.GetFilter(path, func(se *ssfs.SubEntry) bool {
-				base := filepath.Base(path)
-				if ignores[base] {
-					return false
-				}
 				if se.IsDir {
 					return true
 				}
