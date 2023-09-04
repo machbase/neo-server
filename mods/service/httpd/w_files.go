@@ -21,10 +21,7 @@ type SsfsResponse struct {
 }
 
 func isFsFile(path string) bool {
-	return strings.HasSuffix(path, ".tql") ||
-		strings.HasSuffix(path, ".sql") ||
-		strings.HasSuffix(path, ".taz") ||
-		strings.HasSuffix(path, ".wrk")
+	return contentTypeOfFile(path) != ""
 }
 
 // returns supproted content-type of the given file path (name),
@@ -173,16 +170,6 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
-			}
-			if ctx.ContentType() == "application/json" {
-				var text string
-				if err := json.Unmarshal(content, &text); err != nil {
-					rsp.Reason = err.Error()
-					rsp.Elapse = time.Since(tick).String()
-					ctx.JSON(http.StatusBadRequest, rsp)
-					return
-				}
-				content = []byte(text)
 			}
 			err = svr.serverFs.Set(path, content)
 			if err == nil {
