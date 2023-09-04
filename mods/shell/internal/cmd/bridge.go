@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	bridgerpc "github.com/machbase/neo-grpc/bridge"
@@ -14,12 +15,11 @@ import (
 
 func init() {
 	client.RegisterCmd(&client.Cmd{
-		Name:         "bridge",
-		PcFunc:       pcBridge,
-		Action:       doBridge,
-		Desc:         "Manage bridges",
-		Usage:        helpBridge,
-		Experimental: true,
+		Name:   "bridge",
+		PcFunc: pcBridge,
+		Action: doBridge,
+		Desc:   "Manage bridges",
+		Usage:  helpBridge,
 	})
 }
 
@@ -154,6 +154,8 @@ func doBridgeList(ctx *client.ActionContext) {
 		ctx.Println("ERR", rsp.Reason)
 		return
 	}
+
+	sort.Slice(rsp.Bridges, func(i, j int) bool { return rsp.Bridges[i].Name < rsp.Bridges[j].Name })
 
 	box := ctx.NewBox([]string{"NAME", "TYPE", "CONNECTION"})
 	for _, c := range rsp.Bridges {
