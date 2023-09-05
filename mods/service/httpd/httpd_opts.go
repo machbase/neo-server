@@ -1,7 +1,6 @@
 package httpd
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/model"
@@ -88,7 +87,7 @@ func OptionDebugMode(isDebug bool) Option {
 
 func OptionWebDir(path string) Option {
 	return func(s *httpd) {
-		s.uiContentFs = http.Dir(path)
+		s.uiContentFs = WrapAssets(path)
 	}
 }
 
