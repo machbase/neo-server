@@ -201,21 +201,21 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
-		x.task.LogInfo("╭─ ", v)
+		x.task.LogInfof("%p ╭─ %s", x.task, v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
-		x.task.LogInfo("╰─➤ ", ds.resultMsg, time.Since(tick).String())
+		x.task.LogInfof("%p ╰─➤ %s %s", x.task, ds.resultMsg, time.Since(tick).String())
 		return nil, nil
 	case *bridgeName:
 		if len(args) == 0 {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if text, ok := args[1].(string); ok {
-			x.task.LogInfof("╭─ SQL(%s): %s", v.name, text)
+			x.task.LogInfof("%p ╭─ SQL(%s): %s", x.task, v.name, text)
 			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
 			ret.execType = "query"
 			ret.gen(x)
-			x.task.LogInfo("╰─➤ Elapsed", time.Since(tick).String())
+			x.task.LogInfof("%p ╰─➤ Elapsed %s", x.task, time.Since(tick).String())
 			return nil, nil
 		}
 	}
