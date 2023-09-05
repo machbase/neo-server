@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
@@ -193,10 +196,16 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			}
 			var entry *ssfs.Entry
 			if len(content) > 0 && ctx.ContentType() == "application/json" {
-				cloneReq := GitCloneReq{}
-				err = json.Unmarshal(content, &cloneReq)
+				var topic string
+				if vals, exists := ctx.Get("jwt-claim"); exists {
+					claim := vals.(*jwt.RegisteredClaims)
+					consoleInfo := parseConsoleId(ctx)
+					topic = fmt.Sprintf("console:%s:%s", claim.Subject, consoleInfo.consoleId)
+				}
+				cloneReq := &GitCloneReq{logTopic: topic}
+				err = json.Unmarshal(content, cloneReq)
 				if err == nil {
-					entry, err = svr.serverFs.GitClone(path, cloneReq.Url)
+					entry, err = svr.serverFs.GitClone(path, cloneReq.Url, cloneReq)
 				}
 			} else {
 				entry, err = svr.serverFs.MkDir(path)
@@ -218,5 +227,16 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 }
 
 type GitCloneReq struct {
-	Url string `json:"url"`
+	Url      string `json:"url"`
+	logTopic string `json:"-"`
+}
+
+func (gitClone *GitCloneReq) Write(b []byte) (int, error) {
+	if gitClone.logTopic == "" {
+		return os.Stdout.Write(b)
+	} else {
+		l := len(b)
+		eventbus.PublishLog(gitClone.logTopic, "INFO", string(b))
+		return l, nil
+	}
 }

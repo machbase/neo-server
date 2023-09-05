@@ -19,33 +19,42 @@ import (
 const TqlHeaderChartType = "X-Chart-Type"
 const TqlHeaderConsoleId = "X-Console-Id"
 
-// POST "/tql"
-func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
-	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
-	tick := time.Now()
+type ConsoleInfo struct {
+	consoleId       string
+	consoleLogLevel tql.Level
+	logLevel        tql.Level
+}
 
-	var consoleId string
-	var consoleLogLevel tql.Level
-	var logLevel tql.Level
-	var claim *jwt.RegisteredClaims
-	if val, exists := ctx.Get("jwt-claim"); exists {
-		claim = val.(*jwt.RegisteredClaims)
-	}
-	consoleId = ctx.GetHeader(TqlHeaderConsoleId)
-	if fields := util.SplitFields(consoleId, true); len(fields) > 1 {
-		consoleId = fields[0]
+func parseConsoleId(ctx *gin.Context) *ConsoleInfo {
+	ret := &ConsoleInfo{}
+	ret.consoleId = ctx.GetHeader(TqlHeaderConsoleId)
+	if fields := util.SplitFields(ret.consoleId, true); len(fields) > 1 {
+		ret.consoleId = fields[0]
 		for _, field := range fields[1:] {
 			kvpair := strings.SplitN(field, "=", 2)
 			if len(kvpair) == 2 {
 				switch strings.ToLower(kvpair[0]) {
 				case "console-log-level":
-					consoleLogLevel = tql.ParseLogLevel(kvpair[1])
+					ret.consoleLogLevel = tql.ParseLogLevel(kvpair[1])
 				case "log-level":
-					logLevel = tql.ParseLogLevel(kvpair[1])
+					ret.logLevel = tql.ParseLogLevel(kvpair[1])
 				}
 			}
 		}
 	}
+	return ret
+}
+
+// POST "/tql"
+func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
+	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
+	tick := time.Now()
+
+	var claim *jwt.RegisteredClaims
+	if val, exists := ctx.Get("jwt-claim"); exists {
+		claim = val.(*jwt.RegisteredClaims)
+	}
+	consoleInfo := parseConsoleId(ctx)
 
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
 	if err != nil {
@@ -68,10 +77,10 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
-	task.SetLogLevel(logLevel)
-	task.SetConsoleLogLevel(consoleLogLevel)
-	if claim != nil && consoleId != "" {
-		task.SetConsole(claim.Subject, consoleId)
+	task.SetLogLevel(consoleInfo.logLevel)
+	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
+	if claim != nil && consoleInfo.consoleId != "" {
+		task.SetConsole(claim.Subject, consoleInfo.consoleId)
 	}
 	task.SetOutputWriterJson(ctx.Writer, true)
 	task.SetDatabase(svr.db)

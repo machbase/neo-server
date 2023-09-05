@@ -136,7 +136,7 @@ func TestFsGit(t *testing.T) {
 	require.NotNil(t, ssfs)
 
 	dest := "/data1/neo-samples"
-	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git")
+	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git", nil)
 	if err != nil {
 		t.Log("ERR", err.Error())
 	}

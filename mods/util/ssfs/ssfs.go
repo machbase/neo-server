@@ -2,6 +2,7 @@ package ssfs
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -274,17 +275,20 @@ func (ssfs *SSFS) Set(path string, content []byte) error {
 }
 
 // git clone int the given path, it discards all local changes.
-func (ssfs *SSFS) GitClone(path string, gitUrl string) (*Entry, error) {
+func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Entry, error) {
 	idx, _, abspath := ssfs.findDir(path)
 	if idx == -1 {
 		return nil, os.ErrNotExist
 	}
 
+	if progress == nil {
+		progress = os.Stdout
+	}
 	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
 		URL:          gitUrl,
 		SingleBranch: true,
 		RemoteName:   "origin",
-		Progress:     os.Stdout,
+		Progress:     progress,
 	})
 	if err != nil {
 		if err == git.ErrRepositoryAlreadyExists {
