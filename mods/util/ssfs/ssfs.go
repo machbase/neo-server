@@ -105,6 +105,8 @@ type Entry struct {
 	Content  []byte      `json:"content,omitempty"`  // file content, if the entry is FILE
 	Children []*SubEntry `json:"children,omitempty"` // entry of sub files and dirs, if the entry is DIR
 	abspath  string      `json:"-"`
+	GitUrl   string      `json:"gitUrl,omitempty"`
+	GitClone bool        `json:"gitClone"`
 }
 
 type SubEntry struct {
@@ -113,6 +115,8 @@ type SubEntry struct {
 	Type               string `json:"type"`
 	Size               int64  `json:"size,omitempty"`
 	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
+	GitUrl             string `json:"gitUrl,omitempty"`
+	GitClone           bool   `json:"gitClone"`
 }
 
 type SubEntryFilter func(*SubEntry) bool
@@ -147,6 +151,21 @@ func (ssfs *SSFS) RealPath(path string) (string, error) {
 	return ent.abspath, nil
 }
 
+func (ssfs *SSFS) isGitClone(path string) (string, bool) {
+	if stat, err := os.Stat(filepath.Join(path, ".git")); err == nil && stat.IsDir() {
+		if repo, err := git.PlainOpen(path); err == nil {
+			if remotes, err := repo.Remotes(); err == nil && len(remotes) > 0 {
+				for _, url := range remotes[0].Config().URLs {
+					if strings.HasPrefix(url, "http") {
+						return url, true
+					}
+				}
+			}
+		}
+	}
+	return "", false
+}
+
 func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
 	idx, name, abspath := ssfs.findDir(path)
 	if idx == -1 {
@@ -162,6 +181,10 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 			IsDir:   true,
 			Name:    name,
 			abspath: abspath,
+		}
+		if url, isGitClone := ssfs.isGitClone(abspath); isGitClone {
+			ret.GitClone = true
+			ret.GitUrl = url
 		}
 		if idx == 0 && len(ssfs.bases) > 1 { // root dir and has sub dirs
 			for _, sub := range ssfs.bases[1:] {
@@ -196,6 +219,12 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 			if filter != nil {
 				if !filter(subEnt) {
 					continue
+				}
+			}
+			if nfo.IsDir() {
+				if url, isGitClone := ssfs.isGitClone(filepath.Join(abspath, subEnt.Name)); isGitClone {
+					subEnt.GitClone = true
+					subEnt.GitUrl = url
 				}
 			}
 			ret.Children = append(ret.Children, subEnt)
