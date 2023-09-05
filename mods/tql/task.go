@@ -171,7 +171,7 @@ func (x *Task) Compile(codeReader io.Reader) error {
 			nodeNames = append(nodeNames, n.Name())
 		}
 		nodeNames = append(nodeNames, x.output.Name())
-		x.LogTracef("%p Task compiled %s", x, strings.Join(nodeNames, " → "))
+		x.LogTrace("Task compiled", strings.Join(nodeNames, " → "))
 	}
 	return err
 }
@@ -235,9 +235,9 @@ func (x *Task) compile(codeReader io.Reader) error {
 func (x *Task) Execute() error {
 	err := x.execute()
 	if err != nil {
-		x.LogErrorf("%p Task %s", x, err.Error())
+		x.LogError("Task", err.Error())
 	} else {
-		x.LogDebugf("%p Task elapsed %s", x, time.Since(x._created).String())
+		x.LogDebug("Task elapsed", time.Since(x._created).String())
 	}
 	return err
 }
@@ -410,7 +410,7 @@ func (x *Task) _log(level Level, args ...any) {
 		for _, arg := range args {
 			toks = append(toks, fmt.Sprintf("%v", arg))
 		}
-		eventbus.PublishLog(x.consoleTopic, Levels[level], strings.Join(toks, " "))
+		eventbus.PublishLogTask(x.consoleTopic, Levels[level], fmt.Sprintf("%p", x), strings.Join(toks, " "))
 	}
 }
 
@@ -420,7 +420,7 @@ func (x *Task) _logf(level Level, format string, args ...any) {
 		x.logWriter.Write([]byte(line))
 	}
 	if x.consoleTopic != "" && level >= x.consoleLogLevel {
-		eventbus.PublishLog(x.consoleTopic, Levels[level], fmt.Sprintf(format, args...))
+		eventbus.PublishLogTask(x.consoleTopic, Levels[level], fmt.Sprintf("%p", x), fmt.Sprintf(format, args...))
 	}
 }
 
