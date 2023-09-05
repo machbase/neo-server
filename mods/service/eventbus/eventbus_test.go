@@ -58,4 +58,14 @@ func TestEventBus(t *testing.T) {
 	eventbus.PublishLog("test:event", "INFO", "hello world")
 	wg.Wait()
 
+	wg.Add(1)
+	expect = func(in *eventbus.Event) {
+		require.Equal(t, eventbus.EVT_LOG, in.Type)
+		require.Equal(t, "INFO", in.Log.Level)
+		require.Equal(t, "task#1", in.Log.Task)
+		require.Equal(t, "hello world", in.Log.Message)
+	}
+	eventbus.PublishLogTask("test:event", "INFO", "task#1", "hello world")
+	wg.Wait()
+
 }

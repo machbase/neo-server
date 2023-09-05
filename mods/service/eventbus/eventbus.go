@@ -32,6 +32,7 @@ type Ping struct {
 type Log struct {
 	Timestmap int64  `json:"timestamp"`
 	Level     string `json:"level"`
+	Task      string `json:"task,omitempty"`
 	Message   string `json:"message"`
 }
 
@@ -61,6 +62,22 @@ func NewLog(level string, message string) *Event {
 	}
 }
 
+func NewLogTask(level string, task string, message string) *Event {
+	return &Event{
+		Type: EVT_LOG,
+		Log: &Log{
+			Timestmap: time.Now().UnixNano(),
+			Level:     level,
+			Task:      task,
+			Message:   message,
+		},
+	}
+}
+
 func PublishLog(topic string, level string, message string) {
 	Default.Publish(topic, NewLog(level, message))
+}
+
+func PublishLogTask(topic string, level string, task string, message string) {
+	Default.Publish(topic, NewLogTask(level, task, message))
 }
