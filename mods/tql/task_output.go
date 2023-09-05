@@ -54,7 +54,6 @@ func (node *Node) compileSink(code string) (*output, error) {
 	if err != nil {
 		return nil, err
 	}
-	node.name = expr.String()
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
@@ -78,7 +77,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	default:
 		return nil, fmt.Errorf("type (%T) is not applicable for OUTPUT", val)
 	}
-	ret.name = code
+	ret.name = asNodeName(expr)
 	ret.task = node.task
 	ret.src = make(chan *Record)
 	return ret, nil

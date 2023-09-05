@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
 
+	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -162,9 +164,12 @@ func (x *Task) Compile(codeReader io.Reader) error {
 	if err != nil {
 		x.LogError("Compile", err.Error())
 	} else {
-		for i, n := range x.nodes {
-			x.LogTracef("[%d] %s", i, n.Name())
+		nodeNames := []string{}
+		for _, n := range x.nodes {
+			nodeNames = append(nodeNames, n.Name())
 		}
+		nodeNames = append(nodeNames, x.output.Name())
+		x.LogTracef("Task %p compiled %s", x, strings.Join(nodeNames, " -> "))
 	}
 	return err
 }
@@ -343,6 +348,17 @@ func (x *Task) OutputChartType() string {
 		return "echarts"
 	}
 	return ""
+}
+
+func asNodeName(expr *expression.Expression) string {
+	if toks := expr.Tokens(); len(toks) > 0 && toks[0].Kind == expression.FUNCTION {
+		r := regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+)\(.+`)
+		subs := r.FindStringSubmatch(expr.String())
+		if len(subs) >= 2 {
+			return subs[1] + "()"
+		}
+	}
+	return expr.String()
 }
 
 type TaskLog interface {
