@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"os"
 	"runtime"
@@ -103,19 +102,8 @@ type grpcd struct {
 }
 
 func (svr *grpcd) interceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	//if md, ok := metadata.FromIncomingContext(ctx); ok {
-	//	svr.log.Info("metadata : ", md)
-	//}
-
-	var subject pkix.Name
 	if grpcPeer, ok := peer.FromContext(ctx); ok {
-		if tlsInfo, ok := grpcPeer.AuthInfo.(credentials.TLSInfo); ok {
-			for _, v := range tlsInfo.State.PeerCertificates {
-				subject = v.Subject
-				//  key, cert ,
-			}
-		}
-		svr.log.Infof("ClientIP: %s, Method: %s, Req: %v, Subject: %s", grpcPeer.Addr.String(), info.FullMethod, req, subject)
+		svr.log.Infof("ClientIP: '%s', Method: '%s', Req: %v", grpcPeer.Addr.String(), info.FullMethod, req)
 	}
 
 	return handler(ctx, req)
