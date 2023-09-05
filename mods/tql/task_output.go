@@ -148,6 +148,13 @@ func (out *output) start() {
 
 		if shouldClose {
 			out.closeEncoder()
+		} else {
+			// encoder has not been opened, which means no records are produced
+			if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
+				out.setHeader(resultColumns)
+				out.openEncoder()
+				out.closeEncoder()
+			}
 		}
 		out.closeWg.Done()
 	}()
