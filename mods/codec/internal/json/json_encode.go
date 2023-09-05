@@ -10,6 +10,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
+	spi "github.com/machbase/neo-spi"
 )
 
 type Exporter struct {
@@ -81,7 +82,7 @@ func (ex *Exporter) Open() error {
 	var types []string
 	if ex.Rownum {
 		names = append([]string{"ROWNUM"}, ex.colNames...)
-		types = append([]string{"string"}, ex.colTypes...)
+		types = append([]string{spi.ColumnBufferTypeInt64}, ex.colTypes...)
 	} else {
 		names = ex.colNames
 		types = ex.colTypes
