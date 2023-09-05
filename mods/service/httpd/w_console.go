@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -114,7 +113,7 @@ func (cons *Console) sendMessage(evt *eventbus.Event) {
 			w := &bytes.Buffer{}
 			enc := json.NewEncoder(w)
 			enc.Encode(evt)
-			cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+			// cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
 		}
 	}
 }

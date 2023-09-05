@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"sync"
@@ -15,7 +16,7 @@ import (
 
 type DatabaseSink interface {
 	Open(db spi.Database) error
-	Close() string
+	Close() (string, error)
 	AddRow([]any) error
 }
 
@@ -176,6 +177,8 @@ func (out *output) setHeader(cols spi.Columns) {
 func (out *output) ContentType() string {
 	if out.encoder != nil {
 		return out.encoder.ContentType()
+	} else if out.dbSink != nil {
+		return "application/json"
 	}
 	return "application/octet-stream"
 }
@@ -203,8 +206,22 @@ func (out *output) closeEncoder() {
 	if out.encoder != nil {
 		out.encoder.Close()
 	} else if out.dbSink != nil {
-		resultMessage := out.dbSink.Close()
-		out.task.outputWriter.Write([]byte(resultMessage))
+		resultMessage, err := out.dbSink.Close()
+		success := true
+		reason := "success"
+		if err != nil {
+			success = false
+			reason = err.Error()
+		}
+		body, _ := json.Marshal(map[string]any{
+			"success": success,
+			"reason":  reason,
+			"elapse":  time.Since(out.task._created).String(),
+			"data": map[string]any{
+				"message": resultMessage,
+			},
+		})
+		out.task.outputWriter.Write(body)
 	}
 }
 

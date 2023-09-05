@@ -728,7 +728,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example")
-	expectLog := ExpectLog(`[ERROR] no such table: example`)
+	expectLog := ExpectLog(`no such table: example`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -772,7 +772,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example_sql")
-	expectLog := ExpectLog("[ERROR] no such table: example_sql")
+	expectLog := ExpectLog("no such table: example_sql")
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -838,7 +838,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{}
 	expectErr = ExpectErr("near \"example_sql\": syntax error")
-	expectLog = ExpectLog(`[ERROR] near "example_sql": syntax error`)
+	expectLog = ExpectLog(`near "example_sql": syntax error`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	// before delete

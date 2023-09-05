@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
@@ -48,6 +49,7 @@ type Task struct {
 	_shouldStop    bool
 	_resultColumns spi.Columns
 	_stateLock     sync.RWMutex
+	_created       time.Time
 }
 
 func NewTask() *Task {
@@ -55,7 +57,7 @@ func NewTask() *Task {
 }
 
 func NewTaskContext(ctx context.Context) *Task {
-	ret := &Task{}
+	ret := &Task{_created: time.Now()}
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
 	return ret
 }
@@ -169,7 +171,7 @@ func (x *Task) Compile(codeReader io.Reader) error {
 			nodeNames = append(nodeNames, n.Name())
 		}
 		nodeNames = append(nodeNames, x.output.Name())
-		x.LogTracef("Task %p compiled %s", x, strings.Join(nodeNames, " -> "))
+		x.LogTracef("%p Task compiled %s", x, strings.Join(nodeNames, " → "))
 	}
 	return err
 }
@@ -233,7 +235,9 @@ func (x *Task) compile(codeReader io.Reader) error {
 func (x *Task) Execute() error {
 	err := x.execute()
 	if err != nil {
-		x.LogError(err.Error())
+		x.LogErrorf("%p Task %s", x, err.Error())
+	} else {
+		x.LogDebugf("%p Task elapsed %s", x, time.Since(x._created).String())
 	}
 	return err
 }
@@ -352,7 +356,7 @@ func (x *Task) OutputChartType() string {
 
 func asNodeName(expr *expression.Expression) string {
 	if toks := expr.Tokens(); len(toks) > 0 && toks[0].Kind == expression.FUNCTION {
-		r := regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+)\(.+`)
+		r := regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+).+`)
 		subs := r.FindStringSubmatch(expr.String())
 		if len(subs) >= 2 {
 			return subs[1] + "()"
