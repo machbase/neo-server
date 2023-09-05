@@ -73,9 +73,6 @@ type Config struct {
 	ServerCertPath string
 	ClientCertPath string
 	ClientKeyPath  string
-	Stdin          io.ReadCloser
-	Stdout         io.Writer
-	Stderr         io.Writer
 	Prompt         string
 	PromptCont     string
 	QueryTimeout   time.Duration
@@ -105,9 +102,6 @@ type client struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		Stdin:        os.Stdin,
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
 		Prompt:       "\033[31mmachbase-neo»\033[0m ",
 		PromptCont:   "\033[31m>\033[0m  ",
 		QueryTimeout: 0 * time.Second,
@@ -368,9 +362,9 @@ func (cli *client) Process(line string) {
 		TimeLocation: time.UTC,
 		TimeFormat:   "ns",
 		Interactive:  cli.interactive,
-		Stdin:        cli.conf.Stdin,
-		Stdout:       cli.conf.Stdout,
-		Stderr:       cli.conf.Stderr,
+		Stdin:        os.Stdin,
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
 	}
 
 	if cli.rl != nil {
@@ -410,9 +404,6 @@ func (cli *client) Prompt() {
 		AutoComplete:           cli.completer(),
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
-		Stdin:                  cli.conf.Stdin,
-		Stdout:                 cli.conf.Stdout,
-		Stderr:                 cli.conf.Stderr,
 		HistorySearchFold:      true,
 		FuncFilterInputRune:    filterInput,
 	}
@@ -421,9 +412,6 @@ func (cli *client) Prompt() {
 		// TODO on windows,
 		//      up/down arrow keys for the history is not working if stdin is set
 		//      guess: underlying Windows interface requires os.Stdin.Fd() to syscall
-		readlineCfg.Stdin = nil
-		readlineCfg.Stdout = nil
-		readlineCfg.Stderr = nil
 		if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
 			defer term.Restore(int(os.Stdin.Fd()), oldState)
 		}
