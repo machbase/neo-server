@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"path"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/util/mdconv"
@@ -17,6 +21,25 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, err.Error())
 		return
 	}
+	referer := ctx.GetHeader("Referer")
+	// referer := "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
+	// referer := "http://127.0.0.1:5654/web/ui" // file is not saved
+	var filePath, fileName, fileDir string
+	if u, err := url.Parse(referer); err == nil {
+		// {{ file_path }} => /web/api/tql/path/to/file.wrk
+		// {{ file_name }} => file.wrk
+		// {{ file_dir }}  => /web/api/tql/path/to
+		filePath = u.Path
+		fileName = path.Base(filePath)
+		fileDir = path.Dir(filePath)
+	}
+	// {{ file_root }} => /web/api/tql
+	fileRoot := path.Join(strings.TrimSuffix(ctx.Request.URL.Path, "/md"), "tql")
+	src = regexp.MustCompile(`{{\s*file_root\s*}}`).ReplaceAll(src, []byte(fileRoot))
+	src = regexp.MustCompile(`{{\s*file_path\s*}}`).ReplaceAll(src, []byte(filePath))
+	src = regexp.MustCompile(`{{\s*file_name\s*}}`).ReplaceAll(src, []byte(fileName))
+	src = regexp.MustCompile(`{{\s*file_dir\s*}}`).ReplaceAll(src, []byte(fileDir))
+
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
 	ctx.Writer.Write([]byte("<div>"))
