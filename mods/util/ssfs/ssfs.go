@@ -166,6 +166,8 @@ func (ssfs *SSFS) isGitClone(path string) (string, bool) {
 	return "", false
 }
 
+const urlGitSample = "https://github.com/machbase/neo-samples.git"
+
 func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
 	idx, name, abspath := ssfs.findDir(path)
 	if idx == -1 {
@@ -241,6 +243,40 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				return ret.Children[i].Name < ret.Children[j].Name
 			}
 		})
+		if path == "/" {
+			// Add Git Sample repo to root directory
+			hasSamples := false
+			for _, child := range ret.Children {
+				if !child.IsDir || !child.GitClone {
+					continue
+				}
+				switch child.GitUrl {
+				case urlGitSample:
+					hasSamples = true
+				}
+			}
+			if !hasSamples {
+				nameSamples := "samples"
+				count := 0
+			reRun:
+				for _, child := range ret.Children {
+					if child.Name == nameSamples {
+						count++
+						nameSamples = fmt.Sprintf("samples-%d", count)
+						goto reRun
+					}
+				}
+				ret.Children = append(ret.Children, &SubEntry{
+					IsDir:              true,
+					Name:               nameSamples,
+					Type:               "dir",
+					Size:               0,
+					LastModifiedMillis: 0,
+					GitUrl:             urlGitSample,
+					GitClone:           true,
+				})
+			}
+		}
 		return ret, nil
 	} else {
 		ret := &Entry{
