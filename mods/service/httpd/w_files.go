@@ -1,6 +1,7 @@
 package httpd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -242,8 +243,20 @@ func (gitClone *GitCloneReq) Write(b []byte) (int, error) {
 	if gitClone.logTopic == "" {
 		return os.Stdout.Write(b)
 	} else {
-		l := len(b)
-		eventbus.PublishLog(gitClone.logTopic, "INFO", string(b))
-		return l, nil
+		taskId := fmt.Sprintf("%p", gitClone)
+		lines := bytes.Split(b, []byte{'\n'})
+		for _, line := range lines {
+			carrageReturns := bytes.Split(line, []byte{'\r'})
+			for i := len(carrageReturns) - 1; i >= 0; i-- {
+				line = bytes.TrimSpace(carrageReturns[i])
+				if len(line) > 0 {
+					break
+				}
+			}
+			if len(line) > 0 {
+				eventbus.PublishLogTask(gitClone.logTopic, "INFO", taskId, string(line))
+			}
+		}
+		return len(b), nil
 	}
 }

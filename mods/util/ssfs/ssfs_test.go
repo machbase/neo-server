@@ -24,7 +24,7 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, ".sql", ret.Children[0].Type)
 	require.Equal(t, "select.sql", ret.Children[1].Name)
 	require.Equal(t, ".sql", ret.Children[1].Type)
-	require.Equal(t, "samples", ret.Children[2].Name)
+	require.Equal(t, "Tutorials", ret.Children[2].Name)
 	require.Equal(t, urlGitSample, ret.Children[2].GitUrl)
 	require.True(t, ret.Children[2].Virtual)
 
@@ -50,7 +50,7 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "select.sql", ret.Children[3].Name)
 	require.Equal(t, ".sql", ret.Children[3].Type)
 	require.Equal(t, false, ret.Children[3].IsDir)
-	require.Equal(t, "samples", ret.Children[4].Name)
+	require.Equal(t, "Tutorials", ret.Children[4].Name)
 	require.Equal(t, urlGitSample, ret.Children[4].GitUrl)
 
 	// do not allow accessing out side of the given dirs
@@ -140,7 +140,7 @@ func TestFsGit(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 
-	dest := "/data1/neo-samples"
+	dest := "/data1/neo-tutorials"
 	entry, err := ssfs.GitClone(dest, urlGitSample, nil)
 	if err != nil {
 		t.Log("ERR", err.Error())

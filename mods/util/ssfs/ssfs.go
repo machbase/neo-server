@@ -167,7 +167,7 @@ func (ssfs *SSFS) isGitClone(path string) (string, bool) {
 	return "", false
 }
 
-const urlGitSample = "https://github.com/machbase/neo-samples.git"
+const urlGitSample = "https://github.com/machbase/neo-tutorials.git"
 
 func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
 	idx, name, abspath := ssfs.findDir(path)
@@ -257,13 +257,13 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				}
 			}
 			if !hasSamples {
-				nameSamples := "samples"
+				nameSamples := "Tutorials"
 				count := 0
 			reRun:
 				for _, child := range ret.Children {
 					if child.Name == nameSamples {
 						count++
-						nameSamples = fmt.Sprintf("samples-%d", count)
+						nameSamples = fmt.Sprintf("Tutorials-%d", count)
 						goto reRun
 					}
 				}
@@ -353,11 +353,13 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 	if progress == nil {
 		progress = os.Stdout
 	}
+	progress.Write([]byte(fmt.Sprintf("Cloning into '%s'...", path)))
 	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
 		URL:          gitUrl,
 		SingleBranch: true,
 		RemoteName:   defaultGitRemoteName,
 		Progress:     progress,
+		Depth:        0,
 	})
 	if err != nil {
 		if err == git.ErrRepositoryAlreadyExists {
@@ -386,6 +388,8 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 	if err != nil {
 		progress.Write([]byte(err.Error()))
 		return nil, err
+	} else {
+		progress.Write([]byte("Done."))
 	}
 	return ssfs.Get(path)
 }
@@ -400,6 +404,7 @@ func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entr
 	if progress == nil {
 		progress = os.Stdout
 	}
+	progress.Write([]byte(fmt.Sprintf("Updating '%s'...", path)))
 	repo, err := git.PlainOpen(abspath)
 	if err != nil {
 		progress.Write([]byte(err.Error()))
@@ -425,9 +430,13 @@ func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entr
 	err = w.Pull(&git.PullOptions{Force: true})
 	if err != nil {
 		progress.Write([]byte(err.Error()))
-		if err != git.NoErrAlreadyUpToDate {
+		if err == git.NoErrAlreadyUpToDate {
+			progress.Write([]byte("Already up to date."))
+		} else {
 			return nil, err
 		}
+	} else {
+		progress.Write([]byte("Done."))
 	}
 	return ssfs.Get(path)
 }
