@@ -83,7 +83,7 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 	engine.GET("/web/api/console/:console_id/data", svr.handleConsoleData)
 	engine.Use(svr.handleJwtToken)
 	engine.POST("/web/api/tql", svr.handlePostTagQL)
-
+	engine.POST("/web/api/md", svr.handleMarkdown)
 	ret.w = w
 	ret.ctx = ctx
 	ret.engine = engine
