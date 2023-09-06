@@ -38,7 +38,7 @@ func TestMarkdown(t *testing.T) {
 	}
 	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/md", reader)
 	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	ctx.Request.Header.Set("Referer", "http://127.0.0.1:5654/web/api/tql/sample/file.wrk")
+	ctx.Request.Header.Set("X-Referer", "http://127.0.0.1:5654/web/api/tql/sample/file.wrk")
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
 	require.Equal(t, "application/xhtml+xml", w.Header().Get("Content-Type"))
