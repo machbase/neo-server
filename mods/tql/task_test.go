@@ -395,6 +395,20 @@ func TestMath(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMathMarkdown(t *testing.T) {
+	codeLines := []string{
+		`FAKE( linspace(0, 1, 1))`,
+		`PUSHKEY('signal')`,
+		`MARKDOWN()`,
+	}
+	resultLines := []string{
+		`|column0|column1|column2|`,
+		`|:-----|:-----|:-----|`,
+		`|signal|1|1.000000|`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",
@@ -701,7 +715,7 @@ func TestSinkMarkdown(t *testing.T) {
 		"MARKDOWN(html(false))",
 	}
 	resultLines = []string{
-		"|id|string|",
+		"|column0|column1|",
 		"|:-----|:-----|",
 		"|1|line1|",
 		"|2|line2|",

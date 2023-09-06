@@ -1,8 +1,8 @@
 <div><table>
 <thead>
 <tr>
-<th align="left">id</th>
-<th align="left">string</th>
+<th align="left">column0</th>
+<th align="left">column1</th>
 </tr>
 </thead>
 <tbody>
