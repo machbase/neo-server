@@ -362,15 +362,18 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 			repo, err = git.PlainOpen(abspath)
 		}
 		if err != nil {
+			progress.Write([]byte(err.Error()))
 			return nil, err
 		}
 	}
 	ref, err := repo.Head()
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 	w, err := repo.Worktree()
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 
@@ -379,6 +382,7 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 		Force: true,
 	})
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 	return ssfs.Get(path)
@@ -396,23 +400,29 @@ func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entr
 	}
 	repo, err := git.PlainOpen(abspath)
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 	conf, err := repo.Config()
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 	remote := conf.Remotes[defaultGitRemoteName]
 	if gitUrl != remote.URLs[0] {
-		return nil, fmt.Errorf("git remote url is not matched")
+		err = fmt.Errorf("git remote url is not matched")
+		progress.Write([]byte(err.Error()))
+		return nil, err
 	}
 	w, err := repo.Worktree()
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
 
 	err = w.Pull(&git.PullOptions{Force: true})
 	if err != nil {
+		progress.Write([]byte(err.Error()))
 		if err != git.NoErrAlreadyUpToDate {
 			return nil, err
 		}
