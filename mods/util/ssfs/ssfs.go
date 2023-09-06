@@ -117,6 +117,7 @@ type SubEntry struct {
 	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
 	GitUrl             string `json:"gitUrl,omitempty"`
 	GitClone           bool   `json:"gitClone"`
+	Virtual            bool   `json:"virtual"`
 }
 
 type SubEntryFilter func(*SubEntry) bool
@@ -274,6 +275,7 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 					LastModifiedMillis: 0,
 					GitUrl:             urlGitSample,
 					GitClone:           true,
+					Virtual:            true,
 				})
 			}
 		}

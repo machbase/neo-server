@@ -26,6 +26,7 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, ".sql", ret.Children[1].Type)
 	require.Equal(t, "samples", ret.Children[2].Name)
 	require.Equal(t, urlGitSample, ret.Children[2].GitUrl)
+	require.True(t, ret.Children[2].Virtual)
 
 	ssfs, err = NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
 	require.Nil(t, err)
