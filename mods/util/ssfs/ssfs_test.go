@@ -140,7 +140,7 @@ func TestFsGit(t *testing.T) {
 	require.NotNil(t, ssfs)
 
 	dest := "/data1/neo-samples"
-	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git", nil)
+	entry, err := ssfs.GitClone(dest, urlGitSample, nil)
 	if err != nil {
 		t.Log("ERR", err.Error())
 	}
@@ -149,6 +149,13 @@ func TestFsGit(t *testing.T) {
 
 	require.True(t, entry.IsDir)
 	require.True(t, len(entry.Children) > 0)
+
+	entry, err = ssfs.GitPull(dest, urlGitSample, nil)
+	if err != nil {
+		t.Log("ERR", err.Error())
+	}
+	require.Nil(t, err)
+	require.NotNil(t, entry)
 
 	err = ssfs.RemoveRecursive(dest)
 	require.Nil(t, err)

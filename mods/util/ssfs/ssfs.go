@@ -339,6 +339,8 @@ func (ssfs *SSFS) Set(path string, content []byte) error {
 	return os.WriteFile(abspath, content, 0644)
 }
 
+const defaultGitRemoteName = "origin"
+
 // git clone int the given path, it discards all local changes.
 func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Entry, error) {
 	idx, _, abspath := ssfs.findDir(path)
@@ -352,7 +354,7 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
 		URL:          gitUrl,
 		SingleBranch: true,
-		RemoteName:   "origin",
+		RemoteName:   defaultGitRemoteName,
 		Progress:     progress,
 	})
 	if err != nil {
@@ -378,6 +380,42 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 	})
 	if err != nil {
 		return nil, err
+	}
+	return ssfs.Get(path)
+}
+
+// git clone int the given path, it discards all local changes.
+func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entry, error) {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return nil, os.ErrNotExist
+	}
+
+	if progress == nil {
+		progress = os.Stdout
+	}
+	repo, err := git.PlainOpen(abspath)
+	if err != nil {
+		return nil, err
+	}
+	conf, err := repo.Config()
+	if err != nil {
+		return nil, err
+	}
+	remote := conf.Remotes[defaultGitRemoteName]
+	if gitUrl != remote.URLs[0] {
+		return nil, fmt.Errorf("git remote url is not matched")
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		return nil, err
+	}
+
+	err = w.Pull(&git.PullOptions{Force: true})
+	if err != nil {
+		if err != git.NoErrAlreadyUpToDate {
+			return nil, err
+		}
 	}
 	return ssfs.Get(path)
 }

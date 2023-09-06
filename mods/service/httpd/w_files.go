@@ -202,10 +202,16 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 					consoleInfo := parseConsoleId(ctx)
 					topic = fmt.Sprintf("console:%s:%s", claim.Subject, consoleInfo.consoleId)
 				}
-				cloneReq := &GitCloneReq{logTopic: topic}
+				cloneReq := &GitCloneReq{}
 				err = json.Unmarshal(content, cloneReq)
 				if err == nil {
-					entry, err = svr.serverFs.GitClone(path, cloneReq.Url, cloneReq)
+					cloneReq.logTopic = topic
+					switch strings.ToLower(cloneReq.Cmd) {
+					default:
+						entry, err = svr.serverFs.GitClone(path, cloneReq.Url, cloneReq)
+					case "pull":
+						entry, err = svr.serverFs.GitPull(path, cloneReq.Url, cloneReq)
+					}
 				}
 			} else {
 				entry, err = svr.serverFs.MkDir(path)
@@ -227,6 +233,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 }
 
 type GitCloneReq struct {
+	Cmd      string `json:"command"`
 	Url      string `json:"url"`
 	logTopic string `json:"-"`
 }

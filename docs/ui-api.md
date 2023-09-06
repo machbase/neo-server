@@ -358,9 +358,12 @@ Returns Dir entries if the path is pointing a directory.
 
 ```json
 {
+    "command": "clone",
     "url": "https://github.com/machbase/neo-samples.git"
 }
 ```
+
+- `command` : `clone`, `pull`
 
 ### DELETE /web/api/files/*path
 
