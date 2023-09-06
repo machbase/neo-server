@@ -21,7 +21,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	referer := ctx.GetHeader("Referer")
+	referer := ctx.GetHeader("X-Referer")
 	// referer := "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
 	// referer := "http://127.0.0.1:5654/web/ui" // file is not saved
 	var filePath, fileName, fileDir string
