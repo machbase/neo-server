@@ -1,6 +1,7 @@
 package httpd
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,7 +22,13 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	referer := ctx.GetHeader("X-Referer")
+	var referer string
+	if dec, err := base64.StdEncoding.DecodeString(ctx.GetHeader("X-Referer")); err != nil {
+		ctx.String(http.StatusBadRequest, err.Error())
+		return
+	} else {
+		referer = string(dec)
+	}
 	// referer := "http://127.0.0.1:5654/web/api/tql/sample_image.wrk" // if file has been saved
 	// referer := "http://127.0.0.1:5654/web/ui" // file is not saved
 	var filePath, fileName, fileDir string
