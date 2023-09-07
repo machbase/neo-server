@@ -2,6 +2,8 @@ package tql
 
 import (
 	"fmt"
+
+	spi "github.com/machbase/neo-spi"
 )
 
 type lazyOption struct {
@@ -124,6 +126,18 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		if nth < 0 || nth >= len(val) {
 			return nil, fmt.Errorf("f(POPKEY) 1st arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
+		if node.Rownum() == 1 {
+			columns := node.task.ResultColumns()
+			if nth > 0 {
+				cols := append([]*spi.Column{columns[nth+1]}, columns[1:nth+1]...)
+				if len(cols) >= nth+2 {
+					cols = append(cols, columns[nth+2:]...)
+				}
+				node.task.SetResultColumns(cols)
+			} else {
+				node.task.SetResultColumns(columns[1:])
+			}
+		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
 		ret := NewRecord(newKey, newVal)
@@ -133,6 +147,10 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		for i, v := range val {
 			if len(v) < 2 {
 				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
+			}
+			if node.Rownum() == 1 {
+				columns := node.task.ResultColumns()
+				node.task.SetResultColumns(columns[1:])
 			}
 			if len(v) == 2 {
 				ret[i] = NewRecord(v[0], v[1])
@@ -148,6 +166,9 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 // incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
 func (node *Node) fmPushKey(newKey any) (any, error) {
+	if node.Rownum() == 1 {
+		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()...))
+	}
 	rec := node.Inflight()
 	if rec == nil {
 		return nil, nil
