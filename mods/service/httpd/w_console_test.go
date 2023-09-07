@@ -86,6 +86,18 @@ func TestTqlLog(t *testing.T) {
 	// websocket
 	wg.Add(1)
 	go func() {
+		ping := &eventbus.Ping{Tick: time.Now().UnixNano()}
+		pong := &eventbus.Event{}
+		err := ws.WriteJSON(eventbus.Event{Type: eventbus.EVT_PING, Ping: ping})
+		if err != nil {
+			t.Log("ERR write json", err.Error())
+		}
+		err = ws.ReadJSON(pong)
+		if err != nil {
+			t.Log("ERR read json", err.Error())
+		}
+		require.Equal(t, ping.Tick, pong.Ping.Tick)
+
 		for i := 0; i < expectCount; i++ {
 			evt := eventbus.Event{}
 			err := ws.ReadJSON(&evt)
