@@ -501,6 +501,24 @@ func TestPushAndPopMonad(t *testing.T) {
 		"3,1.0",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 3.141592/2, 5) )`,
+		`PUSHKEY(sin(value(0)))`,
+		`PUSHKEY(value(0))`,
+		`POPKEY(1)`,
+		`POPKEY(1)`,
+		`CSV(precision(3))`,
+	}
+	resultLines = []string{
+		"0.000,0.000",
+		"0.393,0.383",
+		"0.785,0.707",
+		"1.178,0.924",
+		"1.571,1.000",
+	}
+	runTest(t, codeLines, resultLines)
+
 }
 
 func TestGroupByKey(t *testing.T) {
