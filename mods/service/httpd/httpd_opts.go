@@ -98,12 +98,6 @@ func OptionExperimentModeProvider(provider func() bool) Option {
 	}
 }
 
-func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.referenceProvider = provider
-	}
-}
-
 func OptionWebShellProvider(provider model.ShellProvider) Option {
 	return func(s *httpd) {
 		s.webShellProvider = provider

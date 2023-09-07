@@ -64,7 +64,6 @@ type httpd struct {
 
 	licenseFilePath        string
 	debugMode              bool
-	referenceProvider      func() []WebReferenceGroup
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -196,6 +195,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
 			group.Any("/api/files/*path", svr.handleFiles)
+			group.GET("/api/refs/*path", svr.handleRefs)
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
@@ -227,7 +227,6 @@ func (svr *httpd) Router() *gin.Engine {
 
 	// handle /web/echarts/*
 	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
-	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r

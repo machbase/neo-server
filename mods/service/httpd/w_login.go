@@ -71,8 +71,6 @@ type LoginCheckRsp struct {
 	Elapse         string                   `json:"elapse"`
 	ServerInfo     *ServerInfo              `json:"server,omitempty"`
 	ExperimentMode bool                     `json:"experimentMode"`
-	Recents        []WebReferenceGroup      `json:"recents,omitempty"`
-	References     []WebReferenceGroup      `json:"references,omitempty"`
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
@@ -312,9 +310,6 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 	options.ServerInfo = svr.getServerInfo()
 	if svr.experimentModeProvider != nil {
 		options.ExperimentMode = svr.experimentModeProvider()
-	}
-	if svr.referenceProvider != nil {
-		options.References = svr.referenceProvider()
 	}
 	if svr.webShellProvider != nil {
 		options.Shells = svr.webShellProvider.GetAllShells(true)
