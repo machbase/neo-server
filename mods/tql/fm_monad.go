@@ -131,15 +131,15 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		}
 		if node.Rownum() == 1 {
 			columns := node.task.ResultColumns()
-			if nth > 0 {
-				cols := append([]*spi.Column{columns[nth+1]}, columns[1:nth+1]...)
-				if len(cols) >= nth+2 {
-					cols = append(cols, columns[nth+2:]...)
-				}
-				node.task.SetResultColumns(cols)
-			} else {
-				node.task.SetResultColumns(columns[1:])
+			cols := columns
+			if len(columns) > nth+1 {
+				cols = []*spi.Column{columns[nth+1]}
+				cols = append(cols, columns[1:nth+1]...)
 			}
+			if len(cols) > nth+2 {
+				cols = append(cols, columns[nth+2:]...)
+			}
+			node.task.SetResultColumns(cols)
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
@@ -147,13 +147,15 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		return ret, nil
 	case [][]any:
 		ret := make([]*Record, len(val))
+		if node.Rownum() == 1 {
+			columns := node.task.ResultColumns()
+			if len(columns) > 1 {
+				node.task.SetResultColumns(columns[1:])
+			}
+		}
 		for i, v := range val {
 			if len(v) < 2 {
 				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
-			}
-			if node.Rownum() == 1 {
-				columns := node.task.ResultColumns()
-				node.task.SetResultColumns(columns[1:])
 			}
 			if len(v) == 2 {
 				ret[i] = NewRecord(v[0], v[1])
