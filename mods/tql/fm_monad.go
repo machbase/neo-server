@@ -118,8 +118,11 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 	}
 
 	// V : value
-	value := node.Inflight().value
-	switch val := value.(type) {
+	inflight := node.Inflight()
+	if inflight == nil || inflight.value == nil {
+		return nil, nil
+	}
+	switch val := inflight.value.(type) {
 	default:
 		return nil, fmt.Errorf("f(POPKEY) V should be []any or [][]any, but %T", val)
 	case []any:
