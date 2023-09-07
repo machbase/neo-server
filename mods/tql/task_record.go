@@ -139,7 +139,7 @@ func (r *Record) String() string {
 	} else if r.key == kARR {
 		return "ARRAY"
 	} else {
-		return fmt.Sprintf("K:%T(%s) V:%s", r.key, r.key, r.StringValueTypes())
+		return fmt.Sprintf("K:%T(%v) V:%s", r.key, r.key, r.StringValueTypes())
 	}
 }
 
