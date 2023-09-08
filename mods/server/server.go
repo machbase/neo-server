@@ -342,8 +342,10 @@ func (s *svr) Start() error {
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
 	confpath := filepath.Join(homepath, "conf", "machbase.conf")
-	if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
-		return errors.Wrap(err, "machbase.conf")
+	if _, err := os.Stat(confpath); err != nil {
+		if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
 	}
 
 	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
