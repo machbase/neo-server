@@ -81,6 +81,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 	tick := time.Now()
 	path := ctx.Param("path")
 	filter := ctx.Query("filter")
+	recursive := strBool(ctx.Query("recursive"), false)
 
 	switch ctx.Request.Method {
 	case http.MethodGet:
@@ -128,8 +129,12 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			return
 		}
 		if ent.IsDir {
-			if len(ent.Children) == 0 {
-				err = svr.serverFs.Remove(path)
+			if len(ent.Children) == 0 || recursive {
+				if recursive {
+					err = svr.serverFs.RemoveRecursive(path)
+				} else {
+					err = svr.serverFs.Remove(path)
+				}
 				if err != nil {
 					rsp.Reason = err.Error()
 					rsp.Elapse = time.Since(tick).String()
