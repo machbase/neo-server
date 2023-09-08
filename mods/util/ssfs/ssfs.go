@@ -416,8 +416,8 @@ func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entr
 		return nil, err
 	}
 	remote := conf.Remotes[defaultGitRemoteName]
-	if gitUrl != remote.URLs[0] {
-		err = fmt.Errorf("git remote url is not matched")
+	if gitUrl != "" && gitUrl != remote.URLs[0] {
+		err = fmt.Errorf("git remote url is not matched, %s", remote.URLs[0])
 		progress.Write([]byte(err.Error()))
 		return nil, err
 	}
@@ -430,9 +430,7 @@ func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entr
 	err = w.Pull(&git.PullOptions{Force: true})
 	if err != nil {
 		progress.Write([]byte(err.Error()))
-		if err == git.NoErrAlreadyUpToDate {
-			progress.Write([]byte("Already up to date."))
-		} else {
+		if err != git.NoErrAlreadyUpToDate {
 			return nil, err
 		}
 	} else {
