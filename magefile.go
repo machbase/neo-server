@@ -74,6 +74,9 @@ func build(target string) error {
 	} else {
 		env["CGO_ENABLE"] = "0"
 	}
+	env["GOOS"] = "linux"
+	env["GOARCH"] = "arm64"
+	env["CC"] = "aarch64-linux-gnu-gcc"
 
 	args := []string{"build"}
 	if target != "neow" {

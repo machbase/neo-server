@@ -26,7 +26,6 @@ type lakeRsp struct {
 }
 
 var once sync.Once
-var appender spi.Appender
 
 const TableName = "TAG"
 
@@ -60,23 +59,17 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 			ctx.JSON(http.StatusPreconditionFailed, rsp)
 			return
 		}
-
-		appender, err = svr.db.Appender(TableName)
-		if err != nil {
-			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
 	})
+	var appender spi.Appender
 
 	if appender == nil {
-		svr.log.Error("appender is nil")
 		appender, err = svr.db.Appender(TableName)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
+		defer appender.Close()
 	}
 
 	for _, data := range req.Values {

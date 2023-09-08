@@ -2209,13 +2209,6 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	req := queryRequest{}
 
 	if ctx.Request.Method == http.MethodGet {
-		// err := ctx.ShouldBind(&req)
-		// if err != nil {
-		// 	rsp.Reason = fmt.Sprintf("form data bind error : %s", err.Error())
-		// 	ctx.JSON(http.StatusBadRequest, rsp)
-		// 	return
-		// }
-
 		req.EdgeId = ctx.Query("edge_id")
 		req.StartTime = ctx.Query("start_time")
 		req.EndTime = ctx.Query("end_time")
@@ -2317,6 +2310,8 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		params = append(params, req.Limit)
 	}
 
+	svr.log.Info("sqlText: ", sqlText)
+	svr.log.Info("params: ", params)
 	rows, err := svr.db.Query(sqlText, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -2340,6 +2335,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		err = rows.Scan(&row.EdgeId, &row.Time, &row.FileName, &row.Job, &row.Level, &row.Line)
 		if err != nil {
 			rsp.Reason = err.Error()
+			svr.log.Error("error: ", rsp.Reason)
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
