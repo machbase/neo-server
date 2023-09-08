@@ -32,8 +32,14 @@ func TestRefsFiles(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &rsp)
 	require.Nil(t, err)
 
-	require.Equal(t, 1, len(rsp.Data.Refs))
-	require.Equal(t, rsp.Data.Refs[0].Label, "References")
-	require.Equal(t, 6, len(rsp.Data.Refs[0].Items))
+	require.Equal(t, 3, len(rsp.Data.Refs))
+	require.Equal(t, rsp.Data.Refs[0].Label, "REFERENCES")
+	require.Equal(t, 3, len(rsp.Data.Refs[0].Items))
+
+	require.Equal(t, rsp.Data.Refs[1].Label, "SDK")
+	require.Equal(t, 4, len(rsp.Data.Refs[1].Items))
+
+	require.Equal(t, rsp.Data.Refs[2].Label, "CHEAT SHEETS")
+	require.Equal(t, 3, len(rsp.Data.Refs[2].Items))
 
 }
