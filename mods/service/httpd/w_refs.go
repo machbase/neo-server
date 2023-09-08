@@ -23,15 +23,23 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 	path := ctx.Param("path")
 
 	if path == "/" {
-		references := WebReferenceGroup{Label: "References"}
+		references := &WebReferenceGroup{Label: "REFERENCES"}
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
-		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/en/", Target: "_blank"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/en/", Target: "_docs_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
 
-		references.Items = append(references.Items, ReferenceItem{Type: "wrk", Title: "markdown cheatsheet", Addr: "./tutorials/sample_markdown.wrk"})
-		references.Items = append(references.Items, ReferenceItem{Type: "wrk", Title: "mermaid cheatsheet", Addr: "./tutorials/sample_mermaid.wrk"})
-		references.Items = append(references.Items, ReferenceItem{Type: "wrk", Title: "pikchr cheatsheet", Addr: "./tutorials/sample_pikchr.wrk"})
-		rsp.Data.Refs = []*WebReferenceGroup{&references}
+		sdk := &WebReferenceGroup{Label: "SDK"}
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://docs.machbase.com/en/sdk/dotnet/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://docs.machbase.com/en/sdk/jdbc/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/en/sdk/cli-odbc/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/en/sdk/cli-odbc-example/", Target: "_docs_machbase"})
+
+		cheatsheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
+		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
+		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
+		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
+
+		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatsheets}
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)
