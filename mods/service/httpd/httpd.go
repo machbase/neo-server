@@ -227,6 +227,7 @@ func (svr *httpd) Router() *gin.Engine {
 
 	// handle /web/echarts/*
 	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
+	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r

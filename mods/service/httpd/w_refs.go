@@ -22,7 +22,7 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 	tick := time.Now()
 	path := ctx.Param("path")
 
-	if path == "" {
+	if path == "/" {
 		references := WebReferenceGroup{Label: "References"}
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/en/", Target: "_blank"})

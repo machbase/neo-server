@@ -84,6 +84,8 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 	engine.Use(svr.handleJwtToken)
 	engine.POST("/web/api/tql", svr.handlePostTagQL)
 	engine.POST("/web/api/md", svr.handleMarkdown)
+	engine.GET("/web/api/refs/*path", svr.handleRefs)
+	// engine.NoRoute(func(ctx *gin.Context) { ctx.String(http.StatusNotFound, "no-route") })
 	ret.w = w
 	ret.ctx = ctx
 	ret.engine = engine

@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/mods/expression"
+	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -54,7 +57,7 @@ func (node *Node) compile(code string) error {
 	if expr == nil {
 		return fmt.Errorf("compile error at %s", code)
 	}
-	node.name = asNodeName(expr)
+	node.name = expr.String()
 	node.expr = expr
 	node.src = make(chan *Record)
 	return nil
@@ -78,6 +81,44 @@ func (node *Node) Name() string {
 
 func (node *Node) Inflight() *Record {
 	return node._inflight
+}
+
+func (node *Node) Rownum() int {
+	return node.nrow
+}
+
+func (node *Node) AsColumnTypeOf(value any) *spi.Column {
+	newName := "key"
+	switch v := value.(type) {
+	case string, *string:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeString}
+	case bool, *bool:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeBoolean}
+	case int, int32, *int, *int32:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeInt32}
+	case int8, *int8:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeByte}
+	case int16, *int16:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeInt16}
+	case int64, *int64:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeInt64}
+	case time.Time, *time.Time:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeDatetime}
+	case float32, *float32:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeFloat}
+	case float64, *float64:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeDouble}
+	case net.IP:
+		if len(v) == net.IPv6len {
+			return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeIPv6}
+		} else {
+			return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeIPv4}
+		}
+	case []byte:
+		return &spi.Column{Name: newName, Type: spi.ColumnBufferTypeBinary}
+	default:
+		return &spi.Column{Name: newName, Type: "any"}
+	}
 }
 
 func (node *Node) Receive(rec *Record) {
