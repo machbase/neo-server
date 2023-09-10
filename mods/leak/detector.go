@@ -14,15 +14,16 @@ import (
 )
 
 type Detector struct {
-	log       logging.Log
-	stopCh    chan bool
-	stopWg    sync.WaitGroup
-	runCh     chan time.Time
-	runLock   sync.Mutex
-	running   bool
-	runTick   time.Duration
-	inflights cmap.ConcurrentMap
-	history   *lru.Cache
+	log         logging.Log
+	stopCh      chan bool
+	stopWg      sync.WaitGroup
+	runCh       chan time.Time
+	runLock     sync.Mutex
+	running     bool
+	runTick     time.Duration
+	inflights   cmap.ConcurrentMap
+	history     *lru.Cache
+	historyLock sync.Mutex
 }
 
 type Option func(*Detector)
@@ -335,11 +336,14 @@ func (det *Detector) addHistoryRows(rp *RowsParole) {
 	text := rp.sqlText
 	age := rp.releaseTime.Sub(rp.createTime)
 
+	det.historyLock.Lock()
 	obj, ok := det.history.Get(lru.Key(text))
 	if !ok {
 		obj = &RowsStat{sqlText: text}
 		det.history.Add(lru.Key(text), obj)
 	}
+	det.historyLock.Unlock()
+
 	if rowsStat, ok := obj.(*RowsStat); ok {
 		rowsStat.lock.Lock()
 		rowsStat.count += 1
@@ -352,7 +356,9 @@ func (det *Detector) addHistoryAppender(ap *AppenderParole) {
 }
 
 func (det *Detector) Postflights() []*spi.Postflight {
+	det.historyLock.Lock()
 	lst := det.history.Snapshot()
+	det.historyLock.Unlock()
 	ret := make([]*spi.Postflight, 0)
 	for _, item := range lst {
 		if rowstat, ok := item.(*RowsStat); ok {
