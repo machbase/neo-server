@@ -26,9 +26,10 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		references := &WebReferenceGroup{Label: "REFERENCES"}
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://neo.machbase.com/", Target: "_blank"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/en/", Target: "_docs_machbase"})
-		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_blank"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_home_machbase"})
 
 		sdk := &WebReferenceGroup{Label: "SDK"}
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK Download", Addr: "https://machbase.com/Download/", Target: "_home_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://docs.machbase.com/en/sdk/dotnet/", Target: "_docs_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://docs.machbase.com/en/sdk/jdbc/", Target: "_docs_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/en/sdk/cli-odbc/", Target: "_docs_machbase"})
