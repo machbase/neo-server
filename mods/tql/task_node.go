@@ -57,7 +57,7 @@ func (node *Node) compile(code string) error {
 	if expr == nil {
 		return fmt.Errorf("compile error at %s", code)
 	}
-	node.name = expr.String()
+	node.name = asNodeName(expr)
 	node.expr = expr
 	node.src = make(chan *Record)
 	return nil

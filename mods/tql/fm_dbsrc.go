@@ -49,27 +49,32 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 	}
 
 	tick := time.Now()
+	var ds *databaseSource
+	var sqlText string
 	defer func() {
-		node.task.LogDebug("QUERY elapsed", time.Since(tick).String())
+		if ds != nil {
+			node.task.LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
+		} else {
+			node.task.LogTrace("QUERY dump:", sqlText)
+		}
 	}()
 
 	if ret.dump == nil || !ret.dump.Flag {
-		node.task.LogDebug("QUERY:", ret.ToSQL())
-		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		node.task.LogTrace("╭─", ret.ToSQL())
+		ds = &databaseSource{task: node.task, sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
-		var text string
 		if ret.between != nil {
 			if ret.between.HasPeriod() {
-				text = ret.toSqlGroup()
+				sqlText = ret.toSqlGroup()
 			} else {
-				text = ret.toSql()
+				sqlText = ret.toSql()
 			}
 		}
 		if ret.dump.Escape {
-			text = url.QueryEscape(text)
+			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord(text, nil).Tell(node.next)
+		NewRecord(sqlText, nil).Tell(node.next)
 		return nil, nil
 	}
 	return nil, nil
