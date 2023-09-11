@@ -29,15 +29,6 @@ var _ spi.Database = &DatabaseMock{}
 //			ExecContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
 //				panic("mock out the ExecContext method")
 //			},
-//			ExplainFunc: func(sqlText string, full bool) (string, error) {
-//				panic("mock out the Explain method")
-//			},
-//			GetServerInfoFunc: func() (*spi.ServerInfo, error) {
-//				panic("mock out the GetServerInfo method")
-//			},
-//			GetServicePortsFunc: func(service string) ([]*spi.ServicePort, error) {
-//				panic("mock out the GetServicePorts method")
-//			},
 //			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 //				panic("mock out the Query method")
 //			},
@@ -65,15 +56,6 @@ type DatabaseMock struct {
 
 	// ExecContextFunc mocks the ExecContext method.
 	ExecContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
-
-	// ExplainFunc mocks the Explain method.
-	ExplainFunc func(sqlText string, full bool) (string, error)
-
-	// GetServerInfoFunc mocks the GetServerInfo method.
-	GetServerInfoFunc func() (*spi.ServerInfo, error)
-
-	// GetServicePortsFunc mocks the GetServicePorts method.
-	GetServicePortsFunc func(service string) ([]*spi.ServicePort, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
@@ -112,21 +94,6 @@ type DatabaseMock struct {
 			// Params is the params argument value.
 			Params []any
 		}
-		// Explain holds details about calls to the Explain method.
-		Explain []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Full is the full argument value.
-			Full bool
-		}
-		// GetServerInfo holds details about calls to the GetServerInfo method.
-		GetServerInfo []struct {
-		}
-		// GetServicePorts holds details about calls to the GetServicePorts method.
-		GetServicePorts []struct {
-			// Service is the service argument value.
-			Service string
-		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// SqlText is the sqlText argument value.
@@ -163,9 +130,6 @@ type DatabaseMock struct {
 	lockAppender        sync.RWMutex
 	lockExec            sync.RWMutex
 	lockExecContext     sync.RWMutex
-	lockExplain         sync.RWMutex
-	lockGetServerInfo   sync.RWMutex
-	lockGetServicePorts sync.RWMutex
 	lockQuery           sync.RWMutex
 	lockQueryContext    sync.RWMutex
 	lockQueryRow        sync.RWMutex
@@ -281,101 +245,6 @@ func (mock *DatabaseMock) ExecContextCalls() []struct {
 	mock.lockExecContext.RLock()
 	calls = mock.calls.ExecContext
 	mock.lockExecContext.RUnlock()
-	return calls
-}
-
-// Explain calls ExplainFunc.
-func (mock *DatabaseMock) Explain(sqlText string, full bool) (string, error) {
-	if mock.ExplainFunc == nil {
-		panic("DatabaseMock.ExplainFunc: method is nil but Database.Explain was just called")
-	}
-	callInfo := struct {
-		SqlText string
-		Full    bool
-	}{
-		SqlText: sqlText,
-		Full:    full,
-	}
-	mock.lockExplain.Lock()
-	mock.calls.Explain = append(mock.calls.Explain, callInfo)
-	mock.lockExplain.Unlock()
-	return mock.ExplainFunc(sqlText, full)
-}
-
-// ExplainCalls gets all the calls that were made to Explain.
-// Check the length with:
-//
-//	len(mockedDatabase.ExplainCalls())
-func (mock *DatabaseMock) ExplainCalls() []struct {
-	SqlText string
-	Full    bool
-} {
-	var calls []struct {
-		SqlText string
-		Full    bool
-	}
-	mock.lockExplain.RLock()
-	calls = mock.calls.Explain
-	mock.lockExplain.RUnlock()
-	return calls
-}
-
-// GetServerInfo calls GetServerInfoFunc.
-func (mock *DatabaseMock) GetServerInfo() (*spi.ServerInfo, error) {
-	if mock.GetServerInfoFunc == nil {
-		panic("DatabaseMock.GetServerInfoFunc: method is nil but Database.GetServerInfo was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockGetServerInfo.Lock()
-	mock.calls.GetServerInfo = append(mock.calls.GetServerInfo, callInfo)
-	mock.lockGetServerInfo.Unlock()
-	return mock.GetServerInfoFunc()
-}
-
-// GetServerInfoCalls gets all the calls that were made to GetServerInfo.
-// Check the length with:
-//
-//	len(mockedDatabase.GetServerInfoCalls())
-func (mock *DatabaseMock) GetServerInfoCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockGetServerInfo.RLock()
-	calls = mock.calls.GetServerInfo
-	mock.lockGetServerInfo.RUnlock()
-	return calls
-}
-
-// GetServicePorts calls GetServicePortsFunc.
-func (mock *DatabaseMock) GetServicePorts(service string) ([]*spi.ServicePort, error) {
-	if mock.GetServicePortsFunc == nil {
-		panic("DatabaseMock.GetServicePortsFunc: method is nil but Database.GetServicePorts was just called")
-	}
-	callInfo := struct {
-		Service string
-	}{
-		Service: service,
-	}
-	mock.lockGetServicePorts.Lock()
-	mock.calls.GetServicePorts = append(mock.calls.GetServicePorts, callInfo)
-	mock.lockGetServicePorts.Unlock()
-	return mock.GetServicePortsFunc(service)
-}
-
-// GetServicePortsCalls gets all the calls that were made to GetServicePorts.
-// Check the length with:
-//
-//	len(mockedDatabase.GetServicePortsCalls())
-func (mock *DatabaseMock) GetServicePortsCalls() []struct {
-	Service string
-} {
-	var calls []struct {
-		Service string
-	}
-	mock.lockGetServicePorts.RLock()
-	calls = mock.calls.GetServicePorts
-	mock.lockGetServicePorts.RUnlock()
 	return calls
 }
 
@@ -550,15 +419,6 @@ var _ spi.DatabaseServer = &DatabaseServerMock{}
 //			ExecContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
 //				panic("mock out the ExecContext method")
 //			},
-//			ExplainFunc: func(sqlText string, full bool) (string, error) {
-//				panic("mock out the Explain method")
-//			},
-//			GetServerInfoFunc: func() (*spi.ServerInfo, error) {
-//				panic("mock out the GetServerInfo method")
-//			},
-//			GetServicePortsFunc: func(service string) ([]*spi.ServicePort, error) {
-//				panic("mock out the GetServicePorts method")
-//			},
 //			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 //				panic("mock out the Query method")
 //			},
@@ -592,15 +452,6 @@ type DatabaseServerMock struct {
 
 	// ExecContextFunc mocks the ExecContext method.
 	ExecContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
-
-	// ExplainFunc mocks the Explain method.
-	ExplainFunc func(sqlText string, full bool) (string, error)
-
-	// GetServerInfoFunc mocks the GetServerInfo method.
-	GetServerInfoFunc func() (*spi.ServerInfo, error)
-
-	// GetServicePortsFunc mocks the GetServicePorts method.
-	GetServicePortsFunc func(service string) ([]*spi.ServicePort, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
@@ -645,21 +496,6 @@ type DatabaseServerMock struct {
 			// Params is the params argument value.
 			Params []any
 		}
-		// Explain holds details about calls to the Explain method.
-		Explain []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Full is the full argument value.
-			Full bool
-		}
-		// GetServerInfo holds details about calls to the GetServerInfo method.
-		GetServerInfo []struct {
-		}
-		// GetServicePorts holds details about calls to the GetServicePorts method.
-		GetServicePorts []struct {
-			// Service is the service argument value.
-			Service string
-		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// SqlText is the sqlText argument value.
@@ -702,9 +538,6 @@ type DatabaseServerMock struct {
 	lockAppender        sync.RWMutex
 	lockExec            sync.RWMutex
 	lockExecContext     sync.RWMutex
-	lockExplain         sync.RWMutex
-	lockGetServerInfo   sync.RWMutex
-	lockGetServicePorts sync.RWMutex
 	lockQuery           sync.RWMutex
 	lockQueryContext    sync.RWMutex
 	lockQueryRow        sync.RWMutex
@@ -822,101 +655,6 @@ func (mock *DatabaseServerMock) ExecContextCalls() []struct {
 	mock.lockExecContext.RLock()
 	calls = mock.calls.ExecContext
 	mock.lockExecContext.RUnlock()
-	return calls
-}
-
-// Explain calls ExplainFunc.
-func (mock *DatabaseServerMock) Explain(sqlText string, full bool) (string, error) {
-	if mock.ExplainFunc == nil {
-		panic("DatabaseServerMock.ExplainFunc: method is nil but DatabaseServer.Explain was just called")
-	}
-	callInfo := struct {
-		SqlText string
-		Full    bool
-	}{
-		SqlText: sqlText,
-		Full:    full,
-	}
-	mock.lockExplain.Lock()
-	mock.calls.Explain = append(mock.calls.Explain, callInfo)
-	mock.lockExplain.Unlock()
-	return mock.ExplainFunc(sqlText, full)
-}
-
-// ExplainCalls gets all the calls that were made to Explain.
-// Check the length with:
-//
-//	len(mockedDatabaseServer.ExplainCalls())
-func (mock *DatabaseServerMock) ExplainCalls() []struct {
-	SqlText string
-	Full    bool
-} {
-	var calls []struct {
-		SqlText string
-		Full    bool
-	}
-	mock.lockExplain.RLock()
-	calls = mock.calls.Explain
-	mock.lockExplain.RUnlock()
-	return calls
-}
-
-// GetServerInfo calls GetServerInfoFunc.
-func (mock *DatabaseServerMock) GetServerInfo() (*spi.ServerInfo, error) {
-	if mock.GetServerInfoFunc == nil {
-		panic("DatabaseServerMock.GetServerInfoFunc: method is nil but DatabaseServer.GetServerInfo was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockGetServerInfo.Lock()
-	mock.calls.GetServerInfo = append(mock.calls.GetServerInfo, callInfo)
-	mock.lockGetServerInfo.Unlock()
-	return mock.GetServerInfoFunc()
-}
-
-// GetServerInfoCalls gets all the calls that were made to GetServerInfo.
-// Check the length with:
-//
-//	len(mockedDatabaseServer.GetServerInfoCalls())
-func (mock *DatabaseServerMock) GetServerInfoCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockGetServerInfo.RLock()
-	calls = mock.calls.GetServerInfo
-	mock.lockGetServerInfo.RUnlock()
-	return calls
-}
-
-// GetServicePorts calls GetServicePortsFunc.
-func (mock *DatabaseServerMock) GetServicePorts(service string) ([]*spi.ServicePort, error) {
-	if mock.GetServicePortsFunc == nil {
-		panic("DatabaseServerMock.GetServicePortsFunc: method is nil but DatabaseServer.GetServicePorts was just called")
-	}
-	callInfo := struct {
-		Service string
-	}{
-		Service: service,
-	}
-	mock.lockGetServicePorts.Lock()
-	mock.calls.GetServicePorts = append(mock.calls.GetServicePorts, callInfo)
-	mock.lockGetServicePorts.Unlock()
-	return mock.GetServicePortsFunc(service)
-}
-
-// GetServicePortsCalls gets all the calls that were made to GetServicePorts.
-// Check the length with:
-//
-//	len(mockedDatabaseServer.GetServicePortsCalls())
-func (mock *DatabaseServerMock) GetServicePortsCalls() []struct {
-	Service string
-} {
-	var calls []struct {
-		Service string
-	}
-	mock.lockGetServicePorts.RLock()
-	calls = mock.calls.GetServicePorts
-	mock.lockGetServicePorts.RUnlock()
 	return calls
 }
 
@@ -1151,15 +889,6 @@ var _ spi.DatabaseClient = &DatabaseClientMock{}
 //			ExecContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
 //				panic("mock out the ExecContext method")
 //			},
-//			ExplainFunc: func(sqlText string, full bool) (string, error) {
-//				panic("mock out the Explain method")
-//			},
-//			GetServerInfoFunc: func() (*spi.ServerInfo, error) {
-//				panic("mock out the GetServerInfo method")
-//			},
-//			GetServicePortsFunc: func(service string) ([]*spi.ServicePort, error) {
-//				panic("mock out the GetServicePorts method")
-//			},
 //			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 //				panic("mock out the Query method")
 //			},
@@ -1193,15 +922,6 @@ type DatabaseClientMock struct {
 
 	// ExecContextFunc mocks the ExecContext method.
 	ExecContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
-
-	// ExplainFunc mocks the Explain method.
-	ExplainFunc func(sqlText string, full bool) (string, error)
-
-	// GetServerInfoFunc mocks the GetServerInfo method.
-	GetServerInfoFunc func() (*spi.ServerInfo, error)
-
-	// GetServicePortsFunc mocks the GetServicePorts method.
-	GetServicePortsFunc func(service string) ([]*spi.ServicePort, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
@@ -1246,21 +966,6 @@ type DatabaseClientMock struct {
 			// Params is the params argument value.
 			Params []any
 		}
-		// Explain holds details about calls to the Explain method.
-		Explain []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Full is the full argument value.
-			Full bool
-		}
-		// GetServerInfo holds details about calls to the GetServerInfo method.
-		GetServerInfo []struct {
-		}
-		// GetServicePorts holds details about calls to the GetServicePorts method.
-		GetServicePorts []struct {
-			// Service is the service argument value.
-			Service string
-		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// SqlText is the sqlText argument value.
@@ -1299,9 +1004,6 @@ type DatabaseClientMock struct {
 	lockDisconnect      sync.RWMutex
 	lockExec            sync.RWMutex
 	lockExecContext     sync.RWMutex
-	lockExplain         sync.RWMutex
-	lockGetServerInfo   sync.RWMutex
-	lockGetServicePorts sync.RWMutex
 	lockQuery           sync.RWMutex
 	lockQueryContext    sync.RWMutex
 	lockQueryRow        sync.RWMutex
@@ -1471,101 +1173,6 @@ func (mock *DatabaseClientMock) ExecContextCalls() []struct {
 	mock.lockExecContext.RLock()
 	calls = mock.calls.ExecContext
 	mock.lockExecContext.RUnlock()
-	return calls
-}
-
-// Explain calls ExplainFunc.
-func (mock *DatabaseClientMock) Explain(sqlText string, full bool) (string, error) {
-	if mock.ExplainFunc == nil {
-		panic("DatabaseClientMock.ExplainFunc: method is nil but DatabaseClient.Explain was just called")
-	}
-	callInfo := struct {
-		SqlText string
-		Full    bool
-	}{
-		SqlText: sqlText,
-		Full:    full,
-	}
-	mock.lockExplain.Lock()
-	mock.calls.Explain = append(mock.calls.Explain, callInfo)
-	mock.lockExplain.Unlock()
-	return mock.ExplainFunc(sqlText, full)
-}
-
-// ExplainCalls gets all the calls that were made to Explain.
-// Check the length with:
-//
-//	len(mockedDatabaseClient.ExplainCalls())
-func (mock *DatabaseClientMock) ExplainCalls() []struct {
-	SqlText string
-	Full    bool
-} {
-	var calls []struct {
-		SqlText string
-		Full    bool
-	}
-	mock.lockExplain.RLock()
-	calls = mock.calls.Explain
-	mock.lockExplain.RUnlock()
-	return calls
-}
-
-// GetServerInfo calls GetServerInfoFunc.
-func (mock *DatabaseClientMock) GetServerInfo() (*spi.ServerInfo, error) {
-	if mock.GetServerInfoFunc == nil {
-		panic("DatabaseClientMock.GetServerInfoFunc: method is nil but DatabaseClient.GetServerInfo was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockGetServerInfo.Lock()
-	mock.calls.GetServerInfo = append(mock.calls.GetServerInfo, callInfo)
-	mock.lockGetServerInfo.Unlock()
-	return mock.GetServerInfoFunc()
-}
-
-// GetServerInfoCalls gets all the calls that were made to GetServerInfo.
-// Check the length with:
-//
-//	len(mockedDatabaseClient.GetServerInfoCalls())
-func (mock *DatabaseClientMock) GetServerInfoCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockGetServerInfo.RLock()
-	calls = mock.calls.GetServerInfo
-	mock.lockGetServerInfo.RUnlock()
-	return calls
-}
-
-// GetServicePorts calls GetServicePortsFunc.
-func (mock *DatabaseClientMock) GetServicePorts(service string) ([]*spi.ServicePort, error) {
-	if mock.GetServicePortsFunc == nil {
-		panic("DatabaseClientMock.GetServicePortsFunc: method is nil but DatabaseClient.GetServicePorts was just called")
-	}
-	callInfo := struct {
-		Service string
-	}{
-		Service: service,
-	}
-	mock.lockGetServicePorts.Lock()
-	mock.calls.GetServicePorts = append(mock.calls.GetServicePorts, callInfo)
-	mock.lockGetServicePorts.Unlock()
-	return mock.GetServicePortsFunc(service)
-}
-
-// GetServicePortsCalls gets all the calls that were made to GetServicePorts.
-// Check the length with:
-//
-//	len(mockedDatabaseClient.GetServicePortsCalls())
-func (mock *DatabaseClientMock) GetServicePortsCalls() []struct {
-	Service string
-} {
-	var calls []struct {
-		Service string
-	}
-	mock.lockGetServicePorts.RLock()
-	calls = mock.calls.GetServicePorts
-	mock.lockGetServicePorts.RUnlock()
 	return calls
 }
 

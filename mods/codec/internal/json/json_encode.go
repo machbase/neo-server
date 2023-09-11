@@ -61,6 +61,10 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.Rownum = show
 }
 
+func (ex *Exporter) SetHeader(show bool) {
+	ex.Heading = show
+}
+
 func (ex *Exporter) SetHeading(show bool) {
 	ex.Heading = show
 }

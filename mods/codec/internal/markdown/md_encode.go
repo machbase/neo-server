@@ -51,6 +51,10 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 	ex.output = o
 }
 
+func (ex *Exporter) SetColumns(colNames ...string) {
+	ex.headerNames = colNames
+}
+
 func (ex *Exporter) SetTimeformat(format string) {
 	ex.timeformatter.Set(util.Timeformat(format))
 }

@@ -56,6 +56,7 @@ type csvSource struct {
 
 func (src *csvSource) gen(node *Node) {
 	rownum := 0
+	headerProcessed := false
 	for {
 		fields, err := src.reader.Read()
 		if err != nil {
@@ -68,10 +69,20 @@ func (src *csvSource) gen(node *Node) {
 			node.task.LogError("invalid input")
 			return
 		}
-		if rownum == 0 && src.hasHeader {
-			continue // skip header
+		if !headerProcessed {
+			if src.hasHeader {
+				for i, label := range fields {
+					if _, ok := src.columns[i]; !ok {
+						src.columns[i] = &columnOpt{idx: i, dataType: &stringOpt{}, label: label}
+					}
+				}
+			}
+			headerProcessed = true // done processing header
+			node.task.SetResultColumns(src.header())
+			if src.hasHeader {
+				continue
+			}
 		}
-		node.task.SetResultColumns(src.header())
 		values := make([]any, len(fields))
 		for i := 0; i < len(fields); i++ {
 			colOpt := src.columns[i]
@@ -126,6 +137,11 @@ func (src *csvSource) SetHeading(has bool) {
 	src.hasHeader = has
 }
 
+// implments codec.opts.CanSetHeader
+func (src *csvSource) SetHeader(has bool) {
+	src.hasHeader = has
+}
+
 func (fs *csvSource) header() spi.Columns {
 	if len(fs.columns) == 0 {
 		return []*spi.Column{}
@@ -156,8 +172,6 @@ func newCsvSource(args ...any) (*csvSource, error) {
 			file = v
 		case *columnOpt:
 			ret.columns[v.idx] = v
-		case *headerOpt:
-			ret.hasHeader = v.hasHeader
 		case codecOpts.Option:
 			v(ret)
 		case io.Reader:
@@ -195,18 +209,6 @@ func newCsvSource(args ...any) (*csvSource, error) {
 	}
 
 	return ret, nil
-}
-
-type headerOpt struct {
-	hasHeader bool
-}
-
-func (x *Node) fmHeader(args ...any) (any, error) {
-	flag, err := convBool(args, 0, "header", "boolean")
-	if err != nil {
-		return nil, err
-	}
-	return codecOpts.Heading(flag), nil
 }
 
 type columnOpt struct {

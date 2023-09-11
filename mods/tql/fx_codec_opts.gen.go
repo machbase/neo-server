@@ -22,6 +22,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "dataZoom", Func: opts.DataZoom},
 	{Name: "delimiter", Func: opts.Delimiter},
 	{Name: "gridSize", Func: opts.GridSize},
+	{Name: "header", Func: opts.Header},
 	{Name: "heading", Func: opts.Heading},
 	{Name: "html", Func: opts.Html},
 	{Name: "inputStream", Func: opts.InputStream},

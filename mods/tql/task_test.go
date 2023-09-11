@@ -402,7 +402,7 @@ func TestMathMarkdown(t *testing.T) {
 		`MARKDOWN()`,
 	}
 	resultLines := []string{
-		`|column0|column1|column2|`,
+		`|key|id|x|`,
 		`|:-----|:-----|:-----|`,
 		`|signal|1|1.000000|`,
 	}
@@ -645,7 +645,9 @@ func TestFFT3D(t *testing.T) {
 }
 
 func TestSourceCSV1(t *testing.T) {
-	codeLines := []string{
+	var codeLines, payload, resultLines []string
+
+	codeLines = []string{
 		`CSV(payload(),
 			field(0, stringType(), "name"),
 			field(1, datetimeType("s"), "time"),
@@ -654,18 +656,16 @@ func TestSourceCSV1(t *testing.T) {
 		)`,
 		`CSV(timeformat("s"), heading(true))`,
 	}
-	payload := []string{
+	payload = []string{
 		`temp.name,1691662156,123.456789,true`,
 	}
-	resultLines := []string{
+	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
-}
 
-func TestSourceCSV2(t *testing.T) {
-	codeLines := []string{
+	codeLines = []string{
 		`CSV(payload(),
 			field(0, stringType(), "name"),
 			field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
@@ -674,12 +674,157 @@ func TestSourceCSV2(t *testing.T) {
 		)`,
 		`CSV(timeformat("s"), heading(true))`,
 	}
-	payload := []string{
+	payload = []string{
 		`temp.name,2023/08/10 19:09:16,123.456789,true`,
 	}
-	resultLines := []string{
+	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(false))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|C00|C01|C02|`,
+		`|:-----|:-----|:-----|`,
+		`|NAME|TIME|VALUE|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|NAME|TIME|VALUE|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|NAME|TIME|VALUE|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), ",
+		"    field(0, stringType(), 'name'),",
+		"    field(1, datetimeType('s'), 'time'),",
+		"    field(2, doubleType(), 'value'),",
+		"    header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|name|time|value|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361000000000|0.000000|`,
+		`|wave.cos|1676432361000000000|1.000000|`,
+		`|wave.sin|1676432362000000000|0.406736|`,
+		`|wave.cos|1676432362000000000|0.913546|`,
+		`|wave.sin|1676432363000000000|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), ",
+		"    field(0, stringType(), 'name'),",
+		"    field(1, datetimeType('s'), 'time'),",
+		"    field(2, doubleType(), 'value'),",
+		"    header(false))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|name|time|value|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361000000000|0.000000|`,
+		`|wave.cos|1676432361000000000|1.000000|`,
+		`|wave.sin|1676432362000000000|0.406736|`,
+		`|wave.cos|1676432362000000000|0.913546|`,
+		`|wave.sin|1676432363000000000|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload())",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|C00|C01|C02|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -733,7 +878,7 @@ func TestSinkMarkdown(t *testing.T) {
 		"MARKDOWN(html(false))",
 	}
 	resultLines = []string{
-		"|column0|column1|",
+		"|id|string|",
 		"|:-----|:-----|",
 		"|1|line1|",
 		"|2|line2|",

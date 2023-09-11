@@ -44,8 +44,13 @@ func (dec *Decoder) SetTimeLocation(tz *time.Location) {
 	dec.timeLocation = tz
 }
 
+// Deprecated use SetHeader()
 func (dec *Decoder) SetHeading(skipHeading bool) {
 	dec.heading = skipHeading
+}
+
+func (dec *Decoder) SetHeader(skipHeader bool) {
+	dec.heading = skipHeader
 }
 
 func (dec *Decoder) SetDelimiter(delimiter string) {

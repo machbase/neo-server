@@ -106,7 +106,6 @@ var FxDefinitions = []Definition{
 	{"// maps.csv", nil},
 	{"col", defTask.fmCol},
 	{"field", defTask.fmField},
-	{"header", defTask.fmHeader},
 	{"datetimeType", defTask.fmDatetimeType},
 	{"stringType", defTask.fmStringType},
 	{"doubleType", defTask.fmDoubleType},
