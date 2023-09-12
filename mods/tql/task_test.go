@@ -191,11 +191,12 @@ func TestDBSql(t *testing.T) {
 	}
 	codeLines := []string{
 		`SQL("select time, value from example where name = 'tag1'")`,
-		`CSV( precision(3) )`,
+		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
-		"1692686707380411000,0.100",
-		"1692686708380411000,0.200",
+		"ROWNUM,time,value",
+		"1,1692686707380411000,0.100",
+		"2,1692686708380411000,0.200",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -208,11 +209,12 @@ func TestDBQuery(t *testing.T) {
 	}
 	codeLines := []string{
 		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
-		`CSV( precision(3) )`,
+		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
-		"1692686707380411000,0.100",
-		"1692686708380411000,0.200",
+		"ROWNUM,time,value",
+		"1,1692686707380411000,0.100",
+		"2,1692686708380411000,0.200",
 	}
 	runTest(t, codeLines, resultLines)
 }
