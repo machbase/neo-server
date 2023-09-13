@@ -621,6 +621,91 @@ func TestGroupByKey(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMapKey(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(value(0)*2)",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"0,0",
+		"2,1",
+		"4,2",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(key())",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"1,0",
+		"2,1",
+		"3,2",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY( key() + 100 )",
+		"PUSHKEY('test')",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"101.0,0.0",
+		"102.0,1.0",
+		"103.0,2.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(-1, value(0)*1.5)",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"0.0,0.0",
+		"1.5,1.0",
+		"3.0,2.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(99, value(0)*1.5)",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"x,column",
+		"0.0,0.0",
+		"1.0,1.5",
+		"2.0,3.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(0, value(0)*1.5)",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"x",
+		"0.0",
+		"1.5",
+		"3.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestDropTake(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 100))",

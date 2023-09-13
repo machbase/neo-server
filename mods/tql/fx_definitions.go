@@ -58,6 +58,7 @@ var FxDefinitions = []Definition{
 	{"POPKEY", defTask.fmPopKey},
 	{"PUSHKEY", defTask.fmPushKey},
 	{"MAPKEY", defTask.fmMapKey},
+	{"MAPVALUE", defTask.fmMapValue},
 	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
 	// maps.dbsrc

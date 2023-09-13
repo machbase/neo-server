@@ -208,3 +208,63 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 	}
 	return NewRecord(newKey, rec.value), nil
 }
+
+func (node *Node) fmMapValue(idx int, newValue any) (any, error) {
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil, nil
+	}
+	switch val := inflight.value.(type) {
+	case []any:
+		if idx < 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append([]*spi.Column{newCol}, cols...)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, append([]any{newValue}, val...))
+			return ret, nil
+		} else if idx >= len(val) {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append(cols, newCol)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, append(val, newValue))
+			return ret, nil
+		} else {
+			val[idx] = newValue
+			ret := NewRecord(inflight.key, val)
+			return ret, nil
+		}
+	default:
+		if idx < 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append([]*spi.Column{newCol}, cols...)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, []any{newValue, val})
+			return ret, nil
+		} else if idx > 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append(cols, newCol)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, []any{val, newValue})
+			return ret, nil
+		} else {
+			ret := NewRecord(inflight.key, newValue)
+			return ret, nil
+		}
+	}
+}
