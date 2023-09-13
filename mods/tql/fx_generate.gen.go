@@ -53,6 +53,7 @@ func NewNode(task *Task) *Node {
 		"GROUPBYKEY": x.gen_GROUPBYKEY,
 		"POPKEY":     x.gen_POPKEY,
 		"PUSHKEY":    x.gen_PUSHKEY,
+		"MAPKEY":     x.gen_MAPKEY,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
 		// maps.dbsrc
@@ -633,6 +634,20 @@ func (x *Node) gen_PUSHKEY(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmPushKey(p0)
+}
+
+// gen_MAPKEY
+//
+// syntax: MAPKEY()
+func (x *Node) gen_MAPKEY(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("MAPKEY", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "MAPKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmMapKey(p0)
 }
 
 // gen_SCRIPT

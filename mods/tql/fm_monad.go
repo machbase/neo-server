@@ -55,6 +55,13 @@ func (node *Node) fmFlatten() any {
 		return ret
 	} else if rec.IsTuple() {
 		switch value := rec.Value().(type) {
+		case [][]any:
+			k := rec.Key()
+			ret := []*Record{}
+			for _, v := range value {
+				ret = append(ret, NewRecord(k, v))
+			}
+			return ret
 		case []any:
 			k := rec.Key()
 			ret := []*Record{}
@@ -180,10 +187,24 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 	}
 	key, value := rec.key, rec.value
 	var newVal []any
-	if val, ok := value.([]any); ok {
+	switch val := value.(type) {
+	case []any:
 		newVal = append([]any{key}, val...)
-	} else {
+	case any:
+		newVal = []any{key, val}
+	default:
 		return nil, ErrArgs("PUSHKEY", 0, fmt.Sprintf("Value should be array, but %T", value))
 	}
 	return NewRecord(newKey, newVal), nil
+}
+
+func (node *Node) fmMapKey(newKey any) (any, error) {
+	if node.Rownum() == 1 {
+		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
+	}
+	rec := node.Inflight()
+	if rec == nil {
+		return nil, nil
+	}
+	return NewRecord(newKey, rec.value), nil
 }

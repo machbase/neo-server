@@ -76,6 +76,12 @@ func (src *csvSource) gen(node *Node) {
 						src.columns[i] = &columnOpt{idx: i, dataType: &stringOpt{}, label: label}
 					}
 				}
+			} else {
+				for i := range fields {
+					if _, ok := src.columns[i]; !ok {
+						src.columns[i] = &columnOpt{idx: i, dataType: &stringOpt{}, label: fmt.Sprintf("column%d", i)}
+					}
+				}
 			}
 			headerProcessed = true // done processing header
 			node.task.SetResultColumns(src.header())
@@ -125,7 +131,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		rownum++
 		if err == nil {
-			NewRecord(values[0], values[1:]).Tell(node.next)
+			NewRecord(rownum, values).Tell(node.next)
 		} else {
 			err = nil
 		}
@@ -144,7 +150,7 @@ func (src *csvSource) SetHeader(has bool) {
 
 func (fs *csvSource) header() spi.Columns {
 	if len(fs.columns) == 0 {
-		return []*spi.Column{}
+		return []*spi.Column{{Name: "ROWNUM", Type: "int"}}
 	}
 	max := 0
 	for i := range fs.columns {
@@ -152,11 +158,11 @@ func (fs *csvSource) header() spi.Columns {
 			max = i
 		}
 	}
-	ret := make([]*spi.Column, max+1)
+	ret := make([]*spi.Column, max+2)
+	ret[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
 	for i, c := range fs.columns {
-		ret[i] = &spi.Column{Name: c.label, Type: c.dataType.spiType()}
+		ret[i+1] = &spi.Column{Name: c.label, Type: c.dataType.spiType()}
 	}
-
 	return ret
 }
 

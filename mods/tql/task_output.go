@@ -116,12 +116,12 @@ func (out *output) start() {
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
 								&spi.Column{
-									Name: fmt.Sprintf("C%02d", i),
+									Name: fmt.Sprintf("column%d", i-1),
 									Type: out.columnTypeName(v),
 								})
 						}
 					}
-					out.setHeader(resultColumns)
+					out.setHeader(resultColumns[1:])
 					if err := out.openEncoder(); err != nil {
 						out.lastError = err
 						out.task.LogErrorf(err.Error())
@@ -151,7 +151,7 @@ func (out *output) start() {
 		} else {
 			// encoder has not been opened, which means no records are produced
 			if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
-				out.setHeader(resultColumns)
+				out.setHeader(resultColumns[1:])
 				out.openEncoder()
 				out.closeEncoder()
 			}
@@ -258,24 +258,21 @@ func (out *output) addRow(rec *Record) error {
 		return fmt.Errorf("%s can not write %v", out.name, rec)
 	}
 
-	if value := rec.Value(); value == nil {
-		// if the value of the record is nil, yield key only
-		return addfunc([]any{rec.Key()})
-	} else {
+	if value := rec.Value(); value != nil {
 		switch v := value.(type) {
 		case [][]any:
 			var err error
 			for n := range v {
-				err = addfunc(append([]any{rec.Key()}, v[n]...))
+				err = addfunc(v[n])
 				if err != nil {
 					break
 				}
 			}
 			return err
 		case []any:
-			return addfunc(append([]any{rec.Key()}, v...))
+			return addfunc(v)
 		case any:
-			return addfunc([]any{rec.Key(), v})
+			return addfunc([]any{v})
 		}
 	}
 	return nil

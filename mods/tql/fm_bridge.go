@@ -79,12 +79,14 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
-	var cols spi.Columns = make([]*spi.Column, len(columns))
-	for i, c := range columns {
-		cols[i] = &spi.Column{Name: c.Name(), Type: c.ScanType().String()}
+	var cols spi.Columns = make([]*spi.Column, 0)
+	cols = append(cols, &spi.Column{Name: "ROWNUM", Type: "int"})
+	for _, c := range columns {
+		cols = append(cols, &spi.Column{Name: c.Name(), Type: c.ScanType().String()})
 	}
 	node.task.SetResultColumns(cols)
 
+	rownum := 0
 	for rows.Next() && !node.task.shouldStop() {
 		values := make([]any, len(columns))
 		for i, c := range columns {
@@ -97,8 +99,9 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 			}
 		}
 		if err := rows.Scan(values...); err == nil {
+			rownum++
 			values = br.NormalizeType(values)
-			NewRecord(values[0], values[1:]).Tell(node.next)
+			NewRecord(rownum, values).Tell(node.next)
 		} else {
 			ErrorRecord(err).Tell(node.next)
 		}

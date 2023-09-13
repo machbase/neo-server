@@ -74,7 +74,7 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		if ret.dump.Escape {
 			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord(sqlText, nil).Tell(node.next)
+		NewRecord("SQLDUMP", sqlText).Tell(node.next)
 		return nil, nil
 	}
 	return nil, nil

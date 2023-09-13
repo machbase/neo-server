@@ -85,6 +85,7 @@ func TestConsoleWs(t *testing.T) {
 				ctx.print(ctx.key(), ctx.value())
 				ctx.yieldKey(ctx.key(), ctx.value()...)
 			})
+			PUSHKEY('test')
 			CSV(precision(2))
 		`)
 		ctx.Request, err = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
