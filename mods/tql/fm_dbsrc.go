@@ -185,9 +185,10 @@ func (dc *databaseSource) gen(node *Node) {
 		dc.resultMsg = msg
 		if dc.executed {
 			dc.task.SetResultColumns(spi.Columns{
-				{Name: "message", Type: "string"},
+				{Name: "ROWNUM", Type: "int"},
+				{Name: "MESSAGE", Type: "string"},
 			})
-			NewRecord(msg, nil).Tell(node.next)
+			NewRecord(1, msg).Tell(node.next)
 		}
 	}
 }
