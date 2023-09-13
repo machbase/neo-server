@@ -192,7 +192,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 
 func (ex *Base3D) AddRow(values []any) error {
 	if len(values) < 3 {
-		return errors.New("3D chart require  at last 3 vlaues")
+		return errors.New("3D chart require  at last 3 values")
 	}
 	var xv float64
 	var yv float64
@@ -308,6 +308,10 @@ func (ex *Base3D) value(x any) (float64, bool) {
 		return v, true
 	case *float64:
 		return *v, true
+	case time.Time:
+		return float64(v.UnixMilli()), true
+	case *time.Time:
+		return float64((*v).UnixMilli()), true
 	default:
 		return 0, false
 	}
