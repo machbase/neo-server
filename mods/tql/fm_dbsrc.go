@@ -74,7 +74,7 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		if ret.dump.Escape {
 			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord(sqlText, nil).Tell(node.next)
+		NewRecord("SQLDUMP", sqlText).Tell(node.next)
 		return nil, nil
 	}
 	return nil, nil
@@ -163,18 +163,13 @@ func (dc *databaseSource) gen(node *Node) {
 	queryCtx := &do.QueryContext{
 		DB: dc.task.db,
 		OnFetchStart: func(cols spi.Columns) {
+			cols = append([]*spi.Column{{Name: "ROWNUM", Type: spi.ColumnTypeString(spi.Int64ColumnType)}}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			if !dc.task.shouldStop() && len(values) > 0 {
 				dc.fetched++
-				if len(values) == 1 {
-					NewRecord(values[0], []any{}).Tell(node.next)
-				} else if len(values) == 2 {
-					NewRecord(values[0], []any{values[1]}).Tell(node.next)
-				} else if len(values) > 2 {
-					NewRecord(values[0], values[1:]).Tell(node.next)
-				}
+				NewRecord(nrow, values).Tell(node.next)
 			}
 			return !dc.task.shouldStop()
 		},

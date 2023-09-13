@@ -55,6 +55,13 @@ func (node *Node) fmFlatten() any {
 		return ret
 	} else if rec.IsTuple() {
 		switch value := rec.Value().(type) {
+		case [][]any:
+			k := rec.Key()
+			ret := []*Record{}
+			for _, v := range value {
+				ret = append(ret, NewRecord(k, v))
+			}
+			return ret
 		case []any:
 			k := rec.Key()
 			ret := []*Record{}
@@ -180,10 +187,84 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 	}
 	key, value := rec.key, rec.value
 	var newVal []any
-	if val, ok := value.([]any); ok {
+	switch val := value.(type) {
+	case []any:
 		newVal = append([]any{key}, val...)
-	} else {
+	case any:
+		newVal = []any{key, val}
+	default:
 		return nil, ErrArgs("PUSHKEY", 0, fmt.Sprintf("Value should be array, but %T", value))
 	}
 	return NewRecord(newKey, newVal), nil
+}
+
+func (node *Node) fmMapKey(newKey any) (any, error) {
+	if node.Rownum() == 1 {
+		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
+	}
+	rec := node.Inflight()
+	if rec == nil {
+		return nil, nil
+	}
+	return NewRecord(newKey, rec.value), nil
+}
+
+func (node *Node) fmMapValue(idx int, newValue any) (any, error) {
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil, nil
+	}
+	switch val := inflight.value.(type) {
+	case []any:
+		if idx < 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append([]*spi.Column{newCol}, cols...)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, append([]any{newValue}, val...))
+			return ret, nil
+		} else if idx >= len(val) {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append(cols, newCol)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, append(val, newValue))
+			return ret, nil
+		} else {
+			val[idx] = newValue
+			ret := NewRecord(inflight.key, val)
+			return ret, nil
+		}
+	default:
+		if idx < 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append([]*spi.Column{newCol}, cols...)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, []any{newValue, val})
+			return ret, nil
+		} else if idx > 0 {
+			if node.Rownum() == 1 {
+				cols := node.task.ResultColumns()
+				newCol := node.AsColumnTypeOf(newValue)
+				newCol.Name = "column"
+				cols = append(cols, newCol)
+				node.task.SetResultColumns(cols)
+			}
+			ret := NewRecord(inflight.key, []any{val, newValue})
+			return ret, nil
+		} else {
+			ret := NewRecord(inflight.key, newValue)
+			return ret, nil
+		}
+	}
 }

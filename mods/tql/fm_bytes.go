@@ -112,12 +112,12 @@ func (src *bytesSource) gen(node *Node) {
 
 	var label string
 	if src.toString {
-		label = "string"
+		label = "STRING"
 	} else {
-		label = "bytes"
+		label = "BYTES"
 	}
 	node.task.SetResultColumns([]*spi.Column{
-		{Name: "id", Type: "int"},
+		{Name: "ROWNUM", Type: "int"},
 		{Name: label, Type: spi.ColumnBufferTypeString},
 	})
 

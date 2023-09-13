@@ -294,7 +294,6 @@ func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error
 
 func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
-		node.task.LogWarn("'yield()' is deprecated, use 'yieldKey()`")
 		vargs := make([]any, len(args))
 		for i, v := range args {
 			vargs[i] = tengo.ToInterface(v)

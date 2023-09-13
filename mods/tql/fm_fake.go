@@ -47,7 +47,7 @@ type linspace struct {
 
 func genLinspace(node *Node, ls *linspace) {
 	node.task.SetResultColumns([]*spi.Column{
-		{Name: "id", Type: "int"},
+		{Name: "ROWNUM", Type: "int"},
 		{Name: "x", Type: "double"},
 	})
 	vals := nums.Linspace(ls.start, ls.stop, ls.num)
@@ -84,7 +84,7 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 	vals := nums.Meshgrid(xv, yv)
 
 	node.task.SetResultColumns([]*spi.Column{
-		{Name: "id", Type: "int"},
+		{Name: "ROWNUM", Type: "int"},
 		{Name: "x", Type: "double"},
 		{Name: "y", Type: "double"},
 	})
@@ -117,7 +117,7 @@ type sphere struct {
 
 func genSphere(node *Node, sp *sphere) {
 	node.task.SetResultColumns([]*spi.Column{
-		{Name: "id", Type: "int"},
+		{Name: "ROWNUM", Type: "int"},
 		{Name: "x", Type: "double"},
 		{Name: "y", Type: "double"},
 		{Name: "z", Type: "double"},
@@ -183,15 +183,18 @@ type oscillator struct {
 
 func genOscillator(node *Node, gen *oscillator) {
 	node.task.SetResultColumns([]*spi.Column{
+		{Name: "ROWNUM", Type: "int"},
 		{Name: "time", Type: "datetime"},
 		{Name: "value", Type: "double"},
 	})
+	rownum := 0
 	for x := gen.from; x < gen.to; x += gen.step {
 		value := 0.0
 		for _, fr := range gen.frequencies {
 			value += fr.Value(float64(x) / float64(time.Second))
 		}
-		NewRecord(time.Unix(0, x), []any{value}).Tell(node.next)
+		rownum++
+		NewRecord(rownum, []any{time.Unix(0, x), value}).Tell(node.next)
 	}
 }
 

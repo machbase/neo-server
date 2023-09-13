@@ -237,7 +237,7 @@ func (node *Node) start() {
 				} else if rec.IsError() {
 					rec.Tell(node.next)
 					continue
-				} else if !node.task.shouldStop() {
+				} else { // else if !node.task.shouldStop() <- do not use shouldStop() : https://github.com/machbase/neo/issues/309
 					node.nrow++
 					node.SetInflight(rec)
 					if node.debug {
