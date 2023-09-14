@@ -408,6 +408,7 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		hdr := &zip.FileHeader{
 			Name:               entryName,
 			UncompressedSize64: uint64(finfo.Size()),
+			Method:             zip.Deflate,
 			Modified:           finfo.ModTime(),
 		}
 		hdr.SetMode(finfo.Mode())
