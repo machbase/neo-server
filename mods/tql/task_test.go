@@ -1,6 +1,6 @@
 package tql_test
 
-//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Rows
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Rows Result Appender
 
 import (
 	"bufio"
@@ -178,6 +178,14 @@ var mockDb = DatabaseMock{
 					return nil
 				},
 			}, nil
+		case `create tag table example(...)`:
+			return &RowsMock{
+				IsFetchableFunc:  func() bool { return false },
+				NextFunc:         func() bool { return false },
+				CloseFunc:        func() error { return nil },
+				MessageFunc:      func() string { return "executed." },
+				RowsAffectedFunc: func() int64 { return 0 },
+			}, nil
 		default:
 			fmt.Println("===>", sqlText)
 			return &RowsMock{
@@ -186,6 +194,26 @@ var mockDb = DatabaseMock{
 				CloseFunc:       func() error { return nil },
 			}, nil
 		}
+	},
+	ExecFunc: func(sqlText string, params ...any) spi.Result {
+		switch sqlText {
+		case `INSERT INTO example (name,a) VALUES(?,?)`:
+			fmt.Println("task_test, mockdb: ", sqlText, params)
+			return &ResultMock{
+				ErrFunc:          func() error { return nil },
+				MessageFunc:      func() string { return "a row inserted." },
+				RowsAffectedFunc: func() int64 { return 1 },
+			}
+		default:
+			fmt.Println("task_test, mockdb: ", sqlText)
+		}
+		return nil
+	},
+	AppenderFunc: func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+		return &AppenderMock{
+			AppendFunc: func(values ...any) error { return nil },
+			CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
+		}, nil
 	},
 }
 
@@ -242,6 +270,40 @@ func TestDBQuery(t *testing.T) {
 		"1692686708380411000,0.200",
 	}
 	runTest(t, codeLines, resultLines)
+}
+
+func TestDBInsert(t *testing.T) {
+	codeLines := []string{
+		`FAKE( linspace(0, 1, 3) )`,
+		`INSERT('a', table('example'), tag('signal'))`,
+	}
+	resultLines := []string{
+		`{"data":{"message":"3 rows inserted."},`,
+	}
+	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestDBAppend(t *testing.T) {
+	codeLines := []string{
+		`FAKE( linspace(0, 1, 3) )`,
+		`MAPVALUE(-1, 'singal')`,
+		`APPEND( table('example') )`,
+	}
+	resultLines := []string{
+		`{"data":{"message":"append 3 rows (success 0, fail 0)"},`,
+	}
+	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestDBddl(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`SQL("create tag table example(...)")`,
+		`MARKDOWN(html(true), rownum(true), heading(true), brief(true))`,
+	}
+	resultLines = loadLines("./test/sql_ddl_executed.txt")
+	runTest(t, codeLines, resultLines, MatchPrefix(false))
 }
 
 func TestString(t *testing.T) {
