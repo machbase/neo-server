@@ -12,6 +12,24 @@ import (
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
 )
 
+func WrapAssets(path string) http.FileSystem {
+	fs := http.Dir(path)
+	ret := &wrapFileSystem{base: fs}
+	return ret
+}
+
+type wrapFileSystem struct {
+	base http.FileSystem
+}
+
+func (fs *wrapFileSystem) Open(name string) (http.File, error) {
+	ret, err := fs.base.Open(name)
+	if err == nil {
+		return ret, nil
+	}
+	return fs.base.Open("index.html")
+}
+
 //go:embed web/*
 var webFs embed.FS
 

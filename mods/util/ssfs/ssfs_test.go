@@ -19,11 +19,14 @@ func TestFsGET(t *testing.T) {
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
 	require.Equal(t, string(os.PathSeparator), ret.Name)
-	require.Equal(t, 2, len(ret.Children))
+	require.Equal(t, 3, len(ret.Children))
 	require.Equal(t, "hello.sql", ret.Children[0].Name)
 	require.Equal(t, ".sql", ret.Children[0].Type)
 	require.Equal(t, "select.sql", ret.Children[1].Name)
 	require.Equal(t, ".sql", ret.Children[1].Type)
+	require.Equal(t, "Tutorials", ret.Children[2].Name)
+	require.Equal(t, urlGitSample, ret.Children[2].GitUrl)
+	require.True(t, ret.Children[2].Virtual)
 
 	ssfs, err = NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
 	require.Nil(t, err)
@@ -34,7 +37,7 @@ func TestFsGET(t *testing.T) {
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
 	require.Equal(t, string(os.PathSeparator), ret.Name)
-	require.Equal(t, 4, len(ret.Children))
+	require.Equal(t, 5, len(ret.Children))
 	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Children[0].Name)
 	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
@@ -47,6 +50,8 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "select.sql", ret.Children[3].Name)
 	require.Equal(t, ".sql", ret.Children[3].Type)
 	require.Equal(t, false, ret.Children[3].IsDir)
+	require.Equal(t, "Tutorials", ret.Children[4].Name)
+	require.Equal(t, urlGitSample, ret.Children[4].GitUrl)
 
 	// do not allow accessing out side of the given dirs
 	ret, err = ssfs.Get("/../notaccess.tql")
@@ -128,13 +133,6 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	abspath, _ := filepath.Abs("test/data1/simple.tql")
 	require.Equal(t, realpath, abspath)
-
-	// recent list
-	ssfs.AddRecentList("test1.txt")
-	ssfs.AddRecentList("test2.txt")
-	ssfs.AddRecentList("test1.txt")
-	require.Equal(t, "test1.txt", ssfs.GetRecentList()[0])
-	require.Equal(t, "test2.txt", ssfs.GetRecentList()[1])
 }
 
 func TestFsGit(t *testing.T) {
@@ -142,8 +140,8 @@ func TestFsGit(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 
-	dest := "/data1/neo-samples"
-	entry, err := ssfs.GitClone(dest, "https://github.com/machbase/neo-samples.git")
+	dest := "/data1/neo-tutorials"
+	entry, err := ssfs.GitClone(dest, urlGitSample, nil)
 	if err != nil {
 		t.Log("ERR", err.Error())
 	}
@@ -152,6 +150,13 @@ func TestFsGit(t *testing.T) {
 
 	require.True(t, entry.IsDir)
 	require.True(t, len(entry.Children) > 0)
+
+	entry, err = ssfs.GitPull(dest, urlGitSample, nil)
+	if err != nil {
+		t.Log("ERR", err.Error())
+	}
+	require.Nil(t, err)
+	require.NotNil(t, entry)
 
 	err = ssfs.RemoveRecursive(dest)
 	require.Nil(t, err)

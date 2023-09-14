@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	schedrpc "github.com/machbase/neo-grpc/schedule"
@@ -12,12 +13,11 @@ import (
 
 func init() {
 	client.RegisterCmd(&client.Cmd{
-		Name:         "subscriber",
-		PcFunc:       pcSubscriber,
-		Action:       doSubscriber,
-		Desc:         "Manage subscribers",
-		Usage:        helpSubscriber,
-		Experimental: true,
+		Name:   "subscriber",
+		PcFunc: pcSubscriber,
+		Action: doSubscriber,
+		Desc:   "Manage subscribers",
+		Usage:  helpSubscriber,
 	})
 }
 
@@ -140,6 +140,7 @@ func doSubscriberList(ctx *client.ActionContext) {
 		"NAME", "BRIDGE", "TOPIC", "TQL", "AUTOSTART", "STATE",
 	})
 	if len(lst) > 0 {
+		sort.Slice(lst, func(i, j int) bool { return lst[i].Name < lst[j].Name })
 		for _, c := range lst {
 			box.AppendRow(c.Name, c.Bridge, c.Topic, c.Task, c.AutoStart, c.State)
 		}

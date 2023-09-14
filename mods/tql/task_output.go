@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"sync"
@@ -15,7 +16,7 @@ import (
 
 type DatabaseSink interface {
 	Open(db spi.Database) error
-	Close() string
+	Close() (string, error)
 	AddRow([]any) error
 }
 
@@ -54,7 +55,6 @@ func (node *Node) compileSink(code string) (*output, error) {
 	if err != nil {
 		return nil, err
 	}
-	node.name = expr.String()
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	default:
 		return nil, fmt.Errorf("type (%T) is not applicable for OUTPUT", val)
 	}
-	ret.name = code
+	ret.name = asNodeName(expr)
 	ret.task = node.task
 	ret.src = make(chan *Record)
 	return ret, nil
@@ -116,12 +116,12 @@ func (out *output) start() {
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
 								&spi.Column{
-									Name: fmt.Sprintf("C%02d", i),
+									Name: fmt.Sprintf("column%d", i-1),
 									Type: out.columnTypeName(v),
 								})
 						}
 					}
-					out.setHeader(resultColumns)
+					out.setHeader(resultColumns[1:])
 					if err := out.openEncoder(); err != nil {
 						out.lastError = err
 						out.task.LogErrorf(err.Error())
@@ -148,6 +148,13 @@ func (out *output) start() {
 
 		if shouldClose {
 			out.closeEncoder()
+		} else {
+			// encoder has not been opened, which means no records are produced
+			if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
+				out.setHeader(resultColumns[1:])
+				out.openEncoder()
+				out.closeEncoder()
+			}
 		}
 		out.closeWg.Done()
 	}()
@@ -177,6 +184,8 @@ func (out *output) setHeader(cols spi.Columns) {
 func (out *output) ContentType() string {
 	if out.encoder != nil {
 		return out.encoder.ContentType()
+	} else if out.dbSink != nil {
+		return "application/json"
 	}
 	return "application/octet-stream"
 }
@@ -204,8 +213,22 @@ func (out *output) closeEncoder() {
 	if out.encoder != nil {
 		out.encoder.Close()
 	} else if out.dbSink != nil {
-		resultMessage := out.dbSink.Close()
-		out.task.outputWriter.Write([]byte(resultMessage))
+		resultMessage, err := out.dbSink.Close()
+		success := true
+		reason := "success"
+		if err != nil {
+			success = false
+			reason = err.Error()
+		}
+		body, _ := json.Marshal(map[string]any{
+			"success": success,
+			"reason":  reason,
+			"elapse":  time.Since(out.task._created).String(),
+			"data": map[string]any{
+				"message": resultMessage,
+			},
+		})
+		out.task.outputWriter.Write(body)
 	}
 }
 
@@ -235,24 +258,21 @@ func (out *output) addRow(rec *Record) error {
 		return fmt.Errorf("%s can not write %v", out.name, rec)
 	}
 
-	if value := rec.Value(); value == nil {
-		// if the value of the record is nil, yield key only
-		return addfunc([]any{rec.Key()})
-	} else {
+	if value := rec.Value(); value != nil {
 		switch v := value.(type) {
 		case [][]any:
 			var err error
 			for n := range v {
-				err = addfunc(append([]any{rec.Key()}, v[n]...))
+				err = addfunc(v[n])
 				if err != nil {
 					break
 				}
 			}
 			return err
 		case []any:
-			return addfunc(append([]any{rec.Key()}, v...))
+			return addfunc(v)
 		case any:
-			return addfunc([]any{rec.Key(), v})
+			return addfunc([]any{v})
 		}
 	}
 	return nil

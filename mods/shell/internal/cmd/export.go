@@ -126,37 +126,56 @@ func doExport(ctx *client.ActionContext) {
 		opts.BoxDrawBorder(true),
 	)
 
-	alive := true
-
+	printProgress := false
 	capture := ctx.NewCaptureUserInterrupt("")
-	defer capture.Close()
-	if ctx.IsUserShellInteractiveMode() {
+	if ctx.IsUserShellInteractiveMode() && cmd.Output != "-" {
+		printProgress = true
 		go capture.Start()
-		go func() {
-			<-capture.C
-			alive = false
-		}()
 	}
+	doneC := make(chan bool)
 
-	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
-		OnFetchStart: func(cols spi.Columns) {
-			codec.SetEncoderColumns(encoder, cols)
-			encoder.Open()
-		},
-		OnFetch: func(nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
-			if err != nil {
-				ctx.Println("ERR", err.Error())
-			}
-			return alive
-		},
-		OnFetchEnd: func() {
-			encoder.Close()
-		},
-	}
+	var alive bool = true
+	var lineno int = 0
+	go func() {
+		defer capture.Close()
+		tick := time.Now()
+		queryCtx := &do.QueryContext{
+			DB: ctx.DB,
+			OnFetchStart: func(cols spi.Columns) {
+				codec.SetEncoderColumns(encoder, cols)
+				encoder.Open()
+			},
+			OnFetch: func(nrow int64, values []any) bool {
+				err := encoder.AddRow(values)
+				if err != nil {
+					ctx.Println("ERR", err.Error())
+				}
+				lineno++
+				if printProgress && lineno%10000 == 0 {
+					// update progress message per 10K records
+					tps := int(float64(lineno) / time.Since(tick).Seconds())
+					ctx.Printf("export %s records (%s/s)\r", util.NumberFormat(lineno), util.NumberFormat(tps))
+				}
+				return alive
+			},
+			OnFetchEnd: func() {
+				encoder.Close()
+			},
+		}
 
-	if _, err := do.Query(queryCtx, "select * from "+cmd.Table); err != nil {
-		ctx.Println("ERR", err.Error())
+		if _, err := do.Query(queryCtx, "select * from "+cmd.Table); err != nil {
+			ctx.Println("ERR", err.Error())
+		}
+		if printProgress {
+			ctx.Print("\r\n")
+			ctx.Printf("export total %s record(s)", util.NumberFormat(lineno))
+		}
+		doneC <- true
+	}()
+
+	select {
+	case <-capture.C:
+	case <-doneC:
 	}
+	alive = false
 }

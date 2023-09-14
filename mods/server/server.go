@@ -27,6 +27,7 @@ import (
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/scheduler"
@@ -116,6 +117,7 @@ type GrpcConfig struct {
 type HttpConfig struct {
 	Listeners []string
 	Handlers  []httpd.HandlerConfig
+	WebDir    string
 
 	EnableTokenAuth bool
 	DebugMode       bool
@@ -175,6 +177,8 @@ type svr struct {
 	authorizedSshKeysLock sync.RWMutex
 }
 
+var PreferredPreset string = "auto"
+
 func NewConfig() *Config {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -208,11 +212,18 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	sysCPU := runtime.NumCPU()
-	if sysCPU <= 4 {
-		conf.MachbasePreset = PresetEdge
-	} else {
+	switch strings.ToLower(PreferredPreset) {
+	case "fog":
 		conf.MachbasePreset = PresetFog
+	case "edge":
+		conf.MachbasePreset = PresetEdge
+	default:
+		sysCPU := runtime.NumCPU()
+		if sysCPU <= 4 {
+			conf.MachbasePreset = PresetEdge
+		} else {
+			conf.MachbasePreset = PresetFog
+		}
 	}
 
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
@@ -331,8 +342,10 @@ func (s *svr) Start() error {
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
 	confpath := filepath.Join(homepath, "conf", "machbase.conf")
-	if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
-		return errors.Wrap(err, "machbase.conf")
+	if _, err := os.Stat(confpath); err != nil {
+		if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
 	}
 
 	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
@@ -352,6 +365,11 @@ func (s *svr) Start() error {
 		s.databaseCreated = true
 	}
 
+	// leak detector
+	leakDetector := leak.NewDetector(leak.Timer(10 * time.Second))
+	mach.DefaultDetective = leakDetector
+
+	// create database instance
 	s.db, err = spi.NewDatabase(mach.FactoryName)
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
@@ -443,6 +461,7 @@ func (s *svr) Start() error {
 			grpcd.OptionManagementServer(s),
 			grpcd.OptionBridgeServer(s.bridgeSvc),
 			grpcd.OptionScheduleServer(s.schedSvc),
+			grpcd.OptionLeakDetector(leakDetector),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -464,8 +483,6 @@ func (s *svr) Start() error {
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
-			httpd.OptionRecentsProvider(s.WebRecents),
-			httpd.OptionReferenceProvider(s.WebReferences),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 		}
 		for _, h := range s.conf.Http.Handlers {
@@ -480,6 +497,16 @@ func (s *svr) Start() error {
 			shellAddrs = append(shellAddrs, sp.Address)
 		}
 		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
+		if s.conf.Http.WebDir != "" {
+			stat, err := os.Stat(s.conf.Http.WebDir)
+			if err != nil {
+				return err
+			}
+			if !stat.IsDir() {
+				return fmt.Errorf("web ui path is not a directory")
+			}
+			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
+		}
 		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
@@ -544,8 +571,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if enabledWebUI {
-		svcPorts, err := s.db.GetServicePorts("http")
+	if aux, ok := s.db.(spi.DatabaseAux); ok && enabledWebUI {
+		svcPorts, err := aux.GetServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
 		}

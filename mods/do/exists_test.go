@@ -1,20 +1,21 @@
 package do_test
 
+//go:generate moq -out ./mock_test.go -pkg do_test ../../../neo-spi Database Row Result
+
 import (
 	"testing"
 
 	"github.com/machbase/neo-server/mods/do"
-	"github.com/machbase/neo-server/mods/util/mock"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExists(t *testing.T) {
-	mockdb := &mock.DatabaseMock{
+	mockdb := &DatabaseMock{
 		QueryRowFunc: func(sqlText string, params ...any) spi.Row {
 			switch sqlText {
 			case "select count(*) from M$SYS_TABLES where name = ?":
-				return &mock.RowMock{
+				return &RowMock{
 					ScanFunc: func(cols ...any) error {
 						if len(params) == 1 {
 							if params[0] == "EXAMPLE" {
@@ -27,7 +28,7 @@ func TestExists(t *testing.T) {
 					},
 				}
 			case "select type from M$SYS_TABLES where name = ?":
-				return &mock.RowMock{
+				return &RowMock{
 					ScanFunc: func(cols ...any) error {
 						*(cols[0].(*int)) = spi.TagTableType
 						return nil
@@ -35,19 +36,19 @@ func TestExists(t *testing.T) {
 				}
 			default:
 				t.Logf("QueryRow sqlText: %s, params:%v", sqlText, params)
-				return &mock.RowMock{}
+				return &RowMock{}
 			}
 		},
 		ExecFunc: func(sqlText string, params ...any) spi.Result {
 			switch sqlText {
 			case "delete from example":
-				return &mock.ResultMock{
+				return &ResultMock{
 					ErrFunc:          func() error { return nil },
 					MessageFunc:      func() string { return "mocking delete all" },
 					RowsAffectedFunc: func() int64 { return 1 },
 				}
 			case "create tag table example_x (name varchar(100) primary key, time datetime basetime, value double)":
-				return &mock.ResultMock{
+				return &ResultMock{
 					ErrFunc:          func() error { return nil },
 					MessageFunc:      func() string { return "mocking create table" },
 					RowsAffectedFunc: func() int64 { return 0 },
@@ -55,7 +56,7 @@ func TestExists(t *testing.T) {
 			default:
 				t.Logf("Exec sqlText: %s, params:%v", sqlText, params)
 			}
-			return &mock.ResultMock{}
+			return &ResultMock{}
 		},
 	}
 

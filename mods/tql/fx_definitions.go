@@ -57,6 +57,8 @@ var FxDefinitions = []Definition{
 	{"GROUPBYKEY", defTask.fmGroupByKey},
 	{"POPKEY", defTask.fmPopKey},
 	{"PUSHKEY", defTask.fmPushKey},
+	{"MAPKEY", defTask.fmMapKey},
+	{"MAPVALUE", defTask.fmMapValue},
 	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
 	// maps.dbsrc
@@ -106,7 +108,6 @@ var FxDefinitions = []Definition{
 	{"// maps.csv", nil},
 	{"col", defTask.fmCol},
 	{"field", defTask.fmField},
-	{"header", defTask.fmHeader},
 	{"datetimeType", defTask.fmDatetimeType},
 	{"stringType", defTask.fmStringType},
 	{"doubleType", defTask.fmDoubleType},

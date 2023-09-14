@@ -307,11 +307,6 @@ func TestMapFunc_PUSHKEY(t *testing.T) {
 		expectErr: "f(PUSHKEY) invalid number of args; expect:1, actual:0",
 	}.run(t)
 	MapFuncTestCase{
-		input:     `PUSHKEY('err')`,
-		params:    FuncParamMock(extime, []int{1, 2, 3}),
-		expectErr: "f(PUSHKEY) arg(0) Value should be array, but []int",
-	}.run(t)
-	MapFuncTestCase{
 		input:  `PUSHKEY('sam')`,
 		params: FuncParamMock(extime, []any{1, 2, 3}),
 		expect: tql.NewRecord("sam", []any{extime, 1, 2, 3}),

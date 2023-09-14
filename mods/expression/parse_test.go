@@ -682,6 +682,37 @@ func TestModifierParsing(test *testing.T) {
 	runTokenParsingTest(tokenParsingTests, test)
 }
 
+func TestModifierWithFunctions(test *testing.T) {
+	tokenParsingTests := []TokenParsingTest{
+		{
+			Name:      "Numeric PLUS Function",
+			Input:     "1 + foo()",
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
+			},
+		},
+		{
+			Name:      "Numeric PLUS Function",
+			Input:     "foo()+1",
+			Functions: map[string]Function{"foo": noop},
+			Expected: []Token{
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: MODIFIER, Value: "+"},
+				{Kind: NUMERIC, Value: 1.0},
+			},
+		},
+	}
+	tokenParsingTests = combineWhitespaceExpressions(tokenParsingTests)
+	runTokenParsingTest(tokenParsingTests, test)
+}
+
 func TestNestedQuote(test *testing.T) {
 	testCases := []TokenParsingTest{
 		{

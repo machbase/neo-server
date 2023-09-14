@@ -53,6 +53,8 @@ func NewNode(task *Task) *Node {
 		"GROUPBYKEY": x.gen_GROUPBYKEY,
 		"POPKEY":     x.gen_POPKEY,
 		"PUSHKEY":    x.gen_PUSHKEY,
+		"MAPKEY":     x.gen_MAPKEY,
+		"MAPVALUE":   x.gen_MAPVALUE,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
 		// maps.dbsrc
@@ -95,7 +97,6 @@ func NewNode(task *Task) *Node {
 		// maps.csv
 		"col":          x.gen_col,
 		"field":        x.gen_field,
-		"header":       x.gen_header,
 		"datetimeType": x.gen_datetimeType,
 		"stringType":   x.gen_stringType,
 		"doubleType":   x.gen_doubleType,
@@ -127,6 +128,7 @@ func NewNode(task *Task) *Node {
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
 		"gridSize":           x.gen_gridSize,
+		"header":             x.gen_header,
 		"heading":            x.gen_heading,
 		"html":               x.gen_html,
 		"inputStream":        x.gen_inputStream,
@@ -633,6 +635,38 @@ func (x *Node) gen_PUSHKEY(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmPushKey(p0)
+}
+
+// gen_MAPKEY
+//
+// syntax: MAPKEY()
+func (x *Node) gen_MAPKEY(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("MAPKEY", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "MAPKEY", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmMapKey(p0)
+}
+
+// gen_MAPVALUE
+//
+// syntax: MAPVALUE(int, )
+func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("MAPVALUE", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAPVALUE", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAPVALUE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmMapValue(p0, p1)
 }
 
 // gen_SCRIPT
@@ -1217,21 +1251,6 @@ func (x *Node) gen_field(args ...any) (any, error) {
 	return x.fmField(p0...)
 }
 
-// gen_header
-//
-// syntax: header(...interface {})
-func (x *Node) gen_header(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "header", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	return x.fmHeader(p0...)
-}
-
 // gen_datetimeType
 //
 // syntax: datetimeType(...interface {})
@@ -1614,6 +1633,21 @@ func (x *Node) gen_gridSize(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.GridSize(p0...)
+	return ret, nil
+}
+
+// gen_header
+//
+// syntax: header(bool)
+func (x *Node) gen_header(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("header", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "header", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Header(p0)
 	return ret, nil
 }
 

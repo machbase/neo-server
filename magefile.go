@@ -15,7 +15,6 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	_ "github.com/magefile/mage/mage"
 	"github.com/magefile/mage/mg"
@@ -33,7 +32,6 @@ var Aliases = map[string]any{
 	"package-neoshell":     PackageNeoShell,
 	"cleanpackage":         CleanPackage,
 	"buildversion":         BuildVersion,
-	"regen-mock":           RegenMock,
 }
 
 var vLastVersion string
@@ -310,27 +308,8 @@ func CheckMoq() error {
 }
 
 func Generate() error {
-	return sh.RunV("go", "generate", "./...")
-}
-
-func RegenMock() error {
 	mg.Deps(CheckMoq)
-	mocks := map[string]string{
-		"./mods/util/mock/database.go": "Database",
-		"./mods/util/mock/server.go":   "DatabaseServer",
-		"./mods/util/mock/client.go":   "DatabaseClient",
-		"./mods/util/mock/auth.go":     "DatabaseAuth",
-		"./mods/util/mock/result.go":   "Result",
-		"./mods/util/mock/rows.go":     "Rows",
-		"./mods/util/mock/row.go":      "Row",
-		"./mods/util/mock/appender.go": "Appender",
-	}
-	for out, inf := range mocks {
-		if err := sh.RunV("moq", "-out", out, "-pkg", "mock", "../neo-spi", inf); err != nil {
-			return err
-		}
-	}
-	return nil
+	return sh.RunV("go", "generate", "./...")
 }
 
 func Package() error {
@@ -425,7 +404,16 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 
 		entryName := strings.TrimPrefix(entry, prefix)
 		fmt.Println("Archive", entryName)
-		w, err := zipWriter.Create(entryName)
+		finfo, _ := fd.Stat()
+		hdr := &zip.FileHeader{
+			Name:               entryName,
+			UncompressedSize64: uint64(finfo.Size()),
+			Method:             zip.Deflate,
+			Modified:           finfo.ModTime(),
+		}
+		hdr.SetMode(finfo.Mode())
+
+		w, err := zipWriter.CreateHeader(hdr)
 		if err != nil {
 			return err
 		}
@@ -462,45 +450,38 @@ func GetVersion() error {
 		return err
 	}
 
-	commit, err := repo.CommitObject(headRef.Hash())
+	headCommit, err := repo.CommitObject(headRef.Hash())
 	if err != nil {
 		return err
 	}
 
 	var lastTag *object.Tag
-	tagiter, err := repo.Tags()
+	iter, err := repo.TagObjects()
 	if err != nil {
 		return err
 	}
-	err = tagiter.ForEach(func(tagRef *plumbing.Reference) error {
-		tag, err := repo.TagObject(tagRef.Hash())
-		if err != nil {
-			return err
-		}
-		tagCommit, err := tag.Commit()
-		if err != nil {
-			return err
-		}
-
-		if !strings.HasPrefix(tag.Name, "v") {
+	iter.ForEach(func(tagObj *object.Tag) error {
+		if !strings.HasPrefix(tagObj.Name, "v") {
 			return nil
 		}
 		if lastTag == nil {
-			lastTag = tag
+			lastTag = tagObj
 		} else {
 			lastCommit, _ := lastTag.Commit()
+			tagCommit, _ := tagObj.Commit()
 			if tagCommit.Author.When.Sub(lastCommit.Author.When) > 0 {
-				lastTag = tag
+				lastTag = tagObj
 			}
 		}
 		return nil
 	})
+
 	lastTagCommit, err := lastTag.Commit()
 	if err != nil {
 		return err
 	}
 	vLastVersion = lastTag.Name
-	vLastCommit = commit.Hash.String()
+	vLastCommit = headCommit.Hash.String()
 	vIsNightly = lastTagCommit.Hash.String() != vLastCommit
 	lastTagSemVer, err := semver.NewVersion(vLastVersion)
 	if err != nil {

@@ -85,22 +85,16 @@ func OptionDebugMode(isDebug bool) Option {
 	}
 }
 
+func OptionWebDir(path string) Option {
+	return func(s *httpd) {
+		s.uiContentFs = WrapAssets(path)
+	}
+}
+
 // experiement features
 func OptionExperimentModeProvider(provider func() bool) Option {
 	return func(s *httpd) {
 		s.experimentModeProvider = provider
-	}
-}
-
-func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.referenceProvider = provider
-	}
-}
-
-func OptionRecentsProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.recentsProvider = provider
 	}
 }
 

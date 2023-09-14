@@ -82,8 +82,12 @@ func (ins *insert) Open(db spi.Database) error {
 	return nil
 }
 
-func (ins *insert) Close() string {
-	return fmt.Sprintf("%d rows inserted.", ins.rowsAffected)
+func (ins *insert) Close() (string, error) {
+	unit := "rows"
+	if ins.rowsAffected <= 1 {
+		unit = "row"
+	}
+	return fmt.Sprintf("%d %s inserted.", ins.rowsAffected, unit), nil
 }
 
 func (ins *insert) AddRow(values []any) error {
@@ -188,16 +192,20 @@ func (app *appender) Open(db spi.Database) (err error) {
 	return
 }
 
-func (app *appender) Close() string {
+func (app *appender) Close() (string, error) {
 	var succ, fail int64
 	var err error
 	if app.dbAppender != nil {
 		succ, fail, err = app.dbAppender.Close()
 	}
 	if err != nil {
-		return fmt.Sprintf("append fail, %s", err.Error())
+		return fmt.Sprintf("append fail, %s", err.Error()), err
 	} else {
-		return fmt.Sprintf("append %d rows (success %d, fail %d).", app.nrows, succ, fail)
+		unit := "rows"
+		if app.nrows <= 1 {
+			unit = "row"
+		}
+		return fmt.Sprintf("append %d %s (success %d, fail %d)", app.nrows, unit, succ, fail), nil
 	}
 }
 

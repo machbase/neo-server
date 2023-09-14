@@ -1,5 +1,7 @@
 package tql_test
 
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Rows Result Appender
+
 import (
 	"bufio"
 	"bytes"
@@ -14,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/mock"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
@@ -72,6 +73,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task := tql.NewTaskContext(timeCtx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
+	task.SetLogLevel(tql.INFO)
+	task.SetConsoleLogLevel(tql.FATAL)
 	task.SetDatabase(&mockDb)
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
@@ -111,7 +114,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}
 	if expectLog != "" {
 		// log message
-		require.Equal(t, expectLog, logString)
+		if !strings.Contains(logString, expectLog) {
+			t.Log("LOG OUTPUT:", logString)
+			t.Log("LOG EXPECT:", expectLog)
+			t.Fail()
+		}
 	} else {
 		if len(logString) > 0 && expectErr == "" {
 			t.Log("LOG OUTPUT:", logString)
@@ -128,24 +135,33 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		result := w.String()
 		if matchPrefix {
 			strexpect := strings.Join(expect, "\n")
-			strresult := strings.TrimSpace(result)[0:len(strexpect)]
+			trimResult := strings.TrimSpace(result)
+			strresult := "<N/A>"
+			if len(trimResult) >= len(strexpect) {
+				strresult = trimResult[0:len(strexpect)]
+			} else {
+				strresult = trimResult
+			}
 			require.Equal(t, strexpect, strresult)
 		} else {
 			require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
 		}
-		require.Equal(t, "", logString)
+		if strings.Contains(logString, "ERROR") || strings.Contains(logString, "WARN") {
+			t.Log("LOG OUTPUT:", logString)
+			t.Fail()
+		}
 	}
 }
 
 var mockDbResult [][]any
 var mockDbCursor = 0
-var mockDb = mock.DatabaseMock{
+var mockDb = DatabaseMock{
 	QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
 		switch sqlText {
 		case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
 			fallthrough
 		case `select time, value from example where name = 'tag1'`:
-			return &mock.RowsMock{
+			return &RowsMock{
 				IsFetchableFunc: func() bool { return true },
 				NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
 				CloseFunc:       func() error { return nil },
@@ -162,14 +178,42 @@ var mockDb = mock.DatabaseMock{
 					return nil
 				},
 			}, nil
+		case `create tag table example(...)`:
+			return &RowsMock{
+				IsFetchableFunc:  func() bool { return false },
+				NextFunc:         func() bool { return false },
+				CloseFunc:        func() error { return nil },
+				MessageFunc:      func() string { return "executed." },
+				RowsAffectedFunc: func() int64 { return 0 },
+			}, nil
 		default:
 			fmt.Println("===>", sqlText)
-			return &mock.RowsMock{
+			return &RowsMock{
 				IsFetchableFunc: func() bool { return true },
 				NextFunc:        func() bool { return false },
 				CloseFunc:       func() error { return nil },
 			}, nil
 		}
+	},
+	ExecFunc: func(sqlText string, params ...any) spi.Result {
+		switch sqlText {
+		case `INSERT INTO example (name,a) VALUES(?,?)`:
+			fmt.Println("task_test, mockdb: ", sqlText, params)
+			return &ResultMock{
+				ErrFunc:          func() error { return nil },
+				MessageFunc:      func() string { return "a row inserted." },
+				RowsAffectedFunc: func() int64 { return 1 },
+			}
+		default:
+			fmt.Println("task_test, mockdb: ", sqlText)
+		}
+		return nil
+	},
+	AppenderFunc: func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+		return &AppenderMock{
+			AppendFunc: func(values ...any) error { return nil },
+			CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
+		}, nil
 	},
 }
 
@@ -181,11 +225,31 @@ func TestDBSql(t *testing.T) {
 	}
 	codeLines := []string{
 		`SQL("select time, value from example where name = 'tag1'")`,
-		`CSV( precision(3) )`,
+		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
+		"time,value",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestDBSqlRownum(t *testing.T) {
+	mockDbCursor = 0
+	mockDbResult = [][]any{
+		{1692686707380411000, 0.1},
+		{1692686708380411000, 0.2},
+	}
+	codeLines := []string{
+		`SQL("select time, value from example where name = 'tag1'")`,
+		`PUSHKEY('test')`,
+		`CSV( precision(3), header(true) )`,
+	}
+	resultLines := []string{
+		"ROWNUM,time,value",
+		"1,1692686707380411000,0.100",
+		"2,1692686708380411000,0.200",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -198,22 +262,58 @@ func TestDBQuery(t *testing.T) {
 	}
 	codeLines := []string{
 		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
-		`CSV( precision(3) )`,
+		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
+		"time,value",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
 	}
 	runTest(t, codeLines, resultLines)
 }
 
+func TestDBInsert(t *testing.T) {
+	codeLines := []string{
+		`FAKE( linspace(0, 1, 3) )`,
+		`INSERT('a', table('example'), tag('signal'))`,
+	}
+	resultLines := []string{
+		`{"data":{"message":"3 rows inserted."},`,
+	}
+	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestDBAppend(t *testing.T) {
+	codeLines := []string{
+		`FAKE( linspace(0, 1, 3) )`,
+		`MAPVALUE(-1, 'singal')`,
+		`APPEND( table('example') )`,
+	}
+	resultLines := []string{
+		`{"data":{"message":"append 3 rows (success 0, fail 0)"},`,
+	}
+	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestDBddl(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`SQL("create tag table example(...)")`,
+		`MARKDOWN(html(true), rownum(true), heading(true), brief(true))`,
+	}
+	resultLines = loadLines("./test/sql_ddl_executed.txt")
+	runTest(t, codeLines, resultLines, MatchPrefix(false))
+}
+
 func TestString(t *testing.T) {
 	codeLines := []string{
 		`STRING("line1\nline2\n\nline4", separator("\n"))`,
+		`PUSHKEY('test')`,
 		"CSV( heading(true) )",
 	}
 	resultLines := []string{
-		"id,string",
+		"ROWNUM,STRING",
 		"1,line1",
 		"2,line2",
 		"3,",
@@ -226,22 +326,39 @@ func TestString(t *testing.T) {
 
 	codeLines = []string{
 		`STRING(file("/lines.txt"), separator("\n"), trimspace(true))`,
+		`PUSHKEY('test')`,
 		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)
 }
 
 func TestBytes(t *testing.T) {
-	codeLines := []string{
+	var codeLines, resultLines []string
+
+	codeLines = []string{
 		`BYTES("line1\nline2\n\nline4", separator("\n"))`,
+		`PUSHKEY('test')`,
 		"CSV( heading(true) )",
 	}
-	resultLines := []string{
-		"id,bytes",
+	resultLines = []string{
+		"ROWNUM,BYTES",
 		`1,\x6C\x69\x6E\x65\x31`,
 		`2,\x6C\x69\x6E\x65\x32`,
 		`3,`,
 		`4,\x6C\x69\x6E\x65\x34`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`BYTES("line1\nline2\n\nline4", separator("\n"))`,
+		"CSV( heading(true) )",
+	}
+	resultLines = []string{
+		"BYTES",
+		`\x6C\x69\x6E\x65\x31`,
+		`\x6C\x69\x6E\x65\x32`,
+		``,
+		`\x6C\x69\x6E\x65\x34`,
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -255,17 +372,31 @@ func TestBytes(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestCsvCsv(t *testing.T) {
-	codeLines := []string{
+func TestCsvToCsv(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
 		`CSV("1,line1\n2,line2\n3,\n4,line4")`,
 		"CSV( heading(true) )",
 	}
-	resultLines := []string{
-		"C00,C01",
+	resultLines = []string{
+		"column0,column1",
 		"1,line1",
 		"2,line2",
 		"3,",
 		"4,line4",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`CSV("line1\nline2\n\nline4")`,
+		"CSV( heading(true) )",
+	}
+	resultLines = []string{
+		"column0",
+		"line1",
+		"line2",
+		"line4",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -277,6 +408,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines := []string{
@@ -292,6 +424,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -307,6 +440,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -322,6 +456,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -339,6 +474,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -356,6 +492,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -373,6 +510,7 @@ func TestMath(t *testing.T) {
 		"PUSHKEY(0)",
 		"POPKEY(1)",
 		"POPKEY(1)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines = []string{
@@ -385,16 +523,42 @@ func TestMath(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMathMarkdown(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 1))`,
+		`PUSHKEY('signal')`,
+		`MARKDOWN()`,
+	}
+	resultLines = []string{
+		`|ROWNUM|x|`,
+		`|:-----|:-----|`,
+		`|1|1.000000|`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 1))`,
+		`MARKDOWN()`,
+	}
+	resultLines = []string{
+		`|x|`,
+		`|:-----|`,
+		`|1.000000|`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",
 		"CSV( heading(true), precision(1) )",
 	}
 	resultLines := []string{
-		"id,x",
-		"1,0.0",
-		"2,1.0",
-		"3,2.0",
+		"x",
+		"0.0",
+		"1.0",
+		"2.0",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -405,16 +569,16 @@ func TestMeshgrid(t *testing.T) {
 		"CSV( heading(true), precision(6) )",
 	}
 	resultLines := []string{
-		"id,x,y",
-		"1,0.000000,0.000000",
-		"2,0.000000,1.000000",
-		"3,0.000000,2.000000",
-		"4,1.000000,0.000000",
-		"5,1.000000,1.000000",
-		"6,1.000000,2.000000",
-		"7,2.000000,0.000000",
-		"8,2.000000,1.000000",
-		"9,2.000000,2.000000",
+		"x,y",
+		"0.000000,0.000000",
+		"0.000000,1.000000",
+		"0.000000,2.000000",
+		"1.000000,0.000000",
+		"1.000000,1.000000",
+		"1.000000,2.000000",
+		"2.000000,0.000000",
+		"2.000000,1.000000",
+		"2.000000,2.000000",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -422,6 +586,7 @@ func TestMeshgrid(t *testing.T) {
 func TestSphere(t *testing.T) {
 	codeLines := []string{
 		"FAKE( sphere(4, 4) )",
+		"PUSHKEY('test')",
 		"CSV( header(true), precision(6) )",
 	}
 	resultLines := loadLines("./test/sphere_4_4.csv")
@@ -429,6 +594,7 @@ func TestSphere(t *testing.T) {
 
 	codeLines = []string{
 		"FAKE( sphere(0, 0) )",
+		"PUSHKEY('test')",
 		"CSV(header(false), precision(6))",
 	}
 	resultLines = loadLines("./test/sphere_0_0.csv")
@@ -440,7 +606,7 @@ func TestScriptSource(t *testing.T) {
 		"SCRIPT(`",
 		`ctx := import("context")`,
 		`for i := 0; i < 10; i++ {`,
-		`  ctx.yieldKey(i, i*10)`,
+		`  ctx.yieldKey("test", i, i*10)`,
 		`}`,
 		"`)",
 		"CSV()",
@@ -455,9 +621,11 @@ func TestPushKey(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 1, 2))",
 		"PUSHKEY('sample')",
-		"CSV()",
+		"PUSHKEY('test')",
+		"CSV(header(true))",
 	}
 	resultLines := []string{
+		"key,ROWNUM,x",
 		"sample,1,0",
 		"sample,2,1",
 	}
@@ -472,11 +640,30 @@ func TestPushAndPopMonad(t *testing.T) {
 		"CSV(precision(1))",
 	}
 	resultLines := []string{
-		"1,0.0",
-		"2,0.5",
-		"3,1.0",
+		"0.0",
+		"0.5",
+		"1.0",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 3.141592/2, 5) )`,
+		`PUSHKEY(sin(value(0)))`,
+		`PUSHKEY(value(0))`,
+		`POPKEY(1)`,
+		`POPKEY(1)`,
+		`PUSHKEY('test')`,
+		`CSV(precision(3))`,
+	}
+	resultLines = []string{
+		"0.000,0.000",
+		"0.393,0.383",
+		"0.785,0.707",
+		"1.178,0.924",
+		"1.571,1.000",
+	}
+	runTest(t, codeLines, resultLines)
+
 }
 
 func TestGroupByKey(t *testing.T) {
@@ -485,6 +672,7 @@ func TestGroupByKey(t *testing.T) {
 		"PUSHKEY('sample')",
 		"GROUPBYKEY()",
 		"FLATTEN()",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines := []string{
@@ -495,11 +683,97 @@ func TestGroupByKey(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMapKey(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(value(0)*2)",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"0,0",
+		"2,1",
+		"4,2",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY(key())",
+		"PUSHKEY('test')",
+		"CSV(precision(0))",
+	}
+	resultLines = []string{
+		"1,0",
+		"2,1",
+		"3,2",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPKEY( key() + 100 )",
+		"PUSHKEY('test')",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"101.0,0.0",
+		"102.0,1.0",
+		"103.0,2.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(-1, value(0)*1.5)",
+		"CSV(precision(1))",
+	}
+	resultLines = []string{
+		"0.0,0.0",
+		"1.5,1.0",
+		"3.0,2.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(99, value(0)*1.5)",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"x,column",
+		"0.0,0.0",
+		"1.0,1.5",
+		"2.0,3.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"MAPVALUE(0, value(0)*1.5)",
+		"CSV(precision(1), header(true))",
+	}
+	resultLines = []string{
+		"x",
+		"0.0",
+		"1.5",
+		"3.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestDropTake(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 100))",
 		"DROP(50)",
 		"TAKE(3)",
+		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
 	resultLines := []string{
@@ -563,10 +837,9 @@ func TestOcillator(t *testing.T) {
 func TestFFT2D(t *testing.T) {
 	codeLines := []string{
 		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",
-		"PUSHKEY('samples')",
+		"MAPKEY('samples')",
 		"GROUPBYKEY(lazy(false))",
 		"FFT(minHz(0), maxHz(60))",
-		"POPKEY()",
 		"CSV(precision(6))",
 	}
 	resultLines := loadLines("./test/fft2d.txt")
@@ -593,17 +866,21 @@ func TestFFT2D(t *testing.T) {
 func TestFFT3D(t *testing.T) {
 	codeLines := []string{
 		"FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))",
-		"PUSHKEY( roundTime(key(), '500ms') )",
+		"MAPKEY( roundTime(value(0), '500ms') )",
 		"GROUPBYKEY()",
 		"FFT(maxHz(60))",
+		"FLATTEN()",
+		"PUSHKEY('fft3d')",
 		"CSV(precision(6))",
 	}
 	resultLines := loadLines("./test/fft3d.txt")
 	runTest(t, codeLines, resultLines)
 }
 
-func TestSourceCSV1(t *testing.T) {
-	codeLines := []string{
+func TestSourceCSV(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	codeLines = []string{
 		`CSV(payload(),
 			field(0, stringType(), "name"),
 			field(1, datetimeType("s"), "time"),
@@ -612,18 +889,16 @@ func TestSourceCSV1(t *testing.T) {
 		)`,
 		`CSV(timeformat("s"), heading(true))`,
 	}
-	payload := []string{
+	payload = []string{
 		`temp.name,1691662156,123.456789,true`,
 	}
-	resultLines := []string{
+	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
-}
 
-func TestSourceCSV2(t *testing.T) {
-	codeLines := []string{
+	codeLines = []string{
 		`CSV(payload(),
 			field(0, stringType(), "name"),
 			field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
@@ -632,12 +907,157 @@ func TestSourceCSV2(t *testing.T) {
 		)`,
 		`CSV(timeformat("s"), heading(true))`,
 	}
-	payload := []string{
+	payload = []string{
 		`temp.name,2023/08/10 19:09:16,123.456789,true`,
 	}
-	resultLines := []string{
+	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(false))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|column0|column1|column2|`,
+		`|:-----|:-----|:-----|`,
+		`|NAME|TIME|VALUE|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|NAME|TIME|VALUE|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|NAME|TIME|VALUE|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), ",
+		"    field(0, stringType(), 'name'),",
+		"    field(1, datetimeType('s'), 'time'),",
+		"    field(2, doubleType(), 'value'),",
+		"    header(true))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`NAME,TIME,VALUE`,
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|name|time|value|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361000000000|0.000000|`,
+		`|wave.cos|1676432361000000000|1.000000|`,
+		`|wave.sin|1676432362000000000|0.406736|`,
+		`|wave.cos|1676432362000000000|0.913546|`,
+		`|wave.sin|1676432363000000000|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload(), ",
+		"    field(0, stringType(), 'name'),",
+		"    field(1, datetimeType('s'), 'time'),",
+		"    field(2, doubleType(), 'value'),",
+		"    header(false))",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|name|time|value|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361000000000|0.000000|`,
+		`|wave.cos|1676432361000000000|1.000000|`,
+		`|wave.sin|1676432362000000000|0.406736|`,
+		`|wave.cos|1676432362000000000|0.913546|`,
+		`|wave.sin|1676432363000000000|0.743144|`,
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		"CSV(payload())",
+		"MARKDOWN()",
+	}
+	payload = []string{
+		`wave.sin,1676432361,0.000000`,
+		`wave.cos,1676432361,1.000000`,
+		`wave.sin,1676432362,0.406736`,
+		`wave.cos,1676432362,0.913546`,
+		`wave.sin,1676432363,0.743144`,
+	}
+	resultLines = []string{
+		`|column0|column1|column2|`,
+		`|:-----|:-----|:-----|`,
+		`|wave.sin|1676432361|0.000000|`,
+		`|wave.cos|1676432361|1.000000|`,
+		`|wave.sin|1676432362|0.406736|`,
+		`|wave.cos|1676432362|0.913546|`,
+		`|wave.sin|1676432363|0.743144|`,
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -664,7 +1084,7 @@ func TestSourceCSVFile(t *testing.T) {
 		`JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))`,
 	}
 	resultLines = []string{
-		`{"data":{"columns":["C00","C01","C02","C03","C04"],"types":["string","string","string","string","string"],"rows":[["5.4","3.7","1.5","0.2","Iris-setosa"]`,
+		`{"data":{"columns":["column0","column1","column2","column3","column4"],"types":["string","string","string","string","string"],"rows":[["5.4","3.7","1.5","0.2","Iris-setosa"]`,
 	}
 	runTest(t, codeLines, resultLines, MatchPrefix(true))
 }
@@ -681,6 +1101,7 @@ func TestSinkMarkdown(t *testing.T) {
 
 	codeLines = []string{
 		"STRING(file('/lines.txt'), separator('\\n'))",
+		"PUSHKEY('test')",
 		"MARKDOWN(html(true))",
 	}
 	resultLines = loadLines("./test/markdown_xhtml.txt")
@@ -691,12 +1112,12 @@ func TestSinkMarkdown(t *testing.T) {
 		"MARKDOWN(html(false))",
 	}
 	resultLines = []string{
-		"|id|string|",
-		"|:-----|:-----|",
-		"|1|line1|",
-		"|2|line2|",
-		"|3||",
-		"|4|line4|",
+		"|STRING|",
+		"|:-----|",
+		"|line1|",
+		"|line2|",
+		"||",
+		"|line4|",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -718,7 +1139,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example")
-	expectLog := ExpectLog(`[ERROR] execute error no such table: example`)
+	expectLog := ExpectLog(`no such table: example`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -762,7 +1183,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"200,bravo,20,street-200",
 	}
 	expectErr := ExpectErr("no such table: example_sql")
-	expectLog := ExpectLog("[ERROR] execute error no such table: example_sql")
+	expectLog := ExpectLog("no such table: example_sql")
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	br, err := bridge.GetSqlBridge("sqlite")
@@ -828,7 +1249,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{}
 	expectErr = ExpectErr("near \"example_sql\": syntax error")
-	expectLog = ExpectLog(`[ERROR] execute error near "example_sql": syntax error`)
+	expectLog = ExpectLog(`near "example_sql": syntax error`)
 	runTest(t, codeLines, resultLines, expectErr, expectLog)
 
 	// before delete

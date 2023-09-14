@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/util/mock"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +42,7 @@ func TestLineprotocol(t *testing.T) {
 	dbMock := &TestClientMock{}
 
 	dbMock.QueryRowFunc = func(sqlText string, params ...any) spi.Row {
-		rm := &mock.RowMock{}
+		rm := &RowMock{}
 
 		switch sqlText {
 		case H_LINE_DESC_QUERYROW_SQL:
@@ -67,7 +66,7 @@ func TestLineprotocol(t *testing.T) {
 	}
 
 	dbMock.QueryFunc = func(sqlText string, params ...any) (spi.Rows, error) {
-		rm := &mock.RowsMock{}
+		rm := &RowsMock{}
 		tCnt := columnDefaultLen
 		cnt := 0
 
@@ -121,7 +120,7 @@ func TestLineprotocol(t *testing.T) {
 	}
 
 	dbMock.ExecFunc = func(sqlText string, params ...any) spi.Result {
-		rm := &mock.ResultMock{}
+		rm := &ResultMock{}
 
 		if len(params) != columnDefaultLen {
 			t.Fatal(errors.New("column len different"))
@@ -185,6 +184,4 @@ func TestLineprotocol(t *testing.T) {
 
 	expectStatus = http.StatusBadRequest
 	require.Equal(t, expectStatus, w.Code)
-
-	return
 }

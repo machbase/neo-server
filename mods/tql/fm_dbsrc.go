@@ -48,22 +48,33 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
 	}
 
+	tick := time.Now()
+	var ds *databaseSource
+	var sqlText string
+	defer func() {
+		if ds != nil {
+			node.task.LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
+		} else {
+			node.task.LogTrace("QUERY dump:", sqlText)
+		}
+	}()
+
 	if ret.dump == nil || !ret.dump.Flag {
-		ds := &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		node.task.LogTrace("╭─", ret.ToSQL())
+		ds = &databaseSource{task: node.task, sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
-		var text string
 		if ret.between != nil {
 			if ret.between.HasPeriod() {
-				text = ret.toSqlGroup()
+				sqlText = ret.toSqlGroup()
 			} else {
-				text = ret.toSql()
+				sqlText = ret.toSql()
 			}
 		}
 		if ret.dump.Escape {
-			text = url.QueryEscape(text)
+			sqlText = url.QueryEscape(sqlText)
 		}
-		NewRecord(text, nil).Tell(node.next)
+		NewRecord("SQLDUMP", sqlText).Tell(node.next)
 		return nil, nil
 	}
 	return nil, nil
@@ -144,24 +155,21 @@ type databaseSource struct {
 
 	fetched  int
 	executed bool
+
+	resultMsg string
 }
 
 func (dc *databaseSource) gen(node *Node) {
 	queryCtx := &do.QueryContext{
 		DB: dc.task.db,
 		OnFetchStart: func(cols spi.Columns) {
+			cols = append([]*spi.Column{{Name: "ROWNUM", Type: spi.ColumnTypeString(spi.Int64ColumnType)}}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
 			if !dc.task.shouldStop() && len(values) > 0 {
 				dc.fetched++
-				if len(values) == 1 {
-					NewRecord(values[0], []any{}).Tell(node.next)
-				} else if len(values) == 2 {
-					NewRecord(values[0], []any{values[1]}).Tell(node.next)
-				} else if len(values) > 2 {
-					NewRecord(values[0], values[1:]).Tell(node.next)
-				}
+				NewRecord(nrow, values).Tell(node.next)
 			}
 			return !dc.task.shouldStop()
 		},
@@ -171,13 +179,16 @@ func (dc *databaseSource) gen(node *Node) {
 		},
 	}
 	if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
 	} else {
+		dc.resultMsg = msg
 		if dc.executed {
 			dc.task.SetResultColumns(spi.Columns{
-				{Name: "message", Type: "string"},
+				{Name: "ROWNUM", Type: "int"},
+				{Name: "MESSAGE", Type: "string"},
 			})
-			NewRecord(msg, nil).Tell(node.next)
+			NewRecord(1, msg).Tell(node.next)
 		}
 	}
 }
@@ -188,19 +199,24 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	if len(args) == 0 {
 		return nil, ErrInvalidNumOfArgs("SQL", 1, 0)
 	}
+	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
+		x.task.LogInfof("╭─ %s", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
+		x.task.LogInfof("╰─➤ %s %s", ds.resultMsg, time.Since(tick).String())
 		return nil, nil
 	case *bridgeName:
 		if len(args) == 0 {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if text, ok := args[1].(string); ok {
+			x.task.LogInfof("╭─ SQL(%s): %s", v.name, text)
 			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
 			ret.execType = "query"
 			ret.gen(x)
+			x.task.LogInfof("╰─➤ Elapsed %s", time.Since(tick).String())
 			return nil, nil
 		}
 	}

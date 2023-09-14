@@ -12,10 +12,10 @@ import (
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	spi "github.com/machbase/neo-spi"
-	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -33,7 +33,6 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		db:             db,
 		maxRecvMsgSize: 4 * 1024 * 1024,
 		maxSendMsgSize: 4 * 1024 * 1024,
-		ctxMap:         cmap.New(),
 	}
 
 	for _, opt := range options {
@@ -99,6 +98,12 @@ func OptionScheduleServer(handler schedule.ManagementServer) Option {
 	}
 }
 
+func OptionLeakDetector(detector *leak.Detector) Option {
+	return func(s *grpcd) {
+		s.leakDetector = detector
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -111,12 +116,12 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
+	leakDetector      *leak.Detector
 	mgmtImpl          mgmt.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
 	bridgeRuntimeImpl bridge.RuntimeServer
 	schedMgmtImpl     schedule.ManagementServer
 
-	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
 

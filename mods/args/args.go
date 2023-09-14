@@ -10,8 +10,10 @@ import (
 )
 
 type NeoCommand struct {
-	Command   string
-	Serve     struct{}
+	Command string
+	Serve   struct {
+		Preset string
+	}
 	Shell     shell.ShellCmd
 	GenConfig struct{}
 	Version   struct{}
@@ -98,6 +100,15 @@ func parseHelp(cli *NeoCommand) (*NeoCommand, error) {
 }
 
 func parseServe(cli *NeoCommand) (*NeoCommand, error) {
+	for i := 0; i < len(cli.args); i++ {
+		s := cli.args[i]
+		if strings.HasPrefix(s, "--preset=") {
+			cli.Serve.Preset = s[9:]
+		} else if s == "--preset" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
+			cli.Serve.Preset = cli.args[i+1]
+			i++
+		}
+	}
 	return cli, nil
 }
 

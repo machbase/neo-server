@@ -227,15 +227,31 @@ func makeLiteralStage(literal any) evaluationOperator {
 
 func makeFunctionStage(function Function) evaluationOperator {
 	return func(left any, right any, parameters Parameters) (any, error) {
+		var ret any
+		var err error
 		if right == nil {
-			return function()
+			ret, err = function()
+		} else {
+			switch v := right.(type) {
+			case []any:
+				ret, err = function(v...)
+			default:
+				ret, err = function(right)
+			}
 		}
-		switch v := right.(type) {
-		case []any:
-			return function(v...)
-		default:
-			return function(right)
+		if err == nil {
+			switch v := ret.(type) {
+			case int:
+				ret = float64(v)
+			case int16:
+				ret = float64(v)
+			case int32:
+				ret = float64(v)
+			case int64:
+				ret = float64(v)
+			}
 		}
+		return ret, err
 	}
 }
 

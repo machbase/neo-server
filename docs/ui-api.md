@@ -172,6 +172,35 @@ Delete the shell of the given id
 }
 ```
 
+## SERVER EVENTS
+
+### ws:/web/api/console/:console_id/data
+
+Web socket for the bi-directional messages
+
+- message type
+
+```json
+{
+    "type": "type(see below)",
+    "ping": {
+        "tick": 1234
+    },
+    "log": {
+        "level": "INFO",
+        "message": "log message"
+    }
+}
+```
+
+| type           |  fields          | description        |
+|:---------------| :----------------| :------------------|
+| `ping`         |                  | ping message       |
+|                | `ping.tick`      | any integer number, server will repond with the same number that client sends |
+| `log`          | `log.level`      | log level `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`|
+|                | `log.message`    | log message        |
+
+
 ## TQL & Worksapce
 
 **Content-types of TQL**
@@ -329,9 +358,12 @@ Returns Dir entries if the path is pointing a directory.
 
 ```json
 {
+    "command": "clone",
     "url": "https://github.com/machbase/neo-samples.git"
 }
 ```
+
+- `command` : `clone`, `pull`
 
 ### DELETE /web/api/files/*path
 

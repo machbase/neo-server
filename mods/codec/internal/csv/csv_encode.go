@@ -66,7 +66,12 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
 }
 
+// Deprecated use SetHeader()
 func (ex *Exporter) SetHeading(show bool) {
+	ex.heading = show
+}
+
+func (ex *Exporter) SetHeader(show bool) {
 	ex.heading = show
 }
 

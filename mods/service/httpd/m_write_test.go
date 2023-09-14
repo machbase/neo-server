@@ -9,17 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/mock"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
 type TestClientMock struct {
-	mock.DatabaseMock
+	DatabaseMock
 }
 
 type TestAppenderMock struct {
-	mock.AppenderMock
+	AppenderMock
 }
 
 func TestAppendRoute(t *testing.T) {
@@ -28,7 +27,7 @@ func TestAppendRoute(t *testing.T) {
 	dbMock := &TestClientMock{}
 
 	dbMock.QueryRowFunc = func(sqlText string, params ...any) spi.Row {
-		rm := &mock.RowMock{}
+		rm := &RowMock{}
 
 		switch sqlText {
 		case "select count(*) from M$SYS_TABLES where name = ?":

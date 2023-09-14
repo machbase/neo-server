@@ -185,31 +185,19 @@ func script_compile(content string, node *Node) (*tengo.Script, *tengo.Compiled,
 		"math", "text", "times", "rand", "fmt", "json", "base64", "hex", "os", "enum",
 	}...)
 	modules.AddBuiltinModule("context", map[string]tengo.Object{
-		"key": &tengo.UserFunction{
-			Name: "key", Value: tengof_key(node),
-		},
-		"value": &tengo.UserFunction{
-			Name: "value", Value: tengof_value(node),
-		},
-		"drop": &tengo.UserFunction{
-			Name: "drop", Value: tengof_drop(node),
-		},
-		"yieldKey": &tengo.UserFunction{
-			Name: "yieldKey", Value: tengof_yieldKey(node),
-		},
-		"yield": &tengo.UserFunction{
-			Name: "yield", Value: tengof_yield(node),
-		},
-		"uuid": &tengo.UserFunction{
-			Name: "uuid", Value: tengof_uuid(node),
-		},
-		"nil": &tengo.UserFunction{
-			Name: "nil", Value: tengof_nil(node),
-		},
-		"bridge": &tengo.UserFunction{
-			Name: "bridge", Value: tengof_bridge(node),
-		},
+		"key":      &tengo.UserFunction{Name: "key", Value: tengof_key(node)},
+		"value":    &tengo.UserFunction{Name: "value", Value: tengof_value(node)},
+		"drop":     &tengo.UserFunction{Name: "drop", Value: tengof_drop(node)},
+		"yieldKey": &tengo.UserFunction{Name: "yieldKey", Value: tengof_yieldKey(node)},
+		"yield":    &tengo.UserFunction{Name: "yield", Value: tengof_yield(node)},
+		"uuid":     &tengo.UserFunction{Name: "uuid", Value: tengof_uuid(node)},
+		"nil":      &tengo.UserFunction{Name: "nil", Value: tengof_nil(node)},
+		"bridge":   &tengo.UserFunction{Name: "bridge", Value: tengof_bridge(node)},
+		"print":    &tengo.UserFunction{Name: "print", Value: tengof_print(node)},
+		"println":  &tengo.UserFunction{Name: "println", Value: tengof_print(node)},
+		"printf":   &tengo.UserFunction{Name: "printf", Value: tengof_printf(node)},
 	})
+
 	s := tengo.NewScript([]byte(content))
 	s.SetImports(modules)
 	compiled, err := s.Compile()
@@ -306,7 +294,6 @@ func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error
 
 func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
-		node.task.LogWarn("'yield()' is deprecated, use 'yieldKey()`")
 		vargs := make([]any, len(args))
 		for i, v := range args {
 			vargs[i] = tengo.ToInterface(v)
