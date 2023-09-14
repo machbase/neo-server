@@ -178,6 +178,14 @@ var mockDb = DatabaseMock{
 					return nil
 				},
 			}, nil
+		case `create tag table example(...)`:
+			return &RowsMock{
+				IsFetchableFunc:  func() bool { return false },
+				NextFunc:         func() bool { return false },
+				CloseFunc:        func() error { return nil },
+				MessageFunc:      func() string { return "executed." },
+				RowsAffectedFunc: func() int64 { return 0 },
+			}, nil
 		default:
 			fmt.Println("===>", sqlText)
 			return &RowsMock{
@@ -285,6 +293,17 @@ func TestDBAppend(t *testing.T) {
 		`{"data":{"message":"append 3 rows (success 0, fail 0)"},`,
 	}
 	runTest(t, codeLines, resultLines, MatchPrefix(true))
+}
+
+func TestDBddl(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`SQL("create tag table example(...)")`,
+		`MARKDOWN(html(true), rownum(true), heading(true), brief(true))`,
+	}
+	resultLines = loadLines("./test/sql_ddl_executed.txt")
+	runTest(t, codeLines, resultLines, MatchPrefix(false))
 }
 
 func TestString(t *testing.T) {
