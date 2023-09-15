@@ -1465,6 +1465,28 @@ func TestQuerySql(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestTengoScript(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`SCRIPT({`,
+		`	ctx := import("context")`,
+		`   a := 10*2+1`,
+		`   // comment`,
+		`   `,
+		`	ctx.yield(a)`,
+		`})`,
+		`SCRIPT({`,
+		`	ctx := import("context")`,
+		`   a := ctx.value(0)`,
+		`   ctx.yield(a+1, 2, 3, 4)`,
+		`})`,
+		`CSV()`,
+	}
+	resultLines = []string{"22,2,3,4"}
+	runTest(t, codeLines, resultLines)
+}
+
 func normalize(ret string) string {
 	csvQuote := true
 	lines := []string{}
