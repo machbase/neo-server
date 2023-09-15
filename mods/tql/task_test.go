@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -144,7 +145,25 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			}
 			require.Equal(t, strexpect, strresult)
 		} else {
-			require.Equal(t, strings.Join(expect, "\n"), strings.TrimSpace(result))
+			resultLines := strings.Split(result, "\n")
+			if len(resultLines) > 0 && resultLines[len(resultLines)-1] == "" {
+				// remove trailing empty line
+				resultLines = resultLines[0 : len(resultLines)-1]
+			}
+			require.Equal(t, len(expect), len(resultLines))
+
+			for n, expectLine := range expect {
+				if strings.HasPrefix(expectLine, "/r/") {
+					reg := regexp.MustCompile(strings.TrimPrefix(expectLine, "/r/"))
+					if !reg.MatchString(resultLines[n]) {
+						t.Logf("Expected: %s", expectLine)
+						t.Logf("Actual  : %s", resultLines[n])
+						t.Fail()
+					}
+				} else {
+					require.Equal(t, expectLine, resultLines[n], fmt.Sprintf("Expected(line#%d): %s", n, expectLine))
+				}
+			}
 		}
 		if strings.Contains(logString, "ERROR") || strings.Contains(logString, "WARN") {
 			t.Log("LOG OUTPUT:", logString)
@@ -278,9 +297,9 @@ func TestDBInsert(t *testing.T) {
 		`INSERT('a', table('example'), tag('signal'))`,
 	}
 	resultLines := []string{
-		`{"data":{"message":"3 rows inserted."},`,
+		`/r/{"data":{"message":"3 rows inserted."},"elapse":".+","reason":"success","success":true}`,
 	}
-	runTest(t, codeLines, resultLines, MatchPrefix(true))
+	runTest(t, codeLines, resultLines)
 }
 
 func TestDBAppend(t *testing.T) {
@@ -290,9 +309,9 @@ func TestDBAppend(t *testing.T) {
 		`APPEND( table('example') )`,
 	}
 	resultLines := []string{
-		`{"data":{"message":"append 3 rows (success 0, fail 0)"},`,
+		`/r/{"data":{"message":"append 3 rows \(success 0, fail 0\)"},"elapse":".+","reason":"success","success":true}`,
 	}
-	runTest(t, codeLines, resultLines, MatchPrefix(true))
+	runTest(t, codeLines, resultLines)
 }
 
 func TestDBddl(t *testing.T) {
@@ -303,7 +322,7 @@ func TestDBddl(t *testing.T) {
 		`MARKDOWN(html(true), rownum(true), heading(true), brief(true))`,
 	}
 	resultLines = loadLines("./test/sql_ddl_executed.txt")
-	runTest(t, codeLines, resultLines, MatchPrefix(false))
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {
@@ -838,14 +857,14 @@ func TestOcillator(t *testing.T) {
 		"JSON()",
 	}
 	resultLines = loadLines("./test/oscillator_1.txt")
-	runTest(t, codeLines, resultLines, MatchPrefix(true))
+	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		"FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )",
 		"JSON()",
 	}
 	resultLines = loadLines("./test/oscillator_1.txt")
-	runTest(t, codeLines, resultLines, MatchPrefix(true))
+	runTest(t, codeLines, resultLines)
 }
 
 func TestFFT2D(t *testing.T) {
@@ -1098,9 +1117,9 @@ func TestSourceCSVFile(t *testing.T) {
 		`JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))`,
 	}
 	resultLines = []string{
-		`{"data":{"columns":["column0","column1","column2","column3","column4"],"types":["string","string","string","string","string"],"rows":[["5.4","3.7","1.5","0.2","Iris-setosa"]`,
+		`/r/{"data":{"columns":\["column0","column1","column2","column3","column4"\],"types":\["string","string","string","string","string"\],"rows":\[\["5.4","3.7","1.5","0.2","Iris-setosa"\],\["4.8","3.4","1.6","0.2","Iris-setosa"\]\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
-	runTest(t, codeLines, resultLines, MatchPrefix(true))
+	runTest(t, codeLines, resultLines)
 }
 
 func TestSinkMarkdown(t *testing.T) {
