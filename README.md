@@ -31,6 +31,10 @@ Bridges integrated with external systems
 
 [https://neo.machbase.com](https://neo.machbase.com/)
 
+## Web User Interface
+
+![screen](./docs/screenshot01.png)
+
 ## Install Prebuilt Binary
 
 - Download
