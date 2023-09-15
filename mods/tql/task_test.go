@@ -521,6 +521,13 @@ func TestMath(t *testing.T) {
 		"2.000000,0.301030",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(1000, 100, -1) )",
+		"CSV(precision(5), header(true))",
+	}
+	resultLines = []string{"x"}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestMathMarkdown(t *testing.T) {
