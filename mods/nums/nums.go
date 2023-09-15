@@ -42,12 +42,20 @@ func Linspace50(start float64, stop float64) []float64 {
 }
 
 func Linspace(start float64, stop float64, num int) []float64 {
-	ret := make([]float64, num)
-	step := (stop - start) / float64(num-1)
-	for i := range ret {
-		ret[i] = start + float64(i)*step
+	if num < 0 {
+		num = 0
 	}
-	ret[len(ret)-1] = stop
+	ret := make([]float64, num)
+	multiplier := 1.0
+	if num > 1 {
+		multiplier = (stop - start) / float64(num-1)
+	}
+	for i := range ret {
+		ret[i] = start + float64(i)*multiplier
+	}
+	if num > 1 {
+		ret[len(ret)-1] = stop
+	}
 	return ret
 }
 
