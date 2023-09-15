@@ -526,25 +526,39 @@ func TestMath(t *testing.T) {
 func TestMathMarkdown(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
-		`FAKE( linspace(0, 1, 1))`,
+		`FAKE( linspace(0, 1, 2))`,
 		`PUSHKEY('signal')`,
 		`MARKDOWN()`,
 	}
 	resultLines = []string{
 		`|ROWNUM|x|`,
 		`|:-----|:-----|`,
-		`|1|1.000000|`,
+		`|1|0.000000|`,
+		`|2|1.000000|`,
 	}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
-		`FAKE( linspace(0, 1, 1))`,
+		`FAKE( linspace(0, 1, 2))`,
 		`MARKDOWN()`,
 	}
 	resultLines = []string{
 		`|x|`,
 		`|:-----|`,
+		`|0.000000|`,
 		`|1.000000|`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, -1))`,
+		`MARKDOWN()`,
+	}
+	resultLines = []string{
+		`|x|`,
+		`|:-----|`,
+		"",
+		"> *No record*",
 	}
 	runTest(t, codeLines, resultLines)
 }

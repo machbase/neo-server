@@ -36,8 +36,9 @@ func TestMod(t *testing.T) {
 }
 
 func TestLinspace(t *testing.T) {
-	ret := nums.Linspace(-2, 2, 5)
-	expect := []float64{-2, -1, 0, 1, 2}
+	var ret, expect []float64
+	ret = nums.Linspace(-2, 2, 5)
+	expect = []float64{-2, -1, 0, 1, 2}
 	require.Equal(t, 5, len(ret))
 	for i := range ret {
 		require.Equal(t, expect[i], ret[i])
@@ -47,11 +48,22 @@ func TestLinspace(t *testing.T) {
 	require.Equal(t, 50, len(ret))
 	require.Equal(t, -2.0, ret[0])
 	require.Equal(t, 2.0, ret[49])
+
+	ret = nums.Linspace(0, 1, 1)
+	require.Equal(t, 1, len(ret))
+	require.Equal(t, 0.0, ret[0])
+
+	ret = nums.Linspace(0, 1, 0)
+	require.Equal(t, 0, len(ret))
+
+	ret = nums.Linspace(0, 1, -1)
+	require.Equal(t, 0, len(ret))
 }
 
 func TestMeshgrid(t *testing.T) {
-	ret := nums.Meshgrid(nums.Linspace(-2, 2, 5), nums.Linspace(-2, 2, 5))
-	expect := [][][]float64{
+	var ret, expect [][][]float64
+	ret = nums.Meshgrid(nums.Linspace(-2, 2, 5), nums.Linspace(-2, 2, 5))
+	expect = [][][]float64{
 		{{-2.0, -2.0}, []float64{-2.0, -1.0}, []float64{-2.0, 0}, []float64{-2.0, 1.0}, []float64{-2.0, 2.0}},
 		{{-1.0, -2.0}, []float64{-1.0, -1.0}, []float64{-1.0, 0}, []float64{-1.0, 1.0}, []float64{-1.0, 2.0}},
 		{{0, -2.0}, {0, -1.0}, {0, 0}, {0, 1.0}, {0, 2.0}},
@@ -67,6 +79,13 @@ func TestMeshgrid(t *testing.T) {
 			require.Equal(t, expect[i][j][1], ret[i][j][1])
 		}
 	}
+
+	ret = nums.Meshgrid(nums.Linspace(-1, 0, -1), nums.Linspace(-2, 2, 1))
+	require.Equal(t, 0, len(ret))
+
+	ret = nums.Meshgrid(nums.Linspace(-2, 2, 1), nums.Linspace(-1, 0, -1))
+	require.Equal(t, 1, len(ret))
+	require.Equal(t, 0, len(ret[0]))
 }
 
 func TestFakeGen(t *testing.T) {
