@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -232,19 +233,56 @@ func (x *Task) compile(codeReader io.Reader) error {
 	return nil
 }
 
-func (x *Task) Execute() error {
-	err := x.execute()
-	if err != nil {
-		x.LogError("Task", err.Error())
+type Result struct {
+	Err      error
+	Message  string
+	IsDbSink bool
+	_created time.Time
+}
+
+type ResultModel struct {
+	Success bool             `json:"success"`
+	Reason  string           `json:"reason"`
+	Elapse  string           `json:"elapse"`
+	Data    *ResultDataModel `json:"data,omitempty"`
+}
+
+type ResultDataModel struct {
+	Message string `json:"message,omitempty"`
+}
+
+func (rs *Result) MarshalJSON() ([]byte, error) {
+	m := &ResultModel{
+		Success: rs.Err == nil,
+		Reason:  "undefined",
+		Elapse:  time.Since(rs._created).String(),
+	}
+	if rs.Err != nil {
+		m.Reason = rs.Err.Error()
+	} else {
+		m.Reason = "success"
+	}
+	if rs.Message != "" {
+		m.Data = &ResultDataModel{
+			Message: rs.Message,
+		}
+	}
+	return json.Marshal(&m)
+}
+
+func (x *Task) Execute() *Result {
+	result := x.execute()
+	if result.Err != nil {
+		x.LogError("Task", result.Err.Error())
 	} else {
 		x.LogDebug("Task elapsed", time.Since(x._created).String())
 	}
-	return err
+	return result
 }
 
-func (x *Task) execute() (err error) {
+func (x *Task) execute() *Result {
 	if !x.compiled {
-		return errors.New("not compiled task")
+		return &Result{Err: errors.New("not compiled task"), _created: x._created}
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -273,10 +311,18 @@ func (x *Task) execute() (err error) {
 		x.output.stop()
 	}
 
-	if err == nil && x.output != nil {
-		err = x.output.lastError
+	if x.output != nil {
+		return &Result{
+			Err:      x.output.lastError,
+			Message:  x.output.lastMessage,
+			IsDbSink: x.output.dbSink != nil,
+			_created: x._created,
+		}
 	}
-	return
+	return &Result{
+		Err:      errors.New("no sink exists"),
+		_created: x._created,
+	}
 }
 
 func (x *Task) onCircuitBreak(fromNode *Node) {

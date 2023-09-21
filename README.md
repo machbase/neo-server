@@ -33,7 +33,11 @@ Bridges integrated with external systems
 
 ## Web User Interface
 
-![screen](./docs/screenshot01.png)
+- SQL
+![screen](./docs/screenshot02.jpg)
+
+- TQL Script
+![screen](./docs/screenshot01.jpg)
 
 ## Install Prebuilt Binary
 

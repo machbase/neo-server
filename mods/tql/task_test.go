@@ -95,7 +95,12 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 
 	var executeErr error
 	go func() {
-		executeErr = task.Execute()
+		result := task.Execute()
+		executeErr = result.Err
+		if result.IsDbSink {
+			b, _ := result.MarshalJSON()
+			w.Write(b)
+		}
 		doneCh <- true
 	}()
 
@@ -154,7 +159,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 
 			for n, expectLine := range expect {
 				if strings.HasPrefix(expectLine, "/r/") {
-					reg := regexp.MustCompile(strings.TrimPrefix(expectLine, "/r/"))
+					reg := regexp.MustCompile("^" + strings.TrimPrefix(expectLine, "/r/"))
 					if !reg.MatchString(resultLines[n]) {
 						t.Logf("Expected: %s", expectLine)
 						t.Logf("Actual  : %s", resultLines[n])
@@ -297,7 +302,7 @@ func TestDBInsert(t *testing.T) {
 		`INSERT('a', table('example'), tag('signal'))`,
 	}
 	resultLines := []string{
-		`/r/{"data":{"message":"3 rows inserted."},"elapse":".+","reason":"success","success":true}`,
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"3 rows inserted."}}`,
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -309,7 +314,7 @@ func TestDBAppend(t *testing.T) {
 		`APPEND( table('example') )`,
 	}
 	resultLines := []string{
-		`/r/{"data":{"message":"append 3 rows \(success 0, fail 0\)"},"elapse":".+","reason":"success","success":true}`,
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"append 3 rows \(success 0, fail 0\)"}}`,
 	}
 	runTest(t, codeLines, resultLines)
 }

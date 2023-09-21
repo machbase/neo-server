@@ -258,9 +258,11 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	if err := task.Execute(); err != nil {
-		svr.log.Error("tql execute fail", path, err.Error())
-		return nil
+	result := task.Execute()
+	if result == nil {
+		svr.log.Error("tql execute error", path)
+	} else if result.Err != nil {
+		svr.log.Error("tql execute fail", path, result.Err.Error())
 	}
 	return nil
 }

@@ -67,6 +67,21 @@ func (fda *mockServer) RefreshToken() string {
 	return fda.refreshToken
 }
 
+func (fda *mockServer) Appender(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+	ret := &AppenderMock{}
+	ret.AppendFunc = func(values ...any) error { return nil }
+	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
+	ret.TableNameFunc = func() string { return tableName }
+	ret.ColumnsFunc = func() (spi.Columns, error) {
+		return []*spi.Column{
+			{Name: "TIME", Type: "string"},
+			{Name: "TIME", Type: "datetime"},
+			{Name: "VALUE", Type: "double"},
+		}, nil
+	}
+	return ret, nil
+}
+
 var singleMockServer sync.Mutex
 
 func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gin.Engine) {
@@ -85,6 +100,8 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 	engine.POST("/web/api/tql", svr.handlePostTagQL)
 	engine.POST("/web/api/md", svr.handleMarkdown)
 	engine.GET("/web/api/refs/*path", svr.handleRefs)
+	engine.GET("/db/query", svr.handleQuery)
+	engine.POST("/db/query", svr.handleQuery)
 	// engine.NoRoute(func(ctx *gin.Context) { ctx.String(http.StatusNotFound, "no-route") })
 	ret.w = w
 	ret.ctx = ctx
