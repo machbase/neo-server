@@ -2,7 +2,6 @@ package tql
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"sync"
@@ -46,8 +45,9 @@ type output struct {
 	dbSink  DatabaseSink
 	isChart bool
 
-	closeWg   sync.WaitGroup
-	lastError error
+	closeWg     sync.WaitGroup
+	lastError   error
+	lastMessage string
 }
 
 func (node *Node) compileSink(code string) (*output, error) {
@@ -214,21 +214,10 @@ func (out *output) closeEncoder() {
 		out.encoder.Close()
 	} else if out.dbSink != nil {
 		resultMessage, err := out.dbSink.Close()
-		success := true
-		reason := "success"
-		if err != nil {
-			success = false
-			reason = err.Error()
+		if out.lastError == nil && err != nil {
+			out.lastError = err
 		}
-		body, _ := json.Marshal(map[string]any{
-			"success": success,
-			"reason":  reason,
-			"elapse":  time.Since(out.task._created).String(),
-			"data": map[string]any{
-				"message": resultMessage,
-			},
-		})
-		out.task.outputWriter.Write(body)
+		out.lastMessage = resultMessage
 	}
 }
 

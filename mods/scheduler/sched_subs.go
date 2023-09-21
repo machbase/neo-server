@@ -168,7 +168,7 @@ func (ent *SubscriberEntry) doTask(topic string, payload []byte, msgId int, dup 
 		ent.Stop()
 		return
 	}
-	if err := task.Execute(); err != nil {
+	if result := task.Execute(); result == nil || result.Err != nil {
 		ent.err = err
 		ent.state = FAILED
 		ent.Stop()

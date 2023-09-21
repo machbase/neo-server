@@ -96,11 +96,16 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	if chart := task.OutputChartType(); len(chart) > 0 {
 		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
 	}
-	if err := task.Execute(); err != nil {
-		svr.log.Error("tql execute error", err.Error())
-		rsp.Reason = err.Error()
+	result := task.Execute()
+	if result == nil {
+		svr.log.Error("tql execute return nil")
+		rsp.Reason = "task result is empty"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
+	} else if result.IsDbSink {
+		ctx.JSON(http.StatusOK, result)
+	} else if !ctx.Writer.Written() {
+		ctx.JSON(http.StatusOK, result)
 	}
 }
 
@@ -168,10 +173,15 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	if chart := task.OutputChartType(); len(chart) > 0 {
 		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
 	}
-	if err := task.Execute(); err != nil {
-		svr.log.Error("tql execute fail", path, err.Error())
-		rsp.Reason = err.Error()
+	result := task.Execute()
+	if result == nil {
+		svr.log.Error("tql execute return nil")
+		rsp.Reason = "task result is empty"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
+	} else if result.IsDbSink {
+		ctx.JSON(http.StatusOK, result)
+	} else if !ctx.Writer.Written() {
+		ctx.JSON(http.StatusOK, result)
 	}
 }
