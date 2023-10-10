@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -78,7 +79,7 @@ func doWalk(ctx *client.ActionContext) {
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
 
-	walker, err := NewWalker(sqlText, ctx.DB, util.GetTimeformat(cmd.Timeformat), cmd.TimeLocation, cmd.Precision)
+	walker, err := NewWalker(ctx.Ctx, ctx.Conn, sqlText, util.GetTimeformat(cmd.Timeformat), cmd.TimeLocation, cmd.Precision)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -115,7 +116,8 @@ func doWalk(ctx *client.ActionContext) {
 type Walker struct {
 	tview.TableContentReadOnly
 	sqlText    string
-	db         spi.Database
+	conn       spi.Conn
+	ctx        context.Context
 	mutex      sync.Mutex
 	rows       spi.Rows
 	cols       spi.Columns
@@ -127,10 +129,11 @@ type Walker struct {
 	precision  int
 }
 
-func NewWalker(sqlText string, database spi.Database, timeformat string, tz *time.Location, precision int) (*Walker, error) {
+func NewWalker(ctx context.Context, conn spi.Conn, sqlText string, timeformat string, tz *time.Location, precision int) (*Walker, error) {
 	w := &Walker{
 		sqlText:    sqlText,
-		db:         database,
+		conn:       conn,
+		ctx:        ctx,
 		fetchSize:  400,
 		timeformat: timeformat,
 		tz:         tz,
@@ -158,7 +161,7 @@ func (w *Walker) Reload() error {
 		w.rows = nil
 	}
 
-	rows, err := w.db.Query(w.sqlText)
+	rows, err := w.conn.Query(w.ctx, w.sqlText)
 	if err != nil {
 		return err
 	}

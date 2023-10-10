@@ -55,8 +55,8 @@ func doExplain(ctx *client.ActionContext) {
 
 	tick := time.Now()
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	if aux, ok := ctx.DB.(spi.DatabaseAux); ok {
-		plan, err := aux.Explain(sqlText, cmd.Full)
+	if explainer, ok := ctx.Conn.(spi.Explainer); ok {
+		plan, err := explainer.Explain(ctx.Ctx, sqlText, cmd.Full)
 		if err != nil {
 			ctx.Println(err.Error())
 			return

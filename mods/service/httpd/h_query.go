@@ -103,8 +103,16 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.BoxDrawBorder(true),
 	)
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
+
 	queryCtx := &do.QueryContext{
-		DB: svr.db,
+		Conn: conn,
+		Ctx:  ctx,
 		OnFetchStart: func(cols spi.Columns) {
 			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
 			if len(req.Compress) > 0 {

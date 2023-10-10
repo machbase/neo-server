@@ -140,7 +140,8 @@ func doExport(ctx *client.ActionContext) {
 		defer capture.Close()
 		tick := time.Now()
 		queryCtx := &do.QueryContext{
-			DB: ctx.DB,
+			Conn: ctx.Conn,
+			Ctx:  ctx.Ctx,
 			OnFetchStart: func(cols spi.Columns) {
 				codec.SetEncoderColumns(encoder, cols)
 				encoder.Open()

@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-func ExistsTable(db spi.Database, tableName string) (bool, error) {
-	r := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", strings.ToUpper(tableName))
+func ExistsTable(ctx context.Context, conn spi.Conn, tableName string) (bool, error) {
+	r := conn.QueryRow(ctx, "select count(*) from M$SYS_TABLES where name = ?", strings.ToUpper(tableName))
 	var count = 0
 	if err := r.Scan(&count); err != nil {
 		return false, err
@@ -17,8 +18,8 @@ func ExistsTable(db spi.Database, tableName string) (bool, error) {
 	return (count == 1), nil
 }
 
-func ExistsTableOrCreate(db spi.Database, tableName string, create bool, truncate bool) (exists bool, created bool, truncated bool, err error) {
-	exists, err = ExistsTable(db, tableName)
+func ExistsTableOrCreate(ctx context.Context, conn spi.Conn, tableName string, create bool, truncate bool) (exists bool, created bool, truncated bool, err error) {
+	exists, err = ExistsTable(ctx, conn, tableName)
 	if err != nil {
 		return
 	}
@@ -27,7 +28,7 @@ func ExistsTableOrCreate(db spi.Database, tableName string, create bool, truncat
 		if create {
 			// TODO table type and columns customization
 			ddl := fmt.Sprintf("create tag table %s (name varchar(100) primary key, time datetime basetime, value double)", tableName)
-			result := db.Exec(ddl)
+			result := conn.Exec(ctx, ddl)
 			if result.Err() != nil {
 				err = result.Err()
 				return
@@ -42,20 +43,20 @@ func ExistsTableOrCreate(db spi.Database, tableName string, create bool, truncat
 
 	// TRUNCATE TABLE
 	if truncate {
-		tableType, err0 := TableType(db, tableName)
+		tableType, err0 := TableType(ctx, conn, tableName)
 		if err0 != nil {
 			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", tableName))
 			return
 		}
 		if tableType == spi.LogTableType {
-			result := db.Exec(fmt.Sprintf("truncate table %s", tableName))
+			result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", tableName))
 			if result.Err() != nil {
 				err = result.Err()
 				return
 			}
 			truncated = true
 		} else {
-			result := db.Exec(fmt.Sprintf("delete from %s", tableName))
+			result := conn.Exec(ctx, fmt.Sprintf("delete from %s", tableName))
 			if result.Err() != nil {
 				err = result.Err()
 				return

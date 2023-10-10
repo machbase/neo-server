@@ -1,9 +1,11 @@
 package tql
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/bridge"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -64,7 +66,9 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 }
 
 type insert struct {
-	db spi.Database
+	conn      spi.Conn
+	ctx       context.Context
+	ctxCancel context.CancelFunc
 
 	rowsAffected int64
 	lastInsertId int64
@@ -78,11 +82,19 @@ type insert struct {
 }
 
 func (ins *insert) Open(db spi.Database) error {
-	ins.db = db
+	ins.ctx, ins.ctxCancel = context.WithCancel(context.Background())
+	if conn, err := db.Connect(ins.ctx, mach.WithTrustUser("sys")); err != nil {
+		return err
+	} else {
+		ins.conn = conn
+	}
 	return nil
 }
 
 func (ins *insert) Close() (string, error) {
+	ins.conn.Close()
+	ins.ctxCancel()
+
 	unit := "rows"
 	if ins.rowsAffected <= 1 {
 		unit = "row"
@@ -147,11 +159,11 @@ func (ins *insert) _addRow(values []any) error {
 		strings.Join(placeHolders, ","))
 	var err error
 	if ins.tag == nil {
-		if result := ins.db.Exec(sqlText, values...); result.Err() != nil {
+		if result := ins.conn.Exec(ins.ctx, sqlText, values...); result.Err() != nil {
 			err = result.Err()
 		}
 	} else {
-		if result := ins.db.Exec(sqlText, append([]any{ins.tag.Name}, values...)...); result.Err() != nil {
+		if result := ins.conn.Exec(ins.ctx, sqlText, append([]any{ins.tag.Name}, values...)...); result.Err() != nil {
 			err = result.Err()
 		}
 	}
@@ -178,7 +190,10 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 }
 
 type appender struct {
-	db    spi.Database
+	conn      spi.Conn
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
 	nrows int
 
 	dbAppender spi.Appender
@@ -187,8 +202,13 @@ type appender struct {
 }
 
 func (app *appender) Open(db spi.Database) (err error) {
-	app.db = db
-	app.dbAppender, err = app.db.Appender(app.table.Name)
+	app.ctx, app.ctxCancel = context.WithCancel(context.Background())
+	if conn, err := db.Connect(app.ctx, mach.WithTrustUser("sys")); err != nil {
+		return err
+	} else {
+		app.conn = conn
+	}
+	app.dbAppender, err = app.conn.Appender(app.ctx, app.table.Name)
 	return
 }
 
@@ -197,6 +217,10 @@ func (app *appender) Close() (string, error) {
 	var err error
 	if app.dbAppender != nil {
 		succ, fail, err = app.dbAppender.Close()
+	}
+	if app.conn != nil {
+		app.conn.Close()
+		app.ctxCancel()
 	}
 	if err != nil {
 		return fmt.Sprintf("append fail, %s", err.Error()), err

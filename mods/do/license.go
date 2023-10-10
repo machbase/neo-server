@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -20,27 +21,27 @@ type LicenseInfo struct {
 	IssueDate   string `json:"issueDate"`
 }
 
-func GetLicenseInfo(db spi.Database) (*LicenseInfo, error) {
+func GetLicenseInfo(ctx context.Context, conn spi.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
-	row := db.QueryRow("select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info")
+	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info")
 	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate); err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-func InstallLicenseFile(db spi.Database, path string) (*LicenseInfo, error) {
+func InstallLicenseFile(ctx context.Context, conn spi.Conn, path string) (*LicenseInfo, error) {
 	if strings.ContainsRune(path, ';') {
 		return nil, errors.New("invalid license file path")
 	}
-	result := db.Exec("alter system install license='" + path + "'")
+	result := conn.Exec(ctx, "alter system install license='"+path+"'")
 	if result.Err() != nil {
 		return nil, result.Err()
 	}
-	return GetLicenseInfo(db)
+	return GetLicenseInfo(ctx, conn)
 }
 
-func InstallLicenseData(db spi.Database, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+func InstallLicenseData(ctx context.Context, conn spi.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file
@@ -49,5 +50,5 @@ func InstallLicenseData(db spi.Database, licenseFilePath string, content []byte)
 	if err := os.WriteFile(licenseFilePath, content, 0640); err != nil {
 		return nil, err
 	}
-	return InstallLicenseFile(db, licenseFilePath)
+	return InstallLicenseFile(ctx, conn, licenseFilePath)
 }

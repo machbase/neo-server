@@ -20,26 +20,8 @@ var _ spi.Database = &DatabaseMock{}
 //
 //		// make and configure a mocked spi.Database
 //		mockedDatabase := &DatabaseMock{
-//			AppenderFunc: func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
-//				panic("mock out the Appender method")
-//			},
-//			ExecFunc: func(sqlText string, params ...any) spi.Result {
-//				panic("mock out the Exec method")
-//			},
-//			ExecContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
-//				panic("mock out the ExecContext method")
-//			},
-//			QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
-//				panic("mock out the Query method")
-//			},
-//			QueryContextFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
-//				panic("mock out the QueryContext method")
-//			},
-//			QueryRowFunc: func(sqlText string, params ...any) spi.Row {
-//				panic("mock out the QueryRow method")
-//			},
-//			QueryRowContextFunc: func(ctx context.Context, sqlText string, params ...any) spi.Row {
-//				panic("mock out the QueryRowContext method")
+//			ConnectFunc: func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+//				panic("mock out the Connect method")
 //			},
 //		}
 //
@@ -48,45 +30,121 @@ var _ spi.Database = &DatabaseMock{}
 //
 //	}
 type DatabaseMock struct {
+	// ConnectFunc mocks the Connect method.
+	ConnectFunc func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Connect holds details about calls to the Connect method.
+		Connect []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Options is the options argument value.
+			Options []spi.ConnectOption
+		}
+	}
+	lockConnect sync.RWMutex
+}
+
+// Connect calls ConnectFunc.
+func (mock *DatabaseMock) Connect(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	if mock.ConnectFunc == nil {
+		panic("DatabaseMock.ConnectFunc: method is nil but Database.Connect was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Options []spi.ConnectOption
+	}{
+		Ctx:     ctx,
+		Options: options,
+	}
+	mock.lockConnect.Lock()
+	mock.calls.Connect = append(mock.calls.Connect, callInfo)
+	mock.lockConnect.Unlock()
+	return mock.ConnectFunc(ctx, options...)
+}
+
+// ConnectCalls gets all the calls that were made to Connect.
+// Check the length with:
+//
+//	len(mockedDatabase.ConnectCalls())
+func (mock *DatabaseMock) ConnectCalls() []struct {
+	Ctx     context.Context
+	Options []spi.ConnectOption
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Options []spi.ConnectOption
+	}
+	mock.lockConnect.RLock()
+	calls = mock.calls.Connect
+	mock.lockConnect.RUnlock()
+	return calls
+}
+
+// Ensure, that ConnMock does implement spi.Conn.
+// If this is not the case, regenerate this file with moq.
+var _ spi.Conn = &ConnMock{}
+
+// ConnMock is a mock implementation of spi.Conn.
+//
+//	func TestSomethingThatUsesConn(t *testing.T) {
+//
+//		// make and configure a mocked spi.Conn
+//		mockedConn := &ConnMock{
+//			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+//				panic("mock out the Appender method")
+//			},
+//			CloseFunc: func() error {
+//				panic("mock out the Close method")
+//			},
+//			ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
+//				panic("mock out the Exec method")
+//			},
+//			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+//				panic("mock out the Query method")
+//			},
+//			QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) spi.Row {
+//				panic("mock out the QueryRow method")
+//			},
+//		}
+//
+//		// use mockedConn in code that requires spi.Conn
+//		// and then make assertions.
+//
+//	}
+type ConnMock struct {
 	// AppenderFunc mocks the Appender method.
-	AppenderFunc func(tableName string, opts ...spi.AppendOption) (spi.Appender, error)
+	AppenderFunc func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error)
+
+	// CloseFunc mocks the Close method.
+	CloseFunc func() error
 
 	// ExecFunc mocks the Exec method.
-	ExecFunc func(sqlText string, params ...any) spi.Result
-
-	// ExecContextFunc mocks the ExecContext method.
-	ExecContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
+	ExecFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
 
 	// QueryFunc mocks the Query method.
-	QueryFunc func(sqlText string, params ...any) (spi.Rows, error)
-
-	// QueryContextFunc mocks the QueryContext method.
-	QueryContextFunc func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error)
+	QueryFunc func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error)
 
 	// QueryRowFunc mocks the QueryRow method.
-	QueryRowFunc func(sqlText string, params ...any) spi.Row
-
-	// QueryRowContextFunc mocks the QueryRowContext method.
-	QueryRowContextFunc func(ctx context.Context, sqlText string, params ...any) spi.Row
+	QueryRowFunc func(ctx context.Context, sqlText string, params ...any) spi.Row
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Appender holds details about calls to the Appender method.
 		Appender []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
 			// TableName is the tableName argument value.
 			TableName string
 			// Opts is the opts argument value.
 			Opts []spi.AppendOption
 		}
+		// Close holds details about calls to the Close method.
+		Close []struct {
+		}
 		// Exec holds details about calls to the Exec method.
 		Exec []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Params is the params argument value.
-			Params []any
-		}
-		// ExecContext holds details about calls to the ExecContext method.
-		ExecContext []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// SqlText is the sqlText argument value.
@@ -96,13 +154,6 @@ type DatabaseMock struct {
 		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Params is the params argument value.
-			Params []any
-		}
-		// QueryContext holds details about calls to the QueryContext method.
-		QueryContext []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// SqlText is the sqlText argument value.
@@ -112,13 +163,6 @@ type DatabaseMock struct {
 		}
 		// QueryRow holds details about calls to the QueryRow method.
 		QueryRow []struct {
-			// SqlText is the sqlText argument value.
-			SqlText string
-			// Params is the params argument value.
-			Params []any
-		}
-		// QueryRowContext holds details about calls to the QueryRowContext method.
-		QueryRowContext []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// SqlText is the sqlText argument value.
@@ -127,42 +171,44 @@ type DatabaseMock struct {
 			Params []any
 		}
 	}
-	lockAppender        sync.RWMutex
-	lockExec            sync.RWMutex
-	lockExecContext     sync.RWMutex
-	lockQuery           sync.RWMutex
-	lockQueryContext    sync.RWMutex
-	lockQueryRow        sync.RWMutex
-	lockQueryRowContext sync.RWMutex
+	lockAppender sync.RWMutex
+	lockClose    sync.RWMutex
+	lockExec     sync.RWMutex
+	lockQuery    sync.RWMutex
+	lockQueryRow sync.RWMutex
 }
 
 // Appender calls AppenderFunc.
-func (mock *DatabaseMock) Appender(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
 	if mock.AppenderFunc == nil {
-		panic("DatabaseMock.AppenderFunc: method is nil but Database.Appender was just called")
+		panic("ConnMock.AppenderFunc: method is nil but Conn.Appender was just called")
 	}
 	callInfo := struct {
+		Ctx       context.Context
 		TableName string
 		Opts      []spi.AppendOption
 	}{
+		Ctx:       ctx,
 		TableName: tableName,
 		Opts:      opts,
 	}
 	mock.lockAppender.Lock()
 	mock.calls.Appender = append(mock.calls.Appender, callInfo)
 	mock.lockAppender.Unlock()
-	return mock.AppenderFunc(tableName, opts...)
+	return mock.AppenderFunc(ctx, tableName, opts...)
 }
 
 // AppenderCalls gets all the calls that were made to Appender.
 // Check the length with:
 //
-//	len(mockedDatabase.AppenderCalls())
-func (mock *DatabaseMock) AppenderCalls() []struct {
+//	len(mockedConn.AppenderCalls())
+func (mock *ConnMock) AppenderCalls() []struct {
+	Ctx       context.Context
 	TableName string
 	Opts      []spi.AppendOption
 } {
 	var calls []struct {
+		Ctx       context.Context
 		TableName string
 		Opts      []spi.AppendOption
 	}
@@ -172,33 +218,64 @@ func (mock *DatabaseMock) AppenderCalls() []struct {
 	return calls
 }
 
-// Exec calls ExecFunc.
-func (mock *DatabaseMock) Exec(sqlText string, params ...any) spi.Result {
-	if mock.ExecFunc == nil {
-		panic("DatabaseMock.ExecFunc: method is nil but Database.Exec was just called")
+// Close calls CloseFunc.
+func (mock *ConnMock) Close() error {
+	if mock.CloseFunc == nil {
+		panic("ConnMock.CloseFunc: method is nil but Conn.Close was just called")
 	}
 	callInfo := struct {
+	}{}
+	mock.lockClose.Lock()
+	mock.calls.Close = append(mock.calls.Close, callInfo)
+	mock.lockClose.Unlock()
+	return mock.CloseFunc()
+}
+
+// CloseCalls gets all the calls that were made to Close.
+// Check the length with:
+//
+//	len(mockedConn.CloseCalls())
+func (mock *ConnMock) CloseCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockClose.RLock()
+	calls = mock.calls.Close
+	mock.lockClose.RUnlock()
+	return calls
+}
+
+// Exec calls ExecFunc.
+func (mock *ConnMock) Exec(ctx context.Context, sqlText string, params ...any) spi.Result {
+	if mock.ExecFunc == nil {
+		panic("ConnMock.ExecFunc: method is nil but Conn.Exec was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
 		SqlText string
 		Params  []any
 	}{
+		Ctx:     ctx,
 		SqlText: sqlText,
 		Params:  params,
 	}
 	mock.lockExec.Lock()
 	mock.calls.Exec = append(mock.calls.Exec, callInfo)
 	mock.lockExec.Unlock()
-	return mock.ExecFunc(sqlText, params...)
+	return mock.ExecFunc(ctx, sqlText, params...)
 }
 
 // ExecCalls gets all the calls that were made to Exec.
 // Check the length with:
 //
-//	len(mockedDatabase.ExecCalls())
-func (mock *DatabaseMock) ExecCalls() []struct {
+//	len(mockedConn.ExecCalls())
+func (mock *ConnMock) ExecCalls() []struct {
+	Ctx     context.Context
 	SqlText string
 	Params  []any
 } {
 	var calls []struct {
+		Ctx     context.Context
 		SqlText string
 		Params  []any
 	}
@@ -208,10 +285,10 @@ func (mock *DatabaseMock) ExecCalls() []struct {
 	return calls
 }
 
-// ExecContext calls ExecContextFunc.
-func (mock *DatabaseMock) ExecContext(ctx context.Context, sqlText string, params ...any) spi.Result {
-	if mock.ExecContextFunc == nil {
-		panic("DatabaseMock.ExecContextFunc: method is nil but Database.ExecContext was just called")
+// Query calls QueryFunc.
+func (mock *ConnMock) Query(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+	if mock.QueryFunc == nil {
+		panic("ConnMock.QueryFunc: method is nil but Conn.Query was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
@@ -222,59 +299,23 @@ func (mock *DatabaseMock) ExecContext(ctx context.Context, sqlText string, param
 		SqlText: sqlText,
 		Params:  params,
 	}
-	mock.lockExecContext.Lock()
-	mock.calls.ExecContext = append(mock.calls.ExecContext, callInfo)
-	mock.lockExecContext.Unlock()
-	return mock.ExecContextFunc(ctx, sqlText, params...)
+	mock.lockQuery.Lock()
+	mock.calls.Query = append(mock.calls.Query, callInfo)
+	mock.lockQuery.Unlock()
+	return mock.QueryFunc(ctx, sqlText, params...)
 }
 
-// ExecContextCalls gets all the calls that were made to ExecContext.
+// QueryCalls gets all the calls that were made to Query.
 // Check the length with:
 //
-//	len(mockedDatabase.ExecContextCalls())
-func (mock *DatabaseMock) ExecContextCalls() []struct {
+//	len(mockedConn.QueryCalls())
+func (mock *ConnMock) QueryCalls() []struct {
 	Ctx     context.Context
 	SqlText string
 	Params  []any
 } {
 	var calls []struct {
 		Ctx     context.Context
-		SqlText string
-		Params  []any
-	}
-	mock.lockExecContext.RLock()
-	calls = mock.calls.ExecContext
-	mock.lockExecContext.RUnlock()
-	return calls
-}
-
-// Query calls QueryFunc.
-func (mock *DatabaseMock) Query(sqlText string, params ...any) (spi.Rows, error) {
-	if mock.QueryFunc == nil {
-		panic("DatabaseMock.QueryFunc: method is nil but Database.Query was just called")
-	}
-	callInfo := struct {
-		SqlText string
-		Params  []any
-	}{
-		SqlText: sqlText,
-		Params:  params,
-	}
-	mock.lockQuery.Lock()
-	mock.calls.Query = append(mock.calls.Query, callInfo)
-	mock.lockQuery.Unlock()
-	return mock.QueryFunc(sqlText, params...)
-}
-
-// QueryCalls gets all the calls that were made to Query.
-// Check the length with:
-//
-//	len(mockedDatabase.QueryCalls())
-func (mock *DatabaseMock) QueryCalls() []struct {
-	SqlText string
-	Params  []any
-} {
-	var calls []struct {
 		SqlText string
 		Params  []any
 	}
@@ -284,10 +325,10 @@ func (mock *DatabaseMock) QueryCalls() []struct {
 	return calls
 }
 
-// QueryContext calls QueryContextFunc.
-func (mock *DatabaseMock) QueryContext(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
-	if mock.QueryContextFunc == nil {
-		panic("DatabaseMock.QueryContextFunc: method is nil but Database.QueryContext was just called")
+// QueryRow calls QueryRowFunc.
+func (mock *ConnMock) QueryRow(ctx context.Context, sqlText string, params ...any) spi.Row {
+	if mock.QueryRowFunc == nil {
+		panic("ConnMock.QueryRowFunc: method is nil but Conn.QueryRow was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
@@ -295,96 +336,20 @@ func (mock *DatabaseMock) QueryContext(ctx context.Context, sqlText string, para
 		Params  []any
 	}{
 		Ctx:     ctx,
-		SqlText: sqlText,
-		Params:  params,
-	}
-	mock.lockQueryContext.Lock()
-	mock.calls.QueryContext = append(mock.calls.QueryContext, callInfo)
-	mock.lockQueryContext.Unlock()
-	return mock.QueryContextFunc(ctx, sqlText, params...)
-}
-
-// QueryContextCalls gets all the calls that were made to QueryContext.
-// Check the length with:
-//
-//	len(mockedDatabase.QueryContextCalls())
-func (mock *DatabaseMock) QueryContextCalls() []struct {
-	Ctx     context.Context
-	SqlText string
-	Params  []any
-} {
-	var calls []struct {
-		Ctx     context.Context
-		SqlText string
-		Params  []any
-	}
-	mock.lockQueryContext.RLock()
-	calls = mock.calls.QueryContext
-	mock.lockQueryContext.RUnlock()
-	return calls
-}
-
-// QueryRow calls QueryRowFunc.
-func (mock *DatabaseMock) QueryRow(sqlText string, params ...any) spi.Row {
-	if mock.QueryRowFunc == nil {
-		panic("DatabaseMock.QueryRowFunc: method is nil but Database.QueryRow was just called")
-	}
-	callInfo := struct {
-		SqlText string
-		Params  []any
-	}{
 		SqlText: sqlText,
 		Params:  params,
 	}
 	mock.lockQueryRow.Lock()
 	mock.calls.QueryRow = append(mock.calls.QueryRow, callInfo)
 	mock.lockQueryRow.Unlock()
-	return mock.QueryRowFunc(sqlText, params...)
+	return mock.QueryRowFunc(ctx, sqlText, params...)
 }
 
 // QueryRowCalls gets all the calls that were made to QueryRow.
 // Check the length with:
 //
-//	len(mockedDatabase.QueryRowCalls())
-func (mock *DatabaseMock) QueryRowCalls() []struct {
-	SqlText string
-	Params  []any
-} {
-	var calls []struct {
-		SqlText string
-		Params  []any
-	}
-	mock.lockQueryRow.RLock()
-	calls = mock.calls.QueryRow
-	mock.lockQueryRow.RUnlock()
-	return calls
-}
-
-// QueryRowContext calls QueryRowContextFunc.
-func (mock *DatabaseMock) QueryRowContext(ctx context.Context, sqlText string, params ...any) spi.Row {
-	if mock.QueryRowContextFunc == nil {
-		panic("DatabaseMock.QueryRowContextFunc: method is nil but Database.QueryRowContext was just called")
-	}
-	callInfo := struct {
-		Ctx     context.Context
-		SqlText string
-		Params  []any
-	}{
-		Ctx:     ctx,
-		SqlText: sqlText,
-		Params:  params,
-	}
-	mock.lockQueryRowContext.Lock()
-	mock.calls.QueryRowContext = append(mock.calls.QueryRowContext, callInfo)
-	mock.lockQueryRowContext.Unlock()
-	return mock.QueryRowContextFunc(ctx, sqlText, params...)
-}
-
-// QueryRowContextCalls gets all the calls that were made to QueryRowContext.
-// Check the length with:
-//
-//	len(mockedDatabase.QueryRowContextCalls())
-func (mock *DatabaseMock) QueryRowContextCalls() []struct {
+//	len(mockedConn.QueryRowCalls())
+func (mock *ConnMock) QueryRowCalls() []struct {
 	Ctx     context.Context
 	SqlText string
 	Params  []any
@@ -394,9 +359,9 @@ func (mock *DatabaseMock) QueryRowContextCalls() []struct {
 		SqlText string
 		Params  []any
 	}
-	mock.lockQueryRowContext.RLock()
-	calls = mock.calls.QueryRowContext
-	mock.lockQueryRowContext.RUnlock()
+	mock.lockQueryRow.RLock()
+	calls = mock.calls.QueryRow
+	mock.lockQueryRow.RUnlock()
 	return calls
 }
 

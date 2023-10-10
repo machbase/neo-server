@@ -1,6 +1,6 @@
 package tql_test
 
-//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Rows Result Appender
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Conn Rows Result Appender
 
 import (
 	"bufio"
@@ -34,6 +34,7 @@ type Param = struct {
 }
 
 func runTest(t *testing.T, codeLines []string, expect []string, options ...any) {
+	t.Helper()
 	var compileErr string
 	var expectErr string
 	var expectLog string
@@ -180,64 +181,70 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 var mockDbResult [][]any
 var mockDbCursor = 0
 var mockDb = DatabaseMock{
-	QueryFunc: func(sqlText string, params ...any) (spi.Rows, error) {
-		switch sqlText {
-		case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
-			fallthrough
-		case `select time, value from example where name = 'tag1'`:
-			return &RowsMock{
-				IsFetchableFunc: func() bool { return true },
-				NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
-				CloseFunc:       func() error { return nil },
-				ColumnsFunc: func() (spi.Columns, error) {
-					return []*spi.Column{
-						{Name: "time", Type: "datetime"},
-						{Name: "value", Type: "double"},
+	ConnectFunc: func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+		conn := &ConnMock{
+			CloseFunc: func() error { return nil },
+			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+				switch sqlText {
+				case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
+					fallthrough
+				case `select time, value from example where name = 'tag1'`:
+					return &RowsMock{
+						IsFetchableFunc: func() bool { return true },
+						NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
+						CloseFunc:       func() error { return nil },
+						ColumnsFunc: func() (spi.Columns, error) {
+							return []*spi.Column{
+								{Name: "time", Type: "datetime"},
+								{Name: "value", Type: "double"},
+							}, nil
+						},
+						MessageFunc: func() string { return "no rows selected." },
+						ScanFunc: func(cols ...any) error {
+							cols[0] = mockDbResult[mockDbCursor-1][0]
+							cols[1] = mockDbResult[mockDbCursor-1][1]
+							return nil
+						},
 					}, nil
-				},
-				MessageFunc: func() string { return "no rows selected." },
-				ScanFunc: func(cols ...any) error {
-					cols[0] = mockDbResult[mockDbCursor-1][0]
-					cols[1] = mockDbResult[mockDbCursor-1][1]
-					return nil
-				},
-			}, nil
-		case `create tag table example(...)`:
-			return &RowsMock{
-				IsFetchableFunc:  func() bool { return false },
-				NextFunc:         func() bool { return false },
-				CloseFunc:        func() error { return nil },
-				MessageFunc:      func() string { return "executed." },
-				RowsAffectedFunc: func() int64 { return 0 },
-			}, nil
-		default:
-			fmt.Println("===>", sqlText)
-			return &RowsMock{
-				IsFetchableFunc: func() bool { return true },
-				NextFunc:        func() bool { return false },
-				CloseFunc:       func() error { return nil },
-			}, nil
+				case `create tag table example(...)`:
+					return &RowsMock{
+						IsFetchableFunc:  func() bool { return false },
+						NextFunc:         func() bool { return false },
+						CloseFunc:        func() error { return nil },
+						MessageFunc:      func() string { return "executed." },
+						RowsAffectedFunc: func() int64 { return 0 },
+					}, nil
+				default:
+					fmt.Println("===>", sqlText)
+					return &RowsMock{
+						IsFetchableFunc: func() bool { return true },
+						NextFunc:        func() bool { return false },
+						CloseFunc:       func() error { return nil },
+					}, nil
+				}
+			},
+			ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
+				switch sqlText {
+				case `INSERT INTO example (name,a) VALUES(?,?)`:
+					fmt.Println("task_test, mockdb: ", sqlText, params)
+					return &ResultMock{
+						ErrFunc:          func() error { return nil },
+						MessageFunc:      func() string { return "a row inserted." },
+						RowsAffectedFunc: func() int64 { return 1 },
+					}
+				default:
+					fmt.Println("task_test, mockdb: ", sqlText)
+				}
+				return nil
+			},
+			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+				return &AppenderMock{
+					AppendFunc: func(values ...any) error { return nil },
+					CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
+				}, nil
+			},
 		}
-	},
-	ExecFunc: func(sqlText string, params ...any) spi.Result {
-		switch sqlText {
-		case `INSERT INTO example (name,a) VALUES(?,?)`:
-			fmt.Println("task_test, mockdb: ", sqlText, params)
-			return &ResultMock{
-				ErrFunc:          func() error { return nil },
-				MessageFunc:      func() string { return "a row inserted." },
-				RowsAffectedFunc: func() int64 { return 1 },
-			}
-		default:
-			fmt.Println("task_test, mockdb: ", sqlText)
-		}
-		return nil
-	},
-	AppenderFunc: func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
-		return &AppenderMock{
-			AppendFunc: func(values ...any) error { return nil },
-			CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
-		}, nil
+		return conn, nil
 	},
 }
 

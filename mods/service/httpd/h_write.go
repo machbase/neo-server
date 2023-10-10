@@ -50,7 +50,16 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
 	trans := strString(ctx.Query("transcoder"), "")
 
-	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	defer conn.Close()
+
+	exists, _, _, err := do.ExistsTableOrCreate(ctx, conn, tableName, createTable, truncateTable)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -65,7 +74,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(svr.db, tableName, false); err != nil {
+	if desc0, err := do.Describe(ctx, conn, tableName, false); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -127,6 +136,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	valueHolder := strings.Join(_hold, ",")
 	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
+
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
@@ -141,7 +151,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		lineno++
 
 		if method == "insert" {
-			if result := svr.db.Exec(insertQuery, vals...); result.Err() != nil {
+			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 				rsp.Reason = result.Err().Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
@@ -149,7 +159,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 		} else { // append
 			if appender == nil {
-				appender, err = svr.db.Appender(tableName)
+				appender, err = conn.Appender(ctx, tableName)
 				if err != nil {
 					rsp.Reason = err.Error()
 					rsp.Elapse = time.Since(tick).String()

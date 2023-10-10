@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
@@ -231,6 +233,25 @@ func (svr *httpd) Router() *gin.Engine {
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r
+}
+
+// for the internal processor
+func (svr *httpd) getTrustConnection(ctx *gin.Context) (spi.Conn, error) {
+	// TODO handle API Token
+	return svr.db.Connect(ctx, mach.WithTrustUser("sys"))
+}
+
+// for the api called from web-client that authorized by JWT
+func (svr *httpd) getUserConnection(ctx *gin.Context) (spi.Conn, error) {
+	var claim *jwt.RegisteredClaims
+	if obj, exists := ctx.Get("jwt-claim"); exists {
+		claim = obj.(*jwt.RegisteredClaims)
+	}
+	if claim != nil {
+		return svr.db.Connect(ctx, mach.WithTrustUser(claim.Subject))
+	} else {
+		return nil, errors.New("unathorized db request")
+	}
 }
 
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {

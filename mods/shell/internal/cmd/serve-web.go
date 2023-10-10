@@ -101,7 +101,7 @@ func doServeWeb(ctx *client.ActionContext) {
 		r.Use(weblogfunc(ctx))
 	}
 
-	svr, err := httpd.New(ctx.DB,
+	svr, err := httpd.New(ctx.Client.Database(),
 		httpd.OptionListenAddress(fmt.Sprintf("%s:%d", cmd.Host, cmd.Port)),
 		httpd.OptionHandler(cmd.Prefix, httpd.HandlerWeb),
 	)

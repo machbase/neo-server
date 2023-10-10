@@ -166,7 +166,8 @@ func doSql(ctx *client.ActionContext) {
 	nextPauseRow := int64(pageHeight)
 
 	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
+		Conn: ctx.Conn,
+		Ctx:  ctx.Ctx,
 		OnFetchStart: func(cols spi.Columns) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()

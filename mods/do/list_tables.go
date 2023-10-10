@@ -1,9 +1,13 @@
 package do
 
-import spi "github.com/machbase/neo-spi"
+import (
+	"context"
 
-func ListTables(db spi.Database) []string {
-	rows, err := db.Query("select NAME, TYPE, FLAG from M$SYS_TABLES order by NAME")
+	spi "github.com/machbase/neo-spi"
+)
+
+func ListTables(ctx context.Context, conn spi.Conn) []string {
+	rows, err := conn.Query(ctx, "select NAME, TYPE, FLAG from M$SYS_TABLES order by NAME")
 	if err != nil {
 		return nil
 	}

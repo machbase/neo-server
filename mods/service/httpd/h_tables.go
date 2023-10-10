@@ -37,8 +37,15 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 		},
 	}
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
+
 	rownum := 0
-	do.Tables(svr.db, func(ti *do.TableInfo, err error) bool {
+	do.Tables(ctx, conn, func(ti *do.TableInfo, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
@@ -95,7 +102,15 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 		Rows: [][]any{},
 	}
 	rownum := 0
-	do.Tags(svr.db, table, func(name string, err error) bool {
+
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
+
+	do.Tags(ctx, conn, table, func(name string, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
@@ -139,7 +154,14 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	timeformat := strString(ctx.Query("timeformat"), "ns")
 	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
 
-	nfo, err := do.TagStat(svr.db, table, tag)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
+
+	nfo, err := do.TagStat(ctx, conn, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
 		rsp.Elapse = time.Since(tick).String()

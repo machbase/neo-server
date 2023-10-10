@@ -1,10 +1,12 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +25,17 @@ func TestAppendTag(t *testing.T) {
 	db, err := spi.New()
 	require.Nil(t, err)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		t.Error(err.Error())
+	}
+	defer conn.Close()
+
 	t.Log("---- append tag " + benchmarkTableName)
-	appender, err := db.Appender(benchmarkTableName)
+	appender, err := conn.Appender(ctx, benchmarkTableName)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +55,7 @@ func TestAppendTag(t *testing.T) {
 	}
 	appender.Close()
 
-	row := db.QueryRow("select count(*) from "+benchmarkTableName+" where time >= ?", ts)
+	row := conn.QueryRow(ctx, "select count(*) from "+benchmarkTableName+" where time >= ?", ts)
 	if row.Err() != nil {
 		panic(row.Err())
 	}
@@ -63,8 +74,17 @@ func TestAppendTagNotExist(t *testing.T) {
 	db, err := spi.New()
 	require.Nil(t, err)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		t.Error(err.Error())
+	}
+	defer conn.Close()
+
 	t.Log("---- append tag notexist")
-	appender, err := db.Appender("notexist")
+	appender, err := conn.Appender(ctx, "notexist")
 	require.NotNil(t, err)
 	if appender != nil {
 		appender.Close()

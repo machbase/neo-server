@@ -1,13 +1,16 @@
 package grpcd
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
@@ -15,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
+	"github.com/machbase/neo-server/mods/util/snowflake"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -108,7 +112,14 @@ type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
 	log logging.Log
-	db  spi.Database
+
+	db          spi.Database
+	dbConn      spi.Conn
+	dbCtx       context.Context
+	dbCtxCancel context.CancelFunc
+
+	node *snowflake.Node
+	pool map[string]*connParole
 
 	listenAddresses []string
 	maxRecvMsgSize  int
@@ -128,11 +139,30 @@ type grpcd struct {
 	mgmtServerInsecure *grpc.Server
 }
 
+type connParole struct {
+	rawConn spi.Conn
+	handle  string
+	cretime time.Time
+}
+
 func (svr *grpcd) Start() error {
 	grpcOptions := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(int(svr.maxRecvMsgSize)),
 		grpc.MaxSendMsgSize(int(svr.maxSendMsgSize)),
 		grpc.StatsHandler(svr),
+	}
+
+	if svr.db == nil {
+		return errors.New("no database instance")
+	}
+
+	svr.pool = map[string]*connParole{}
+	svr.node, _ = snowflake.NewNode(0)
+	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
+	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
+		return err
+	} else {
+		svr.dbConn = conn
 	}
 
 	// create grpc server insecure
@@ -221,6 +251,10 @@ func (svr *grpcd) Stop() {
 	}
 	if svr.mgmtServerInsecure != nil {
 		svr.mgmtServerInsecure.Stop()
+	}
+	if svr.dbConn != nil {
+		svr.dbConn.Close()
+		svr.dbCtxCancel()
 	}
 }
 

@@ -1,15 +1,16 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	spi "github.com/machbase/neo-spi"
 )
 
-func Tags(db spi.Database, table string, callback func(string, error) bool) {
+func Tags(ctx context.Context, conn spi.Conn, table string, callback func(string, error) bool) {
 	sqlText := fmt.Sprintf("select * from _%s_META", strings.ToUpper(table))
-	rows, err := db.Query(sqlText)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		callback("", err)
 		return
