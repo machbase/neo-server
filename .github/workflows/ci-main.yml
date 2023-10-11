@@ -120,8 +120,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install MinGW package
+        # windows gcc env issue: https://github.com/actions/runner-images/pull/8444/files
         run: |
-              choco install mingw --version 12.2.0 --force
+              choco uninstall gcc
+              choco install Mingw-w64 --version 12.2.0 --force
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
