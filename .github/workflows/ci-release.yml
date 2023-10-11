@@ -16,7 +16,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
           - name: Release files
@@ -40,7 +40,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
           - name: Release files
@@ -64,7 +64,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo
           - name: Release files
@@ -88,7 +88,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo
           - name: Release files
@@ -112,7 +112,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - uses: goto-bus-stop/setup-zig@v2
             with:
               version: 0.11.0
@@ -140,7 +140,7 @@ jobs:
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
-              go-version: '1.20.7'
+              go-version: '1.20'
           - name: Build
             run: go run mage.go machbase-neo neow
             shell: cmd
@@ -179,7 +179,7 @@ jobs:
         - name: Set up go compiler
           uses: actions/setup-go@v3
           with:
-            go-version: '1.20.7'
+            go-version: '1.20'
         - name: Package for arm64
           run: |
             go run mage.go machbase-neo && \
@@ -195,7 +195,7 @@ jobs:
         - name: Set up go compiler
           uses: actions/setup-go@v3
           with:
-            go-version: '1.20.7'
+            go-version: '1.20'
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v2
         - name: Docker version
