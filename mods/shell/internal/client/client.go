@@ -128,7 +128,7 @@ func (cli *client) Start() error {
 
 func (cli *client) Stop() {
 	if cli.db != nil {
-		cli.db.Disconnect()
+		cli.db.Close()
 	}
 }
 
@@ -154,11 +154,10 @@ func (cli *client) checkDatabase() error {
 		return nil
 	}
 
-	machcli := machrpc.NewClient(
+	machcli, err := machrpc.NewClient(
 		machrpc.WithServer(cli.conf.ServerAddr),
 		machrpc.WithCertificate(cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath),
 		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
-	err := machcli.Connect()
 	if err != nil {
 		return err
 	}
@@ -354,10 +353,20 @@ func (cli *client) Process(line string) {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := cli.db.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	if err != nil {
+		cli.Println("ERR", err.Error())
+		return
+	}
+	defer conn.Close()
+
 	actCtx := &ActionContext{
 		Line:         line,
 		Client:       cli,
-		DB:           cli.db,
+		Conn:         conn,
+		Ctx:          ctx,
 		Lang:         cli.conf.Lang,
 		TimeLocation: time.UTC,
 		TimeFormat:   "ns",

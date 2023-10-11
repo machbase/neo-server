@@ -52,7 +52,7 @@ func doDescribe(ctx *client.ActionContext) {
 		return
 	}
 
-	_desc, err := do.Describe(ctx.DB, cmd.Table, cmd.ShowAll)
+	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, cmd.Table, cmd.ShowAll)
 	if err != nil {
 		ctx.Println("unable to describe", cmd.Table, "; ERR", err.Error())
 		return

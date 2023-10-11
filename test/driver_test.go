@@ -12,13 +12,13 @@ import (
 )
 
 func TestDriver(t *testing.T) {
-	t.Logf("Drivers=%#v", sql.Drivers())
-
 	driver.RegisterDataSource("local-unix", &driver.DataSource{
 		ServerAddr: "unix://../tmp/mach.sock",
 		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
 		ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
 		ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+		User:       "sys",
+		Password:   "manager",
 	})
 
 	driver.RegisterDataSource("local-tcp", &driver.DataSource{
@@ -26,6 +26,8 @@ func TestDriver(t *testing.T) {
 		ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
 		ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
 		ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+		User:       "sys",
+		Password:   "manager",
 	})
 
 	testDriverDataSource(t, "local-unix")
@@ -35,7 +37,7 @@ func TestDriver(t *testing.T) {
 func testDriverDataSource(t *testing.T, dataSourceName string) {
 	db, err := sql.Open(driver.Name, dataSourceName)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	require.NotNil(t, db)
 
@@ -44,11 +46,11 @@ func testDriverDataSource(t *testing.T, dataSourceName string) {
 
 	row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
 	if row.Err() != nil {
-		panic(row.Err())
+		t.Fatal(row.Err())
 	}
 	err = row.Scan(&count)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	if count == 0 {
@@ -67,16 +69,16 @@ func testDriverDataSource(t *testing.T, dataSourceName string) {
 			)`, tableName)
 		_, err := db.Exec(sqlText)
 		if err != nil {
-			panic(err)
+			t.Error(err)
 		}
 
 		row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
 		if row.Err() != nil {
-			panic(row.Err())
+			t.Error(row.Err())
 		}
 		err = row.Scan(&count)
 		if err != nil {
-			panic(err)
+			t.Error(err)
 		}
 	}
 	require.Equal(t, 1, count)
@@ -90,7 +92,7 @@ func testDriverDataSource(t *testing.T, dataSourceName string) {
 			0.1001+0.1001*float32(count),
 			fmt.Sprintf("id-%08d", i))
 		if err != nil {
-			panic(err)
+			t.Error(err)
 		}
 		require.Nil(t, err)
 		nrows, _ := result.RowsAffected()
@@ -99,7 +101,7 @@ func testDriverDataSource(t *testing.T, dataSourceName string) {
 
 	rows, err := db.Query("select name, time, value, id from "+tableName+" where time >= ? order by time", ts)
 	if err != nil {
-		panic(err)
+		t.Error(err)
 	}
 	pass := 0
 	for rows.Next() {

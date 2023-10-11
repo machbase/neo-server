@@ -1,11 +1,13 @@
 package tql
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/do"
 	spi "github.com/machbase/neo-spi"
 )
@@ -160,8 +162,18 @@ type databaseSource struct {
 }
 
 func (dc *databaseSource) gen(node *Node) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := dc.task.db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	defer conn.Close()
+
 	queryCtx := &do.QueryContext{
-		DB: dc.task.db,
+		Conn: conn,
+		Ctx:  ctx,
 		OnFetchStart: func(cols spi.Columns) {
 			cols = append([]*spi.Column{{Name: "ROWNUM", Type: spi.ColumnTypeString(spi.Int64ColumnType)}}, cols...)
 			dc.task.SetResultColumns(cols)

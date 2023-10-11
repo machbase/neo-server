@@ -1,13 +1,14 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	spi "github.com/machbase/neo-spi"
 )
 
-func Insert(db spi.Database, tableName string, columns []string, rows [][]any) spi.Result {
+func Insert(ctx context.Context, conn spi.Conn, tableName string, columns []string, rows [][]any) spi.Result {
 	if len(rows) == 0 {
 		// fields의 value가 string 일 경우 입력할 값이 없을 수 있다.
 		return &InsertResult{
@@ -26,7 +27,7 @@ func Insert(db spi.Database, tableName string, columns []string, rows [][]any) s
 	sqlText := fmt.Sprintf("insert into %s (%s) values(%s)", tableName, columnsPhrase, valuesPlaces)
 	var nrows int64
 	for _, rec := range rows {
-		result := db.Exec(sqlText, rec...)
+		result := conn.Exec(ctx, sqlText, rec...)
 		if result.Err() != nil {
 			return &InsertResult{
 				err:          result.Err(),

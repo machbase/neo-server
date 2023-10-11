@@ -66,7 +66,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any
 		rsp.Reason = err.Error()
 		return nil
 	}
-	Query(svr.db, req, rsp)
+	Query(svr.dbConn, req, rsp)
 	return nil
 }
 
@@ -87,7 +87,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		rsp.Reason = "table is not specified"
 		return nil
 	}
-	Write(svr.db, req, rsp)
+	Write(svr.dbConn, req, rsp)
 	return nil
 }
 
@@ -136,7 +136,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		}
 	}
 	if appender == nil {
-		appender, err = svr.db.Appender(wp.Table)
+		appender, err = svr.dbConn.Appender(svr.dbCtx, wp.Table)
 		if err != nil {
 			peerLog.Errorf("---- fail to create appender, %s", err.Error())
 			return nil

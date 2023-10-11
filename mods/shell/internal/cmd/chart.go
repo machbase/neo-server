@@ -155,7 +155,7 @@ func doChart(ctx *client.ActionContext) {
 		series := []*model.RenderingData{}
 		// query
 		for _, dq := range queries {
-			data, err := dq.Query(ctx.DB)
+			data, err := dq.Query(ctx.Ctx, ctx.Conn)
 			if err != nil {
 				fmt.Println(err.Error())
 				return

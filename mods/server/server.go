@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
@@ -400,23 +401,46 @@ func (s *svr) Start() error {
 	}
 
 	if shouldInstallLicense {
-		_, err := do.InstallLicenseFile(s.db, s.licenseFilePath)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
 		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+		if _, err = do.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 			s.log.Warn("set license fail,", err.Error())
 		} else {
 			s.log.Info("set license success")
 		}
+		conn.Close()
+		cancel()
 	}
 
-	for n, sqlText := range s.conf.StartupQueries {
-		// ex) "alter system set trace_log_level=1023"
-		result := s.db.Exec(sqlText)
-		if result.Err() != nil {
-			s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
-			break
-		} else {
-			s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+	if len(s.conf.StartupQueries) > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
+		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
 		}
+		for n, sqlText := range s.conf.StartupQueries {
+			// ex) "alter system set trace_log_level=1023"
+			result := conn.Exec(ctx, sqlText)
+			if result.Err() != nil {
+				s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
+				break
+			} else {
+				s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+			}
+		}
+		conn.Close()
+		cancel()
 	}
 
 	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)

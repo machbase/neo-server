@@ -47,8 +47,18 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		return
 	}
 
+	// TODO: 1. change it to svr.getUserConnection()
+	// TODO: 2. Appender should take care of multiple session and terminated at the end.
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	defer conn.Close()
+
 	once.Do(func() {
-		exists, err := do.ExistsTable(svr.db, TableName)
+		exists, err := do.ExistsTable(ctx, conn, TableName)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusPreconditionFailed, rsp)
@@ -61,7 +71,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 			return
 		}
 
-		appender, err = svr.db.Appender(TableName)
+		appender, err = conn.Appender(ctx, TableName)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)
@@ -71,7 +81,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 
 	if appender == nil {
 		svr.log.Error("appender is nil")
-		appender, err = svr.db.Appender(TableName)
+		appender, err = conn.Appender(ctx, TableName)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)

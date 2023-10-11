@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,33 +18,40 @@ func TestGrpcLogTable(t *testing.T) {
 	var count int
 	var tableName = strings.ToUpper("logdata")
 
-	client := machrpc.NewClient(
+	client, err := machrpc.NewClient(
 		machrpc.WithServer("unix://../tmp/mach.sock"),
 		machrpc.WithCertificate("../tmp/machbase_pref/cert/machbase_key.pem", "../tmp/machbase_pref/cert/machbase_cert.pem", "../tmp/machbase_pref/cert/machbase_cert.pem"),
 		machrpc.WithQueryTimeout(10*time.Second))
-	err := client.Connect()
-	//err := client.Connect("tcp://127.0.0.1:5655")
 	require.Nil(t, err)
-	defer client.Disconnect()
 
-	row := client.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
+	defer client.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := client.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	defer conn.Close()
+
+	row := conn.QueryRow(ctx, "select count(*) from M$SYS_TABLES where name = ?", tableName)
 	require.NotNil(t, row)
 	if row.Err() != nil {
-		panic(row.Err())
+		t.Fatal(row.Err())
 	}
 	require.Nil(t, row.Err())
 
 	err = row.Scan(&count)
 	if err == nil && count == 1 {
 		tableExists = true
-		t.Logf("table '%s' exists", tableName)
+		t.Logf("table %q exists", tableName)
 		if dropTable {
-			t.Logf("drop table '%s'", tableName)
-			result := client.Exec("drop table " + tableName)
+			t.Logf("drop table %q", tableName)
+			result := conn.Exec(ctx, "drop table "+tableName)
 			if result.Err() != nil {
-				t.Logf("drop table: %s", err.Error())
+				t.Fatalf("drop table: %s", err.Error())
 			}
-			require.Nil(t, err)
 			tableExists = false
 		}
 	}
@@ -68,15 +76,15 @@ func TestGrpcLogTable(t *testing.T) {
 				payload         json
 			)`, tableName)
 
-		result := client.Exec(sqlText)
+		result := conn.Exec(ctx, sqlText)
 		if result.Err() != nil {
-			t.Log(err.Error())
+			t.Log(result.Err())
 		}
 		require.Nil(t, err)
 
-		result = client.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
+		result = conn.Exec(ctx, fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", tableName, tableName))
 		if result.Err() != nil {
-			t.Log(err.Error())
+			t.Log(result.Err())
 		}
 		require.Nil(t, err)
 	}
@@ -85,16 +93,15 @@ func TestGrpcLogTable(t *testing.T) {
 
 	////////////
 	// QueryRow
-	row = client.QueryRow("select count(*) from " + tableName)
+	row = conn.QueryRow(ctx, "select count(*) from "+tableName)
 	err = row.Scan(&count)
 	if err != nil {
-		t.Log(err.Error())
+		t.Error(err.Error())
 	}
-	require.Nil(t, err)
-	t.Logf("count = %d", count)
+	t.Logf("QueryRow count = %d", count)
 
 	id, _ := idgen.NewV6()
-	client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+	conn.Exec(ctx, "insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
 		fmt.Sprintf("name-%02d", count+1),
 		time.Now(),
 		0.1001+0.1001*float32(count),
@@ -102,11 +109,11 @@ func TestGrpcLogTable(t *testing.T) {
 
 	////////////
 	// Append - log table
-	appender, err := client.Appender(tableName)
+	t.Log("Append test")
+	appender, err := conn.Appender(ctx, tableName)
 	if err != nil {
-		t.Log(err.Error())
+		t.Error("Appender error", err.Error())
 	}
-	require.Nil(t, err)
 	for i := 0; i < 10; i++ {
 		id, _ := idgen.NewV6()
 		err := appender.Append(
@@ -120,14 +127,20 @@ func TestGrpcLogTable(t *testing.T) {
 			"pname",
 			0,
 			nil)
-		require.Nil(t, err)
+		if err != nil {
+			t.Errorf("Append fail %s", err.Error())
+			break
+		}
 	}
 	appender.Close()
 
 	////////////
 	// Query
-	rows, err := client.Query("select name, time, value, id from " + tableName)
-	require.Nil(t, err)
+	t.Log("Query test")
+	rows, err := conn.Query(ctx, "select name, time, value, id from "+tableName)
+	if err != nil {
+		t.Errorf("ERR> %s\n", err.Error())
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var name string
@@ -136,7 +149,7 @@ func TestGrpcLogTable(t *testing.T) {
 		var id string
 		err := rows.Scan(&name, &ts, &value, &id)
 		if err != nil {
-			t.Logf("ERR> %v", err.Error())
+			t.Errorf("ERR> %v", err.Error())
 			break
 		}
 		t.Logf("==> %v %v %v %v", name, ts, value, id)
@@ -144,12 +157,13 @@ func TestGrpcLogTable(t *testing.T) {
 
 	////////////
 	// QueryRow
-	row = client.QueryRow("select count(*) from " + tableName)
+	row = conn.QueryRow(ctx, "select count(*) from "+tableName)
 	if row.Err() != nil {
-		fmt.Printf("ERR> %s\n", row.Err().Error())
+		t.Errorf("ERR> %s\n", row.Err().Error())
 	}
 	err = row.Scan(&count)
-	require.Nil(t, err)
-	t.Logf("count = %d", count)
-	require.Nil(t, err)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	t.Logf("Query Row count = %d", count)
 }

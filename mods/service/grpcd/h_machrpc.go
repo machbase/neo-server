@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-server/mods/leak"
 	spi "github.com/machbase/neo-spi"
@@ -24,8 +25,72 @@ func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.P
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	rsp.Success, rsp.Reason = true, "success"
+	if pinger, ok := s.dbConn.(spi.Pinger); ok {
+		if _, err := pinger.Ping(); err != nil {
+			rsp.Reason = err.Error()
+		} else {
+			rsp.Success, rsp.Reason = true, "success"
+		}
+	} else {
+		rsp.Reason = "ping not supproted"
+	}
 	rsp.Token = req.Token
+	return rsp, nil
+}
+
+func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.ConnResponse, error) {
+	rsp := &machrpc.ConnResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Conn panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	connOpts := []spi.ConnectOption{}
+	switch s.db.(type) {
+	case spi.DatabaseClient:
+		connOpts = append(connOpts, machrpc.WithPassword(req.User, req.Password))
+	case spi.DatabaseServer:
+		connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+	}
+	if conn, err := s.db.Connect(pctx, connOpts...); err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		h := s.node.Generate().Base64()
+		parole := &connParole{
+			rawConn: conn,
+			handle:  h,
+			cretime: tick,
+		}
+		s.pool[h] = parole
+		rsp.Conn = &machrpc.ConnHandle{Handle: h}
+		rsp.Success, rsp.Reason = true, "success"
+	}
+	return rsp, nil
+}
+
+func (s *grpcd) ConnClose(pctx context.Context, req *machrpc.ConnCloseRequest) (*machrpc.ConnCloseResponse, error) {
+	rsp := &machrpc.ConnCloseResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("ConnClose panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	h := req.Conn.Handle
+	if parole, ok := s.pool[h]; !ok {
+		rsp.Reason = fmt.Sprintf("Conn does not exist %q", h)
+	} else {
+		if err := parole.rawConn.Close(); err != nil {
+			s.log.Warnf("connection %q close error, %s", h, err.Error())
+			rsp.Reason = err.Error()
+		} else {
+			delete(s.pool, h)
+			rsp.Success, rsp.Reason = true, "success"
+		}
+	}
 	return rsp, nil
 }
 
@@ -39,11 +104,11 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	aux, ok := s.db.(spi.DatabaseAux)
+	explainer, ok := s.dbConn.(spi.Explainer)
 	if !ok {
 		return nil, fmt.Errorf("server info is unavailable")
 	}
-	if plan, err := aux.Explain(req.Sql, req.Full); err == nil {
+	if plan, err := explainer.Explain(pctx, req.Sql, req.Full); err == nil {
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Plan = plan
 	} else {
@@ -63,7 +128,7 @@ func (s *grpcd) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.E
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	if result := s.db.Exec(req.Sql, params...); result.Err() == nil {
+	if result := s.dbConn.Exec(pctx, req.Sql, params...); result.Err() == nil {
 		rsp.RowsAffected = result.RowsAffected()
 		rsp.Success = true
 		rsp.Reason = result.Message()
@@ -86,7 +151,7 @@ func (s *grpcd) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*m
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	row := s.db.QueryRow(req.Sql, params...)
+	row := s.dbConn.QueryRow(pctx, req.Sql, params...)
 
 	if row.Err() != nil {
 		rsp.Reason = row.Err().Error()
@@ -119,7 +184,7 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 	}()
 
 	params := machrpc.ConvertPbToAny(req.Params)
-	realRows, err := s.db.Query(req.Sql, params...)
+	realRows, err := s.dbConn.Query(pctx, req.Sql, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -260,7 +325,7 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 	if len(req.Timeformat) > 0 {
 		opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
 	}
-	realAppender, err := s.db.Appender(req.TableName, opts...)
+	realAppender, err := s.dbConn.Appender(ctx, req.TableName, opts...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -271,7 +336,7 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 
 	rsp.Success = true
 	rsp.Reason = "success"
-	rsp.Handle = appender.Id()
+	rsp.Handle = &machrpc.AppenderHandle{Handle: appender.Id()}
 	rsp.TableName = tableName
 	rsp.TableType = int32(tableType)
 	return rsp, nil
@@ -315,14 +380,14 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 		}
 
 		if wrap == nil {
-			wrap, err = s.leakDetector.Appender(m.Handle)
+			wrap, err = s.leakDetector.Appender(m.Handle.Handle)
 			if err != nil {
 				s.log.Error("handle not found", m.Handle, err.Error())
 				return err
 			}
 		}
 
-		if wrap.Id() != m.Handle {
+		if wrap.Id() != m.Handle.Handle {
 			s.log.Error("handle changed", m.Handle)
 			return fmt.Errorf("not allowed changing handle in a stream")
 		}
@@ -340,6 +405,7 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 				}
 			}
 		}
+		/* TODO: remove
 		if len(m.Params) > 0 {
 			// for gRPC client that utilizes protobuf.Any (e.g: Python, C#, Java)
 			values := machrpc.ConvertPbToAny(m.Params)
@@ -349,6 +415,7 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 				return err
 			}
 		}
+		*/
 	}
 }
 

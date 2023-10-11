@@ -14,7 +14,8 @@ import (
 type ActionContext struct {
 	Line         string
 	Client       Client
-	DB           spi.Database
+	Conn         spi.Conn
+	Ctx          context.Context
 	Lang         language.Tag
 	TimeLocation *time.Location
 	TimeFormat   string

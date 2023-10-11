@@ -1,10 +1,12 @@
 package mqttd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/allowance"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
@@ -100,10 +102,14 @@ type HandlerConfig struct {
 type mqttd struct {
 	mqttd      mqtt.Server
 	db         spi.Database
+	dbConn     spi.Conn
 	log        logging.Log
 	appenders  cmap.ConcurrentMap
 	authServer security.AuthServer
 	tqlLoader  tql.Loader
+
+	dbCtx       context.Context
+	dbCtxCancel context.CancelFunc
 
 	listenAddresses     []string
 	handlers            []*HandlerConfig
@@ -118,6 +124,13 @@ type mqttd struct {
 func (svr *mqttd) Start() error {
 	if svr.db == nil {
 		return errors.New("no database instance")
+	}
+
+	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
+	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
+		return err
+	} else {
+		svr.dbConn = conn
 	}
 
 	for i, h := range svr.handlers {
@@ -173,6 +186,10 @@ func (svr *mqttd) Start() error {
 func (svr *mqttd) Stop() {
 	if svr.mqttd != nil {
 		svr.mqttd.Stop()
+	}
+	if svr.dbConn != nil {
+		svr.dbConn.Close()
+		svr.dbCtxCancel()
 	}
 }
 

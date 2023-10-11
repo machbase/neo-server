@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -11,18 +12,18 @@ import (
 //
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
-func Describe(db spi.Database, name string, includeHiddenColumns bool) (Description, error) {
+func Describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	tableName := strings.ToUpper(name)
 	if strings.HasPrefix(tableName, "V$") {
-		return describe_mv(db, name, includeHiddenColumns)
+		return describe_mv(ctx, conn, name, includeHiddenColumns)
 	} else if strings.HasPrefix(tableName, "M$") {
-		return describe_mv(db, name, includeHiddenColumns)
+		return describe_mv(ctx, conn, name, includeHiddenColumns)
 	} else {
-		return describe(db, name, includeHiddenColumns)
+		return describe(ctx, conn, name, includeHiddenColumns)
 	}
 }
 
-func describe(db spi.Database, name string, includeHiddenColumns bool) (Description, error) {
+func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
@@ -43,7 +44,7 @@ func describe(db spi.Database, name string, includeHiddenColumns bool) (Descript
 	}
 
 	if dbName != "" && dbName != "MACHBASEDB" {
-		row := db.QueryRow("select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
+		row := conn.QueryRow(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
 		if err := row.Scan(&dbId); err != nil {
 			return nil, err
 		}
@@ -62,7 +63,7 @@ func describe(db spi.Database, name string, includeHiddenColumns bool) (Descript
 		and j.DATABASE_ID = ?
 		and j.NAME = ?`
 
-	r := db.QueryRow(sqlText, userName, dbId, tableName)
+	r := conn.QueryRow(ctx, sqlText, userName, dbId, tableName)
 	if r.Err() != nil {
 		return nil, r.Err()
 	}
@@ -74,7 +75,7 @@ func describe(db spi.Database, name string, includeHiddenColumns bool) (Descript
 	d.User = userName
 	d.Name = tableName
 
-	rows, err := db.Query("select name, type, length, id from M$SYS_COLUMNS where table_id = ? order by id", d.Id)
+	rows, err := conn.Query(ctx, "select name, type, length, id from M$SYS_COLUMNS where table_id = ? order by id", d.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +96,7 @@ func describe(db spi.Database, name string, includeHiddenColumns bool) (Descript
 	return d, nil
 }
 
-func describe_mv(db spi.Database, name string, includeHiddenColumns bool) (Description, error) {
+func describe_mv(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
@@ -110,7 +111,7 @@ func describe_mv(db spi.Database, name string, includeHiddenColumns bool) (Descr
 		tablesTable = "M$TABLES"
 		columnsTable = "M$COLUMNS"
 	}
-	r := db.QueryRow(fmt.Sprintf("select name, type, flag, id, colcount from %s where name = ?", tablesTable), tableName)
+	r := conn.QueryRow(ctx, fmt.Sprintf("select name, type, flag, id, colcount from %s where name = ?", tablesTable), tableName)
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func describe_mv(db spi.Database, name string, includeHiddenColumns bool) (Descr
 	d.User = "SYS"
 	d.Name = tableName
 
-	rows, err := db.Query(fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
+	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {
 		return nil, err
 	}

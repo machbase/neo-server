@@ -1,6 +1,7 @@
 package httpd
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/do"
+	spi "github.com/machbase/neo-spi"
 )
 
 const (
@@ -252,7 +254,15 @@ func (svr *httpd) handleLakeGetTagList(ctx *gin.Context) {
 	sqlText := fmt.Sprintf("SELECT %s FROM _TAG_META%s", lakeSvr.tagColumn, hint)
 	svr.log.Debug(trackId, "query : ", sqlText)
 
-	data, err := svr.selectTagMetaList(ctx, sqlText)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	data, err := svr.selectTagMetaList(ctx, conn, sqlText)
 	if err != nil {
 		rsp.Message = err.Error()
 		ctx.JSON(http.StatusBadRequest, rsp)
@@ -268,9 +278,9 @@ func (svr *httpd) handleLakeGetTagList(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) selectTagMetaList(ctx *gin.Context, sqlText string) (*SelectTagList, error) {
+func (svr *httpd) selectTagMetaList(ctx *gin.Context, conn spi.Conn, sqlText string) (*SelectTagList, error) {
 	result := &SelectTagList{}
-	metaList, err := svr.getMetaData(sqlText)
+	metaList, err := svr.getMetaData(ctx, conn, sqlText)
 	if err != nil {
 		return result, err
 	}
@@ -508,7 +518,15 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	// rsp.Status = "success"
 	// rsp.Data = data
 
-	data, err := svr.selectData(sqlText, param.TagList)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	data, err := svr.selectData(ctx, conn, sqlText, param.TagList)
 	if err != nil {
 		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -741,7 +759,15 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	// data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "tag", param.TagList)
 
-	data, err := svr.selectData(sqlText, param.TagList)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	data, err := svr.selectData(ctx, conn, sqlText, param.TagList)
 	if err != nil {
 		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -822,7 +848,15 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 
 	svr.log.Infof(trackId, "query : ", sqlText)
 
-	dbData, err := svr.getData(sqlText, 0)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	dbData, err := svr.getData(ctx, conn, sqlText, 0)
 	if err != nil {
 		svr.log.Info(trackId, "get data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -900,7 +934,15 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 
 	svr.log.Infof(trackId, "query : ", sqlText)
 
-	data, err := svr.selectData(sqlText, tagList)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	data, err := svr.selectData(ctx, conn, sqlText, tagList)
 	if err != nil {
 		svr.log.Info(trackId, "select data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -919,11 +961,11 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 
 // struct 를 이용한 데이터 receive or map[string]interface => 모든 api에서 name,time,value일 경우
 // tagList []string 으로 매개변수 변경 후, split 된 길이를 체크 한 후에 2개 이상일 시 if문 추가
-func (svr *httpd) selectData(sqlText string, tagList []string) (*SelectReturn, error) {
+func (svr *httpd) selectData(ctx context.Context, conn spi.Conn, sqlText string, tagList []string) (*SelectReturn, error) {
 	t := time.Now()
 	result := &SelectReturn{}
 
-	rows, err := svr.db.Query(sqlText)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,6 +1100,14 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 		}
 	}
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
 	//  SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME, VALUE FROM TAG
 	sqlText := "SELECT " + makeScanHint("1", "TAG") //
 	sqlText += "NAME, "
@@ -1078,7 +1128,7 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 			sqlQuery := fmt.Sprintf("%s %s", sqlText, where)
 			svr.log.Debugf("%s [%d] query : %s", trackId, idx, sqlQuery)
 
-			dbData, err := svr.getData(sqlQuery, param.Scale)
+			dbData, err := svr.getData(ctx, conn, sqlQuery, param.Scale)
 			if err != nil {
 				svr.log.Infof("%s [%d] get data error : %s", trackId, idx, err.Error())
 				return
@@ -1194,7 +1244,15 @@ func (svr *httpd) GetStatData(ctx *gin.Context) {
 
 	svr.log.Debug(trackId, "query : ", sqlText)
 
-	dbData, err := svr.getData(sqlText, param.Scale)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	dbData, err := svr.getData(ctx, conn, sqlText, param.Scale)
 	if err != nil {
 		svr.log.Info(trackId, "get data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -1367,7 +1425,15 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 
 	svr.log.Debug(trackId, "query : ", sqlText)
 
-	dbData, err := svr.getData(sqlText, param.Scale)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Message = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
+	dbData, err := svr.getData(ctx, conn, sqlText, param.Scale)
 	if err != nil {
 		svr.log.Info(trackId, "get data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -1725,10 +1791,10 @@ func (svr *httpd) checkCalcUnit(ctx *gin.Context, calcMode string) (string, erro
 	return calcMode, err
 }
 
-func (svr *httpd) getMetaData(sqlText string) (*MetaResult, error) {
+func (svr *httpd) getMetaData(ctx context.Context, conn spi.Conn, sqlText string) (*MetaResult, error) {
 	result := &MetaResult{}
 
-	rows, err := svr.db.Query(sqlText)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		return result, err
 	}
@@ -1748,10 +1814,10 @@ func (svr *httpd) getMetaData(sqlText string) (*MetaResult, error) {
 }
 
 // scale 적용, 데이터 받은 후에 수정
-func (svr *httpd) getData(sqlText string, scale int) (*MachbaseResult, error) {
+func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, scale int) (*MachbaseResult, error) {
 	result := &MachbaseResult{}
 
-	rows, err := svr.db.Query(sqlText)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		return result, err
 	}
@@ -2237,8 +2303,16 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		return
 	}
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
+	defer conn.Close()
+
 	// check table existence ? or just use fixed table.
-	exists, _ := do.ExistsTable(svr.db, req.TableName)
+	exists, _ := do.ExistsTable(ctx, conn, req.TableName)
 	if !exists {
 		rsp.Reason = fmt.Sprintf("%q table does not exist.", req.TableName)
 		ctx.JSON(http.StatusBadRequest, rsp)
@@ -2317,7 +2391,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		params = append(params, req.Limit)
 	}
 
-	rows, err := svr.db.Query(sqlText, params...)
+	rows, err := conn.Query(ctx, sqlText, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusInternalServerError, rsp)

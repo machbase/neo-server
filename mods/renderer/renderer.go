@@ -21,17 +21,17 @@ type Renderer interface {
 
 type ChartQuery struct {
 	TagPath      *tql.TagPath
-	RangeFunc    func(db spi.Database) (time.Time, time.Time)
+	RangeFunc    func(ctx context.Context, conn spi.Conn) (time.Time, time.Time)
 	Label        string
 	TimeLocation *time.Location
 	TimeRange    time.Duration
 }
 
-func (dq *ChartQuery) Query(db spi.Database) (*model.RenderingData, error) {
-	rangeFrom, rangeTo := dq.RangeFunc(db)
+func (dq *ChartQuery) Query(ctx context.Context, conn spi.Conn) (*model.RenderingData, error) {
+	rangeFrom, rangeTo := dq.RangeFunc(ctx, conn)
 	fields := strings.Join(dq.TagPath.Field.Columns, ",")
 	lastSql := fmt.Sprintf(`select TIME, %s from %s where NAME = ? AND TIME between ? AND ? order by time`, fields, dq.TagPath.Table)
-	rows, err := db.Query(lastSql, dq.TagPath.Tag, rangeFrom, rangeTo)
+	rows, err := conn.Query(ctx, lastSql, dq.TagPath.Tag, rangeFrom, rangeTo)
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +96,14 @@ func BuildChartQueries(tagPaths []string, cmdTimestamp string, cmdRange time.Dur
 			queries[i].Label = tagPath.Tag + "-" + compositeName
 		}
 
-		queries[i].RangeFunc = func(db spi.Database) (time.Time, time.Time) {
+		queries[i].RangeFunc = func(ctx context.Context, conn spi.Conn) (time.Time, time.Time) {
 			var timestamp time.Time
 			var epoch int64
 			var err error
 			if cmdTimestamp == "now" || cmdTimestamp == "" {
 				timestamp = time.Now()
 			} else if cmdTimestamp == "last" {
-				row := db.QueryRow(fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].TagPath.Table), queries[i].TagPath.Tag)
+				row := conn.QueryRow(ctx, fmt.Sprintf("select max_time from V$%s_STAT where name = ?", queries[i].TagPath.Table), queries[i].TagPath.Tag)
 				if err := row.Scan(&timestamp); err != nil {
 					timestamp = time.Now()
 				}

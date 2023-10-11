@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,16 +18,24 @@ func TestGrpcTagTable(t *testing.T) {
 	var count int
 	var tableName = strings.ToUpper("tagdata")
 
-	client := machrpc.NewClient(
+	client, err := machrpc.NewClient(
 		machrpc.WithServer("unix://../tmp/mach.sock"),
 		machrpc.WithCertificate("../tmp/machbase_pref/cert/machbase_key.pem", "../tmp/machbase_pref/cert/machbase_cert.pem", "../tmp/machbase_pref/cert/machbase_cert.pem"),
 		machrpc.WithQueryTimeout(10*time.Second))
-	err := client.Connect()
-	//err := client.Connect("tcp://127.0.0.1:4056")
-	require.Nil(t, err)
-	defer client.Disconnect()
 
-	row := client.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
+	require.Nil(t, err)
+	defer client.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := client.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	if err != nil {
+		t.Error(err.Error())
+	}
+	defer conn.Close()
+
+	row := conn.QueryRow(ctx, "select count(*) from M$SYS_TABLES where name = ?", tableName)
 	require.NotNil(t, row)
 	if row.Err() != nil {
 		panic(row.Err())
@@ -39,7 +48,7 @@ func TestGrpcTagTable(t *testing.T) {
 		t.Logf("table '%s' exists", tableName)
 		if dropTable {
 			t.Logf("drop table '%s'", tableName)
-			result := client.Exec("drop table " + tableName)
+			result := conn.Exec(ctx, "drop table "+tableName)
 			if result.Err() != nil {
 				t.Logf("drop table: %s", err.Error())
 			}
@@ -67,7 +76,7 @@ func TestGrpcTagTable(t *testing.T) {
 				payload         json
 			)`, tableName)
 
-		result := client.Exec(sqlText)
+		result := conn.Exec(ctx, sqlText)
 		if result.Err() != nil {
 			panic(result.Err())
 		}
@@ -85,7 +94,7 @@ func TestGrpcTagTable(t *testing.T) {
 
 	////////////
 	// QueryRow
-	row = client.QueryRow("select count(*) from " + tableName)
+	row = conn.QueryRow(ctx, "select count(*) from "+tableName)
 	err = row.Scan(&count)
 	if err != nil {
 		panic(err)
@@ -94,7 +103,7 @@ func TestGrpcTagTable(t *testing.T) {
 	t.Logf("count = %d", count)
 
 	id, _ := idgen.NewV6()
-	result := client.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+	result := conn.Exec(ctx, "insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
 		fmt.Sprintf("name-%02d", count+1),
 		time.Now(),
 		0.1001+0.1001*float32(count),
@@ -107,7 +116,7 @@ func TestGrpcTagTable(t *testing.T) {
 
 	////////////
 	// Append - tag table
-	appender, err := client.Appender(tableName)
+	appender, err := conn.Appender(ctx, tableName)
 	if err != nil {
 		t.Log(err.Error())
 	}
@@ -132,7 +141,7 @@ func TestGrpcTagTable(t *testing.T) {
 
 	////////////
 	// Query
-	rows, err := client.Query("select name, time, value, id from " + tableName)
+	rows, err := conn.Query(ctx, "select name, time, value, id from "+tableName)
 	require.Nil(t, err)
 	//defer rows.Close()
 	for rows.Next() {
@@ -151,7 +160,7 @@ func TestGrpcTagTable(t *testing.T) {
 
 	////////////
 	// QueryRow
-	row = client.QueryRow("select count(*) from tagdata")
+	row = conn.QueryRow(ctx, "select count(*) from tagdata")
 	if row.Err() != nil {
 		fmt.Printf("ERR> %s\n", row.Err().Error())
 	}

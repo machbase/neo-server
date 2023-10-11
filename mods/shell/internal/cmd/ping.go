@@ -52,7 +52,7 @@ func doPing(ctx *client.ActionContext) {
 		return
 	}
 
-	if pinger, ok := ctx.DB.(spi.Pinger); ok {
+	if pinger, ok := ctx.Conn.(spi.Pinger); ok {
 		for i := 0; i < cmd.Repeat; i++ {
 			if i != 0 {
 				time.Sleep(time.Second)

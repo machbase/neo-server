@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -17,7 +18,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
+func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
 	columns := descColumns.Columns().Names()
 	columns = columns[:3]
 
@@ -68,5 +69,5 @@ func WriteLineProtocol(db spi.Database, dbName string, descColumns ColumnDescrip
 		rows = append(rows, values)
 	}
 
-	return Insert(db, dbName, columns, rows)
+	return Insert(ctx, conn, dbName, columns, rows)
 }

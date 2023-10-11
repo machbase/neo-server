@@ -21,7 +21,15 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	rsp := &LicenseResponse{Success: false, Reason: "unspecified"}
 	tick := time.Now()
 
-	nfo, err := do.GetLicenseInfo(svr.db)
+	conn, err := svr.getUserConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	defer conn.Close()
+
+	nfo, err := do.GetLicenseInfo(ctx, conn)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -61,7 +69,16 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	nfo, err := do.InstallLicenseData(svr.db, svr.licenseFilePath, content)
+
+	conn, err := svr.getUserConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	defer conn.Close()
+
+	nfo, err := do.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		rsp.Reason = err.Error()

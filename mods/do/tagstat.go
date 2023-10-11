@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ type TagStatInfo struct {
 	RecentRowTime time.Time `json:"recent_row_time"`
 }
 
-func TagStat(db spi.Database, table string, tag string) (*TagStatInfo, error) {
+func TagStat(ctx context.Context, conn spi.Conn, table string, tag string) (*TagStatInfo, error) {
 	sqlText := fmt.Sprintf(`select
 			name, row_count, min_time, max_time,
 			min_value, min_value_time,
@@ -30,7 +31,7 @@ func TagStat(db spi.Database, table string, tag string) (*TagStatInfo, error) {
 		where name = ?`, strings.ToUpper(table))
 
 	nfo := &TagStatInfo{}
-	row := db.QueryRow(sqlText, tag)
+	row := conn.QueryRow(ctx, sqlText, tag)
 	err := row.Scan(&nfo.Name, &nfo.RowCount, &nfo.MinTime, &nfo.MaxTime,
 		&nfo.MinValue, &nfo.MinValueTime, &nfo.MaxValue, &nfo.MaxValueTime,
 		&nfo.RecentRowTime)

@@ -33,10 +33,16 @@ func (svr *httpd) handleLineProtocol(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleLineWrite(ctx *gin.Context) {
-	dbName := ctx.Query("db")
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
 
+	dbName := ctx.Query("db")
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(svr.db, dbName, false); err != nil {
+	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
 		ctx.JSON(
 			http.StatusBadRequest,
 			gin.H{"error": fmt.Sprintf("column error: %s", err.Error())})
@@ -121,7 +127,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		result := do.WriteLineProtocol(svr.db, dbName, desc.Columns, measurement, fields, tags, ts)
+		result := do.WriteLineProtocol(ctx, conn, dbName, desc.Columns, measurement, fields, tags, ts)
 		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(

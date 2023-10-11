@@ -1,9 +1,10 @@
 package httpd
 
-//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../../neo-spi Database DatabaseServer DatabaseClient DatabaseAuth Result Rows Row Appender
+//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../../neo-spi Database DatabaseServer DatabaseClient DatabaseAuth Conn Result Rows Row Appender
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -67,7 +68,16 @@ func (fda *mockServer) RefreshToken() string {
 	return fda.refreshToken
 }
 
-func (fda *mockServer) Appender(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+func (fda *mockServer) Connect(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	return &mockConn{}, nil
+}
+
+type mockConn struct {
+	spi.Conn
+}
+
+func (fda *mockConn) Close() error { return nil }
+func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
 	ret := &AppenderMock{}
 	ret.AppendFunc = func(values ...any) error { return nil }
 	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
