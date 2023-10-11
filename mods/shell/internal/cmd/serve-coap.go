@@ -18,7 +18,7 @@ func init() {
 		PcFunc: pcServeCoap,
 		Action: doServeCoap,
 		Desc:   "Serve CoAP",
-		Usage:  helpServeCoap,
+		Usage:  strings.ReplaceAll(helpServeCoap, "\t", "    "),
 
 		Experimental: true,
 	})

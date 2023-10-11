@@ -16,7 +16,7 @@ func init() {
 		PcFunc: pcSshKey,
 		Action: doSshKey,
 		Desc:   "Manage ssh keys",
-		Usage:  helpSshKey,
+		Usage:  strings.ReplaceAll(helpSshKey, "\t", "    "),
 	})
 }
 

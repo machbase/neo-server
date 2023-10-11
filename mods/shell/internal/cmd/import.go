@@ -25,7 +25,7 @@ func init() {
 		PcFunc: pcImport,
 		Action: doImport,
 		Desc:   "Import table",
-		Usage:  helpImport,
+		Usage:  strings.ReplaceAll(helpImport, "\t", "    "),
 	})
 }
 

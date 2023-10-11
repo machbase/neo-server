@@ -17,7 +17,7 @@ func init() {
 		PcFunc: pcSubscriber,
 		Action: doSubscriber,
 		Desc:   "Manage subscribers",
-		Usage:  helpSubscriber,
+		Usage:  strings.ReplaceAll(helpSubscriber, "\t", "    "),
 	})
 }
 

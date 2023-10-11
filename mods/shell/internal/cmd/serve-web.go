@@ -21,7 +21,7 @@ func init() {
 		PcFunc: pcServeWeb,
 		Action: doServeWeb,
 		Desc:   "Serve Web UI",
-		Usage:  helpServeWeb,
+		Usage:  strings.ReplaceAll(helpServeWeb, "\t", "    "),
 
 		Experimental: true,
 	})

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"compress/gzip"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
@@ -21,7 +22,7 @@ func init() {
 		PcFunc: pcExport,
 		Action: doExport,
 		Desc:   "Export table",
-		Usage:  helpExport,
+		Usage:  strings.ReplaceAll(helpExport, "\t", "    "),
 	})
 }
 

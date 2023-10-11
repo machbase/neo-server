@@ -22,7 +22,7 @@ func init() {
 		PcFunc: pcShow,
 		Action: doShow,
 		Desc:   "Display information",
-		Usage:  helpShow,
+		Usage:  strings.ReplaceAll(helpShow, "\t", "    "),
 	})
 }
 

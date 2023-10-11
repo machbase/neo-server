@@ -16,7 +16,7 @@ func init() {
 		PcFunc: pcExplain,
 		Action: doExplain,
 		Desc:   "Display execution plan of query",
-		Usage:  helpExplain,
+		Usage:  strings.ReplaceAll(helpExplain, "\t", "    "),
 	})
 }
 

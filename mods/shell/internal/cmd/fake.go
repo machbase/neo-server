@@ -19,7 +19,7 @@ func init() {
 		PcFunc:       pcFake,
 		Action:       doFake,
 		Desc:         "Generating fake data and writing into the specified table",
-		Usage:        helpFake,
+		Usage:        strings.ReplaceAll(helpFake, "\t", "    "),
 		Experimental: false,
 	})
 }

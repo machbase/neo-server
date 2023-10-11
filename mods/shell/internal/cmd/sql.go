@@ -26,7 +26,7 @@ func init() {
 		PcFunc: pcSql,
 		Action: doSql,
 		Desc:   "Execute sql query",
-		Usage:  helpSql,
+		Usage:  strings.ReplaceAll(helpSql, "\t", "    "),
 	})
 }
 

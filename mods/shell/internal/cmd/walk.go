@@ -23,7 +23,7 @@ func init() {
 		PcFunc: pcWalk,
 		Action: doWalk,
 		Desc:   "Execute query then walk-through the results",
-		Usage:  helpWalk,
+		Usage:  strings.ReplaceAll(helpWalk, "\t", "    "),
 
 		Deprecated:        true,
 		DeprecatedMessage: "Use TQL instead.",

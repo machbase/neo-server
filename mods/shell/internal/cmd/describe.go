@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/util"
@@ -14,7 +16,7 @@ func init() {
 		PcFunc: pcDescribe,
 		Action: doDescribe,
 		Desc:   "Describe table structure",
-		Usage:  helpDescribe,
+		Usage:  strings.ReplaceAll(helpDescribe, "\t", "    "),
 	})
 }
 

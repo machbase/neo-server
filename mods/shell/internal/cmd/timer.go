@@ -16,7 +16,7 @@ func init() {
 		PcFunc:       pcTimer,
 		Action:       doTimer,
 		Desc:         "Manage schedule of timers",
-		Usage:        helpTimer,
+		Usage:        strings.ReplaceAll(helpTimer, "\t", "    "),
 		Experimental: true,
 	})
 }
