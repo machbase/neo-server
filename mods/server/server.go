@@ -368,7 +368,7 @@ func (s *svr) Start() error {
 
 	// leak detector
 	leakDetector := leak.NewDetector(leak.Timer(10 * time.Second))
-	mach.DefaultDetective = leakDetector
+	// mach.DefaultDetective = leakDetector
 
 	// create database instance
 	s.db, err = spi.NewDatabase(mach.FactoryName)

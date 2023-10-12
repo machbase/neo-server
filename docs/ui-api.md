@@ -365,6 +365,21 @@ Returns Dir entries if the path is pointing a directory.
 
 - `command` : `clone`, `pull`
 
+### PUT /web/api/files/*path
+
+Rename(move) a file (or a directory).
+
+`RenameReq`
+
+```json
+{
+    "destination": "target path",
+}
+```
+
+This api returns status code `200 OK` if the operation has done successfully.
+
+
 ### DELETE /web/api/files/*path
 
 Delete the file at the `path`, if the path is pointing a directory and is not empty, it will return error.
