@@ -25,13 +25,13 @@ func init() {
 
 const helpBridge = `  bridge command [options]
   commands:
-    list                            shows registered bridges
-    add [options] <name>  <conn>    add bridge
+    list                           shows registered bridges
+    add [options] <name>  <conn>   add bridge
         options:
-            -t,--type <type>        bridge type [ sqlite, mqtt, ... (see below) ]
+            -t,--type <type>       bridge type [ sqlite, mqtt, ... (see below) ]
         args:
-            name                    name of the connection
-            conn                    connection string
+            name                   name of the connection
+            conn                   connection string
     del     <name>                 remove bridge
     test    <name>                 test connectivity of the bridge
     exec    <name> <command>       execute command on the bridge

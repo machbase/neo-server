@@ -31,6 +31,8 @@ type ShellCmd struct {
 	ServerCertPath string   `name:"server-cert" help:"path to server certificate"`
 	ClientCertPath string   `name:"client-cert" help:"path to client certificate"`
 	ClientKeyPath  string   `name:"client-key" help:"path to client key"`
+	User           string   `name:"user" short:"u" default:"sys" help:"user name"`
+	Password       string   `name:"password" short:"p" default:"manager" help:"password"`
 }
 
 var DefaultServerAddress = "tcp://127.0.0.1:5655"
@@ -76,6 +78,8 @@ func Shell(cmd *ShellCmd) {
 	clientConf.ServerCertPath = cmd.ServerCertPath
 	clientConf.ClientCertPath = cmd.ClientCertPath
 	clientConf.ClientKeyPath = cmd.ClientKeyPath
+	clientConf.User = cmd.User
+	clientConf.Password = cmd.Password
 
 	var command = ""
 	if len(cmd.Args) > 0 {
@@ -150,6 +154,8 @@ func HelpKong(options kong.HelpOptions, ctx *kong.Context) error {
     -h, --help             Show context-sensitive help.
         --version          show version
     -s, --server=<addr>    server address (default %s)
+    -u, --user=<user name> user name (default 'sys')
+    -p, --password=<pass>  password (default 'manager')
 `, serverAddr)
 	return nil
 }

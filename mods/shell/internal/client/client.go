@@ -2,6 +2,7 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -73,6 +74,8 @@ type Config struct {
 	ServerCertPath string
 	ClientCertPath string
 	ClientKeyPath  string
+	User           string
+	Password       string
 	Prompt         string
 	PromptCont     string
 	QueryTimeout   time.Duration
@@ -110,6 +113,21 @@ func DefaultConfig() *Config {
 }
 
 func New(conf *Config, interactive bool) Client {
+	if conf.User == "" {
+		if user, ok := os.LookupEnv("NEOSHELL_USER"); ok {
+			conf.User = user
+		} else {
+			conf.User = "sys"
+		}
+	}
+	if conf.Password == "" {
+		if pass, ok := os.LookupEnv("NEOSHELL_PASSWORD"); ok {
+			conf.Password = pass
+		} else {
+			conf.Password = "manager"
+		}
+	}
+	conf.Prompt = fmt.Sprintf("\033[31m%s@machbase-neo»\033[0m ", conf.User)
 	return &client{
 		conf:        conf,
 		interactive: interactive,
@@ -123,6 +141,9 @@ func (cli *client) Start() error {
 	}
 	cli.pref = pref
 
+	if err := cli.checkDatabase(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -160,6 +181,14 @@ func (cli *client) checkDatabase() error {
 		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
 	if err != nil {
 		return err
+	}
+
+	// user authentication
+	auth := machcli.(spi.DatabaseAuth)
+	if result, err := auth.UserAuth(cli.conf.User, cli.conf.Password); err != nil {
+		return err
+	} else if !result {
+		return errors.New("invalid username or password")
 	}
 
 	// check connectivity to server
@@ -355,7 +384,7 @@ func (cli *client) Process(line string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := cli.db.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	conn, err := cli.db.Connect(ctx, machrpc.WithPassword(cli.conf.User, cli.conf.Password))
 	if err != nil {
 		cli.Println("ERR", err.Error())
 		return

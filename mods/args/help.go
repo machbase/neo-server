@@ -72,5 +72,6 @@ serve flags:
 
 const helpShellText = `flags:
   -s, --server=<addr>     server address (default %s)
-
+  -u, --user=<user>       username (default 'sys')
+  -p, --password=<pass>   password (default 'manager')
 `

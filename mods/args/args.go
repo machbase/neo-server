@@ -122,6 +122,20 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 		} else if (s == "--server" || s == "-s") && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Shell.ServerAddr = cli.args[i+1]
 			i++
+		} else if strings.HasPrefix(s, "--user=") {
+			cli.Shell.User = s[7:]
+		} else if strings.HasPrefix(s, "-u=") {
+			cli.Shell.User = s[3:]
+		} else if s == "--user" || s == "-u" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
+			cli.Shell.User = cli.args[i+1]
+			i++
+		} else if strings.HasPrefix(s, "--password=") {
+			cli.Shell.Password = s[11:]
+		} else if strings.HasPrefix(s, "-p=") {
+			cli.Shell.Password = s[3:]
+		} else if s == "--password" || s == "-p" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
+			cli.Shell.Password = cli.args[i+1]
+			i++
 		} else {
 			// other flags and args should be passed to neoshell
 			cli.Shell.Args = append(cli.Shell.Args, s)
