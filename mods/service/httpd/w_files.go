@@ -237,7 +237,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 		}
 	case http.MethodPut:
 		req := RenameReq{}
-		if err := ctx.Bind(req); err != nil {
+		if err := ctx.Bind(&req); err != nil {
 			rsp.Reason = err.Error()
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
