@@ -7,7 +7,7 @@ on:
 
 jobs:
   darwin-arm64:
-    runs-on: [ self-hosted, macOS, ARM64 ]
+    runs-on: [ self-hosted, ARM64, macOS ]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -28,7 +28,7 @@ jobs:
             packages/neow-v*.zip
           retention-days: 5
   darwin-amd64:
-    runs-on: [ self-hosted, macOS, X64 ]
+    runs-on: [ self-hosted, X64, macOS ]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
