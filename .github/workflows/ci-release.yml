@@ -31,7 +31,7 @@ jobs:
               overwrite: true
               file_glob: true
     darwin-amd64:
-        runs-on: [ macos-12 ]
+        runs-on: [ self-hosted, macOS, X64 ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
@@ -131,7 +131,7 @@ jobs:
               file_glob: true
 
     windows-amd64:
-        runs-on: [ windows-2022 ]
+        runs-on: [ windows-latest ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
