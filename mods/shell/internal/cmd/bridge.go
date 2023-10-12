@@ -19,7 +19,7 @@ func init() {
 		PcFunc: pcBridge,
 		Action: doBridge,
 		Desc:   "Manage bridges",
-		Usage:  helpBridge,
+		Usage:  strings.ReplaceAll(helpBridge, "\t", "    "),
 	})
 }
 
