@@ -118,8 +118,12 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "newdir", ret.Children[0].Name)
 	require.Equal(t, "newdir2", ret.Children[1].Name)
 
+	// rename file
+	err = ssfs.Rename("/data1/newdir/test.txt", "/test.txt")
+	require.Nil(t, err)
+
 	// delete file
-	err = ssfs.Remove("/data1/newdir/test.txt")
+	err = ssfs.Remove("/test.txt")
 	require.Nil(t, err)
 
 	// delete directory

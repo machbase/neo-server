@@ -235,7 +235,35 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 				return
 			}
 		}
+	case http.MethodPut:
+		req := RenameReq{}
+		if err := ctx.Bind(req); err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
+		if req.Dest == "" {
+			rsp.Reason = "destination is not specified."
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
+		if err := svr.serverFs.Rename(path, req.Dest); err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		rsp.Success, rsp.Reason = true, "success"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusOK, rsp)
+		return
 	}
+}
+
+type RenameReq struct {
+	Dest string `json:"destination"`
 }
 
 type GitCloneReq struct {

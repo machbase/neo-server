@@ -327,6 +327,28 @@ func (ssfs *SSFS) RemoveRecursive(path string) error {
 	return os.RemoveAll(abspath)
 }
 
+func (ssfs *SSFS) Rename(path string, dest string) error {
+	idx, _, absDstPath := ssfs.findDir(dest)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	_, err := os.Stat(absDstPath)
+	if err == nil {
+		return fmt.Errorf("%q already exists", dest)
+	}
+
+	idx, _, absSrcPath := ssfs.findDir(path)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	_, err = os.Stat(absSrcPath)
+	if err != nil {
+		return fmt.Errorf("unable to access %s, %s", path, err.Error())
+	}
+
+	return os.Rename(absSrcPath, absDstPath)
+}
+
 func (ssfs *SSFS) Set(path string, content []byte) error {
 	idx, _, abspath := ssfs.findDir(path)
 	if idx == -1 {
