@@ -201,7 +201,7 @@ func (svr *httpd) Router() *gin.Engine {
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/tags", svr.handleLakeGetTagList)
-			group.GET("/logs", svr.handleLakeGetLogs)
+			// group.GET("/values/logs", svr.handleLakeGetLogs)
 			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
 			// group.POST("/execquery",svr.handleLakeExecQuery)

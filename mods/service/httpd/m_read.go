@@ -890,9 +890,17 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 		return
 	}
 
+	// sqlText := fmt.Sprintf(SqlTidy(`
+	// 	SELECT %s
+	// 	FROM TAGDATA
+	// 	WHERE %s AND %s
+	// `), selectText,
+	// 	makeInCondition("NAME", tagList, false, true),
+	// 	makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), false))
+
 	sqlText := fmt.Sprintf(SqlTidy(`
-		SELECT %s 
-		FROM TAGDATA
+		SELECT %s
+		FROM TAG
 		WHERE %s AND %s
 	`), selectText,
 		makeInCondition("NAME", tagList, false, true),
@@ -911,6 +919,8 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 
 	rsp.Status = "success"
 	rsp.Data = data
+
+	svr.log.Infof("[GetLastData] %+v", data)
 
 	svr.log.Trace(trackId, "select last data success")
 
@@ -2213,7 +2223,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		req.StartTime = ctx.Query("start_time")
 		req.EndTime = ctx.Query("end_time")
 		req.Level = strInt(ctx.Query("level"), 0)
-		req.Limit = strInt(ctx.Query("limit"), 0)
+		req.Limit = strInt(ctx.Query("limit"), 100)
 		req.Offset = strInt(ctx.Query("offset"), 0)
 		req.Job = ctx.Query("job")
 		req.Keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
@@ -2223,6 +2233,8 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
+	req.EdgeId = "DEM_DCU00_5564E86124"
+	req.TableName = "logdata"
 
 	if req.TableName == "" {
 		rsp.Reason = "table name is empty"
@@ -2252,10 +2264,11 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	params := []any{}
 	andFlag := false
 	if req.EdgeId != "" {
-		sqlText += "edgeid = ?"
+		sqlText += " WHERE edgeid = ?"
 		params = append(params, req.EdgeId)
 		andFlag = true
 	}
+
 	if req.StartTime != "" {
 		if andFlag {
 			sqlText += " AND "
@@ -2263,6 +2276,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		sqlText += fmt.Sprintf("time >= FROM_TIMESTAMP(%s)", req.StartTime)
 		andFlag = true
 	}
+
 	if req.EndTime != "" {
 		if andFlag {
 			sqlText += " AND "
@@ -2270,6 +2284,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		sqlText += fmt.Sprintf("time <= FROM_TIMESTAMP(%s)", req.EndTime)
 		andFlag = true
 	}
+
 	if req.Level >= 1 && req.Level <= 5 {
 		if andFlag {
 			sqlText += " AND "
@@ -2278,6 +2293,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		params = append(params, req.Level)
 		andFlag = true
 	}
+
 	if req.Job != "" {
 		if andFlag {
 			sqlText += " AND "
@@ -2286,6 +2302,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		params = append(params, req.Job)
 		andFlag = true
 	}
+
 	if req.Keyword != "" {
 		if andFlag {
 			sqlText += " AND "
@@ -2298,9 +2315,11 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		params = append(params, req.Keyword)
 		andFlag = true
 	}
+
 	if andFlag {
 		sqlText += " "
 	}
+
 	if req.Offset > 0 {
 		sqlText += "limit ?, ?"
 		params = append(params, req.Offset)
@@ -2311,7 +2330,6 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	}
 
 	svr.log.Info("sqlText: ", sqlText)
-	svr.log.Info("params: ", params)
 	rows, err := svr.db.Query(sqlText, params...)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -2335,7 +2353,6 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		err = rows.Scan(&row.EdgeId, &row.Time, &row.FileName, &row.Job, &row.Level, &row.Line)
 		if err != nil {
 			rsp.Reason = err.Error()
-			svr.log.Error("error: ", rsp.Reason)
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
