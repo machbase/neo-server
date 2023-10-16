@@ -70,9 +70,9 @@ func build(target string) error {
 
 	env := map[string]string{"GO111MODULE": "on"}
 	if target == "neoshell" {
-		env["CGO_ENABLE"] = "0"
+		env["CGO_ENABLED"] = "0"
 	} else {
-		env["CGO_ENABLE"] = "1"
+		env["CGO_ENABLED"] = "1"
 	}
 
 	args := []string{"build"}
@@ -112,7 +112,7 @@ func buildNeoW() error {
 	fmt.Println("Build", "neow", vBuildVersion, "...")
 	env := map[string]string{
 		"GO111MODULE": "on",
-		"CGO_ENABLE":  "0",
+		"CGO_ENABLED": "0",
 	}
 	appIcon, err := filepath.Abs(filepath.Join(".", "main", "neow", "res", "appicon.png"))
 	if err != nil {
