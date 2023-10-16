@@ -255,7 +255,7 @@ func Test() error {
 
 	env := map[string]string{
 		"GO111MODULE": "on",
-		"CGO_ENABLE":  "1",
+		"CGO_ENABLED": "1",
 	}
 
 	if err := sh.RunWithV(env, "go", "mod", "tidy"); err != nil {
