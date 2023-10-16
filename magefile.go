@@ -69,10 +69,10 @@ func build(target string) error {
 	goVersion := strings.TrimPrefix(runtime.Version(), "go")
 
 	env := map[string]string{"GO111MODULE": "on"}
-	if target != "neoshell" {
-		env["CGO_ENABLE"] = "1"
-	} else {
+	if target == "neoshell" {
 		env["CGO_ENABLE"] = "0"
+	} else {
+		env["CGO_ENABLE"] = "1"
 	}
 
 	args := []string{"build"}
@@ -253,11 +253,16 @@ func BuildX(target string, targetOS string, targetArch string) error {
 func Test() error {
 	mg.Deps(CheckTmp)
 
-	if err := sh.RunV("go", "mod", "tidy"); err != nil {
+	env := map[string]string{
+		"GO111MODULE": "on",
+		"CGO_ENABLE":  "1",
+	}
+
+	if err := sh.RunWithV(env, "go", "mod", "tidy"); err != nil {
 		return err
 	}
 
-	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
+	if err := sh.RunWithV(env, "go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
 	if output, err := sh.Output("go", "tool", "cover", "-func=./tmp/cover.out"); err != nil {
