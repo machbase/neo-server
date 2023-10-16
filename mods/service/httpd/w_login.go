@@ -293,11 +293,9 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 
 func (svr *httpd) handleCheck(ctx *gin.Context) {
 	tick := time.Now()
-	var claim security.Claim
-	if o := ctx.Value("jwt-claim"); o == nil {
+	claim, claimExists := svr.getJwtClaim(ctx)
+	if !claimExists {
 		ctx.JSON(http.StatusUnauthorized, "")
-	} else if c, ok := o.(security.Claim); ok {
-		claim = c
 	}
 	if claim == nil || claim.Valid() != nil {
 		ctx.JSON(http.StatusUnauthorized, "")

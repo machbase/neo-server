@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
@@ -50,10 +49,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
-	var claim *jwt.RegisteredClaims
-	if val, exists := ctx.Get("jwt-claim"); exists {
-		claim = val.(*jwt.RegisteredClaims)
-	}
+	claim, _ := svr.getJwtClaim(ctx)
 	consoleInfo := parseConsoleId(ctx)
 
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)

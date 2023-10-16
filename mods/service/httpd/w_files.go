@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 )
@@ -203,8 +202,7 @@ func (svr *httpd) handleFiles(ctx *gin.Context) {
 			var entry *ssfs.Entry
 			if len(content) > 0 && ctx.ContentType() == "application/json" {
 				var topic string
-				if vals, exists := ctx.Get("jwt-claim"); exists {
-					claim := vals.(*jwt.RegisteredClaims)
+				if claim, exists := svr.getJwtClaim(ctx); exists {
 					consoleInfo := parseConsoleId(ctx)
 					topic = fmt.Sprintf("console:%s:%s", claim.Subject, consoleInfo.consoleId)
 				}

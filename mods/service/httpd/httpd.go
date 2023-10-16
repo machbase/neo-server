@@ -243,10 +243,7 @@ func (svr *httpd) getTrustConnection(ctx *gin.Context) (spi.Conn, error) {
 
 // for the api called from web-client that authorized by JWT
 func (svr *httpd) getUserConnection(ctx *gin.Context) (spi.Conn, error) {
-	var claim *jwt.RegisteredClaims
-	if obj, exists := ctx.Get("jwt-claim"); exists {
-		claim = obj.(*jwt.RegisteredClaims)
-	}
+	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {
 		return svr.db.Connect(ctx, mach.WithTrustUser(claim.Subject))
 	} else {
@@ -295,6 +292,19 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
 		ctx.Abort()
 		return
+	}
+}
+
+func (svr *httpd) getJwtClaim(ctx *gin.Context) (security.Claim, bool) {
+	obj, ok := ctx.Get("jwt-claim")
+	if !ok {
+		return nil, false
+	}
+
+	if token, ok := obj.(*jwt.RegisteredClaims); !ok {
+		return nil, false
+	} else {
+		return token, ok
 	}
 }
 
