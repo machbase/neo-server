@@ -113,7 +113,7 @@ jobs:
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   windows-amd64:
-    runs-on: [ windows-latest ]
+    runs-on: [ self-hosted, Windows, X64 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
