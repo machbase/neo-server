@@ -252,6 +252,11 @@ func BuildX(target string, targetOS string, targetArch string) error {
 
 func Test() error {
 	mg.Deps(CheckTmp)
+
+	if err := sh.RunV("go", "mod", "tidy"); err != nil {
+		return err
+	}
+
 	if err := sh.RunV("go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
 		return err
 	}
