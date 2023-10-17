@@ -25,14 +25,20 @@ func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.P
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if pinger, ok := s.dbConn.(spi.Pinger); ok {
-		if _, err := pinger.Ping(); err != nil {
-			rsp.Reason = err.Error()
-		} else {
-			rsp.Success, rsp.Reason = true, "success"
-		}
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.Reason = "ping not supproted"
+		if pinger, ok := conn.rawConn.(spi.Pinger); ok {
+			if _, err := pinger.Ping(); err != nil {
+				rsp.Reason = err.Error()
+			} else {
+				rsp.Success, rsp.Reason = true, "success"
+			}
+		} else {
+			rsp.Reason = "ping not supproted"
+		}
 	}
 	rsp.Token = req.Token
 	return rsp, nil
@@ -104,15 +110,21 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	explainer, ok := s.dbConn.(spi.Explainer)
-	if !ok {
-		return nil, fmt.Errorf("server info is unavailable")
-	}
-	if plan, err := explainer.Explain(pctx, req.Sql, req.Full); err == nil {
-		rsp.Success, rsp.Reason = true, "success"
-		rsp.Plan = plan
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.Success, rsp.Reason = false, err.Error()
+		explainer, ok := conn.rawConn.(spi.Explainer)
+		if !ok {
+			return nil, fmt.Errorf("server info is unavailable")
+		}
+		if plan, err := explainer.Explain(pctx, req.Sql, req.Full); err == nil {
+			rsp.Success, rsp.Reason = true, "success"
+			rsp.Plan = plan
+		} else {
+			rsp.Success, rsp.Reason = false, err.Error()
+		}
 	}
 	return rsp, nil
 }
@@ -127,15 +139,22 @@ func (s *grpcd) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.E
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	if result := s.dbConn.Exec(pctx, req.Sql, params...); result.Err() == nil {
-		rsp.RowsAffected = result.RowsAffected()
-		rsp.Success = true
-		rsp.Reason = result.Message()
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.Success = false
-		rsp.Reason = result.Message()
+		params := machrpc.ConvertPbToAny(req.Params)
+		if result := conn.rawConn.Exec(pctx, req.Sql, params...); result.Err() == nil {
+			rsp.RowsAffected = result.RowsAffected()
+			rsp.Success = true
+			rsp.Reason = result.Message()
+		} else {
+			rsp.Success = false
+			rsp.Reason = result.Message()
+		}
 	}
+
 	return rsp, nil
 }
 
@@ -150,26 +169,34 @@ func (s *grpcd) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*m
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	row := s.dbConn.QueryRow(pctx, req.Sql, params...)
-
-	if row.Err() != nil {
-		rsp.Reason = row.Err().Error()
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
 		return rsp, nil
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+		return rsp, nil
+	} else {
+		params := machrpc.ConvertPbToAny(req.Params)
+		row := conn.rawConn.QueryRow(pctx, req.Sql, params...)
+
+		if row.Err() != nil {
+			rsp.Reason = row.Err().Error()
+			return rsp, nil
+		}
+
+		var err error
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
+		rsp.RowsAffected = row.RowsAffected()
+		rsp.Message = row.Message()
+		if err != nil {
+			rsp.Success = false
+			rsp.Reason = err.Error()
+		}
 	}
 
-	var err error
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
-	rsp.RowsAffected = row.RowsAffected()
-	rsp.Message = row.Message()
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-	}
-
-	return rsp, err
+	return rsp, nil
 }
 
 func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.QueryResponse, error) {
@@ -183,24 +210,30 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	realRows, err := s.dbConn.Query(pctx, req.Sql, params...)
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-
-	if realRows.IsFetchable() {
-		rows := s.leakDetector.DetainRows(realRows, req.Sql)
-		rsp.RowsHandle = &machrpc.RowsHandle{
-			Handle: rows.Id(),
-		}
-		rsp.Reason = "success"
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.RowsAffected = realRows.RowsAffected()
-		rsp.Reason = realRows.Message()
+		params := machrpc.ConvertPbToAny(req.Params)
+		realRows, err := conn.rawConn.Query(pctx, req.Sql, params...)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+
+		if realRows.IsFetchable() {
+			rows := s.leakDetector.DetainRows(realRows, req.Sql)
+			rsp.RowsHandle = &machrpc.RowsHandle{
+				Handle: rows.Id(),
+			}
+			rsp.Reason = "success"
+		} else {
+			rsp.RowsAffected = realRows.RowsAffected()
+			rsp.Reason = realRows.Message()
+		}
+		rsp.Success = true
 	}
-	rsp.Success = true
 
 	return rsp, nil
 }
@@ -321,24 +354,31 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	opts := []spi.AppendOption{}
-	if len(req.Timeformat) > 0 {
-		opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
-	}
-	realAppender, err := s.dbConn.Appender(ctx, req.TableName, opts...)
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-	tableType := realAppender.TableType()
-	tableName := realAppender.TableName()
-	appender := s.leakDetector.DetainAppender(realAppender, tableName)
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+	} else {
+		opts := []spi.AppendOption{}
+		if len(req.Timeformat) > 0 {
+			opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
+		}
+		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		tableType := realAppender.TableType()
+		tableName := realAppender.TableName()
+		appender := s.leakDetector.DetainAppender(realAppender, tableName)
 
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Handle = &machrpc.AppenderHandle{Handle: appender.Id()}
-	rsp.TableName = tableName
-	rsp.TableType = int32(tableType)
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Handle = &machrpc.AppenderHandle{Handle: appender.Id()}
+		rsp.TableName = tableName
+		rsp.TableType = int32(tableType)
+	}
+
 	return rsp, nil
 }
 

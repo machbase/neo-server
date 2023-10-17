@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/machbase/neo-server/mods/do"
@@ -54,6 +55,9 @@ func doDescribe(ctx *client.ActionContext) {
 		return
 	}
 
+	if ctx.Client.Username() != "sys" {
+		cmd.Table = fmt.Sprintf("%s.%s", ctx.Client.Username(), cmd.Table)
+	}
 	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, cmd.Table, cmd.ShowAll)
 	if err != nil {
 		ctx.Println("unable to describe", cmd.Table, "; ERR", err.Error())
