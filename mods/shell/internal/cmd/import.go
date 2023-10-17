@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -24,7 +25,7 @@ func init() {
 		PcFunc: pcImport,
 		Action: doImport,
 		Desc:   "Import table",
-		Usage:  helpImport,
+		Usage:  strings.ReplaceAll(helpImport, "\t", "    "),
 	})
 }
 
@@ -99,7 +100,7 @@ func doImport(ctx *client.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, created, truncated, err := do.ExistsTableOrCreate(ctx.DB, cmd.Table, cmd.CreateTable, cmd.TruncateTable)
+	exists, created, truncated, err := do.ExistsTableOrCreate(ctx.Ctx, ctx.Conn, cmd.Table, cmd.CreateTable, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -116,7 +117,7 @@ func doImport(ctx *client.ActionContext) {
 	}
 
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx.DB, cmd.Table, false); err != nil {
+	if desc0, err := do.Describe(ctx.Ctx, ctx.Conn, cmd.Table, false); err != nil {
 		ctx.Printfln("ERR fail to get table info '%s', %s", cmd.Table, err.Error())
 		return
 	} else {
@@ -155,13 +156,14 @@ func doImport(ctx *client.ActionContext) {
 
 	cols := desc.Columns.Columns()
 	decoder := codec.NewDecoder(cmd.InputFormat,
-		codec.InputStream(in),
-		codec.Timeformat(cmd.Timeformat),
-		codec.TimeLocation(cmd.TimeLocation),
-		codec.Table(cmd.Table),
-		codec.Columns(cols.Names(), cols.Types()),
-		codec.Delimiter(cmd.Delimiter),
-		codec.Heading(cmd.HasHeader),
+		opts.InputStream(in),
+		opts.Timeformat(cmd.Timeformat),
+		opts.TimeLocation(cmd.TimeLocation),
+		opts.TableName(cmd.Table),
+		opts.Columns(cols.Names()...),
+		opts.ColumnTypes(cols.Types()...),
+		opts.Delimiter(cmd.Delimiter),
+		opts.Heading(cmd.HasHeader),
 	)
 
 	capture := ctx.NewCaptureUserInterrupt("")
@@ -196,14 +198,14 @@ func doImport(ctx *client.ActionContext) {
 					hold = append(hold, "?")
 				}
 				query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
-				if result := ctx.DB.Exec(query, vals...); result.Err() != nil {
+				if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
 					ctx.Println(result.Err().Error())
 					break
 				}
 				hold = hold[:0]
 			} else { // append
 				if appender == nil {
-					appender, err = ctx.DB.Appender(cmd.Table)
+					appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table)
 					if err != nil {
 						ctx.Println("ERR", err.Error())
 						break

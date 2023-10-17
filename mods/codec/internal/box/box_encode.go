@@ -8,6 +8,7 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
@@ -17,15 +18,13 @@ type Exporter struct {
 	style           string
 	separateColumns bool
 	drawBorder      bool
-	timeLocation    *time.Location
 	output          spec.OutputStream
 	showRownum      bool
 	heading         bool
-	timeformat      string
 	precision       int
+	timeformatter   *util.TimeFormatter
 
 	colNames []string
-	colTypes []string
 }
 
 func NewEncoder() *Exporter {
@@ -33,6 +32,8 @@ func NewEncoder() *Exporter {
 		style:           "default",
 		separateColumns: true,
 		drawBorder:      true,
+		precision:       -1,
+		timeformatter:   util.NewTimeFormatter(),
 	}
 }
 
@@ -45,11 +46,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformat = format
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.timeLocation = tz
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -58,6 +59,10 @@ func (ex *Exporter) SetPrecision(precision int) {
 
 func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
+}
+
+func (ex *Exporter) SetHeader(show bool) {
+	ex.heading = show
 }
 
 func (ex *Exporter) SetHeading(show bool) {
@@ -76,9 +81,8 @@ func (ex *Exporter) SetBoxDrawBorder(flag bool) {
 	ex.drawBorder = flag
 }
 
-func (ex *Exporter) SetColumns(names []string, types []string) {
+func (ex *Exporter) SetColumns(names ...string) {
 	ex.colNames = names
-	ex.colTypes = types
 }
 
 func (ex *Exporter) Open() error {
@@ -150,27 +154,17 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			switch ex.timeformat {
-			case "ns":
-				cols[i] = strconv.FormatInt(v.UnixNano(), 10)
-			case "ms":
-				cols[i] = strconv.FormatInt(v.UnixMilli(), 10)
-			case "us":
-				cols[i] = strconv.FormatInt(v.UnixMicro(), 10)
-			case "s":
-				cols[i] = strconv.FormatInt(v.Unix(), 10)
-			default:
-				if ex.timeLocation == nil {
-					ex.timeLocation = time.UTC
-				}
-				cols[i] = v.In(ex.timeLocation).Format(ex.timeformat)
-			}
+			cols[i] = ex.timeformatter.Format(*v)
+		case time.Time:
+			cols[i] = ex.timeformatter.Format(v)
+		case *float32:
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
+		case float32:
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *float64:
-			if ex.precision < 0 {
-				cols[i] = fmt.Sprintf("%f", *v)
-			} else {
-				cols[i] = fmt.Sprintf("%.*f", ex.precision, *v)
-			}
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
+		case float64:
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

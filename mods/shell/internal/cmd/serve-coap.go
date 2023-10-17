@@ -18,7 +18,7 @@ func init() {
 		PcFunc: pcServeCoap,
 		Action: doServeCoap,
 		Desc:   "Serve CoAP",
-		Usage:  helpServeCoap,
+		Usage:  strings.ReplaceAll(helpServeCoap, "\t", "    "),
 
 		Experimental: true,
 	})
@@ -88,7 +88,7 @@ func doServeCoap(ctx *client.ActionContext) {
 		logWriter = io.MultiWriter(logWriter, &verboseWriter{ctx: ctx})
 	}
 
-	csvr, err := coapd.New(ctx.DB,
+	csvr, err := coapd.New(ctx.Client.Database(),
 		coapd.OptionListenAddress(fmt.Sprintf("%s://%s:%d", cmd.Network, cmd.Host, cmd.Port)),
 		coapd.OptionLogWriter(logWriter),
 	)

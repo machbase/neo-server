@@ -3,6 +3,7 @@ package mqttd
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"strconv"
@@ -13,8 +14,8 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func Query(db spi.Database, req *msg.QueryRequest, rsp *msg.QueryResponse) {
-	rows, err := db.Query(req.SqlText)
+func Query(conn spi.Conn, req *msg.QueryRequest, rsp *msg.QueryResponse) {
+	rows, err := conn.Query(context.TODO(), req.SqlText)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return

@@ -6,11 +6,13 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
@@ -19,11 +21,11 @@ type Exporter struct {
 	writer *csv.Writer
 	comma  rune
 
-	timeLocation *time.Location
-	output       spec.OutputStream
-	showRownum   bool
-	timeformat   string
-	precision    int
+	output         spec.OutputStream
+	showRownum     bool
+	precision      int
+	substituteNull string
+	timeformatter  *util.TimeFormatter
 
 	heading  bool
 	colNames []string
@@ -33,8 +35,9 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	rr := &Exporter{
-		precision:  -1,
-		timeformat: "ns",
+		precision:      -1,
+		substituteNull: "NULL",
+		timeformatter:  util.NewTimeFormatter(),
 	}
 	return rr
 }
@@ -48,11 +51,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformat = format
+	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.timeLocation = tz
+	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -63,7 +66,12 @@ func (ex *Exporter) SetRownum(show bool) {
 	ex.showRownum = show
 }
 
+// Deprecated use SetHeader()
 func (ex *Exporter) SetHeading(show bool) {
+	ex.heading = show
+}
+
+func (ex *Exporter) SetHeader(show bool) {
 	ex.heading = show
 }
 
@@ -72,8 +80,12 @@ func (ex *Exporter) SetDelimiter(delimiter string) {
 	ex.comma = delmiter
 }
 
-func (ex *Exporter) SetColumns(labels []string, types []string) {
+func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
+}
+
+func (ex *Exporter) SetSubstituteNull(nullString string) {
+	ex.substituteNull = nullString
 }
 
 func (ex *Exporter) Open() error {
@@ -107,32 +119,6 @@ func (ex *Exporter) Flush(heading bool) {
 	ex.output.Flush()
 }
 
-func (ex *Exporter) encodeTime(v time.Time) string {
-	switch ex.timeformat {
-	case "ns":
-		return strconv.FormatInt(v.UnixNano(), 10)
-	case "ms":
-		return strconv.FormatInt(v.UnixMilli(), 10)
-	case "us":
-		return strconv.FormatInt(v.UnixMicro(), 10)
-	case "s":
-		return strconv.FormatInt(v.Unix(), 10)
-	default:
-		if ex.timeLocation == nil {
-			ex.timeLocation = time.UTC
-		}
-		return v.In(ex.timeLocation).Format(ex.timeformat)
-	}
-}
-
-func (ex *Exporter) encodeFloat64(v float64) string {
-	if ex.precision < 0 {
-		return fmt.Sprintf("%f", v)
-	} else {
-		return fmt.Sprintf("%.*f", ex.precision, v)
-	}
-}
-
 func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
@@ -146,7 +132,7 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	for i, r := range values {
 		if r == nil {
-			cols[i] = "NULL"
+			cols[i] = ex.substituteNull
 			continue
 		}
 		switch v := r.(type) {
@@ -155,20 +141,24 @@ func (ex *Exporter) AddRow(values []any) error {
 		case string:
 			cols[i] = v
 		case *time.Time:
-			cols[i] = ex.encodeTime(*v)
+			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:
-			cols[i] = ex.encodeTime(v)
+			cols[i] = ex.timeformatter.Format(v)
 		case *float64:
-			cols[i] = ex.encodeFloat64(*v)
+			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:
-			cols[i] = ex.encodeFloat64(v)
+			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
 		case *float32:
-			cols[i] = ex.encodeFloat64(float64(*v))
+			cols[i] = strconv.FormatFloat(float64(*v), 'f', ex.precision, 32)
 		case float32:
-			cols[i] = ex.encodeFloat64(float64(v))
+			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case *int8:
+			cols[i] = strconv.FormatInt(int64(*v), 10)
+		case int8:
 			cols[i] = strconv.FormatInt(int64(v), 10)
 		case *int16:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
@@ -182,10 +172,28 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = strconv.FormatInt(*v, 10)
 		case int64:
 			cols[i] = strconv.FormatInt(v, 10)
+		case *bool:
+			cols[i] = strconv.FormatBool(*v)
+		case bool:
+			cols[i] = strconv.FormatBool(v)
 		case *net.IP:
 			cols[i] = v.String()
 		case net.IP:
 			cols[i] = v.String()
+		case uint8:
+			cols[i] = strconv.FormatInt(int64(v), 10)
+		case *[]uint8:
+			strs := []string{}
+			for _, c := range *v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
+		case []uint8:
+			strs := []string{}
+			for _, c := range v {
+				strs = append(strs, fmt.Sprintf("\\x%02X", c))
+			}
+			cols[i] = strings.Join(strs, "")
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}

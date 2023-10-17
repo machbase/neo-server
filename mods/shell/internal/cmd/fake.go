@@ -19,7 +19,7 @@ func init() {
 		PcFunc:       pcFake,
 		Action:       doFake,
 		Desc:         "Generating fake data and writing into the specified table",
-		Usage:        helpFake,
+		Usage:        strings.ReplaceAll(helpFake, "\t", "    "),
 		Experimental: false,
 	})
 }
@@ -110,7 +110,7 @@ func doFake(ctx *client.ActionContext) {
 
 	var appender spi.Appender
 	if len(cmd.Table) > 0 {
-		appender, err = ctx.DB.Appender(cmd.Table, spi.AppendTimeformatOption("ns"))
+		appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table, spi.AppendTimeformatOption("ns"))
 		if err != nil {
 			ctx.Printfln("ERR", err.Error())
 			return

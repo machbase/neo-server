@@ -80,6 +80,13 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
 	var output = &stream.WriterOutputStream{Writer: ctx.Writer}
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	defer conn.Close()
+
 	queries, err := renderer.BuildChartQueries(req.TagPaths, req.Timestamp, req.Range, req.Timeformat, timeLocation)
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, err.Error())
@@ -87,7 +94,7 @@ func (svr *httpd) handleChart(ctx *gin.Context) {
 	}
 	series := []*model.RenderingData{}
 	for _, dq := range queries {
-		data, err := dq.Query(svr.db)
+		data, err := dq.Query(ctx, conn)
 		if err != nil {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return

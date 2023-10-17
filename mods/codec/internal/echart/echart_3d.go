@@ -50,22 +50,28 @@ func (ex *Base3D) Open() error {
 func (ex *Base3D) Flush(heading bool) {
 }
 
-func (ex *Base3D) SetXAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetXAxis(idx int, label string, typ ...string) {
 	ex.xAxisIdx = idx
 	ex.xAxisLabel = label
-	ex.xAxisType = typ
+	if len(typ) > 0 {
+		ex.xAxisType = typ[0]
+	}
 }
 
-func (ex *Base3D) SetYAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
 	ex.yAxisLabel = label
-	ex.yAxisType = typ
+	if len(typ) > 0 {
+		ex.yAxisType = typ[0]
+	}
 }
 
-func (ex *Base3D) SetZAxis(idx int, label string, typ string) {
+func (ex *Base3D) SetZAxis(idx int, label string, typ ...string) {
 	ex.zAxisIdx = idx
 	ex.zAxisLabel = label
-	ex.zAxisType = typ
+	if len(typ) > 0 {
+		ex.zAxisType = typ[0]
+	}
 }
 
 func (ex *Base3D) SetVisualMap(minValue float64, maxValue float64) {
@@ -186,7 +192,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 
 func (ex *Base3D) AddRow(values []any) error {
 	if len(values) < 3 {
-		return errors.New("3D chart require  at last 3 vlaues")
+		return errors.New("3D chart require  at last 3 values")
 	}
 	var xv float64
 	var yv float64
@@ -302,6 +308,10 @@ func (ex *Base3D) value(x any) (float64, bool) {
 		return v, true
 	case *float64:
 		return *v, true
+	case time.Time:
+		return float64(v.UnixMilli()), true
+	case *time.Time:
+		return float64((*v).UnixMilli()), true
 	default:
 		return 0, false
 	}

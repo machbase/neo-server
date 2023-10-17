@@ -1,6 +1,7 @@
 package do
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -17,34 +18,56 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(db spi.Database, dbName string, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
-	columns := make([]string, 0)
+func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
+	columns := descColumns.Columns().Names()
+	columns = columns[:3]
+
+	/*
+		Machbase : name, time, value, host
+		influxdb : tags key[DC, HOST, NAME, SYSTEM]
+		=> HOST append / DC, NAME, SYSTEM not append
+	*/
+	compareNames := descColumns.Columns().Names()
+	compareTypes := descColumns.Columns().Types()
+	compareNames = compareNames[3:]
+	compareTypes = compareTypes[3:]
+	for idx, val := range compareNames {
+		if _, ok := tags[val]; ok {
+			if compareTypes[idx] == spi.ColumnBufferTypeString {
+				columns = append(columns, val)
+			}
+		}
+	}
+
 	rows := make([][]any, 0)
 
-	columns = append(columns, "name", "time", "value")
-
 	for k, v := range fields {
-		name := fmt.Sprintf("%s.%s", measurement, k)
-		value := float64(0)
-		timestamp := ts
+		values := make([]any, 0)
+		values = append(values, fmt.Sprintf("%s.%s", measurement, k))
+		values = append(values, ts)
 
 		switch val := v.(type) {
 		case float32:
-			value = float64(val)
+			values = append(values, float64(val))
 		case float64:
-			value = val
+			values = append(values, val)
 		case int:
-			value = float64(val)
+			values = append(values, float64(val))
 		case int32:
-			value = float64(val)
+			values = append(values, float64(val))
 		case int64:
-			value = float64(val)
+			values = append(values, float64(val))
 		default:
 			// fmt.Printf("unsupproted value type '%T' of field '%s'\n", val, k)
 			continue
 		}
-		rows = append(rows, []any{name, timestamp, value})
+
+		for i := 3; i < len(columns); i++ {
+			values = append(values, tags[columns[i]])
+		}
+
+		rows = append(rows, values)
 	}
 
-	return Insert(db, dbName, columns, rows)
+	return Insert(ctx, conn, dbName, columns, rows)
 }

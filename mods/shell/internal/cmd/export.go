@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"compress/gzip"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -20,7 +22,7 @@ func init() {
 		PcFunc: pcExport,
 		Action: doExport,
 		Desc:   "Export table",
-		Usage:  helpExport,
+		Usage:  strings.ReplaceAll(helpExport, "\t", "    "),
 	})
 }
 
@@ -113,49 +115,69 @@ func doExport(ctx *client.ActionContext) {
 	}
 
 	encoder := codec.NewEncoder(cmd.Format,
-		codec.OutputStream(output),
-		codec.Timeformat(cmd.Timeformat),
-		codec.Precision(cmd.Precision),
-		codec.Rownum(false),
-		codec.Heading(cmd.Heading),
-		codec.TimeLocation(cmd.TimeLocation),
-		codec.Delimiter(cmd.Delimiter),
-		codec.BoxStyle("light"),
-		codec.BoxSeparateColumns(true),
-		codec.BoxDrawBorder(true),
+		opts.OutputStream(output),
+		opts.Timeformat(cmd.Timeformat),
+		opts.Precision(cmd.Precision),
+		opts.Rownum(false),
+		opts.Heading(cmd.Heading),
+		opts.TimeLocation(cmd.TimeLocation),
+		opts.Delimiter(cmd.Delimiter),
+		opts.BoxStyle("light"),
+		opts.BoxSeparateColumns(true),
+		opts.BoxDrawBorder(true),
 	)
 
-	alive := true
-
+	printProgress := false
 	capture := ctx.NewCaptureUserInterrupt("")
-	defer capture.Close()
-	if ctx.IsUserShellInteractiveMode() {
+	if ctx.IsUserShellInteractiveMode() && cmd.Output != "-" {
+		printProgress = true
 		go capture.Start()
-		go func() {
-			<-capture.C
-			alive = false
-		}()
 	}
+	doneC := make(chan bool)
 
-	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
-		OnFetchStart: func(cols spi.Columns) {
-			codec.SetEncoderColumns(encoder, cols)
-			encoder.Open()
-		},
-		OnFetch: func(nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
-			if err != nil {
-				ctx.Println("ERR", err.Error())
-			}
-			return alive
-		},
-		OnFetchEnd: func() {
-			encoder.Close()
-		},
-	}
+	var alive bool = true
+	var lineno int = 0
+	go func() {
+		defer capture.Close()
+		tick := time.Now()
+		queryCtx := &do.QueryContext{
+			Conn: ctx.Conn,
+			Ctx:  ctx.Ctx,
+			OnFetchStart: func(cols spi.Columns) {
+				codec.SetEncoderColumns(encoder, cols)
+				encoder.Open()
+			},
+			OnFetch: func(nrow int64, values []any) bool {
+				err := encoder.AddRow(values)
+				if err != nil {
+					ctx.Println("ERR", err.Error())
+				}
+				lineno++
+				if printProgress && lineno%10000 == 0 {
+					// update progress message per 10K records
+					tps := int(float64(lineno) / time.Since(tick).Seconds())
+					ctx.Printf("export %s records (%s/s)\r", util.NumberFormat(lineno), util.NumberFormat(tps))
+				}
+				return alive
+			},
+			OnFetchEnd: func() {
+				encoder.Close()
+			},
+		}
 
-	if _, err := do.Query(queryCtx, "select * from "+cmd.Table); err != nil {
-		ctx.Println("ERR", err.Error())
+		if _, err := do.Query(queryCtx, "select * from "+cmd.Table); err != nil {
+			ctx.Println("ERR", err.Error())
+		}
+		if printProgress {
+			ctx.Print("\r\n")
+			ctx.Printf("export total %s record(s)", util.NumberFormat(lineno))
+		}
+		doneC <- true
+	}()
+
+	select {
+	case <-capture.C:
+	case <-doneC:
 	}
+	alive = false
 }

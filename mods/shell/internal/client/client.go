@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/schedule"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
@@ -28,7 +30,8 @@ type Client interface {
 	Stop()
 
 	Run(command string)
-
+	Reconnect(username string, password string) (bool, error)
+	Username() string
 	Interactive() bool
 
 	Write(p []byte) (int, error)
@@ -40,6 +43,9 @@ type Client interface {
 	Database() spi.Database
 	Pref() *Pref
 	ManagementClient() (mgmt.ManagementClient, error)
+	BridgeManagementClient() (bridge.ManagementClient, error)
+	BridgeRuntimeClient() (bridge.RuntimeClient, error)
+	ScheduleManagementClient() (schedule.ManagementClient, error)
 }
 
 type ShutdownServerFunc func() error
@@ -68,9 +74,8 @@ type Config struct {
 	ServerCertPath string
 	ClientCertPath string
 	ClientKeyPath  string
-	Stdin          io.ReadCloser
-	Stdout         io.Writer
-	Stderr         io.Writer
+	User           string
+	Password       string
 	Prompt         string
 	PromptCont     string
 	QueryTimeout   time.Duration
@@ -89,13 +94,17 @@ type client struct {
 
 	mgmtClient     mgmt.ManagementClient
 	mgmtClientLock sync.Mutex
+
+	bridgeMgmtClient    bridge.ManagementClient
+	bridgeRuntimeClient bridge.RuntimeClient
+	bridgeClientLock    sync.Mutex
+
+	schedMgmtClient schedule.ManagementClient
+	schedClientLock sync.Mutex
 }
 
 func DefaultConfig() *Config {
 	return &Config{
-		Stdin:        os.Stdin,
-		Stdout:       os.Stdout,
-		Stderr:       os.Stderr,
 		Prompt:       "\033[31mmachbase-neo»\033[0m ",
 		PromptCont:   "\033[31m>\033[0m  ",
 		QueryTimeout: 0 * time.Second,
@@ -104,10 +113,30 @@ func DefaultConfig() *Config {
 }
 
 func New(conf *Config, interactive bool) Client {
+	if conf.User == "" {
+		if user, ok := os.LookupEnv("NEOSHELL_USER"); ok {
+			conf.User = strings.ToLower(user)
+		} else {
+			conf.User = "sys"
+		}
+	}
+	if conf.Password == "" {
+		if pass, ok := os.LookupEnv("NEOSHELL_PASSWORD"); ok {
+			conf.Password = pass
+		} else {
+			conf.Password = "manager"
+		}
+	}
+	conf.Prompt = makePrompt(conf.User)
 	return &client{
 		conf:        conf,
 		interactive: interactive,
 	}
+}
+
+func makePrompt(username string) string {
+	// return fmt.Sprintf("\033[31m%s@machbase-neo»\033[0m ", username)
+	return "\033[31mmachbase-neo»\033[0m "
 }
 
 func (cli *client) Start() error {
@@ -117,12 +146,15 @@ func (cli *client) Start() error {
 	}
 	cli.pref = pref
 
+	if err := cli.checkDatabase(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (cli *client) Stop() {
 	if cli.db != nil {
-		cli.db.Disconnect()
+		cli.db.Close()
 	}
 }
 
@@ -131,6 +163,21 @@ func (cli *client) Database() spi.Database {
 		cli.Println("ERR", err.Error())
 	}
 	return cli.db
+}
+
+func (cli *client) Reconnect(username string, password string) (bool, error) {
+	auth := cli.db.(spi.DatabaseAuth)
+	ok, err := auth.UserAuth(username, password)
+	if err == nil && ok {
+		cli.conf.User = strings.ToLower(username)
+		cli.conf.Password = password
+		cli.conf.Prompt = makePrompt(cli.conf.User)
+	}
+	return ok, err
+}
+
+func (cli *client) Username() string {
+	return cli.conf.User
 }
 
 func (cli *client) Pref() *Pref {
@@ -148,17 +195,25 @@ func (cli *client) checkDatabase() error {
 		return nil
 	}
 
-	machcli := machrpc.NewClient(
+	machcli, err := machrpc.NewClient(
 		machrpc.WithServer(cli.conf.ServerAddr),
 		machrpc.WithCertificate(cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath),
 		machrpc.WithQueryTimeout(cli.conf.QueryTimeout))
-	err := machcli.Connect()
 	if err != nil {
 		return err
 	}
 
+	// user authentication
+	auth := machcli.(spi.DatabaseAuth)
+	if result, err := auth.UserAuth(cli.conf.User, cli.conf.Password); err != nil {
+		return err
+	} else if !result {
+		return errors.New("invalid username or password")
+	}
+
 	// check connectivity to server
-	serverInfo, err := machcli.GetServerInfo()
+	aux := machcli.(spi.DatabaseAux)
+	serverInfo, err := aux.GetServerInfo()
 	if err != nil {
 		return err
 	}
@@ -212,6 +267,45 @@ func (cli *client) ManagementClient() (mgmt.ManagementClient, error) {
 		cli.mgmtClient = mgmt.NewManagementClient(conn)
 	}
 	return cli.mgmtClient, nil
+}
+
+func (cli *client) BridgeManagementClient() (bridge.ManagementClient, error) {
+	cli.bridgeClientLock.Lock()
+	defer cli.bridgeClientLock.Unlock()
+	if cli.bridgeMgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.bridgeMgmtClient = bridge.NewManagementClient(conn)
+	}
+	return cli.bridgeMgmtClient, nil
+}
+
+func (cli *client) BridgeRuntimeClient() (bridge.RuntimeClient, error) {
+	cli.bridgeClientLock.Lock()
+	defer cli.bridgeClientLock.Unlock()
+	if cli.bridgeRuntimeClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.bridgeRuntimeClient = bridge.NewRuntimeClient(conn)
+	}
+	return cli.bridgeRuntimeClient, nil
+}
+
+func (cli *client) ScheduleManagementClient() (schedule.ManagementClient, error) {
+	cli.schedClientLock.Lock()
+	defer cli.schedClientLock.Unlock()
+	if cli.schedMgmtClient == nil {
+		conn, err := machrpc.MakeGrpcTlsConn(cli.conf.ServerAddr, cli.conf.ClientKeyPath, cli.conf.ClientCertPath, cli.conf.ServerCertPath)
+		if err != nil {
+			return nil, err
+		}
+		cli.schedMgmtClient = schedule.NewManagementClient(conn)
+	}
+	return cli.schedMgmtClient, nil
 }
 
 func (cli *client) Run(command string) {
@@ -308,17 +402,27 @@ func (cli *client) Process(line string) {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := cli.db.Connect(ctx, machrpc.WithPassword(cli.conf.User, cli.conf.Password))
+	if err != nil {
+		cli.Println("ERR", err.Error())
+		return
+	}
+	defer conn.Close()
+
 	actCtx := &ActionContext{
 		Line:         line,
 		Client:       cli,
-		DB:           cli.db,
+		Conn:         conn,
+		Ctx:          ctx,
 		Lang:         cli.conf.Lang,
 		TimeLocation: time.UTC,
 		TimeFormat:   "ns",
 		Interactive:  cli.interactive,
-		Stdin:        cli.conf.Stdin,
-		Stdout:       cli.conf.Stdout,
-		Stderr:       cli.conf.Stderr,
+		Stdin:        os.Stdin,
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
 	}
 
 	if cli.rl != nil {
@@ -330,6 +434,7 @@ func (cli *client) Process(line string) {
 			InterruptPrompt:        "^C",
 		})
 		if cli.interactive {
+			// avoid print-out ansi-code on terminal when it runs on batch mode
 			defer rl.Close()
 		}
 		actCtx.ReadLine = rl
@@ -346,6 +451,7 @@ func (cli *client) Process(line string) {
 		cli.Println()
 		cli.Printfln("    '%s' is deprecated, %s", cmd.Name, cmd.DeprecatedMessage)
 	}
+	actCtx.ReadLine.SetPrompt(makePrompt(cli.conf.User))
 }
 
 func (cli *client) Prompt() {
@@ -357,9 +463,6 @@ func (cli *client) Prompt() {
 		AutoComplete:           cli.completer(),
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
-		Stdin:                  cli.conf.Stdin,
-		Stdout:                 cli.conf.Stdout,
-		Stderr:                 cli.conf.Stderr,
 		HistorySearchFold:      true,
 		FuncFilterInputRune:    filterInput,
 	}
@@ -368,9 +471,6 @@ func (cli *client) Prompt() {
 		// TODO on windows,
 		//      up/down arrow keys for the history is not working if stdin is set
 		//      guess: underlying Windows interface requires os.Stdin.Fd() to syscall
-		readlineCfg.Stdin = nil
-		readlineCfg.Stdout = nil
-		readlineCfg.Stderr = nil
 		if oldState, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
 			defer term.Restore(int(os.Stdin.Fd()), oldState)
 		}

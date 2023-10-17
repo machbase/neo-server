@@ -19,15 +19,21 @@ jobs:
           echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
           echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
           echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Setup zig
+        uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 'master'
       - name: Setup go compiler
         uses: actions/setup-go@v3
         with:
-          go-version: '1.19.11'
-      - name: Go mod
-        run: go mod tidy
+          go-version: '1.20.7'
       - name: Test
-        run: make test
-      - name: Build
-        run: |
-          make cleanpackage && \
-          make package-machbase-neo
+        run: go run mage.go test
+      - name: Codecov
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Build amd64
+        run: go run mage.go machbase-neo package-machbase-neo
+      - name: Build arm32
+        run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm

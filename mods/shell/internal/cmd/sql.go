@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -25,7 +26,7 @@ func init() {
 		PcFunc: pcSql,
 		Action: doSql,
 		Desc:   "Execute sql query",
-		Usage:  helpSql,
+		Usage:  strings.ReplaceAll(helpSql, "\t", "    "),
 	})
 }
 
@@ -128,16 +129,16 @@ func doSql(ctx *client.ActionContext) {
 	}
 
 	encoder := codec.NewEncoder(cmd.Format,
-		codec.OutputStream(output),
-		codec.Timeformat(cmd.Timeformat),
-		codec.Precision(cmd.Precision),
-		codec.Rownum(cmd.Rownum),
-		codec.Heading(cmd.Heading),
-		codec.TimeLocation(cmd.TimeLocation),
-		codec.Delimiter(cmd.Delimiter),
-		codec.BoxStyle(cmd.BoxStyle),
-		codec.BoxSeparateColumns(cmd.Interactive),
-		codec.BoxDrawBorder(cmd.Interactive),
+		opts.OutputStream(output),
+		opts.Timeformat(cmd.Timeformat),
+		opts.Precision(cmd.Precision),
+		opts.Rownum(cmd.Rownum),
+		opts.Heading(cmd.Heading),
+		opts.TimeLocation(cmd.TimeLocation),
+		opts.Delimiter(cmd.Delimiter),
+		opts.BoxStyle(cmd.BoxStyle),
+		opts.BoxSeparateColumns(cmd.Interactive),
+		opts.BoxDrawBorder(cmd.Interactive),
 	)
 
 	headerHeight := 0
@@ -165,7 +166,8 @@ func doSql(ctx *client.ActionContext) {
 	nextPauseRow := int64(pageHeight)
 
 	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
+		Conn: ctx.Conn,
+		Ctx:  ctx.Ctx,
 		OnFetchStart: func(cols spi.Columns) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()

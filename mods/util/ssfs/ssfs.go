@@ -2,13 +2,14 @@ package ssfs
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
+	git "github.com/go-git/go-git/v5"
 	"github.com/machbase/neo-server/mods/util/glob"
 )
 
@@ -16,9 +17,7 @@ import (
 type SSFS struct {
 	bases []BaseDir
 
-	recents     []string
-	maxRecents  int
-	recentsLock sync.Mutex
+	ignores map[string]bool
 }
 
 var defaultFs *SSFS
@@ -37,7 +36,7 @@ type BaseDir struct {
 }
 
 func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
-	ret := &SSFS{maxRecents: 5}
+	ret := &SSFS{}
 	for i, dir := range baseDirs {
 		abspath, err := filepath.Abs(dir)
 		if err != nil {
@@ -57,44 +56,22 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 		}
 		ret.bases = append(ret.bases, BaseDir{name: name, abspath: abspath})
 	}
+	ret.ignores = map[string]bool{
+		".git":          true,
+		"machbase_home": true,
+		"node_modules":  true,
+		".pnp":          true,
+		".DS_Store":     true,
+	}
 	return ret, nil
 }
 
-func (ssfs *SSFS) GetRecentList() []string {
-	ssfs.recentsLock.Lock()
-	defer ssfs.recentsLock.Unlock()
-	return ssfs.recents
-}
-
-func (ssfs *SSFS) AddRecentList(path string) {
-	ssfs.recentsLock.Lock()
-	defer ssfs.recentsLock.Unlock()
-
-	for i, p := range ssfs.recents {
-		if p == path {
-			if i > 0 {
-				for n := i; n > 0; n-- {
-					ssfs.recents[n] = ssfs.recents[n-1]
-				}
-				ssfs.recents[0] = path
-			}
-			return
-		}
-	}
-
-	ssfs.recents = append(ssfs.recents, "")
-	for n := len(ssfs.recents) - 1; n > 0; n-- {
-		ssfs.recents[n] = ssfs.recents[n-1]
-	}
-	ssfs.recents[0] = path
-	if len(ssfs.recents) > ssfs.maxRecents {
-		ssfs.recents = ssfs.recents[0:ssfs.maxRecents]
-	}
-}
-
 // find longest path matched 'BaseDir'
+//
 // returns index of baseDirs, name, abstract-path
+//
 // returns index of baseDirs and absolute path of the give path
+//
 // returns -1 if it doesn't match any dir
 func (ssfs *SSFS) findDir(path string) (int, string, string) {
 	separatorString := "/"
@@ -128,6 +105,8 @@ type Entry struct {
 	Content  []byte      `json:"content,omitempty"`  // file content, if the entry is FILE
 	Children []*SubEntry `json:"children,omitempty"` // entry of sub files and dirs, if the entry is DIR
 	abspath  string      `json:"-"`
+	GitUrl   string      `json:"gitUrl,omitempty"`
+	GitClone bool        `json:"gitClone"`
 }
 
 type SubEntry struct {
@@ -136,6 +115,9 @@ type SubEntry struct {
 	Type               string `json:"type"`
 	Size               int64  `json:"size,omitempty"`
 	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
+	GitUrl             string `json:"gitUrl,omitempty"`
+	GitClone           bool   `json:"gitClone"`
+	Virtual            bool   `json:"virtual"`
 }
 
 type SubEntryFilter func(*SubEntry) bool
@@ -170,6 +152,23 @@ func (ssfs *SSFS) RealPath(path string) (string, error) {
 	return ent.abspath, nil
 }
 
+func (ssfs *SSFS) isGitClone(path string) (string, bool) {
+	if stat, err := os.Stat(filepath.Join(path, ".git")); err == nil && stat.IsDir() {
+		if repo, err := git.PlainOpen(path); err == nil {
+			if remotes, err := repo.Remotes(); err == nil && len(remotes) > 0 {
+				for _, url := range remotes[0].Config().URLs {
+					if strings.HasPrefix(url, "http") {
+						return url, true
+					}
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+const urlGitSample = "https://github.com/machbase/neo-tutorials.git"
+
 func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
 	idx, name, abspath := ssfs.findDir(path)
 	if idx == -1 {
@@ -185,6 +184,10 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 			IsDir:   true,
 			Name:    name,
 			abspath: abspath,
+		}
+		if url, isGitClone := ssfs.isGitClone(abspath); isGitClone {
+			ret.GitClone = true
+			ret.GitUrl = url
 		}
 		if idx == 0 && len(ssfs.bases) > 1 { // root dir and has sub dirs
 			for _, sub := range ssfs.bases[1:] {
@@ -213,9 +216,18 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				Size:               nfo.Size(),
 				LastModifiedMillis: nfo.ModTime().UnixMilli(),
 			}
+			if ssfs.ignores[subEnt.Name] {
+				continue
+			}
 			if filter != nil {
 				if !filter(subEnt) {
 					continue
+				}
+			}
+			if nfo.IsDir() {
+				if url, isGitClone := ssfs.isGitClone(filepath.Join(abspath, subEnt.Name)); isGitClone {
+					subEnt.GitClone = true
+					subEnt.GitUrl = url
 				}
 			}
 			ret.Children = append(ret.Children, subEnt)
@@ -232,6 +244,41 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				return ret.Children[i].Name < ret.Children[j].Name
 			}
 		})
+		if path == "/" {
+			// Add Git Sample repo to root directory
+			hasSamples := false
+			for _, child := range ret.Children {
+				if !child.IsDir || !child.GitClone {
+					continue
+				}
+				switch child.GitUrl {
+				case urlGitSample:
+					hasSamples = true
+				}
+			}
+			if !hasSamples {
+				nameSamples := "Tutorials"
+				count := 0
+			reRun:
+				for _, child := range ret.Children {
+					if child.Name == nameSamples {
+						count++
+						nameSamples = fmt.Sprintf("Tutorials-%d", count)
+						goto reRun
+					}
+				}
+				ret.Children = append(ret.Children, &SubEntry{
+					IsDir:              true,
+					Name:               nameSamples,
+					Type:               "dir",
+					Size:               0,
+					LastModifiedMillis: 0,
+					GitUrl:             urlGitSample,
+					GitClone:           true,
+					Virtual:            true,
+				})
+			}
+		}
 		return ret, nil
 	} else {
 		ret := &Entry{
@@ -242,7 +289,6 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 		if loadContent {
 			if content, err := os.ReadFile(abspath); err == nil {
 				ret.Content = content
-				ssfs.AddRecentList(path)
 				return ret, nil
 			} else {
 				return nil, err
@@ -273,6 +319,36 @@ func (ssfs *SSFS) Remove(path string) error {
 	return os.Remove(abspath)
 }
 
+func (ssfs *SSFS) RemoveRecursive(path string) error {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	return os.RemoveAll(abspath)
+}
+
+func (ssfs *SSFS) Rename(path string, dest string) error {
+	idx, _, absDstPath := ssfs.findDir(dest)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	_, err := os.Stat(absDstPath)
+	if err == nil {
+		return fmt.Errorf("%q already exists", dest)
+	}
+
+	idx, _, absSrcPath := ssfs.findDir(path)
+	if idx == -1 {
+		return os.ErrNotExist
+	}
+	_, err = os.Stat(absSrcPath)
+	if err != nil {
+		return fmt.Errorf("unable to access %s, %s", path, err.Error())
+	}
+
+	return os.Rename(absSrcPath, absDstPath)
+}
+
 func (ssfs *SSFS) Set(path string, content []byte) error {
 	idx, _, abspath := ssfs.findDir(path)
 	if idx == -1 {
@@ -285,4 +361,102 @@ func (ssfs *SSFS) Set(path string, content []byte) error {
 	}
 
 	return os.WriteFile(abspath, content, 0644)
+}
+
+const defaultGitRemoteName = "origin"
+
+// git clone int the given path, it discards all local changes.
+func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Entry, error) {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return nil, os.ErrNotExist
+	}
+
+	if progress == nil {
+		progress = os.Stdout
+	}
+	progress.Write([]byte(fmt.Sprintf("Cloning into '%s'...", path)))
+	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
+		URL:          gitUrl,
+		SingleBranch: true,
+		RemoteName:   defaultGitRemoteName,
+		Progress:     progress,
+		Depth:        0,
+	})
+	if err != nil {
+		if err == git.ErrRepositoryAlreadyExists {
+			repo, err = git.PlainOpen(abspath)
+		}
+		if err != nil {
+			progress.Write([]byte(err.Error()))
+			return nil, err
+		}
+	}
+	ref, err := repo.Head()
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+
+	err = w.Checkout(&git.CheckoutOptions{
+		Hash:  ref.Hash(),
+		Force: true,
+	})
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	} else {
+		progress.Write([]byte("Done."))
+	}
+	return ssfs.Get(path)
+}
+
+// git clone int the given path, it discards all local changes.
+func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entry, error) {
+	idx, _, abspath := ssfs.findDir(path)
+	if idx == -1 {
+		return nil, os.ErrNotExist
+	}
+
+	if progress == nil {
+		progress = os.Stdout
+	}
+	progress.Write([]byte(fmt.Sprintf("Updating '%s'...", path)))
+	repo, err := git.PlainOpen(abspath)
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+	conf, err := repo.Config()
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+	remote := conf.Remotes[defaultGitRemoteName]
+	if gitUrl != "" && gitUrl != remote.URLs[0] {
+		err = fmt.Errorf("git remote url is not matched, %s", remote.URLs[0])
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		return nil, err
+	}
+
+	err = w.Pull(&git.PullOptions{Force: true})
+	if err != nil {
+		progress.Write([]byte(err.Error()))
+		if err != git.NoErrAlreadyUpToDate {
+			return nil, err
+		}
+	} else {
+		progress.Write([]byte("Done."))
+	}
+	return ssfs.Get(path)
 }

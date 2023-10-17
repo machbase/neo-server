@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/md5"
@@ -25,8 +26,12 @@ import (
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttd"
@@ -95,6 +100,8 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
+	MachbaseInitOption mach.InitOption
+	// deprecated, use mach.InitOption instead
 	EnableMachbaseSigHandler bool
 }
 
@@ -111,6 +118,7 @@ type GrpcConfig struct {
 type HttpConfig struct {
 	Listeners []string
 	Handlers  []httpd.HandlerConfig
+	WebDir    string
 
 	EnableTokenAuth bool
 	DebugMode       bool
@@ -139,7 +147,7 @@ type Server interface {
 }
 
 type svr struct {
-	mgmt.ManagementServer
+	mgmt.UnimplementedManagementServer
 
 	conf *Config
 	log  logging.Log
@@ -150,12 +158,17 @@ type svr struct {
 	httpd httpd.Service
 	sshd  sshd.Service
 
+	bridgeSvc bridge.Service
+	schedSvc  scheduler.Service
+
 	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
-	shellDefsDir      string
 	licenseFilePath   string
 	licenseFileTime   time.Time
+	databaseCreated   bool
+
+	models model.Service
 
 	cachedServerPrivateKey crypto.PrivateKey
 
@@ -164,6 +177,8 @@ type svr struct {
 
 	authorizedSshKeysLock sync.RWMutex
 }
+
+var PreferredPreset string = "auto"
 
 func NewConfig() *Config {
 	homeDir, err := os.UserHomeDir()
@@ -198,11 +213,18 @@ func NewConfig() *Config {
 		NoBanner: false,
 	}
 
-	sysCPU := runtime.NumCPU()
-	if sysCPU <= 4 {
-		conf.MachbasePreset = PresetEdge
-	} else {
+	switch strings.ToLower(PreferredPreset) {
+	case "fog":
 		conf.MachbasePreset = PresetFog
+	case "edge":
+		conf.MachbasePreset = PresetEdge
+	default:
+		sysCPU := runtime.NumCPU()
+		if sysCPU <= 4 {
+			conf.MachbasePreset = PresetEdge
+		} else {
+			conf.MachbasePreset = PresetFog
+		}
 	}
 
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
@@ -243,14 +265,14 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "authorized keys")
 	}
 
-	s.shellDefsDir = filepath.Join(prefpath, "shell")
-	if err := mkDirIfNotExistsMode(s.shellDefsDir, 0700); err != nil {
-		return errors.Wrap(err, "shell definitions")
-	}
-
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
 	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
 		s.licenseFileTime = stat.ModTime()
+	}
+
+	s.models = model.NewService(model.WithConfigDirPath(prefpath))
+	if err := s.models.Start(); err != nil {
+		return err
 	}
 
 	homepath, err := filepath.Abs(s.conf.DataDir)
@@ -321,17 +343,19 @@ func (s *svr) Start() error {
 
 	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
 	confpath := filepath.Join(homepath, "conf", "machbase.conf")
-	if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
-		return errors.Wrap(err, "machbase.conf")
+	if _, err := os.Stat(confpath); err != nil {
+		if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
 	}
 
-	initOption := mach.OPT_SIGHANDLER_OFF // default, it is required to shutdown by SIGTERM
+	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
 	if s.conf.EnableMachbaseSigHandler {
-		// internal use only, for debuging call stack
-		initOption = mach.OPT_SIGHANDLER_ON
+		// internal use only, for debuging call stack raised inside the engine
+		s.conf.MachbaseInitOption = mach.OPT_SIGHANDLER_ON
 	}
-	s.log.Infof("apply machbase init option: %d", initOption)
-	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, initOption); err != nil {
+	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
+	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
@@ -339,8 +363,14 @@ func (s *svr) Start() error {
 		if err := mach.CreateDatabase(); err != nil {
 			return errors.Wrap(err, "create database failed")
 		}
+		s.databaseCreated = true
 	}
 
+	// leak detector
+	leakDetector := leak.NewDetector(leak.Timer(10 * time.Second))
+	// mach.DefaultDetective = leakDetector
+
+	// create database instance
 	s.db, err = spi.NewDatabase(mach.FactoryName)
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
@@ -371,23 +401,75 @@ func (s *svr) Start() error {
 	}
 
 	if shouldInstallLicense {
-		_, err := do.InstallLicenseFile(s.db, s.licenseFilePath)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
 		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+		if _, err = do.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 			s.log.Warn("set license fail,", err.Error())
 		} else {
 			s.log.Info("set license success")
 		}
+		conn.Close()
+		cancel()
 	}
 
-	for n, sqlText := range s.conf.StartupQueries {
-		// ex) "alter system set trace_log_level=1023"
-		result := s.db.Exec(sqlText)
-		if result.Err() != nil {
-			s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
-			break
-		} else {
-			s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+	if len(s.conf.StartupQueries) > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
+		if err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
 		}
+		for n, sqlText := range s.conf.StartupQueries {
+			// ex) "alter system set trace_log_level=1023"
+			result := conn.Exec(ctx, sqlText)
+			if result.Err() != nil {
+				s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
+				break
+			} else {
+				s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+			}
+		}
+		conn.Close()
+		cancel()
+	}
+
+	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
+	ssfs.SetDefault(serverFs)
+
+	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+
+	s.bridgeSvc = bridge.NewService(
+		bridge.WithProvider(s.models.BridgeProvider()),
+	)
+
+	s.schedSvc = scheduler.NewService(
+		scheduler.WithVerbose(false),
+		scheduler.WithProvider(s.models.ScheduleProvider()),
+		scheduler.WithTqlLoader(tqlLoader),
+		scheduler.WithDatabase(s.db),
+	)
+
+	// start bridge service
+	if err := s.bridgeSvc.Start(); err != nil {
+		return err
+	}
+	// start scheduler service
+	if err := s.schedSvc.Start(); err != nil {
+		return err
 	}
 
 	// native port
@@ -401,6 +483,9 @@ func (s *svr) Start() error {
 			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
 			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
 			grpcd.OptionManagementServer(s),
+			grpcd.OptionBridgeServer(s.bridgeSvc),
+			grpcd.OptionScheduleServer(s.schedSvc),
+			grpcd.OptionLeakDetector(leakDetector),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -411,14 +496,6 @@ func (s *svr) Start() error {
 		}
 	}
 
-	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
-	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return errors.Wrap(err, "server side file system")
-	}
-	ssfs.SetDefault(serverFs)
-
-	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
@@ -430,9 +507,7 @@ func (s *svr) Start() error {
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
-			httpd.OptionRecentsProvider(s.WebRecents),
-			httpd.OptionReferenceProvider(s.WebReferences),
-			httpd.OptionWebShellProvider(s),
+			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -446,6 +521,16 @@ func (s *svr) Start() error {
 			shellAddrs = append(shellAddrs, sp.Address)
 		}
 		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
+		if s.conf.Http.WebDir != "" {
+			stat, err := os.Stat(s.conf.Http.WebDir)
+			if err != nil {
+				return err
+			}
+			if !stat.IsDir() {
+				return fmt.Errorf("web ui path is not a directory")
+			}
+			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
+		}
 		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
@@ -510,8 +595,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if enabledWebUI {
-		svcPorts, err := s.db.GetServicePorts("http")
+	if aux, ok := s.db.(spi.DatabaseAux); ok && enabledWebUI {
+		svcPorts, err := aux.GetServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
 		}
@@ -525,8 +610,15 @@ func (s *svr) Start() error {
 			}
 			readyMsg = append(readyMsg, addr)
 		}
-		s.log.Infof("\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-			strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+		dbInitInfo := ""
+		if s.databaseCreated {
+			dbInitInfo = strings.Join([]string{
+				fmt.Sprintf("\n\n >> New database created at '%s'", homepath),
+				"\n >> Open web browser, login username 'sys' password 'manager'.",
+			}, "\n")
+		}
+		s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
 	} else {
 		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
 	}
@@ -547,14 +639,21 @@ func (s *svr) Stop() {
 	if s.grpcd != nil {
 		s.grpcd.Stop()
 	}
-
+	if s.schedSvc != nil {
+		s.schedSvc.Stop()
+	}
+	if s.bridgeSvc != nil {
+		s.bridgeSvc.Stop()
+	}
+	if s.models != nil {
+		s.models.Stop()
+	}
 	if mdb, ok := s.db.(spi.DatabaseServer); ok {
 		if err := mdb.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 	}
 	mach.Finalize()
-
 	s.log.Infof("shutdown.")
 }
 
@@ -576,6 +675,9 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 			s.servicePortsLock.Unlock()
 		}
 	} else {
+		if strings.HasPrefix(addr, "unix://") && runtime.GOOS == "windows" {
+			return nil
+		}
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
 		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
@@ -612,10 +714,8 @@ func GenBanner() string {
 	machbase, _ := fig.Render("Machbase")
 	logo, _ := fig.RenderOpts("neo", options)
 
-	v := mods.GetVersion()
-
 	lines := strings.Split(logo, "\n")
-	lines[2] = lines[2] + fmt.Sprintf("  v%d.%d.%d (%s %s)", v.Major, v.Minor, v.Patch, v.GitSHA, mods.BuildTimestamp())
+	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
 	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
 	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")

@@ -2,6 +2,7 @@ package httpd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,79 +10,81 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/mock"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
 type TestClientMock struct {
-	mock.DatabaseMock
+	DatabaseMock
 }
 
 type TestAppenderMock struct {
-	mock.AppenderMock
+	AppenderMock
 }
 
 func TestAppendRoute(t *testing.T) {
 	columnDefaultLen := 3
 
 	dbMock := &TestClientMock{}
+	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+		conn := &ConnMock{}
+		conn.CloseFunc = func() error { return nil }
+		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) spi.Row {
+			rm := &RowMock{}
 
-	dbMock.QueryRowFunc = func(sqlText string, params ...any) spi.Row {
-		rm := &mock.RowMock{}
-
-		switch sqlText {
-		case "select count(*) from M$SYS_TABLES where name = ?":
-			rm.ScanFunc = func(cols ...any) error {
-				if len(params) == 1 {
-					if params[0] == "TAG" {
-						*(cols[0].(*int)) = 1
-					} else {
-						*(cols[0].(*int)) = 0
+			switch sqlText {
+			case "select count(*) from M$SYS_TABLES where name = ?":
+				rm.ScanFunc = func(cols ...any) error {
+					if len(params) == 1 {
+						if params[0] == "TAG" {
+							*(cols[0].(*int)) = 1
+						} else {
+							*(cols[0].(*int)) = 0
+						}
+					}
+					return nil
+				}
+			default:
+				t.Logf("QueryRow sqlText: %s, params:%v", sqlText, params)
+			}
+			return rm
+		}
+		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+			am := &TestAppenderMock{}
+			am.AppendFunc = func(value ...any) error {
+				count := 0
+				for _, val := range value {
+					switch v := val.(type) {
+					case string:
+						if v == "" {
+							break
+						}
+						count++
+					case int64:
+						if v == 0 {
+							break
+						}
+						count++
+					case float64:
+						if v == 0 {
+							break
+						}
+						count++
 					}
 				}
+
+				if count != columnDefaultLen {
+					return errors.New("values and number of columns do not match")
+				}
+
 				return nil
 			}
-		default:
-			t.Logf("QueryRow sqlText: %s, params:%v", sqlText, params)
-		}
-		return rm
-	}
-
-	dbMock.AppenderFunc = func(tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
-		am := &TestAppenderMock{}
-		am.AppendFunc = func(value ...any) error {
-			count := 0
-			for _, val := range value {
-				switch v := val.(type) {
-				case string:
-					if v == "" {
-						break
-					}
-					count++
-				case int64:
-					if v == 0 {
-						break
-					}
-					count++
-				case float64:
-					if v == 0 {
-						break
-					}
-					count++
-				}
+			am.CloseFunc = func() (int64, int64, error) {
+				return 1, 1, nil
 			}
-
-			if count != columnDefaultLen {
-				return errors.New("values and number of columns do not match")
-			}
-
-			return nil
+			return am, nil
 		}
-		am.CloseFunc = func() (int64, int64, error) {
-			return 1, 1, nil
-		}
-		return am, nil
+		return conn, nil
 	}
 
 	webService, err := New(dbMock,

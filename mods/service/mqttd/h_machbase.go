@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
@@ -64,7 +66,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any
 		rsp.Reason = err.Error()
 		return nil
 	}
-	Query(svr.db, req, rsp)
+	Query(svr.dbConn, req, rsp)
 	return nil
 }
 
@@ -85,7 +87,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		rsp.Reason = "table is not specified"
 		return nil
 	}
-	Write(svr.db, req, rsp)
+	Write(svr.dbConn, req, rsp)
 	return nil
 }
 
@@ -134,7 +136,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		}
 	}
 	if appender == nil {
-		appender, err = svr.db.Appender(wp.Table)
+		appender, err = svr.dbConn.Appender(svr.dbCtx, wp.Table)
 		if err != nil {
 			peerLog.Errorf("---- fail to create appender, %s", err.Error())
 			return nil
@@ -168,24 +170,25 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := appender.Columns()
-	codecOpts := []codec.Option{
-		codec.InputStream(instream),
-		codec.Timeformat("ns"),
-		codec.TimeLocation(time.UTC),
-		codec.Table(wp.Table),
-		codec.Columns(cols.Names(), cols.Types()),
-		codec.Delimiter(","),
-		codec.Heading(false),
+	codecOpts := []opts.Option{
+		opts.InputStream(instream),
+		opts.Timeformat("ns"),
+		opts.TimeLocation(time.UTC),
+		opts.TableName(wp.Table),
+		opts.Columns(cols.Names()...),
+		opts.ColumnTypes(cols.Types()...),
+		opts.Delimiter(","),
+		opts.Heading(false),
 	}
 
 	if len(wp.Transform) > 0 {
-		opts := []transcoder.Option{}
+		transcoderOpts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
-			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
-		opts = append(opts, transcoder.OptionPname("mqtt"))
-		trans := transcoder.New(wp.Transform, opts...)
-		codecOpts = append(codecOpts, codec.Transcoder(trans))
+		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("mqtt"))
+		trans := transcoder.New(wp.Transform, transcoderOpts...)
+		codecOpts = append(codecOpts, opts.Transcoder(trans))
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
@@ -245,15 +248,21 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		return nil
 	}
 
-	tql, err := script.Parse(bytes.NewBuffer(payload), params, io.Discard, false)
-	if err != nil {
+	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(svr.db)
+	task.SetInputReader(bytes.NewBuffer(payload))
+	task.SetOutputWriter(io.Discard)
+	task.SetParams(params)
+	if err := task.CompileScript(script); err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		return nil
 	}
 
-	if err := tql.Execute(context.TODO(), svr.db); err != nil {
-		svr.log.Error("tql execute fail", path, err.Error())
-		return nil
+	result := task.Execute()
+	if result == nil {
+		svr.log.Error("tql execute error", path)
+	} else if result.Err != nil {
+		svr.log.Error("tql execute fail", path, result.Err.Error())
 	}
 	return nil
 }

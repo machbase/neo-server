@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
@@ -27,8 +29,6 @@ type Service interface {
 	Stop()
 }
 
-type Option func(s *httpd)
-
 // Factory
 func New(db spi.Database, options ...Option) (Service, error) {
 	s := &httpd{
@@ -42,105 +42,6 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		opt(s)
 	}
 	return s, nil
-}
-
-// ListenAddresses
-func OptionListenAddress(addrs ...string) Option {
-	return func(s *httpd) {
-		s.listenAddresses = append(s.listenAddresses, addrs...)
-	}
-}
-
-// AuthServer
-func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
-	return func(s *httpd) {
-		s.authServer = authSvc
-		s.enableTokenAUth = enabled
-		if enabled {
-			s.log.Infof("HTTP token authentication enabled")
-		} else {
-			s.log.Infof("HTTP token authentication disabled")
-		}
-	}
-}
-
-// neo-shell address
-func OptionNeoShellAddress(addrs ...string) Option {
-	return func(s *httpd) {
-		candidates := []string{}
-		for _, addr := range addrs {
-			if strings.HasPrefix(addr, "tcp://127.0.0.1:") || strings.HasPrefix(addr, "tcp://localhost:") {
-				s.neoShellAddress = strings.TrimPrefix(addr, "tcp://")
-				// if loopback is available, use it for web-terminal
-				// eliminate other candiates
-				candidates = candidates[:0]
-				break
-			} else if strings.HasPrefix(addr, "tcp://") {
-				candidates = append(candidates, strings.TrimPrefix(addr, "tcp://"))
-			}
-		}
-		if len(candidates) > 0 {
-			// TODO choose one from the candidates, !EXCLUDE! virtual/tunnel ethernet addresses
-			s.neoShellAddress = candidates[0]
-		}
-	}
-}
-
-// license file path
-func OptionLicenseFilePath(path string) Option {
-	return func(s *httpd) {
-		s.licenseFilePath = path
-	}
-}
-
-// Handler
-func OptionHandler(prefix string, handler HandlerType) Option {
-	return func(s *httpd) {
-		s.handlers = append(s.handlers, &HandlerConfig{Prefix: prefix, Handler: handler})
-	}
-}
-
-func OptionTqlLoader(loader tql.Loader) Option {
-	return func(s *httpd) {
-		s.tqlLoader = loader
-	}
-}
-
-func OptionServerSideFileSystem(ssfs *ssfs.SSFS) Option {
-	return func(s *httpd) {
-		s.serverFs = ssfs
-	}
-}
-
-func OptionDebugMode(isDebug bool) Option {
-	return func(s *httpd) {
-		s.debugMode = isDebug
-	}
-}
-
-// experiement features
-func OptionExperimentModeProvider(provider func() bool) Option {
-	return func(s *httpd) {
-		s.experimentModeProvider = provider
-	}
-}
-
-func OptionReferenceProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.referenceProvider = provider
-	}
-}
-
-func OptionRecentsProvider(provider func() []WebReferenceGroup) Option {
-	return func(s *httpd) {
-		s.recentsProvider = provider
-	}
-}
-
-func OptionWebShellProvider(provider model.ShellProvider) Option {
-	return func(s *httpd) {
-		s.webShellProvider = provider
-	}
 }
 
 type httpd struct {
@@ -165,10 +66,9 @@ type httpd struct {
 
 	licenseFilePath        string
 	debugMode              bool
-	recentsProvider        func() []WebReferenceGroup
-	referenceProvider      func() []WebReferenceGroup
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
+	uiContentFs            http.FileSystem
 }
 
 type HandlerType string
@@ -265,10 +165,15 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
 			})
-			group.StaticFS(contentBase, GetAssets(contentBase))
+			if svr.uiContentFs != nil {
+				group.StaticFS(contentBase, svr.uiContentFs)
+			} else {
+				group.StaticFS(contentBase, GetAssets(contentBase))
+			}
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
+			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
 			if svr.tqlLoader != nil {
 				group.GET("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql/*path", svr.handleTagQL)
@@ -292,6 +197,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
 			group.Any("/api/files/*path", svr.handleFiles)
+			group.GET("/api/refs/*path", svr.handleRefs)
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
@@ -300,6 +206,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/logs", svr.handleLakeGetLogs)
 			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
+			// group.POST("/execquery",svr.handleLakeExecQuery)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
@@ -326,6 +233,22 @@ func (svr *httpd) Router() *gin.Engine {
 	// handle root /favicon.ico
 	r.NoRoute(gin.WrapF(assets.Handler))
 	return r
+}
+
+// for the internal processor
+func (svr *httpd) getTrustConnection(ctx *gin.Context) (spi.Conn, error) {
+	// TODO handle API Token
+	return svr.db.Connect(ctx, mach.WithTrustUser("sys"))
+}
+
+// for the api called from web-client that authorized by JWT
+func (svr *httpd) getUserConnection(ctx *gin.Context) (spi.Conn, error) {
+	claim, _ := svr.getJwtClaim(ctx)
+	if claim != nil {
+		return svr.db.Connect(ctx, mach.WithTrustUser(claim.Subject))
+	} else {
+		return nil, errors.New("unathorized db request")
+	}
 }
 
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {
@@ -369,6 +292,19 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
 		ctx.Abort()
 		return
+	}
+}
+
+func (svr *httpd) getJwtClaim(ctx *gin.Context) (security.Claim, bool) {
+	obj, ok := ctx.Get("jwt-claim")
+	if !ok {
+		return nil, false
+	}
+
+	if token, ok := obj.(*jwt.RegisteredClaims); !ok {
+		return nil, false
+	} else {
+		return token, ok
 	}
 }
 

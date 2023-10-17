@@ -1,12 +1,14 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/gofrs/uuid"
+	mach "github.com/machbase/neo-engine"
 	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +29,16 @@ func BenchmarkAppend(b *testing.B) {
 	db, err := spi.New()
 	require.Nil(b, err)
 
-	appender, err := db.Appender(benchmarkTableName)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		b.Error(err.Error())
+	}
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, benchmarkTableName)
 	require.Nil(b, err)
 
 	idgen := uuid.NewGen()
@@ -58,7 +69,17 @@ func BenchmarkAppend(b *testing.B) {
 func BenchmarkSelect(b *testing.B) {
 	db, err := spi.New()
 	require.Nil(b, err)
-	appender, err := db.Appender(benchmarkTableName)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		b.Error(err.Error())
+	}
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, benchmarkTableName)
 	require.Nil(b, err)
 
 	idgen := uuid.NewGen()
@@ -79,7 +100,7 @@ func BenchmarkSelect(b *testing.B) {
 
 	var prevId = ""
 	for i := 0; i < b.N; i++ {
-		rows, err := db.Query(fmt.Sprintf("select name, time, value, id, jsondata from %s where id > ? limit 100", benchmarkTableName), prevId)
+		rows, err := conn.Query(ctx, fmt.Sprintf("select name, time, value, id, jsondata from %s where id > ? limit 100", benchmarkTableName), prevId)
 		require.Nil(b, err)
 
 		var sName string

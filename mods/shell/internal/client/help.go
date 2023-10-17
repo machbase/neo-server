@@ -43,7 +43,7 @@ func doHelp(ctx *ActionContext) {
 				ctx.Println("Usage:")
 				lines := strings.Split(cmd.Usage, "\n")
 				for _, l := range lines {
-					ctx.Println(l)
+					ctx.Println(strings.ReplaceAll(l, "\t", "    "))
 				}
 			}
 			return

@@ -1,6 +1,8 @@
 package do
 
 import (
+	"context"
+
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -12,7 +14,7 @@ type TableInfo struct {
 	Flag     int    `json:"flag"`
 }
 
-func Tables(db spi.Database, callback func(*TableInfo, error) bool) {
+func Tables(ctx context.Context, conn spi.Conn, callback func(*TableInfo, error) bool) {
 	sqlText := `SELECT
 			j.DB_NAME as DB_NAME,
 			u.NAME as USER_NAME,
@@ -37,7 +39,7 @@ func Tables(db spi.Database, callback func(*TableInfo, error) bool) {
 		order by j.NAME
 		`
 
-	rows, err := db.Query(sqlText)
+	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		callback(nil, err)
 		return

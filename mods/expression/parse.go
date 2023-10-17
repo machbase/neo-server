@@ -11,6 +11,8 @@ import (
 	"unicode"
 )
 
+const autoConvertFirstUpperCaseOfAccessor = false
+
 func ParseTokens(input string, functions map[string]Function) ([]Token, error) {
 	var ret []Token
 	var token Token
@@ -188,12 +190,10 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			// accessor?
 			accessorIndex := strings.Index(tokenString, ".")
 			if accessorIndex > 0 {
-
 				// check that it doesn't end with a hanging period
 				if tokenString[len(tokenString)-1] == '.' {
 					return Token{}, fmt.Errorf("hanging accessor on token '%s'", tokenString), false
 				}
-
 				kind = ACCESSOR
 				splits := strings.Split(tokenString, ".")
 				tokenValue = splits
@@ -202,7 +202,16 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 				for i := 1; i < len(splits); i++ {
 					firstCharacter := getFirstRune(splits[i])
 					if unicode.ToUpper(firstCharacter) != firstCharacter {
-						return Token{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
+						if autoConvertFirstUpperCaseOfAccessor {
+							// instead of raising error, make it upper cased func name.
+							// so that script can keep lower cased field and function names
+							// for example) obj.field => obj.Field
+							raw := []rune(splits[i])
+							raw[0] = unicode.ToUpper(firstCharacter)
+							splits[i] = string(raw)
+						} else {
+							return Token{}, fmt.Errorf("unable to access unexported field '%s' in token '%s'", splits[i], tokenString), false
+						}
 					}
 				}
 			}
@@ -210,7 +219,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 		}
 
 		if !isNotQuote(character) {
-			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuote)
+			tokenValue, completed = readUntilFalse(stream, true, false, true, isNotQuoteMatch(character))
 
 			if !completed {
 				return Token{}, errors.New("unclosed string literal"), false
@@ -467,7 +476,13 @@ func isNumeric(character rune) bool {
 }
 
 func isNotQuote(character rune) bool {
-	return character != '\'' && character != '"'
+	return character != '\'' && character != '"' && character != '`' && character != '{'
+}
+
+func isNotQuoteMatch(openQuote rune) func(rune) bool {
+	return func(c rune) bool {
+		return c != openQuote
+	}
 }
 
 func isNotAlphanumeric(character rune) bool {

@@ -8,13 +8,18 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
+	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
+	"github.com/machbase/neo-server/mods/util/snowflake"
 	spi "github.com/machbase/neo-spi"
-	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -33,7 +38,6 @@ func New(db spi.Database, options ...Option) (Service, error) {
 		db:             db,
 		maxRecvMsgSize: 4 * 1024 * 1024,
 		maxSendMsgSize: 4 * 1024 * 1024,
-		ctxMap:         cmap.New(),
 	}
 
 	for _, opt := range options {
@@ -80,11 +84,43 @@ func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	}
 }
 
+// bridge implements
+func OptionBridgeServer(handler any) Option {
+	return func(s *grpcd) {
+		if o, ok := handler.(bridge.ManagementServer); ok {
+			s.bridgeMgmtImpl = o
+		}
+		if o, ok := handler.(bridge.RuntimeServer); ok {
+			s.bridgeRuntimeImpl = o
+		}
+	}
+}
+
+// schedule
+func OptionScheduleServer(handler schedule.ManagementServer) Option {
+	return func(s *grpcd) {
+		s.schedMgmtImpl = handler
+	}
+}
+
+func OptionLeakDetector(detector *leak.Detector) Option {
+	return func(s *grpcd) {
+		s.leakDetector = detector
+	}
+}
+
 type grpcd struct {
-	machrpc.MachbaseServer
+	machrpc.UnimplementedMachbaseServer
 
 	log logging.Log
-	db  spi.Database
+
+	db          spi.Database
+	dbConn      spi.Conn
+	dbCtx       context.Context
+	dbCtxCancel context.CancelFunc
+
+	node *snowflake.Node
+	pool map[string]*connParole
 
 	listenAddresses []string
 	maxRecvMsgSize  int
@@ -92,9 +128,12 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
-	mgmtImpl mgmt.ManagementServer
+	leakDetector      *leak.Detector
+	mgmtImpl          mgmt.ManagementServer
+	bridgeMgmtImpl    bridge.ManagementServer
+	bridgeRuntimeImpl bridge.RuntimeServer
+	schedMgmtImpl     schedule.ManagementServer
 
-	ctxMap     cmap.ConcurrentMap
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
 
@@ -109,11 +148,30 @@ func (svr *grpcd) interceptor(ctx context.Context, req interface{}, info *grpc.U
 	return handler(ctx, req)
 }
 
+type connParole struct {
+	rawConn spi.Conn
+	handle  string
+	cretime time.Time
+}
+
 func (svr *grpcd) Start() error {
 	grpcOptions := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(int(svr.maxRecvMsgSize)),
 		grpc.MaxSendMsgSize(int(svr.maxSendMsgSize)),
 		grpc.StatsHandler(svr),
+	}
+
+	if svr.db == nil {
+		return errors.New("no database instance")
+	}
+
+	svr.pool = map[string]*connParole{}
+	svr.node, _ = snowflake.NewNode(0)
+	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
+	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
+		return err
+	} else {
+		svr.dbConn = conn
 	}
 
 	// create grpc server insecure
@@ -134,7 +192,7 @@ func (svr *grpcd) Start() error {
 	svr.rpcServer = grpc.NewServer(grpcOptions...)
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
 
-	// rpcServer is serving only db service
+	// rpcServer is serving the db service
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
 
 	// mgmtServer is serving general db service + mgmt service
@@ -145,7 +203,26 @@ func (svr *grpcd) Start() error {
 		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
 	}
 
-	//listeners
+	// mgmtServer serves bridge management service
+	if svr.bridgeMgmtImpl != nil {
+		bridge.RegisterManagementServer(svr.mgmtServer, svr.bridgeMgmtImpl)
+		bridge.RegisterManagementServer(svr.mgmtServerInsecure, svr.bridgeMgmtImpl)
+	}
+
+	// rpcServer can serve bridge runtime service
+	if svr.bridgeRuntimeImpl != nil {
+		bridge.RegisterRuntimeServer(svr.rpcServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServer, svr.bridgeRuntimeImpl)
+		bridge.RegisterRuntimeServer(svr.mgmtServerInsecure, svr.bridgeRuntimeImpl)
+	}
+
+	// schedServer management service
+	if svr.schedMgmtImpl != nil {
+		schedule.RegisterManagementServer(svr.mgmtServer, svr.schedMgmtImpl)
+		schedule.RegisterManagementServer(svr.mgmtServerInsecure, svr.schedMgmtImpl)
+	}
+
+	// listeners
 	for _, listen := range svr.listenAddresses {
 		if runtime.GOOS == "windows" && strings.HasPrefix(listen, "unix://") {
 			// s.log.Debugf("gRPC unable %s on Windows", listen)
@@ -184,6 +261,10 @@ func (svr *grpcd) Stop() {
 	}
 	if svr.mgmtServerInsecure != nil {
 		svr.mgmtServerInsecure.Stop()
+	}
+	if svr.dbConn != nil {
+		svr.dbConn.Close()
+		svr.dbCtxCancel()
 	}
 }
 

@@ -4,10 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"math"
-	"net"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -47,8 +44,13 @@ func (dec *Decoder) SetTimeLocation(tz *time.Location) {
 	dec.timeLocation = tz
 }
 
+// Deprecated use SetHeader()
 func (dec *Decoder) SetHeading(skipHeading bool) {
 	dec.heading = skipHeading
+}
+
+func (dec *Decoder) SetHeader(skipHeader bool) {
+	dec.heading = skipHeader
 }
 
 func (dec *Decoder) SetDelimiter(delimiter string) {
@@ -56,7 +58,7 @@ func (dec *Decoder) SetDelimiter(delimiter string) {
 	dec.comma = delmiter
 }
 
-func (dec *Decoder) SetTable(tableName string) {
+func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
 }
 
@@ -64,8 +66,11 @@ func (dec *Decoder) SetTranscoder(trans transcoder.Transcoder) {
 	dec.translator = trans
 }
 
-func (dec *Decoder) SetColumns(names []string, types []string) {
+func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
+}
+
+func (dec *Decoder) SetColumnTypes(types ...string) {
 	dec.columnTypes = types
 }
 
@@ -94,6 +99,8 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	}
 
 	values := make([]any, len(dec.columnTypes))
+	errs := []error{}
+
 	lastField := len(fields) - 1
 	for i, field := range fields {
 		if i == lastField && runtime.GOOS == "windows" {
@@ -107,42 +114,53 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		case "datetime":
 			values[i], err = util.ParseTime(field, dec.timeformat, dec.timeLocation)
 			if err != nil {
-				return nil, err
+				errs = append(errs, err)
 			}
 		case "float":
-			if values[i], err = strconv.ParseFloat(field, 32); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseFloat32(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "double":
-			if values[i], err = strconv.ParseFloat(field, 64); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseFloat64(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "int":
-			if values[i], err = strconv.ParseInt(field, 10, 32); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseInt(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "int16":
-			if values[i], err = strconv.ParseInt(field, 10, 16); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseInt16(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "int32":
-			if values[i], err = strconv.ParseInt(field, 10, 32); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseInt32(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "int64":
-			if values[i], err = strconv.ParseInt(field, 10, 64); err != nil {
-				values[i] = math.NaN()
+			values[i], err = util.ParseInt64(field)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		case "ipv4":
-			fallthrough
+			values[i], err = util.ParseIP(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		case "ipv6":
-			addr := net.ParseIP(field)
-			values[i] = addr
+			values[i], err = util.ParseIP(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		default:
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
 		}
 	}
-	if dec.translator != nil {
+	if len(errs) == 0 && dec.translator != nil {
 		result, err := dec.translator.Process(values)
 		if err != nil {
 			return nil, errors.Wrap(err, fmt.Sprintf("transcoder internal error '%T'", dec.translator))
@@ -152,6 +170,9 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		} else {
 			values = conv
 		}
+	}
+	if len(errs) > 0 {
+		return values, errs[0]
 	}
 	return values, nil
 }

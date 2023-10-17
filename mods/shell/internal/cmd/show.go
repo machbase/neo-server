@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shell/internal/client"
 	"github.com/machbase/neo-server/mods/stream"
@@ -21,7 +22,7 @@ func init() {
 		PcFunc: pcShow,
 		Action: doShow,
 		Desc:   "Display information",
-		Usage:  helpShow,
+		Usage:  strings.ReplaceAll(helpShow, "\t", "    "),
 	})
 }
 
@@ -101,6 +102,10 @@ func doShow(ctx *client.ActionContext) {
 	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
+	case "inflights":
+		doShowInflights(ctx)
+	case "postflights":
+		doShowPostflights(ctx)
 	case "ports":
 		doShowPorts(ctx)
 	case "users":
@@ -356,7 +361,7 @@ func doShowTags(ctx *client.ActionContext, args []string) {
 
 	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
 	nrow := 0
-	do.Tags(ctx.DB, strings.ToUpper(args[0]), func(name string, err error) bool {
+	do.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -376,7 +381,7 @@ func doShowTagStat(ctx *client.ActionContext, args []string) {
 	}
 
 	t := ctx.NewBox([]string{"NAME", "VALUE"})
-	stat, err := do.TagStat(ctx.DB, args[0], args[1])
+	stat, err := do.TagStat(ctx.Ctx, ctx.Conn, args[0], args[1])
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -418,14 +423,15 @@ func doShowByQuery0(ctx *client.ActionContext, sqlText string) {
 	defer output.Close()
 
 	encoder := codec.NewEncoder(codec.BOX,
-		codec.OutputStream(output),
-		codec.Rownum(true),
-		codec.Heading(true),
-		codec.BoxStyle(ctx.Pref().BoxStyle().Value()),
+		opts.OutputStream(output),
+		opts.Rownum(true),
+		opts.Heading(true),
+		opts.BoxStyle(ctx.Pref().BoxStyle().Value()),
 	)
 
 	queryCtx := &do.QueryContext{
-		DB: ctx.DB,
+		Conn: ctx.Conn,
+		Ctx:  ctx.Ctx,
 		OnFetchStart: func(cols spi.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
@@ -458,7 +464,7 @@ func doShowTable(ctx *client.ActionContext, args []string, showAll bool) {
 
 	table := args[0]
 
-	_desc, err := do.Describe(ctx.DB, table, showAll)
+	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, table, showAll)
 	if err != nil {
 		ctx.Println("unable to describe", table, "; ERR", err.Error())
 		return
@@ -479,7 +485,7 @@ func doShowTable(ctx *client.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *client.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
 	nrow := 0
-	do.Tables(ctx.DB, func(ti *do.TableInfo, err error) bool {
+	do.Tables(ctx.Ctx, ctx.Conn, func(ti *do.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -496,7 +502,7 @@ func doShowTables(ctx *client.ActionContext, showAll bool) {
 }
 
 func doShowMVTables(ctx *client.ActionContext, tablesTable string) {
-	rows, err := ctx.DB.Query(fmt.Sprintf("select NAME, TYPE, FLAG, ID from %s order by ID", tablesTable))
+	rows, err := ctx.Conn.Query(ctx.Ctx, fmt.Sprintf("select NAME, TYPE, FLAG, ID from %s order by ID", tablesTable))
 	if err != nil {
 		ctx.Printfln("ERR select %s fail; %s", tablesTable, err.Error())
 		return
@@ -525,7 +531,12 @@ func doShowMVTables(ctx *client.ActionContext, tablesTable string) {
 }
 
 func doShowInfo(ctx *client.ActionContext) {
-	nfo, err := ctx.DB.GetServerInfo()
+	aux, ok := ctx.Client.Database().(spi.DatabaseAux)
+	if !ok {
+		ctx.Println("ERR server info is unavailable")
+		return
+	}
+	nfo, err := aux.GetServerInfo()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -556,8 +567,62 @@ func doShowInfo(ctx *client.ActionContext) {
 	box.Render()
 }
 
+func doShowInflights(ctx *client.ActionContext) {
+	aux, ok := ctx.Client.Database().(spi.DatabaseAux)
+	if !ok {
+		ctx.Println("ERR server inflights is unavailable")
+		return
+	}
+
+	inflights, err := aux.GetInflights()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	box := ctx.NewBox([]string{"ID", "TYPE", "AGED", "STATEMENT"})
+	for _, itm := range inflights {
+		sqlText := itm.SqlText
+		if len(sqlText) > 40 {
+			sqlText = sqlText[0:40] + "..."
+		}
+		box.AppendRow(itm.Id, itm.Type, itm.Elapsed.String(), sqlText)
+	}
+	box.Render()
+}
+
+func doShowPostflights(ctx *client.ActionContext) {
+	aux, ok := ctx.Client.Database().(spi.DatabaseAux)
+	if !ok {
+		ctx.Println("ERR server postflighs is unavailable")
+		return
+	}
+
+	postflights, err := aux.GetPostflights()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	box := ctx.NewBox([]string{"COUNT", "AVG. TIME", "TOTAL TIME", "STATEMENT"})
+	for _, itm := range postflights {
+		sqlText := itm.SqlText
+		if len(sqlText) > 40 {
+			sqlText = sqlText[0:40] + "..."
+		}
+		avgTime := time.Duration(int64(itm.TotalTime) / itm.Count)
+		box.AppendRow(itm.Count, avgTime.String(), itm.TotalTime.String(), sqlText)
+	}
+	box.Render()
+}
+
 func doShowPorts(ctx *client.ActionContext) {
-	ports, err := ctx.DB.GetServicePorts("")
+	aux, ok := ctx.Client.Database().(spi.DatabaseAux)
+	if !ok {
+		ctx.Println("ERR server info is unavailable")
+		return
+	}
+	ports, err := aux.GetServicePorts("")
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

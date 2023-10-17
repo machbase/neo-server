@@ -179,3 +179,29 @@ func TestStrlenFunction(test *testing.T) {
 		test.Fail()
 	}
 }
+
+func TestFunctionAddNumeric(test *testing.T) {
+	functions := map[string]Function{
+		"foo": func(args ...interface{}) (interface{}, error) {
+			return 10, nil
+		},
+	}
+
+	expString := "foo() + 10"
+	expression, err := NewWithFunctions(expString, functions)
+	if err != nil {
+		test.Log(err)
+		test.Fail()
+	}
+
+	result, err := expression.Evaluate(nil)
+	if err != nil {
+		test.Log(err)
+		test.Fail()
+	}
+
+	if result != 20.0 {
+		test.Logf("Expected '20.0', got '%v'\n", result)
+		test.Fail()
+	}
+}

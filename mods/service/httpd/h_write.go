@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/codec"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
@@ -49,7 +50,16 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
 	trans := strString(ctx.Query("transcoder"), "")
 
-	exists, _, _, err := do.ExistsTableOrCreate(svr.db, tableName, createTable, truncateTable)
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusUnauthorized, rsp)
+		return
+	}
+	defer conn.Close()
+
+	exists, _, _, err := do.ExistsTableOrCreate(ctx, conn, tableName, createTable, truncateTable)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -64,7 +74,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(svr.db, tableName, false); err != nil {
+	if desc0, err := do.Describe(ctx, conn, tableName, false); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
@@ -87,25 +97,26 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		in = &stream.ReaderInputStream{Reader: ctx.Request.Body}
 	}
 
-	codecOpts := []codec.Option{
-		codec.InputStream(in),
-		codec.Table(tableName),
-		codec.Columns(desc.Columns.Columns().Names(), desc.Columns.Columns().Types()),
-		codec.Timeformat(timeformat),
-		codec.TimeLocation(timeLocation),
-		codec.Delimiter(delimiter),
-		codec.Heading(heading),
+	codecOpts := []opts.Option{
+		opts.InputStream(in),
+		opts.TableName(tableName),
+		opts.Columns(desc.Columns.Columns().Names()...),
+		opts.ColumnTypes(desc.Columns.Columns().Types()...),
+		opts.Timeformat(timeformat),
+		opts.TimeLocation(timeLocation),
+		opts.Delimiter(delimiter),
+		opts.Heading(heading),
 	}
 
 	if len(trans) > 0 {
-		opts := []transcoder.Option{}
+		transcoderOpts := []transcoder.Option{}
 		if exepath, err := os.Executable(); err == nil {
-			opts = append(opts, transcoder.OptionPath(filepath.Dir(exepath)))
+			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
 		}
-		opts = append(opts, transcoder.OptionPname("http"))
-		trans := transcoder.New(trans, opts...)
+		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("http"))
+		trans := transcoder.New(trans, transcoderOpts...)
 
-		codecOpts = append(codecOpts, codec.Transcoder(trans))
+		codecOpts = append(codecOpts, opts.Transcoder(trans))
 	}
 	decoder := codec.NewDecoder(format, codecOpts...)
 
@@ -125,6 +136,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	valueHolder := strings.Join(_hold, ",")
 	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
+
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
@@ -139,7 +151,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		lineno++
 
 		if method == "insert" {
-			if result := svr.db.Exec(insertQuery, vals...); result.Err() != nil {
+			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 				rsp.Reason = result.Err().Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
@@ -147,7 +159,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 		} else { // append
 			if appender == nil {
-				appender, err = svr.db.Appender(tableName)
+				appender, err = conn.Appender(ctx, tableName)
 				if err != nil {
 					rsp.Reason = err.Error()
 					rsp.Elapse = time.Since(tick).String()

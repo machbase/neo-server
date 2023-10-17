@@ -16,7 +16,7 @@ func init() {
 		PcFunc: pcShell,
 		Action: doShell,
 		Desc:   "Manage shell commands",
-		Usage:  helpShell,
+		Usage:  strings.ReplaceAll(helpShell, "\t", "    "),
 	})
 }
 

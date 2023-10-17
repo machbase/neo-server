@@ -1,6 +1,7 @@
 package mqttd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
-func Write(db spi.Database, req *msg.WriteRequest, rsp *msg.WriteResponse) {
+func Write(conn spi.Conn, req *msg.WriteRequest, rsp *msg.WriteResponse) {
 	vf := make([]string, len(req.Data.Columns))
 	for i := range vf {
 		vf[i] = "?"
@@ -19,7 +20,7 @@ func Write(db spi.Database, req *msg.WriteRequest, rsp *msg.WriteResponse) {
 	sqlText := fmt.Sprintf("insert into %s (%s) values(%s)", req.Table, columns, valuesFormat)
 	var nrows uint64
 	for i, rec := range req.Data.Rows {
-		result := db.Exec(sqlText, rec...)
+		result := conn.Exec(context.TODO(), sqlText, rec...)
 		if result.Err() != nil {
 			rsp.Reason = fmt.Sprintf("record[%d] %s", i, result.Err().Error())
 			rsp.Data = &msg.WriteResponseData{

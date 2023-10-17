@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
-	"sync/atomic"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-server/mods/leak"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -25,8 +25,78 @@ func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.P
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	rsp.Success, rsp.Reason = true, "success"
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+	} else {
+		if pinger, ok := conn.rawConn.(spi.Pinger); ok {
+			if _, err := pinger.Ping(); err != nil {
+				rsp.Reason = err.Error()
+			} else {
+				rsp.Success, rsp.Reason = true, "success"
+			}
+		} else {
+			rsp.Reason = "ping not supproted"
+		}
+	}
 	rsp.Token = req.Token
+	return rsp, nil
+}
+
+func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.ConnResponse, error) {
+	rsp := &machrpc.ConnResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Conn panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	connOpts := []spi.ConnectOption{}
+	switch s.db.(type) {
+	case spi.DatabaseClient:
+		connOpts = append(connOpts, machrpc.WithPassword(req.User, req.Password))
+	case spi.DatabaseServer:
+		connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+	}
+	if conn, err := s.db.Connect(pctx, connOpts...); err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		h := s.node.Generate().Base64()
+		parole := &connParole{
+			rawConn: conn,
+			handle:  h,
+			cretime: tick,
+		}
+		s.pool[h] = parole
+		rsp.Conn = &machrpc.ConnHandle{Handle: h}
+		rsp.Success, rsp.Reason = true, "success"
+	}
+	return rsp, nil
+}
+
+func (s *grpcd) ConnClose(pctx context.Context, req *machrpc.ConnCloseRequest) (*machrpc.ConnCloseResponse, error) {
+	rsp := &machrpc.ConnCloseResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("ConnClose panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+	h := req.Conn.Handle
+	if parole, ok := s.pool[h]; !ok {
+		rsp.Reason = fmt.Sprintf("Conn does not exist %q", h)
+	} else {
+		if err := parole.rawConn.Close(); err != nil {
+			s.log.Warnf("connection %q close error, %s", h, err.Error())
+			rsp.Reason = err.Error()
+		} else {
+			delete(s.pool, h)
+			rsp.Success, rsp.Reason = true, "success"
+		}
+	}
 	return rsp, nil
 }
 
@@ -40,11 +110,21 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if plan, err := s.db.Explain(req.Sql, req.Full); err == nil {
-		rsp.Success, rsp.Reason = true, "success"
-		rsp.Plan = plan
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.Success, rsp.Reason = false, err.Error()
+		explainer, ok := conn.rawConn.(spi.Explainer)
+		if !ok {
+			return nil, fmt.Errorf("server info is unavailable")
+		}
+		if plan, err := explainer.Explain(pctx, req.Sql, req.Full); err == nil {
+			rsp.Success, rsp.Reason = true, "success"
+			rsp.Plan = plan
+		} else {
+			rsp.Success, rsp.Reason = false, err.Error()
+		}
 	}
 	return rsp, nil
 }
@@ -59,15 +139,22 @@ func (s *grpcd) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.E
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	if result := s.db.Exec(req.Sql, params...); result.Err() == nil {
-		rsp.RowsAffected = result.RowsAffected()
-		rsp.Success = true
-		rsp.Reason = result.Message()
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.Success = false
-		rsp.Reason = result.Message()
+		params := machrpc.ConvertPbToAny(req.Params)
+		if result := conn.rawConn.Exec(pctx, req.Sql, params...); result.Err() == nil {
+			rsp.RowsAffected = result.RowsAffected()
+			rsp.Success = true
+			rsp.Reason = result.Message()
+		} else {
+			rsp.Success = false
+			rsp.Reason = result.Message()
+		}
 	}
+
 	return rsp, nil
 }
 
@@ -82,26 +169,34 @@ func (s *grpcd) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*m
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	row := s.db.QueryRow(req.Sql, params...)
-
-	if row.Err() != nil {
-		rsp.Reason = row.Err().Error()
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
 		return rsp, nil
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+		return rsp, nil
+	} else {
+		params := machrpc.ConvertPbToAny(req.Params)
+		row := conn.rawConn.QueryRow(pctx, req.Sql, params...)
+
+		if row.Err() != nil {
+			rsp.Reason = row.Err().Error()
+			return rsp, nil
+		}
+
+		var err error
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
+		rsp.RowsAffected = row.RowsAffected()
+		rsp.Message = row.Message()
+		if err != nil {
+			rsp.Success = false
+			rsp.Reason = err.Error()
+		}
 	}
 
-	var err error
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
-	rsp.RowsAffected = row.RowsAffected()
-	rsp.Message = row.Message()
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-	}
-
-	return rsp, err
+	return rsp, nil
 }
 
 func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc.QueryResponse, error) {
@@ -115,35 +210,30 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	params := machrpc.ConvertPbToAny(req.Params)
-	realRows, err := s.db.Query(req.Sql, params...)
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-
-	if realRows.IsFetchable() {
-		handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
-		// TODO leak detector
-		s.ctxMap.Set(handle, &rowsWrap{
-			id:   handle,
-			rows: realRows,
-			release: func() {
-				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-					realRows.Close()
-					return true
-				})
-			},
-		})
-		rsp.RowsHandle = &machrpc.RowsHandle{
-			Handle: handle,
-		}
-		rsp.Reason = "success"
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
 	} else {
-		rsp.RowsAffected = realRows.RowsAffected()
-		rsp.Reason = realRows.Message()
+		params := machrpc.ConvertPbToAny(req.Params)
+		realRows, err := conn.rawConn.Query(pctx, req.Sql, params...)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+
+		if realRows.IsFetchable() {
+			rows := s.leakDetector.DetainRows(realRows, req.Sql)
+			rsp.RowsHandle = &machrpc.RowsHandle{
+				Handle: rows.Id(),
+			}
+			rsp.Reason = "success"
+		} else {
+			rsp.RowsAffected = realRows.RowsAffected()
+			rsp.Reason = realRows.Message()
+		}
+		rsp.Success = true
 	}
-	rsp.Success = true
 
 	return rsp, nil
 }
@@ -158,18 +248,13 @@ func (s *grpcd) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	rowsWrapVal, exists := s.ctxMap.Get(rows.Handle)
-	if !exists {
-		rsp.Reason = fmt.Sprintf("handle '%s' not found", rows.Handle)
-		return rsp, nil
-	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", rows.Handle)
+	rowsWrap, err := s.leakDetector.Rows(rows.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	cols, err := rowsWrap.rows.Columns()
+	cols, err := rowsWrap.Rows.Columns()
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -199,25 +284,20 @@ func (s *grpcd) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machr
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	rowsWrapVal, exists := s.ctxMap.Get(rows.Handle)
-	if !exists {
-		rsp.Reason = fmt.Sprintf("handle '%s' not found", rows.Handle)
-		return rsp, nil
-	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", rows.Handle)
+	rowsWrap, err := s.leakDetector.Rows(rows.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	if !rowsWrap.rows.Next() {
+	if !rowsWrap.Rows.Next() {
 		rsp.Success = true
 		rsp.Reason = "success"
 		rsp.HasNoRows = true
 		return rsp, nil
 	}
 
-	columns, err := rowsWrap.rows.Columns()
+	columns, err := rowsWrap.Rows.Columns()
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -225,7 +305,7 @@ func (s *grpcd) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machr
 	}
 
 	values := columns.MakeBuffer()
-	err = rowsWrap.rows.Scan(values...)
+	err = rowsWrap.Rows.Scan(values...)
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -253,18 +333,12 @@ func (s *grpcd) RowsClose(ctx context.Context, rows *machrpc.RowsHandle) (*machr
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	rowsWrapVal, exists := s.ctxMap.Get(rows.Handle)
-	if !exists {
-		rsp.Reason = fmt.Sprintf("handle '%s' not found", rows.Handle)
+	rowsWrap, err := s.leakDetector.Rows(rows.Handle)
+	if err != nil {
+		rsp.Reason = err.Error()
 		return rsp, nil
 	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", rows.Handle)
-		return rsp, nil
-	}
-
-	rowsWrap.release()
+	rowsWrap.Release()
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil
@@ -280,51 +354,36 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	opts := []spi.AppendOption{}
-	if len(req.Timeformat) > 0 {
-		opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
+	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+		rsp.Reason = "invalid connection handle"
+	} else if conn.rawConn == nil {
+		rsp.Reason = "invalid connection"
+	} else {
+		opts := []spi.AppendOption{}
+		if len(req.Timeformat) > 0 {
+			opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
+		}
+		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		tableType := realAppender.TableType()
+		tableName := realAppender.TableName()
+		appender := s.leakDetector.DetainAppender(realAppender, tableName)
+
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Handle = &machrpc.AppenderHandle{Handle: appender.Id()}
+		rsp.TableName = tableName
+		rsp.TableType = int32(tableType)
 	}
-	realAppender, err := s.db.Appender(req.TableName, opts...)
-	if err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-	tableType := realAppender.TableType()
-	tableName := realAppender.TableName()
-	handle := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
-	wrap := &appenderWrap{
-		id:       handle,
-		appender: realAppender,
-		closed:   false,
-	}
-	wrap.release = func() {
-		s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
-			if !wrap.closed {
-				s.log.Tracef("close appender:%v", handle)
-				realAppender.Close()
-			}
-			return true
-		})
-	}
-	s.ctxMap.Set(handle, wrap)
-	s.log.Tracef("open appender:%v", handle)
-	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Handle = handle
-	rsp.TableName = tableName
-	rsp.TableType = int32(tableType)
+
 	return rsp, nil
 }
 
-type appenderWrap struct {
-	id       string
-	appender spi.Appender
-	release  func()
-	closed   bool
-}
-
 func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
-	var wrap *appenderWrap
+	var wrap *leak.AppenderParole
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("Append panic recover", panic)
@@ -332,7 +391,7 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 		if wrap == nil {
 			return
 		}
-		wrap.release()
+		wrap.Release()
 	}()
 
 	tick := time.Now()
@@ -343,10 +402,10 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 			// Caution: m is nil
 			//
 			var successCount, failCount int64
-			if wrap != nil && wrap.appender != nil {
-				successCount, failCount, _ = wrap.appender.Close()
-				s.log.Tracef("close appender:%v success:%d fail:%d", wrap.id, successCount, failCount)
-				wrap.closed = true
+			if wrap != nil && wrap.Appender != nil {
+				successCount, failCount, _ = wrap.Appender.Close()
+				s.log.Tracef("close appender:%v success:%d fail:%d", wrap.Id(), successCount, failCount)
+				wrap.Release()
 			}
 
 			return stream.SendAndClose(&machrpc.AppendDone{
@@ -361,20 +420,14 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 		}
 
 		if wrap == nil {
-			appenderWrapVal, exists := s.ctxMap.Get(m.Handle)
-			if !exists {
-				s.log.Error("handle not found", m.Handle)
-				return fmt.Errorf("handle '%s' not found", m.Handle)
+			wrap, err = s.leakDetector.Appender(m.Handle.Handle)
+			if err != nil {
+				s.log.Error("handle not found", m.Handle, err.Error())
+				return err
 			}
-			appenderWrap, ok := appenderWrapVal.(*appenderWrap)
-			if !ok {
-				s.log.Error("handle invalid", m.Handle)
-				return fmt.Errorf("handle '%s' is not valid", m.Handle)
-			}
-			wrap = appenderWrap
 		}
 
-		if wrap.id != m.Handle {
+		if wrap.Id() != m.Handle.Handle {
 			s.log.Error("handle changed", m.Handle)
 			return fmt.Errorf("not allowed changing handle in a stream")
 		}
@@ -385,22 +438,24 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 				if err != nil {
 					s.log.Error("append-unmarshal", err.Error())
 				}
-				err = wrap.appender.Append(values...)
+				err = wrap.Appender.Append(values...)
 				if err != nil {
 					s.log.Error("append", err.Error())
 					return err
 				}
 			}
 		}
+		/* TODO: remove
 		if len(m.Params) > 0 {
 			// for gRPC client that utilizes protobuf.Any (e.g: Python, C#, Java)
 			values := machrpc.ConvertPbToAny(m.Params)
-			err = wrap.appender.Append(values...)
+			err = wrap.Appender.Append(values...)
 			if err != nil {
 				s.log.Error("append", err.Error())
 				return err
 			}
 		}
+		*/
 	}
 }
 
@@ -442,31 +497,60 @@ func (s *grpcd) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoReque
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	nfo, err := s.db.GetServerInfo()
+	aux, ok := s.db.(spi.DatabaseAux)
+	if !ok {
+		return nil, fmt.Errorf("server info is unavailable")
+	}
+	nfo, err := aux.GetServerInfo()
 	if err != nil {
 		return nil, err
 	}
 
-	rsp.Runtime.OS = nfo.Runtime.OS
-	rsp.Runtime.Arch = nfo.Runtime.Arch
-	rsp.Runtime.Pid = nfo.Runtime.Pid
-	rsp.Runtime.UptimeInSecond = nfo.Runtime.UptimeInSecond
-	rsp.Runtime.Processes = nfo.Runtime.Processes
-	rsp.Runtime.Goroutines = nfo.Runtime.Goroutines
-	rsp.Runtime.MemSys = nfo.Runtime.MemSys
-	rsp.Runtime.MemHeapSys = nfo.Runtime.MemHeapSys
-	rsp.Runtime.MemHeapAlloc = nfo.Runtime.MemHeapAlloc
-	rsp.Runtime.MemHeapInUse = nfo.Runtime.MemHeapInUse
-	rsp.Runtime.MemStackSys = nfo.Runtime.MemStackSys
-	rsp.Runtime.MemStackInUse = nfo.Runtime.MemStackInUse
+	if req.Inflights {
+		items := s.leakDetector.Inflights()
+		rsp.Inflights = make([]*machrpc.Inflight, len(items))
+		for i := range items {
+			rsp.Inflights[i] = &machrpc.Inflight{
+				Id:          items[i].Id,
+				Type:        items[i].Type,
+				SqlText:     items[i].SqlText,
+				ElapsedTime: int64(items[i].Elapsed),
+			}
+		}
+	}
+	if req.Postflights {
+		items := s.leakDetector.Postflights()
+		rsp.Postflights = make([]*machrpc.Postflight, len(items))
+		for i := range items {
+			rsp.Postflights[i] = &machrpc.Postflight{
+				SqlText:   items[i].SqlText,
+				Count:     items[i].Count,
+				TotalTime: int64(items[i].TotalTime),
+			}
+		}
+	}
+	if !req.Inflights && !req.Postflights {
+		rsp.Runtime.OS = nfo.Runtime.OS
+		rsp.Runtime.Arch = nfo.Runtime.Arch
+		rsp.Runtime.Pid = nfo.Runtime.Pid
+		rsp.Runtime.UptimeInSecond = nfo.Runtime.UptimeInSecond
+		rsp.Runtime.Processes = nfo.Runtime.Processes
+		rsp.Runtime.Goroutines = nfo.Runtime.Goroutines
+		rsp.Runtime.MemSys = nfo.Runtime.MemSys
+		rsp.Runtime.MemHeapSys = nfo.Runtime.MemHeapSys
+		rsp.Runtime.MemHeapAlloc = nfo.Runtime.MemHeapAlloc
+		rsp.Runtime.MemHeapInUse = nfo.Runtime.MemHeapInUse
+		rsp.Runtime.MemStackSys = nfo.Runtime.MemStackSys
+		rsp.Runtime.MemStackInUse = nfo.Runtime.MemStackInUse
 
-	rsp.Version.Major = nfo.Version.Major
-	rsp.Version.Minor = nfo.Version.Minor
-	rsp.Version.Patch = nfo.Version.Patch
-	rsp.Version.GitSHA = nfo.Version.GitSHA
-	rsp.Version.BuildTimestamp = nfo.Version.BuildTimestamp
-	rsp.Version.BuildCompiler = nfo.Version.BuildCompiler
-	rsp.Version.Engine = nfo.Version.Engine
+		rsp.Version.Major = nfo.Version.Major
+		rsp.Version.Minor = nfo.Version.Minor
+		rsp.Version.Patch = nfo.Version.Patch
+		rsp.Version.GitSHA = nfo.Version.GitSHA
+		rsp.Version.BuildTimestamp = nfo.Version.BuildTimestamp
+		rsp.Version.BuildCompiler = nfo.Version.BuildCompiler
+		rsp.Version.Engine = nfo.Version.Engine
+	}
 
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -484,7 +568,12 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	list, err := s.db.GetServicePorts(req.Service)
+	aux, ok := s.db.(spi.DatabaseAux)
+	if !ok {
+		return nil, fmt.Errorf("server info is unavailable")
+	}
+
+	list, err := aux.GetServicePorts(req.Service)
 	if err != nil {
 		return nil, err
 	}

@@ -156,6 +156,9 @@ func TestConnectPacket(t *testing.T) {
 	if string(cp.WillMessage) != "Test Payload" {
 		t.Errorf("Connect Packet WillMessage is %s, should be %s", string(cp.WillMessage), "Test Payload")
 	}
+	if cp.Validate() != ErrRefusedIDRejected {
+		t.Error("Connect Packet Validate fail")
+	}
 }
 
 func TestPackUnpackControlPackets(t *testing.T) {

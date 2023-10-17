@@ -19,7 +19,7 @@ func init() {
 		PcFunc: pcKey,
 		Action: doKey,
 		Desc:   "Manage client keys",
-		Usage:  helpKey,
+		Usage:  strings.ReplaceAll(helpKey, "\t", "    "),
 	})
 }
 

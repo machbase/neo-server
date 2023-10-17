@@ -2,6 +2,7 @@ package mqttd
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"time"
 
@@ -12,12 +13,25 @@ import (
 
 func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 	dbName := strings.TrimPrefix(evt.Topic, prefix+"/")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var desc *do.TableDescription
+	if desc0, err := do.Describe(ctx, svr.dbConn, dbName, false); err != nil {
+		svr.log.Warnf("column error: %s", err.Error())
+		return
+	} else {
+		desc = desc0.(*do.TableDescription)
+	}
+
+	precision := lineprotocol.Nanosecond
+
 	dec := lineprotocol.NewDecoder(bytes.NewBuffer(evt.Raw))
 	if dec == nil {
 		svr.log.Warnf("lineprotocol decoder fail")
 		return
 	}
-	precision := lineprotocol.Nanosecond
 	for dec.Next() {
 		m, err := dec.Measurement()
 		if err != nil {
@@ -37,7 +51,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 			if key == nil {
 				break
 			}
-			tags[string(key)] = string(val)
+			tags[strings.ToUpper(string(key))] = string(val)
 		}
 
 		for {
@@ -62,7 +76,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 			return
 		}
 
-		result := do.WriteLineProtocol(svr.db, dbName, measurement, fields, tags, ts)
+		result := do.WriteLineProtocol(ctx, svr.dbConn, dbName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			svr.log.Warnf("lineprotocol fail: %s", result.Err().Error())
 		}

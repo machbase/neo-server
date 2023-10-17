@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
@@ -56,21 +57,25 @@ type LoginReq struct {
 }
 
 type LoginRsp struct {
-	Success      bool   `json:"success"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	Reason       string `json:"reason"`
-	Elapse       string `json:"elapse"`
+	Success      bool        `json:"success"`
+	AccessToken  string      `json:"accessToken"`
+	RefreshToken string      `json:"refreshToken"`
+	Reason       string      `json:"reason"`
+	Elapse       string      `json:"elapse"`
+	ServerInfo   *ServerInfo `json:"server,omitempty"`
 }
 
 type LoginCheckRsp struct {
 	Success        bool                     `json:"success"`
 	Reason         string                   `json:"reason"`
 	Elapse         string                   `json:"elapse"`
+	ServerInfo     *ServerInfo              `json:"server,omitempty"`
 	ExperimentMode bool                     `json:"experimentMode"`
-	Recents        []WebReferenceGroup      `json:"recents,omitempty"`
-	References     []WebReferenceGroup      `json:"references,omitempty"`
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
+}
+
+type ServerInfo struct {
+	Version string `json:"version,omitempty"`
 }
 
 type WebReferenceGroup struct {
@@ -155,6 +160,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	rsp.Reason = "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	rsp.ServerInfo = svr.getServerInfo()
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -239,6 +245,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 	rsp.Success, rsp.Reason = true, "success"
 	rsp.AccessToken = accessToken
 	rsp.RefreshToken = refreshToken
+	rsp.ServerInfo = svr.getServerInfo()
 	rsp.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
@@ -286,11 +293,9 @@ func (svr *httpd) handleLogout(ctx *gin.Context) {
 
 func (svr *httpd) handleCheck(ctx *gin.Context) {
 	tick := time.Now()
-	var claim security.Claim
-	if o := ctx.Value("jwt-claim"); o == nil {
+	claim, claimExists := svr.getJwtClaim(ctx)
+	if !claimExists {
 		ctx.JSON(http.StatusUnauthorized, "")
-	} else if c, ok := o.(security.Claim); ok {
-		claim = c
 	}
 	if claim == nil || claim.Valid() != nil {
 		ctx.JSON(http.StatusUnauthorized, "")
@@ -300,19 +305,20 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		Success: true,
 		Reason:  "success",
 	}
+	options.ServerInfo = svr.getServerInfo()
 	if svr.experimentModeProvider != nil {
 		options.ExperimentMode = svr.experimentModeProvider()
 	}
-	if svr.referenceProvider != nil {
-		options.References = svr.referenceProvider()
-	}
-	if svr.recentsProvider != nil {
-		options.Recents = svr.recentsProvider()
-	}
 	if svr.webShellProvider != nil {
-		options.Shells = svr.webShellProvider.GetAllWebShells()
+		options.Shells = svr.webShellProvider.GetAllShells(true)
 	}
 	options.Elapse = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, options)
+}
+
+func (svr *httpd) getServerInfo() *ServerInfo {
+	return &ServerInfo{
+		Version: mods.DisplayVersion(),
+	}
 }

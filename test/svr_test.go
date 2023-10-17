@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -98,7 +99,11 @@ func TestMain(m *testing.M) {
 	var count int
 
 	checkTableSql := fmt.Sprintf("select count(*) from M$SYS_TABLES where name = '%s'", benchmarkTableName)
-	row := db.QueryRow(checkTableSql)
+	conn, err := db.Connect(context.TODO(), mach.WithTrustUser("sys"))
+	if err != nil {
+		panic(err)
+	}
+	row := conn.QueryRow(context.TODO(), checkTableSql)
 	err = row.Scan(&count)
 	if err != nil {
 		panic(err)
@@ -106,7 +111,7 @@ func TestMain(m *testing.M) {
 
 	if count == 1 {
 		dropTableSql := fmt.Sprintf("drop table %s", benchmarkTableName)
-		result := db.Exec(dropTableSql)
+		result := conn.Exec(context.TODO(), dropTableSql)
 		if result.Err() != nil {
 			panic(result.Err())
 		}
@@ -120,7 +125,7 @@ func TestMain(m *testing.M) {
                 id       varchar(80),
                 jsondata json
         )`), benchmarkTableName)
-	result := db.Exec(creTableSql)
+	result := conn.Exec(context.TODO(), creTableSql)
 	if result.Err() != nil {
 		panic(result.Err())
 	}
@@ -132,7 +137,7 @@ func TestMain(m *testing.M) {
 	// }
 	//
 
-	row = db.QueryRow("select count(*) from " + benchmarkTableName)
+	row = conn.QueryRow(context.TODO(), "select count(*) from "+benchmarkTableName)
 	err = row.Scan(&count)
 	if err != nil {
 		panic(err)

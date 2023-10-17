@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/renderer"
@@ -20,7 +21,7 @@ func init() {
 		PcFunc: pcChart,
 		Action: doChart,
 		Desc:   "Rendering chart from tag table",
-		Usage:  helpChart,
+		Usage:  strings.ReplaceAll(helpChart, "\t", "    "),
 
 		Deprecated:        true,
 		DeprecatedMessage: "Use TQL instead.",
@@ -155,7 +156,7 @@ func doChart(ctx *client.ActionContext) {
 		series := []*model.RenderingData{}
 		// query
 		for _, dq := range queries {
-			data, err := dq.Query(ctx.DB)
+			data, err := dq.Query(ctx.Ctx, ctx.Conn)
 			if err != nil {
 				fmt.Println(err.Error())
 				return
@@ -203,5 +204,5 @@ func doChart(ctx *client.ActionContext) {
 		scheduler.Stop()
 		ctx.Cancel()
 	}
-	ctx.Println("Thise 'chart' command is deprecated. Use TQL instead.")
+	ctx.Println("This 'chart' command is deprecated. Use TQL instead.")
 }

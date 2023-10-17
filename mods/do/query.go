@@ -1,13 +1,15 @@
 package do
 
 import (
+	"context"
 	"fmt"
 
 	spi "github.com/machbase/neo-spi"
 )
 
 type QueryContext struct {
-	DB           spi.Database
+	Conn         spi.Conn
+	Ctx          context.Context
 	OnFetchStart func(spi.Columns)
 	OnFetch      func(rownum int64, values []any) bool
 	OnFetchEnd   func()
@@ -15,7 +17,7 @@ type QueryContext struct {
 }
 
 func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
-	rows, err := ctx.DB.Query(sqlText, args...)
+	rows, err := ctx.Conn.Query(ctx.Ctx, sqlText, args...)
 	if err != nil {
 		return "", err
 	}
