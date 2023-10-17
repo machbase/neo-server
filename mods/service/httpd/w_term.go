@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,7 +37,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		return
 	}
 	termLoginName := claim.Subject
-	termPassword := svr.neoShellAccount[termLoginName]
+	termPassword := svr.neoShellAccount[strings.ToLower(termLoginName)]
 	if len(termPassword) == 0 {
 		termPassword = "manager"
 	}
