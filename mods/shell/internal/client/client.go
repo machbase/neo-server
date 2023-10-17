@@ -2,7 +2,6 @@ package client
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -31,7 +30,8 @@ type Client interface {
 	Stop()
 
 	Run(command string)
-
+	Reconnect(username string, password string) (bool, error)
+	Username() string
 	Interactive() bool
 
 	Write(p []byte) (int, error)
@@ -115,7 +115,7 @@ func DefaultConfig() *Config {
 func New(conf *Config, interactive bool) Client {
 	if conf.User == "" {
 		if user, ok := os.LookupEnv("NEOSHELL_USER"); ok {
-			conf.User = user
+			conf.User = strings.ToLower(user)
 		} else {
 			conf.User = "sys"
 		}
@@ -127,11 +127,16 @@ func New(conf *Config, interactive bool) Client {
 			conf.Password = "manager"
 		}
 	}
-	conf.Prompt = fmt.Sprintf("\033[31m%s@machbase-neo»\033[0m ", conf.User)
+	conf.Prompt = makePrompt(conf.User)
 	return &client{
 		conf:        conf,
 		interactive: interactive,
 	}
+}
+
+func makePrompt(username string) string {
+	// return fmt.Sprintf("\033[31m%s@machbase-neo»\033[0m ", username)
+	return "\033[31mmachbase-neo»\033[0m "
 }
 
 func (cli *client) Start() error {
@@ -158,6 +163,21 @@ func (cli *client) Database() spi.Database {
 		cli.Println("ERR", err.Error())
 	}
 	return cli.db
+}
+
+func (cli *client) Reconnect(username string, password string) (bool, error) {
+	auth := cli.db.(spi.DatabaseAuth)
+	ok, err := auth.UserAuth(username, password)
+	if err == nil && ok {
+		cli.conf.User = strings.ToLower(username)
+		cli.conf.Password = password
+		cli.conf.Prompt = makePrompt(cli.conf.User)
+	}
+	return ok, err
+}
+
+func (cli *client) Username() string {
+	return cli.conf.User
 }
 
 func (cli *client) Pref() *Pref {
@@ -431,6 +451,7 @@ func (cli *client) Process(line string) {
 		cli.Println()
 		cli.Printfln("    '%s' is deprecated, %s", cmd.Name, cmd.DeprecatedMessage)
 	}
+	actCtx.ReadLine.SetPrompt(makePrompt(cli.conf.User))
 }
 
 func (cli *client) Prompt() {
