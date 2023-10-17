@@ -3,7 +3,7 @@ name: CI gsc-amd64
 on:
   push:
     branches:
-      - 'work/gsc'
+      - 'work/gsc*'
 
 jobs:
   windows-amd64:
