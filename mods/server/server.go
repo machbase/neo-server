@@ -716,7 +716,11 @@ func GenBanner() string {
 
 	lines := strings.Split(logo, "\n")
 	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
-	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
+	if strings.HasPrefix(mods.VersionString(), "v8.0.0 ") {
+		lines[3] = lines[3] + fmt.Sprintf("  engine v8.0.0 (%s)", native.GitHash)
+	} else {
+		lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
+	}
 	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
 	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }

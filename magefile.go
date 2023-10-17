@@ -459,6 +459,11 @@ func GetVersion() error {
 	if err != nil {
 		return err
 	}
+	name := headRef.Name()
+	if name.IsBranch() && strings.Contains(name.Short(), "work/gsc") {
+		vBuildVersion = "v8.0.0"
+		vIsNightly = false
+	}
 
 	headCommit, err := repo.CommitObject(headRef.Hash())
 	if err != nil {
@@ -492,6 +497,9 @@ func GetVersion() error {
 	}
 	vLastVersion = lastTag.Name
 	vLastCommit = headCommit.Hash.String()
+	if vBuildVersion != "" {
+		return nil
+	}
 	vIsNightly = lastTagCommit.Hash.String() != vLastCommit
 	lastTagSemVer, err := semver.NewVersion(vLastVersion)
 	if err != nil {
