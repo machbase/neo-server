@@ -32,7 +32,7 @@ var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
 	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
 	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
-		Attributes: &ShellAttributes{Cloneable: true},
+		Attributes: &ShellAttributes{Cloneable: false},
 	},
 }
 
