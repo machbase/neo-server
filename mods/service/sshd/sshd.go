@@ -25,8 +25,9 @@ type Option func(s *sshd)
 // Factory
 func New(db spi.Database, options ...Option) (Service, error) {
 	s := &sshd{
-		log: logging.GetLog("sshd"),
-		db:  db,
+		log:             logging.GetLog("sshd"),
+		db:              db,
+		neoShellAccount: map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -99,6 +100,8 @@ type sshd struct {
 	children     map[int]*os.Process
 
 	shellProvider func(user string, shellId string) *Shell
+
+	neoShellAccount map[string]string
 }
 
 func (svr *sshd) Start() error {
@@ -241,6 +244,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		svr.log.Tracef("'%s' login fail password mis-matched", user)
 	}
 
+	svr.neoShellAccount[strings.ToLower(user)] = password
 	return ok
 }
 

@@ -3,6 +3,7 @@ package httpd
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -151,7 +152,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	// cache username and password for web-terminal uses
-	svr.neoShellAccount[req.LoginName] = req.Password
+	svr.neoShellAccount[strings.ToLower(req.LoginName)] = req.Password
 
 	// store refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
