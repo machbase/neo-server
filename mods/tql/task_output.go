@@ -14,7 +14,7 @@ import (
 )
 
 type DatabaseSink interface {
-	Open(db spi.Database) error
+	Open(task *Task) error
 	Close() (string, error)
 	AddRow([]any) error
 }
@@ -203,7 +203,7 @@ func (out *output) openEncoder() error {
 	if out.encoder != nil {
 		return out.encoder.Open()
 	} else if out.dbSink != nil {
-		return out.dbSink.Open(out.task.db)
+		return out.dbSink.Open(out.task)
 	} else {
 		return errors.New("no output encoder")
 	}

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
@@ -65,6 +66,18 @@ func NewTaskContext(ctx context.Context) *Task {
 
 func (x *Task) SetDatabase(db spi.Database) {
 	x.db = db
+}
+
+func (x *Task) ConnDatabase(ctx context.Context) (spi.Conn, error) {
+	if x.consoleUser != "" {
+		// web login user
+		conn, err := x.db.Connect(ctx, mach.WithTrustUser(x.consoleUser))
+		return conn, err
+	} else {
+		// request script file
+		conn, err := x.db.Connect(ctx, mach.WithTrustUser("sys"))
+		return conn, err
+	}
 }
 
 func (x *Task) SetInputReader(r io.Reader) {

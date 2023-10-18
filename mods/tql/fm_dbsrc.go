@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/do"
 	spi "github.com/machbase/neo-spi"
 )
@@ -164,7 +163,7 @@ type databaseSource struct {
 func (dc *databaseSource) gen(node *Node) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := dc.task.db.Connect(ctx, mach.WithTrustUser("sys"))
+	conn, err := dc.task.ConnDatabase(ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return

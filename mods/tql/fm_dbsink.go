@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/bridge"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
@@ -81,9 +80,9 @@ type insert struct {
 	tag   *Tag
 }
 
-func (ins *insert) Open(db spi.Database) error {
+func (ins *insert) Open(task *Task) error {
 	ins.ctx, ins.ctxCancel = context.WithCancel(context.Background())
-	if conn, err := db.Connect(ins.ctx, mach.WithTrustUser("sys")); err != nil {
+	if conn, err := task.ConnDatabase(ins.ctx); err != nil {
 		return err
 	} else {
 		ins.conn = conn
@@ -201,9 +200,9 @@ type appender struct {
 	table *Table
 }
 
-func (app *appender) Open(db spi.Database) (err error) {
+func (app *appender) Open(task *Task) (err error) {
 	app.ctx, app.ctxCancel = context.WithCancel(context.Background())
-	if conn, err := db.Connect(app.ctx, mach.WithTrustUser("sys")); err != nil {
+	if conn, err := task.ConnDatabase(app.ctx); err != nil {
 		return err
 	} else {
 		app.conn = conn
