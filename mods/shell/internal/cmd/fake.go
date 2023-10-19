@@ -33,7 +33,7 @@ const helpFake = `  fake [options] [table]
     -n,--name <tag_name>         tag name (default: 'value')
     -a,--amplitude <float,...>   amplitude (default: 1.0)
     -f,--frequency <float,...>   frequency in Hz (default: 1.0)
-    -p,--phase <float,...>       phase (default: 0)
+       --phase <float,...>       phase (default: 0)
     -b,--bias <float>            bias (default: 0)
     -r,--sampling-rate <int>     sampling rate per sec. (default: 10)
     -z,--noise <float>           possible max amplitude of noise (default: 0 no-noise)

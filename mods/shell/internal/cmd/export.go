@@ -41,7 +41,7 @@ const helpExport = `  export [options] <table>
        --tz                  timezone for handling datetime
     -t,--timeformat          time format [ns|ms|s|<timeformat>] (default:'ns')
                              consult "help timeformat"
-    -p,--precision <int>     set precision of float value to force round
+       --precision <int>     set precision of float value to force round
 `
 
 type ExportCmd struct {
