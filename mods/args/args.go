@@ -124,16 +124,12 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 			i++
 		} else if strings.HasPrefix(s, "--user=") {
 			cli.Shell.User = s[7:]
-		} else if strings.HasPrefix(s, "-u=") {
-			cli.Shell.User = s[3:]
-		} else if s == "--user" || s == "-u" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
+		} else if s == "--user" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Shell.User = cli.args[i+1]
 			i++
 		} else if strings.HasPrefix(s, "--password=") {
 			cli.Shell.Password = s[11:]
-		} else if strings.HasPrefix(s, "-p=") {
-			cli.Shell.Password = s[3:]
-		} else if s == "--password" || s == "-p" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
+		} else if s == "--password" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Shell.Password = cli.args[i+1]
 			i++
 		} else {
