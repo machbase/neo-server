@@ -15,7 +15,7 @@ API and Interfaces
 - [x] gRPC : The first class API for extensions
 - [x] SSH : Command line interface for human and batch process
 - [x] WEB UI (Batteries included)
-- [x] [UI API](./docs/ui-api.md) to build custom UI (Batteries replaceable)
+- [x] [UI API](https://machbase.com/neo/api-http/ui-api) to build custom UI (Batteries replaceable)
 
 Bridges integrated with external systems
 
