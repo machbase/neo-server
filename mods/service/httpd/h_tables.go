@@ -103,7 +103,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	rownum := 0
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := svr.getUserConnection(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -154,7 +154,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	timeformat := strString(ctx.Query("timeformat"), "ns")
 	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := svr.getUserConnection(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
