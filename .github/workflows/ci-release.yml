@@ -7,7 +7,7 @@ on:
 
 jobs:
     darwin-arm64:
-        runs-on: [ self-hosted, macOS, ARM64 ]
+        runs-on: [ self-hosted, ARM64, macOS ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
@@ -31,7 +31,7 @@ jobs:
               overwrite: true
               file_glob: true
     darwin-amd64:
-        runs-on: [ self-hosted, macOS, X64 ]
+        runs-on: [ self-hosted, X64, macOS ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
@@ -131,16 +131,12 @@ jobs:
               file_glob: true
 
     windows-amd64:
-        runs-on: [ windows-latest ]
+        runs-on: [ self-hosted, Windows, X64 ]
         steps:
           - name: Checkout
             uses: actions/checkout@v3
             with:
               fetch-depth: 0
-          - name: Install MinGW package
-            # windows gcc env issue: https://github.com/actions/runner-images/pull/8444/files
-            run: |
-                  choco install mingw --version 11.2.0 --force
           - name: Setup go compiler
             uses: actions/setup-go@v3
             with:
