@@ -29,7 +29,7 @@ Bridges integrated with external systems
 
 ## Documents
 
-[https://neo.machbase.com](https://neo.machbase.com/)
+[https://machbase.com/neo](https://machbase.com/neo)
 
 ## Web User Interface
 
@@ -44,7 +44,7 @@ Bridges integrated with external systems
 - Download
 
 ```sh
-sh -c "$(curl -fsSL https://neo.machbase.com/install.sh)"
+sh -c "$(curl -fsSL https://machbase.com/install.sh)"
 ```
 
 - Unzip the archive file
