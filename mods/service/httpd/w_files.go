@@ -42,6 +42,8 @@ func contentTypeOfFile(name string) string {
 		return "application/json"
 	case ".wrk":
 		return "application/json"
+	case ".dsh":
+		return "application/json"
 	// image files
 	case ".apng":
 		return "image/apng"
