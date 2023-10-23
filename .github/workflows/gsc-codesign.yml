@@ -40,7 +40,7 @@ jobs:
           name: Packages
           path: packages/machbase-neo-*.zip
   linux-amd64:
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ slef-hosted, linux, X64, ubuntu18 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v3
