@@ -65,13 +65,27 @@ func doDescribe(ctx *client.ActionContext) {
 	}
 	desc := _desc.(*do.TableDescription)
 
+	if len(desc.Indexes) > 0 {
+		ctx.Println("[ COLUMN ]")
+	}
 	nrow := 0
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := spi.ColumnTypeString(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Length)
+		colType := spi.ColumnTypeStringNative(col.Type)
+		box.AppendRow(nrow, col.Name, colType, col.Size())
 	}
-
 	box.Render()
+
+	if len(desc.Indexes) > 0 {
+		ctx.Println("[ INDEX ]")
+		nrow = 0
+		box = ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "COLUMN"})
+		for _, idx := range desc.Indexes {
+			nrow++
+			idxType := spi.IndexTypeString(idx.Type)
+			box.AppendRow(nrow, idx.Name, idxType, strings.Join(idx.Cols, ", "))
+		}
+		box.Render()
+	}
 }
