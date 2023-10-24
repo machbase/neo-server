@@ -37,6 +37,8 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 		and j.NAME = ?`
 
 	H_LINE_DESC_QUERY_SQL = "select name, type, length, id from M$SYS_COLUMNS where table_id = ? order by id"
+
+	H_LINE_DESC_INDEXES_SQL = "select name, type, id from M$SYS_INDEXES where table_id = ?"
 )
 
 func TestLineprotocol(t *testing.T) {
@@ -112,6 +114,8 @@ func TestLineprotocol(t *testing.T) {
 					}
 					return nil
 				}
+			case H_LINE_DESC_INDEXES_SQL:
+				rm.NextFunc = func() bool { return false }
 			default:
 				t.Logf("QueryRow sqlText: %s, params:%v", sqlText, params)
 			}
