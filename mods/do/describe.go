@@ -75,7 +75,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	d.User = userName
 	d.Name = tableName
 
-	rows, err := conn.Query(ctx, "select name, type, length, id from M$SYS_COLUMNS where table_id = ? order by id", d.Id)
+	rows, err := conn.Query(ctx, "select name, type, length, id from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id", d.Id, dbId)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 		col.Type = spi.ColumnType(colType)
 		d.Columns = append(d.Columns, col)
 	}
-	if indexes, err := describe_idx(ctx, conn, d.Id); err != nil {
+	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
 		return nil, err
 	} else {
 		d.Indexes = indexes
@@ -101,8 +101,8 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	return d, nil
 }
 
-func describe_idx(ctx context.Context, conn spi.Conn, tableId int) ([]*IndexDescription, error) {
-	rows, err := conn.Query(ctx, `select name, type, id from M$SYS_INDEXES where table_id = ?`, tableId)
+func describe_idx(ctx context.Context, conn spi.Conn, tableId int, dbId int) ([]*IndexDescription, error) {
+	rows, err := conn.Query(ctx, `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?`, tableId, dbId)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func describe_idx(ctx context.Context, conn spi.Conn, tableId int) ([]*IndexDesc
 			return nil, err
 		}
 		d.Type = spi.IndexType(indexType)
-		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? order by col_id`, d.Id)
+		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
 		if err != nil {
 			return nil, err
 		}

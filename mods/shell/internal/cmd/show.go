@@ -189,30 +189,18 @@ func doShowUsers(ctx *client.ActionContext) {
 }
 
 func doShowIndexes(ctx *client.ActionContext) {
-	sqlText := `select 
-		u.name as USER_NAME,
-		a.name as TABLE_NAME,
-		c.name as COLUMN_NAME,
-		b.name as INDEX_NAME,
-	case b.type
-	when 1 then 'BITMAP'
-	when 2 then 'KEYWORD'
-	when 5 then 'REDBLACK'
-	when 6 then 'LSM'
-	when 8 then 'REDBLACK'
-	when 9 then 'KEYWORD_LSM'
-	when 11 then 'TAG'
-	else 'LSM' end as INDEX_TYPE
-	from
-		m$sys_tables a, 
-		m$sys_indexes b, 
-		m$sys_index_columns c, 
-		m$sys_users u
-	where
-		a.id = b.table_id
-	and b.id = c.index_id
-	and a.user_id = u.user_id`
-	doShowByQuery0(ctx, sqlText)
+	list, err := do.Indexes(ctx.Ctx, ctx.Conn)
+	if err != nil {
+		ctx.Println("unable to find indexes; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "USER_NAME", "DB", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.UserName, nfo.DatabaseName, nfo.TableName, nfo.ColumnName, nfo.IndexName, nfo.IndexType)
+	}
+	box.Render()
 }
 
 func doShowIndex(ctx *client.ActionContext, args []string) {
