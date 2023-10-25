@@ -80,6 +80,20 @@ func Shell(cmd *ShellCmd) {
 	clientConf.ClientKeyPath = cmd.ClientKeyPath
 	clientConf.User = cmd.User
 	clientConf.Password = cmd.Password
+	if clientConf.User == "" {
+		if user, ok := os.LookupEnv("NEOSHELL_USER"); ok {
+			clientConf.User = strings.ToLower(user)
+		} else {
+			clientConf.User = "sys"
+		}
+	}
+	if clientConf.Password == "" {
+		if pass, ok := os.LookupEnv("NEOSHELL_PASSWORD"); ok {
+			clientConf.Password = pass
+		} else {
+			clientConf.Password = "manager"
+		}
+	}
 
 	var command = ""
 	if len(cmd.Args) > 0 {

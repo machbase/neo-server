@@ -113,20 +113,6 @@ func DefaultConfig() *Config {
 }
 
 func New(conf *Config, interactive bool) Client {
-	if conf.User == "" {
-		if user, ok := os.LookupEnv("NEOSHELL_USER"); ok {
-			conf.User = strings.ToLower(user)
-		} else {
-			conf.User = "sys"
-		}
-	}
-	if conf.Password == "" {
-		if pass, ok := os.LookupEnv("NEOSHELL_PASSWORD"); ok {
-			conf.Password = pass
-		} else {
-			conf.Password = "manager"
-		}
-	}
 	conf.Prompt = makePrompt(conf.User)
 	return &client{
 		conf:        conf,

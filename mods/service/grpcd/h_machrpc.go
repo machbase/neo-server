@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	mach "github.com/machbase/neo-engine"
@@ -58,12 +59,24 @@ func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.C
 	case spi.DatabaseClient:
 		connOpts = append(connOpts, machrpc.WithPassword(req.User, req.Password))
 	case spi.DatabaseServer:
-		connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+		if strings.HasPrefix(req.Password, "$otp$:") {
+			if passed, err := s.authServer.ValidateUserOtp(req.User, strings.TrimPrefix(req.Password, "$otp$:")); passed {
+				connOpts = append(connOpts, mach.WithTrustUser(req.User))
+			} else if err != nil {
+				rsp.Reason = err.Error()
+				return rsp, nil
+			} else {
+				rsp.Reason = "invalid user or password"
+				return rsp, nil
+			}
+		} else {
+			connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+		}
 	}
 	if conn, err := s.db.Connect(pctx, connOpts...); err != nil {
 		rsp.Reason = err.Error()
 	} else {
-		h := s.node.Generate().Base64()
+		h := s.authServer.GenerateSnowflake()
 		parole := &connParole{
 			rawConn: conn,
 			handle:  h,
@@ -468,20 +481,24 @@ func (s *grpcd) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*m
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if db, ok := s.db.(spi.DatabaseAuth); ok {
-		passed, err := db.UserAuth(req.LoginName, req.Password)
-		if err != nil {
-			rsp.Reason = err.Error()
-		} else if passed {
-			rsp.Success = passed
-			rsp.Reason = "success"
-		} else {
-			rsp.Reason = "invalid username or password"
-		}
+
+	var passed bool
+	var err error
+
+	if strings.HasPrefix(req.Password, "$otp$:") {
+		passed, err = s.authServer.ValidateUserOtp(req.LoginName, strings.TrimPrefix(req.Password, "$otp$:"))
 	} else {
-		rsp.Reason = "database is not support user-auth"
+		passed, _, err = s.authServer.ValidateUserPassword(req.LoginName, req.Password)
 	}
 
+	if err != nil {
+		rsp.Reason = err.Error()
+	} else if !passed {
+		rsp.Reason = "invalid username or password"
+	} else {
+		rsp.Success = passed
+		rsp.Reason = "success"
+	}
 	return rsp, nil
 }
 

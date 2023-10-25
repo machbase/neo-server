@@ -8,11 +8,13 @@ import (
 	"crypto/md5"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
@@ -39,6 +43,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/snowflake"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
@@ -176,6 +181,8 @@ type svr struct {
 	servicePortsLock sync.RWMutex
 
 	authorizedSshKeysLock sync.RWMutex
+	genSnowflake          *snowflake.Node
+	snowflakes            []string
 }
 
 var PreferredPreset string = "auto"
@@ -241,6 +248,11 @@ func NewServer(conf *Config) (Server, error) {
 func (s *svr) Start() error {
 	tick := time.Now()
 	s.log = logging.GetLog("neosvr")
+
+	s.genSnowflake, _ = snowflake.NewNode(0)
+	for i := 0; i < 11; i++ {
+		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
+	}
 
 	prefpath, err := filepath.Abs(s.conf.PrefDir)
 	if err != nil {
@@ -486,6 +498,7 @@ func (s *svr) Start() error {
 			grpcd.OptionBridgeServer(s.bridgeSvc),
 			grpcd.OptionScheduleServer(s.schedSvc),
 			grpcd.OptionLeakDetector(leakDetector),
+			grpcd.OptionAuthServer(s),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -1124,18 +1137,48 @@ func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool,
 	return hash == certHash, nil
 }
 
-func (s *svr) ValidateSshPublicKey(keyType string, key string) (bool, error) {
+func (s *svr) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error) {
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
-		s.log.Warnf("ssh public key", err.Error())
-		return false, err
+		s.log.Warnf("ssh %q public key", user, err.Error())
+		return false, "", err
 	}
 
+	keyType := publicKey.Type()
+	keyStr := base64.StdEncoding.EncodeToString(publicKey.Marshal())
 	for _, rec := range list {
-		if rec.KeyType == keyType && rec.Key == key {
-			s.log.Debugf("ssh public key authorized: %s %s", rec.KeyType, rec.Fingerprint)
+		if rec.KeyType == keyType && rec.Key == keyStr {
+			s.log.Debugf("ssh %q public key authorized: %s %s", user, rec.KeyType, rec.Fingerprint)
+			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
+		}
+	}
+	return false, "", nil
+}
+
+func (s *svr) ValidateUserPassword(user string, password string) (bool, string, error) {
+	if db, ok := s.db.(spi.DatabaseAuth); ok {
+		passed, err := db.UserAuth(user, password)
+		if err != nil {
+			return false, "", err
+		} else if !passed {
+			return false, "", nil
+		} else {
+			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
+		}
+	} else {
+		return false, "", errors.New("database does not support user-auth")
+	}
+}
+
+func (s *svr) ValidateUserOtp(user string, otp string) (bool, error) {
+	for _, n := range s.snowflakes {
+		if otp == n {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func (s *svr) GenerateSnowflake() string {
+	return s.genSnowflake.Generate().Base64()
 }

@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"encoding/base64"
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -226,16 +226,15 @@ func (svr *sshd) shell(user string, shellId string) *Shell {
 }
 
 func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
-	mdb, ok := svr.db.(spi.DatabaseAuth)
-	if !ok {
-		svr.log.Errorf("user auth - unknown database instance")
+	if svr.authServer == nil {
 		return false
 	}
 	user := ctx.User()
 	if strings.Contains(user, ":") {
 		user = strings.Split(user, ":")[0]
 	}
-	ok, err := mdb.UserAuth(user, password)
+	user = strings.ToLower(user)
+	ok, otp, err := svr.authServer.ValidateUserPassword(user, password)
 	if err != nil {
 		svr.log.Errorf("user auth", err.Error())
 		return false
@@ -244,7 +243,7 @@ func (svr *sshd) passwordHandler(ctx ssh.Context, password string) bool {
 		svr.log.Tracef("'%s' login fail password mis-matched", user)
 	}
 
-	svr.neoShellAccount[strings.ToLower(user)] = password
+	svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
 	return ok
 }
 
@@ -252,10 +251,18 @@ func (svr *sshd) publicKeyHandler(ctx ssh.Context, key ssh.PublicKey) bool {
 	if svr.authServer == nil {
 		return false
 	}
-	ok, err := svr.authServer.ValidateSshPublicKey(key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
+	user := ctx.User()
+	if strings.Contains(user, ":") {
+		user = strings.Split(user, ":")[0]
+	}
+	user = strings.ToLower(user)
+	ok, otp, err := svr.authServer.ValidateUserPublicKey(user, key)
 	if err != nil {
 		svr.log.Error("ERR", err.Error())
 		return false
+	}
+	if ok {
+		svr.neoShellAccount[user] = fmt.Sprintf("$otp$:%s", otp)
 	}
 	return ok
 }

@@ -3,12 +3,17 @@ package security
 import (
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type AuthServer interface {
 	ValidateClientToken(token string) (bool, error)
 	ValidateClientCertificate(clientId string, certHash string) (bool, error)
-	ValidateSshPublicKey(keyType string, key string) (bool, error)
+	ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error)
+	ValidateUserPassword(user string, password string) (bool, string, error)
+	ValidateUserOtp(user string, otp string) (bool, error)
+	GenerateSnowflake() string
 }
 
 type JwtCacheValue struct {

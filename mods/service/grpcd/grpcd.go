@@ -18,7 +18,7 @@ import (
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
-	"github.com/machbase/neo-server/mods/util/snowflake"
+	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -108,17 +108,24 @@ func OptionLeakDetector(detector *leak.Detector) Option {
 	}
 }
 
+func OptionAuthServer(authServer security.AuthServer) Option {
+	return func(s *grpcd) {
+		s.authServer = authServer
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
 	log logging.Log
+
+	authServer security.AuthServer
 
 	db          spi.Database
 	dbConn      spi.Conn
 	dbCtx       context.Context
 	dbCtxCancel context.CancelFunc
 
-	node *snowflake.Node
 	pool map[string]*connParole
 
 	listenAddresses []string
@@ -157,7 +164,6 @@ func (svr *grpcd) Start() error {
 	}
 
 	svr.pool = map[string]*connParole{}
-	svr.node, _ = snowflake.NewNode(0)
 	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
 	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
 		return err
