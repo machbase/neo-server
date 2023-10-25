@@ -291,9 +291,13 @@ func (det *Detector) detainAppender(key string, appender spi.Appender, tableName
 			if ret.Appender != nil {
 				succ, fail, err := ret.Appender.Close()
 				if err != nil {
-					det.log.Warnf("close appender:%v success:%d fail:%d", ret.id, succ, fail, err.Error())
+					det.log.Warnf("close APND %v success:%d fail:%d error:%s", ret.id, succ, fail, err.Error())
 				} else {
-					det.log.Tracef("close appender:%v success:%d fail:%d", ret.id, succ, fail)
+					if fail == 0 {
+						det.log.Tracef("close APND %v success:%d", ret.id, succ)
+					} else {
+						det.log.Tracef("close APND %v success:%d fail:%d", ret.id, succ, fail)
+					}
 				}
 				ret.releaseTime = time.Now()
 				det.addHistoryAppender(ret)

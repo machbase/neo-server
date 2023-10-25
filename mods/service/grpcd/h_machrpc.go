@@ -417,7 +417,6 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 			var successCount, failCount int64
 			if wrap != nil && wrap.Appender != nil {
 				successCount, failCount, _ = wrap.Appender.Close()
-				s.log.Tracef("close appender:%v success:%d fail:%d", wrap.Id(), successCount, failCount)
 				wrap.Release()
 			}
 
@@ -458,17 +457,6 @@ func (s *grpcd) Append(stream machrpc.Machbase_AppendServer) error {
 				}
 			}
 		}
-		/* TODO: remove
-		if len(m.Params) > 0 {
-			// for gRPC client that utilizes protobuf.Any (e.g: Python, C#, Java)
-			values := machrpc.ConvertPbToAny(m.Params)
-			err = wrap.Appender.Append(values...)
-			if err != nil {
-				s.log.Error("append", err.Error())
-				return err
-			}
-		}
-		*/
 	}
 }
 
