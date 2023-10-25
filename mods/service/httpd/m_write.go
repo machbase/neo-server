@@ -1,13 +1,9 @@
 package httpd
 
 import (
-	"fmt"
 	"net/http"
-	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 )
 
 type Values struct {
@@ -24,9 +20,6 @@ type lakeRsp struct {
 	Reason  string      `json:"reason"`
 	Data    interface{} `json:"data,omitempty"`
 }
-
-var once sync.Once
-var appender spi.Appender
 
 const TableName = "TAG"
 
@@ -49,48 +42,16 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 
 	// TODO: 1. change it to svr.getUserConnection()
 	// TODO: 2. Appender should take care of multiple session and terminated at the end.
-	conn, err := svr.getTrustConnection(ctx)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusUnauthorized, rsp)
-		return
-	}
-	defer conn.Close()
-
-	once.Do(func() {
-		exists, err := do.ExistsTable(ctx, conn, TableName)
-		if err != nil {
-			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusPreconditionFailed, rsp)
-			return
-		}
-
-		if !exists {
-			rsp.Reason = fmt.Sprintf("%s table is not exist", TableName)
-			ctx.JSON(http.StatusPreconditionFailed, rsp)
-			return
-		}
-
-		appender, err = conn.Appender(ctx, TableName)
-		if err != nil {
-			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-	})
-
-	if appender == nil {
-		svr.log.Error("appender is nil")
-		appender, err = conn.Appender(ctx, TableName)
-		if err != nil {
-			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-	}
+	// conn, err := svr.getTrustConnection(ctx)
+	// if err != nil {
+	// 	rsp.Reason = err.Error()
+	// 	ctx.JSON(http.StatusUnauthorized, rsp)
+	// 	return
+	// }
+	// defer conn.Close()
 
 	for _, data := range req.Values {
-		err = appender.Append(data.Tag, data.Ts, data.Val)
+		err = svr.lake.appender.Append(data.Tag, data.Ts, data.Val)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)
