@@ -112,14 +112,11 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-type ExecReturn struct {
-	Data struct {
-		Columns      []MachbaseColumn `json:"columns"`
-		Data         []ExecData       `json:"data"`
-		ErrorCode    int              `json:"error_code"`
-		ErrorMessage string           `json:"error_message"`
-	} `json:"data"`
-	Status string `json:"status"`
+type ExecResult struct {
+	Columns      []MachbaseColumn         `json:"columns"`
+	Data         []map[string]interface{} `json:"data"`
+	ErrorCode    int                      `json:"error_code"`
+	ErrorMessage string                   `json:"error_message"`
 }
 
 type ExecData struct {
@@ -128,16 +125,16 @@ type ExecData struct {
 	Value float64 `json:"value"`
 }
 
-func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ExecReturn, error) {
-	result := &ExecReturn{}
+func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ResSet, error) {
+	resp := &ResSet{}
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return result, err
+		return resp, err
 	}
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return result, err
+		return resp, err
 	}
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
@@ -156,21 +153,26 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 		}
 	}()
 
-	dataList := []ExecData{}
+	result := &ExecResult{}
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
-		data := ExecData{}
-		err = rows.Scan(&data.Name, &data.Time, &data.Value)
+		buffer := cols.MakeBuffer()
+		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())
-			return result, err
+			return resp, err
 		}
-		dataList = append(dataList, data)
+
+		mv := map[string]any{}
+		mv[cols[0].Name] = buffer[0]
+		mv[cols[1].Name] = buffer[1]
+		mv[cols[2].Name] = buffer[2]
+		result.Data = append(result.Data, mv)
 	}
 
 	wg.Wait()
 
-	result.Data.Columns = colsList
-	result.Data.Data = dataList
+	result.Columns = colsList
+	resp.Data = result
 
-	return result, nil
+	return resp, nil
 }
