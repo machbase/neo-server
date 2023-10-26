@@ -141,6 +141,7 @@ func NewNode(task *Task) *Node {
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
 		"seriesLabels":       x.gen_seriesLabels,
+		"seriesOptions":      x.gen_seriesOptions,
 		"showGrid":           x.gen_showGrid,
 		"size":               x.gen_size,
 		"substituteNull":     x.gen_substituteNull,
@@ -1853,6 +1854,22 @@ func (x *Node) gen_seriesLabels(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.SeriesLabels(p0...)
+	return ret, nil
+}
+
+// gen_seriesOptions
+//
+// syntax: seriesOptions(...string)
+func (x *Node) gen_seriesOptions(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "seriesOptions", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.SeriesOptions(p0...)
 	return ret, nil
 }
 

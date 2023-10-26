@@ -26,7 +26,6 @@ type Base2D struct {
 	lineSeries    [][]opts.LineData
 	scatterSeries [][]opts.ScatterData
 	barSeries     [][]opts.BarData
-	seriesLabels  []string
 
 	dataZoomType  string  // inside, slider
 	dataZoomStart float32 // 0 ~ 100 %
@@ -87,10 +86,6 @@ func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
 	ex.dataZoomType = typ
 	ex.dataZoomStart = start
 	ex.dataZoomEnd = end
-}
-
-func (ex *Base2D) SetSeriesLabels(labels ...string) {
-	ex.seriesLabels = labels
 }
 
 func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64) {
@@ -212,8 +207,9 @@ func xLabelCompare(x, y any) bool {
 		return false
 	}
 }
-func (ex *Base2D) getSeriesOptions() []charts.SeriesOpts {
-	var ret []charts.SeriesOpts
+
+func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
+	var ret = ex.ChartBase.getSeriesOptions(seriesIdx)
 	for _, mark := range ex.markAreaNameCoord {
 		if len(mark.Coordinate0) > 0 && len(mark.Coordinate1) > 0 {
 			var idx0, idx1 int = -1, -1
@@ -363,16 +359,6 @@ func (ex *Base2D) AddRow(values []any) error {
 	return nil
 }
 
-func (ex *Base2D) getRenderSeriesLabel(idx int) string {
-	var label string
-	if idx < len(ex.seriesLabels) {
-		label = ex.seriesLabels[idx]
-	} else {
-		label = fmt.Sprintf("column[%d]", idx)
-	}
-	return label
-}
-
 type Line struct {
 	Base2D
 }
@@ -391,20 +377,10 @@ func (ex *Line) Close() {
 	line := charts.NewLine()
 	line.SetGlobalOptions(ex.getGlobalOptions()...)
 	line.SetXAxis(ex.xLabels)
-	seriesOpts := []charts.SeriesOpts{charts.WithLabelOpts(opts.Label{
-		Show: true,
-	}),
-		charts.WithLineChartOpts(
-			opts.LineChart{
-				Smooth:     true,
-				XAxisIndex: 0,
-			},
-		),
-	}
-	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.lineSeries {
-		label := ex.getRenderSeriesLabel(i)
-		line.AddSeries(label, series, seriesOpts...)
+		label := ex.getSeriesName(i)
+		opts := ex.getSeriesOptions(i)
+		line.AddSeries(label, series, opts...)
 	}
 	var rndr render.Renderer
 	if ex.toJsonOutput {
@@ -436,15 +412,10 @@ func (ex *Scatter) Close() {
 	scatter := charts.NewScatter()
 	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
 	scatter.SetXAxis(ex.xLabels)
-	seriesOpts := []charts.SeriesOpts{
-		charts.WithLabelOpts(opts.Label{
-			Show: false,
-		}),
-	}
-	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.scatterSeries {
-		label := ex.getRenderSeriesLabel(i)
-		scatter.AddSeries(label, series, seriesOpts...)
+		label := ex.getSeriesName(i)
+		opts := ex.getSeriesOptions(i)
+		scatter.AddSeries(label, series, opts...)
 	}
 	var rndr render.Renderer
 	if ex.toJsonOutput {
@@ -476,15 +447,10 @@ func (ex *Bar) Close() {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(ex.getGlobalOptions()...)
 	bar.SetXAxis(ex.xLabels)
-	seriesOpts := []charts.SeriesOpts{
-		charts.WithLabelOpts(opts.Label{
-			Show: false,
-		}),
-	}
-	seriesOpts = append(seriesOpts, ex.getSeriesOptions()...)
 	for i, series := range ex.barSeries {
-		label := ex.getRenderSeriesLabel(i)
-		bar.AddSeries(label, series, seriesOpts...)
+		label := ex.getSeriesName(i)
+		opts := ex.getSeriesOptions(i)
+		bar.AddSeries(label, series, opts...)
 	}
 	var rndr render.Renderer
 	if ex.toJsonOutput {
