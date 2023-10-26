@@ -1,9 +1,12 @@
 package httpd
 
 import (
+	"context"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
+	spi "github.com/machbase/neo-spi"
 )
 
 type Values struct {
@@ -73,6 +76,22 @@ type Query struct {
 	Sql string `json:"query"`
 }
 
+type ExecReturn struct {
+	Data struct {
+		Columns      []MachbaseColumn `json:"columns"`
+		Data         []ExecData       `json:"data"`
+		ErrorCode    int              `json:"error_code"`
+		ErrorMessage string           `json:"error_message"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+type ExecData struct {
+	Name  string  `json:"name"`
+	Time  string  `json:"time"`
+	Value float64 `json:"value"`
+}
+
 func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 	rsp := ResSet{Status: "fail"}
 	query := Query{}
@@ -95,7 +114,7 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 		return
 	}
 
-	data, err := svr.getData(ctx, conn, query.Sql, 0)
+	data, err := svr.getExec(ctx, conn, query.Sql)
 	if err != nil {
 		svr.log.Info("get data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -103,10 +122,55 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 		return
 	}
 
-	svr.log.Info("[getData] data ==> %+v\n", data)
-
 	rsp.Status = "success"
 	rsp.Data = data
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ExecReturn, error) {
+	result := &ExecReturn{}
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return result, err
+	}
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return result, err
+	}
+	colsLen := len(cols.Names())
+	colsList := make([]MachbaseColumn, colsLen)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		for idx, col := range cols {
+			colsList[idx].Name = col.Name
+			// colsList[idx].Type = col.Type
+			colsList[idx].Type = ColumnTypeConvert(col.Type)
+			colsList[idx].Length = col.Length
+		}
+	}()
+
+	dataList := []ExecData{}
+	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
+		data := ExecData{}
+		err = rows.Scan(&data.Name, &data.Time, &data.Value)
+		if err != nil {
+			svr.log.Warn("scan error : ", err.Error())
+			return result, err
+		}
+		dataList = append(dataList, data)
+	}
+
+	wg.Wait()
+
+	result.Data.Columns = colsList
+	result.Data.Data = dataList
+
+	return result, nil
 }
