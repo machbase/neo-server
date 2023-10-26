@@ -98,7 +98,7 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 		return
 	}
 
-	data, err := svr.getExec(ctx, conn, query.Sql)
+	result, err := svr.getExec(ctx, conn, query.Sql)
 	if err != nil {
 		svr.log.Info("get data error : ", err.Error())
 		rsp.Message = err.Error()
@@ -107,7 +107,7 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 	}
 
 	rsp.Status = "success"
-	rsp.Data = data
+	rsp.Data = result
 
 	ctx.JSON(http.StatusOK, rsp)
 }
@@ -125,16 +125,16 @@ type ExecData struct {
 	Value float64 `json:"value"`
 }
 
-func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ResSet, error) {
-	resp := &ResSet{}
+func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ExecResult, error) {
+	result := &ExecResult{}
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return resp, err
+		return result, err
 	}
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return resp, err
+		return result, err
 	}
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
@@ -153,13 +153,12 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 		}
 	}()
 
-	result := &ExecResult{}
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
 		buffer := cols.MakeBuffer()
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())
-			return resp, err
+			return result, err
 		}
 
 		mv := map[string]any{}
@@ -172,7 +171,6 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 	wg.Wait()
 
 	result.Columns = colsList
-	resp.Data = result
 
-	return resp, nil
+	return result, nil
 }
