@@ -76,22 +76,6 @@ type Query struct {
 	Sql string `json:"query"`
 }
 
-type ExecReturn struct {
-	Data struct {
-		Columns      []MachbaseColumn `json:"columns"`
-		Data         []ExecData       `json:"data"`
-		ErrorCode    int              `json:"error_code"`
-		ErrorMessage string           `json:"error_message"`
-	} `json:"data"`
-	Status string `json:"status"`
-}
-
-type ExecData struct {
-	Name  string  `json:"name"`
-	Time  string  `json:"time"`
-	Value float64 `json:"value"`
-}
-
 func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 	rsp := ResSet{Status: "fail"}
 	query := Query{}
@@ -126,6 +110,22 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 	rsp.Data = data
 
 	ctx.JSON(http.StatusOK, rsp)
+}
+
+type ExecReturn struct {
+	Data struct {
+		Columns      []MachbaseColumn `json:"columns"`
+		Data         []ExecData       `json:"data"`
+		ErrorCode    int              `json:"error_code"`
+		ErrorMessage string           `json:"error_message"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+type ExecData struct {
+	Name  string  `json:"name"`
+	Time  string  `json:"time"`
+	Value float64 `json:"value"`
 }
 
 func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ExecReturn, error) {
