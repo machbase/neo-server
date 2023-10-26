@@ -35,6 +35,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "precision", Func: opts.Precision},
 	{Name: "rownum", Func: opts.Rownum},
 	{Name: "seriesLabels", Func: opts.SeriesLabels},
+	{Name: "seriesOptions", Func: opts.SeriesOptions},
 	{Name: "showGrid", Func: opts.ShowGrid},
 	{Name: "size", Func: opts.Size},
 	{Name: "substituteNull", Func: opts.SubstituteNull},
