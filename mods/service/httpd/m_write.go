@@ -103,6 +103,8 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 		return
 	}
 
+	svr.log.Info("[getData] data ==> %+v\n", data)
+
 	rsp.Status = "success"
 	rsp.Data = data
 
