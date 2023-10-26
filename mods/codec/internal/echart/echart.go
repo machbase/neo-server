@@ -10,7 +10,7 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
-var globalLog = logging.GetLog("chart")
+var globalLog logging.Log
 
 type ChartBase struct {
 	output spec.OutputStream
@@ -92,7 +92,11 @@ func (ex *ChartBase) SetSeriesOptions(data ...string) {
 		opt := &ChartSeriesOptions{}
 		err := json.Unmarshal([]byte(content), opt)
 		if err != nil {
-			globalLog.Warn("Invalid SeriesOptions", err.Error())
+			if globalLog == nil {
+				globalLog = logging.GetLog("chart")
+			}
+			globalLog.Warn("invalid syntax of seriesOptions", err.Error())
+			return
 		}
 		ret = append(ret, opt)
 	}

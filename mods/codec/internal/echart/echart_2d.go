@@ -197,11 +197,11 @@ func xLabelCompare(x, y any) bool {
 
 	switch xv := x.(type) {
 	case time.Time:
-		return xv.UnixNano()-toInt64(y) >= 0
+		return xv.UnixNano() >= toInt64(y)
 	case int64:
-		return xv-toInt64(y) >= 0
+		return xv >= toInt64(y)
 	case float64:
-		return xv-toFloat64(y) >= 0
+		return xv >= toFloat64(y)
 	default:
 		fmt.Printf("ERR unhandled compare x====> %T\n", xv)
 		return false
