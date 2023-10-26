@@ -2,6 +2,7 @@ package echart
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -66,6 +67,43 @@ func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 	if len(typ) > 0 {
 		ex.yAxisType = typ[0]
 	}
+}
+
+func (ex *Base2D) finalizeXAxis() []any {
+	ret := make([]any, len(ex.xLabels))
+	switch strings.ToLower(ex.xAxisType) {
+	case "time":
+		for i := range ex.xLabels {
+			ret[i] = ex.renderXAxisLabelIndex(i)
+		}
+	default:
+		// copy(ret, ex.xLabels)
+		ret = ex.xLabels
+	}
+	return ret
+}
+
+func (ex *Base2D) renderXAxisLabelIndex(idx int) any {
+	if idx < 0 || idx >= len(ex.xLabels) {
+		return "n/a"
+	}
+	element := ex.xLabels[idx]
+
+	if strings.ToLower(ex.xAxisType) == "time" {
+		var tv *time.Time
+		switch v := element.(type) {
+		case *time.Time:
+			tv = v
+		case time.Time:
+			tv = &v
+		}
+		if ex.timeformatter != nil && tv != nil {
+			return ex.timeformatter.Format(*tv)
+		} else {
+			return element
+		}
+	}
+	return element
 }
 
 func (ex *Base2D) SetTimeformat(format string) {
@@ -203,7 +241,7 @@ func xLabelCompare(x, y any) bool {
 	case float64:
 		return xv >= toFloat64(y)
 	default:
-		fmt.Printf("ERR unhandled compare x====> %T\n", xv)
+		fmt.Printf("ERR unhandled compare x====> %T(%v)\n", xv, xv)
 		return false
 	}
 }
@@ -233,8 +271,8 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 				ret = append(ret,
 					charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
 						Name:        mark.Label,
-						Coordinate0: []any{ex.xLabels[idx0]},
-						Coordinate1: []any{ex.xLabels[idx1]},
+						Coordinate0: []any{ex.renderXAxisLabelIndex(idx0)},
+						Coordinate1: []any{ex.renderXAxisLabelIndex(idx1)},
 						ItemStyle: &opts.ItemStyle{
 							Color:   mark.Color,
 							Opacity: mark.Opacity,
@@ -307,29 +345,7 @@ func (ex *Base2D) AddRow(values []any) error {
 			}
 		}
 	}
-	switch ex.xAxisType {
-	case "time":
-		var tv *time.Time
-		if t, ok := values[ex.xAxisIdx].(time.Time); ok {
-			tv = &t
-		} else {
-			if t, ok := values[ex.xAxisIdx].(*time.Time); ok {
-				tv = t
-			}
-		}
-		if ex.timeformatter != nil && tv != nil {
-			str := ex.timeformatter.Format(*tv)
-			ex.xLabels = append(ex.xLabels, str)
-		} else {
-			ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-		}
-	case "value":
-		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-	case "category":
-		fallthrough
-	default:
-		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-	}
+	ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
 	seriesIdx := -1
 	for n, v := range values {
 		if n == ex.xAxisIdx {
@@ -376,7 +392,7 @@ func NewLine() *Line {
 func (ex *Line) Close() {
 	line := charts.NewLine()
 	line.SetGlobalOptions(ex.getGlobalOptions()...)
-	line.SetXAxis(ex.xLabels)
+	line.SetXAxis(ex.finalizeXAxis())
 	for i, series := range ex.lineSeries {
 		label := ex.getSeriesName(i)
 		opts := ex.getSeriesOptions(i)
@@ -411,7 +427,7 @@ func NewScatter() *Scatter {
 func (ex *Scatter) Close() {
 	scatter := charts.NewScatter()
 	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
-	scatter.SetXAxis(ex.xLabels)
+	scatter.SetXAxis(ex.finalizeXAxis())
 	for i, series := range ex.scatterSeries {
 		label := ex.getSeriesName(i)
 		opts := ex.getSeriesOptions(i)
@@ -446,7 +462,7 @@ func NewBar() *Bar {
 func (ex *Bar) Close() {
 	bar := charts.NewBar()
 	bar.SetGlobalOptions(ex.getGlobalOptions()...)
-	bar.SetXAxis(ex.xLabels)
+	bar.SetXAxis(ex.finalizeXAxis())
 	for i, series := range ex.barSeries {
 		label := ex.getSeriesName(i)
 		opts := ex.getSeriesOptions(i)
