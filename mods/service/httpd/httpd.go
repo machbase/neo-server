@@ -113,7 +113,7 @@ func (svr *httpd) Start() error {
 	svr.httpServer.Handler = svr.Router()
 
 	//?
-	svr.LoadAppender()
+	// svr.LoadAppender()
 
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := netutil.MakeListener(listen)
@@ -247,7 +247,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/logs", svr.handleLakeGetLogs)
 			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
-			// group.POST("/execquery",svr.handleLakeExecQuery)
+			group.POST("/inter/execquery", svr.handleLakeExecQuery)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
