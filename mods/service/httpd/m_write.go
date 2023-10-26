@@ -163,9 +163,9 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 		}
 
 		mv := map[string]any{}
-		mv[cols[0].Name] = buffer[0]
-		mv[cols[1].Name] = buffer[1]
-		mv[cols[2].Name] = buffer[2]
+		mv["name"] = buffer[0]
+		mv["time"] = buffer[1]
+		mv["value"] = buffer[2]
 		result.Data = append(result.Data, mv)
 	}
 
