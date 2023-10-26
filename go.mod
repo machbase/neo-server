@@ -55,7 +55,7 @@ require (
 	golang.org/x/term v0.13.0
 	golang.org/x/text v0.13.0
 	gonum.org/v1/gonum v0.13.0
-	google.golang.org/grpc v1.56.2
+	google.golang.org/grpc v1.56.3
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	oss.terrastruct.com/d2 v0.5.1
 	software.sslmate.com/src/go-pkcs12 v0.2.0
