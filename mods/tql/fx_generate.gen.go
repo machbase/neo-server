@@ -127,6 +127,7 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
+		"enableSaveAsImage":  x.gen_enableSaveAsImage,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -1619,6 +1620,21 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Delimiter(p0)
+	return ret, nil
+}
+
+// gen_enableSaveAsImage
+//
+// syntax: enableSaveAsImage(string)
+func (x *Node) gen_enableSaveAsImage(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("enableSaveAsImage", 1, len(args))
+	}
+	p0, err := convString(args, 0, "enableSaveAsImage", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.EnableSaveAsImage(p0)
 	return ret, nil
 }
 

@@ -17,7 +17,7 @@ require (
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gliderlabs/ssh v0.3.5
-	github.com/go-echarts/go-echarts/v2 v2.2.6
+	github.com/go-echarts/go-echarts/v2 v2.3.1
 	github.com/go-git/go-git/v5 v5.8.1
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid v4.4.0+incompatible

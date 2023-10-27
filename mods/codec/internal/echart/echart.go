@@ -38,7 +38,6 @@ type ChartGlobalOptions struct {
 	opts.Tooltip    `json:"tooltip"`
 	opts.Toolbox    `json:"toolbox"`
 	opts.Title      `json:"title"`
-	opts.Dataset    `json:"dataset"`
 	opts.Polar      `json:"polar"`
 	opts.AngleAxis  `json:"angleAxis"`
 	opts.RadiusAxis `json:"radiusAxis"`
@@ -87,6 +86,20 @@ func (ex *ChartBase) SetSubtitle(subtitle string) {
 
 func (ex *ChartBase) SetAssetHost(path string) {
 	ex.globalOptions.AssetsHost = path
+}
+
+func (ex *ChartBase) SetEnableSaveAsImage(name string) {
+	if ex.globalOptions.Toolbox.Feature == nil {
+		ex.globalOptions.Toolbox.Feature = &opts.ToolBoxFeature{}
+	}
+	if ex.globalOptions.Toolbox.Feature.SaveAsImage == nil {
+		ex.globalOptions.Toolbox.Feature.SaveAsImage = &opts.ToolBoxFeatureSaveAsImage{
+			Show:  true,
+			Name:  name,
+			Title: "Save",
+		}
+		ex.globalOptions.Toolbox.Show = true
+	}
 }
 
 func (ex *ChartBase) SetChartJson(flag bool) {
@@ -142,7 +155,6 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.Tooltip = ex.globalOptions.Tooltip
 			bc.Toolbox = ex.globalOptions.Toolbox
 			bc.Title = ex.globalOptions.Title
-			bc.Dataset = ex.globalOptions.Dataset
 			bc.Polar = ex.globalOptions.Polar
 			bc.AngleAxis = ex.globalOptions.AngleAxis
 			bc.RadiusAxis = ex.globalOptions.RadiusAxis
