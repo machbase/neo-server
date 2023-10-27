@@ -12,7 +12,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/echart/echart.go:87:1
+//	mods/codec/internal/echart/echart.go:88:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
 }
@@ -117,7 +117,7 @@ func BriefCount(count int) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/echart/echart.go:105:1
+//	mods/codec/internal/echart/echart.go:139:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -197,24 +197,9 @@ func Delimiter(delimiter string) Option {
 	}
 }
 
-// SetEnableSaveAsImage
-//
-//	mods/codec/internal/echart/echart.go:91:1
-type CanSetEnableSaveAsImage interface {
-	SetEnableSaveAsImage(name string)
-}
-
-func EnableSaveAsImage(name string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetEnableSaveAsImage); ok {
-			_o.SetEnableSaveAsImage(name)
-		}
-	}
-}
-
 // SetGlobalOptions
 //
-//	mods/codec/internal/echart/echart.go:131:1
+//	mods/codec/internal/echart/echart.go:165:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(content string)
 }
@@ -388,7 +373,7 @@ func Opacity(opacity float64) Option {
 //
 //	mods/codec/internal/box/box_encode.go:44:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
-//	mods/codec/internal/echart/echart.go:66:1
+//	mods/codec/internal/echart/echart.go:67:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:50:1
 type CanSetOutputStream interface {
@@ -441,7 +426,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:194:1
+//	mods/codec/internal/echart/echart.go:228:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -456,7 +441,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:177:1
+//	mods/codec/internal/echart/echart.go:211:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -486,7 +471,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/echart/echart.go:70:1
+//	mods/codec/internal/echart/echart.go:71:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -516,7 +501,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/echart/echart.go:83:1
+//	mods/codec/internal/echart/echart.go:84:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
 }
@@ -547,7 +532,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/echart/echart.go:75:1
+//	mods/codec/internal/echart/echart.go:76:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -604,7 +589,7 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/echart/echart.go:79:1
+//	mods/codec/internal/echart/echart.go:80:1
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -613,6 +598,51 @@ func Title(title string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetTitle); ok {
 			_o.SetTitle(title)
+		}
+	}
+}
+
+// SetToolboxDataView
+//
+//	mods/codec/internal/echart/echart.go:126:1
+type CanSetToolboxDataView interface {
+	SetToolboxDataView()
+}
+
+func ToolboxDataView() Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetToolboxDataView); ok {
+			_o.SetToolboxDataView()
+		}
+	}
+}
+
+// SetToolboxDataZoom
+//
+//	mods/codec/internal/echart/echart.go:114:1
+type CanSetToolboxDataZoom interface {
+	SetToolboxDataZoom()
+}
+
+func ToolboxDataZoom() Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetToolboxDataZoom); ok {
+			_o.SetToolboxDataZoom()
+		}
+	}
+}
+
+// SetToolboxSaveAsImage
+//
+//	mods/codec/internal/echart/echart.go:92:1
+type CanSetToolboxSaveAsImage interface {
+	SetToolboxSaveAsImage(name string)
+}
+
+func ToolboxSaveAsImage(name string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetToolboxSaveAsImage); ok {
+			_o.SetToolboxSaveAsImage(name)
 		}
 	}
 }

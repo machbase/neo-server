@@ -127,7 +127,6 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
-		"enableSaveAsImage":  x.gen_enableSaveAsImage,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -153,6 +152,9 @@ func NewNode(task *Task) *Node {
 		"timeLocation":       x.gen_timeLocation,
 		"timeformat":         x.gen_timeformat,
 		"title":              x.gen_title,
+		"toolboxDataView":    x.gen_toolboxDataView,
+		"toolboxDataZoom":    x.gen_toolboxDataZoom,
+		"toolboxSaveAsImage": x.gen_toolboxSaveAsImage,
 		"transcoder":         x.gen_transcoder,
 		"transpose":          x.gen_transpose,
 		"visualMap":          x.gen_visualMap,
@@ -1623,21 +1625,6 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_enableSaveAsImage
-//
-// syntax: enableSaveAsImage(string)
-func (x *Node) gen_enableSaveAsImage(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("enableSaveAsImage", 1, len(args))
-	}
-	p0, err := convString(args, 0, "enableSaveAsImage", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.EnableSaveAsImage(p0)
-	return ret, nil
-}
-
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -2041,6 +2028,43 @@ func (x *Node) gen_title(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Title(p0)
+	return ret, nil
+}
+
+// gen_toolboxDataView
+//
+// syntax: toolboxDataView()
+func (x *Node) gen_toolboxDataView(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("toolboxDataView", 0, len(args))
+	}
+	ret := opts.ToolboxDataView()
+	return ret, nil
+}
+
+// gen_toolboxDataZoom
+//
+// syntax: toolboxDataZoom()
+func (x *Node) gen_toolboxDataZoom(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("toolboxDataZoom", 0, len(args))
+	}
+	ret := opts.ToolboxDataZoom()
+	return ret, nil
+}
+
+// gen_toolboxSaveAsImage
+//
+// syntax: toolboxSaveAsImage(string)
+func (x *Node) gen_toolboxSaveAsImage(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("toolboxSaveAsImage", 1, len(args))
+	}
+	p0, err := convString(args, 0, "toolboxSaveAsImage", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ToolboxSaveAsImage(p0)
 	return ret, nil
 }
 

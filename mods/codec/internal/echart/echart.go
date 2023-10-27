@@ -3,6 +3,7 @@ package echart
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -88,18 +89,51 @@ func (ex *ChartBase) SetAssetHost(path string) {
 	ex.globalOptions.AssetsHost = path
 }
 
-func (ex *ChartBase) SetEnableSaveAsImage(name string) {
+func (ex *ChartBase) SetToolboxSaveAsImage(name string) {
 	if ex.globalOptions.Toolbox.Feature == nil {
 		ex.globalOptions.Toolbox.Feature = &opts.ToolBoxFeature{}
 	}
 	if ex.globalOptions.Toolbox.Feature.SaveAsImage == nil {
-		ex.globalOptions.Toolbox.Feature.SaveAsImage = &opts.ToolBoxFeatureSaveAsImage{
-			Show:  true,
-			Name:  name,
-			Title: "Save",
-		}
-		ex.globalOptions.Toolbox.Show = true
+		ex.globalOptions.Toolbox.Feature.SaveAsImage = &opts.ToolBoxFeatureSaveAsImage{}
 	}
+	typ := "png"
+	if strings.HasSuffix(name, ".jpeg") {
+		typ = "jpeg"
+		name = strings.TrimSuffix(name, ".jpeg")
+	} else if strings.HasSuffix(name, ".svg") {
+		typ = "svg"
+		name = strings.TrimSuffix(name, ".svg")
+	}
+	ex.globalOptions.Toolbox.Show = true
+	ex.globalOptions.Toolbox.Feature.SaveAsImage.Show = true
+	ex.globalOptions.Toolbox.Feature.SaveAsImage.Name = name
+	ex.globalOptions.Toolbox.Feature.SaveAsImage.Type = typ
+	ex.globalOptions.Toolbox.Feature.SaveAsImage.Title = "save"
+}
+
+func (ex *ChartBase) SetToolboxDataZoom() {
+	if ex.globalOptions.Toolbox.Feature == nil {
+		ex.globalOptions.Toolbox.Feature = &opts.ToolBoxFeature{}
+	}
+	if ex.globalOptions.Toolbox.Feature.DataZoom == nil {
+		ex.globalOptions.Toolbox.Feature.DataZoom = &opts.ToolBoxFeatureDataZoom{}
+	}
+	ex.globalOptions.Toolbox.Show = true
+	ex.globalOptions.Toolbox.Feature.DataZoom.Show = true
+	ex.globalOptions.Toolbox.Feature.DataZoom.Title = map[string]string{"zoom": "zoom", "back": "back"}
+}
+
+func (ex *ChartBase) SetToolboxDataView() {
+	if ex.globalOptions.Toolbox.Feature == nil {
+		ex.globalOptions.Toolbox.Feature = &opts.ToolBoxFeature{}
+	}
+	if ex.globalOptions.Toolbox.Feature.DataView == nil {
+		ex.globalOptions.Toolbox.Feature.DataView = &opts.ToolBoxFeatureDataView{}
+	}
+	ex.globalOptions.Toolbox.Show = true
+	ex.globalOptions.Toolbox.Feature.DataView.Show = true
+	ex.globalOptions.Toolbox.Feature.DataView.Title = "view"
+	ex.globalOptions.Toolbox.Feature.DataView.Lang = []string{"Data", "Close", "Refresh"}
 }
 
 func (ex *ChartBase) SetChartJson(flag bool) {
