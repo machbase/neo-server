@@ -3,6 +3,7 @@ package echart
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -15,17 +16,35 @@ var globalLog logging.Log
 type ChartBase struct {
 	output spec.OutputStream
 
-	title    string
-	subtitle string
-	theme    string
-	width    string
-	height   string
-
-	assetHost    string
 	toJsonOutput bool
 
-	seriesOpts   []*ChartSeriesOptions
-	seriesLabels []string
+	globalOptions ChartGlobalOptions
+	seriesOpts    []*ChartSeriesOptions
+	seriesLabels  []string
+
+	onceInit sync.Once
+}
+
+type ChartGlobalOptions struct {
+	PageTitle       string `json:"pageTitle" default:"chart"` // HTML title
+	Width           string `json:"width" default:"600px"`     // Width of canvas
+	Height          string `json:"height" default:"600px"`    // Height of canvas
+	BackgroundColor string `json:"backgroundColor"`           // BackgroundColor of canvas
+	ChartID         string `json:"chartId"`                   // Chart unique ID
+	AssetsHost      string `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
+	Theme           string `json:"theme" default:"white"`
+
+	opts.Legend     `json:"legend"`
+	opts.Tooltip    `json:"tooltip"`
+	opts.Toolbox    `json:"toolbox"`
+	opts.Title      `json:"title"`
+	opts.Dataset    `json:"dataset"`
+	opts.Polar      `json:"polar"`
+	opts.AngleAxis  `json:"angleAxis"`
+	opts.RadiusAxis `json:"radiusAxis"`
+	opts.Brush      `json:"brush"`
+
+	charts.XYAxis
 }
 
 type ChartSeriesOptions struct {
@@ -50,40 +69,101 @@ func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *ChartBase) SetSize(width, height string) {
-	ex.width = width
-	ex.height = height
+	ex.globalOptions.Width = width
+	ex.globalOptions.Height = height
 }
 
 func (ex *ChartBase) SetTheme(theme string) {
-	ex.theme = theme
+	ex.globalOptions.Theme = theme
 }
 
 func (ex *ChartBase) SetTitle(title string) {
-	ex.title = title
+	ex.globalOptions.Title.Title = title
 }
 
 func (ex *ChartBase) SetSubtitle(subtitle string) {
-	ex.subtitle = subtitle
+	ex.globalOptions.Title.Subtitle = subtitle
 }
 
 func (ex *ChartBase) SetAssetHost(path string) {
-	ex.assetHost = path
+	ex.globalOptions.AssetsHost = path
 }
 
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
+	if flag {
+		ex.globalOptions.Theme = "-" // client choose 'white' or 'dark'
+	} else {
+		ex.globalOptions.Theme = "white" // echarts default
+	}
 }
 
-func (ex *ChartBase) Theme() string {
-	if ex.theme == "" {
-		if ex.toJsonOutput {
-			return "-" // client choose 'white' or 'dark'
-		} else {
-			return "white" // echarts default
+func (ex *ChartBase) initialize() {
+	ex.onceInit.Do(func() {
+		err := json.Unmarshal([]byte(`{
+			"assetsHost":"https://go-echarts.github.io/go-echarts-assets/assets/",
+			"pageTitle": "chart",
+			"width": "600px",
+			"height": "400px",
+			"legend": { "show": true },
+			"tooltip": { "show": true, "trigger": "axis" },
+			"xaxis": [ { "name": "x", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ],
+			"yaxis": [ { "name": "y", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ]
+		}`), &ex.globalOptions)
+		if err != nil {
+			if globalLog == nil {
+				globalLog = logging.GetLog("chart")
+			}
+			globalLog.Warnf("default global options", err.Error())
 		}
-	} else {
-		return ex.theme
+	})
+}
+
+func (ex *ChartBase) SetGlobalOptions(content string) {
+	if err := json.Unmarshal([]byte(content), &ex.globalOptions); err != nil {
+		if globalLog == nil {
+			globalLog = logging.GetLog("chart")
+		}
+		globalLog.Warn("invalid syntax of globalOptions", err.Error())
+		return
 	}
+}
+
+func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
+	ret := []charts.GlobalOpts{
+		charts.WithInitializationOpts(opts.Initialization{
+			PageTitle:       ex.globalOptions.PageTitle,
+			Width:           ex.globalOptions.Width,
+			Height:          ex.globalOptions.Height,
+			BackgroundColor: ex.globalOptions.BackgroundColor,
+			ChartID:         ex.globalOptions.ChartID,
+			AssetsHost:      ex.globalOptions.AssetsHost,
+			Theme:           ex.globalOptions.Theme,
+		}),
+		charts.WithTitleOpts(ex.globalOptions.Title),
+		func(bc *charts.BaseConfiguration) {
+			bc.Legend = ex.globalOptions.Legend
+			bc.Tooltip = ex.globalOptions.Tooltip
+			bc.Toolbox = ex.globalOptions.Toolbox
+			bc.Title = ex.globalOptions.Title
+			bc.Dataset = ex.globalOptions.Dataset
+			bc.Polar = ex.globalOptions.Polar
+			bc.AngleAxis = ex.globalOptions.AngleAxis
+			bc.RadiusAxis = ex.globalOptions.RadiusAxis
+			bc.Brush = ex.globalOptions.Brush
+
+			bc.XYAxis = ex.globalOptions.XYAxis
+		},
+	}
+	for i, xaxis := range ex.globalOptions.XAxisList {
+		xaxis.Type = "" // REMOVE ME: debug
+		ret = append(ret, charts.WithXAxisOpts(xaxis, i))
+	}
+	for i, yaxis := range ex.globalOptions.YAxisList {
+		yaxis.Type = "" // REMOVE ME: debug
+		ret = append(ret, charts.WithYAxisOpts(yaxis, i))
+	}
+	return ret
 }
 
 func (ex *ChartBase) SetSeriesOptions(data ...string) {

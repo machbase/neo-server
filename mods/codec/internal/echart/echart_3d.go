@@ -111,22 +111,7 @@ func (ex *Base3D) SetLineWidth(width float64) {
 }
 
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
-	width := "600px"
-	if ex.width != "" {
-		width = ex.width
-	}
-	height := "400px"
-	if ex.height != "" {
-		height = ex.height
-	}
-	title := ""
-	if ex.title != "" {
-		title = ex.title
-	}
-	subtitle := ""
-	if ex.subtitle != "" {
-		subtitle = ex.subtitle
-	}
+	options := ex.ChartBase.getGlobalOptions()
 	gridOpt := opts.Grid3D{
 		Show: ex.showGrid,
 	}
@@ -141,22 +126,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 			AutoRotateSpeed: ex.autoRotate,
 		}
 	}
-	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
-	if len(ex.assetHost) > 0 {
-		assetHost = ex.assetHost
-	}
-	options := []charts.GlobalOpts{
-		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: assetHost,
-			Theme:      ex.Theme(),
-			Width:      width,
-			Height:     height,
-			PageTitle:  title,
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:    title,
-			Subtitle: subtitle,
-		}),
+	options = append(options,
 		charts.WithLegendOpts(opts.Legend{
 			Show: false,
 		}),
@@ -165,7 +135,7 @@ func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 		charts.WithXAxis3DOpts(opts.XAxis3D{Name: ex.xAxisLabel, Type: ex.xAxisType}),
 		charts.WithYAxis3DOpts(opts.YAxis3D{Name: ex.yAxisLabel, Type: ex.yAxisType}),
 		charts.WithZAxis3DOpts(opts.ZAxis3D{Name: ex.zAxisLabel, Type: ex.zAxisType}),
-	}
+	)
 	if ex.minValue < ex.maxValue {
 		options = append(options, charts.WithVisualMapOpts(opts.VisualMap{
 			Min: float32(ex.minValue),
@@ -322,7 +292,7 @@ type Line3D struct {
 }
 
 func NewLine3D() *Line3D {
-	return &Line3D{
+	ret := &Line3D{
 		Base3D{
 			sereisBreakByXAxis: true,
 
@@ -337,6 +307,8 @@ func NewLine3D() *Line3D {
 			zAxisType:  "value",
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Line3D) Close() {
@@ -368,7 +340,7 @@ type Surface3D struct {
 }
 
 func NewSurface3D() *Surface3D {
-	return &Surface3D{
+	ret := &Surface3D{
 		Base3D{
 			sereisBreakByXAxis: true,
 
@@ -383,6 +355,8 @@ func NewSurface3D() *Surface3D {
 			zAxisType:  "value",
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Surface3D) Close() {
@@ -408,7 +382,7 @@ type Scatter3D struct {
 }
 
 func NewScatter3D() *Scatter3D {
-	return &Scatter3D{
+	ret := &Scatter3D{
 		Base3D{
 			sereisBreakByXAxis: true,
 
@@ -423,6 +397,8 @@ func NewScatter3D() *Scatter3D {
 			zAxisType:  "value",
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Scatter3D) Close() {
@@ -448,7 +424,7 @@ type Bar3D struct {
 }
 
 func NewBar3D() *Bar3D {
-	return &Bar3D{
+	ret := &Bar3D{
 		Base3D{
 			sereisBreakByXAxis: false,
 
@@ -463,6 +439,8 @@ func NewBar3D() *Bar3D {
 			zAxisType:  "value",
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Bar3D) Close() {

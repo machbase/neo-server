@@ -21,6 +21,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "columns", Func: opts.Columns},
 	{Name: "dataZoom", Func: opts.DataZoom},
 	{Name: "delimiter", Func: opts.Delimiter},
+	{Name: "globalOptions", Func: opts.GlobalOptions},
 	{Name: "gridSize", Func: opts.GridSize},
 	{Name: "header", Func: opts.Header},
 	{Name: "heading", Func: opts.Heading},

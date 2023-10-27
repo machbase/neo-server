@@ -2,7 +2,6 @@ package echart
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -16,12 +15,8 @@ type Base2D struct {
 
 	chartType string
 
-	xAxisIdx   int
-	xAxisLabel string
-	xAxisType  string
-	yAxisIdx   int
-	yAxisLabel string
-	yAxisType  string
+	xAxisIdx int
+	yAxisIdx int
 
 	xLabels       []any
 	lineSeries    [][]opts.LineData
@@ -32,7 +27,8 @@ type Base2D struct {
 	dataZoomStart float32 // 0 ~ 100 %
 	dataZoomEnd   float32 // 0 ~ 100 %
 
-	timeformatter *util.TimeFormatter
+	useTimeformatter bool
+	timeformatter    *util.TimeFormatter
 
 	markAreaNameCoord  []*MarkAreaNameCoord
 	markLineXAxisCoord []*MarkLineXAxisCoord
@@ -53,31 +49,32 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, typ ...string) {
+func (ex *Base2D) SetXAxis(idx int, label string, types ...string) {
 	ex.xAxisIdx = idx
-	ex.xAxisLabel = label
-	if len(typ) > 0 {
-		ex.xAxisType = typ[0]
+	ex.globalOptions.XYAxis.XAxisList[0].Name = label
+	if len(types) > 0 {
+		ex.globalOptions.XYAxis.XAxisList[0].Type = types[0]
+	}
+	if ex.globalOptions.XYAxis.XAxisList[0].Type == "time" {
+		ex.useTimeformatter = true
 	}
 }
 
 func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
-	ex.yAxisLabel = label
+	ex.globalOptions.XYAxis.YAxisList[0].Name = label
 	if len(typ) > 0 {
-		ex.yAxisType = typ[0]
+		ex.globalOptions.XYAxis.YAxisList[0].Type = typ[0]
 	}
 }
 
 func (ex *Base2D) finalizeXAxis() []any {
 	ret := make([]any, len(ex.xLabels))
-	switch strings.ToLower(ex.xAxisType) {
-	case "time":
+	if ex.useTimeformatter {
 		for i := range ex.xLabels {
 			ret[i] = ex.renderXAxisLabelIndex(i)
 		}
-	default:
-		// copy(ret, ex.xLabels)
+	} else {
 		ret = ex.xLabels
 	}
 	return ret
@@ -89,7 +86,7 @@ func (ex *Base2D) renderXAxisLabelIndex(idx int) any {
 	}
 	element := ex.xLabels[idx]
 
-	if strings.ToLower(ex.xAxisType) == "time" {
+	if ex.useTimeformatter {
 		var tv *time.Time
 		switch v := element.(type) {
 		case *time.Time:
@@ -151,45 +148,10 @@ func (ex *Base2D) SetMarkLineYAxisCoord(yaxis any, name string) {
 }
 
 func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
-	width := "600px"
-	if ex.width != "" {
-		width = ex.width
-	}
-	height := "400px"
-	if ex.height != "" {
-		height = ex.height
-	}
+	ret := ex.ChartBase.getGlobalOptions()
 
-	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
-	if len(ex.assetHost) > 0 {
-		assetHost = ex.assetHost
-	}
-	globalOptions := []charts.GlobalOpts{
-		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: assetHost,
-			Theme:      ex.Theme(),
-			Width:      width,
-			Height:     height,
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:    ex.title,
-			Subtitle: ex.subtitle,
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{
-			Show:    true,
-			Trigger: "axis",
-		}),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name: ex.xAxisLabel,
-			Show: true,
-		}, 0),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: ex.yAxisLabel,
-			Show: true,
-		}, 0),
-	}
 	if ex.dataZoomStart < ex.dataZoomEnd {
-		globalOptions = append(globalOptions,
+		ret = append(ret,
 			charts.WithDataZoomOpts(opts.DataZoom{
 				Type:  ex.dataZoomType,
 				Start: ex.dataZoomStart,
@@ -197,7 +159,7 @@ func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
 			}),
 		)
 	}
-	return globalOptions
+	return ret
 }
 
 func xLabelCompare(x, y any) bool {
@@ -353,6 +315,11 @@ func (ex *Base2D) AddRow(values []any) error {
 		} else {
 			seriesIdx++
 		}
+		if vv, ok := v.(time.Time); ok {
+			v = vv.UnixMilli()
+		} else if vv, ok := v.(*time.Time); ok {
+			v = vv.UnixMilli()
+		}
 		switch ex.chartType {
 		case "line":
 			ov := opts.LineData{
@@ -380,13 +347,15 @@ type Line struct {
 }
 
 func NewLine() *Line {
-	return &Line{
+	ret := &Line{
 		Base2D{
 			chartType: "line",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
+			xAxisIdx:  0,
+			yAxisIdx:  1,
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Line) Close() {
@@ -415,13 +384,15 @@ type Scatter struct {
 }
 
 func NewScatter() *Scatter {
-	return &Scatter{
+	ret := &Scatter{
 		Base2D{
 			chartType: "scatter",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
+			xAxisIdx:  0,
+			yAxisIdx:  1,
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Scatter) Close() {
@@ -450,13 +421,15 @@ type Bar struct {
 }
 
 func NewBar() *Bar {
-	return &Bar{
+	ret := &Bar{
 		Base2D{
 			chartType: "bar",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
+			xAxisIdx:  0,
+			yAxisIdx:  1,
 		},
 	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Bar) Close() {

@@ -127,6 +127,7 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
+		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
 		"heading":            x.gen_heading,
@@ -1618,6 +1619,21 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Delimiter(p0)
+	return ret, nil
+}
+
+// gen_globalOptions
+//
+// syntax: globalOptions(string)
+func (x *Node) gen_globalOptions(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("globalOptions", 1, len(args))
+	}
+	p0, err := convString(args, 0, "globalOptions", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.GlobalOptions(p0)
 	return ret, nil
 }
 
