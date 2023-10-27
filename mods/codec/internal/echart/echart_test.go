@@ -15,7 +15,7 @@ import (
 func TestLine(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewLine()
+	line := echart.NewRectChart(echart.LINE)
 	opts := []opts.Option{
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.ChartJson(true),
@@ -44,14 +44,14 @@ func TestLine(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]}]`
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
 	require.True(t, strings.Contains(buffer.String(), substr))
 }
 
 func TestScatter(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewScatter()
+	line := echart.NewRectChart(echart.SCATTER)
 	opts := []opts.Option{
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.ChartJson(true),
@@ -76,14 +76,14 @@ func TestScatter(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]}]`
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
 	require.True(t, strings.Contains(buffer.String(), substr))
 }
 
 func TestBar(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewBar()
+	line := echart.NewRectChart(echart.BAR)
 	opts := []opts.Option{
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.ChartJson(true),
@@ -108,7 +108,7 @@ func TestBar(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]}]`
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
 	require.True(t, strings.Contains(buffer.String(), substr))
 }
 

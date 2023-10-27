@@ -10,10 +10,18 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 )
 
+type RectChartType string
+
+const (
+	LINE    RectChartType = "line"
+	BAR     RectChartType = "bar"
+	SCATTER RectChartType = "scatter"
+)
+
 type Base2D struct {
 	ChartBase
 
-	chartType string
+	chartType RectChartType
 
 	xAxisIdx int
 	yAxisIdx int
@@ -33,6 +41,16 @@ type Base2D struct {
 	markAreaNameCoord  []*MarkAreaNameCoord
 	markLineXAxisCoord []*MarkLineXAxisCoord
 	markLineYAxisCoord []*MarkLineYAxisCoord
+}
+
+func NewRectChart(chartType RectChartType) *Base2D {
+	ret := &Base2D{
+		chartType: chartType,
+		xAxisIdx:  0,
+		yAxisIdx:  1,
+	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Base2D) ContentType() string {
@@ -277,9 +295,71 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 	return ret
 }
 
+func (ex *Base2D) Close() {
+	switch ex.chartType {
+	case LINE:
+		line := charts.NewLine()
+		line.SetGlobalOptions(ex.getGlobalOptions()...)
+		line.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.lineSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			line.AddSeries(label, series, opts...)
+		}
+		var rndr render.Renderer
+		if ex.toJsonOutput {
+			rndr = newJsonRender(line, line.Validate)
+		} else {
+			rndr = newChartRender(line, line.Validate)
+		}
+		err := rndr.Render(ex.output)
+		if err != nil {
+			fmt.Println("ERR", err.Error())
+		}
+	case SCATTER:
+		scatter := charts.NewScatter()
+		scatter.SetGlobalOptions(ex.getGlobalOptions()...)
+		scatter.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.scatterSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			scatter.AddSeries(label, series, opts...)
+		}
+		var rndr render.Renderer
+		if ex.toJsonOutput {
+			rndr = newJsonRender(scatter, scatter.Validate)
+		} else {
+			rndr = newChartRender(scatter, scatter.Validate)
+		}
+		err := rndr.Render(ex.output)
+		if err != nil {
+			fmt.Println("ERR", err.Error())
+		}
+	case BAR:
+		bar := charts.NewBar()
+		bar.SetGlobalOptions(ex.getGlobalOptions()...)
+		bar.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.barSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			bar.AddSeries(label, series, opts...)
+		}
+		var rndr render.Renderer
+		if ex.toJsonOutput {
+			rndr = newJsonRender(bar, bar.Validate)
+		} else {
+			rndr = newChartRender(bar, bar.Validate)
+		}
+		err := rndr.Render(ex.output)
+		if err != nil {
+			fmt.Println("ERR", err.Error())
+		}
+	}
+}
+
 func (ex *Base2D) AddRow(values []any) error {
 	switch ex.chartType {
-	case "line":
+	case LINE:
 		if ex.lineSeries == nil {
 			ex.lineSeries = make([][]opts.LineData, len(values)-1)
 		}
@@ -288,7 +368,7 @@ func (ex *Base2D) AddRow(values []any) error {
 				ex.lineSeries = append(ex.lineSeries, []opts.LineData{})
 			}
 		}
-	case "scatter":
+	case SCATTER:
 		if ex.scatterSeries == nil {
 			ex.scatterSeries = make([][]opts.ScatterData, len(values)-1)
 		}
@@ -297,7 +377,7 @@ func (ex *Base2D) AddRow(values []any) error {
 				ex.scatterSeries = append(ex.scatterSeries, []opts.ScatterData{})
 			}
 		}
-	case "bar":
+	case BAR:
 		if ex.barSeries == nil {
 			ex.barSeries = make([][]opts.BarData, len(values)-1)
 		}
@@ -321,18 +401,18 @@ func (ex *Base2D) AddRow(values []any) error {
 			v = vv.UnixMilli()
 		}
 		switch ex.chartType {
-		case "line":
+		case LINE:
 			ov := opts.LineData{
 				Value: v,
 			}
 			ex.lineSeries[seriesIdx] = append(ex.lineSeries[seriesIdx], ov)
-		case "scatter":
+		case SCATTER:
 			ov := opts.ScatterData{
 				Value:      v,
 				SymbolSize: 5,
 			}
 			ex.scatterSeries[seriesIdx] = append(ex.scatterSeries[seriesIdx], ov)
-		case "bar":
+		case BAR:
 			ov := opts.BarData{
 				Value: v,
 			}
@@ -340,115 +420,4 @@ func (ex *Base2D) AddRow(values []any) error {
 		}
 	}
 	return nil
-}
-
-type Line struct {
-	Base2D
-}
-
-func NewLine() *Line {
-	ret := &Line{
-		Base2D{
-			chartType: "line",
-			xAxisIdx:  0,
-			yAxisIdx:  1,
-		},
-	}
-	ret.initialize()
-	return ret
-}
-
-func (ex *Line) Close() {
-	line := charts.NewLine()
-	line.SetGlobalOptions(ex.getGlobalOptions()...)
-	line.SetXAxis(ex.finalizeXAxis())
-	for i, series := range ex.lineSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		line.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(line, line.Validate)
-	} else {
-		rndr = newChartRender(line, line.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
-}
-
-type Scatter struct {
-	Base2D
-}
-
-func NewScatter() *Scatter {
-	ret := &Scatter{
-		Base2D{
-			chartType: "scatter",
-			xAxisIdx:  0,
-			yAxisIdx:  1,
-		},
-	}
-	ret.initialize()
-	return ret
-}
-
-func (ex *Scatter) Close() {
-	scatter := charts.NewScatter()
-	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
-	scatter.SetXAxis(ex.finalizeXAxis())
-	for i, series := range ex.scatterSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		scatter.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(scatter, scatter.Validate)
-	} else {
-		rndr = newChartRender(scatter, scatter.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
-}
-
-type Bar struct {
-	Base2D
-}
-
-func NewBar() *Bar {
-	ret := &Bar{
-		Base2D{
-			chartType: "bar",
-			xAxisIdx:  0,
-			yAxisIdx:  1,
-		},
-	}
-	ret.initialize()
-	return ret
-}
-
-func (ex *Bar) Close() {
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(ex.getGlobalOptions()...)
-	bar.SetXAxis(ex.finalizeXAxis())
-	for i, series := range ex.barSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		bar.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(bar, bar.Validate)
-	} else {
-		rndr = newChartRender(bar, bar.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
 }
