@@ -100,12 +100,8 @@ func (ex *ChartBase) SetChartJson(flag bool) {
 
 func (ex *ChartBase) initialize() {
 	ex.onceInit.Do(func() {
+		opts.SetDefaultValue(&ex.globalOptions)
 		err := json.Unmarshal([]byte(`{
-			"assetsHost":"https://go-echarts.github.io/go-echarts-assets/assets/",
-			"pageTitle": "chart",
-			"width": "600px",
-			"height": "400px",
-			"legend": { "show": true },
 			"tooltip": { "show": true, "trigger": "axis" },
 			"xaxis": [ { "name": "x", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ],
 			"yaxis": [ { "name": "y", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ]
