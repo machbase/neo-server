@@ -25,13 +25,7 @@ type Base3D struct {
 	yAxisType  string
 	zAxisType  string
 
-	minValue float64
-	maxValue float64
-	opacity  float64
-
-	autoRotate float32 // angle/sec
-	showGrid   bool
-	gridSize   []float32 // [width, height, depth]
+	opacity float64
 
 	lineWidth float32
 }
@@ -74,11 +68,6 @@ func (ex *Base3D) SetZAxis(idx int, label string, typ ...string) {
 	}
 }
 
-func (ex *Base3D) SetVisualMap(minValue float64, maxValue float64) {
-	ex.minValue = minValue
-	ex.maxValue = maxValue
-}
-
 // speed angle/sec
 func (ex *Base3D) SetAutoRotate(speed float64) {
 	if speed < 0 {
@@ -87,11 +76,15 @@ func (ex *Base3D) SetAutoRotate(speed float64) {
 	if speed > 180 {
 		speed = 180
 	}
-	ex.autoRotate = float32(speed)
+
+	ex.globalOptions.Grid3D.ViewControl = &opts.ViewControl{
+		AutoRotate:      true,
+		AutoRotateSpeed: float32(speed),
+	}
 }
 
 func (ex *Base3D) SetShowGrid(flag bool) {
-	ex.showGrid = flag
+	ex.globalOptions.Grid3D.Show = flag
 }
 
 func (ex *Base3D) SetGridSize(args ...float64) {
@@ -99,7 +92,9 @@ func (ex *Base3D) SetGridSize(args ...float64) {
 	for i := 0; i < 3 && i < len(args); i++ {
 		widthHeightDepth[i] = float32(args[i])
 	}
-	ex.gridSize = []float32{widthHeightDepth[0], widthHeightDepth[1], widthHeightDepth[2]}
+	ex.globalOptions.Grid3D.BoxWidth = widthHeightDepth[0]
+	ex.globalOptions.Grid3D.BoxHeight = widthHeightDepth[1]
+	ex.globalOptions.Grid3D.BoxDepth = widthHeightDepth[2]
 }
 
 func (ex *Base3D) SetOpacity(opacity float64) {
@@ -112,51 +107,15 @@ func (ex *Base3D) SetLineWidth(width float64) {
 
 func (ex *Base3D) getGlobalOptions() []charts.GlobalOpts {
 	options := ex.ChartBase.getGlobalOptions()
-	gridOpt := opts.Grid3D{
-		Show: ex.showGrid,
-	}
-	if len(ex.gridSize) == 3 && ex.gridSize[0] > 0 && ex.gridSize[1] > 0 && ex.gridSize[2] > 0 {
-		gridOpt.BoxWidth = ex.gridSize[0]
-		gridOpt.BoxHeight = ex.gridSize[1]
-		gridOpt.BoxDepth = ex.gridSize[2]
-	}
-	if ex.autoRotate > 0 {
-		gridOpt.ViewControl = &opts.ViewControl{
-			AutoRotate:      true,
-			AutoRotateSpeed: ex.autoRotate,
-		}
-	}
 	options = append(options,
 		charts.WithLegendOpts(opts.Legend{
 			Show: false,
 		}),
 		charts.WithTooltipOpts(opts.Tooltip{Show: true, Trigger: "axis"}),
-		charts.WithGrid3DOpts(gridOpt),
 		charts.WithXAxis3DOpts(opts.XAxis3D{Name: ex.xAxisLabel, Type: ex.xAxisType}),
 		charts.WithYAxis3DOpts(opts.YAxis3D{Name: ex.yAxisLabel, Type: ex.yAxisType}),
 		charts.WithZAxis3DOpts(opts.ZAxis3D{Name: ex.zAxisLabel, Type: ex.zAxisType}),
 	)
-	if ex.minValue < ex.maxValue {
-		options = append(options, charts.WithVisualMapOpts(opts.VisualMap{
-			Min: float32(ex.minValue),
-			Max: float32(ex.maxValue),
-			InRange: &opts.VisualMapInRange{
-				Color: []string{
-					"#313695",
-					"#4575b4",
-					"#74add1",
-					"#abd9e9",
-					"#e0f3f8",
-					"#ffffbf",
-					"#fee090",
-					"#fdae61",
-					"#f46d43",
-					"#d73027",
-					"#a50026",
-				},
-			},
-		}))
-	}
 	return options
 }
 

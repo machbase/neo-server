@@ -28,14 +28,15 @@ type ChartBase struct {
 }
 
 type ChartGlobalOptions struct {
-	PageTitle       string `json:"pageTitle" default:"chart"` // HTML title
-	Width           string `json:"width" default:"600px"`     // Width of canvas
-	Height          string `json:"height" default:"600px"`    // Height of canvas
-	BackgroundColor string `json:"backgroundColor"`           // BackgroundColor of canvas
-	ChartID         string `json:"chartId"`                   // Chart unique ID
-	AssetsHost      string `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
-	Theme           string `json:"theme" default:"white"`
-	Animation       bool   `json:"animation" default:"false"`
+	PageTitle       string   `json:"pageTitle" default:"chart"` // HTML title
+	Width           string   `json:"width" default:"600px"`     // Width of canvas
+	Height          string   `json:"height" default:"600px"`    // Height of canvas
+	BackgroundColor string   `json:"backgroundColor"`           // BackgroundColor of canvas
+	ChartID         string   `json:"chartId"`                   // Chart unique ID
+	AssetsHost      string   `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
+	Theme           string   `json:"theme" default:"white"`
+	Colors          []string `json:"color"`
+	Animation       bool     `json:"animation" default:"false"`
 
 	DataZoomList  []opts.DataZoom  `json:"datazoom,omitempty"`
 	VisualMapList []opts.VisualMap `json:"visualmap,omitempty"`
@@ -50,6 +51,8 @@ type ChartGlobalOptions struct {
 	opts.RadiusAxis   `json:"radiusAxis"`
 	opts.Brush        `json:"brush"`
 	*opts.AxisPointer `json:"axisPointer"`
+
+	opts.Grid3D `json:"grid3D"`
 
 	charts.XYAxis
 }
@@ -152,6 +155,36 @@ func (ex *ChartBase) SetDataZoom(typ string, start float32, end float32) {
 		})
 }
 
+func (ex *ChartBase) SetVisualMap(min float64, max float64) {
+	opt := opts.VisualMap{}
+	util.SetDefaultValue(&opt)
+	opt.Min = float32(min)
+	opt.Max = float32(max)
+	opt.Calculable = true
+	opt.InRange = &opts.VisualMapInRange{
+		Color: []string{
+			"#313695",
+			"#4575b4",
+			"#74add1",
+			"#abd9e9",
+			"#e0f3f8",
+			"#ffffbf",
+			"#fee090",
+			"#fdae61",
+			"#f46d43",
+			"#d73027",
+			"#a50026",
+		},
+	}
+	if opt.Min > opt.Max {
+		// reverse colors
+		for i, j := 0, len(opt.InRange.Color)-1; i < j; i, j = i+1, j-1 {
+			opt.InRange.Color[i], opt.InRange.Color[j] = opt.InRange.Color[j], opt.InRange.Color[i]
+		}
+	}
+	ex.globalOptions.VisualMapList = append(ex.globalOptions.VisualMapList, opt)
+}
+
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
 	if flag {
@@ -167,6 +200,10 @@ func (ex *ChartBase) initialize() {
 		ex.globalOptions.AxisPointer = &opts.AxisPointer{
 			Link:  []opts.AxisPointerLink{{XAxisIndex: []int{0}, YAxisIndex: []int{0}}},
 			Label: &opts.Label{BackgroundColor: "#777"},
+		}
+		ex.globalOptions.Colors = []string{
+			"#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de",
+			"#3ba272", "#fc8452", "#9a60b4", "#ea7ccc",
 		}
 		ex.globalOptions.Tooltip.Show = true
 		ex.globalOptions.Tooltip.Trigger = "axis"
@@ -209,10 +246,12 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.Brush = ex.globalOptions.Brush
 
 			bc.Animation = ex.globalOptions.Animation
+			bc.Colors = ex.globalOptions.Colors
 			bc.XYAxis = ex.globalOptions.XYAxis
 			bc.DataZoomList = ex.globalOptions.DataZoomList
 			bc.VisualMapList = ex.globalOptions.VisualMapList
 			bc.GridList = ex.globalOptions.GridList
+			bc.Grid3D = ex.globalOptions.Grid3D
 		},
 	}
 

@@ -12,7 +12,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/echart/echart.go:94:1
+//	mods/codec/internal/echart/echart.go:95:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
 }
@@ -27,7 +27,7 @@ func AssetHost(path string) Option {
 
 // SetAutoRotate
 //
-//	mods/codec/internal/echart/echart_3d.go:83:1
+//	mods/codec/internal/echart/echart_3d.go:76:1
 type CanSetAutoRotate interface {
 	SetAutoRotate(speed float64)
 }
@@ -117,7 +117,7 @@ func BriefCount(count int) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/echart/echart.go:157:1
+//	mods/codec/internal/echart/echart.go:178:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -168,7 +168,7 @@ func Columns(names ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/echart/echart.go:148:1
+//	mods/codec/internal/echart/echart.go:146:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
 }
@@ -199,7 +199,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGlobalOptions
 //
-//	mods/codec/internal/echart/echart.go:181:1
+//	mods/codec/internal/echart/echart.go:202:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(content string)
 }
@@ -214,7 +214,7 @@ func GlobalOptions(content string) Option {
 
 // SetGridSize
 //
-//	mods/codec/internal/echart/echart_3d.go:97:1
+//	mods/codec/internal/echart/echart_3d.go:90:1
 type CanSetGridSize interface {
 	SetGridSize(args ...float64)
 }
@@ -296,7 +296,7 @@ func InputStream(in spec.InputStream) Option {
 
 // SetLineWidth
 //
-//	mods/codec/internal/echart/echart_3d.go:109:1
+//	mods/codec/internal/echart/echart_3d.go:102:1
 type CanSetLineWidth interface {
 	SetLineWidth(width float64)
 }
@@ -356,7 +356,7 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 
 // SetOpacity
 //
-//	mods/codec/internal/echart/echart_3d.go:105:1
+//	mods/codec/internal/echart/echart_3d.go:98:1
 type CanSetOpacity interface {
 	SetOpacity(opacity float64)
 }
@@ -373,7 +373,7 @@ func Opacity(opacity float64) Option {
 //
 //	mods/codec/internal/box/box_encode.go:44:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
-//	mods/codec/internal/echart/echart.go:73:1
+//	mods/codec/internal/echart/echart.go:74:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:50:1
 type CanSetOutputStream interface {
@@ -426,7 +426,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:249:1
+//	mods/codec/internal/echart/echart.go:270:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -441,7 +441,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:232:1
+//	mods/codec/internal/echart/echart.go:253:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -456,7 +456,7 @@ func SeriesOptions(data ...string) Option {
 
 // SetShowGrid
 //
-//	mods/codec/internal/echart/echart_3d.go:93:1
+//	mods/codec/internal/echart/echart_3d.go:86:1
 type CanSetShowGrid interface {
 	SetShowGrid(flag bool)
 }
@@ -471,7 +471,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/echart/echart.go:77:1
+//	mods/codec/internal/echart/echart.go:78:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -501,7 +501,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/echart/echart.go:90:1
+//	mods/codec/internal/echart/echart.go:91:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
 }
@@ -532,7 +532,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/echart/echart.go:82:1
+//	mods/codec/internal/echart/echart.go:83:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -589,7 +589,7 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/echart/echart.go:86:1
+//	mods/codec/internal/echart/echart.go:87:1
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -604,7 +604,7 @@ func Title(title string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/echart/echart.go:132:1
+//	mods/codec/internal/echart/echart.go:133:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
 }
@@ -619,7 +619,7 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/echart/echart.go:120:1
+//	mods/codec/internal/echart/echart.go:121:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
 }
@@ -634,7 +634,7 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/echart/echart.go:98:1
+//	mods/codec/internal/echart/echart.go:99:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
 }
@@ -679,15 +679,15 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/echart/echart_3d.go:77:1
+//	mods/codec/internal/echart/echart.go:155:1
 type CanSetVisualMap interface {
-	SetVisualMap(minValue float64, maxValue float64)
+	SetVisualMap(min float64, max float64)
 }
 
-func VisualMap(minValue float64, maxValue float64) Option {
+func VisualMap(min float64, max float64) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetVisualMap); ok {
-			_o.SetVisualMap(minValue, maxValue)
+			_o.SetVisualMap(min, max)
 		}
 	}
 }
@@ -695,7 +695,7 @@ func VisualMap(minValue float64, maxValue float64) Option {
 // SetXAxis
 //
 //	mods/codec/internal/echart/echart_2d.go:66:1
-//	mods/codec/internal/echart/echart_3d.go:53:1
+//	mods/codec/internal/echart/echart_3d.go:51:1
 type CanSetXAxis interface {
 	SetXAxis(idx int, label string, types ...string)
 }
@@ -711,7 +711,7 @@ func XAxis(idx int, label string, types ...string) Option {
 // SetYAxis
 //
 //	mods/codec/internal/echart/echart_2d.go:77:1
-//	mods/codec/internal/echart/echart_3d.go:61:1
+//	mods/codec/internal/echart/echart_3d.go:59:1
 type CanSetYAxis interface {
 	SetYAxis(idx int, label string, typ ...string)
 }
@@ -726,7 +726,7 @@ func YAxis(idx int, label string, typ ...string) Option {
 
 // SetZAxis
 //
-//	mods/codec/internal/echart/echart_3d.go:69:1
+//	mods/codec/internal/echart/echart_3d.go:67:1
 type CanSetZAxis interface {
 	SetZAxis(idx int, label string, typ ...string)
 }

@@ -271,6 +271,9 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 }
 
 func (ex *Base2D) Close() {
+	var chart any
+	var before []func()
+
 	switch ex.chartType {
 	case LINE:
 		line := charts.NewLine()
@@ -281,16 +284,8 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			line.AddSeries(label, series, opts...)
 		}
-		var rndr render.Renderer
-		if ex.toJsonOutput {
-			rndr = newJsonRender(line, line.Validate)
-		} else {
-			rndr = newChartRender(line, line.Validate)
-		}
-		err := rndr.Render(ex.output)
-		if err != nil {
-			fmt.Println("ERR", err.Error())
-		}
+		chart = line
+		before = append(before, line.Validate)
 	case SCATTER:
 		scatter := charts.NewScatter()
 		scatter.SetGlobalOptions(ex.getGlobalOptions()...)
@@ -300,16 +295,8 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			scatter.AddSeries(label, series, opts...)
 		}
-		var rndr render.Renderer
-		if ex.toJsonOutput {
-			rndr = newJsonRender(scatter, scatter.Validate)
-		} else {
-			rndr = newChartRender(scatter, scatter.Validate)
-		}
-		err := rndr.Render(ex.output)
-		if err != nil {
-			fmt.Println("ERR", err.Error())
-		}
+		chart = scatter
+		before = append(before, scatter.Validate)
 	case BAR:
 		bar := charts.NewBar()
 		bar.SetGlobalOptions(ex.getGlobalOptions()...)
@@ -319,16 +306,19 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			bar.AddSeries(label, series, opts...)
 		}
-		var rndr render.Renderer
-		if ex.toJsonOutput {
-			rndr = newJsonRender(bar, bar.Validate)
-		} else {
-			rndr = newChartRender(bar, bar.Validate)
-		}
-		err := rndr.Render(ex.output)
-		if err != nil {
-			fmt.Println("ERR", err.Error())
-		}
+		chart = bar
+		before = append(before, bar.Validate)
+	}
+
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(chart, before...)
+	} else {
+		rndr = newChartRender(chart, before...)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
 	}
 }
 
