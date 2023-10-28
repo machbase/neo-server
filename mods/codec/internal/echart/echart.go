@@ -10,6 +10,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 var globalLog logging.Log
@@ -34,15 +35,17 @@ type ChartGlobalOptions struct {
 	ChartID         string `json:"chartId"`                   // Chart unique ID
 	AssetsHost      string `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
 	Theme           string `json:"theme" default:"white"`
+	Animation       bool   `json:"animation" default:"false"`
 
-	opts.Legend     `json:"legend"`
-	opts.Tooltip    `json:"tooltip"`
-	opts.Toolbox    `json:"toolbox"`
-	opts.Title      `json:"title"`
-	opts.Polar      `json:"polar"`
-	opts.AngleAxis  `json:"angleAxis"`
-	opts.RadiusAxis `json:"radiusAxis"`
-	opts.Brush      `json:"brush"`
+	opts.Legend       `json:"legend"`
+	opts.Tooltip      `json:"tooltip"`
+	opts.Toolbox      `json:"toolbox"`
+	opts.Title        `json:"title"`
+	opts.Polar        `json:"polar"`
+	opts.AngleAxis    `json:"angleAxis"`
+	opts.RadiusAxis   `json:"radiusAxis"`
+	opts.Brush        `json:"brush"`
+	*opts.AxisPointer `json:"axisPointer"`
 
 	charts.XYAxis
 }
@@ -147,18 +150,16 @@ func (ex *ChartBase) SetChartJson(flag bool) {
 
 func (ex *ChartBase) initialize() {
 	ex.onceInit.Do(func() {
-		opts.SetDefaultValue(&ex.globalOptions)
-		err := json.Unmarshal([]byte(`{
-			"tooltip": { "show": true, "trigger": "axis" },
-			"xaxis": [ { "name": "x", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ],
-			"yaxis": [ { "name": "y", "show": true, "splitLine": {"show":true, "lineStyle":{ "width": 0.8, "opacity": 0.3 } } } ]
-		}`), &ex.globalOptions)
-		if err != nil {
-			if globalLog == nil {
-				globalLog = logging.GetLog("chart")
-			}
-			globalLog.Warnf("default global options", err.Error())
+		util.SetDefaultValue(&ex.globalOptions)
+		ex.globalOptions.AxisPointer = &opts.AxisPointer{
+			Link:  []opts.AxisPointerLink{{XAxisIndex: []int{0}, YAxisIndex: []int{0}}},
+			Label: &opts.Label{BackgroundColor: "#777"},
 		}
+		ex.globalOptions.Tooltip.Show = true
+		ex.globalOptions.Tooltip.Trigger = "axis"
+		ex.globalOptions.Tooltip.AxisPointer = &opts.AxisPointer{Type: "cross"}
+		ex.globalOptions.XYAxis.ExtendXAxis(opts.XAxis{Name: "x", Show: true, SplitLine: &opts.SplitLine{Show: true, LineStyle: &opts.LineStyle{Width: 0.8, Opacity: 0.3}}})
+		ex.globalOptions.XYAxis.ExtendYAxis(opts.YAxis{Name: "y", Show: true, SplitLine: &opts.SplitLine{Show: true, LineStyle: &opts.LineStyle{Width: 0.8, Opacity: 0.3}}})
 	})
 }
 
@@ -183,8 +184,8 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			AssetsHost:      ex.globalOptions.AssetsHost,
 			Theme:           ex.globalOptions.Theme,
 		}),
-		charts.WithTitleOpts(ex.globalOptions.Title),
 		func(bc *charts.BaseConfiguration) {
+			bc.Title = ex.globalOptions.Title
 			bc.Legend = ex.globalOptions.Legend
 			bc.Tooltip = ex.globalOptions.Tooltip
 			bc.Toolbox = ex.globalOptions.Toolbox
@@ -195,6 +196,7 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.Brush = ex.globalOptions.Brush
 
 			bc.XYAxis = ex.globalOptions.XYAxis
+			bc.Animation = ex.globalOptions.Animation
 		},
 	}
 	for i, xaxis := range ex.globalOptions.XAxisList {
@@ -264,19 +266,45 @@ func (ex *ChartBase) getSeriesOptions(idx int) []charts.SeriesOpts {
 
 	ret = append(ret, func(s *charts.SingleSeries) {
 		opt := ex.seriesOpts[idx]
-		s.Encode = opt.Encode
-		s.ItemStyle = opt.ItemStyle
-		s.Label = opt.Label
-		s.LabelLine = opt.LabelLine
-		s.Emphasis = opt.Emphasis
-		s.MarkLines = opt.MarkLines
-		s.MarkAreas = opt.MarkAreas
-		s.MarkPoints = opt.MarkPoints
-		s.RippleEffect = opt.RippleEffect
-		s.LineStyle = opt.LineStyle
-		s.AreaStyle = opt.AreaStyle
-		s.TextStyle = opt.TextStyle
-		s.CircularStyle = opt.CircularStyle
+		if opt.Encode != nil {
+			s.Encode = opt.Encode
+		}
+		if opt.ItemStyle != nil {
+			s.ItemStyle = opt.ItemStyle
+		}
+		if opt.Label != nil {
+			s.Label = opt.Label
+		}
+		if opt.LabelLine != nil {
+			s.LabelLine = opt.LabelLine
+		}
+		if opt.Emphasis != nil {
+			s.Emphasis = opt.Emphasis
+		}
+		if opt.MarkLines != nil {
+			s.MarkLines = opt.MarkLines
+		}
+		if opt.MarkAreas != nil {
+			s.MarkAreas = opt.MarkAreas
+		}
+		if opt.MarkPoints != nil {
+			s.MarkPoints = opt.MarkPoints
+		}
+		if opt.RippleEffect != nil {
+			s.RippleEffect = opt.RippleEffect
+		}
+		if opt.LineStyle != nil {
+			s.LineStyle = opt.LineStyle
+		}
+		if opt.AreaStyle != nil {
+			s.AreaStyle = opt.AreaStyle
+		}
+		if opt.TextStyle != nil {
+			s.TextStyle = opt.TextStyle
+		}
+		if opt.CircularStyle != nil {
+			s.CircularStyle = opt.CircularStyle
+		}
 	})
 
 	return ret
