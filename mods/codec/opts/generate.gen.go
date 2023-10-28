@@ -12,7 +12,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/echart/echart.go:88:1
+//	mods/codec/internal/echart/echart.go:94:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
 }
@@ -117,7 +117,7 @@ func BriefCount(count int) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/echart/echart.go:139:1
+//	mods/codec/internal/echart/echart.go:157:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -168,7 +168,7 @@ func Columns(names ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/echart/echart_2d.go:120:1
+//	mods/codec/internal/echart/echart.go:148:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
 }
@@ -199,7 +199,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGlobalOptions
 //
-//	mods/codec/internal/echart/echart.go:165:1
+//	mods/codec/internal/echart/echart.go:181:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(content string)
 }
@@ -311,7 +311,7 @@ func LineWidth(width float64) Option {
 
 // SetMarkAreaNameCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:126:1
+//	mods/codec/internal/echart/echart_2d.go:134:1
 type CanSetMarkAreaNameCoord interface {
 	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
 }
@@ -326,7 +326,7 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 
 // SetMarkLineXAxisCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:136:1
+//	mods/codec/internal/echart/echart_2d.go:144:1
 type CanSetMarkLineXAxisCoord interface {
 	SetMarkLineXAxisCoord(xaxis any, name string)
 }
@@ -341,7 +341,7 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 
 // SetMarkLineYAxisCoord
 //
-//	mods/codec/internal/echart/echart_2d.go:143:1
+//	mods/codec/internal/echart/echart_2d.go:151:1
 type CanSetMarkLineYAxisCoord interface {
 	SetMarkLineYAxisCoord(yaxis any, name string)
 }
@@ -373,7 +373,7 @@ func Opacity(opacity float64) Option {
 //
 //	mods/codec/internal/box/box_encode.go:44:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
-//	mods/codec/internal/echart/echart.go:67:1
+//	mods/codec/internal/echart/echart.go:73:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:50:1
 type CanSetOutputStream interface {
@@ -426,7 +426,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:228:1
+//	mods/codec/internal/echart/echart.go:249:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -441,7 +441,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:211:1
+//	mods/codec/internal/echart/echart.go:232:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -471,7 +471,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/echart/echart.go:71:1
+//	mods/codec/internal/echart/echart.go:77:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -501,7 +501,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/echart/echart.go:84:1
+//	mods/codec/internal/echart/echart.go:90:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
 }
@@ -532,7 +532,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/echart/echart.go:76:1
+//	mods/codec/internal/echart/echart.go:82:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -550,7 +550,7 @@ func Theme(theme string) Option {
 //	mods/codec/internal/box/box_encode.go:52:1
 //	mods/codec/internal/csv/csv_decode.go:43:1
 //	mods/codec/internal/csv/csv_encode.go:57:1
-//	mods/codec/internal/echart/echart_2d.go:113:1
+//	mods/codec/internal/echart/echart_2d.go:127:1
 //	mods/codec/internal/json/json_decode.go:38:1
 //	mods/codec/internal/json/json_encode.go:52:1
 //	mods/codec/internal/markdown/md_encode.go:62:1
@@ -571,7 +571,7 @@ func TimeLocation(tz *time.Location) Option {
 //	mods/codec/internal/box/box_encode.go:48:1
 //	mods/codec/internal/csv/csv_decode.go:39:1
 //	mods/codec/internal/csv/csv_encode.go:53:1
-//	mods/codec/internal/echart/echart_2d.go:106:1
+//	mods/codec/internal/echart/echart_2d.go:120:1
 //	mods/codec/internal/json/json_decode.go:34:1
 //	mods/codec/internal/json/json_encode.go:48:1
 //	mods/codec/internal/markdown/md_encode.go:58:1
@@ -589,7 +589,7 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/echart/echart.go:80:1
+//	mods/codec/internal/echart/echart.go:86:1
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -604,7 +604,7 @@ func Title(title string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/echart/echart.go:126:1
+//	mods/codec/internal/echart/echart.go:132:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
 }
@@ -619,7 +619,7 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/echart/echart.go:114:1
+//	mods/codec/internal/echart/echart.go:120:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
 }
@@ -634,7 +634,7 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/echart/echart.go:92:1
+//	mods/codec/internal/echart/echart.go:98:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
 }
@@ -694,7 +694,7 @@ func VisualMap(minValue float64, maxValue float64) Option {
 
 // SetXAxis
 //
-//	mods/codec/internal/echart/echart_2d.go:52:1
+//	mods/codec/internal/echart/echart_2d.go:66:1
 //	mods/codec/internal/echart/echart_3d.go:53:1
 type CanSetXAxis interface {
 	SetXAxis(idx int, label string, types ...string)
@@ -710,7 +710,7 @@ func XAxis(idx int, label string, types ...string) Option {
 
 // SetYAxis
 //
-//	mods/codec/internal/echart/echart_2d.go:63:1
+//	mods/codec/internal/echart/echart_2d.go:77:1
 //	mods/codec/internal/echart/echart_3d.go:61:1
 type CanSetYAxis interface {
 	SetYAxis(idx int, label string, typ ...string)

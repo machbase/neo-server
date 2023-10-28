@@ -37,6 +37,10 @@ type ChartGlobalOptions struct {
 	Theme           string `json:"theme" default:"white"`
 	Animation       bool   `json:"animation" default:"false"`
 
+	DataZoomList  []opts.DataZoom  `json:"datazoom,omitempty"`
+	VisualMapList []opts.VisualMap `json:"visualmap,omitempty"`
+	GridList      []opts.Grid      `json:"grid,omitempty"`
+
 	opts.Legend       `json:"legend"`
 	opts.Tooltip      `json:"tooltip"`
 	opts.Toolbox      `json:"toolbox"`
@@ -139,6 +143,15 @@ func (ex *ChartBase) SetToolboxDataView() {
 	ex.globalOptions.Toolbox.Feature.DataView.Lang = []string{"Data", "Close", "Refresh"}
 }
 
+func (ex *ChartBase) SetDataZoom(typ string, start float32, end float32) {
+	ex.globalOptions.DataZoomList = append(ex.globalOptions.DataZoomList,
+		opts.DataZoom{
+			Type:  typ,   // "inside", "slider"
+			Start: start, // 0 ~ 100 %
+			End:   end,   // 0 ~ 100 %
+		})
+}
+
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
 	if flag {
@@ -195,10 +208,14 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.RadiusAxis = ex.globalOptions.RadiusAxis
 			bc.Brush = ex.globalOptions.Brush
 
-			bc.XYAxis = ex.globalOptions.XYAxis
 			bc.Animation = ex.globalOptions.Animation
+			bc.XYAxis = ex.globalOptions.XYAxis
+			bc.DataZoomList = ex.globalOptions.DataZoomList
+			bc.VisualMapList = ex.globalOptions.VisualMapList
+			bc.GridList = ex.globalOptions.GridList
 		},
 	}
+
 	for i, xaxis := range ex.globalOptions.XAxisList {
 		xaxis.Type = "" // REMOVE ME: debug
 		ret = append(ret, charts.WithXAxisOpts(xaxis, i))

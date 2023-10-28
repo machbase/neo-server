@@ -31,10 +31,6 @@ type Base2D struct {
 	scatterSeries [][]opts.ScatterData
 	barSeries     [][]opts.BarData
 
-	dataZoomType  string  // inside, slider
-	dataZoomStart float32 // 0 ~ 100 %
-	dataZoomEnd   float32 // 0 ~ 100 %
-
 	useTimeformatter bool
 	timeformatter    *util.TimeFormatter
 
@@ -135,12 +131,6 @@ func (ex *Base2D) SetTimeLocation(tz *time.Location) {
 	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 
-func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
-	ex.dataZoomType = typ
-	ex.dataZoomStart = start
-	ex.dataZoomEnd = end
-}
-
 func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64) {
 	ex.markAreaNameCoord = append(ex.markAreaNameCoord, &MarkAreaNameCoord{
 		Label:       label,
@@ -163,21 +153,6 @@ func (ex *Base2D) SetMarkLineYAxisCoord(yaxis any, name string) {
 		Name:  name,
 		YAxis: yaxis,
 	})
-}
-
-func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
-	ret := ex.ChartBase.getGlobalOptions()
-
-	if ex.dataZoomStart < ex.dataZoomEnd {
-		ret = append(ret,
-			charts.WithDataZoomOpts(opts.DataZoom{
-				Type:  ex.dataZoomType,
-				Start: ex.dataZoomStart,
-				End:   ex.dataZoomEnd,
-			}),
-		)
-	}
-	return ret
 }
 
 func xLabelCompare(x, y any) bool {
