@@ -156,31 +156,21 @@ func (ex *ChartBase) SetDataZoom(typ string, start float32, end float32) {
 }
 
 func (ex *ChartBase) SetVisualMap(min float64, max float64) {
+	colors := []string{
+		"#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8", "#ffffbf",
+		"#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026",
+	}
+	ex.SetVisualMapColor(min, max, colors...)
+}
+
+func (ex *ChartBase) SetVisualMapColor(min float64, max float64, colors ...string) {
 	opt := opts.VisualMap{}
 	util.SetDefaultValue(&opt)
 	opt.Min = float32(min)
 	opt.Max = float32(max)
 	opt.Calculable = true
 	opt.InRange = &opts.VisualMapInRange{
-		Color: []string{
-			"#313695",
-			"#4575b4",
-			"#74add1",
-			"#abd9e9",
-			"#e0f3f8",
-			"#ffffbf",
-			"#fee090",
-			"#fdae61",
-			"#f46d43",
-			"#d73027",
-			"#a50026",
-		},
-	}
-	if opt.Min > opt.Max {
-		// reverse colors
-		for i, j := 0, len(opt.InRange.Color)-1; i < j; i, j = i+1, j-1 {
-			opt.InRange.Color[i], opt.InRange.Color[j] = opt.InRange.Color[j], opt.InRange.Color[i]
-		}
+		Color: colors,
 	}
 	ex.globalOptions.VisualMapList = append(ex.globalOptions.VisualMapList, opt)
 }

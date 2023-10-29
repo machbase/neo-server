@@ -158,6 +158,7 @@ func NewNode(task *Task) *Node {
 		"transcoder":         x.gen_transcoder,
 		"transpose":          x.gen_transpose,
 		"visualMap":          x.gen_visualMap,
+		"visualMapColor":     x.gen_visualMapColor,
 		"xAxis":              x.gen_xAxis,
 		"yAxis":              x.gen_yAxis,
 		"zAxis":              x.gen_zAxis,
@@ -2114,6 +2115,33 @@ func (x *Node) gen_visualMap(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.VisualMap(p0, p1)
+	return ret, nil
+}
+
+// gen_visualMapColor
+//
+// syntax: visualMapColor(float64, float64, ...string)
+func (x *Node) gen_visualMapColor(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("visualMapColor", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "visualMapColor", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "visualMapColor", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "visualMapColor", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.VisualMapColor(p0, p1, p2...)
 	return ret, nil
 }
 

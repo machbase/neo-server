@@ -52,6 +52,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "transcoder", Func: opts.Transcoder},
 	{Name: "transpose", Func: opts.Transpose},
 	{Name: "visualMap", Func: opts.VisualMap},
+	{Name: "visualMapColor", Func: opts.VisualMapColor},
 	{Name: "xAxis", Func: opts.XAxis},
 	{Name: "yAxis", Func: opts.YAxis},
 	{Name: "zAxis", Func: opts.ZAxis},
