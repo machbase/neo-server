@@ -1,8 +1,6 @@
 package httpd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,6 +46,9 @@ type Console struct {
 	conn      *websocket.Conn
 	connMutex sync.Mutex
 	closeOnce sync.Once
+
+	messages      []*eventbus.Event
+	lastFlushTime time.Time
 }
 
 func NewConsole(username string, consoleId string, conn *websocket.Conn) *Console {
@@ -102,18 +103,52 @@ func (cons *Console) run() {
 }
 
 func (cons *Console) sendMessage(evt *eventbus.Event) {
+	shouldAppend := true
+	forceFlush := false
+
 	cons.connMutex.Lock()
-	err := cons.conn.WriteJSON(evt)
-	cons.connMutex.Unlock()
-	if err != nil {
-		cons.log.Warn("ERR", err.Error())
-		cons.Close()
-	} else {
-		if cons.log.TraceEnabled() {
-			w := &bytes.Buffer{}
-			enc := json.NewEncoder(w)
-			enc.Encode(evt)
-			// cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+	defer cons.connMutex.Unlock()
+
+	if evt.Type == eventbus.EVT_LOG &&
+		len(cons.messages) > 0 &&
+		cons.messages[len(cons.messages)-1].Type == eventbus.EVT_LOG {
+
+		lastLog := cons.messages[len(cons.messages)-1].Log
+		if lastLog.Message == evt.Log.Message {
+			if lastLog.Repeat == 0 {
+				lastLog.Repeat = 1
+			}
+			lastLog.Repeat += 1
+			shouldAppend = false
 		}
+	} else {
+		forceFlush = true
 	}
+
+	if shouldAppend {
+		cons.messages = append(cons.messages, evt)
+	}
+
+	if !forceFlush && time.Since(cons.lastFlushTime) < 1*time.Second {
+		// do not flush for now
+		return
+	}
+
+	for _, msg := range cons.messages {
+		err := cons.conn.WriteJSON(msg)
+		if err != nil {
+			cons.log.Warn("ERR", err.Error())
+			cons.Close()
+			break
+		} /* else {
+			if cons.log.TraceEnabled() {
+				w := &bytes.Buffer{}
+				enc := json.NewEncoder(w)
+				enc.Encode(evt)
+				cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+			}
+		}*/
+	}
+	cons.lastFlushTime = time.Now()
+	cons.messages = cons.messages[0:0]
 }
