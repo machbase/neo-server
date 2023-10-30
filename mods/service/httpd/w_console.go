@@ -35,7 +35,8 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 	}
 
 	cons := NewConsole(claim.Subject, consoleId, conn)
-	go cons.run()
+	go cons.readerLoop()
+	go cons.flushLoop()
 }
 
 type Console struct {
@@ -46,18 +47,22 @@ type Console struct {
 	conn      *websocket.Conn
 	connMutex sync.Mutex
 	closeOnce sync.Once
+	closed    bool
 
 	messages      []*eventbus.Event
 	lastFlushTime time.Time
+	flushPeriod   time.Duration
 }
 
 func NewConsole(username string, consoleId string, conn *websocket.Conn) *Console {
 	ret := &Console{
-		log:       logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
-		topic:     fmt.Sprintf("console:%s:%s", username, consoleId),
-		username:  username,
-		consoleId: consoleId,
-		conn:      conn,
+		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
+		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
+		username:      username,
+		consoleId:     consoleId,
+		conn:          conn,
+		lastFlushTime: time.Now(),
+		flushPeriod:   300 * time.Millisecond,
 	}
 	eventbus.Default.SubscribeAsync(ret.topic, ret.sendMessage, true)
 	return ret
@@ -65,6 +70,7 @@ func NewConsole(username string, consoleId string, conn *websocket.Conn) *Consol
 
 func (cons *Console) Close() {
 	cons.closeOnce.Do(func() {
+		cons.closed = true
 		eventbus.Default.Unsubscribe(cons.topic, cons.sendMessage)
 		if cons.conn != nil {
 			cons.conn.Close()
@@ -72,7 +78,7 @@ func (cons *Console) Close() {
 	})
 }
 
-func (cons *Console) run() {
+func (cons *Console) readerLoop() {
 	defer func() {
 		cons.Close()
 		if e := recover(); e != nil {
@@ -102,6 +108,17 @@ func (cons *Console) run() {
 	}
 }
 
+func (cons *Console) flushLoop() {
+	ticker := time.NewTicker(cons.flushPeriod)
+	for range ticker.C {
+		if cons.closed {
+			break
+		}
+		cons.sendMessage(nil)
+	}
+	ticker.Stop()
+}
+
 func (cons *Console) sendMessage(evt *eventbus.Event) {
 	shouldAppend := true
 	forceFlush := false
@@ -109,7 +126,7 @@ func (cons *Console) sendMessage(evt *eventbus.Event) {
 	cons.connMutex.Lock()
 	defer cons.connMutex.Unlock()
 
-	if evt.Type == eventbus.EVT_LOG &&
+	if evt != nil && evt.Type == eventbus.EVT_LOG &&
 		len(cons.messages) > 0 &&
 		cons.messages[len(cons.messages)-1].Type == eventbus.EVT_LOG {
 
@@ -121,15 +138,15 @@ func (cons *Console) sendMessage(evt *eventbus.Event) {
 			lastLog.Repeat += 1
 			shouldAppend = false
 		}
-	} else {
+	} else if evt != nil && evt.Type != eventbus.EVT_LOG {
 		forceFlush = true
 	}
 
-	if shouldAppend {
+	if evt != nil && shouldAppend {
 		cons.messages = append(cons.messages, evt)
 	}
 
-	if !forceFlush && time.Since(cons.lastFlushTime) < 1*time.Second {
+	if !forceFlush && time.Since(cons.lastFlushTime) < cons.flushPeriod {
 		// do not flush for now
 		return
 	}
