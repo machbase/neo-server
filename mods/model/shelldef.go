@@ -18,6 +18,7 @@ const (
 	SHELLID_TQL   = "TQL"
 	SHELLID_WRK   = "WRK"
 	SHELLID_TAZ   = "TAZ"
+	SHELLID_DSH   = "DSH"
 	SHELLID_SHELL = "SHELL"
 )
 
@@ -31,6 +32,7 @@ var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_TQL: {Type: "tql", Label: "TQL", Icon: "chart-scatter-plot", Id: SHELLID_TQL},
 	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
 	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
+	SHELLID_DSH: {Type: "dsh", Label: "DASHBOARD", Icon: "dashboard", Id: SHELLID_DSH},
 	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
 		Attributes: &ShellAttributes{Cloneable: true},
 	},

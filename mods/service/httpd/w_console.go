@@ -1,8 +1,6 @@
 package httpd
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,7 +35,8 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 	}
 
 	cons := NewConsole(claim.Subject, consoleId, conn)
-	go cons.run()
+	go cons.readerLoop()
+	go cons.flushLoop()
 }
 
 type Console struct {
@@ -48,15 +47,22 @@ type Console struct {
 	conn      *websocket.Conn
 	connMutex sync.Mutex
 	closeOnce sync.Once
+	closed    bool
+
+	messages      []*eventbus.Event
+	lastFlushTime time.Time
+	flushPeriod   time.Duration
 }
 
 func NewConsole(username string, consoleId string, conn *websocket.Conn) *Console {
 	ret := &Console{
-		log:       logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
-		topic:     fmt.Sprintf("console:%s:%s", username, consoleId),
-		username:  username,
-		consoleId: consoleId,
-		conn:      conn,
+		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
+		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
+		username:      username,
+		consoleId:     consoleId,
+		conn:          conn,
+		lastFlushTime: time.Now(),
+		flushPeriod:   300 * time.Millisecond,
 	}
 	eventbus.Default.SubscribeAsync(ret.topic, ret.sendMessage, true)
 	return ret
@@ -64,6 +70,7 @@ func NewConsole(username string, consoleId string, conn *websocket.Conn) *Consol
 
 func (cons *Console) Close() {
 	cons.closeOnce.Do(func() {
+		cons.closed = true
 		eventbus.Default.Unsubscribe(cons.topic, cons.sendMessage)
 		if cons.conn != nil {
 			cons.conn.Close()
@@ -71,7 +78,7 @@ func (cons *Console) Close() {
 	})
 }
 
-func (cons *Console) run() {
+func (cons *Console) readerLoop() {
 	defer func() {
 		cons.Close()
 		if e := recover(); e != nil {
@@ -101,19 +108,64 @@ func (cons *Console) run() {
 	}
 }
 
-func (cons *Console) sendMessage(evt *eventbus.Event) {
-	cons.connMutex.Lock()
-	err := cons.conn.WriteJSON(evt)
-	cons.connMutex.Unlock()
-	if err != nil {
-		cons.log.Warn("ERR", err.Error())
-		cons.Close()
-	} else {
-		if cons.log.TraceEnabled() {
-			w := &bytes.Buffer{}
-			enc := json.NewEncoder(w)
-			enc.Encode(evt)
-			// cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+func (cons *Console) flushLoop() {
+	ticker := time.NewTicker(cons.flushPeriod)
+	for range ticker.C {
+		if cons.closed {
+			break
 		}
+		cons.sendMessage(nil)
 	}
+	ticker.Stop()
+}
+
+func (cons *Console) sendMessage(evt *eventbus.Event) {
+	shouldAppend := true
+	forceFlush := false
+
+	cons.connMutex.Lock()
+	defer cons.connMutex.Unlock()
+
+	if evt != nil && evt.Type == eventbus.EVT_LOG &&
+		len(cons.messages) > 0 &&
+		cons.messages[len(cons.messages)-1].Type == eventbus.EVT_LOG {
+
+		lastLog := cons.messages[len(cons.messages)-1].Log
+		if lastLog.Message == evt.Log.Message {
+			if lastLog.Repeat == 0 {
+				lastLog.Repeat = 1
+			}
+			lastLog.Repeat += 1
+			shouldAppend = false
+		}
+	} else if evt != nil && evt.Type != eventbus.EVT_LOG {
+		forceFlush = true
+	}
+
+	if evt != nil && shouldAppend {
+		cons.messages = append(cons.messages, evt)
+	}
+
+	if !forceFlush && time.Since(cons.lastFlushTime) < cons.flushPeriod {
+		// do not flush for now
+		return
+	}
+
+	for _, msg := range cons.messages {
+		err := cons.conn.WriteJSON(msg)
+		if err != nil {
+			cons.log.Warn("ERR", err.Error())
+			cons.Close()
+			break
+		} /* else {
+			if cons.log.TraceEnabled() {
+				w := &bytes.Buffer{}
+				enc := json.NewEncoder(w)
+				enc.Encode(evt)
+				cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
+			}
+		}*/
+	}
+	cons.lastFlushTime = time.Now()
+	cons.messages = cons.messages[0:0]
 }

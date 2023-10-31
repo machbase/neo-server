@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
+	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -15,7 +16,7 @@ import (
 //
 // @Summary     Get table list
 // @Description Get table list
-// @Param       name         query string false "table name prefix"
+// @Param       name         query string false "table name prefix or glob pattern"
 // @Param       showall      query boolean false "show all hidden tables"
 // @Success     200  {object}  msg.QueryResponse
 // @Failure     500 {object}  msg.QueryResponse
@@ -23,7 +24,12 @@ import (
 func (svr *httpd) handleTables(ctx *gin.Context) {
 	tick := time.Now()
 	nameFilter := strings.ToUpper(ctx.Query("name"))
+	nameFilterGlob := false
 	showAll := strBool(ctx.Query("showall"), false)
+
+	if nameFilter != "" {
+		nameFilterGlob = glob.IsGlob(nameFilter)
+	}
 
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	data := &msg.QueryData{
@@ -50,8 +56,19 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
 		}
-		if nameFilter != "" && !strings.HasPrefix(ti.Name, nameFilter) {
-			return true
+		if nameFilter != "" {
+			if nameFilterGlob {
+				matched, err := glob.Match(nameFilter, ti.Name)
+				if err != nil {
+					rsp.Success, rsp.Reason = false, err.Error()
+					return false
+				}
+				if !matched {
+					return true
+				}
+			} else if !strings.HasPrefix(ti.Name, nameFilter) {
+				return true
+			}
 		}
 		if !showAll {
 			if strings.HasPrefix(ti.Name, "_") {

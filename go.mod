@@ -17,7 +17,7 @@ require (
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gliderlabs/ssh v0.3.5
-	github.com/go-echarts/go-echarts/v2 v2.2.6
+	github.com/go-echarts/go-echarts/v2 v2.3.2
 	github.com/go-git/go-git/v5 v5.8.1
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid v4.4.0+incompatible
@@ -28,7 +28,7 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine v1.2.1-0.20231025072224-e1db038eb574
+	github.com/machbase/neo-engine v1.2.1
 	github.com/machbase/neo-grpc v1.1.1-0.20231025072350-4a74c3a1a797
 	github.com/machbase/neo-spi v1.5.1-0.20231024045420-cb1fe0971906
 	github.com/magefile/mage v1.15.0
@@ -55,7 +55,7 @@ require (
 	golang.org/x/term v0.13.0
 	golang.org/x/text v0.13.0
 	gonum.org/v1/gonum v0.13.0
-	google.golang.org/grpc v1.56.2
+	google.golang.org/grpc v1.56.3
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	oss.terrastruct.com/d2 v0.5.1
 	software.sslmate.com/src/go-pkcs12 v0.2.0

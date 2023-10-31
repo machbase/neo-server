@@ -34,6 +34,7 @@ type Log struct {
 	Level     string `json:"level"`
 	Task      string `json:"task,omitempty"`
 	Message   string `json:"message"`
+	Repeat    int    `json:"repeat,omitempty"`
 }
 
 func NewPingTime(tick time.Time) *Event {

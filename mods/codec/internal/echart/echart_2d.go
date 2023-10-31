@@ -10,32 +10,43 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 )
 
+type RectChartType string
+
+const (
+	LINE    RectChartType = "line"
+	BAR     RectChartType = "bar"
+	SCATTER RectChartType = "scatter"
+)
+
 type Base2D struct {
 	ChartBase
 
-	chartType string
+	chartType RectChartType
 
-	xAxisIdx   int
-	xAxisLabel string
-	xAxisType  string
-	yAxisIdx   int
-	yAxisLabel string
-	yAxisType  string
+	xAxisIdx int
+	yAxisIdx int
 
 	xLabels       []any
 	lineSeries    [][]opts.LineData
 	scatterSeries [][]opts.ScatterData
 	barSeries     [][]opts.BarData
 
-	dataZoomType  string  // inside, slider
-	dataZoomStart float32 // 0 ~ 100 %
-	dataZoomEnd   float32 // 0 ~ 100 %
-
-	timeformatter *util.TimeFormatter
+	useTimeformatter bool
+	timeformatter    *util.TimeFormatter
 
 	markAreaNameCoord  []*MarkAreaNameCoord
 	markLineXAxisCoord []*MarkLineXAxisCoord
 	markLineYAxisCoord []*MarkLineYAxisCoord
+}
+
+func NewRectChart(chartType RectChartType) *Base2D {
+	ret := &Base2D{
+		chartType: chartType,
+		xAxisIdx:  0,
+		yAxisIdx:  1,
+	}
+	ret.initialize()
+	return ret
 }
 
 func (ex *Base2D) ContentType() string {
@@ -52,20 +63,58 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, typ ...string) {
+func (ex *Base2D) SetXAxis(idx int, label string, types ...string) {
 	ex.xAxisIdx = idx
-	ex.xAxisLabel = label
-	if len(typ) > 0 {
-		ex.xAxisType = typ[0]
+	ex.globalOptions.XYAxis.XAxisList[0].Name = label
+	if len(types) > 0 {
+		ex.globalOptions.XYAxis.XAxisList[0].Type = types[0]
+	}
+	if ex.globalOptions.XYAxis.XAxisList[0].Type == "time" {
+		ex.useTimeformatter = true
 	}
 }
 
 func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
 	ex.yAxisIdx = idx
-	ex.yAxisLabel = label
+	ex.globalOptions.XYAxis.YAxisList[0].Name = label
 	if len(typ) > 0 {
-		ex.yAxisType = typ[0]
+		ex.globalOptions.XYAxis.YAxisList[0].Type = typ[0]
 	}
+}
+
+func (ex *Base2D) finalizeXAxis() []any {
+	ret := make([]any, len(ex.xLabels))
+	if ex.useTimeformatter {
+		for i := range ex.xLabels {
+			ret[i] = ex.renderXAxisLabelIndex(i)
+		}
+	} else {
+		ret = ex.xLabels
+	}
+	return ret
+}
+
+func (ex *Base2D) renderXAxisLabelIndex(idx int) any {
+	if idx < 0 || idx >= len(ex.xLabels) {
+		return "n/a"
+	}
+	element := ex.xLabels[idx]
+
+	if ex.useTimeformatter {
+		var tv *time.Time
+		switch v := element.(type) {
+		case *time.Time:
+			tv = v
+		case time.Time:
+			tv = &v
+		}
+		if ex.timeformatter != nil && tv != nil {
+			return ex.timeformatter.Format(*tv)
+		} else {
+			return element
+		}
+	}
+	return element
 }
 
 func (ex *Base2D) SetTimeformat(format string) {
@@ -80,12 +129,6 @@ func (ex *Base2D) SetTimeLocation(tz *time.Location) {
 		ex.timeformatter = util.NewTimeFormatter()
 	}
 	ex.timeformatter.Set(util.TimeLocation(tz))
-}
-
-func (ex *Base2D) SetDataZoom(typ string, start float32, end float32) {
-	ex.dataZoomType = typ
-	ex.dataZoomStart = start
-	ex.dataZoomEnd = end
 }
 
 func (ex *Base2D) SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64) {
@@ -110,56 +153,6 @@ func (ex *Base2D) SetMarkLineYAxisCoord(yaxis any, name string) {
 		Name:  name,
 		YAxis: yaxis,
 	})
-}
-
-func (ex *Base2D) getGlobalOptions() []charts.GlobalOpts {
-	width := "600px"
-	if ex.width != "" {
-		width = ex.width
-	}
-	height := "400px"
-	if ex.height != "" {
-		height = ex.height
-	}
-
-	assetHost := "https://go-echarts.github.io/go-echarts-assets/assets/"
-	if len(ex.assetHost) > 0 {
-		assetHost = ex.assetHost
-	}
-	globalOptions := []charts.GlobalOpts{
-		charts.WithInitializationOpts(opts.Initialization{
-			AssetsHost: assetHost,
-			Theme:      ex.Theme(),
-			Width:      width,
-			Height:     height,
-		}),
-		charts.WithTitleOpts(opts.Title{
-			Title:    ex.title,
-			Subtitle: ex.subtitle,
-		}),
-		charts.WithTooltipOpts(opts.Tooltip{
-			Show:    true,
-			Trigger: "axis",
-		}),
-		charts.WithXAxisOpts(opts.XAxis{
-			Name: ex.xAxisLabel,
-			Show: true,
-		}, 0),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: ex.yAxisLabel,
-			Show: true,
-		}, 0),
-	}
-	if ex.dataZoomStart < ex.dataZoomEnd {
-		globalOptions = append(globalOptions,
-			charts.WithDataZoomOpts(opts.DataZoom{
-				Type:  ex.dataZoomType,
-				Start: ex.dataZoomStart,
-				End:   ex.dataZoomEnd,
-			}),
-		)
-	}
-	return globalOptions
 }
 
 func xLabelCompare(x, y any) bool {
@@ -197,13 +190,13 @@ func xLabelCompare(x, y any) bool {
 
 	switch xv := x.(type) {
 	case time.Time:
-		return xv.UnixNano()-toInt64(y) >= 0
+		return xv.UnixNano() >= toInt64(y)
 	case int64:
-		return xv-toInt64(y) >= 0
+		return xv >= toInt64(y)
 	case float64:
-		return xv-toFloat64(y) >= 0
+		return xv >= toFloat64(y)
 	default:
-		fmt.Printf("ERR unhandled compare x====> %T\n", xv)
+		fmt.Printf("ERR unhandled compare x====> %T(%v)\n", xv, xv)
 		return false
 	}
 }
@@ -233,8 +226,8 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 				ret = append(ret,
 					charts.WithMarkAreaNameCoordItemOpts(opts.MarkAreaNameCoordItem{
 						Name:        mark.Label,
-						Coordinate0: []any{ex.xLabels[idx0]},
-						Coordinate1: []any{ex.xLabels[idx1]},
+						Coordinate0: []any{ex.renderXAxisLabelIndex(idx0)},
+						Coordinate1: []any{ex.renderXAxisLabelIndex(idx1)},
 						ItemStyle: &opts.ItemStyle{
 							Color:   mark.Color,
 							Opacity: mark.Opacity,
@@ -277,9 +270,61 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 	return ret
 }
 
+func (ex *Base2D) Close() {
+	var chart any
+	var before []func()
+
+	switch ex.chartType {
+	case LINE:
+		line := charts.NewLine()
+		line.SetGlobalOptions(ex.getGlobalOptions()...)
+		line.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.lineSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			line.AddSeries(label, series, opts...)
+		}
+		chart = line
+		before = append(before, line.Validate)
+	case SCATTER:
+		scatter := charts.NewScatter()
+		scatter.SetGlobalOptions(ex.getGlobalOptions()...)
+		scatter.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.scatterSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			scatter.AddSeries(label, series, opts...)
+		}
+		chart = scatter
+		before = append(before, scatter.Validate)
+	case BAR:
+		bar := charts.NewBar()
+		bar.SetGlobalOptions(ex.getGlobalOptions()...)
+		bar.SetXAxis(ex.finalizeXAxis())
+		for i, series := range ex.barSeries {
+			label := ex.getSeriesName(i)
+			opts := ex.getSeriesOptions(i)
+			bar.AddSeries(label, series, opts...)
+		}
+		chart = bar
+		before = append(before, bar.Validate)
+	}
+
+	var rndr render.Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(chart, before...)
+	} else {
+		rndr = newChartRender(chart, before...)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
+}
+
 func (ex *Base2D) AddRow(values []any) error {
 	switch ex.chartType {
-	case "line":
+	case LINE:
 		if ex.lineSeries == nil {
 			ex.lineSeries = make([][]opts.LineData, len(values)-1)
 		}
@@ -288,7 +333,7 @@ func (ex *Base2D) AddRow(values []any) error {
 				ex.lineSeries = append(ex.lineSeries, []opts.LineData{})
 			}
 		}
-	case "scatter":
+	case SCATTER:
 		if ex.scatterSeries == nil {
 			ex.scatterSeries = make([][]opts.ScatterData, len(values)-1)
 		}
@@ -297,7 +342,7 @@ func (ex *Base2D) AddRow(values []any) error {
 				ex.scatterSeries = append(ex.scatterSeries, []opts.ScatterData{})
 			}
 		}
-	case "bar":
+	case BAR:
 		if ex.barSeries == nil {
 			ex.barSeries = make([][]opts.BarData, len(values)-1)
 		}
@@ -307,29 +352,7 @@ func (ex *Base2D) AddRow(values []any) error {
 			}
 		}
 	}
-	switch ex.xAxisType {
-	case "time":
-		var tv *time.Time
-		if t, ok := values[ex.xAxisIdx].(time.Time); ok {
-			tv = &t
-		} else {
-			if t, ok := values[ex.xAxisIdx].(*time.Time); ok {
-				tv = t
-			}
-		}
-		if ex.timeformatter != nil && tv != nil {
-			str := ex.timeformatter.Format(*tv)
-			ex.xLabels = append(ex.xLabels, str)
-		} else {
-			ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-		}
-	case "value":
-		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-	case "category":
-		fallthrough
-	default:
-		ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
-	}
+	ex.xLabels = append(ex.xLabels, values[ex.xAxisIdx])
 	seriesIdx := -1
 	for n, v := range values {
 		if n == ex.xAxisIdx {
@@ -337,19 +360,24 @@ func (ex *Base2D) AddRow(values []any) error {
 		} else {
 			seriesIdx++
 		}
+		if vv, ok := v.(time.Time); ok {
+			v = vv.UnixMilli()
+		} else if vv, ok := v.(*time.Time); ok {
+			v = vv.UnixMilli()
+		}
 		switch ex.chartType {
-		case "line":
+		case LINE:
 			ov := opts.LineData{
 				Value: v,
 			}
 			ex.lineSeries[seriesIdx] = append(ex.lineSeries[seriesIdx], ov)
-		case "scatter":
+		case SCATTER:
 			ov := opts.ScatterData{
 				Value:      v,
 				SymbolSize: 5,
 			}
 			ex.scatterSeries[seriesIdx] = append(ex.scatterSeries[seriesIdx], ov)
-		case "bar":
+		case BAR:
 			ov := opts.BarData{
 				Value: v,
 			}
@@ -357,109 +385,4 @@ func (ex *Base2D) AddRow(values []any) error {
 		}
 	}
 	return nil
-}
-
-type Line struct {
-	Base2D
-}
-
-func NewLine() *Line {
-	return &Line{
-		Base2D{
-			chartType: "line",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
-		},
-	}
-}
-
-func (ex *Line) Close() {
-	line := charts.NewLine()
-	line.SetGlobalOptions(ex.getGlobalOptions()...)
-	line.SetXAxis(ex.xLabels)
-	for i, series := range ex.lineSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		line.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(line, line.Validate)
-	} else {
-		rndr = newChartRender(line, line.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
-}
-
-type Scatter struct {
-	Base2D
-}
-
-func NewScatter() *Scatter {
-	return &Scatter{
-		Base2D{
-			chartType: "scatter",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
-		},
-	}
-}
-
-func (ex *Scatter) Close() {
-	scatter := charts.NewScatter()
-	scatter.SetGlobalOptions(ex.getGlobalOptions()...)
-	scatter.SetXAxis(ex.xLabels)
-	for i, series := range ex.scatterSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		scatter.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(scatter, scatter.Validate)
-	} else {
-		rndr = newChartRender(scatter, scatter.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
-}
-
-type Bar struct {
-	Base2D
-}
-
-func NewBar() *Bar {
-	return &Bar{
-		Base2D{
-			chartType: "bar",
-			xAxisIdx:  0, xAxisLabel: "x",
-			yAxisIdx: 1, yAxisLabel: "y",
-		},
-	}
-}
-
-func (ex *Bar) Close() {
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(ex.getGlobalOptions()...)
-	bar.SetXAxis(ex.xLabels)
-	for i, series := range ex.barSeries {
-		label := ex.getSeriesName(i)
-		opts := ex.getSeriesOptions(i)
-		bar.AddSeries(label, series, opts...)
-	}
-	var rndr render.Renderer
-	if ex.toJsonOutput {
-		rndr = newJsonRender(bar, bar.Validate)
-	} else {
-		rndr = newChartRender(bar, bar.Validate)
-	}
-	err := rndr.Render(ex.output)
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-	}
 }

@@ -39,9 +39,7 @@ var (
 	_ RowsEncoder = &csv.Exporter{}
 	_ RowsEncoder = &markdown.Exporter{}
 	_ RowsEncoder = &html.Exporter{}
-	_ RowsEncoder = &echart.Line{}
-	_ RowsEncoder = &echart.Bar{}
-	_ RowsEncoder = &echart.Scatter{}
+	_ RowsEncoder = &echart.Base2D{}
 	_ RowsEncoder = &echart.Line3D{}
 	_ RowsEncoder = &echart.Bar3D{}
 	_ RowsEncoder = &echart.Scatter3D{}
@@ -64,11 +62,11 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case HTML:
 		ret = html.NewEncoder()
 	case ECHART_LINE:
-		ret = echart.NewLine()
+		ret = echart.NewRectChart(echart.LINE)
 	case ECHART_SCATTER:
-		ret = echart.NewScatter()
+		ret = echart.NewRectChart(echart.SCATTER)
 	case ECHART_BAR:
-		ret = echart.NewBar()
+		ret = echart.NewRectChart(echart.BAR)
 	case ECHART_LINE3D:
 		ret = echart.NewLine3D()
 	case ECHART_SURFACE3D:
