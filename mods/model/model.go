@@ -197,9 +197,9 @@ func (s *svr) GetAllShells(includesWebShells bool) []*ShellDefinition {
 	if includesWebShells {
 		ret = append(ret, reservedWebShellDef[SHELLID_SQL])
 		ret = append(ret, reservedWebShellDef[SHELLID_TQL])
+		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
 		ret = append(ret, reservedWebShellDef[SHELLID_DSH])
 		ret = append(ret, reservedWebShellDef[SHELLID_WRK])
-		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
 		ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
 	}
 	s.iterateShellDefs(func(def *ShellDefinition) bool {
