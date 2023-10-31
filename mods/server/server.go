@@ -282,7 +282,10 @@ func (s *svr) Start() error {
 		s.licenseFileTime = stat.ModTime()
 	}
 
-	s.models = model.NewService(model.WithConfigDirPath(prefpath))
+	s.models = model.NewService(
+		model.WithConfigDirPath(prefpath),
+		model.WithExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+	)
 	if err := s.models.Start(); err != nil {
 		return err
 	}

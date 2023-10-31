@@ -44,11 +44,19 @@ type svr struct {
 	schedDir  string
 	bridgeDir string
 	shellDir  string
+
+	experimentModeProvider func() bool
 }
 
 func WithConfigDirPath(path string) Option {
 	return func(s *svr) {
 		s.configDir = path
+	}
+}
+
+func WithExperimentModeProvider(provider func() bool) Option {
+	return func(s *svr) {
+		s.experimentModeProvider = provider
 	}
 }
 
@@ -198,7 +206,9 @@ func (s *svr) GetAllShells(includesWebShells bool) []*ShellDefinition {
 		ret = append(ret, reservedWebShellDef[SHELLID_SQL])
 		ret = append(ret, reservedWebShellDef[SHELLID_TQL])
 		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
-		ret = append(ret, reservedWebShellDef[SHELLID_DSH])
+		if s.experimentModeProvider() {
+			ret = append(ret, reservedWebShellDef[SHELLID_DSH])
+		}
 		ret = append(ret, reservedWebShellDef[SHELLID_WRK])
 		ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
 	}
