@@ -86,11 +86,14 @@ func (cons *Console) readerLoop() {
 		}
 	}()
 
+	cons.log.Trace("websocket: established")
 	for {
 		evt := &eventbus.Event{}
 		err := cons.conn.ReadJSON(evt)
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			if we, ok := err.(*websocket.CloseError); ok {
+				cons.log.Trace(we.Error())
+			} else if !errors.Is(err, io.EOF) {
 				cons.log.Warn("ERR", err.Error())
 			}
 			cons.connMutex.Lock()
