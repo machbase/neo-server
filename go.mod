@@ -28,14 +28,17 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine v1.2.1
+	github.com/machbase/neo-engine v1.2.1-0.20231025072224-e1db038eb574
 	github.com/machbase/neo-grpc v1.1.1-0.20231025072350-4a74c3a1a797
 	github.com/machbase/neo-spi v1.5.1-0.20231024045420-cb1fe0971906
 	github.com/magefile/mage v1.15.0
+	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/microsoft/go-mssqldb v1.5.0
 	github.com/mum4k/termdash v0.18.0
+	github.com/nyaosorg/go-box/v2 v2.1.4
+	github.com/nyaosorg/go-readline-ny v1.0.1
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/plgd-dev/go-coap/v3 v3.1.3
@@ -74,6 +77,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/chzyer/logex v1.2.1 // indirect
@@ -121,9 +125,9 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
-	github.com/mattn/go-runewidth v0.0.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
+	github.com/mattn/go-tty v0.0.5 // indirect
 	github.com/mazznoer/csscolorparser v0.1.3 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -136,7 +140,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
-	github.com/sergi/go-diff v1.1.0 // indirect
+	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/skeema/knownhosts v1.2.0 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect

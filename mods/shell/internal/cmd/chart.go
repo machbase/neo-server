@@ -204,5 +204,4 @@ func doChart(ctx *client.ActionContext) {
 		scheduler.Stop()
 		ctx.Cancel()
 	}
-	ctx.Println("This 'chart' command is deprecated. Use TQL instead.")
 }

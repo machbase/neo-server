@@ -70,7 +70,8 @@ func build(target string) error {
 
 	env := map[string]string{"GO111MODULE": "on"}
 	if target == "neoshell" {
-		env["CGO_ENABLED"] = "0"
+		// FIXME: neoshell should not link to engine
+		env["CGO_ENABLED"] = "1"
 	} else {
 		env["CGO_ENABLED"] = "1"
 	}
