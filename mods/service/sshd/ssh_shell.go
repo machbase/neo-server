@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-server/mods/model"
 )
 
 type Shell struct {
@@ -28,10 +29,13 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *Shell) {
 	if len(toks) == 2 {
 		shellId = toks[1]
 	} else {
-		shellId = "SHELL"
+		shellId = model.SHELLID_SHELL
 	}
 	shell = svr.shell(user, shellId)
-	if shellId == "SHELL" {
+	if shell == nil {
+		return user, nil
+	}
+	if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_SHELL2 {
 		shell.Envs["NEOSHELL_USER"] = strings.ToLower(user)
 		shell.Envs["NEOSHELL_PASSWORD"] = svr.neoShellAccount[strings.ToLower(user)]
 	}

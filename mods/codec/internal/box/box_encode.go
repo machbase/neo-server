@@ -2,6 +2,7 @@ package box
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 	"time"
@@ -140,6 +141,8 @@ func (ex *Exporter) Flush(heading bool) {
 	}
 }
 
+var ten13 = math.Pow10(13)
+
 func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
 
@@ -162,9 +165,17 @@ func (ex *Exporter) AddRow(values []any) error {
 		case float32:
 			cols[i] = strconv.FormatFloat(float64(v), 'f', ex.precision, 32)
 		case *float64:
-			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
+			val := *v
+			if ex.precision == -1 {
+				val = math.Floor(val*ten13) / ten13
+			}
+			cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 		case float64:
-			cols[i] = strconv.FormatFloat(v, 'f', ex.precision, 64)
+			val := v
+			if ex.precision == -1 {
+				val = math.Floor(val*ten13) / ten13
+			}
+			cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:

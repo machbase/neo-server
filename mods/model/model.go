@@ -45,7 +45,7 @@ type svr struct {
 	bridgeDir string
 	shellDir  string
 
-	experimentModeProvider func() bool
+	experimentMode func() bool
 }
 
 func WithConfigDirPath(path string) Option {
@@ -56,7 +56,7 @@ func WithConfigDirPath(path string) Option {
 
 func WithExperimentModeProvider(provider func() bool) Option {
 	return func(s *svr) {
-		s.experimentModeProvider = provider
+		s.experimentMode = provider
 	}
 }
 
@@ -182,6 +182,7 @@ func (s *svr) RemoveBridge(name string) error {
 
 func (s *svr) SetDefaultShellCommand(cmd string) {
 	reservedWebShellDef[SHELLID_SHELL].Command = cmd
+	reservedWebShellDef[SHELLID_SHELL2].Command = strings.Replace(cmd, " shell ", " shell2 ", 1)
 }
 
 func (s *svr) GetShell(id string) (*ShellDefinition, error) {
@@ -206,11 +207,14 @@ func (s *svr) GetAllShells(includesWebShells bool) []*ShellDefinition {
 		ret = append(ret, reservedWebShellDef[SHELLID_SQL])
 		ret = append(ret, reservedWebShellDef[SHELLID_TQL])
 		ret = append(ret, reservedWebShellDef[SHELLID_TAZ])
-		if s.experimentModeProvider() {
+		if s.experimentMode() {
 			ret = append(ret, reservedWebShellDef[SHELLID_DSH])
 		}
 		ret = append(ret, reservedWebShellDef[SHELLID_WRK])
 		ret = append(ret, reservedWebShellDef[SHELLID_SHELL])
+		if s.experimentMode() {
+			ret = append(ret, reservedWebShellDef[SHELLID_SHELL2])
+		}
 	}
 	s.iterateShellDefs(func(def *ShellDefinition) bool {
 		ret = append(ret, def)
