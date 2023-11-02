@@ -55,12 +55,19 @@ func doDescribe(ctx *client.ActionContext) {
 		return
 	}
 
-	if ctx.Client.Username() != "sys" {
-		cmd.Table = fmt.Sprintf("%s.%s", ctx.Client.Username(), cmd.Table)
+	tableName := strings.ToUpper(cmd.Table)
+	toks := strings.Split(tableName, ".")
+	if len(toks) == 1 {
+		tableName = fmt.Sprintf("MACHBASEDB.%s.%s", ctx.Client.Username(), toks[0])
+	} else if len(toks) == 2 {
+		tableName = fmt.Sprintf("MACHBASEDB.%s.%s", toks[0], toks[1])
+	} else if len(toks) == 3 {
+		tableName = fmt.Sprintf("%s.%s.%s", toks[0], toks[1], toks[2])
 	}
-	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, cmd.Table, cmd.ShowAll)
+
+	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, tableName, cmd.ShowAll)
 	if err != nil {
-		ctx.Println("unable to describe", cmd.Table, "; ERR", err.Error())
+		ctx.Println("unable to describe", tableName, "; ERR", err.Error())
 		return
 	}
 	desc := _desc.(*do.TableDescription)
