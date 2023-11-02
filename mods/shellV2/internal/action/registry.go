@@ -6,22 +6,6 @@ import (
 	"strings"
 )
 
-type Cmd struct {
-	Name  string
-	Desc  string
-	Usage string
-
-	PcFunc func() PrefixCompleterInterface
-	Action func(ctx *ActionContext)
-	// if the Cmd is the client side action
-	ClientAction bool
-	// if the Cmd is an experimental feature
-	Experimental bool
-	// Deprecated
-	Deprecated        bool
-	DeprecatedMessage string
-}
-
 var sqlCommands = []string{
 	"select", "insert", "update", "delete", "alter",
 	"create", "drop", "truncate", "load",
@@ -29,6 +13,7 @@ var sqlCommands = []string{
 }
 
 var globalCommands = make(map[string]*Cmd)
+var globalHelps = make(map[string]*CmdSpec)
 
 func RegisterCmd(cmd *Cmd) error {
 	name := strings.ToLower(cmd.Name)
@@ -38,7 +23,12 @@ func RegisterCmd(cmd *Cmd) error {
 		}
 	}
 	globalCommands[name] = cmd
+	RegisterHelp(name, cmd.Spec)
 	return nil
+}
+
+func RegisterHelp(name string, spec *CmdSpec) {
+	globalHelps[name] = spec
 }
 
 func IsSqlCommand(cmd string) bool {
