@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/server"
 	"github.com/machbase/neo-server/mods/shell"
+	"github.com/machbase/neo-server/mods/shellV2"
 )
 
 func Main() int {
@@ -36,6 +37,8 @@ func Main() int {
 		doServe(cli.Serve.Preset)
 	case "shell":
 		shell.Shell(&cli.Shell)
+	case "shell2":
+		shellV2.Shell(&cli.Shell2)
 	case "service":
 		doService(&cli.Service)
 	case "help <command> <sub-command>":

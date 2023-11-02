@@ -10,15 +10,14 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/machbase/neo-server/mods/shell/internal/client"
+	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/readline"
 	spi "github.com/machbase/neo-spi"
 	"github.com/rivo/tview"
 )
 
 func init() {
-	client.RegisterCmd(&client.Cmd{
+	action.RegisterCmd(&action.Cmd{
 		Name:   "walk",
 		PcFunc: pcWalk,
 		Action: doWalk,
@@ -37,8 +36,7 @@ const helpWalk = `  walk [options] <sql query>
      -t,--timeformat         time format [ns|ms|s|<timeformat>] (default:'ns')
                              consult "help timeformat"
         --tz                 timezone for handling datetime
-                             consult "help tz"
-`
+                             consult "help tz"`
 
 type WalkCmd struct {
 	TimeLocation *time.Location `name:"tz"`
@@ -49,13 +47,13 @@ type WalkCmd struct {
 	Query        []string       `arg:"" name:"query" passthrough:""`
 }
 
-func pcWalk() readline.PrefixCompleterInterface {
-	return readline.PcItem("walk", readline.PcItemDynamic(client.SqlHistory))
+func pcWalk() action.PrefixCompleterInterface {
+	return action.PcItem("walk")
 }
 
-func doWalk(ctx *client.ActionContext) {
+func doWalk(ctx *action.ActionContext) {
 	cmd := &WalkCmd{}
-	parser, err := client.Kong(cmd, func() error { ctx.Println(helpWalk); cmd.Help = true; return nil })
+	parser, err := action.Kong(cmd, func() error { ctx.Println(helpWalk); cmd.Help = true; return nil })
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -85,8 +83,6 @@ func doWalk(ctx *client.ActionContext) {
 		return
 	}
 	defer walker.Close()
-
-	client.AddSqlHistory(sqlText)
 
 	app := tview.NewApplication()
 	table := tview.NewTable()
