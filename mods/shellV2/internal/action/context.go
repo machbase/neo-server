@@ -20,8 +20,6 @@ type ActionContext struct {
 	TimeFormat   string
 	Interactive  bool // is shell in BATCH or INTERACTIVE mode
 	ServeMode    bool // is shell is running in SERVER/PROXY or user shell mode
-
-	pref *Pref
 }
 
 func (ctx *ActionContext) IsUserShellMode() bool {
@@ -41,7 +39,7 @@ func (ctx *ActionContext) IsServeMode() bool {
 }
 
 func (ctx *ActionContext) Pref() *Pref {
-	return ctx.pref
+	return ctx.Actor.pref
 }
 
 // ShutdownServerFunc returns callable function to shutdown server if this instance has ability of shutdown server

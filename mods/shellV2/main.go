@@ -3,12 +3,14 @@ package shellV2
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	_ "github.com/machbase/neo-server/mods/shellV2/internal/cmd"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 func Main() int {
@@ -33,21 +35,7 @@ type ShellCmd struct {
 	Password       string   `name:"password" default:"manager" help:"password"`
 }
 
-func HelpKong(options kong.HelpOptions, ctx *kong.Context) error {
-	serverAddr := "tcp://127.0.0.1:5655"
-	if pref, err := action.LoadPref(); err == nil {
-		serverAddr = pref.Server().Value()
-	}
-	fmt.Printf(`Usage: neoshell [<flags>] [<args>...]
-  Flags:
-    -h, --help             Show context-sensitive help.
-        --version          show version
-    -s, --server=<addr>    server address (default %s)
-        --user=<user name> user name (default 'sys')
-        --password=<pass>  password (default 'manager')
-`, serverAddr)
-	return nil
-}
+var DefaultServerAddress = "tcp://127.0.0.1:5655"
 
 func Shell(cmd *ShellCmd) {
 	if cmd.Version {
@@ -129,4 +117,59 @@ func Shell(cmd *ShellCmd) {
 	defer actor.Stop()
 
 	actor.Run(command)
+}
+
+func PrintHelp(subcommand string, helpShellText string) {
+	serverAddr := DefaultServerAddress
+	if shellPref, err := action.LoadPref(); err == nil {
+		serverAddr = shellPref.Server().Value()
+	}
+
+	if subcommand != "" {
+		fmt.Printf(helpShellText, serverAddr)
+		if subcommand == "timeformat" {
+			fmt.Println("  timeformats:")
+			fmt.Printf("%s\n", util.HelpTimeformats())
+		} else if subcommand == "tz" {
+			fmt.Println("  timezones:")
+			fmt.Printf("%s\n", util.HelpTimeZones())
+		} else {
+			targetCmd := action.FindCmd(subcommand)
+			if targetCmd == nil {
+				fmt.Printf("unknown sub-command %s\n\n", subcommand)
+				return
+			}
+			fmt.Printf("%s shell %s\n", filepath.Base(os.Args[0]), targetCmd.Usage)
+		}
+	} else {
+		fmt.Printf("\nshell "+helpShellText, serverAddr)
+		fmt.Println("shell sub-commands:")
+		cmds := action.Commands()
+		for _, cmd := range cmds {
+			lns := strings.Split(cmd.Usage, "\n")
+			for i, l := range lns {
+				if i == 0 {
+					fmt.Printf("%s\n", l)
+				} else {
+					fmt.Printf("      %s\n", l)
+				}
+			}
+		}
+	}
+}
+
+func HelpKong(options kong.HelpOptions, ctx *kong.Context) error {
+	serverAddr := "tcp://127.0.0.1:5655"
+	if pref, err := action.LoadPref(); err == nil {
+		serverAddr = pref.Server().Value()
+	}
+	fmt.Printf(`Usage: neoshell [<flags>] [<args>...]
+  Flags:
+    -h, --help             Show context-sensitive help.
+        --version          show version
+    -s, --server=<addr>    server address (default %s)
+        --user=<user name> user name (default 'sys')
+        --password=<pass>  password (default 'manager')
+`, serverAddr)
+	return nil
 }

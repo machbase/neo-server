@@ -60,6 +60,7 @@ func LoadPrefDir(prefDir string) (*Pref, error) {
 
 	return pref, nil
 }
+
 func (p *Pref) Save() error {
 	return p.store.WriteToFile(p.storePath)
 }
