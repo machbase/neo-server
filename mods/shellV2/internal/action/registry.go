@@ -8,7 +8,7 @@ import (
 
 var sqlCommands = []string{
 	"select", "insert", "update", "delete", "alter",
-	"create", "drop", "truncate", "load",
+	"create", "drop", "truncate", "exec",
 	"mount", "umount", "backup",
 }
 
