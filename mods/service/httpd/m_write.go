@@ -2,20 +2,93 @@ package httpd
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	spi "github.com/machbase/neo-spi"
 )
 
-type Values struct {
+type lakeReq interface {
+	lakeRequest()
+	count() int
+	reset()
+	next() ([]any, error)
+}
+
+var _ lakeReq = &lakeDefaultReq{}
+var _ lakeReq = &lakeStandardReq{}
+
+type lakeDefaultValue struct {
 	Tag string
 	Ts  int64
 	Val float64
 }
-type lakeReq struct {
-	Values []*Values `json:"values"`
+
+type lakeDefaultReq struct {
+	Values []*lakeDefaultValue `json:"values"`
+	cursor int                 `json:"-"`
+}
+
+func (r *lakeDefaultReq) lakeRequest() {}
+func (r *lakeDefaultReq) count() int   { return len(r.Values) }
+func (r *lakeDefaultReq) reset()       { r.cursor = 0 }
+
+func (r *lakeDefaultReq) next() ([]any, error) {
+	if r.cursor >= len(r.Values) {
+		return nil, io.EOF
+	}
+	r.cursor++
+	v := r.Values[r.cursor-1]
+	return []any{v.Tag, v.Ts, v.Val}, nil
+}
+
+type lakeStandardValue [2]any
+
+type lakeStandardReq struct {
+	Tag        string              `json:"tag_name"`
+	Dateformat string              `json:"date_format"`
+	Values     []lakeStandardValue `json:"values"`
+	cursor     int                 `json:"-"`
+}
+
+func (r *lakeStandardReq) lakeRequest() {}
+func (r *lakeStandardReq) count() int   { return len(r.Values) }
+func (r *lakeStandardReq) reset()       { r.cursor = 0 }
+
+func (r *lakeStandardReq) next() ([]any, error) {
+	if r.cursor >= len(r.Values) {
+		return nil, io.EOF
+	}
+	var ts time.Time
+	var val float64
+	var err error
+
+	switch tv := r.Values[r.cursor][0].(type) {
+	case string:
+		ts, err = time.Parse(r.Dateformat, tv)
+		if err != nil {
+			return nil, fmt.Errorf("values[%d] has wrong timeformat %q, format:%q", r.cursor, tv, r.Dateformat)
+		}
+	case int64:
+		ts = time.Unix(0, tv)
+	default:
+		return nil, fmt.Errorf("values[%d] has wrong time in %T (%v)", r.cursor, tv, tv)
+	}
+	switch vs := r.Values[r.cursor][1].(type) {
+	case float64:
+		val = vs
+	case int:
+		val = float64(vs)
+	default:
+		return nil, fmt.Errorf("values[%d] has wrong value in %T (%v)", r.cursor, vs, vs)
+	}
+	r.cursor++
+	return []any{r.Tag, ts, val}, nil
 }
 
 type lakeRsp struct {
@@ -29,15 +102,44 @@ const TableName = "TAG"
 func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false}
 
-	req := lakeReq{}
-	err := ctx.Bind(&req)
+	// 기존 lake에서는 cli를 통해서 db 사용
+	dataType := ctx.Param("type")
+
+	var req lakeReq
+	var err error
+
+	switch dataType {
+	case "standard":
+		stdReq := lakeStandardReq{}
+		err = ctx.Bind(&stdReq)
+		if stdReq.Dateformat == "" {
+			stdReq.Dateformat = `2006-01-02 15:04:05 999:999:999`
+		} else {
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "YYYY", "2006")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "MM", "01")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "DD", "02")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "HH24", "15")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "HH", "03")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "MI", "04")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "SS", "05")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "mmm", "999")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "uuu", "999")
+			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "nnn", "999")
+		}
+		req = &stdReq
+	default:
+		defReq := lakeDefaultReq{}
+		err = ctx.Bind(&defReq)
+		req = &defReq
+	}
+
 	if err != nil {
 		rsp.Reason = err.Error()
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
 
-	if len(req.Values) == 0 {
+	if req.count() == 0 {
 		rsp.Reason = "values is empty"
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
@@ -59,8 +161,18 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		return
 	}
 
-	for _, data := range req.Values {
-		err = appender.Append(data.Tag, data.Ts, data.Val)
+	for {
+		data, err := req.next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				rsp.Reason = err.Error()
+				ctx.JSON(http.StatusInternalServerError, rsp)
+				return
+			}
+		}
+		err = appender.Append(data...)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ctx.JSON(http.StatusInternalServerError, rsp)
