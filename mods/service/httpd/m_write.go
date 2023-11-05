@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/mods/util/ymds"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -54,6 +54,7 @@ type lakeStandardReq struct {
 	Dateformat string              `json:"date_format"`
 	Values     []lakeStandardValue `json:"values"`
 	cursor     int                 `json:"-"`
+	timeParser *ymds.Parser        `json:"-"`
 }
 
 func (r *lakeStandardReq) lakeRequest() {}
@@ -70,7 +71,7 @@ func (r *lakeStandardReq) next() ([]any, error) {
 
 	switch tv := r.Values[r.cursor][0].(type) {
 	case string:
-		ts, err = time.Parse(r.Dateformat, tv)
+		ts, err = r.timeParser.Parse(tv)
 		if err != nil {
 			return nil, fmt.Errorf("values[%d] has wrong timeformat %q, format:%q", r.cursor, tv, r.Dateformat)
 		}
@@ -113,19 +114,9 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		stdReq := lakeStandardReq{}
 		err = ctx.Bind(&stdReq)
 		if stdReq.Dateformat == "" {
-			stdReq.Dateformat = `2006-01-02 15:04:05 999:999:999`
-		} else {
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "YYYY", "2006")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "MM", "01")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "DD", "02")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "HH24", "15")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "HH", "03")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "MI", "04")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "SS", "05")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "mmm", "999")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "uuu", "999")
-			stdReq.Dateformat = strings.ReplaceAll(stdReq.Dateformat, "nnn", "999")
+			stdReq.Dateformat = `YYYY-MM-DD HH24:MI:SS mmm:uuu:nnn`
 		}
+		stdReq.timeParser = ymds.NewParser(stdReq.Dateformat).WithLocation(time.Local)
 		req = &stdReq
 	default:
 		defReq := lakeDefaultReq{}
@@ -161,6 +152,23 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		return
 	}
 
+	defer func() {
+		succ, fail, err := appender.Close()
+		data := map[string]any{
+			"success": succ,
+			"fail":    fail,
+		}
+		if err != nil {
+			data["close"] = err.Error()
+		}
+		rsp.Data = data
+		if rsp.Success {
+			ctx.JSON(http.StatusOK, rsp)
+		} else {
+			ctx.JSON(http.StatusInternalServerError, rsp)
+		}
+	}()
+
 	for {
 		data, err := req.next()
 		if err != nil {
@@ -168,20 +176,18 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 				break
 			} else {
 				rsp.Reason = err.Error()
-				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
 		}
 		err = appender.Append(data...)
 		if err != nil {
 			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 	}
 
 	rsp.Success = true
-	ctx.JSON(http.StatusOK, rsp)
+	rsp.Reason = "success"
 }
 
 type Query struct {
