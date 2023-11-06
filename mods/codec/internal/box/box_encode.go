@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -168,14 +169,24 @@ func (ex *Exporter) AddRow(values []any) error {
 			val := *v
 			if ex.precision == -1 {
 				val = math.Floor(val*ten13) / ten13
+				str := strconv.FormatFloat(val, 'f', 12, 64)
+				str = strings.Trim(str, "0")
+				str = strings.TrimSuffix(str, ".")
+				cols[i] = str
+			} else {
+				cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 			}
-			cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 		case float64:
 			val := v
 			if ex.precision == -1 {
 				val = math.Floor(val*ten13) / ten13
+				str := strconv.FormatFloat(val, 'f', 12, 64)
+				str = strings.Trim(str, "0")
+				str = strings.TrimSuffix(str, ".")
+				cols[i] = str
+			} else {
+				cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 			}
-			cols[i] = strconv.FormatFloat(val, 'f', ex.precision, 64)
 		case *int:
 			cols[i] = strconv.FormatInt(int64(*v), 10)
 		case int:
