@@ -166,7 +166,7 @@ func parseShell2(cli *NeoCommand) (*NeoCommand, error) {
 			i++
 		} else {
 			// other flags and args should be passed to neoshell
-			cli.Shell2.Args = append(cli.Shell.Args, s)
+			cli.Shell2.Args = append(cli.Shell2.Args, s)
 		}
 	}
 	return cli, nil

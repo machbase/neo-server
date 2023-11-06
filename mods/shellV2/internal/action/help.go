@@ -15,6 +15,15 @@ func init() {
 		Action:       doHelp,
 		Desc:         "Display this message, use 'help [command]'",
 		ClientAction: true,
+		Spec: &CmdSpec{
+			Syntax:      "help [command|argument]",
+			Description: "Display help message",
+			Args: []*CmdArg{
+				{Name: "timeformat", Description: "show specifiction"},
+				{Name: "tz", Description: "show specifiction"},
+				{Name: "keyboard", Description: "show keyboard shortcuts"},
+			},
+		},
 	})
 }
 
@@ -27,7 +36,6 @@ func pcHelp() PrefixCompleterInterface {
 		lst = append(lst, "timeformat")
 		lst = append(lst, "tz")
 		lst = append(lst, "keyboard")
-		lst = append(lst, "exit")
 		return lst
 	}))
 }
@@ -36,17 +44,22 @@ func doHelp(ctx *ActionContext) {
 	fields := util.SplitFields(ctx.Line, true)
 	if len(fields) > 0 {
 		if cmd, ok := globalCommands[strings.ToLower(fields[0])]; ok {
-			ctx.Println(cmd.Desc)
+			if cmd.Spec != nil {
+				fmt.Println(cmd.Spec.String())
+				return
+			} else {
+				ctx.Println(cmd.Desc)
 
-			if len(cmd.Usage) > 0 {
-				ctx.Println("Usage:")
-				lines := strings.Split(cmd.Usage, "\n")
-				for _, l := range lines {
-					ctx.Println(strings.ReplaceAll(l, "\t", "    "))
+				if len(cmd.Usage) > 0 {
+					ctx.Println("Usage:")
+					lines := strings.Split(cmd.Usage, "\n")
+					for _, l := range lines {
+						ctx.Println(strings.ReplaceAll(l, "\t", "    "))
+					}
+					ctx.Println()
 				}
-				ctx.Println()
+				return
 			}
-			return
 		}
 		switch fields[0] {
 		case "timeformat":
@@ -60,7 +73,8 @@ func doHelp(ctx *ActionContext) {
 			return
 		}
 	}
-	ctx.Println("commands")
+	ctx.Println("  commands:")
+	width := 12
 	keys := make([]string, 0, len(globalCommands))
 	for k := range globalCommands {
 		keys = append(keys, k)
@@ -83,9 +97,13 @@ func doHelp(ctx *ActionContext) {
 		if cmd.Deprecated {
 			aux = "// DEPRECATED"
 		}
-		ctx.Printfln("    %-*s %s %s", 10, cmd.Name, cmd.Desc, aux)
+		if cmd.Spec != nil {
+			ctx.Printfln("    %-*s %s %s", width, cmd.Name, cmd.Spec.Description, aux)
+		} else {
+			ctx.Printfln("    %-*s %s %s", width, cmd.Name, cmd.Desc, aux)
+		}
 	}
-	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "keyboard", "Show shortcut keys"))
-	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "clear", "Reset and clear screen"))
-	ctx.Println(fmt.Sprintf("    %-*s %s", 10, "exit", "Exit shell"))
+	ctx.Println(fmt.Sprintf("    %-*s %s", width, "keyboard", "Show shortcut keys"))
+	ctx.Println(fmt.Sprintf("    %-*s %s", width, "clear", "Reset and clear screen"))
+	ctx.Println(fmt.Sprintf("    %-*s %s", width, "exit", "Exit shell"))
 }
