@@ -48,3 +48,27 @@ func TestParser(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkYmdsformat(b *testing.B) {
+	parser := ymds.NewParser("YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn")
+	for i := 0; i < b.N; i++ {
+		data := fmt.Sprintf("2001/10/20 12:13:%02d 123.456.789", i%60)
+		_, err := parser.Parse(data)
+		if err != nil {
+			b.Log("ERR", err.Error())
+			b.Fail()
+		}
+	}
+}
+
+func BenchmarkGoTimeformat(b *testing.B) {
+	format := `2006/01/02 15:04:05.999999999 MST`
+	for i := 0; i < b.N; i++ {
+		data := fmt.Sprintf("2001/10/20 12:13:%02d.123456789 KST", i%60)
+		_, err := time.Parse(format, data)
+		if err != nil {
+			b.Log("ERR", err.Error())
+			b.Fail()
+		}
+	}
+}

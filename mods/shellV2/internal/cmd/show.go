@@ -479,6 +479,9 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 		if !showAll && strings.HasPrefix(ti.Name, "_") {
 			return true
 		}
+		if ctx.Actor.Username() != "sys" && ti.Database != "MACHBASEDB" {
+			return true
+		}
 		nrow++
 		desc := do.TableTypeDescription(spi.TableType(ti.Type), ti.Flag)
 		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
