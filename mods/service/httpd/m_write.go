@@ -53,11 +53,12 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	appender, err := conn.Appender(svr.lake.ctx, "TAG")
+	appender, err := conn.Appender(ctx, "TAG")
 	if err != nil {
 		svr.log.Error("appender error: ", err)
 		return
 	}
+	defer appender.Close()
 
 	for _, data := range req.Values {
 		err = appender.Append(data.Tag, data.Ts, data.Val)
