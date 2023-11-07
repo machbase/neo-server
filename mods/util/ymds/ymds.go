@@ -3,6 +3,7 @@ package ymds
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,7 +15,9 @@ var _ Match = &mText{}
 var _ Match = &mDigit{}
 var _ Match = &mYYYY{}
 var _ Match = &mMM{}
+var _ Match = &mMON{}
 var _ Match = &mDD{}
+var _ Match = &mAM{}
 
 type mText struct {
 	runes []rune
@@ -64,6 +67,31 @@ func (m *mMM) Match(input []rune) ([]rune, int64, bool) {
 	return input[2:], n, true
 }
 
+type mMON struct{}
+
+var months = []string{
+	"", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+	"JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+}
+
+func (m *mMON) Match(input []rune) ([]rune, int64, bool) {
+	if len(input) < 3 {
+		return input, 0, false
+	}
+	part := strings.ToUpper(string(input[0:3]))
+	n := int64(0)
+	for i, mmm := range months {
+		if mmm == part {
+			n = int64(i)
+			break
+		}
+	}
+	if n == 0 {
+		return input, 0, false
+	}
+	return input[3:], n, true
+}
+
 type mDD struct{}
 
 func (m *mDD) Match(input []rune) ([]rune, int64, bool) {
@@ -76,6 +104,22 @@ func (m *mDD) Match(input []rune) ([]rune, int64, bool) {
 		return input, 0, false
 	}
 	return input[2:], n, true
+}
+
+type mAM struct{}
+
+func (m *mAM) Match(input []rune) ([]rune, int64, bool) {
+	if len(input) < 2 {
+		return input, 0, false
+	}
+	part := input[0:2]
+	if (part[0] == 'A' || part[0] == 'a') && (part[1] == 'M' || part[1] == 'm') {
+		return input[2:], 0, true
+	} else if (part[0] == 'P' || part[0] == 'p') && (part[1] == 'M' || part[1] == 'm') {
+		return input[2:], 12, true
+	} else {
+		return input, 0, false
+	}
 }
 
 type mDigit struct {
@@ -109,7 +153,9 @@ func peek(rs []rune, idx int, expect []rune) (int, bool) {
 
 var pYYYY = []rune("YYYY")
 var pMM = []rune("MM")
+var pMON = []rune("MON")
 var pDD = []rune("DD")
+var pAM = []rune("AM")
 var pHH24 = []rune("HH24")
 var pHH = []rune("HH")
 var pMI = []rune("MI")
@@ -140,6 +186,8 @@ func NewParser(layout string) *Parser {
 			ret.append(&mYYYY{})
 		} else if idx, peekOk = peek(rs, idx, pMM); peekOk {
 			ret.append(&mMM{})
+		} else if idx, peekOk = peek(rs, idx, pMON); peekOk {
+			ret.append(&mMON{})
 		} else if idx, peekOk = peek(rs, idx, pDD); peekOk {
 			ret.append(&mDD{})
 		} else if idx, peekOk = peek(rs, idx, pHH24); peekOk {
@@ -156,9 +204,14 @@ func NewParser(layout string) *Parser {
 			ret.append(&mDigit{length: 3, multiply: 1000})
 		} else if idx, peekOk = peek(rs, idx, pnnn); peekOk {
 			ret.append(&mDigit{length: 3, multiply: 1})
+		} else if idx, peekOk = peek(rs, idx, pAM); peekOk {
+			ret.append(&mAM{})
 		} else {
 			ret.remain(rs[idx])
 		}
+	}
+	if ret.remains != nil {
+		ret.matches = append(ret.matches, ret.remains)
 	}
 	return ret
 }
@@ -194,7 +247,6 @@ func (p *Parser) Parse(str string) (time.Time, error) {
 	var year int
 	var month int
 	var day int
-
 	for _, m := range p.matches {
 		if renew, amount, ok := m.Match(input); ok {
 			switch m.(type) {
@@ -202,8 +254,12 @@ func (p *Parser) Parse(str string) (time.Time, error) {
 				year = int(amount)
 			case *mMM:
 				month = int(amount)
+			case *mMON:
+				month = int(amount)
 			case *mDD:
 				day = int(amount)
+			case *mAM:
+				tick += amount * 36_00_000_000_000
 			default:
 				tick += amount
 			}
@@ -214,6 +270,9 @@ func (p *Parser) Parse(str string) (time.Time, error) {
 		} else {
 			return time.Time{}, fmt.Errorf("time parse fail (%v), remains:%q", m, string(input))
 		}
+	}
+	if len(input) > 0 {
+		return time.Time{}, fmt.Errorf("time parse faile, unmatched %q", string(input))
 	}
 
 	sec := int(tick / int64(time.Second))

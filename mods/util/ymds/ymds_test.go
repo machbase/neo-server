@@ -9,11 +9,12 @@ import (
 )
 
 func TestParser(t *testing.T) {
-	tickUTC, _ := time.Parse("2006/01/02 15:04:05.999999999", "2001/10/20 12:13:14.123456789")
+	tickUTC, _ := time.Parse("2006/01/02 15:04:05.999999999", "2001/10/20 02:13:14.123456789")
 
 	mtc := "KST"
 	tzLocal, _ := time.LoadLocation(mtc)
-	tickLocal, err := time.Parse("2006/01/02 15:04:05.999999999 MST", fmt.Sprintf("2001/10/20 12:13:14.123456789 %s", mtc))
+	tickLocal, err := time.Parse("2006/01/02 15:04:05.999999999 MST", fmt.Sprintf("2001/10/20 02:13:14.123456789 %s", mtc))
+	tickPMLocal, err := time.Parse("2006/01/02 15:04:05.999999999 MST", fmt.Sprintf("2001/10/20 14:13:14.123456789 %s", mtc))
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -25,10 +26,13 @@ func TestParser(t *testing.T) {
 		expect time.Time
 		err    string
 	}{
-		{"YYYY/MM/DD HH24:MI:SS.mmmuuunnn", "2001/10/20 12:13:14.123456789", time.UTC, tickUTC, ""},
-		{"YYYY/MM/DD HH24:MI:SS.mmmuuunnn", "2001/10/20 12:13:14.123456789", tzLocal, tickLocal, ""},
-		{"YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn", "2001/10/20 12:13:14 123.456.789", time.UTC, tickUTC, ""},
-		{"YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn", "2001/10/20 12:13:14 123.456.789", tzLocal, tickLocal, ""},
+		{"YYYY/MM/DD HH24:MI:SS.mmmuuunnn", "2001/10/20 02:13:14.123456789", time.UTC, tickUTC, ""},
+		{"YYYY/MM/DD HH24:MI:SS.mmmuuunnn", "2001/10/20 02:13:14.123456789", tzLocal, tickLocal, ""},
+		{"YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn", "2001/10/20 02:13:14 123.456.789", time.UTC, tickUTC, ""},
+		{"YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn", "2001/10/20 02:13:14 123.456.789", tzLocal, tickLocal, ""},
+		{"YYYY/MON/DD HH24:MI:SS mmm.uuu.nnn", "2001/Oct/20 02:13:14 123.456.789", tzLocal, tickLocal, ""},
+		{"YYYY/MON/DD HH24:MI:SS mmm.uuu.nnn AM", "2001/Oct/20 02:13:14 123.456.789 AM", tzLocal, tickLocal, ""},
+		{"YYYY/MON/DD HH24:MI:SS mmm.uuu.nnn AM", "2001/Oct/20 02:13:14 123.456.789 PM", tzLocal, tickPMLocal, ""},
 	}
 	for _, tt := range tests {
 		p := ymds.NewParser(tt.layout) //.WithDebug()
@@ -37,6 +41,9 @@ func TestParser(t *testing.T) {
 		}
 		result, err := p.Parse(tt.input)
 		if tt.err == "" {
+			if err != nil {
+				t.Logf("expect %q, got error %s", tt.expect, err.Error())
+			}
 			if tt.expect != result {
 				t.Logf("expect %q, got=%q in %q diff:%d", tt.expect, result, tt.input, tt.expect.Sub(result))
 				t.Fail()
