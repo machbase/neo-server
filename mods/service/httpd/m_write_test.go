@@ -102,7 +102,7 @@ func TestAppendRoute(t *testing.T) {
 	router := wsvr.Router()
 
 	var b *bytes.Buffer
-	var lakereq lakeReq
+	var lakereq lakeDefaultReq
 	var lakersp lakeRsp
 	var expectStatus int
 	var w *httptest.ResponseRecorder
@@ -111,8 +111,8 @@ func TestAppendRoute(t *testing.T) {
 	// success case - append
 	b = &bytes.Buffer{}
 
-	lakereq.Values = make([]*Values, 0)
-	values := &Values{}
+	lakereq.Values = make([]*lakeDefaultValue, 0)
+	values := &lakeDefaultValue{}
 	values.Tag = "tag1"
 	values.Ts = time.Now().UnixNano()
 	values.Val = 11.11
@@ -129,6 +129,33 @@ func TestAppendRoute(t *testing.T) {
 
 	err = json.Unmarshal(w.Body.Bytes(), &lakersp)
 	if err != nil {
+		t.Log(w.Body.String())
+		t.Fatal(err)
+	}
+
+	expectStatus = http.StatusOK
+	require.Equal(t, expectStatus, w.Code, lakersp)
+
+	// success case - append (standard)
+	b = &bytes.Buffer{}
+
+	stdReq := &lakeStandardReq{}
+	stdReq.Values = make([]lakeStandardValue, 0)
+	stdReq.Tag = "tag1"
+	stdReq.Dateformat = "YYYY-MM-DD HH24:MI:SS mmm:uuu:nnn"
+	stdReq.Values = append(stdReq.Values, lakeStandardValue{"2023-11-02 00:02:00 000:000:000", 22.969678741091588})
+	stdReq.Values = append(stdReq.Values, lakeStandardValue{"2023-11-02 00:02:48 000:000:000", 18.393240581695526})
+	if err = json.NewEncoder(b).Encode(stdReq); err != nil {
+		t.Fatal(err)
+	}
+
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("POST", "/lake/values/standard", b)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	err = json.Unmarshal(w.Body.Bytes(), &lakersp)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,10 +164,10 @@ func TestAppendRoute(t *testing.T) {
 
 	// ====
 	//wrong case - append
-	lakereq = lakeReq{}
+	lakereq = lakeDefaultReq{}
 
 	b = &bytes.Buffer{}
-	values = &Values{}
+	values = &lakeDefaultValue{}
 	values.Tag = "tag1"
 	values.Ts = time.Now().UnixNano()
 

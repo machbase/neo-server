@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/httpd/assets"
@@ -69,6 +70,8 @@ type httpd struct {
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
+
+	lake LakeAppender // ?
 }
 
 type HandlerType string
@@ -84,6 +87,13 @@ const (
 type HandlerConfig struct {
 	Prefix  string
 	Handler HandlerType
+}
+
+// ?
+type LakeAppender struct {
+	appender spi.Appender
+	conn     spi.Conn
+	ctx      *gin.Context
 }
 
 func (svr *httpd) Start() error {
@@ -102,6 +112,9 @@ func (svr *httpd) Start() error {
 	svr.httpServer = &http.Server{}
 	svr.httpServer.Handler = svr.Router()
 
+	//?
+	// svr.LoadAppender()
+
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := netutil.MakeListener(listen)
 		if err != nil {
@@ -112,6 +125,34 @@ func (svr *httpd) Start() error {
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
 	return nil
+}
+
+// ?
+func (svr *httpd) LoadAppender() {
+	var err error
+	svr.lake.ctx = &gin.Context{}
+	svr.lake.conn, err = svr.getTrustConnection(svr.lake.ctx)
+	if err != nil {
+		svr.log.Error("connection failed.")
+		return
+	}
+	//Stop 에서 close?
+
+	exist, err := do.ExistsTable(svr.lake.ctx, svr.lake.conn, "TAG")
+	if err != nil {
+		svr.log.Error("exist table error: ", err)
+		return
+	}
+	if !exist {
+		svr.log.Error("not exist 'TAG' table")
+		return
+	}
+
+	svr.lake.appender, err = svr.lake.conn.Appender(svr.lake.ctx, "TAG")
+	if err != nil {
+		svr.log.Error("appender error: ", err)
+		return
+	}
 }
 
 func (svr *httpd) Stop() {
@@ -206,7 +247,8 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/logs", svr.handleLakeGetLogs)
 			group.GET("/values/:type", svr.handleLakeGetValues)
 			group.POST("/values", svr.handleLakePostValues)
-			// group.POST("/execquery",svr.handleLakeExecQuery)
+			group.POST("/values/:type", svr.handleLakePostValues)
+			group.POST("/inter/execquery", svr.handleLakeExecQuery)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
 			if svr.enableTokenAUth && svr.authServer != nil {
