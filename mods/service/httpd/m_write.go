@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/util/ymds"
+	"github.com/machbase/neo-server/mods/util/ymd"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -54,7 +54,7 @@ type lakeStandardReq struct {
 	Dateformat string              `json:"date_format"`
 	Values     []lakeStandardValue `json:"values"`
 	cursor     int                 `json:"-"`
-	timeParser *ymds.Parser        `json:"-"`
+	timeParser *ymd.Parser         `json:"-"`
 }
 
 func (r *lakeStandardReq) lakeRequest() {}
@@ -121,7 +121,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		if stdReq.Dateformat == "" {
 			stdReq.Dateformat = `YYYY-MM-DD HH24:MI:SS mmm:uuu:nnn`
 		}
-		stdReq.timeParser = ymds.NewParser(stdReq.Dateformat).WithLocation(time.Local)
+		stdReq.timeParser = ymd.NewParser(stdReq.Dateformat).WithLocation(time.Local)
 		req = &stdReq
 	default:
 		defReq := lakeDefaultReq{}

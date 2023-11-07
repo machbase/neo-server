@@ -1,4 +1,4 @@
-package ymds
+package ymd
 
 import (
 	"fmt"

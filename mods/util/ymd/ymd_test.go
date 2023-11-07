@@ -1,11 +1,11 @@
-package ymds_test
+package ymd_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/ymds"
+	"github.com/machbase/neo-server/mods/util/ymd"
 )
 
 func TestParser(t *testing.T) {
@@ -35,7 +35,7 @@ func TestParser(t *testing.T) {
 		{"YYYY/MON/DD HH24:MI:SS mmm.uuu.nnn AM", "2001/Oct/20 02:13:14 123.456.789 PM", tzLocal, tickPMLocal, ""},
 	}
 	for _, tt := range tests {
-		p := ymds.NewParser(tt.layout) //.WithDebug()
+		p := ymd.NewParser(tt.layout) //.WithDebug()
 		if tt.tz != nil {
 			p = p.WithLocation(tt.tz)
 		}
@@ -57,7 +57,7 @@ func TestParser(t *testing.T) {
 }
 
 func BenchmarkYmdsformat(b *testing.B) {
-	parser := ymds.NewParser("YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn")
+	parser := ymd.NewParser("YYYY/MM/DD HH24:MI:SS mmm.uuu.nnn")
 	for i := 0; i < b.N; i++ {
 		data := fmt.Sprintf("2001/10/20 12:13:%02d 123.456.789", i%60)
 		_, err := parser.Parse(data)
