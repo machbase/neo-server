@@ -3,6 +3,7 @@ package box_test
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -165,4 +166,22 @@ func runTimeformat(t *testing.T, format string) string {
 	enc.Close()
 
 	return w.String()
+}
+
+func TestPrecision(t *testing.T) {
+	tests := []struct {
+		input  float64
+		expect string
+	}{
+		{1.995, "1.995"},
+		{1.994, "1.994"},
+		{1.99, "1.99"},
+	}
+
+	ten13 := math.Pow10(13)
+	for _, tt := range tests {
+		floor := math.Floor(tt.input*ten13) / ten13
+		result := fmt.Sprintf("%v", floor)
+		fmt.Println("==>", tt.input, "=>", result)
+	}
 }

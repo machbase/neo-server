@@ -184,7 +184,9 @@ func (x *Task) Compile(codeReader io.Reader) error {
 		for _, n := range x.nodes {
 			nodeNames = append(nodeNames, n.Name())
 		}
-		nodeNames = append(nodeNames, x.output.Name())
+		if x.output != nil {
+			nodeNames = append(nodeNames, x.output.Name())
+		}
 		x.LogTrace("Task compiled", strings.Join(nodeNames, " → "))
 	}
 	return err
@@ -242,6 +244,10 @@ func (x *Task) compile(codeReader io.Reader) error {
 		}
 	}
 
+	if x.output == nil {
+		x.compileErr = errors.New("no sink exists")
+		return x.compileErr
+	}
 	x.compiled = true
 	return nil
 }
