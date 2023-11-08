@@ -403,6 +403,14 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		if err != nil {
 			return err
 		}
+		entryName := strings.TrimPrefix(entry, prefix)
+		entryName = strings.ReplaceAll(strings.TrimPrefix(entryName, string(filepath.Separator)), "\\", "/")
+		entryName = entryName + "/"
+		_, err = zipWriter.Create(entryName)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Archive D", entryName)
 		for _, ent := range entries {
 			archiveAddEntry(zipWriter, filepath.Join(entry, ent.Name()), prefix)
 		}
@@ -414,7 +422,8 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		defer fd.Close()
 
 		entryName := strings.TrimPrefix(entry, prefix)
-		fmt.Println("Archive", entryName)
+		entryName = strings.ReplaceAll(strings.TrimPrefix(entryName, string(filepath.Separator)), "\\", "/")
+		fmt.Println("Archive F", entryName)
 		finfo, _ := fd.Stat()
 		hdr := &zip.FileHeader{
 			Name:               entryName,
