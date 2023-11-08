@@ -10,10 +10,14 @@ import (
 
 func TestParser(t *testing.T) {
 	tickUTC, _ := time.Parse("2006/01/02 15:04:05.999999999", "2001/10/20 02:13:14.123456789")
+	tickUTC = tickUTC.In(time.UTC)
 
 	mtc := "KST"
 	tzLocal, _ := time.LoadLocation(mtc)
 	tickLocal, err := time.Parse("2006/01/02 15:04:05.999999999 MST", fmt.Sprintf("2001/10/20 02:13:14.123456789 %s", mtc))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	tickPMLocal, err := time.Parse("2006/01/02 15:04:05.999999999 MST", fmt.Sprintf("2001/10/20 14:13:14.123456789 %s", mtc))
 	if err != nil {
 		t.Fatal(err.Error())
