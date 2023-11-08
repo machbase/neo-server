@@ -216,6 +216,7 @@ func (svr *httpd) handleLakeExecQuery(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
+	defer conn.Close()
 
 	result, err := svr.getExec(ctx, conn, query.Sql)
 	if err != nil {
