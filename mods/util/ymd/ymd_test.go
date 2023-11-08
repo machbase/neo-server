@@ -48,7 +48,7 @@ func TestParser(t *testing.T) {
 			if err != nil {
 				t.Logf("expect %q, got error %s", tt.expect, err.Error())
 			}
-			if tt.expect != result {
+			if tt.expect.Sub(result) != 0 {
 				t.Logf("expect %q, got=%q in %q diff:%d", tt.expect, result, tt.input, tt.expect.Sub(result))
 				t.Fail()
 			}
