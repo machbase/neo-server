@@ -2,6 +2,7 @@ package mods
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -44,11 +45,11 @@ func GetVersion() *Version {
 }
 
 func DisplayVersion() string {
-	return versionString
+	return strings.ToUpper(versionString)
 }
 
 func VersionString() string {
-	return fmt.Sprintf("%s (%v %v)", versionString, versionGitSHA, buildTimestamp)
+	return fmt.Sprintf("%s (%v %v)", strings.ToUpper(versionString), versionGitSHA, buildTimestamp)
 }
 
 func BuildCompiler() string {

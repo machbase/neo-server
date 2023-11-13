@@ -546,7 +546,7 @@ func doShowInfo(ctx *client.ActionContext) {
 
 	box := ctx.NewBox([]string{"NAME", "VALUE"})
 
-	box.AppendRow("build.version", fmt.Sprintf("v%d.%d.%d", nfo.Version.Major, nfo.Version.Minor, nfo.Version.Patch))
+	box.AppendRow("build.version", fmt.Sprintf("%d.%d.%d", nfo.Version.Major, nfo.Version.Minor, nfo.Version.Patch))
 	box.AppendRow("build.hash", fmt.Sprintf("#%s", nfo.Version.GitSHA))
 	box.AppendRow("build.timestamp", nfo.Version.BuildTimestamp)
 	box.AppendRow("build.engine", nfo.Version.Engine)
