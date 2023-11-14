@@ -95,12 +95,16 @@ type Config struct {
 	FileDirs       []string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
-	StartupQueries []string
 	AuthHandler    AuthHandlerConfig
 	Shell          ShellConfig
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           MqttConfig
+
+	CreateDBQueries     []string // sql sentences
+	CreateDBScriptFiles []string // file path
+	StartupQueries      []string // sql sentences
+	StartupScriptFiles  []string // file path
 
 	NoBanner       bool
 	ExperimentMode bool
@@ -436,26 +440,40 @@ func (s *svr) Start() error {
 		cancel()
 	}
 
-	if len(s.conf.StartupQueries) > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
-		if err != nil {
+	if len(s.conf.CreateDBQueries) > 0 && s.databaseCreated {
+		if err := s.runSqlScripts("CreateDBQueries", s.conf.CreateDBQueries); err != nil {
 			s.log.Error("ERR", err.Error())
 			return err
 		}
-		for n, sqlText := range s.conf.StartupQueries {
-			// ex) "alter system set trace_log_level=1023"
-			result := conn.Exec(ctx, sqlText)
-			if result.Err() != nil {
-				s.log.Warnf("StartupQueries[%d] %s %s", n, result.Err().Error(), sqlText)
-				break
-			} else {
-				s.log.Debugf("StartupQueries[%d] %s", n, sqlText)
+	}
+
+	if len(s.conf.CreateDBScriptFiles) > 0 && s.databaseCreated {
+		for _, f := range s.conf.CreateDBScriptFiles {
+			if f == "" {
+				continue
+			}
+			if err := s.runSqlScriptFile("CreateDBScriptFiles", f); err != nil {
+				return err
 			}
 		}
-		conn.Close()
-		cancel()
+	}
+
+	if len(s.conf.StartupQueries) > 0 {
+		if err := s.runSqlScripts("StartupQueries", s.conf.StartupQueries); err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+	}
+
+	if len(s.conf.StartupScriptFiles) > 0 {
+		for _, f := range s.conf.StartupScriptFiles {
+			if f == "" {
+				continue
+			}
+			if err := s.runSqlScriptFile("StartupScriptFiles", f); err != nil {
+				return err
+			}
+		}
 	}
 
 	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
@@ -1184,4 +1202,106 @@ func (s *svr) ValidateUserOtp(user string, otp string) (bool, error) {
 
 func (s *svr) GenerateSnowflake() string {
 	return s.genSnowflake.Generate().Base64()
+}
+
+func (s *svr) runSqlScriptFile(title string, path string) error {
+	if path == "" {
+		return nil
+	}
+	if stat, err := os.Stat(path); err != nil {
+		s.log.Warnf("fail to read script %s, %q", err.Error(), path)
+		return nil
+	} else if stat.IsDir() {
+		s.log.Warnf("fail to read script, dir %q", err.Error(), path)
+		return nil
+	}
+	fd, err := os.Open(path)
+	if err != nil {
+		s.log.Warnf("fail to load script %s, %q", err.Error(), path)
+		return nil
+	}
+	defer fd.Close()
+
+	if lines, err := loadSqlScriptFile(fd); err != nil {
+		s.log.Warnf("fail to load script file %s, %q", err.Error(), path)
+		return nil
+	} else {
+		if err := s.runSqlScripts(title, lines); err != nil {
+			return fmt.Errorf("fail to run script %s, %q", err.Error(), path)
+		}
+	}
+	return nil
+}
+
+func (s *svr) runSqlScripts(title string, queries []string) error {
+	if len(queries) == 0 {
+		return nil
+	}
+	if len(queries) == 1 && queries[0] == "" {
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		s.log.Error("ERR", err.Error())
+		return err
+	}
+	for n, sqlText := range queries {
+		result := conn.Exec(ctx, sqlText)
+		if result.Err() != nil {
+			s.log.Warnf("%s[%d] %s %s", title, n, result.Err().Error(), sqlText)
+			break
+		} else {
+			s.log.Debugf("%s[%d] %s", title, n, sqlText)
+		}
+	}
+	conn.Close()
+	return nil
+}
+
+func loadSqlScriptFile(in io.Reader) ([]string, error) {
+	reader := bufio.NewReader(in)
+	lineno := 0
+	ret := []string{}
+
+	buff := []byte{}
+	lineBuff := []string{}
+	for {
+		lineno++
+		part, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err != io.EOF {
+				return ret, fmt.Errorf("line %d %s", lineno, err.Error())
+			}
+			break
+		}
+		buff = append(buff, part...)
+		if isPrefix {
+			continue
+		}
+		subline := string(buff)
+		buff = buff[:0]
+
+		if strings.HasPrefix(subline, "#") || strings.HasPrefix(subline, "--") {
+			continue
+		}
+		subline = strings.TrimSpace(subline)
+		if len(subline) == 0 {
+			// skip empty line
+			continue
+		}
+
+		lineBuff = append(lineBuff, subline)
+		if !strings.HasSuffix(subline, ";") {
+			continue
+		}
+
+		line := strings.Join(lineBuff, " ")
+		line = strings.TrimSuffix(line, ";")
+		lineBuff = lineBuff[:0]
+
+		ret = append(ret, line)
+	}
+	return ret, nil
 }
