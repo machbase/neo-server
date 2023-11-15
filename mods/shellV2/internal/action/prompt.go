@@ -126,8 +126,9 @@ func (c *ColorHandler) Init() readline.ColorSequence {
 }
 
 const (
-	envArea          = 1
-	quotedArea       = 2
+	doubleQuotedArea = 1
+	singleQuotedArea = 2
+
 	colorCodeBitSize = 8
 
 	defaultForegroundColor readline.ColorSequence = 3 | ((30 + 9) << colorCodeBitSize) | (49 << (colorCodeBitSize * 2)) // | (1 << (colorCodeBitSize * 3))
@@ -135,21 +136,19 @@ const (
 
 func (s *ColorHandler) Next(codepoint rune) readline.ColorSequence {
 	newbits := s.bits
-	if codepoint == '%' {
-		newbits ^= envArea
-	} else if codepoint == '"' {
-		newbits ^= quotedArea
+	if codepoint == '"' {
+		newbits ^= doubleQuotedArea
 	} else if codepoint == '\'' {
-		newbits ^= quotedArea
+		newbits ^= singleQuotedArea
 	}
 	color := defaultForegroundColor
 	if codepoint == '\u3000' {
 		color = readline.SGR3(37, 22, 41)
-	} else if ((s.bits | newbits) & envArea) != 0 {
+	} else if ((s.bits | newbits) & doubleQuotedArea) != 0 {
 		color = readline.Cyan
-	} else if ((s.bits | newbits) & quotedArea) != 0 {
+	} else if ((s.bits | newbits) & singleQuotedArea) != 0 {
 		color = readline.Magenta
-	} else if codepoint == '&' {
+	} else if codepoint == '\\' {
 		color = readline.DarkYellow
 	} else {
 		color = defaultForegroundColor
