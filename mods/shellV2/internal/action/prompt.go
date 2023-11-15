@@ -8,30 +8,8 @@ import (
 
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
-	"github.com/nyaosorg/go-readline-ny/coloring"
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
-
-type EnterHandler struct {
-	promptCont string
-}
-
-func (c *EnterHandler) String() string {
-	return "COMPLETION_ENTER"
-}
-
-func (c *EnterHandler) Call(ctx context.Context, buffer *readline.Buffer) readline.Result {
-	str := strings.TrimSpace(buffer.String())
-	if str == "" ||
-		str == "exit" ||
-		str == "quit" ||
-		str == "clear" ||
-		strings.HasPrefix(str, "help") ||
-		strings.HasSuffix(str, ";") {
-		return readline.ENTER
-	}
-	return readline.CONTINUE
-}
 
 func (act *Actor) Prompt() {
 	history := NewHistory(500)
@@ -47,7 +25,7 @@ func (act *Actor) Prompt() {
 		},
 		Writer:         colorable.NewColorableStdout(),
 		History:        history,
-		Coloring:       &coloring.VimBatch{},
+		Coloring:       &ColorHandler{},
 		HistoryCycling: true,
 	}
 
@@ -90,10 +68,12 @@ func (act *Actor) Prompt() {
 			goto madeline
 		}
 
-		parts = append(parts, strings.Clone(line))
-		if !strings.HasSuffix(line, ";") {
+		if strings.HasSuffix(line, "\\") {
+			parts = append(parts, strings.Clone(strings.TrimSuffix(line, "\\")))
 			onPromptCont = true
 			continue
+		} else {
+			parts = append(parts, strings.Clone(line))
 		}
 		line = strings.Join(parts, " ")
 	madeline:
@@ -110,4 +90,70 @@ func (act *Actor) Prompt() {
 
 func trimLine(line string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ";"))
+}
+
+type EnterHandler struct {
+	promptCont string
+}
+
+func (c *EnterHandler) String() string {
+	return "COMPLETION_ENTER"
+}
+
+func (c *EnterHandler) Call(ctx context.Context, buffer *readline.Buffer) readline.Result {
+	str := strings.TrimSpace(buffer.String())
+	if strings.HasSuffix(str, "\\") {
+		return readline.ENTER
+	}
+	if str == "" ||
+		str == "exit" ||
+		str == "quit" ||
+		str == "clear" ||
+		strings.HasPrefix(str, "help") ||
+		strings.HasSuffix(str, ";") {
+		return readline.ENTER
+	}
+	return readline.CONTINUE
+}
+
+type ColorHandler struct {
+	bits int
+}
+
+func (c *ColorHandler) Init() readline.ColorSequence {
+	c.bits = 0
+	return readline.ColorReset
+}
+
+const (
+	envArea          = 1
+	quotedArea       = 2
+	colorCodeBitSize = 8
+
+	defaultForegroundColor readline.ColorSequence = 3 | ((30 + 9) << colorCodeBitSize) | (49 << (colorCodeBitSize * 2)) // | (1 << (colorCodeBitSize * 3))
+)
+
+func (s *ColorHandler) Next(codepoint rune) readline.ColorSequence {
+	newbits := s.bits
+	if codepoint == '%' {
+		newbits ^= envArea
+	} else if codepoint == '"' {
+		newbits ^= quotedArea
+	} else if codepoint == '\'' {
+		newbits ^= quotedArea
+	}
+	color := defaultForegroundColor
+	if codepoint == '\u3000' {
+		color = readline.SGR3(37, 22, 41)
+	} else if ((s.bits | newbits) & envArea) != 0 {
+		color = readline.Cyan
+	} else if ((s.bits | newbits) & quotedArea) != 0 {
+		color = readline.Magenta
+	} else if codepoint == '&' {
+		color = readline.DarkYellow
+	} else {
+		color = defaultForegroundColor
+	}
+	s.bits = newbits
+	return color
 }
