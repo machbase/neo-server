@@ -131,7 +131,6 @@ func NewPeer(svr Server, conn Connection) Peer {
 	} else {
 		peerLogger = logging.GetLog(addrId)
 	}
-	//peerLogger.SetLevel(logging.LevelAll)
 
 	if conn != nil && conn.IsSecure() {
 		commonName = conn.CommonName()
@@ -152,6 +151,8 @@ func NewPeer(svr Server, conn Connection) Peer {
 		x509CommonName:    commonName,
 		values:            make(map[string]string),
 	}
+	// p.logPayloadDump = true
+	// p.log.SetLevel(logging.LevelAll)
 	return p
 }
 
