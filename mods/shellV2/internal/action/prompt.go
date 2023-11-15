@@ -1,6 +1,7 @@
 package action
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -10,6 +11,27 @@ import (
 	"github.com/nyaosorg/go-readline-ny/coloring"
 	"github.com/nyaosorg/go-readline-ny/keys"
 )
+
+type EnterHandler struct {
+	promptCont string
+}
+
+func (c *EnterHandler) String() string {
+	return "COMPLETION_ENTER"
+}
+
+func (c *EnterHandler) Call(ctx context.Context, buffer *readline.Buffer) readline.Result {
+	str := strings.TrimSpace(buffer.String())
+	if str == "" ||
+		str == "exit" ||
+		str == "quit" ||
+		str == "clear" ||
+		strings.HasPrefix(str, "help") ||
+		strings.HasSuffix(str, ";") {
+		return readline.ENTER
+	}
+	return readline.CONTINUE
+}
 
 func (act *Actor) Prompt() {
 	history := NewHistory(500)
@@ -30,6 +52,7 @@ func (act *Actor) Prompt() {
 	}
 
 	editor.BindKey(keys.CtrlI, &AutoComplete{BuildPrefixCompleter()})
+	editor.BindKey(keys.Enter, &EnterHandler{promptCont: act.conf.PromptCont})
 
 	var parts []string
 	for {
@@ -59,7 +82,7 @@ func (act *Actor) Prompt() {
 		if trimLine(line) == "exit" || trimLine(line) == "quit" {
 			break
 		} else if trimLine(line) == "clear" {
-			fmt.Println("\033\143")
+			fmt.Print("\033\143")
 			continue
 		} else if strings.HasPrefix(line, "help") {
 			goto madeline
