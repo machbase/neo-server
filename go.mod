@@ -9,7 +9,6 @@ require (
 	github.com/alecthomas/chroma/v2 v2.8.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
-	github.com/chzyer/test v1.0.0
 	github.com/creack/pty v1.1.18
 	github.com/d5/tengo/v2 v2.16.1
 	github.com/eclipse/paho.mqtt.golang v1.4.3
@@ -80,7 +79,6 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
-	github.com/chzyer/logex v1.2.1 // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect

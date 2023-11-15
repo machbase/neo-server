@@ -20,8 +20,6 @@ const (
 	SHELLID_TAZ   = "TAZ"
 	SHELLID_DSH   = "DSH"
 	SHELLID_SHELL = "SHELL"
-
-	SHELLID_SHELL2 = "SHELL2"
 )
 
 var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
@@ -38,7 +36,6 @@ var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
 		Attributes: &ShellAttributes{Cloneable: true},
 	},
-	SHELLID_SHELL2: {Type: SHELL_TERM, Label: "SHELL v2", Icon: "console", Id: SHELLID_SHELL2},
 }
 
 type ShellDefinition struct {
