@@ -25,6 +25,8 @@ type ChartBase struct {
 	seriesLabels  []string
 
 	onceInit sync.Once
+
+	simpleColNames []string
 }
 
 type ChartGlobalOptions struct {
@@ -277,6 +279,10 @@ func (ex *ChartBase) SetSeriesLabels(labels ...string) {
 	ex.seriesLabels = labels
 }
 
+func (ex *ChartBase) SetColumns(cols ...string) {
+	ex.simpleColNames = cols
+}
+
 func (ex *ChartBase) getSeriesName(idx int) string {
 	var label string
 	if idx < len(ex.seriesOpts) {
@@ -288,7 +294,11 @@ func (ex *ChartBase) getSeriesName(idx int) string {
 	}
 
 	if label == "" {
-		label = fmt.Sprintf("column[%d]", idx)
+		if len(ex.simpleColNames) > idx+1 {
+			label = ex.simpleColNames[idx+1]
+		} else {
+			label = fmt.Sprintf("column[%d]", idx)
+		}
 	}
 	return label
 }
