@@ -36,7 +36,7 @@ type ChartGlobalOptions struct {
 	BackgroundColor string   `json:"backgroundColor"`           // BackgroundColor of canvas
 	ChartID         string   `json:"chartId"`                   // Chart unique ID
 	AssetsHost      string   `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
-	Theme           string   `json:"theme" default:"white"`
+	Theme           string   `json:"theme" default:""`
 	Colors          []string `json:"color"`
 	Animation       bool     `json:"animation" default:"false"`
 
@@ -179,10 +179,12 @@ func (ex *ChartBase) SetVisualMapColor(min float64, max float64, colors ...strin
 
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
-	if flag {
-		ex.globalOptions.Theme = "-" // client choose 'white' or 'dark'
-	} else {
-		ex.globalOptions.Theme = "white" // echarts default
+	if ex.globalOptions.Theme == "" {
+		if flag {
+			ex.globalOptions.Theme = "-" // client choose 'white' or 'dark'
+		} else {
+			ex.globalOptions.Theme = "white" // echarts default
+		}
 	}
 }
 
@@ -216,6 +218,10 @@ func (ex *ChartBase) SetGlobalOptions(content string) {
 }
 
 func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
+	theme := "white"
+	if ex.globalOptions.Theme != "" {
+		theme = ex.globalOptions.Theme
+	}
 	ret := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			PageTitle:       ex.globalOptions.PageTitle,
@@ -224,7 +230,7 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			BackgroundColor: ex.globalOptions.BackgroundColor,
 			ChartID:         ex.globalOptions.ChartID,
 			AssetsHost:      ex.globalOptions.AssetsHost,
-			Theme:           ex.globalOptions.Theme,
+			Theme:           theme,
 		}),
 		func(bc *charts.BaseConfiguration) {
 			bc.Title = ex.globalOptions.Title
