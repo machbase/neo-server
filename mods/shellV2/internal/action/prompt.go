@@ -64,7 +64,11 @@ func (act *Actor) Prompt() {
 			}
 			if len(remains) > 0 {
 				line = string(remains)
-				fmt.Println(act.conf.PromptCont, line)
+				if onPromptCont {
+					fmt.Println(act.conf.PromptCont, line)
+				} else {
+					fmt.Println(act.conf.Prompt, line)
+				}
 			}
 		} else {
 			line, err = editor.ReadLine(act.ctx)
