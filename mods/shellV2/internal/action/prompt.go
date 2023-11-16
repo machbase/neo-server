@@ -30,7 +30,22 @@ func (act *Actor) Prompt() {
 	}
 
 	editor.BindKey(keys.CtrlI, &AutoComplete{BuildPrefixCompleter()})
-	editor.BindKey(keys.Enter, &EnterHandler{promptCont: act.conf.PromptCont})
+	editor.BindKey(keys.CtrlM, readline.AnonymousCommand(
+		func(ctx context.Context, buffer *readline.Buffer) readline.Result {
+			str := strings.TrimSpace(buffer.String())
+			if strings.HasSuffix(str, "\\") {
+				return readline.ENTER
+			}
+			if str == "" ||
+				str == "exit" ||
+				str == "quit" ||
+				str == "clear" ||
+				strings.HasPrefix(str, "help") ||
+				strings.HasSuffix(str, ";") {
+				return readline.ENTER
+			}
+			return readline.CONTINUE
+		}))
 
 	var parts []string
 	for {
@@ -82,38 +97,11 @@ func (act *Actor) Prompt() {
 		parts = parts[:0]
 		onPromptCont = false
 		act.Process(line)
-		// TODO there is a timing issue between prompt and stdout
-		// without sleep, sometimes the prompt does not display on client's terminal.
-		//time.Sleep(50 * time.Millisecond)
 	}
 }
 
 func trimLine(line string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ";"))
-}
-
-type EnterHandler struct {
-	promptCont string
-}
-
-func (c *EnterHandler) String() string {
-	return "COMPLETION_ENTER"
-}
-
-func (c *EnterHandler) Call(ctx context.Context, buffer *readline.Buffer) readline.Result {
-	str := strings.TrimSpace(buffer.String())
-	if strings.HasSuffix(str, "\\") {
-		return readline.ENTER
-	}
-	if str == "" ||
-		str == "exit" ||
-		str == "quit" ||
-		str == "clear" ||
-		strings.HasPrefix(str, "help") ||
-		strings.HasSuffix(str, ";") {
-		return readline.ENTER
-	}
-	return readline.CONTINUE
 }
 
 type ColorHandler struct {
