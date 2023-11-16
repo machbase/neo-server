@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/mattn/go-colorable"
 	"github.com/nyaosorg/go-readline-ny"
 	"github.com/nyaosorg/go-readline-ny/keys"
@@ -30,26 +31,44 @@ func (act *Actor) Prompt() {
 	}
 
 	editor.BindKey(keys.CtrlI, &AutoComplete{BuildPrefixCompleter()})
-	editor.BindKey(keys.CtrlM, readline.AnonymousCommand(
+	editor.BindKey(keys.CtrlY, readline.AnonymousCommand(
 		func(ctx context.Context, buffer *readline.Buffer) readline.Result {
-			str := strings.TrimSpace(buffer.String())
-			if strings.HasSuffix(str, "\\") {
-				return readline.ENTER
+			text, err := clipboard.ReadAll()
+			if err != nil {
+				return readline.CONTINUE
 			}
-			if str == "" ||
-				str == "exit" ||
-				str == "quit" ||
-				str == "clear" ||
-				strings.HasPrefix(str, "help") ||
-				strings.HasSuffix(str, ";") {
-				return readline.ENTER
-			}
+			text = strings.TrimRight(text, "\r\n\000")
+			text = strings.ReplaceAll(text, "\n", " ")
+			text = strings.ReplaceAll(text, "\r", "")
+			buffer.InsertAndRepaint(text)
 			return readline.CONTINUE
 		}))
 
 	var parts []string
 	for {
-		line, err := editor.ReadLine(act.ctx)
+		var line string
+		var err error
+		if editor.Tty != nil && editor.Tty.Buffered() {
+			var remains []rune
+			for editor.Tty.Buffered() {
+				if r, err := editor.Tty.ReadRune(); err != nil {
+					break
+				} else if r == '\t' {
+					remains = append(remains, ' ')
+					remains = append(remains, ' ')
+				} else if r == '\r' || r == '\n' {
+					break
+				} else {
+					remains = append(remains, r)
+				}
+			}
+			if len(remains) > 0 {
+				line = string(remains)
+				fmt.Println(act.conf.PromptCont, line)
+			}
+		} else {
+			line, err = editor.ReadLine(act.ctx)
+		}
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -83,12 +102,10 @@ func (act *Actor) Prompt() {
 			goto madeline
 		}
 
-		if strings.HasSuffix(line, "\\") {
-			parts = append(parts, strings.Clone(strings.TrimSuffix(line, "\\")))
+		parts = append(parts, strings.Clone(line))
+		if !strings.HasSuffix(line, ";") {
 			onPromptCont = true
 			continue
-		} else {
-			parts = append(parts, strings.Clone(line))
 		}
 		line = strings.Join(parts, " ")
 	madeline:

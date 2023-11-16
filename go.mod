@@ -9,6 +9,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.8.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
+	github.com/atotto/clipboard v0.1.4
 	github.com/creack/pty v1.1.18
 	github.com/d5/tengo/v2 v2.16.1
 	github.com/eclipse/paho.mqtt.golang v1.4.3
@@ -23,7 +24,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/hcl/v2 v2.17.0
-	github.com/hymkor/go-multiline-ny v0.12.1
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
@@ -77,7 +77,6 @@ require (
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
