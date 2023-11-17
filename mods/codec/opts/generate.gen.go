@@ -12,7 +12,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/echart/echart.go:98:1
+//	mods/codec/internal/echart/echart.go:100:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
 }
@@ -42,7 +42,7 @@ func AutoRotate(speed float64) Option {
 
 // SetBoxDrawBorder
 //
-//	mods/codec/internal/box/box_encode.go:80:1
+//	mods/codec/internal/box/box_encode.go:82:1
 type CanSetBoxDrawBorder interface {
 	SetBoxDrawBorder(flag bool)
 }
@@ -57,7 +57,7 @@ func BoxDrawBorder(flag bool) Option {
 
 // SetBoxSeparateColumns
 //
-//	mods/codec/internal/box/box_encode.go:76:1
+//	mods/codec/internal/box/box_encode.go:78:1
 type CanSetBoxSeparateColumns interface {
 	SetBoxSeparateColumns(flag bool)
 }
@@ -72,7 +72,7 @@ func BoxSeparateColumns(flag bool) Option {
 
 // SetBoxStyle
 //
-//	mods/codec/internal/box/box_encode.go:72:1
+//	mods/codec/internal/box/box_encode.go:74:1
 type CanSetBoxStyle interface {
 	SetBoxStyle(style string)
 }
@@ -117,7 +117,7 @@ func BriefCount(count int) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/echart/echart.go:184:1
+//	mods/codec/internal/echart/echart.go:180:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -149,26 +149,27 @@ func ColumnTypes(types ...string) Option {
 
 // SetColumns
 //
-//	mods/codec/internal/box/box_encode.go:84:1
+//	mods/codec/internal/box/box_encode.go:86:1
 //	mods/codec/internal/csv/csv_decode.go:69:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
+//	mods/codec/internal/echart/echart.go:288:1
 //	mods/codec/internal/json/json_encode.go:72:1
 //	mods/codec/internal/markdown/md_encode.go:54:1
 type CanSetColumns interface {
-	SetColumns(names ...string)
+	SetColumns(cols ...string)
 }
 
-func Columns(names ...string) Option {
+func Columns(cols ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetColumns); ok {
-			_o.SetColumns(names...)
+			_o.SetColumns(cols...)
 		}
 	}
 }
 
 // SetDataZoom
 //
-//	mods/codec/internal/echart/echart.go:149:1
+//	mods/codec/internal/echart/echart.go:151:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
 }
@@ -199,7 +200,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGlobalOptions
 //
-//	mods/codec/internal/echart/echart.go:212:1
+//	mods/codec/internal/echart/echart.go:210:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(content string)
 }
@@ -229,7 +230,7 @@ func GridSize(args ...float64) Option {
 
 // SetHeader
 //
-//	mods/codec/internal/box/box_encode.go:64:1
+//	mods/codec/internal/box/box_encode.go:66:1
 //	mods/codec/internal/csv/csv_decode.go:52:1
 //	mods/codec/internal/csv/csv_encode.go:74:1
 //	mods/codec/internal/json/json_encode.go:64:1
@@ -247,7 +248,7 @@ func Header(show bool) Option {
 
 // SetHeading
 //
-//	mods/codec/internal/box/box_encode.go:68:1
+//	mods/codec/internal/box/box_encode.go:70:1
 //	mods/codec/internal/csv/csv_decode.go:48:1
 //	mods/codec/internal/csv/csv_encode.go:70:1
 //	mods/codec/internal/json/json_encode.go:68:1
@@ -371,9 +372,9 @@ func Opacity(opacity float64) Option {
 
 // SetOutputStream
 //
-//	mods/codec/internal/box/box_encode.go:44:1
+//	mods/codec/internal/box/box_encode.go:46:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
-//	mods/codec/internal/echart/echart.go:77:1
+//	mods/codec/internal/echart/echart.go:79:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:50:1
 type CanSetOutputStream interface {
@@ -390,7 +391,7 @@ func OutputStream(o spec.OutputStream) Option {
 
 // SetPrecision
 //
-//	mods/codec/internal/box/box_encode.go:56:1
+//	mods/codec/internal/box/box_encode.go:58:1
 //	mods/codec/internal/csv/csv_encode.go:61:1
 //	mods/codec/internal/json/json_encode.go:56:1
 //	mods/codec/internal/markdown/md_encode.go:66:1
@@ -408,7 +409,7 @@ func Precision(precision int) Option {
 
 // SetRownum
 //
-//	mods/codec/internal/box/box_encode.go:60:1
+//	mods/codec/internal/box/box_encode.go:62:1
 //	mods/codec/internal/csv/csv_encode.go:65:1
 //	mods/codec/internal/json/json_encode.go:60:1
 //	mods/codec/internal/markdown/md_encode.go:70:1
@@ -426,7 +427,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:282:1
+//	mods/codec/internal/echart/echart.go:284:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -441,7 +442,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:265:1
+//	mods/codec/internal/echart/echart.go:267:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -471,7 +472,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/echart/echart.go:81:1
+//	mods/codec/internal/echart/echart.go:83:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -501,7 +502,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/echart/echart.go:94:1
+//	mods/codec/internal/echart/echart.go:96:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
 }
@@ -532,7 +533,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/echart/echart.go:86:1
+//	mods/codec/internal/echart/echart.go:88:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -547,7 +548,7 @@ func Theme(theme string) Option {
 
 // SetTimeLocation
 //
-//	mods/codec/internal/box/box_encode.go:52:1
+//	mods/codec/internal/box/box_encode.go:54:1
 //	mods/codec/internal/csv/csv_decode.go:43:1
 //	mods/codec/internal/csv/csv_encode.go:57:1
 //	mods/codec/internal/echart/echart_2d.go:127:1
@@ -568,7 +569,7 @@ func TimeLocation(tz *time.Location) Option {
 
 // SetTimeformat
 //
-//	mods/codec/internal/box/box_encode.go:48:1
+//	mods/codec/internal/box/box_encode.go:50:1
 //	mods/codec/internal/csv/csv_decode.go:39:1
 //	mods/codec/internal/csv/csv_encode.go:53:1
 //	mods/codec/internal/echart/echart_2d.go:120:1
@@ -589,7 +590,7 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/echart/echart.go:90:1
+//	mods/codec/internal/echart/echart.go:92:1
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -604,7 +605,7 @@ func Title(title string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/echart/echart.go:136:1
+//	mods/codec/internal/echart/echart.go:138:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
 }
@@ -619,7 +620,7 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/echart/echart.go:124:1
+//	mods/codec/internal/echart/echart.go:126:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
 }
@@ -634,7 +635,7 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/echart/echart.go:102:1
+//	mods/codec/internal/echart/echart.go:104:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
 }
@@ -679,7 +680,7 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/echart/echart.go:158:1
+//	mods/codec/internal/echart/echart.go:160:1
 type CanSetVisualMap interface {
 	SetVisualMap(min float64, max float64)
 }
@@ -694,7 +695,7 @@ func VisualMap(min float64, max float64) Option {
 
 // SetVisualMapColor
 //
-//	mods/codec/internal/echart/echart.go:166:1
+//	mods/codec/internal/echart/echart.go:168:1
 type CanSetVisualMapColor interface {
 	SetVisualMapColor(min float64, max float64, colors ...string)
 }
@@ -712,13 +713,13 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 //	mods/codec/internal/echart/echart_2d.go:66:1
 //	mods/codec/internal/echart/echart_3d.go:47:1
 type CanSetXAxis interface {
-	SetXAxis(idx int, label string, types ...string)
+	SetXAxis(idx int, label string, typ ...string)
 }
 
-func XAxis(idx int, label string, types ...string) Option {
+func XAxis(idx int, label string, typ ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetXAxis); ok {
-			_o.SetXAxis(idx, label, types...)
+			_o.SetXAxis(idx, label, typ...)
 		}
 	}
 }
