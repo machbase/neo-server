@@ -38,6 +38,8 @@ define VARS {
 
     MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
     MACHBASE_INIT_OPTION       = flag("--machbase-init-option", 2)
+
+    CREATEDB_SCRIPT_FILES  = flag("--createdb-script-files", "")
 }
 
 module "machbase.com/neo-logging" {
@@ -62,6 +64,7 @@ module "machbase.com/neo-server" {
         DataDir          = VARS_DATA_DIR
         FileDirs         = [ VARS_FILE_DIR ]
         ExperimentMode   = VARS_EXPERIMENT_MODE
+        CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
         Machbase         = {
             HANDLE_LIMIT     = 2048
             PORT_NO          = VARS_MACH_LISTEN_PORT

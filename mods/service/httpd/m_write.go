@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/util/ymds"
+	"github.com/machbase/neo-server/mods/util/ymd"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -54,7 +54,7 @@ type lakeStandardReq struct {
 	Dateformat string              `json:"date_format"`
 	Values     []lakeStandardValue `json:"values"`
 	cursor     int                 `json:"-"`
-	timeParser *ymds.Parser        `json:"-"`
+	timeParser *ymd.Parser         `json:"-"`
 }
 
 func (r *lakeStandardReq) lakeRequest() {}
@@ -69,7 +69,12 @@ func (r *lakeStandardReq) next() ([]any, error) {
 	var val float64
 	var err error
 
-	switch tv := r.Values[r.cursor][0].(type) {
+	rec := r.Values[r.cursor]
+	if len(rec) != 2 {
+		return nil, fmt.Errorf("values[%d] should have (time, value), got %d elements", r.cursor, len(rec))
+	}
+
+	switch tv := rec[0].(type) {
 	case string:
 		ts, err = r.timeParser.Parse(tv)
 		if err != nil {
@@ -80,7 +85,7 @@ func (r *lakeStandardReq) next() ([]any, error) {
 	default:
 		return nil, fmt.Errorf("values[%d] has wrong time in %T (%v)", r.cursor, tv, tv)
 	}
-	switch vs := r.Values[r.cursor][1].(type) {
+	switch vs := rec[1].(type) {
 	case float64:
 		val = vs
 	case int:
@@ -116,7 +121,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		if stdReq.Dateformat == "" {
 			stdReq.Dateformat = `YYYY-MM-DD HH24:MI:SS mmm:uuu:nnn`
 		}
-		stdReq.timeParser = ymds.NewParser(stdReq.Dateformat).WithLocation(time.Local)
+		stdReq.timeParser = ymd.NewParser(stdReq.Dateformat).WithLocation(time.Local)
 		req = &stdReq
 	default:
 		defReq := lakeDefaultReq{}
@@ -151,7 +156,6 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		svr.log.Error("appender error: ", err)
 		return
 	}
-	defer appender.Close()
 
 	defer func() {
 		succ, fail, err := appender.Close()

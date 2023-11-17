@@ -2241,7 +2241,7 @@ type (
 	}
 )
 
-// ===
+//lint:ignore U1000 unused
 type queryRequest struct {
 	EdgeId    string `form:"edge_id"`
 	StartTime string `form:"start_time"`
@@ -2254,6 +2254,7 @@ type queryRequest struct {
 	TableName string `form:"table_name"`
 }
 
+//lint:ignore U1000 unused
 type queryResponse struct {
 	Success bool     `json:"success"`
 	Reason  string   `json:"reason,omitempty"`
@@ -2261,6 +2262,7 @@ type queryResponse struct {
 	Data    []any    `json:"data"`
 }
 
+//lint:ignore U1000 unused
 type queryRow struct {
 	EdgeId   string `json:"EDGEID"`
 	Time     string `json:"TIME"`
@@ -2270,6 +2272,7 @@ type queryRow struct {
 	Line     string `json:"LINE"`
 }
 
+//lint:ignore U1000 unused
 func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	rsp := queryResponse{Success: false}
 	req := queryRequest{}

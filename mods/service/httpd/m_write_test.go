@@ -55,6 +55,8 @@ func TestAppendRoute(t *testing.T) {
 				count := 0
 				for _, val := range value {
 					switch v := val.(type) {
+					case time.Time:
+						count++
 					case string:
 						if v == "" {
 							break
