@@ -778,6 +778,73 @@ func TestMapKey(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestPushValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	for i := -2; i <= 0; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5)", i),
+			"CSV(precision(1), heading(true), rownum(true))",
+		}
+		resultLines = []string{
+			"ROWNUM,column,x",
+			"1,0.0,0.0",
+			"2,1.5,1.0",
+			"3,3.0,2.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(true), rownum(false))",
+		}
+		resultLines = []string{
+			"x,x1.5",
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"CSV(precision(1), heading(true), rownum(false))",
+	}
+	resultLines = []string{
+		"x,x1.5,add",
+		"0.0,0.0,10.0",
+		"1.0,1.5,11.5",
+		"2.0,3.0,13.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushPopValue(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"PUSHVALUE(3, value(2)+0.5, 'add2')",
+		"POPVALUE(0,1,2)",
+		"CSV(precision(1), heading(true), rownum(true))",
+	}
+	resultLines = []string{
+		"ROWNUM,add2",
+		"1,10.5",
+		"2,12.0",
+		"3,13.5",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMapValue(t *testing.T) {
 	var codeLines, resultLines []string
 
@@ -808,11 +875,11 @@ func TestMapValue(t *testing.T) {
 
 	codeLines = []string{
 		"FAKE( linspace(0, 2, 3))",
-		"MAPVALUE(0, value(0)*1.5)",
+		"MAPVALUE(0, value(0)*1.5, 'new_column')",
 		"CSV(precision(1), header(true))",
 	}
 	resultLines = []string{
-		"x",
+		"new_column",
 		"0.0",
 		"1.5",
 		"3.0",

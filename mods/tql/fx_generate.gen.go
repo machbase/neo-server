@@ -54,6 +54,8 @@ func NewNode(task *Task) *Node {
 		"POPKEY":     x.gen_POPKEY,
 		"PUSHKEY":    x.gen_PUSHKEY,
 		"MAPKEY":     x.gen_MAPKEY,
+		"POPVALUE":   x.gen_POPVALUE,
+		"PUSHVALUE":  x.gen_PUSHVALUE,
 		"MAPVALUE":   x.gen_MAPVALUE,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
@@ -657,11 +659,52 @@ func (x *Node) gen_MAPKEY(args ...any) (any, error) {
 	return x.fmMapKey(p0)
 }
 
+// gen_POPVALUE
+//
+// syntax: POPVALUE(...int)
+func (x *Node) gen_POPVALUE(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "POPVALUE", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmPopValue(p0...)
+}
+
+// gen_PUSHVALUE
+//
+// syntax: PUSHVALUE(int, , ...interface {})
+func (x *Node) gen_PUSHVALUE(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("PUSHVALUE", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "PUSHVALUE", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "PUSHVALUE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "PUSHVALUE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmPushValue(p0, p1, p2...)
+}
+
 // gen_MAPVALUE
 //
-// syntax: MAPVALUE(int, )
+// syntax: MAPVALUE(int, , ...interface {})
 func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("MAPVALUE", 2, len(args))
 	}
 	p0, err := convInt(args, 0, "MAPVALUE", "int")
@@ -672,7 +715,15 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x.fmMapValue(p0, p1)
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAPVALUE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmMapValue(p0, p1, p2...)
 }
 
 // gen_SCRIPT

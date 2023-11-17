@@ -58,6 +58,8 @@ var FxDefinitions = []Definition{
 	{"POPKEY", defTask.fmPopKey},
 	{"PUSHKEY", defTask.fmPushKey},
 	{"MAPKEY", defTask.fmMapKey},
+	{"POPVALUE", defTask.fmPopValue},
+	{"PUSHVALUE", defTask.fmPushValue},
 	{"MAPVALUE", defTask.fmMapValue},
 	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
