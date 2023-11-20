@@ -49,7 +49,7 @@ func TestAppendRoute(t *testing.T) {
 			}
 			return rm
 		}
-		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 			am := &TestAppenderMock{}
 			am.AppendFunc = func(value ...any) error {
 				count := 0

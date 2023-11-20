@@ -372,9 +372,14 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		opts := []spi.AppendOption{}
+		opts := []spi.AppenderOption{}
 		if len(req.Timeformat) > 0 {
-			opts = append(opts, spi.AppendTimeformatOption(req.Timeformat))
+			switch conn.rawConn.(type) {
+			case *machrpc.ClientConn:
+				opts = append(opts, machrpc.AppenderTimeformat(req.Timeformat))
+			default:
+				opts = append(opts, mach.AppenderTimeformat(req.Timeformat))
+			}
 		}
 		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
 		if err != nil {

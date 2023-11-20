@@ -419,7 +419,7 @@ var _ spi.Conn = &ConnMock{}
 //
 //		// make and configure a mocked spi.Conn
 //		mockedConn := &ConnMock{
-//			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+//			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 //				panic("mock out the Appender method")
 //			},
 //			CloseFunc: func() error {
@@ -442,7 +442,7 @@ var _ spi.Conn = &ConnMock{}
 //	}
 type ConnMock struct {
 	// AppenderFunc mocks the Appender method.
-	AppenderFunc func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error)
+	AppenderFunc func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error)
 
 	// CloseFunc mocks the Close method.
 	CloseFunc func() error
@@ -465,7 +465,7 @@ type ConnMock struct {
 			// TableName is the tableName argument value.
 			TableName string
 			// Opts is the opts argument value.
-			Opts []spi.AppendOption
+			Opts []spi.AppenderOption
 		}
 		// Close holds details about calls to the Close method.
 		Close []struct {
@@ -506,14 +506,14 @@ type ConnMock struct {
 }
 
 // Appender calls AppenderFunc.
-func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 	if mock.AppenderFunc == nil {
 		panic("ConnMock.AppenderFunc: method is nil but Conn.Appender was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		TableName string
-		Opts      []spi.AppendOption
+		Opts      []spi.AppenderOption
 	}{
 		Ctx:       ctx,
 		TableName: tableName,
@@ -532,12 +532,12 @@ func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...sp
 func (mock *ConnMock) AppenderCalls() []struct {
 	Ctx       context.Context
 	TableName string
-	Opts      []spi.AppendOption
+	Opts      []spi.AppenderOption
 } {
 	var calls []struct {
 		Ctx       context.Context
 		TableName string
-		Opts      []spi.AppendOption
+		Opts      []spi.AppenderOption
 	}
 	mock.lockAppender.RLock()
 	calls = mock.calls.Appender

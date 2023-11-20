@@ -237,7 +237,7 @@ var mockDb = DatabaseMock{
 				}
 				return nil
 			},
-			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 				return &AppenderMock{
 					AppendFunc: func(values ...any) error { return nil },
 					CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },

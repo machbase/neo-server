@@ -77,7 +77,7 @@ type mockConn struct {
 }
 
 func (fda *mockConn) Close() error { return nil }
-func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 	ret := &AppenderMock{}
 	ret.AppendFunc = func(values ...any) error { return nil }
 	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
