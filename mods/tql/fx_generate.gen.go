@@ -57,6 +57,7 @@ func NewNode(task *Task) *Node {
 		"POPVALUE":   x.gen_POPVALUE,
 		"PUSHVALUE":  x.gen_PUSHVALUE,
 		"MAPVALUE":   x.gen_MAPVALUE,
+		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
 		// maps.dbsrc
@@ -724,6 +725,37 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	return x.fmMapValue(p0, p1, p2...)
+}
+
+// gen_TIMEWINDOW
+//
+// syntax: TIMEWINDOW(, , , ...interface {})
+func (x *Node) gen_TIMEWINDOW(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("TIMEWINDOW", 3, len(args))
+	}
+	p0, err := convAny(args, 0, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convAny(args, n, "TIMEWINDOW", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := x.fmTimeWindow(p0, p1, p2, p3...)
+	return ret, nil
 }
 
 // gen_SCRIPT

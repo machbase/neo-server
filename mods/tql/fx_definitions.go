@@ -61,6 +61,7 @@ var FxDefinitions = []Definition{
 	{"POPVALUE", defTask.fmPopValue},
 	{"PUSHVALUE", defTask.fmPushValue},
 	{"MAPVALUE", defTask.fmMapValue},
+	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
 	// maps.dbsrc
