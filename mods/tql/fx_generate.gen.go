@@ -38,6 +38,7 @@ func NewNode(task *Task) *Node {
 		"linspace50": x.gen_linspace50,
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
+		"period":         x.gen_period,
 		"time":           x.gen_time,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
@@ -415,6 +416,20 @@ func (x *Node) gen_meshgrid(args ...any) (any, error) {
 	}
 	ret := x.fmMeshgrid(p0, p1)
 	return ret, nil
+}
+
+// gen_period
+//
+// syntax: period()
+func (x *Node) gen_period(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("period", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "period", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmPeriod(p0)
 }
 
 // gen_time

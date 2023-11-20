@@ -64,6 +64,10 @@ func (x *Node) fmRoundTime(ts any, duration any) (time.Time, error) {
 	return ret, nil
 }
 
+func (x *Node) fmPeriod(dur any) (time.Duration, error) {
+	return util.ToDuration(dur)
+}
+
 func (x *Node) fmTime(ts any) (time.Time, error) {
 	return x.fmTimeAdd(ts, int64(0))
 }

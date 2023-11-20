@@ -41,6 +41,7 @@ var FxDefinitions = []Definition{
 	{"meshgrid", defTask.fmMeshgrid},
 	// maps.time
 	{"// maps.time", nil},
+	{"period", defTask.fmPeriod},
 	{"time", defTask.fmTime},
 	{"parseTime", defTask.fmParseTime},
 	{"timeAdd", defTask.fmTimeAdd},
