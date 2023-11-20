@@ -50,7 +50,17 @@ type output struct {
 	lastMessage string
 }
 
-func (node *Node) compileSink(code string) (*output, error) {
+func (node *Node) compileSink(code string) (ret *output, err error) {
+	defer func() {
+		// panic case: if the 'code' is not applicable as SINK
+		if x := recover(); x != nil {
+			if e, ok := x.(error); ok {
+				err = fmt.Errorf("unable to apply to SINK: %s ;%s", code, e.Error())
+			} else {
+				err = fmt.Errorf("unable to apply to SINK: %s", code)
+			}
+		}
+	}()
 	expr, err := node.Parse(code)
 	if err != nil {
 		return nil, err
@@ -59,7 +69,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := &output{}
+	ret = &output{}
 	switch val := sink.(type) {
 	case *Encoder:
 		if val == nil {
@@ -76,7 +86,7 @@ func (node *Node) compileSink(code string) (*output, error) {
 	case DatabaseSink:
 		ret.dbSink = val
 	default:
-		return nil, fmt.Errorf("type (%T) is not applicable for OUTPUT", val)
+		return nil, fmt.Errorf("type (%T) is not applicable for SINK", val)
 	}
 	ret.name = asNodeName(expr)
 	ret.task = node.task
