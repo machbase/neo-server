@@ -247,6 +247,8 @@ func ParseTime(strval string, format string, location *time.Location) (time.Time
 
 func ToDuration(one any) (time.Duration, error) {
 	switch val := one.(type) {
+	case time.Duration:
+		return val, nil
 	case string:
 		return ParseDuration(val)
 	case *string:

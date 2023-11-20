@@ -38,6 +38,8 @@ type Node struct {
 
 	_inflight *Record
 
+	shouldFeedEof bool
+
 	// Deprecated
 	Body      io.Reader
 	warnedCtx bool
@@ -125,6 +127,10 @@ func (node *Node) Receive(rec *Record) {
 	node.src <- rec
 }
 
+func (node *Node) SetFeedEOF(flag bool) {
+	node.shouldFeedEof = flag
+}
+
 // Get implements expression.Parameters
 func (node *Node) Get(name string) (any, error) {
 	switch name {
@@ -176,6 +182,12 @@ func (node *Node) SetValue(name string, value any) {
 		node.values = make(map[string]any)
 	}
 	node.values[name] = value
+}
+
+func (node *Node) DeleteValue(name string) {
+	if node.values != nil {
+		delete(node.values, name)
+	}
 }
 
 func (node *Node) Buffer(key any, value any) {
@@ -287,6 +299,13 @@ func (node *Node) start() {
 			node.yield(k, v)
 		}
 		if lastWill != nil {
+			if node.shouldFeedEof {
+				node.SetInflight(EofRecord)
+				_, err := node.expr.Eval(node)
+				if err != nil {
+					fmt.Println("EOF error", err.Error())
+				}
+			}
 			lastWill.Tell(node.next)
 		}
 		node.closeWg.Done()

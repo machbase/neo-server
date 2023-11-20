@@ -887,6 +887,137 @@ func TestMapValue(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestTimeWindow(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	for _, agg := range []string{"avg", "sum", "first", "last", "min", "max"} {
+		codeLines = []string{
+			`CSV(payload(),
+				field(0, datetimeType("s"), "time"),
+				field(1, doubleType(), "value"))`,
+			fmt.Sprintf(`TIMEWINDOW(
+				time(1700256250 * 1000000000),
+				time(1700256285 * 1000000000),
+				period('5s'),
+				'time', '%s')`, agg),
+			`CSV(timeformat("s"), heading(true))`,
+		}
+		payload = []string{
+			// 50
+			// 55
+			// 60
+			"1700256261,1",
+			"1700256262,2",
+			"1700256263,3",
+			"1700256264,4",
+			// 65
+			"1700256265,5",
+			"1700256266,6",
+			"1700256267,7",
+			"1700256268,8",
+			"1700256269,9",
+			// 70
+			// 75
+			"1700256276,10",
+			// 80
+		}
+
+		switch agg {
+		case "avg":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0",
+				"1700256255,0",
+				"1700256260,2.5",
+				"1700256265,7",
+				"1700256270,0",
+				"1700256275,10",
+				"1700256280,0",
+			}
+		case "sum":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0",
+				"1700256255,0",
+				"1700256260,10",
+				"1700256265,35",
+				"1700256270,0",
+				"1700256275,10",
+				"1700256280,0",
+			}
+		case "first", "min":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0",
+				"1700256255,0",
+				"1700256260,1",
+				"1700256265,5",
+				"1700256270,0",
+				"1700256275,10",
+				"1700256280,0",
+			}
+		case "last", "max":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0",
+				"1700256255,0",
+				"1700256260,4",
+				"1700256265,9",
+				"1700256270,0",
+				"1700256275,10",
+				"1700256280,0",
+			}
+		}
+		runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+	}
+}
+
+func TestTimeWindowMs(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	codeLines = []string{
+		`CSV(payload(),
+			field(0, datetimeType("ms"), "time"),
+			field(1, doubleType(), "value"))`,
+		`TIMEWINDOW(
+			time(1700256250 * 1000000000),
+			time(1700256285 * 1000000000),
+			period('5s'),
+			'time', 'avg')`,
+		`CSV(timeformat("ms"), heading(true))`,
+	}
+	payload = []string{
+		// 50
+		// 55
+		// 60
+		"1700256261001,1",
+		"1700256262010,2",
+		"1700256263100,3",
+		"1700256264010,4",
+		// 65
+		"1700256265002,5",
+		"1700256266020,6",
+		"1700256267200,7",
+		"1700256268020,8",
+		"1700256269002,9",
+		// 70
+		// 75
+		"1700256276300,10",
+		// 80
+	}
+	resultLines = []string{
+		`time,value`,
+		"1700256250000,0",
+		"1700256255000,0",
+		"1700256260000,2.5",
+		"1700256265000,7",
+		"1700256270000,0",
+		"1700256275000,10",
+		"1700256280000,0",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
 func TestDropTake(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 100))",

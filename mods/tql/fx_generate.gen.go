@@ -38,6 +38,7 @@ func NewNode(task *Task) *Node {
 		"linspace50": x.gen_linspace50,
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
+		"period":         x.gen_period,
 		"time":           x.gen_time,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
@@ -57,6 +58,7 @@ func NewNode(task *Task) *Node {
 		"POPVALUE":   x.gen_POPVALUE,
 		"PUSHVALUE":  x.gen_PUSHVALUE,
 		"MAPVALUE":   x.gen_MAPVALUE,
+		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
 		// maps.dbsrc
@@ -416,6 +418,20 @@ func (x *Node) gen_meshgrid(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_period
+//
+// syntax: period()
+func (x *Node) gen_period(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("period", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "period", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmPeriod(p0)
+}
+
 // gen_time
 //
 // syntax: time()
@@ -724,6 +740,37 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	return x.fmMapValue(p0, p1, p2...)
+}
+
+// gen_TIMEWINDOW
+//
+// syntax: TIMEWINDOW(, , , ...interface {})
+func (x *Node) gen_TIMEWINDOW(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("TIMEWINDOW", 3, len(args))
+	}
+	p0, err := convAny(args, 0, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convAny(args, n, "TIMEWINDOW", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := x.fmTimeWindow(p0, p1, p2, p3...)
+	return ret, nil
 }
 
 // gen_SCRIPT

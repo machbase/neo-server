@@ -713,13 +713,13 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 //	mods/codec/internal/echart/echart_2d.go:66:1
 //	mods/codec/internal/echart/echart_3d.go:47:1
 type CanSetXAxis interface {
-	SetXAxis(idx int, label string, typ ...string)
+	SetXAxis(idx int, label string, types ...string)
 }
 
-func XAxis(idx int, label string, typ ...string) Option {
+func XAxis(idx int, label string, types ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetXAxis); ok {
-			_o.SetXAxis(idx, label, typ...)
+			_o.SetXAxis(idx, label, types...)
 		}
 	}
 }
