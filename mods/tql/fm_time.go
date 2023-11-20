@@ -377,12 +377,12 @@ func timewindowMin(values []any, nullValue any) any {
 		return nullValue
 	}
 	var ret float64
-	for _, v := range values {
+	for i, v := range values {
 		f, err := util.ToFloat64(v)
 		if err != nil {
 			return values[len(values)-1]
 		}
-		if f < ret {
+		if i == 0 || f < ret {
 			ret = f
 		}
 	}
