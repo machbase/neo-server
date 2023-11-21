@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -139,14 +140,19 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 			period = d
 		}
 		if tsUntil.Sub(tsFrom) <= period {
-			return ErrArgs("TIMEWINDOW", 0, "from ~ until should be larger than period")
+			return ErrorRecord(ErrArgs("TIMEWINDOW", 0, "from ~ until should be larger than period"))
 		}
 		for i, arg := range args {
 			switch v := arg.(type) {
 			case string:
 				aggregations = append(aggregations, v)
-				if v == "time" {
+				switch v {
+				case "time":
 					timeIdx = i
+				case "avg", "max", "min", "first", "last", "sum", "rss":
+					// ok
+				default:
+					return ErrArgs("TIMEWINDOW", 2, fmt.Sprintf("unknown aggregator %q", v))
 				}
 			default:
 				return ErrArgs("TIMEWINDOW", 3, fmt.Sprintf("column name invalid type, %T", v))
@@ -207,6 +213,11 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	// recWindow value of the current record
 	var recWindow = time.Unix(0, (ts.UnixNano()/int64(period))*int64(period))
 
+	// out of range
+	if recWindow.Sub(tsFrom) < 0 || recWindow.Sub(tsUntil) >= 0 {
+		return nil
+	}
+
 	// current processing window
 	var curWindow time.Time
 	if w, ok := node.GetValue("curWindow"); !ok {
@@ -214,11 +225,6 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		curWindow = recWindow
 	} else {
 		curWindow = w.(time.Time)
-	}
-
-	// out of range
-	if curWindow.Sub(tsFrom) < 0 || curWindow.Sub(tsUntil) >= 0 {
-		return nil
 	}
 
 	// fill missing leading records
@@ -306,8 +312,10 @@ func timewindowResult(series []any, aggregation string, nullValue any) any {
 		return timewindowMin(series, nullValue)
 	case "sum":
 		return timewindowSum(series, nullValue)
+	case "rss":
+		return timewindowRss(series, nullValue)
 	default:
-		return timewindowLast(series, nullValue)
+		return fmt.Errorf("unknown aggregator %q", aggregation)
 	}
 }
 
@@ -387,4 +395,19 @@ func timewindowMin(values []any, nullValue any) any {
 		}
 	}
 	return ret
+}
+
+func timewindowRss(values []any, nullValue any) any {
+	if len(values) == 0 {
+		return nullValue
+	}
+	var sum float64
+	for _, v := range values {
+		f, err := util.ToFloat64(v)
+		if err != nil {
+			return values[len(values)-1]
+		}
+		sum += f * f
+	}
+	return math.Sqrt(sum)
 }

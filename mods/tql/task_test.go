@@ -1018,6 +1018,41 @@ func TestTimeWindowMs(t *testing.T) {
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
 
+func TestTimeWindowHighDef(t *testing.T) {
+	var codeLines, resultLines []string
+
+	tick := time.Unix(0, 1692329338315327000)
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	codeLines = []string{
+		`FAKE( 
+			oscillator(
+			  freq(15, 1.0), freq(24, 1.5),
+			  range('now', '10s', '1ms')) 
+		  )`,
+		`TIMEWINDOW(
+			time('now'),
+			time('now+10s'),
+			period('1s'),
+			'time', 'first')`,
+		`CSV(timeformat("ns"), heading(true), precision(7))`,
+	}
+	resultLines = []string{
+		`time,value`,
+		"1692329339000000000,0.1046705",
+		"1692329340000000000,0.1046637",
+		"1692329341000000000,0.1046874",
+		"1692329342000000000,0.1046806",
+		"1692329343000000000,0.1046738",
+		"1692329344000000000,0.1046670",
+		"1692329345000000000,0.1046906",
+		"1692329346000000000,0.1046838",
+		"1692329347000000000,0.1046770",
+		"1692329348000000000,0.1046702",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestDropTake(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 100))",
