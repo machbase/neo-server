@@ -10,6 +10,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
+	"gonum.org/v1/gonum/stat"
 )
 
 type TimeRange struct {
@@ -269,6 +270,12 @@ func (tw *TimeWindow) SetColumns(columns []string) error {
 				filler = &TimeWindowFillerPredict{predictor: &interp.AkimaSpline{}, fallback: defaultFiller}
 			case "fritschbutland":
 				filler = &TimeWindowFillerPredict{predictor: &interp.FritschButland{}, fallback: defaultFiller}
+			case "linearregression":
+				filler = &TimeWindowFillerLinearRegression{fallback: defaultFiller}
+			case "-":
+				// use default interpolation
+			default:
+				return fmt.Errorf("unknown interpolation method %q", predict)
 			}
 		}
 		switch typ {
@@ -279,6 +286,8 @@ func (tw *TimeWindow) SetColumns(columns []string) error {
 			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: typ, nullFiller: filler})
 		case "avg", "rss", "rms":
 			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: typ, nullFiller: filler})
+		case "mean", "stddev", "stderr", "entropy":
+			tw.columns = append(tw.columns, &TimeWindowColumnStore{name: typ, nullFiller: filler})
 		default:
 			return fmt.Errorf("unknown aggregator %q", typ)
 		}
@@ -314,6 +323,39 @@ func (tw *TimeWindow) Buffer(values []any) error {
 	return nil
 }
 
+// curWindow: exclusive
+// nextWindow: inclusive
+func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time) {
+	curWindow = curWindow.Add(tw.period)
+	for nextWindow.Sub(curWindow) >= tw.period {
+		ret := make([]any, len(tw.columns))
+		for i, col := range tw.columns {
+			if i == tw.timeIdx {
+				ret[i] = curWindow
+			} else {
+				ret[i] = col.Result(curWindow)
+			}
+		}
+		node.yield(curWindow, ret)
+		curWindow = curWindow.Add(tw.period)
+	}
+}
+
+func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
+	// aggregation
+	ret := make([]any, len(tw.columns))
+	for i, c := range tw.columns {
+		if i == tw.timeIdx {
+			ret[i] = curWindow
+			continue
+		}
+
+		ret[i] = c.Result(curWindow)
+	}
+	// yield
+	node.yield(curWindow, ret)
+}
+
 type TimeWindowFiller interface {
 	Fit(ts time.Time, value float64)
 	Predict(ts time.Time) any
@@ -343,29 +385,54 @@ func (fill *TimeWindowFillerPredict) Fit(ts time.Time, val float64) {
 	fill.xs = append(fill.xs, x)
 	fill.ys = append(fill.ys, y)
 
-	limit := 10
+	limit := 100
 	if len(fill.xs) > limit {
 		fill.xs = fill.xs[len(fill.xs)-limit:]
 		fill.ys = fill.ys[len(fill.ys)-limit:]
 	}
 }
 
-func (fill *TimeWindowFillerPredict) Predict(ts time.Time) (ret any) {
-	if len(fill.xs) < 3 || len(fill.xs) != len(fill.ys) {
-		ret = fill.fallback.Predict(ts)
-		return ret
-	}
-	for i := range fill.xs {
-		fmt.Println(i, "==>", fill.xs[i], fill.ys[i])
+func (fill *TimeWindowFillerPredict) Predict(ts time.Time) any {
+	if len(fill.xs) < 2 || len(fill.xs) != len(fill.ys) {
+		goto fallback
 	}
 	if err := fill.predictor.Fit(fill.xs, fill.ys); err != nil {
 		goto fallback
 	}
-	ret = fill.predictor.Predict(float64(ts.UnixNano()))
-
-	return ret
+	return fill.predictor.Predict(float64(ts.UnixNano()))
 fallback:
-	ret = fill.fallback.Predict(ts)
+	return fill.fallback.Predict(ts)
+}
+
+type TimeWindowFillerLinearRegression struct {
+	fallback TimeWindowFiller
+	xs       []float64
+	ys       []float64
+}
+
+func (fill *TimeWindowFillerLinearRegression) Fit(ts time.Time, val float64) {
+	y := val
+	x := float64(ts.UnixNano())
+	fill.xs = append(fill.xs, x)
+	fill.ys = append(fill.ys, y)
+
+	limit := 100
+	if len(fill.xs) > limit {
+		fill.xs = fill.xs[len(fill.xs)-limit:]
+		fill.ys = fill.ys[len(fill.ys)-limit:]
+	}
+}
+
+func (fill *TimeWindowFillerLinearRegression) Predict(ts time.Time) (ret any) {
+	if len(fill.xs) < 3 || len(fill.xs) != len(fill.ys) {
+		ret = fill.fallback.Predict(ts)
+		return ret
+	}
+	origin := false
+	// y = alpha + beta*x
+	alpha, beta := stat.LinearRegression(fill.xs, fill.ys, nil, origin)
+	ret = alpha + beta*float64(ts.UnixNano())
+
 	return ret
 }
 
@@ -494,35 +561,46 @@ func (twc *TimeWindowColumnAggregate) Result(ts time.Time) any {
 	return ret
 }
 
-// curWindow: exclusive
-// nextWindow: inclusive
-func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time) {
-	curWindow = curWindow.Add(tw.period)
-	for nextWindow.Sub(curWindow) >= tw.period {
-		ret := make([]any, len(tw.columns))
-		for i, col := range tw.columns {
-			if i == tw.timeIdx {
-				ret[i] = curWindow
-			} else {
-				ret[i] = col.Result(curWindow)
-			}
-		}
-		node.yield(curWindow, ret)
-		curWindow = curWindow.Add(tw.period)
-	}
+type TimeWindowColumnStore struct {
+	name       string
+	values     []float64
+	nullFiller TimeWindowFiller
 }
 
-func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
-	// aggregation
-	ret := make([]any, len(tw.columns))
-	for i, c := range tw.columns {
-		if i == tw.timeIdx {
-			ret[i] = curWindow
-			continue
-		}
-
-		ret[i] = c.Result(curWindow)
+func (twc *TimeWindowColumnStore) Append(ts time.Time, v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
 	}
-	// yield
-	node.yield(curWindow, ret)
+	twc.values = append(twc.values, f)
+	return nil
+}
+
+func (twc *TimeWindowColumnStore) Result(ts time.Time) any {
+	defer func() {
+		twc.values = twc.values[0:0]
+	}()
+	if len(twc.values) <= 1 {
+		return twc.nullFiller.Predict(ts)
+	}
+
+	var ret float64
+	switch twc.name {
+	case "mean":
+		ret, _ = stat.MeanStdDev(twc.values, nil)
+	case "stddev":
+		_, ret = stat.MeanStdDev(twc.values, nil)
+	case "stderr":
+		_, std := stat.MeanStdDev(twc.values, nil)
+		ret = stat.StdErr(std, float64(len(twc.values)))
+	case "entropy":
+		ret = stat.Entropy(twc.values)
+		if ret != ret { // NaN
+			return twc.nullFiller.Predict(ts)
+		}
+	default:
+		return twc.nullFiller.Predict(ts)
+	}
+	twc.nullFiller.Fit(ts, ret)
+	return ret
 }

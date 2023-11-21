@@ -890,7 +890,7 @@ func TestMapValue(t *testing.T) {
 func TestTimeWindow(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
-	for _, agg := range []string{"avg", "sum", "first", "last", "min", "max", "rss", "rms"} {
+	for _, agg := range []string{"avg", "stddev", "entropy", "sum", "first", "last", "min", "max", "rss", "rms"} {
 		codeLines = []string{
 			`CSV(payload(),
 				field(0, datetimeType("s"), "time"),
@@ -924,6 +924,28 @@ func TestTimeWindow(t *testing.T) {
 		}
 
 		switch agg {
+		case "stddev":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,1.29",
+				"1700256265,1.58",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+			}
+		case "entropy":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,-10.23",
+				"1700256265,-68.83",
+				"1700256270,0.00",
+				"1700256275,-23.03",
+				"1700256280,0.00",
+			}
 		case "avg":
 			resultLines = []string{
 				`time,value`,
