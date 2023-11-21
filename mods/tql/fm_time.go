@@ -153,29 +153,19 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		if tw.tsUntil.Sub(tw.tsFrom) <= tw.period {
 			return ErrorRecord(ErrArgs("TIMEWINDOW", 0, "from ~ until should be larger than period"))
 		}
-		argIdx := 0
+		columns := []string{}
 		for _, arg := range args {
 			switch v := arg.(type) {
 			case string:
-				tw.aggregations = append(tw.aggregations, v)
-				switch v {
-				case "time":
-					tw.timeIdx = argIdx
-					argIdx++
-				case "avg", "max", "min", "first", "last", "sum", "rss":
-					// ok
-					argIdx++
-				default:
-					return ErrArgs("TIMEWINDOW", 2, fmt.Sprintf("unknown aggregator %q", v))
-				}
+				columns = append(columns, v)
 			case *NullValue:
 				tw.nullValue = v
 			default:
 				return ErrArgs("TIMEWINDOW", 3, fmt.Sprintf("column name invalid type, %T", v))
 			}
 		}
-		if len(tw.aggregations) < 2 || tw.timeIdx == -1 {
-			return ErrArgs("TIMEWINDOW", 3, "invalid columns count or no time column specified")
+		if err := tw.SetColumns(columns); err != nil {
+			return ErrArgs("TIMEWINDOW", 3, err.Error())
 		}
 		node.SetFeedEOF(true)
 		node.SetValue("timewindow", tw)
@@ -183,14 +173,11 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 
 	if node.Inflight().IsEOF() {
 		// flush remain values
-		var curWindow time.Time
-		if t, ok := node.GetValue("curWindow"); !ok {
+		if tw.curWindow.IsZero() {
 			return nil
-		} else {
-			curWindow = t.(time.Time)
 		}
-		tw.Flush(node, curWindow)
-		tw.Fill(node, curWindow, tw.tsUntil)
+		tw.Flush(node, tw.curWindow)
+		tw.Fill(node, tw.curWindow, tw.tsUntil)
 		return nil
 	}
 
@@ -200,7 +187,7 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	} else {
 		return ErrorRecord(fmt.Errorf("TIMEWINDOW value should be array"))
 	}
-	if len(tw.aggregations) != len(values) {
+	if len(tw.columns) != len(values) {
 		return ErrorRecord(fmt.Errorf("TIMEWINDOW column count does not match %d", len(values)))
 	}
 
@@ -220,12 +207,8 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	}
 
 	// current processing window
-	var curWindow time.Time
-	if w, ok := node.GetValue("curWindow"); ok {
-		curWindow = w.(time.Time)
-	} else {
-		node.SetValue("curWindow", recWindow)
-		curWindow = recWindow
+	if tw.curWindow.IsZero() {
+		tw.curWindow = recWindow
 	}
 
 	// fill missing leading records
@@ -235,44 +218,58 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	}
 
 	// window changed, yield buffered values
-	if curWindow != recWindow {
-		tw.Flush(node, curWindow)
-		tw.Fill(node, curWindow, recWindow)
+	if tw.curWindow != recWindow {
+		tw.Flush(node, tw.curWindow)
+		tw.Fill(node, tw.curWindow, recWindow)
 		// update processing window
-		node.SetValue("curWindow", recWindow)
+		tw.curWindow = recWindow
 	}
 
 	// append buffered values
-	for i, v := range values {
-		if i == tw.timeIdx {
-			continue
-		}
-		serName := tw.SeriesName(i)
-		if ser, ok := node.GetValue(serName); !ok {
-			node.SetValue(serName, []any{v})
-		} else {
-			series := ser.([]any)
-			node.SetValue(serName, append(series, v))
-		}
+	if err := tw.Buffer(values); err != nil {
+		return err
 	}
+
 	return nil
 }
 
 type TimeWindow struct {
-	tsFrom       time.Time
-	tsUntil      time.Time
-	period       time.Duration
-	aggregations []string
-	timeIdx      int
-	nullValue    *NullValue
+	tsFrom    time.Time
+	tsUntil   time.Time
+	period    time.Duration
+	columns   []TimeWindowColumn
+	timeIdx   int
+	nullValue *NullValue
+
+	curWindow time.Time
 }
 
 func NewTimeWindow() *TimeWindow {
 	return &TimeWindow{
-		aggregations: []string{},
-		timeIdx:      -1,
-		nullValue:    &NullValue{altValue: nil},
+		timeIdx:   -1,
+		nullValue: &NullValue{altValue: nil},
+		curWindow: time.Time{},
 	}
+}
+
+func (tw *TimeWindow) SetColumns(columns []string) error {
+	for i, c := range columns {
+		switch c {
+		case "time":
+			tw.timeIdx = i
+			tw.columns = append(tw.columns, &TimeWindowColumnTime{})
+		case "first", "last", "max", "min", "sum":
+			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: c})
+		case "avg", "rss", "rms":
+			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: c})
+		default:
+			return fmt.Errorf("unknown aggregator %q", c)
+		}
+	}
+	if len(tw.columns) < 2 || tw.timeIdx == -1 {
+		return fmt.Errorf("invalid columns count or no time column specified")
+	}
+	return nil
 }
 
 func (tw *TimeWindow) SeriesName(i int) string {
@@ -283,53 +280,144 @@ func (tw *TimeWindow) IsInRange(ts time.Time) bool {
 	return ts.Sub(tw.tsFrom) >= 0 && ts.Sub(tw.tsUntil) < 0
 }
 
-func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
-	// aggregation
-	ret := make([]any, len(tw.aggregations))
-	for i := range ret {
+// append buffered values
+func (tw *TimeWindow) Buffer(values []any) error {
+	if len(tw.columns) != len(values) {
+		return fmt.Errorf("invalid columns count, expect %d, got %d", len(tw.columns), len(values))
+	}
+	for i, v := range values {
 		if i == tw.timeIdx {
-			ret[i] = curWindow
 			continue
 		}
-		serName := tw.SeriesName(i)
-		ser, ok := node.GetValue(serName)
-		if !ok {
-			break
+		if err := tw.columns[i].Append(v); err != nil {
+			return err
 		}
-		series := ser.([]any)
-		if len(series) == 0 {
-			ret[i] = tw.nullValue.Value()
-		} else {
-			switch tw.aggregations[i] {
-			case "first":
-				ret[i] = timewindowFirst(series)
-			case "last":
-				ret[i] = timewindowLast(series)
-			case "avg":
-				ret[i] = timewindowAvg(series)
-			case "max":
-				ret[i] = timewindowMax(series)
-			case "min":
-				ret[i] = timewindowMin(series)
-			case "sum":
-				ret[i] = timewindowSum(series)
-			case "rss":
-				ret[i] = timewindowRss(series)
-			default:
-				ret[i] = timewindowLast(series)
-			}
-		}
-		// clear
-		node.DeleteValue(serName)
 	}
-	// yield
-	node.yield(curWindow, ret)
+	return nil
 }
 
+type TimeWindowColumn interface {
+	Append(v any) error
+	Result(def any) any
+}
+
+// time
+type TimeWindowColumnTime struct {
+}
+
+func (twc *TimeWindowColumnTime) Append(v any) error { return nil }
+func (twc *TimeWindowColumnTime) Result(def any) any {
+	return def
+}
+
+// first, last, min, max, sum
+type TimeWindowColumnSingle struct {
+	name     string
+	value    any
+	hasValue bool
+}
+
+func (twc *TimeWindowColumnSingle) Append(v any) error {
+	if twc.name == "first" {
+		if twc.hasValue {
+			return nil
+		}
+		twc.value = v
+		twc.hasValue = true
+		return nil
+	} else if twc.name == "last" {
+		twc.value = v
+		twc.hasValue = true
+		return nil
+	}
+
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	if !twc.hasValue {
+		twc.value = f
+		twc.hasValue = true
+		return nil
+	}
+
+	old := twc.value.(float64)
+	switch twc.name {
+	case "min":
+		if old > f {
+			twc.value = f
+		}
+	case "max":
+		if old < f {
+			twc.value = f
+		}
+	case "sum":
+		twc.value = old + f
+	}
+	return nil
+}
+
+func (twc *TimeWindowColumnSingle) Result(def any) any {
+	if twc.hasValue {
+		ret := twc.value
+		twc.value = 0
+		twc.hasValue = false
+		return ret
+	}
+	return def
+}
+
+// - avg average
+// - rss root sum square
+// - rms root mean square
+type TimeWindowColumnAggregate struct {
+	name  string
+	value float64
+	count int
+}
+
+func (twc *TimeWindowColumnAggregate) Append(v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	switch twc.name {
+	case "avg":
+		twc.count++
+		twc.value += f
+	case "rss", "rms":
+		twc.count++
+		twc.value += f * f
+	}
+	return nil
+}
+
+func (twc *TimeWindowColumnAggregate) Result(def any) any {
+	if twc.count == 0 {
+		return def
+	}
+	defer func() {
+		twc.count = 0
+		twc.value = 0
+	}()
+
+	switch twc.name {
+	case "avg":
+		return twc.value / float64(twc.count)
+	case "rss":
+		return math.Sqrt(twc.value)
+	case "rms":
+		return math.Sqrt(twc.value / float64(twc.count))
+	}
+	return def
+}
+
+// curWindow: exclusive
+// nextWindow: inclusive
 func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time) {
 	curWindow = curWindow.Add(tw.period)
 	for nextWindow.Sub(curWindow) >= tw.period {
-		ret := make([]any, len(tw.aggregations))
+		ret := make([]any, len(tw.columns))
 		for i := range ret {
 			if i == tw.timeIdx {
 				ret[i] = curWindow
@@ -342,74 +430,17 @@ func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time
 	}
 }
 
-func timewindowFirst(values []any) any {
-	return values[0]
-}
-
-func timewindowLast(values []any) any {
-	return values[len(values)-1]
-}
-
-func timewindowAvg(values []any) any {
-	var sum float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
+func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
+	// aggregation
+	ret := make([]any, len(tw.columns))
+	for i, c := range tw.columns {
+		if i == tw.timeIdx {
+			ret[i] = curWindow
+			continue
 		}
-		sum += f
+
+		ret[i] = c.Result(tw.nullValue.Value())
 	}
-	return sum / float64(len(values))
-}
-
-func timewindowSum(values []any) any {
-	var ret float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		ret += f
-	}
-	return ret
-}
-
-func timewindowMax(values []any) any {
-	var ret float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		if f > ret {
-			ret = f
-		}
-	}
-	return ret
-}
-
-func timewindowMin(values []any) any {
-	var ret float64
-	for i, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		if i == 0 || f < ret {
-			ret = f
-		}
-	}
-	return ret
-}
-
-func timewindowRss(values []any) any {
-	var sum float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		sum += f * f
-	}
-	return math.Sqrt(sum)
+	// yield
+	node.yield(curWindow, ret)
 }
