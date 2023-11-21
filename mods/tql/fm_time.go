@@ -114,12 +114,24 @@ func (x *Node) fmAnsiTimeformat(format string) opts.Option {
 	return opts.Timeformat(util.ToTimeformatAnsi(format))
 }
 
+type NullValue struct {
+	altValue any
+}
+
+func (n *NullValue) Value() any {
+	return n.altValue
+}
+
+func (node *Node) fmNullValue(v any) any {
+	return &NullValue{altValue: v}
+}
+
 func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) any {
 	var tsFrom, tsUntil time.Time
 	var period time.Duration
 	var aggregations = []string{}
 	var timeIdx = -1
-	var nilValue = 0.0
+	var nullValue = &NullValue{altValue: nil}
 
 	if node.Rownum() == 1 {
 		if ts, err := util.ToTime(from); err != nil {
@@ -142,18 +154,23 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		if tsUntil.Sub(tsFrom) <= period {
 			return ErrorRecord(ErrArgs("TIMEWINDOW", 0, "from ~ until should be larger than period"))
 		}
-		for i, arg := range args {
+		argIdx := 0
+		for _, arg := range args {
 			switch v := arg.(type) {
 			case string:
 				aggregations = append(aggregations, v)
 				switch v {
 				case "time":
-					timeIdx = i
+					timeIdx = argIdx
+					argIdx++
 				case "avg", "max", "min", "first", "last", "sum", "rss":
 					// ok
+					argIdx++
 				default:
 					return ErrArgs("TIMEWINDOW", 2, fmt.Sprintf("unknown aggregator %q", v))
 				}
+			case *NullValue:
+				nullValue = v
 			default:
 				return ErrArgs("TIMEWINDOW", 3, fmt.Sprintf("column name invalid type, %T", v))
 			}
@@ -166,6 +183,7 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		node.SetValue("period", period)
 		node.SetValue("aggregations", aggregations)
 		node.SetValue("timeIdx", timeIdx)
+		node.SetValue("nullValue", nullValue)
 		node.SetFeedEOF(true)
 	} else {
 		f, _ := node.GetValue("from")
@@ -178,6 +196,8 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		aggregations = a.([]string)
 		i, _ := node.GetValue("timeIdx")
 		timeIdx = i.(int)
+		n, _ := node.GetValue("nullValue")
+		nullValue = n.(*NullValue)
 	}
 
 	if node.Inflight().IsEOF() {
@@ -188,8 +208,8 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		} else {
 			curWindow = t.(time.Time)
 		}
-		timewindow_flush(node, curWindow, aggregations, timeIdx, nilValue)
-		timewindow_fill(node, curWindow, period, tsUntil, nilValue, aggregations, timeIdx)
+		timewindow_flush(node, curWindow, aggregations, timeIdx, nullValue.Value())
+		timewindow_fill(node, curWindow, period, tsUntil, nullValue.Value(), aggregations, timeIdx)
 		return nil
 	}
 
@@ -230,13 +250,13 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	// fill missing leading records
 	if node.Rownum() == 1 {
 		fromWindow := time.Unix(0, (tsFrom.UnixNano()/int64(period)-1)*int64(period))
-		timewindow_fill(node, fromWindow, period, recWindow, nilValue, aggregations, timeIdx)
+		timewindow_fill(node, fromWindow, period, recWindow, nullValue.Value(), aggregations, timeIdx)
 	}
 
 	// window changed, yield buffere values
 	if curWindow != recWindow {
-		timewindow_flush(node, curWindow, aggregations, timeIdx, nilValue)
-		timewindow_fill(node, curWindow, period, recWindow, nilValue, aggregations, timeIdx)
+		timewindow_flush(node, curWindow, aggregations, timeIdx, nullValue.Value())
+		timewindow_fill(node, curWindow, period, recWindow, nullValue.Value(), aggregations, timeIdx)
 		// update processing window
 		node.SetValue("curWindow", recWindow)
 	}

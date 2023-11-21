@@ -39,6 +39,7 @@ func NewNode(task *Task) *Node {
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
 		"period":         x.gen_period,
+		"nullValue":      x.gen_nullValue,
 		"time":           x.gen_time,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
@@ -430,6 +431,21 @@ func (x *Node) gen_period(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmPeriod(p0)
+}
+
+// gen_nullValue
+//
+// syntax: nullValue()
+func (x *Node) gen_nullValue(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("nullValue", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "nullValue", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmNullValue(p0)
+	return ret, nil
 }
 
 // gen_time

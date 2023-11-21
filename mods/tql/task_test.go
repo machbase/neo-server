@@ -899,6 +899,7 @@ func TestTimeWindow(t *testing.T) {
 				time(1700256250 * 1000000000),
 				time(1700256285 * 1000000000),
 				period('5s'),
+				nullValue(0),
 				'time', '%s')`, agg),
 			`CSV(timeformat("s"), heading(true))`,
 		}
@@ -1007,13 +1008,13 @@ func TestTimeWindowMs(t *testing.T) {
 	}
 	resultLines = []string{
 		`time,value`,
-		"1700256250000,0",
-		"1700256255000,0",
+		"1700256250000,NULL",
+		"1700256255000,NULL",
 		"1700256260000,2.5",
 		"1700256265000,7",
-		"1700256270000,0",
+		"1700256270000,NULL",
 		"1700256275000,10",
-		"1700256280000,0",
+		"1700256280000,NULL",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }

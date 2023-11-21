@@ -42,6 +42,7 @@ var FxDefinitions = []Definition{
 	// maps.time
 	{"// maps.time", nil},
 	{"period", defTask.fmPeriod},
+	{"nullValue", defTask.fmNullValue},
 	{"time", defTask.fmTime},
 	{"parseTime", defTask.fmParseTime},
 	{"timeAdd", defTask.fmTimeAdd},
