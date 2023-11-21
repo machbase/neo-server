@@ -355,9 +355,6 @@ func (fill *TimeWindowFillerPredict) Predict(ts time.Time) (ret any) {
 		ret = fill.fallback.Predict(ts)
 		return ret
 	}
-	for i := range fill.xs {
-		fmt.Println(i, "==>", fill.xs[i], fill.ys[i])
-	}
 	if err := fill.predictor.Fit(fill.xs, fill.ys); err != nil {
 		goto fallback
 	}
