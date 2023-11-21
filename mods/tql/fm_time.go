@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
+	"gonum.org/v1/gonum/interp"
 )
 
 type TimeRange struct {
@@ -253,17 +254,33 @@ func NewTimeWindow() *TimeWindow {
 }
 
 func (tw *TimeWindow) SetColumns(columns []string) error {
+	defaultFiller := &TimeWindowFillerConstant{value: tw.nullValue.Value()}
+	var filler TimeWindowFiller
 	for i, c := range columns {
-		switch c {
+		filler = defaultFiller
+		typ, predict, found := strings.Cut(c, ":")
+		if found {
+			switch strings.ToLower(predict) {
+			case "piecewiseconstant":
+				filler = &TimeWindowFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: defaultFiller}
+			case "piecewiselinear":
+				filler = &TimeWindowFillerPredict{predictor: &interp.PiecewiseLinear{}, fallback: defaultFiller}
+			case "akimaspline":
+				filler = &TimeWindowFillerPredict{predictor: &interp.AkimaSpline{}, fallback: defaultFiller}
+			case "fritschbutland":
+				filler = &TimeWindowFillerPredict{predictor: &interp.FritschButland{}, fallback: defaultFiller}
+			}
+		}
+		switch typ {
 		case "time":
 			tw.timeIdx = i
 			tw.columns = append(tw.columns, &TimeWindowColumnTime{})
 		case "first", "last", "max", "min", "sum":
-			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: c})
+			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: typ, nullFiller: filler})
 		case "avg", "rss", "rms":
-			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: c})
+			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: typ, nullFiller: filler})
 		default:
-			return fmt.Errorf("unknown aggregator %q", c)
+			return fmt.Errorf("unknown aggregator %q", typ)
 		}
 	}
 	if len(tw.columns) < 2 || tw.timeIdx == -1 {
@@ -289,35 +306,92 @@ func (tw *TimeWindow) Buffer(values []any) error {
 		if i == tw.timeIdx {
 			continue
 		}
-		if err := tw.columns[i].Append(v); err != nil {
+		ts := values[tw.timeIdx].(time.Time)
+		if err := tw.columns[i].Append(ts, v); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+type TimeWindowFiller interface {
+	Fit(ts time.Time, value float64)
+	Predict(ts time.Time) any
+}
+
+type TimeWindowFillerConstant struct {
+	value any
+}
+
+func (fill *TimeWindowFillerConstant) Fit(ts time.Time, val float64) {
+}
+
+func (fill *TimeWindowFillerConstant) Predict(ts time.Time) any {
+	return fill.value
+}
+
+type TimeWindowFillerPredict struct {
+	predictor interp.FittablePredictor
+	fallback  TimeWindowFiller
+	xs        []float64
+	ys        []float64
+}
+
+func (fill *TimeWindowFillerPredict) Fit(ts time.Time, val float64) {
+	y := val
+	x := float64(ts.UnixNano())
+	fill.xs = append(fill.xs, x)
+	fill.ys = append(fill.ys, y)
+
+	limit := 10
+	if len(fill.xs) > limit {
+		fill.xs = fill.xs[len(fill.xs)-limit:]
+		fill.ys = fill.ys[len(fill.ys)-limit:]
+	}
+}
+
+func (fill *TimeWindowFillerPredict) Predict(ts time.Time) (ret any) {
+	if len(fill.xs) < 3 || len(fill.xs) != len(fill.ys) {
+		ret = fill.fallback.Predict(ts)
+		return ret
+	}
+	for i := range fill.xs {
+		fmt.Println(i, "==>", fill.xs[i], fill.ys[i])
+	}
+	if err := fill.predictor.Fit(fill.xs, fill.ys); err != nil {
+		goto fallback
+	}
+	ret = fill.predictor.Predict(float64(ts.UnixNano()))
+
+	return ret
+fallback:
+	ret = fill.fallback.Predict(ts)
+	return ret
+}
+
 type TimeWindowColumn interface {
-	Append(v any) error
-	Result(def any) any
+	Append(ts time.Time, v any) error
+	Result(ts time.Time) any
 }
 
 // time
 type TimeWindowColumnTime struct {
 }
 
-func (twc *TimeWindowColumnTime) Append(v any) error { return nil }
-func (twc *TimeWindowColumnTime) Result(def any) any {
-	return def
+func (twc *TimeWindowColumnTime) Append(ts time.Time, v any) error { return nil }
+func (twc *TimeWindowColumnTime) Result(ts time.Time) any {
+	return ts
 }
 
 // first, last, min, max, sum
 type TimeWindowColumnSingle struct {
-	name     string
-	value    any
-	hasValue bool
+	name       string
+	value      any
+	hasValue   bool
+	nullFiller TimeWindowFiller
 }
 
-func (twc *TimeWindowColumnSingle) Append(v any) error {
+func (twc *TimeWindowColumnSingle) Append(ts time.Time, v any) error {
 	if twc.name == "first" {
 		if twc.hasValue {
 			return nil
@@ -357,26 +431,30 @@ func (twc *TimeWindowColumnSingle) Append(v any) error {
 	return nil
 }
 
-func (twc *TimeWindowColumnSingle) Result(def any) any {
+func (twc *TimeWindowColumnSingle) Result(ts time.Time) any {
 	if twc.hasValue {
 		ret := twc.value
 		twc.value = 0
 		twc.hasValue = false
+		if f, ok := ret.(float64); ok {
+			twc.nullFiller.Fit(ts, f)
+		}
 		return ret
 	}
-	return def
+	return twc.nullFiller.Predict(ts)
 }
 
 // - avg average
 // - rss root sum square
 // - rms root mean square
 type TimeWindowColumnAggregate struct {
-	name  string
-	value float64
-	count int
+	name       string
+	value      float64
+	count      int
+	nullFiller TimeWindowFiller
 }
 
-func (twc *TimeWindowColumnAggregate) Append(v any) error {
+func (twc *TimeWindowColumnAggregate) Append(ts time.Time, v any) error {
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err
@@ -392,24 +470,28 @@ func (twc *TimeWindowColumnAggregate) Append(v any) error {
 	return nil
 }
 
-func (twc *TimeWindowColumnAggregate) Result(def any) any {
+func (twc *TimeWindowColumnAggregate) Result(ts time.Time) any {
 	if twc.count == 0 {
-		return def
+		return twc.nullFiller.Predict(ts)
 	}
 	defer func() {
 		twc.count = 0
 		twc.value = 0
 	}()
 
+	var ret float64
 	switch twc.name {
 	case "avg":
-		return twc.value / float64(twc.count)
+		ret = twc.value / float64(twc.count)
 	case "rss":
-		return math.Sqrt(twc.value)
+		ret = math.Sqrt(twc.value)
 	case "rms":
-		return math.Sqrt(twc.value / float64(twc.count))
+		ret = math.Sqrt(twc.value / float64(twc.count))
+	default:
+		return twc.nullFiller.Predict(ts)
 	}
-	return def
+	twc.nullFiller.Fit(ts, ret)
+	return ret
 }
 
 // curWindow: exclusive
@@ -418,11 +500,11 @@ func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time
 	curWindow = curWindow.Add(tw.period)
 	for nextWindow.Sub(curWindow) >= tw.period {
 		ret := make([]any, len(tw.columns))
-		for i := range ret {
+		for i, col := range tw.columns {
 			if i == tw.timeIdx {
 				ret[i] = curWindow
 			} else {
-				ret[i] = tw.nullValue.Value()
+				ret[i] = col.Result(curWindow)
 			}
 		}
 		node.yield(curWindow, ret)
@@ -439,7 +521,7 @@ func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
 			continue
 		}
 
-		ret[i] = c.Result(tw.nullValue.Value())
+		ret[i] = c.Result(curWindow)
 	}
 	// yield
 	node.yield(curWindow, ret)
