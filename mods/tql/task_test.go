@@ -895,7 +895,7 @@ func TestTimeWindow(t *testing.T) {
 		"stddev", "stderr", "entropy",
 		"sum", "first", "last", "min", "max",
 		"rss", "rms",
-		"rss:LinearRegression", "rss:PiecewiseConstant",
+		"rss:LinearRegression", "rss:PiecewiseConstant", "rss:PiecewiseLinear",
 	} {
 		codeLines = []string{
 			`CSV(payload(),
@@ -1054,22 +1054,33 @@ func TestTimeWindow(t *testing.T) {
 		case "rss:LinearRegression":
 			resultLines = []string{
 				`time,value`,
-				"1700256250,0.00",
-				"1700256255,0.00",
+				"1700256250,7.60",
+				"1700256255,8.46",
 				"1700256260,5.48",
 				"1700256265,15.97",
-				"1700256270,26.46",
+				"1700256270,11.06",
 				"1700256275,10.00",
 				"1700256280,12.79",
 			}
 		case "rss:PiecewiseConstant":
 			resultLines = []string{
 				`time,value`,
-				"1700256250,0.00",
-				"1700256255,0.00",
+				"1700256250,5.48",
+				"1700256255,5.48",
 				"1700256260,5.48",
 				"1700256265,15.97",
-				"1700256270,15.97",
+				"1700256270,10.00",
+				"1700256275,10.00",
+				"1700256280,10.00",
+			}
+		case "rss:PiecewiseLinear":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,5.48",
+				"1700256255,5.48",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,12.98",
 				"1700256275,10.00",
 				"1700256280,10.00",
 			}
