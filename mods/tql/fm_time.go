@@ -422,7 +422,7 @@ func (fill *TimeWindowFillerLinearRegression) Fit(ts time.Time, val float64) {
 }
 
 func (fill *TimeWindowFillerLinearRegression) Predict(ts time.Time) (ret any) {
-	if len(fill.xs) < 3 || len(fill.xs) != len(fill.ys) {
+	if len(fill.xs) < 2 || len(fill.xs) != len(fill.ys) {
 		ret = fill.fallback.Predict(ts)
 		return ret
 	}

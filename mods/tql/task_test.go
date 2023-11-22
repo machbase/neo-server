@@ -890,7 +890,13 @@ func TestMapValue(t *testing.T) {
 func TestTimeWindow(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
-	for _, agg := range []string{"avg", "median", "median-interpolated", "stddev", "entropy", "sum", "first", "last", "min", "max", "rss", "rms"} {
+	for _, agg := range []string{
+		"avg", "mean", "median", "median-interpolated",
+		"stddev", "stderr", "entropy",
+		"sum", "first", "last", "min", "max",
+		"rss", "rms",
+		"rss:LinearRegression", "rss:PiecewiseConstant",
+	} {
 		codeLines = []string{
 			`CSV(payload(),
 				field(0, datetimeType("s"), "time"),
@@ -935,6 +941,17 @@ func TestTimeWindow(t *testing.T) {
 				"1700256275,0.00",
 				"1700256280,0.00",
 			}
+		case "stderr":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,0.65",
+				"1700256265,0.71",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+			}
 		case "entropy":
 			resultLines = []string{
 				`time,value`,
@@ -947,6 +964,17 @@ func TestTimeWindow(t *testing.T) {
 				"1700256280,0.00",
 			}
 		case "avg":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.50",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "mean":
 			resultLines = []string{
 				`time,value`,
 				"1700256250,0.00",
@@ -1022,6 +1050,28 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+			}
+		case "rss:LinearRegression":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,26.46",
+				"1700256275,10.00",
+				"1700256280,12.79",
+			}
+		case "rss:PiecewiseConstant":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,15.97",
+				"1700256275,10.00",
+				"1700256280,10.00",
 			}
 		case "rms":
 			resultLines = []string{
