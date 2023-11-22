@@ -44,6 +44,9 @@ func (node *Node) fmFlatten() any {
 			switch value := r.Value().(type) {
 			case []any:
 				for _, v := range value {
+					if v == nil {
+						continue
+					}
 					ret = append(ret, NewRecord(k, v))
 				}
 			case any:
@@ -59,6 +62,9 @@ func (node *Node) fmFlatten() any {
 			k := rec.Key()
 			ret := []*Record{}
 			for _, v := range value {
+				if len(v) == 0 {
+					continue
+				}
 				ret = append(ret, NewRecord(k, v))
 			}
 			return ret
@@ -66,6 +72,9 @@ func (node *Node) fmFlatten() any {
 			k := rec.Key()
 			ret := []*Record{}
 			for _, v := range value {
+				if v == nil {
+					continue
+				}
 				ret = append(ret, NewRecord(k, v))
 			}
 			return ret

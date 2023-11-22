@@ -890,7 +890,7 @@ func TestMapValue(t *testing.T) {
 func TestTimeWindow(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
-	for _, agg := range []string{"avg", "stddev", "entropy", "sum", "first", "last", "min", "max", "rss", "rms"} {
+	for _, agg := range []string{"avg", "median", "median-interpolated", "stddev", "entropy", "sum", "first", "last", "min", "max", "rss", "rms"} {
 		codeLines = []string{
 			`CSV(payload(),
 				field(0, datetimeType("s"), "time"),
@@ -953,6 +953,28 @@ func TestTimeWindow(t *testing.T) {
 				"1700256255,0.00",
 				"1700256260,2.50",
 				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "median":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "median-interpolated":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,6.50",
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",

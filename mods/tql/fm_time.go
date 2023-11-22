@@ -3,10 +3,12 @@ package tql
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/nums/fft"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
@@ -167,6 +169,7 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 			}
 		}
 		if err := tw.SetColumns(columns); err != nil {
+			node.task.LogError("TIMEWINDOW", err.Error())
 			return ErrArgs("TIMEWINDOW", 3, err.Error())
 		}
 		node.SetFeedEOF(true)
@@ -278,6 +281,7 @@ func (tw *TimeWindow) SetColumns(columns []string) error {
 				return fmt.Errorf("unknown interpolation method %q", predict)
 			}
 		}
+		typ = strings.ToLower(typ)
 		switch typ {
 		case "time":
 			tw.timeIdx = i
@@ -286,8 +290,10 @@ func (tw *TimeWindow) SetColumns(columns []string) error {
 			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: typ, nullFiller: filler})
 		case "avg", "rss", "rms":
 			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: typ, nullFiller: filler})
-		case "mean", "stddev", "stderr", "entropy":
+		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy":
 			tw.columns = append(tw.columns, &TimeWindowColumnStore{name: typ, nullFiller: filler})
+		case "fft":
+			tw.columns = append(tw.columns, &TimeWindowColumnDsp{name: typ})
 		default:
 			return fmt.Errorf("unknown aggregator %q", typ)
 		}
@@ -330,11 +336,7 @@ func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time
 	for nextWindow.Sub(curWindow) >= tw.period {
 		ret := make([]any, len(tw.columns))
 		for i, col := range tw.columns {
-			if i == tw.timeIdx {
-				ret[i] = curWindow
-			} else {
-				ret[i] = col.Result(curWindow)
-			}
+			ret[i] = col.Result(curWindow)
 		}
 		node.yield(curWindow, ret)
 		curWindow = curWindow.Add(tw.period)
@@ -344,13 +346,8 @@ func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time
 func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
 	// aggregation
 	ret := make([]any, len(tw.columns))
-	for i, c := range tw.columns {
-		if i == tw.timeIdx {
-			ret[i] = curWindow
-			continue
-		}
-
-		ret[i] = c.Result(curWindow)
+	for i, col := range tw.columns {
+		ret[i] = col.Result(curWindow)
 	}
 	// yield
 	node.yield(curWindow, ret)
@@ -584,10 +581,22 @@ func (twc *TimeWindowColumnStore) Result(ts time.Time) any {
 	var ret float64
 	switch twc.name {
 	case "mean":
-		if len(twc.values) < 1 {
+		if len(twc.values) == 0 {
 			goto fallback
 		}
 		ret, _ = stat.MeanStdDev(twc.values, nil)
+	case "median":
+		if len(twc.values) == 0 {
+			goto fallback
+		}
+		sort.Float64s(twc.values)
+		ret = stat.Quantile(0.5, stat.Empirical, twc.values, nil)
+	case "median-interpolated":
+		if len(twc.values) == 0 {
+			goto fallback
+		}
+		sort.Float64s(twc.values)
+		ret = stat.Quantile(0.5, stat.LinInterp, twc.values, nil)
 	case "stddev":
 		if len(twc.values) < 1 {
 			goto fallback
@@ -614,4 +623,48 @@ func (twc *TimeWindowColumnStore) Result(ts time.Time) any {
 	return ret
 fallback:
 	return twc.nullFiller.Predict(ts)
+}
+
+type TimeWindowColumnDsp struct {
+	name   string
+	times  []time.Time
+	values []float64
+}
+
+func (twc *TimeWindowColumnDsp) Append(ts time.Time, v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	twc.times = append(twc.times, ts)
+	twc.values = append(twc.values, f)
+	return nil
+}
+
+func (twc *TimeWindowColumnDsp) Result(ts time.Time) any {
+	defer func() {
+		twc.times = twc.times[0:0]
+		twc.values = twc.values[0:0]
+	}()
+
+	if len(twc.times) == 0 || len(twc.times) != len(twc.values) {
+		return nil
+	}
+	switch twc.name {
+	case "fft":
+		freqs, values := fft.FastFourierTransform(twc.times, twc.values)
+		ret := [][]any{}
+		for i := range freqs {
+			hz := freqs[i]
+			amp := values[i]
+			if hz == 0 || hz != hz {
+				continue
+			}
+			ret = append(ret, []any{hz, amp})
+		}
+		if len(ret) > 0 {
+			return ret
+		}
+	}
+	return nil
 }

@@ -50,6 +50,14 @@ func (node *Node) GetRecordKey() any {
 	}
 }
 
+func (node *Node) GetRecordValues() (any, error) {
+	inflight := node.Inflight()
+	if inflight == nil || inflight.value == nil {
+		return nil, nil
+	}
+	return inflight.value, nil
+}
+
 // tql function: value()
 func (node *Node) GetRecordValue(args ...any) (any, error) {
 	inflight := node.Inflight()
