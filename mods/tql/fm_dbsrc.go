@@ -108,6 +108,7 @@ func (si *querySource) toSql() string {
 	table := strings.ToUpper(si.from.Table)
 	tag := si.from.Tag
 	baseTime := si.from.BaseTime
+	baseName := si.from.BaseName
 	ret := ""
 	columns := "value"
 	if len(si.columns) > 0 {
@@ -116,9 +117,9 @@ func (si *querySource) toSql() string {
 	aPart := si.between.BeginPart(table, tag)
 	bPart := si.between.EndPart(table, tag)
 
-	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
+	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
 		baseTime, columns, table,
-		tag,
+		baseName, tag,
 		baseTime, aPart, bPart,
 		si.limit.Offset, si.limit.Limit,
 	)
@@ -130,6 +131,7 @@ func (si *querySource) toSqlGroup() string {
 	table := strings.ToUpper(si.from.Table)
 	tag := si.from.Tag
 	baseTime := si.from.BaseTime
+	baseName := si.from.BaseName
 	ret := ""
 	columns := "value"
 	if len(si.columns) > 0 {
@@ -138,9 +140,9 @@ func (si *querySource) toSqlGroup() string {
 	aPart := si.between.BeginPart(table, tag)
 	bPart := si.between.EndPart(table, tag)
 
-	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s WHERE name = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
+	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
 		baseTime, si.between.Period(), si.between.Period(), baseTime, columns, table,
-		tag,
+		baseName, tag,
 		baseTime, aPart, bPart,
 		baseTime,
 		baseTime,
@@ -238,16 +240,21 @@ type QueryFrom struct {
 	Table    string
 	Tag      string
 	BaseTime string
+	BaseName string
 }
 
-func (x *Node) fmFrom(table string, tag string, baseTime ...string) *QueryFrom {
+func (x *Node) fmFrom(table string, tag string, args ...string) *QueryFrom {
 	ret := &QueryFrom{
 		Table:    table,
 		Tag:      tag,
 		BaseTime: "time",
+		BaseName: "name",
 	}
-	if len(baseTime) > 0 {
-		ret.BaseTime = baseTime[0]
+	if len(args) > 0 {
+		ret.BaseTime = args[0]
+	}
+	if len(args) > 1 {
+		ret.BaseName = args[1]
 	}
 	return ret
 }
