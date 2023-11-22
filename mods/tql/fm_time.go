@@ -3,12 +3,16 @@ package tql
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/nums/fft"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
+	"gonum.org/v1/gonum/interp"
+	"gonum.org/v1/gonum/stat"
 )
 
 type TimeRange struct {
@@ -127,89 +131,58 @@ func (node *Node) fmNullValue(v any) any {
 }
 
 func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) any {
-	var tsFrom, tsUntil time.Time
-	var period time.Duration
-	var aggregations = []string{}
-	var timeIdx = -1
-	var nullValue = &NullValue{altValue: nil}
+	var tw *TimeWindow
 
-	if node.Rownum() == 1 {
+	if obj, ok := node.GetValue("timewindow"); ok {
+		tw = obj.(*TimeWindow)
+	} else {
+		tw = NewTimeWindow()
 		if ts, err := util.ToTime(from); err != nil {
 			return ErrArgs("TIMEWINDOW", 0, fmt.Sprintf("from is not compatible type, %T", from))
 		} else {
-			tsFrom = ts
+			tw.tsFrom = ts
 		}
 		if ts, err := util.ToTime(until); err != nil {
 			return ErrArgs("TIMEWINDOW", 1, fmt.Sprintf("until is not compatible type, %T", until))
 		} else {
-			tsUntil = ts
+			tw.tsUntil = ts
 		}
 		if d, err := util.ToDuration(duration); err != nil {
 			return ErrArgs("TIMEWINDOW", 2, fmt.Sprintf("duration is not compatible, %T", duration))
 		} else if d == 0 {
 			return ErrArgs("TIMEWINDOW", 2, "duration is zero")
 		} else {
-			period = d
+			tw.period = d
 		}
-		if tsUntil.Sub(tsFrom) <= period {
+		if tw.tsUntil.Sub(tw.tsFrom) <= tw.period {
 			return ErrorRecord(ErrArgs("TIMEWINDOW", 0, "from ~ until should be larger than period"))
 		}
-		argIdx := 0
+		columns := []string{}
 		for _, arg := range args {
 			switch v := arg.(type) {
 			case string:
-				aggregations = append(aggregations, v)
-				switch v {
-				case "time":
-					timeIdx = argIdx
-					argIdx++
-				case "avg", "max", "min", "first", "last", "sum", "rss":
-					// ok
-					argIdx++
-				default:
-					return ErrArgs("TIMEWINDOW", 2, fmt.Sprintf("unknown aggregator %q", v))
-				}
+				columns = append(columns, v)
 			case *NullValue:
-				nullValue = v
+				tw.nullValue = v
 			default:
 				return ErrArgs("TIMEWINDOW", 3, fmt.Sprintf("column name invalid type, %T", v))
 			}
 		}
-		if len(aggregations) < 2 || timeIdx == -1 {
-			return ErrArgs("TIMEWINDOW", 3, "invalid columns count or no time column specified")
+		if err := tw.SetColumns(columns); err != nil {
+			node.task.LogError("TIMEWINDOW", err.Error())
+			return ErrArgs("TIMEWINDOW", 3, err.Error())
 		}
-		node.SetValue("from", tsFrom)
-		node.SetValue("until", tsUntil)
-		node.SetValue("period", period)
-		node.SetValue("aggregations", aggregations)
-		node.SetValue("timeIdx", timeIdx)
-		node.SetValue("nullValue", nullValue)
 		node.SetFeedEOF(true)
-	} else {
-		f, _ := node.GetValue("from")
-		tsFrom = f.(time.Time)
-		t, _ := node.GetValue("until")
-		tsUntil = t.(time.Time)
-		p, _ := node.GetValue("period")
-		period = p.(time.Duration)
-		a, _ := node.GetValue("aggregations")
-		aggregations = a.([]string)
-		i, _ := node.GetValue("timeIdx")
-		timeIdx = i.(int)
-		n, _ := node.GetValue("nullValue")
-		nullValue = n.(*NullValue)
+		node.SetValue("timewindow", tw)
 	}
 
 	if node.Inflight().IsEOF() {
 		// flush remain values
-		var curWindow time.Time
-		if t, ok := node.GetValue("curWindow"); !ok {
+		if tw.curWindow.IsZero() {
 			return nil
-		} else {
-			curWindow = t.(time.Time)
 		}
-		timewindow_flush(node, curWindow, aggregations, timeIdx, nullValue.Value())
-		timewindow_fill(node, curWindow, period, tsUntil, nullValue.Value(), aggregations, timeIdx)
+		tw.Flush(node, tw.curWindow)
+		tw.Fill(node, tw.curWindow, tw.tsUntil)
 		return nil
 	}
 
@@ -219,215 +192,480 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	} else {
 		return ErrorRecord(fmt.Errorf("TIMEWINDOW value should be array"))
 	}
-	if len(aggregations) != len(values) {
+	if len(tw.columns) != len(values) {
 		return ErrorRecord(fmt.Errorf("TIMEWINDOW column count does not match %d", len(values)))
 	}
 
 	var ts time.Time
-	if v, err := util.ToTime(values[timeIdx]); err != nil {
+	if v, err := util.ToTime(values[tw.timeIdx]); err != nil {
 		return ErrorRecord(err)
 	} else {
 		ts = v
 	}
 
 	// recWindow value of the current record
-	var recWindow = time.Unix(0, (ts.UnixNano()/int64(period))*int64(period))
+	var recWindow = time.Unix(0, (ts.UnixNano()/int64(tw.period))*int64(tw.period))
 
 	// out of range
-	if recWindow.Sub(tsFrom) < 0 || recWindow.Sub(tsUntil) >= 0 {
+	if !tw.IsInRange(recWindow) {
 		return nil
 	}
 
 	// current processing window
-	var curWindow time.Time
-	if w, ok := node.GetValue("curWindow"); !ok {
-		node.SetValue("curWindow", recWindow)
-		curWindow = recWindow
-	} else {
-		curWindow = w.(time.Time)
+	if tw.curWindow.IsZero() {
+		tw.curWindow = recWindow
 	}
 
 	// fill missing leading records
 	if node.Rownum() == 1 {
-		fromWindow := time.Unix(0, (tsFrom.UnixNano()/int64(period)-1)*int64(period))
-		timewindow_fill(node, fromWindow, period, recWindow, nullValue.Value(), aggregations, timeIdx)
+		fromWindow := time.Unix(0, (tw.tsFrom.UnixNano()/int64(tw.period)-1)*int64(tw.period))
+		tw.Fill(node, fromWindow, recWindow)
 	}
 
-	// window changed, yield buffere values
-	if curWindow != recWindow {
-		timewindow_flush(node, curWindow, aggregations, timeIdx, nullValue.Value())
-		timewindow_fill(node, curWindow, period, recWindow, nullValue.Value(), aggregations, timeIdx)
+	// window changed, yield buffered values
+	if tw.curWindow != recWindow {
+		tw.Flush(node, tw.curWindow)
+		tw.Fill(node, tw.curWindow, recWindow)
 		// update processing window
-		node.SetValue("curWindow", recWindow)
+		tw.curWindow = recWindow
 	}
+
 	// append buffered values
+	if err := tw.Buffer(values); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type TimeWindow struct {
+	tsFrom    time.Time
+	tsUntil   time.Time
+	period    time.Duration
+	columns   []TimeWindowColumn
+	timeIdx   int
+	nullValue *NullValue
+
+	curWindow time.Time
+}
+
+func NewTimeWindow() *TimeWindow {
+	return &TimeWindow{
+		timeIdx:   -1,
+		nullValue: &NullValue{altValue: nil},
+		curWindow: time.Time{},
+	}
+}
+
+func (tw *TimeWindow) SetColumns(columns []string) error {
+	defaultFiller := &TimeWindowFillerConstant{value: tw.nullValue.Value()}
+	var filler TimeWindowFiller
+	for i, c := range columns {
+		filler = defaultFiller
+		typ, predict, found := strings.Cut(c, ":")
+		if found {
+			switch strings.ToLower(predict) {
+			case "piecewiseconstant":
+				filler = &TimeWindowFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: defaultFiller}
+			case "piecewiselinear":
+				filler = &TimeWindowFillerPredict{predictor: &interp.PiecewiseLinear{}, fallback: defaultFiller}
+			case "akimaspline":
+				filler = &TimeWindowFillerPredict{predictor: &interp.AkimaSpline{}, fallback: defaultFiller}
+			case "fritschbutland":
+				filler = &TimeWindowFillerPredict{predictor: &interp.FritschButland{}, fallback: defaultFiller}
+			case "linearregression":
+				filler = &TimeWindowFillerLinearRegression{fallback: defaultFiller}
+			case "-":
+				// use default interpolation
+			default:
+				return fmt.Errorf("unknown interpolation method %q", predict)
+			}
+		}
+		typ = strings.ToLower(typ)
+		switch typ {
+		case "time":
+			tw.timeIdx = i
+			tw.columns = append(tw.columns, &TimeWindowColumnTime{})
+		case "first", "last", "max", "min", "sum":
+			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: typ, nullFiller: filler})
+		case "avg", "rss", "rms":
+			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: typ, nullFiller: filler})
+		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy":
+			tw.columns = append(tw.columns, &TimeWindowColumnStore{name: typ, nullFiller: filler})
+		case "fft":
+			tw.columns = append(tw.columns, &TimeWindowColumnDsp{name: typ})
+		default:
+			return fmt.Errorf("unknown aggregator %q", typ)
+		}
+	}
+	if len(tw.columns) < 2 || tw.timeIdx == -1 {
+		return fmt.Errorf("invalid columns count or no time column specified")
+	}
+	return nil
+}
+
+func (tw *TimeWindow) SeriesName(i int) string {
+	return fmt.Sprintf("series%d", i)
+}
+
+func (tw *TimeWindow) IsInRange(ts time.Time) bool {
+	return ts.Sub(tw.tsFrom) >= 0 && ts.Sub(tw.tsUntil) < 0
+}
+
+// append buffered values
+func (tw *TimeWindow) Buffer(values []any) error {
+	if len(tw.columns) != len(values) {
+		return fmt.Errorf("invalid columns count, expect %d, got %d", len(tw.columns), len(values))
+	}
 	for i, v := range values {
-		if i == timeIdx {
+		if i == tw.timeIdx {
 			continue
 		}
-		serName := timewindow_seriesname(i)
-		if ser, ok := node.GetValue(serName); !ok {
-			node.SetValue(serName, []any{v})
-		} else {
-			series := ser.([]any)
-			node.SetValue(serName, append(series, v))
+		if ts, err := util.ToTime(values[tw.timeIdx]); err != nil {
+			return err
+		} else if err := tw.columns[i].Append(ts, v); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func timewindow_seriesname(i int) string {
-	return fmt.Sprintf("series%d", i)
+// curWindow: exclusive
+// nextWindow: inclusive
+func (tw *TimeWindow) Fill(node *Node, curWindow time.Time, nextWindow time.Time) {
+	curWindow = curWindow.Add(tw.period)
+	for nextWindow.Sub(curWindow) >= tw.period {
+		ret := make([]any, len(tw.columns))
+		for i, col := range tw.columns {
+			ret[i] = col.Result(curWindow)
+		}
+		node.yield(curWindow, ret)
+		curWindow = curWindow.Add(tw.period)
+	}
 }
 
-func timewindow_flush(node *Node, curWindow time.Time, aggregations []string, timeIdx int, nullValue any) {
+func (tw *TimeWindow) Flush(node *Node, curWindow time.Time) {
 	// aggregation
-	ret := make([]any, len(aggregations))
-	for i := range ret {
-		if i == timeIdx {
-			ret[i] = curWindow
-			continue
-		}
-		serName := timewindow_seriesname(i)
-		ser, ok := node.GetValue(serName)
-		if !ok {
-			break
-		}
-		series := ser.([]any)
-		ret[i] = timewindowResult(series, aggregations[i], nullValue)
-		// clear
-		node.DeleteValue(serName)
+	ret := make([]any, len(tw.columns))
+	for i, col := range tw.columns {
+		ret[i] = col.Result(curWindow)
 	}
 	// yield
 	node.yield(curWindow, ret)
 }
 
-func timewindow_fill(node *Node, curWindow time.Time, period time.Duration, nextWindow time.Time, nilValue any, aggregations []string, timeIdx int) {
-	curWindow = curWindow.Add(period)
-	for nextWindow.Sub(curWindow) >= period {
-		ret := make([]any, len(aggregations))
-		for i := range ret {
-			if i == timeIdx {
-				ret[i] = curWindow
-			} else {
-				ret[i] = nilValue
-			}
-		}
-		node.yield(curWindow, ret)
-		curWindow = curWindow.Add(period)
+type TimeWindowFiller interface {
+	Fit(ts time.Time, value float64)
+	Predict(ts time.Time) any
+}
+
+type TimeWindowFillerConstant struct {
+	value any
+}
+
+func (fill *TimeWindowFillerConstant) Fit(ts time.Time, val float64) {
+}
+
+func (fill *TimeWindowFillerConstant) Predict(ts time.Time) any {
+	return fill.value
+}
+
+type TimeWindowFillerPredict struct {
+	predictor interp.FittablePredictor
+	fallback  TimeWindowFiller
+	xs        []float64
+	ys        []float64
+}
+
+func (fill *TimeWindowFillerPredict) Fit(ts time.Time, val float64) {
+	y := val
+	x := float64(ts.UnixNano())
+	fill.xs = append(fill.xs, x)
+	fill.ys = append(fill.ys, y)
+
+	limit := 100
+	if len(fill.xs) > limit {
+		fill.xs = fill.xs[len(fill.xs)-limit:]
+		fill.ys = fill.ys[len(fill.ys)-limit:]
 	}
 }
 
-func timewindowResult(series []any, aggregation string, nullValue any) any {
-	switch aggregation {
-	case "first":
-		return timewindowFirst(series, nullValue)
-	case "last":
-		return timewindowLast(series, nullValue)
-	case "avg":
-		return timewindowAvg(series, nullValue)
-	case "max":
-		return timewindowMax(series, nullValue)
+func (fill *TimeWindowFillerPredict) Predict(ts time.Time) any {
+	if len(fill.xs) < 2 || len(fill.xs) != len(fill.ys) {
+		goto fallback
+	}
+	if err := fill.predictor.Fit(fill.xs, fill.ys); err != nil {
+		goto fallback
+	}
+	return fill.predictor.Predict(float64(ts.UnixNano()))
+fallback:
+	return fill.fallback.Predict(ts)
+}
+
+type TimeWindowFillerLinearRegression struct {
+	fallback TimeWindowFiller
+	xs       []float64
+	ys       []float64
+}
+
+func (fill *TimeWindowFillerLinearRegression) Fit(ts time.Time, val float64) {
+	y := val
+	x := float64(ts.UnixNano())
+	fill.xs = append(fill.xs, x)
+	fill.ys = append(fill.ys, y)
+
+	limit := 100
+	if len(fill.xs) > limit {
+		fill.xs = fill.xs[len(fill.xs)-limit:]
+		fill.ys = fill.ys[len(fill.ys)-limit:]
+	}
+}
+
+func (fill *TimeWindowFillerLinearRegression) Predict(ts time.Time) (ret any) {
+	if len(fill.xs) < 3 || len(fill.xs) != len(fill.ys) {
+		ret = fill.fallback.Predict(ts)
+		return ret
+	}
+	origin := false
+	// y = alpha + beta*x
+	alpha, beta := stat.LinearRegression(fill.xs, fill.ys, nil, origin)
+	ret = alpha + beta*float64(ts.UnixNano())
+
+	return ret
+}
+
+type TimeWindowColumn interface {
+	Append(ts time.Time, v any) error
+	Result(ts time.Time) any
+}
+
+// time
+type TimeWindowColumnTime struct {
+}
+
+func (twc *TimeWindowColumnTime) Append(ts time.Time, v any) error { return nil }
+func (twc *TimeWindowColumnTime) Result(ts time.Time) any {
+	return ts
+}
+
+// first, last, min, max, sum
+type TimeWindowColumnSingle struct {
+	name       string
+	value      any
+	hasValue   bool
+	nullFiller TimeWindowFiller
+}
+
+func (twc *TimeWindowColumnSingle) Append(ts time.Time, v any) error {
+	if twc.name == "first" {
+		if twc.hasValue {
+			return nil
+		}
+		twc.value = v
+		twc.hasValue = true
+		return nil
+	} else if twc.name == "last" {
+		twc.value = v
+		twc.hasValue = true
+		return nil
+	}
+
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	if !twc.hasValue {
+		twc.value = f
+		twc.hasValue = true
+		return nil
+	}
+
+	old := twc.value.(float64)
+	switch twc.name {
 	case "min":
-		return timewindowMin(series, nullValue)
+		if old > f {
+			twc.value = f
+		}
+	case "max":
+		if old < f {
+			twc.value = f
+		}
 	case "sum":
-		return timewindowSum(series, nullValue)
+		twc.value = old + f
+	}
+	return nil
+}
+
+func (twc *TimeWindowColumnSingle) Result(ts time.Time) any {
+	if twc.hasValue {
+		ret := twc.value
+		twc.value = 0
+		twc.hasValue = false
+		if f, err := util.ToFloat64(ret); err == nil {
+			twc.nullFiller.Fit(ts, f)
+		}
+		return ret
+	}
+	return twc.nullFiller.Predict(ts)
+}
+
+// - avg average
+// - rss root sum square
+// - rms root mean square
+type TimeWindowColumnAggregate struct {
+	name       string
+	value      float64
+	count      int
+	nullFiller TimeWindowFiller
+}
+
+func (twc *TimeWindowColumnAggregate) Append(ts time.Time, v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	switch twc.name {
+	case "avg":
+		twc.count++
+		twc.value += f
+	case "rss", "rms":
+		twc.count++
+		twc.value += f * f
+	}
+	return nil
+}
+
+func (twc *TimeWindowColumnAggregate) Result(ts time.Time) any {
+	if twc.count == 0 {
+		return twc.nullFiller.Predict(ts)
+	}
+	defer func() {
+		twc.count = 0
+		twc.value = 0
+	}()
+
+	var ret float64
+	switch twc.name {
+	case "avg":
+		ret = twc.value / float64(twc.count)
 	case "rss":
-		return timewindowRss(series, nullValue)
+		ret = math.Sqrt(twc.value)
+	case "rms":
+		ret = math.Sqrt(twc.value / float64(twc.count))
 	default:
-		return fmt.Errorf("unknown aggregator %q", aggregation)
+		return twc.nullFiller.Predict(ts)
 	}
-}
-
-func timewindowFirst(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	return values[0]
-}
-
-func timewindowLast(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	return values[len(values)-1]
-}
-
-func timewindowAvg(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	var sum float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		sum += f
-	}
-	return sum / float64(len(values))
-}
-
-func timewindowSum(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	var ret float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		ret += f
-	}
+	twc.nullFiller.Fit(ts, ret)
 	return ret
 }
 
-func timewindowMax(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	var ret float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		if f > ret {
-			ret = f
-		}
-	}
-	return ret
+type TimeWindowColumnStore struct {
+	name       string
+	values     []float64
+	nullFiller TimeWindowFiller
 }
 
-func timewindowMin(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
+func (twc *TimeWindowColumnStore) Append(ts time.Time, v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
 	}
-	var ret float64
-	for i, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
-		}
-		if i == 0 || f < ret {
-			ret = f
-		}
-	}
-	return ret
+	twc.values = append(twc.values, f)
+	return nil
 }
 
-func timewindowRss(values []any, nullValue any) any {
-	if len(values) == 0 {
-		return nullValue
-	}
-	var sum float64
-	for _, v := range values {
-		f, err := util.ToFloat64(v)
-		if err != nil {
-			return values[len(values)-1]
+func (twc *TimeWindowColumnStore) Result(ts time.Time) any {
+	defer func() {
+		twc.values = twc.values[0:0]
+	}()
+
+	var ret float64
+	switch twc.name {
+	case "mean":
+		if len(twc.values) == 0 {
+			goto fallback
 		}
-		sum += f * f
+		ret, _ = stat.MeanStdDev(twc.values, nil)
+	case "median":
+		if len(twc.values) == 0 {
+			goto fallback
+		}
+		sort.Float64s(twc.values)
+		ret = stat.Quantile(0.5, stat.Empirical, twc.values, nil)
+	case "median-interpolated":
+		if len(twc.values) == 0 {
+			goto fallback
+		}
+		sort.Float64s(twc.values)
+		ret = stat.Quantile(0.5, stat.LinInterp, twc.values, nil)
+	case "stddev":
+		if len(twc.values) < 1 {
+			goto fallback
+		}
+		_, ret = stat.MeanStdDev(twc.values, nil)
+	case "stderr":
+		if len(twc.values) < 1 {
+			goto fallback
+		}
+		_, std := stat.MeanStdDev(twc.values, nil)
+		ret = stat.StdErr(std, float64(len(twc.values)))
+	case "entropy":
+		if len(twc.values) == 0 {
+			goto fallback
+		}
+		ret = stat.Entropy(twc.values)
+	default:
+		goto fallback
 	}
-	return math.Sqrt(sum)
+	if ret != ret { // NaN
+		goto fallback
+	}
+	twc.nullFiller.Fit(ts, ret)
+	return ret
+fallback:
+	return twc.nullFiller.Predict(ts)
+}
+
+type TimeWindowColumnDsp struct {
+	name   string
+	times  []time.Time
+	values []float64
+}
+
+func (twc *TimeWindowColumnDsp) Append(ts time.Time, v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	twc.times = append(twc.times, ts)
+	twc.values = append(twc.values, f)
+	return nil
+}
+
+func (twc *TimeWindowColumnDsp) Result(ts time.Time) any {
+	defer func() {
+		twc.times = twc.times[0:0]
+		twc.values = twc.values[0:0]
+	}()
+
+	if len(twc.times) == 0 || len(twc.times) != len(twc.values) {
+		return nil
+	}
+	switch twc.name {
+	case "fft":
+		freqs, values := fft.FastFourierTransform(twc.times, twc.values)
+		ret := [][]any{}
+		for i := range freqs {
+			hz := freqs[i]
+			amp := values[i]
+			if hz == 0 || hz != hz {
+				continue
+			}
+			ret = append(ret, []any{hz, amp})
+		}
+		if len(ret) > 0 {
+			return ret
+		}
+	}
+	return nil
 }

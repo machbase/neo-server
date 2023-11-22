@@ -357,7 +357,14 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 	}
 	auth, exist := ctx.Request.Header["Authorization"]
 	if !exist {
-		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization header"})
+		tok := ctx.Query("token")
+		if tok != "" {
+			result, err := svr.authServer.ValidateClientToken(tok)
+			if err == nil && result {
+				return
+			}
+		}
+		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization token"})
 		ctx.Abort()
 		return
 	}
@@ -367,7 +374,6 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 			continue
 		}
 		tok := h[7:]
-		svr.log.Infof("tok ==>", tok)
 		result, err := svr.authServer.ValidateClientToken(tok)
 		if err != nil {
 			svr.log.Errorf("client private key %s", err.Error())

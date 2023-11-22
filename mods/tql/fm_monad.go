@@ -44,6 +44,9 @@ func (node *Node) fmFlatten() any {
 			switch value := r.Value().(type) {
 			case []any:
 				for _, v := range value {
+					if v == nil {
+						continue
+					}
 					ret = append(ret, NewRecord(k, v))
 				}
 			case any:
@@ -59,6 +62,9 @@ func (node *Node) fmFlatten() any {
 			k := rec.Key()
 			ret := []*Record{}
 			for _, v := range value {
+				if len(v) == 0 {
+					continue
+				}
 				ret = append(ret, NewRecord(k, v))
 			}
 			return ret
@@ -66,6 +72,9 @@ func (node *Node) fmFlatten() any {
 			k := rec.Key()
 			ret := []*Record{}
 			for _, v := range value {
+				if v == nil {
+					continue
+				}
 				ret = append(ret, NewRecord(k, v))
 			}
 			return ret
@@ -136,7 +145,8 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		if nth < 0 || nth >= len(val) {
 			return nil, fmt.Errorf("f(POPKEY) 1st arg should be between 0 and %d, but %d", len(val)-1, nth)
 		}
-		if node.Rownum() == 1 {
+		if _, ok := node.GetValue("isFirst"); !ok {
+			node.SetValue("isFirst", true)
 			columns := node.task.ResultColumns()
 			cols := columns
 			if len(columns) > nth+1 {
@@ -154,7 +164,8 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		return ret, nil
 	case [][]any:
 		ret := make([]*Record, len(val))
-		if node.Rownum() == 1 {
+		if _, ok := node.GetValue("isFirst"); !ok {
+			node.SetValue("isFirst", true)
 			columns := node.task.ResultColumns()
 			if len(columns) > 1 {
 				node.task.SetResultColumns(columns[1:])
@@ -178,7 +189,8 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 // incresing dimension of vector as result.
 // `map=PUSHKEY(NewKEY)` produces `NewKEY: [K, V...]`
 func (node *Node) fmPushKey(newKey any) (any, error) {
-	if node.Rownum() == 1 {
+	if _, ok := node.GetValue("isFirst"); !ok {
+		node.SetValue("isFirst", true)
 		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()...))
 	}
 	rec := node.Inflight()
@@ -199,7 +211,8 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 }
 
 func (node *Node) fmMapKey(newKey any) (any, error) {
-	if node.Rownum() == 1 {
+	if _, ok := node.GetValue("isFirst"); !ok {
+		node.SetValue("isFirst", true)
 		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
 	}
 	rec := node.Inflight()
@@ -236,7 +249,8 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		}
 	}
 
-	if node.Rownum() == 1 {
+	if _, ok := node.GetValue("isFirst"); !ok {
+		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
 		newCol := node.AsColumnTypeOf(newValue)
 		newCol.Name = columnName
@@ -294,7 +308,8 @@ func (node *Node) fmPopValue(idxes ...int) (any, error) {
 		return nil, ErrArgs("POPHKEY", 0, fmt.Sprintf("Value should be array, but %T", val))
 	}
 
-	if node.Rownum() == 1 {
+	if _, ok := node.GetValue("isFirst"); !ok {
+		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
 		updateCols := []*spi.Column{cols[0]}
 		for _, idx := range includes {
@@ -321,7 +336,8 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 		if idx < 0 || idx >= len(val) {
 			return node.fmPushValue(idx, newValue, opts...)
 		}
-		if node.Rownum() == 1 {
+		if _, ok := node.GetValue("isFirst"); !ok {
+			node.SetValue("isFirst", true)
 			if len(opts) > 0 {
 				if newName, ok := opts[0].(string); ok {
 					cols := node.task.ResultColumns() // cols contains "ROWNUM"
@@ -337,7 +353,8 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 			return node.fmPushValue(idx, newValue, opts...)
 		}
 
-		if node.Rownum() == 1 {
+		if _, ok := node.GetValue("isFirst"); !ok {
+			node.SetValue("isFirst", true)
 			if len(opts) > 0 {
 				if newName, ok := opts[0].(string); ok {
 					cols := node.task.ResultColumns() // cols contains "ROWNUM"

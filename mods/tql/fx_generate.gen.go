@@ -19,6 +19,7 @@ func NewNode(task *Task) *Node {
 		"context": x.gen_context,
 		"key":     x.gen_key,
 		"value":   x.gen_value,
+		"values":  x.gen_values,
 		"param":   x.gen_param,
 		"payload": x.gen_payload,
 		// math
@@ -206,6 +207,16 @@ func (x *Node) gen_value(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.GetRecordValue(p0...)
+}
+
+// gen_values
+//
+// syntax: values()
+func (x *Node) gen_values(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("values", 0, len(args))
+	}
+	return x.GetRecordValues()
 }
 
 // gen_param
