@@ -321,8 +321,9 @@ func (tw *TimeWindow) Buffer(values []any) error {
 		if i == tw.timeIdx {
 			continue
 		}
-		ts := values[tw.timeIdx].(time.Time)
-		if err := tw.columns[i].Append(ts, v); err != nil {
+		if ts, err := util.ToTime(values[tw.timeIdx]); err != nil {
+			return err
+		} else if err := tw.columns[i].Append(ts, v); err != nil {
 			return err
 		}
 	}
@@ -500,7 +501,7 @@ func (twc *TimeWindowColumnSingle) Result(ts time.Time) any {
 		ret := twc.value
 		twc.value = 0
 		twc.hasValue = false
-		if f, ok := ret.(float64); ok {
+		if f, err := util.ToFloat64(ret); err == nil {
 			twc.nullFiller.Fit(ts, f)
 		}
 		return ret
