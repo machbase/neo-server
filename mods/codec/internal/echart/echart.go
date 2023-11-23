@@ -8,14 +8,13 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
 
-var globalLog logging.Log
-
 type ChartBase struct {
+	logger logger.Logger
 	output spec.OutputStream
 
 	toJsonOutput bool
@@ -74,6 +73,10 @@ type ChartSeriesOptions struct {
 	*opts.AreaStyle     `json:"areaStyle,omitempty"`
 	*opts.TextStyle     `json:"textStyle,omitempty"`
 	*opts.CircularStyle `json:"circular,omitempty"`
+}
+
+func (ex *ChartBase) SetLogger(l logger.Logger) {
+	ex.logger = l
 }
 
 func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
@@ -209,10 +212,9 @@ func (ex *ChartBase) initialize() {
 
 func (ex *ChartBase) SetGlobalOptions(content string) {
 	if err := json.Unmarshal([]byte(content), &ex.globalOptions); err != nil {
-		if globalLog == nil {
-			globalLog = logging.GetLog("chart")
+		if ex.logger != nil {
+			ex.logger.LogWarn("invalid syntax of globalOptions", err.Error())
 		}
-		globalLog.Warn("invalid syntax of globalOptions", err.Error())
 		return
 	}
 }
@@ -270,10 +272,9 @@ func (ex *ChartBase) SetSeriesOptions(data ...string) {
 		opt := &ChartSeriesOptions{}
 		err := json.Unmarshal([]byte(content), opt)
 		if err != nil {
-			if globalLog == nil {
-				globalLog = logging.GetLog("chart")
+			if ex.logger != nil {
+				ex.logger.LogWarn("invalid syntax of seriesOptions", err.Error())
 			}
-			globalLog.Warn("invalid syntax of seriesOptions", err.Error())
 			return
 		}
 		ret = append(ret, opt)

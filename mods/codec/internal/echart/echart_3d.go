@@ -2,7 +2,6 @@ package echart
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -290,7 +289,9 @@ func (ex *Line3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -332,7 +333,9 @@ func (ex *Surface3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -374,7 +377,9 @@ func (ex *Scatter3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -416,6 +421,8 @@ func (ex *Bar3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }

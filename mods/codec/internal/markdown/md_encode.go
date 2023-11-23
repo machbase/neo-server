@@ -10,12 +10,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/mdconv"
 )
 
 type Exporter struct {
+	logger     logger.Logger
 	htmlRender bool
 	brief      int64
 	rownum     int64
@@ -45,6 +47,10 @@ func (ex *Exporter) ContentType() string {
 	} else {
 		return "text/markdown"
 	}
+}
+
+func (ex *Exporter) SetLogger(l logger.Logger) {
+	ex.logger = l
 }
 
 func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
@@ -149,7 +155,9 @@ func (ex *Exporter) AddRow(values []any) error {
 	defer func() {
 		o := recover()
 		if o != nil {
-			fmt.Println("PANIC (csvexporter)", o)
+			if ex.logger != nil {
+				ex.logger.LogError("PANIC (csvexporter)", o)
+			}
 			debug.PrintStack()
 		}
 	}()

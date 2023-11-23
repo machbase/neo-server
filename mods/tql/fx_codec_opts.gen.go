@@ -28,6 +28,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "html", Func: opts.Html},
 	{Name: "inputStream", Func: opts.InputStream},
 	{Name: "lineWidth", Func: opts.LineWidth},
+	{Name: "logger", Func: opts.Logger},
 	{Name: "markAreaNameCoord", Func: opts.MarkAreaNameCoord},
 	{Name: "markLineXAxisCoord", Func: opts.MarkLineXAxisCoord},
 	{Name: "markLineYAxisCoord", Func: opts.MarkLineYAxisCoord},

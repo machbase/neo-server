@@ -161,6 +161,7 @@ func NewNode(task *Task) *Node {
 		"html":               x.gen_html,
 		"inputStream":        x.gen_inputStream,
 		"lineWidth":          x.gen_lineWidth,
+		"logger":             x.gen_logger,
 		"markAreaNameCoord":  x.gen_markAreaNameCoord,
 		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
@@ -2206,6 +2207,21 @@ func (x *Node) gen_lineWidth(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.LineWidth(p0)
+	return ret, nil
+}
+
+// gen_logger
+//
+// syntax: logger(Logger)
+func (x *Node) gen_logger(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("logger", 1, len(args))
+	}
+	p0, err := convLogger(args, 0, "logger", "logger.Logger")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Logger(p0)
 	return ret, nil
 }
 

@@ -30,7 +30,7 @@ type Encoder struct {
 }
 
 func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
-	e.opts = append(e.opts, args...)
+	e.opts = append(args, e.opts...)
 	ret := codec.NewEncoder(e.format, e.opts...)
 	return ret
 }
@@ -76,6 +76,7 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 			return nil, errors.New("no encoder found")
 		}
 		ret.encoder = val.RowEncoder(
+			opts.Logger(node.task),
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.AssetHost("/web/echarts/"),
 			opts.ChartJson(node.task.toJsonOutput),
