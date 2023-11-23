@@ -132,10 +132,12 @@ func (node *Node) fmNullValue(v any) any {
 
 func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) any {
 	var tw *TimeWindow
+	var isFirstRecord bool
 
 	if obj, ok := node.GetValue("timewindow"); ok {
 		tw = obj.(*TimeWindow)
 	} else {
+		isFirstRecord = true
 		tw = NewTimeWindow()
 		if ts, err := util.ToTime(from); err != nil {
 			return ErrArgs("TIMEWINDOW", 0, fmt.Sprintf("from is not compatible type, %T", from))
@@ -177,10 +179,13 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	}
 
 	if node.Inflight().IsEOF() {
-		// flush remain values
 		if tw.curWindow.IsZero() {
+			// It means there were no data in the given time range (from ~ until).
+			// So fill the result with null values.
+			tw.Fill(node, tw.tsFrom, tw.tsUntil)
 			return nil
 		}
+		// flush remain values
 		tw.Push(node, tw.curWindow)
 		tw.Fill(node, tw.curWindow, tw.tsUntil)
 		tw.flushBuffer(node)
@@ -218,7 +223,7 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	}
 
 	// fill missing leading records
-	if node.Rownum() == 1 {
+	if isFirstRecord {
 		fromWindow := time.Unix(0, (tw.tsFrom.UnixNano()/int64(tw.period)-1)*int64(tw.period))
 		tw.Fill(node, fromWindow, recWindow)
 	}
