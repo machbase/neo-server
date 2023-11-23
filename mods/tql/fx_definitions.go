@@ -2,8 +2,6 @@ package tql
 
 import (
 	"math"
-
-	"github.com/machbase/neo-server/mods/nums"
 )
 
 type Definition struct {
@@ -24,19 +22,40 @@ var FxDefinitions = []Definition{
 	{"payload", defTask.GetRequestPayload},
 	// math
 	{"// math", nil},
-	{"sin", math.Sin},
+	{"abs", math.Abs},
+	{"acos", math.Acos},
+	{"acosh", math.Acosh},
+	{"asin", math.Asin},
+	{"asinh", math.Asinh},
+	{"atan", math.Atan},
+	{"atanh", math.Atanh},
+	{"ceil", math.Ceil},
 	{"cos", math.Cos},
-	{"tan", math.Tan},
+	{"cosh", math.Cosh},
 	{"exp", math.Exp},
 	{"exp2", math.Exp2},
+	{"floor", math.Floor},
 	{"log", math.Log},
 	{"log10", math.Log10},
+	{"log2", math.Log2},
+	{"max", math.Max},
+	{"min", math.Min},
+	{"mod", math.Mod},
+	{"pow", math.Pow},
+	{"pow10", math.Pow10},
+	{"remainder", math.Remainder},
+	{"round", math.Round},
+	{"sin", math.Sin},
+	{"sinh", math.Sinh},
+	{"sqrt", math.Sqrt},
+	{"tan", math.Tan},
+	{"tanh", math.Tanh},
+	{"trunc", math.Trunc},
 	// nums
 	{"// nums", nil},
 	{"count", "nums.Count"},
 	{"len", "nums.Len"},
 	{"element", "nums.Element"},
-	{"round", nums.Round},
 	{"linspace", defTask.fmLinspace},
 	{"linspace50", defTask.fmLinspace50},
 	{"meshgrid", defTask.fmMeshgrid},

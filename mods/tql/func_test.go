@@ -262,11 +262,15 @@ func TestRound(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("round"),
 		args:      []any{},
-		expectErr: "f(round) invalid number of args; expect:2, actual:0",
+		expectErr: "f(round) invalid number of args; expect:1, actual:0",
 	}.run(t)
 	FunctionTestCase{f: node.Function("round"),
-		args:   []any{123.4567, 2.0},
-		expect: float64(122),
+		args:   []any{123.4567},
+		expect: float64(123),
+	}.run(t)
+	FunctionTestCase{f: node.Function("round"),
+		args:   []any{234.5678},
+		expect: float64(235),
 	}.run(t)
 }
 
