@@ -589,31 +589,47 @@ func (x *Node) gen_ansiTimeformat(args ...any) (any, error) {
 
 // gen_TAKE
 //
-// syntax: TAKE(int)
+// syntax: TAKE(int, ...int)
 func (x *Node) gen_TAKE(args ...any) (any, error) {
-	if len(args) != 1 {
+	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("TAKE", 1, len(args))
 	}
 	p0, err := convInt(args, 0, "TAKE", "int")
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmTake(p0)
+	p1 := []int{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convInt(args, n, "TAKE", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmTake(p0, p1...)
 	return ret, nil
 }
 
 // gen_DROP
 //
-// syntax: DROP(int)
+// syntax: DROP(int, ...int)
 func (x *Node) gen_DROP(args ...any) (any, error) {
-	if len(args) != 1 {
+	if len(args) < 1 {
 		return nil, ErrInvalidNumOfArgs("DROP", 1, len(args))
 	}
 	p0, err := convInt(args, 0, "DROP", "int")
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmDrop(p0)
+	p1 := []int{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convInt(args, n, "DROP", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmDrop(p0, p1...)
 	return ret, nil
 }
 

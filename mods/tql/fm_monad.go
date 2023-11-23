@@ -14,15 +14,50 @@ func (node *Node) fmLazy(flag bool) *lazyOption {
 	return &lazyOption{flag: flag}
 }
 
-func (node *Node) fmTake(limit int) *Record {
-	if node.nrow > limit {
+func (node *Node) fmTake(limit int, args ...int) *Record {
+	offset := 0
+	if n, ok := node.GetValue("offset"); !ok {
+		if len(args) == 1 {
+			offset = args[0]
+		}
+		node.SetValue("offset", offset)
+	} else {
+		offset = n.(int)
+	}
+	count := 0
+	if n, ok := node.GetValue("count"); ok {
+		count = n.(int)
+	}
+	count++
+	node.SetValue("count", count)
+
+	if count > offset+limit {
 		return BreakRecord
+	}
+	if count <= offset {
+		return nil
 	}
 	return node.Inflight()
 }
 
-func (node *Node) fmDrop(limit int) *Record {
-	if node.nrow <= limit {
+func (node *Node) fmDrop(limit int, args ...int) *Record {
+	offset := 0
+	if n, ok := node.GetValue("offset"); !ok {
+		if len(args) == 1 {
+			offset = args[0]
+		}
+		node.SetValue("offset", offset)
+	} else {
+		offset = n.(int)
+	}
+	count := 0
+	if n, ok := node.GetValue("count"); ok {
+		count = n.(int)
+	}
+	count++
+	node.SetValue("count", count)
+
+	if count > offset && count <= offset+limit {
 		return nil
 	}
 	return node.Inflight()
