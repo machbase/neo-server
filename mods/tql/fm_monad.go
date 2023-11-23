@@ -14,10 +14,24 @@ func (node *Node) fmLazy(flag bool) *lazyOption {
 	return &lazyOption{flag: flag}
 }
 
-func (node *Node) fmTake(limit int, args ...int) *Record {
+func (node *Node) fmTake(args ...int) (*Record, error) {
+	limit := 0
+	if n, ok := node.GetValue("limit"); !ok {
+		if len(args) == 1 {
+			limit = args[0]
+		} else if len(args) == 2 {
+			limit = args[1]
+		}
+		node.SetValue("limit", limit)
+	} else {
+		limit = n.(int)
+	}
+	if limit == 0 {
+		return nil, ErrArgs("TAKE", 1, "limit should be larger than 0")
+	}
 	offset := 0
 	if n, ok := node.GetValue("offset"); !ok {
-		if len(args) == 1 {
+		if len(args) == 2 {
 			offset = args[0]
 		}
 		node.SetValue("offset", offset)
@@ -32,18 +46,32 @@ func (node *Node) fmTake(limit int, args ...int) *Record {
 	node.SetValue("count", count)
 
 	if count > offset+limit {
-		return BreakRecord
+		return BreakRecord, nil
 	}
 	if count <= offset {
-		return nil
+		return nil, nil
 	}
-	return node.Inflight()
+	return node.Inflight(), nil
 }
 
-func (node *Node) fmDrop(limit int, args ...int) *Record {
+func (node *Node) fmDrop(args ...int) (*Record, error) {
+	limit := 0
+	if n, ok := node.GetValue("limit"); !ok {
+		if len(args) == 1 {
+			limit = args[0]
+		} else if len(args) == 2 {
+			limit = args[1]
+		}
+		node.SetValue("limit", limit)
+	} else {
+		limit = n.(int)
+	}
+	if limit == 0 {
+		return nil, ErrArgs("DROP", 1, "limit should be larger than 0")
+	}
 	offset := 0
 	if n, ok := node.GetValue("offset"); !ok {
-		if len(args) == 1 {
+		if len(args) == 2 {
 			offset = args[0]
 		}
 		node.SetValue("offset", offset)
@@ -58,9 +86,9 @@ func (node *Node) fmDrop(limit int, args ...int) *Record {
 	node.SetValue("count", count)
 
 	if count > offset && count <= offset+limit {
-		return nil
+		return nil, nil
 	}
-	return node.Inflight()
+	return node.Inflight(), nil
 }
 
 func (node *Node) fmFilter(flag bool) *Record {
