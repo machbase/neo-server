@@ -14,6 +14,7 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
@@ -53,6 +54,10 @@ type Task struct {
 	_stateLock     sync.RWMutex
 	_created       time.Time
 }
+
+var (
+	_ logger.Logger = &Task{}
+)
 
 func NewTask() *Task {
 	return NewTaskContext(context.Background())

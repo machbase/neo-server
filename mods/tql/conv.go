@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
@@ -39,6 +40,16 @@ func convOutputStream(args []any, idx int, fname string, expect string) (spec.Ou
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	if o, ok := args[idx].(spec.OutputStream); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convLogger(args []any, idx int, fname string, expect string) (logger.Logger, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(logger.Logger); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

@@ -119,6 +119,94 @@ func TestNano(t *testing.T) {
 	require.Equal(t, strings.Join(expects, "\n"), result)
 }
 
+func TestBoxFloat(t *testing.T) {
+	enc := box.NewEncoder()
+
+	require.Equal(t, "plain/text", enc.ContentType())
+
+	w := &bytes.Buffer{}
+	out := &stream.WriterOutputStream{Writer: w}
+
+	enc.SetOutputStream(out)
+	enc.SetRownum(true)
+	enc.SetBoxStyle("simeple")
+	enc.SetBoxSeparateColumns(true)
+	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
+	enc.SetHeading(true)
+	err := enc.Open()
+	require.Nil(t, err)
+
+	enc.AddRow([]any{
+		0.0,
+		1.234000,
+		float32(1.234000),
+		-1.234000,
+		float32(-1.234000),
+		math.Pi,
+	})
+	enc.Close()
+
+	expects := []string{
+		"+--------+------+-------+-------+--------+--------+-------------------+",
+		"| ROWNUM | COL1 | COL2  | COL3  | COL4   | COL5   | COL6              |",
+		"+--------+------+-------+-------+--------+--------+-------------------+",
+		"|      1 | 0    | 1.234 | 1.234 | -1.234 | -1.234 | 3.141592653589793 |",
+		"+--------+------+-------+-------+--------+--------+-------------------+",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+	fmt.Println()
+}
+
+func TestBoxFloat2(t *testing.T) {
+	enc := box.NewEncoder()
+
+	require.Equal(t, "plain/text", enc.ContentType())
+
+	w := &bytes.Buffer{}
+	out := &stream.WriterOutputStream{Writer: w}
+
+	enc.SetOutputStream(out)
+	enc.SetRownum(true)
+	enc.SetPrecision(2)
+	enc.SetBoxStyle("simeple")
+	enc.SetBoxSeparateColumns(true)
+	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
+	enc.SetHeading(true)
+	err := enc.Open()
+	require.Nil(t, err)
+
+	enc.AddRow([]any{
+		0.0,
+		1.234000,
+		float32(1.234000),
+		-1.234000,
+		float32(-1.234000),
+		math.Pi,
+	})
+	enc.AddRow([]any{
+		0.005,
+		1.235000,
+		float32(1.235000),
+		-1.235000,
+		float32(-1.235000),
+		math.Pi,
+	})
+	enc.Close()
+
+	expects := []string{
+		"+--------+------+------+------+-------+-------+------+",
+		"| ROWNUM | COL1 | COL2 | COL3 | COL4  | COL5  | COL6 |",
+		"+--------+------+------+------+-------+-------+------+",
+		"|      1 | 0.00 | 1.23 | 1.23 | -1.23 | -1.23 | 3.14 |",
+		"|      2 | 0.01 | 1.24 | 1.24 | -1.24 | -1.24 | 3.14 |",
+		"+--------+------+------+------+-------+-------+------+",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+	fmt.Println()
+}
+
 func runTimeformat(t *testing.T, format string) string {
 	enc := box.NewEncoder()
 

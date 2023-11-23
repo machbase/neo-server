@@ -1195,6 +1195,20 @@ func TestDropTake(t *testing.T) {
 		"53,1.050505",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(5, 45)",
+		"TAKE(5, 3)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"51,1.010101",
+		"52,1.030303",
+		"53,1.050505",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestOcillator(t *testing.T) {

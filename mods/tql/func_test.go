@@ -2,6 +2,7 @@ package tql_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -258,16 +259,42 @@ func TestElement(t *testing.T) {
 	}.run(t)
 }
 
-func TestRound(t *testing.T) {
+func TestMathFunctions(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("round"),
 		args:      []any{},
-		expectErr: "f(round) invalid number of args; expect:2, actual:0",
+		expectErr: "f(round) invalid number of args; expect:1, actual:0",
 	}.run(t)
-	FunctionTestCase{f: node.Function("round"),
-		args:   []any{123.4567, 2.0},
-		expect: float64(122),
-	}.run(t)
+
+	tests := []FunctionTestCase{
+		{f: node.Function("abs"), args: []any{1.1}, expect: 1.1},
+		{f: node.Function("abs"), args: []any{-1.1}, expect: float64(1.1)},
+		{f: node.Function("acos"), args: []any{math.Cos(math.Pi)}, expect: math.Pi},
+		{f: node.Function("asin"), args: []any{math.Sin(math.Pi / 2)}, expect: math.Pi / 2},
+		{f: node.Function("ceil"), args: []any{3.1415}, expect: 4.0},
+		{f: node.Function("cos"), args: []any{math.Pi}, expect: -1.0},
+		{f: node.Function("exp"), args: []any{0.0}, expect: 1.0},
+		{f: node.Function("exp2"), args: []any{2.0}, expect: 4.0},
+		{f: node.Function("floor"), args: []any{3.14}, expect: 3.0},
+		{f: node.Function("log"), args: []any{1.0}, expect: 0.0},
+		{f: node.Function("log2"), args: []any{8.0}, expect: 3.0},
+		{f: node.Function("log10"), args: []any{100.0}, expect: 2.0},
+		{f: node.Function("min"), args: []any{1.0, 1.1}, expect: float64(1.0)},
+		{f: node.Function("max"), args: []any{1.0, 1.1}, expect: float64(1.1)},
+		{f: node.Function("mod"), args: []any{5.0, 2.0}, expect: float64(1.0)},
+		{f: node.Function("pow"), args: []any{2.0, 3.0}, expect: float64(8.0)},
+		{f: node.Function("pow10"), args: []any{3.0}, expect: float64(1000.0)},
+		{f: node.Function("remainder"), args: []any{5.0, 2.0}, expect: float64(1.0)},
+		{f: node.Function("round"), args: []any{123.4567}, expect: float64(123)},
+		{f: node.Function("round"), args: []any{234.5678}, expect: float64(235)},
+		{f: node.Function("sin"), args: []any{math.Pi / 2}, expect: 1.0},
+		{f: node.Function("sqrt"), args: []any{4.0}, expect: 2.0},
+		{f: node.Function("tan"), args: []any{0.0}, expect: 0.0},
+		{f: node.Function("trunc"), args: []any{math.Pi}, expect: 3.0},
+	}
+	for _, tt := range tests {
+		tt.run(t)
+	}
 }
 
 // TestCase
