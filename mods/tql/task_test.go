@@ -1198,6 +1198,29 @@ func TestDropTake(t *testing.T) {
 
 	codeLines = []string{
 		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(2)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"1,0.000000",
+		"2,0.020202",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(0)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
 		"DROP(5, 45)",
 		"TAKE(5, 3)",
 		"PUSHKEY('test')",
