@@ -26,7 +26,7 @@ func (node *Node) fmTake(args ...int) (*Record, error) {
 	} else {
 		limit = n.(int)
 	}
-	if limit == 0 {
+	if limit < 0 {
 		return nil, ErrArgs("TAKE", 1, "limit should be larger than 0")
 	}
 	offset := 0
@@ -66,7 +66,7 @@ func (node *Node) fmDrop(args ...int) (*Record, error) {
 	} else {
 		limit = n.(int)
 	}
-	if limit == 0 {
+	if limit < 0 {
 		return nil, ErrArgs("DROP", 1, "limit should be larger than 0")
 	}
 	offset := 0
