@@ -2808,81 +2808,48 @@ func (x *Node) gen_visualMapColor(args ...any) (any, error) {
 
 // gen_xAxis
 //
-// syntax: xAxis(int, string, ...string)
+// syntax: xAxis(...interface {})
 func (x *Node) gen_xAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("xAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "xAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "xAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "xAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "xAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.XAxis(p0, p1, p2...)
+	ret := opts.XAxis(p0...)
 	return ret, nil
 }
 
 // gen_yAxis
 //
-// syntax: yAxis(int, string, ...string)
+// syntax: yAxis(...interface {})
 func (x *Node) gen_yAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("yAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "yAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "yAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "yAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "yAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.YAxis(p0, p1, p2...)
+	ret := opts.YAxis(p0...)
 	return ret, nil
 }
 
 // gen_zAxis
 //
-// syntax: zAxis(int, string, ...string)
+// syntax: zAxis(...interface {})
 func (x *Node) gen_zAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("zAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "zAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "zAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "zAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "zAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.ZAxis(p0, p1, p2...)
+	ret := opts.ZAxis(p0...)
 	return ret, nil
 }

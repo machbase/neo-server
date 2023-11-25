@@ -48,21 +48,6 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, types ...string) {
-	ex.xAxisIdx = idx
-	ex.globalOptions.XYAxis.XAxisList[0].Name = label
-	if len(types) > 0 {
-		ex.globalOptions.XYAxis.XAxisList[0].Type = types[0]
-	}
-}
-
-func (ex *Base2D) SetYAxis(idx int, label string, types ...string) {
-	ex.globalOptions.XYAxis.YAxisList[0].Name = label
-	if len(types) > 0 {
-		ex.globalOptions.XYAxis.YAxisList[0].Type = types[0]
-	}
-}
-
 func (ex *Base2D) SetMarkAreaXAxis(seriesIdx int, from any, to any, content string) {
 	var item opts.MarkAreaNameCoordItem
 

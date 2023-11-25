@@ -63,22 +63,72 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, types ...string) {
-	ex.xAxisIdx = idx
-	ex.globalOptions.XYAxis.XAxisList[0].Name = label
-	if len(types) > 0 {
-		ex.globalOptions.XYAxis.XAxisList[0].Type = types[0]
+// xAxis(idx int, label string, typ string)
+func (ex *Base2D) SetXAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() idx", err.Error())
+		}
+	} else {
+		ex.xAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.globalOptions.XYAxis.XAxisList[0].Name = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("xAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.globalOptions.XYAxis.XAxisList[0].Type = typ
+		}
 	}
 	if ex.globalOptions.XYAxis.XAxisList[0].Type == "time" {
 		ex.useTimeformatter = true
 	}
 }
 
-func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
-	ex.yAxisIdx = idx
-	ex.globalOptions.XYAxis.YAxisList[0].Name = label
-	if len(typ) > 0 {
-		ex.globalOptions.XYAxis.YAxisList[0].Type = typ[0]
+// yAxis(idx int, label string, typ string)
+func (ex *Base2D) SetYAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() idx", err.Error())
+		}
+	} else {
+		ex.yAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.globalOptions.XYAxis.YAxisList[0].Name = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("yAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.globalOptions.XYAxis.YAxisList[0].Type = typ
+		}
 	}
 }
 

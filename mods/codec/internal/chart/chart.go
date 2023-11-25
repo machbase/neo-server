@@ -28,6 +28,8 @@ type ChartBase struct {
 	globalOptions ChartGlobalOptions
 	multiSeries   map[int]*charts.SingleSeries
 
+	charts.XYAxis
+
 	onceInit sync.Once
 
 	simpleColNames []string
@@ -59,8 +61,6 @@ type ChartGlobalOptions struct {
 	*opts.AxisPointer `json:"axisPointer"`
 
 	opts.Grid3D `json:"grid3D"`
-
-	charts.XYAxis
 }
 
 func (ex *ChartBase) SetLogger(l logger.Logger) {
@@ -193,8 +193,6 @@ func (ex *ChartBase) initialize() {
 		ex.globalOptions.Tooltip.Show = true
 		ex.globalOptions.Tooltip.Trigger = "axis"
 		ex.globalOptions.Tooltip.AxisPointer = &opts.AxisPointer{Type: "cross"}
-		ex.globalOptions.XYAxis.ExtendXAxis(opts.XAxis{Name: "x", Show: true, SplitLine: &opts.SplitLine{Show: true, LineStyle: &opts.LineStyle{Width: 0.8, Opacity: 0.3}}})
-		ex.globalOptions.XYAxis.ExtendYAxis(opts.YAxis{Name: "y", Show: true, SplitLine: &opts.SplitLine{Show: true, LineStyle: &opts.LineStyle{Width: 0.8, Opacity: 0.3}}})
 	})
 }
 
@@ -238,23 +236,97 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 
 			bc.Animation = ex.globalOptions.Animation
 			bc.Colors = ex.globalOptions.Colors
-			bc.XYAxis = ex.globalOptions.XYAxis
+			bc.XYAxis = ex.XYAxis
 			bc.DataZoomList = ex.globalOptions.DataZoomList
 			bc.VisualMapList = ex.globalOptions.VisualMapList
 			bc.GridList = ex.globalOptions.GridList
 			bc.Grid3D = ex.globalOptions.Grid3D
 		},
 	}
-
-	for i, xaxis := range ex.globalOptions.XAxisList {
-		xaxis.Type = "" // REMOVE ME: debug
-		ret = append(ret, charts.WithXAxisOpts(xaxis, i))
+	if len(ex.XYAxis.XAxisList) == 0 {
+		ex.SetXAxis(`{"name":"x", "type":"time"}`)
 	}
-	for i, yaxis := range ex.globalOptions.YAxisList {
-		yaxis.Type = "" // REMOVE ME: debug
-		ret = append(ret, charts.WithYAxisOpts(yaxis, i))
+	if len(ex.XYAxis.YAxisList) == 0 {
+		ex.SetYAxis(`{"name":"y", "type":"value"}`)
 	}
 	return ret
+}
+
+func (ex *ChartBase) SetXAxis(args ...any) {
+	if len(args) != 1 {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis syntax error, xAxis(json) ")
+		}
+		return
+	}
+	content, ok := args[0].(string)
+	if !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis syntax error, xAxis(json) ")
+		}
+		return
+	}
+
+	xaxis := opts.XAxis{
+		Name: "x",
+		Show: true,
+		SplitLine: &opts.SplitLine{
+			Show: true,
+			LineStyle: &opts.LineStyle{
+				Width:   0.8,
+				Opacity: 0.3,
+			},
+		},
+	}
+
+	if !strings.HasPrefix(content, "{") {
+		content = "{" + content + "}"
+	}
+	if err := json.Unmarshal([]byte(content), &xaxis); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogWarn("xAxis()", err.Error())
+			return
+		}
+	}
+	ex.XYAxis.ExtendXAxis(xaxis)
+}
+
+func (ex *ChartBase) SetYAxis(args ...any) {
+	if len(args) != 1 {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis syntax error, yAxis(json) ")
+		}
+		return
+	}
+	content, ok := args[0].(string)
+	if !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis syntax error, yAxis(json) ")
+		}
+		return
+	}
+
+	yaxis := opts.YAxis{
+		Name: "y",
+		Show: true,
+		SplitLine: &opts.SplitLine{
+			Show: true,
+			LineStyle: &opts.LineStyle{
+				Width:   0.8,
+				Opacity: 0.3,
+			},
+		},
+	}
+	if !strings.HasPrefix(content, "{") {
+		content = "{" + content + "}"
+	}
+	if err := json.Unmarshal([]byte(content), &yaxis); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogWarn("yAxis()", err.Error())
+			return
+		}
+	}
+	ex.XYAxis.ExtendYAxis(yaxis)
 }
 
 func (ex *ChartBase) SetSeries(idx int, content string) {
