@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/internal/box"
+	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/html"
@@ -18,6 +19,7 @@ const CSV = "csv"
 const JSON = "json"
 const MARKDOWN = "markdown"
 const HTML = "html"
+const ECHART = "echart"
 const ECHART_LINE = "echart.line"
 const ECHART_SCATTER = "echart.scatter"
 const ECHART_BAR = "echart.bar"
@@ -61,6 +63,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = markdown.NewEncoder()
 	case HTML:
 		ret = html.NewEncoder()
+	case ECHART:
+		ret = chart.NewRectChart(chart.LINE)
 	case ECHART_LINE:
 		ret = echart.NewRectChart(echart.LINE)
 	case ECHART_SCATTER:

@@ -18,6 +18,7 @@ import (
 
 // const pkgName = "github.com/machbase/neo-server/mods/codec/internal/echart"
 var scanDirs = []string{
+	"../internal/chart",
 	"../internal/echart",
 	"../internal/box",
 	"../internal/csv",

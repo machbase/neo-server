@@ -108,6 +108,7 @@ func NewNode(task *Task) *Node {
 		"JSON":            x.gen_JSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
+		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
 		"CHART_SCATTER":   x.gen_CHART_SCATTER,
 		"CHART_BAR":       x.gen_CHART_BAR,
@@ -154,6 +155,7 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
+		"global":             x.gen_global,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -163,12 +165,18 @@ func NewNode(task *Task) *Node {
 		"lineWidth":          x.gen_lineWidth,
 		"logger":             x.gen_logger,
 		"markAreaNameCoord":  x.gen_markAreaNameCoord,
+		"markAreaXAxis":      x.gen_markAreaXAxis,
+		"markAreaYAxis":      x.gen_markAreaYAxis,
+		"markLineStyle":      x.gen_markLineStyle,
+		"markLineXAxis":      x.gen_markLineXAxis,
 		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
+		"markLineYAxis":      x.gen_markLineYAxis,
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
+		"series":             x.gen_series,
 		"seriesLabels":       x.gen_seriesLabels,
 		"seriesOptions":      x.gen_seriesOptions,
 		"showGrid":           x.gen_showGrid,
@@ -1512,6 +1520,21 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 	return x.fmHtml(p0...)
 }
 
+// gen_CHART
+//
+// syntax: CHART(...interface {})
+func (x *Node) gen_CHART(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "CHART", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmChart(p0...)
+}
+
 // gen_CHART_LINE
 //
 // syntax: CHART_LINE(...interface {})
@@ -2104,6 +2127,21 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_global
+//
+// syntax: global(string)
+func (x *Node) gen_global(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("global", 1, len(args))
+	}
+	p0, err := convString(args, 0, "global", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Global(p0)
+	return ret, nil
+}
+
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -2256,6 +2294,98 @@ func (x *Node) gen_markAreaNameCoord(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_markAreaXAxis
+//
+// syntax: markAreaXAxis(int, , , string)
+func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 4, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := convString(args, 3, "markAreaXAxis", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkAreaXAxis(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_markAreaYAxis
+//
+// syntax: markAreaYAxis(int, , , string)
+func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 4, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := convString(args, 3, "markAreaYAxis", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkAreaYAxis(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_markLineStyle
+//
+// syntax: markLineStyle(int, string)
+func (x *Node) gen_markLineStyle(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("markLineStyle", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineStyle", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "markLineStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkLineStyle(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineXAxis
+//
+// syntax: markLineXAxis(int, )
+func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("markLineXAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkLineXAxis(p0, p1)
+	return ret, nil
+}
+
 // gen_markLineXAxisCoord
 //
 // syntax: markLineXAxisCoord(, string)
@@ -2272,6 +2402,25 @@ func (x *Node) gen_markLineXAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineXAxisCoord(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineYAxis
+//
+// syntax: markLineYAxis(int, )
+func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("markLineYAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkLineYAxis(p0, p1)
 	return ret, nil
 }
 
@@ -2351,6 +2500,25 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Rownum(p0)
+	return ret, nil
+}
+
+// gen_series
+//
+// syntax: series(int, string)
+func (x *Node) gen_series(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("series", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "series", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "series", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Series(p0, p1)
 	return ret, nil
 }
 
