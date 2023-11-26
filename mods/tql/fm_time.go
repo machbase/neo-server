@@ -92,8 +92,26 @@ func (x *Node) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	return baseTime.Add(delta), nil
 }
 
-func (x *Node) fmParseTime(expr string, format string, tz *time.Location) (time.Time, error) {
-	return util.ParseTime(expr, format, tz)
+type fmParseTimeReceiver struct {
+	format string
+}
+
+func (r *fmParseTimeReceiver) SetTimeformat(f string) {
+	r.format = f
+}
+
+func (x *Node) fmParseTime(expr string, format any, tz *time.Location) (time.Time, error) {
+	switch fv := format.(type) {
+	case string:
+		return util.ParseTime(expr, fv, tz)
+	case opts.Option:
+		r := &fmParseTimeReceiver{}
+		fv(r)
+		if r.format != "" {
+			return util.ParseTime(expr, r.format, tz)
+		}
+	}
+	return time.Time{}, fmt.Errorf("%q unsupported timeformat %T (%v)", x.Name(), format, format)
 }
 
 func (x *Node) fmTZ(timezone string) (*time.Location, error) {

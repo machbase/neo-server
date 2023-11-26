@@ -141,6 +141,7 @@ var FxDefinitions = []Definition{
 	{"freq", defTask.fmFreq},
 	{"oscillator", defTask.fmOscillator},
 	{"sphere", defTask.fmSphere},
+	{"json", defTask.fmJsonData},
 	{"FAKE", defTask.fmFake},
 	// input, output
 	{"// maps.input", nil},
