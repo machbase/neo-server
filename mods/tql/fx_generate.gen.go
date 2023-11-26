@@ -2296,10 +2296,10 @@ func (x *Node) gen_markAreaNameCoord(args ...any) (any, error) {
 
 // gen_markAreaXAxis
 //
-// syntax: markAreaXAxis(int, , , string)
+// syntax: markAreaXAxis(int, , , ...string)
 func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 4, len(args))
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 3, len(args))
 	}
 	p0, err := convInt(args, 0, "markAreaXAxis", "int")
 	if err != nil {
@@ -2313,20 +2313,24 @@ func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p3, err := convString(args, 3, "markAreaXAxis", "string")
-	if err != nil {
-		return nil, err
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
 	}
-	ret := opts.MarkAreaXAxis(p0, p1, p2, p3)
+	ret := opts.MarkAreaXAxis(p0, p1, p2, p3...)
 	return ret, nil
 }
 
 // gen_markAreaYAxis
 //
-// syntax: markAreaYAxis(int, , , string)
+// syntax: markAreaYAxis(int, , , ...string)
 func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 4, len(args))
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 3, len(args))
 	}
 	p0, err := convInt(args, 0, "markAreaYAxis", "int")
 	if err != nil {
@@ -2340,11 +2344,15 @@ func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p3, err := convString(args, 3, "markAreaYAxis", "string")
-	if err != nil {
-		return nil, err
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
 	}
-	ret := opts.MarkAreaYAxis(p0, p1, p2, p3)
+	ret := opts.MarkAreaYAxis(p0, p1, p2, p3...)
 	return ret, nil
 }
 
@@ -2369,9 +2377,9 @@ func (x *Node) gen_markLineStyle(args ...any) (any, error) {
 
 // gen_markLineXAxis
 //
-// syntax: markLineXAxis(int, )
+// syntax: markLineXAxis(int, , ...string)
 func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("markLineXAxis", 2, len(args))
 	}
 	p0, err := convInt(args, 0, "markLineXAxis", "int")
@@ -2382,7 +2390,15 @@ func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.MarkLineXAxis(p0, p1)
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineXAxis(p0, p1, p2...)
 	return ret, nil
 }
 
@@ -2407,9 +2423,9 @@ func (x *Node) gen_markLineXAxisCoord(args ...any) (any, error) {
 
 // gen_markLineYAxis
 //
-// syntax: markLineYAxis(int, )
+// syntax: markLineYAxis(int, , ...string)
 func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("markLineYAxis", 2, len(args))
 	}
 	p0, err := convInt(args, 0, "markLineYAxis", "int")
@@ -2420,7 +2436,15 @@ func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.MarkLineYAxis(p0, p1)
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineYAxis(p0, p1, p2...)
 	return ret, nil
 }
 

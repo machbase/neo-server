@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -30,6 +31,11 @@ type ChartBase struct {
 
 	timeColumnIdx    int
 	defaultChartType string
+
+	markAreaXAxis []*MarkAreaXAxis
+	markAreaYAxis []*MarkAreaYAxis
+	markLineXAxis []*MarkLineXAxis
+	markLineYAxis []*MarkLineYAxis
 
 	charts.XYAxis
 
@@ -64,6 +70,13 @@ type ChartGlobalOptions struct {
 	*opts.AxisPointer `json:"axisPointer"`
 
 	opts.Grid3D `json:"grid3D"`
+}
+
+func (ex *Base2D) ContentType() string {
+	if ex.toJsonOutput {
+		return "application/json"
+	}
+	return "text/html"
 }
 
 func (ex *ChartBase) SetLogger(l logger.Logger) {
@@ -424,19 +437,171 @@ func (ex *ChartBase) getSeriesName(idx int) string {
 	return label
 }
 
-type MarkArea struct {
-	opts.MarkAreaNameCoordItem
-	SeriesIdx int
+func (ex *Base2D) SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...string) {
+	var item MarkAreaXAxisItem
+	if len(args) > 0 {
+		content := args[0]
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		err := json.Unmarshal([]byte(content), &item)
+		if err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarnf("SetMarkAreaXAxis(...) %s", err.Error())
+			}
+			return
+		}
+	}
+	if t, ok := from.(*time.Time); ok {
+		from = t.UnixMilli()
+	} else if t, ok := from.(time.Time); ok {
+		from = t.UnixMilli()
+	}
+	if t, ok := to.(*time.Time); ok {
+		to = t.UnixMilli()
+	} else if t, ok := to.(time.Time); ok {
+		to = t.UnixMilli()
+	}
+	item.XAxis = from
+	ex.markAreaXAxis = append(ex.markAreaXAxis, &MarkAreaXAxis{
+		SeriesIdx: seriesIdx,
+		Items:     []MarkAreaXAxisItem{item, {XAxis: to}},
+	})
+}
+
+func (ex *Base2D) SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...string) {
+	var item MarkAreaYAxisItem
+	if len(args) > 0 {
+		content := args[0]
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		err := json.Unmarshal([]byte(content), &item)
+		if err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarnf("SetMarkAreaYAxis(...) %s", err.Error())
+			}
+			return
+		}
+	}
+	item.YAxis = from
+	ex.markAreaYAxis = append(ex.markAreaYAxis, &MarkAreaYAxis{
+		SeriesIdx: seriesIdx,
+		Items:     []MarkAreaYAxisItem{item, {YAxis: to}},
+	})
+}
+
+func (ex *Base2D) SetMarkLineXAxis(seriesIdx int, value any, args ...string) {
+	var item MarkLineXAxis
+	if len(args) > 0 {
+		content := args[0]
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		err := json.Unmarshal([]byte(content), &item)
+		if err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarnf("SetMarkLineXAxis(...) %s", err.Error())
+			}
+			return
+		}
+	}
+	if t, ok := value.(*time.Time); ok {
+		value = t.UnixMilli()
+	} else if t, ok := value.(time.Time); ok {
+		value = t.UnixMilli()
+	}
+	item.XAxis = value
+	ex.markLineXAxis = append(ex.markLineXAxis, &item)
+}
+
+func (ex *Base2D) SetMarkLineYAxis(seriesIdx int, value any, args ...string) {
+	var item MarkLineYAxis
+	if len(args) > 0 {
+		content := args[0]
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		err := json.Unmarshal([]byte(content), &item)
+		if err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarnf("SetMarkLineYAxis(...) %s", err.Error())
+			}
+			return
+		}
+	}
+	if t, ok := value.(*time.Time); ok {
+		value = t.UnixMilli()
+	} else if t, ok := value.(time.Time); ok {
+		value = t.UnixMilli()
+	}
+	item.YAxis = value
+	ex.markLineYAxis = append(ex.markLineYAxis, &item)
+}
+
+func (ex *Base2D) SetMarkLineStyle(seriesIdx int, content string) {
+	style := opts.MarkLineStyle{Symbol: []string{"none", "none"}}
+	if !strings.HasPrefix(content, "{") {
+		content = "{" + content + "}"
+	}
+	err := json.Unmarshal([]byte(content), &style)
+	if err != nil {
+		if ex.logger != nil {
+			ex.logger.LogWarnf("markLineXAxisCoord(...) %s", err.Error())
+		}
+		return
+	}
+	ser := ex.getSeries(seriesIdx, true)
+	if ser.MarkLines == nil {
+		ser.MarkLines = &opts.MarkLines{}
+	}
+	ser.MarkLines.MarkLineStyle = style
+}
+
+type MarkAreaXAxis struct {
+	SeriesIdx int `json:"-"`
+	Items     []MarkAreaXAxisItem
+}
+
+type MarkAreaXAxisItem struct {
+	Name      string          `json:"name,omitempty"`
+	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
+	Label     *opts.Label     `json:"label,omitempty"`
+	XAxis     any             `json:"xAxis"`
+}
+
+func (m *MarkAreaXAxis) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Items)
+}
+
+type MarkAreaYAxis struct {
+	SeriesIdx int `json:"-"`
+	Items     []MarkAreaYAxisItem
+}
+
+type MarkAreaYAxisItem struct {
+	Name      string          `json:"name,omitempty"`
+	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
+	Label     *opts.Label     `json:"label,omitempty"`
+	YAxis     any             `json:"yAxis"`
+}
+
+func (m *MarkAreaYAxis) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Items)
 }
 
 type MarkLineXAxis struct {
 	SeriesIdx int
-	Name      string
-	XAxis     any
+	Name      string          `json:"name,omitempty"`
+	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
+	Label     *opts.Label     `json:"label,omitempty"`
+	XAxis     any             `json:"xAxis"`
 }
 
 type MarkLineYAxis struct {
 	SeriesIdx int
-	Name      string
-	YAxis     any
+	Name      string          `json:"name,omitempty"`
+	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
+	Label     *opts.Label     `json:"label,omitempty"`
+	YAxis     any             `json:"yAxis"`
 }
