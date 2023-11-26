@@ -511,6 +511,7 @@ func (ex *Base2D) SetMarkLineXAxis(seriesIdx int, value any, args ...string) {
 	} else if t, ok := value.(time.Time); ok {
 		value = t.UnixMilli()
 	}
+	item.SeriesIdx = seriesIdx
 	item.XAxis = value
 	ex.markLineXAxis = append(ex.markLineXAxis, &item)
 }
@@ -535,6 +536,7 @@ func (ex *Base2D) SetMarkLineYAxis(seriesIdx int, value any, args ...string) {
 	} else if t, ok := value.(time.Time); ok {
 		value = t.UnixMilli()
 	}
+	item.SeriesIdx = seriesIdx
 	item.YAxis = value
 	ex.markLineYAxis = append(ex.markLineYAxis, &item)
 }
@@ -591,7 +593,7 @@ func (m *MarkAreaYAxis) MarshalJSON() ([]byte, error) {
 }
 
 type MarkLineXAxis struct {
-	SeriesIdx int
+	SeriesIdx int             `json:"-"`
 	Name      string          `json:"name,omitempty"`
 	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
 	Label     *opts.Label     `json:"label,omitempty"`
@@ -599,7 +601,7 @@ type MarkLineXAxis struct {
 }
 
 type MarkLineYAxis struct {
-	SeriesIdx int
+	SeriesIdx int             `json:"-"`
 	Name      string          `json:"name,omitempty"`
 	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
 	Label     *opts.Label     `json:"label,omitempty"`

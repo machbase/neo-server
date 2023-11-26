@@ -9,6 +9,13 @@ import (
 	"github.com/go-echarts/go-echarts/v2/render"
 )
 
+// Renderer
+// Any kinds of charts have their render implementation and
+// you can define your own render logic easily.
+type Renderer interface {
+	Render(w io.Writer) error
+}
+
 var (
 	pat = regexp.MustCompile(`(__f__")|("__f__)|(__f__)`)
 )

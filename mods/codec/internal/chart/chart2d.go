@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-echarts/go-echarts/v2/render"
 )
 
 type Base2D struct {
@@ -104,7 +103,7 @@ func (ex *Base2D) Close() {
 		}
 	})
 
-	var rndr render.Renderer
+	var rndr Renderer
 	if ex.toJsonOutput {
 		rndr = newJsonRender(chart, before...)
 	} else {
@@ -118,6 +117,11 @@ func (ex *Base2D) Close() {
 
 func (ex *Base2D) AddRow(values []any) error {
 	xAxisValue := values[ex.timeColumnIdx]
+	if vv, ok := xAxisValue.(time.Time); ok {
+		xAxisValue = vv.UnixMilli()
+	} else if vv, ok := xAxisValue.(*time.Time); ok {
+		xAxisValue = vv.UnixMilli()
+	}
 	seriesIdx := -1
 	for n, v := range values {
 		if n == ex.timeColumnIdx {
