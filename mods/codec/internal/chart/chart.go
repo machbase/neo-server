@@ -72,7 +72,14 @@ type ChartGlobalOptions struct {
 	opts.Grid3D `json:"grid3D"`
 }
 
-func (ex *Base2D) ContentType() string {
+func NewRectChart(defaultType string) *ChartBase {
+	ret := &ChartBase{}
+	ret.defaultChartType = defaultType
+	ret.initialize()
+	return ret
+}
+
+func (ex *ChartBase) ContentType() string {
 	if ex.toJsonOutput {
 		return "application/json"
 	}
@@ -344,6 +351,123 @@ func (ex *ChartBase) SetYAxis(args ...any) {
 	}
 }
 
+func (ex *ChartBase) Open() error {
+	return nil
+}
+
+func (ex *ChartBase) Flush(heading bool) {
+}
+
+func (ex *ChartBase) Close() {
+	var before []func()
+
+	chart := charts.NewLine()
+	chart.SetGlobalOptions(ex.getGlobalOptions()...)
+	for seriesIdx := 0; seriesIdx < len(ex.multiSeries); seriesIdx++ {
+		ser := ex.getSeries(seriesIdx, false)
+		if ser == nil {
+			continue
+		}
+		if ser.MarkAreas == nil {
+			ser.MarkAreas = &opts.MarkAreas{}
+		}
+		for _, mark := range ex.markAreaXAxis {
+			if mark.SeriesIdx != seriesIdx {
+				continue
+			}
+			ser.MarkAreas.Data = append(ser.MarkAreas.Data, mark)
+		}
+		for _, mark := range ex.markAreaYAxis {
+			if mark.SeriesIdx != seriesIdx {
+				continue
+			}
+			ser.MarkAreas.Data = append(ser.MarkAreas.Data, mark)
+		}
+		if ser.MarkLines == nil {
+			ser.MarkLines = &opts.MarkLines{}
+		}
+		for _, mark := range ex.markLineXAxis {
+			if mark.SeriesIdx != seriesIdx {
+				continue
+			}
+			ser.MarkLines.Data = append(ser.MarkLines.Data, mark)
+		}
+		for _, mark := range ex.markLineYAxis {
+			if mark.SeriesIdx != seriesIdx {
+				continue
+			}
+			ser.MarkLines.Data = append(ser.MarkLines.Data, mark)
+		}
+		if ser.Type == "" {
+			ser.Type = ex.defaultChartType
+		}
+		if ser.Name == "" {
+			ser.Name = ex.getSeriesName(seriesIdx)
+		}
+		chart.MultiSeries = append(chart.MultiSeries, *ser)
+	}
+	before = append(before, chart.Validate, func() {
+		chart.XAxisList[0].Type = "time"
+		chart.XAxisList[0].Show = true
+		//chart.XAxisList[0].Data = .. only for categroy ..
+		chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
+			Show:   true,
+			Rotate: 0,
+		}
+		chart.XAxisList[0].SplitLine = &opts.SplitLine{
+			Show: true,
+			LineStyle: &opts.LineStyle{
+				Width:   0.8,
+				Opacity: 0.3,
+			},
+		}
+	})
+
+	var rndr Renderer
+	if ex.toJsonOutput {
+		rndr = newJsonRender(chart, before...)
+	} else {
+		rndr = newChartRender(chart, before...)
+	}
+	err := rndr.Render(ex.output)
+	if err != nil {
+		fmt.Println("ERR", err.Error())
+	}
+}
+
+func (ex *ChartBase) AddRow(values []any) error {
+	xAxisValue := values[ex.timeColumnIdx]
+	if vv, ok := xAxisValue.(time.Time); ok {
+		xAxisValue = vv.UnixMilli()
+	} else if vv, ok := xAxisValue.(*time.Time); ok {
+		xAxisValue = vv.UnixMilli()
+	}
+	seriesIdx := -1
+	for n, v := range values {
+		if n == ex.timeColumnIdx {
+			continue
+		} else {
+			seriesIdx++
+		}
+		ser := ex.getSeries(seriesIdx, true)
+		if vv, ok := v.(time.Time); ok {
+			v = vv.UnixMilli()
+		} else if vv, ok := v.(*time.Time); ok {
+			v = vv.UnixMilli()
+		}
+		var data []any
+		if ser.Data == nil {
+			data = []any{}
+		} else {
+			data = ser.Data.([]any)
+		}
+		// hint: use ChartData instead of v for customizing a specefic item
+		data = append(data, []any{xAxisValue, v})
+		ser.Data = data
+	}
+	return nil
+}
+
 type SeriesPeek struct {
 	Name string `json:"name,omitempty"`
 	Type string `json:"type,omitempty"`
@@ -437,7 +561,7 @@ func (ex *ChartBase) getSeriesName(idx int) string {
 	return label
 }
 
-func (ex *Base2D) SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...string) {
+func (ex *ChartBase) SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...string) {
 	var item MarkAreaXAxisItem
 	if len(args) > 0 {
 		content := args[0]
@@ -469,7 +593,7 @@ func (ex *Base2D) SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...stri
 	})
 }
 
-func (ex *Base2D) SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...string) {
+func (ex *ChartBase) SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...string) {
 	var item MarkAreaYAxisItem
 	if len(args) > 0 {
 		content := args[0]
@@ -491,7 +615,7 @@ func (ex *Base2D) SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...stri
 	})
 }
 
-func (ex *Base2D) SetMarkLineXAxis(seriesIdx int, value any, args ...string) {
+func (ex *ChartBase) SetMarkLineXAxis(seriesIdx int, value any, args ...string) {
 	var item MarkLineXAxis
 	if len(args) > 0 {
 		content := args[0]
@@ -516,7 +640,7 @@ func (ex *Base2D) SetMarkLineXAxis(seriesIdx int, value any, args ...string) {
 	ex.markLineXAxis = append(ex.markLineXAxis, &item)
 }
 
-func (ex *Base2D) SetMarkLineYAxis(seriesIdx int, value any, args ...string) {
+func (ex *ChartBase) SetMarkLineYAxis(seriesIdx int, value any, args ...string) {
 	var item MarkLineYAxis
 	if len(args) > 0 {
 		content := args[0]
@@ -541,7 +665,7 @@ func (ex *Base2D) SetMarkLineYAxis(seriesIdx int, value any, args ...string) {
 	ex.markLineYAxis = append(ex.markLineYAxis, &item)
 }
 
-func (ex *Base2D) SetMarkLineStyle(seriesIdx int, content string) {
+func (ex *ChartBase) SetMarkLineStyle(seriesIdx int, content string) {
 	style := opts.MarkLineStyle{Symbol: []string{"none", "none"}}
 	if !strings.HasPrefix(content, "{") {
 		content = "{" + content + "}"
@@ -606,4 +730,30 @@ type MarkLineYAxis struct {
 	ItemStyle *opts.ItemStyle `json:"itemStyle,omitempty"`
 	Label     *opts.Label     `json:"label,omitempty"`
 	YAxis     any             `json:"yAxis"`
+}
+
+type ChartData struct {
+	// Name of data item.
+	Name string `json:"name,omitempty"`
+
+	// Value of a single data item.
+	Value interface{} `json:"value,omitempty"`
+
+	// Symbol of single data.
+	// Icon types provided by ECharts includes 'circle', 'rect', 'roundRect', 'triangle', 'diamond', 'pin', 'arrow', 'none'
+	// It can be set to an image with 'image://url' , in which URL is the link to an image, or dataURI of an image.
+	Symbol string `json:"symbol,omitempty"`
+
+	// single data symbol size. It can be set to single numbers like 10, or
+	// use an array to represent width and height. For example, [20, 10] means symbol width is 20, and height is10
+	SymbolSize int `json:"symbolSize,omitempty"`
+
+	// SymbolRotate (Scatter only)
+	SymbolRotate int `json:"symbolRotate,omitempty"`
+
+	// Index of x axis to combine with, which is useful for multiple x axes in one chart.
+	XAxisIndex int `json:"xAxisIndex,omitempty"`
+
+	// Index of y axis to combine with, which is useful for multiple y axes in one chart.
+	YAxisIndex int `json:"yAxisIndex,omitempty"`
 }
