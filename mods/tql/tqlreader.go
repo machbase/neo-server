@@ -12,6 +12,7 @@ type Line struct {
 	text      string
 	line      int
 	isComment bool
+	isPragma  bool
 }
 
 var functions = NewNode(nil).functions
@@ -50,6 +51,10 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 		parts = parts[:0]
 
 		if strings.TrimSpace(lineText) == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(lineText), "//+") {
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[3:]), line: lineNo, isComment: true, isPragma: true})
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {

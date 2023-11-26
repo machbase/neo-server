@@ -43,7 +43,7 @@ func AutoRotate(speed float64) Option {
 
 // SetBoxDrawBorder
 //
-//	mods/codec/internal/box/box_encode.go:82:1
+//	mods/codec/internal/box/box_encode.go:81:1
 type CanSetBoxDrawBorder interface {
 	SetBoxDrawBorder(flag bool)
 }
@@ -58,7 +58,7 @@ func BoxDrawBorder(flag bool) Option {
 
 // SetBoxSeparateColumns
 //
-//	mods/codec/internal/box/box_encode.go:78:1
+//	mods/codec/internal/box/box_encode.go:77:1
 type CanSetBoxSeparateColumns interface {
 	SetBoxSeparateColumns(flag bool)
 }
@@ -73,7 +73,7 @@ func BoxSeparateColumns(flag bool) Option {
 
 // SetBoxStyle
 //
-//	mods/codec/internal/box/box_encode.go:74:1
+//	mods/codec/internal/box/box_encode.go:73:1
 type CanSetBoxStyle interface {
 	SetBoxStyle(style string)
 }
@@ -150,7 +150,7 @@ func ColumnTypes(types ...string) Option {
 
 // SetColumns
 //
-//	mods/codec/internal/box/box_encode.go:86:1
+//	mods/codec/internal/box/box_encode.go:85:1
 //	mods/codec/internal/csv/csv_decode.go:69:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
 //	mods/codec/internal/echart/echart.go:289:1
@@ -231,7 +231,7 @@ func GridSize(args ...float64) Option {
 
 // SetHeader
 //
-//	mods/codec/internal/box/box_encode.go:66:1
+//	mods/codec/internal/box/box_encode.go:65:1
 //	mods/codec/internal/csv/csv_decode.go:52:1
 //	mods/codec/internal/csv/csv_encode.go:74:1
 //	mods/codec/internal/json/json_encode.go:64:1
@@ -249,7 +249,7 @@ func Header(show bool) Option {
 
 // SetHeading
 //
-//	mods/codec/internal/box/box_encode.go:70:1
+//	mods/codec/internal/box/box_encode.go:69:1
 //	mods/codec/internal/csv/csv_decode.go:48:1
 //	mods/codec/internal/csv/csv_encode.go:70:1
 //	mods/codec/internal/json/json_encode.go:68:1
@@ -389,7 +389,7 @@ func Opacity(opacity float64) Option {
 
 // SetOutputStream
 //
-//	mods/codec/internal/box/box_encode.go:46:1
+//	mods/codec/internal/box/box_encode.go:45:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
 //	mods/codec/internal/json/json_encode.go:44:1
@@ -408,7 +408,7 @@ func OutputStream(o spec.OutputStream) Option {
 
 // SetPrecision
 //
-//	mods/codec/internal/box/box_encode.go:58:1
+//	mods/codec/internal/box/box_encode.go:57:1
 //	mods/codec/internal/csv/csv_encode.go:61:1
 //	mods/codec/internal/json/json_encode.go:56:1
 //	mods/codec/internal/markdown/md_encode.go:72:1
@@ -426,7 +426,7 @@ func Precision(precision int) Option {
 
 // SetRownum
 //
-//	mods/codec/internal/box/box_encode.go:62:1
+//	mods/codec/internal/box/box_encode.go:61:1
 //	mods/codec/internal/csv/csv_encode.go:65:1
 //	mods/codec/internal/json/json_encode.go:60:1
 //	mods/codec/internal/markdown/md_encode.go:76:1
@@ -565,7 +565,7 @@ func Theme(theme string) Option {
 
 // SetTimeLocation
 //
-//	mods/codec/internal/box/box_encode.go:54:1
+//	mods/codec/internal/box/box_encode.go:53:1
 //	mods/codec/internal/csv/csv_decode.go:43:1
 //	mods/codec/internal/csv/csv_encode.go:57:1
 //	mods/codec/internal/echart/echart_2d.go:127:1
@@ -586,7 +586,7 @@ func TimeLocation(tz *time.Location) Option {
 
 // SetTimeformat
 //
-//	mods/codec/internal/box/box_encode.go:50:1
+//	mods/codec/internal/box/box_encode.go:49:1
 //	mods/codec/internal/csv/csv_decode.go:39:1
 //	mods/codec/internal/csv/csv_encode.go:53:1
 //	mods/codec/internal/echart/echart_2d.go:120:1

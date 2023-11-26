@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"runtime/debug"
 	"sync"
@@ -39,6 +40,8 @@ type Node struct {
 	_inflight *Record
 
 	shouldFeedEof bool
+
+	pragma []*Line
 
 	// Deprecated
 	Body      io.Reader
@@ -159,7 +162,9 @@ func (node *Node) Get(name string) (any, error) {
 			node.Body = node.task.inputReader
 		}
 		return node, nil
-	case "nil":
+	case "PI":
+		return math.Pi, nil
+	case "nil", "NULL":
 		return nil, nil
 	default:
 		if node.task != nil {

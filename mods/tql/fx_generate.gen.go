@@ -130,6 +130,7 @@ func NewNode(task *Task) *Node {
 		"freq":         x.gen_freq,
 		"oscillator":   x.gen_oscillator,
 		"sphere":       x.gen_sphere,
+		"json":         x.gen_json,
 		"FAKE":         x.gen_FAKE,
 		// maps.input
 		"INPUT": x.gen_INPUT,
@@ -828,7 +829,7 @@ func (x *Node) gen_time(args ...any) (any, error) {
 
 // gen_parseTime
 //
-// syntax: parseTime(string, string, )
+// syntax: parseTime(string, , )
 func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("parseTime", 3, len(args))
@@ -837,7 +838,7 @@ func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convString(args, 1, "parseTime", "string")
+	p1, err := convAny(args, 1, "parseTime", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -1839,6 +1840,20 @@ func (x *Node) gen_sphere(args ...any) (any, error) {
 	}
 	ret := x.fmSphere(p0, p1)
 	return ret, nil
+}
+
+// gen_json
+//
+// syntax: json(string)
+func (x *Node) gen_json(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("json", 1, len(args))
+	}
+	p0, err := convString(args, 0, "json", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmJsonData(p0)
 }
 
 // gen_FAKE
