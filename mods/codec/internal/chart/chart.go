@@ -29,7 +29,8 @@ type ChartBase struct {
 	globalOptions ChartGlobalOptions
 	multiSeries   map[int]*charts.SingleSeries
 
-	timeColumnIdx    int
+	domainColumnIdx  int
+	domainColumnType string
 	defaultChartType string
 
 	markAreaXAxis []*MarkAreaXAxis
@@ -406,22 +407,24 @@ func (ex *ChartBase) Close() {
 		}
 		chart.MultiSeries = append(chart.MultiSeries, *ser)
 	}
-	before = append(before, chart.Validate, func() {
-		chart.XAxisList[0].Type = "time"
-		chart.XAxisList[0].Show = true
-		//chart.XAxisList[0].Data = .. only for categroy ..
-		chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
-			Show:   true,
-			Rotate: 0,
-		}
-		chart.XAxisList[0].SplitLine = &opts.SplitLine{
-			Show: true,
-			LineStyle: &opts.LineStyle{
-				Width:   0.8,
-				Opacity: 0.3,
-			},
-		}
-	})
+	if ex.domainColumnType == "time" {
+		before = append(before, chart.Validate, func() {
+			chart.XAxisList[0].Type = "time"
+			chart.XAxisList[0].Show = true
+			//chart.XAxisList[0].Data = .. only for categroy ..
+			chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
+				Show:   true,
+				Rotate: 0,
+			}
+			chart.XAxisList[0].SplitLine = &opts.SplitLine{
+				Show: true,
+				LineStyle: &opts.LineStyle{
+					Width:   0.8,
+					Opacity: 0.3,
+				},
+			}
+		})
+	}
 
 	var rndr Renderer
 	if ex.toJsonOutput {
@@ -436,15 +439,17 @@ func (ex *ChartBase) Close() {
 }
 
 func (ex *ChartBase) AddRow(values []any) error {
-	xAxisValue := values[ex.timeColumnIdx]
-	if vv, ok := xAxisValue.(time.Time); ok {
-		xAxisValue = vv.UnixMilli()
-	} else if vv, ok := xAxisValue.(*time.Time); ok {
-		xAxisValue = vv.UnixMilli()
+	xAxisValue := values[ex.domainColumnIdx]
+	if ex.domainColumnType == "time" {
+		if vv, ok := xAxisValue.(time.Time); ok {
+			xAxisValue = vv.UnixMilli()
+		} else if vv, ok := xAxisValue.(*time.Time); ok {
+			xAxisValue = vv.UnixMilli()
+		}
 	}
 	seriesIdx := -1
 	for n, v := range values {
-		if n == ex.timeColumnIdx {
+		if n == ex.domainColumnIdx {
 			continue
 		} else {
 			seriesIdx++
@@ -490,7 +495,12 @@ func (ex *ChartBase) SetSeries(args ...string) {
 			}
 			return
 		} else if peek.Type == "time" {
-			ex.timeColumnIdx = idx
+			ex.domainColumnIdx = idx
+			ex.domainColumnType = "time"
+			continue
+		} else if peek.Type == "domain" {
+			ex.domainColumnIdx = idx
+			ex.domainColumnType = "value"
 			continue
 		} else {
 			seriesIdx++
