@@ -14,10 +14,7 @@ import (
 type Base2D struct {
 	ChartBase
 
-	defaultType string
-
-	xAxisIdx int
-	xLabels  []any
+	xLabels []any
 
 	markAreaXAxis []*MarkArea
 	markAreaYAxis []*MarkArea
@@ -26,10 +23,8 @@ type Base2D struct {
 }
 
 func NewRectChart(defaultType string) *Base2D {
-	ret := &Base2D{
-		defaultType: defaultType,
-		xAxisIdx:    0,
-	}
+	ret := &Base2D{}
+	ret.defaultChartType = defaultType
 	ret.initialize()
 	return ret
 }
@@ -263,26 +258,11 @@ func (ex *Base2D) renderXAxisLabelIndex(idx int) any {
 		return "n/a"
 	}
 	element := ex.xLabels[idx]
-
-	var tv *time.Time
-	switch v := element.(type) {
-	case *time.Time:
-		tv = v
-	case time.Time:
-		tv = &v
+	if tv, ok := element.(time.Time); ok {
+		return tv
+	} else {
+		return element
 	}
-	if tv != nil {
-		return *tv
-	}
-	return element
-}
-
-func (ex *Base2D) finalizeXAxis() []any {
-	data := make([]any, len(ex.xLabels))
-	for i := range ex.xLabels {
-		data[i] = ex.renderXAxisLabelIndex(i)
-	}
-	return data
 }
 
 func (ex *Base2D) Close() {
@@ -300,7 +280,7 @@ func (ex *Base2D) Close() {
 			o(ser)
 		}
 		if ser.Type == "" {
-			ser.Type = ex.defaultType
+			ser.Type = ex.defaultChartType
 		}
 		if ser.Name == "" {
 			ser.Name = ex.getSeriesName(i)
@@ -310,13 +290,13 @@ func (ex *Base2D) Close() {
 	before = append(before, chart.Validate, func() {
 		chart.XAxisList[0].Type = "time"
 		chart.XAxisList[0].Show = true
-		//chart.XAxisList[0].Data = ex.xLabels
+		//chart.XAxisList[0].Data = .. only for categroy ..
 		chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
 			Show:   true,
 			Rotate: 0,
 		}
 		chart.XAxisList[0].SplitLine = &opts.SplitLine{
-			Show: false,
+			Show: true,
 			LineStyle: &opts.LineStyle{
 				Width:   0.8,
 				Opacity: 0.3,
@@ -337,19 +317,21 @@ func (ex *Base2D) Close() {
 }
 
 func (ex *Base2D) AddRow(values []any) error {
-	xAxisValue := values[ex.xAxisIdx]
-	ex.xLabels = append(ex.xLabels, xAxisValue)
-
+	xAxisValue := values[ex.timeColumnIdx]
 	switch xv := xAxisValue.(type) {
 	case time.Time:
+		ex.xLabels = append(ex.xLabels, xv)
 		xAxisValue = float64(xv.UnixNano()) / float64(time.Millisecond)
 	case *time.Time:
+		ex.xLabels = append(ex.xLabels, *xv)
 		xAxisValue = float64(xv.UnixNano()) / float64(time.Millisecond)
+	default:
+		ex.xLabels = append(ex.xLabels, xv)
 	}
 
 	seriesIdx := -1
 	for n, v := range values {
-		if n == ex.xAxisIdx {
+		if n == ex.timeColumnIdx {
 			continue
 		} else {
 			seriesIdx++

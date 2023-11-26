@@ -2505,20 +2505,17 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 
 // gen_series
 //
-// syntax: series(int, string)
+// syntax: series(...string)
 func (x *Node) gen_series(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("series", 2, len(args))
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "series", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convInt(args, 0, "series", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "series", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.Series(p0, p1)
+	ret := opts.Series(p0...)
 	return ret, nil
 }
 

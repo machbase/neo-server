@@ -28,6 +28,9 @@ type ChartBase struct {
 	globalOptions ChartGlobalOptions
 	multiSeries   map[int]*charts.SingleSeries
 
+	timeColumnIdx    int
+	defaultChartType string
+
 	charts.XYAxis
 
 	onceInit sync.Once
@@ -202,27 +205,40 @@ func (ex *ChartBase) SetGlobal(content string) {
 	}
 	if err := json.Unmarshal([]byte(content), &ex.globalOptions); err != nil {
 		if ex.logger != nil {
-			ex.logger.LogWarn("invalid syntax of global", err.Error())
+			ex.logger.LogWarn("invalid syntax of global(),", err.Error())
 		}
 		return
 	}
 }
 
 func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
-	theme := "white"
-	if ex.globalOptions.Theme != "" {
-		theme = ex.globalOptions.Theme
+	if ex.globalOptions.Theme == "" {
+		ex.globalOptions.Theme = "white"
+	}
+	if len(ex.XYAxis.XAxisList) == 0 {
+		ex.SetXAxis(`{"name":"x", "type":"time"}`)
+	}
+	if len(ex.XYAxis.YAxisList) == 0 {
+		ex.SetYAxis(`{"name":"y", "type":"value"}`)
 	}
 	ret := []charts.GlobalOpts{
-		charts.WithInitializationOpts(opts.Initialization{
-			PageTitle:       ex.globalOptions.PageTitle,
-			Width:           ex.globalOptions.Width,
-			Height:          ex.globalOptions.Height,
-			BackgroundColor: ex.globalOptions.BackgroundColor,
-			ChartID:         ex.globalOptions.ChartID,
-			AssetsHost:      ex.globalOptions.AssetsHost,
-			Theme:           theme,
-		}),
+		func(bc *charts.BaseConfiguration) {
+			bc.Initialization = opts.Initialization{
+				PageTitle:       ex.globalOptions.PageTitle,
+				Width:           ex.globalOptions.Width,
+				Height:          ex.globalOptions.Height,
+				BackgroundColor: ex.globalOptions.BackgroundColor,
+				ChartID:         ex.globalOptions.ChartID,
+				AssetsHost:      ex.globalOptions.AssetsHost,
+				Theme:           ex.globalOptions.Theme,
+			}
+			if bc.Initialization.Theme != "" &&
+				bc.Initialization.Theme != "white" &&
+				bc.Initialization.Theme != "dark" {
+				bc.JSAssets.Add("themes/" + ex.globalOptions.Theme + ".js")
+			}
+			bc.Initialization.Validate()
+		},
 		func(bc *charts.BaseConfiguration) {
 			bc.Title = ex.globalOptions.Title
 			bc.Legend = ex.globalOptions.Legend
@@ -243,106 +259,114 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.Grid3D = ex.globalOptions.Grid3D
 		},
 	}
-	if len(ex.XYAxis.XAxisList) == 0 {
-		ex.SetXAxis(`{"name":"x", "type":"time"}`)
-	}
-	if len(ex.XYAxis.YAxisList) == 0 {
-		ex.SetYAxis(`{"name":"y", "type":"value"}`)
-	}
 	return ret
 }
 
 func (ex *ChartBase) SetXAxis(args ...any) {
-	if len(args) != 1 {
-		if ex.logger != nil {
-			ex.logger.LogError("xAxis syntax error, xAxis(json) ")
+	for _, arg := range args {
+		content, ok := arg.(string)
+		if !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("xAxis(string...) syntax error, xAxis(json) ")
+			}
+			continue
 		}
-		return
-	}
-	content, ok := args[0].(string)
-	if !ok {
-		if ex.logger != nil {
-			ex.logger.LogError("xAxis syntax error, xAxis(json) ")
-		}
-		return
-	}
 
-	xaxis := opts.XAxis{
-		Name: "x",
-		Show: true,
-		SplitLine: &opts.SplitLine{
+		xaxis := opts.XAxis{
+			Name: "x",
 			Show: true,
-			LineStyle: &opts.LineStyle{
-				Width:   0.8,
-				Opacity: 0.3,
+			SplitLine: &opts.SplitLine{
+				Show: true,
+				LineStyle: &opts.LineStyle{
+					Width:   0.8,
+					Opacity: 0.3,
+				},
 			},
-		},
-	}
-
-	if !strings.HasPrefix(content, "{") {
-		content = "{" + content + "}"
-	}
-	if err := json.Unmarshal([]byte(content), &xaxis); err != nil {
-		if ex.logger != nil {
-			ex.logger.LogWarn("xAxis()", err.Error())
-			return
 		}
+
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		if err := json.Unmarshal([]byte(content), &xaxis); err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarn("xAxis()", err.Error())
+				return
+			}
+		}
+		ex.XYAxis.ExtendXAxis(xaxis)
 	}
-	ex.XYAxis.ExtendXAxis(xaxis)
 }
 
 func (ex *ChartBase) SetYAxis(args ...any) {
-	if len(args) != 1 {
-		if ex.logger != nil {
-			ex.logger.LogError("yAxis syntax error, yAxis(json) ")
+	for _, arg := range args {
+		content, ok := arg.(string)
+		if !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("yAxis(string...) syntax error, yAxis(json) ")
+			}
+			continue
 		}
-		return
-	}
-	content, ok := args[0].(string)
-	if !ok {
-		if ex.logger != nil {
-			ex.logger.LogError("yAxis syntax error, yAxis(json) ")
-		}
-		return
-	}
 
-	yaxis := opts.YAxis{
-		Name: "y",
-		Show: true,
-		SplitLine: &opts.SplitLine{
+		yaxis := opts.YAxis{
+			Name: "y",
 			Show: true,
-			LineStyle: &opts.LineStyle{
-				Width:   0.8,
-				Opacity: 0.3,
+			SplitLine: &opts.SplitLine{
+				Show: true,
+				LineStyle: &opts.LineStyle{
+					Width:   0.8,
+					Opacity: 0.3,
+				},
 			},
-		},
-	}
-	if !strings.HasPrefix(content, "{") {
-		content = "{" + content + "}"
-	}
-	if err := json.Unmarshal([]byte(content), &yaxis); err != nil {
-		if ex.logger != nil {
-			ex.logger.LogWarn("yAxis()", err.Error())
-			return
 		}
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
+		}
+		if err := json.Unmarshal([]byte(content), &yaxis); err != nil {
+			if ex.logger != nil {
+				ex.logger.LogWarn("yAxis()", err.Error())
+				return
+			}
+		}
+		ex.XYAxis.ExtendYAxis(yaxis)
 	}
-	ex.XYAxis.ExtendYAxis(yaxis)
 }
 
-func (ex *ChartBase) SetSeries(idx int, content string) {
+type SeriesPeek struct {
+	Name string `json:"name,omitempty"`
+	Type string `json:"type,omitempty"`
+}
+
+func (ex *ChartBase) SetSeries(args ...string) {
 	if ex.multiSeries == nil {
 		ex.multiSeries = map[int]*charts.SingleSeries{}
 	}
-	ser := ex.getSeries(idx, true)
-	if !strings.HasPrefix(content, "{") {
-		content = "{" + content + "}"
-	}
-	err := json.Unmarshal([]byte(content), ser)
-	if err != nil {
-		if ex.logger != nil {
-			ex.logger.LogWarnf("series(%d,...) %s", idx, err.Error())
+	seriesIdx := -1
+	for idx, content := range args {
+		if !strings.HasPrefix(content, "{") {
+			content = "{" + content + "}"
 		}
-		return
+
+		peek := SeriesPeek{}
+		if err := json.Unmarshal([]byte(content), &peek); err != nil {
+			if ex.logger != nil {
+				ex.logger.LogErrorf("series() args[%d], %s", idx, err.Error())
+			}
+			return
+		} else if peek.Type == "time" {
+			ex.timeColumnIdx = idx
+			continue
+		} else {
+			seriesIdx++
+		}
+
+		ser := ex.getSeries(seriesIdx, true)
+		err := json.Unmarshal([]byte(content), ser)
+		if err != nil {
+			if ex.logger != nil {
+				ex.logger.LogErrorf("series() args[%d], %s", idx, err.Error())
+			}
+			return
+		}
 	}
 }
 
