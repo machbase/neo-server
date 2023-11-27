@@ -64,7 +64,7 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case HTML:
 		ret = html.NewEncoder()
 	case ECHART:
-		ret = chart.NewRectChart(chart.LINE)
+		ret = chart.NewRectChart()
 	case ECHART_LINE:
 		ret = echart.NewRectChart(echart.LINE)
 	case ECHART_SCATTER:

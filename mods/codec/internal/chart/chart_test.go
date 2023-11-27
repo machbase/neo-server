@@ -2,12 +2,13 @@ package chart_test
 
 import (
 	"bytes"
-	"strings"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/internal/echart"
-	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -15,139 +16,103 @@ import (
 func TestLine(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewRectChart(echart.LINE)
-	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
-		opts.ChartJson(true),
-		opts.TimeLocation(time.UTC),
-		opts.XAxis(0, "time", "time"),
-		opts.YAxis(1, "demo"),
-		opts.Timeformat("15:04:05.999999999"),
-		opts.DataZoom("slider", 0, 100),
-		opts.SeriesLabels("test-data"),
-		opts.Title("Title"),
-		opts.Subtitle("substitle"),
-		opts.Theme("westerose"),
-		opts.Size("600px", "600px"),
-	}
-	for _, o := range opts {
-		o(line)
-	}
+	c := chart.NewRectChart()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetChartJson(true)
+	c.SetGlobal(`
+		"chartId": "WejMYXCGcYNL",
+		"theme": "white"
+	`)
+	c.SetSeries(`
+		{ "type": "time" },
+		{ "type": "line" }
+	`)
+	require.Equal(t, "application/json", c.ContentType())
 
-	require.Equal(t, "application/json", line.ContentType())
-
-	line.Open()
+	c.Open()
 	tick := time.Unix(0, 1692670838086467000)
-	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	line.Flush(false)
-	line.Close()
+	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+	c.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(buffer.String(), substr))
+	expect, err := os.ReadFile(filepath.Join("test", "test_line.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched", buffer.String())
 }
 
 func TestScatter(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewRectChart(echart.SCATTER)
-	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
-		opts.ChartJson(true),
-		opts.TimeLocation(time.UTC),
-		opts.XAxis(0, "time", "time"),
-		opts.YAxis(1, "demo"),
-		opts.Timeformat("15:04:05.999999999"),
-		opts.DataZoom("slider", 0, 100),
-		opts.SeriesLabels("test-data"),
-	}
-	for _, o := range opts {
-		o(line)
-	}
+	c := chart.NewRectChart()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetChartJson(true)
+	c.SetGlobal(`
+		"chartId": "WejMYXCGcYNL",
+		"theme": "white"
+	`)
+	c.SetSeries(
+		`{ "type": "time" }`,
+		`{ "type": "scatter" }`,
+	)
+	require.Equal(t, "application/json", c.ContentType())
 
-	require.Equal(t, "application/json", line.ContentType())
-
-	line.Open()
+	c.Open()
 	tick := time.Unix(0, 1692670838086467000)
-	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	line.Flush(false)
-	line.Close()
+	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+	c.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(buffer.String(), substr))
+	expect, err := os.ReadFile(filepath.Join("test", "test_scatter.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched", buffer.String())
 }
 
-func TestBar(t *testing.T) {
+func TestTangentialPolarBar(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	line := echart.NewRectChart(echart.BAR)
-	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
-		opts.ChartJson(true),
-		opts.TimeLocation(time.UTC),
-		opts.XAxis(0, "time", "time"),
-		opts.YAxis(1, "demo"),
-		opts.Timeformat("15:04:05.999999999"),
-		opts.DataZoom("slider", 0, 100),
-		opts.SeriesLabels("test-data"),
+	c := chart.NewRectChart()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetChartJson(true)
+	c.SetGlobal(`
+		"chartId": "WejMYXCGcYNL",
+		"theme": "dark",
+        "polar": {"max": 4, "startAngle": 75},
+        "radiusAxis": {
+            "type": "category",
+            "data": ["a", "b", "c", "d"]
+        }
+	`)
+	c.SetSeries(
+		`{	"type": "category"}`,
+		`{	"type": "bar",
+			"coordinateSystem": "polar",
+            "label": {
+				"show": true,
+				"position": "middle"
+			}
+        }`,
+	)
+	require.Equal(t, "application/json", c.ContentType())
+
+	c.Open()
+	c.AddRow([]any{"a", 2.0})
+	c.AddRow([]any{"b", 1.2})
+	c.AddRow([]any{"c", 2.4})
+	c.AddRow([]any{"d", 3.6})
+	c.Close()
+
+	expect, err := os.ReadFile(filepath.Join("test", "tangential_polar_bar.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
 	}
-	for _, o := range opts {
-		o(line)
-	}
-
-	require.Equal(t, "application/json", line.ContentType())
-
-	line.Open()
-	tick := time.Unix(0, 1692670838086467000)
-	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	line.Flush(false)
-	line.Close()
-
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(buffer.String(), substr))
-}
-
-func TestLine3D(t *testing.T) {
-	buffer := &bytes.Buffer{}
-
-	line := echart.NewLine3D()
-	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
-		opts.ChartJson(true),
-		opts.TimeLocation(time.UTC),
-		opts.XAxis(0, "time", "time"),
-		opts.YAxis(1, "demo"),
-		opts.Timeformat("15:04:05.999999999"),
-		opts.DataZoom("slider", 0, 100),
-		opts.SeriesLabels("test-data"),
-		opts.Title("Title"),
-		opts.Subtitle("substitle"),
-		opts.Theme("westerose"),
-		opts.Size("600px", "600px"),
-	}
-	for _, o := range opts {
-		o(line)
-	}
-
-	require.Equal(t, "application/json", line.ContentType())
-
-	line.Open()
-	tick := time.Unix(0, 1692670838086467000)
-	line.AddRow([]any{tick.Add(0 * time.Second), 0.0, 0.0})
-	line.AddRow([]any{tick.Add(1 * time.Second), 1.0, 1.0})
-	line.AddRow([]any{tick.Add(2 * time.Second), 2.0, 2.0})
-	line.Flush(false)
-	line.Close()
-
-	substr := `"data":[{"value":[1692670838086,0,0]}]}`
-	require.True(t, strings.Contains(buffer.String(), substr))
-	substr = `"data":[{"value":[1692670839086,1,1]}]}`
-	require.True(t, strings.Contains(buffer.String(), substr))
-	substr = `data":[{"value":[1692670840086,2,2]}]}]`
-	require.True(t, strings.Contains(buffer.String(), substr))
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
 }

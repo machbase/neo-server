@@ -73,9 +73,9 @@ type ChartGlobalOptions struct {
 	opts.Grid3D `json:"grid3D"`
 }
 
-func NewRectChart(defaultType string) *ChartBase {
+func NewRectChart() *ChartBase {
 	ret := &ChartBase{}
-	ret.defaultChartType = defaultType
+	ret.defaultChartType = "line"
 	ret.initialize()
 	return ret
 }
