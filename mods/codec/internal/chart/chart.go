@@ -427,6 +427,11 @@ func (ex *ChartBase) Close() {
 		}
 		ex.writeMultiSeries(&chart.BaseConfiguration)
 		rect = chart
+	} else if len(ex.multiSeries) == 1 && ex.multiSeries[0].Type == "pie" {
+		chart := charts.NewPie()
+		chart.SetGlobalOptions(ex.getGlobalOptions()...)
+		ex.writeMultiSeries(&chart.BaseConfiguration)
+		rect = chart
 	} else {
 		chart := charts.NewLine()
 		chart.SetGlobalOptions(ex.getGlobalOptions()...)
@@ -485,9 +490,14 @@ func (ex *ChartBase) AddRow(values []any) error {
 		} else {
 			data = ser.Data.([]any)
 		}
-		// hint: use ChartData instead of v for customizing a specefic item
-		data = append(data, []any{xAxisValue, v})
-		ser.Data = data
+		if ser.Type == "pie" {
+			data = append(data, ChartData{Name: fmt.Sprintf("%v", xAxisValue), Value: v})
+			ser.Data = data
+		} else {
+			// hint: use ChartData instead of v for customizing a specefic item
+			data = append(data, []any{xAxisValue, v})
+			ser.Data = data
+		}
 	}
 	return nil
 }

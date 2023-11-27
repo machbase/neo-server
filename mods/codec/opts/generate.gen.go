@@ -153,7 +153,7 @@ func ColumnTypes(types ...string) Option {
 // SetColumns
 //
 //	mods/codec/internal/box/box_encode.go:85:1
-//	mods/codec/internal/chart/chart.go:552:1
+//	mods/codec/internal/chart/chart.go:563:1
 //	mods/codec/internal/csv/csv_decode.go:69:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
 //	mods/codec/internal/echart/echart.go:289:1
@@ -364,7 +364,7 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 
 // SetMarkAreaXAxis
 //
-//	mods/codec/internal/chart/chart.go:574:1
+//	mods/codec/internal/chart/chart.go:585:1
 type CanSetMarkAreaXAxis interface {
 	SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...string)
 }
@@ -379,7 +379,7 @@ func MarkAreaXAxis(seriesIdx int, from any, to any, args ...string) Option {
 
 // SetMarkAreaYAxis
 //
-//	mods/codec/internal/chart/chart.go:606:1
+//	mods/codec/internal/chart/chart.go:617:1
 type CanSetMarkAreaYAxis interface {
 	SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...string)
 }
@@ -394,7 +394,7 @@ func MarkAreaYAxis(seriesIdx int, from any, to any, args ...string) Option {
 
 // SetMarkLineStyle
 //
-//	mods/codec/internal/chart/chart.go:678:1
+//	mods/codec/internal/chart/chart.go:689:1
 type CanSetMarkLineStyle interface {
 	SetMarkLineStyle(seriesIdx int, content string)
 }
@@ -409,7 +409,7 @@ func MarkLineStyle(seriesIdx int, content string) Option {
 
 // SetMarkLineXAxis
 //
-//	mods/codec/internal/chart/chart.go:628:1
+//	mods/codec/internal/chart/chart.go:639:1
 type CanSetMarkLineXAxis interface {
 	SetMarkLineXAxis(seriesIdx int, value any, args ...string)
 }
@@ -439,7 +439,7 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 
 // SetMarkLineYAxis
 //
-//	mods/codec/internal/chart/chart.go:653:1
+//	mods/codec/internal/chart/chart.go:664:1
 type CanSetMarkLineYAxis interface {
 	SetMarkLineYAxis(seriesIdx int, value any, args ...string)
 }
@@ -540,7 +540,7 @@ func Rownum(show bool) Option {
 
 // SetSeries
 //
-//	mods/codec/internal/chart/chart.go:481:1
+//	mods/codec/internal/chart/chart.go:500:1
 type CanSetSeries interface {
 	SetSeries(args ...string)
 }
@@ -847,7 +847,7 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 
 // SetXAxis
 //
-//	mods/codec/internal/chart/chart.go:286:1
+//	mods/codec/internal/chart/chart.go:280:1
 //	mods/codec/internal/echart/echart_2d.go:67:1
 //	mods/codec/internal/echart/echart_3d.go:48:1
 type CanSetXAxis interface {
@@ -864,7 +864,7 @@ func XAxis(args ...any) Option {
 
 // SetYAxis
 //
-//	mods/codec/internal/chart/chart.go:321:1
+//	mods/codec/internal/chart/chart.go:315:1
 //	mods/codec/internal/echart/echart_2d.go:103:1
 //	mods/codec/internal/echart/echart_3d.go:81:1
 type CanSetYAxis interface {

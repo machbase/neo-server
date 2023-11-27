@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
@@ -255,4 +256,8 @@ func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *fr
 		ret.phase = args[1]
 	}
 	return ret
+}
+
+func (x *Node) fmRandom() float64 {
+	return rand.Float64()
 }

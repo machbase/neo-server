@@ -128,6 +128,7 @@ func NewNode(task *Task) *Node {
 		"datetimeType": x.gen_datetimeType,
 		"stringType":   x.gen_stringType,
 		"doubleType":   x.gen_doubleType,
+		"random":       x.gen_random,
 		"freq":         x.gen_freq,
 		"oscillator":   x.gen_oscillator,
 		"sphere":       x.gen_sphere,
@@ -1802,6 +1803,17 @@ func (x *Node) gen_doubleType(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmDoubleType(p0...)
+}
+
+// gen_random
+//
+// syntax: random()
+func (x *Node) gen_random(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("random", 0, len(args))
+	}
+	ret := x.fmRandom()
+	return ret, nil
 }
 
 // gen_freq

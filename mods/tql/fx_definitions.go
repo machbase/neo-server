@@ -138,6 +138,7 @@ var FxDefinitions = []Definition{
 	{"stringType", defTask.fmStringType},
 	{"doubleType", defTask.fmDoubleType},
 	// maps.fake
+	{"random", defTask.fmRandom},
 	{"freq", defTask.fmFreq},
 	{"oscillator", defTask.fmOscillator},
 	{"sphere", defTask.fmSphere},
