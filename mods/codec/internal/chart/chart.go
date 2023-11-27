@@ -236,12 +236,6 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 	if ex.globalOptions.Theme == "" {
 		ex.globalOptions.Theme = "white"
 	}
-	if len(ex.XYAxis.XAxisList) == 0 {
-		ex.SetXAxis(`{"name":"x", "type":"time"}`)
-	}
-	if len(ex.XYAxis.YAxisList) == 0 {
-		ex.SetYAxis(`{"name":"y", "type":"value"}`)
-	}
 	ret := []charts.GlobalOpts{
 		func(bc *charts.BaseConfiguration) {
 			bc.Initialization = opts.Initialization{
@@ -360,8 +354,6 @@ func (ex *ChartBase) Flush(heading bool) {
 }
 
 func (ex *ChartBase) Close() {
-	var before []func()
-
 	chart := charts.NewLine()
 	chart.SetGlobalOptions(ex.getGlobalOptions()...)
 	for seriesIdx := 0; seriesIdx < len(ex.multiSeries); seriesIdx++ {
@@ -407,26 +399,17 @@ func (ex *ChartBase) Close() {
 		}
 		chart.MultiSeries = append(chart.MultiSeries, *ser)
 	}
-	before = append(before, chart.Validate, func() {
-		if ex.domainColumnType == "time" {
-			chart.XAxisList[0].Type = "time"
-		} else {
-			chart.XAxisList[0].Type = "value"
+	if len(chart.XAxisList) == 0 {
+		chart.XAxisList = append(chart.XAxisList, opts.XAxis{})
+	}
+	if len(chart.YAxisList) == 0 {
+		chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
+	}
+	before := []func(){chart.Validate, func() {
+		if chart.XAxisList[0].Type == "" {
+			chart.XAxisList[0].Type = ex.domainColumnType
 		}
-		chart.XAxisList[0].Show = true
-		//chart.XAxisList[0].Data = .. only for categroy ..
-		chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
-			Show:   true,
-			Rotate: 0,
-		}
-		chart.XAxisList[0].SplitLine = &opts.SplitLine{
-			Show: true,
-			LineStyle: &opts.LineStyle{
-				Width:   0.8,
-				Opacity: 0.3,
-			},
-		}
-	})
+	}}
 
 	var rndr Renderer
 	if ex.toJsonOutput {
@@ -496,15 +479,13 @@ func (ex *ChartBase) SetSeries(args ...string) {
 				ex.logger.LogErrorf("series() args[%d], %s", idx, err.Error())
 			}
 			return
-		} else if peek.Type == "time" {
+		}
+		switch peek.Type {
+		case "time", "category", "value", "log":
 			ex.domainColumnIdx = idx
-			ex.domainColumnType = "time"
+			ex.domainColumnType = peek.Type
 			continue
-		} else if peek.Type == "domain" {
-			ex.domainColumnIdx = idx
-			ex.domainColumnType = "value"
-			continue
-		} else {
+		default: // line, bar, scatter, ...
 			seriesIdx++
 		}
 
