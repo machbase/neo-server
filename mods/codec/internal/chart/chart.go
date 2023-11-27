@@ -407,24 +407,26 @@ func (ex *ChartBase) Close() {
 		}
 		chart.MultiSeries = append(chart.MultiSeries, *ser)
 	}
-	if ex.domainColumnType == "time" {
-		before = append(before, chart.Validate, func() {
+	before = append(before, chart.Validate, func() {
+		if ex.domainColumnType == "time" {
 			chart.XAxisList[0].Type = "time"
-			chart.XAxisList[0].Show = true
-			//chart.XAxisList[0].Data = .. only for categroy ..
-			chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
-				Show:   true,
-				Rotate: 0,
-			}
-			chart.XAxisList[0].SplitLine = &opts.SplitLine{
-				Show: true,
-				LineStyle: &opts.LineStyle{
-					Width:   0.8,
-					Opacity: 0.3,
-				},
-			}
-		})
-	}
+		} else {
+			chart.XAxisList[0].Type = "value"
+		}
+		chart.XAxisList[0].Show = true
+		//chart.XAxisList[0].Data = .. only for categroy ..
+		chart.XAxisList[0].AxisLabel = &opts.AxisLabel{
+			Show:   true,
+			Rotate: 0,
+		}
+		chart.XAxisList[0].SplitLine = &opts.SplitLine{
+			Show: true,
+			LineStyle: &opts.LineStyle{
+				Width:   0.8,
+				Opacity: 0.3,
+			},
+		}
+	})
 
 	var rndr Renderer
 	if ex.toJsonOutput {
