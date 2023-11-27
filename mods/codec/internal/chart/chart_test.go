@@ -84,11 +84,13 @@ func TestTangentialPolarBar(t *testing.T) {
 	c.SetGlobal(`
 		"chartId": "WejMYXCGcYNL",
 		"theme": "dark",
-        "polar": {"max": 4, "startAngle": 75},
+		"polar": { "radius": ["30", "80%"] },
+        "angleAxis": { "max": 4, "startAngle": 75 },
         "radiusAxis": {
             "type": "category",
             "data": ["a", "b", "c", "d"]
-        }
+        },
+		"tooltip": {}
 	`)
 	c.SetSeries(
 		`{	"type": "category"}`,

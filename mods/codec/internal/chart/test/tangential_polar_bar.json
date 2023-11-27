@@ -6,28 +6,32 @@
     },
     "theme": "dark",
     "chartOption": {
+        "angleAxis": {
+            "startAngle": 75,
+            "max": 4
+        },
         "animation": false,
         "legend": {
             "show": true,
             "type": ""
         },
-        "title": {},
-        "tooltip": {
-            "show": true,
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "cross",
+        "polar": {
+            "center": [
+                "50%",
+                "50%"
+            ],
+            "radius": [
+                "30",
+                "80%"
+            ],
+            "tooltip": {
                 "show": false
             }
         },
-        "xAxis": [
-            {
-                "type": "category"
-            }
-        ],
-        "yAxis": [
-            {}
-        ],
+        "radiusAxis": {
+            "type": "category",
+            "nameTextStyle": {}
+        },
         "series": [
             {
                 "name": "column[0]",
@@ -62,15 +66,17 @@
                 "label": {
                     "show": true,
                     "position": "middle"
-                },
-                "markLine": {
-                    "symbol": [
-                        "none",
-                        "none"
-                    ]
-                },
-                "markArea": {}
+                }
             }
-        ]
+        ],
+        "title": {},
+        "tooltip": {
+            "show": true,
+            "trigger": "axis",
+            "axisPointer": {
+                "type": "cross",
+                "show": false
+            }
+        }
     }
 }

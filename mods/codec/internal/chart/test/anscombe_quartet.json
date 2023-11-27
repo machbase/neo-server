@@ -111,13 +111,8 @@
                                 ]
                             }
                         ]
-                    ],
-                    "symbol": [
-                        "none",
-                        "none"
                     ]
-                },
-                "markArea": {}
+                }
             },
             {
                 "name": "II",
@@ -194,13 +189,8 @@
                                 ]
                             }
                         ]
-                    ],
-                    "symbol": [
-                        "none",
-                        "none"
                     ]
-                },
-                "markArea": {}
+                }
             },
             {
                 "name": "III",
@@ -277,13 +267,8 @@
                                 ]
                             }
                         ]
-                    ],
-                    "symbol": [
-                        "none",
-                        "none"
                     ]
-                },
-                "markArea": {}
+                }
             },
             {
                 "name": "IV",
@@ -360,13 +345,8 @@
                                 ]
                             }
                         ]
-                    ],
-                    "symbol": [
-                        "none",
-                        "none"
                     ]
-                },
-                "markArea": {}
+                }
             }
         ],
         "title": {},

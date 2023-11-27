@@ -353,42 +353,56 @@ func (ex *ChartBase) Open() error {
 func (ex *ChartBase) Flush(heading bool) {
 }
 
-func (ex *ChartBase) Close() {
-	chart := charts.NewLine()
-	chart.SetGlobalOptions(ex.getGlobalOptions()...)
+func (ex *ChartBase) initMarkLines(ser *charts.SingleSeries) {
+	if ser.MarkLines != nil {
+		return
+	}
+	ser.MarkLines = &opts.MarkLines{
+		MarkLineStyle: opts.MarkLineStyle{
+			Symbol: []string{"none", "none"},
+		},
+	}
+}
+
+func (ex *ChartBase) initMarkAreas(ser *charts.SingleSeries) {
+	if ser.MarkAreas != nil {
+		return
+	}
+	ser.MarkAreas = &opts.MarkAreas{}
+}
+
+func (ex *ChartBase) writeMultiSeries(chart *charts.BaseConfiguration) {
 	for seriesIdx := 0; seriesIdx < len(ex.multiSeries); seriesIdx++ {
 		ser := ex.getSeries(seriesIdx, false)
 		if ser == nil {
 			continue
 		}
-		if ser.MarkAreas == nil {
-			ser.MarkAreas = &opts.MarkAreas{}
-		}
 		for _, mark := range ex.markAreaXAxis {
 			if mark.SeriesIdx != seriesIdx {
 				continue
 			}
+			ex.initMarkAreas(ser)
 			ser.MarkAreas.Data = append(ser.MarkAreas.Data, mark)
 		}
 		for _, mark := range ex.markAreaYAxis {
 			if mark.SeriesIdx != seriesIdx {
 				continue
 			}
+			ex.initMarkAreas(ser)
 			ser.MarkAreas.Data = append(ser.MarkAreas.Data, mark)
-		}
-		if ser.MarkLines == nil {
-			ser.MarkLines = &opts.MarkLines{}
 		}
 		for _, mark := range ex.markLineXAxis {
 			if mark.SeriesIdx != seriesIdx {
 				continue
 			}
+			ex.initMarkLines(ser)
 			ser.MarkLines.Data = append(ser.MarkLines.Data, mark)
 		}
 		for _, mark := range ex.markLineYAxis {
 			if mark.SeriesIdx != seriesIdx {
 				continue
 			}
+			ex.initMarkLines(ser)
 			ser.MarkLines.Data = append(ser.MarkLines.Data, mark)
 		}
 		if ser.Type == "" {
@@ -399,23 +413,43 @@ func (ex *ChartBase) Close() {
 		}
 		chart.MultiSeries = append(chart.MultiSeries, *ser)
 	}
-	if len(chart.XAxisList) == 0 {
-		chart.XAxisList = append(chart.XAxisList, opts.XAxis{})
-	}
-	if len(chart.YAxisList) == 0 {
-		chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
-	}
-	before := []func(){chart.Validate, func() {
-		if chart.XAxisList[0].Type == "" {
-			chart.XAxisList[0].Type = ex.domainColumnType
+}
+func (ex *ChartBase) Close() {
+	var before = []func(){}
+	var rect any
+	if ex.globalOptions.RadiusAxis.Type != "" {
+		chart := charts.NewBar()
+		chart.EnablePolarType()
+		chart.SetGlobalOptions(ex.getGlobalOptions()...)
+		if chart.Polar.Center[0] == "" && chart.Polar.Center[1] == "" {
+			chart.Polar.Center[0] = "50%"
+			chart.Polar.Center[1] = "50%"
 		}
-	}}
+		ex.writeMultiSeries(&chart.BaseConfiguration)
+		rect = chart
+	} else {
+		chart := charts.NewLine()
+		chart.SetGlobalOptions(ex.getGlobalOptions()...)
+		ex.writeMultiSeries(&chart.BaseConfiguration)
+		rect = chart
+		if len(chart.XAxisList) == 0 {
+			chart.XAxisList = append(chart.XAxisList, opts.XAxis{})
+		}
+		if len(chart.YAxisList) == 0 {
+			chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
+		}
+		before = []func(){chart.Validate, func() {
+			if chart.XAxisList[0].Type == "" {
+				chart.XAxisList[0].Type = ex.domainColumnType
+			}
+		}}
+	}
 
 	var rndr Renderer
 	if ex.toJsonOutput {
-		rndr = newJsonRender(chart, before...)
+		rndr = newJsonRender(rect, before...)
 	} else {
-		rndr = newChartRender(chart, before...)
+		rndr = newChartRender(rect, before...)
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
@@ -517,12 +551,6 @@ func (ex *ChartBase) getSeries(idx int, createIfNotExists bool) *charts.SingleSe
 
 				// Scatter
 				SymbolSize: 5,
-
-				MarkLines: &opts.MarkLines{
-					MarkLineStyle: opts.MarkLineStyle{
-						Symbol: []string{"none", "none"},
-					},
-				},
 			}
 			ex.multiSeries[idx] = ret
 			return ret
