@@ -215,3 +215,41 @@ func TestAnscombeQuatet(t *testing.T) {
 	}
 	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
 }
+
+func TestMarkLine(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	c := chart.NewRectChart()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetChartJson(true)
+	c.SetGlobal(`
+		"chartId": "WejMYXCGcYNL",
+		"theme": "dark"`)
+	c.SetSeries(`"type": "time"`)
+	c.SetSeries(`"type": "line", "color":"#5470C6"`)
+
+	c.SetMarkLineXAxis(0, time.Unix(1701059605, 0), `{"itemStyle":{"color":"#ff0"}}`)
+	c.SetMarkLineYAxis(0, 6.0, `{"itemStyle":{"color":"#ff0"}}`)
+
+	require.Equal(t, "application/json", c.ContentType())
+
+	c.Open()
+	c.AddRow([]any{1701059601000000000, 4.26})
+	c.AddRow([]any{1701059602000000000, 5.68})
+	c.AddRow([]any{1701059603000000000, 7.24})
+	c.AddRow([]any{1701059604000000000, 4.82})
+	c.AddRow([]any{1701059605000000000, 6.95})
+	c.AddRow([]any{1701059606000000000, 8.81})
+	c.AddRow([]any{1701059607000000000, 8.04})
+	c.AddRow([]any{1701059608000000000, 8.33})
+	c.AddRow([]any{1701059609000000000, 10.84})
+	c.AddRow([]any{1701059610000000000, 7.58})
+	c.AddRow([]any{1701059611000000000, 9.96})
+	c.Close()
+
+	expect, err := os.ReadFile(filepath.Join("test", "mark_line.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
+}
