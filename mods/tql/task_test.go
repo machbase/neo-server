@@ -887,6 +887,42 @@ func TestMapValue(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestWhen(t *testing.T) {
+	err := bridge.Register(&model.BridgeDefinition{
+		Type: model.BRIDGE_SQLITE,
+		Name: "sqlite",
+		Path: "file::memory:?cache=shared",
+	})
+	if err == bridge.ErrBridgeDisabled {
+		return
+	}
+	require.Nil(t, err)
+
+	br, _ := bridge.GetSqlBridge("sqlite")
+	ctx := context.TODO()
+	conn, _ := br.Connect(ctx)
+	conn.ExecContext(ctx, `create table if not exists test_when (
+		id INTEGER NOT NULL PRIMARY KEY,
+		name TEXT,
+		value INTEGER
+	)`)
+	conn.Close()
+
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doLog("hello", value(0), value(1)) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	resultLog := ExpectLog("[INFO] hello msg123 0\n[INFO] hello msg123 2")
+	runTest(t, codeLines, resultLines, resultLog)
+}
+
 func TestTimeWindow(t *testing.T) {
 	var codeLines, payload, resultLines []string
 

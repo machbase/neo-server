@@ -84,6 +84,11 @@ func NewNode(task *Task) *Node {
 		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
+		"glob":       x.gen_glob,
+		"regexp":     x.gen_regexp,
+		"doLog":      x.gen_doLog,
+		"doHttp":     x.gen_doHttp,
+		"WHEN":       x.gen_WHEN,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -1190,6 +1195,108 @@ func (x *Node) gen_lazy(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmLazy(p0)
+	return ret, nil
+}
+
+// gen_glob
+//
+// syntax: glob(string, string)
+func (x *Node) gen_glob(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("glob", 2, len(args))
+	}
+	p0, err := convString(args, 0, "glob", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "glob", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmGlob(p0, p1)
+}
+
+// gen_regexp
+//
+// syntax: regexp(string, string)
+func (x *Node) gen_regexp(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("regexp", 2, len(args))
+	}
+	p0, err := convString(args, 0, "regexp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "regexp", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmRegexp(p0, p1)
+}
+
+// gen_doLog
+//
+// syntax: doLog(...interface {})
+func (x *Node) gen_doLog(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "doLog", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmDoLog(p0...)
+	return ret, nil
+}
+
+// gen_doHttp
+//
+// syntax: doHttp(string, string, , ...string)
+func (x *Node) gen_doHttp(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("doHttp", 3, len(args))
+	}
+	p0, err := convString(args, 0, "doHttp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "doHttp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "doHttp", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "doHttp", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := x.fmDoHttp(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_WHEN
+//
+// syntax: WHEN(bool, )
+func (x *Node) gen_WHEN(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("WHEN", 2, len(args))
+	}
+	p0, err := convBool(args, 0, "WHEN", "bool")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "WHEN", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmWhen(p0, p1)
 	return ret, nil
 }
 
