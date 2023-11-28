@@ -190,6 +190,7 @@ func script_compile(content string, node *Node) (*tengo.Script, *tengo.Compiled,
 		"drop":     &tengo.UserFunction{Name: "drop", Value: tengof_drop(node)},
 		"yieldKey": &tengo.UserFunction{Name: "yieldKey", Value: tengof_yieldKey(node)},
 		"yield":    &tengo.UserFunction{Name: "yield", Value: tengof_yield(node)},
+		"param":    &tengo.UserFunction{Name: "param", Value: tengof_param(node)},
 		"uuid":     &tengo.UserFunction{Name: "uuid", Value: tengof_uuid(node)},
 		"nil":      &tengo.UserFunction{Name: "nil", Value: tengof_nil(node)},
 		"bridge":   &tengo.UserFunction{Name: "bridge", Value: tengof_bridge(node)},
@@ -256,6 +257,32 @@ func tengof_value(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 			}
 			return &tengo.Array{Value: []tengo.Object{obj}}, nil
 		}
+	}
+}
+
+func tengof_param(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
+	return func(args ...tengo.Object) (tengo.Object, error) {
+		paramName := ""
+		if len(args) != 0 {
+			if str, ok := tengo.ToString(args[0]); ok {
+				paramName = str
+			}
+		}
+		if paramName == "" {
+			return nil, tengo.ErrInvalidIndexType
+		}
+		if v, ok := node.task.params[paramName]; ok {
+			if len(v) == 1 {
+				return anyToTengoObject(v[0]), nil
+			} else if len(v) > 1 {
+				ret := &tengo.Array{}
+				for _, elm := range v {
+					ret.Value = append(ret.Value, anyToTengoObject(elm))
+				}
+				return ret, nil
+			}
+		}
+		return nil, nil
 	}
 }
 
