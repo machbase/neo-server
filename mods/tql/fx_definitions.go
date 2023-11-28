@@ -20,6 +20,7 @@ var FxDefinitions = []Definition{
 	{"values", defTask.GetRecordValues},
 	{"param", defTask.GetRequestParam},
 	{"payload", defTask.GetRequestPayload},
+	{"escapeParam", defTask.EscapeParam},
 	// math
 	{"// math", nil},
 	{"abs", math.Abs},

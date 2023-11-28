@@ -81,9 +81,9 @@ type FilePath struct {
 }
 
 func (x *Node) fmFile(path string) (*FilePath, error) {
-	if strings.HasPrefix("http://", path) {
+	if strings.HasPrefix(path, "http://") {
 		return &FilePath{HttpPath: path}, nil
-	} else if strings.HasPrefix("https://", path) {
+	} else if strings.HasPrefix(path, "https://") {
 		return &FilePath{HttpPath: path}, nil
 	} else {
 		serverFs := ssfs.Default()
@@ -137,6 +137,7 @@ func (src *bytesSource) gen(node *Node) {
 	} else if src.srcFile != "" {
 		content, err := os.Open(src.srcFile)
 		if err != nil {
+			node.task.LogErrorf("Fail to reqd %q, %s", src.srcFile, err.Error())
 			ErrorRecord(err).Tell(node.next)
 			return
 		}
@@ -145,11 +146,13 @@ func (src *bytesSource) gen(node *Node) {
 	} else if src.srcHttp != "" {
 		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
 		if err != nil {
+			node.task.LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
 			ErrorRecord(err).Tell(node.next)
 			return
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
+			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
 			ErrorRecord(err).Tell(node.next)
 			return
 		}

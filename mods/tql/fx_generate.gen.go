@@ -16,12 +16,13 @@ func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
 		// context
-		"context": x.gen_context,
-		"key":     x.gen_key,
-		"value":   x.gen_value,
-		"values":  x.gen_values,
-		"param":   x.gen_param,
-		"payload": x.gen_payload,
+		"context":     x.gen_context,
+		"key":         x.gen_key,
+		"value":       x.gen_value,
+		"values":      x.gen_values,
+		"param":       x.gen_param,
+		"payload":     x.gen_payload,
+		"escapeParam": x.gen_escapeParam,
 		// math
 		"abs":       x.gen_abs,
 		"acos":      x.gen_acos,
@@ -279,6 +280,21 @@ func (x *Node) gen_payload(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("payload", 0, len(args))
 	}
 	ret := x.GetRequestPayload()
+	return ret, nil
+}
+
+// gen_escapeParam
+//
+// syntax: escapeParam(string)
+func (x *Node) gen_escapeParam(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("escapeParam", 1, len(args))
+	}
+	p0, err := convString(args, 0, "escapeParam", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.EscapeParam(p0)
 	return ret, nil
 }
 

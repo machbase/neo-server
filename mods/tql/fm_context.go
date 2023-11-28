@@ -2,12 +2,12 @@ package tql
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 )
 
 type NodeContext struct {
-	// Key  any
 	node *Node
 }
 
@@ -132,4 +132,9 @@ func (node *Node) GetRequestParam(name string) any {
 		return vals
 	}
 	return nil
+}
+
+// tql function: escapeParam()
+func (node *Node) EscapeParam(str string) any {
+	return url.QueryEscape(str)
 }
