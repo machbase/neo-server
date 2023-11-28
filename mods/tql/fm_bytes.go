@@ -3,7 +3,9 @@ package tql
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -41,17 +43,19 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 
 	switch src := origin.(type) {
 	case string:
-		ret.reader = bytes.NewBufferString(src)
+		ret.srcString = src
 	case []byte:
-		ret.reader = bytes.NewBuffer(src)
+		ret.srcBytes = src
 	case io.Reader:
-		ret.reader = src
+		ret.srcReader = src
 	case *FilePath:
-		content, err := os.ReadFile(src.AbsPath)
-		if err != nil {
-			return err
+		if src.AbsPath != "" {
+			ret.srcFile = src.AbsPath
+		} else if src.HttpPath != "" {
+			ret.srcHttp = src.HttpPath
+		} else {
+			return ErrArgs(fnName, 0, "reader or string")
 		}
-		ret.reader = bytes.NewBuffer(content)
 	default:
 		return ErrArgs(fnName, 0, "reader or string")
 	}
@@ -62,26 +66,36 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 		case *trimspace:
 			ret.trimspace = v.flag
 		default:
-			return ErrArgs(fnName, 1, "require the separator() option")
+			return ErrArgs(fnName, 1, fmt.Sprintf("unknown options %T", arg))
 		}
+	}
+	if ret.delimiter == 0 {
+		ret.delimiter = '\n'
 	}
 	return nil
 }
 
 type FilePath struct {
-	AbsPath string
+	HttpPath string
+	AbsPath  string
 }
 
 func (x *Node) fmFile(path string) (*FilePath, error) {
-	serverFs := ssfs.Default()
-	if serverFs == nil {
-		return nil, os.ErrNotExist
+	if strings.HasPrefix("http://", path) {
+		return &FilePath{HttpPath: path}, nil
+	} else if strings.HasPrefix("https://", path) {
+		return &FilePath{HttpPath: path}, nil
+	} else {
+		serverFs := ssfs.Default()
+		if serverFs == nil {
+			return nil, os.ErrNotExist
+		}
+		realPath, err := serverFs.RealPath(path)
+		if err != nil {
+			return nil, err
+		}
+		return &FilePath{AbsPath: realPath}, nil
 	}
-	realPath, err := serverFs.RealPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return &FilePath{AbsPath: realPath}, nil
 }
 
 type separator struct {
@@ -103,12 +117,52 @@ func (x *Node) fmTrimSpace(b bool) *trimspace {
 type bytesSource struct {
 	toString  bool
 	delimiter byte
-	reader    io.Reader
 	trimspace bool
+
+	srcReader io.Reader
+	srcString string
+	srcBytes  []byte
+	srcFile   string
+	srcHttp   string
 }
 
 func (src *bytesSource) gen(node *Node) {
-	buff := bufio.NewReader(src.reader)
+	var reader io.Reader
+	if src.srcString != "" {
+		reader = bytes.NewBufferString(src.srcString)
+	} else if src.srcBytes != nil {
+		reader = bytes.NewBuffer(src.srcBytes)
+	} else if src.srcReader != nil {
+		reader = src.srcReader
+	} else if src.srcFile != "" {
+		content, err := os.Open(src.srcFile)
+		if err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		defer content.Close()
+		reader = content
+	} else if src.srcHttp != "" {
+		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
+		if err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		defer resp.Body.Close()
+		reader = resp.Body
+	} else if src.srcReader != nil {
+		reader = src.srcReader
+	} else {
+		ErrorRecord(fmt.Errorf("no data location is specified")).Tell(node.next)
+		return
+	}
+
+	buff := bufio.NewReader(reader)
 
 	var label string
 	if src.toString {
