@@ -20,6 +20,7 @@ type FunctionTestCase struct {
 }
 
 func (tc FunctionTestCase) run(t *testing.T) {
+	t.Helper()
 	ret, err := tc.f(tc.args...)
 	if tc.expectErr != "" {
 		require.NotNil(t, err)
@@ -28,6 +29,50 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	}
 	require.Nil(t, err)
 	require.Equal(t, tc.expect, ret)
+}
+
+func TestCond(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "test123me"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "testme"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "test123not"},
+		expect: false,
+	}.run(t)
+}
+
+func TestRegexp(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("regexp"),
+		args:      []any{`^test[0-9$`, "test123"},
+		expectErr: "error parsing regexp: missing closing ]: `[0-9$`",
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test[0-9]{3}$`, "test123"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test[0-9]{3}$`, "test12"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{3}$`, "test12345x"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{3}$`, "test999"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{5}x$`, "test12345x"},
+		expect: true,
+	}.run(t)
 }
 
 func TestTime(t *testing.T) {
