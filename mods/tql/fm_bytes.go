@@ -137,7 +137,7 @@ func (src *bytesSource) gen(node *Node) {
 	} else if src.srcFile != "" {
 		content, err := os.Open(src.srcFile)
 		if err != nil {
-			node.task.LogErrorf("Fail to reqd %q, %s", src.srcFile, err.Error())
+			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
 			ErrorRecord(err).Tell(node.next)
 			return
 		}

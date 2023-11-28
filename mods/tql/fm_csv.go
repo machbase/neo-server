@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -51,14 +52,66 @@ type csvSource struct {
 	columns   map[int]*columnOpt
 	hasHeader bool
 
-	reader *csv.Reader
+	srcReader io.Reader
+	srcString string
+	srcBytes  []byte
+	srcFile   string
+	srcHttp   string
 }
 
 func (src *csvSource) gen(node *Node) {
+	var reader *csv.Reader
+	if src.srcString != "" {
+		reader = csv.NewReader(bytes.NewBufferString(src.srcString))
+	} else if src.srcBytes != nil {
+		reader = csv.NewReader(bytes.NewBuffer(src.srcBytes))
+	} else if src.srcReader != nil {
+		reader = csv.NewReader(src.srcReader)
+	} else if src.srcFile != "" {
+		stat, err := os.Stat(src.srcFile)
+		if err != nil {
+			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		if stat.IsDir() {
+			node.task.LogErrorf("Fail to read %q, it is a directory", src.srcFile)
+			ErrorRecord(errors.New("Faile to read directory as CSV")).Tell(node.next)
+			return
+		}
+		content, err := os.Open(src.srcFile)
+		if err != nil {
+			node.task.LogErrorf("Fail to read %q, %s", src.srcFile, err.Error())
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		defer content.Close()
+		reader = csv.NewReader(content)
+	} else if src.srcHttp != "" {
+		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
+		if err != nil {
+			node.task.LogErrorf("Fail to request %q, %s", src.srcHttp, err.Error())
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		defer resp.Body.Close()
+		reader = csv.NewReader(resp.Body)
+	}
+	if reader == nil {
+		node.task.LogErrorf("no input is specified")
+		return
+	}
+
 	rownum := 0
 	headerProcessed := false
 	for {
-		fields, err := src.reader.Read()
+		fields, err := reader.Read()
 		if err != nil {
 			if err != io.EOF {
 				node.task.LogErrorf("invalid input, %s", err.Error())
@@ -169,49 +222,27 @@ func (fs *csvSource) header() spi.Columns {
 func newCsvSource(args ...any) (*csvSource, error) {
 	ret := &csvSource{columns: make(map[int]*columnOpt)}
 
-	var file *FilePath
-	var reader io.Reader
-
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case *FilePath:
-			file = v
+			if v.HttpPath != "" {
+				ret.srcHttp = v.HttpPath
+			} else {
+				ret.srcFile = v.AbsPath
+			}
 		case *columnOpt:
 			ret.columns[v.idx] = v
 		case codecOpts.Option:
 			v(ret)
 		case io.Reader:
-			reader = v
+			ret.srcReader = v
 		case string:
-			reader = bytes.NewBufferString(v)
+			ret.srcString = v
 		case []byte:
-			reader = bytes.NewBuffer(v)
+			ret.srcBytes = v
 		default:
 			return nil, fmt.Errorf("f(CSV) unknown argument, %T", v)
 		}
-	}
-
-	if file == nil && reader == nil {
-		return nil, errors.New("f(CSV) file path or data reader is not specified")
-	}
-
-	if reader != nil {
-		ret.reader = csv.NewReader(reader)
-	} else if file != nil {
-		stat, err := os.Stat(file.AbsPath)
-		if err != nil {
-			return nil, err
-		}
-		if stat.IsDir() {
-			return nil, errors.New("f(CSV) file path is a directory")
-		}
-
-		if fd, err := os.Open(file.AbsPath); err != nil {
-			return nil, err
-		} else {
-			ret.fd = fd
-		}
-		ret.reader = csv.NewReader(ret.fd)
 	}
 
 	return ret, nil
