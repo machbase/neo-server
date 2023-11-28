@@ -1,8 +1,16 @@
 package tql
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"strings"
 
+	gocsv "encoding/csv"
+
+	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -428,4 +436,157 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 		ret := NewRecord(inflight.key, newValue)
 		return ret, nil
 	}
+}
+
+func (node *Node) fmRegexp(pattern string, text string) (bool, error) {
+	var expr *regexp.Regexp
+	if v, exists := node.GetValue("$regexp.pattern"); exists {
+		if v.(string) == pattern {
+			if v, exists := node.GetValue("$regexp"); exists {
+				expr = v.(*regexp.Regexp)
+			}
+		}
+	}
+	if expr == nil {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return false, err
+		}
+		expr = compiled
+		node.SetValue("$regexp", expr)
+		node.SetValue("$regexp.pattern", pattern)
+	}
+	return expr.MatchString(text), nil
+}
+
+func (node *Node) fmGlob(pattern string, text string) (bool, error) {
+	return glob.Match(pattern, text)
+}
+
+type LogDoer []any
+
+func (ld LogDoer) Do(node *Node) error {
+	node.task.LogInfo(ld...)
+	return nil
+}
+
+func (node *Node) fmDoLog(args ...any) LogDoer {
+	return LogDoer(args)
+}
+
+type HttpDoer struct {
+	method  string
+	url     string
+	args    []string
+	content any
+
+	client *http.Client
+}
+
+func (doer *HttpDoer) Do(node *Node) error {
+	var body io.Reader
+	if doer.content != nil {
+		buff := &bytes.Buffer{}
+		csvEnc := gocsv.NewWriter(buff)
+		switch v := doer.content.(type) {
+		case []float64:
+			arr := make([]string, len(v))
+			for i, a := range v {
+				arr[i] = fmt.Sprintf("%v", a)
+			}
+			csvEnc.Write(arr)
+		case float64:
+			csvEnc.Write([]string{fmt.Sprintf("%v", v)})
+		case []string:
+			csvEnc.Write(v)
+		case string:
+			csvEnc.Write([]string{v})
+		case []any:
+			arr := make([]string, len(v))
+			for i, a := range v {
+				arr[i] = fmt.Sprintf("%v", a)
+			}
+			csvEnc.Write(arr)
+		case any:
+			csvEnc.Write([]string{fmt.Sprintf("%v", v)})
+		default:
+			return fmt.Errorf("unhandled content value type %T", v)
+		}
+		csvEnc.Flush()
+		body = buff
+	}
+	req, err := http.NewRequestWithContext(node.task.ctx, doer.method, doer.url, body)
+	if err != nil {
+		return err
+	}
+
+	for _, str := range doer.args {
+		k, v, ok := strings.Cut(str, ":")
+		if ok {
+			k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+			req.Header.Add(k, v)
+		}
+	}
+
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Add("Content-Type", "text/csv")
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Add("User-Agent", "machbase-neo tql http doer")
+	}
+	if doer.client == nil {
+		doer.client = &http.Client{}
+	}
+	resp, err := doer.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		node.task.LogWarn("http-doer", doer.method, doer.url, resp.Status)
+	} else if resp.StatusCode >= 300 {
+		node.task.LogInfo("http-doer", doer.method, doer.url, resp.Status)
+	} else {
+		node.task.LogDebug("http-doer", doer.method, doer.url, resp.Status)
+	}
+	return nil
+}
+
+func (node *Node) fmDoHttp(method string, url string, body any, args ...string) *HttpDoer {
+	var ret *HttpDoer
+	if v, ok := node.GetValue("$httpDoer"); !ok {
+		ret = &HttpDoer{}
+		node.SetValue("$httpDoer", ret)
+	} else {
+		ret = v.(*HttpDoer)
+	}
+	ret.method = method
+	ret.url = url
+	ret.args = args
+	ret.content = body
+	return ret
+}
+
+type WhenDoer interface {
+	Do(*Node) error
+}
+
+var (
+	_ WhenDoer = LogDoer{}
+	_ WhenDoer = &HttpDoer{}
+)
+
+func (node *Node) fmWhen(cond bool, action any) any {
+	if !cond {
+		return node.Inflight()
+	}
+	doer, ok := action.(WhenDoer)
+	if !ok {
+		node.task.LogErrorf("f(WHEN) 2nd arg is not a Doer type, but %T", action)
+	} else {
+		if err := doer.Do(node); err != nil {
+			node.task.LogErrorf("f(WHEN) doer occurs, %s", err.Error())
+		}
+	}
+	return node.Inflight()
 }

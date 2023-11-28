@@ -86,6 +86,11 @@ var FxDefinitions = []Definition{
 	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
 	{"lazy", defTask.fmLazy},
+	{"glob", defTask.fmGlob},
+	{"regexp", defTask.fmRegexp},
+	{"doLog", defTask.fmDoLog},
+	{"doHttp", defTask.fmDoHttp},
+	{"WHEN", defTask.fmWhen},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},
 	{"from", defTask.fmFrom},
