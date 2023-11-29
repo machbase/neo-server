@@ -69,9 +69,6 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 			return ErrArgs(fnName, 1, fmt.Sprintf("unknown options %T", arg))
 		}
 	}
-	if ret.delimiter == 0 {
-		ret.delimiter = '\n'
-	}
 	return nil
 }
 
@@ -158,8 +155,6 @@ func (src *bytesSource) gen(node *Node) {
 		}
 		defer resp.Body.Close()
 		reader = resp.Body
-	} else if src.srcReader != nil {
-		reader = src.srcReader
 	} else {
 		ErrorRecord(fmt.Errorf("no data location is specified")).Tell(node.next)
 		return

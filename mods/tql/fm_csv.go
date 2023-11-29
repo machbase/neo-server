@@ -48,7 +48,6 @@ func (x *Node) fmCsv(args ...any) (any, error) {
 }
 
 type csvSource struct {
-	fd        io.ReadCloser
 	columns   map[int]*columnOpt
 	hasHeader bool
 

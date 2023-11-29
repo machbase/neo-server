@@ -17,7 +17,6 @@ var FxDefinitions = []Definition{
 	{"context", defTask.GetContext},
 	{"key", defTask.GetRecordKey},
 	{"value", defTask.GetRecordValue},
-	{"values", defTask.GetRecordValues},
 	{"param", defTask.GetRequestParam},
 	{"payload", defTask.GetRequestPayload},
 	{"escapeParam", defTask.EscapeParam},
