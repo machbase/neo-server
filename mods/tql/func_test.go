@@ -31,7 +31,107 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	require.Equal(t, tc.expect, ret)
 }
 
-func TestCond(t *testing.T) {
+func TestParseFloat(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("parseFloat"),
+		args:   []any{"0"},
+		expect: 0.0,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseFloat"),
+		args:   []any{"-1.23"},
+		expect: -1.23,
+	}.run(t)
+}
+
+func TestParseBool(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:   []any{"true"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:   []any{"0"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:      []any{"some other text"},
+		expectErr: "parseBool: parsing \"some other text\": invalid syntax",
+	}.run(t)
+}
+
+func TestStrTrimSpace(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimSpace"),
+		args:   []any{"  text\t\n"},
+		expect: "text",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimSpace"),
+		args:   []any{"   "},
+		expect: "",
+	}.run(t)
+}
+
+func TestStrTrimPrefix(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimPrefix"),
+		args:   []any{"  text\t\n", "  "},
+		expect: "text\t\n",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimPrefix"),
+		args:   []any{"__text", "_"},
+		expect: "_text",
+	}.run(t)
+}
+
+func TestStrTrimSuffix(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimSuffix"),
+		args:   []any{"  text\t\n", "\t\n"},
+		expect: "  text",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimSuffix"),
+		args:   []any{"__text", "text"},
+		expect: "__",
+	}.run(t)
+}
+
+func TestStrReplace(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "a", "A", 1},
+		expect: "Apple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "p", "P", 1},
+		expect: "aPple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "p", "P", -1},
+		expect: "aPPle",
+	}.run(t)
+}
+
+func TestStrReplaceAll(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strReplaceAll"),
+		args:   []any{"apple", "a", "A"},
+		expect: "Apple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplaceAll"),
+		args:   []any{"apple", "p", "P"},
+		expect: "aPPle",
+	}.run(t)
+}
+
+func TestStrSprintf(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strSprintf"),
+		args:   []any{"hello %s %1.2f", "world", 3.141592},
+		expect: "hello world 3.14",
+	}.run(t)
+}
+
+func TestGlob(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("glob"),
 		args:   []any{"test*me", "test123me"},

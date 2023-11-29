@@ -323,15 +323,17 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
-		newCol := node.AsColumnTypeOf(newValue)
-		newCol.Name = columnName
-		head := cols[0 : idx+1]
-		tail := cols[idx+1:]
-		updateCols := []*spi.Column{}
-		updateCols = append(updateCols, head...)
-		updateCols = append(updateCols, newCol)
-		updateCols = append(updateCols, tail...)
-		node.task.SetResultColumns(updateCols)
+		if len(cols) == idx {
+			newCol := node.AsColumnTypeOf(newValue)
+			newCol.Name = columnName
+			head := cols[0 : idx+1]
+			tail := cols[idx+1:]
+			updateCols := []*spi.Column{}
+			updateCols = append(updateCols, head...)
+			updateCols = append(updateCols, newCol)
+			updateCols = append(updateCols, tail...)
+			node.task.SetResultColumns(updateCols)
+		}
 	}
 
 	switch val := inflight.value.(type) {

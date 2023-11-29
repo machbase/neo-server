@@ -135,12 +135,13 @@ func NewNode(task *Task) *Node {
 		"doubleType":    x.gen_doubleType,
 		"random":        x.gen_random,
 		"parseFloat":    x.gen_parseFloat,
-		"parseBoolean":  x.gen_parseBoolean,
+		"parseBool":     x.gen_parseBool,
 		"strTrimSpace":  x.gen_strTrimSpace,
 		"strTrimPrefix": x.gen_strTrimPrefix,
 		"strTrimSuffix": x.gen_strTrimSuffix,
 		"strReplaceAll": x.gen_strReplaceAll,
 		"strReplace":    x.gen_strReplace,
+		"strSprintf":    x.gen_strSprintf,
 		"freq":          x.gen_freq,
 		"oscillator":    x.gen_oscillator,
 		"sphere":        x.gen_sphere,
@@ -1950,14 +1951,14 @@ func (x *Node) gen_parseFloat(args ...any) (any, error) {
 	return x.fmParseFloat(p0)
 }
 
-// gen_parseBoolean
+// gen_parseBool
 //
-// syntax: parseBoolean(string)
-func (x *Node) gen_parseBoolean(args ...any) (any, error) {
+// syntax: parseBool(string)
+func (x *Node) gen_parseBool(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("parseBoolean", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("parseBool", 1, len(args))
 	}
-	p0, err := convString(args, 0, "parseBoolean", "string")
+	p0, err := convString(args, 0, "parseBool", "string")
 	if err != nil {
 		return nil, err
 	}
@@ -2064,6 +2065,29 @@ func (x *Node) gen_strReplace(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmStrReplace(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_strSprintf
+//
+// syntax: strSprintf(string, ...interface {})
+func (x *Node) gen_strSprintf(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("strSprintf", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strSprintf", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "strSprintf", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStrSprintf(p0, p1...)
 	return ret, nil
 }
 

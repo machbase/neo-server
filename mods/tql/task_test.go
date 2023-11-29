@@ -885,6 +885,17 @@ func TestMapValue(t *testing.T) {
 		"3.0",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`world,3.141792`) )",
+		"MAPVALUE(1, parseFloat(value(1)))",
+		"MAPVALUE(2, strSprintf(`hello %s, %1.2f`, value(0), value(1)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"world,3.141592,hello world, 3.14",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestWhen(t *testing.T) {

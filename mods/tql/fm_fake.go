@@ -308,7 +308,11 @@ func (node *Node) fmParseFloat(str string) (float64, error) {
 }
 
 func (node *Node) fmParseBoolean(str string) (bool, error) {
-	return strconv.ParseBool(str)
+	ret, err := strconv.ParseBool(str)
+	if err != nil {
+		return false, fmt.Errorf("parseBool: parsing %q: invalid syntax", str)
+	}
+	return ret, nil
 }
 
 func (node *Node) fmStrTrimSpace(str string) string {
@@ -320,7 +324,7 @@ func (node *Node) fmStrTrimPrefix(str string, prefix string) string {
 }
 
 func (node *Node) fmStrTrimSuffix(str string, suffix string) string {
-	return strings.TrimPrefix(str, suffix)
+	return strings.TrimSuffix(str, suffix)
 }
 
 func (node *Node) fmStrReplaceAll(str string, old string, new string) string {
@@ -329,4 +333,8 @@ func (node *Node) fmStrReplaceAll(str string, old string, new string) string {
 
 func (node *Node) fmStrReplace(str string, old string, new string, n int) string {
 	return strings.Replace(str, old, new, n)
+}
+
+func (node *Node) fmStrSprintf(format string, args ...any) string {
+	return fmt.Sprintf(format, args...)
 }
