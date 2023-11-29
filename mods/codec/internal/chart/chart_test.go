@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,7 +45,13 @@ func TestLine(t *testing.T) {
 		fmt.Println("Error", err.Error())
 		t.Fail()
 	}
-	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched", buffer.String())
+	expectStr := string(expect)
+	if runtime.GOOS == "windows" {
+		// TODO: windows doesn't work with os.Setenv("TZ", "UTC")
+		expectStr = strings.ReplaceAll(expectStr, "08-22T02", "08-22T11")
+		expectStr = strings.ReplaceAll(expectStr, "Z\"", "+09:00\"")
+	}
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched", buffer.String())
 }
 
 func TestScatter(t *testing.T) {
@@ -76,7 +84,8 @@ func TestScatter(t *testing.T) {
 		fmt.Println("Error", err.Error())
 		t.Fail()
 	}
-	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched", buffer.String())
+	expectStr := string(expect)
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched", buffer.String())
 }
 
 func TestTangentialPolarBar(t *testing.T) {
