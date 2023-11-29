@@ -107,7 +107,7 @@ type trimspace struct {
 	flag bool
 }
 
-func (x *Node) fmTrimSpace(b bool) *trimspace {
+func (x *Node) fmTrimspace(b bool) *trimspace {
 	return &trimspace{flag: b}
 }
 

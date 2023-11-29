@@ -128,17 +128,25 @@ func NewNode(task *Task) *Node {
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
 		// maps.csv
-		"col":          x.gen_col,
-		"field":        x.gen_field,
-		"datetimeType": x.gen_datetimeType,
-		"stringType":   x.gen_stringType,
-		"doubleType":   x.gen_doubleType,
-		"random":       x.gen_random,
-		"freq":         x.gen_freq,
-		"oscillator":   x.gen_oscillator,
-		"sphere":       x.gen_sphere,
-		"json":         x.gen_json,
-		"FAKE":         x.gen_FAKE,
+		"col":           x.gen_col,
+		"field":         x.gen_field,
+		"datetimeType":  x.gen_datetimeType,
+		"stringType":    x.gen_stringType,
+		"doubleType":    x.gen_doubleType,
+		"random":        x.gen_random,
+		"parseFloat":    x.gen_parseFloat,
+		"parseBoolean":  x.gen_parseBoolean,
+		"strTrimSpace":  x.gen_strTrimSpace,
+		"strTrimPrefix": x.gen_strTrimPrefix,
+		"strTrimSuffix": x.gen_strTrimSuffix,
+		"strReplaceAll": x.gen_strReplaceAll,
+		"strReplace":    x.gen_strReplace,
+		"freq":          x.gen_freq,
+		"oscillator":    x.gen_oscillator,
+		"sphere":        x.gen_sphere,
+		"json":          x.gen_json,
+		"csv":           x.gen_csv,
+		"FAKE":          x.gen_FAKE,
 		// maps.input
 		"INPUT": x.gen_INPUT,
 		// maps.output
@@ -1780,7 +1788,7 @@ func (x *Node) gen_trimspace(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmTrimSpace(p0)
+	ret := x.fmTrimspace(p0)
 	return ret, nil
 }
 
@@ -1928,6 +1936,137 @@ func (x *Node) gen_random(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_parseFloat
+//
+// syntax: parseFloat(string)
+func (x *Node) gen_parseFloat(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("parseFloat", 1, len(args))
+	}
+	p0, err := convString(args, 0, "parseFloat", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmParseFloat(p0)
+}
+
+// gen_parseBoolean
+//
+// syntax: parseBoolean(string)
+func (x *Node) gen_parseBoolean(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("parseBoolean", 1, len(args))
+	}
+	p0, err := convString(args, 0, "parseBoolean", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmParseBoolean(p0)
+}
+
+// gen_strTrimSpace
+//
+// syntax: strTrimSpace(string)
+func (x *Node) gen_strTrimSpace(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strTrimSpace", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimSpace", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimSpace(p0)
+	return ret, nil
+}
+
+// gen_strTrimPrefix
+//
+// syntax: strTrimPrefix(string, string)
+func (x *Node) gen_strTrimPrefix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strTrimPrefix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strTrimPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimPrefix(p0, p1)
+	return ret, nil
+}
+
+// gen_strTrimSuffix
+//
+// syntax: strTrimSuffix(string, string)
+func (x *Node) gen_strTrimSuffix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strTrimSuffix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strTrimSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimSuffix(p0, p1)
+	return ret, nil
+}
+
+// gen_strReplaceAll
+//
+// syntax: strReplaceAll(string, string, string)
+func (x *Node) gen_strReplaceAll(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("strReplaceAll", 3, len(args))
+	}
+	p0, err := convString(args, 0, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convString(args, 2, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrReplaceAll(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_strReplace
+//
+// syntax: strReplace(string, string, string, int)
+func (x *Node) gen_strReplace(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, ErrInvalidNumOfArgs("strReplace", 4, len(args))
+	}
+	p0, err := convString(args, 0, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convString(args, 2, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := convInt(args, 3, "strReplace", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrReplace(p0, p1, p2, p3)
+	return ret, nil
+}
+
 // gen_freq
 //
 // syntax: freq(float64, float64, ...float64)
@@ -2001,6 +2140,20 @@ func (x *Node) gen_json(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmJsonData(p0)
+}
+
+// gen_csv
+//
+// syntax: csv(string)
+func (x *Node) gen_csv(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("csv", 1, len(args))
+	}
+	p0, err := convString(args, 0, "csv", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmCsvData(p0)
 }
 
 // gen_FAKE

@@ -1,11 +1,16 @@
 package tql
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
@@ -29,10 +34,46 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genOscillator(node, gen)
 	case *jsondata:
 		genJsonData(node, gen)
+	case *csvdata:
+		genCsvData(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 	return nil, nil
+}
+
+func (node *Node) fmCsvData(data string) (*csvdata, error) {
+	nodeName := node.Name()
+	if nodeName == "FAKE()" {
+		return &csvdata{
+			content: data,
+		}, nil
+	}
+	return nil, fmt.Errorf("FUNCTION %q doesn't support csv()", nodeName)
+}
+
+type csvdata struct {
+	content string
+}
+
+func genCsvData(node *Node, cd *csvdata) {
+	r := csv.NewReader(bytes.NewBufferString(string(cd.content)))
+	for i := 0; true; i++ {
+		values, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		v := make([]any, len(values))
+		for i, s := range values {
+			v[i] = s
+		}
+		rec := NewRecord(i+1, v)
+		rec.Tell(node.next)
+	}
 }
 
 func (node *Node) fmJsonData(data string) (*jsondata, error) {
@@ -260,4 +301,32 @@ func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *fr
 
 func (x *Node) fmRandom() float64 {
 	return rand.Float64()
+}
+
+func (node *Node) fmParseFloat(str string) (float64, error) {
+	return strconv.ParseFloat(str, 64)
+}
+
+func (node *Node) fmParseBoolean(str string) (bool, error) {
+	return strconv.ParseBool(str)
+}
+
+func (node *Node) fmStrTrimSpace(str string) string {
+	return strings.TrimSpace(str)
+}
+
+func (node *Node) fmStrTrimPrefix(str string, prefix string) string {
+	return strings.TrimPrefix(str, prefix)
+}
+
+func (node *Node) fmStrTrimSuffix(str string, suffix string) string {
+	return strings.TrimPrefix(str, suffix)
+}
+
+func (node *Node) fmStrReplaceAll(str string, old string, new string) string {
+	return strings.ReplaceAll(str, old, new)
+}
+
+func (node *Node) fmStrReplace(str string, old string, new string, n int) string {
+	return strings.Replace(str, old, new, n)
 }

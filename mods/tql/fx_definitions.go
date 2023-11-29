@@ -131,7 +131,7 @@ var FxDefinitions = []Definition{
 	// maps.bytes
 	{"// maps.bytes", nil},
 	{"separator", defTask.fmSeparator},
-	{"trimspace", defTask.fmTrimSpace},
+	{"trimspace", defTask.fmTrimspace},
 	{"file", defTask.fmFile},
 	{"STRING", defTask.fmString},
 	{"BYTES", defTask.fmBytes},
@@ -144,10 +144,18 @@ var FxDefinitions = []Definition{
 	{"doubleType", defTask.fmDoubleType},
 	// maps.fake
 	{"random", defTask.fmRandom},
+	{"parseFloat", defTask.fmParseFloat},
+	{"parseBoolean", defTask.fmParseBoolean},
+	{"strTrimSpace", defTask.fmStrTrimSpace},
+	{"strTrimPrefix", defTask.fmStrTrimPrefix},
+	{"strTrimSuffix", defTask.fmStrTrimSuffix},
+	{"strReplaceAll", defTask.fmStrReplaceAll},
+	{"strReplace", defTask.fmStrReplace},
 	{"freq", defTask.fmFreq},
 	{"oscillator", defTask.fmOscillator},
 	{"sphere", defTask.fmSphere},
 	{"json", defTask.fmJsonData},
+	{"csv", defTask.fmCsvData},
 	{"FAKE", defTask.fmFake},
 	// input, output
 	{"// maps.input", nil},
