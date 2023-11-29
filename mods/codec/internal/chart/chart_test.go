@@ -29,8 +29,10 @@ func TestLine(t *testing.T) {
 	`)
 	require.Equal(t, "application/json", c.ContentType())
 
-	c.Open()
+	os.Setenv("TZ", "UTC")
 	tick := time.Unix(0, 1692670838086467000)
+
+	c.Open()
 	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
 	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
 	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
@@ -60,8 +62,10 @@ func TestScatter(t *testing.T) {
 	)
 	require.Equal(t, "application/json", c.ContentType())
 
-	c.Open()
+	os.Setenv("TZ", "UTC")
 	tick := time.Unix(0, 1692670838086467000)
+
+	c.Open()
 	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
 	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
 	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
@@ -103,6 +107,8 @@ func TestTangentialPolarBar(t *testing.T) {
         }`,
 	)
 	require.Equal(t, "application/json", c.ContentType())
+
+	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{"a", 2.0})
@@ -194,6 +200,8 @@ func TestAnscombeQuatet(t *testing.T) {
 
 	require.Equal(t, "application/json", c.ContentType())
 
+	os.Setenv("TZ", "UTC")
+
 	c.Open()
 	c.AddRow([]any{1701059601000000000, 4.26, 3.1, 5.39, 12.5})
 	c.AddRow([]any{1701059602000000000, 5.68, 4.74, 5.73, 6.89})
@@ -231,6 +239,8 @@ func TestMarkLine(t *testing.T) {
 	c.SetMarkLineYAxis(0, 6.0, `{"itemStyle":{"color":"#ff0"}}`)
 
 	require.Equal(t, "application/json", c.ContentType())
+
+	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{1701059601000000000, 4.26})
