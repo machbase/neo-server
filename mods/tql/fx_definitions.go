@@ -17,9 +17,9 @@ var FxDefinitions = []Definition{
 	{"context", defTask.GetContext},
 	{"key", defTask.GetRecordKey},
 	{"value", defTask.GetRecordValue},
-	{"values", defTask.GetRecordValues},
 	{"param", defTask.GetRequestParam},
 	{"payload", defTask.GetRequestPayload},
+	{"escapeParam", defTask.EscapeParam},
 	// math
 	{"// math", nil},
 	{"abs", math.Abs},
@@ -120,6 +120,7 @@ var FxDefinitions = []Definition{
 	{"JSON", defTask.fmJson},
 	{"MARKDOWN", defTask.fmMarkdown},
 	{"HTML", defTask.fmHtml},
+	{"CHART", defTask.fmChart},
 	{"CHART_LINE", defTask.fmChartLine},
 	{"CHART_SCATTER", defTask.fmChartScatter},
 	{"CHART_BAR", defTask.fmChartBar},
@@ -142,9 +143,11 @@ var FxDefinitions = []Definition{
 	{"stringType", defTask.fmStringType},
 	{"doubleType", defTask.fmDoubleType},
 	// maps.fake
+	{"random", defTask.fmRandom},
 	{"freq", defTask.fmFreq},
 	{"oscillator", defTask.fmOscillator},
 	{"sphere", defTask.fmSphere},
+	{"json", defTask.fmJsonData},
 	{"FAKE", defTask.fmFake},
 	// input, output
 	{"// maps.input", nil},

@@ -1,0 +1,480 @@
+{
+    "chartID": "WejMYXCGcYNL",
+    "style": {
+        "width": "600px",
+        "height": "600px"
+    },
+    "theme": "dark",
+    "chartOption": {
+        "animation": false,
+        "grid": [
+            {
+                "left": "7%",
+                "top": "7%",
+                "width": "38%",
+                "height": "38%"
+            },
+            {
+                "right": "7%",
+                "top": "7%",
+                "width": "38%",
+                "height": "38%"
+            },
+            {
+                "left": "7%",
+                "bottom": "7%",
+                "width": "38%",
+                "height": "38%"
+            },
+            {
+                "right": "7%",
+                "bottom": "7%",
+                "width": "38%",
+                "height": "38%"
+            }
+        ],
+        "legend": {
+            "show": false,
+            "type": ""
+        },
+        "series": [
+            {
+                "name": "I",
+                "type": "scatter",
+                "smooth": true,
+                "connectNulls": false,
+                "showSymbol": true,
+                "waveAnimation": false,
+                "symbolSize": 5,
+                "renderLabelForZeroData": false,
+                "selectedMode": false,
+                "animation": false,
+                "data": [
+                    [
+                        1701059601000000000,
+                        4.26
+                    ],
+                    [
+                        1701059602000000000,
+                        5.68
+                    ],
+                    [
+                        1701059603000000000,
+                        7.24
+                    ],
+                    [
+                        1701059604000000000,
+                        4.82
+                    ],
+                    [
+                        1701059605000000000,
+                        6.95
+                    ],
+                    [
+                        1701059606000000000,
+                        8.81
+                    ],
+                    [
+                        1701059607000000000,
+                        8.04
+                    ],
+                    [
+                        1701059608000000000,
+                        8.33
+                    ],
+                    [
+                        1701059609000000000,
+                        10.84
+                    ],
+                    [
+                        1701059610000000000,
+                        7.58
+                    ],
+                    [
+                        1701059611000000000,
+                        9.96
+                    ]
+                ],
+                "markLine": {
+                    "data": [
+                        [
+                            {
+                                "coord": [
+                                    1701059598000,
+                                    3
+                                ]
+                            },
+                            {
+                                "coord": [
+                                    1701059614000,
+                                    13
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "name": "II",
+                "type": "scatter",
+                "xAxisIndex": 1,
+                "yAxisIndex": 1,
+                "smooth": true,
+                "connectNulls": false,
+                "showSymbol": true,
+                "waveAnimation": false,
+                "symbolSize": 5,
+                "renderLabelForZeroData": false,
+                "selectedMode": false,
+                "animation": false,
+                "data": [
+                    [
+                        1701059601000000000,
+                        3.1
+                    ],
+                    [
+                        1701059602000000000,
+                        4.74
+                    ],
+                    [
+                        1701059603000000000,
+                        6.13
+                    ],
+                    [
+                        1701059604000000000,
+                        7.26
+                    ],
+                    [
+                        1701059605000000000,
+                        8.14
+                    ],
+                    [
+                        1701059606000000000,
+                        8.77
+                    ],
+                    [
+                        1701059607000000000,
+                        9.14
+                    ],
+                    [
+                        1701059608000000000,
+                        9.26
+                    ],
+                    [
+                        1701059609000000000,
+                        9.13
+                    ],
+                    [
+                        1701059610000000000,
+                        8.74
+                    ],
+                    [
+                        1701059611000000000,
+                        8.1
+                    ]
+                ],
+                "markLine": {
+                    "data": [
+                        [
+                            {
+                                "coord": [
+                                    1701059598000,
+                                    3
+                                ]
+                            },
+                            {
+                                "coord": [
+                                    1701059614000,
+                                    13
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "name": "III",
+                "type": "scatter",
+                "xAxisIndex": 2,
+                "yAxisIndex": 2,
+                "smooth": true,
+                "connectNulls": false,
+                "showSymbol": true,
+                "waveAnimation": false,
+                "symbolSize": 5,
+                "renderLabelForZeroData": false,
+                "selectedMode": false,
+                "animation": false,
+                "data": [
+                    [
+                        1701059601000000000,
+                        5.39
+                    ],
+                    [
+                        1701059602000000000,
+                        5.73
+                    ],
+                    [
+                        1701059603000000000,
+                        6.08
+                    ],
+                    [
+                        1701059604000000000,
+                        6.42
+                    ],
+                    [
+                        1701059605000000000,
+                        6.77
+                    ],
+                    [
+                        1701059606000000000,
+                        7.11
+                    ],
+                    [
+                        1701059607000000000,
+                        7.46
+                    ],
+                    [
+                        1701059608000000000,
+                        7.81
+                    ],
+                    [
+                        1701059609000000000,
+                        8.15
+                    ],
+                    [
+                        1701059610000000000,
+                        12.74
+                    ],
+                    [
+                        1701059611000000000,
+                        8.84
+                    ]
+                ],
+                "markLine": {
+                    "data": [
+                        [
+                            {
+                                "coord": [
+                                    1701059598000,
+                                    3
+                                ]
+                            },
+                            {
+                                "coord": [
+                                    1701059614000,
+                                    13
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "name": "IV",
+                "type": "scatter",
+                "xAxisIndex": 3,
+                "yAxisIndex": 3,
+                "smooth": true,
+                "connectNulls": false,
+                "showSymbol": true,
+                "waveAnimation": false,
+                "symbolSize": 5,
+                "renderLabelForZeroData": false,
+                "selectedMode": false,
+                "animation": false,
+                "data": [
+                    [
+                        1701059601000000000,
+                        12.5
+                    ],
+                    [
+                        1701059602000000000,
+                        6.89
+                    ],
+                    [
+                        1701059603000000000,
+                        5.25
+                    ],
+                    [
+                        1701059604000000000,
+                        7.91
+                    ],
+                    [
+                        1701059605000000000,
+                        5.76
+                    ],
+                    [
+                        1701059606000000000,
+                        8.84
+                    ],
+                    [
+                        1701059607000000000,
+                        6.58
+                    ],
+                    [
+                        1701059608000000000,
+                        8.47
+                    ],
+                    [
+                        1701059609000000000,
+                        5.56
+                    ],
+                    [
+                        1701059610000000000,
+                        7.71
+                    ],
+                    [
+                        1701059611000000000,
+                        7.04
+                    ]
+                ],
+                "markLine": {
+                    "data": [
+                        [
+                            {
+                                "coord": [
+                                    1701059598000,
+                                    3
+                                ]
+                            },
+                            {
+                                "coord": [
+                                    1701059614000,
+                                    13
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            }
+        ],
+        "title": {},
+        "tooltip": {
+            "show": true,
+            "trigger": "axis",
+            "axisPointer": {
+                "type": "cross",
+                "show": false
+            }
+        },
+        "xAxis": [
+            {
+                "name": "x",
+                "type": "time",
+                "show": true,
+                "min": 1701059598000,
+                "max": 1701059614000,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "x",
+                "type": "time",
+                "show": true,
+                "min": 1701059598000,
+                "max": 1701059614000,
+                "gridIndex": 1,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "x",
+                "type": "time",
+                "show": true,
+                "min": 1701059598000,
+                "max": 1701059614000,
+                "gridIndex": 2,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "x",
+                "type": "time",
+                "show": true,
+                "min": 1701059598000,
+                "max": 1701059614000,
+                "gridIndex": 3,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            }
+        ],
+        "yAxis": [
+            {
+                "name": "y",
+                "show": true,
+                "min": 0,
+                "max": 15,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "y",
+                "show": true,
+                "min": 0,
+                "max": 15,
+                "gridIndex": 1,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "y",
+                "show": true,
+                "min": 0,
+                "max": 15,
+                "gridIndex": 2,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            },
+            {
+                "name": "y",
+                "show": true,
+                "min": 0,
+                "max": 15,
+                "gridIndex": 3,
+                "splitLine": {
+                    "show": true,
+                    "lineStyle": {
+                        "width": 0.8,
+                        "opacity": 0.3
+                    }
+                }
+            }
+        ]
+    }
+}

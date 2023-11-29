@@ -1,9 +1,11 @@
 package tql
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
@@ -13,7 +15,7 @@ import (
 /*
 Example)
 
-	FAKE( oscillator() | meshgrid() | linspace() )
+	FAKE( oscillator() | meshgrid() | linspace() | json() )
 */
 func (node *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
@@ -25,10 +27,42 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genSphere(node, gen)
 	case *oscillator:
 		genOscillator(node, gen)
+	case *jsondata:
+		genJsonData(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 	return nil, nil
+}
+
+func (node *Node) fmJsonData(data string) (*jsondata, error) {
+	nodeName := node.Name()
+	if nodeName == "FAKE()" {
+		return &jsondata{
+			content: data,
+		}, nil
+	}
+	return nil, fmt.Errorf("FUNCTION %q doesn't support json()", nodeName)
+}
+
+type jsondata struct {
+	content string  `json:"-"`
+	Data    [][]any `json:"data"`
+}
+
+// the content format should
+func genJsonData(node *Node, jd *jsondata) {
+	// it makes {"data":[ [a1,a2],[b1,b2] ]}
+	// fromjson({ [a1,a2],[b1,b2] })
+	content := `{"data":[` + jd.content + `]}`
+	if err := json.Unmarshal([]byte(content), jd); err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	for i, v := range jd.Data {
+		rec := NewRecord(i+1, v)
+		rec.Tell(node.next)
+	}
 }
 
 func (node *Node) fmLinspace(start float64, stop float64, num int) *linspace {
@@ -222,4 +256,8 @@ func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *fr
 		ret.phase = args[1]
 	}
 	return ret
+}
+
+func (x *Node) fmRandom() float64 {
+	return rand.Float64()
 }

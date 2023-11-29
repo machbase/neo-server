@@ -36,10 +36,6 @@ type Task struct {
 	consoleId    string
 	consoleTopic string
 
-	// comments start with plus(+) symbold and sperated by comma.
-	// ex) => `// +brief, markdown`
-	pragma []string
-
 	logLevel        Level
 	consoleLogLevel Level
 
@@ -208,45 +204,60 @@ func (x *Task) compile(codeReader io.Reader) error {
 		return x.compileErr
 	}
 
-	var exprs []*Line
+	var headExpr *Line
+	var tailExpr *Line
 	for _, line := range lines {
-		if line.isComment {
-			// //+pragma
-			if strings.HasPrefix(line.text, "+") {
-				toks := strings.Split(line.text[1:], ",")
-				for _, t := range toks {
-					x.pragma = append(x.pragma, strings.TrimSpace(t))
-				}
+		if !line.isComment {
+			if headExpr == nil {
+				headExpr = line
+			} else {
+				tailExpr = line
 			}
-		} else {
-			exprs = append(exprs, line)
 		}
 	}
 
-	lastIdx := -1
-	if len(exprs) > 1 {
-		lastIdx = len(exprs) - 1
+	if headExpr == nil {
+		x.compileErr = errors.New("no source exists")
+		return x.compileErr
 	}
-	for n, mapLine := range exprs {
-		if n != lastIdx {
-			// src and map
-			node := NewNode(x)
-			if err := node.compile(mapLine.text); err != nil {
-				return err
-			}
-			x.nodes = append(x.nodes, node)
-			if n > 0 {
-				x.nodes[n-1].next = x.nodes[n]
-			}
-		} else {
+	if tailExpr == nil {
+		x.compileErr = errors.New("no sink exists")
+		return x.compileErr
+	}
+
+	nodeIdx := 0
+	var pragmas []*Line
+	for _, curLine := range lines {
+		if curLine.isPragma {
+			pragmas = append(pragmas, curLine)
+			continue
+		}
+		if curLine.isComment {
+			continue
+		}
+		if curLine == tailExpr {
 			// sink
-			x.output, err = NewNode(x).compileSink(exprs[len(exprs)-1].text)
+			x.output, err = NewNode(x).compileSink(curLine.text)
 			if err != nil {
-				x.compileErr = errors.Wrapf(err, "line %d", exprs[len(exprs)-1].line)
+				x.compileErr = errors.Wrapf(err, "line %d", curLine.line)
 				return x.compileErr
 			}
-			x.nodes[len(exprs)-2].next = x.output
+			x.output.pragma = pragmas
+			x.nodes[nodeIdx-1].next = x.output
+		} else {
+			// src and map
+			node := NewNode(x)
+			if err := node.compile(curLine.text); err != nil {
+				return err
+			}
+			node.pragma = pragmas
+			x.nodes = append(x.nodes, node)
+			if nodeIdx > 0 {
+				x.nodes[nodeIdx-1].next = x.nodes[nodeIdx]
+			}
+			nodeIdx++
 		}
+		pragmas = nil
 	}
 
 	if x.output == nil {

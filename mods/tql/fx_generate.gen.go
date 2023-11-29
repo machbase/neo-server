@@ -16,12 +16,12 @@ func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
 		// context
-		"context": x.gen_context,
-		"key":     x.gen_key,
-		"value":   x.gen_value,
-		"values":  x.gen_values,
-		"param":   x.gen_param,
-		"payload": x.gen_payload,
+		"context":     x.gen_context,
+		"key":         x.gen_key,
+		"value":       x.gen_value,
+		"param":       x.gen_param,
+		"payload":     x.gen_payload,
+		"escapeParam": x.gen_escapeParam,
 		// math
 		"abs":       x.gen_abs,
 		"acos":      x.gen_acos,
@@ -113,6 +113,7 @@ func NewNode(task *Task) *Node {
 		"JSON":            x.gen_JSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
+		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
 		"CHART_SCATTER":   x.gen_CHART_SCATTER,
 		"CHART_BAR":       x.gen_CHART_BAR,
@@ -132,9 +133,11 @@ func NewNode(task *Task) *Node {
 		"datetimeType": x.gen_datetimeType,
 		"stringType":   x.gen_stringType,
 		"doubleType":   x.gen_doubleType,
+		"random":       x.gen_random,
 		"freq":         x.gen_freq,
 		"oscillator":   x.gen_oscillator,
 		"sphere":       x.gen_sphere,
+		"json":         x.gen_json,
 		"FAKE":         x.gen_FAKE,
 		// maps.input
 		"INPUT": x.gen_INPUT,
@@ -159,6 +162,7 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
+		"global":             x.gen_global,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -168,12 +172,18 @@ func NewNode(task *Task) *Node {
 		"lineWidth":          x.gen_lineWidth,
 		"logger":             x.gen_logger,
 		"markAreaNameCoord":  x.gen_markAreaNameCoord,
+		"markAreaXAxis":      x.gen_markAreaXAxis,
+		"markAreaYAxis":      x.gen_markAreaYAxis,
+		"markLineStyle":      x.gen_markLineStyle,
+		"markLineXAxis":      x.gen_markLineXAxis,
 		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
+		"markLineYAxis":      x.gen_markLineYAxis,
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
+		"series":             x.gen_series,
 		"seriesLabels":       x.gen_seriesLabels,
 		"seriesOptions":      x.gen_seriesOptions,
 		"showGrid":           x.gen_showGrid,
@@ -236,16 +246,6 @@ func (x *Node) gen_value(args ...any) (any, error) {
 	return x.GetRecordValue(p0...)
 }
 
-// gen_values
-//
-// syntax: values()
-func (x *Node) gen_values(args ...any) (any, error) {
-	if len(args) != 0 {
-		return nil, ErrInvalidNumOfArgs("values", 0, len(args))
-	}
-	return x.GetRecordValues()
-}
-
 // gen_param
 //
 // syntax: param(string)
@@ -269,6 +269,21 @@ func (x *Node) gen_payload(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("payload", 0, len(args))
 	}
 	ret := x.GetRequestPayload()
+	return ret, nil
+}
+
+// gen_escapeParam
+//
+// syntax: escapeParam(string)
+func (x *Node) gen_escapeParam(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("escapeParam", 1, len(args))
+	}
+	p0, err := convString(args, 0, "escapeParam", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.EscapeParam(p0)
 	return ret, nil
 }
 
@@ -833,7 +848,7 @@ func (x *Node) gen_time(args ...any) (any, error) {
 
 // gen_parseTime
 //
-// syntax: parseTime(string, string, )
+// syntax: parseTime(string, , )
 func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("parseTime", 3, len(args))
@@ -842,7 +857,7 @@ func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convString(args, 1, "parseTime", "string")
+	p1, err := convAny(args, 1, "parseTime", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -1619,6 +1634,21 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 	return x.fmHtml(p0...)
 }
 
+// gen_CHART
+//
+// syntax: CHART(...interface {})
+func (x *Node) gen_CHART(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "CHART", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmChart(p0...)
+}
+
 // gen_CHART_LINE
 //
 // syntax: CHART_LINE(...interface {})
@@ -1887,6 +1917,17 @@ func (x *Node) gen_doubleType(args ...any) (any, error) {
 	return x.fmDoubleType(p0...)
 }
 
+// gen_random
+//
+// syntax: random()
+func (x *Node) gen_random(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("random", 0, len(args))
+	}
+	ret := x.fmRandom()
+	return ret, nil
+}
+
 // gen_freq
 //
 // syntax: freq(float64, float64, ...float64)
@@ -1946,6 +1987,20 @@ func (x *Node) gen_sphere(args ...any) (any, error) {
 	}
 	ret := x.fmSphere(p0, p1)
 	return ret, nil
+}
+
+// gen_json
+//
+// syntax: json(string)
+func (x *Node) gen_json(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("json", 1, len(args))
+	}
+	p0, err := convString(args, 0, "json", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmJsonData(p0)
 }
 
 // gen_FAKE
@@ -2211,6 +2266,21 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_global
+//
+// syntax: global(string)
+func (x *Node) gen_global(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("global", 1, len(args))
+	}
+	p0, err := convString(args, 0, "global", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Global(p0)
+	return ret, nil
+}
+
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -2363,6 +2433,114 @@ func (x *Node) gen_markAreaNameCoord(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_markAreaXAxis
+//
+// syntax: markAreaXAxis(int, , , ...string)
+func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := opts.MarkAreaXAxis(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_markAreaYAxis
+//
+// syntax: markAreaYAxis(int, , , ...string)
+func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := opts.MarkAreaYAxis(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_markLineStyle
+//
+// syntax: markLineStyle(int, string)
+func (x *Node) gen_markLineStyle(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("markLineStyle", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineStyle", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "markLineStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkLineStyle(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineXAxis
+//
+// syntax: markLineXAxis(int, , ...string)
+func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("markLineXAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineXAxis(p0, p1, p2...)
+	return ret, nil
+}
+
 // gen_markLineXAxisCoord
 //
 // syntax: markLineXAxisCoord(, string)
@@ -2379,6 +2557,33 @@ func (x *Node) gen_markLineXAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineXAxisCoord(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineYAxis
+//
+// syntax: markLineYAxis(int, , ...string)
+func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("markLineYAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineYAxis(p0, p1, p2...)
 	return ret, nil
 }
 
@@ -2458,6 +2663,22 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Rownum(p0)
+	return ret, nil
+}
+
+// gen_series
+//
+// syntax: series(...string)
+func (x *Node) gen_series(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "series", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.Series(p0...)
 	return ret, nil
 }
 
@@ -2747,81 +2968,48 @@ func (x *Node) gen_visualMapColor(args ...any) (any, error) {
 
 // gen_xAxis
 //
-// syntax: xAxis(int, string, ...string)
+// syntax: xAxis(...interface {})
 func (x *Node) gen_xAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("xAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "xAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "xAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "xAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "xAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.XAxis(p0, p1, p2...)
+	ret := opts.XAxis(p0...)
 	return ret, nil
 }
 
 // gen_yAxis
 //
-// syntax: yAxis(int, string, ...string)
+// syntax: yAxis(...interface {})
 func (x *Node) gen_yAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("yAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "yAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "yAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "yAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "yAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.YAxis(p0, p1, p2...)
+	ret := opts.YAxis(p0...)
 	return ret, nil
 }
 
 // gen_zAxis
 //
-// syntax: zAxis(int, string, ...string)
+// syntax: zAxis(...interface {})
 func (x *Node) gen_zAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("zAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "zAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "zAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "zAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "zAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.ZAxis(p0, p1, p2...)
+	ret := opts.ZAxis(p0...)
 	return ret, nil
 }

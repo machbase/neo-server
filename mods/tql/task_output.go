@@ -48,6 +48,8 @@ type output struct {
 	closeWg     sync.WaitGroup
 	lastError   error
 	lastMessage string
+
+	pragma []*Line
 }
 
 func (node *Node) compileSink(code string) (ret *output, err error) {

@@ -263,13 +263,19 @@ func tengof_value(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 func tengof_param(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		paramName := ""
-		if len(args) != 0 {
+		defaultValue := ""
+		if len(args) > 0 {
 			if str, ok := tengo.ToString(args[0]); ok {
 				paramName = str
 			}
 		}
+		if len(args) > 1 {
+			if str, ok := tengo.ToString(args[1]); ok {
+				defaultValue = str
+			}
+		}
 		if paramName == "" {
-			return nil, tengo.ErrInvalidIndexType
+			return anyToTengoObject(defaultValue), nil
 		}
 		if v, ok := node.task.params[paramName]; ok {
 			if len(v) == 1 {
@@ -281,6 +287,8 @@ func tengof_param(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 				}
 				return ret, nil
 			}
+		} else {
+			return anyToTengoObject(defaultValue), nil
 		}
 		return nil, nil
 	}

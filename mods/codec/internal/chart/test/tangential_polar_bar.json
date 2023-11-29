@@ -1,0 +1,82 @@
+{
+    "chartID": "WejMYXCGcYNL",
+    "style": {
+        "width": "600px",
+        "height": "600px"
+    },
+    "theme": "dark",
+    "chartOption": {
+        "angleAxis": {
+            "startAngle": 75,
+            "max": 4
+        },
+        "animation": false,
+        "legend": {
+            "show": true,
+            "type": ""
+        },
+        "polar": {
+            "center": [
+                "50%",
+                "50%"
+            ],
+            "radius": [
+                "30",
+                "80%"
+            ],
+            "tooltip": {
+                "show": false
+            }
+        },
+        "radiusAxis": {
+            "type": "category",
+            "nameTextStyle": {}
+        },
+        "series": [
+            {
+                "name": "column[0]",
+                "type": "bar",
+                "smooth": true,
+                "connectNulls": false,
+                "showSymbol": true,
+                "waveAnimation": false,
+                "coordinateSystem": "polar",
+                "symbolSize": 5,
+                "renderLabelForZeroData": false,
+                "selectedMode": false,
+                "animation": false,
+                "data": [
+                    [
+                        "a",
+                        2
+                    ],
+                    [
+                        "b",
+                        1.2
+                    ],
+                    [
+                        "c",
+                        2.4
+                    ],
+                    [
+                        "d",
+                        3.6
+                    ]
+                ],
+                "label": {
+                    "show": true,
+                    "position": "middle"
+                }
+            }
+        ],
+        "title": {},
+        "tooltip": {
+            "show": true,
+            "trigger": "axis",
+            "axisPointer": {
+                "type": "cross",
+                "show": false
+            }
+        }
+    }
+}

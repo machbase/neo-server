@@ -2,12 +2,12 @@ package tql
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 )
 
 type NodeContext struct {
-	// Key  any
 	node *Node
 }
 
@@ -48,14 +48,6 @@ func (node *Node) GetRecordKey() any {
 	default:
 		return v
 	}
-}
-
-func (node *Node) GetRecordValues() (any, error) {
-	inflight := node.Inflight()
-	if inflight == nil || inflight.value == nil {
-		return nil, nil
-	}
-	return inflight.value, nil
 }
 
 // tql function: value()
@@ -132,4 +124,9 @@ func (node *Node) GetRequestParam(name string) any {
 		return vals
 	}
 	return nil
+}
+
+// tql function: escapeParam()
+func (node *Node) EscapeParam(str string) any {
+	return url.QueryEscape(str)
 }
