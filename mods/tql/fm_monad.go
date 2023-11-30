@@ -284,7 +284,10 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 func (node *Node) fmMapKey(newKey any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
+		cols := node.task.ResultColumns()
+		if len(cols) > 0 {
+			node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
+		}
 	}
 	rec := node.Inflight()
 	if rec == nil {
@@ -546,7 +549,7 @@ func (doer *HttpDoer) Do(node *Node) error {
 		req.Header.Add("User-Agent", "machbase-neo tql http doer")
 	}
 	if doer.client == nil {
-		doer.client = &http.Client{}
+		doer.client = node.task.NewHttpClient()
 	}
 	resp, err := doer.client.Do(req)
 	if err != nil {

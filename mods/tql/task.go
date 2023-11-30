@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -38,6 +39,8 @@ type Task struct {
 
 	logLevel        Level
 	consoleLogLevel Level
+
+	httpClientFactory func() *http.Client
 
 	// compiled result
 	compiled   bool
@@ -79,6 +82,17 @@ func (x *Task) ConnDatabase(ctx context.Context) (spi.Conn, error) {
 		conn, err := x.db.Connect(ctx, mach.WithTrustUser("sys"))
 		return conn, err
 	}
+}
+
+func (x *Task) NewHttpClient() *http.Client {
+	if x.httpClientFactory != nil {
+		return x.httpClientFactory()
+	}
+	return &http.Client{}
+}
+
+func (x *Task) SetHttpClientFactory(factory func() *http.Client) {
+	x.httpClientFactory = factory
 }
 
 func (x *Task) SetInputReader(r io.Reader) {

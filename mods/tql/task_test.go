@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -41,6 +43,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var payload []byte
 	var params map[string][]string
 	var matchPrefix bool
+	var httpClient *http.Client
 
 	for _, o := range options {
 		switch v := o.(type) {
@@ -61,6 +64,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			params[v.name] = arr
 		case MatchPrefix:
 			matchPrefix = bool(v)
+		case *http.Client:
+			httpClient = v
 		}
 	}
 
@@ -83,6 +88,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}
 	if len(params) > 0 {
 		task.SetParams(params)
+	}
+	if httpClient != nil {
+		task.SetHttpClientFactory(func() *http.Client {
+			return httpClient
+		})
 	}
 	err := task.CompileString(code)
 	if compileErr != "" {
@@ -898,6 +908,12 @@ func TestMapValue(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+type TestRoundTripFunc func(req *http.Request) *http.Response
+
+func (f TestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
 func TestWhen(t *testing.T) {
 	err := bridge.Register(&model.BridgeDefinition{
 		Type: model.BRIDGE_SQLITE,
@@ -932,6 +948,75 @@ func TestWhen(t *testing.T) {
 	}
 	resultLog := ExpectLog("[INFO] hello msg123 0\n[INFO] hello msg123 2")
 	runTest(t, codeLines, resultLines, resultLog)
+
+	var notifiedValues = []string{}
+	var httpClient *http.Client
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.Path != "/notify" {
+			t.Error("expected request to /notify, got", req.URL.Path)
+			t.Fail()
+		}
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		notifiedValues = append(notifiedValues, req.URL.Query()["v"]...)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("GET", strSprintf("http://example.com/notify?v=%f", value(1)), nil) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "0.000000", notifiedValues[0])
+	require.Equal(t, "2.000000", notifiedValues[1])
+
+	notifiedValues = notifiedValues[0:0]
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.String() != "http://example.com/notify" {
+			t.Error("expected request to http://example.com/notify, got", req.URL.String())
+			t.Fail()
+		}
+		if req.Method != "POST" {
+			t.Error("expected request method to be POST, got", req.Method)
+			t.Fail()
+		}
+		if req.Header.Get("Content-Type") != "text/csv" {
+			t.Error("expected request Content-Type header to be text/csv, got", req.Header.Get("Content-Type"))
+			t.Fail()
+		}
+		scan := bufio.NewScanner(req.Body)
+		for scan.Scan() {
+			notifiedValues = append(notifiedValues, scan.Text())
+		}
+		fmt.Println(notifiedValues)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("POST", "http://example.com/notify", value()) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "msg123,0", notifiedValues[0])
+	require.Equal(t, "msg123,2", notifiedValues[1])
 }
 
 func TestTimeWindow(t *testing.T) {

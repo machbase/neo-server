@@ -100,6 +100,19 @@ func TestReadLine(t *testing.T) {
 				{text: "MAPVALUE()"},
 			},
 		},
+		{
+			`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100))) 
+			|//+ stateful
+			|WHEN( cond, doHttp())
+			|MAPVALUE()
+			`,
+			[]Line{
+				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))"},
+				{text: "stateful", isComment: true, isPragma: true},
+				{text: "WHEN( cond, doHttp())"},
+				{text: "MAPVALUE()"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
