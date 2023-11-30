@@ -537,8 +537,10 @@ func (doer *HttpDoer) Do(node *Node) error {
 		}
 	}
 
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Add("Content-Type", "text/csv")
+	if body != nil {
+		if req.Header.Get("Content-Type") == "" {
+			req.Header.Add("Content-Type", "text/csv")
+		}
 	}
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Add("User-Agent", "machbase-neo tql http doer")
