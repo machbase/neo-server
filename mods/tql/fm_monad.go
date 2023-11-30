@@ -323,7 +323,7 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
-		if len(cols) == idx {
+		if len(cols) >= idx {
 			newCol := node.AsColumnTypeOf(newValue)
 			newCol.Name = columnName
 			head := cols[0 : idx+1]
@@ -333,6 +333,13 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 			updateCols = append(updateCols, newCol)
 			updateCols = append(updateCols, tail...)
 			node.task.SetResultColumns(updateCols)
+		} else {
+			for i := len(cols); i < idx; i++ {
+				newCol := &spi.Column{}
+				newCol.Name = fmt.Sprintf("column%d", i)
+				cols = append(cols, newCol)
+			}
+			node.task.SetResultColumns(cols)
 		}
 	}
 
