@@ -14,9 +14,6 @@ func newLexerStream(source string) *lexerStream {
 }
 
 func (ls *lexerStream) readCharacter() rune {
-	if len(ls.source) <= ls.position {
-		return '\n'
-	}
 	r := ls.source[ls.position]
 	ls.position++
 	return r

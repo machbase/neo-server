@@ -38,7 +38,6 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 	}
 	if len(expect) != len(lines) {
 		t.Logf("Expect %d lines, got %d", len(expect), len(lines))
-		t.Logf("Code:\n%s", code)
 		t.Log("Expect:")
 		for i, l := range expect {
 			t.Logf("  expect[%d] %s", i, l.text)
@@ -48,6 +47,16 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 			t.Logf("  actual[%d] %s", i, l.text)
 		}
 		t.Fail()
+		return
+	}
+	for i := 0; i < len(expect); i++ {
+		e := expect[i]
+		l := lines[i]
+		if e.text != l.text || e.isComment != l.isComment || e.isPragma != l.isPragma {
+			t.Logf("Expect[%d] %v", i, e)
+			t.Logf("Actual[%d] %v", i, *l)
+			t.Fail()
+		}
 	}
 }
 
@@ -69,6 +78,26 @@ func TestReadLine(t *testing.T) {
 				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))"},
 				{text: "MAPVALUE(2,\n	sin(pow(value(0), 2) + pow(value(1), 2))\n	/\n	(pow(value(0), 2) + pow(value(1), 2))\n)"},
 				{text: "CHART_LINE3D()"},
+			},
+		},
+		{
+			`FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100))) // comment
+			|MAPVALUE()
+			`,
+			[]Line{
+				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))"},
+				{text: "MAPVALUE()"},
+			},
+		},
+		{
+			`FAKE(meshgrid(linspace(-4,4,100 // comment
+			|),
+			|linspace(-4,4, 100))) 
+			|MAPVALUE()
+			`,
+			[]Line{
+				{text: "FAKE(meshgrid(linspace(-4,4,100 \n),\nlinspace(-4,4, 100)))"},
+				{text: "MAPVALUE()"},
 			},
 		},
 	}

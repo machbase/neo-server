@@ -66,8 +66,11 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 			continue
 		}
 
-		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, functions)
+		aStmt := strings.Join(append(stmt, lineText), " ")
+		_, pos, err := expression.ParseTokens(aStmt, functions)
+		if len(aStmt) > pos && len(lineText) > pos {
+			lineText = lineText[0:pos]
+		}
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue
@@ -75,6 +78,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 			return nil, err
 		} else {
 			stmt = append(stmt, lineText)
+
 			line := &Line{
 				text: strings.Join(stmt, "\n"),
 				line: lineNo,

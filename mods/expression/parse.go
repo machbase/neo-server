@@ -13,33 +13,36 @@ import (
 
 const autoConvertFirstUpperCaseOfAccessor = false
 
-func ParseTokens(input string, functions map[string]Function) ([]Token, error) {
+func ParseTokens(input string, functions map[string]Function) ([]Token, int, error) {
 	var ret []Token
 	var token Token
 	var found bool
 	var err error
+	var position int
 
 	stream := newLexerStream(input)
 	state := validLexerStates[0]
 	for stream.canRead() {
 		token, err, found = readToken(stream, state, functions)
 		if err != nil {
-			return ret, err
+			return ret, position, err
 		}
 		if !found {
 			break
 		}
+		position = stream.position
+
 		state, err = getLexerStateForToken(token.Kind)
 		if err != nil {
-			return ret, err
+			return ret, position, err
 		}
 		ret = append(ret, token)
 	}
 	err = checkBalance(ret)
 	if err != nil {
-		return nil, err
+		return nil, position, err
 	}
-	return ret, nil
+	return ret, position, nil
 }
 
 var ParseStringToTime = false
@@ -135,7 +138,7 @@ func readToken(stream *lexerStream, state lexerState, functions map[string]Funct
 			}
 		}
 
-		if character == '/' {
+		if character == '/' && stream.canRead() {
 			if nc := stream.readCharacter(); nc == '/' {
 				readStringUntilEndOfLine(stream)
 				continue
