@@ -122,6 +122,7 @@ var FxDefinitions = []Definition{
 	{"JSON", defTask.fmJson},
 	{"MARKDOWN", defTask.fmMarkdown},
 	{"HTML", defTask.fmHtml},
+	{"DISCARD", defTask.fmDiscard},
 	{"CHART", defTask.fmChart},
 	{"CHART_LINE", defTask.fmChartLine},
 	{"CHART_SCATTER", defTask.fmChartScatter},

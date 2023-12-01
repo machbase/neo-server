@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -595,9 +596,13 @@ func (sr *SubRoutine) Write(b []byte) (int, error) {
 }
 
 func (sr *SubRoutine) Do(node *Node) error {
+	defer func() {
+		if e := recover(); e != nil {
+			node.task.LogErrorf("do: recover, %v", e)
+		}
+	}()
 	sr.node = node
 	subTask := NewTask()
-	subTask.ctx = node.task.ctx
 	subTask.SetParams(node.task.params)
 	subTask.SetConsoleLogLevel(node.task.consoleLogLevel)
 	subTask.SetConsole(node.task.consoleUser, node.task.consoleId)
@@ -607,22 +612,29 @@ func (sr *SubRoutine) Do(node *Node) error {
 	subTask.SetDatabase(node.task.db)
 	subTask.argValues = sr.inValue
 
-	defer func() {
-		if e := recover(); e != nil {
-			node.task.LogErrorf("do: recover, %v", e)
-		}
-	}()
 	reader := bytes.NewBufferString(sr.code)
 	if err := subTask.Compile(reader); err != nil {
 		subTask.LogError("do: compile error", err.Error())
 		return err
 	}
+	switch subTask.output.Name() {
+	case "INSERT()":
+	case "APPEND()":
+	case "DISCARD()":
+	default:
+		sinkName := subTask.output.Name()
+		subTask.LogWarnf("do: %s sink does not work in a sub-routine", sinkName)
+	}
+
+	var subTaskCancel context.CancelFunc
+	subTask.ctx, subTaskCancel = context.WithCancel(node.task.ctx)
+	defer subTaskCancel()
+
 	result := subTask.Execute()
 	if result.Err != nil {
 		subTask.LogError("do: execution fail", result.Err.Error())
 		return result.Err
 	}
-	subTask.LogDebugf("do %+v", result)
 	return nil
 }
 

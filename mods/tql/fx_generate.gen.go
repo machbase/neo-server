@@ -115,6 +115,7 @@ func NewNode(task *Task) *Node {
 		"JSON":            x.gen_JSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
+		"DISCARD":         x.gen_DISCARD,
 		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
 		"CHART_SCATTER":   x.gen_CHART_SCATTER,
@@ -1673,6 +1674,21 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmHtml(p0...)
+}
+
+// gen_DISCARD
+//
+// syntax: DISCARD(...interface {})
+func (x *Node) gen_DISCARD(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "DISCARD", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDiscard(p0...)
 }
 
 // gen_CHART

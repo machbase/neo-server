@@ -14,6 +14,7 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
+const DISCARD = "discard"
 const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
@@ -79,6 +80,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = echart.NewScatter3D()
 	case ECHART_BAR3D:
 		ret = echart.NewBar3D()
+	case DISCARD:
+		ret = &DiscardSink{}
 	default: // "json"
 		ret = json.NewEncoder()
 	}
@@ -126,4 +129,25 @@ func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *ti
 	if enc, ok := encoder.(opts.CanSetColumnTypes); ok {
 		enc.SetColumnTypes(colTypes...)
 	}
+}
+
+type DiscardSink struct {
+}
+
+func (ds *DiscardSink) Open() error {
+	return nil
+}
+
+func (ds *DiscardSink) Close() {
+}
+
+func (ds *DiscardSink) AddRow([]any) error {
+	return nil
+}
+
+func (ds *DiscardSink) Flush(heading bool) {
+}
+
+func (ds *DiscardSink) ContentType() string {
+	return "text/plain"
 }
