@@ -347,6 +347,17 @@ func TestDBddl(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestStrLib(t *testing.T) {
+	codeLines := []string{
+		`FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))`,
+		"CSV( heading(false) )",
+	}
+	resultLines := []string{
+		"123,hello",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestString(t *testing.T) {
 	codeLines := []string{
 		`STRING("line1\nline2\n\nline4", separator("\n"))`,

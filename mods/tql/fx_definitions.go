@@ -90,6 +90,8 @@ var FxDefinitions = []Definition{
 	{"regexp", defTask.fmRegexp},
 	{"doLog", defTask.fmDoLog},
 	{"doHttp", defTask.fmDoHttp},
+	{"do", defTask.fmDo},
+	{"arg", defTask.fmArg},
 	{"WHEN", defTask.fmWhen},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},

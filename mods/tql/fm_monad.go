@@ -581,11 +581,77 @@ func (node *Node) fmDoHttp(method string, url string, body any, args ...string) 
 	return ret
 }
 
+type SubRoutine struct {
+	code    string
+	inValue []any
+	node    *Node
+}
+
+func (sr *SubRoutine) Write(b []byte) (int, error) {
+	if sr.node == nil || sr.node.task.logWriter == nil {
+		return len(b), nil
+	}
+	return sr.node.task.logWriter.Write(b)
+}
+
+func (sr *SubRoutine) Do(node *Node) error {
+	sr.node = node
+	subTask := NewTask()
+	subTask.ctx = node.task.ctx
+	subTask.SetParams(node.task.params)
+	subTask.SetConsoleLogLevel(node.task.consoleLogLevel)
+	subTask.SetConsole(node.task.consoleUser, node.task.consoleId)
+	subTask.SetLogWriter(sr)
+	//	subTask.SetInputReader(r io.Reader)
+	subTask.SetOutputWriterJson(io.Discard, true)
+	subTask.SetDatabase(node.task.db)
+	subTask.argValues = sr.inValue
+
+	defer func() {
+		if e := recover(); e != nil {
+			node.task.LogErrorf("do: recover, %v", e)
+		}
+	}()
+	reader := bytes.NewBufferString(sr.code)
+	if err := subTask.Compile(reader); err != nil {
+		subTask.LogError("do: compile error", err.Error())
+		return err
+	}
+	result := subTask.Execute()
+	if result.Err != nil {
+		subTask.LogError("do: execution fail", result.Err.Error())
+		return result.Err
+	}
+	subTask.LogDebugf("do %+v", result)
+	return nil
+}
+
+func (node *Node) fmDo(args ...any) (*SubRoutine, error) {
+	if len(args) == 0 {
+		return nil, ErrArgs("do", len(args), "do: code is required")
+	}
+	code, ok := args[len(args)-1].(string)
+	code = strings.TrimSpace(code)
+	if !ok || code == "" {
+		return nil, ErrArgs("do", len(args)-1, "do: code is required")
+	}
+	inValue := []any{}
+	if len(args) > 1 {
+		inValue = args[0 : len(args)-1]
+	}
+	ret := &SubRoutine{
+		code:    code,
+		inValue: inValue,
+	}
+	return ret, nil
+}
+
 type WhenDoer interface {
 	Do(*Node) error
 }
 
 var (
+	_ WhenDoer = &SubRoutine{}
 	_ WhenDoer = LogDoer{}
 	_ WhenDoer = &HttpDoer{}
 )
@@ -596,10 +662,15 @@ func (node *Node) fmWhen(cond bool, action any) any {
 	}
 	doer, ok := action.(WhenDoer)
 	if !ok {
-		node.task.LogErrorf("f(WHEN) 2nd arg is not a Doer type, but %T", action)
+		node.task.LogErrorf("f(WHEN) 2nd arg is not a Doer, got %T", action)
 	} else {
+		defer func() {
+			if e := recover(); e != nil {
+				node.task.LogErrorf("f(WHEN) Doer fail recover, %v", e)
+			}
+		}()
 		if err := doer.Do(node); err != nil {
-			node.task.LogErrorf("f(WHEN) doer occurs, %s", err.Error())
+			node.task.LogErrorf("f(WHEN) Doer fail, %s", err.Error())
 		}
 	}
 	return node.Inflight()

@@ -24,30 +24,7 @@ func (node *Node) GetRecordKey() any {
 	if inflight == nil {
 		return nil
 	}
-	switch v := inflight.key.(type) {
-	case *int:
-		return *v
-	case *int8:
-		return *v
-	case *int16:
-		return *v
-	case *int32:
-		return *v
-	case *int64:
-		return *v
-	case *float32:
-		return *v
-	case *float64:
-		return *v
-	case *string:
-		return *v
-	case *time.Time:
-		return *v
-	case *bool:
-		return *v
-	default:
-		return v
-	}
+	return unboxValue(inflight.key)
 }
 
 // tql function: value()
@@ -81,30 +58,7 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		if idx >= len(val) {
 			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d)", idx, len(val)))
 		}
-		switch v := val[idx].(type) {
-		case *int:
-			return *v, nil
-		case *int8:
-			return *v, nil
-		case *int16:
-			return *v, nil
-		case *int32:
-			return *v, nil
-		case *int64:
-			return *v, nil
-		case *float32:
-			return *v, nil
-		case *float64:
-			return *v, nil
-		case *string:
-			return *v, nil
-		case *time.Time:
-			return *v, nil
-		case *bool:
-			return *v, nil
-		default:
-			return val[idx], nil
-		}
+		return unboxValue(val[idx]), nil
 	default:
 		return nil, ErrArgs("value", 0, "out of index value tuple")
 	}
@@ -126,7 +80,75 @@ func (node *Node) GetRequestParam(name string) any {
 	return nil
 }
 
+// tql function: arg()
+func (node *Node) fmArg(args ...any) (any, error) {
+	argValues := node.task.argValues
+	if len(argValues) == 0 {
+		return nil, nil
+	}
+	var ret any
+
+	if len(args) == 0 {
+		ret = argValues
+	} else {
+		idx := 0
+		switch v := args[0].(type) {
+		case int:
+			idx = v
+		case float32:
+			idx = int(v)
+		case float64:
+			idx = int(v)
+		case string:
+			if parsed, err := strconv.ParseInt(v, 10, 32); err != nil {
+				return nil, err
+			} else {
+				idx = int(parsed)
+			}
+		default:
+			return nil, ErrWrongTypeOfArgs("arg", 0, "index of value tuple", v)
+		}
+		if idx >= len(argValues) {
+			return nil, ErrArgs("arg", 0, fmt.Sprintf("%d is out of range of the arg(len:%d)", idx, len(argValues)))
+		}
+		ret = unboxValue(argValues[idx])
+	}
+
+	if node.Name() == "FAKE()" {
+		return &rawdata{data: ret}, nil
+	} else {
+		return ret, nil
+	}
+}
+
 // tql function: escapeParam()
 func (node *Node) EscapeParam(str string) any {
 	return url.QueryEscape(str)
+}
+
+func unboxValue(val any) any {
+	switch v := val.(type) {
+	case *int:
+		return *v
+	case *int8:
+		return *v
+	case *int16:
+		return *v
+	case *int32:
+		return *v
+	case *int64:
+		return *v
+	case *float32:
+		return *v
+	case *float64:
+		return *v
+	case *string:
+		return *v
+	case *time.Time:
+		return *v
+	case *bool:
+		return *v
+	default:
+		return val
+	}
 }

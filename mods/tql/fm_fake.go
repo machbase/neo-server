@@ -36,10 +36,21 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genJsonData(node, gen)
 	case *csvdata:
 		genCsvData(node, gen)
+	case *rawdata:
+		genRawData(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 	return nil, nil
+}
+
+type rawdata struct {
+	data any
+}
+
+func genRawData(node *Node, gen *rawdata) {
+	rec := NewRecord(1, gen.data)
+	rec.Tell(node.next)
 }
 
 func (node *Node) fmCsvData(data string) (*csvdata, error) {

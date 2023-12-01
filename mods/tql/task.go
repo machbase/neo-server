@@ -40,6 +40,8 @@ type Task struct {
 	logLevel        Level
 	consoleLogLevel Level
 
+	argValues []any
+
 	httpClientFactory func() *http.Client
 
 	// compiled result

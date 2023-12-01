@@ -88,6 +88,8 @@ func NewNode(task *Task) *Node {
 		"regexp":     x.gen_regexp,
 		"doLog":      x.gen_doLog,
 		"doHttp":     x.gen_doHttp,
+		"do":         x.gen_do,
+		"arg":        x.gen_arg,
 		"WHEN":       x.gen_WHEN,
 		// maps.dbsrc
 		"from":    x.gen_from,
@@ -1293,6 +1295,36 @@ func (x *Node) gen_doHttp(args ...any) (any, error) {
 	}
 	ret := x.fmDoHttp(p0, p1, p2, p3...)
 	return ret, nil
+}
+
+// gen_do
+//
+// syntax: do(...interface {})
+func (x *Node) gen_do(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "do", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDo(p0...)
+}
+
+// gen_arg
+//
+// syntax: arg(...interface {})
+func (x *Node) gen_arg(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "arg", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmArg(p0...)
 }
 
 // gen_WHEN
