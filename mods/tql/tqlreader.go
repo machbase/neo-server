@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/expression"
 )
@@ -68,7 +69,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 
 		aStmt := strings.Join(append(stmt, lineText), " ")
 		_, pos, err := expression.ParseTokens(aStmt, functions)
-		if len(aStmt) > pos && len(lineText) > pos {
+		if utf8.RuneCountInString(aStmt) > pos && utf8.RuneCountInString(lineText) > pos {
 			lineText = lineText[0:pos]
 		}
 		if err != nil && err.Error() == "unbalanced parenthesis" {

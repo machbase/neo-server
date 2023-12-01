@@ -66,6 +66,13 @@ func TestReadLine(t *testing.T) {
 		expect []Line
 	}{
 		{
+			`FAKE('안녕')`,
+			[]Line{
+				{text: "FAKE('안녕')"},
+			},
+		},
+
+		{
 			`FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))
 			|MAPVALUE(2,
 			|	sin(pow(value(0), 2) + pow(value(1), 2))
