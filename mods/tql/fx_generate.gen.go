@@ -22,6 +22,7 @@ func NewNode(task *Task) *Node {
 		"param":       x.gen_param,
 		"payload":     x.gen_payload,
 		"escapeParam": x.gen_escapeParam,
+		"ARGS":        x.gen_ARGS,
 		// math
 		"abs":       x.gen_abs,
 		"acos":      x.gen_acos,
@@ -89,7 +90,7 @@ func NewNode(task *Task) *Node {
 		"doLog":      x.gen_doLog,
 		"doHttp":     x.gen_doHttp,
 		"do":         x.gen_do,
-		"arg":        x.gen_arg,
+		"args":       x.gen_args,
 		"WHEN":       x.gen_WHEN,
 		// maps.dbsrc
 		"from":    x.gen_from,
@@ -297,6 +298,16 @@ func (x *Node) gen_escapeParam(args ...any) (any, error) {
 	}
 	ret := x.EscapeParam(p0)
 	return ret, nil
+}
+
+// gen_ARGS
+//
+// syntax: ARGS()
+func (x *Node) gen_ARGS(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("ARGS", 0, len(args))
+	}
+	return x.fmArgs()
 }
 
 // gen_abs
@@ -1313,19 +1324,19 @@ func (x *Node) gen_do(args ...any) (any, error) {
 	return x.fmDo(p0...)
 }
 
-// gen_arg
+// gen_args
 //
-// syntax: arg(...interface {})
-func (x *Node) gen_arg(args ...any) (any, error) {
+// syntax: args(...interface {})
+func (x *Node) gen_args(args ...any) (any, error) {
 	p0 := []interface{}{}
 	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "arg", "...interface {}")
+		argv, err := convAny(args, n, "args", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
 		p0 = append(p0, argv)
 	}
-	return x.fmArg(p0...)
+	return x.fmArgsParam(p0...)
 }
 
 // gen_WHEN

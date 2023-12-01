@@ -77,10 +77,24 @@ func TestConstantParsing(test *testing.T) {
 			},
 		},
 		{
+			Name:  "Double string",
+			Input: `"foo"`,
+			Expected: []Token{
+				{Kind: STRING, Value: "foo"},
+			},
+		},
+		{
 			Name:  "Backtick string",
 			Input: "`foo\"bar\"`",
 			Expected: []Token{
 				{Kind: STRING, Value: "foo\"bar\""},
+			},
+		},
+		{
+			Name:  "Backtick string unicode",
+			Input: "`foo\"bar안녕🌶️\"`",
+			Expected: []Token{
+				{Kind: STRING, Value: "foo\"bar안녕🌶️\""},
 			},
 		},
 		{

@@ -66,7 +66,7 @@ func TestReadLine(t *testing.T) {
 		expect []Line
 	}{
 		{
-			`FAKE('안녕')`,
+			`FAKE('안녕') // comment`,
 			[]Line{
 				{text: "FAKE('안녕')"},
 			},

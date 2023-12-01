@@ -147,7 +147,8 @@ func (src *bytesSource) gen(node *Node) {
 			ErrorRecord(err).Tell(node.next)
 			return
 		}
-		resp, err := http.DefaultClient.Do(req)
+		httpClient := node.task.NewHttpClient()
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
 			ErrorRecord(err).Tell(node.next)

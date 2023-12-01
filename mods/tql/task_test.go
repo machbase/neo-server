@@ -166,7 +166,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				// remove trailing empty line
 				resultLines = resultLines[0 : len(resultLines)-1]
 			}
-			require.Equal(t, len(expect), len(resultLines))
+			require.Equal(t, len(expect), len(resultLines), resultLines)
 
 			for n, expectLine := range expect {
 				if strings.HasPrefix(expectLine, "/r/") {
@@ -422,6 +422,39 @@ func TestBytes(t *testing.T) {
 		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)
+
+	var httpClient *http.Client
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.Path != "/data" {
+			t.Error("expected request to /notify, got", req.URL.Path)
+			t.Fail()
+		}
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`STRING(file("http://example.com/data"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`ok.`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`BYTES(file("http://example.com/data"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`\x6F\x6B\x2E`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
 }
 
 func TestCsvToCsv(t *testing.T) {
@@ -1028,6 +1061,32 @@ func TestWhen(t *testing.T) {
 	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
 	require.Equal(t, "msg123,0", notifiedValues[0])
 	require.Equal(t, "msg123,2", notifiedValues[1])
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  ARGS() // some comment`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") ) // some comment`,
+		`  DISCARD() // some comment`,
+		`} )) // some comment`,
+		`DISCARD() // some comment`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  FAKE( args() )`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") )`,
+		`  DISCARD()`,
+		`} ))`,
+		`DISCARD()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
 }
 
 func TestTimeWindow(t *testing.T) {

@@ -70,7 +70,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 		aStmt := strings.Join(append(stmt, lineText), " ")
 		_, pos, err := expression.ParseTokens(aStmt, functions)
 		if utf8.RuneCountInString(aStmt) > pos && utf8.RuneCountInString(lineText) > pos {
-			lineText = lineText[0:pos]
+			lineText = string([]rune(lineText)[0:pos])
 		}
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)

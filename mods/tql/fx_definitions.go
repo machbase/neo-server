@@ -20,6 +20,7 @@ var FxDefinitions = []Definition{
 	{"param", defTask.GetRequestParam},
 	{"payload", defTask.GetRequestPayload},
 	{"escapeParam", defTask.EscapeParam},
+	{"ARGS", defTask.fmArgs},
 	// math
 	{"// math", nil},
 	{"abs", math.Abs},
@@ -91,7 +92,7 @@ var FxDefinitions = []Definition{
 	{"doLog", defTask.fmDoLog},
 	{"doHttp", defTask.fmDoHttp},
 	{"do", defTask.fmDo},
-	{"arg", defTask.fmArg},
+	{"args", defTask.fmArgsParam},
 	{"WHEN", defTask.fmWhen},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},

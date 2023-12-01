@@ -80,8 +80,18 @@ func (node *Node) GetRequestParam(name string) any {
 	return nil
 }
 
-// tql function: arg()
-func (node *Node) fmArg(args ...any) (any, error) {
+// tql function: ARGS()
+func (node *Node) fmArgs() (any, error) {
+	data, err := node.fmArgsParam()
+	if err != nil {
+		return nil, err
+	}
+	genRawData(node, &rawdata{data: data})
+	return nil, nil
+}
+
+// tql function: args()
+func (node *Node) fmArgsParam(args ...any) (any, error) {
 	argValues := node.task.argValues
 	if len(argValues) == 0 {
 		return nil, nil
