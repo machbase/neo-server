@@ -148,6 +148,7 @@ func NewNode(task *Task) *Node {
 		"strHasPrefix":  x.gen_strHasPrefix,
 		"strHasSuffix":  x.gen_strHasSuffix,
 		"strSprintf":    x.gen_strSprintf,
+		"strSub":        x.gen_strSub,
 		"strToUpper":    x.gen_strToUpper,
 		"strToLower":    x.gen_strToLower,
 		"freq":          x.gen_freq,
@@ -2192,6 +2193,29 @@ func (x *Node) gen_strSprintf(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_strSub
+//
+// syntax: strSub(string, ...int)
+func (x *Node) gen_strSub(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("strSub", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strSub", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []int{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convInt(args, n, "strSub", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStrSub(p0, p1...)
+	return ret, nil
+}
+
 // gen_strToUpper
 //
 // syntax: strToUpper(string)
@@ -2203,7 +2227,7 @@ func (x *Node) gen_strToUpper(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmtStrToUpper(p0)
+	ret := x.fmStrToUpper(p0)
 	return ret, nil
 }
 
@@ -2218,7 +2242,7 @@ func (x *Node) gen_strToLower(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmtStrToLower(p0)
+	ret := x.fmStrToLower(p0)
 	return ret, nil
 }
 

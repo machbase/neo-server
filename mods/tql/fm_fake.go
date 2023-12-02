@@ -358,10 +358,50 @@ func (node *Node) fmStrHasSuffix(str string, suffix string) bool {
 	return strings.HasSuffix(str, suffix)
 }
 
-func (node *Node) fmtStrToUpper(str string) string {
+func (node *Node) fmStrToUpper(str string) string {
 	return strings.ToUpper(str)
 }
 
-func (node *Node) fmtStrToLower(str string) string {
+func (node *Node) fmStrToLower(str string) string {
 	return strings.ToLower(str)
+}
+
+func (node *Node) fmStrSub(str string, args ...int) string {
+	var offset, count = 0, -1
+	if len(args) == 0 {
+		return str
+	}
+	if len(args) > 0 {
+		offset = args[0]
+	}
+	if len(args) > 1 {
+		count = args[1]
+		if count < 0 {
+			count = -1
+		}
+	}
+
+	rs := []rune(str)
+
+	idx := offset
+	if idx < 0 {
+		if idx*-1 >= len(rs) {
+			return ""
+		}
+		idx = len(rs) + idx
+	} else {
+		if offset >= len(rs) {
+			return ""
+		}
+	}
+	end := idx + count
+	if end >= len(rs) {
+		end = len(rs)
+	}
+
+	if count == -1 {
+		return string(rs[idx:])
+	} else {
+		return string(rs[idx:end])
+	}
 }

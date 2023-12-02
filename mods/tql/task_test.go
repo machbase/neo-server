@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -2222,4 +2223,62 @@ func TestRecordFields(t *testing.T) {
 	r = tql.NewRecord("key", [][]any{{"v1", "v2"}, {"w1", "w2"}})
 	require.Equal(t, []any{"key", "v1", "v2", "w1", "w2"}, r.Fields())
 	require.Equal(t, "K:string(key) V:(len=2) [][]any{[0]{string, string},[1]{string, string}}", r.String())
+}
+
+func TestLoader(t *testing.T) {
+	loader := tql.NewLoader([]string{"./test"})
+	var task *tql.Task
+	var sc *tql.Script
+	var expect string
+	var err error
+
+	sc, err = loader.Load(".")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '.'", err.Error())
+
+	sc, err = loader.Load("../task_test.go")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '../task_test.go'", err.Error())
+
+	tick := time.Unix(0, 1692329338315327000) // 2023-08-18 03:28:58.315
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	tests := []struct {
+		name string
+	}{
+		{"TestLoader"},
+		{"TestLoader_Pi"},
+		{"TestLoader_qq"},
+	}
+	for _, tt := range tests {
+		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
+		require.Nil(t, err)
+		require.NotNil(t, sc)
+		resultFile := filepath.Join(".", "test", fmt.Sprintf("%s.csv", tt.name))
+		if b, err := os.ReadFile(resultFile); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		} else {
+			expect = string(b)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		w := &bytes.Buffer{}
+
+		task = tql.NewTaskContext(ctx)
+		task.SetOutputWriter(w)
+		if err := task.CompileScript(sc); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		}
+		result := task.Execute()
+		require.NotNil(t, result)
+
+		if w.String() != expect {
+			t.Log("EXPECT:", expect)
+			t.Log("ACTUAL:", w.String())
+			t.Fail()
+		}
+	}
 }

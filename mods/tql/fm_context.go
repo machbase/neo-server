@@ -51,16 +51,22 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 			idx = int(parsed)
 		}
 	default:
-		return nil, ErrWrongTypeOfArgs("value", 0, "index of value tuple", v)
+		return nil, ErrWrongTypeOfArgs("value", 0, "index of value tuple ", v)
 	}
 	switch val := inflight.value.(type) {
 	case []any:
 		if idx >= len(val) {
-			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d)", idx, len(val)))
+			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d) in %s", idx, len(val), node.Name()))
 		}
 		return unboxValue(val[idx]), nil
+	case any:
+		if idx == 0 {
+			return unboxValue(val), nil
+		} else {
+			return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
+		}
 	default:
-		return nil, ErrArgs("value", 0, "out of index value tuple")
+		return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
 	}
 }
 

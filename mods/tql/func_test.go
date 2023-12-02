@@ -131,6 +131,50 @@ func TestStrSprintf(t *testing.T) {
 	}.run(t)
 }
 
+func TestStrSub(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World"},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"😀HelLo World", 0, 3},
+		expect: "😀He",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 6, -2},
+		expect: "😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -7},
+		expect: "😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -7, 3},
+		expect: "😀 W",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -0},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -1},
+		expect: "d",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -30},
+		expect: "",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 0, 30},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 30, 30},
+		expect: "",
+	}.run(t)
+}
+
 func TestGlob(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("glob"),
