@@ -422,24 +422,37 @@ func TestBytes(t *testing.T) {
 		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)
+}
+
+func TestHttpFile(t *testing.T) {
+	var codeLines, resultLines []string
 
 	var httpClient *http.Client
 	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
-		if req.URL.Path != "/data" {
-			t.Error("expected request to /notify, got", req.URL.Path)
-			t.Fail()
-		}
 		if req.Method != "GET" {
 			t.Error("expected request method to be GET, got", req.Method)
 			t.Fail()
 		}
+		var body io.ReadCloser
+		switch req.URL.Path {
+		case "/string":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/bytes":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/csv":
+			body = io.NopCloser(strings.NewReader("1,3.141592,true,\"escaped, string\",123456"))
+		default:
+			t.Error("Unexpected request path, got", req.URL.Path)
+			t.Fail()
+		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader("ok.")),
+			Body:       body,
 		}
 	})}
+
 	codeLines = []string{
-		`STRING(file("http://example.com/data"))`,
+		`STRING(file("http://example.com/string"))`,
 		`CSV()`,
 	}
 	resultLines = []string{
@@ -448,13 +461,71 @@ func TestBytes(t *testing.T) {
 	runTest(t, codeLines, resultLines, httpClient)
 
 	codeLines = []string{
-		`BYTES(file("http://example.com/data"))`,
+		`BYTES(file("http://example.com/bytes"))`,
 		`CSV()`,
 	}
 	resultLines = []string{
 		`\x6F\x6B\x2E`,
 	}
 	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`CSV(file("http://example.com/csv"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`1,3.141592,true,"escaped, string",123456`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+}
+
+func TestDiscardSink(t *testing.T) {
+	var codeLines, resultLines []string
+	var resultLog ExpectLog
+
+	codeLines = []string{
+		`CSV("1,line-1\n2,line-2\n3,line-3")`,
+		`MAPVALUE(0, parseFloat(value(0)))`,
+		`WHEN(`,
+		`  value(0) == 2 && `,
+		`  strHasPrefix( strToUpper(value(1)), "LINE-") &&`,
+		`  strHasSuffix(value(1), "-2"),`,
+		`  do(value(0), strToUpper(value(1)), {`,
+		`    ARGS()`,
+		`    WHEN(true, doLog("OUTPUT:", value(0), strToLower(value(1)) ))`,
+		`    CSV()`,
+		`  })`,
+		`)`,
+		`DISCARD()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[WARN] do: CSV() sink does not work in a sub-routine")
+	runTest(t, codeLines, resultLines, resultLog)
+	resultLog = ExpectLog("[INFO] OUTPUT: 2 line-2")
+	runTest(t, codeLines, resultLines, resultLog)
+
+	codeLines = []string{
+		`FAKE( json({         `,
+		`	[ 1, "hello" ],   `,
+		`	[ 2, "你好"],      `,
+		`	[ 3, "world" ],   `,
+		`	[ 4, "世界"]       `,
+		`}))                  `,
+		`WHEN(                `,
+		`	mod(value(0), 2) == 0,                      `,
+		`	do( value(0), strToUpper(value(1)), {       `,
+		`		ARGS()                                  `,
+		`		WHEN( true, doLog("OUTPUT:", value(0), value(1)))`,
+		`		DISCARD()                               `,
+		`	})`,
+		`)`,
+		`CSV()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] OUTPUT: 2 你好")
+	runTest(t, codeLines, resultLines, resultLog)
+	resultLog = ExpectLog("[INFO] OUTPUT: 4 世界")
+	runTest(t, codeLines, resultLines, resultLog)
 }
 
 func TestCsvToCsv(t *testing.T) {

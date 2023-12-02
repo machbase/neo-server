@@ -349,3 +349,19 @@ func (node *Node) fmStrReplace(str string, old string, new string, n int) string
 func (node *Node) fmStrSprintf(format string, args ...any) string {
 	return fmt.Sprintf(format, args...)
 }
+
+func (node *Node) fmStrHasPrefix(str string, prefix string) bool {
+	return strings.HasPrefix(str, prefix)
+}
+
+func (node *Node) fmStrHasSuffix(str string, suffix string) bool {
+	return strings.HasSuffix(str, suffix)
+}
+
+func (node *Node) fmtStrToUpper(str string) string {
+	return strings.ToUpper(str)
+}
+
+func (node *Node) fmtStrToLower(str string) string {
+	return strings.ToLower(str)
+}

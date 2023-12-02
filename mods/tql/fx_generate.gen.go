@@ -145,7 +145,11 @@ func NewNode(task *Task) *Node {
 		"strTrimSuffix": x.gen_strTrimSuffix,
 		"strReplaceAll": x.gen_strReplaceAll,
 		"strReplace":    x.gen_strReplace,
+		"strHasPrefix":  x.gen_strHasPrefix,
+		"strHasSuffix":  x.gen_strHasSuffix,
 		"strSprintf":    x.gen_strSprintf,
+		"strToUpper":    x.gen_strToUpper,
+		"strToLower":    x.gen_strToLower,
 		"freq":          x.gen_freq,
 		"oscillator":    x.gen_oscillator,
 		"sphere":        x.gen_sphere,
@@ -2127,6 +2131,44 @@ func (x *Node) gen_strReplace(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_strHasPrefix
+//
+// syntax: strHasPrefix(string, string)
+func (x *Node) gen_strHasPrefix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strHasPrefix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strHasPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strHasPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrHasPrefix(p0, p1)
+	return ret, nil
+}
+
+// gen_strHasSuffix
+//
+// syntax: strHasSuffix(string, string)
+func (x *Node) gen_strHasSuffix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strHasSuffix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strHasSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strHasSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrHasSuffix(p0, p1)
+	return ret, nil
+}
+
 // gen_strSprintf
 //
 // syntax: strSprintf(string, ...interface {})
@@ -2147,6 +2189,36 @@ func (x *Node) gen_strSprintf(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmStrSprintf(p0, p1...)
+	return ret, nil
+}
+
+// gen_strToUpper
+//
+// syntax: strToUpper(string)
+func (x *Node) gen_strToUpper(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strToUpper", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strToUpper", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmtStrToUpper(p0)
+	return ret, nil
+}
+
+// gen_strToLower
+//
+// syntax: strToLower(string)
+func (x *Node) gen_strToLower(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strToLower", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strToLower", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmtStrToLower(p0)
 	return ret, nil
 }
 

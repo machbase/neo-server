@@ -93,7 +93,8 @@ func (src *csvSource) gen(node *Node) {
 			ErrorRecord(err).Tell(node.next)
 			return
 		}
-		resp, err := http.DefaultClient.Do(req)
+		httpClient := node.task.NewHttpClient()
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			node.task.LogErrorf("Fail to GET %q, %s", src.srcHttp, err.Error())
 			ErrorRecord(err).Tell(node.next)
@@ -103,7 +104,7 @@ func (src *csvSource) gen(node *Node) {
 		reader = csv.NewReader(resp.Body)
 	}
 	if reader == nil {
-		node.task.LogErrorf("no input is specified")
+		node.task.LogErrorf("CSV() no input is specified")
 		return
 	}
 
@@ -113,12 +114,12 @@ func (src *csvSource) gen(node *Node) {
 		fields, err := reader.Read()
 		if err != nil {
 			if err != io.EOF {
-				node.task.LogErrorf("invalid input, %s", err.Error())
+				node.task.LogErrorf("CSV() invalid input, %s", err.Error())
 			}
 			return
 		}
 		if len(fields) == 0 {
-			node.task.LogError("invalid input")
+			node.task.LogError("CSV() invalid input")
 			return
 		}
 		if !headerProcessed {
@@ -177,7 +178,7 @@ func (src *csvSource) gen(node *Node) {
 				values[i], err = util.ParseTime(fields[i], dataType.timeformat, dataType.timeLocation)
 			}
 			if err != nil {
-				node.task.LogWarnf("invalid number format (at line %d)", rownum)
+				node.task.LogWarnf("CSV() invalid number format (at line %d)", rownum)
 				break
 			}
 		}
