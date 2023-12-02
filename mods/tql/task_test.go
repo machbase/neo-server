@@ -2260,6 +2260,8 @@ func TestLoader(t *testing.T) {
 			t.Fail()
 		} else {
 			expect = string(b)
+			// for windows
+			expect = strings.ReplaceAll(expect, "\r\n", "\n")
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
