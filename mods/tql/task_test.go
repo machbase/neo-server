@@ -937,6 +937,21 @@ func TestPushValue(t *testing.T) {
 		runTest(t, codeLines, resultLines)
 	}
 
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			`FAKE( json({["a", 0],["b", 1],["c", 2]}))`,
+			"POPKEY(0)",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(false), rownum(false))",
+		}
+		resultLines = []string{
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
 	codeLines = []string{
 		"FAKE( linspace(0, 2, 3))",
 		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
@@ -2249,6 +2264,7 @@ func TestLoader(t *testing.T) {
 		{"TestLoader"},
 		{"TestLoader_Pi"},
 		{"TestLoader_qq"},
+		{"TestLoader_groupbykey"},
 	}
 	for _, tt := range tests {
 		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
@@ -2278,8 +2294,8 @@ func TestLoader(t *testing.T) {
 		require.NotNil(t, result)
 
 		if w.String() != expect {
-			t.Log("EXPECT:", expect)
-			t.Log("ACTUAL:", w.String())
+			t.Logf("EXPECT:\n%s", expect)
+			t.Logf("ACTUAL:\n%s", w.String())
 			t.Fail()
 		}
 	}

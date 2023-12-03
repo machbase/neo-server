@@ -5,12 +5,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
 
 	gocsv "encoding/csv"
 
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
 )
@@ -161,35 +163,266 @@ func (node *Node) fmFlatten() any {
 }
 
 func (node *Node) fmGroupByKey(args ...any) any {
+	var gw *GroupWindow
+	if obj, ok := node.GetValue("groupbykey"); ok {
+		gw = obj.(*GroupWindow)
+	} else {
+		gw = NewGroupWindow()
+		node.SetValue("groupbykey", gw)
+		node.SetFeedEOF(true)
+
+		gw.columns = []string{}
+		if len(args) > 0 {
+			for _, arg := range args {
+				switch v := arg.(type) {
+				case string:
+					gw.columns = append(gw.columns, v)
+				case *lazyOption:
+					gw.lazy = v.flag
+				}
+			}
+		}
+		if len(gw.columns) == 0 {
+			gw.columns = append(gw.columns, "chunk")
+		}
+	}
+	gw.push(node)
+	return nil
+}
+
+func NewGroupWindow() *GroupWindow {
+	ret := &GroupWindow{}
+	return ret
+}
+
+type GroupWindow struct {
+	lazy    bool
+	columns []string
+	buffer  map[any][]GroupWindowColumn
+	curKey  any
+}
+
+func (gw *GroupWindow) newColumn() []GroupWindowColumn {
+	ret := make([]GroupWindowColumn, len(gw.columns))
+	for i, typ := range gw.columns {
+		switch typ {
+		case "chunk":
+			ret[i] = &GroupWindowColumnContainer{name: typ}
+		case "first", "last", "min", "max", "sum":
+			ret[i] = &GroupWindowColumnSingle{name: typ}
+		case "avg", "rss", "rms":
+			ret[i] = &GroupWindowColumnCounter{name: typ}
+		default:
+			ErrorRecord(fmt.Errorf("GROUPBYKEY unknown aggregator %q", typ))
+		}
+	}
+	return ret
+}
+
+func (gw *GroupWindow) isChunkMode() bool {
+	return len(gw.columns) == 1 && gw.columns[0] == "chunk"
+}
+
+func (gw *GroupWindow) push(node *Node) {
+	if node.Inflight().IsEOF() {
+		for k, cols := range gw.buffer {
+			if gw.isChunkMode() {
+				r := cols[0].Result()
+				if v, ok := r.([]any); ok {
+					node.yield(k, v)
+				} else {
+					node.yield(k, []any{r})
+				}
+			} else {
+				v := make([]any, len(cols))
+				for i, c := range cols {
+					v[i] = c.Result()
+				}
+				node.yield(k, v)
+			}
+		}
+		gw.buffer = nil
+		return
+	}
+
 	key := node.Inflight().key
 	value := node.Inflight().value
-	lazy := false
-	if len(args) > 0 {
-		for _, arg := range args {
-			switch v := arg.(type) {
-			case *lazyOption:
-				lazy = v.flag
+	var cols []GroupWindowColumn
+
+	if gw.buffer == nil {
+		gw.buffer = map[any][]GroupWindowColumn{}
+	}
+	if cs, ok := gw.buffer[key]; ok {
+		cols = cs
+	} else {
+		cols = gw.newColumn()
+		gw.buffer[key] = cols
+	}
+
+	if gw.isChunkMode() {
+		cols[0].Append(value)
+	} else {
+		for i := range cols {
+			if v, ok := value.([]any); ok {
+				if i < len(v) {
+					cols[i].Append(v[i])
+				} else {
+					cols[i].Append(nil)
+				}
+			} else if i == 0 {
+				cols[i].Append(value)
+			} else {
+				cols[i].Append(nil)
 			}
 		}
 	}
-	if lazy {
-		node.Buffer(key, value)
+
+	if !gw.lazy && gw.curKey != nil && gw.curKey != key {
+		if cols, ok := gw.buffer[gw.curKey]; ok {
+			if gw.isChunkMode() {
+				r := cols[0].Result()
+				if v, ok := r.([]any); ok {
+					node.yield(gw.curKey, v)
+				} else {
+					node.yield(gw.curKey, []any{r})
+				}
+			} else {
+				v := make([]any, len(cols))
+				for i, c := range cols {
+					v[i] = c.Result()
+				}
+				node.yield(gw.curKey, v)
+			}
+			delete(gw.buffer, gw.curKey)
+		}
+	}
+	gw.curKey = key
+}
+
+type GroupWindowColumn interface {
+	Append(any) error
+	Result() any
+}
+
+var (
+	_ GroupWindowColumn = &GroupWindowColumnSingle{}
+	_ GroupWindowColumn = &GroupWindowColumnContainer{}
+	_ GroupWindowColumn = &GroupWindowColumnCounter{}
+)
+
+// list
+type GroupWindowColumnContainer struct {
+	name   string
+	values []any
+}
+
+func (gc *GroupWindowColumnContainer) Result() any {
+	ret := gc.values
+	gc.values = []any{}
+	return ret
+}
+
+func (gc *GroupWindowColumnContainer) Append(v any) error {
+	gc.values = append(gc.values, v)
+	return nil
+}
+
+// avg, rss, rms
+type GroupWindowColumnCounter struct {
+	name  string
+	value float64
+	count int
+}
+
+func (gc *GroupWindowColumnCounter) Result() any {
+	if gc.count == 0 {
+		return nil
+	}
+	defer func() {
+		gc.count = 0
+		gc.value = 0
+	}()
+
+	var ret float64
+	switch gc.name {
+	case "avg":
+		ret = gc.value / float64(gc.count)
+	case "rss":
+		ret = math.Sqrt(gc.value)
+	case "rms":
+		ret = math.Sqrt(gc.value / float64(gc.count))
+	}
+	return ret
+}
+
+func (gc *GroupWindowColumnCounter) Append(v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	switch gc.name {
+	case "avg":
+		gc.count++
+		gc.value += f
+	case "rss", "rms":
+		gc.count++
+		gc.value += f * f
+	}
+	return nil
+}
+
+// first, last, min, max, sum
+type GroupWindowColumnSingle struct {
+	name     string
+	value    any
+	hasValue bool
+}
+
+func (gc *GroupWindowColumnSingle) Result() any {
+	if gc.hasValue {
+		ret := gc.value
+		gc.value, gc.hasValue = 0, false
+		return ret
+	}
+	return nil
+}
+
+func (gc *GroupWindowColumnSingle) Append(v any) error {
+	if gc.name == "first" {
+		if gc.hasValue {
+			return nil
+		}
+		gc.value = v
+		gc.hasValue = true
+		return nil
+	} else if gc.name == "last" {
+		gc.value = v
+		gc.hasValue = true
 		return nil
 	}
 
-	var curKey any
-	curKey, _ = node.GetValue("curKey")
-	defer func() {
-		node.SetValue("curKey", curKey)
-	}()
-	if curKey == nil {
-		curKey = key
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
 	}
-	node.Buffer(key, value)
+	if !gc.hasValue {
+		gc.value = f
+		gc.hasValue = true
+		return nil
+	}
 
-	if curKey != key {
-		node.YieldBuffer(curKey)
-		curKey = key
+	old := gc.value.(float64)
+	switch gc.name {
+	case "min":
+		if old > f {
+			gc.value = f
+		}
+	case "max":
+		if old < f {
+			gc.value = f
+		}
+	case "sum":
+		gc.value = old + f
 	}
 	return nil
 }
@@ -219,13 +452,13 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		}
 		if _, ok := node.GetValue("isFirst"); !ok {
 			node.SetValue("isFirst", true)
-			columns := node.task.ResultColumns()
+			columns := node.task.ResultColumns() // it contains ROWNUM
 			cols := columns
 			if len(columns) > nth+1 {
 				cols = []*spi.Column{columns[nth+1]}
 				cols = append(cols, columns[1:nth+1]...)
 			}
-			if len(cols) > nth+2 {
+			if len(columns) >= nth+2 {
 				cols = append(cols, columns[nth+2:]...)
 			}
 			node.task.SetResultColumns(cols)

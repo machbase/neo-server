@@ -30,7 +30,6 @@ type Node struct {
 
 	functions map[string]expression.Function
 	values    map[string]any
-	buffer    map[any][]any
 	debug     bool
 
 	closeWg sync.WaitGroup
@@ -195,26 +194,6 @@ func (node *Node) DeleteValue(name string) {
 	}
 }
 
-func (node *Node) Buffer(key any, value any) {
-	if node.buffer == nil {
-		node.buffer = map[any][]any{}
-	}
-	if values, ok := node.buffer[key]; ok {
-		node.buffer[key] = append(values, value)
-	} else {
-		node.buffer[key] = []any{value}
-	}
-}
-
-func (node *Node) YieldBuffer(key any) {
-	values, ok := node.buffer[key]
-	if !ok {
-		return
-	}
-	node.yield(key, values)
-	delete(node.buffer, key)
-}
-
 func (node *Node) yield(key any, values []any) {
 	var yieldRec *Record
 	if len(values) == 0 {
@@ -299,9 +278,6 @@ func (node *Node) start() {
 					}
 				}
 			}
-		}
-		for k, v := range node.buffer {
-			node.yield(k, v)
 		}
 		if lastWill != nil {
 			if node.shouldFeedEof {

@@ -1,0 +1,23 @@
+FAKE( json({
+    ["a", 1],
+    ["a", 2],
+    ["a", 3],
+    ["b", 4],
+    ["b", 5],
+    ["b", 6],
+    ["c", 7],
+    ["c", 8],
+    ["c", 9]
+}) )
+
+POPKEY(0)
+PUSHVALUE(0, value(0), "rss")
+PUSHVALUE(0, value(0), "last")
+PUSHVALUE(0, value(0), "first")
+PUSHVALUE(0, value(0), "max")
+PUSHVALUE(0, value(0), "min")
+PUSHVALUE(0, value(0), "avg")
+PUSHVALUE(0, value(0), "sum")
+GROUPBYKEY("sum", "avg", "min", "max", "first", "last", "rss", "rms")
+PUSHKEY("")
+CSV( header(true), precision(2) )

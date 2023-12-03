@@ -78,6 +78,14 @@ func genCsvData(node *Node, cd *csvdata) {
 			ErrorRecord(err).Tell(node.next)
 			return
 		}
+		if i == 0 {
+			cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+			for i := 0; i < len(values); i++ {
+				cname := fmt.Sprintf("column%d", i)
+				cols = append(cols, &spi.Column{Name: cname, Type: "string"})
+			}
+			node.task.SetResultColumns(cols)
+		}
 		v := make([]any, len(values))
 		for i, s := range values {
 			v[i] = s
@@ -108,8 +116,26 @@ func genJsonData(node *Node, jd *jsondata) {
 	// fromjson({ [a1,a2],[b1,b2] })
 	content := `{"data":[` + jd.content + `]}`
 	if err := json.Unmarshal([]byte(content), jd); err != nil {
-		ErrorRecord(err).Tell(node.next)
+		ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())).Tell(node.next)
 		return
+	}
+	if len(jd.Data) > 0 {
+		colCount := len(jd.Data[0])
+		cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+		for i := 0; i < colCount; i++ {
+			cname := fmt.Sprintf("column%d", i)
+			switch jd.Data[0][i].(type) {
+			case string:
+				cols = append(cols, &spi.Column{Name: cname, Type: "string"})
+			case float64:
+				cols = append(cols, &spi.Column{Name: cname, Type: "double"})
+			case bool:
+				cols = append(cols, &spi.Column{Name: cname, Type: "boolean"})
+			default:
+				cols = append(cols, &spi.Column{Name: cname, Type: "unknown"})
+			}
+		}
+		node.task.SetResultColumns(cols)
 	}
 	for i, v := range jd.Data {
 		rec := NewRecord(i+1, v)
