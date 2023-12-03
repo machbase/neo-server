@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	gocsv "encoding/csv"
@@ -15,6 +16,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
+	"gonum.org/v1/gonum/stat"
 )
 
 type lazyOption struct {
@@ -202,21 +204,23 @@ type GroupWindow struct {
 	curKey  any
 }
 
-func (gw *GroupWindow) newColumn() []GroupWindowColumn {
+func (gw *GroupWindow) newColumn() ([]GroupWindowColumn, error) {
 	ret := make([]GroupWindowColumn, len(gw.columns))
 	for i, typ := range gw.columns {
 		switch typ {
 		case "chunk":
+			ret[i] = &GroupWindowColumnChunk{name: typ}
+		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
 			ret[i] = &GroupWindowColumnContainer{name: typ}
 		case "first", "last", "min", "max", "sum":
 			ret[i] = &GroupWindowColumnSingle{name: typ}
 		case "avg", "rss", "rms":
 			ret[i] = &GroupWindowColumnCounter{name: typ}
 		default:
-			ErrorRecord(fmt.Errorf("GROUPBYKEY unknown aggregator %q", typ))
+			return nil, fmt.Errorf("GROUPBYKEY unknown aggregator %q", typ)
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 func (gw *GroupWindow) isChunkMode() bool {
@@ -255,7 +259,12 @@ func (gw *GroupWindow) push(node *Node) {
 	if cs, ok := gw.buffer[key]; ok {
 		cols = cs
 	} else {
-		cols = gw.newColumn()
+		if newCols, err := gw.newColumn(); err != nil {
+			node.task.LogErrorf("%s, %s", node.Name(), err.Error())
+			return
+		} else {
+			cols = newCols
+		}
 		gw.buffer[key] = cols
 	}
 
@@ -308,22 +317,91 @@ var (
 	_ GroupWindowColumn = &GroupWindowColumnSingle{}
 	_ GroupWindowColumn = &GroupWindowColumnContainer{}
 	_ GroupWindowColumn = &GroupWindowColumnCounter{}
+	_ GroupWindowColumn = &GroupWindowColumnChunk{}
 )
 
-// list
-type GroupWindowColumnContainer struct {
+// chunk
+type GroupWindowColumnChunk struct {
 	name   string
 	values []any
 }
 
-func (gc *GroupWindowColumnContainer) Result() any {
+func (gc *GroupWindowColumnChunk) Result() any {
 	ret := gc.values
 	gc.values = []any{}
 	return ret
 }
 
-func (gc *GroupWindowColumnContainer) Append(v any) error {
+func (gc *GroupWindowColumnChunk) Append(v any) error {
 	gc.values = append(gc.values, v)
+	return nil
+}
+
+// "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode"
+type GroupWindowColumnContainer struct {
+	name   string
+	values []float64
+}
+
+func (gc *GroupWindowColumnContainer) Result() any {
+	defer func() {
+		gc.values = gc.values[0:]
+	}()
+	var ret float64
+	switch gc.name {
+	case "mean":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		ret, _ = stat.MeanStdDev(gc.values, nil)
+	case "median":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		sort.Float64s(gc.values)
+		ret = stat.Quantile(0.5, stat.Empirical, gc.values, nil)
+	case "median-interpolated":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		sort.Float64s(gc.values)
+		ret = stat.Quantile(0.5, stat.LinInterp, gc.values, nil)
+	case "stddev":
+		if len(gc.values) < 1 {
+			return nil
+		}
+		_, ret = stat.MeanStdDev(gc.values, nil)
+	case "stderr":
+		if len(gc.values) < 1 {
+			return nil
+		}
+		_, std := stat.MeanStdDev(gc.values, nil)
+		ret = stat.StdErr(std, float64(len(gc.values)))
+	case "entropy":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		ret = stat.Entropy(gc.values)
+	case "mode":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		ret, _ = stat.Mode(gc.values, nil)
+	default:
+		return nil
+	}
+	if ret != ret { // NaN
+		return nil
+	}
+	return ret
+}
+
+func (gc *GroupWindowColumnContainer) Append(v any) error {
+	f, err := util.ToFloat64(v)
+	if err != nil {
+		return err
+	}
+	gc.values = append(gc.values, f)
 	return nil
 }
 

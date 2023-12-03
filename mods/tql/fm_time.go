@@ -330,7 +330,7 @@ func (tw *TimeWindow) SetColumns(columns []string) error {
 			tw.columns = append(tw.columns, &TimeWindowColumnSingle{name: typ})
 		case "avg", "rss", "rms":
 			tw.columns = append(tw.columns, &TimeWindowColumnAggregate{name: typ})
-		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy":
+		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
 			tw.columns = append(tw.columns, &TimeWindowColumnStore{name: typ})
 		case "fft":
 			tw.columns = append(tw.columns, &TimeWindowColumnDsp{name: typ})
@@ -688,6 +688,11 @@ func (twc *TimeWindowColumnStore) Result(ts time.Time) any {
 			return nil
 		}
 		ret = stat.Entropy(twc.values)
+	case "mode":
+		if len(twc.values) == 0 {
+			return nil
+		}
+		ret, _ = stat.Mode(twc.values, nil)
 	default:
 		return nil
 	}

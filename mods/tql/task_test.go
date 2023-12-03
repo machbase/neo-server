@@ -428,8 +428,7 @@ func TestBytes(t *testing.T) {
 func TestHttpFile(t *testing.T) {
 	var codeLines, resultLines []string
 
-	var httpClient *http.Client
-	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+	httpClient := &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
 		if req.Method != "GET" {
 			t.Error("expected request method to be GET, got", req.Method)
 			t.Fail()
@@ -2247,11 +2246,11 @@ func TestLoader(t *testing.T) {
 	var expect string
 	var err error
 
-	sc, err = loader.Load(".")
+	_, err = loader.Load(".")
 	require.NotNil(t, err)
 	require.Equal(t, "not found '.'", err.Error())
 
-	sc, err = loader.Load("../task_test.go")
+	_, err = loader.Load("../task_test.go")
 	require.NotNil(t, err)
 	require.Equal(t, "not found '../task_test.go'", err.Error())
 
