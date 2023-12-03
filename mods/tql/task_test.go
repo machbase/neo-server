@@ -2264,7 +2264,12 @@ func TestLoader(t *testing.T) {
 		{"TestLoader_Pi"},
 		{"TestLoader_qq"},
 		{"TestLoader_groupbykey"},
+		{"TestLoader_iris"},
 	}
+
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+
 	for _, tt := range tests {
 		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
 		require.Nil(t, err)
