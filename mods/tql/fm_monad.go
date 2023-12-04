@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	gocsv "encoding/csv"
 
@@ -164,186 +165,403 @@ func (node *Node) fmFlatten() any {
 	}
 }
 
-func (node *Node) fmGroupByKey(args ...any) any {
-	var gw *GroupWindow
-	if obj, ok := node.GetValue("groupbykey"); ok {
-		gw = obj.(*GroupWindow)
-	} else {
-		gw = NewGroupWindow()
-		node.SetValue("groupbykey", gw)
-		node.SetFeedEOF(true)
+func (node *Node) fmGroup(args ...any) any {
+	var gr *Group
+	var columns []*GroupAggregate
+	var by *GroupAggregate
+	var shouldSetColumns bool
 
-		gw.columns = []string{}
-		if len(args) > 0 {
-			for _, arg := range args {
-				switch v := arg.(type) {
-				case string:
-					gw.columns = append(gw.columns, v)
-				case *lazyOption:
-					gw.lazy = v.flag
-				}
+	if obj, ok := node.GetValue("group"); ok {
+		gr = obj.(*Group)
+	} else {
+		gr = &Group{
+			buffer:    map[any][]GroupColumn{},
+			chunkMode: true,
+		}
+		node.SetValue("group", gr)
+		node.SetEOF(gr.onEOF)
+		shouldSetColumns = true
+		for _, arg := range args {
+			switch arg.(type) {
+			case *GroupAggregate:
+				gr.chunkMode = false
+			}
+			// if has at least one aggregate, chunk mode is off
+			if !gr.chunkMode {
+				break
 			}
 		}
-		if len(gw.columns) == 0 {
-			gw.columns = append(gw.columns, "chunk")
+	}
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *GroupAggregate:
+			columns = append(columns, v)
+			if v.Type == "by" {
+				by = v
+			}
+		case *lazyOption:
+			gr.lazy = v.flag
+		default:
+			return ErrorRecord(fmt.Errorf("GROUP() unknown type '%T' in arguments", v))
 		}
 	}
-	gw.push(node)
+	if by == nil {
+		return ErrorRecord(fmt.Errorf("GROUP() has no by() argument"))
+	}
+	if by.Value == nil {
+		return ErrorRecord(fmt.Errorf("GROUP() by() can not be NULL"))
+	}
+	if shouldSetColumns {
+		if !gr.chunkMode {
+			cols := make([]*spi.Column, len(columns)+1)
+			cols[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
+			for i, c := range columns {
+				cols[i+1] = &spi.Column{
+					Name: c.Name,
+					Type: c.ColumnType(),
+				}
+			}
+			node.task.SetResultColumns(cols)
+		}
+	}
+	if gr.chunkMode {
+		gr.pushChunk(node, by)
+	} else {
+		gr.push(node, by, columns)
+	}
 	return nil
 }
 
-func NewGroupWindow() *GroupWindow {
-	ret := &GroupWindow{}
+type Group struct {
+	lazy      bool
+	buffer    map[any][]GroupColumn
+	curKey    any
+	chunkMode bool
+}
+
+func (gr *Group) onEOF(node *Node) {
+	if gr.chunkMode {
+		for k, cols := range gr.buffer {
+			r := cols[0].Result()
+			if v, ok := r.([]any); ok {
+				node.yield(k, v)
+			} else {
+				node.yield(k, []any{r})
+			}
+		}
+		gr.buffer = nil
+	} else {
+		for k, cols := range gr.buffer {
+			v := make([]any, len(cols))
+			for i, c := range cols {
+				v[i] = c.Result()
+			}
+			node.yield(k, v)
+		}
+		gr.buffer = nil
+	}
+}
+
+func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
+	var chunk *GroupColumnChunk
+	if cs, ok := gr.buffer[by.Value]; ok {
+		chunk = cs[0].(*GroupColumnChunk)
+	} else {
+		chunk = &GroupColumnChunk{name: "chunk"}
+		gr.buffer[by.Value] = []GroupColumn{chunk}
+	}
+	chunk.Append(node.Inflight().Value())
+	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
+		if ret, ok := gr.buffer[gr.curKey]; ok {
+			r := ret[0].Result()
+			if v, ok := r.([]any); ok {
+				node.yield(gr.curKey, v)
+			} else {
+				node.yield(gr.curKey, []any{r})
+			}
+			delete(gr.buffer, gr.curKey)
+		}
+	}
+	gr.curKey = by.Value
+
+}
+
+func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
+	var cols []GroupColumn
+	if cs, ok := gr.buffer[by.Value]; ok {
+		cols = cs
+	} else {
+		for _, c := range columns {
+			if buff := c.NewBuffer(); buff != nil {
+				cols = append(cols, buff)
+			} else {
+				node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+				return
+			}
+		}
+		gr.buffer[by.Value] = cols
+	}
+
+	for i, c := range columns {
+		cols[i].Append(c.Value)
+	}
+
+	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
+		if cols, ok := gr.buffer[gr.curKey]; ok {
+			v := make([]any, len(cols))
+			for i, c := range cols {
+				v[i] = c.Result()
+			}
+			node.yield(gr.curKey, v)
+			delete(gr.buffer, gr.curKey)
+		}
+	}
+	gr.curKey = by.Value
+}
+
+func (node *Node) fmBy(value any, args ...string) any {
+	ret := &GroupAggregate{Type: "by"}
+	ret.Value = unboxValue(value)
+	if len(args) > 0 {
+		ret.Name = args[0]
+	} else {
+		ret.Name = "GROUP"
+	}
 	return ret
 }
 
-type GroupWindow struct {
-	lazy    bool
-	columns []string
-	buffer  map[any][]GroupWindowColumn
-	curKey  any
+type GroupAggregate struct {
+	Type  string
+	Value any
+	Name  string
 }
 
-func (gw *GroupWindow) newColumn() ([]GroupWindowColumn, error) {
-	ret := make([]GroupWindowColumn, len(gw.columns))
-	for i, typ := range gw.columns {
-		switch typ {
-		case "chunk":
-			ret[i] = &GroupWindowColumnChunk{name: typ}
-		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
-			ret[i] = &GroupWindowColumnContainer{name: typ}
-		case "first", "last", "min", "max", "sum":
-			ret[i] = &GroupWindowColumnSingle{name: typ}
-		case "avg", "rss", "rms":
-			ret[i] = &GroupWindowColumnCounter{name: typ}
+func newAggregate(typ string, value any, args ...string) *GroupAggregate {
+	ret := &GroupAggregate{Type: typ, Value: value}
+	if len(args) > 0 {
+		ret.Name = args[0]
+	} else {
+		ret.Name = strings.ToUpper(typ)
+	}
+	return ret
+}
+
+func (ga *GroupAggregate) ColumnType() string {
+	switch ga.Type {
+	case "by":
+		if ga.Value == nil {
+			return "string"
+		}
+		switch ga.Value.(type) {
+		case time.Time:
+			return "time"
+		case string:
+			return "string"
+		case float64:
+			return "float64"
 		default:
-			return nil, fmt.Errorf("GROUPBYKEY unknown aggregator %q", typ)
+			return "interface{}"
 		}
+	case "chunk":
+		return "array"
 	}
-	return ret, nil
+	return "float64"
 }
 
-func (gw *GroupWindow) isChunkMode() bool {
-	return len(gw.columns) == 1 && gw.columns[0] == "chunk"
+func (ga *GroupAggregate) NewBuffer() GroupColumn {
+	switch ga.Type {
+	case "by":
+		return &GroupColumnConst{value: ga.Value}
+	case "chunk":
+		return &GroupColumnChunk{name: ga.Type}
+	case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
+		return &GroupColumnContainer{name: ga.Type}
+	case "first", "last", "min", "max", "sum":
+		return &GroupColumnSingle{name: ga.Type}
+	case "avg", "rss", "rms":
+		return &GroupColumnCounter{name: ga.Type}
+	default:
+		return nil
+	}
 }
 
-func (gw *GroupWindow) push(node *Node) {
-	if node.Inflight().IsEOF() {
-		for k, cols := range gw.buffer {
-			if gw.isChunkMode() {
-				r := cols[0].Result()
-				if v, ok := r.([]any); ok {
-					node.yield(k, v)
-				} else {
-					node.yield(k, []any{r})
-				}
+func (node *Node) fmFirst(value float64, args ...string) any {
+	return newAggregate("first", value, args...)
+}
+
+func (node *Node) fmLast(value float64, args ...string) any {
+	return newAggregate("last", value, args...)
+}
+
+func (node *Node) fmMin(value float64, other ...any) (any, error) {
+	if node.Name() == "GROUP()" {
+		if len(other) > 0 {
+			var name string
+			if str, ok := other[0].(string); ok {
+				name = str
 			} else {
-				v := make([]any, len(cols))
-				for i, c := range cols {
-					v[i] = c.Result()
-				}
-				node.yield(k, v)
+				name = fmt.Sprintf("%v", other[0])
 			}
-		}
-		gw.buffer = nil
-		return
-	}
-
-	key := node.Inflight().key
-	value := node.Inflight().value
-	var cols []GroupWindowColumn
-
-	if gw.buffer == nil {
-		gw.buffer = map[any][]GroupWindowColumn{}
-	}
-	if cs, ok := gw.buffer[key]; ok {
-		cols = cs
-	} else {
-		if newCols, err := gw.newColumn(); err != nil {
-			node.task.LogErrorf("%s, %s", node.Name(), err.Error())
-			return
+			return newAggregate("min", value, name), nil
 		} else {
-			cols = newCols
+			return newAggregate("min", value), nil
 		}
-		gw.buffer[key] = cols
-	}
-
-	if gw.isChunkMode() {
-		cols[0].Append(value)
-	} else {
-		for i := range cols {
-			if v, ok := value.([]any); ok {
-				if i < len(v) {
-					cols[i].Append(v[i])
-				} else {
-					cols[i].Append(nil)
-				}
-			} else if i == 0 {
-				cols[i].Append(value)
-			} else {
-				cols[i].Append(nil)
+	} else { // math.Min
+		if len(other) == 1 {
+			rv, err := util.ToFloat64(other[0])
+			if err != nil {
+				return value, nil
 			}
+			return math.Min(value, rv), nil
+		} else {
+			return value, fmt.Errorf("min() requires two float64 values, got %d", len(other)+1)
 		}
 	}
-
-	if !gw.lazy && gw.curKey != nil && gw.curKey != key {
-		if cols, ok := gw.buffer[gw.curKey]; ok {
-			if gw.isChunkMode() {
-				r := cols[0].Result()
-				if v, ok := r.([]any); ok {
-					node.yield(gw.curKey, v)
-				} else {
-					node.yield(gw.curKey, []any{r})
-				}
-			} else {
-				v := make([]any, len(cols))
-				for i, c := range cols {
-					v[i] = c.Result()
-				}
-				node.yield(gw.curKey, v)
-			}
-			delete(gw.buffer, gw.curKey)
-		}
-	}
-	gw.curKey = key
 }
 
-type GroupWindowColumn interface {
+func (node *Node) fmMax(value float64, other ...any) (any, error) {
+	if node.Name() == "GROUP()" {
+		if len(other) > 0 {
+			var name string
+			if str, ok := other[0].(string); ok {
+				name = str
+			} else {
+				name = fmt.Sprintf("%v", other[0])
+			}
+			return newAggregate("max", value, name), nil
+		} else {
+			return newAggregate("max", value), nil
+		}
+	} else { // math.Max
+		if len(other) == 1 {
+			rv, err := util.ToFloat64(other[0])
+			if err != nil {
+				return value, nil
+			}
+			return math.Max(value, rv), nil
+		} else {
+			return value, fmt.Errorf("max() requires two float64 values, got %d", len(other)+1)
+		}
+	}
+}
+
+func (node *Node) fmSum(value float64, args ...string) any {
+	return newAggregate("sum", value, args...)
+}
+
+func (node *Node) fmMean(value float64, args ...string) any {
+	return newAggregate("mean", value, args...)
+}
+
+func (node *Node) fmMedian(value float64, args ...string) any {
+	return newAggregate("median", value, args...)
+}
+
+func (node *Node) fmMedianInterpolated(value float64, args ...string) any {
+	return newAggregate("median-interpolated", value, args...)
+}
+
+func (node *Node) fmStdDev(value float64, args ...string) any {
+	return newAggregate("stddev", value, args...)
+}
+
+func (node *Node) fmStdErr(value float64, args ...string) any {
+	return newAggregate("stderr", value, args...)
+}
+
+func (node *Node) fmEntropy(value float64, args ...string) any {
+	return newAggregate("entropy", value, args...)
+}
+
+func (node *Node) fmMode(value float64, args ...string) any {
+	return newAggregate("mode", value, args...)
+}
+
+func (node *Node) fmAvg(value float64, args ...string) any {
+	return newAggregate("avg", value, args...)
+}
+func (node *Node) fmRSS(value float64, args ...string) any {
+	return newAggregate("rss", value, args...)
+}
+func (node *Node) fmRMS(value float64, args ...string) any {
+	return newAggregate("rms", value, args...)
+}
+
+func (node *Node) fmGroupByKey(args ...any) any {
+	var gr *Group
+	if obj, ok := node.GetValue("group"); ok {
+		gr = obj.(*Group)
+	} else {
+		gr = &Group{
+			buffer:    map[any][]GroupColumn{},
+			chunkMode: true,
+		}
+		node.SetValue("group", gr)
+		node.SetEOF(gr.onEOF)
+		for _, arg := range args {
+			switch v := arg.(type) {
+			case *lazyOption:
+				gr.lazy = v.flag
+			}
+		}
+	}
+	key := node.Inflight().Key()
+	by := node.fmBy(key, "KEY").(*GroupAggregate)
+	gr.pushChunk(node, by)
+	return nil
+}
+
+type GroupColumn interface {
 	Append(any) error
 	Result() any
 }
 
 var (
-	_ GroupWindowColumn = &GroupWindowColumnSingle{}
-	_ GroupWindowColumn = &GroupWindowColumnContainer{}
-	_ GroupWindowColumn = &GroupWindowColumnCounter{}
-	_ GroupWindowColumn = &GroupWindowColumnChunk{}
+	_ GroupColumn = &GroupColumnSingle{}
+	_ GroupColumn = &GroupColumnContainer{}
+	_ GroupColumn = &GroupColumnCounter{}
+	_ GroupColumn = &GroupColumnChunk{}
+	_ GroupColumn = &GroupColumnConst{}
 )
 
 // chunk
-type GroupWindowColumnChunk struct {
+type GroupColumnChunk struct {
 	name   string
 	values []any
 }
 
-func (gc *GroupWindowColumnChunk) Result() any {
+func (gc *GroupColumnChunk) Result() any {
 	ret := gc.values
 	gc.values = []any{}
 	return ret
 }
 
-func (gc *GroupWindowColumnChunk) Append(v any) error {
+func (gc *GroupColumnChunk) Append(v any) error {
 	gc.values = append(gc.values, v)
 	return nil
 }
 
+// const
+type GroupColumnConst struct {
+	value any
+}
+
+func (gc *GroupColumnConst) Result() any {
+	return gc.value
+}
+
+func (gc *GroupColumnConst) Append(v any) error {
+	return nil
+}
+
 // "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode"
-type GroupWindowColumnContainer struct {
+type GroupColumnContainer struct {
 	name   string
 	values []float64
 }
 
-func (gc *GroupWindowColumnContainer) Result() any {
+func (gc *GroupColumnContainer) Result() any {
 	defer func() {
 		gc.values = gc.values[0:]
 	}()
@@ -396,7 +614,7 @@ func (gc *GroupWindowColumnContainer) Result() any {
 	return ret
 }
 
-func (gc *GroupWindowColumnContainer) Append(v any) error {
+func (gc *GroupColumnContainer) Append(v any) error {
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err
@@ -406,13 +624,13 @@ func (gc *GroupWindowColumnContainer) Append(v any) error {
 }
 
 // avg, rss, rms
-type GroupWindowColumnCounter struct {
+type GroupColumnCounter struct {
 	name  string
 	value float64
 	count int
 }
 
-func (gc *GroupWindowColumnCounter) Result() any {
+func (gc *GroupColumnCounter) Result() any {
 	if gc.count == 0 {
 		return nil
 	}
@@ -433,7 +651,7 @@ func (gc *GroupWindowColumnCounter) Result() any {
 	return ret
 }
 
-func (gc *GroupWindowColumnCounter) Append(v any) error {
+func (gc *GroupColumnCounter) Append(v any) error {
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err
@@ -450,13 +668,13 @@ func (gc *GroupWindowColumnCounter) Append(v any) error {
 }
 
 // first, last, min, max, sum
-type GroupWindowColumnSingle struct {
+type GroupColumnSingle struct {
 	name     string
 	value    any
 	hasValue bool
 }
 
-func (gc *GroupWindowColumnSingle) Result() any {
+func (gc *GroupColumnSingle) Result() any {
 	if gc.hasValue {
 		ret := gc.value
 		gc.value, gc.hasValue = 0, false
@@ -465,7 +683,7 @@ func (gc *GroupWindowColumnSingle) Result() any {
 	return nil
 }
 
-func (gc *GroupWindowColumnSingle) Append(v any) error {
+func (gc *GroupColumnSingle) Append(v any) error {
 	if gc.name == "first" {
 		if gc.hasValue {
 			return nil

@@ -1,0 +1,15 @@
+FAKE( json({
+    ["a", 1],
+    ["a", 2],
+    ["a", 3],
+    ["b", 4],
+    ["b", 5],
+    ["b", 6],
+    ["c", 7],
+    ["c", 8],
+    ["c", 9]
+}) )
+
+GROUP( lazy(false), by(value(0), "kind"), sum(value(1), "sum"), avg(value(1), "avg"), mean(value(1),"mean"))
+
+CSV( header(true), precision(2) )
