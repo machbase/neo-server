@@ -408,6 +408,9 @@ func TestConvDuration(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, f32, float32(ret.Nanoseconds()))
 
+	ret, err = util.ToDuration(time.Duration(123 * time.Microsecond))
+	require.Nil(t, err)
+	require.Equal(t, int64(123)*1000, ret.Nanoseconds())
 }
 
 func TestTimeZone(t *testing.T) {

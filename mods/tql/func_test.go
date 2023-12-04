@@ -2,6 +2,7 @@ package tql_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ type FunctionTestCase struct {
 }
 
 func (tc FunctionTestCase) run(t *testing.T) {
+	t.Helper()
 	ret, err := tc.f(tc.args...)
 	if tc.expectErr != "" {
 		require.NotNil(t, err)
@@ -27,6 +29,194 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	}
 	require.Nil(t, err)
 	require.Equal(t, tc.expect, ret)
+}
+
+func TestParseFloat(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("parseFloat"),
+		args:   []any{"0"},
+		expect: 0.0,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseFloat"),
+		args:   []any{"-1.23"},
+		expect: -1.23,
+	}.run(t)
+}
+
+func TestParseBool(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:   []any{"true"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:   []any{"0"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("parseBool"),
+		args:      []any{"some other text"},
+		expectErr: "parseBool: parsing \"some other text\": invalid syntax",
+	}.run(t)
+}
+
+func TestStrTrimSpace(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimSpace"),
+		args:   []any{"  text\t\n"},
+		expect: "text",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimSpace"),
+		args:   []any{"   "},
+		expect: "",
+	}.run(t)
+}
+
+func TestStrTrimPrefix(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimPrefix"),
+		args:   []any{"  text\t\n", "  "},
+		expect: "text\t\n",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimPrefix"),
+		args:   []any{"__text", "_"},
+		expect: "_text",
+	}.run(t)
+}
+
+func TestStrTrimSuffix(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTrimSuffix"),
+		args:   []any{"  text\t\n", "\t\n"},
+		expect: "  text",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTrimSuffix"),
+		args:   []any{"__text", "text"},
+		expect: "__",
+	}.run(t)
+}
+
+func TestStrReplace(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "a", "A", 1},
+		expect: "Apple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "p", "P", 1},
+		expect: "aPple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplace"),
+		args:   []any{"apple", "p", "P", -1},
+		expect: "aPPle",
+	}.run(t)
+}
+
+func TestStrReplaceAll(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strReplaceAll"),
+		args:   []any{"apple", "a", "A"},
+		expect: "Apple",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strReplaceAll"),
+		args:   []any{"apple", "p", "P"},
+		expect: "aPPle",
+	}.run(t)
+}
+
+func TestStrSprintf(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strSprintf"),
+		args:   []any{"hello %s %1.2f", "world", 3.141592},
+		expect: "hello world 3.14",
+	}.run(t)
+}
+
+func TestStrSub(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World"},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"😀HelLo World", 0, 3},
+		expect: "😀He",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 6, -2},
+		expect: "😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -7},
+		expect: "😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -7, 3},
+		expect: "😀 W",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -0},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -1},
+		expect: "d",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", -30},
+		expect: "",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 0, 30},
+		expect: "HelLo 😀 World",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strSub"),
+		args:   []any{"HelLo 😀 World", 30, 30},
+		expect: "",
+	}.run(t)
+}
+
+func TestGlob(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "test123me"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "testme"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("glob"),
+		args:   []any{"test*me", "test123not"},
+		expect: false,
+	}.run(t)
+}
+
+func TestRegexp(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("regexp"),
+		args:      []any{`^test[0-9$`, "test123"},
+		expectErr: "error parsing regexp: missing closing ]: `[0-9$`",
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test[0-9]{3}$`, "test123"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test[0-9]{3}$`, "test12"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{3}$`, "test12345x"},
+		expect: false,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{3}$`, "test999"},
+		expect: true,
+	}.run(t)
+	FunctionTestCase{f: node.Function("regexp"),
+		args:   []any{`^test\d{5}x$`, "test12345x"},
+		expect: true,
+	}.run(t)
 }
 
 func TestTime(t *testing.T) {
@@ -258,16 +448,42 @@ func TestElement(t *testing.T) {
 	}.run(t)
 }
 
-func TestRound(t *testing.T) {
+func TestMathFunctions(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("round"),
 		args:      []any{},
-		expectErr: "f(round) invalid number of args; expect:2, actual:0",
+		expectErr: "f(round) invalid number of args; expect:1, actual:0",
 	}.run(t)
-	FunctionTestCase{f: node.Function("round"),
-		args:   []any{123.4567, 2.0},
-		expect: float64(122),
-	}.run(t)
+
+	tests := []FunctionTestCase{
+		{f: node.Function("abs"), args: []any{1.1}, expect: 1.1},
+		{f: node.Function("abs"), args: []any{-1.1}, expect: float64(1.1)},
+		{f: node.Function("acos"), args: []any{math.Cos(math.Pi)}, expect: math.Pi},
+		{f: node.Function("asin"), args: []any{math.Sin(math.Pi / 2)}, expect: math.Pi / 2},
+		{f: node.Function("ceil"), args: []any{3.1415}, expect: 4.0},
+		{f: node.Function("cos"), args: []any{math.Pi}, expect: -1.0},
+		{f: node.Function("exp"), args: []any{0.0}, expect: 1.0},
+		{f: node.Function("exp2"), args: []any{2.0}, expect: 4.0},
+		{f: node.Function("floor"), args: []any{3.14}, expect: 3.0},
+		{f: node.Function("log"), args: []any{1.0}, expect: 0.0},
+		{f: node.Function("log2"), args: []any{8.0}, expect: 3.0},
+		{f: node.Function("log10"), args: []any{100.0}, expect: 2.0},
+		{f: node.Function("min"), args: []any{1.0, 1.1}, expect: float64(1.0)},
+		{f: node.Function("max"), args: []any{1.0, 1.1}, expect: float64(1.1)},
+		{f: node.Function("mod"), args: []any{5.0, 2.0}, expect: float64(1.0)},
+		{f: node.Function("pow"), args: []any{2.0, 3.0}, expect: float64(8.0)},
+		{f: node.Function("pow10"), args: []any{3.0}, expect: float64(1000.0)},
+		{f: node.Function("remainder"), args: []any{5.0, 2.0}, expect: float64(1.0)},
+		{f: node.Function("round"), args: []any{123.4567}, expect: float64(123)},
+		{f: node.Function("round"), args: []any{234.5678}, expect: float64(235)},
+		{f: node.Function("sin"), args: []any{math.Pi / 2}, expect: 1.0},
+		{f: node.Function("sqrt"), args: []any{4.0}, expect: 2.0},
+		{f: node.Function("tan"), args: []any{0.0}, expect: 0.0},
+		{f: node.Function("trunc"), args: []any{math.Pi}, expect: 3.0},
+	}
+	for _, tt := range tests {
+		tt.run(t)
+	}
 }
 
 // TestCase

@@ -38,6 +38,14 @@ func (node *Node) fmJson(args ...any) (*Encoder, error) {
 	return newEncoder("json", args...)
 }
 
+func (node *Node) fmChart(args ...any) (*Encoder, error) {
+	return newEncoder("echart", args...)
+}
+
+func (node *Node) fmDiscard(args ...any) (*Encoder, error) {
+	return newEncoder("discard", args...)
+}
+
 func (node *Node) fmChartLine(args ...any) (*Encoder, error) {
 	return newEncoder("echart.line", args...)
 }

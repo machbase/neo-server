@@ -107,7 +107,7 @@ func doFake(ctx *action.ActionContext) {
 
 	var appender spi.Appender
 	if len(cmd.Table) > 0 {
-		appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table, spi.AppendTimeformatOption("ns"))
+		appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table)
 		if err != nil {
 			ctx.Printfln("ERR", err.Error())
 			return

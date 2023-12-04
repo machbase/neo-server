@@ -1,0 +1,11 @@
+CSV(file("/iris.data"),
+    field(0, doubleType(), "sepal length"),
+    field(1, doubleType(), "sepal width"),
+    field(2, doubleType(), "petal length"),
+    field(3, doubleType(), "petal width"),
+    field(4, stringType(), "species")
+)
+POPKEY(4)
+GROUPBYKEY("min", "max", "median", "median")
+PUSHKEY("result")
+CSV( precision(3) )

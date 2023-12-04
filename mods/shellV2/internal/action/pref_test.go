@@ -95,7 +95,7 @@ func TestPrefDir(t *testing.T) {
 	require.Equal(t, "client-key", itm.Value())
 
 	items := pref.Items()
-	require.Equal(t, 8, len(items))
+	require.Equal(t, 7, len(items))
 }
 
 // func TestClient(t *testing.T) {

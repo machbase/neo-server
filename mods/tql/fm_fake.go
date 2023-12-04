@@ -1,9 +1,16 @@
 package tql
 
 import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"math/rand"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
@@ -13,7 +20,7 @@ import (
 /*
 Example)
 
-	FAKE( oscillator() | meshgrid() | linspace() )
+	FAKE( oscillator() | meshgrid() | linspace() | json() )
 */
 func (node *Node) fmFake(origin any) (any, error) {
 	switch gen := origin.(type) {
@@ -25,10 +32,115 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genSphere(node, gen)
 	case *oscillator:
 		genOscillator(node, gen)
+	case *jsondata:
+		genJsonData(node, gen)
+	case *csvdata:
+		genCsvData(node, gen)
+	case *rawdata:
+		genRawData(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 	return nil, nil
+}
+
+type rawdata struct {
+	data any
+}
+
+func genRawData(node *Node, gen *rawdata) {
+	rec := NewRecord(1, gen.data)
+	rec.Tell(node.next)
+}
+
+func (node *Node) fmCsvData(data string) (*csvdata, error) {
+	nodeName := node.Name()
+	if nodeName == "FAKE()" {
+		return &csvdata{
+			content: data,
+		}, nil
+	}
+	return nil, fmt.Errorf("FUNCTION %q doesn't support csv()", nodeName)
+}
+
+type csvdata struct {
+	content string
+}
+
+func genCsvData(node *Node, cd *csvdata) {
+	r := csv.NewReader(bytes.NewBufferString(string(cd.content)))
+	for i := 0; true; i++ {
+		values, err := r.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		if i == 0 {
+			cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+			for i := 0; i < len(values); i++ {
+				cname := fmt.Sprintf("column%d", i)
+				cols = append(cols, &spi.Column{Name: cname, Type: "string"})
+			}
+			node.task.SetResultColumns(cols)
+		}
+		v := make([]any, len(values))
+		for i, s := range values {
+			v[i] = s
+		}
+		rec := NewRecord(i+1, v)
+		rec.Tell(node.next)
+	}
+}
+
+func (node *Node) fmJsonData(data string) (*jsondata, error) {
+	nodeName := node.Name()
+	if nodeName == "FAKE()" {
+		return &jsondata{
+			content: data,
+		}, nil
+	}
+	return nil, fmt.Errorf("FUNCTION %q doesn't support json()", nodeName)
+}
+
+type jsondata struct {
+	content string  `json:"-"`
+	Data    [][]any `json:"data"`
+}
+
+// the content format should
+func genJsonData(node *Node, jd *jsondata) {
+	// it makes {"data":[ [a1,a2],[b1,b2] ]}
+	// fromjson({ [a1,a2],[b1,b2] })
+	content := `{"data":[` + jd.content + `]}`
+	if err := json.Unmarshal([]byte(content), jd); err != nil {
+		ErrorRecord(fmt.Errorf("%s %s", node.Name(), err.Error())).Tell(node.next)
+		return
+	}
+	if len(jd.Data) > 0 {
+		colCount := len(jd.Data[0])
+		cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+		for i := 0; i < colCount; i++ {
+			cname := fmt.Sprintf("column%d", i)
+			switch jd.Data[0][i].(type) {
+			case string:
+				cols = append(cols, &spi.Column{Name: cname, Type: "string"})
+			case float64:
+				cols = append(cols, &spi.Column{Name: cname, Type: "double"})
+			case bool:
+				cols = append(cols, &spi.Column{Name: cname, Type: "boolean"})
+			default:
+				cols = append(cols, &spi.Column{Name: cname, Type: "unknown"})
+			}
+		}
+		node.task.SetResultColumns(cols)
+	}
+	for i, v := range jd.Data {
+		rec := NewRecord(i+1, v)
+		rec.Tell(node.next)
+	}
 }
 
 func (node *Node) fmLinspace(start float64, stop float64, num int) *linspace {
@@ -222,4 +334,100 @@ func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *fr
 		ret.phase = args[1]
 	}
 	return ret
+}
+
+func (x *Node) fmRandom() float64 {
+	return rand.Float64()
+}
+
+func (node *Node) fmParseFloat(str string) (float64, error) {
+	return strconv.ParseFloat(str, 64)
+}
+
+func (node *Node) fmParseBoolean(str string) (bool, error) {
+	ret, err := strconv.ParseBool(str)
+	if err != nil {
+		return false, fmt.Errorf("parseBool: parsing %q: invalid syntax", str)
+	}
+	return ret, nil
+}
+
+func (node *Node) fmStrTrimSpace(str string) string {
+	return strings.TrimSpace(str)
+}
+
+func (node *Node) fmStrTrimPrefix(str string, prefix string) string {
+	return strings.TrimPrefix(str, prefix)
+}
+
+func (node *Node) fmStrTrimSuffix(str string, suffix string) string {
+	return strings.TrimSuffix(str, suffix)
+}
+
+func (node *Node) fmStrReplaceAll(str string, old string, new string) string {
+	return strings.ReplaceAll(str, old, new)
+}
+
+func (node *Node) fmStrReplace(str string, old string, new string, n int) string {
+	return strings.Replace(str, old, new, n)
+}
+
+func (node *Node) fmStrSprintf(format string, args ...any) string {
+	return fmt.Sprintf(format, args...)
+}
+
+func (node *Node) fmStrHasPrefix(str string, prefix string) bool {
+	return strings.HasPrefix(str, prefix)
+}
+
+func (node *Node) fmStrHasSuffix(str string, suffix string) bool {
+	return strings.HasSuffix(str, suffix)
+}
+
+func (node *Node) fmStrToUpper(str string) string {
+	return strings.ToUpper(str)
+}
+
+func (node *Node) fmStrToLower(str string) string {
+	return strings.ToLower(str)
+}
+
+func (node *Node) fmStrSub(str string, args ...int) string {
+	var offset, count = 0, -1
+	if len(args) == 0 {
+		return str
+	}
+	if len(args) > 0 {
+		offset = args[0]
+	}
+	if len(args) > 1 {
+		count = args[1]
+		if count < 0 {
+			count = -1
+		}
+	}
+
+	rs := []rune(str)
+
+	idx := offset
+	if idx < 0 {
+		if idx*-1 >= len(rs) {
+			return ""
+		}
+		idx = len(rs) + idx
+	} else {
+		if offset >= len(rs) {
+			return ""
+		}
+	}
+	end := idx + count
+	if end >= len(rs) {
+		end = len(rs)
+	}
+
+	if count == -1 {
+		return string(rs[idx:])
+	} else {
+		return string(rs[idx:end])
+	}
 }

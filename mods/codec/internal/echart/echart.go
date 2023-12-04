@@ -8,14 +8,13 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
 
-var globalLog logging.Log
-
 type ChartBase struct {
+	logger logger.Logger
 	output spec.OutputStream
 
 	toJsonOutput bool
@@ -25,6 +24,8 @@ type ChartBase struct {
 	seriesLabels  []string
 
 	onceInit sync.Once
+
+	simpleColNames []string
 }
 
 type ChartGlobalOptions struct {
@@ -34,7 +35,7 @@ type ChartGlobalOptions struct {
 	BackgroundColor string   `json:"backgroundColor"`           // BackgroundColor of canvas
 	ChartID         string   `json:"chartId"`                   // Chart unique ID
 	AssetsHost      string   `json:"assetsHost" default:"https://go-echarts.github.io/go-echarts-assets/assets/"`
-	Theme           string   `json:"theme" default:"white"`
+	Theme           string   `json:"theme" default:""`
 	Colors          []string `json:"color"`
 	Animation       bool     `json:"animation" default:"false"`
 
@@ -72,6 +73,10 @@ type ChartSeriesOptions struct {
 	*opts.AreaStyle     `json:"areaStyle,omitempty"`
 	*opts.TextStyle     `json:"textStyle,omitempty"`
 	*opts.CircularStyle `json:"circular,omitempty"`
+}
+
+func (ex *ChartBase) SetLogger(l logger.Logger) {
+	ex.logger = l
 }
 
 func (ex *ChartBase) SetOutputStream(o spec.OutputStream) {
@@ -177,10 +182,12 @@ func (ex *ChartBase) SetVisualMapColor(min float64, max float64, colors ...strin
 
 func (ex *ChartBase) SetChartJson(flag bool) {
 	ex.toJsonOutput = flag
-	if flag {
-		ex.globalOptions.Theme = "-" // client choose 'white' or 'dark'
-	} else {
-		ex.globalOptions.Theme = "white" // echarts default
+	if ex.globalOptions.Theme == "" {
+		if flag {
+			ex.globalOptions.Theme = "-" // client choose 'white' or 'dark'
+		} else {
+			ex.globalOptions.Theme = "white" // echarts default
+		}
 	}
 }
 
@@ -205,15 +212,18 @@ func (ex *ChartBase) initialize() {
 
 func (ex *ChartBase) SetGlobalOptions(content string) {
 	if err := json.Unmarshal([]byte(content), &ex.globalOptions); err != nil {
-		if globalLog == nil {
-			globalLog = logging.GetLog("chart")
+		if ex.logger != nil {
+			ex.logger.LogWarn("invalid syntax of globalOptions", err.Error())
 		}
-		globalLog.Warn("invalid syntax of globalOptions", err.Error())
 		return
 	}
 }
 
 func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
+	theme := "white"
+	if ex.globalOptions.Theme != "" {
+		theme = ex.globalOptions.Theme
+	}
 	ret := []charts.GlobalOpts{
 		charts.WithInitializationOpts(opts.Initialization{
 			PageTitle:       ex.globalOptions.PageTitle,
@@ -222,7 +232,7 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			BackgroundColor: ex.globalOptions.BackgroundColor,
 			ChartID:         ex.globalOptions.ChartID,
 			AssetsHost:      ex.globalOptions.AssetsHost,
-			Theme:           ex.globalOptions.Theme,
+			Theme:           theme,
 		}),
 		func(bc *charts.BaseConfiguration) {
 			bc.Title = ex.globalOptions.Title
@@ -262,10 +272,9 @@ func (ex *ChartBase) SetSeriesOptions(data ...string) {
 		opt := &ChartSeriesOptions{}
 		err := json.Unmarshal([]byte(content), opt)
 		if err != nil {
-			if globalLog == nil {
-				globalLog = logging.GetLog("chart")
+			if ex.logger != nil {
+				ex.logger.LogWarn("invalid syntax of seriesOptions", err.Error())
 			}
-			globalLog.Warn("invalid syntax of seriesOptions", err.Error())
 			return
 		}
 		ret = append(ret, opt)
@@ -275,6 +284,10 @@ func (ex *ChartBase) SetSeriesOptions(data ...string) {
 
 func (ex *ChartBase) SetSeriesLabels(labels ...string) {
 	ex.seriesLabels = labels
+}
+
+func (ex *ChartBase) SetColumns(cols ...string) {
+	ex.simpleColNames = cols
 }
 
 func (ex *ChartBase) getSeriesName(idx int) string {
@@ -288,7 +301,11 @@ func (ex *ChartBase) getSeriesName(idx int) string {
 	}
 
 	if label == "" {
-		label = fmt.Sprintf("column[%d]", idx)
+		if len(ex.simpleColNames) > idx+1 {
+			label = ex.simpleColNames[idx+1]
+		} else {
+			label = fmt.Sprintf("column[%d]", idx)
+		}
 	}
 	return label
 }

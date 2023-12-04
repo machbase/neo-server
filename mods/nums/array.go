@@ -6,11 +6,19 @@ import (
 )
 
 func Count(args ...any) (any, error) {
+	if len(args) == 0 {
+		return 0.0, nil
+	}
 	return float64(len(args)), nil
 }
 
 func Len(args ...any) (any, error) {
-	if arr, ok := args[0].([]any); ok {
+	if len(args) == 0 {
+		return 0.0, nil
+	}
+	if arr, ok := args[0].([][]any); ok {
+		return float64(len(arr)), nil
+	} else if arr, ok := args[0].([]any); ok {
 		return float64(len(arr)), nil
 	} else if arr, ok := args[0].([]string); ok {
 		return float64(len(arr)), nil

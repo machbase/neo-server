@@ -16,28 +16,53 @@ func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
 		// context
-		"context": x.gen_context,
-		"key":     x.gen_key,
-		"value":   x.gen_value,
-		"param":   x.gen_param,
-		"payload": x.gen_payload,
+		"context":     x.gen_context,
+		"key":         x.gen_key,
+		"value":       x.gen_value,
+		"param":       x.gen_param,
+		"payload":     x.gen_payload,
+		"escapeParam": x.gen_escapeParam,
+		"ARGS":        x.gen_ARGS,
 		// math
-		"sin":   x.gen_sin,
-		"cos":   x.gen_cos,
-		"tan":   x.gen_tan,
-		"exp":   x.gen_exp,
-		"exp2":  x.gen_exp2,
-		"log":   x.gen_log,
-		"log10": x.gen_log10,
+		"abs":       x.gen_abs,
+		"acos":      x.gen_acos,
+		"acosh":     x.gen_acosh,
+		"asin":      x.gen_asin,
+		"asinh":     x.gen_asinh,
+		"atan":      x.gen_atan,
+		"atanh":     x.gen_atanh,
+		"ceil":      x.gen_ceil,
+		"cos":       x.gen_cos,
+		"cosh":      x.gen_cosh,
+		"exp":       x.gen_exp,
+		"exp2":      x.gen_exp2,
+		"floor":     x.gen_floor,
+		"log":       x.gen_log,
+		"log10":     x.gen_log10,
+		"log2":      x.gen_log2,
+		"max":       x.gen_max,
+		"min":       x.gen_min,
+		"mod":       x.gen_mod,
+		"pow":       x.gen_pow,
+		"pow10":     x.gen_pow10,
+		"remainder": x.gen_remainder,
+		"round":     x.gen_round,
+		"sin":       x.gen_sin,
+		"sinh":      x.gen_sinh,
+		"sqrt":      x.gen_sqrt,
+		"tan":       x.gen_tan,
+		"tanh":      x.gen_tanh,
+		"trunc":     x.gen_trunc,
 		// nums
 		"count":      nums.Count,
 		"len":        nums.Len,
 		"element":    nums.Element,
-		"round":      x.gen_round,
 		"linspace":   x.gen_linspace,
 		"linspace50": x.gen_linspace50,
 		"meshgrid":   x.gen_meshgrid,
 		// maps.time
+		"period":         x.gen_period,
+		"nullValue":      x.gen_nullValue,
 		"time":           x.gen_time,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
@@ -54,9 +79,19 @@ func NewNode(task *Task) *Node {
 		"POPKEY":     x.gen_POPKEY,
 		"PUSHKEY":    x.gen_PUSHKEY,
 		"MAPKEY":     x.gen_MAPKEY,
+		"POPVALUE":   x.gen_POPVALUE,
+		"PUSHVALUE":  x.gen_PUSHVALUE,
 		"MAPVALUE":   x.gen_MAPVALUE,
+		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
 		"lazy":       x.gen_lazy,
+		"glob":       x.gen_glob,
+		"regexp":     x.gen_regexp,
+		"doLog":      x.gen_doLog,
+		"doHttp":     x.gen_doHttp,
+		"do":         x.gen_do,
+		"args":       x.gen_args,
+		"WHEN":       x.gen_WHEN,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -81,6 +116,8 @@ func NewNode(task *Task) *Node {
 		"JSON":            x.gen_JSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
+		"DISCARD":         x.gen_DISCARD,
+		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
 		"CHART_SCATTER":   x.gen_CHART_SCATTER,
 		"CHART_BAR":       x.gen_CHART_BAR,
@@ -95,15 +132,31 @@ func NewNode(task *Task) *Node {
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
 		// maps.csv
-		"col":          x.gen_col,
-		"field":        x.gen_field,
-		"datetimeType": x.gen_datetimeType,
-		"stringType":   x.gen_stringType,
-		"doubleType":   x.gen_doubleType,
-		"freq":         x.gen_freq,
-		"oscillator":   x.gen_oscillator,
-		"sphere":       x.gen_sphere,
-		"FAKE":         x.gen_FAKE,
+		"col":           x.gen_col,
+		"field":         x.gen_field,
+		"datetimeType":  x.gen_datetimeType,
+		"stringType":    x.gen_stringType,
+		"doubleType":    x.gen_doubleType,
+		"random":        x.gen_random,
+		"parseFloat":    x.gen_parseFloat,
+		"parseBool":     x.gen_parseBool,
+		"strTrimSpace":  x.gen_strTrimSpace,
+		"strTrimPrefix": x.gen_strTrimPrefix,
+		"strTrimSuffix": x.gen_strTrimSuffix,
+		"strReplaceAll": x.gen_strReplaceAll,
+		"strReplace":    x.gen_strReplace,
+		"strHasPrefix":  x.gen_strHasPrefix,
+		"strHasSuffix":  x.gen_strHasSuffix,
+		"strSprintf":    x.gen_strSprintf,
+		"strSub":        x.gen_strSub,
+		"strToUpper":    x.gen_strToUpper,
+		"strToLower":    x.gen_strToLower,
+		"freq":          x.gen_freq,
+		"oscillator":    x.gen_oscillator,
+		"sphere":        x.gen_sphere,
+		"json":          x.gen_json,
+		"csv":           x.gen_csv,
+		"FAKE":          x.gen_FAKE,
 		// maps.input
 		"INPUT": x.gen_INPUT,
 		// maps.output
@@ -127,6 +180,7 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
+		"global":             x.gen_global,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -134,13 +188,20 @@ func NewNode(task *Task) *Node {
 		"html":               x.gen_html,
 		"inputStream":        x.gen_inputStream,
 		"lineWidth":          x.gen_lineWidth,
+		"logger":             x.gen_logger,
 		"markAreaNameCoord":  x.gen_markAreaNameCoord,
+		"markAreaXAxis":      x.gen_markAreaXAxis,
+		"markAreaYAxis":      x.gen_markAreaYAxis,
+		"markLineStyle":      x.gen_markLineStyle,
+		"markLineXAxis":      x.gen_markLineXAxis,
 		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
+		"markLineYAxis":      x.gen_markLineYAxis,
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
+		"series":             x.gen_series,
 		"seriesLabels":       x.gen_seriesLabels,
 		"seriesOptions":      x.gen_seriesOptions,
 		"showGrid":           x.gen_showGrid,
@@ -229,18 +290,148 @@ func (x *Node) gen_payload(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_sin
+// gen_escapeParam
 //
-// syntax: sin(float64)
-func (x *Node) gen_sin(args ...any) (any, error) {
+// syntax: escapeParam(string)
+func (x *Node) gen_escapeParam(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("sin", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("escapeParam", 1, len(args))
 	}
-	p0, err := convFloat64(args, 0, "sin", "float64")
+	p0, err := convString(args, 0, "escapeParam", "string")
 	if err != nil {
 		return nil, err
 	}
-	ret := math.Sin(p0)
+	ret := x.EscapeParam(p0)
+	return ret, nil
+}
+
+// gen_ARGS
+//
+// syntax: ARGS()
+func (x *Node) gen_ARGS(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("ARGS", 0, len(args))
+	}
+	return x.fmArgs()
+}
+
+// gen_abs
+//
+// syntax: abs(float64)
+func (x *Node) gen_abs(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("abs", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "abs", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Abs(p0)
+	return ret, nil
+}
+
+// gen_acos
+//
+// syntax: acos(float64)
+func (x *Node) gen_acos(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("acos", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "acos", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Acos(p0)
+	return ret, nil
+}
+
+// gen_acosh
+//
+// syntax: acosh(float64)
+func (x *Node) gen_acosh(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("acosh", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "acosh", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Acosh(p0)
+	return ret, nil
+}
+
+// gen_asin
+//
+// syntax: asin(float64)
+func (x *Node) gen_asin(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("asin", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "asin", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Asin(p0)
+	return ret, nil
+}
+
+// gen_asinh
+//
+// syntax: asinh(float64)
+func (x *Node) gen_asinh(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("asinh", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "asinh", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Asinh(p0)
+	return ret, nil
+}
+
+// gen_atan
+//
+// syntax: atan(float64)
+func (x *Node) gen_atan(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("atan", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "atan", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Atan(p0)
+	return ret, nil
+}
+
+// gen_atanh
+//
+// syntax: atanh(float64)
+func (x *Node) gen_atanh(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("atanh", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "atanh", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Atanh(p0)
+	return ret, nil
+}
+
+// gen_ceil
+//
+// syntax: ceil(float64)
+func (x *Node) gen_ceil(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("ceil", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "ceil", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Ceil(p0)
 	return ret, nil
 }
 
@@ -259,18 +450,18 @@ func (x *Node) gen_cos(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_tan
+// gen_cosh
 //
-// syntax: tan(float64)
-func (x *Node) gen_tan(args ...any) (any, error) {
+// syntax: cosh(float64)
+func (x *Node) gen_cosh(args ...any) (any, error) {
 	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("tan", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("cosh", 1, len(args))
 	}
-	p0, err := convFloat64(args, 0, "tan", "float64")
+	p0, err := convFloat64(args, 0, "cosh", "float64")
 	if err != nil {
 		return nil, err
 	}
-	ret := math.Tan(p0)
+	ret := math.Cosh(p0)
 	return ret, nil
 }
 
@@ -304,6 +495,21 @@ func (x *Node) gen_exp2(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_floor
+//
+// syntax: floor(float64)
+func (x *Node) gen_floor(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("floor", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "floor", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Floor(p0)
+	return ret, nil
+}
+
 // gen_log
 //
 // syntax: log(float64)
@@ -334,22 +540,233 @@ func (x *Node) gen_log10(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_log2
+//
+// syntax: log2(float64)
+func (x *Node) gen_log2(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("log2", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "log2", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Log2(p0)
+	return ret, nil
+}
+
+// gen_max
+//
+// syntax: max(float64, float64)
+func (x *Node) gen_max(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("max", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "max", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "max", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Max(p0, p1)
+	return ret, nil
+}
+
+// gen_min
+//
+// syntax: min(float64, float64)
+func (x *Node) gen_min(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("min", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "min", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "min", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Min(p0, p1)
+	return ret, nil
+}
+
+// gen_mod
+//
+// syntax: mod(float64, float64)
+func (x *Node) gen_mod(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("mod", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "mod", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "mod", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Mod(p0, p1)
+	return ret, nil
+}
+
+// gen_pow
+//
+// syntax: pow(float64, float64)
+func (x *Node) gen_pow(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("pow", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "pow", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "pow", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Pow(p0, p1)
+	return ret, nil
+}
+
+// gen_pow10
+//
+// syntax: pow10(int)
+func (x *Node) gen_pow10(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("pow10", 1, len(args))
+	}
+	p0, err := convInt(args, 0, "pow10", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Pow10(p0)
+	return ret, nil
+}
+
+// gen_remainder
+//
+// syntax: remainder(float64, float64)
+func (x *Node) gen_remainder(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("remainder", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "remainder", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "remainder", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Remainder(p0, p1)
+	return ret, nil
+}
+
 // gen_round
 //
-// syntax: round(int64, int64)
+// syntax: round(float64)
 func (x *Node) gen_round(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("round", 2, len(args))
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("round", 1, len(args))
 	}
-	p0, err := convInt64(args, 0, "round", "int64")
+	p0, err := convFloat64(args, 0, "round", "float64")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convInt64(args, 1, "round", "int64")
+	ret := math.Round(p0)
+	return ret, nil
+}
+
+// gen_sin
+//
+// syntax: sin(float64)
+func (x *Node) gen_sin(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("sin", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "sin", "float64")
 	if err != nil {
 		return nil, err
 	}
-	ret := nums.Round(p0, p1)
+	ret := math.Sin(p0)
+	return ret, nil
+}
+
+// gen_sinh
+//
+// syntax: sinh(float64)
+func (x *Node) gen_sinh(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("sinh", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "sinh", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Sinh(p0)
+	return ret, nil
+}
+
+// gen_sqrt
+//
+// syntax: sqrt(float64)
+func (x *Node) gen_sqrt(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("sqrt", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "sqrt", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Sqrt(p0)
+	return ret, nil
+}
+
+// gen_tan
+//
+// syntax: tan(float64)
+func (x *Node) gen_tan(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("tan", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "tan", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Tan(p0)
+	return ret, nil
+}
+
+// gen_tanh
+//
+// syntax: tanh(float64)
+func (x *Node) gen_tanh(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("tanh", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "tanh", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Tanh(p0)
+	return ret, nil
+}
+
+// gen_trunc
+//
+// syntax: trunc(float64)
+func (x *Node) gen_trunc(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("trunc", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "trunc", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := math.Trunc(p0)
 	return ret, nil
 }
 
@@ -414,6 +831,35 @@ func (x *Node) gen_meshgrid(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_period
+//
+// syntax: period()
+func (x *Node) gen_period(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("period", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "period", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmPeriod(p0)
+}
+
+// gen_nullValue
+//
+// syntax: nullValue()
+func (x *Node) gen_nullValue(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("nullValue", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "nullValue", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmNullValue(p0)
+	return ret, nil
+}
+
 // gen_time
 //
 // syntax: time()
@@ -430,7 +876,7 @@ func (x *Node) gen_time(args ...any) (any, error) {
 
 // gen_parseTime
 //
-// syntax: parseTime(string, string, )
+// syntax: parseTime(string, , )
 func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("parseTime", 3, len(args))
@@ -439,7 +885,7 @@ func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convString(args, 1, "parseTime", "string")
+	p1, err := convAny(args, 1, "parseTime", "interface {}")
 	if err != nil {
 		return nil, err
 	}
@@ -544,32 +990,32 @@ func (x *Node) gen_ansiTimeformat(args ...any) (any, error) {
 
 // gen_TAKE
 //
-// syntax: TAKE(int)
+// syntax: TAKE(...int)
 func (x *Node) gen_TAKE(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("TAKE", 1, len(args))
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "TAKE", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convInt(args, 0, "TAKE", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmTake(p0)
-	return ret, nil
+	return x.fmTake(p0...)
 }
 
 // gen_DROP
 //
-// syntax: DROP(int)
+// syntax: DROP(...int)
 func (x *Node) gen_DROP(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("DROP", 1, len(args))
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "DROP", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convInt(args, 0, "DROP", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := x.fmDrop(p0)
-	return ret, nil
+	return x.fmDrop(p0...)
 }
 
 // gen_FILTER
@@ -657,11 +1103,52 @@ func (x *Node) gen_MAPKEY(args ...any) (any, error) {
 	return x.fmMapKey(p0)
 }
 
+// gen_POPVALUE
+//
+// syntax: POPVALUE(...int)
+func (x *Node) gen_POPVALUE(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "POPVALUE", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmPopValue(p0...)
+}
+
+// gen_PUSHVALUE
+//
+// syntax: PUSHVALUE(int, , ...interface {})
+func (x *Node) gen_PUSHVALUE(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("PUSHVALUE", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "PUSHVALUE", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "PUSHVALUE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "PUSHVALUE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmPushValue(p0, p1, p2...)
+}
+
 // gen_MAPVALUE
 //
-// syntax: MAPVALUE(int, )
+// syntax: MAPVALUE(int, , ...interface {})
 func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("MAPVALUE", 2, len(args))
 	}
 	p0, err := convInt(args, 0, "MAPVALUE", "int")
@@ -672,7 +1159,46 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x.fmMapValue(p0, p1)
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAPVALUE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmMapValue(p0, p1, p2...)
+}
+
+// gen_TIMEWINDOW
+//
+// syntax: TIMEWINDOW(, , , ...interface {})
+func (x *Node) gen_TIMEWINDOW(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("TIMEWINDOW", 3, len(args))
+	}
+	p0, err := convAny(args, 0, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "TIMEWINDOW", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convAny(args, n, "TIMEWINDOW", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := x.fmTimeWindow(p0, p1, p2, p3...)
+	return ret, nil
 }
 
 // gen_SCRIPT
@@ -702,6 +1228,138 @@ func (x *Node) gen_lazy(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmLazy(p0)
+	return ret, nil
+}
+
+// gen_glob
+//
+// syntax: glob(string, string)
+func (x *Node) gen_glob(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("glob", 2, len(args))
+	}
+	p0, err := convString(args, 0, "glob", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "glob", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmGlob(p0, p1)
+}
+
+// gen_regexp
+//
+// syntax: regexp(string, string)
+func (x *Node) gen_regexp(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("regexp", 2, len(args))
+	}
+	p0, err := convString(args, 0, "regexp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "regexp", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmRegexp(p0, p1)
+}
+
+// gen_doLog
+//
+// syntax: doLog(...interface {})
+func (x *Node) gen_doLog(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "doLog", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmDoLog(p0...)
+	return ret, nil
+}
+
+// gen_doHttp
+//
+// syntax: doHttp(string, string, , ...string)
+func (x *Node) gen_doHttp(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("doHttp", 3, len(args))
+	}
+	p0, err := convString(args, 0, "doHttp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "doHttp", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "doHttp", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "doHttp", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := x.fmDoHttp(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_do
+//
+// syntax: do(...interface {})
+func (x *Node) gen_do(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "do", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDo(p0...)
+}
+
+// gen_args
+//
+// syntax: args(...interface {})
+func (x *Node) gen_args(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "args", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmArgsParam(p0...)
+}
+
+// gen_WHEN
+//
+// syntax: WHEN(bool, )
+func (x *Node) gen_WHEN(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("WHEN", 2, len(args))
+	}
+	p0, err := convBool(args, 0, "WHEN", "bool")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "WHEN", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmWhen(p0, p1)
 	return ret, nil
 }
 
@@ -1034,6 +1692,36 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 	return x.fmHtml(p0...)
 }
 
+// gen_DISCARD
+//
+// syntax: DISCARD(...interface {})
+func (x *Node) gen_DISCARD(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "DISCARD", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDiscard(p0...)
+}
+
+// gen_CHART
+//
+// syntax: CHART(...interface {})
+func (x *Node) gen_CHART(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "CHART", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmChart(p0...)
+}
+
 // gen_CHART_LINE
 //
 // syntax: CHART_LINE(...interface {})
@@ -1165,7 +1853,7 @@ func (x *Node) gen_trimspace(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := x.fmTrimSpace(p0)
+	ret := x.fmTrimspace(p0)
 	return ret, nil
 }
 
@@ -1302,6 +1990,262 @@ func (x *Node) gen_doubleType(args ...any) (any, error) {
 	return x.fmDoubleType(p0...)
 }
 
+// gen_random
+//
+// syntax: random()
+func (x *Node) gen_random(args ...any) (any, error) {
+	if len(args) != 0 {
+		return nil, ErrInvalidNumOfArgs("random", 0, len(args))
+	}
+	ret := x.fmRandom()
+	return ret, nil
+}
+
+// gen_parseFloat
+//
+// syntax: parseFloat(string)
+func (x *Node) gen_parseFloat(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("parseFloat", 1, len(args))
+	}
+	p0, err := convString(args, 0, "parseFloat", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmParseFloat(p0)
+}
+
+// gen_parseBool
+//
+// syntax: parseBool(string)
+func (x *Node) gen_parseBool(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("parseBool", 1, len(args))
+	}
+	p0, err := convString(args, 0, "parseBool", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmParseBoolean(p0)
+}
+
+// gen_strTrimSpace
+//
+// syntax: strTrimSpace(string)
+func (x *Node) gen_strTrimSpace(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strTrimSpace", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimSpace", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimSpace(p0)
+	return ret, nil
+}
+
+// gen_strTrimPrefix
+//
+// syntax: strTrimPrefix(string, string)
+func (x *Node) gen_strTrimPrefix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strTrimPrefix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strTrimPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimPrefix(p0, p1)
+	return ret, nil
+}
+
+// gen_strTrimSuffix
+//
+// syntax: strTrimSuffix(string, string)
+func (x *Node) gen_strTrimSuffix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strTrimSuffix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strTrimSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strTrimSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrTrimSuffix(p0, p1)
+	return ret, nil
+}
+
+// gen_strReplaceAll
+//
+// syntax: strReplaceAll(string, string, string)
+func (x *Node) gen_strReplaceAll(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("strReplaceAll", 3, len(args))
+	}
+	p0, err := convString(args, 0, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convString(args, 2, "strReplaceAll", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrReplaceAll(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_strReplace
+//
+// syntax: strReplace(string, string, string, int)
+func (x *Node) gen_strReplace(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, ErrInvalidNumOfArgs("strReplace", 4, len(args))
+	}
+	p0, err := convString(args, 0, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convString(args, 2, "strReplace", "string")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := convInt(args, 3, "strReplace", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrReplace(p0, p1, p2, p3)
+	return ret, nil
+}
+
+// gen_strHasPrefix
+//
+// syntax: strHasPrefix(string, string)
+func (x *Node) gen_strHasPrefix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strHasPrefix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strHasPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strHasPrefix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrHasPrefix(p0, p1)
+	return ret, nil
+}
+
+// gen_strHasSuffix
+//
+// syntax: strHasSuffix(string, string)
+func (x *Node) gen_strHasSuffix(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strHasSuffix", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strHasSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strHasSuffix", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrHasSuffix(p0, p1)
+	return ret, nil
+}
+
+// gen_strSprintf
+//
+// syntax: strSprintf(string, ...interface {})
+func (x *Node) gen_strSprintf(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("strSprintf", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strSprintf", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "strSprintf", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStrSprintf(p0, p1...)
+	return ret, nil
+}
+
+// gen_strSub
+//
+// syntax: strSub(string, ...int)
+func (x *Node) gen_strSub(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("strSub", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strSub", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []int{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convInt(args, n, "strSub", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStrSub(p0, p1...)
+	return ret, nil
+}
+
+// gen_strToUpper
+//
+// syntax: strToUpper(string)
+func (x *Node) gen_strToUpper(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strToUpper", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strToUpper", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrToUpper(p0)
+	return ret, nil
+}
+
+// gen_strToLower
+//
+// syntax: strToLower(string)
+func (x *Node) gen_strToLower(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("strToLower", 1, len(args))
+	}
+	p0, err := convString(args, 0, "strToLower", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrToLower(p0)
+	return ret, nil
+}
+
 // gen_freq
 //
 // syntax: freq(float64, float64, ...float64)
@@ -1361,6 +2305,34 @@ func (x *Node) gen_sphere(args ...any) (any, error) {
 	}
 	ret := x.fmSphere(p0, p1)
 	return ret, nil
+}
+
+// gen_json
+//
+// syntax: json(string)
+func (x *Node) gen_json(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("json", 1, len(args))
+	}
+	p0, err := convString(args, 0, "json", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmJsonData(p0)
+}
+
+// gen_csv
+//
+// syntax: csv(string)
+func (x *Node) gen_csv(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("csv", 1, len(args))
+	}
+	p0, err := convString(args, 0, "csv", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmCsvData(p0)
 }
 
 // gen_FAKE
@@ -1626,6 +2598,21 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_global
+//
+// syntax: global(string)
+func (x *Node) gen_global(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("global", 1, len(args))
+	}
+	p0, err := convString(args, 0, "global", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Global(p0)
+	return ret, nil
+}
+
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -1732,6 +2719,21 @@ func (x *Node) gen_lineWidth(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_logger
+//
+// syntax: logger(Logger)
+func (x *Node) gen_logger(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("logger", 1, len(args))
+	}
+	p0, err := convLogger(args, 0, "logger", "logger.Logger")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Logger(p0)
+	return ret, nil
+}
+
 // gen_markAreaNameCoord
 //
 // syntax: markAreaNameCoord(, , string, string, float64)
@@ -1763,6 +2765,114 @@ func (x *Node) gen_markAreaNameCoord(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_markAreaXAxis
+//
+// syntax: markAreaXAxis(int, , , ...string)
+func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := opts.MarkAreaXAxis(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_markAreaYAxis
+//
+// syntax: markAreaYAxis(int, , , ...string)
+func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "markAreaYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convAny(args, 2, "markAreaYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []string{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convString(args, n, "markAreaYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	ret := opts.MarkAreaYAxis(p0, p1, p2, p3...)
+	return ret, nil
+}
+
+// gen_markLineStyle
+//
+// syntax: markLineStyle(int, string)
+func (x *Node) gen_markLineStyle(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("markLineStyle", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineStyle", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "markLineStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.MarkLineStyle(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineXAxis
+//
+// syntax: markLineXAxis(int, , ...string)
+func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("markLineXAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineXAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineXAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineXAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineXAxis(p0, p1, p2...)
+	return ret, nil
+}
+
 // gen_markLineXAxisCoord
 //
 // syntax: markLineXAxisCoord(, string)
@@ -1779,6 +2889,33 @@ func (x *Node) gen_markLineXAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineXAxisCoord(p0, p1)
+	return ret, nil
+}
+
+// gen_markLineYAxis
+//
+// syntax: markLineYAxis(int, , ...string)
+func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("markLineYAxis", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "markLineYAxis", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "markLineYAxis", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "markLineYAxis", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := opts.MarkLineYAxis(p0, p1, p2...)
 	return ret, nil
 }
 
@@ -1858,6 +2995,22 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Rownum(p0)
+	return ret, nil
+}
+
+// gen_series
+//
+// syntax: series(...string)
+func (x *Node) gen_series(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "series", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.Series(p0...)
 	return ret, nil
 }
 
@@ -2147,81 +3300,48 @@ func (x *Node) gen_visualMapColor(args ...any) (any, error) {
 
 // gen_xAxis
 //
-// syntax: xAxis(int, string, ...string)
+// syntax: xAxis(...interface {})
 func (x *Node) gen_xAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("xAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "xAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "xAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "xAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "xAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.XAxis(p0, p1, p2...)
+	ret := opts.XAxis(p0...)
 	return ret, nil
 }
 
 // gen_yAxis
 //
-// syntax: yAxis(int, string, ...string)
+// syntax: yAxis(...interface {})
 func (x *Node) gen_yAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("yAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "yAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "yAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "yAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "yAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.YAxis(p0, p1, p2...)
+	ret := opts.YAxis(p0...)
 	return ret, nil
 }
 
 // gen_zAxis
 //
-// syntax: zAxis(int, string, ...string)
+// syntax: zAxis(...interface {})
 func (x *Node) gen_zAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("zAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "zAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "zAxis", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "zAxis", "...string")
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "zAxis", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p2 = append(p2, argv)
+		p0 = append(p0, argv)
 	}
-	ret := opts.ZAxis(p0, p1, p2...)
+	ret := opts.ZAxis(p0...)
 	return ret, nil
 }

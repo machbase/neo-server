@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/internal/box"
+	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/html"
@@ -13,11 +14,13 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
+const DISCARD = "discard"
 const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
 const MARKDOWN = "markdown"
 const HTML = "html"
+const ECHART = "echart"
 const ECHART_LINE = "echart.line"
 const ECHART_SCATTER = "echart.scatter"
 const ECHART_BAR = "echart.bar"
@@ -61,6 +64,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = markdown.NewEncoder()
 	case HTML:
 		ret = html.NewEncoder()
+	case ECHART:
+		ret = chart.NewRectChart()
 	case ECHART_LINE:
 		ret = echart.NewRectChart(echart.LINE)
 	case ECHART_SCATTER:
@@ -75,6 +80,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = echart.NewScatter3D()
 	case ECHART_BAR3D:
 		ret = echart.NewBar3D()
+	case DISCARD:
+		ret = &DiscardSink{}
 	default: // "json"
 		ret = json.NewEncoder()
 	}
@@ -122,4 +129,25 @@ func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *ti
 	if enc, ok := encoder.(opts.CanSetColumnTypes); ok {
 		enc.SetColumnTypes(colTypes...)
 	}
+}
+
+type DiscardSink struct {
+}
+
+func (ds *DiscardSink) Open() error {
+	return nil
+}
+
+func (ds *DiscardSink) Close() {
+}
+
+func (ds *DiscardSink) AddRow([]any) error {
+	return nil
+}
+
+func (ds *DiscardSink) Flush(heading bool) {
+}
+
+func (ds *DiscardSink) ContentType() string {
+	return "text/plain"
 }

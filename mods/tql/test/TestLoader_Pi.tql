@@ -1,0 +1,5 @@
+FAKE( linspace(0,360, 36))
+MAPVALUE(1, value(0)*(2*PI)/360)
+MAPVALUE(2, sin(value(1)))
+MAPVALUE(3, cos(value(1)))
+CSV(precision(4))

@@ -9,7 +9,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.8.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
-	github.com/chzyer/test v1.0.0
+	github.com/atotto/clipboard v0.1.4
 	github.com/creack/pty v1.1.18
 	github.com/d5/tengo/v2 v2.16.1
 	github.com/eclipse/paho.mqtt.golang v1.4.3
@@ -28,9 +28,9 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine v1.2.2-0.20231101020553-dcd7265660a7
-	github.com/machbase/neo-grpc v1.1.1-0.20231025072350-4a74c3a1a797
-	github.com/machbase/neo-spi v1.5.1-0.20231024045420-cb1fe0971906
+	github.com/machbase/neo-engine v1.2.4
+	github.com/machbase/neo-grpc v1.1.1
+	github.com/machbase/neo-spi v1.5.1
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
@@ -77,10 +77,8 @@ require (
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/bytedance/sonic v1.9.2 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
-	github.com/chzyer/logex v1.2.1 // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect

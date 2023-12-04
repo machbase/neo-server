@@ -6,8 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/shell"
-	"github.com/machbase/neo-server/mods/shellV2"
+	shell "github.com/machbase/neo-server/mods/shellV2"
 )
 
 type NeoCommand struct {
@@ -16,7 +15,6 @@ type NeoCommand struct {
 		Preset string
 	}
 	Shell     shell.ShellCmd
-	Shell2    shellV2.ShellCmd
 	GenConfig struct{}
 	Version   struct{}
 	Help      struct {
@@ -66,8 +64,6 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 		return parseServe(cli)
 	case "shell":
 		return parseShell(cli)
-	case "shell2":
-		return parseShell2(cli)
 	case "help":
 		return parseHelp(cli)
 	case "gen-config":
@@ -139,34 +135,6 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 		} else {
 			// other flags and args should be passed to neoshell
 			cli.Shell.Args = append(cli.Shell.Args, s)
-		}
-	}
-	return cli, nil
-}
-
-func parseShell2(cli *NeoCommand) (*NeoCommand, error) {
-	for i := 0; i < len(cli.args); i++ {
-		s := cli.args[i]
-		if strings.HasPrefix(s, "--server=") {
-			cli.Shell2.ServerAddr = s[9:]
-		} else if strings.HasPrefix(s, "-s=") {
-			cli.Shell2.ServerAddr = s[3:]
-		} else if (s == "--server" || s == "-s") && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
-			cli.Shell2.ServerAddr = cli.args[i+1]
-			i++
-		} else if strings.HasPrefix(s, "--user=") {
-			cli.Shell2.User = s[7:]
-		} else if s == "--user" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
-			cli.Shell2.User = cli.args[i+1]
-			i++
-		} else if strings.HasPrefix(s, "--password=") {
-			cli.Shell2.Password = s[11:]
-		} else if s == "--password" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
-			cli.Shell2.Password = cli.args[i+1]
-			i++
-		} else {
-			// other flags and args should be passed to neoshell
-			cli.Shell2.Args = append(cli.Shell2.Args, s)
 		}
 	}
 	return cli, nil

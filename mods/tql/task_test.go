@@ -7,7 +7,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,6 +44,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var payload []byte
 	var params map[string][]string
 	var matchPrefix bool
+	var httpClient *http.Client
 
 	for _, o := range options {
 		switch v := o.(type) {
@@ -61,6 +65,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			params[v.name] = arr
 		case MatchPrefix:
 			matchPrefix = bool(v)
+		case *http.Client:
+			httpClient = v
 		}
 	}
 
@@ -83,6 +89,11 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}
 	if len(params) > 0 {
 		task.SetParams(params)
+	}
+	if httpClient != nil {
+		task.SetHttpClientFactory(func() *http.Client {
+			return httpClient
+		})
 	}
 	err := task.CompileString(code)
 	if compileErr != "" {
@@ -156,7 +167,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				// remove trailing empty line
 				resultLines = resultLines[0 : len(resultLines)-1]
 			}
-			require.Equal(t, len(expect), len(resultLines))
+			require.Equal(t, len(expect), len(resultLines), resultLines)
 
 			for n, expectLine := range expect {
 				if strings.HasPrefix(expectLine, "/r/") {
@@ -237,7 +248,7 @@ var mockDb = DatabaseMock{
 				}
 				return nil
 			},
-			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppendOption) (spi.Appender, error) {
+			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 				return &AppenderMock{
 					AppendFunc: func(values ...any) error { return nil },
 					CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
@@ -337,6 +348,17 @@ func TestDBddl(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestStrLib(t *testing.T) {
+	codeLines := []string{
+		`FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))`,
+		"CSV( heading(false) )",
+	}
+	resultLines := []string{
+		"123,hello",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestString(t *testing.T) {
 	codeLines := []string{
 		`STRING("line1\nline2\n\nline4", separator("\n"))`,
@@ -401,6 +423,109 @@ func TestBytes(t *testing.T) {
 		"CSV( header(true) )",
 	}
 	runTest(t, codeLines, resultLines)
+}
+
+func TestHttpFile(t *testing.T) {
+	var codeLines, resultLines []string
+
+	httpClient := &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		var body io.ReadCloser
+		switch req.URL.Path {
+		case "/string":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/bytes":
+			body = io.NopCloser(strings.NewReader("ok."))
+		case "/csv":
+			body = io.NopCloser(strings.NewReader("1,3.141592,true,\"escaped, string\",123456"))
+		default:
+			t.Error("Unexpected request path, got", req.URL.Path)
+			t.Fail()
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       body,
+		}
+	})}
+
+	codeLines = []string{
+		`STRING(file("http://example.com/string"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`ok.`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`BYTES(file("http://example.com/bytes"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`\x6F\x6B\x2E`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`CSV(file("http://example.com/csv"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`1,3.141592,true,"escaped, string",123456`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+}
+
+func TestDiscardSink(t *testing.T) {
+	var codeLines, resultLines []string
+	var resultLog ExpectLog
+
+	codeLines = []string{
+		`CSV("1,line-1\n2,line-2\n3,line-3")`,
+		`MAPVALUE(0, parseFloat(value(0)))`,
+		`WHEN(`,
+		`  value(0) == 2 && `,
+		`  strHasPrefix( strToUpper(value(1)), "LINE-") &&`,
+		`  strHasSuffix(value(1), "-2"),`,
+		`  do(value(0), strToUpper(value(1)), {`,
+		`    ARGS()`,
+		`    WHEN(true, doLog("OUTPUT:", value(0), strToLower(value(1)) ))`,
+		`    CSV()`,
+		`  })`,
+		`)`,
+		`DISCARD()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[WARN] do: CSV() sink does not work in a sub-routine")
+	runTest(t, codeLines, resultLines, resultLog)
+	resultLog = ExpectLog("[INFO] OUTPUT: 2 line-2")
+	runTest(t, codeLines, resultLines, resultLog)
+
+	codeLines = []string{
+		`FAKE( json({         `,
+		`	[ 1, "hello" ],   `,
+		`	[ 2, "你好"],      `,
+		`	[ 3, "world" ],   `,
+		`	[ 4, "世界"]       `,
+		`}))                  `,
+		`WHEN(                `,
+		`	mod(value(0), 2) == 0,                      `,
+		`	do( value(0), strToUpper(value(1)), {       `,
+		`		ARGS()                                  `,
+		`		WHEN( true, doLog("OUTPUT:", value(0), value(1)))`,
+		`		DISCARD()                               `,
+		`	})`,
+		`)`,
+		`CSV()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] OUTPUT: 2 你好")
+	runTest(t, codeLines, resultLines, resultLog)
+	resultLog = ExpectLog("[INFO] OUTPUT: 4 世界")
+	runTest(t, codeLines, resultLines, resultLog)
 }
 
 func TestCsvToCsv(t *testing.T) {
@@ -778,6 +903,88 @@ func TestMapKey(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestPushValue(t *testing.T) {
+	var codeLines, resultLines []string
+
+	for i := -2; i <= 0; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5)", i),
+			"CSV(precision(1), heading(true), rownum(true))",
+		}
+		resultLines = []string{
+			"ROWNUM,column,x",
+			"1,0.0,0.0",
+			"2,1.5,1.0",
+			"3,3.0,2.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			"FAKE( linspace(0, 2, 3))",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(true), rownum(false))",
+		}
+		resultLines = []string{
+			"x,x1.5",
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	for i := 1; i < 2; i++ {
+		codeLines = []string{
+			`FAKE( json({["a", 0],["b", 1],["c", 2]}))`,
+			"POPKEY(0)",
+			fmt.Sprintf("PUSHVALUE(%d, value(0)*1.5, 'x1.5')", i),
+			"CSV(precision(1), heading(false), rownum(false))",
+		}
+		resultLines = []string{
+			"0.0,0.0",
+			"1.0,1.5",
+			"2.0,3.0",
+		}
+		runTest(t, codeLines, resultLines)
+	}
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"CSV(precision(1), heading(true), rownum(false))",
+	}
+	resultLines = []string{
+		"x,x1.5,add",
+		"0.0,0.0,10.0",
+		"1.0,1.5,11.5",
+		"2.0,3.0,13.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestPushPopValue(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add')",
+		"PUSHVALUE(3, value(2)+0.5, 'add2')",
+		"POPVALUE(0,1,2)",
+		"CSV(precision(1), heading(true), rownum(true))",
+	}
+	resultLines = []string{
+		"ROWNUM,add2",
+		"1,10.5",
+		"2,12.0",
+		"3,13.5",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMapValue(t *testing.T) {
 	var codeLines, resultLines []string
 
@@ -808,14 +1015,456 @@ func TestMapValue(t *testing.T) {
 
 	codeLines = []string{
 		"FAKE( linspace(0, 2, 3))",
-		"MAPVALUE(0, value(0)*1.5)",
+		"MAPVALUE(0, value(0)*1.5, 'new_column')",
 		"CSV(precision(1), header(true))",
 	}
 	resultLines = []string{
-		"x",
+		"new_column",
 		"0.0",
 		"1.5",
 		"3.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`world,3.141592`) )",
+		"MAPVALUE(1, parseFloat(value(1)))",
+		"MAPVALUE(2, strSprintf(`hello %s, %1.2f`, value(0), value(1)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"world,3.141592,\"hello world, 3.14\"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+type TestRoundTripFunc func(req *http.Request) *http.Response
+
+func (f TestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
+func TestWhen(t *testing.T) {
+	err := bridge.Register(&model.BridgeDefinition{
+		Type: model.BRIDGE_SQLITE,
+		Name: "sqlite",
+		Path: "file::memory:?cache=shared",
+	})
+	if err == bridge.ErrBridgeDisabled {
+		return
+	}
+	require.Nil(t, err)
+
+	br, _ := bridge.GetSqlBridge("sqlite")
+	ctx := context.TODO()
+	conn, _ := br.Connect(ctx)
+	conn.ExecContext(ctx, `create table if not exists test_when (
+		id INTEGER NOT NULL PRIMARY KEY,
+		name TEXT,
+		value INTEGER
+	)`)
+	conn.Close()
+
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doLog("hello", value(0), value(1)) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	resultLog := ExpectLog("[INFO] hello msg123 0\n[INFO] hello msg123 2")
+	runTest(t, codeLines, resultLines, resultLog)
+
+	var notifiedValues = []string{}
+	var httpClient *http.Client
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.Path != "/notify" {
+			t.Error("expected request to /notify, got", req.URL.Path)
+			t.Fail()
+		}
+		if req.Method != "GET" {
+			t.Error("expected request method to be GET, got", req.Method)
+			t.Fail()
+		}
+		notifiedValues = append(notifiedValues, req.URL.Query()["v"]...)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("GET", strSprintf("http://example.com/notify?v=%f", value(1)), nil) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "0.000000", notifiedValues[0])
+	require.Equal(t, "2.000000", notifiedValues[1])
+
+	notifiedValues = notifiedValues[0:0]
+	httpClient = &http.Client{Transport: TestRoundTripFunc(func(req *http.Request) *http.Response {
+		if req.URL.String() != "http://example.com/notify" {
+			t.Error("expected request to http://example.com/notify, got", req.URL.String())
+			t.Fail()
+		}
+		if req.Method != "POST" {
+			t.Error("expected request method to be POST, got", req.Method)
+			t.Fail()
+		}
+		if req.Header.Get("Content-Type") != "text/csv" {
+			t.Error("expected request Content-Type header to be text/csv, got", req.Header.Get("Content-Type"))
+			t.Fail()
+		}
+		scan := bufio.NewScanner(req.Body)
+		for scan.Scan() {
+			notifiedValues = append(notifiedValues, scan.Text())
+		}
+		fmt.Println(notifiedValues)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok.")),
+		}
+	})}
+	codeLines = []string{
+		`FAKE( linspace(0, 2, 2) )`,
+		`PUSHVALUE(0, "msg123")`,
+		`WHEN( glob("msg*", value(0)), doHttp("POST", "http://example.com/notify", value()) )`,
+		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
+	}
+	resultLines = []string{
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
+	}
+	runTest(t, codeLines, resultLines, httpClient)
+	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
+	require.Equal(t, "msg123,0", notifiedValues[0])
+	require.Equal(t, "msg123,2", notifiedValues[1])
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  ARGS() // some comment`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") ) // some comment`,
+		`  DISCARD() // some comment`,
+		`} )) // some comment`,
+		`DISCARD() // some comment`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 2) )`,
+		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
+		`  FAKE( args() )`,
+		`  WHEN(true, doLog("MSG", args(0), args(1), "안녕") )`,
+		`  DISCARD()`,
+		`} ))`,
+		`DISCARD()`,
+	}
+	resultLines = []string{}
+	resultLog = ExpectLog("[INFO] MSG test 1 안녕")
+	runTest(t, codeLines, resultLines, httpClient)
+}
+
+func TestTimeWindow(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	for _, agg := range []string{
+		"avg", "mean", "median", "median-interpolated",
+		"stddev", "stderr", "entropy",
+		"sum", "first", "last", "min", "max",
+		"rss", "rms",
+		"rss:LinearRegression", "rss:PiecewiseConstant", "rss:PiecewiseLinear",
+	} {
+		codeLines = []string{
+			`CSV(payload(),
+				field(0, datetimeType("s"), "time"),
+				field(1, doubleType(), "value"))`,
+			fmt.Sprintf(`TIMEWINDOW(
+				time(1700256250 * 1000000000),
+				time(1700256285 * 1000000000),
+				period('5s'),
+				nullValue(0),
+				'time', '%s')`, agg),
+			`CSV(timeformat("s"), heading(true), precision(2))`,
+		}
+		payload = []string{
+			// 50
+			// 55
+			// 60
+			"1700256261,1",
+			"1700256262,2",
+			"1700256263,3",
+			"1700256264,4",
+			// 65
+			"1700256265,5",
+			"1700256266,6",
+			"1700256267,7",
+			"1700256268,8",
+			"1700256269,9",
+			// 70
+			// 75
+			"1700256276,10",
+			// 80
+		}
+
+		switch agg {
+		case "stddev":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,1.29",
+				"1700256265,1.58",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+			}
+		case "stderr":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,0.65",
+				"1700256265,0.71",
+				"1700256270,0.00",
+				"1700256275,0.00",
+				"1700256280,0.00",
+			}
+		case "entropy":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,-10.23",
+				"1700256265,-68.83",
+				"1700256270,0.00",
+				"1700256275,-23.03",
+				"1700256280,0.00",
+			}
+		case "avg":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.50",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "mean":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.50",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "median":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,7.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "median-interpolated":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.00",
+				"1700256265,6.50",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "sum":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,10.00",
+				"1700256265,35.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "first", "min":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,1.00",
+				"1700256265,5.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "last", "max":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,4.00",
+				"1700256265,9.00",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "rss":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		case "rss:LinearRegression":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,7.60",
+				"1700256255,8.46",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,11.06",
+				"1700256275,10.00",
+				"1700256280,12.79",
+			}
+		case "rss:PiecewiseConstant":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,5.48",
+				"1700256255,5.48",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,10.00",
+				"1700256275,10.00",
+				"1700256280,10.00",
+			}
+		case "rss:PiecewiseLinear":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,5.48",
+				"1700256255,5.48",
+				"1700256260,5.48",
+				"1700256265,15.97",
+				"1700256270,12.98",
+				"1700256275,10.00",
+				"1700256280,10.00",
+			}
+		case "rms":
+			resultLines = []string{
+				`time,value`,
+				"1700256250,0.00",
+				"1700256255,0.00",
+				"1700256260,2.74",
+				"1700256265,7.14",
+				"1700256270,0.00",
+				"1700256275,10.00",
+				"1700256280,0.00",
+			}
+		}
+		runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+	}
+}
+
+func TestTimeWindowMs(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	codeLines = []string{
+		`CSV(payload(),
+			field(0, datetimeType("ms"), "time"),
+			field(1, doubleType(), "value"))`,
+		`TIMEWINDOW(
+			time(1700256250 * 1000000000),
+			time(1700256285 * 1000000000),
+			period('5s'),
+			'time', 'avg')`,
+		`CSV(timeformat("ms"), heading(true))`,
+	}
+	payload = []string{
+		// 50
+		// 55
+		// 60
+		"1700256261001,1",
+		"1700256262010,2",
+		"1700256263100,3",
+		"1700256264010,4",
+		// 65
+		"1700256265002,5",
+		"1700256266020,6",
+		"1700256267200,7",
+		"1700256268020,8",
+		"1700256269002,9",
+		// 70
+		// 75
+		"1700256276300,10",
+		// 80
+	}
+	resultLines = []string{
+		`time,value`,
+		"1700256250000,NULL",
+		"1700256255000,NULL",
+		"1700256260000,2.5",
+		"1700256265000,7",
+		"1700256270000,NULL",
+		"1700256275000,10",
+		"1700256280000,NULL",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
+func TestTimeWindowHighDef(t *testing.T) {
+	var codeLines, resultLines []string
+
+	tick := time.Unix(0, 1692329338315327000)
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	codeLines = []string{
+		`FAKE( 
+			oscillator(
+			  freq(15, 1.0), freq(24, 1.5),
+			  range('now', '10s', '1ms')) 
+		  )`,
+		`TIMEWINDOW(
+			time('now'),
+			time('now+10s'),
+			period('1s'),
+			'time', 'first')`,
+		`CSV(timeformat("ns"), heading(true), precision(7))`,
+	}
+	resultLines = []string{
+		`time,value`,
+		"1692329339000000000,0.1046705",
+		"1692329340000000000,0.1046637",
+		"1692329341000000000,0.1046874",
+		"1692329342000000000,0.1046806",
+		"1692329343000000000,0.1046738",
+		"1692329344000000000,0.1046670",
+		"1692329345000000000,0.1046906",
+		"1692329346000000000,0.1046838",
+		"1692329347000000000,0.1046770",
+		"1692329348000000000,0.1046702",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -829,6 +1478,43 @@ func TestDropTake(t *testing.T) {
 		"CSV(precision(6))",
 	}
 	resultLines := []string{
+		"51,1.010101",
+		"52,1.030303",
+		"53,1.050505",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(2)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
+		"1,0.000000",
+		"2,0.020202",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(0)",
+		"TAKE(0)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100))",
+		"DROP(5, 45)",
+		"TAKE(5, 3)",
+		"PUSHKEY('test')",
+		"CSV(precision(6))",
+	}
+	resultLines = []string{
 		"51,1.010101",
 		"52,1.030303",
 		"53,1.050505",
@@ -1551,4 +2237,70 @@ func TestRecordFields(t *testing.T) {
 	r = tql.NewRecord("key", [][]any{{"v1", "v2"}, {"w1", "w2"}})
 	require.Equal(t, []any{"key", "v1", "v2", "w1", "w2"}, r.Fields())
 	require.Equal(t, "K:string(key) V:(len=2) [][]any{[0]{string, string},[1]{string, string}}", r.String())
+}
+
+func TestLoader(t *testing.T) {
+	loader := tql.NewLoader([]string{"./test"})
+	var task *tql.Task
+	var sc *tql.Script
+	var expect string
+	var err error
+
+	_, err = loader.Load(".")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '.'", err.Error())
+
+	_, err = loader.Load("../task_test.go")
+	require.NotNil(t, err)
+	require.Equal(t, "not found '../task_test.go'", err.Error())
+
+	tick := time.Unix(0, 1692329338315327000) // 2023-08-18 03:28:58.315
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	tests := []struct {
+		name string
+	}{
+		{"TestLoader"},
+		{"TestLoader_Pi"},
+		{"TestLoader_qq"},
+		{"TestLoader_groupbykey"},
+		{"TestLoader_iris"},
+	}
+
+	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	ssfs.SetDefault(f)
+
+	for _, tt := range tests {
+		sc, err = loader.Load(fmt.Sprintf("%s.tql", tt.name))
+		require.Nil(t, err)
+		require.NotNil(t, sc)
+		resultFile := filepath.Join(".", "test", fmt.Sprintf("%s.csv", tt.name))
+		if b, err := os.ReadFile(resultFile); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		} else {
+			expect = string(b)
+			// for windows
+			expect = strings.ReplaceAll(expect, "\r\n", "\n")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		w := &bytes.Buffer{}
+
+		task = tql.NewTaskContext(ctx)
+		task.SetOutputWriter(w)
+		if err := task.CompileScript(sc); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+		}
+		result := task.Execute()
+		require.NotNil(t, result)
+
+		if w.String() != expect {
+			t.Logf("EXPECT:\n%s", expect)
+			t.Logf("ACTUAL:\n%s", w.String())
+			t.Fail()
+		}
+	}
 }

@@ -1,0 +1,16 @@
+STRING(payload() ?? ` 12345
+                     23456
+                     78901
+                     89012
+                     90123
+                  `, separator('\n'), trimspace(true))
+// transforming data
+FILTER( len(value(0)) > 0 )
+MAPVALUE(-1, time("now"))     // equiv. PUSHVALUE(0, time("now"))
+MAPVALUE(-1, "text_"+key())   // equiv. PUSHVALUE(0, "text_"+key())
+MAPVALUE(2, strSub( value(2), 0, 2) )
+
+// Run this code in the tql editor of web-ui for testing
+CSV( timeformat("DEFAULT") )
+// Use APPEND(table('example')) for the real action
+// APPEND(table('example'))

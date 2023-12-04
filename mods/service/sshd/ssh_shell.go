@@ -35,7 +35,7 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *Shell) {
 	if shell == nil {
 		return user, nil
 	}
-	if shellId == model.SHELLID_SHELL || shellId == model.SHELLID_SHELL2 {
+	if shellId == model.SHELLID_SHELL {
 		shell.Envs["NEOSHELL_USER"] = strings.ToLower(user)
 		shell.Envs["NEOSHELL_PASSWORD"] = svr.neoShellAccount[strings.ToLower(user)]
 	}

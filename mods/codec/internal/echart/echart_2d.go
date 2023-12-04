@@ -63,22 +63,72 @@ func (ex *Base2D) Open() error {
 func (ex *Base2D) Flush(heading bool) {
 }
 
-func (ex *Base2D) SetXAxis(idx int, label string, types ...string) {
-	ex.xAxisIdx = idx
-	ex.globalOptions.XYAxis.XAxisList[0].Name = label
-	if len(types) > 0 {
-		ex.globalOptions.XYAxis.XAxisList[0].Type = types[0]
+// xAxis(idx int, label string, typ string)
+func (ex *Base2D) SetXAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() idx", err.Error())
+		}
+	} else {
+		ex.xAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.globalOptions.XYAxis.XAxisList[0].Name = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("xAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.globalOptions.XYAxis.XAxisList[0].Type = typ
+		}
 	}
 	if ex.globalOptions.XYAxis.XAxisList[0].Type == "time" {
 		ex.useTimeformatter = true
 	}
 }
 
-func (ex *Base2D) SetYAxis(idx int, label string, typ ...string) {
-	ex.yAxisIdx = idx
-	ex.globalOptions.XYAxis.YAxisList[0].Name = label
-	if len(typ) > 0 {
-		ex.globalOptions.XYAxis.YAxisList[0].Type = typ[0]
+// yAxis(idx int, label string, typ string)
+func (ex *Base2D) SetYAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() idx", err.Error())
+		}
+	} else {
+		ex.yAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.globalOptions.XYAxis.YAxisList[0].Name = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("yAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.globalOptions.XYAxis.YAxisList[0].Type = typ
+		}
 	}
 }
 
@@ -155,7 +205,7 @@ func (ex *Base2D) SetMarkLineYAxisCoord(yaxis any, name string) {
 	})
 }
 
-func xLabelCompare(x, y any) bool {
+func (ex *Base2D) xLabelCompare(x, y any) bool {
 	toInt64 := func(o any) int64 {
 		switch v := o.(type) {
 		case int64:
@@ -167,7 +217,9 @@ func xLabelCompare(x, y any) bool {
 		case time.Time:
 			return v.UnixNano()
 		default:
-			fmt.Printf("ERR unhandled compare int64====> %T\n", v)
+			if ex.logger != nil {
+				ex.logger.LogErrorf("unhandled comparison int64: %T\n", v)
+			}
 		}
 		return -1
 	}
@@ -183,7 +235,9 @@ func xLabelCompare(x, y any) bool {
 		case time.Time:
 			return float64(v.UnixNano())
 		default:
-			fmt.Printf("ERR unhandled compare float64====> %T\n", v)
+			if ex.logger != nil {
+				ex.logger.LogErrorf("unhandled comparison float64: %T\n", v)
+			}
 		}
 		return -1.0
 	}
@@ -196,7 +250,9 @@ func xLabelCompare(x, y any) bool {
 	case float64:
 		return xv >= toFloat64(y)
 	default:
-		fmt.Printf("ERR unhandled compare x====> %T(%v)\n", xv, xv)
+		if ex.logger != nil {
+			ex.logger.LogErrorf("unhandled comparison x: %T(%v)\n", xv, xv)
+		}
 		return false
 	}
 }
@@ -207,10 +263,10 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 		if len(mark.Coordinate0) > 0 && len(mark.Coordinate1) > 0 {
 			var idx0, idx1 int = -1, -1
 			for i, v := range ex.xLabels {
-				if idx0 == -1 && xLabelCompare(v, mark.Coordinate0[0]) {
+				if idx0 == -1 && ex.xLabelCompare(v, mark.Coordinate0[0]) {
 					idx0 = i
 				}
-				if idx1 == -1 && xLabelCompare(v, mark.Coordinate1[0]) {
+				if idx1 == -1 && ex.xLabelCompare(v, mark.Coordinate1[0]) {
 					idx1 = i
 				}
 				if idx0 != -1 && idx1 != -1 {
@@ -241,7 +297,7 @@ func (ex *Base2D) getSeriesOptions(seriesIdx int) []charts.SeriesOpts {
 	for _, mark := range ex.markLineXAxisCoord {
 		var idx int = -1
 		for i, v := range ex.xLabels {
-			if idx == -1 && xLabelCompare(v, mark.XAxis) {
+			if idx == -1 && ex.xLabelCompare(v, mark.XAxis) {
 				idx = i
 			}
 			if idx != -1 {

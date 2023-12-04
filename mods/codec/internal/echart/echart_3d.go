@@ -2,12 +2,12 @@ package echart
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/render"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Base3D struct {
@@ -44,27 +44,102 @@ func (ex *Base3D) Open() error {
 func (ex *Base3D) Flush(heading bool) {
 }
 
-func (ex *Base3D) SetXAxis(idx int, label string, typ ...string) {
-	ex.xAxisIdx = idx
-	ex.xAxisLabel = label
-	if len(typ) > 0 {
-		ex.xAxisType = typ[0]
+// xAxis(idx int, label string, typ string)
+func (ex *Base3D) SetXAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() idx", err.Error())
+		}
+	} else {
+		ex.xAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("xAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.xAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("xAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.xAxisType = typ
+		}
 	}
 }
 
-func (ex *Base3D) SetYAxis(idx int, label string, typ ...string) {
-	ex.yAxisIdx = idx
-	ex.yAxisLabel = label
-	if len(typ) > 0 {
-		ex.yAxisType = typ[0]
+// yAxis(idx int, label string, typ string)
+func (ex *Base3D) SetYAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() idx", err.Error())
+		}
+	} else {
+		ex.yAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("yAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.yAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("yAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.yAxisType = typ
+		}
 	}
 }
 
-func (ex *Base3D) SetZAxis(idx int, label string, typ ...string) {
-	ex.zAxisIdx = idx
-	ex.zAxisLabel = label
-	if len(typ) > 0 {
-		ex.zAxisType = typ[0]
+// yAxis(idx int, label string, typ string)
+func (ex *Base3D) SetZAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if ex.logger != nil {
+			ex.logger.LogError("zAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if ex.logger != nil {
+			ex.logger.LogError("zAxis() idx", err.Error())
+		}
+	} else {
+		ex.zAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if ex.logger != nil {
+			ex.logger.LogError("zAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		ex.zAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if ex.logger != nil {
+				ex.logger.LogError("zAxis() type should be string, got %T", args[1])
+			}
+		} else {
+			ex.zAxisType = typ
+		}
 	}
 }
 
@@ -290,7 +365,9 @@ func (ex *Line3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -332,7 +409,9 @@ func (ex *Surface3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -374,7 +453,9 @@ func (ex *Scatter3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }
 
@@ -416,6 +497,8 @@ func (ex *Bar3D) Close() {
 	}
 	err := rndr.Render(ex.output)
 	if err != nil {
-		fmt.Println("ERR", err.Error())
+		if ex.logger != nil {
+			ex.logger.LogError(err.Error())
+		}
 	}
 }

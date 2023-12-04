@@ -6,6 +6,36 @@ import (
 )
 
 func HelpShortcuts() string {
+	maps := [][2]string{
+		{"Ctrl + A", "Beginning of line"},
+		{"Ctrl + B / ←", "Backward one character"},
+		{"Ctrl + C", "Cancel"},
+		{"Ctrl + D", "Delete one character / Abort"},
+		{"Ctrl + E", "End of line"},
+		{"Ctrl + F / →", "Forward one character"},
+		{"Ctrl + H", "Delete previous character"},
+		{"Ctrl + K", "Delete text to the end of line"},
+		{"Ctrl + L", "Clear screen"},
+		{"Ctrl + M", "Same as Enter key"},
+		{"Ctrl + N / ↓", "Next line (in history)"},
+		{"Ctrl + P / ↑", "Prev line (in history)"},
+		{"Ctrl + R", "Incremental search (in history)"},
+		{"Ctrl + T", "Transpose characters"},
+		{"Ctrl + U", "Delete text to the beginning of line"},
+		{"Ctrl + _", "Undo"},
+		{"Ctrl + Y", "Paste text from clipboard"},
+		{"Ctrl + Z", "Undo"},
+		{"ESC", "Cancel / Delete whole line"},
+	}
+
+	keys := []string{}
+	for _, v := range maps {
+		keys = append(keys, fmt.Sprintf("      %-20s %s", v[0], v[1]))
+	}
+	return strings.Join(keys, "\n")
+}
+
+func HelpShortcutsLegacy() string {
 	normalMode := [][2]string{
 		{"Ctrl + A", "Beginning of line"},
 		{"Ctrl + B / ←", "Backward one character"},

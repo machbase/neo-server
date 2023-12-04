@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"runtime/debug"
 	"sync"
@@ -29,7 +30,6 @@ type Node struct {
 
 	functions map[string]expression.Function
 	values    map[string]any
-	buffer    map[any][]any
 	debug     bool
 
 	closeWg sync.WaitGroup
@@ -37,6 +37,10 @@ type Node struct {
 	mutex   sync.Mutex
 
 	_inflight *Record
+
+	shouldFeedEof bool
+
+	pragma []*Line
 
 	// Deprecated
 	Body      io.Reader
@@ -125,6 +129,10 @@ func (node *Node) Receive(rec *Record) {
 	node.src <- rec
 }
 
+func (node *Node) SetFeedEOF(flag bool) {
+	node.shouldFeedEof = flag
+}
+
 // Get implements expression.Parameters
 func (node *Node) Get(name string) (any, error) {
 	switch name {
@@ -153,7 +161,9 @@ func (node *Node) Get(name string) (any, error) {
 			node.Body = node.task.inputReader
 		}
 		return node, nil
-	case "nil":
+	case "PI":
+		return math.Pi, nil
+	case "nil", "NULL":
 		return nil, nil
 	default:
 		if node.task != nil {
@@ -178,24 +188,10 @@ func (node *Node) SetValue(name string, value any) {
 	node.values[name] = value
 }
 
-func (node *Node) Buffer(key any, value any) {
-	if node.buffer == nil {
-		node.buffer = map[any][]any{}
+func (node *Node) DeleteValue(name string) {
+	if node.values != nil {
+		delete(node.values, name)
 	}
-	if values, ok := node.buffer[key]; ok {
-		node.buffer[key] = append(values, value)
-	} else {
-		node.buffer[key] = []any{value}
-	}
-}
-
-func (node *Node) YieldBuffer(key any) {
-	values, ok := node.buffer[key]
-	if !ok {
-		return
-	}
-	node.yield(key, values)
-	delete(node.buffer, key)
 }
 
 func (node *Node) yield(key any, values []any) {
@@ -283,10 +279,14 @@ func (node *Node) start() {
 				}
 			}
 		}
-		for k, v := range node.buffer {
-			node.yield(k, v)
-		}
 		if lastWill != nil {
+			if node.shouldFeedEof {
+				node.SetInflight(EofRecord)
+				_, err := node.expr.Eval(node)
+				if err != nil {
+					fmt.Println("EOF error", err.Error())
+				}
+			}
 			lastWill.Tell(node.next)
 		}
 		node.closeWg.Done()

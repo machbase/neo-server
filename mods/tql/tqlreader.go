@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/expression"
 )
@@ -12,6 +13,7 @@ type Line struct {
 	text      string
 	line      int
 	isComment bool
+	isPragma  bool
 }
 
 var functions = NewNode(nil).functions
@@ -52,6 +54,10 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 		if strings.TrimSpace(lineText) == "" {
 			continue
 		}
+		if strings.HasPrefix(strings.TrimSpace(lineText), "//+") {
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[3:]), line: lineNo, isComment: true, isPragma: true})
+			continue
+		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
 			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[2:]), line: lineNo, isComment: true})
 			continue
@@ -61,8 +67,11 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 			continue
 		}
 
-		aStmt := strings.Join(append(stmt, lineText), "")
-		_, err = expression.ParseTokens(aStmt, functions)
+		aStmt := strings.Join(append(stmt, lineText), " ")
+		_, pos, err := expression.ParseTokens(aStmt, functions)
+		if utf8.RuneCountInString(aStmt) > pos && utf8.RuneCountInString(lineText) > pos {
+			lineText = string([]rune(lineText)[0:pos])
+		}
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			stmt = append(stmt, lineText)
 			continue
@@ -70,6 +79,7 @@ func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
 			return nil, err
 		} else {
 			stmt = append(stmt, lineText)
+
 			line := &Line{
 				text: strings.Join(stmt, "\n"),
 				line: lineNo,

@@ -82,7 +82,7 @@ func NewWithFunctions(expression string, functions map[string]Function) (*Expres
 	ret.QueryDateFormat = isoDateFormat
 	ret.inputExpression = expression
 
-	ret.tokens, err = ParseTokens(expression, functions)
+	ret.tokens, _, err = ParseTokens(expression, functions)
 	if err != nil {
 		return nil, err
 	}

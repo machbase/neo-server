@@ -178,7 +178,6 @@ func (pi *PrefItem) Description() string {
 
 var (
 	prefItem_BoxStyle   = PrefItem{"General", "box-style", "light", []string{"simple", "bold", "double", "light", "round"}, "box style", nil, nil}
-	prefItem_ViMode     = PrefItem{"General", "vi-mode", "off", []string{"on", "off"}, "use vi mode", nil, nil}
 	prefItem_TimeZone   = PrefItem{"General", "tz", "Local", []string{}, "'help tz'", timezoneValidate, nil}
 	prefItem_Timeformat = PrefItem{"General", "timeformat", "2006-01-02 15:04:05.999", []string{}, "'help timeformat'", timeformatValidate, nil}
 	prefItem_Heading    = PrefItem{"General", "heading", "on", []string{"on", "off"}, "show heading", nil, nil}
@@ -255,15 +254,12 @@ func defaultClientKeyPath() string {
 
 var prefItems = map[string]*PrefItem{
 	prefItem_BoxStyle.Name:   &prefItem_BoxStyle,
-	prefItem_ViMode.Name:     &prefItem_ViMode,
 	prefItem_TimeZone.Name:   &prefItem_TimeZone,
 	prefItem_Timeformat.Name: &prefItem_Timeformat,
 	prefItem_Server.Name:     &prefItem_Server,
 	prefItem_ServerCert.Name: &prefItem_ServerCert,
 	prefItem_ClientCert.Name: &prefItem_ClientCert,
 	prefItem_ClientKey.Name:  &prefItem_ClientKey,
-	// prefItem_Heading.Name:    &prefItem_Heading,
-	// prefItem_Format.Name:     &prefItem_Format,
 }
 
 func (p *Pref) Item(name string) *PrefItem {
@@ -294,10 +290,6 @@ func (p *Pref) Items() []*PrefItem {
 
 func (p *Pref) BoxStyle() *PrefItem {
 	return p.Item(prefItem_BoxStyle.Name)
-}
-
-func (p *Pref) ViMode() *PrefItem {
-	return p.Item(prefItem_ViMode.Name)
 }
 
 func (p *Pref) TimeZone() *PrefItem {
