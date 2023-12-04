@@ -1,0 +1,3 @@
+FAKE( meshgrid( linspace(0, 10, 10), linspace(0, 10, 10)) )
+MAPVALUE(2, abs(simplex(123, value(0), value(1))) * 10)
+CSV(precision(3))

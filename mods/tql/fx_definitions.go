@@ -145,6 +145,7 @@ var FxDefinitions = []Definition{
 	{"stringType", defTask.fmStringType},
 	{"doubleType", defTask.fmDoubleType},
 	// maps.fake
+	{"simplex", defTask.fmSimplex},
 	{"random", defTask.fmRandom},
 	{"parseFloat", defTask.fmParseFloat},
 	{"parseBool", defTask.fmParseBoolean},

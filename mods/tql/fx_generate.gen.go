@@ -135,6 +135,7 @@ func NewNode(task *Task) *Node {
 		"datetimeType":       x.gen_datetimeType,
 		"stringType":         x.gen_stringType,
 		"doubleType":         x.gen_doubleType,
+		"simplex":            x.gen_simplex,
 		"random":             x.gen_random,
 		"parseFloat":         x.gen_parseFloat,
 		"parseBool":          x.gen_parseBool,
@@ -1965,6 +1966,32 @@ func (x *Node) gen_doubleType(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmDoubleType(p0...)
+}
+
+// gen_simplex
+//
+// syntax: simplex(int64, float64, ...float64)
+func (x *Node) gen_simplex(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("simplex", 2, len(args))
+	}
+	p0, err := convInt64(args, 0, "simplex", "int64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "simplex", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []float64{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convFloat64(args, n, "simplex", "...float64")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmSimplex(p0, p1, p2...)
 }
 
 // gen_random
