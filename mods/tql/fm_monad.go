@@ -175,7 +175,7 @@ func (node *Node) fmGroup(args ...any) any {
 		gr = obj.(*Group)
 	} else {
 		gr = &Group{
-			buffer:    map[any][]GroupWindowColumn{},
+			buffer:    map[any][]GroupColumn{},
 			chunkMode: true,
 		}
 		node.SetValue("group", gr)
@@ -235,7 +235,7 @@ func (node *Node) fmGroup(args ...any) any {
 
 type Group struct {
 	lazy      bool
-	buffer    map[any][]GroupWindowColumn
+	buffer    map[any][]GroupColumn
 	curKey    any
 	chunkMode bool
 }
@@ -264,12 +264,12 @@ func (gr *Group) onEOF(node *Node) {
 }
 
 func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
-	var chunk *GroupWindowColumnChunk
+	var chunk *GroupColumnChunk
 	if cs, ok := gr.buffer[by.Value]; ok {
-		chunk = cs[0].(*GroupWindowColumnChunk)
+		chunk = cs[0].(*GroupColumnChunk)
 	} else {
-		chunk = &GroupWindowColumnChunk{name: "chunk"}
-		gr.buffer[by.Value] = []GroupWindowColumn{chunk}
+		chunk = &GroupColumnChunk{name: "chunk"}
+		gr.buffer[by.Value] = []GroupColumn{chunk}
 	}
 	chunk.Append(node.Inflight().Value())
 	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
@@ -288,7 +288,7 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 }
 
 func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
-	var cols []GroupWindowColumn
+	var cols []GroupColumn
 	if cs, ok := gr.buffer[by.Value]; ok {
 		cols = cs
 	} else {
@@ -369,18 +369,18 @@ func (ga *GroupAggregate) ColumnType() string {
 	return "float64"
 }
 
-func (ga *GroupAggregate) NewBuffer() GroupWindowColumn {
+func (ga *GroupAggregate) NewBuffer() GroupColumn {
 	switch ga.Type {
 	case "by":
-		return &GroupWindowColumnConst{value: ga.Value}
+		return &GroupColumnConst{value: ga.Value}
 	case "chunk":
-		return &GroupWindowColumnChunk{name: ga.Type}
+		return &GroupColumnChunk{name: ga.Type}
 	case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
-		return &GroupWindowColumnContainer{name: ga.Type}
+		return &GroupColumnContainer{name: ga.Type}
 	case "first", "last", "min", "max", "sum":
-		return &GroupWindowColumnSingle{name: ga.Type}
+		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "rss", "rms":
-		return &GroupWindowColumnCounter{name: ga.Type}
+		return &GroupColumnCounter{name: ga.Type}
 	default:
 		return nil
 	}
@@ -403,7 +403,7 @@ func (node *Node) fmMin(value float64, other ...any) (any, error) {
 			} else {
 				name = fmt.Sprintf("%v", other[0])
 			}
-			return newAggregate("min", name), nil
+			return newAggregate("min", value, name), nil
 		} else {
 			return newAggregate("min", value), nil
 		}
@@ -429,7 +429,7 @@ func (node *Node) fmMax(value float64, other ...any) (any, error) {
 			} else {
 				name = fmt.Sprintf("%v", other[0])
 			}
-			return newAggregate("max", name), nil
+			return newAggregate("max", value, name), nil
 		} else {
 			return newAggregate("max", value), nil
 		}
@@ -489,198 +489,79 @@ func (node *Node) fmRMS(value float64, args ...string) any {
 }
 
 func (node *Node) fmGroupByKey(args ...any) any {
-	var gw *GroupWindow
-	if obj, ok := node.GetValue("groupbykey"); ok {
-		gw = obj.(*GroupWindow)
+	var gr *Group
+	if obj, ok := node.GetValue("group"); ok {
+		gr = obj.(*Group)
 	} else {
-		gw = NewGroupWindow()
-		node.SetValue("groupbykey", gw)
-		node.SetEOF(gw.onEOF)
-
-		gw.columns = []string{}
-		if len(args) > 0 {
-			for _, arg := range args {
-				switch v := arg.(type) {
-				case string:
-					gw.columns = append(gw.columns, v)
-				case *lazyOption:
-					gw.lazy = v.flag
-				}
+		gr = &Group{
+			buffer:    map[any][]GroupColumn{},
+			chunkMode: true,
+		}
+		node.SetValue("group", gr)
+		node.SetEOF(gr.onEOF)
+		for _, arg := range args {
+			switch v := arg.(type) {
+			case *lazyOption:
+				gr.lazy = v.flag
 			}
 		}
-		if len(gw.columns) == 0 {
-			gw.columns = append(gw.columns, "chunk")
-		}
 	}
-	gw.push(node)
+	key := node.Inflight().Key()
+	by := node.fmBy(key, "KEY").(*GroupAggregate)
+	gr.pushChunk(node, by)
 	return nil
 }
 
-func NewGroupWindow() *GroupWindow {
-	ret := &GroupWindow{}
-	return ret
-}
-
-type GroupWindow struct {
-	lazy    bool
-	columns []string
-	buffer  map[any][]GroupWindowColumn
-	curKey  any
-}
-
-func (gw *GroupWindow) newColumn() ([]GroupWindowColumn, error) {
-	ret := make([]GroupWindowColumn, len(gw.columns))
-	for i, typ := range gw.columns {
-		switch typ {
-		case "chunk":
-			ret[i] = &GroupWindowColumnChunk{name: typ}
-		case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
-			ret[i] = &GroupWindowColumnContainer{name: typ}
-		case "first", "last", "min", "max", "sum":
-			ret[i] = &GroupWindowColumnSingle{name: typ}
-		case "avg", "rss", "rms":
-			ret[i] = &GroupWindowColumnCounter{name: typ}
-		default:
-			return nil, fmt.Errorf("GROUPBYKEY unknown aggregator %q", typ)
-		}
-	}
-	return ret, nil
-}
-
-func (gw *GroupWindow) onEOF(node *Node) {
-	for k, cols := range gw.buffer {
-		if gw.isChunkMode() {
-			r := cols[0].Result()
-			if v, ok := r.([]any); ok {
-				node.yield(k, v)
-			} else {
-				node.yield(k, []any{r})
-			}
-		} else {
-			v := make([]any, len(cols))
-			for i, c := range cols {
-				v[i] = c.Result()
-			}
-			node.yield(k, v)
-		}
-	}
-	gw.buffer = nil
-}
-
-func (gw *GroupWindow) isChunkMode() bool {
-	return len(gw.columns) == 1 && gw.columns[0] == "chunk"
-}
-
-func (gw *GroupWindow) push(node *Node) {
-	key := node.Inflight().key
-	value := node.Inflight().value
-	var cols []GroupWindowColumn
-
-	if gw.buffer == nil {
-		gw.buffer = map[any][]GroupWindowColumn{}
-	}
-	if cs, ok := gw.buffer[key]; ok {
-		cols = cs
-	} else {
-		if newCols, err := gw.newColumn(); err != nil {
-			node.task.LogErrorf("%s, %s", node.Name(), err.Error())
-			return
-		} else {
-			cols = newCols
-		}
-		gw.buffer[key] = cols
-	}
-
-	if gw.isChunkMode() {
-		cols[0].Append(value)
-	} else {
-		for i := range cols {
-			if v, ok := value.([]any); ok {
-				if i < len(v) {
-					cols[i].Append(v[i])
-				} else {
-					cols[i].Append(nil)
-				}
-			} else if i == 0 {
-				cols[i].Append(value)
-			} else {
-				cols[i].Append(nil)
-			}
-		}
-	}
-
-	if !gw.lazy && gw.curKey != nil && gw.curKey != key {
-		if cols, ok := gw.buffer[gw.curKey]; ok {
-			if gw.isChunkMode() {
-				r := cols[0].Result()
-				if v, ok := r.([]any); ok {
-					node.yield(gw.curKey, v)
-				} else {
-					node.yield(gw.curKey, []any{r})
-				}
-			} else {
-				v := make([]any, len(cols))
-				for i, c := range cols {
-					v[i] = c.Result()
-				}
-				node.yield(gw.curKey, v)
-			}
-			delete(gw.buffer, gw.curKey)
-		}
-	}
-	gw.curKey = key
-}
-
-type GroupWindowColumn interface {
+type GroupColumn interface {
 	Append(any) error
 	Result() any
 }
 
 var (
-	_ GroupWindowColumn = &GroupWindowColumnSingle{}
-	_ GroupWindowColumn = &GroupWindowColumnContainer{}
-	_ GroupWindowColumn = &GroupWindowColumnCounter{}
-	_ GroupWindowColumn = &GroupWindowColumnChunk{}
-	_ GroupWindowColumn = &GroupWindowColumnConst{}
+	_ GroupColumn = &GroupColumnSingle{}
+	_ GroupColumn = &GroupColumnContainer{}
+	_ GroupColumn = &GroupColumnCounter{}
+	_ GroupColumn = &GroupColumnChunk{}
+	_ GroupColumn = &GroupColumnConst{}
 )
 
 // chunk
-type GroupWindowColumnChunk struct {
+type GroupColumnChunk struct {
 	name   string
 	values []any
 }
 
-func (gc *GroupWindowColumnChunk) Result() any {
+func (gc *GroupColumnChunk) Result() any {
 	ret := gc.values
 	gc.values = []any{}
 	return ret
 }
 
-func (gc *GroupWindowColumnChunk) Append(v any) error {
+func (gc *GroupColumnChunk) Append(v any) error {
 	gc.values = append(gc.values, v)
 	return nil
 }
 
 // const
-type GroupWindowColumnConst struct {
+type GroupColumnConst struct {
 	value any
 }
 
-func (gc *GroupWindowColumnConst) Result() any {
+func (gc *GroupColumnConst) Result() any {
 	return gc.value
 }
 
-func (gc *GroupWindowColumnConst) Append(v any) error {
+func (gc *GroupColumnConst) Append(v any) error {
 	return nil
 }
 
 // "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode"
-type GroupWindowColumnContainer struct {
+type GroupColumnContainer struct {
 	name   string
 	values []float64
 }
 
-func (gc *GroupWindowColumnContainer) Result() any {
+func (gc *GroupColumnContainer) Result() any {
 	defer func() {
 		gc.values = gc.values[0:]
 	}()
@@ -733,7 +614,7 @@ func (gc *GroupWindowColumnContainer) Result() any {
 	return ret
 }
 
-func (gc *GroupWindowColumnContainer) Append(v any) error {
+func (gc *GroupColumnContainer) Append(v any) error {
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err
@@ -743,13 +624,13 @@ func (gc *GroupWindowColumnContainer) Append(v any) error {
 }
 
 // avg, rss, rms
-type GroupWindowColumnCounter struct {
+type GroupColumnCounter struct {
 	name  string
 	value float64
 	count int
 }
 
-func (gc *GroupWindowColumnCounter) Result() any {
+func (gc *GroupColumnCounter) Result() any {
 	if gc.count == 0 {
 		return nil
 	}
@@ -770,7 +651,7 @@ func (gc *GroupWindowColumnCounter) Result() any {
 	return ret
 }
 
-func (gc *GroupWindowColumnCounter) Append(v any) error {
+func (gc *GroupColumnCounter) Append(v any) error {
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err
@@ -787,13 +668,13 @@ func (gc *GroupWindowColumnCounter) Append(v any) error {
 }
 
 // first, last, min, max, sum
-type GroupWindowColumnSingle struct {
+type GroupColumnSingle struct {
 	name     string
 	value    any
 	hasValue bool
 }
 
-func (gc *GroupWindowColumnSingle) Result() any {
+func (gc *GroupColumnSingle) Result() any {
 	if gc.hasValue {
 		ret := gc.value
 		gc.value, gc.hasValue = 0, false
@@ -802,7 +683,7 @@ func (gc *GroupWindowColumnSingle) Result() any {
 	return nil
 }
 
-func (gc *GroupWindowColumnSingle) Append(v any) error {
+func (gc *GroupColumnSingle) Append(v any) error {
 	if gc.name == "first" {
 		if gc.hasValue {
 			return nil
