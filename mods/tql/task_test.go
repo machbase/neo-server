@@ -2265,6 +2265,7 @@ func TestLoader(t *testing.T) {
 		{"TestLoader_qq"},
 		{"TestLoader_groupbykey"},
 		{"TestLoader_iris"},
+		{"TestLoader_iris_setosa"},
 		{"TestLoader_group"},
 	}
 
