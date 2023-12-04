@@ -38,7 +38,7 @@ type Node struct {
 
 	_inflight *Record
 
-	shouldFeedEof bool
+	eofCallback func(*Node)
 
 	pragma []*Line
 
@@ -129,8 +129,8 @@ func (node *Node) Receive(rec *Record) {
 	node.src <- rec
 }
 
-func (node *Node) SetFeedEOF(flag bool) {
-	node.shouldFeedEof = flag
+func (node *Node) SetEOF(f func(*Node)) {
+	node.eofCallback = f
 }
 
 // Get implements expression.Parameters
@@ -280,12 +280,8 @@ func (node *Node) start() {
 			}
 		}
 		if lastWill != nil {
-			if node.shouldFeedEof {
-				node.SetInflight(EofRecord)
-				_, err := node.expr.Eval(node)
-				if err != nil {
-					fmt.Println("EOF error", err.Error())
-				}
+			if node.eofCallback != nil {
+				node.eofCallback(node)
 			}
 			lastWill.Tell(node.next)
 		}

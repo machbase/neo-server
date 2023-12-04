@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	gocsv "encoding/csv"
 
@@ -164,6 +165,329 @@ func (node *Node) fmFlatten() any {
 	}
 }
 
+func (node *Node) fmGroup(args ...any) any {
+	var gr *Group
+	var columns []*GroupAggregate
+	var by *GroupAggregate
+	var shouldSetColumns bool
+
+	if obj, ok := node.GetValue("group"); ok {
+		gr = obj.(*Group)
+	} else {
+		gr = &Group{
+			buffer:    map[any][]GroupWindowColumn{},
+			chunkMode: true,
+		}
+		node.SetValue("group", gr)
+		node.SetEOF(gr.onEOF)
+		shouldSetColumns = true
+		for _, arg := range args {
+			switch arg.(type) {
+			case *GroupAggregate:
+				gr.chunkMode = false
+			}
+			// if has at least one aggregate, chunk mode is off
+			if !gr.chunkMode {
+				break
+			}
+		}
+	}
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *GroupAggregate:
+			columns = append(columns, v)
+			if v.Type == "by" {
+				by = v
+			}
+		case *lazyOption:
+			gr.lazy = v.flag
+		default:
+			return ErrorRecord(fmt.Errorf("GROUP() unknown type '%T' in arguments", v))
+		}
+	}
+	if by == nil {
+		return ErrorRecord(fmt.Errorf("GROUP() has no by() argument"))
+	}
+	if by.Value == nil {
+		return ErrorRecord(fmt.Errorf("GROUP() by() can not be NULL"))
+	}
+	if shouldSetColumns {
+		if !gr.chunkMode {
+			cols := make([]*spi.Column, len(columns)+1)
+			cols[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
+			for i, c := range columns {
+				cols[i+1] = &spi.Column{
+					Name: c.Name,
+					Type: c.ColumnType(),
+				}
+			}
+			node.task.SetResultColumns(cols)
+		}
+	}
+	if gr.chunkMode {
+		gr.pushChunk(node, by)
+	} else {
+		gr.push(node, by, columns)
+	}
+	return nil
+}
+
+type Group struct {
+	lazy      bool
+	buffer    map[any][]GroupWindowColumn
+	curKey    any
+	chunkMode bool
+}
+
+func (gr *Group) onEOF(node *Node) {
+	if gr.chunkMode {
+		for k, cols := range gr.buffer {
+			r := cols[0].Result()
+			if v, ok := r.([]any); ok {
+				node.yield(k, v)
+			} else {
+				node.yield(k, []any{r})
+			}
+		}
+		gr.buffer = nil
+	} else {
+		for k, cols := range gr.buffer {
+			v := make([]any, len(cols))
+			for i, c := range cols {
+				v[i] = c.Result()
+			}
+			node.yield(k, v)
+		}
+		gr.buffer = nil
+	}
+}
+
+func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
+	var chunk *GroupWindowColumnChunk
+	if cs, ok := gr.buffer[by.Value]; ok {
+		chunk = cs[0].(*GroupWindowColumnChunk)
+	} else {
+		chunk = &GroupWindowColumnChunk{name: "chunk"}
+		gr.buffer[by.Value] = []GroupWindowColumn{chunk}
+	}
+	chunk.Append(node.Inflight().Value())
+	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
+		if ret, ok := gr.buffer[gr.curKey]; ok {
+			r := ret[0].Result()
+			if v, ok := r.([]any); ok {
+				node.yield(gr.curKey, v)
+			} else {
+				node.yield(gr.curKey, []any{r})
+			}
+			delete(gr.buffer, gr.curKey)
+		}
+	}
+	gr.curKey = by.Value
+
+}
+
+func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
+	var cols []GroupWindowColumn
+	if cs, ok := gr.buffer[by.Value]; ok {
+		cols = cs
+	} else {
+		for _, c := range columns {
+			if buff := c.NewBuffer(); buff != nil {
+				cols = append(cols, buff)
+			} else {
+				node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+				return
+			}
+		}
+		gr.buffer[by.Value] = cols
+	}
+
+	for i, c := range columns {
+		cols[i].Append(c.Value)
+	}
+
+	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
+		if cols, ok := gr.buffer[gr.curKey]; ok {
+			v := make([]any, len(cols))
+			for i, c := range cols {
+				v[i] = c.Result()
+			}
+			node.yield(gr.curKey, v)
+			delete(gr.buffer, gr.curKey)
+		}
+	}
+	gr.curKey = by.Value
+}
+
+func (node *Node) fmBy(value any, args ...string) any {
+	ret := &GroupAggregate{Type: "by"}
+	ret.Value = unboxValue(value)
+	if len(args) > 0 {
+		ret.Name = args[0]
+	} else {
+		ret.Name = "GROUP"
+	}
+	return ret
+}
+
+type GroupAggregate struct {
+	Type  string
+	Value any
+	Name  string
+}
+
+func newAggregate(typ string, value any, args ...string) *GroupAggregate {
+	ret := &GroupAggregate{Type: typ, Value: value}
+	if len(args) > 0 {
+		ret.Name = args[0]
+	} else {
+		ret.Name = strings.ToUpper(typ)
+	}
+	return ret
+}
+
+func (ga *GroupAggregate) ColumnType() string {
+	switch ga.Type {
+	case "by":
+		if ga.Value == nil {
+			return "string"
+		}
+		switch ga.Value.(type) {
+		case time.Time:
+			return "time"
+		case string:
+			return "string"
+		case float64:
+			return "float64"
+		default:
+			return "interface{}"
+		}
+	case "chunk":
+		return "array"
+	}
+	return "float64"
+}
+
+func (ga *GroupAggregate) NewBuffer() GroupWindowColumn {
+	switch ga.Type {
+	case "by":
+		return &GroupWindowColumnConst{value: ga.Value}
+	case "chunk":
+		return &GroupWindowColumnChunk{name: ga.Type}
+	case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
+		return &GroupWindowColumnContainer{name: ga.Type}
+	case "first", "last", "min", "max", "sum":
+		return &GroupWindowColumnSingle{name: ga.Type}
+	case "avg", "rss", "rms":
+		return &GroupWindowColumnCounter{name: ga.Type}
+	default:
+		return nil
+	}
+}
+
+func (node *Node) fmFirst(value float64, args ...string) any {
+	return newAggregate("first", value, args...)
+}
+
+func (node *Node) fmLast(value float64, args ...string) any {
+	return newAggregate("last", value, args...)
+}
+
+func (node *Node) fmMin(value float64, other ...any) (any, error) {
+	if node.Name() == "GROUP()" {
+		if len(other) > 0 {
+			var name string
+			if str, ok := other[0].(string); ok {
+				name = str
+			} else {
+				name = fmt.Sprintf("%v", other[0])
+			}
+			return newAggregate("min", name), nil
+		} else {
+			return newAggregate("min", value), nil
+		}
+	} else { // math.Min
+		if len(other) == 1 {
+			rv, err := util.ToFloat64(other[0])
+			if err != nil {
+				return value, nil
+			}
+			return math.Min(value, rv), nil
+		} else {
+			return value, fmt.Errorf("min() requires two float64 values, got %d", len(other)+1)
+		}
+	}
+}
+
+func (node *Node) fmMax(value float64, other ...any) (any, error) {
+	if node.Name() == "GROUP()" {
+		if len(other) > 0 {
+			var name string
+			if str, ok := other[0].(string); ok {
+				name = str
+			} else {
+				name = fmt.Sprintf("%v", other[0])
+			}
+			return newAggregate("max", name), nil
+		} else {
+			return newAggregate("max", value), nil
+		}
+	} else { // math.Max
+		if len(other) == 1 {
+			rv, err := util.ToFloat64(other[0])
+			if err != nil {
+				return value, nil
+			}
+			return math.Max(value, rv), nil
+		} else {
+			return value, fmt.Errorf("max() requires two float64 values, got %d", len(other)+1)
+		}
+	}
+}
+
+func (node *Node) fmSum(value float64, args ...string) any {
+	return newAggregate("sum", value, args...)
+}
+
+func (node *Node) fmMean(value float64, args ...string) any {
+	return newAggregate("mean", value, args...)
+}
+
+func (node *Node) fmMedian(value float64, args ...string) any {
+	return newAggregate("median", value, args...)
+}
+
+func (node *Node) fmMedianInterpolated(value float64, args ...string) any {
+	return newAggregate("median-interpolated", value, args...)
+}
+
+func (node *Node) fmStdDev(value float64, args ...string) any {
+	return newAggregate("stddev", value, args...)
+}
+
+func (node *Node) fmStdErr(value float64, args ...string) any {
+	return newAggregate("stderr", value, args...)
+}
+
+func (node *Node) fmEntropy(value float64, args ...string) any {
+	return newAggregate("entropy", value, args...)
+}
+
+func (node *Node) fmMode(value float64, args ...string) any {
+	return newAggregate("mode", value, args...)
+}
+
+func (node *Node) fmAvg(value float64, args ...string) any {
+	return newAggregate("avg", value, args...)
+}
+func (node *Node) fmRSS(value float64, args ...string) any {
+	return newAggregate("rss", value, args...)
+}
+func (node *Node) fmRMS(value float64, args ...string) any {
+	return newAggregate("rms", value, args...)
+}
+
 func (node *Node) fmGroupByKey(args ...any) any {
 	var gw *GroupWindow
 	if obj, ok := node.GetValue("groupbykey"); ok {
@@ -171,7 +495,7 @@ func (node *Node) fmGroupByKey(args ...any) any {
 	} else {
 		gw = NewGroupWindow()
 		node.SetValue("groupbykey", gw)
-		node.SetFeedEOF(true)
+		node.SetEOF(gw.onEOF)
 
 		gw.columns = []string{}
 		if len(args) > 0 {
@@ -223,32 +547,31 @@ func (gw *GroupWindow) newColumn() ([]GroupWindowColumn, error) {
 	return ret, nil
 }
 
+func (gw *GroupWindow) onEOF(node *Node) {
+	for k, cols := range gw.buffer {
+		if gw.isChunkMode() {
+			r := cols[0].Result()
+			if v, ok := r.([]any); ok {
+				node.yield(k, v)
+			} else {
+				node.yield(k, []any{r})
+			}
+		} else {
+			v := make([]any, len(cols))
+			for i, c := range cols {
+				v[i] = c.Result()
+			}
+			node.yield(k, v)
+		}
+	}
+	gw.buffer = nil
+}
+
 func (gw *GroupWindow) isChunkMode() bool {
 	return len(gw.columns) == 1 && gw.columns[0] == "chunk"
 }
 
 func (gw *GroupWindow) push(node *Node) {
-	if node.Inflight().IsEOF() {
-		for k, cols := range gw.buffer {
-			if gw.isChunkMode() {
-				r := cols[0].Result()
-				if v, ok := r.([]any); ok {
-					node.yield(k, v)
-				} else {
-					node.yield(k, []any{r})
-				}
-			} else {
-				v := make([]any, len(cols))
-				for i, c := range cols {
-					v[i] = c.Result()
-				}
-				node.yield(k, v)
-			}
-		}
-		gw.buffer = nil
-		return
-	}
-
 	key := node.Inflight().key
 	value := node.Inflight().value
 	var cols []GroupWindowColumn
@@ -318,6 +641,7 @@ var (
 	_ GroupWindowColumn = &GroupWindowColumnContainer{}
 	_ GroupWindowColumn = &GroupWindowColumnCounter{}
 	_ GroupWindowColumn = &GroupWindowColumnChunk{}
+	_ GroupWindowColumn = &GroupWindowColumnConst{}
 )
 
 // chunk
@@ -334,6 +658,19 @@ func (gc *GroupWindowColumnChunk) Result() any {
 
 func (gc *GroupWindowColumnChunk) Append(v any) error {
 	gc.values = append(gc.values, v)
+	return nil
+}
+
+// const
+type GroupWindowColumnConst struct {
+	value any
+}
+
+func (gc *GroupWindowColumnConst) Result() any {
+	return gc.value
+}
+
+func (gc *GroupWindowColumnConst) Append(v any) error {
 	return nil
 }
 

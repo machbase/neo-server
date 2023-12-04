@@ -57,7 +57,7 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 		// panic case: if the 'code' is not applicable as SINK
 		if x := recover(); x != nil {
 			if e, ok := x.(error); ok {
-				err = fmt.Errorf("unable to apply to SINK: %s ;%s", code, e.Error())
+				err = fmt.Errorf("unable to apply to SINK: %s %s", code, e.Error())
 			} else {
 				err = fmt.Errorf("unable to apply to SINK: %s", code)
 			}
