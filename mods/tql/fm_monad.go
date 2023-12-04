@@ -165,6 +165,12 @@ func (node *Node) fmFlatten() any {
 	}
 }
 
+func (node *Node) fmList(args ...any) any {
+	ret := []any{}
+	ret = append(ret, args...)
+	return ret
+}
+
 func (node *Node) fmGroup(args ...any) any {
 	var gr *Group
 	var columns []*GroupAggregate

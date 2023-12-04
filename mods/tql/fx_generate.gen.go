@@ -82,6 +82,7 @@ func NewNode(task *Task) *Node {
 		"MAPVALUE":   x.gen_MAPVALUE,
 		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
+		"list":       x.gen_list,
 		"lazy":       x.gen_lazy,
 		"glob":       x.gen_glob,
 		"regexp":     x.gen_regexp,
@@ -1192,6 +1193,22 @@ func (x *Node) gen_SCRIPT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmScript(p0...)
+}
+
+// gen_list
+//
+// syntax: list(...interface {})
+func (x *Node) gen_list(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "list", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmList(p0...)
+	return ret, nil
 }
 
 // gen_lazy
