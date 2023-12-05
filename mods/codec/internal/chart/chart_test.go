@@ -272,3 +272,35 @@ func TestMarkLine(t *testing.T) {
 	}
 	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
 }
+
+func TestCandleStick(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	c := chart.NewRectChart()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetChartJson(true)
+	c.SetGlobal(`
+		"chartId": "WejMYXCGcYNL",
+		"theme": "dark",
+		"legend":{"show": false}
+	`)
+	c.SetSeries(`"type": "category"`)
+	c.SetSeries(`"type": "candlestick"`)
+
+	require.Equal(t, "application/json", c.ContentType())
+
+	os.Setenv("TZ", "UTC")
+
+	c.Open()
+	c.AddRow([]any{1508806800_000000000, []any{20, 34, 10, 38}})
+	c.AddRow([]any{1508893200_000000000, []any{40, 35, 30, 50}})
+	c.AddRow([]any{1508979600_000000000, []any{31, 38, 33, 44}})
+	c.AddRow([]any{1509066000_000000000, []any{38, 15, 5, 42}})
+	c.Close()
+
+	expect, err := os.ReadFile(filepath.Join("test", "test_candlestick.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
+}
