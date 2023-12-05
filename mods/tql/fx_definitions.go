@@ -84,6 +84,7 @@ var FxDefinitions = []Definition{
 	{"MAPVALUE", defTask.fmMapValue},
 	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
+	{"movavg", defTask.fmMovAvg},
 	{"list", defTask.fmList},
 	{"lazy", defTask.fmLazy},
 	{"glob", defTask.fmGlob},

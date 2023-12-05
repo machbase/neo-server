@@ -986,6 +986,50 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 	}
 }
 
+func (node *Node) fmMovAvg(value any, lag int) (any, error) {
+	if lag <= 0 {
+		return 0, ErrArgs("movavg", 1, "lag sould be larger than 0")
+	}
+	var fv *float64
+	if f, err := util.ToFloat64(value); err == nil {
+		fv = &f
+	}
+	var ma *movavg
+	// FIXME: using "movavg" as key, a node can have only one movavg().
+	// What if MAPVALUE(0, movavg(value(1)) + movavg(value(2)) ) ?
+	if v, ok := node.GetValue("movavg"); ok {
+		ma = v.(*movavg)
+	} else {
+		ma = &movavg{}
+		node.SetValue("movavg", ma)
+	}
+	ma.elements = append(ma.elements, fv)
+	if len(ma.elements) > lag {
+		ma.elements = ma.elements[len(ma.elements)-lag:]
+	}
+	if len(ma.elements) == lag {
+		sum := 0.0
+		countNil := 0
+		for _, e := range ma.elements {
+			if e != nil {
+				sum += *e
+			} else {
+				countNil++
+			}
+		}
+		if countNil == lag {
+			return nil, nil
+		} else {
+			return sum / float64(lag-countNil), nil
+		}
+	}
+	return nil, nil
+}
+
+type movavg struct {
+	elements []*float64
+}
+
 func (node *Node) fmRegexp(pattern string, text string) (bool, error) {
 	var expr *regexp.Regexp
 	if v, exists := node.GetValue("$regexp.pattern"); exists {

@@ -438,6 +438,12 @@ func (ex *ChartBase) Close() {
 		chart.SetGlobalOptions(ex.getGlobalOptions()...)
 		ex.writeMultiSeries(&chart.BaseConfiguration)
 		rect = chart
+		if len(chart.XAxisList) == 0 {
+			chart.XAxisList = append(chart.XAxisList, opts.XAxis{})
+		}
+		if len(chart.YAxisList) == 0 {
+			chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
+		}
 		before = []func(){chart.Validate, func() {
 			if len(chart.XAxisList) > 0 && chart.XAxisList[0].Data == nil {
 				chart.XAxisList[0].Data = ex.domainColumnData

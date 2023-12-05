@@ -82,6 +82,7 @@ func NewNode(task *Task) *Node {
 		"MAPVALUE":   x.gen_MAPVALUE,
 		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
+		"movavg":     x.gen_movavg,
 		"list":       x.gen_list,
 		"lazy":       x.gen_lazy,
 		"glob":       x.gen_glob,
@@ -1193,6 +1194,24 @@ func (x *Node) gen_SCRIPT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmScript(p0...)
+}
+
+// gen_movavg
+//
+// syntax: movavg(, int)
+func (x *Node) gen_movavg(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("movavg", 2, len(args))
+	}
+	p0, err := convAny(args, 0, "movavg", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convInt(args, 1, "movavg", "int")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmMovAvg(p0, p1)
 }
 
 // gen_list
