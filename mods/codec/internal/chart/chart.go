@@ -445,8 +445,13 @@ func (ex *ChartBase) Close() {
 			chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
 		}
 		before = []func(){chart.Validate, func() {
-			if len(chart.XAxisList) > 0 && chart.XAxisList[0].Data == nil {
-				chart.XAxisList[0].Data = ex.domainColumnData
+			for i := range chart.XAxisList {
+				if chart.XAxisList[i].Data == nil {
+					chart.XAxisList[i].Type = ex.domainColumnType
+					if ex.domainColumnData != nil {
+						chart.XAxisList[i].Data = ex.domainColumnData
+					}
+				}
 			}
 		}}
 	} else {
@@ -461,8 +466,13 @@ func (ex *ChartBase) Close() {
 			chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
 		}
 		before = []func(){chart.Validate, func() {
-			if chart.XAxisList[0].Type == "" {
-				chart.XAxisList[0].Type = ex.domainColumnType
+			for i := range chart.XAxisList {
+				if chart.XAxisList[i].Data == nil {
+					chart.XAxisList[i].Type = ex.domainColumnType
+					if ex.domainColumnData != nil {
+						chart.XAxisList[i].Data = ex.domainColumnData
+					}
+				}
 			}
 		}}
 	}
