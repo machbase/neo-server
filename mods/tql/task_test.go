@@ -167,7 +167,12 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				// remove trailing empty line
 				resultLines = resultLines[0 : len(resultLines)-1]
 			}
-			require.Equal(t, len(expect), len(resultLines), resultLines)
+			if len(expect) != len(resultLines) {
+				t.Logf("Expect result %d lines, got %d", len(expect), len(resultLines))
+				t.Logf("\n%s", strings.Join(resultLines, "\n"))
+				t.Fail()
+				return
+			}
 
 			for n, expectLine := range expect {
 				if strings.HasPrefix(expectLine, "/r/") {
@@ -356,6 +361,17 @@ func TestStrLib(t *testing.T) {
 	resultLines := []string{
 		"123,hello",
 	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMovingAvg(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( linspace(0, 100, 100) )`,
+		`MAPVALUE(1, movavg(value(0), 10))`,
+		`CSV( precision(4) )`,
+	}
+	resultLines = loadLines("./test/movavg_result.txt")
 	runTest(t, codeLines, resultLines)
 }
 

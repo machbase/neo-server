@@ -175,6 +175,14 @@ func TestStrSub(t *testing.T) {
 	}.run(t)
 }
 
+func TestList(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("list"),
+		args:   []any{"HelLo 😀", 3.14, true},
+		expect: []any{"HelLo 😀", 3.14, true},
+	}.run(t)
+}
+
 func TestGlob(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("glob"),
