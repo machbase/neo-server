@@ -454,6 +454,27 @@ func (ex *ChartBase) Close() {
 				}
 			}
 		}}
+	} else if len(ex.multiSeries) > 0 && ex.multiSeries[0].Type == "heatmap" {
+		chart := charts.NewHeatMap()
+		chart.SetGlobalOptions(ex.getGlobalOptions()...)
+		ex.writeMultiSeries(&chart.BaseConfiguration)
+		rect = chart
+		if len(chart.XAxisList) == 0 {
+			chart.XAxisList = append(chart.XAxisList, opts.XAxis{})
+		}
+		if len(chart.YAxisList) == 0 {
+			chart.YAxisList = append(chart.YAxisList, opts.YAxis{})
+		}
+		before = []func(){chart.Validate, func() {
+			for i := range chart.XAxisList {
+				if chart.XAxisList[i].Data == nil {
+					chart.XAxisList[i].Type = ex.domainColumnType
+					if ex.domainColumnData != nil {
+						chart.XAxisList[i].Data = ex.domainColumnData
+					}
+				}
+			}
+		}}
 	} else {
 		chart := charts.NewLine()
 		chart.SetGlobalOptions(ex.getGlobalOptions()...)
@@ -524,6 +545,9 @@ func (ex *ChartBase) AddRow(values []any) error {
 			data = append(data, ChartData{Name: fmt.Sprintf("%v", xAxisValue), Value: v})
 			ser.Data = data
 			ex.domainColumnData = append(ex.domainColumnData, xAxisValue)
+		} else if ser.Type == "heatmap" {
+			data = append(data, v)
+			ser.Data = data
 		} else {
 			// hint: use ChartData instead of v for customizing a specefic item
 			data = append(data, []any{xAxisValue, v})
