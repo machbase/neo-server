@@ -46,6 +46,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var matchPrefix bool
 	var httpClient *http.Client
 
+	var ctx context.Context
+	var ctxCancel context.CancelFunc
+	var ctxCancelIgnore bool
+
 	for _, o := range options {
 		switch v := o.(type) {
 		case CompileErr:
@@ -67,18 +71,26 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			matchPrefix = bool(v)
 		case *http.Client:
 			httpClient = v
+		case context.Context:
+			ctx = v
 		}
 	}
 
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	if ctx == nil {
+		ctx, ctxCancel = context.WithTimeout(context.TODO(), 10*time.Second)
+	} else {
+		ctx, ctxCancel = context.WithCancel(ctx)
+		ctxCancelIgnore = true
+		defer ctxCancel()
+	}
 	doneCh := make(chan any)
 
 	logBuf := &bytes.Buffer{}
 
-	task := tql.NewTaskContext(timeCtx)
+	task := tql.NewTaskContext(ctx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
 	task.SetLogLevel(tql.INFO)
@@ -99,7 +111,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	if compileErr != "" {
 		require.NotNil(t, err)
 		require.Equal(t, compileErr, err.Error())
-		cancel()
+		ctxCancel()
 		return
 	} else {
 		require.Nil(t, err)
@@ -117,12 +129,15 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}()
 
 	select {
-	case <-timeCtx.Done():
-		t.Log(code)
-		t.Fatal("ERROR time out!!!")
-		cancel()
+	case <-ctx.Done():
+		if !ctxCancelIgnore {
+			t.Logf("CODE:\n%s", code)
+			t.Logf("LOG:\n%s", strings.TrimSpace(logBuf.String()))
+			t.Fatal("ERROR time out!!!")
+			ctxCancel()
+		}
 	case <-doneCh:
-		cancel()
+		ctxCancel()
 	}
 	logString := strings.TrimSpace(logBuf.String())
 	if expectErr != "" {
@@ -1068,6 +1083,22 @@ func TestThrottle(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 	t2 := time.Now()
 	require.GreaterOrEqual(t, t2.Sub(t1), 1*time.Second, "it should take 1 second or longer")
+
+	codeLines = []string{
+		"FAKE( linspace(1, 10, 10))",
+		"THROTTLE( 1 )",
+		`WHEN(true, doLog("throttled", value(0)))`,
+		"CSV()",
+	}
+	resultLines = []string{
+		"1", "2",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+	t1 = time.Now()
+	runTest(t, codeLines, resultLines, ctx)
+	t2 = time.Now()
+	require.Less(t, t2.Sub(t1), 3*time.Second, "it should be cancelled in time, but %v", t2.Sub(t1))
 }
 
 type TestRoundTripFunc func(req *http.Request) *http.Response
