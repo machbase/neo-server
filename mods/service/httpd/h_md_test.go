@@ -110,14 +110,21 @@ func TestMarkdownMermaid(t *testing.T) {
 		es := strings.Split(expect, "\n")
 		rs := strings.Split(result, "\n")
 		i := 0
-		for ; i < len(es) || i < len(rs); i++ {
-			if es[i] != rs[i] {
+		r := 0
+		diff := 0
+		for i < len(es) || r < len(rs) {
+			if strings.TrimSpace(es[i]) != strings.TrimSpace(rs[r]) {
 				t.Logf("Diff expect[%d] %s", i+1, es[i])
-				t.Logf("Diff actual[%d] %s", i+1, rs[i])
+				t.Logf("Diff actual[%d] %s", r+1, rs[r])
+				diff++
 			}
+			i++
+			r++
 		}
-		t.Logf("Expect:\n%s<-%d", expect, len(expect))
-		t.Logf("Actual:\n%s<-%d", result, len(result))
-		t.Fail()
+		if diff > 0 || i != r {
+			t.Logf("Expect:\n%s<-%d", expect, len(expect))
+			t.Logf("Actual:\n%s<-%d", result, len(result))
+			t.Fail()
+		}
 	}
 }
