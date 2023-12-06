@@ -22,10 +22,10 @@ func TestLine(t *testing.T) {
 	c.ChartID = "WejMYXCGcYNL"
 	c.Theme = "white"
 	c.SetChartOption(`{
-		"xAxis": { "type": "time", "data": value(0) },
+		"xAxis": { "type": "time", "data": value(0 ) },
 		"yAxis": { "type": "value"},
 		"series": [
-			{ "type": "line", "data": value(1) }
+			{ "type": "line", "data": value( 1) }
 		]
 	}`)
 	require.Equal(t, "application/json", c.ContentType())
@@ -59,7 +59,7 @@ func TestScatter(t *testing.T) {
 		"xAxis": { "type": "time", "data": value(0) },
 		"yAxis": { "type": "value"},
 		"series": [
-			{ "type": "scatter", "data": value(1) }
+			{ "type": "scatter", "data": value( 1	) }
 		]
 	}`)
 	require.Equal(t, "application/json", c.ContentType())

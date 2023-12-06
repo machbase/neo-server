@@ -159,15 +159,12 @@ func (c *Chart) Close() {
 	}
 	if c.option != "" {
 		for i, d := range c.data {
-			name := fmt.Sprintf("value(%d)", i)
-			if !strings.Contains(c.option, name) {
-				continue
-			}
 			jsonData, err := json.Marshal(d)
 			if err != nil {
 				jsonData = []byte(err.Error())
 			}
-			c.option = strings.ReplaceAll(c.option, name, string(jsonData))
+			exp := getValueRegexp(i)
+			c.option = exp.ReplaceAllString(c.option, string(jsonData))
 		}
 	}
 	if c.toJsonOutput {
@@ -230,3 +227,22 @@ func (c *Chart) Render() {
 var (
 	pat = regexp.MustCompile(`(__f__")|("__f__)|(__f__)`)
 )
+
+var valueRegexpCache = map[int]*regexp.Regexp{}
+
+func init() {
+	for i := 0; i < 20; i++ {
+		_ = getValueRegexp(i)
+	}
+}
+
+func getValueRegexp(idx int) *regexp.Regexp {
+	if r, ok := valueRegexpCache[idx]; !ok {
+		pattern := fmt.Sprintf(`(value\s*\(\s*%d\s*\))`, idx)
+		r = regexp.MustCompile(pattern)
+		valueRegexpCache[idx] = r
+		return r
+	} else {
+		return r
+	}
+}
