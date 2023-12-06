@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,117 +14,170 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLine(t *testing.T) {
-	buffer := &bytes.Buffer{}
-
-	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
-	c.SetChartJson(true)
-	c.ChartID = "WejMYXCGcYNL"
-	c.Theme = "white"
-	c.SetChartOption(`{
-		"xAxis": { "type": "time", "data": value(0 ) },
-		"yAxis": { "type": "value"},
-		"series": [
-			{ "type": "line", "data": value( 1) }
-		]
-	}`)
-	require.Equal(t, "application/json", c.ContentType())
-
-	tick := time.Unix(0, 1692670838086467000)
-
-	c.Open()
-	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	c.Close()
-
-	expect, err := os.ReadFile(filepath.Join("test", "test_line.json"))
-	if err != nil {
-		fmt.Println("Error", err.Error())
-		t.Fail()
+func HTMLEq(t *testing.T, expect string, actual string) bool {
+	matched := false
+	t.Helper()
+	re := strings.Split(actual, "\n")
+	ex := strings.Split(expect, "\n")
+	if len(re) == len(ex) {
+		for i := range re {
+			if strings.TrimSpace(re[i]) != strings.TrimSpace(ex[i]) {
+				t.Logf("Expect: %s", strings.TrimSpace(ex[i]))
+				t.Logf("Actual: %s", strings.TrimSpace(re[i]))
+				goto mismatched
+			}
+		}
+		matched = true
 	}
-	expectStr := string(expect)
-	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+mismatched:
+	return matched
+}
+
+func TestLine(t *testing.T) {
+	for _, output := range []string{"json", "html"} {
+		buffer := &bytes.Buffer{}
+		c := chart.NewChart()
+		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetChartJson(output == "json")
+		c.SetChartId("WejMYXCGcYNL")
+		c.SetTheme("white")
+		c.SetChartOption(`{
+			"xAxis": { "type": "time", "data": value(0 ) },
+			"yAxis": { "type": "value"},
+			"series": [
+				{ "type": "line", "data": value( 1) }
+			]
+		}`)
+		if output == "json" {
+			require.Equal(t, "application/json", c.ContentType())
+		} else {
+			require.Equal(t, "text/html", c.ContentType())
+		}
+
+		tick := time.Unix(0, 1692670838086467000)
+
+		c.Open()
+		c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+		c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+		c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+		c.Close()
+
+		expect, err := os.ReadFile(filepath.Join("test", fmt.Sprintf("test_line.%s", output)))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr := string(expect)
+		if output == "json" {
+			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+		} else {
+			if !HTMLEq(t, expectStr, buffer.String()) {
+				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
+			}
+		}
+	}
 }
 
 func TestScatter(t *testing.T) {
-	buffer := &bytes.Buffer{}
+	for _, output := range []string{"json", "html"} {
+		buffer := &bytes.Buffer{}
+		c := chart.NewChart()
+		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetChartJson(output == "json")
+		c.ChartID = "WejMYXCGcYNL"
+		c.Theme = "white"
+		c.SetChartOption(`{
+			"xAxis": { "type": "time", "data": value(0) },
+			"yAxis": { "type": "value"},
+			"series": [
+				{ "type": "scatter", "data": value( 1	) }
+			]
+		}`)
+		if output == "json" {
+			require.Equal(t, "application/json", c.ContentType())
+		} else {
+			require.Equal(t, "text/html", c.ContentType())
+		}
 
-	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
-	c.SetChartJson(true)
-	c.ChartID = "WejMYXCGcYNL"
-	c.Theme = "white"
-	c.SetChartOption(`{
-		"xAxis": { "type": "time", "data": value(0) },
-		"yAxis": { "type": "value"},
-		"series": [
-			{ "type": "scatter", "data": value( 1	) }
-		]
-	}`)
-	require.Equal(t, "application/json", c.ContentType())
+		tick := time.Unix(0, 1692670838086467000)
 
-	tick := time.Unix(0, 1692670838086467000)
+		c.Open()
+		c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+		c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+		c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+		c.Close()
 
-	c.Open()
-	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	c.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	c.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	c.Close()
-
-	expect, err := os.ReadFile(filepath.Join("test", "test_scatter.json"))
-	if err != nil {
-		fmt.Println("Error", err.Error())
-		t.Fail()
+		expect, err := os.ReadFile(filepath.Join("test", fmt.Sprintf("test_scatter.%s", output)))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr := string(expect)
+		if output == "json" {
+			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+		} else {
+			if !HTMLEq(t, expectStr, buffer.String()) {
+				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
+			}
+		}
 	}
-	expectStr := string(expect)
-	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 }
 
 func TestTangentialPolarBar(t *testing.T) {
-	buffer := &bytes.Buffer{}
+	for _, output := range []string{"json", "html"} {
+		buffer := &bytes.Buffer{}
+		c := chart.NewChart()
+		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetChartJson(output == "json")
+		c.ChartID = "WejMYXCGcYNL"
+		c.Theme = "dark"
+		c.SetChartOption(`{
+			"polar": { "radius": ["30", "80%"] },
+			"angleAxis": { "max": 4, "startAngle": 75 },
+			"radiusAxis": {
+				"type": "category",
+				"data": value(0)
+			},
+			"tooltip": {},
+			"series": [
+				{
+					"type":"bar",
+					"data": value(1),
+					"coordinateSystem": "polar",
+					"label": {
+						"show": true,
+						"position": "middle"
+					}	
+				}
+			]
+		}`)
+		if output == "json" {
+			require.Equal(t, "application/json", c.ContentType())
+		} else {
+			require.Equal(t, "text/html", c.ContentType())
+		}
 
-	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
-	c.SetChartJson(true)
-	c.ChartID = "WejMYXCGcYNL"
-	c.Theme = "dark"
-	c.SetChartOption(`{
-		"polar": { "radius": ["30", "80%"] },
-        "angleAxis": { "max": 4, "startAngle": 75 },
-        "radiusAxis": {
-            "type": "category",
-            "data": value(0)
-        },
-		"tooltip": {},
-		"series": [
-			{
-				"type":"bar",
-				"data": value(1),
-				"coordinateSystem": "polar",
-				"label": {
-					"show": true,
-					"position": "middle"
-				}	
+		c.Open()
+		c.AddRow([]any{"a", 2.0})
+		c.AddRow([]any{"b", 1.2})
+		c.AddRow([]any{"c", 2.4})
+		c.AddRow([]any{"d", 3.6})
+		c.Close()
+
+		expect, err := os.ReadFile(filepath.Join("test", fmt.Sprintf("tangential_polar_bar.%s", output)))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr := string(expect)
+		if output == "json" {
+			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+		} else {
+			if !HTMLEq(t, expectStr, buffer.String()) {
+				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
 			}
-		]
-	}`)
-	require.Equal(t, "application/json", c.ContentType())
-
-	c.Open()
-	c.AddRow([]any{"a", 2.0})
-	c.AddRow([]any{"b", 1.2})
-	c.AddRow([]any{"c", 2.4})
-	c.AddRow([]any{"d", 3.6})
-	c.Close()
-
-	expect, err := os.ReadFile(filepath.Join("test", "tangential_polar_bar.json"))
-	if err != nil {
-		fmt.Println("Error", err.Error())
-		t.Fail()
+		}
 	}
-	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
 }
 
 func TestAnscombeQuatet(t *testing.T) {
