@@ -14,6 +14,7 @@ import (
 
 	gocsv "encoding/csv"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
@@ -1265,4 +1266,172 @@ func (node *Node) fmWhen(cond bool, action any) any {
 		}
 	}
 	return node.Inflight()
+}
+
+func (node *Node) fmTranspose(args ...any) (any, error) {
+	var tr *Transposer
+	if v, ok := node.GetValue("transposer"); ok {
+		tr = v.(*Transposer)
+	} else {
+		tr = &Transposer{}
+		node.SetValue("transposer", tr)
+		if len(args) > 0 {
+			for _, arg := range args {
+				switch argv := arg.(type) {
+				case opts.Option:
+					argv(tr)
+				case float64:
+					tr.transposedIndexes = append(tr.transposedIndexes, int(argv))
+				default:
+					return nil, ErrArgs("TRANSPOSE", 0, fmt.Sprintf("unknown type of argument %T", argv))
+				}
+			}
+		}
+		if len(tr.fixedIndexes) > 0 && len(tr.transposedIndexes) > 0 {
+			return nil, ErrArgs("TRANSPOSE", 1, "cannot use 'fixed columns' and 'transposed columns' together")
+		}
+
+		cols := node.task.ResultColumns()
+		inflight := node.Inflight()
+		switch vals := inflight.Value().(type) {
+		case []any:
+			if tr.header {
+				for _, v := range vals {
+					switch str := v.(type) {
+					case string:
+						tr.headerNames = append(tr.headerNames, str)
+					case *string:
+						tr.headerNames = append(tr.headerNames, *str)
+					default:
+						tr.headerNames = append(tr.headerNames, fmt.Sprintf("%v", str))
+					}
+				}
+			}
+			fixed, _ := tr.fixedAndTransposed(vals)
+			newCols := spi.Columns{cols[0]}
+			for _, i := range fixed {
+				if len(tr.headerNames) > i {
+					cols[i+1].Name = tr.headerNames[i]
+				}
+				newCols = append(newCols, cols[i+1])
+			}
+			if tr.header {
+				newCols = append(newCols, &spi.Column{Name: "header"})
+			}
+			newCols = append(newCols, &spi.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
+			node.task.SetResultColumns(newCols)
+		case any:
+			newCols := spi.Columns{cols[0]}
+			if tr.header {
+				tr.headerNames = []string{fmt.Sprintf("%v", vals)}
+				newCols = append(newCols, &spi.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
+			}
+			newCols = append(newCols, &spi.Column{Name: "column1"})
+			node.task.SetResultColumns(newCols)
+		}
+		if tr.header {
+			return nil, nil
+		}
+	}
+
+	return tr.do(node)
+}
+
+func (node *Node) fmFixed(args ...int) opts.Option {
+	return func(obj any) {
+		if tr, ok := obj.(*Transposer); ok {
+			tr.fixedIndexes = append(tr.fixedIndexes, args...)
+		}
+	}
+}
+
+type Transposer struct {
+	fixedIndexes      []int
+	transposedIndexes []int
+	headerNames       []string
+	header            bool
+}
+
+func (tr *Transposer) SetHeader(flag bool) {
+	tr.header = flag
+}
+
+func (tr *Transposer) contains(list []int, i int) bool {
+	for _, v := range list {
+		if v == i {
+			return true
+		}
+	}
+	return false
+}
+
+func (tr *Transposer) fixedAndTransposed(values []any) ([]int, []int) {
+	fixed := []int{}
+	transposed := []int{}
+	if len(tr.transposedIndexes) == 0 && len(tr.fixedIndexes) == 0 {
+		for i := range values {
+			transposed = append(transposed, i)
+		}
+	} else if len(tr.transposedIndexes) > 0 {
+		for i := range values {
+			if tr.contains(tr.transposedIndexes, i) {
+				transposed = append(transposed, i)
+			} else {
+				fixed = append(fixed, i)
+			}
+		}
+	} else {
+		for i := range values {
+			if tr.contains(tr.fixedIndexes, i) {
+				fixed = append(fixed, i)
+			} else {
+				transposed = append(transposed, i)
+			}
+		}
+	}
+	return fixed, transposed
+}
+
+func (tr *Transposer) do(node *Node) (any, error) {
+	inflight := node.Inflight()
+	if inflight.Value() == nil {
+		return nil, nil
+	}
+	inflightValue := inflight.Value()
+
+	var values []any
+	if v, ok := inflightValue.([]any); !ok {
+		if tr.header && len(tr.headerNames) > 0 {
+			return NewRecord(inflight.Key(), []any{tr.headerNames[0], v}), nil
+		} else {
+			return inflight, nil
+		}
+	} else {
+		values = v
+	}
+
+	fixed, transposed := tr.fixedAndTransposed(values)
+
+	fixedVals := []any{}
+	for _, n := range fixed {
+		fixedVals = append(fixedVals, values[n])
+	}
+	if len(transposed) == 0 {
+		return NewRecord(inflight.Key(), fixedVals), nil
+	}
+	var arr []*Record
+	for _, n := range transposed {
+		newVals := make([]any, len(fixedVals))
+		copy(newVals, fixedVals)
+		if tr.header {
+			if n < len(tr.headerNames) {
+				newVals = append(newVals, tr.headerNames[n])
+			} else {
+				newVals = append(newVals, "no-header")
+			}
+		}
+		newVals = append(newVals, values[n])
+		arr = append(arr, NewRecord(inflight.Key(), newVals))
+	}
+	return arr, nil
 }

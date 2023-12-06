@@ -2284,6 +2284,9 @@ func TestLoader(t *testing.T) {
 		{"TestLoader_iris_setosa"},
 		{"TestLoader_group"},
 		{"TestLoader_simplex"},
+		{"transpose_all"},
+		{"transpose_all_hdr"},
+		{"transpose_hdr"},
 	}
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
@@ -2317,6 +2320,7 @@ func TestLoader(t *testing.T) {
 		require.NotNil(t, result)
 
 		if w.String() != expect {
+			t.Log("Test Case:", tt.name)
 			t.Logf("EXPECT:\n%s", expect)
 			t.Logf("ACTUAL:\n%s", w.String())
 			t.Fail()

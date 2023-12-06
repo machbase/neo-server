@@ -13,8 +13,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/chart/chart.go:254:1
-//	mods/codec/internal/chart/chart.go:70:1
+//	mods/codec/internal/chart/chart.go:88:1
 //	mods/codec/internal/echart/echart.go:103:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
@@ -120,7 +119,7 @@ func BriefCount(count int) Option {
 
 // SetChartId
 //
-//	mods/codec/internal/chart/chart.go:57:1
+//	mods/codec/internal/chart/chart.go:75:1
 type CanSetChartId interface {
 	SetChartId(id string)
 }
@@ -135,8 +134,7 @@ func ChartId(id string) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/chart/chart.go:334:1
-//	mods/codec/internal/chart/chart.go:74:1
+//	mods/codec/internal/chart/chart.go:92:1
 //	mods/codec/internal/echart/echart.go:183:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
@@ -152,7 +150,7 @@ func ChartJson(flag bool) Option {
 
 // SetChartOption
 //
-//	mods/codec/internal/chart/chart.go:78:1
+//	mods/codec/internal/chart/chart.go:96:1
 type CanSetChartOption interface {
 	SetChartOption(opt string)
 }
@@ -185,7 +183,6 @@ func ColumnTypes(types ...string) Option {
 // SetColumns
 //
 //	mods/codec/internal/box/box_encode.go:85:1
-//	mods/codec/internal/chart/chart.go:766:1
 //	mods/codec/internal/csv/csv_decode.go:69:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
 //	mods/codec/internal/echart/echart.go:289:1
@@ -205,7 +202,6 @@ func Columns(cols ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/chart/chart.go:305:1
 //	mods/codec/internal/echart/echart.go:154:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
@@ -231,21 +227,6 @@ func Delimiter(delimiter string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetDelimiter); ok {
 			_o.SetDelimiter(delimiter)
-		}
-	}
-}
-
-// SetGlobal
-//
-//	mods/codec/internal/chart/chart.go:362:1
-type CanSetGlobal interface {
-	SetGlobal(content string)
-}
-
-func Global(content string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetGlobal); ok {
-			_o.SetGlobal(content)
 		}
 	}
 }
@@ -364,8 +345,7 @@ func LineWidth(width float64) Option {
 
 // SetLogger
 //
-//	mods/codec/internal/chart/chart.go:229:1
-//	mods/codec/internal/chart/chart.go:49:1
+//	mods/codec/internal/chart/chart.go:67:1
 //	mods/codec/internal/echart/echart.go:78:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
@@ -395,66 +375,6 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 	}
 }
 
-// SetMarkAreaXAxis
-//
-//	mods/codec/internal/chart/chart.go:788:1
-type CanSetMarkAreaXAxis interface {
-	SetMarkAreaXAxis(seriesIdx int, from any, to any, args ...string)
-}
-
-func MarkAreaXAxis(seriesIdx int, from any, to any, args ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkAreaXAxis); ok {
-			_o.SetMarkAreaXAxis(seriesIdx, from, to, args...)
-		}
-	}
-}
-
-// SetMarkAreaYAxis
-//
-//	mods/codec/internal/chart/chart.go:820:1
-type CanSetMarkAreaYAxis interface {
-	SetMarkAreaYAxis(seriesIdx int, from any, to any, args ...string)
-}
-
-func MarkAreaYAxis(seriesIdx int, from any, to any, args ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkAreaYAxis); ok {
-			_o.SetMarkAreaYAxis(seriesIdx, from, to, args...)
-		}
-	}
-}
-
-// SetMarkLineStyle
-//
-//	mods/codec/internal/chart/chart.go:892:1
-type CanSetMarkLineStyle interface {
-	SetMarkLineStyle(seriesIdx int, content string)
-}
-
-func MarkLineStyle(seriesIdx int, content string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkLineStyle); ok {
-			_o.SetMarkLineStyle(seriesIdx, content)
-		}
-	}
-}
-
-// SetMarkLineXAxis
-//
-//	mods/codec/internal/chart/chart.go:842:1
-type CanSetMarkLineXAxis interface {
-	SetMarkLineXAxis(seriesIdx int, value any, args ...string)
-}
-
-func MarkLineXAxis(seriesIdx int, value any, args ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkLineXAxis); ok {
-			_o.SetMarkLineXAxis(seriesIdx, value, args...)
-		}
-	}
-}
-
 // SetMarkLineXAxisCoord
 //
 //	mods/codec/internal/echart/echart_2d.go:194:1
@@ -466,21 +386,6 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetMarkLineXAxisCoord); ok {
 			_o.SetMarkLineXAxisCoord(xaxis, name)
-		}
-	}
-}
-
-// SetMarkLineYAxis
-//
-//	mods/codec/internal/chart/chart.go:867:1
-type CanSetMarkLineYAxis interface {
-	SetMarkLineYAxis(seriesIdx int, value any, args ...string)
-}
-
-func MarkLineYAxis(seriesIdx int, value any, args ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarkLineYAxis); ok {
-			_o.SetMarkLineYAxis(seriesIdx, value, args...)
 		}
 	}
 }
@@ -518,8 +423,7 @@ func Opacity(opacity float64) Option {
 // SetOutputStream
 //
 //	mods/codec/internal/box/box_encode.go:45:1
-//	mods/codec/internal/chart/chart.go:233:1
-//	mods/codec/internal/chart/chart.go:53:1
+//	mods/codec/internal/chart/chart.go:71:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
 //	mods/codec/internal/json/json_encode.go:44:1
@@ -572,21 +476,6 @@ func Rownum(show bool) Option {
 	}
 }
 
-// SetSeries
-//
-//	mods/codec/internal/chart/chart.go:703:1
-type CanSetSeries interface {
-	SetSeries(args ...string)
-}
-
-func Series(args ...string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetSeries); ok {
-			_o.SetSeries(args...)
-		}
-	}
-}
-
 // SetSeriesLabels
 //
 //	mods/codec/internal/echart/echart.go:285:1
@@ -634,8 +523,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/chart/chart.go:237:1
-//	mods/codec/internal/chart/chart.go:61:1
+//	mods/codec/internal/chart/chart.go:79:1
 //	mods/codec/internal/echart/echart.go:86:1
 type CanSetSize interface {
 	SetSize(width string, height string)
@@ -666,7 +554,6 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/chart/chart.go:250:1
 //	mods/codec/internal/echart/echart.go:99:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
@@ -698,8 +585,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/chart/chart.go:242:1
-//	mods/codec/internal/chart/chart.go:66:1
+//	mods/codec/internal/chart/chart.go:84:1
 //	mods/codec/internal/echart/echart.go:91:1
 type CanSetTheme interface {
 	SetTheme(theme string)
@@ -757,7 +643,6 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/chart/chart.go:246:1
 //	mods/codec/internal/echart/echart.go:95:1
 type CanSetTitle interface {
 	SetTitle(title string)
@@ -773,7 +658,6 @@ func Title(title string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/chart/chart.go:292:1
 //	mods/codec/internal/echart/echart.go:141:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
@@ -789,7 +673,6 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/chart/chart.go:280:1
 //	mods/codec/internal/echart/echart.go:129:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
@@ -805,7 +688,6 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/chart/chart.go:258:1
 //	mods/codec/internal/echart/echart.go:107:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
@@ -851,7 +733,6 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/chart/chart.go:314:1
 //	mods/codec/internal/echart/echart.go:163:1
 type CanSetVisualMap interface {
 	SetVisualMap(min float64, max float64)
@@ -867,7 +748,6 @@ func VisualMap(min float64, max float64) Option {
 
 // SetVisualMapColor
 //
-//	mods/codec/internal/chart/chart.go:322:1
 //	mods/codec/internal/echart/echart.go:171:1
 type CanSetVisualMapColor interface {
 	SetVisualMapColor(min float64, max float64, colors ...string)
@@ -883,7 +763,6 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 
 // SetXAxis
 //
-//	mods/codec/internal/chart/chart.go:419:1
 //	mods/codec/internal/echart/echart_2d.go:67:1
 //	mods/codec/internal/echart/echart_3d.go:48:1
 type CanSetXAxis interface {
@@ -900,7 +779,6 @@ func XAxis(args ...any) Option {
 
 // SetYAxis
 //
-//	mods/codec/internal/chart/chart.go:454:1
 //	mods/codec/internal/echart/echart_2d.go:103:1
 //	mods/codec/internal/echart/echart_3d.go:81:1
 type CanSetYAxis interface {
