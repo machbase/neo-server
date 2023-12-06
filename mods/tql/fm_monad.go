@@ -113,6 +113,39 @@ func (node *Node) fmFilter(flag bool) *Record {
 	return node.Inflight()
 }
 
+func (node *Node) fmThrottle(tps float64) *Record {
+	var th *Throttle
+	if v, ok := node.GetValue("throttle"); ok {
+		th = v.(*Throttle)
+	} else {
+		dur := float64(time.Second) / tps
+		th = &Throttle{
+			minDuration: time.Duration(dur),
+			last:        time.Now(),
+		}
+		node.SetValue("throttle", th)
+	}
+	inflight := node.Inflight()
+	if inflight == nil {
+		return inflight
+	}
+
+	since := time.Since(th.last)
+	if since >= th.minDuration {
+		th.last = time.Now()
+		return inflight
+	} else {
+		time.Sleep(th.minDuration - since)
+		th.last = time.Now()
+		return inflight
+	}
+}
+
+type Throttle struct {
+	minDuration time.Duration
+	last        time.Time
+}
+
 func (node *Node) fmFlatten() any {
 	rec := node.Inflight()
 	if rec.IsArray() {

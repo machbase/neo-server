@@ -96,6 +96,7 @@ var FxDefinitions = []Definition{
 	{"do", defTask.fmDo},
 	{"args", defTask.fmArgsParam},
 	{"WHEN", defTask.fmWhen},
+	{"THROTTLE", defTask.fmThrottle},
 	// maps.dbsrc
 	{"// maps.dbsrc", nil},
 	{"from", defTask.fmFrom},
