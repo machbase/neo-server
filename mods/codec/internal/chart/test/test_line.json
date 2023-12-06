@@ -6,64 +6,26 @@
     },
     "theme": "white",
     "chartOption": {
-        "animation": false,
-        "color": [
-            "#5470c6",
-            "#91cc75",
-            "#fac858",
-            "#ee6666",
-            "#73c0de",
-            "#3ba272",
-            "#fc8452",
-            "#9a60b4",
-            "#ea7ccc"
-        ],
-        "legend": {
-            "show": true,
-            "type": ""
+        "xAxis": {
+            "type": "time",
+            "data": [
+                1692670838086,
+                1692670839086,
+                1692670840086
+            ]
+        },
+        "yAxis": {
+            "type": "value"
         },
         "series": [
             {
-                "name": "column[0]",
                 "type": "line",
-                "smooth": true,
-                "connectNulls": false,
-                "showSymbol": true,
-                "waveAnimation": false,
-                "symbolSize": 5,
-                "renderLabelForZeroData": false,
-                "selectedMode": false,
-                "animation": false,
                 "data": [
-                    [
-                        "2023-08-22T02:20:38.086467Z",
-                        0
-                    ],
-                    [
-                        "2023-08-22T02:20:39.086467Z",
-                        1
-                    ],
-                    [
-                        "2023-08-22T02:20:40.086467Z",
-                        2
-                    ]
+                    0,
+                    1,
+                    2
                 ]
             }
-        ],
-        "title": {},
-        "tooltip": {
-            "show": true,
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "cross",
-                "show": false
-            }
-        },
-        "xAxis": [
-            {}
-        ],
-        "yAxis": [
-            {}
         ]
     }
 }

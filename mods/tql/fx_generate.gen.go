@@ -193,7 +193,9 @@ func NewNode(task *Task) *Node {
 		"boxStyle":           x.gen_boxStyle,
 		"brief":              x.gen_brief,
 		"briefCount":         x.gen_briefCount,
+		"chartId":            x.gen_chartId,
 		"chartJson":          x.gen_chartJson,
+		"chartOption":        x.gen_chartOption,
 		"columnTypes":        x.gen_columnTypes,
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
@@ -2935,6 +2937,21 @@ func (x *Node) gen_briefCount(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_chartId
+//
+// syntax: chartId(string)
+func (x *Node) gen_chartId(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("chartId", 1, len(args))
+	}
+	p0, err := convString(args, 0, "chartId", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ChartId(p0)
+	return ret, nil
+}
+
 // gen_chartJson
 //
 // syntax: chartJson(bool)
@@ -2947,6 +2964,21 @@ func (x *Node) gen_chartJson(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.ChartJson(p0)
+	return ret, nil
+}
+
+// gen_chartOption
+//
+// syntax: chartOption(string)
+func (x *Node) gen_chartOption(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("chartOption", 1, len(args))
+	}
+	p0, err := convString(args, 0, "chartOption", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ChartOption(p0)
 	return ret, nil
 }
 

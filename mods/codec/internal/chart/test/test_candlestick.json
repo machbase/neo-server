@@ -6,73 +6,10 @@
     },
     "theme": "dark",
     "chartOption": {
-        "animation": false,
         "legend": {
-            "show": false,
-            "type": ""
+            "show": false
         },
         "series": [
-            {
-                "name": "column[0]",
-                "type": "candlestick",
-                "smooth": true,
-                "connectNulls": false,
-                "showSymbol": true,
-                "waveAnimation": false,
-                "symbolSize": 5,
-                "renderLabelForZeroData": false,
-                "selectedMode": false,
-                "animation": false,
-                "data": [
-                    {
-                        "name": "1508806800000000000",
-                        "value": [
-                            20,
-                            34,
-                            10,
-                            38
-                        ]
-                    },
-                    {
-                        "name": "1508893200000000000",
-                        "value": [
-                            40,
-                            35,
-                            30,
-                            50
-                        ]
-                    },
-                    {
-                        "name": "1508979600000000000",
-                        "value": [
-                            31,
-                            38,
-                            33,
-                            44
-                        ]
-                    },
-                    {
-                        "name": "1509066000000000000",
-                        "value": [
-                            38,
-                            15,
-                            5,
-                            42
-                        ]
-                    }
-                ]
-            }
-        ],
-        "title": {},
-        "tooltip": {
-            "show": true,
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "cross",
-                "show": false
-            }
-        },
-        "xAxis": [
             {
                 "type": "category",
                 "data": [
@@ -81,10 +18,36 @@
                     1508979600000000000,
                     1509066000000000000
                 ]
+            },
+            {
+                "type": "candlestick",
+                "data": [
+                    [
+                        20,
+                        34,
+                        10,
+                        38
+                    ],
+                    [
+                        40,
+                        35,
+                        30,
+                        50
+                    ],
+                    [
+                        31,
+                        38,
+                        33,
+                        44
+                    ],
+                    [
+                        38,
+                        15,
+                        5,
+                        42
+                    ]
+                ]
             }
-        ],
-        "yAxis": [
-            {}
         ]
     }
 }

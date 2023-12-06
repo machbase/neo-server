@@ -6,108 +6,63 @@
     },
     "theme": "dark",
     "chartOption": {
-        "animation": false,
-        "legend": {
-            "show": true,
-            "type": ""
+        "xAxis": {
+            "type": "time",
+            "data": [
+                1701059601000000000,
+                1701059602000000000,
+                1701059603000000000,
+                1701059604000000000,
+                1701059605000000000,
+                1701059606000000000,
+                1701059607000000000,
+                1701059608000000000,
+                1701059609000000000,
+                1701059610000000000,
+                1701059611000000000
+            ]
+        },
+        "yAxis": {
+            "type": "value"
         },
         "series": [
             {
-                "name": "column[0]",
                 "type": "line",
-                "smooth": true,
-                "connectNulls": false,
-                "showSymbol": true,
-                "color": "#5470C6",
-                "waveAnimation": false,
-                "symbolSize": 5,
-                "renderLabelForZeroData": false,
-                "selectedMode": false,
-                "animation": false,
                 "data": [
-                    [
-                        1701059601000000000,
-                        4.26
-                    ],
-                    [
-                        1701059602000000000,
-                        5.68
-                    ],
-                    [
-                        1701059603000000000,
-                        7.24
-                    ],
-                    [
-                        1701059604000000000,
-                        4.82
-                    ],
-                    [
-                        1701059605000000000,
-                        6.95
-                    ],
-                    [
-                        1701059606000000000,
-                        8.81
-                    ],
-                    [
-                        1701059607000000000,
-                        8.04
-                    ],
-                    [
-                        1701059608000000000,
-                        8.33
-                    ],
-                    [
-                        1701059609000000000,
-                        10.84
-                    ],
-                    [
-                        1701059610000000000,
-                        7.58
-                    ],
-                    [
-                        1701059611000000000,
-                        9.96
-                    ]
+                    4.26,
+                    5.68,
+                    7.24,
+                    4.82,
+                    6.95,
+                    8.81,
+                    8.04,
+                    8.33,
+                    10.84,
+                    7.58,
+                    9.96
                 ],
-                "markLine": {
-                    "data": [
-                        {
-                            "itemStyle": {
-                                "color": "#ff0"
-                            },
-                            "xAxis": 1701059605000
+                "color": "#5470C6",
+                "markLine": [
+                    {
+                        "data": {
+                            "name": "xmark",
+                            "xAxis": 1701059605
                         },
-                        {
-                            "itemStyle": {
-                                "color": "#ff0"
-                            },
-                            "yAxis": 6
+                        "itemStyle": {
+                            "color": "#ff0"
                         }
-                    ],
-                    "symbol": [
-                        "none",
-                        "none"
-                    ]
-                }
+                    },
+                    {
+                        "data": {
+                            "name": "ymark",
+                            "yAxis": 6.0
+                        },
+                        "itemStyle": {
+                            "color": "#ff0"
+                        }
+                    }
+                ]
             }
-        ],
-        "title": {},
-        "tooltip": {
-            "show": true,
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "cross",
-                "show": false
-            }
-        },
-        "xAxis": [
-            {
-                "type": "time"
-            }
-        ],
-        "yAxis": [
-            {}
         ]
     }
 }
