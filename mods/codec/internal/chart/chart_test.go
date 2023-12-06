@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,20 +16,20 @@ import (
 func TestLine(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "white"
-	`)
-	c.SetSeries(`
-		{ "type": "time" },
-		{ "type": "line" }
-	`)
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "white"
+	c.SetChartOption(`{
+		"xAxis": { "type": "time", "data": value(0) },
+		"yAxis": { "type": "value"},
+		"series": [
+			{ "type": "line", "data": value(1) }
+		]
+	}`)
 	require.Equal(t, "application/json", c.ContentType())
 
-	os.Setenv("TZ", "UTC")
 	tick := time.Unix(0, 1692670838086467000)
 
 	c.Open()
@@ -46,31 +44,26 @@ func TestLine(t *testing.T) {
 		t.Fail()
 	}
 	expectStr := string(expect)
-	if runtime.GOOS == "windows" {
-		// TODO: windows doesn't work with os.Setenv("TZ", "UTC")
-		expectStr = strings.ReplaceAll(expectStr, "08-22T02", "08-22T11")
-		expectStr = strings.ReplaceAll(expectStr, "Z\"", "+09:00\"")
-	}
-	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched", buffer.String())
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 }
 
 func TestScatter(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "white"
-	`)
-	c.SetSeries(
-		`{ "type": "time" }`,
-		`{ "type": "scatter" }`,
-	)
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "white"
+	c.SetChartOption(`{
+		"xAxis": { "type": "time", "data": value(0) },
+		"yAxis": { "type": "value"},
+		"series": [
+			{ "type": "scatter", "data": value(1) }
+		]
+	}`)
 	require.Equal(t, "application/json", c.ContentType())
 
-	os.Setenv("TZ", "UTC")
 	tick := time.Unix(0, 1692670838086467000)
 
 	c.Open()
@@ -85,39 +78,38 @@ func TestScatter(t *testing.T) {
 		t.Fail()
 	}
 	expectStr := string(expect)
-	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched", buffer.String())
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 }
 
 func TestTangentialPolarBar(t *testing.T) {
 	buffer := &bytes.Buffer{}
 
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "dark",
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "dark"
+	c.SetChartOption(`{
 		"polar": { "radius": ["30", "80%"] },
         "angleAxis": { "max": 4, "startAngle": 75 },
         "radiusAxis": {
             "type": "category",
-            "data": ["a", "b", "c", "d"]
+            "data": value(0)
         },
-		"tooltip": {}
-	`)
-	c.SetSeries(
-		`{	"type": "category"}`,
-		`{	"type": "bar",
-			"coordinateSystem": "polar",
-            "label": {
-				"show": true,
-				"position": "middle"
+		"tooltip": {},
+		"series": [
+			{
+				"type":"bar",
+				"data": value(1),
+				"coordinateSystem": "polar",
+				"label": {
+					"show": true,
+					"position": "middle"
+				}	
 			}
-        }`,
-	)
+		]
+	}`)
 	require.Equal(t, "application/json", c.ContentType())
-
-	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{"a", 2.0})
@@ -136,80 +128,86 @@ func TestTangentialPolarBar(t *testing.T) {
 
 func TestAnscombeQuatet(t *testing.T) {
 	buffer := &bytes.Buffer{}
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "dark",
-        "legend": {"show": false},
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "dark"
+	c.SetChartOption(`{
+		"legend": {"show": false},
         "grid": [
             { "left":  "7%", "top": "7%", "width": "38%", "height": "38%" },
             { "right": "7%", "top": "7%", "width": "38%", "height": "38%" },
             { "left":  "7%", "bottom": "7%", "width": "38%", "height": "38%" },
             { "right": "7%", "bottom": "7%", "width": "38%", "height": "38%" }
-        ]`)
-	c.SetXAxis(
-		` "type":"time", "gridIndex": 0, "min": 1701059598000, "max": 1701059614000 `,
-		` "type":"time", "gridIndex": 1, "min": 1701059598000, "max": 1701059614000 `,
-		` "type":"time", "gridIndex": 2, "min": 1701059598000, "max": 1701059614000 `,
-		` "type":"time", "gridIndex": 3, "min": 1701059598000, "max": 1701059614000 `)
-	c.SetYAxis(
-		` "gridIndex": 0, "min": 0, "max": 15 `,
-		` "gridIndex": 1, "min": 0, "max": 15 `,
-		` "gridIndex": 2, "min": 0, "max": 15 `,
-		` "gridIndex": 3, "min": 0, "max": 15 `)
-	c.SetSeries(
-		`   "type": "time" `,
-		`   "name": "I",
-            "type": "scatter",
-            "xAxisIndex": 0,
-            "yAxisIndex": 0,
-            "markLine": {
-                "data": [
-                    [ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
-                ]
-            }
-        `,
-		`   "name": "II",
-            "type": "scatter",
-            "xAxisIndex": 1,
-            "yAxisIndex": 1,
-            "markLine": {
-                "data": [
-                    [ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
-                ]
-            }
-        `,
-		`
-            "name": "III",
-            "type": "scatter",
-            "xAxisIndex": 2,
-            "yAxisIndex": 2,
-            "markLine": {
-                "data": [
-                    [ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
-                ]
-            }
-        `,
-		`
-            "name": "IV",
-            "type": "scatter",
-            "xAxisIndex": 3,
-            "yAxisIndex": 3,
-            "markLine": {
-                "data": [
-                    [
-                        {"coord": [1701059598000, 3]},
-                        {"coord": [1701059614000, 13]}
-                    ]
-                ]
-            }
-        `)
-
+        ],
+		"xAxis": [
+			{ "type": "time", "gridIndex": 0, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 1, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 2, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 3, "data": value(0), "min": 1701059598000, "max": 1701059614000 }
+		],
+		"yAxis": [
+			{ "type": "value", "gridIndex": 0, "min": 0, "max": 15 },
+			{ "type": "value", "gridIndex": 1, "min": 0, "max": 15 },
+			{ "type": "value", "gridIndex": 2, "min": 0, "max": 15 },
+			{ "type": "value", "gridIndex": 3, "min": 0, "max": 15 }
+		],
+		"series": [
+			{
+				"name": "I",
+				"type": "scatter",
+				"xAxisIndex": 0,
+				"yAxisIndex": 0,
+				"data": value(1),
+				"markLine": {
+					"data": [
+						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
+					]
+				}
+			},
+			{
+				"name": "II",
+				"type": "scatter",
+				"xAxisIndex": 1,
+				"yAxisIndex": 1,
+				"data": value(2),
+				"markLine": {
+					"data": [
+						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
+					]
+				}	
+			},
+			{
+				"name": "III",
+				"type": "scatter",
+				"xAxisIndex": 2,
+				"yAxisIndex": 2,
+				"data": value(3),
+				"markLine": {
+					"data": [
+						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
+					]
+				}	
+			},
+			{
+				"name": "IV",
+				"type": "scatter",
+				"xAxisIndex": 3,
+				"yAxisIndex": 3,
+				"data": value(4),
+				"markLine": {
+					"data": [
+						[
+							{"coord": [1701059598000, 3]},
+							{"coord": [1701059614000, 13]}
+						]
+					]
+				}	
+			}
+		]
+	}`)
 	require.Equal(t, "application/json", c.ContentType())
-
-	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{1701059601000000000, 4.26, 3.1, 5.39, 12.5})
@@ -235,21 +233,36 @@ func TestAnscombeQuatet(t *testing.T) {
 
 func TestMarkLine(t *testing.T) {
 	buffer := &bytes.Buffer{}
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "dark"`)
-	c.SetSeries(`"type": "time"`)
-	c.SetSeries(`"type": "line", "color":"#5470C6"`)
-
-	c.SetMarkLineXAxis(0, time.Unix(1701059605, 0), `{"itemStyle":{"color":"#ff0"}}`)
-	c.SetMarkLineYAxis(0, 6.0, `{"itemStyle":{"color":"#ff0"}}`)
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "dark"
+	c.SetChartOption(`{
+		"xAxis": { "type": "time", "data": value(0) },
+		"yAxis": { "type": "value" },
+		"series": [{ 
+			"type": "line",
+			"data": value(1),
+			"color":"#5470C6",
+			"markLine": [
+				{
+					"data": { "name": "xmark", "xAxis": 1701059605 },
+					"itemStyle": {
+						"color":"#ff0"
+					}
+				},
+				{
+					"data": { "name": "ymark", "yAxis": 6.0 },
+					"itemStyle": {
+						"color":"#ff0"
+					}
+				}
+			]
+		}]
+	}`)
 
 	require.Equal(t, "application/json", c.ContentType())
-
-	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{1701059601000000000, 4.26})
@@ -275,20 +288,25 @@ func TestMarkLine(t *testing.T) {
 
 func TestCandleStick(t *testing.T) {
 	buffer := &bytes.Buffer{}
-	c := chart.NewRectChart()
+	c := chart.NewChart()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetChartJson(true)
-	c.SetGlobal(`
-		"chartId": "WejMYXCGcYNL",
-		"theme": "dark",
-		"legend":{"show": false}
-	`)
-	c.SetSeries(`"type": "category"`)
-	c.SetSeries(`"type": "candlestick"`)
-
+	c.ChartID = "WejMYXCGcYNL"
+	c.Theme = "dark"
+	c.SetChartOption(`{
+		"legend":{"show": false},
+		"series":[
+			{
+				"type": "category",
+				"data": value(0)
+			},
+			{
+				"type": "candlestick",
+				"data": value(1)
+			}
+		]
+	}`)
 	require.Equal(t, "application/json", c.ContentType())
-
-	os.Setenv("TZ", "UTC")
 
 	c.Open()
 	c.AddRow([]any{1508806800_000000000, []any{20, 34, 10, 38}})
