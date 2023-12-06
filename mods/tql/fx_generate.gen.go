@@ -80,6 +80,8 @@ func NewNode(task *Task) *Node {
 		"POPVALUE":   x.gen_POPVALUE,
 		"PUSHVALUE":  x.gen_PUSHVALUE,
 		"MAPVALUE":   x.gen_MAPVALUE,
+		"TRANSPOSE":  x.gen_TRANSPOSE,
+		"fixed":      x.gen_fixed,
 		"TIMEWINDOW": x.gen_TIMEWINDOW,
 		"SCRIPT":     x.gen_SCRIPT,
 		"movavg":     x.gen_movavg,
@@ -200,7 +202,6 @@ func NewNode(task *Task) *Node {
 		"columns":            x.gen_columns,
 		"dataZoom":           x.gen_dataZoom,
 		"delimiter":          x.gen_delimiter,
-		"global":             x.gen_global,
 		"globalOptions":      x.gen_globalOptions,
 		"gridSize":           x.gen_gridSize,
 		"header":             x.gen_header,
@@ -210,18 +211,12 @@ func NewNode(task *Task) *Node {
 		"lineWidth":          x.gen_lineWidth,
 		"logger":             x.gen_logger,
 		"markAreaNameCoord":  x.gen_markAreaNameCoord,
-		"markAreaXAxis":      x.gen_markAreaXAxis,
-		"markAreaYAxis":      x.gen_markAreaYAxis,
-		"markLineStyle":      x.gen_markLineStyle,
-		"markLineXAxis":      x.gen_markLineXAxis,
 		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
-		"markLineYAxis":      x.gen_markLineYAxis,
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
-		"series":             x.gen_series,
 		"seriesLabels":       x.gen_seriesLabels,
 		"seriesOptions":      x.gen_seriesOptions,
 		"showGrid":           x.gen_showGrid,
@@ -1150,6 +1145,37 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	return x.fmMapValue(p0, p1, p2...)
+}
+
+// gen_TRANSPOSE
+//
+// syntax: TRANSPOSE(...interface {})
+func (x *Node) gen_TRANSPOSE(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "TRANSPOSE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmTranspose(p0...)
+}
+
+// gen_fixed
+//
+// syntax: fixed(...int)
+func (x *Node) gen_fixed(args ...any) (any, error) {
+	p0 := []int{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convInt(args, n, "fixed", "...int")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmFixed(p0...)
+	return ret, nil
 }
 
 // gen_TIMEWINDOW
@@ -3052,21 +3078,6 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_global
-//
-// syntax: global(string)
-func (x *Node) gen_global(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("global", 1, len(args))
-	}
-	p0, err := convString(args, 0, "global", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.Global(p0)
-	return ret, nil
-}
-
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -3219,114 +3230,6 @@ func (x *Node) gen_markAreaNameCoord(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_markAreaXAxis
-//
-// syntax: markAreaXAxis(int, , , ...string)
-func (x *Node) gen_markAreaXAxis(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("markAreaXAxis", 3, len(args))
-	}
-	p0, err := convInt(args, 0, "markAreaXAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "markAreaXAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "markAreaXAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3 := []string{}
-	for n := 3; n < len(args); n++ {
-		argv, err := convString(args, n, "markAreaXAxis", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p3 = append(p3, argv)
-	}
-	ret := opts.MarkAreaXAxis(p0, p1, p2, p3...)
-	return ret, nil
-}
-
-// gen_markAreaYAxis
-//
-// syntax: markAreaYAxis(int, , , ...string)
-func (x *Node) gen_markAreaYAxis(args ...any) (any, error) {
-	if len(args) < 3 {
-		return nil, ErrInvalidNumOfArgs("markAreaYAxis", 3, len(args))
-	}
-	p0, err := convInt(args, 0, "markAreaYAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "markAreaYAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convAny(args, 2, "markAreaYAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p3 := []string{}
-	for n := 3; n < len(args); n++ {
-		argv, err := convString(args, n, "markAreaYAxis", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p3 = append(p3, argv)
-	}
-	ret := opts.MarkAreaYAxis(p0, p1, p2, p3...)
-	return ret, nil
-}
-
-// gen_markLineStyle
-//
-// syntax: markLineStyle(int, string)
-func (x *Node) gen_markLineStyle(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("markLineStyle", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "markLineStyle", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "markLineStyle", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.MarkLineStyle(p0, p1)
-	return ret, nil
-}
-
-// gen_markLineXAxis
-//
-// syntax: markLineXAxis(int, , ...string)
-func (x *Node) gen_markLineXAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("markLineXAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "markLineXAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "markLineXAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "markLineXAxis", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
-	}
-	ret := opts.MarkLineXAxis(p0, p1, p2...)
-	return ret, nil
-}
-
 // gen_markLineXAxisCoord
 //
 // syntax: markLineXAxisCoord(, string)
@@ -3343,33 +3246,6 @@ func (x *Node) gen_markLineXAxisCoord(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.MarkLineXAxisCoord(p0, p1)
-	return ret, nil
-}
-
-// gen_markLineYAxis
-//
-// syntax: markLineYAxis(int, , ...string)
-func (x *Node) gen_markLineYAxis(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("markLineYAxis", 2, len(args))
-	}
-	p0, err := convInt(args, 0, "markLineYAxis", "int")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convAny(args, 1, "markLineYAxis", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []string{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convString(args, n, "markLineYAxis", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
-	}
-	ret := opts.MarkLineYAxis(p0, p1, p2...)
 	return ret, nil
 }
 
@@ -3449,22 +3325,6 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Rownum(p0)
-	return ret, nil
-}
-
-// gen_series
-//
-// syntax: series(...string)
-func (x *Node) gen_series(args ...any) (any, error) {
-	p0 := []string{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convString(args, n, "series", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	ret := opts.Series(p0...)
 	return ret, nil
 }
 

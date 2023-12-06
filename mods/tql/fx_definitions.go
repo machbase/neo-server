@@ -82,6 +82,8 @@ var FxDefinitions = []Definition{
 	{"POPVALUE", defTask.fmPopValue},
 	{"PUSHVALUE", defTask.fmPushValue},
 	{"MAPVALUE", defTask.fmMapValue},
+	{"TRANSPOSE", defTask.fmTranspose},
+	{"fixed", defTask.fmFixed},
 	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
 	{"movavg", defTask.fmMovAvg},
