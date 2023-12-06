@@ -94,6 +94,7 @@ func NewNode(task *Task) *Node {
 		"do":         x.gen_do,
 		"args":       x.gen_args,
 		"WHEN":       x.gen_WHEN,
+		"THROTTLE":   x.gen_THROTTLE,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -1402,6 +1403,21 @@ func (x *Node) gen_WHEN(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := x.fmWhen(p0, p1)
+	return ret, nil
+}
+
+// gen_THROTTLE
+//
+// syntax: THROTTLE(float64)
+func (x *Node) gen_THROTTLE(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("THROTTLE", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "THROTTLE", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmThrottle(p0)
 	return ret, nil
 }
 

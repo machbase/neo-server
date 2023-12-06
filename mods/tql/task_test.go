@@ -1054,6 +1054,22 @@ func TestMapValue(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestThrottle(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		"FAKE( linspace(1, 10, 10))",
+		"THROTTLE( 10 )",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+	}
+	t1 := time.Now()
+	runTest(t, codeLines, resultLines)
+	t2 := time.Now()
+	require.GreaterOrEqual(t, t2.Sub(t1), 1*time.Second, "it should take 1 second or longer")
+}
+
 type TestRoundTripFunc func(req *http.Request) *http.Response
 
 func (f TestRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
