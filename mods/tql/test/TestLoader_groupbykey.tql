@@ -10,24 +10,20 @@ FAKE( json({
     ["c", 9]
 }) )
 
-POPKEY(0)
-PUSHVALUE(0, value(0), "rms")   // 7
-PUSHVALUE(0, value(0), "rss")   // 6
-PUSHVALUE(0, value(0), "last")  // 5
-PUSHVALUE(0, value(0), "first") // 4
-PUSHVALUE(0, value(0), "max")   // 3
-PUSHVALUE(0, value(0), "min")   // 2
-PUSHVALUE(0, value(0), "avg")   // 1
-PUSHVALUE(0, value(0), "sum")   // 0
-MAPVALUE(8, value(8), "mean")    // 8
-MAPVALUE(99, value(8), "median") // 9
-MAPVALUE(99, value(8), "median-interpolated") // 10
-MAPVALUE(99, value(8), "stddev") // 11
-MAPVALUE(99, value(8), "stderr") // 12
-MAPVALUE(99, value(8), "entropy") // 13
-GROUPBYKEY(
-    "sum", "avg", "min", "max", "first", "last", "rss", "rms",
-    "mean", "median", "median-interpolated", "stddev", "stderr", "entropy"
+GROUP( by(value(0), "name"),
+    sum(value(1), "SUM"),
+    avg(value(1), "AVG"),
+    min(value(1), "MIN"),
+    max(value(1), "MAX"),
+    first(value(1), "1st"),
+    last(value(1), "LAST"),
+    rss(value(1), "RSS"),
+    rms(value(1), "RMS"),
+    mean(value(1), "MEAN"),
+    median(value(1), "MEDIAN"),
+    medianInterpolated(value(1), "MEDIAN(INTERP)"),
+    stddev(value(1), "STDDEV"),
+    stderr(value(1), "STDERR"),
+    entropy(value(1), "ENTROPY")
 )
-PUSHKEY("")
 CSV( header(true), precision(2) )

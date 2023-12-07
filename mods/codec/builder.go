@@ -38,6 +38,7 @@ type RowsEncoder interface {
 }
 
 var (
+	_ RowsEncoder = &chart.Chart{}
 	_ RowsEncoder = &box.Exporter{}
 	_ RowsEncoder = &csv.Exporter{}
 	_ RowsEncoder = &markdown.Exporter{}
@@ -65,7 +66,7 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case HTML:
 		ret = html.NewEncoder()
 	case ECHART:
-		ret = chart.NewRectChart()
+		ret = chart.NewChart()
 	case ECHART_LINE:
 		ret = echart.NewRectChart(echart.LINE)
 	case ECHART_SCATTER:

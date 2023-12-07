@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/mods/nums/opensimplex"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -334,6 +335,21 @@ func (x *Node) fmFreq(frequency float64, amplitude float64, args ...float64) *fr
 		ret.phase = args[1]
 	}
 	return ret
+}
+
+func (node *Node) fmSimplex(seed int64, x float64, args ...float64) (float64, error) {
+	var gen *opensimplex.Generator
+	if v, ok := node.GetValue("simplex_generator"); ok {
+		gen = v.(*opensimplex.Generator)
+	} else {
+		gen = opensimplex.New(seed)
+		node.SetValue("simplex_generator", gen)
+	}
+	dim := []float64{x}
+	for i := 0; i < 4 && i < len(args); i++ {
+		dim = append(dim, args[i])
+	}
+	return gen.Eval(dim...), nil
 }
 
 func (x *Node) fmRandom() float64 {

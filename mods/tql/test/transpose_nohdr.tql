@@ -1,0 +1,16 @@
+FAKE( csv(strTrimSpace(`
+name,time,v1,tail,v2,v3
+N001,1508806800,0.1,aa,0.2,0.3
+N002,1508806900,0.4,bb,0.5,0.6
+N003,1508807000,0.7,cc,0.8,0.9
+`)))
+
+DROP(1)
+// TRANSPOSE( fixed(0, 1, 3) )
+// equiv. with
+TRANSPOSE( 2, 4, 5 )
+
+MAPVALUE(1, parseTime(value(1), "s", "Local"))
+MAPVALUE(3, parseFloat(value(3)))
+
+CSV( header(true), timeformat("s") )

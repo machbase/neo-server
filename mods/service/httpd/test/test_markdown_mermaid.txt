@@ -1,0 +1,16 @@
+<div><h1>Flowchart</h1>
+<h2>Node shapes</h2>
+<pre class="mermaid">flowchart LR
+  id1(&#34;(Text box)&#34;) --&gt; id2([&#34;[Text box]&#34;]) 
+  id2 --&gt; id3[[&#34;[[subroutine]]&#34;]]
+  id3 --&gt; id4[(&#34;[(database)]&#34;)]
+  id4 --&gt; id5((&#34;((circle))&#34;))
+
+  id6&gt;&#34;&gt;asymmetric]&#34;] --&gt; id7{&#34;{rhombus}&#34;}
+  id7 --&gt; id8{{&#34;{{hexagon}}&#34;}}
+  id8 --&gt; id9[/&#34;[/paralleogram/]&#34;/]
+
+  idA[\&#34;[\parallegram alt\]&#34;\] --&gt; idB[/&#34;[/Trapezoid\]&#34;\]
+  idB --&gt;idC[\&#34;[\Trapezoid alt/]&#34;/]
+  idC --&gt;idD(((&#34;(((double circle)))&#34;)))
+</pre></div>

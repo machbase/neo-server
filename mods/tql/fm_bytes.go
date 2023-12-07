@@ -9,9 +9,19 @@ import (
 	"os"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/util/charset"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	spi "github.com/machbase/neo-spi"
 )
+
+func (x *Node) fmCharset(charsetName string) (opts.Option, error) {
+	cs, ok := charset.Encoding(charsetName)
+	if !ok || cs == nil {
+		return nil, fmt.Errorf("invalid charset %q", charsetName)
+	}
+	return opts.CharsetEncoding(cs), nil
+}
 
 // STRING(payload() | 'string' | file('path') [, separator()])
 func (x *Node) fmString(origin any, args ...any) (any, error) {

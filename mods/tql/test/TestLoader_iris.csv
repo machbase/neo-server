@@ -1,3 +1,4 @@
-Iris-setosa,4.300,4.400,1.500,0.200
-Iris-versicolor,4.900,3.400,4.300,1.300
-Iris-virginica,4.900,3.800,5.500,2.000
+species,MIN(sepal length),MAX(sepal width),MEDIAN(petal length),AVG(petal width)
+Iris-setosa,4.300,4.400,1.500,0.244
+Iris-versicolor,4.900,3.400,4.300,1.326
+Iris-virginica,4.900,3.800,5.500,2.026

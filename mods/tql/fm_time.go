@@ -192,22 +192,8 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 			node.task.LogError("TIMEWINDOW", err.Error())
 			return ErrArgs("TIMEWINDOW", 3, err.Error())
 		}
-		node.SetFeedEOF(true)
+		node.SetEOF(tw.onEOF)
 		node.SetValue("timewindow", tw)
-	}
-
-	if node.Inflight().IsEOF() {
-		if tw.curWindow.IsZero() {
-			// It means there were no data in the given time range (from ~ until).
-			// So fill the result with null values.
-			tw.Fill(node, tw.tsFrom, tw.tsUntil)
-			return nil
-		}
-		// flush remain values
-		tw.Push(node, tw.curWindow)
-		tw.Fill(node, tw.curWindow, tw.tsUntil)
-		tw.flushBuffer(node)
-		return nil
 	}
 
 	var values []any
@@ -290,6 +276,19 @@ func NewTimeWindow() *TimeWindow {
 		curWindow:  time.Time{},
 		bufferSize: 10,
 	}
+}
+
+func (tw *TimeWindow) onEOF(node *Node) {
+	if tw.curWindow.IsZero() {
+		// It means there were no data in the given time range (from ~ until).
+		// So fill the result with null values.
+		tw.Fill(node, tw.tsFrom, tw.tsUntil)
+		return
+	}
+	// flush remain values
+	tw.Push(node, tw.curWindow)
+	tw.Fill(node, tw.curWindow, tw.tsUntil)
+	tw.flushBuffer(node)
 }
 
 func (tw *TimeWindow) SetColumns(columns []string) error {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -81,4 +82,49 @@ func TestMarkdown2(t *testing.T) {
 	require.Equal(t, 200, w.Result().StatusCode)
 	require.Equal(t, "application/xhtml+xml", w.Header().Get("Content-Type"))
 	require.Equal(t, strings.Join(expect, "\n"), w.Body.String())
+}
+
+func TestMarkdownMermaid(t *testing.T) {
+	w := httptest.NewRecorder()
+	s, ctx, engine := NewMockServer(w)
+	defer s.Shutdown()
+
+	err := s.Login("sys", "manager")
+	require.Nil(t, err)
+
+	buf, _ := os.ReadFile("test/test_markdown_mermaid.md")
+	reader := bytes.NewBuffer(buf)
+
+	buf, _ = os.ReadFile("test/test_markdown_mermaid.txt")
+	expect := string(buf)
+
+	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/md", reader)
+	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
+	refer := base64.StdEncoding.EncodeToString([]byte("http://127.0.0.1:5654/web/api/tql/语言/文檔.wrk"))
+	ctx.Request.Header.Set("X-Referer", refer)
+	engine.HandleContext(ctx)
+	require.Equal(t, 200, w.Result().StatusCode)
+	require.Equal(t, "application/xhtml+xml", w.Header().Get("Content-Type"))
+	result := w.Body.String()
+	if expect != w.Body.String() {
+		es := strings.Split(expect, "\n")
+		rs := strings.Split(result, "\n")
+		i := 0
+		r := 0
+		diff := 0
+		for i < len(es) || r < len(rs) {
+			if strings.TrimSpace(es[i]) != strings.TrimSpace(rs[r]) {
+				t.Logf("Diff expect[%d] %s", i+1, es[i])
+				t.Logf("Diff actual[%d] %s", r+1, rs[r])
+				diff++
+			}
+			i++
+			r++
+		}
+		if diff > 0 || i != r {
+			t.Logf("Expect:\n%s<-%d", expect, len(expect))
+			t.Logf("Actual:\n%s<-%d", result, len(result))
+			t.Fail()
+		}
+	}
 }

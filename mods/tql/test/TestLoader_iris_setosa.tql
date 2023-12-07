@@ -1,0 +1,10 @@
+CSV( file("/iris.data") )
+FILTER( strToUpper(value(4)) == "IRIS-SETOSA")
+GROUP( by(value(4)), 
+    min(value(0), "Min"),
+    median(value(0), "Median"),
+    avg(value(0), "Avg"),
+    max(value(0), "Max"),
+    stddev(value(0), "StdDev.")
+)    
+CSV(heading(true), precision(2))

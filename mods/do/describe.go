@@ -8,12 +8,28 @@ import (
 	spi "github.com/machbase/neo-spi"
 )
 
+func tokenizeFullTableName(name string) (string, string, string) {
+	tableName := strings.ToUpper(name)
+	userName := "SYS"
+	dbName := "MACHBASEDB"
+	toks := strings.Split(tableName, ".")
+	if len(toks) == 2 {
+		userName = toks[0]
+		tableName = toks[1]
+	} else if len(toks) == 3 {
+		dbName = toks[0]
+		userName = toks[1]
+		tableName = toks[2]
+	}
+	return dbName, userName, tableName
+}
+
 // Describe retrieves the result of 'desc table'.
 //
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
 func Describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
-	tableName := strings.ToUpper(name)
+	_, _, tableName := tokenizeFullTableName(name)
 	if strings.HasPrefix(tableName, "V$") {
 		return describe_mv(ctx, conn, name, includeHiddenColumns)
 	} else if strings.HasPrefix(tableName, "M$") {
@@ -29,19 +45,8 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	var colCount int
 	var colType int
 
-	tableName := strings.ToUpper(name)
-	userName := "SYS"
-	dbName := "MACHBASEDB"
+	dbName, userName, tableName := tokenizeFullTableName(name)
 	dbId := -1
-	toks := strings.Split(tableName, ".")
-	if len(toks) == 2 {
-		userName = toks[0]
-		tableName = toks[1]
-	} else if len(toks) == 3 {
-		dbName = toks[0]
-		userName = toks[1]
-		tableName = toks[2]
-	}
 
 	if dbName != "" && dbName != "MACHBASEDB" {
 		row := conn.QueryRow(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
@@ -139,24 +144,22 @@ func describe_mv(ctx context.Context, conn spi.Conn, name string, includeHiddenC
 	var tableType int
 	var colCount int
 	var colType int
-	tableName := strings.ToUpper(name)
+
+	d.Database, d.User, d.Name = tokenizeFullTableName(name)
 	tablesTable := "M$SYS_TABLES"
 	columnsTable := "M$SYS_COLUMNS"
-	if strings.HasPrefix(tableName, "V$") {
+	if strings.HasPrefix(d.Name, "V$") {
 		tablesTable = "V$TABLES"
 		columnsTable = "V$COLUMNS"
-	} else if strings.HasPrefix(tableName, "M$") {
+	} else if strings.HasPrefix(d.Name, "M$") {
 		tablesTable = "M$TABLES"
 		columnsTable = "M$COLUMNS"
 	}
-	r := conn.QueryRow(ctx, fmt.Sprintf("select name, type, flag, id, colcount from %s where name = ?", tablesTable), tableName)
+	r := conn.QueryRow(ctx, fmt.Sprintf("select name, type, flag, id, colcount from %s where name = ?", tablesTable), d.Name)
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
 	d.Type = spi.TableType(tableType)
-	d.Database = "MACHBASEDB"
-	d.User = "SYS"
-	d.Name = tableName
 
 	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {

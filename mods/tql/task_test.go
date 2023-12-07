@@ -46,6 +46,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var matchPrefix bool
 	var httpClient *http.Client
 
+	var ctx context.Context
+	var ctxCancel context.CancelFunc
+	var ctxCancelIgnore bool
+
 	for _, o := range options {
 		switch v := o.(type) {
 		case CompileErr:
@@ -67,18 +71,26 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			matchPrefix = bool(v)
 		case *http.Client:
 			httpClient = v
+		case context.Context:
+			ctx = v
 		}
 	}
 
 	code := strings.Join(codeLines, "\n")
 	w := &bytes.Buffer{}
 
-	timeCtx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+	if ctx == nil {
+		ctx, ctxCancel = context.WithTimeout(context.TODO(), 10*time.Second)
+	} else {
+		ctx, ctxCancel = context.WithCancel(ctx)
+		ctxCancelIgnore = true
+		defer ctxCancel()
+	}
 	doneCh := make(chan any)
 
 	logBuf := &bytes.Buffer{}
 
-	task := tql.NewTaskContext(timeCtx)
+	task := tql.NewTaskContext(ctx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
 	task.SetLogLevel(tql.INFO)
@@ -99,7 +111,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	if compileErr != "" {
 		require.NotNil(t, err)
 		require.Equal(t, compileErr, err.Error())
-		cancel()
+		ctxCancel()
 		return
 	} else {
 		require.Nil(t, err)
@@ -117,12 +129,15 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}()
 
 	select {
-	case <-timeCtx.Done():
-		t.Log(code)
-		t.Fatal("ERROR time out!!!")
-		cancel()
+	case <-ctx.Done():
+		if !ctxCancelIgnore {
+			t.Logf("CODE:\n%s", code)
+			t.Logf("LOG:\n%s", strings.TrimSpace(logBuf.String()))
+			t.Fatal("ERROR time out!!!")
+			ctxCancel()
+		}
 	case <-doneCh:
-		cancel()
+		ctxCancel()
 	}
 	logString := strings.TrimSpace(logBuf.String())
 	if expectErr != "" {
@@ -167,7 +182,12 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				// remove trailing empty line
 				resultLines = resultLines[0 : len(resultLines)-1]
 			}
-			require.Equal(t, len(expect), len(resultLines), resultLines)
+			if len(expect) != len(resultLines) {
+				t.Logf("Expect result %d lines, got %d", len(expect), len(resultLines))
+				t.Logf("\n%s", strings.Join(resultLines, "\n"))
+				t.Fail()
+				return
+			}
 
 			for n, expectLine := range expect {
 				if strings.HasPrefix(expectLine, "/r/") {
@@ -356,6 +376,17 @@ func TestStrLib(t *testing.T) {
 	resultLines := []string{
 		"123,hello",
 	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMovingAvg(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( linspace(0, 100, 100) )`,
+		`MAPVALUE(1, movavg(value(0), 10))`,
+		`CSV( precision(4) )`,
+	}
+	resultLines = loadLines("./test/movavg_result.txt")
 	runTest(t, codeLines, resultLines)
 }
 
@@ -1036,6 +1067,50 @@ func TestMapValue(t *testing.T) {
 		"world,3.141592,\"hello world, 3.14\"",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`1,,3`) )",
+		"MAPVALUE(0, parseFloat(value(0)))",
+		`MAPVALUE(1, value(1) == "" ? 100 : parseFloat(value(1)) )`,
+		"MAPVALUE(2, parseFloat(value(2)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1,100,3",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestThrottle(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		"FAKE( linspace(1, 10, 10))",
+		"THROTTLE( 10 )",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+	}
+	t1 := time.Now()
+	runTest(t, codeLines, resultLines)
+	t2 := time.Now()
+	require.GreaterOrEqual(t, t2.Sub(t1), 1*time.Second, "it should take 1 second or longer")
+
+	codeLines = []string{
+		"FAKE( linspace(1, 10, 10))",
+		"THROTTLE( 1 )",
+		`WHEN(true, doLog("throttled", value(0)))`,
+		"CSV()",
+	}
+	resultLines = []string{
+		"1", "2",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	defer cancel()
+	t1 = time.Now()
+	runTest(t, codeLines, resultLines, ctx)
+	t2 = time.Now()
+	require.Less(t, t2.Sub(t1), 3*time.Second, "it should be cancelled in time, but %v", t2.Sub(t1))
 }
 
 type TestRoundTripFunc func(req *http.Request) *http.Response
@@ -1825,6 +1900,15 @@ func TestSourceCSVFile(t *testing.T) {
 		`/r/{"data":{"columns":\["column0","column1","column2","column3","column4"\],"types":\["string","string","string","string","string"\],"rows":\[\["5.4","3.7","1.5","0.2","Iris-setosa"\],\["4.8","3.4","1.6","0.2","Iris-setosa"\]\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`CSV(file("/euc-jp.csv"), charset("EUC-JP"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`利用されてきた文字コー,1701913182,3.141592`,
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestSinkMarkdown(t *testing.T) {
@@ -2265,6 +2349,13 @@ func TestLoader(t *testing.T) {
 		{"TestLoader_qq"},
 		{"TestLoader_groupbykey"},
 		{"TestLoader_iris"},
+		{"TestLoader_iris_setosa"},
+		{"TestLoader_group"},
+		{"TestLoader_simplex"},
+		{"transpose_all"},
+		{"transpose_all_hdr"},
+		{"transpose_hdr"},
+		{"transpose_nohdr"},
 	}
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
@@ -2298,6 +2389,7 @@ func TestLoader(t *testing.T) {
 		require.NotNil(t, result)
 
 		if w.String() != expect {
+			t.Log("Test Case:", tt.name)
 			t.Logf("EXPECT:\n%s", expect)
 			t.Logf("ACTUAL:\n%s", w.String())
 			t.Fail()

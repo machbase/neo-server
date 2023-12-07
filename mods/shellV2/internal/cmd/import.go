@@ -15,7 +15,9 @@ import (
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/mods/util/charset"
 	spi "github.com/machbase/neo-spi"
+	"golang.org/x/text/encoding"
 )
 
 func init() {
@@ -36,6 +38,7 @@ const helpImport = `  import [options] <table>
     -f,--format <fmt>     file format [csv] (default:'csv')
        --compress <alg>   input data is compressed in <alg> (support:gzip)
        --no-header        there is no header, do not skip first line (default)
+	   --charset          set character encoding, if input is not UTF-8
        --header           first line is header, skip it
        --method           write method [insert|append] (default:'insert')
        --create-table     create table if it doesn't exist (default:false)
@@ -51,6 +54,7 @@ type ImportCmd struct {
 	Input         string         `name:"input" short:"i" default:"-"`
 	Compress      string         `name:"compress" short:"z" default:"-" enum:"-,gzip"`
 	HasHeader     bool           `name:"header" negatable:""`
+	Charset       string         `name:"charset" default:""`
 	EofMark       string         `name:"eof" default:"."`
 	InputFormat   string         `name:"format" short:"f" default:"csv" enum:"csv"`
 	Method        string         `name:"method" default:"insert" enum:"insert,append"`
@@ -60,6 +64,8 @@ type ImportCmd struct {
 	Timeformat    string         `name:"timeformat" short:"t" default:"ns"`
 	TimeLocation  *time.Location `name:"tz"`
 	Help          bool           `kong:"-"`
+
+	encoding encoding.Encoding `kong:"-"`
 }
 
 func pcImport() action.PrefixCompleterInterface {
@@ -90,6 +96,15 @@ func doImport(ctx *action.ActionContext) {
 		cmd.Timeformat = ctx.Pref().Timeformat().Value()
 	}
 	cmd.Timeformat = util.StripQuote(cmd.Timeformat)
+
+	if cmd.Charset != "" {
+		enc, ok := charset.Encoding(cmd.Charset)
+		if !ok || enc == nil {
+			ctx.Println("ERR", "unknown charset:", cmd.Charset)
+			return
+		}
+		cmd.encoding = enc
+	}
 
 	in, err := stream.NewInputStream(cmd.Input)
 	if err != nil {
@@ -153,7 +168,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	cols := desc.Columns.Columns()
-	decoder := codec.NewDecoder(cmd.InputFormat,
+	decOpts := []opts.Option{
 		opts.InputStream(in),
 		opts.Timeformat(cmd.Timeformat),
 		opts.TimeLocation(cmd.TimeLocation),
@@ -162,8 +177,12 @@ func doImport(ctx *action.ActionContext) {
 		opts.ColumnTypes(cols.Types()...),
 		opts.Delimiter(cmd.Delimiter),
 		opts.Heading(cmd.HasHeader),
-	)
+	}
+	if cmd.encoding != nil {
+		decOpts = append(decOpts, opts.CharsetEncoding(cmd.encoding))
+	}
 
+	decoder := codec.NewDecoder(cmd.InputFormat, decOpts...)
 	var appender spi.Appender
 	var lineno int = 0
 

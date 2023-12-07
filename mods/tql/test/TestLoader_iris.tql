@@ -5,7 +5,10 @@ CSV(file("/iris.data"),
     field(3, doubleType(), "petal width"),
     field(4, stringType(), "species")
 )
-POPKEY(4)
-GROUPBYKEY("min", "max", "median", "median")
-PUSHKEY("result")
-CSV( precision(3) )
+GROUP( by(value(4), "species"),
+    min(value(0), "MIN(sepal length)" ),
+    max(value(1), "MAX(sepal width)" ),
+    median(value(2), "MEDIAN(petal length)" ), 
+    avg(value(3), "AVG(petal width)" )
+)
+CSV( heading(true), precision(3) )
