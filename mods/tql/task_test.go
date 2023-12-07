@@ -1067,6 +1067,18 @@ func TestMapValue(t *testing.T) {
 		"world,3.141592,\"hello world, 3.14\"",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( csv(`1,,3`) )",
+		"MAPVALUE(0, parseFloat(value(0)))",
+		`MAPVALUE(1, value(1) == "" ? 100 : parseFloat(value(1)) )`,
+		"MAPVALUE(2, parseFloat(value(2)))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1,100,3",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestThrottle(t *testing.T) {
