@@ -1888,6 +1888,15 @@ func TestSourceCSVFile(t *testing.T) {
 		`/r/{"data":{"columns":\["column0","column1","column2","column3","column4"\],"types":\["string","string","string","string","string"\],"rows":\[\["5.4","3.7","1.5","0.2","Iris-setosa"\],\["4.8","3.4","1.6","0.2","Iris-setosa"\]\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`CSV(file("/euc-jp.csv"), charset("EUC-JP"))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`利用されてきた文字コー,1701913182,3.141592`,
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestSinkMarkdown(t *testing.T) {

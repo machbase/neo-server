@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
+	"golang.org/x/text/encoding"
 )
 
 func ErrInvalidNumOfArgs(name string, expect int, actual int) error {
@@ -50,6 +51,16 @@ func convLogger(args []any, idx int, fname string, expect string) (logger.Logger
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	if o, ok := args[idx].(logger.Logger); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convCharset(args []any, idx int, fname string, expect string) (encoding.Encoding, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(encoding.Encoding); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

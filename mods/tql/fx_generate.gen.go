@@ -132,6 +132,7 @@ func NewNode(task *Task) *Node {
 		"separator": x.gen_separator,
 		"trimspace": x.gen_trimspace,
 		"file":      x.gen_file,
+		"charset":   x.gen_charset,
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
 		// maps.csv
@@ -196,6 +197,7 @@ func NewNode(task *Task) *Node {
 		"boxStyle":           x.gen_boxStyle,
 		"brief":              x.gen_brief,
 		"briefCount":         x.gen_briefCount,
+		"charsetEncoding":    x.gen_charsetEncoding,
 		"chartId":            x.gen_chartId,
 		"chartJson":          x.gen_chartJson,
 		"chartOption":        x.gen_chartOption,
@@ -1929,6 +1931,20 @@ func (x *Node) gen_file(args ...any) (any, error) {
 	return x.fmFile(p0)
 }
 
+// gen_charset
+//
+// syntax: charset(string)
+func (x *Node) gen_charset(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("charset", 1, len(args))
+	}
+	p0, err := convString(args, 0, "charset", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmCharset(p0)
+}
+
 // gen_STRING
 //
 // syntax: STRING(, ...interface {})
@@ -2976,6 +2992,21 @@ func (x *Node) gen_briefCount(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.BriefCount(p0)
+	return ret, nil
+}
+
+// gen_charsetEncoding
+//
+// syntax: charsetEncoding(Encoding)
+func (x *Node) gen_charsetEncoding(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("charsetEncoding", 1, len(args))
+	}
+	p0, err := convCharset(args, 0, "charsetEncoding", "encoding.Encoding")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.CharsetEncoding(p0)
 	return ret, nil
 }
 

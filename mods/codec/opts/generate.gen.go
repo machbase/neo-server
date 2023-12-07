@@ -8,6 +8,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
+	"golang.org/x/text/encoding"
 	"time"
 )
 
@@ -117,6 +118,21 @@ func BriefCount(count int) Option {
 	}
 }
 
+// SetCharsetEncoding
+//
+//	mods/codec/internal/csv/csv_decode.go:41:1
+type CanSetCharsetEncoding interface {
+	SetCharsetEncoding(charset encoding.Encoding)
+}
+
+func CharsetEncoding(charset encoding.Encoding) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetCharsetEncoding); ok {
+			_o.SetCharsetEncoding(charset)
+		}
+	}
+}
+
 // SetChartId
 //
 //	mods/codec/internal/chart/chart.go:75:1
@@ -165,7 +181,7 @@ func ChartOption(opt string) Option {
 
 // SetColumnTypes
 //
-//	mods/codec/internal/csv/csv_decode.go:73:1
+//	mods/codec/internal/csv/csv_decode.go:79:1
 //	mods/codec/internal/json/json_decode.go:46:1
 //	mods/codec/internal/json/json_encode.go:76:1
 type CanSetColumnTypes interface {
@@ -183,7 +199,7 @@ func ColumnTypes(types ...string) Option {
 // SetColumns
 //
 //	mods/codec/internal/box/box_encode.go:85:1
-//	mods/codec/internal/csv/csv_decode.go:69:1
+//	mods/codec/internal/csv/csv_decode.go:75:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
 //	mods/codec/internal/echart/echart.go:289:1
 //	mods/codec/internal/json/json_encode.go:72:1
@@ -217,7 +233,7 @@ func DataZoom(typ string, start float32, end float32) Option {
 
 // SetDelimiter
 //
-//	mods/codec/internal/csv/csv_decode.go:56:1
+//	mods/codec/internal/csv/csv_decode.go:62:1
 //	mods/codec/internal/csv/csv_encode.go:78:1
 type CanSetDelimiter interface {
 	SetDelimiter(delimiter string)
@@ -264,7 +280,7 @@ func GridSize(args ...float64) Option {
 // SetHeader
 //
 //	mods/codec/internal/box/box_encode.go:65:1
-//	mods/codec/internal/csv/csv_decode.go:52:1
+//	mods/codec/internal/csv/csv_decode.go:58:1
 //	mods/codec/internal/csv/csv_encode.go:74:1
 //	mods/codec/internal/json/json_encode.go:64:1
 type CanSetHeader interface {
@@ -282,7 +298,7 @@ func Header(show bool) Option {
 // SetHeading
 //
 //	mods/codec/internal/box/box_encode.go:69:1
-//	mods/codec/internal/csv/csv_decode.go:48:1
+//	mods/codec/internal/csv/csv_decode.go:54:1
 //	mods/codec/internal/csv/csv_encode.go:70:1
 //	mods/codec/internal/json/json_encode.go:68:1
 type CanSetHeading interface {
@@ -314,7 +330,7 @@ func Html(flag bool) Option {
 
 // SetInputStream
 //
-//	mods/codec/internal/csv/csv_decode.go:35:1
+//	mods/codec/internal/csv/csv_decode.go:37:1
 //	mods/codec/internal/json/json_decode.go:30:1
 type CanSetInputStream interface {
 	SetInputStream(in spec.InputStream)
@@ -569,7 +585,7 @@ func Subtitle(subtitle string) Option {
 
 // SetTableName
 //
-//	mods/codec/internal/csv/csv_decode.go:61:1
+//	mods/codec/internal/csv/csv_decode.go:67:1
 //	mods/codec/internal/json/json_decode.go:42:1
 type CanSetTableName interface {
 	SetTableName(tableName string)
@@ -602,7 +618,7 @@ func Theme(theme string) Option {
 // SetTimeLocation
 //
 //	mods/codec/internal/box/box_encode.go:53:1
-//	mods/codec/internal/csv/csv_decode.go:43:1
+//	mods/codec/internal/csv/csv_decode.go:49:1
 //	mods/codec/internal/csv/csv_encode.go:57:1
 //	mods/codec/internal/echart/echart_2d.go:177:1
 //	mods/codec/internal/json/json_decode.go:38:1
@@ -623,7 +639,7 @@ func TimeLocation(tz *time.Location) Option {
 // SetTimeformat
 //
 //	mods/codec/internal/box/box_encode.go:49:1
-//	mods/codec/internal/csv/csv_decode.go:39:1
+//	mods/codec/internal/csv/csv_decode.go:45:1
 //	mods/codec/internal/csv/csv_encode.go:53:1
 //	mods/codec/internal/echart/echart_2d.go:170:1
 //	mods/codec/internal/json/json_decode.go:34:1
@@ -703,7 +719,7 @@ func ToolboxSaveAsImage(name string) Option {
 
 // SetTranscoder
 //
-//	mods/codec/internal/csv/csv_decode.go:65:1
+//	mods/codec/internal/csv/csv_decode.go:71:1
 type CanSetTranscoder interface {
 	SetTranscoder(trans transcoder.Transcoder)
 }

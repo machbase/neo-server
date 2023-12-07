@@ -16,6 +16,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "boxStyle", Func: opts.BoxStyle},
 	{Name: "brief", Func: opts.Brief},
 	{Name: "briefCount", Func: opts.BriefCount},
+	{Name: "charsetEncoding", Func: opts.CharsetEncoding},
 	{Name: "chartId", Func: opts.ChartId},
 	{Name: "chartJson", Func: opts.ChartJson},
 	{Name: "chartOption", Func: opts.ChartOption},

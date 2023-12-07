@@ -140,6 +140,7 @@ var FxDefinitions = []Definition{
 	{"separator", defTask.fmSeparator},
 	{"trimspace", defTask.fmTrimspace},
 	{"file", defTask.fmFile},
+	{"charset", defTask.fmCharset},
 	{"STRING", defTask.fmString},
 	{"BYTES", defTask.fmBytes},
 	// maps.csv

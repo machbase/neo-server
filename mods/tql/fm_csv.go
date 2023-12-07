@@ -15,6 +15,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
+	"golang.org/x/text/encoding"
 )
 
 func (x *Node) fmCsv(args ...any) (any, error) {
@@ -51,11 +52,12 @@ type csvSource struct {
 	columns   map[int]*columnOpt
 	hasHeader bool
 
-	srcReader io.Reader
-	srcString string
-	srcBytes  []byte
-	srcFile   string
-	srcHttp   string
+	srcReader   io.Reader
+	srcString   string
+	srcBytes    []byte
+	srcFile     string
+	srcHttp     string
+	srcEncoding encoding.Encoding
 }
 
 func (src *csvSource) gen(node *Node) {
@@ -85,7 +87,11 @@ func (src *csvSource) gen(node *Node) {
 			return
 		}
 		defer content.Close()
-		reader = csv.NewReader(content)
+		if src.srcEncoding != nil {
+			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(content))
+		} else {
+			reader = csv.NewReader(content)
+		}
 	} else if src.srcHttp != "" {
 		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
 		if err != nil {
@@ -101,7 +107,11 @@ func (src *csvSource) gen(node *Node) {
 			return
 		}
 		defer resp.Body.Close()
-		reader = csv.NewReader(resp.Body)
+		if src.srcEncoding != nil {
+			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(resp.Body))
+		} else {
+			reader = csv.NewReader(resp.Body)
+		}
 	}
 	if reader == nil {
 		node.task.LogErrorf("CSV() no input is specified")
@@ -199,6 +209,11 @@ func (src *csvSource) SetHeading(has bool) {
 // implments codec.opts.CanSetHeader
 func (src *csvSource) SetHeader(has bool) {
 	src.hasHeader = has
+}
+
+// implements codec.opts.CanSetCharsetEncoding
+func (src *csvSource) SetCharsetEncoding(enc encoding.Encoding) {
+	src.srcEncoding = enc
 }
 
 func (fs *csvSource) header() spi.Columns {

@@ -13,6 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
+	"golang.org/x/text/encoding"
 )
 
 type Decoder struct {
@@ -26,6 +27,7 @@ type Decoder struct {
 	timeformat   string
 	timeLocation *time.Location
 	tableName    string
+	charset      encoding.Encoding
 }
 
 func NewDecoder() *Decoder {
@@ -34,6 +36,10 @@ func NewDecoder() *Decoder {
 
 func (dec *Decoder) SetInputStream(in spec.InputStream) {
 	dec.input = in
+}
+
+func (dec *Decoder) SetCharsetEncoding(charset encoding.Encoding) {
+	dec.charset = charset
 }
 
 func (dec *Decoder) SetTimeformat(format string) {
@@ -75,7 +81,11 @@ func (dec *Decoder) SetColumnTypes(types ...string) {
 }
 
 func (dec *Decoder) Open() {
-	dec.reader = csv.NewReader(dec.input)
+	if dec.charset == nil {
+		dec.reader = csv.NewReader(dec.input)
+	} else {
+		dec.reader = csv.NewReader(dec.charset.NewDecoder().Reader(dec.input))
+	}
 	dec.reader.Comma = dec.comma
 
 	if dec.heading { // skip first line

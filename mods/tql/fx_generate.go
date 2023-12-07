@@ -248,6 +248,8 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "Context"
 	case "logger.Logger":
 		convFunc = "Logger"
+	case "encoding.Encoding":
+		convFunc = "Charset"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}
