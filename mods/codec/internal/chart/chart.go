@@ -150,6 +150,22 @@ func convValue(val any) (ret any) {
 	return
 }
 
+var themeNames = map[string]bool{
+	"essos":          true,
+	"chalk":          true,
+	"purple-passion": true,
+	"romantic":       true,
+	"walden":         true,
+	"westeros":       true,
+	"wonderland":     true,
+	"vintage":        true,
+	"dark":           true,
+	"macarons":       true,
+	"infographic":    true,
+	"shine":          true,
+	"roma":           true,
+}
+
 func (c *Chart) Close() {
 	if c.output == nil {
 		return
@@ -170,6 +186,9 @@ func (c *Chart) Close() {
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
+		if _, ok := themeNames[c.Theme]; ok {
+			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+		}
 		c.Render()
 	}
 }
