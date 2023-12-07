@@ -1342,11 +1342,15 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 			}
 			fixed, _ := tr.fixedAndTransposed(vals)
 			newCols := spi.Columns{cols[0]}
-			for _, i := range fixed {
-				if len(tr.headerNames) > i {
-					cols[i+1].Name = tr.headerNames[i]
+			for i, n := range fixed {
+				if len(tr.headerNames) > n {
+					cols[n+1].Name = tr.headerNames[n]
+					cols[n+1].Type = ""
+				} else {
+					cols[n+1].Name = fmt.Sprintf("column%d", i)
+					cols[n+1].Type = ""
 				}
-				newCols = append(newCols, cols[i+1])
+				newCols = append(newCols, cols[n+1])
 			}
 			if tr.header {
 				newCols = append(newCols, &spi.Column{Name: "header"})
@@ -1383,6 +1387,9 @@ type Transposer struct {
 	transposedIndexes []int
 	headerNames       []string
 	header            bool
+
+	fixed      []int
+	transposed []int
 }
 
 func (tr *Transposer) SetHeader(flag bool) {
@@ -1399,6 +1406,9 @@ func (tr *Transposer) contains(list []int, i int) bool {
 }
 
 func (tr *Transposer) fixedAndTransposed(values []any) ([]int, []int) {
+	if tr.fixed != nil && tr.transposed != nil {
+		return tr.fixed, tr.transposed
+	}
 	fixed := []int{}
 	transposed := []int{}
 	if len(tr.transposedIndexes) == 0 && len(tr.fixedIndexes) == 0 {
@@ -1422,6 +1432,7 @@ func (tr *Transposer) fixedAndTransposed(values []any) ([]int, []int) {
 			}
 		}
 	}
+	tr.fixed, tr.transposed = fixed, transposed
 	return fixed, transposed
 }
 
@@ -1444,7 +1455,6 @@ func (tr *Transposer) do(node *Node) (any, error) {
 	}
 
 	fixed, transposed := tr.fixedAndTransposed(values)
-
 	fixedVals := []any{}
 	for _, n := range fixed {
 		fixedVals = append(fixedVals, values[n])

@@ -2334,6 +2334,7 @@ func TestLoader(t *testing.T) {
 		{"transpose_all"},
 		{"transpose_all_hdr"},
 		{"transpose_hdr"},
+		{"transpose_nohdr"},
 	}
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
