@@ -218,6 +218,7 @@ func NewNode(task *Task) *Node {
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
+		"plugins":            x.gen_plugins,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
 		"seriesLabels":       x.gen_seriesLabels,
@@ -3342,6 +3343,22 @@ func (x *Node) gen_outputStream(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.OutputStream(p0)
+	return ret, nil
+}
+
+// gen_plugins
+//
+// syntax: plugins(...string)
+func (x *Node) gen_plugins(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "plugins", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.Plugins(p0...)
 	return ret, nil
 }
 

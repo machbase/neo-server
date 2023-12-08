@@ -37,6 +37,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "markLineYAxisCoord", Func: opts.MarkLineYAxisCoord},
 	{Name: "opacity", Func: opts.Opacity},
 	{Name: "outputStream", Func: opts.OutputStream},
+	{Name: "plugins", Func: opts.Plugins},
 	{Name: "precision", Func: opts.Precision},
 	{Name: "rownum", Func: opts.Rownum},
 	{Name: "seriesLabels", Func: opts.SeriesLabels},
