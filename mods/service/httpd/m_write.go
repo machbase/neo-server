@@ -103,8 +103,6 @@ type lakeRsp struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-const TableName = "TAG"
-
 func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 	rsp := lakeRsp{Success: false}
 
@@ -154,6 +152,7 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 	appender, err := conn.Appender(ctx, "TAG")
 	if err != nil {
 		svr.log.Error("appender error: ", err)
+		ctx.JSON(http.StatusInternalServerError, err)
 		return
 	}
 
@@ -277,7 +276,7 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 		}
 	}()
 
-	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
+	for rows.Next() {
 		buffer := cols.MakeBuffer()
 		err = rows.Scan(buffer...)
 		if err != nil {
