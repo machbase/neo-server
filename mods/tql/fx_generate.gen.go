@@ -199,6 +199,7 @@ func NewNode(task *Task) *Node {
 		"brief":              x.gen_brief,
 		"briefCount":         x.gen_briefCount,
 		"charsetEncoding":    x.gen_charsetEncoding,
+		"chartCDN":           x.gen_chartCDN,
 		"chartId":            x.gen_chartId,
 		"chartJson":          x.gen_chartJson,
 		"chartOption":        x.gen_chartOption,
@@ -3024,6 +3025,21 @@ func (x *Node) gen_charsetEncoding(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.CharsetEncoding(p0)
+	return ret, nil
+}
+
+// gen_chartCDN
+//
+// syntax: chartCDN(string)
+func (x *Node) gen_chartCDN(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("chartCDN", 1, len(args))
+	}
+	p0, err := convString(args, 0, "chartCDN", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ChartCDN(p0)
 	return ret, nil
 }
 

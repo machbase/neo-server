@@ -19,6 +19,7 @@ type Chart struct {
 	logger       logger.Logger
 	output       spec.OutputStream
 	toJsonOutput bool
+	cdn          string
 	option       string
 	data         [][]any
 	plugins      []string
@@ -48,12 +49,10 @@ func NewChart() *Chart {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &Chart{
-		ChartID: id,
-		Width:   "600px",
-		Height:  "600px",
-		JSAssets: []string{
-			"/web/echarts/echarts.min.js",
-		},
+		ChartID:      id,
+		Width:        "600px",
+		Height:       "600px",
+		JSAssets:     []string{},
 		ChartActions: &ChartActions{},
 	}
 }
@@ -104,6 +103,10 @@ func (c *Chart) SetChartOption(opt string) {
 		opt = "{" + opt + "}"
 	}
 	c.option = opt
+}
+
+func (c *Chart) SetChartCDN(cdn string) {
+	c.JSAssets = append(c.JSAssets, cdn)
 }
 
 func (c *Chart) ChartOptionNoEscaped() template.HTML {
@@ -196,13 +199,20 @@ func (c *Chart) Close() {
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
-		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
+		if len(c.JSAssets) == 0 {
+			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
+			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
+		}
 		if _, ok := themeNames[c.Theme]; ok {
 			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+		} else {
+			c.JSAssets = append(c.JSAssets, c.Theme)
 		}
 		for _, plugin := range c.plugins {
 			if _, ok := pluginNames[plugin]; ok {
 				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
+			} else {
+				c.JSAssets = append(c.JSAssets, plugin)
 			}
 		}
 		c.Render()
