@@ -88,6 +88,7 @@ var FxDefinitions = []Definition{
 	{"SCRIPT", defTask.fmScript},
 	{"movavg", defTask.fmMovAvg},
 	{"list", defTask.fmList},
+	{"dict", defTask.fmDictionary},
 	{"lazy", defTask.fmLazy},
 	{"glob", defTask.fmGlob},
 	{"regexp", defTask.fmRegexp},
