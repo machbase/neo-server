@@ -26,7 +26,7 @@ func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.P
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
@@ -82,7 +82,7 @@ func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.C
 			handle:  h,
 			cretime: tick,
 		}
-		s.pool[h] = parole
+		s.setSession(h, parole)
 		rsp.Conn = &machrpc.ConnHandle{Handle: h}
 		rsp.Success, rsp.Reason = true, "success"
 	}
@@ -99,14 +99,14 @@ func (s *grpcd) ConnClose(pctx context.Context, req *machrpc.ConnCloseRequest) (
 		rsp.Elapse = time.Since(tick).String()
 	}()
 	h := req.Conn.Handle
-	if parole, ok := s.pool[h]; !ok {
+	if parole, ok := s.getSession(h); !ok {
 		rsp.Reason = fmt.Sprintf("Conn does not exist %q", h)
 	} else {
 		if err := parole.rawConn.Close(); err != nil {
 			s.log.Warnf("connection %q close error, %s", h, err.Error())
 			rsp.Reason = err.Error()
 		} else {
-			delete(s.pool, h)
+			s.removeSession(h)
 			rsp.Success, rsp.Reason = true, "success"
 		}
 	}
@@ -123,7 +123,7 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
@@ -152,7 +152,7 @@ func (s *grpcd) Exec(pctx context.Context, req *machrpc.ExecRequest) (*machrpc.E
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
@@ -182,7 +182,7 @@ func (s *grpcd) QueryRow(pctx context.Context, req *machrpc.QueryRowRequest) (*m
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 		return rsp, nil
 	} else if conn.rawConn == nil {
@@ -223,7 +223,7 @@ func (s *grpcd) Query(pctx context.Context, req *machrpc.QueryRequest) (*machrpc
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
@@ -367,7 +367,7 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if conn, ok := s.pool[req.Conn.Handle]; !ok {
+	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"

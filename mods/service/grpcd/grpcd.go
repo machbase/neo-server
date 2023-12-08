@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	mach "github.com/machbase/neo-engine"
@@ -126,7 +127,8 @@ type grpcd struct {
 	dbCtx       context.Context
 	dbCtxCancel context.CancelFunc
 
-	pool map[string]*connParole
+	sessions     map[string]*connParole
+	sessionsLock sync.Mutex
 
 	listenAddresses []string
 	maxRecvMsgSize  int
@@ -163,7 +165,7 @@ func (svr *grpcd) Start() error {
 		return errors.New("no database instance")
 	}
 
-	svr.pool = map[string]*connParole{}
+	svr.sessions = map[string]*connParole{}
 	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
 	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
 		return err
@@ -294,4 +296,23 @@ func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
 		InsecureSkipVerify: true,
 	}
 	return credentials.NewTLS(tlsConfig), nil
+}
+
+func (svr *grpcd) getSession(handle string) (*connParole, bool) {
+	svr.sessionsLock.Lock()
+	ret, ok := svr.sessions[handle]
+	svr.sessionsLock.Unlock()
+	return ret, ok
+}
+
+func (svr *grpcd) setSession(handle string, conn *connParole) {
+	svr.sessionsLock.Lock()
+	svr.sessions[handle] = conn
+	svr.sessionsLock.Unlock()
+}
+
+func (svr *grpcd) removeSession(handle string) {
+	svr.sessionsLock.Lock()
+	delete(svr.sessions, handle)
+	svr.sessionsLock.Unlock()
 }
