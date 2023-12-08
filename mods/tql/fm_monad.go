@@ -205,6 +205,21 @@ func (node *Node) fmList(args ...any) any {
 	return ret
 }
 
+func (node *Node) fmDictionary(args ...any) (any, error) {
+	ret := map[string]any{}
+	for i := 0; i < len(args); i += 2 {
+		if i+1 >= len(args) {
+			break
+		}
+		if name, ok := args[i].(string); ok {
+			ret[name] = args[i+1]
+		} else {
+			return nil, fmt.Errorf("dictionary name should be string, got args[%d] %T", i, args[i])
+		}
+	}
+	return ret, nil
+}
+
 func (node *Node) fmGroup(args ...any) any {
 	var gr *Group
 	var columns []*GroupAggregate

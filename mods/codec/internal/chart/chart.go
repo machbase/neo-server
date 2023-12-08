@@ -21,6 +21,7 @@ type Chart struct {
 	toJsonOutput bool
 	option       string
 	data         [][]any
+	plugins      []string
 
 	// Common template
 	ChartID string
@@ -83,6 +84,10 @@ func (c *Chart) SetSize(width, height string) {
 
 func (c *Chart) SetTheme(theme string) {
 	c.Theme = theme
+}
+
+func (c *Chart) SetPlugins(plugins ...string) {
+	c.plugins = append(c.plugins, plugins...)
 }
 
 func (c *Chart) SetAssetHost(path string) {
@@ -166,6 +171,11 @@ var themeNames = map[string]bool{
 	"roma":           true,
 }
 
+var pluginNames = map[string]bool{
+	"liquidfill": true,
+	"wordcloud":  true,
+}
+
 func (c *Chart) Close() {
 	if c.output == nil {
 		return
@@ -186,8 +196,14 @@ func (c *Chart) Close() {
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
+		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
 		if _, ok := themeNames[c.Theme]; ok {
 			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+		}
+		for _, plugin := range c.plugins {
+			if _, ok := pluginNames[plugin]; ok {
+				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
+			}
 		}
 		c.Render()
 	}

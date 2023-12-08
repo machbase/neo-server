@@ -86,6 +86,7 @@ func NewNode(task *Task) *Node {
 		"SCRIPT":     x.gen_SCRIPT,
 		"movavg":     x.gen_movavg,
 		"list":       x.gen_list,
+		"dict":       x.gen_dict,
 		"lazy":       x.gen_lazy,
 		"glob":       x.gen_glob,
 		"regexp":     x.gen_regexp,
@@ -218,6 +219,7 @@ func NewNode(task *Task) *Node {
 		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
 		"opacity":            x.gen_opacity,
 		"outputStream":       x.gen_outputStream,
+		"plugins":            x.gen_plugins,
 		"precision":          x.gen_precision,
 		"rownum":             x.gen_rownum,
 		"seriesLabels":       x.gen_seriesLabels,
@@ -1259,6 +1261,21 @@ func (x *Node) gen_list(args ...any) (any, error) {
 	}
 	ret := x.fmList(p0...)
 	return ret, nil
+}
+
+// gen_dict
+//
+// syntax: dict(...interface {})
+func (x *Node) gen_dict(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "dict", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDictionary(p0...)
 }
 
 // gen_lazy
@@ -3342,6 +3359,22 @@ func (x *Node) gen_outputStream(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.OutputStream(p0)
+	return ret, nil
+}
+
+// gen_plugins
+//
+// syntax: plugins(...string)
+func (x *Node) gen_plugins(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "plugins", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.Plugins(p0...)
 	return ret, nil
 }
 
