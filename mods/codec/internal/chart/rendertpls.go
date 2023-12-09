@@ -44,7 +44,7 @@ var BaseTemplate = `
     tqlecharts_{{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
     tqlecharts_{{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
 
-    {{- range .JSFunctions }}
+    {{- range .JSCodes }}
     {{ . | safeJS }}
     {{- end }}
 </script>

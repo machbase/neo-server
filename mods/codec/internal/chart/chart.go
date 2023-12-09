@@ -33,7 +33,7 @@ type Chart struct {
 	PageTitle      string
 	JSAssets       []string
 	CSSAssets      []string
-	JSFunctions    []string
+	JSCodes        []string
 	DispatchAction string
 }
 
@@ -106,8 +106,8 @@ func (c *Chart) SetChartCDN(cdn string) {
 	c.JSAssets = append(c.JSAssets, cdn)
 }
 
-func (c *Chart) SetChartJSFunction(js string) {
-	c.JSFunctions = append(c.JSFunctions, js)
+func (c *Chart) SetChartJSCode(js string) {
+	c.JSCodes = append(c.JSCodes, js)
 }
 
 func (c *Chart) SetChartDispatchAction(action string) {

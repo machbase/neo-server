@@ -20,7 +20,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "chartCDN", Func: opts.ChartCDN},
 	{Name: "chartDispatchAction", Func: opts.ChartDispatchAction},
 	{Name: "chartId", Func: opts.ChartId},
-	{Name: "chartJSFunction", Func: opts.ChartJSFunction},
+	{Name: "chartJSCode", Func: opts.ChartJSCode},
 	{Name: "chartJson", Func: opts.ChartJson},
 	{Name: "chartOption", Func: opts.ChartOption},
 	{Name: "columnTypes", Func: opts.ColumnTypes},
