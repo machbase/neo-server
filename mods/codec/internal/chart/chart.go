@@ -48,11 +48,9 @@ func NewChart() *Chart {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &Chart{
-		ChartID:        id,
-		Width:          "600px",
-		Height:         "600px",
-		JSAssets:       []string{},
-		DispatchAction: `{"areas": {}, "type": ""}`,
+		ChartID: id,
+		Width:   "600px",
+		Height:  "600px",
 	}
 }
 
@@ -125,6 +123,9 @@ func (c *Chart) ChartOptionNoEscaped() template.HTML {
 }
 
 func (c *Chart) ChartDispatchActionNoEscaped() template.HTML {
+	if c.DispatchAction == "" {
+		c.DispatchAction = `{"areas": {}, "type": ""}`
+	}
 	return template.HTML(c.DispatchAction)
 }
 
