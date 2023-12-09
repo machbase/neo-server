@@ -163,6 +163,21 @@ func ChartId(id string) Option {
 	}
 }
 
+// SetChartJSFunction
+//
+//	mods/codec/internal/chart/chart.go:112:1
+type CanSetChartJSFunction interface {
+	SetChartJSFunction(js string)
+}
+
+func ChartJSFunction(js string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetChartJSFunction); ok {
+			_o.SetChartJSFunction(js)
+		}
+	}
+}
+
 // SetChartJson
 //
 //	mods/codec/internal/chart/chart.go:96:1

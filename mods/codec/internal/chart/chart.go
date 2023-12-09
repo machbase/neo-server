@@ -19,7 +19,6 @@ type Chart struct {
 	logger       logger.Logger
 	output       spec.OutputStream
 	toJsonOutput bool
-	cdn          string
 	option       string
 	data         [][]any
 	plugins      []string
@@ -109,6 +108,10 @@ func (c *Chart) SetChartCDN(cdn string) {
 	c.JSAssets = append(c.JSAssets, cdn)
 }
 
+func (c *Chart) SetChartJSFunction(js string) {
+	c.JSFunctions = append(c.JSFunctions, js)
+}
+
 func (c *Chart) ChartOptionNoEscaped() template.HTML {
 	return template.HTML(c.option)
 }
@@ -159,6 +162,8 @@ func convValue(val any) (ret any) {
 }
 
 var themeNames = map[string]bool{
+	"white":          true,
+	"dark":           true,
 	"essos":          true,
 	"chalk":          true,
 	"purple-passion": true,
@@ -167,7 +172,6 @@ var themeNames = map[string]bool{
 	"westeros":       true,
 	"wonderland":     true,
 	"vintage":        true,
-	"dark":           true,
 	"macarons":       true,
 	"infographic":    true,
 	"shine":          true,
@@ -204,7 +208,9 @@ func (c *Chart) Close() {
 			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
 		}
 		if _, ok := themeNames[c.Theme]; ok {
-			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+			if c.Theme != "white" {
+				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+			}
 		} else {
 			c.JSAssets = append(c.JSAssets, c.Theme)
 		}

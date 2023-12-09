@@ -203,6 +203,7 @@ func NewNode(task *Task) *Node {
 		"charsetEncoding":    x.gen_charsetEncoding,
 		"chartCDN":           x.gen_chartCDN,
 		"chartId":            x.gen_chartId,
+		"chartJSFunction":    x.gen_chartJSFunction,
 		"chartJson":          x.gen_chartJson,
 		"chartOption":        x.gen_chartOption,
 		"columnTypes":        x.gen_columnTypes,
@@ -3085,6 +3086,21 @@ func (x *Node) gen_chartId(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.ChartId(p0)
+	return ret, nil
+}
+
+// gen_chartJSFunction
+//
+// syntax: chartJSFunction(string)
+func (x *Node) gen_chartJSFunction(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("chartJSFunction", 1, len(args))
+	}
+	p0, err := convString(args, 0, "chartJSFunction", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ChartJSFunction(p0)
 	return ret, nil
 }
 
