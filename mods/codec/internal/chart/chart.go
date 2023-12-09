@@ -29,12 +29,12 @@ type Chart struct {
 	Height  string
 	Theme   string
 	// HTML template
-	AssetsHost   string
-	PageTitle    string
-	JSAssets     []string
-	CSSAssets    []string
-	JSFunctions  []string
-	ChartActions *ChartActions
+	AssetsHost     string
+	PageTitle      string
+	JSAssets       []string
+	CSSAssets      []string
+	JSFunctions    []string
+	DispatchAction string
 }
 
 type ChartActions struct {
@@ -48,11 +48,11 @@ func NewChart() *Chart {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &Chart{
-		ChartID:      id,
-		Width:        "600px",
-		Height:       "600px",
-		JSAssets:     []string{},
-		ChartActions: &ChartActions{},
+		ChartID:        id,
+		Width:          "600px",
+		Height:         "600px",
+		JSAssets:       []string{},
+		DispatchAction: `{"areas": {}, "type": ""}`,
 	}
 }
 
@@ -112,12 +112,20 @@ func (c *Chart) SetChartJSFunction(js string) {
 	c.JSFunctions = append(c.JSFunctions, js)
 }
 
+func (c *Chart) SetChartDispatchAction(action string) {
+	action = strings.TrimSpace(action)
+	if !strings.HasPrefix(action, "{") {
+		action = "{" + action + "}"
+	}
+	c.DispatchAction = action
+}
+
 func (c *Chart) ChartOptionNoEscaped() template.HTML {
 	return template.HTML(c.option)
 }
 
-func (c *Chart) ChartActionsNoEscaped() template.HTML {
-	return template.HTML(`{"areas": {}, "type": ""}`)
+func (c *Chart) ChartDispatchActionNoEscaped() template.HTML {
+	return template.HTML(c.DispatchAction)
 }
 
 func (c *Chart) Open() error {

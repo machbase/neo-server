@@ -3,13 +3,14 @@ package chart
 var ChartJsonTemplate = `
 {{- define "chart" }}
 {
-	"chartID":"{{ .ChartID }}",
-	"style": {
-		"width": "{{ .Width }}",
-		"height": "{{ .Height }}"	
-	},
-	"theme": "{{ .Theme }}",
-	"chartOption": {{ .ChartOptionNoEscaped }}
+    "chartID":"{{ .ChartID }}",
+    "style": {
+        "width": "{{ .Width }}",
+        "height": "{{ .Height }}"	
+    },
+    "theme": "{{ .Theme }}",
+    "chartOption": {{ .ChartOptionNoEscaped }},
+	"chartAction": {{ .ChartDispatchActionNoEscaped }}
 }
 {{ end }}
 `
@@ -39,11 +40,9 @@ var BaseTemplate = `
     "use strict";
     let tqlecharts_{{ .ChartID | safeJS }} = echarts.init(document.getElementById('{{ .ChartID | safeJS }}'), "{{ .Theme }}");
     let option_{{ .ChartID | safeJS }} = {{ .ChartOptionNoEscaped | safeJS }};
-    {{ if isSet  "ChartActions" . }}
-	let action_{{ .ChartID | safeJS }} = {{ .ChartActionsNoEscaped | safeJS }};
-    {{ end }}
+    let action_{{ .ChartID | safeJS }} = {{ .ChartDispatchActionNoEscaped | safeJS }};
     tqlecharts_{{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
- 	tqlecharts_{{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
+    tqlecharts_{{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
 
     {{- range .JSFunctions }}
     {{ . | safeJS }}
@@ -52,9 +51,7 @@ var BaseTemplate = `
 {{ end }}
 `
 
-var ChartTemplate = `
-{{- define "chart" }}
-<!DOCTYPE html>
+var ChartTemplate = `{{- define "chart" }}<!DOCTYPE html>
 <html>
     {{- template "header" . }}
 <body>

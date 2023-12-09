@@ -1,8 +1,6 @@
 package tql
 
-import (
-	"math"
-)
+import "fmt"
 
 type Definition struct {
 	Name string
@@ -23,33 +21,33 @@ var FxDefinitions = []Definition{
 	{"ARGS", defTask.fmArgs},
 	// math
 	{"// math", nil},
-	{"abs", math.Abs},
-	{"acos", math.Acos},
-	{"acosh", math.Acosh},
-	{"asin", math.Asin},
-	{"asinh", math.Asinh},
-	{"atan", math.Atan},
-	{"atanh", math.Atanh},
-	{"ceil", math.Ceil},
-	{"cos", math.Cos},
-	{"cosh", math.Cosh},
-	{"exp", math.Exp},
-	{"exp2", math.Exp2},
-	{"floor", math.Floor},
-	{"log", math.Log},
-	{"log10", math.Log10},
-	{"log2", math.Log2},
-	{"mod", math.Mod},
-	{"pow", math.Pow},
-	{"pow10", math.Pow10},
-	{"remainder", math.Remainder},
-	{"round", math.Round},
-	{"sin", math.Sin},
-	{"sinh", math.Sinh},
-	{"sqrt", math.Sqrt},
-	{"tan", math.Tan},
-	{"tanh", math.Tanh},
-	{"trunc", math.Trunc},
+	{"abs", `mathWrap("abs", math.Abs)`},
+	{"acos", `mathWrap("acos", math.Acos)`},
+	{"acosh", `mathWrap("acosh", math.Acosh)`},
+	{"asin", `mathWrap("asin", math.Asin)`},
+	{"asinh", `mathWrap("asinh", math.Asinh)`},
+	{"atan", `mathWrap("atan", math.Atan)`},
+	{"atanh", `mathWrap("atanh", math.Atanh)`},
+	{"ceil", `mathWrap("ceil", math.Ceil)`},
+	{"cos", `mathWrap("cos", math.Cos)`},
+	{"cosh", `mathWrap("cosh", math.Cosh)`},
+	{"exp", `mathWrap("exp", math.Exp)`},
+	{"exp2", `mathWrap("exp2", math.Exp2)`},
+	{"floor", `mathWrap("floor", math.Floor)`},
+	{"log", `mathWrap("log", math.Log)`},
+	{"log10", `mathWrap("log10", math.Log10)`},
+	{"log2", `mathWrap("log2", math.Log2)`},
+	{"mod", `mathWrap2("mod", math.Mod)`},
+	{"pow", `mathWrap2("pow", math.Pow)`},
+	{"pow10", `mathWrapi("pow10", math.Pow10)`},
+	{"remainder", `mathWrap2("remainder", math.Remainder)`},
+	{"round", `mathWrap("round", math.Round)`},
+	{"sin", `mathWrap("sin", math.Sin)`},
+	{"sinh", `mathWrap("sinh", math.Sinh)`},
+	{"sqrt", `mathWrap("sqrt", math.Sqrt)`},
+	{"tan", `mathWrap("tan", math.Tan)`},
+	{"tanh", `mathWrap("tanh", math.Tanh)`},
+	{"trunc", `mathWrap("trunc", math.Trunc)`},
 	// nums
 	{"// nums", nil},
 	{"count", "nums.Count"},
@@ -205,4 +203,59 @@ var FxDefinitions = []Definition{
 	{"markYAxis", "x.gen_markLineYAxisCoord"},
 	{"tz", defTask.fmTZ},
 	{"sep", defTask.fmSeparator},
+}
+
+func mathWrap(name string, f func(float64) float64) func(args ...any) (any, error) {
+	return func(args ...any) (any, error) {
+		if args == nil {
+			return nil, fmt.Errorf("f(%s) <nil> is invalid argument", name)
+		}
+		if len(args) != 1 {
+			return nil, ErrInvalidNumOfArgs(name, 1, len(args))
+		}
+		p0, err := convFloat64(args, 0, name, "float64")
+		if err != nil {
+			return nil, err
+		}
+		ret := f(p0)
+		return ret, nil
+	}
+}
+
+func mathWrapi(name string, f func(int) float64) func(args ...any) (any, error) {
+	return func(args ...any) (any, error) {
+		if args == nil {
+			return nil, fmt.Errorf("f(%s) <nil> is invalid argument", name)
+		}
+		if len(args) != 1 {
+			return nil, ErrInvalidNumOfArgs(name, 1, len(args))
+		}
+		p0, err := convInt(args, 0, name, "int")
+		if err != nil {
+			return nil, err
+		}
+		ret := f(p0)
+		return ret, nil
+	}
+}
+
+func mathWrap2(name string, f func(float64, float64) float64) func(args ...any) (any, error) {
+	return func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, ErrInvalidNumOfArgs(name, 2, len(args))
+		}
+		if args[0] == nil || args[1] == nil {
+			return nil, nil
+		}
+		p0, err := convFloat64(args, 0, name, "float64")
+		if err != nil {
+			return nil, err
+		}
+		p1, err := convFloat64(args, 1, name, "float64")
+		if err != nil {
+			return nil, err
+		}
+		ret := f(p0, p1)
+		return ret, nil
+	}
 }

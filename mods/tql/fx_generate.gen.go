@@ -24,33 +24,33 @@ func NewNode(task *Task) *Node {
 		"escapeParam": x.gen_escapeParam,
 		"ARGS":        x.gen_ARGS,
 		// math
-		"abs":       x.gen_abs,
-		"acos":      x.gen_acos,
-		"acosh":     x.gen_acosh,
-		"asin":      x.gen_asin,
-		"asinh":     x.gen_asinh,
-		"atan":      x.gen_atan,
-		"atanh":     x.gen_atanh,
-		"ceil":      x.gen_ceil,
-		"cos":       x.gen_cos,
-		"cosh":      x.gen_cosh,
-		"exp":       x.gen_exp,
-		"exp2":      x.gen_exp2,
-		"floor":     x.gen_floor,
-		"log":       x.gen_log,
-		"log10":     x.gen_log10,
-		"log2":      x.gen_log2,
-		"mod":       x.gen_mod,
-		"pow":       x.gen_pow,
-		"pow10":     x.gen_pow10,
-		"remainder": x.gen_remainder,
-		"round":     x.gen_round,
-		"sin":       x.gen_sin,
-		"sinh":      x.gen_sinh,
-		"sqrt":      x.gen_sqrt,
-		"tan":       x.gen_tan,
-		"tanh":      x.gen_tanh,
-		"trunc":     x.gen_trunc,
+		"abs":       mathWrap("abs", math.Abs),
+		"acos":      mathWrap("acos", math.Acos),
+		"acosh":     mathWrap("acosh", math.Acosh),
+		"asin":      mathWrap("asin", math.Asin),
+		"asinh":     mathWrap("asinh", math.Asinh),
+		"atan":      mathWrap("atan", math.Atan),
+		"atanh":     mathWrap("atanh", math.Atanh),
+		"ceil":      mathWrap("ceil", math.Ceil),
+		"cos":       mathWrap("cos", math.Cos),
+		"cosh":      mathWrap("cosh", math.Cosh),
+		"exp":       mathWrap("exp", math.Exp),
+		"exp2":      mathWrap("exp2", math.Exp2),
+		"floor":     mathWrap("floor", math.Floor),
+		"log":       mathWrap("log", math.Log),
+		"log10":     mathWrap("log10", math.Log10),
+		"log2":      mathWrap("log2", math.Log2),
+		"mod":       mathWrap2("mod", math.Mod),
+		"pow":       mathWrap2("pow", math.Pow),
+		"pow10":     mathWrapi("pow10", math.Pow10),
+		"remainder": mathWrap2("remainder", math.Remainder),
+		"round":     mathWrap("round", math.Round),
+		"sin":       mathWrap("sin", math.Sin),
+		"sinh":      mathWrap("sinh", math.Sinh),
+		"sqrt":      mathWrap("sqrt", math.Sqrt),
+		"tan":       mathWrap("tan", math.Tan),
+		"tanh":      mathWrap("tanh", math.Tanh),
+		"trunc":     mathWrap("trunc", math.Trunc),
 		// nums
 		"count":      nums.Count,
 		"len":        nums.Len,
@@ -193,60 +193,61 @@ func NewNode(task *Task) *Node {
 		"tz":        x.gen_tz,
 		"sep":       x.gen_sep,
 		// codec.opts
-		"assetHost":          x.gen_assetHost,
-		"autoRotate":         x.gen_autoRotate,
-		"boxDrawBorder":      x.gen_boxDrawBorder,
-		"boxSeparateColumns": x.gen_boxSeparateColumns,
-		"boxStyle":           x.gen_boxStyle,
-		"brief":              x.gen_brief,
-		"briefCount":         x.gen_briefCount,
-		"charsetEncoding":    x.gen_charsetEncoding,
-		"chartCDN":           x.gen_chartCDN,
-		"chartId":            x.gen_chartId,
-		"chartJSFunction":    x.gen_chartJSFunction,
-		"chartJson":          x.gen_chartJson,
-		"chartOption":        x.gen_chartOption,
-		"columnTypes":        x.gen_columnTypes,
-		"columns":            x.gen_columns,
-		"dataZoom":           x.gen_dataZoom,
-		"delimiter":          x.gen_delimiter,
-		"globalOptions":      x.gen_globalOptions,
-		"gridSize":           x.gen_gridSize,
-		"header":             x.gen_header,
-		"heading":            x.gen_heading,
-		"html":               x.gen_html,
-		"inputStream":        x.gen_inputStream,
-		"lineWidth":          x.gen_lineWidth,
-		"logger":             x.gen_logger,
-		"markAreaNameCoord":  x.gen_markAreaNameCoord,
-		"markLineXAxisCoord": x.gen_markLineXAxisCoord,
-		"markLineYAxisCoord": x.gen_markLineYAxisCoord,
-		"opacity":            x.gen_opacity,
-		"outputStream":       x.gen_outputStream,
-		"plugins":            x.gen_plugins,
-		"precision":          x.gen_precision,
-		"rownum":             x.gen_rownum,
-		"seriesLabels":       x.gen_seriesLabels,
-		"seriesOptions":      x.gen_seriesOptions,
-		"showGrid":           x.gen_showGrid,
-		"size":               x.gen_size,
-		"substituteNull":     x.gen_substituteNull,
-		"subtitle":           x.gen_subtitle,
-		"tableName":          x.gen_tableName,
-		"theme":              x.gen_theme,
-		"timeLocation":       x.gen_timeLocation,
-		"timeformat":         x.gen_timeformat,
-		"title":              x.gen_title,
-		"toolboxDataView":    x.gen_toolboxDataView,
-		"toolboxDataZoom":    x.gen_toolboxDataZoom,
-		"toolboxSaveAsImage": x.gen_toolboxSaveAsImage,
-		"transcoder":         x.gen_transcoder,
-		"transpose":          x.gen_transpose,
-		"visualMap":          x.gen_visualMap,
-		"visualMapColor":     x.gen_visualMapColor,
-		"xAxis":              x.gen_xAxis,
-		"yAxis":              x.gen_yAxis,
-		"zAxis":              x.gen_zAxis,
+		"assetHost":           x.gen_assetHost,
+		"autoRotate":          x.gen_autoRotate,
+		"boxDrawBorder":       x.gen_boxDrawBorder,
+		"boxSeparateColumns":  x.gen_boxSeparateColumns,
+		"boxStyle":            x.gen_boxStyle,
+		"brief":               x.gen_brief,
+		"briefCount":          x.gen_briefCount,
+		"charsetEncoding":     x.gen_charsetEncoding,
+		"chartCDN":            x.gen_chartCDN,
+		"chartDispatchAction": x.gen_chartDispatchAction,
+		"chartId":             x.gen_chartId,
+		"chartJSFunction":     x.gen_chartJSFunction,
+		"chartJson":           x.gen_chartJson,
+		"chartOption":         x.gen_chartOption,
+		"columnTypes":         x.gen_columnTypes,
+		"columns":             x.gen_columns,
+		"dataZoom":            x.gen_dataZoom,
+		"delimiter":           x.gen_delimiter,
+		"globalOptions":       x.gen_globalOptions,
+		"gridSize":            x.gen_gridSize,
+		"header":              x.gen_header,
+		"heading":             x.gen_heading,
+		"html":                x.gen_html,
+		"inputStream":         x.gen_inputStream,
+		"lineWidth":           x.gen_lineWidth,
+		"logger":              x.gen_logger,
+		"markAreaNameCoord":   x.gen_markAreaNameCoord,
+		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
+		"markLineYAxisCoord":  x.gen_markLineYAxisCoord,
+		"opacity":             x.gen_opacity,
+		"outputStream":        x.gen_outputStream,
+		"plugins":             x.gen_plugins,
+		"precision":           x.gen_precision,
+		"rownum":              x.gen_rownum,
+		"seriesLabels":        x.gen_seriesLabels,
+		"seriesOptions":       x.gen_seriesOptions,
+		"showGrid":            x.gen_showGrid,
+		"size":                x.gen_size,
+		"substituteNull":      x.gen_substituteNull,
+		"subtitle":            x.gen_subtitle,
+		"tableName":           x.gen_tableName,
+		"theme":               x.gen_theme,
+		"timeLocation":        x.gen_timeLocation,
+		"timeformat":          x.gen_timeformat,
+		"title":               x.gen_title,
+		"toolboxDataView":     x.gen_toolboxDataView,
+		"toolboxDataZoom":     x.gen_toolboxDataZoom,
+		"toolboxSaveAsImage":  x.gen_toolboxSaveAsImage,
+		"transcoder":          x.gen_transcoder,
+		"transpose":           x.gen_transpose,
+		"visualMap":           x.gen_visualMap,
+		"visualMapColor":      x.gen_visualMapColor,
+		"xAxis":               x.gen_xAxis,
+		"yAxis":               x.gen_yAxis,
+		"zAxis":               x.gen_zAxis,
 	}
 	return x
 }
@@ -337,423 +338,6 @@ func (x *Node) gen_ARGS(args ...any) (any, error) {
 		return nil, ErrInvalidNumOfArgs("ARGS", 0, len(args))
 	}
 	return x.fmArgs()
-}
-
-// gen_abs
-//
-// syntax: abs(float64)
-func (x *Node) gen_abs(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("abs", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "abs", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Abs(p0)
-	return ret, nil
-}
-
-// gen_acos
-//
-// syntax: acos(float64)
-func (x *Node) gen_acos(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("acos", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "acos", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Acos(p0)
-	return ret, nil
-}
-
-// gen_acosh
-//
-// syntax: acosh(float64)
-func (x *Node) gen_acosh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("acosh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "acosh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Acosh(p0)
-	return ret, nil
-}
-
-// gen_asin
-//
-// syntax: asin(float64)
-func (x *Node) gen_asin(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("asin", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "asin", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Asin(p0)
-	return ret, nil
-}
-
-// gen_asinh
-//
-// syntax: asinh(float64)
-func (x *Node) gen_asinh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("asinh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "asinh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Asinh(p0)
-	return ret, nil
-}
-
-// gen_atan
-//
-// syntax: atan(float64)
-func (x *Node) gen_atan(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("atan", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "atan", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Atan(p0)
-	return ret, nil
-}
-
-// gen_atanh
-//
-// syntax: atanh(float64)
-func (x *Node) gen_atanh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("atanh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "atanh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Atanh(p0)
-	return ret, nil
-}
-
-// gen_ceil
-//
-// syntax: ceil(float64)
-func (x *Node) gen_ceil(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("ceil", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "ceil", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Ceil(p0)
-	return ret, nil
-}
-
-// gen_cos
-//
-// syntax: cos(float64)
-func (x *Node) gen_cos(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("cos", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "cos", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Cos(p0)
-	return ret, nil
-}
-
-// gen_cosh
-//
-// syntax: cosh(float64)
-func (x *Node) gen_cosh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("cosh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "cosh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Cosh(p0)
-	return ret, nil
-}
-
-// gen_exp
-//
-// syntax: exp(float64)
-func (x *Node) gen_exp(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("exp", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "exp", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Exp(p0)
-	return ret, nil
-}
-
-// gen_exp2
-//
-// syntax: exp2(float64)
-func (x *Node) gen_exp2(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("exp2", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "exp2", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Exp2(p0)
-	return ret, nil
-}
-
-// gen_floor
-//
-// syntax: floor(float64)
-func (x *Node) gen_floor(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("floor", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "floor", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Floor(p0)
-	return ret, nil
-}
-
-// gen_log
-//
-// syntax: log(float64)
-func (x *Node) gen_log(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("log", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "log", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Log(p0)
-	return ret, nil
-}
-
-// gen_log10
-//
-// syntax: log10(float64)
-func (x *Node) gen_log10(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("log10", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "log10", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Log10(p0)
-	return ret, nil
-}
-
-// gen_log2
-//
-// syntax: log2(float64)
-func (x *Node) gen_log2(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("log2", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "log2", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Log2(p0)
-	return ret, nil
-}
-
-// gen_mod
-//
-// syntax: mod(float64, float64)
-func (x *Node) gen_mod(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("mod", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "mod", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "mod", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Mod(p0, p1)
-	return ret, nil
-}
-
-// gen_pow
-//
-// syntax: pow(float64, float64)
-func (x *Node) gen_pow(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("pow", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "pow", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "pow", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Pow(p0, p1)
-	return ret, nil
-}
-
-// gen_pow10
-//
-// syntax: pow10(int)
-func (x *Node) gen_pow10(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("pow10", 1, len(args))
-	}
-	p0, err := convInt(args, 0, "pow10", "int")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Pow10(p0)
-	return ret, nil
-}
-
-// gen_remainder
-//
-// syntax: remainder(float64, float64)
-func (x *Node) gen_remainder(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("remainder", 2, len(args))
-	}
-	p0, err := convFloat64(args, 0, "remainder", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "remainder", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Remainder(p0, p1)
-	return ret, nil
-}
-
-// gen_round
-//
-// syntax: round(float64)
-func (x *Node) gen_round(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("round", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "round", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Round(p0)
-	return ret, nil
-}
-
-// gen_sin
-//
-// syntax: sin(float64)
-func (x *Node) gen_sin(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("sin", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "sin", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Sin(p0)
-	return ret, nil
-}
-
-// gen_sinh
-//
-// syntax: sinh(float64)
-func (x *Node) gen_sinh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("sinh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "sinh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Sinh(p0)
-	return ret, nil
-}
-
-// gen_sqrt
-//
-// syntax: sqrt(float64)
-func (x *Node) gen_sqrt(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("sqrt", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "sqrt", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Sqrt(p0)
-	return ret, nil
-}
-
-// gen_tan
-//
-// syntax: tan(float64)
-func (x *Node) gen_tan(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("tan", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "tan", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Tan(p0)
-	return ret, nil
-}
-
-// gen_tanh
-//
-// syntax: tanh(float64)
-func (x *Node) gen_tanh(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("tanh", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "tanh", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Tanh(p0)
-	return ret, nil
-}
-
-// gen_trunc
-//
-// syntax: trunc(float64)
-func (x *Node) gen_trunc(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("trunc", 1, len(args))
-	}
-	p0, err := convFloat64(args, 0, "trunc", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := math.Trunc(p0)
-	return ret, nil
 }
 
 // gen_linspace
@@ -3071,6 +2655,21 @@ func (x *Node) gen_chartCDN(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.ChartCDN(p0)
+	return ret, nil
+}
+
+// gen_chartDispatchAction
+//
+// syntax: chartDispatchAction(string)
+func (x *Node) gen_chartDispatchAction(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("chartDispatchAction", 1, len(args))
+	}
+	p0, err := convString(args, 0, "chartDispatchAction", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ChartDispatchAction(p0)
 	return ret, nil
 }
 

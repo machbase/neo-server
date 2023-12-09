@@ -14,7 +14,7 @@ import (
 
 // SetAssetHost
 //
-//	mods/codec/internal/chart/chart.go:92:1
+//	mods/codec/internal/chart/chart.go:91:1
 //	mods/codec/internal/echart/echart.go:103:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
@@ -135,7 +135,7 @@ func CharsetEncoding(charset encoding.Encoding) Option {
 
 // SetChartCDN
 //
-//	mods/codec/internal/chart/chart.go:108:1
+//	mods/codec/internal/chart/chart.go:107:1
 type CanSetChartCDN interface {
 	SetChartCDN(cdn string)
 }
@@ -148,9 +148,24 @@ func ChartCDN(cdn string) Option {
 	}
 }
 
+// SetChartDispatchAction
+//
+//	mods/codec/internal/chart/chart.go:115:1
+type CanSetChartDispatchAction interface {
+	SetChartDispatchAction(action string)
+}
+
+func ChartDispatchAction(action string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetChartDispatchAction); ok {
+			_o.SetChartDispatchAction(action)
+		}
+	}
+}
+
 // SetChartId
 //
-//	mods/codec/internal/chart/chart.go:75:1
+//	mods/codec/internal/chart/chart.go:74:1
 type CanSetChartId interface {
 	SetChartId(id string)
 }
@@ -165,7 +180,7 @@ func ChartId(id string) Option {
 
 // SetChartJSFunction
 //
-//	mods/codec/internal/chart/chart.go:112:1
+//	mods/codec/internal/chart/chart.go:111:1
 type CanSetChartJSFunction interface {
 	SetChartJSFunction(js string)
 }
@@ -180,7 +195,7 @@ func ChartJSFunction(js string) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/chart/chart.go:96:1
+//	mods/codec/internal/chart/chart.go:95:1
 //	mods/codec/internal/echart/echart.go:183:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
@@ -196,7 +211,7 @@ func ChartJson(flag bool) Option {
 
 // SetChartOption
 //
-//	mods/codec/internal/chart/chart.go:100:1
+//	mods/codec/internal/chart/chart.go:99:1
 type CanSetChartOption interface {
 	SetChartOption(opt string)
 }
@@ -391,7 +406,7 @@ func LineWidth(width float64) Option {
 
 // SetLogger
 //
-//	mods/codec/internal/chart/chart.go:67:1
+//	mods/codec/internal/chart/chart.go:66:1
 //	mods/codec/internal/echart/echart.go:78:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
@@ -469,7 +484,7 @@ func Opacity(opacity float64) Option {
 // SetOutputStream
 //
 //	mods/codec/internal/box/box_encode.go:45:1
-//	mods/codec/internal/chart/chart.go:71:1
+//	mods/codec/internal/chart/chart.go:70:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
 //	mods/codec/internal/json/json_encode.go:44:1
@@ -488,7 +503,7 @@ func OutputStream(o spec.OutputStream) Option {
 
 // SetPlugins
 //
-//	mods/codec/internal/chart/chart.go:88:1
+//	mods/codec/internal/chart/chart.go:87:1
 type CanSetPlugins interface {
 	SetPlugins(plugins ...string)
 }
@@ -584,7 +599,7 @@ func ShowGrid(flag bool) Option {
 
 // SetSize
 //
-//	mods/codec/internal/chart/chart.go:79:1
+//	mods/codec/internal/chart/chart.go:78:1
 //	mods/codec/internal/echart/echart.go:86:1
 type CanSetSize interface {
 	SetSize(width string, height string)
@@ -646,7 +661,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/chart/chart.go:84:1
+//	mods/codec/internal/chart/chart.go:83:1
 //	mods/codec/internal/echart/echart.go:91:1
 type CanSetTheme interface {
 	SetTheme(theme string)
