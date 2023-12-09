@@ -69,35 +69,35 @@ func NewNode(task *Task) *Node {
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.monad
-		"TAKE":            x.gen_TAKE,
-		"DROP":            x.gen_DROP,
-		"FILTER":          x.gen_FILTER,
-		"FLATTEN":         x.gen_FLATTEN,
-		"GROUPBYKEY":      x.gen_GROUPBYKEY,
-		"POPKEY":          x.gen_POPKEY,
-		"PUSHKEY":         x.gen_PUSHKEY,
-		"MAPKEY":          x.gen_MAPKEY,
-		"POPVALUE":        x.gen_POPVALUE,
-		"PUSHVALUE":       x.gen_PUSHVALUE,
-		"MAPVALUE":        x.gen_MAPVALUE,
-		"TRANSPOSE":       x.gen_TRANSPOSE,
-		"fixed":           x.gen_fixed,
-		"TIMEWINDOW":      x.gen_TIMEWINDOW,
-		"SCRIPT":          x.gen_SCRIPT,
-		"movavg":          x.gen_movavg,
-		"diff":            x.gen_diff,
-		"nonNegativeDiff": x.gen_nonNegativeDiff,
-		"list":            x.gen_list,
-		"dict":            x.gen_dict,
-		"lazy":            x.gen_lazy,
-		"glob":            x.gen_glob,
-		"regexp":          x.gen_regexp,
-		"doLog":           x.gen_doLog,
-		"doHttp":          x.gen_doHttp,
-		"do":              x.gen_do,
-		"args":            x.gen_args,
-		"WHEN":            x.gen_WHEN,
-		"THROTTLE":        x.gen_THROTTLE,
+		"TAKE":        x.gen_TAKE,
+		"DROP":        x.gen_DROP,
+		"FILTER":      x.gen_FILTER,
+		"FLATTEN":     x.gen_FLATTEN,
+		"GROUPBYKEY":  x.gen_GROUPBYKEY,
+		"POPKEY":      x.gen_POPKEY,
+		"PUSHKEY":     x.gen_PUSHKEY,
+		"MAPKEY":      x.gen_MAPKEY,
+		"POPVALUE":    x.gen_POPVALUE,
+		"PUSHVALUE":   x.gen_PUSHVALUE,
+		"MAPVALUE":    x.gen_MAPVALUE,
+		"MAP_MOVAVG":  x.gen_MAP_MOVAVG,
+		"MAP_DIFF":    x.gen_MAP_DIFF,
+		"MAP_ABSDIFF": x.gen_MAP_ABSDIFF,
+		"TRANSPOSE":   x.gen_TRANSPOSE,
+		"fixed":       x.gen_fixed,
+		"TIMEWINDOW":  x.gen_TIMEWINDOW,
+		"SCRIPT":      x.gen_SCRIPT,
+		"list":        x.gen_list,
+		"dict":        x.gen_dict,
+		"lazy":        x.gen_lazy,
+		"glob":        x.gen_glob,
+		"regexp":      x.gen_regexp,
+		"doLog":       x.gen_doLog,
+		"doHttp":      x.gen_doHttp,
+		"do":          x.gen_do,
+		"args":        x.gen_args,
+		"WHEN":        x.gen_WHEN,
+		"THROTTLE":    x.gen_THROTTLE,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -740,6 +740,88 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 	return x.fmMapValue(p0, p1, p2...)
 }
 
+// gen_MAP_MOVAVG
+//
+// syntax: MAP_MOVAVG(int, , int, ...interface {})
+func (x *Node) gen_MAP_MOVAVG(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("MAP_MOVAVG", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_MOVAVG", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_MOVAVG", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convInt(args, 2, "MAP_MOVAVG", "int")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_MOVAVG", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	return x.fmMovAvg(p0, p1, p2, p3...)
+}
+
+// gen_MAP_DIFF
+//
+// syntax: MAP_DIFF(int, , ...interface {})
+func (x *Node) gen_MAP_DIFF(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("MAP_DIFF", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_DIFF", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_DIFF", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_DIFF", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmDiff(p0, p1, p2...)
+}
+
+// gen_MAP_ABSDIFF
+//
+// syntax: MAP_ABSDIFF(int, , ...interface {})
+func (x *Node) gen_MAP_ABSDIFF(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("MAP_ABSDIFF", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_ABSDIFF", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_ABSDIFF", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_ABSDIFF", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmNonNegativeDiff(p0, p1, p2...)
+}
+
 // gen_TRANSPOSE
 //
 // syntax: TRANSPOSE(...interface {})
@@ -815,52 +897,6 @@ func (x *Node) gen_SCRIPT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmScript(p0...)
-}
-
-// gen_movavg
-//
-// syntax: movavg(, int)
-func (x *Node) gen_movavg(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("movavg", 2, len(args))
-	}
-	p0, err := convAny(args, 0, "movavg", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convInt(args, 1, "movavg", "int")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmMovAvg(p0, p1)
-}
-
-// gen_diff
-//
-// syntax: diff()
-func (x *Node) gen_diff(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("diff", 1, len(args))
-	}
-	p0, err := convAny(args, 0, "diff", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmDiff(p0)
-}
-
-// gen_nonNegativeDiff
-//
-// syntax: nonNegativeDiff()
-func (x *Node) gen_nonNegativeDiff(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("nonNegativeDiff", 1, len(args))
-	}
-	p0, err := convAny(args, 0, "nonNegativeDiff", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmNonNegativeDiff(p0)
 }
 
 // gen_list
