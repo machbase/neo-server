@@ -69,33 +69,35 @@ func NewNode(task *Task) *Node {
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.monad
-		"TAKE":       x.gen_TAKE,
-		"DROP":       x.gen_DROP,
-		"FILTER":     x.gen_FILTER,
-		"FLATTEN":    x.gen_FLATTEN,
-		"GROUPBYKEY": x.gen_GROUPBYKEY,
-		"POPKEY":     x.gen_POPKEY,
-		"PUSHKEY":    x.gen_PUSHKEY,
-		"MAPKEY":     x.gen_MAPKEY,
-		"POPVALUE":   x.gen_POPVALUE,
-		"PUSHVALUE":  x.gen_PUSHVALUE,
-		"MAPVALUE":   x.gen_MAPVALUE,
-		"TRANSPOSE":  x.gen_TRANSPOSE,
-		"fixed":      x.gen_fixed,
-		"TIMEWINDOW": x.gen_TIMEWINDOW,
-		"SCRIPT":     x.gen_SCRIPT,
-		"movavg":     x.gen_movavg,
-		"list":       x.gen_list,
-		"dict":       x.gen_dict,
-		"lazy":       x.gen_lazy,
-		"glob":       x.gen_glob,
-		"regexp":     x.gen_regexp,
-		"doLog":      x.gen_doLog,
-		"doHttp":     x.gen_doHttp,
-		"do":         x.gen_do,
-		"args":       x.gen_args,
-		"WHEN":       x.gen_WHEN,
-		"THROTTLE":   x.gen_THROTTLE,
+		"TAKE":            x.gen_TAKE,
+		"DROP":            x.gen_DROP,
+		"FILTER":          x.gen_FILTER,
+		"FLATTEN":         x.gen_FLATTEN,
+		"GROUPBYKEY":      x.gen_GROUPBYKEY,
+		"POPKEY":          x.gen_POPKEY,
+		"PUSHKEY":         x.gen_PUSHKEY,
+		"MAPKEY":          x.gen_MAPKEY,
+		"POPVALUE":        x.gen_POPVALUE,
+		"PUSHVALUE":       x.gen_PUSHVALUE,
+		"MAPVALUE":        x.gen_MAPVALUE,
+		"TRANSPOSE":       x.gen_TRANSPOSE,
+		"fixed":           x.gen_fixed,
+		"TIMEWINDOW":      x.gen_TIMEWINDOW,
+		"SCRIPT":          x.gen_SCRIPT,
+		"movavg":          x.gen_movavg,
+		"diff":            x.gen_diff,
+		"nonNegativeDiff": x.gen_nonNegativeDiff,
+		"list":            x.gen_list,
+		"dict":            x.gen_dict,
+		"lazy":            x.gen_lazy,
+		"glob":            x.gen_glob,
+		"regexp":          x.gen_regexp,
+		"doLog":           x.gen_doLog,
+		"doHttp":          x.gen_doHttp,
+		"do":              x.gen_do,
+		"args":            x.gen_args,
+		"WHEN":            x.gen_WHEN,
+		"THROTTLE":        x.gen_THROTTLE,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -1246,6 +1248,34 @@ func (x *Node) gen_movavg(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmMovAvg(p0, p1)
+}
+
+// gen_diff
+//
+// syntax: diff()
+func (x *Node) gen_diff(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("diff", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "diff", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmDiff(p0)
+}
+
+// gen_nonNegativeDiff
+//
+// syntax: nonNegativeDiff()
+func (x *Node) gen_nonNegativeDiff(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("nonNegativeDiff", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "nonNegativeDiff", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmNonNegativeDiff(p0)
 }
 
 // gen_list

@@ -1035,6 +1035,54 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 	}
 }
 
+func (node *Node) fmNonNegativeDiff(value any) (any, error) {
+	var df *diff
+	// FIXME: using "_non_negative_diff" as key, a node can have only one nonNegativeDiff().
+	if v, ok := node.GetValue("_non_negative_diff"); ok {
+		df = v.(*diff)
+	} else {
+		df = &diff{prev: nil, nonNegative: true}
+		node.SetValue("_non_negative_diff", df)
+	}
+	return df.diff(node, value)
+}
+
+func (node *Node) fmDiff(value any) (any, error) {
+	var df *diff
+	// FIXME: using "_diff" as key, a node can have only one diff().
+	if v, ok := node.GetValue("_diff"); ok {
+		df = v.(*diff)
+	} else {
+		df = &diff{prev: nil, nonNegative: false}
+		node.SetValue("_diff", df)
+	}
+	return df.diff(node, value)
+}
+
+type diff struct {
+	prev        *float64
+	nonNegative bool
+}
+
+func (df *diff) diff(node *Node, value any) (any, error) {
+	var fv *float64
+	if f, err := util.ToFloat64(value); err == nil {
+		fv = &f
+	}
+
+	if df.prev == nil {
+		df.prev = fv
+		return nil, nil
+	} else {
+		ret := *fv - *df.prev
+		if df.nonNegative && ret < 0 {
+			ret = 0
+		}
+		df.prev = fv
+		return ret, nil
+	}
+}
+
 func (node *Node) fmMovAvg(value any, lag int) (any, error) {
 	if lag <= 0 {
 		return 0, ErrArgs("movavg", 1, "lag sould be larger than 0")

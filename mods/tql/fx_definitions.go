@@ -87,6 +87,8 @@ var FxDefinitions = []Definition{
 	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
 	{"movavg", defTask.fmMovAvg},
+	{"diff", defTask.fmDiff},
+	{"nonNegativeDiff", defTask.fmNonNegativeDiff},
 	{"list", defTask.fmList},
 	{"dict", defTask.fmDictionary},
 	{"lazy", defTask.fmLazy},
