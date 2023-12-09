@@ -1035,12 +1035,23 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 	}
 }
 
+func (node *Node) fmAbsDiff(idx int, value any, args ...any) (any, error) {
+	var df *diff
+	if v, ok := node.GetValue("_abs_diff"); ok {
+		df = v.(*diff)
+	} else {
+		df = &diff{isPrevNull: true, abs: true}
+		node.SetValue("_abs_diff", df)
+	}
+	return df.diff(node, idx, value, args)
+}
+
 func (node *Node) fmNonNegativeDiff(idx int, value any, args ...any) (any, error) {
 	var df *diff
 	if v, ok := node.GetValue("_non_negative_diff"); ok {
 		df = v.(*diff)
 	} else {
-		df = &diff{prev: nil, nonNegative: true}
+		df = &diff{isPrevNull: true, nonNegative: true}
 		node.SetValue("_non_negative_diff", df)
 	}
 	return df.diff(node, idx, value, args)
@@ -1051,32 +1062,46 @@ func (node *Node) fmDiff(idx int, value any, args ...any) (any, error) {
 	if v, ok := node.GetValue("_diff"); ok {
 		df = v.(*diff)
 	} else {
-		df = &diff{prev: nil, nonNegative: false}
+		df = &diff{isPrevNull: true}
 		node.SetValue("_diff", df)
 	}
 	return df.diff(node, idx, value, args)
 }
 
 type diff struct {
-	prev        *float64
+	prev        float64
+	isPrevNull  bool
+	abs         bool
 	nonNegative bool
 }
 
 func (df *diff) diff(node *Node, idx int, value any, opts []any) (any, error) {
-	var fv *float64
-	if f, err := util.ToFloat64(value); err == nil {
-		fv = &f
+	if value == nil {
+		df.isPrevNull = true
+		return node.fmMapValue(idx, nil, opts...)
 	}
 
-	if df.prev == nil {
+	var fv float64
+	if f, err := util.ToFloat64(value); err == nil {
+		fv = f
+	} else {
+		df.isPrevNull = true
+		return node.fmMapValue(idx, nil, opts...)
+	}
+
+	if df.isPrevNull {
 		df.prev = fv
+		df.isPrevNull = false
 		return node.fmMapValue(idx, nil, opts...)
 	} else {
-		ret := *fv - *df.prev
-		if df.nonNegative && ret < 0 {
+		ret := fv - df.prev
+		if df.abs {
+			ret = math.Abs(ret)
+		} else if df.nonNegative && ret < 0 {
 			ret = 0
 		}
 		df.prev = fv
+		df.isPrevNull = false
 		return node.fmMapValue(idx, ret, opts...)
 	}
 }

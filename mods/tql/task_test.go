@@ -388,6 +388,30 @@ func TestMovingAvg(t *testing.T) {
 	}
 	resultLines = loadLines("./test/movavg_result.txt")
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( csv("1\n3\n2\n7") )`,
+		`MAP_DIFF(0, value(0))`,
+		`CSV()`,
+	}
+	resultLines = []string{"NULL", "2", "-1", "5"}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( csv("1\n3\n2\n7") )`,
+		`MAP_NONEGDIFF(0, value(0))`,
+		`CSV()`,
+	}
+	resultLines = []string{"NULL", "2", "0", "5"}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( csv("1\n3\n2\n7") )`,
+		`MAP_ABSDIFF(0, value(0))`,
+		`CSV()`,
+	}
+	resultLines = []string{"NULL", "2", "1", "5"}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {
