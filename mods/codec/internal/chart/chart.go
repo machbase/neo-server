@@ -298,7 +298,7 @@ func init() {
 
 func getValueRegexp(idx int) *regexp.Regexp {
 	if r, ok := valueRegexpCache[idx]; !ok {
-		pattern := fmt.Sprintf(`(value\s*\(\s*%d\s*\))`, idx)
+		pattern := fmt.Sprintf(`(column\s*\(\s*%d\s*\))`, idx)
 		r = regexp.MustCompile(pattern)
 		valueRegexpCache[idx] = r
 		return r

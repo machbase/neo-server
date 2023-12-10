@@ -42,10 +42,10 @@ func TestLine(t *testing.T) {
 		c.SetChartId("WejMYXCGcYNL")
 		c.SetTheme("white")
 		c.SetChartOption(`{
-			"xAxis": { "type": "time", "data": value(0 ) },
+			"xAxis": { "type": "time", "data": column(0 ) },
 			"yAxis": { "type": "value"},
 			"series": [
-				{ "type": "line", "data": value( 1) }
+				{ "type": "line", "data": column( 1) }
 			]
 		}`)
 		if output == "json" {
@@ -87,10 +87,10 @@ func TestScatter(t *testing.T) {
 		c.ChartID = "WejMYXCGcYNL"
 		c.Theme = "white"
 		c.SetChartOption(`{
-			"xAxis": { "type": "time", "data": value(0) },
+			"xAxis": { "type": "time", "data": column(0) },
 			"yAxis": { "type": "value"},
 			"series": [
-				{ "type": "scatter", "data": value( 1	) }
+				{ "type": "scatter", "data": column( 1	) }
 			]
 		}`)
 		if output == "json" {
@@ -136,13 +136,13 @@ func TestTangentialPolarBar(t *testing.T) {
 			"angleAxis": { "max": 4, "startAngle": 75 },
 			"radiusAxis": {
 				"type": "category",
-				"data": value(0)
+				"data": column( 0 )
 			},
 			"tooltip": {},
 			"series": [
 				{
 					"type":"bar",
-					"data": value(1),
+					"data": column( 1),
 					"coordinateSystem": "polar",
 					"label": {
 						"show": true,
@@ -196,10 +196,10 @@ func TestAnscombeQuatet(t *testing.T) {
             { "right": "7%", "bottom": "7%", "width": "38%", "height": "38%" }
         ],
 		"xAxis": [
-			{ "type": "time", "gridIndex": 0, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
-			{ "type": "time", "gridIndex": 1, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
-			{ "type": "time", "gridIndex": 2, "data": value(0), "min": 1701059598000, "max": 1701059614000 },
-			{ "type": "time", "gridIndex": 3, "data": value(0), "min": 1701059598000, "max": 1701059614000 }
+			{ "type": "time", "gridIndex": 0, "data": column(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 1, "data": column(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 2, "data": column(0), "min": 1701059598000, "max": 1701059614000 },
+			{ "type": "time", "gridIndex": 3, "data": column(0), "min": 1701059598000, "max": 1701059614000 }
 		],
 		"yAxis": [
 			{ "type": "value", "gridIndex": 0, "min": 0, "max": 15 },
@@ -213,7 +213,7 @@ func TestAnscombeQuatet(t *testing.T) {
 				"type": "scatter",
 				"xAxisIndex": 0,
 				"yAxisIndex": 0,
-				"data": value(1),
+				"data": column(1),
 				"markLine": {
 					"data": [
 						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
@@ -225,7 +225,7 @@ func TestAnscombeQuatet(t *testing.T) {
 				"type": "scatter",
 				"xAxisIndex": 1,
 				"yAxisIndex": 1,
-				"data": value(2),
+				"data": column(2),
 				"markLine": {
 					"data": [
 						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
@@ -237,7 +237,7 @@ func TestAnscombeQuatet(t *testing.T) {
 				"type": "scatter",
 				"xAxisIndex": 2,
 				"yAxisIndex": 2,
-				"data": value(3),
+				"data": column(3),
 				"markLine": {
 					"data": [
 						[ {"coord": [1701059598000, 3]}, {"coord": [1701059614000, 13]} ]
@@ -249,7 +249,7 @@ func TestAnscombeQuatet(t *testing.T) {
 				"type": "scatter",
 				"xAxisIndex": 3,
 				"yAxisIndex": 3,
-				"data": value(4),
+				"data": column(4),
 				"markLine": {
 					"data": [
 						[
@@ -293,11 +293,11 @@ func TestMarkLine(t *testing.T) {
 	c.ChartID = "WejMYXCGcYNL"
 	c.Theme = "dark"
 	c.SetChartOption(`{
-		"xAxis": { "type": "time", "data": value(0) },
+		"xAxis": { "type": "time", "data": column(0) },
 		"yAxis": { "type": "value" },
 		"series": [{ 
 			"type": "line",
-			"data": value(1),
+			"data": column(1),
 			"color":"#5470C6",
 			"markLine": [
 				{
@@ -352,11 +352,11 @@ func TestCandleStick(t *testing.T) {
 		"series":[
 			{
 				"type": "category",
-				"data": value(0)
+				"data": column(0)
 			},
 			{
 				"type": "candlestick",
-				"data": value(1)
+				"data": column(1)
 			}
 		]
 	}`)
