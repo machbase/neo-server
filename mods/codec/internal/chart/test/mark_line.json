@@ -64,5 +64,6 @@
                 ]
             }
         ]
-    }
+    },
+    "chartAction": {"areas": {}, "type": ""}
 }

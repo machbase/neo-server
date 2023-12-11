@@ -462,6 +462,48 @@ func TestMathFunctions(t *testing.T) {
 		args:      []any{},
 		expectErr: "f(round) invalid number of args; expect:1, actual:0",
 	}.run(t)
+	FunctionTestCase{f: node.Function("round"),
+		args:      []any{"not_a_number"},
+		expectErr: "f(round) arg(0) should be float64, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("round"),
+		args:      nil,
+		expectErr: "f(round) <nil> is invalid argument",
+	}.run(t)
+
+	FunctionTestCase{f: node.Function("pow10"),
+		args:      []any{},
+		expectErr: "f(pow10) invalid number of args; expect:1, actual:0",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow10"),
+		args:      []any{"not_a_number"},
+		expectErr: "f(pow10) arg(0) should be int, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow10"),
+		args:      nil,
+		expectErr: "f(pow10) <nil> is invalid argument",
+	}.run(t)
+
+	FunctionTestCase{f: node.Function("pow"),
+		args:      []any{},
+		expectErr: "f(pow) invalid number of args; expect:2, actual:0",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow"),
+		args:      []any{1.0},
+		expectErr: "f(pow) invalid number of args; expect:2, actual:1",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow"),
+		args:      []any{"not_a_number", "2.0"},
+		expectErr: "f(pow) arg(0) should be float64, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow"),
+		args:      []any{"1.0", "not_a_number"},
+		expectErr: "f(pow) arg(1) should be float64, but string",
+	}.run(t)
+	FunctionTestCase{f: node.Function("pow"),
+		args:   []any{1.0, nil},
+		expect: nil,
+	}.run(t)
 
 	tests := []FunctionTestCase{
 		{f: node.Function("abs"), args: []any{1.1}, expect: 1.1},

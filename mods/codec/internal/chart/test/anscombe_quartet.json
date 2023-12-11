@@ -289,5 +289,6 @@
                 }
             }
         ]
-    }
+    },
+    "chartAction": {"areas": {}, "type": ""}
 }

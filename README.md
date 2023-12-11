@@ -31,14 +31,6 @@ Bridges integrated with external systems
 
 [https://machbase.com/neo](https://machbase.com/neo)
 
-## Web User Interface
-
-- SQL
-![screen](./docs/screenshot02.jpg)
-
-- TQL Script
-![screen](./docs/screenshot01.jpg)
-
 ## Install Prebuilt Binary
 
 - Download
@@ -65,11 +57,14 @@ https://hub.docker.com/r/machbase/machbase-neo
 - Execute `go run mage.go machbase-neo`
 - Find the executable binary `./tmp/machbase-neo`
 
-### Dependency
+## Web User Interface
 
-![deps](./docs/deps.png)
+- SQL
+![screen](./docs/screenshot02.jpg)
 
-- [neo-server](https://github.com/machbase/neo-server) machbase-neo source code
-- [neo-spi](https://github.com/machbase/neo-spi) defines interfaces accessing database
-- [neo-grpc](https://github.com/machbase/neo-grpc) implements spi accessing database via gRPC
-- [neo-engine](https://github.com/machbase/neo-engine) implements spi accessing database via C API
+- TQL Script
+![screen](./docs/screenshot01.jpg)
+
+- Data Visualization<br/>
+Find more samples from the [documents](https://machbase.com/neo/tql/chart/).
+![charts](./docs/charts_demo.jpg)

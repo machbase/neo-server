@@ -42,5 +42,6 @@
                 }
             }
         ]
-    }
+    },
+    "chartAction": {"areas": {}, "type": ""}
 }

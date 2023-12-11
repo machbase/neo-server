@@ -29,12 +29,12 @@ type Chart struct {
 	Height  string
 	Theme   string
 	// HTML template
-	AssetsHost   string
-	PageTitle    string
-	JSAssets     []string
-	CSSAssets    []string
-	JSFunctions  []string
-	ChartActions *ChartActions
+	AssetsHost     string
+	PageTitle      string
+	JSAssets       []string
+	CSSAssets      []string
+	JSCodes        []string
+	DispatchAction string
 }
 
 type ChartActions struct {
@@ -51,10 +51,6 @@ func NewChart() *Chart {
 		ChartID: id,
 		Width:   "600px",
 		Height:  "600px",
-		JSAssets: []string{
-			"/web/echarts/echarts.min.js",
-		},
-		ChartActions: &ChartActions{},
 	}
 }
 
@@ -106,12 +102,31 @@ func (c *Chart) SetChartOption(opt string) {
 	c.option = opt
 }
 
+func (c *Chart) SetChartCDN(cdn string) {
+	c.JSAssets = append(c.JSAssets, cdn)
+}
+
+func (c *Chart) SetChartJSCode(js string) {
+	c.JSCodes = append(c.JSCodes, js)
+}
+
+func (c *Chart) SetChartDispatchAction(action string) {
+	action = strings.TrimSpace(action)
+	if !strings.HasPrefix(action, "{") {
+		action = "{" + action + "}"
+	}
+	c.DispatchAction = action
+}
+
 func (c *Chart) ChartOptionNoEscaped() template.HTML {
 	return template.HTML(c.option)
 }
 
-func (c *Chart) ChartActionsNoEscaped() template.HTML {
-	return template.HTML(`{"areas": {}, "type": ""}`)
+func (c *Chart) ChartDispatchActionNoEscaped() template.HTML {
+	if c.DispatchAction == "" {
+		c.DispatchAction = `{"areas": {}, "type": ""}`
+	}
+	return template.HTML(c.DispatchAction)
 }
 
 func (c *Chart) Open() error {
@@ -156,6 +171,8 @@ func convValue(val any) (ret any) {
 }
 
 var themeNames = map[string]bool{
+	"white":          true,
+	"dark":           true,
 	"essos":          true,
 	"chalk":          true,
 	"purple-passion": true,
@@ -164,7 +181,6 @@ var themeNames = map[string]bool{
 	"westeros":       true,
 	"wonderland":     true,
 	"vintage":        true,
-	"dark":           true,
 	"macarons":       true,
 	"infographic":    true,
 	"shine":          true,
@@ -196,13 +212,22 @@ func (c *Chart) Close() {
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
-		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
+		if len(c.JSAssets) == 0 {
+			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
+			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
+		}
 		if _, ok := themeNames[c.Theme]; ok {
-			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+			if c.Theme != "white" {
+				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+			}
+		} else {
+			c.JSAssets = append(c.JSAssets, c.Theme)
 		}
 		for _, plugin := range c.plugins {
 			if _, ok := pluginNames[plugin]; ok {
 				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
+			} else {
+				c.JSAssets = append(c.JSAssets, plugin)
 			}
 		}
 		c.Render()
@@ -273,7 +298,7 @@ func init() {
 
 func getValueRegexp(idx int) *regexp.Regexp {
 	if r, ok := valueRegexpCache[idx]; !ok {
-		pattern := fmt.Sprintf(`(value\s*\(\s*%d\s*\))`, idx)
+		pattern := fmt.Sprintf(`(column\s*\(\s*%d\s*\))`, idx)
 		r = regexp.MustCompile(pattern)
 		valueRegexpCache[idx] = r
 		return r
