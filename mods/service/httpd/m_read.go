@@ -834,7 +834,7 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 		SELECT TO_CHAR(MTIME, 'YYYY-MM-DD HH:MI:SS') AS TIME, %s(MVALUE) AS VALUE 
 		FROM (
 			SELECT %s AS MTIME, DECODE(type, 'float64', value, ivalue) AS MVALUE
-			FROM TAGDATA
+			FROM TAG
 			WHERE %s %s
 			) 
 		GROUP BY TIME 
@@ -926,7 +926,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 
 	sqlText := fmt.Sprintf(SqlTidy(`
 		SELECT %s 
-		FROM TAGDATA
+		FROM TAG
 		WHERE %s AND %s
 	`), selectText,
 		makeInCondition("NAME", tagList, false, true),
@@ -1578,7 +1578,16 @@ func ConvertFormat1(dbData *MachbaseResult, tagList []string) []ReturnData {
 				data = make([]interface{}, 0)
 
 				for _, row := range dbData.Data {
-					if row[0] != name {
+					switch nv := row[0].(type) {
+					case *string:
+						if *nv != name {
+							continue
+						}
+					case string:
+						if nv != name {
+							continue
+						}
+					default:
 						continue
 					}
 
