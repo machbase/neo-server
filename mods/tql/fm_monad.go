@@ -209,7 +209,7 @@ func (node *Node) fmDictionary(args ...any) (any, error) {
 	ret := map[string]any{}
 	for i := 0; i < len(args); i += 2 {
 		if i+1 >= len(args) {
-			break
+			return nil, fmt.Errorf("dictionary name %q doen't match with any value", args[i])
 		}
 		if name, ok := args[i].(string); ok {
 			ret[name] = args[i+1]

@@ -23,12 +23,6 @@ var BaseTemplate = `
 
 <script type="text/javascript">
     "use strict";
-    var geomap_{{ .MapID | safeJS }} = L.map("{{ .MapID }}").setView([51.505, -0.09], 13);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(geomap_{{ .MapID | safeJS }});
-
     {{- range .JSCodes }}
     {{ . | safeJS }}
     {{- end }}

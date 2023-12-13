@@ -6,6 +6,7 @@ package opts
 
 import (
 	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"golang.org/x/text/encoding"
@@ -292,6 +293,21 @@ func Delimiter(delimiter string) Option {
 	}
 }
 
+// SetGeoMarker
+//
+//	mods/codec/internal/geomap/geomap.go:100:1
+type CanSetGeoMarker interface {
+	SetGeoMarker(point nums.GeoPoint)
+}
+
+func GeoMarker(point nums.GeoPoint) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoMarker); ok {
+			_o.SetGeoMarker(point)
+		}
+	}
+}
+
 // SetGlobalOptions
 //
 //	mods/codec/internal/echart/echart.go:213:1
@@ -373,6 +389,21 @@ func Html(flag bool) Option {
 	}
 }
 
+// SetInitialLocation
+//
+//	mods/codec/internal/geomap/geomap.go:78:1
+type CanSetInitialLocation interface {
+	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
+}
+
+func InitialLocation(latlng *nums.LatLng, zoomLevel int) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetInitialLocation); ok {
+			_o.SetInitialLocation(latlng, zoomLevel)
+		}
+	}
+}
+
 // SetInputStream
 //
 //	mods/codec/internal/csv/csv_decode.go:37:1
@@ -408,6 +439,7 @@ func LineWidth(width float64) Option {
 //
 //	mods/codec/internal/chart/chart.go:64:1
 //	mods/codec/internal/echart/echart.go:78:1
+//	mods/codec/internal/geomap/geomap.go:61:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
 	SetLogger(l logger.Logger)
@@ -417,6 +449,21 @@ func Logger(l logger.Logger) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetLogger); ok {
 			_o.SetLogger(l)
+		}
+	}
+}
+
+// SetMapId
+//
+//	mods/codec/internal/geomap/geomap.go:69:1
+type CanSetMapId interface {
+	SetMapId(id string)
+}
+
+func MapId(id string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMapId); ok {
+			_o.SetMapId(id)
 		}
 	}
 }
@@ -487,6 +534,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/chart/chart.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
+//	mods/codec/internal/geomap/geomap.go:65:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
@@ -601,6 +649,7 @@ func ShowGrid(flag bool) Option {
 //
 //	mods/codec/internal/chart/chart.go:76:1
 //	mods/codec/internal/echart/echart.go:86:1
+//	mods/codec/internal/geomap/geomap.go:73:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -671,6 +720,21 @@ func Theme(theme string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetTheme); ok {
 			_o.SetTheme(theme)
+		}
+	}
+}
+
+// SetTileLayer
+//
+//	mods/codec/internal/geomap/geomap.go:83:1
+type CanSetTileLayer interface {
+	SetTileLayer(url string, opt string)
+}
+
+func TileLayer(url string, opt string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileLayer); ok {
+			_o.SetTileLayer(url, opt)
 		}
 	}
 }

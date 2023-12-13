@@ -210,6 +210,10 @@ func getConvFunc(ptype string, pname string, funcName string) string {
 		return "Bool"
 	case "interface {}":
 		return "Any"
+	case "*nums.LatLng":
+		return "LatLng"
+	case "map[string]interface {}":
+		return "Dictionary"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}
@@ -250,6 +254,12 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "Logger"
 	case "encoding.Encoding":
 		convFunc = "Charset"
+	case "*nums.LatLng":
+		convFunc = "LatLng"
+	case "*nums.SingleLatLng":
+		convFunc = "SingleLatLng"
+	case "*nums.MultiLatLng":
+		convFunc = "MultiLatLng"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}

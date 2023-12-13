@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/internal/geomap"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +39,7 @@ func TestGeoMap(t *testing.T) {
 	c := geomap.New()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
+	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
 	require.Equal(t, "text/html", c.ContentType())
 
 	tick := time.Unix(0, 1692670838086467000)
