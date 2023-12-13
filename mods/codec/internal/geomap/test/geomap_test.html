@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title></title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+</head>
+
+<body>
+<div class="geomap_container">
+    <div class="geomap_item" id="WejMYXCGcYNL" style="width:600px;height:600px;"></div>
+</div>
+
+<script type="text/javascript">
+    "use strict";
+    var geomap_WejMYXCGcYNL = L.map("WejMYXCGcYNL").setView([51.505, -0.09], 13);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(geomap_WejMYXCGcYNL);
+</script>
+
+<style>
+    .geomap_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
+    .geomap_item {margin: auto;}
+</style>
+</body>
+</html>

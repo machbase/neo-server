@@ -9,6 +9,12 @@ var ChartJsonTemplate = `
         "height": "{{ .Height }}"	
     },
     "theme": "{{ .Theme }}",
+    {{ $len := len .JSAssets }} {{ if gt $len 0 }}
+    "jsAssets": {{ .JSAssetsNoEscaped }},
+    {{ end }}
+    {{ $len := len .CSSAssets }} {{ if gt $len 0 }}
+    "cssAssets" : {{ .JSAssetsNoEscaped }},
+    {{ end }}
     "chartOption": {{ .ChartOptionNoEscaped }},
 	"chartAction": {{ .ChartDispatchActionNoEscaped }}
 }

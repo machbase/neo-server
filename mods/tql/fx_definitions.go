@@ -137,6 +137,7 @@ var FxDefinitions = []Definition{
 	{"CHART_BAR3D", defTask.fmChartBar3D},
 	{"CHART_SURFACE3D", defTask.fmChartSurface3D},
 	{"CHART_SCATTER3D", defTask.fmChartScatter3D},
+	{"GEOMAP", defTask.fmGeoMap},
 	// maps.bytes
 	{"// maps.bytes", nil},
 	{"separator", defTask.fmSeparator},
