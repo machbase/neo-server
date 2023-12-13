@@ -195,6 +195,20 @@ func (gm *GeoMap) Close() {
 		}
 	}
 	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.polygon([[51.509, -0.08],[51.503, -0.06],[51.51, -0.047]]).addTo(geomap_%s);`, gm.MapID))
+
+	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`
+	// 	var greenIcon = L.icon({
+	// 		iconUrl: 'http://127.0.0.1:5654/db/tql/geomap/alert.gif',
+	// 		// shadowUrl: 'leaf-shadow.png',
+
+	// 		iconSize:     [95, 95], // size of the icon
+	// 		shadowSize:   [50, 64], // size of the shadow
+	// 		iconAnchor:   [22, 94], // point of the icon which will correspond to marker's location
+	// 		shadowAnchor: [4, 62],  // the same for the shadow
+	// 		popupAnchor:  [-3, -76] // point from which the popup should open relative to the iconAnchor
+	// 	});
+	// 	L.marker([37.503058, 127.018666], {icon: greenIcon}).addTo(geomap_%s);
+	// `, gm.MapID))
 	gm.Render()
 }
 
