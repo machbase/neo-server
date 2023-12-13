@@ -85,9 +85,9 @@ func (gm *GeoMap) Close() {
 	if len(gm.CSSAssets) == 0 {
 		gm.CSSAssets = append(gm.CSSAssets, "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
 	}
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.marker([51.5, -0.09]).addTo(geomap_%s);`, gm.MapID))
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.circle([51.508, -0.11], { color: 'red', fillColor: '#f03', fillOpacity: 0.5, radius: 500 }).addTo(geomap_%s);`, gm.MapID))
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.polygon([[51.509, -0.08],[51.503, -0.06],[51.51, -0.047]]).addTo(geomap_%s);`, gm.MapID))
+	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.marker([51.5, -0.09]).addTo(geomap_%s);`, gm.MapID))
+	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.circle([51.508, -0.11], { color: 'red', fillColor: '#f03', fillOpacity: 0.5, radius: 500 }).addTo(geomap_%s);`, gm.MapID))
+	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.polygon([[51.509, -0.08],[51.503, -0.06],[51.51, -0.047]]).addTo(geomap_%s);`, gm.MapID))
 	gm.Render()
 }
 
