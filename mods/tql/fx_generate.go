@@ -260,6 +260,8 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "SingleLatLng"
 	case "*nums.MultiLatLng":
 		convFunc = "MultiLatLng"
+	case "nums.GeoMarker":
+		convFunc = "GeoMarker"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))
 	}

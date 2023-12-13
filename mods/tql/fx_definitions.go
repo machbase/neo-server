@@ -60,12 +60,15 @@ var FxDefinitions = []Definition{
 	{"linspace", defTask.fmLinspace},
 	{"linspace50", defTask.fmLinspace50},
 	{"meshgrid", defTask.fmMeshgrid},
+	// geo
 	{"latlng", nums.NewLatLng},
 	{"geoPoint", nums.NewGeoPoint},
+	{"geoMultiPoint", nums.NewGeoMultiPoint},
 	{"geoCircle", nums.NewGeoCircle},
 	{"geoPolygon", nums.NewGeoPolygon},
 	{"geoLineString", nums.NewGeoLineString},
-	{"geoMultiPoint", nums.NewGeoMultiPoint},
+	{"geoPointMarker", nums.NewGeoPointMarker},
+	{"geoCircleMarker", nums.NewGeoCircleMarker},
 	// maps.time
 	{"// maps.time", nil},
 	{"period", defTask.fmPeriod},

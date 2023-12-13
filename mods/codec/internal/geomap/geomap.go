@@ -35,13 +35,8 @@ type GeoMap struct {
 	CSSAssets []string
 	PageTitle string
 
-	// markers
-	markers []GeoMarker
-}
-
-type GeoMarker interface {
-	Properties() map[string]any
-	Coordinates() [][]float64
+	objs  []nums.Geography
+	icons []GeoIcon
 }
 
 var idGen, _ = snowflake.NewNode(time.Now().Unix() % 1024)
@@ -101,8 +96,24 @@ func (gm *GeoMap) TileOption() template.HTML {
 	return template.HTML(gm.tileOption)
 }
 
-func (gm *GeoMap) SetGeoMarker(point nums.GeoPoint) {
-	gm.markers = append(gm.markers, point)
+func (gm *GeoMap) SetGeoMarker(marker nums.GeoMarker) {
+	gm.objs = append(gm.objs, marker)
+}
+
+func (gm *GeoMap) SetGeoIcon(name string, url string, width float64, height float64) {
+	gm.icons = append(gm.icons, GeoIcon{
+		name:   name,
+		url:    url,
+		width:  width,
+		height: height,
+	})
+}
+
+type GeoIcon struct {
+	name   string
+	url    string
+	width  float64
+	height float64
 }
 
 func (gm *GeoMap) Flush(heading bool) {
@@ -114,15 +125,8 @@ func (gm *GeoMap) Open() error {
 
 func (gm *GeoMap) AddRow(values []any) error {
 	for _, val := range values {
-		switch v := val.(type) {
-		case *nums.LatLng:
-			gm.markers = append(gm.markers, nums.NewGeoPoint(v))
-		case *nums.SingleLatLng:
-			gm.markers = append(gm.markers, v)
-		case *nums.Circle:
-			gm.markers = append(gm.markers, v)
-		case *nums.MultiLatLng:
-		default:
+		if v, ok := val.(nums.Geography); ok {
+			gm.objs = append(gm.objs, v)
 		}
 	}
 	return nil
@@ -152,41 +156,77 @@ func (gm *GeoMap) Close() {
 	}
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s").setView(%s, %d);`, gm.MapID, gm.MapID, gm.InitialLatLng.String(), gm.InitialZoomLevel))
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
-	for i, mk := range gm.markers {
-		markerOpt := []byte("{}")
+
+	for _, icn := range gm.icons {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon({ iconUrl: '%s', iconSize: [%d, %d], iconAnchor: [%d, %d]});`,
+			icn.name, icn.url, int(icn.width), int(icn.height), int(icn.width/2), int(icn.height/2)))
+	}
+	for i, obj := range gm.objs {
 		bindPopup := ""
 		openPopup := ""
-		markerName := fmt.Sprintf("geomarker%d_%s", i, gm.MapID)
+		objName := fmt.Sprintf("geo_obj_%d_%s", i, gm.MapID)
+		objOption := []byte("{}")
 
-		props := mk.Properties()
-		if props != nil {
+		objType := "marker"
+		if mkr, ok := obj.(nums.GeoMarker); ok {
+			objType = mkr.Marker()
+		} else {
+			switch obj.(type) {
+			case *nums.Circle:
+				objType = "circle"
+			case *nums.SingleLatLng:
+				objType = "point"
+			}
+		}
+
+		if props := obj.Properties(); props != nil {
 			if v, ok := props["popup.content"]; ok {
-				bindPopup = fmt.Sprintf("%s.bindPopup(%q);", markerName, v)
+				bindPopup = fmt.Sprintf("%s.bindPopup(%q);", objName, v)
 				delete(props, "popup.content")
 			}
 			if v, ok := props["popup.open"]; ok {
 				if b, ok := v.(bool); ok && b {
-					openPopup = fmt.Sprintf("%s.openPopup()", markerName)
+					openPopup = fmt.Sprintf("%s.openPopup()", objName)
 				}
 				delete(props, "popup.open")
 			}
-			if jsn, err := json.Marshal(props); err == nil {
-				markerOpt = jsn
-			}
-		}
-		markerType := "marker"
-		markerCoord := ""
+			// if v, ok := props["icon"]; ok {
+			// 	iconName := v.(string)
+			// }
 
-		switch v := mk.(type) {
-		case *nums.Circle:
-			markerType = "circle"
-			markerCoord = fmt.Sprintf("[%v,%v]", v.Coordinates()[0][0], v.Coordinates()[0][1])
-		default:
-			markerType = "marker"
-			markerCoord = fmt.Sprintf("[%v,%v]", v.Coordinates()[0][0], v.Coordinates()[0][1])
+			if objType == "point" {
+				objType = "circleMarker"
+				props["radius"] = 7
+				props["stroke"] = false
+				props["color"] = "#ff0000"
+				props["opacity"] = 1.0
+				props["fillOpacity"] = 1.0
+			}
+
+			if jsn, err := json.Marshal(props); err == nil {
+				objOption = jsn
+			}
+			objOption = bytes.ReplaceAll(objOption, []byte(`"alert_icon"`), []byte(`alert_icon`))
 		}
+
+		objCoord := ""
+		switch obj.(type) {
+		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLng:
+			coord := obj.Coordinates()
+			if len(coord) > 0 {
+				objCoord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
+			}
+		default:
+			coord := obj.Coordinates()
+			arr := []string{}
+			for _, p := range coord {
+				arr = append(arr, fmt.Sprintf("[%v,%v]", p[0], p[1]))
+			}
+			objCoord = "[" + strings.Join(arr, ",") + "]"
+		}
+
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(geomap_%s);`,
-			markerName, markerType, markerCoord, markerOpt, gm.MapID))
+			objName, objType, objCoord, objOption, gm.MapID))
 		if bindPopup != "" {
 			gm.JSCodes = append(gm.JSCodes, bindPopup)
 		}
@@ -198,14 +238,14 @@ func (gm *GeoMap) Close() {
 
 	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`
 	// 	var greenIcon = L.icon({
-	// 		iconUrl: 'http://127.0.0.1:5654/db/tql/geomap/alert.gif',
+	// 		iconUrl: '/db/tql/geomap/alert.gif',
 	// 		// shadowUrl: 'leaf-shadow.png',
 
-	// 		iconSize:     [95, 95], // size of the icon
-	// 		shadowSize:   [50, 64], // size of the shadow
-	// 		iconAnchor:   [22, 94], // point of the icon which will correspond to marker's location
-	// 		shadowAnchor: [4, 62],  // the same for the shadow
-	// 		popupAnchor:  [-3, -76] // point from which the popup should open relative to the iconAnchor
+	// 		iconSize:     [50, 50], // size of the icon
+	// 		shadowSize:   [50, 50], // size of the shadow
+	// 		iconAnchor:   [25, 25], // point of the icon which will correspond to marker's location
+	// 		shadowAnchor: [25, 25], // the same for the shadow
+	// 		popupAnchor:  [-3, -3]  // point from which the popup should open relative to the iconAnchor
 	// 	});
 	// 	L.marker([37.503058, 127.018666], {icon: greenIcon}).addTo(geomap_%s);
 	// `, gm.MapID))

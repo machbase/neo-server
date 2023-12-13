@@ -27,6 +27,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "columns", Func: opts.Columns},
 	{Name: "dataZoom", Func: opts.DataZoom},
 	{Name: "delimiter", Func: opts.Delimiter},
+	{Name: "geoIcon", Func: opts.GeoIcon},
 	{Name: "geoMarker", Func: opts.GeoMarker},
 	{Name: "globalOptions", Func: opts.GlobalOptions},
 	{Name: "gridSize", Func: opts.GridSize},

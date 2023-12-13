@@ -97,6 +97,16 @@ func convMultiLatLng(args []any, idx int, fname string, expect string) (*nums.Mu
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
+func convGeoMarker(args []any, idx int, fname string, expect string) (nums.GeoMarker, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(nums.GeoMarker); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
 func convCharset(args []any, idx int, fname string, expect string) (encoding.Encoding, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))

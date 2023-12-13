@@ -116,7 +116,7 @@ func (mp *MultiLatLng) Add(pt *LatLng) *MultiLatLng {
 	return mp
 }
 
-func (mp *MultiLatLng) Coordnates() [][]float64 {
+func (mp *MultiLatLng) Coordinates() [][]float64 {
 	ret := [][]float64{}
 	for _, p := range mp.points {
 		ret = append(ret, []float64{p.Lat, p.Lng})
@@ -172,4 +172,56 @@ type GeoPolygon = *MultiLatLng
 
 func NewGeoPolygon(pts []any, dicts ...map[string]any) GeoPolygon {
 	return NewMultiLatLng("Polygon", pts, dicts...)
+}
+
+type Geography interface {
+	Properties() map[string]any
+	Coordinates() [][]float64
+}
+
+var (
+	_ Geography = &SingleLatLng{}
+	_ Geography = &Circle{}
+	_ Geography = &MultiLatLng{}
+	_ Geography = NewGeoPoint(nil, nil)
+	_ Geography = NewGeoCircle(nil, 0, nil)
+	_ Geography = NewGeoMultiPoint(nil, nil)
+	_ Geography = NewGeoLineString(nil, nil)
+	_ Geography = NewGeoPolygon(nil, nil)
+)
+
+// Marker: point, circle, icon
+type GeoMarker interface {
+	Marker() string
+	Properties() map[string]any
+	Coordinates() [][]float64
+}
+
+var (
+	_ GeoMarker = &GeoPointMarker{}
+	_ GeoMarker = &GeoCircleMarker{}
+)
+
+type GeoPointMarker struct {
+	GeoPoint
+}
+
+func NewGeoPointMarker(ll *LatLng, dict ...map[string]any) GeoPointMarker {
+	return GeoPointMarker{NewGeoPoint(ll, dict...)}
+}
+
+func (gm GeoPointMarker) Marker() string {
+	return "marker"
+}
+
+type GeoCircleMarker struct {
+	GeoCircle
+}
+
+func NewGeoCircleMarker(center *LatLng, radius float64, props ...map[string]any) GeoCircleMarker {
+	return GeoCircleMarker{GeoCircle: NewGeoCircle(center, radius, props...)}
+}
+
+func (cm GeoCircleMarker) Marker() string {
+	return "circleMarker"
 }

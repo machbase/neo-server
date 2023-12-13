@@ -52,18 +52,20 @@ func NewNode(task *Task) *Node {
 		"tanh":      mathWrap("tanh", math.Tanh),
 		"trunc":     mathWrap("trunc", math.Trunc),
 		// nums
-		"count":         nums.Count,
-		"len":           nums.Len,
-		"element":       nums.Element,
-		"linspace":      x.gen_linspace,
-		"linspace50":    x.gen_linspace50,
-		"meshgrid":      x.gen_meshgrid,
-		"latlng":        x.gen_latlng,
-		"geoPoint":      x.gen_geoPoint,
-		"geoCircle":     x.gen_geoCircle,
-		"geoPolygon":    x.gen_geoPolygon,
-		"geoLineString": x.gen_geoLineString,
-		"geoMultiPoint": x.gen_geoMultiPoint,
+		"count":           nums.Count,
+		"len":             nums.Len,
+		"element":         nums.Element,
+		"linspace":        x.gen_linspace,
+		"linspace50":      x.gen_linspace50,
+		"meshgrid":        x.gen_meshgrid,
+		"latlng":          x.gen_latlng,
+		"geoPoint":        x.gen_geoPoint,
+		"geoMultiPoint":   x.gen_geoMultiPoint,
+		"geoCircle":       x.gen_geoCircle,
+		"geoPolygon":      x.gen_geoPolygon,
+		"geoLineString":   x.gen_geoLineString,
+		"geoPointMarker":  x.gen_geoPointMarker,
+		"geoCircleMarker": x.gen_geoCircleMarker,
 		// maps.time
 		"period":         x.gen_period,
 		"nullValue":      x.gen_nullValue,
@@ -219,6 +221,7 @@ func NewNode(task *Task) *Node {
 		"columns":             x.gen_columns,
 		"dataZoom":            x.gen_dataZoom,
 		"delimiter":           x.gen_delimiter,
+		"geoIcon":             x.gen_geoIcon,
 		"geoMarker":           x.gen_geoMarker,
 		"globalOptions":       x.gen_globalOptions,
 		"gridSize":            x.gen_gridSize,
@@ -455,6 +458,29 @@ func (x *Node) gen_geoPoint(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_geoMultiPoint
+//
+// syntax: geoMultiPoint([]interface {}, ...map[string]interface {})
+func (x *Node) gen_geoMultiPoint(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("geoMultiPoint", 1, len(args))
+	}
+	p0, ok := args[0].([]interface{})
+	if !ok {
+		return nil, ErrWrongTypeOfArgs("geoMultiPoint", 0, "[]interface {}", args[0])
+	}
+	p1 := []map[string]interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convDictionary(args, n, "geoMultiPoint", "...map[string]interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := nums.NewGeoMultiPoint(p0, p1...)
+	return ret, nil
+}
+
 // gen_geoCircle
 //
 // syntax: geoCircle(, float64, ...map[string]interface {})
@@ -528,26 +554,53 @@ func (x *Node) gen_geoLineString(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_geoMultiPoint
+// gen_geoPointMarker
 //
-// syntax: geoMultiPoint([]interface {}, ...map[string]interface {})
-func (x *Node) gen_geoMultiPoint(args ...any) (any, error) {
+// syntax: geoPointMarker(, ...map[string]interface {})
+func (x *Node) gen_geoPointMarker(args ...any) (any, error) {
 	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoMultiPoint", 1, len(args))
+		return nil, ErrInvalidNumOfArgs("geoPointMarker", 1, len(args))
 	}
-	p0, ok := args[0].([]interface{})
-	if !ok {
-		return nil, ErrWrongTypeOfArgs("geoMultiPoint", 0, "[]interface {}", args[0])
+	p0, err := convLatLng(args, 0, "geoPointMarker", "*nums.LatLng")
+	if err != nil {
+		return nil, err
 	}
 	p1 := []map[string]interface{}{}
 	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoMultiPoint", "...map[string]interface {}")
+		argv, err := convDictionary(args, n, "geoPointMarker", "...map[string]interface {}")
 		if err != nil {
 			return nil, err
 		}
 		p1 = append(p1, argv)
 	}
-	ret := nums.NewGeoMultiPoint(p0, p1...)
+	ret := nums.NewGeoPointMarker(p0, p1...)
+	return ret, nil
+}
+
+// gen_geoCircleMarker
+//
+// syntax: geoCircleMarker(, float64, ...map[string]interface {})
+func (x *Node) gen_geoCircleMarker(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("geoCircleMarker", 2, len(args))
+	}
+	p0, err := convLatLng(args, 0, "geoCircleMarker", "*nums.LatLng")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "geoCircleMarker", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []map[string]interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convDictionary(args, n, "geoCircleMarker", "...map[string]interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := nums.NewGeoCircleMarker(p0, p1, p2...)
 	return ret, nil
 }
 
@@ -3030,14 +3083,41 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_geoIcon
+//
+// syntax: geoIcon(string, string, float64, float64)
+func (x *Node) gen_geoIcon(args ...any) (any, error) {
+	if len(args) != 4 {
+		return nil, ErrInvalidNumOfArgs("geoIcon", 4, len(args))
+	}
+	p0, err := convString(args, 0, "geoIcon", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "geoIcon", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convFloat64(args, 2, "geoIcon", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p3, err := convFloat64(args, 3, "geoIcon", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.GeoIcon(p0, p1, p2, p3)
+	return ret, nil
+}
+
 // gen_geoMarker
 //
-// syntax: geoMarker()
+// syntax: geoMarker(GeoMarker)
 func (x *Node) gen_geoMarker(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("geoMarker", 1, len(args))
 	}
-	p0, err := convSingleLatLng(args, 0, "geoMarker", "*nums.SingleLatLng")
+	p0, err := convGeoMarker(args, 0, "geoMarker", "nums.GeoMarker")
 	if err != nil {
 		return nil, err
 	}
