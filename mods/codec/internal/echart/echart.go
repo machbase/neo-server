@@ -252,6 +252,22 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.VisualMapList = ex.globalOptions.VisualMapList
 			bc.GridList = ex.globalOptions.GridList
 			bc.Grid3D = ex.globalOptions.Grid3D
+
+			if !bc.JSAssets.Contains("/web/echarts/echarts.min.js") {
+				bc.JSAssets.Add("/web/echarts/echarts.min.js")
+			}
+			if !bc.JSAssets.Contains("/web/echarts/echarts@4.min.js") {
+				bc.JSAssets.Add("/web/echarts/echarts@4.min.js")
+			}
+			if !bc.JSAssets.Contains("/web/echarts/echarts-gl.min.js") {
+				bc.JSAssets.Add("/web/echarts/echarts-gl.min.js")
+			}
+			if ex.globalOptions.Theme != "white" {
+				url := fmt.Sprintf("/web/echarts/themes/%s.js", ex.globalOptions.Theme)
+				if !bc.JSAssets.Contains(url) {
+					bc.JSAssets.Add(url)
+				}
+			}
 		},
 	}
 

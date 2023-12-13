@@ -69,6 +69,17 @@ var ChartJsonTpl = `
 		"height": "{{ .Initialization.Height }}"	
 	},
 	"theme": "{{ .Theme }}",
+    "jsAssets": [
+        {{$first := true}}
+        {{- range .JSAssets.Values }}
+            {{if $first}}
+                {{$first = false}}
+            {{else}}
+            ,
+            {{end}}
+            "{{ . }}"
+        {{- end }}
+    ],
 	"chartOption": {{ .JSONNotEscaped }}
 }
 {{ end }}
