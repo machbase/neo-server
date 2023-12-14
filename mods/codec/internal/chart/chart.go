@@ -234,7 +234,9 @@ func (c *Chart) Close() {
 			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
 		}
 	} else {
-		c.JSAssets = append(c.JSAssets, c.Theme)
+		if strings.HasPrefix(c.Theme, "http://") || strings.HasPrefix(c.Theme, "https://") {
+			c.JSAssets = append(c.JSAssets, c.Theme)
+		}
 	}
 	for _, plugin := range c.plugins {
 		if _, ok := pluginNames[plugin]; ok {

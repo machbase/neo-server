@@ -262,6 +262,9 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			if !bc.JSAssets.Contains("/web/echarts/echarts-gl.min.js") {
 				bc.JSAssets.Add("/web/echarts/echarts-gl.min.js")
 			}
+			if ex.globalOptions.Theme == "-" || ex.globalOptions.Theme == "" {
+				ex.globalOptions.Theme = "white"
+			}
 			if ex.globalOptions.Theme != "white" {
 				url := fmt.Sprintf("/web/echarts/themes/%s.js", ex.globalOptions.Theme)
 				if !bc.JSAssets.Contains(url) {
