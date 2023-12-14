@@ -3,6 +3,7 @@ package nums
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -268,8 +269,16 @@ func (gp GeoProperties) PopBool(name string) (bool, bool) {
 }
 
 func (gp GeoProperties) MarshalJS() (string, error) {
+	keys := []string{}
+	for k := range gp {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
 	fields := []string{}
-	for k, vv := range gp {
+	for _, k := range keys {
+		vv := gp[k]
 		var line string
 		if k == "icon" {
 			line = fmt.Sprintf("%s:%v", k, vv)

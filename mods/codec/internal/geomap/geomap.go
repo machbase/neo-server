@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -320,7 +319,6 @@ func (gm *GeoMap) renderHTML() {
 		"safeJS": func(s interface{}) template.JS {
 			return template.JS(fmt.Sprint(s))
 		},
-		"isSet": isSet,
 	})
 	tpl = template.Must(tpl.Parse(contents[0]))
 	for _, cont := range contents[1:] {
@@ -337,22 +335,6 @@ func (gm *GeoMap) renderHTML() {
 	if _, err := gm.output.Write(content); err != nil {
 		gm.output.Write([]byte(err.Error()))
 	}
-}
-
-// isSet check if the field exist in the chart instance
-// Shamed copy from https://stackoverflow.com/questions/44675087/golang-template-variable-isset
-func isSet(name string, data interface{}) bool {
-	v := reflect.ValueOf(data)
-
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	if v.Kind() != reflect.Struct {
-		return false
-	}
-
-	return v.FieldByName(name).IsValid()
 }
 
 var pat = regexp.MustCompile(`(__f__")|("__f__)|(__f__)`)

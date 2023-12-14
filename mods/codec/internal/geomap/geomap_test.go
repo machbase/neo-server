@@ -34,18 +34,34 @@ mismatched:
 	return matched
 }
 
-func TestGeoMap(t *testing.T) {
+func TestGeoMapHtml(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := geomap.New()
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
 	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
+	c.SetGeoPointStyle("rec", map[string]any{"color": "#ff0000"})
 	require.Equal(t, "text/html", c.ContentType())
 
-	tick := time.Unix(0, 1692670838086467000)
-
 	c.Open()
-	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+
+	c.AddRow([]any{
+		nums.GeoPointMarker{
+			GeoPoint: nums.NewGeoPoint(&nums.LatLng{Lat: 37.497850, Lng: 127.027756}, map[string]any{
+				"popup.content": "<b>Gangname</b><br/>Hello World?",
+				"popup.open":    true,
+			}),
+		},
+		nums.GeoCircleMarker{
+			GeoCircle: nums.NewGeoCircle(&nums.LatLng{Lat: 37.503058, Lng: 127.018666}, 100, map[string]any{
+				"popup.content": "<b>circle1</b>",
+			}),
+		},
+		nums.NewGeoPoint(
+			&nums.LatLng{Lat: 37.496727, Lng: 127.026612},
+			map[string]any{"popup.content": "<b>point1</b>"},
+		),
+	})
 	c.Close()
 
 	expect, err := os.ReadFile(filepath.Join("test", "geomap_test.html"))
@@ -57,4 +73,27 @@ func TestGeoMap(t *testing.T) {
 	if !HTMLEq(t, expectStr, buffer.String()) {
 		require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
 	}
+}
+
+func TestGeoMapJson(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	c := geomap.New()
+	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetMapId("WejMYXCGcYNL")
+	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
+	c.SetGeoMapJson(true)
+	require.Equal(t, "application/json", c.ContentType())
+
+	tick := time.Unix(0, 1692670838086467000)
+
+	c.Open()
+	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	c.Close()
+
+	expect, err := os.ReadFile(filepath.Join("test", "geomap_test.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	require.JSONEq(t, string(expect), buffer.String(), "json result unmatched\n%s", buffer.String())
 }
