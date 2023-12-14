@@ -38,9 +38,33 @@ var HtmlTemplate = `{{- define "geomap" }}<!DOCTYPE html>
 <style>
     .geomap_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
     .geomap_item {margin: auto;}
-	.leaflet-tile-pane{ -webkit-filter: grayscale(80%); filter: grayscale(80%);}
+	.leaflet-tile-pane{ -webkit-filter: grayscale({{ .TileGrayscale }}%); filter: grayscale({{ .TileGrayscale }}%);}
 </style>
 </body>
 </html>
+{{ end }}
+`
+
+var JsonTemplate = `
+{{- define "geomap" }}
+{
+    "ID":"{{ .MapID }}",
+    "style": {
+        "width": "{{ .Width }}",
+        "height": "{{ .Height }}",
+        "grayscale": {{ .TileGrayscale }}
+    },
+    "jsAssets": {{ .JSAssetsNoEscaped }},
+    "cssAssets": {{ .CSSAssetsNoEscaped }},
+    "view": {
+        "center": {{ .InitialLatLng }},
+        "zoomLevel": {{ .InitialZoomLevel }}
+    },
+    "tile": {
+        "template": "{{ .TileTemplate }}",
+        "option": {{ .TileOptionNoEscaped }}
+    },
+    "layers": {{ .LayersNoEscaped }}
+}
 {{ end }}
 `

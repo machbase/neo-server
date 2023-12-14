@@ -222,7 +222,9 @@ func NewNode(task *Task) *Node {
 		"dataZoom":            x.gen_dataZoom,
 		"delimiter":           x.gen_delimiter,
 		"geoIcon":             x.gen_geoIcon,
+		"geoMapJson":          x.gen_geoMapJson,
 		"geoMarker":           x.gen_geoMarker,
+		"geoPointStyle":       x.gen_geoPointStyle,
 		"globalOptions":       x.gen_globalOptions,
 		"gridSize":            x.gen_gridSize,
 		"header":              x.gen_header,
@@ -249,7 +251,9 @@ func NewNode(task *Task) *Node {
 		"subtitle":            x.gen_subtitle,
 		"tableName":           x.gen_tableName,
 		"theme":               x.gen_theme,
-		"tileLayer":           x.gen_tileLayer,
+		"tileGrayscale":       x.gen_tileGrayscale,
+		"tileOption":          x.gen_tileOption,
+		"tileTemplate":        x.gen_tileTemplate,
 		"timeLocation":        x.gen_timeLocation,
 		"timeformat":          x.gen_timeformat,
 		"title":               x.gen_title,
@@ -3110,6 +3114,21 @@ func (x *Node) gen_geoIcon(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_geoMapJson
+//
+// syntax: geoMapJson(bool)
+func (x *Node) gen_geoMapJson(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("geoMapJson", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "geoMapJson", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.GeoMapJson(p0)
+	return ret, nil
+}
+
 // gen_geoMarker
 //
 // syntax: geoMarker(GeoMarker)
@@ -3122,6 +3141,25 @@ func (x *Node) gen_geoMarker(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.GeoMarker(p0)
+	return ret, nil
+}
+
+// gen_geoPointStyle
+//
+// syntax: geoPointStyle(string, )
+func (x *Node) gen_geoPointStyle(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoPointStyle", 2, len(args))
+	}
+	p0, err := convString(args, 0, "geoPointStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convMapStringAny(args, 1, "geoPointStyle", "map[string]interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.GeoPointStyle(p0, p1)
 	return ret, nil
 }
 
@@ -3551,22 +3589,48 @@ func (x *Node) gen_theme(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_tileLayer
+// gen_tileGrayscale
 //
-// syntax: tileLayer(string, string)
-func (x *Node) gen_tileLayer(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("tileLayer", 2, len(args))
+// syntax: tileGrayscale(float64)
+func (x *Node) gen_tileGrayscale(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("tileGrayscale", 1, len(args))
 	}
-	p0, err := convString(args, 0, "tileLayer", "string")
+	p0, err := convFloat64(args, 0, "tileGrayscale", "float64")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convString(args, 1, "tileLayer", "string")
+	ret := opts.TileGrayscale(p0)
+	return ret, nil
+}
+
+// gen_tileOption
+//
+// syntax: tileOption(string)
+func (x *Node) gen_tileOption(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("tileOption", 1, len(args))
+	}
+	p0, err := convString(args, 0, "tileOption", "string")
 	if err != nil {
 		return nil, err
 	}
-	ret := opts.TileLayer(p0, p1)
+	ret := opts.TileOption(p0)
+	return ret, nil
+}
+
+// gen_tileTemplate
+//
+// syntax: tileTemplate(string)
+func (x *Node) gen_tileTemplate(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("tileTemplate", 1, len(args))
+	}
+	p0, err := convString(args, 0, "tileTemplate", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.TileTemplate(p0)
 	return ret, nil
 }
 

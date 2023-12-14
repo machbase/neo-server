@@ -445,8 +445,12 @@ func (x *Task) OutputContentEncoding() string {
 }
 
 func (x *Task) OutputChartType() string {
-	if x.output != nil && x.output.IsChart() {
-		return "echarts"
+	if x.output != nil {
+		if x.output.IsChart() {
+			return "echarts"
+		} else if x.output.IsGeoMap() {
+			return "geomap"
+		}
 	}
 	return ""
 }

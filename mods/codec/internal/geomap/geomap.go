@@ -2,7 +2,6 @@ package geomap
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"reflect"
@@ -24,19 +23,34 @@ type GeoMap struct {
 	Width  string
 	Height string
 
+	toJsonOutput bool
+
 	InitialLatLng    *nums.LatLng
 	InitialZoomLevel int
 
-	tileTemplate string
-	tileOption   string
+	tileGrayscale float64
+	tileTemplate  string
+	tileOption    string
 
 	JSCodes   []string
 	JSAssets  []string
 	CSSAssets []string
 	PageTitle string
 
-	objs  []nums.Geography
-	icons []GeoIcon
+	objs        []nums.Geography
+	icons       []GeoIcon
+	pointStyles map[string]nums.GeoPointStyle
+}
+
+var defaultPointStyle = nums.GeoPointStyle{
+	Type: "circleMarker",
+	Properties: nums.GeoProperties{
+		"radius":      7,
+		"stroke":      false,
+		"color":       "#ff0000",
+		"opacity":     1.0,
+		"fillOpacity": 1.0,
+	},
 }
 
 var idGen, _ = snowflake.NewNode(time.Now().Unix() % 1024)
@@ -47,13 +61,17 @@ func New() *GeoMap {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &GeoMap{
-		MapID:  id,
-		Width:  "600px",
-		Height: "600px",
+		MapID:       id,
+		Width:       "600px",
+		Height:      "600px",
+		pointStyles: map[string]nums.GeoPointStyle{},
 	}
 }
 
 func (gm *GeoMap) ContentType() string {
+	if gm.toJsonOutput {
+		return "application/json"
+	}
 	return "text/html"
 }
 
@@ -79,8 +97,11 @@ func (gm *GeoMap) SetInitialLocation(latlng *nums.LatLng, zoomLevel int) {
 	gm.InitialZoomLevel = zoomLevel
 }
 
-func (gm *GeoMap) SetTileLayer(url string, opt string) {
+func (gm *GeoMap) SetTileTemplate(url string) {
 	gm.tileTemplate = url
+}
+
+func (gm *GeoMap) SetTileOption(opt string) {
 	opt = strings.TrimSpace(opt)
 	if !strings.HasPrefix(opt, "{") {
 		opt = "{" + opt + "}"
@@ -92,8 +113,30 @@ func (gm *GeoMap) TileTemplate() string {
 	return gm.tileTemplate
 }
 
-func (gm *GeoMap) TileOption() template.HTML {
-	return template.HTML(gm.tileOption)
+func (gm *GeoMap) SetGeoMapJson(flag bool) {
+	gm.toJsonOutput = flag
+}
+
+func (gm *GeoMap) SetTileGrayscale(grayscale float64) {
+	gm.tileGrayscale = grayscale
+}
+
+func (gm *GeoMap) TileGrayscale() int {
+	scale := gm.tileGrayscale
+	if scale < 0 {
+		scale = 0
+	}
+	if scale > 1 {
+		scale = 1
+	}
+	return int(100 * scale)
+}
+
+func (gm *GeoMap) SetGeoPointStyle(name string, props map[string]any) {
+	ps := nums.GeoPointStyle{Type: defaultPointStyle.Type, Properties: map[string]any{}}
+	ps.Properties.Copy(defaultPointStyle.Properties)
+	ps.Properties.Copy(props)
+	gm.pointStyles[name] = ps
 }
 
 func (gm *GeoMap) SetGeoMarker(marker nums.GeoMarker) {
@@ -154,6 +197,48 @@ func (gm *GeoMap) Close() {
 	if len(gm.CSSAssets) == 0 {
 		gm.CSSAssets = append(gm.CSSAssets, "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
 	}
+
+	if gm.toJsonOutput {
+		gm.renderJSON()
+	} else {
+		gm.renderHTML()
+	}
+}
+
+func (gm *GeoMap) JSAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range gm.JSAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
+func (gm *GeoMap) CSSAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range gm.CSSAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
+func (gm *GeoMap) TileOptionNoEscaped() template.HTML {
+	return template.HTML(gm.tileOption)
+}
+
+func (gm *GeoMap) LayersNoEscaped() template.HTML {
+	return "[]"
+}
+
+func (gm *GeoMap) renderJSON() {
+	contents := []string{JsonTemplate}
+	tpl := template.New("geomap")
+	tpl = template.Must(tpl.Parse(contents[0]))
+	if err := tpl.ExecuteTemplate(gm.output, "geomap", gm); err != nil {
+		gm.output.Write([]byte(err.Error()))
+	}
+}
+
+func (gm *GeoMap) renderHTML() {
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s").setView(%s, %d);`, gm.MapID, gm.MapID, gm.InitialLatLng.String(), gm.InitialZoomLevel))
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
 
@@ -165,7 +250,8 @@ func (gm *GeoMap) Close() {
 		bindPopup := ""
 		openPopup := ""
 		objName := fmt.Sprintf("geo_obj_%d_%s", i, gm.MapID)
-		objOption := []byte("{}")
+		objOption := "{}"
+		pointStyleName := ""
 
 		objType := "marker"
 		if mkr, ok := obj.(nums.GeoMarker); ok {
@@ -180,33 +266,26 @@ func (gm *GeoMap) Close() {
 		}
 
 		if props := obj.Properties(); props != nil {
-			if v, ok := props["popup.content"]; ok {
+			if v, ok := props.PopString("popup.content"); ok {
 				bindPopup = fmt.Sprintf("%s.bindPopup(%q);", objName, v)
-				delete(props, "popup.content")
 			}
-			if v, ok := props["popup.open"]; ok {
-				if b, ok := v.(bool); ok && b {
-					openPopup = fmt.Sprintf("%s.openPopup()", objName)
-				}
-				delete(props, "popup.open")
+			if flag, ok := props.PopBool("popup.open"); ok && flag {
+				openPopup = fmt.Sprintf("%s.openPopup()", objName)
 			}
-			// if v, ok := props["icon"]; ok {
-			// 	iconName := v.(string)
-			// }
-
+			if ps, ok := props.PopString("point.style"); ok {
+				pointStyleName = ps
+			}
 			if objType == "point" {
-				objType = "circleMarker"
-				props["radius"] = 7
-				props["stroke"] = false
-				props["color"] = "#ff0000"
-				props["opacity"] = 1.0
-				props["fillOpacity"] = 1.0
+				style := defaultPointStyle
+				if st, ok := gm.pointStyles[pointStyleName]; ok {
+					style = st
+				}
+				objType = style.Type
+				props.Copy(style.Properties)
 			}
-
-			if jsn, err := json.Marshal(props); err == nil {
-				objOption = jsn
+			if js, err := props.MarshalJS(); err == nil {
+				objOption = js
 			}
-			objOption = bytes.ReplaceAll(objOption, []byte(`"alert_icon"`), []byte(`alert_icon`))
 		}
 
 		objCoord := ""
@@ -236,23 +315,6 @@ func (gm *GeoMap) Close() {
 	}
 	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.polygon([[51.509, -0.08],[51.503, -0.06],[51.51, -0.047]]).addTo(geomap_%s);`, gm.MapID))
 
-	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`
-	// 	var greenIcon = L.icon({
-	// 		iconUrl: '/db/tql/geomap/alert.gif',
-	// 		// shadowUrl: 'leaf-shadow.png',
-
-	// 		iconSize:     [50, 50], // size of the icon
-	// 		shadowSize:   [50, 50], // size of the shadow
-	// 		iconAnchor:   [25, 25], // point of the icon which will correspond to marker's location
-	// 		shadowAnchor: [25, 25], // the same for the shadow
-	// 		popupAnchor:  [-3, -3]  // point from which the popup should open relative to the iconAnchor
-	// 	});
-	// 	L.marker([37.503058, 127.018666], {icon: greenIcon}).addTo(geomap_%s);
-	// `, gm.MapID))
-	gm.Render()
-}
-
-func (gm *GeoMap) Render() {
 	contents := []string{HeaderTemplate, BaseTemplate, HtmlTemplate}
 	tpl := template.New("geomap").Funcs(template.FuncMap{
 		"safeJS": func(s interface{}) template.JS {

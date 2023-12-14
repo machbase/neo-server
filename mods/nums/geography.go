@@ -3,6 +3,8 @@ package nums
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 type LatLng struct {
@@ -34,7 +36,7 @@ func (ll *LatLng) DistanceTo(pt *LatLng) float64 {
 type Circle struct {
 	center     *LatLng
 	radius     float64
-	properties map[string]any
+	properties GeoProperties
 }
 
 type GeoCircle = *Circle
@@ -56,21 +58,21 @@ func (cr *Circle) Coordinates() [][]float64 {
 	return [][]float64{{cr.center.Lat, cr.center.Lng}}
 }
 
-func (sp *Circle) Properties() map[string]any {
+func (sp *Circle) Properties() GeoProperties {
 	return sp.properties
 }
 
 type SingleLatLng struct {
 	typ        string
 	point      *LatLng
-	properties map[string]any
+	properties GeoProperties
 }
 
 func (sp *SingleLatLng) Coordinates() [][]float64 {
 	return [][]float64{{sp.point.Lat, sp.point.Lng}}
 }
 
-func (sp *SingleLatLng) Properties() map[string]any {
+func (sp *SingleLatLng) Properties() GeoProperties {
 	return sp.properties
 }
 
@@ -95,7 +97,7 @@ func (sp *SingleLatLng) MarshalGeoJSON() ([]byte, error) {
 type MultiLatLng struct {
 	typ        string
 	points     []*LatLng
-	properties map[string]any
+	properties GeoProperties
 }
 
 func NewMultiLatLng(typ string, pts []any, props ...map[string]any) *MultiLatLng {
@@ -124,7 +126,7 @@ func (mp *MultiLatLng) Coordinates() [][]float64 {
 	return ret
 }
 
-func (mp *MultiLatLng) Properties() map[string]any {
+func (mp *MultiLatLng) Properties() GeoProperties {
 	return mp.properties
 }
 
@@ -175,7 +177,7 @@ func NewGeoPolygon(pts []any, dicts ...map[string]any) GeoPolygon {
 }
 
 type Geography interface {
-	Properties() map[string]any
+	Properties() GeoProperties
 	Coordinates() [][]float64
 }
 
@@ -193,7 +195,7 @@ var (
 // Marker: point, circle, icon
 type GeoMarker interface {
 	Marker() string
-	Properties() map[string]any
+	Properties() GeoProperties
 	Coordinates() [][]float64
 }
 
@@ -224,4 +226,66 @@ func NewGeoCircleMarker(center *LatLng, radius float64, props ...map[string]any)
 
 func (cm GeoCircleMarker) Marker() string {
 	return "circleMarker"
+}
+
+type GeoPointStyle struct {
+	Type       string
+	Properties GeoProperties
+}
+
+type GeoProperties map[string]any
+
+func (gp GeoProperties) Copy(other GeoProperties) {
+	for k, v := range other {
+		gp[k] = v
+	}
+}
+
+func (gp GeoProperties) PopString(name string) (string, bool) {
+	if v, ok := gp[name]; ok {
+		delete(gp, name)
+		if str, ok := v.(string); ok {
+			return str, true
+		} else {
+			return fmt.Sprintf("%v", v), true
+		}
+	}
+	return "", false
+}
+
+func (gp GeoProperties) PopBool(name string) (bool, bool) {
+	if v, ok := gp[name]; ok {
+		delete(gp, name)
+		if b, ok := v.(bool); ok {
+			return b, true
+		} else if str, ok := v.(string); ok {
+			if b, err := strconv.ParseBool(str); err == nil {
+				return b, true
+			}
+		}
+	}
+	return false, false
+}
+
+func (gp GeoProperties) MarshalJS() (string, error) {
+	fields := []string{}
+	for k, vv := range gp {
+		var line string
+		if k == "icon" {
+			line = fmt.Sprintf("%s:%v", k, vv)
+		} else {
+			switch v := vv.(type) {
+			case int:
+				line = fmt.Sprintf("%s:%d", k, v)
+			case float64:
+				line = fmt.Sprintf("%s:%v", k, v)
+			case bool:
+				line = fmt.Sprintf("%s:%t", k, v)
+			default:
+				line = fmt.Sprintf("%s:%q", k, v)
+			}
+		}
+		fields = append(fields, line)
+	}
+	return "{" + strings.Join(fields, ",") + "}", nil
 }

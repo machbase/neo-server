@@ -57,6 +57,16 @@ func convLogger(args []any, idx int, fname string, expect string) (logger.Logger
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
+func convMapStringAny(args []any, idx int, fname string, expect string) (map[string]any, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(map[string]any); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
 func convDictionary(args []any, idx int, fname string, expect string) (map[string]any, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))

@@ -41,9 +41,10 @@ type output struct {
 
 	src chan *Record
 
-	encoder codec.RowsEncoder
-	dbSink  DatabaseSink
-	isChart bool
+	encoder  codec.RowsEncoder
+	dbSink   DatabaseSink
+	isChart  bool
+	isGeoMap bool
 
 	closeWg     sync.WaitGroup
 	lastError   error
@@ -82,9 +83,12 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.AssetHost("/web/echarts/"),
 			opts.ChartJson(node.task.toJsonOutput),
+			opts.GeoMapJson(node.task.toJsonOutput),
 		)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
+		} else if _, ok := ret.encoder.(opts.CanSetGeoMapJson); ok {
+			ret.isGeoMap = true
 		}
 	case DatabaseSink:
 		ret.dbSink = val
@@ -205,6 +209,10 @@ func (out *output) ContentType() string {
 
 func (out *output) IsChart() bool {
 	return out.isChart
+}
+
+func (out *output) IsGeoMap() bool {
+	return out.isGeoMap
 }
 
 func (out *output) ContentEncoding() string {

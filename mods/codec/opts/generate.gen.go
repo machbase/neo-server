@@ -295,7 +295,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGeoIcon
 //
-//	mods/codec/internal/geomap/geomap.go:103:1
+//	mods/codec/internal/geomap/geomap.go:146:1
 type CanSetGeoIcon interface {
 	SetGeoIcon(name string, url string, width float64, height float64)
 }
@@ -308,9 +308,24 @@ func GeoIcon(name string, url string, width float64, height float64) Option {
 	}
 }
 
+// SetGeoMapJson
+//
+//	mods/codec/internal/geomap/geomap.go:116:1
+type CanSetGeoMapJson interface {
+	SetGeoMapJson(flag bool)
+}
+
+func GeoMapJson(flag bool) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoMapJson); ok {
+			_o.SetGeoMapJson(flag)
+		}
+	}
+}
+
 // SetGeoMarker
 //
-//	mods/codec/internal/geomap/geomap.go:99:1
+//	mods/codec/internal/geomap/geomap.go:142:1
 type CanSetGeoMarker interface {
 	SetGeoMarker(marker nums.GeoMarker)
 }
@@ -319,6 +334,21 @@ func GeoMarker(marker nums.GeoMarker) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetGeoMarker); ok {
 			_o.SetGeoMarker(marker)
+		}
+	}
+}
+
+// SetGeoPointStyle
+//
+//	mods/codec/internal/geomap/geomap.go:135:1
+type CanSetGeoPointStyle interface {
+	SetGeoPointStyle(name string, props map[string]any)
+}
+
+func GeoPointStyle(name string, props map[string]any) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoPointStyle); ok {
+			_o.SetGeoPointStyle(name, props)
 		}
 	}
 }
@@ -406,7 +436,7 @@ func Html(flag bool) Option {
 
 // SetInitialLocation
 //
-//	mods/codec/internal/geomap/geomap.go:77:1
+//	mods/codec/internal/geomap/geomap.go:95:1
 type CanSetInitialLocation interface {
 	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
 }
@@ -454,7 +484,7 @@ func LineWidth(width float64) Option {
 //
 //	mods/codec/internal/chart/chart.go:64:1
 //	mods/codec/internal/echart/echart.go:78:1
-//	mods/codec/internal/geomap/geomap.go:60:1
+//	mods/codec/internal/geomap/geomap.go:78:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
 	SetLogger(l logger.Logger)
@@ -470,7 +500,7 @@ func Logger(l logger.Logger) Option {
 
 // SetMapId
 //
-//	mods/codec/internal/geomap/geomap.go:68:1
+//	mods/codec/internal/geomap/geomap.go:86:1
 type CanSetMapId interface {
 	SetMapId(id string)
 }
@@ -549,7 +579,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/chart/chart.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
-//	mods/codec/internal/geomap/geomap.go:64:1
+//	mods/codec/internal/geomap/geomap.go:82:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
@@ -664,7 +694,7 @@ func ShowGrid(flag bool) Option {
 //
 //	mods/codec/internal/chart/chart.go:76:1
 //	mods/codec/internal/echart/echart.go:86:1
-//	mods/codec/internal/geomap/geomap.go:72:1
+//	mods/codec/internal/geomap/geomap.go:90:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -739,17 +769,47 @@ func Theme(theme string) Option {
 	}
 }
 
-// SetTileLayer
+// SetTileGrayscale
 //
-//	mods/codec/internal/geomap/geomap.go:82:1
-type CanSetTileLayer interface {
-	SetTileLayer(url string, opt string)
+//	mods/codec/internal/geomap/geomap.go:120:1
+type CanSetTileGrayscale interface {
+	SetTileGrayscale(grayscale float64)
 }
 
-func TileLayer(url string, opt string) Option {
+func TileGrayscale(grayscale float64) Option {
 	return func(_one any) {
-		if _o, ok := _one.(CanSetTileLayer); ok {
-			_o.SetTileLayer(url, opt)
+		if _o, ok := _one.(CanSetTileGrayscale); ok {
+			_o.SetTileGrayscale(grayscale)
+		}
+	}
+}
+
+// SetTileOption
+//
+//	mods/codec/internal/geomap/geomap.go:104:1
+type CanSetTileOption interface {
+	SetTileOption(opt string)
+}
+
+func TileOption(opt string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileOption); ok {
+			_o.SetTileOption(opt)
+		}
+	}
+}
+
+// SetTileTemplate
+//
+//	mods/codec/internal/geomap/geomap.go:100:1
+type CanSetTileTemplate interface {
+	SetTileTemplate(url string)
+}
+
+func TileTemplate(url string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileTemplate); ok {
+			_o.SetTileTemplate(url)
 		}
 	}
 }
