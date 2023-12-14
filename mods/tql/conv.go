@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
@@ -51,6 +52,66 @@ func convLogger(args []any, idx int, fname string, expect string) (logger.Logger
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	if o, ok := args[idx].(logger.Logger); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convMapStringAny(args []any, idx int, fname string, expect string) (map[string]any, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(map[string]any); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convDictionary(args []any, idx int, fname string, expect string) (map[string]any, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(map[string]any); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLng, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(*nums.LatLng); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convSingleLatLng(args []any, idx int, fname string, expect string) (*nums.SingleLatLng, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(*nums.SingleLatLng); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convMultiLatLng(args []any, idx int, fname string, expect string) (*nums.MultiLatLng, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(*nums.MultiLatLng); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convGeoMarker(args []any, idx int, fname string, expect string) (nums.GeoMarker, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(nums.GeoMarker); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

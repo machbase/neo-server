@@ -1,6 +1,10 @@
 package tql
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/machbase/neo-server/mods/nums"
+)
 
 type Definition struct {
 	Name string
@@ -56,6 +60,15 @@ var FxDefinitions = []Definition{
 	{"linspace", defTask.fmLinspace},
 	{"linspace50", defTask.fmLinspace50},
 	{"meshgrid", defTask.fmMeshgrid},
+	// geo
+	{"latlng", nums.NewLatLng},
+	{"geoPoint", nums.NewGeoPoint},
+	{"geoMultiPoint", nums.NewGeoMultiPoint},
+	{"geoCircle", nums.NewGeoCircle},
+	{"geoPolygon", nums.NewGeoPolygon},
+	{"geoLineString", nums.NewGeoLineString},
+	{"geoPointMarker", nums.NewGeoPointMarker},
+	{"geoCircleMarker", nums.NewGeoCircleMarker},
 	// maps.time
 	{"// maps.time", nil},
 	{"period", defTask.fmPeriod},
@@ -137,6 +150,7 @@ var FxDefinitions = []Definition{
 	{"CHART_BAR3D", defTask.fmChartBar3D},
 	{"CHART_SURFACE3D", defTask.fmChartSurface3D},
 	{"CHART_SCATTER3D", defTask.fmChartScatter3D},
+	{"GEOMAP", defTask.fmGeoMap},
 	// maps.bytes
 	{"// maps.bytes", nil},
 	{"separator", defTask.fmSeparator},

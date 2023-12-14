@@ -24,6 +24,7 @@ var scanDirs = []string{
 	"../internal/csv",
 	"../internal/json",
 	"../internal/markdown",
+	"../internal/geomap",
 }
 
 // add function names here not to generate
@@ -197,6 +198,8 @@ func strTypeExpr(field ast.Expr, imports map[string]*ImportX) string {
 		return fmt.Sprintf("%v.%s", ptype.X, ptype.Sel.Name)
 	case *ast.StarExpr:
 		return fmt.Sprintf("*%s", strTypeExpr(ptype.X, imports))
+	case *ast.MapType:
+		return fmt.Sprintf("map[%s]%s", ptype.Key, ptype.Value)
 	default:
 		return ""
 	}

@@ -129,6 +129,22 @@ func (c *Chart) ChartDispatchActionNoEscaped() template.HTML {
 	return template.HTML(c.DispatchAction)
 }
 
+func (c *Chart) JSAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range c.JSAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
+func (c *Chart) CSSAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range c.CSSAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
 func (c *Chart) Open() error {
 	return nil
 }
@@ -209,27 +225,27 @@ func (c *Chart) Close() {
 			c.option = exp.ReplaceAllString(c.option, string(jsonData))
 		}
 	}
+	if len(c.JSAssets) == 0 {
+		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
+		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
+	}
+	if _, ok := themeNames[c.Theme]; ok {
+		if c.Theme != "white" {
+			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
+		}
+	} else {
+		c.JSAssets = append(c.JSAssets, c.Theme)
+	}
+	for _, plugin := range c.plugins {
+		if _, ok := pluginNames[plugin]; ok {
+			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
+		} else {
+			c.JSAssets = append(c.JSAssets, plugin)
+		}
+	}
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
-		if len(c.JSAssets) == 0 {
-			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
-			c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
-		}
-		if _, ok := themeNames[c.Theme]; ok {
-			if c.Theme != "white" {
-				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/themes/%s.js", c.Theme))
-			}
-		} else {
-			c.JSAssets = append(c.JSAssets, c.Theme)
-		}
-		for _, plugin := range c.plugins {
-			if _, ok := pluginNames[plugin]; ok {
-				c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
-			} else {
-				c.JSAssets = append(c.JSAssets, plugin)
-			}
-		}
 		c.Render()
 	}
 }

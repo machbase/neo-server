@@ -6,6 +6,7 @@ package opts
 
 import (
 	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
 	"golang.org/x/text/encoding"
@@ -246,7 +247,7 @@ func ColumnTypes(types ...string) Option {
 //	mods/codec/internal/box/box_encode.go:85:1
 //	mods/codec/internal/csv/csv_decode.go:75:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
-//	mods/codec/internal/echart/echart.go:289:1
+//	mods/codec/internal/echart/echart.go:305:1
 //	mods/codec/internal/json/json_encode.go:72:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
 type CanSetColumns interface {
@@ -288,6 +289,66 @@ func Delimiter(delimiter string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetDelimiter); ok {
 			_o.SetDelimiter(delimiter)
+		}
+	}
+}
+
+// SetGeoIcon
+//
+//	mods/codec/internal/geomap/geomap.go:146:1
+type CanSetGeoIcon interface {
+	SetGeoIcon(name string, url string, width float64, height float64)
+}
+
+func GeoIcon(name string, url string, width float64, height float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoIcon); ok {
+			_o.SetGeoIcon(name, url, width, height)
+		}
+	}
+}
+
+// SetGeoMapJson
+//
+//	mods/codec/internal/geomap/geomap.go:116:1
+type CanSetGeoMapJson interface {
+	SetGeoMapJson(flag bool)
+}
+
+func GeoMapJson(flag bool) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoMapJson); ok {
+			_o.SetGeoMapJson(flag)
+		}
+	}
+}
+
+// SetGeoMarker
+//
+//	mods/codec/internal/geomap/geomap.go:142:1
+type CanSetGeoMarker interface {
+	SetGeoMarker(marker nums.GeoMarker)
+}
+
+func GeoMarker(marker nums.GeoMarker) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoMarker); ok {
+			_o.SetGeoMarker(marker)
+		}
+	}
+}
+
+// SetGeoPointStyle
+//
+//	mods/codec/internal/geomap/geomap.go:135:1
+type CanSetGeoPointStyle interface {
+	SetGeoPointStyle(name string, props map[string]any)
+}
+
+func GeoPointStyle(name string, props map[string]any) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeoPointStyle); ok {
+			_o.SetGeoPointStyle(name, props)
 		}
 	}
 }
@@ -373,6 +434,21 @@ func Html(flag bool) Option {
 	}
 }
 
+// SetInitialLocation
+//
+//	mods/codec/internal/geomap/geomap.go:95:1
+type CanSetInitialLocation interface {
+	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
+}
+
+func InitialLocation(latlng *nums.LatLng, zoomLevel int) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetInitialLocation); ok {
+			_o.SetInitialLocation(latlng, zoomLevel)
+		}
+	}
+}
+
 // SetInputStream
 //
 //	mods/codec/internal/csv/csv_decode.go:37:1
@@ -408,6 +484,7 @@ func LineWidth(width float64) Option {
 //
 //	mods/codec/internal/chart/chart.go:64:1
 //	mods/codec/internal/echart/echart.go:78:1
+//	mods/codec/internal/geomap/geomap.go:78:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
 	SetLogger(l logger.Logger)
@@ -417,6 +494,21 @@ func Logger(l logger.Logger) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetLogger); ok {
 			_o.SetLogger(l)
+		}
+	}
+}
+
+// SetMapId
+//
+//	mods/codec/internal/geomap/geomap.go:86:1
+type CanSetMapId interface {
+	SetMapId(id string)
+}
+
+func MapId(id string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMapId); ok {
+			_o.SetMapId(id)
 		}
 	}
 }
@@ -487,6 +579,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/chart/chart.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:82:1
+//	mods/codec/internal/geomap/geomap.go:82:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
@@ -554,7 +647,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:285:1
+//	mods/codec/internal/echart/echart.go:301:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -569,7 +662,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:269:1
+//	mods/codec/internal/echart/echart.go:285:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -601,6 +694,7 @@ func ShowGrid(flag bool) Option {
 //
 //	mods/codec/internal/chart/chart.go:76:1
 //	mods/codec/internal/echart/echart.go:86:1
+//	mods/codec/internal/geomap/geomap.go:90:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -671,6 +765,51 @@ func Theme(theme string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetTheme); ok {
 			_o.SetTheme(theme)
+		}
+	}
+}
+
+// SetTileGrayscale
+//
+//	mods/codec/internal/geomap/geomap.go:120:1
+type CanSetTileGrayscale interface {
+	SetTileGrayscale(grayscale float64)
+}
+
+func TileGrayscale(grayscale float64) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileGrayscale); ok {
+			_o.SetTileGrayscale(grayscale)
+		}
+	}
+}
+
+// SetTileOption
+//
+//	mods/codec/internal/geomap/geomap.go:104:1
+type CanSetTileOption interface {
+	SetTileOption(opt string)
+}
+
+func TileOption(opt string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileOption); ok {
+			_o.SetTileOption(opt)
+		}
+	}
+}
+
+// SetTileTemplate
+//
+//	mods/codec/internal/geomap/geomap.go:100:1
+type CanSetTileTemplate interface {
+	SetTileTemplate(url string)
+}
+
+func TileTemplate(url string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTileTemplate); ok {
+			_o.SetTileTemplate(url)
 		}
 	}
 }

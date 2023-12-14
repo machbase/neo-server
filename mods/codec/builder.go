@@ -7,6 +7,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/codec/internal/echart"
+	"github.com/machbase/neo-server/mods/codec/internal/geomap"
 	"github.com/machbase/neo-server/mods/codec/internal/html"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
@@ -28,6 +29,7 @@ const ECHART_LINE3D = "echart.line3d"
 const ECHART_SURFACE3D = "echart.surface3d"
 const ECHART_SCATTER3D = "echart.scatter3d"
 const ECHART_BAR3D = "echart.bar3d"
+const GEOMAP = "geomap"
 
 type RowsEncoder interface {
 	Open() error
@@ -47,6 +49,7 @@ var (
 	_ RowsEncoder = &echart.Line3D{}
 	_ RowsEncoder = &echart.Bar3D{}
 	_ RowsEncoder = &echart.Scatter3D{}
+	_ RowsEncoder = &geomap.GeoMap{}
 )
 
 type RowsDecoder interface {
@@ -83,6 +86,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = echart.NewBar3D()
 	case DISCARD:
 		ret = &DiscardSink{}
+	case GEOMAP:
+		ret = geomap.New()
 	default: // "json"
 		ret = json.NewEncoder()
 	}
