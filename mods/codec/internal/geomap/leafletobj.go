@@ -3,7 +3,7 @@ package geomap
 import "github.com/machbase/neo-server/mods/nums"
 
 type Icon struct {
-	Name         string    `json:"-"`
+	Name         string    `json:"name"`
 	IconUrl      string    `json:"iconUrl"`
 	IconSize     []float64 `json:"iconSize,omitempty"`
 	IconAnchor   []float64 `json:"iconAnchor,omitempty"`
@@ -28,4 +28,17 @@ var defaultPointStyle = PointStyle{
 		"opacity":     1.0,
 		"fillOpacity": 1.0,
 	},
+}
+
+type Layer struct {
+	Name   string             `json:"name"`
+	Type   string             `json:"type"`
+	Coord  string             `json:"coord"`
+	Option nums.GeoProperties `json:"option,omitempty"`
+	Popup  *Popup             `json:"popup,omitempty"`
+}
+
+type Popup struct {
+	Content string `json:"content"`
+	Open    bool   `json:"open,omitempty"`
 }

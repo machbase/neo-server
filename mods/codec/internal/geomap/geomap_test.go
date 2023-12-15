@@ -90,7 +90,7 @@ func TestGeoMapJson(t *testing.T) {
 	tick := time.Unix(0, 1692670838086467000)
 
 	c.Open()
-	c.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	c.AddRow([]any{tick.Add(0 * time.Second), nums.NewGeoPoint(nums.NewLatLng(51.505, -0.09), "")})
 	c.Close()
 
 	expect, err := os.ReadFile(filepath.Join("test", "geomap_test.json"))

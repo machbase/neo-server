@@ -1,19 +1,42 @@
 {
-    "ID":"WejMYXCGcYNL",
+    "ID": "WejMYXCGcYNL",
     "style": {
         "width": "600px",
         "height": "600px",
         "grayscale": 0
     },
-    "jsAssets": ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"],
-    "cssAssets": ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"],
+    "jsAssets": [
+        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    ],
+    "cssAssets": [
+        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    ],
     "view": {
-        "center": [51.505,-0.09],
+        "center": [
+            51.505,
+            -0.09
+        ],
         "zoomLevel": 13
     },
     "tile": {
         "template": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "option": {"maxZoom":19}
+        "option": {
+            "maxZoom": 19
+        }
     },
-    "layers": []
+    "icons": [],
+    "layers": [
+        {
+            "name": "geo_obj_0_WejMYXCGcYNL",
+            "type": "circleMarker",
+            "coord": "[51.505,-0.09]",
+            "option": {
+                "color": "#ff0000",
+                "fillOpacity": 1,
+                "opacity": 1,
+                "radius": 7,
+                "stroke": false
+            }
+        }
+    ]
 }

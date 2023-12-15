@@ -136,6 +136,12 @@ func (gm *GeoMap) SetIcon(name string, opt string) {
 		return
 	}
 	icn.Name = name
+	for _, n := range gm.icons {
+		if n.Name == icn.Name { // already exists
+			gm.logger.LogWarnf("GEOMAP icon %q already exists.", icn.Name)
+			return
+		}
+	}
 	gm.icons = append(gm.icons, icn)
 }
 
@@ -210,6 +216,68 @@ func (gm *GeoMap) Close() {
 	}
 }
 
+func (gm *GeoMap) Layers() []*Layer {
+	var ret []*Layer
+	for i, obj := range gm.objs {
+		layer := &Layer{
+			Name: fmt.Sprintf("geo_obj_%d_%s", i, gm.MapID),
+			Type: "marker",
+		}
+
+		if mkr, ok := obj.(nums.GeoMarker); ok {
+			layer.Type = mkr.Marker()
+		} else {
+			switch obj.(type) {
+			case *nums.Circle:
+				layer.Type = "circle"
+			case *nums.SingleLatLng:
+				layer.Type = "point"
+			}
+		}
+
+		if props := obj.Properties(); props != nil {
+			if v, ok := props.PopString("popup.content"); ok {
+				layer.Popup = &Popup{Content: v}
+				if flag, ok := props.PopBool("popup.open"); ok && flag {
+					layer.Popup.Open = true
+				}
+			}
+			pointStyleName := ""
+			if ps, ok := props.PopString("point.style"); ok {
+				pointStyleName = ps
+			}
+			if layer.Type == "point" {
+				layer.Type = defaultPointStyle.Type
+				layer.Option = defaultPointStyle.Properties
+				if st, ok := gm.pointStyles[pointStyleName]; ok {
+					layer.Type = st.Type
+					layer.Option = st.Properties
+				}
+			} else {
+				layer.Option = props
+			}
+		}
+
+		switch obj.(type) {
+		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLng:
+			coord := obj.Coordinates()
+			if len(coord) > 0 {
+				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
+			}
+		default:
+			coord := obj.Coordinates()
+			arr := []string{}
+			for _, p := range coord {
+				arr = append(arr, fmt.Sprintf("[%v,%v]", p[0], p[1]))
+			}
+			layer.Coord = "[" + strings.Join(arr, ",") + "]"
+		}
+
+		ret = append(ret, layer)
+	}
+	return ret
+}
+
 func (gm *GeoMap) JSAssetsNoEscaped() template.HTML {
 	lst := []string{}
 	for _, itm := range gm.JSAssets {
@@ -230,8 +298,29 @@ func (gm *GeoMap) TileOptionNoEscaped() template.HTML {
 	return template.HTML(gm.tileOption)
 }
 
+func (gm *GeoMap) IconsNoEscaped() template.HTML {
+	if len(gm.icons) == 0 {
+		return "[]"
+	}
+	if b, err := json.Marshal(gm.icons); err != nil {
+		gm.logger.LogError("GEOMAP marshal icons", err.Error())
+		return "[]"
+	} else {
+		return template.HTML(string(b))
+	}
+}
+
 func (gm *GeoMap) LayersNoEscaped() template.HTML {
-	return "[]"
+	list := gm.Layers()
+	if len(list) == 0 {
+		return "[]"
+	}
+	if b, err := json.Marshal(list); err != nil {
+		gm.logger.LogError("GEOMAP marshal layers", err.Error())
+		return "[]"
+	} else {
+		return template.HTML(string(b))
+	}
 }
 
 func (gm *GeoMap) renderJSON() {
@@ -256,75 +345,22 @@ func (gm *GeoMap) renderHTML() {
 		}
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
 	}
-	for i, obj := range gm.objs {
-		bindPopup := ""
-		openPopup := ""
-		objName := fmt.Sprintf("geo_obj_%d_%s", i, gm.MapID)
-		objOption := "{}"
-		pointStyleName := ""
 
-		objType := "marker"
-		if mkr, ok := obj.(nums.GeoMarker); ok {
-			objType = mkr.Marker()
-		} else {
-			switch obj.(type) {
-			case *nums.Circle:
-				objType = "circle"
-			case *nums.SingleLatLng:
-				objType = "point"
-			}
+	for _, layer := range gm.Layers() {
+		opt, err := layer.Option.MarshalJS()
+		if err != nil {
+			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
+			opt = "{}"
 		}
-
-		if props := obj.Properties(); props != nil {
-			if v, ok := props.PopString("popup.content"); ok {
-				bindPopup = fmt.Sprintf("%s.bindPopup(%q);", objName, v)
-			}
-			if flag, ok := props.PopBool("popup.open"); ok && flag {
-				openPopup = fmt.Sprintf("%s.openPopup()", objName)
-			}
-			if ps, ok := props.PopString("point.style"); ok {
-				pointStyleName = ps
-			}
-			if objType == "point" {
-				objType = defaultPointStyle.Type
-				objProp := defaultPointStyle.Properties
-				if st, ok := gm.pointStyles[pointStyleName]; ok {
-					objType = st.Type
-					objProp = st.Properties
-				}
-				props.Copy(objProp)
-			}
-			if js, err := props.MarshalJS(); err == nil {
-				objOption = js
-			}
-		}
-
-		objCoord := ""
-		switch obj.(type) {
-		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLng:
-			coord := obj.Coordinates()
-			if len(coord) > 0 {
-				objCoord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
-			}
-		default:
-			coord := obj.Coordinates()
-			arr := []string{}
-			for _, p := range coord {
-				arr = append(arr, fmt.Sprintf("[%v,%v]", p[0], p[1]))
-			}
-			objCoord = "[" + strings.Join(arr, ",") + "]"
-		}
-
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(geomap_%s);`,
-			objName, objType, objCoord, objOption, gm.MapID))
-		if bindPopup != "" {
-			gm.JSCodes = append(gm.JSCodes, bindPopup)
-		}
-		if openPopup != "" {
-			gm.JSCodes = append(gm.JSCodes, openPopup)
+			layer.Name, layer.Type, layer.Coord, opt, gm.MapID))
+		if layer.Popup != nil {
+			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
+			if layer.Popup.Open {
+				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.openPopup();", layer.Name))
+			}
 		}
 	}
-	// gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.polygon([[51.509, -0.08],[51.503, -0.06],[51.51, -0.047]]).addTo(geomap_%s);`, gm.MapID))
 
 	contents := []string{HeaderTemplate, BaseTemplate, HtmlTemplate}
 	tpl := template.New("geomap").Funcs(template.FuncMap{

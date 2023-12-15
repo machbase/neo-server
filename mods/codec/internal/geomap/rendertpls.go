@@ -64,6 +64,7 @@ var JsonTemplate = `
         "template": "{{ .TileTemplate }}",
         "option": {{ .TileOptionNoEscaped }}
     },
+    "icons": {{.IconsNoEscaped }},
     "layers": {{ .LayersNoEscaped }}
 }
 {{ end }}

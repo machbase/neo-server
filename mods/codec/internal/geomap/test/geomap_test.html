@@ -18,7 +18,7 @@
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {"maxZoom":19}).addTo(geomap_WejMYXCGcYNL);
     var geo_obj_0_WejMYXCGcYNL = L.marker([37.49785,127.027756], {}).addTo(geomap_WejMYXCGcYNL);
     geo_obj_0_WejMYXCGcYNL.bindPopup("<b>Gangname</b><br/>Hello World?");
-    geo_obj_0_WejMYXCGcYNL.openPopup()
+    geo_obj_0_WejMYXCGcYNL.openPopup();
     var geo_obj_1_WejMYXCGcYNL = L.circleMarker([37.503058,127.018666], {radius:100}).addTo(geomap_WejMYXCGcYNL);
     geo_obj_1_WejMYXCGcYNL.bindPopup("<b>circle1</b>");
     var geo_obj_2_WejMYXCGcYNL = L.circleMarker([37.496727,127.026612], {color:"#ff0000",fillOpacity:1,opacity:1,radius:7,stroke:false}).addTo(geomap_WejMYXCGcYNL);
@@ -28,7 +28,7 @@
 <style>
     .geomap_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
     .geomap_item {margin: auto;}
-    .leaflet-tile-pane{ -webkit-filter: grayscale(0%); filter: grayscale(0%);}
+        .leaflet-tile-pane{ -webkit-filter: grayscale(0%); filter: grayscale(0%);}
 </style>
 </body>
 </html>
