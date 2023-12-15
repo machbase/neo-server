@@ -3,9 +3,6 @@ package nums
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strconv"
-	"strings"
 )
 
 type LatLng struct {
@@ -108,13 +105,10 @@ type MultiLatLng struct {
 	properties GeoProperties
 }
 
-func NewMultiLatLng(typ string, pts []any, opt any) *MultiLatLng {
+func NewMultiLatLng(typ string, pts []*LatLng, opt any) *MultiLatLng {
 	ret := &MultiLatLng{typ: typ}
-	for _, p := range pts {
-		if v, ok := p.(*LatLng); ok {
-			ret.points = append(ret.points, v)
-		}
-	}
+
+	ret.points = append(ret.points, pts...)
 	switch v := opt.(type) {
 	case string:
 		if prop, err := NewGeoPropertiesParse(v); err == nil {
@@ -128,6 +122,27 @@ func NewMultiLatLng(typ string, pts []any, opt any) *MultiLatLng {
 		ret.properties = map[string]any{}
 	}
 	return ret
+}
+
+func NewMultiLatLngFunc(typ string, args ...any) *MultiLatLng {
+	var pts []*LatLng
+	var opt any
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *LatLng:
+			pts = append(pts, v)
+		case map[string]any:
+			opt = v
+		case string:
+			opt = v
+		}
+	}
+	return NewMultiLatLng(typ, pts, opt)
+}
+
+func (mp *MultiLatLng) Type() string {
+	return mp.typ
 }
 
 func (mp *MultiLatLng) Add(pt *LatLng) *MultiLatLng {
@@ -186,20 +201,32 @@ func NewGeoPoint(ll *LatLng, opt any) GeoPoint {
 
 type GeoMultiPoint = *MultiLatLng
 
-func NewGeoMultiPoint(pts []any, opt any) GeoMultiPoint {
+func NewGeoMultiPoint(pts []*LatLng, opt any) GeoMultiPoint {
 	return NewMultiLatLng("MultiPoint", pts, opt)
+}
+
+func NewGeoMultiPointFunc(args ...any) GeoMultiPoint {
+	return NewMultiLatLngFunc("MultiPoint", args...)
 }
 
 type GeoLineString = *MultiLatLng
 
-func NewGeoLineString(pts []any, opt any) GeoLineString {
+func NewGeoLineString(pts []*LatLng, opt any) GeoLineString {
 	return NewMultiLatLng("LineString", pts, opt)
+}
+
+func NewGeoLineStringFunc(args ...any) GeoLineString {
+	return NewMultiLatLngFunc("LineString", args)
 }
 
 type GeoPolygon = *MultiLatLng
 
-func NewGeoPolygon(pts []any, opt any) GeoPolygon {
+func NewGeoPolygon(pts []*LatLng, opt any) GeoPolygon {
 	return NewMultiLatLng("Polygon", pts, opt)
+}
+
+func NewGeoPolygonFunc(args ...any) GeoPolygon {
+	return NewMultiLatLngFunc("Polygon", args...)
 }
 
 type Geography interface {
@@ -211,14 +238,13 @@ var (
 	_ Geography = &SingleLatLng{}
 	_ Geography = &Circle{}
 	_ Geography = &MultiLatLng{}
-	_ Geography = NewGeoPoint(nil, nil)
+	_ Geography = GeoPoint(&SingleLatLng{})
 	_ Geography = GeoCircle(&Circle{})
-	_ Geography = NewGeoMultiPoint(nil, nil)
-	_ Geography = NewGeoLineString(nil, nil)
-	_ Geography = NewGeoPolygon(nil, nil)
+	_ Geography = GeoMultiPoint(&MultiLatLng{})
+	_ Geography = GeoLineString(&MultiLatLng{})
+	_ Geography = GeoPolygon(&MultiLatLng{})
 )
 
-// Marker: point, circle, icon
 type GeoMarker interface {
 	Marker() string
 	Properties() GeoProperties
@@ -252,78 +278,4 @@ func NewGeoCircleMarker(center *LatLng, radius float64, opt any) GeoCircleMarker
 
 func (cm GeoCircleMarker) Marker() string {
 	return "circleMarker"
-}
-
-type GeoProperties map[string]any
-
-func NewGeoPropertiesParse(opt string) (GeoProperties, error) {
-	if !strings.HasPrefix(strings.TrimSpace(opt), "{") {
-		opt = "{" + opt + "}"
-	}
-	ret := GeoProperties{}
-	err := json.Unmarshal([]byte(opt), &ret)
-	return ret, err
-}
-
-func (gp GeoProperties) Copy(other GeoProperties) {
-	for k, v := range other {
-		gp[k] = v
-	}
-}
-
-func (gp GeoProperties) PopString(name string) (string, bool) {
-	if v, ok := gp[name]; ok {
-		delete(gp, name)
-		if str, ok := v.(string); ok {
-			return str, true
-		} else {
-			return fmt.Sprintf("%v", v), true
-		}
-	}
-	return "", false
-}
-
-func (gp GeoProperties) PopBool(name string) (bool, bool) {
-	if v, ok := gp[name]; ok {
-		delete(gp, name)
-		if b, ok := v.(bool); ok {
-			return b, true
-		} else if str, ok := v.(string); ok {
-			if b, err := strconv.ParseBool(str); err == nil {
-				return b, true
-			}
-		}
-	}
-	return false, false
-}
-
-func (gp GeoProperties) MarshalJS() (string, error) {
-	keys := []string{}
-	for k := range gp {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
-	fields := []string{}
-	for _, k := range keys {
-		vv := gp[k]
-		var line string
-		if k == "icon" {
-			line = fmt.Sprintf("%s:%v", k, vv)
-		} else {
-			switch v := vv.(type) {
-			case int:
-				line = fmt.Sprintf("%s:%d", k, v)
-			case float64:
-				line = fmt.Sprintf("%s:%v", k, v)
-			case bool:
-				line = fmt.Sprintf("%s:%t", k, v)
-			default:
-				line = fmt.Sprintf("%s:%q", k, v)
-			}
-		}
-		fields = append(fields, line)
-	}
-	return "{" + strings.Join(fields, ",") + "}", nil
 }

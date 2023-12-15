@@ -63,10 +63,10 @@ var FxDefinitions = []Definition{
 	// geo
 	{"latlng", nums.NewLatLng},
 	{"geoPoint", nums.NewGeoPoint},
-	{"geoMultiPoint", nums.NewGeoMultiPoint},
 	{"geoCircle", nums.NewGeoCircle},
-	{"geoPolygon", nums.NewGeoPolygon},
-	{"geoLineString", nums.NewGeoLineString},
+	{"geoMultiPoint", nums.NewGeoMultiPointFunc},
+	{"geoPolygon", nums.NewGeoPolygonFunc},
+	{"geoLineString", nums.NewGeoLineStringFunc},
 	{"geoPointMarker", nums.NewGeoPointMarker},
 	{"geoCircleMarker", nums.NewGeoCircleMarker},
 	// maps.time

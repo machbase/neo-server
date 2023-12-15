@@ -262,6 +262,8 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "MultiLatLng"
 	case "nums.GeoMarker":
 		convFunc = "GeoMarker"
+	case "nums.Geography":
+		convFunc = "Geography"
 	case "map[string]interface {}":
 		convFunc = "MapStringAny"
 	default:

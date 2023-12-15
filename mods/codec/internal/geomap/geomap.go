@@ -122,8 +122,8 @@ func (gm *GeoMap) TileGrayscale() int {
 	return int(100 * scale)
 }
 
-func (gm *GeoMap) SetMarker(marker nums.GeoMarker) {
-	gm.objs = append(gm.objs, marker)
+func (gm *GeoMap) SetLayer(obj nums.Geography) {
+	gm.objs = append(gm.objs, obj)
 }
 
 func (gm *GeoMap) SetIcon(name string, opt string) {
@@ -227,11 +227,18 @@ func (gm *GeoMap) Layers() []*Layer {
 		if mkr, ok := obj.(nums.GeoMarker); ok {
 			layer.Type = mkr.Marker()
 		} else {
-			switch obj.(type) {
+			switch ov := obj.(type) {
 			case *nums.Circle:
 				layer.Type = "circle"
 			case *nums.SingleLatLng:
 				layer.Type = "point"
+			case *nums.MultiLatLng:
+				switch ov.Type() {
+				case "Polygon":
+					layer.Type = "polygon"
+				case "LineString":
+					layer.Type = "polyline"
+				}
 			}
 		}
 

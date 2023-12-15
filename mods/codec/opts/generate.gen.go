@@ -435,6 +435,21 @@ func InputStream(in spec.InputStream) Option {
 	}
 }
 
+// SetLayer
+//
+//	mods/codec/internal/geomap/geomap.go:125:1
+type CanSetLayer interface {
+	SetLayer(obj nums.Geography)
+}
+
+func Layer(obj nums.Geography) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetLayer); ok {
+			_o.SetLayer(obj)
+		}
+	}
+}
+
 // SetLineWidth
 //
 //	mods/codec/internal/echart/echart_3d.go:179:1
@@ -528,21 +543,6 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 	}
 }
 
-// SetMarker
-//
-//	mods/codec/internal/geomap/geomap.go:125:1
-type CanSetMarker interface {
-	SetMarker(marker nums.GeoMarker)
-}
-
-func Marker(marker nums.GeoMarker) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMarker); ok {
-			_o.SetMarker(marker)
-		}
-	}
-}
-
 // SetOpacity
 //
 //	mods/codec/internal/echart/echart_3d.go:175:1
@@ -596,7 +596,7 @@ func Plugins(plugins ...string) Option {
 
 // SetPointStyle
 //
-//	mods/codec/internal/geomap/geomap.go:148:1
+//	mods/codec/internal/geomap/geomap.go:154:1
 type CanSetPointStyle interface {
 	SetPointStyle(name string, typ string, opt string)
 }

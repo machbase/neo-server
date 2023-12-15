@@ -2,7 +2,6 @@ package tql
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -57,26 +56,6 @@ func convLogger(args []any, idx int, fname string, expect string) (logger.Logger
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convMapStringAny(args []any, idx int, fname string, expect string) (map[string]any, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(map[string]any); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
-func convDictionary(args []any, idx int, fname string, expect string) (map[string]any, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(map[string]any); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
 func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLng, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
@@ -87,31 +66,21 @@ func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLng,
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convSingleLatLng(args []any, idx int, fname string, expect string) (*nums.SingleLatLng, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(*nums.SingleLatLng); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
-func convMultiLatLng(args []any, idx int, fname string, expect string) (*nums.MultiLatLng, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(*nums.MultiLatLng); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
 func convGeoMarker(args []any, idx int, fname string, expect string) (nums.GeoMarker, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	if o, ok := args[idx].(nums.GeoMarker); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convGeography(args []any, idx int, fname string, expect string) (nums.Geography, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(nums.Geography); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
@@ -307,20 +276,6 @@ func convFloat64(args []any, idx int, fname string, expect string) (float64, err
 	}
 }
 
-//lint:ignore U1000 reserved
-func convArray(args []any, idx int, fname string) ([]any, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	raw := args[idx]
-	switch v := raw.(type) {
-	case []any:
-		return v, nil
-	default:
-		return nil, ErrWrongTypeOfArgs(fname, idx, "Array", raw)
-	}
-}
-
 func convBool(args []any, idx int, fname string, expect string) (bool, error) {
 	if idx >= len(args) {
 		return false, ErrInvalidNumOfArgs(fname, idx+1, len(args))
@@ -337,20 +292,6 @@ func convBool(args []any, idx int, fname string, expect string) (bool, error) {
 		}
 	default:
 		return false, ErrWrongTypeOfArgs(fname, idx, expect, raw)
-	}
-}
-
-//lint:ignore U1000 reserved
-func convReader(args []any, idx int, fname string, expect string) (io.Reader, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	raw := args[idx]
-	switch v := raw.(type) {
-	case io.Reader:
-		return v, nil
-	default:
-		return nil, ErrWrongTypeOfArgs(fname, idx, expect, raw)
 	}
 }
 
