@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/internal/geomap"
+	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
@@ -37,10 +38,11 @@ mismatched:
 func TestGeoMapHtml(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := geomap.New()
+	c.SetLogger(logger.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
 	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
-	c.SetGeoPointStyle("rec", map[string]any{"color": "#ff0000"})
+	c.SetPointStyle("rec", "circleMarker", `"color": "#ff0000"`)
 	require.Equal(t, "text/html", c.ContentType())
 
 	c.Open()
@@ -78,6 +80,7 @@ func TestGeoMapHtml(t *testing.T) {
 func TestGeoMapJson(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := geomap.New()
+	c.SetLogger(logger.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
 	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)

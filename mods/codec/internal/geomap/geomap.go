@@ -2,6 +2,7 @@ package geomap
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"regexp"
@@ -37,19 +38,8 @@ type GeoMap struct {
 	PageTitle string
 
 	objs        []nums.Geography
-	icons       []GeoIcon
-	pointStyles map[string]nums.GeoPointStyle
-}
-
-var defaultPointStyle = nums.GeoPointStyle{
-	Type: "circleMarker",
-	Properties: nums.GeoProperties{
-		"radius":      7,
-		"stroke":      false,
-		"color":       "#ff0000",
-		"opacity":     1.0,
-		"fillOpacity": 1.0,
-	},
+	icons       []*Icon
+	pointStyles map[string]*PointStyle
 }
 
 var idGen, _ = snowflake.NewNode(time.Now().Unix() % 1024)
@@ -60,10 +50,11 @@ func New() *GeoMap {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &GeoMap{
+		logger:      logger.Discard,
 		MapID:       id,
 		Width:       "600px",
 		Height:      "600px",
-		pointStyles: map[string]nums.GeoPointStyle{},
+		pointStyles: map[string]*PointStyle{},
 	}
 }
 
@@ -131,31 +122,46 @@ func (gm *GeoMap) TileGrayscale() int {
 	return int(100 * scale)
 }
 
-func (gm *GeoMap) SetGeoPointStyle(name string, props map[string]any) {
-	ps := nums.GeoPointStyle{Type: defaultPointStyle.Type, Properties: map[string]any{}}
-	ps.Properties.Copy(defaultPointStyle.Properties)
-	ps.Properties.Copy(props)
-	gm.pointStyles[name] = ps
-}
-
-func (gm *GeoMap) SetGeoMarker(marker nums.GeoMarker) {
+func (gm *GeoMap) SetMarker(marker nums.GeoMarker) {
 	gm.objs = append(gm.objs, marker)
 }
 
-func (gm *GeoMap) SetGeoIcon(name string, url string, width float64, height float64) {
-	gm.icons = append(gm.icons, GeoIcon{
-		name:   name,
-		url:    url,
-		width:  width,
-		height: height,
-	})
+func (gm *GeoMap) SetIcon(name string, opt string) {
+	if !strings.HasPrefix(strings.TrimSpace(opt), "{") {
+		opt = "{" + opt + "}"
+	}
+	icn := &Icon{}
+	if err := json.Unmarshal([]byte(opt), icn); err != nil {
+		gm.logger.LogWarnf("GEOMAP icon option", err.Error())
+		return
+	}
+	icn.Name = name
+	gm.icons = append(gm.icons, icn)
 }
 
-type GeoIcon struct {
-	name   string
-	url    string
-	width  float64
-	height float64
+var pointTypeNames = map[string]string{
+	"marker":       "marker",
+	"circle":       "circle",
+	"circlemarker": "circleMarker",
+}
+
+func (gm *GeoMap) SetPointStyle(name string, typ string, opt string) {
+	if rn, ok := pointTypeNames[strings.ToLower(typ)]; !ok {
+		gm.logger.LogWarnf("GEOMAP pointStyle unknown type %q", typ)
+	} else {
+		typ = rn
+	}
+	if !strings.HasPrefix(strings.TrimSpace(opt), "{") {
+		opt = "{" + opt + "}"
+	}
+	pstyle := &PointStyle{Name: name, Type: typ, Properties: map[string]any{}}
+	pstyle.Properties.Copy(defaultPointStyle.Properties)
+	if err := json.Unmarshal([]byte(opt), &pstyle.Properties); err != nil {
+		gm.logger.LogWarnf("GEOMAP pointStyle option", err.Error())
+		return
+	}
+	pstyle.Name = name
+	gm.pointStyles[name] = pstyle
 }
 
 func (gm *GeoMap) Flush(heading bool) {
@@ -242,8 +248,13 @@ func (gm *GeoMap) renderHTML() {
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
 
 	for _, icn := range gm.icons {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon({ iconUrl: '%s', iconSize: [%d, %d], iconAnchor: [%d, %d]});`,
-			icn.name, icn.url, int(icn.width), int(icn.height), int(icn.width/2), int(icn.height/2)))
+		var icnJson string
+		if cnt, err := json.Marshal(icn); err != nil {
+			continue
+		} else {
+			icnJson = string(cnt)
+		}
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
 	}
 	for i, obj := range gm.objs {
 		bindPopup := ""
@@ -275,12 +286,13 @@ func (gm *GeoMap) renderHTML() {
 				pointStyleName = ps
 			}
 			if objType == "point" {
-				style := defaultPointStyle
+				objType = defaultPointStyle.Type
+				objProp := defaultPointStyle.Properties
 				if st, ok := gm.pointStyles[pointStyleName]; ok {
-					style = st
+					objType = st.Type
+					objProp = st.Properties
 				}
-				objType = style.Type
-				props.Copy(style.Properties)
+				props.Copy(objProp)
 			}
 			if js, err := props.MarshalJS(); err == nil {
 				objOption = js

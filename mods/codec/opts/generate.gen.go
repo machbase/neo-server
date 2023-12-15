@@ -16,7 +16,7 @@ import (
 // SetAssetHost
 //
 //	mods/codec/internal/chart/chart.go:89:1
-//	mods/codec/internal/echart/echart.go:103:1
+//	mods/codec/internal/echart/echart.go:104:1
 type CanSetAssetHost interface {
 	SetAssetHost(path string)
 }
@@ -197,7 +197,7 @@ func ChartJSCode(js string) Option {
 // SetChartJson
 //
 //	mods/codec/internal/chart/chart.go:93:1
-//	mods/codec/internal/echart/echart.go:183:1
+//	mods/codec/internal/echart/echart.go:184:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -247,7 +247,7 @@ func ColumnTypes(types ...string) Option {
 //	mods/codec/internal/box/box_encode.go:85:1
 //	mods/codec/internal/csv/csv_decode.go:75:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
-//	mods/codec/internal/echart/echart.go:305:1
+//	mods/codec/internal/echart/echart.go:337:1
 //	mods/codec/internal/json/json_encode.go:72:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
 type CanSetColumns interface {
@@ -264,7 +264,7 @@ func Columns(cols ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/echart/echart.go:154:1
+//	mods/codec/internal/echart/echart.go:155:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, start float32, end float32)
 }
@@ -293,24 +293,9 @@ func Delimiter(delimiter string) Option {
 	}
 }
 
-// SetGeoIcon
-//
-//	mods/codec/internal/geomap/geomap.go:146:1
-type CanSetGeoIcon interface {
-	SetGeoIcon(name string, url string, width float64, height float64)
-}
-
-func GeoIcon(name string, url string, width float64, height float64) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetGeoIcon); ok {
-			_o.SetGeoIcon(name, url, width, height)
-		}
-	}
-}
-
 // SetGeoMapJson
 //
-//	mods/codec/internal/geomap/geomap.go:116:1
+//	mods/codec/internal/geomap/geomap.go:105:1
 type CanSetGeoMapJson interface {
 	SetGeoMapJson(flag bool)
 }
@@ -323,39 +308,9 @@ func GeoMapJson(flag bool) Option {
 	}
 }
 
-// SetGeoMarker
-//
-//	mods/codec/internal/geomap/geomap.go:142:1
-type CanSetGeoMarker interface {
-	SetGeoMarker(marker nums.GeoMarker)
-}
-
-func GeoMarker(marker nums.GeoMarker) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetGeoMarker); ok {
-			_o.SetGeoMarker(marker)
-		}
-	}
-}
-
-// SetGeoPointStyle
-//
-//	mods/codec/internal/geomap/geomap.go:135:1
-type CanSetGeoPointStyle interface {
-	SetGeoPointStyle(name string, props map[string]any)
-}
-
-func GeoPointStyle(name string, props map[string]any) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetGeoPointStyle); ok {
-			_o.SetGeoPointStyle(name, props)
-		}
-	}
-}
-
 // SetGlobalOptions
 //
-//	mods/codec/internal/echart/echart.go:213:1
+//	mods/codec/internal/echart/echart.go:214:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(content string)
 }
@@ -434,9 +389,24 @@ func Html(flag bool) Option {
 	}
 }
 
+// SetIcon
+//
+//	mods/codec/internal/geomap/geomap.go:128:1
+type CanSetIcon interface {
+	SetIcon(name string, opt string)
+}
+
+func Icon(name string, opt string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetIcon); ok {
+			_o.SetIcon(name, opt)
+		}
+	}
+}
+
 // SetInitialLocation
 //
-//	mods/codec/internal/geomap/geomap.go:95:1
+//	mods/codec/internal/geomap/geomap.go:84:1
 type CanSetInitialLocation interface {
 	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
 }
@@ -483,8 +453,8 @@ func LineWidth(width float64) Option {
 // SetLogger
 //
 //	mods/codec/internal/chart/chart.go:64:1
-//	mods/codec/internal/echart/echart.go:78:1
-//	mods/codec/internal/geomap/geomap.go:78:1
+//	mods/codec/internal/echart/echart.go:79:1
+//	mods/codec/internal/geomap/geomap.go:67:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
 	SetLogger(l logger.Logger)
@@ -500,7 +470,7 @@ func Logger(l logger.Logger) Option {
 
 // SetMapId
 //
-//	mods/codec/internal/geomap/geomap.go:86:1
+//	mods/codec/internal/geomap/geomap.go:75:1
 type CanSetMapId interface {
 	SetMapId(id string)
 }
@@ -558,6 +528,21 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 	}
 }
 
+// SetMarker
+//
+//	mods/codec/internal/geomap/geomap.go:124:1
+type CanSetMarker interface {
+	SetMarker(marker nums.GeoMarker)
+}
+
+func Marker(marker nums.GeoMarker) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetMarker); ok {
+			_o.SetMarker(marker)
+		}
+	}
+}
+
 // SetOpacity
 //
 //	mods/codec/internal/echart/echart_3d.go:175:1
@@ -578,8 +563,8 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/box/box_encode.go:45:1
 //	mods/codec/internal/chart/chart.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
-//	mods/codec/internal/echart/echart.go:82:1
-//	mods/codec/internal/geomap/geomap.go:82:1
+//	mods/codec/internal/echart/echart.go:83:1
+//	mods/codec/internal/geomap/geomap.go:71:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
@@ -605,6 +590,21 @@ func Plugins(plugins ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetPlugins); ok {
 			_o.SetPlugins(plugins...)
+		}
+	}
+}
+
+// SetPointStyle
+//
+//	mods/codec/internal/geomap/geomap.go:147:1
+type CanSetPointStyle interface {
+	SetPointStyle(name string, typ string, opt string)
+}
+
+func PointStyle(name string, typ string, opt string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetPointStyle); ok {
+			_o.SetPointStyle(name, typ, opt)
 		}
 	}
 }
@@ -647,7 +647,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/echart/echart.go:301:1
+//	mods/codec/internal/echart/echart.go:333:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(labels ...string)
 }
@@ -662,7 +662,7 @@ func SeriesLabels(labels ...string) Option {
 
 // SetSeriesOptions
 //
-//	mods/codec/internal/echart/echart.go:285:1
+//	mods/codec/internal/echart/echart.go:317:1
 type CanSetSeriesOptions interface {
 	SetSeriesOptions(data ...string)
 }
@@ -693,8 +693,8 @@ func ShowGrid(flag bool) Option {
 // SetSize
 //
 //	mods/codec/internal/chart/chart.go:76:1
-//	mods/codec/internal/echart/echart.go:86:1
-//	mods/codec/internal/geomap/geomap.go:90:1
+//	mods/codec/internal/echart/echart.go:87:1
+//	mods/codec/internal/geomap/geomap.go:79:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -724,7 +724,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/echart/echart.go:99:1
+//	mods/codec/internal/echart/echart.go:100:1
 type CanSetSubtitle interface {
 	SetSubtitle(subtitle string)
 }
@@ -756,7 +756,7 @@ func TableName(tableName string) Option {
 // SetTheme
 //
 //	mods/codec/internal/chart/chart.go:81:1
-//	mods/codec/internal/echart/echart.go:91:1
+//	mods/codec/internal/echart/echart.go:92:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -771,7 +771,7 @@ func Theme(theme string) Option {
 
 // SetTileGrayscale
 //
-//	mods/codec/internal/geomap/geomap.go:120:1
+//	mods/codec/internal/geomap/geomap.go:109:1
 type CanSetTileGrayscale interface {
 	SetTileGrayscale(grayscale float64)
 }
@@ -786,7 +786,7 @@ func TileGrayscale(grayscale float64) Option {
 
 // SetTileOption
 //
-//	mods/codec/internal/geomap/geomap.go:104:1
+//	mods/codec/internal/geomap/geomap.go:93:1
 type CanSetTileOption interface {
 	SetTileOption(opt string)
 }
@@ -801,7 +801,7 @@ func TileOption(opt string) Option {
 
 // SetTileTemplate
 //
-//	mods/codec/internal/geomap/geomap.go:100:1
+//	mods/codec/internal/geomap/geomap.go:89:1
 type CanSetTileTemplate interface {
 	SetTileTemplate(url string)
 }
@@ -858,7 +858,7 @@ func Timeformat(format string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/echart/echart.go:95:1
+//	mods/codec/internal/echart/echart.go:96:1
 type CanSetTitle interface {
 	SetTitle(title string)
 }
@@ -873,7 +873,7 @@ func Title(title string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/echart/echart.go:141:1
+//	mods/codec/internal/echart/echart.go:142:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
 }
@@ -888,7 +888,7 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/echart/echart.go:129:1
+//	mods/codec/internal/echart/echart.go:130:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
 }
@@ -903,7 +903,7 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/echart/echart.go:107:1
+//	mods/codec/internal/echart/echart.go:108:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
 }
@@ -948,7 +948,7 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/echart/echart.go:163:1
+//	mods/codec/internal/echart/echart.go:164:1
 type CanSetVisualMap interface {
 	SetVisualMap(min float64, max float64)
 }
@@ -963,7 +963,7 @@ func VisualMap(min float64, max float64) Option {
 
 // SetVisualMapColor
 //
-//	mods/codec/internal/echart/echart.go:171:1
+//	mods/codec/internal/echart/echart.go:172:1
 type CanSetVisualMapColor interface {
 	SetVisualMapColor(min float64, max float64, colors ...string)
 }

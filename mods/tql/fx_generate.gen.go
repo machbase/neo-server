@@ -221,15 +221,13 @@ func NewNode(task *Task) *Node {
 		"columns":             x.gen_columns,
 		"dataZoom":            x.gen_dataZoom,
 		"delimiter":           x.gen_delimiter,
-		"geoIcon":             x.gen_geoIcon,
 		"geoMapJson":          x.gen_geoMapJson,
-		"geoMarker":           x.gen_geoMarker,
-		"geoPointStyle":       x.gen_geoPointStyle,
 		"globalOptions":       x.gen_globalOptions,
 		"gridSize":            x.gen_gridSize,
 		"header":              x.gen_header,
 		"heading":             x.gen_heading,
 		"html":                x.gen_html,
+		"icon":                x.gen_icon,
 		"initialLocation":     x.gen_initialLocation,
 		"inputStream":         x.gen_inputStream,
 		"lineWidth":           x.gen_lineWidth,
@@ -238,9 +236,11 @@ func NewNode(task *Task) *Node {
 		"markAreaNameCoord":   x.gen_markAreaNameCoord,
 		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
 		"markLineYAxisCoord":  x.gen_markLineYAxisCoord,
+		"marker":              x.gen_marker,
 		"opacity":             x.gen_opacity,
 		"outputStream":        x.gen_outputStream,
 		"plugins":             x.gen_plugins,
+		"pointStyle":          x.gen_pointStyle,
 		"precision":           x.gen_precision,
 		"rownum":              x.gen_rownum,
 		"seriesLabels":        x.gen_seriesLabels,
@@ -3087,33 +3087,6 @@ func (x *Node) gen_delimiter(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_geoIcon
-//
-// syntax: geoIcon(string, string, float64, float64)
-func (x *Node) gen_geoIcon(args ...any) (any, error) {
-	if len(args) != 4 {
-		return nil, ErrInvalidNumOfArgs("geoIcon", 4, len(args))
-	}
-	p0, err := convString(args, 0, "geoIcon", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "geoIcon", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convFloat64(args, 2, "geoIcon", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p3, err := convFloat64(args, 3, "geoIcon", "float64")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.GeoIcon(p0, p1, p2, p3)
-	return ret, nil
-}
-
 // gen_geoMapJson
 //
 // syntax: geoMapJson(bool)
@@ -3126,40 +3099,6 @@ func (x *Node) gen_geoMapJson(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.GeoMapJson(p0)
-	return ret, nil
-}
-
-// gen_geoMarker
-//
-// syntax: geoMarker(GeoMarker)
-func (x *Node) gen_geoMarker(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("geoMarker", 1, len(args))
-	}
-	p0, err := convGeoMarker(args, 0, "geoMarker", "nums.GeoMarker")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.GeoMarker(p0)
-	return ret, nil
-}
-
-// gen_geoPointStyle
-//
-// syntax: geoPointStyle(string, )
-func (x *Node) gen_geoPointStyle(args ...any) (any, error) {
-	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("geoPointStyle", 2, len(args))
-	}
-	p0, err := convString(args, 0, "geoPointStyle", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convMapStringAny(args, 1, "geoPointStyle", "map[string]interface {}")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.GeoPointStyle(p0, p1)
 	return ret, nil
 }
 
@@ -3236,6 +3175,25 @@ func (x *Node) gen_html(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Html(p0)
+	return ret, nil
+}
+
+// gen_icon
+//
+// syntax: icon(string, string)
+func (x *Node) gen_icon(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("icon", 2, len(args))
+	}
+	p0, err := convString(args, 0, "icon", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "icon", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Icon(p0, p1)
 	return ret, nil
 }
 
@@ -3387,6 +3345,21 @@ func (x *Node) gen_markLineYAxisCoord(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_marker
+//
+// syntax: marker(GeoMarker)
+func (x *Node) gen_marker(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("marker", 1, len(args))
+	}
+	p0, err := convGeoMarker(args, 0, "marker", "nums.GeoMarker")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Marker(p0)
+	return ret, nil
+}
+
 // gen_opacity
 //
 // syntax: opacity(float64)
@@ -3430,6 +3403,29 @@ func (x *Node) gen_plugins(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.Plugins(p0...)
+	return ret, nil
+}
+
+// gen_pointStyle
+//
+// syntax: pointStyle(string, string, string)
+func (x *Node) gen_pointStyle(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("pointStyle", 3, len(args))
+	}
+	p0, err := convString(args, 0, "pointStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "pointStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convString(args, 2, "pointStyle", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.PointStyle(p0, p1, p2)
 	return ret, nil
 }
 

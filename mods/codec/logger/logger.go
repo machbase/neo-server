@@ -1,5 +1,7 @@
 package logger
 
+import "testing"
+
 type Logger interface {
 	Logf(format string, args ...any)
 	Log(args ...any)
@@ -10,3 +12,33 @@ type Logger interface {
 	LogErrorf(format string, args ...any)
 	LogError(args ...any)
 }
+
+var Discard = &discard{}
+
+type discard struct {
+}
+
+func (l *discard) Logf(format string, args ...any)      {}
+func (l *discard) Log(args ...any)                      {}
+func (l *discard) LogDebugf(format string, args ...any) {}
+func (l *discard) LogDebug(args ...any)                 {}
+func (l *discard) LogWarnf(format string, args ...any)  {}
+func (l *discard) LogWarn(args ...any)                  {}
+func (l *discard) LogErrorf(format string, args ...any) {}
+func (l *discard) LogError(args ...any)                 {}
+
+type testLogger struct {
+	t *testing.T
+}
+
+func TestLogger(t *testing.T) Logger {
+	return &testLogger{t}
+}
+func (l *testLogger) Logf(format string, args ...any)      { l.t.Helper(); l.t.Logf(format, args...) }
+func (l *testLogger) Log(args ...any)                      { l.t.Helper(); l.t.Log(args...) }
+func (l *testLogger) LogDebugf(format string, args ...any) { l.t.Helper(); l.t.Logf(format, args...) }
+func (l *testLogger) LogDebug(args ...any)                 { l.t.Helper(); l.t.Log(args...) }
+func (l *testLogger) LogWarnf(format string, args ...any)  { l.t.Helper(); l.t.Logf(format, args...) }
+func (l *testLogger) LogWarn(args ...any)                  { l.t.Helper(); l.t.Log(args...) }
+func (l *testLogger) LogErrorf(format string, args ...any) { l.t.Helper(); l.t.Logf(format, args...) }
+func (l *testLogger) LogError(args ...any)                 { l.t.Helper(); l.t.Log(args...) }

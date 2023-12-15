@@ -229,11 +229,6 @@ func (cm GeoCircleMarker) Marker() string {
 	return "circleMarker"
 }
 
-type GeoPointStyle struct {
-	Type       string
-	Properties GeoProperties
-}
-
 type GeoProperties map[string]any
 
 func (gp GeoProperties) Copy(other GeoProperties) {
