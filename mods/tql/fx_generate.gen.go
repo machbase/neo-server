@@ -441,56 +441,48 @@ func (x *Node) gen_latlng(args ...any) (any, error) {
 
 // gen_geoPoint
 //
-// syntax: geoPoint(, ...map[string]interface {})
+// syntax: geoPoint(, )
 func (x *Node) gen_geoPoint(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoPoint", 1, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoPoint", 2, len(args))
 	}
 	p0, err := convLatLng(args, 0, "geoPoint", "*nums.LatLng")
 	if err != nil {
 		return nil, err
 	}
-	p1 := []map[string]interface{}{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoPoint", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
+	p1, err := convAny(args, 1, "geoPoint", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoPoint(p0, p1...)
+	ret := nums.NewGeoPoint(p0, p1)
 	return ret, nil
 }
 
 // gen_geoMultiPoint
 //
-// syntax: geoMultiPoint([]interface {}, ...map[string]interface {})
+// syntax: geoMultiPoint([]interface {}, )
 func (x *Node) gen_geoMultiPoint(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoMultiPoint", 1, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoMultiPoint", 2, len(args))
 	}
 	p0, ok := args[0].([]interface{})
 	if !ok {
 		return nil, ErrWrongTypeOfArgs("geoMultiPoint", 0, "[]interface {}", args[0])
 	}
-	p1 := []map[string]interface{}{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoMultiPoint", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
+	p1, err := convAny(args, 1, "geoMultiPoint", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoMultiPoint(p0, p1...)
+	ret := nums.NewGeoMultiPoint(p0, p1)
 	return ret, nil
 }
 
 // gen_geoCircle
 //
-// syntax: geoCircle(, float64, ...map[string]interface {})
+// syntax: geoCircle(, float64, )
 func (x *Node) gen_geoCircle(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("geoCircle", 2, len(args))
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("geoCircle", 3, len(args))
 	}
 	p0, err := convLatLng(args, 0, "geoCircle", "*nums.LatLng")
 	if err != nil {
@@ -500,93 +492,77 @@ func (x *Node) gen_geoCircle(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2 := []map[string]interface{}{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoCircle", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
+	p2, err := convAny(args, 2, "geoCircle", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoCircle(p0, p1, p2...)
+	ret := nums.NewGeoCircle(p0, p1, p2)
 	return ret, nil
 }
 
 // gen_geoPolygon
 //
-// syntax: geoPolygon([]interface {}, ...map[string]interface {})
+// syntax: geoPolygon([]interface {}, )
 func (x *Node) gen_geoPolygon(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoPolygon", 1, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoPolygon", 2, len(args))
 	}
 	p0, ok := args[0].([]interface{})
 	if !ok {
 		return nil, ErrWrongTypeOfArgs("geoPolygon", 0, "[]interface {}", args[0])
 	}
-	p1 := []map[string]interface{}{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoPolygon", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
+	p1, err := convAny(args, 1, "geoPolygon", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoPolygon(p0, p1...)
+	ret := nums.NewGeoPolygon(p0, p1)
 	return ret, nil
 }
 
 // gen_geoLineString
 //
-// syntax: geoLineString([]interface {}, ...map[string]interface {})
+// syntax: geoLineString([]interface {}, )
 func (x *Node) gen_geoLineString(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoLineString", 1, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoLineString", 2, len(args))
 	}
 	p0, ok := args[0].([]interface{})
 	if !ok {
 		return nil, ErrWrongTypeOfArgs("geoLineString", 0, "[]interface {}", args[0])
 	}
-	p1 := []map[string]interface{}{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoLineString", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
+	p1, err := convAny(args, 1, "geoLineString", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoLineString(p0, p1...)
+	ret := nums.NewGeoLineString(p0, p1)
 	return ret, nil
 }
 
 // gen_geoPointMarker
 //
-// syntax: geoPointMarker(, ...map[string]interface {})
+// syntax: geoPointMarker(, )
 func (x *Node) gen_geoPointMarker(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("geoPointMarker", 1, len(args))
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("geoPointMarker", 2, len(args))
 	}
 	p0, err := convLatLng(args, 0, "geoPointMarker", "*nums.LatLng")
 	if err != nil {
 		return nil, err
 	}
-	p1 := []map[string]interface{}{}
-	for n := 1; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoPointMarker", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p1 = append(p1, argv)
+	p1, err := convAny(args, 1, "geoPointMarker", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoPointMarker(p0, p1...)
+	ret := nums.NewGeoPointMarker(p0, p1)
 	return ret, nil
 }
 
 // gen_geoCircleMarker
 //
-// syntax: geoCircleMarker(, float64, ...map[string]interface {})
+// syntax: geoCircleMarker(, float64, )
 func (x *Node) gen_geoCircleMarker(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("geoCircleMarker", 2, len(args))
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("geoCircleMarker", 3, len(args))
 	}
 	p0, err := convLatLng(args, 0, "geoCircleMarker", "*nums.LatLng")
 	if err != nil {
@@ -596,15 +572,11 @@ func (x *Node) gen_geoCircleMarker(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2 := []map[string]interface{}{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convDictionary(args, n, "geoCircleMarker", "...map[string]interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
+	p2, err := convAny(args, 2, "geoCircleMarker", "interface {}")
+	if err != nil {
+		return nil, err
 	}
-	ret := nums.NewGeoCircleMarker(p0, p1, p2...)
+	ret := nums.NewGeoCircleMarker(p0, p1, p2)
 	return ret, nil
 }
 

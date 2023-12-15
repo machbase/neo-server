@@ -42,14 +42,21 @@ type Circle struct {
 
 type GeoCircle = *Circle
 
-func NewGeoCircle(center *LatLng, radius float64, props ...map[string]any) GeoCircle {
+func NewGeoCircle(center *LatLng, radius float64, opt any) GeoCircle {
 	ret := &Circle{center: center, radius: radius}
-	if len(props) > 0 {
-		ret.properties = props[0]
+	switch v := opt.(type) {
+	case string:
+		if prop, err := NewGeoPropertiesParse(v); err == nil {
+			ret.properties = prop
+		}
+	case map[string]any:
+		ret.properties = map[string]any{}
+		ret.properties.Copy(v)
 	}
 	if ret.properties == nil {
-		ret.properties = map[string]any{"radius": radius}
-	} else if _, hasRadius := ret.properties["radius"]; !hasRadius {
+		ret.properties = map[string]any{}
+	}
+	if _, hasRadius := ret.properties["radius"]; !hasRadius {
 		ret.properties["radius"] = radius
 	}
 	return ret
@@ -101,15 +108,24 @@ type MultiLatLng struct {
 	properties GeoProperties
 }
 
-func NewMultiLatLng(typ string, pts []any, props ...map[string]any) *MultiLatLng {
+func NewMultiLatLng(typ string, pts []any, opt any) *MultiLatLng {
 	ret := &MultiLatLng{typ: typ}
 	for _, p := range pts {
 		if v, ok := p.(*LatLng); ok {
 			ret.points = append(ret.points, v)
 		}
 	}
-	if len(props) > 0 {
-		ret.properties = props[0]
+	switch v := opt.(type) {
+	case string:
+		if prop, err := NewGeoPropertiesParse(v); err == nil {
+			ret.properties = prop
+		}
+	case map[string]any:
+		ret.properties = map[string]any{}
+		ret.properties.Copy(v)
+	}
+	if ret.properties == nil {
+		ret.properties = map[string]any{}
 	}
 	return ret
 }
@@ -151,30 +167,39 @@ func (mp *MultiLatLng) MarshalGeoJSON() ([]byte, error) {
 
 type GeoPoint = *SingleLatLng
 
-func NewGeoPoint(ll *LatLng, dicts ...map[string]any) GeoPoint {
+func NewGeoPoint(ll *LatLng, opt any) GeoPoint {
 	ret := &SingleLatLng{typ: "Point", point: ll}
-	if len(dicts) > 0 {
-		ret.properties = dicts[0]
+	switch v := opt.(type) {
+	case string:
+		if prop, err := NewGeoPropertiesParse(v); err == nil {
+			ret.properties = prop
+		}
+	case map[string]any:
+		ret.properties = map[string]any{}
+		ret.properties.Copy(v)
+	}
+	if ret.properties == nil {
+		ret.properties = map[string]any{}
 	}
 	return ret
 }
 
 type GeoMultiPoint = *MultiLatLng
 
-func NewGeoMultiPoint(pts []any, dicts ...map[string]any) GeoMultiPoint {
-	return NewMultiLatLng("MultiPoint", pts, dicts...)
+func NewGeoMultiPoint(pts []any, opt any) GeoMultiPoint {
+	return NewMultiLatLng("MultiPoint", pts, opt)
 }
 
 type GeoLineString = *MultiLatLng
 
-func NewGeoLineString(pts []any, dicts ...map[string]any) GeoLineString {
-	return NewMultiLatLng("LineString", pts, dicts...)
+func NewGeoLineString(pts []any, opt any) GeoLineString {
+	return NewMultiLatLng("LineString", pts, opt)
 }
 
 type GeoPolygon = *MultiLatLng
 
-func NewGeoPolygon(pts []any, dicts ...map[string]any) GeoPolygon {
-	return NewMultiLatLng("Polygon", pts, dicts...)
+func NewGeoPolygon(pts []any, opt any) GeoPolygon {
+	return NewMultiLatLng("Polygon", pts, opt)
 }
 
 type Geography interface {
@@ -187,7 +212,7 @@ var (
 	_ Geography = &Circle{}
 	_ Geography = &MultiLatLng{}
 	_ Geography = NewGeoPoint(nil, nil)
-	_ Geography = NewGeoCircle(nil, 0, nil)
+	_ Geography = GeoCircle(&Circle{})
 	_ Geography = NewGeoMultiPoint(nil, nil)
 	_ Geography = NewGeoLineString(nil, nil)
 	_ Geography = NewGeoPolygon(nil, nil)
@@ -209,8 +234,8 @@ type GeoPointMarker struct {
 	GeoPoint
 }
 
-func NewGeoPointMarker(ll *LatLng, dict ...map[string]any) GeoPointMarker {
-	return GeoPointMarker{NewGeoPoint(ll, dict...)}
+func NewGeoPointMarker(ll *LatLng, opt any) GeoPointMarker {
+	return GeoPointMarker{NewGeoPoint(ll, opt)}
 }
 
 func (gm GeoPointMarker) Marker() string {
@@ -221,8 +246,8 @@ type GeoCircleMarker struct {
 	GeoCircle
 }
 
-func NewGeoCircleMarker(center *LatLng, radius float64, props ...map[string]any) GeoCircleMarker {
-	return GeoCircleMarker{GeoCircle: NewGeoCircle(center, radius, props...)}
+func NewGeoCircleMarker(center *LatLng, radius float64, opt any) GeoCircleMarker {
+	return GeoCircleMarker{GeoCircle: NewGeoCircle(center, radius, opt)}
 }
 
 func (cm GeoCircleMarker) Marker() string {
@@ -230,6 +255,15 @@ func (cm GeoCircleMarker) Marker() string {
 }
 
 type GeoProperties map[string]any
+
+func NewGeoPropertiesParse(opt string) (GeoProperties, error) {
+	if !strings.HasPrefix(strings.TrimSpace(opt), "{") {
+		opt = "{" + opt + "}"
+	}
+	ret := GeoProperties{}
+	err := json.Unmarshal([]byte(opt), &ret)
+	return ret, err
+}
 
 func (gp GeoProperties) Copy(other GeoProperties) {
 	for k, v := range other {

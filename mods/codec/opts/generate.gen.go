@@ -295,7 +295,7 @@ func Delimiter(delimiter string) Option {
 
 // SetGeoMapJson
 //
-//	mods/codec/internal/geomap/geomap.go:105:1
+//	mods/codec/internal/geomap/geomap.go:106:1
 type CanSetGeoMapJson interface {
 	SetGeoMapJson(flag bool)
 }
@@ -391,7 +391,7 @@ func Html(flag bool) Option {
 
 // SetIcon
 //
-//	mods/codec/internal/geomap/geomap.go:128:1
+//	mods/codec/internal/geomap/geomap.go:129:1
 type CanSetIcon interface {
 	SetIcon(name string, opt string)
 }
@@ -406,7 +406,7 @@ func Icon(name string, opt string) Option {
 
 // SetInitialLocation
 //
-//	mods/codec/internal/geomap/geomap.go:84:1
+//	mods/codec/internal/geomap/geomap.go:85:1
 type CanSetInitialLocation interface {
 	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
 }
@@ -454,7 +454,7 @@ func LineWidth(width float64) Option {
 //
 //	mods/codec/internal/chart/chart.go:64:1
 //	mods/codec/internal/echart/echart.go:79:1
-//	mods/codec/internal/geomap/geomap.go:67:1
+//	mods/codec/internal/geomap/geomap.go:68:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
 	SetLogger(l logger.Logger)
@@ -470,7 +470,7 @@ func Logger(l logger.Logger) Option {
 
 // SetMapId
 //
-//	mods/codec/internal/geomap/geomap.go:75:1
+//	mods/codec/internal/geomap/geomap.go:76:1
 type CanSetMapId interface {
 	SetMapId(id string)
 }
@@ -530,7 +530,7 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 
 // SetMarker
 //
-//	mods/codec/internal/geomap/geomap.go:124:1
+//	mods/codec/internal/geomap/geomap.go:125:1
 type CanSetMarker interface {
 	SetMarker(marker nums.GeoMarker)
 }
@@ -564,7 +564,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/chart/chart.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:49:1
 //	mods/codec/internal/echart/echart.go:83:1
-//	mods/codec/internal/geomap/geomap.go:71:1
+//	mods/codec/internal/geomap/geomap.go:72:1
 //	mods/codec/internal/json/json_encode.go:44:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
@@ -596,7 +596,7 @@ func Plugins(plugins ...string) Option {
 
 // SetPointStyle
 //
-//	mods/codec/internal/geomap/geomap.go:147:1
+//	mods/codec/internal/geomap/geomap.go:148:1
 type CanSetPointStyle interface {
 	SetPointStyle(name string, typ string, opt string)
 }
@@ -694,7 +694,7 @@ func ShowGrid(flag bool) Option {
 //
 //	mods/codec/internal/chart/chart.go:76:1
 //	mods/codec/internal/echart/echart.go:87:1
-//	mods/codec/internal/geomap/geomap.go:79:1
+//	mods/codec/internal/geomap/geomap.go:80:1
 type CanSetSize interface {
 	SetSize(width string, height string)
 }
@@ -771,7 +771,7 @@ func Theme(theme string) Option {
 
 // SetTileGrayscale
 //
-//	mods/codec/internal/geomap/geomap.go:109:1
+//	mods/codec/internal/geomap/geomap.go:110:1
 type CanSetTileGrayscale interface {
 	SetTileGrayscale(grayscale float64)
 }
@@ -786,7 +786,7 @@ func TileGrayscale(grayscale float64) Option {
 
 // SetTileOption
 //
-//	mods/codec/internal/geomap/geomap.go:93:1
+//	mods/codec/internal/geomap/geomap.go:94:1
 type CanSetTileOption interface {
 	SetTileOption(opt string)
 }
@@ -801,7 +801,7 @@ func TileOption(opt string) Option {
 
 // SetTileTemplate
 //
-//	mods/codec/internal/geomap/geomap.go:89:1
+//	mods/codec/internal/geomap/geomap.go:90:1
 type CanSetTileTemplate interface {
 	SetTileTemplate(url string)
 }

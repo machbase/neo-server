@@ -55,9 +55,9 @@ func TestGeoMapHtml(t *testing.T) {
 			}),
 		},
 		nums.GeoCircleMarker{
-			GeoCircle: nums.NewGeoCircle(&nums.LatLng{Lat: 37.503058, Lng: 127.018666}, 100, map[string]any{
-				"popup.content": "<b>circle1</b>",
-			}),
+			GeoCircle: nums.NewGeoCircle(&nums.LatLng{Lat: 37.503058, Lng: 127.018666}, 100, `{
+				"popup.content": "<b>circle1</b>"
+			}`),
 		},
 		nums.NewGeoPoint(
 			&nums.LatLng{Lat: 37.496727, Lng: 127.026612},
