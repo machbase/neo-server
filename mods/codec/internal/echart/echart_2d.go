@@ -340,6 +340,7 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			line.AddSeries(label, series, opts...)
 		}
+		line.SetDispatchActions(ex.GetGlobalActions()...)
 		chart = line
 		before = append(before, line.Validate)
 	case SCATTER:
@@ -351,6 +352,7 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			scatter.AddSeries(label, series, opts...)
 		}
+		scatter.SetDispatchActions(ex.GetGlobalActions()...)
 		chart = scatter
 		before = append(before, scatter.Validate)
 	case BAR:
@@ -362,6 +364,7 @@ func (ex *Base2D) Close() {
 			opts := ex.getSeriesOptions(i)
 			bar.AddSeries(label, series, opts...)
 		}
+		bar.SetDispatchActions(ex.GetGlobalActions()...)
 		chart = bar
 		before = append(before, bar.Validate)
 	}

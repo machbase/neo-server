@@ -227,7 +227,6 @@ func (c *Chart) Close() {
 	}
 	if len(c.JSAssets) == 0 {
 		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
-		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts@4.min.js")
 	}
 	if _, ok := themeNames[c.Theme]; ok {
 		if c.Theme != "white" {

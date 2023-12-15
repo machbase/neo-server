@@ -81,6 +81,9 @@ var ChartJsonTpl = `
         {{- end }}
     ],
 	"chartOption": {{ .JSONNotEscaped }}
+    {{ if isSet  "BaseActions" . }}
+    , "chartAction": {{ .JSONNotEscapedAction }}
+    {{ end }}
 }
 {{ end }}
 `

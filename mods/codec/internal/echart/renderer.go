@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"regexp"
-	"text/template"
 
 	"github.com/go-echarts/go-echarts/v2/render"
 )
@@ -53,7 +52,7 @@ func (r *jsonRender) Render(w io.Writer) error {
 		fn()
 	}
 
-	tpl := template.Must(template.New(render.ModChart).Parse(ChartJsonTpl))
+	tpl := render.MustTemplate(render.ModChart, []string{ChartJsonTpl})
 	var buf bytes.Buffer
 	if err := tpl.ExecuteTemplate(&buf, render.ModChart, r.c); err != nil {
 		return err

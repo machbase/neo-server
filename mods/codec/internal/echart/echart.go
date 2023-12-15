@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-echarts/go-echarts/v2/actions"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/machbase/neo-server/mods/codec/logger"
@@ -219,9 +220,35 @@ func (ex *ChartBase) SetGlobalOptions(content string) {
 	}
 }
 
+func (ex *ChartBase) GetGlobalActions() []charts.GlobalActions {
+	return []charts.GlobalActions{
+		func(ba *charts.BaseActions) {
+			ba.Type = ""
+			ba.Areas = actions.Areas{}
+		},
+	}
+}
+
+var themeNames = map[string]bool{
+	"white":          true,
+	"dark":           true,
+	"essos":          true,
+	"chalk":          true,
+	"purple-passion": true,
+	"romantic":       true,
+	"walden":         true,
+	"westeros":       true,
+	"wonderland":     true,
+	"vintage":        true,
+	"macarons":       true,
+	"infographic":    true,
+	"shine":          true,
+	"roma":           true,
+}
+
 func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 	theme := "white"
-	if ex.globalOptions.Theme != "" {
+	if ex.globalOptions.Theme != "" && ex.globalOptions.Theme != "-" {
 		theme = ex.globalOptions.Theme
 	}
 	ret := []charts.GlobalOpts{
@@ -253,22 +280,24 @@ func (ex *ChartBase) getGlobalOptions() []charts.GlobalOpts {
 			bc.GridList = ex.globalOptions.GridList
 			bc.Grid3D = ex.globalOptions.Grid3D
 
-			if !bc.JSAssets.Contains("/web/echarts/echarts.min.js") {
-				bc.JSAssets.Add("/web/echarts/echarts.min.js")
+			if !bc.JSAssets.Contains("echarts.min.js") {
+				bc.JSAssets.Add("echarts.min.js")
 			}
-			if !bc.JSAssets.Contains("/web/echarts/echarts@4.min.js") {
-				bc.JSAssets.Add("/web/echarts/echarts@4.min.js")
+			if bc.JSAssets.Contains("echarts@4.min.js") {
+				bc.JSAssets.Remove("echarts@4.min.js")
 			}
-			if !bc.JSAssets.Contains("/web/echarts/echarts-gl.min.js") {
-				bc.JSAssets.Add("/web/echarts/echarts-gl.min.js")
+			if !bc.JSAssets.Contains("echarts-gl.min.js") {
+				bc.JSAssets.Add("echarts-gl.min.js")
 			}
 			if ex.globalOptions.Theme == "-" || ex.globalOptions.Theme == "" {
 				ex.globalOptions.Theme = "white"
 			}
 			if ex.globalOptions.Theme != "white" {
-				url := fmt.Sprintf("/web/echarts/themes/%s.js", ex.globalOptions.Theme)
-				if !bc.JSAssets.Contains(url) {
-					bc.JSAssets.Add(url)
+				if f, o := themeNames[ex.globalOptions.Theme]; f && o {
+					url := fmt.Sprintf("themes/%s.js", ex.globalOptions.Theme)
+					if !bc.JSAssets.Contains(url) {
+						bc.JSAssets.Add(url)
+					}
 				}
 			}
 		},
