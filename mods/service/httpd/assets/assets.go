@@ -23,6 +23,9 @@ var echartsDir embed.FS
 //go:embed tutorials/*
 var tutorialsDir embed.FS
 
+//go:embed geomap/*
+var geomapDir embed.FS
+
 func TutorialsDir() http.FileSystem {
 	return &StaticFSWrap{
 		TrimPrefix:   "/web",
@@ -35,6 +38,14 @@ func EchartsDir() http.FileSystem {
 	return &StaticFSWrap{
 		TrimPrefix:   "/web",
 		Base:         http.FS(echartsDir),
+		FixedModTime: time.Now(),
+	}
+}
+
+func GeomapDir() http.FileSystem {
+	return &StaticFSWrap{
+		TrimPrefix:   "/web",
+		Base:         http.FS(geomapDir),
 		FixedModTime: time.Now(),
 	}
 }

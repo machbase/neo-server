@@ -3,6 +3,13 @@ package nums
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+)
+
+const (
+	// EarthRadius is the radius of the earth in meters.
+	// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
+	EarthRadius = 6378137.0 // meters
 )
 
 type LatLng struct {
@@ -27,8 +34,28 @@ func (ll *LatLng) Array() []float64 {
 	return []float64{ll.Lat, ll.Lng}
 }
 
-func (ll *LatLng) DistanceTo(pt *LatLng) float64 {
-	return 0
+// degreesToRadians converts from degrees to radians.
+func degreesToRadians(d float64) float64 {
+	return d * math.Pi / 180
+}
+
+// Distance calculates the shortest path in meters between two coordinates on the surface
+// of the Earth (harversine).
+func Distance(p, q LatLng) float64 {
+	lat1 := degreesToRadians(p.Lat)
+	lon1 := degreesToRadians(p.Lng)
+	lat2 := degreesToRadians(q.Lat)
+	lon2 := degreesToRadians(q.Lng)
+	diffLat := lat2 - lat1
+	diffLon := lon2 - lon1
+	a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return c * EarthRadius
+}
+
+// Distance returns the shortest path to the other point in meters.
+func (ll *LatLng) Distance(pt *LatLng) float64 {
+	return Distance(*ll, *pt)
 }
 
 type Circle struct {

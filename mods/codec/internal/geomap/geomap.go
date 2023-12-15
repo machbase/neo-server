@@ -28,6 +28,8 @@ type GeoMap struct {
 	InitialLatLng    *nums.LatLng
 	InitialZoomLevel int
 
+	mapOption string
+
 	tileGrayscale float64
 	tileTemplate  string
 	tileOption    string
@@ -198,15 +200,33 @@ func (gm *GeoMap) Close() {
 	}
 	if gm.tileTemplate == "" {
 		gm.tileTemplate = `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
+	} else if gm.tileTemplate == "kakao" {
+		gm.tileTemplate = `http://map{s}.daumcdn.net/map_2d_hd/2106wof/L{z}/{y}/{x}.png`
+		gm.tileOption = `{"tms": true, "subdomains": "01234", "zoomReverse":true, "zoomOffset": 1, "maxZoom":13, "minZoom":0 }`
+		crsVar := "kakaoCrs"
+		gm.mapOption = fmt.Sprintf(`{crs: %s}`, crsVar)
+		// Leaflet and proj4 must be loaded first
+		gm.JSAssets = append(gm.JSAssets, "/web/geomap/leaflet.js")
+		// https://github.com/proj4js/proj4js/releases/tag/2.9.2
+		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4.js")
+		// https://github.com/kartena/Proj4Leaflet/releases/tag/1.0.1
+		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4leaflet.js")
+
+		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
 	}
 	if gm.tileOption == "" {
 		gm.tileOption = `{"maxZoom":19}`
 	}
+	if gm.mapOption == "" {
+		gm.mapOption = "{}"
+	}
 	if len(gm.JSAssets) == 0 {
-		gm.JSAssets = append(gm.JSAssets, "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js")
+		// https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+		gm.JSAssets = append(gm.JSAssets, "/web/geomap/leaflet.js")
 	}
 	if len(gm.CSSAssets) == 0 {
-		gm.CSSAssets = append(gm.CSSAssets, "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css")
+		// https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+		gm.CSSAssets = append(gm.CSSAssets, "/web/geomap/leaflet.css")
 	}
 
 	if gm.toJsonOutput {
@@ -214,6 +234,28 @@ func (gm *GeoMap) Close() {
 	} else {
 		gm.renderHTML()
 	}
+}
+
+func crsMarshalJS(c *nums.CRS, varname string) string {
+	res := []string{}
+	for _, r := range c.Options["resolutions"].([]float64) {
+		res = append(res, fmt.Sprintf("%v", r))
+	}
+	org := ""
+	if v, ok := c.Options["origin"].([]float64); ok {
+		org = fmt.Sprintf("[%.f,%.f]", v[0], v[1])
+	}
+	bound := ""
+	if v, ok := c.Options["bounds"].([][]float64); ok {
+		bound = fmt.Sprintf("[%.f,%.f],[%.f,%.f]", v[0][0], v[0][1], v[1][0], v[1][1])
+	}
+	return fmt.Sprintf(`var %s = new L.Proj.CRS('%s', '%s', {
+			resolutions: [%s],
+			origin: %s,
+			bounds: L.bounds(%s)
+		});`,
+		varname,
+		c.Code, c.Proj, strings.Join(res, ","), org, bound)
 }
 
 func (gm *GeoMap) Layers() []*Layer {
@@ -340,7 +382,8 @@ func (gm *GeoMap) renderJSON() {
 }
 
 func (gm *GeoMap) renderHTML() {
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s").setView(%s, %d);`, gm.MapID, gm.MapID, gm.InitialLatLng.String(), gm.InitialZoomLevel))
+	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s", %s).setView(%s, %d);`,
+		gm.MapID, gm.MapID, gm.mapOption, gm.InitialLatLng.String(), gm.InitialZoomLevel))
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
 
 	for _, icn := range gm.icons {
