@@ -15,40 +15,34 @@ const (
 	EarthRadius = 6378137.0 // meters
 )
 
-type LatLng struct {
+type LatLon struct {
 	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
-	Alt float64 `json:"alt,omitempty"`
+	Lon float64 `json:"lon"`
 }
 
-func NewLatLng(lat, lng float64) *LatLng {
-	return &LatLng{Lat: lat, Lng: lng}
+func NewLatLon(lat, lon float64) *LatLon {
+	return &LatLon{Lat: lat, Lon: lon}
 }
 
-func (ll *LatLng) String() string {
-	return fmt.Sprintf("[%v,%v]", ll.Lat, ll.Lng)
+func (ll *LatLon) String() string {
+	return fmt.Sprintf("[%v,%v]", ll.Lat, ll.Lon)
 }
 
-func (ll *LatLng) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]float64{ll.Lat, ll.Lng})
+func (ll *LatLon) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]float64{ll.Lat, ll.Lon})
 }
 
-func (ll *LatLng) Array() []float64 {
-	return []float64{ll.Lat, ll.Lng}
-}
-
-// degreesToRadians converts from degrees to radians.
-func degreesToRadians(d float64) float64 {
-	return d * math.Pi / 180
+func (ll *LatLon) Array() []float64 {
+	return []float64{ll.Lat, ll.Lon}
 }
 
 // Distance calculates the shortest path in meters between two coordinates on the surface
 // of the Earth (harversine).
-func Distance(p, q LatLng) float64 {
-	lat1 := degreesToRadians(p.Lat)
-	lon1 := degreesToRadians(p.Lng)
-	lat2 := degreesToRadians(q.Lat)
-	lon2 := degreesToRadians(q.Lng)
+func Distance(p, q LatLon) float64 {
+	lat1 := DegreesToRadians(p.Lat)
+	lon1 := DegreesToRadians(p.Lon)
+	lat2 := DegreesToRadians(q.Lat)
+	lon2 := DegreesToRadians(q.Lon)
 	diffLat := lat2 - lat1
 	diffLon := lon2 - lon1
 	a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
@@ -57,19 +51,19 @@ func Distance(p, q LatLng) float64 {
 }
 
 // Distance returns the shortest path to the other point in meters.
-func (ll *LatLng) Distance(pt *LatLng) float64 {
+func (ll *LatLon) Distance(pt *LatLon) float64 {
 	return Distance(*ll, *pt)
 }
 
 type Circle struct {
-	center     *LatLng
+	center     *LatLon
 	radius     float64
 	properties GeoProperties
 }
 
 type GeoCircle = *Circle
 
-func NewGeoCircle(center *LatLng, radius float64, opt any) GeoCircle {
+func NewGeoCircle(center *LatLon, radius float64, opt any) GeoCircle {
 	ret := &Circle{center: center, radius: radius}
 	switch v := opt.(type) {
 	case string:
@@ -90,31 +84,31 @@ func NewGeoCircle(center *LatLng, radius float64, opt any) GeoCircle {
 }
 
 func (cr *Circle) Coordinates() [][]float64 {
-	return [][]float64{{cr.center.Lat, cr.center.Lng}}
+	return [][]float64{{cr.center.Lat, cr.center.Lon}}
 }
 
 func (sp *Circle) Properties() GeoProperties {
 	return sp.properties
 }
 
-type SingleLatLng struct {
+type SingleLatLon struct {
 	typ        string
-	point      *LatLng
+	point      *LatLon
 	properties GeoProperties
 }
 
-func (sp *SingleLatLng) Coordinates() [][]float64 {
-	return [][]float64{{sp.point.Lat, sp.point.Lng}}
+func (sp *SingleLatLon) Coordinates() [][]float64 {
+	return [][]float64{{sp.point.Lat, sp.point.Lon}}
 }
 
-func (sp *SingleLatLng) Properties() GeoProperties {
+func (sp *SingleLatLon) Properties() GeoProperties {
 	return sp.properties
 }
 
-func (sp *SingleLatLng) MarshalGeoJSON() ([]byte, error) {
+func (sp *SingleLatLon) MarshalGeoJSON() ([]byte, error) {
 	coord := []float64{}
 	if sp.point != nil {
-		coord = []float64{sp.point.Lng, sp.point.Lat}
+		coord = []float64{sp.point.Lon, sp.point.Lat}
 	}
 	obj := map[string]any{
 		"type": "Feature",
@@ -129,14 +123,14 @@ func (sp *SingleLatLng) MarshalGeoJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-type MultiLatLng struct {
+type MultiLatLon struct {
 	typ        string
-	points     []*LatLng
+	points     []*LatLon
 	properties GeoProperties
 }
 
-func NewMultiLatLng(typ string, pts []*LatLng, opt any) *MultiLatLng {
-	ret := &MultiLatLng{typ: typ}
+func NewMultiLatLon(typ string, pts []*LatLon, opt any) *MultiLatLon {
+	ret := &MultiLatLon{typ: typ}
 
 	ret.points = append(ret.points, pts...)
 	switch v := opt.(type) {
@@ -154,13 +148,13 @@ func NewMultiLatLng(typ string, pts []*LatLng, opt any) *MultiLatLng {
 	return ret
 }
 
-func NewMultiLatLngFunc(typ string, args ...any) *MultiLatLng {
-	var pts []*LatLng
+func NewMultiLatLonFunc(typ string, args ...any) *MultiLatLon {
+	var pts []*LatLon
 	var opt any
 
 	for _, arg := range args {
 		switch v := arg.(type) {
-		case *LatLng:
+		case *LatLon:
 			pts = append(pts, v)
 		case map[string]any:
 			opt = v
@@ -168,34 +162,34 @@ func NewMultiLatLngFunc(typ string, args ...any) *MultiLatLng {
 			opt = v
 		}
 	}
-	return NewMultiLatLng(typ, pts, opt)
+	return NewMultiLatLon(typ, pts, opt)
 }
 
-func (mp *MultiLatLng) Type() string {
+func (mp *MultiLatLon) Type() string {
 	return mp.typ
 }
 
-func (mp *MultiLatLng) Add(pt *LatLng) *MultiLatLng {
+func (mp *MultiLatLon) Add(pt *LatLon) *MultiLatLon {
 	mp.points = append(mp.points, pt)
 	return mp
 }
 
-func (mp *MultiLatLng) Coordinates() [][]float64 {
+func (mp *MultiLatLon) Coordinates() [][]float64 {
 	ret := [][]float64{}
 	for _, p := range mp.points {
-		ret = append(ret, []float64{p.Lat, p.Lng})
+		ret = append(ret, []float64{p.Lat, p.Lon})
 	}
 	return ret
 }
 
-func (mp *MultiLatLng) Properties() GeoProperties {
+func (mp *MultiLatLon) Properties() GeoProperties {
 	return mp.properties
 }
 
-func (mp *MultiLatLng) MarshalGeoJSON() ([]byte, error) {
+func (mp *MultiLatLon) MarshalGeoJSON() ([]byte, error) {
 	coord := [][]float64{}
 	for _, pt := range mp.points {
-		coord = append(coord, []float64{pt.Lng, pt.Lat})
+		coord = append(coord, []float64{pt.Lon, pt.Lat})
 	}
 	obj := map[string]any{
 		"type": "Feature",
@@ -210,10 +204,10 @@ func (mp *MultiLatLng) MarshalGeoJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-type GeoPoint = *SingleLatLng
+type GeoPoint = *SingleLatLon
 
-func NewGeoPoint(ll *LatLng, opt any) GeoPoint {
-	ret := &SingleLatLng{typ: "Point", point: ll}
+func NewGeoPoint(ll *LatLon, opt any) GeoPoint {
+	ret := &SingleLatLon{typ: "Point", point: ll}
 	switch v := opt.(type) {
 	case string:
 		if prop, err := NewGeoPropertiesParse(v); err == nil {
@@ -229,34 +223,34 @@ func NewGeoPoint(ll *LatLng, opt any) GeoPoint {
 	return ret
 }
 
-type GeoMultiPoint = *MultiLatLng
+type GeoMultiPoint = *MultiLatLon
 
-func NewGeoMultiPoint(pts []*LatLng, opt any) GeoMultiPoint {
-	return NewMultiLatLng("MultiPoint", pts, opt)
+func NewGeoMultiPoint(pts []*LatLon, opt any) GeoMultiPoint {
+	return NewMultiLatLon("MultiPoint", pts, opt)
 }
 
 func NewGeoMultiPointFunc(args ...any) GeoMultiPoint {
-	return NewMultiLatLngFunc("MultiPoint", args...)
+	return NewMultiLatLonFunc("MultiPoint", args...)
 }
 
-type GeoLineString = *MultiLatLng
+type GeoLineString = *MultiLatLon
 
-func NewGeoLineString(pts []*LatLng, opt any) GeoLineString {
-	return NewMultiLatLng("LineString", pts, opt)
+func NewGeoLineString(pts []*LatLon, opt any) GeoLineString {
+	return NewMultiLatLon("LineString", pts, opt)
 }
 
 func NewGeoLineStringFunc(args ...any) GeoLineString {
-	return NewMultiLatLngFunc("LineString", args)
+	return NewMultiLatLonFunc("LineString", args)
 }
 
-type GeoPolygon = *MultiLatLng
+type GeoPolygon = *MultiLatLon
 
-func NewGeoPolygon(pts []*LatLng, opt any) GeoPolygon {
-	return NewMultiLatLng("Polygon", pts, opt)
+func NewGeoPolygon(pts []*LatLon, opt any) GeoPolygon {
+	return NewMultiLatLon("Polygon", pts, opt)
 }
 
 func NewGeoPolygonFunc(args ...any) GeoPolygon {
-	return NewMultiLatLngFunc("Polygon", args...)
+	return NewMultiLatLonFunc("Polygon", args...)
 }
 
 type Geography interface {
@@ -265,14 +259,14 @@ type Geography interface {
 }
 
 var (
-	_ Geography = &SingleLatLng{}
+	_ Geography = &SingleLatLon{}
 	_ Geography = &Circle{}
-	_ Geography = &MultiLatLng{}
-	_ Geography = GeoPoint(&SingleLatLng{})
+	_ Geography = &MultiLatLon{}
+	_ Geography = GeoPoint(&SingleLatLon{})
 	_ Geography = GeoCircle(&Circle{})
-	_ Geography = GeoMultiPoint(&MultiLatLng{})
-	_ Geography = GeoLineString(&MultiLatLng{})
-	_ Geography = GeoPolygon(&MultiLatLng{})
+	_ Geography = GeoMultiPoint(&MultiLatLon{})
+	_ Geography = GeoLineString(&MultiLatLon{})
+	_ Geography = GeoPolygon(&MultiLatLon{})
 )
 
 type GeoMarker interface {
@@ -290,7 +284,7 @@ type GeoPointMarker struct {
 	GeoPoint
 }
 
-func NewGeoPointMarker(ll *LatLng, opt any) GeoPointMarker {
+func NewGeoPointMarker(ll *LatLon, opt any) GeoPointMarker {
 	return GeoPointMarker{NewGeoPoint(ll, opt)}
 }
 
@@ -302,7 +296,7 @@ type GeoCircleMarker struct {
 	GeoCircle
 }
 
-func NewGeoCircleMarker(center *LatLng, radius float64, opt any) GeoCircleMarker {
+func NewGeoCircleMarker(center *LatLon, radius float64, opt any) GeoCircleMarker {
 	return GeoCircleMarker{GeoCircle: NewGeoCircle(center, radius, opt)}
 }
 

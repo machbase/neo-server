@@ -3,12 +3,21 @@ package nums
 import (
 	"fmt"
 	"math"
-
-	"github.com/paulmach/orb"
 )
 
+// DegreesToRadians converts from degrees to radians.
+func DegreesToRadians(d float64) float64 {
+	return d * math.Pi / 180
+}
+
 // A Point is a Lng/Lat 2d point.
-type Point orb.Point
+type Point []float64
+
+func (p Point) X() float64     { return p[0] }
+func (p Point) Y() float64     { return p[1] }
+func (p Point) Lat() float64   { return p[1] }
+func (p Point) Lon() float64   { return p[0] }
+func (p Point) Dimension() int { return 0 }
 
 func (p Point) String() string {
 	return fmt.Sprintf("[%v,%v]", p[0], p[1])
@@ -22,7 +31,7 @@ type Line struct {
 // Cartesian distance
 func (l Line) DistanceTo(p Point) float64 {
 	a, b, c := l.Coefficients()
-	return math.Abs(a*p[0]+b*p[1]+c) / math.Sqrt(a*a+b*b)
+	return math.Abs(a*p.X()+b*p.Y()+c) / math.Sqrt(a*a+b*b)
 }
 
 // returns the three coefficients that define a line
@@ -30,9 +39,9 @@ func (l Line) DistanceTo(p Point) float64 {
 //
 // ax + by + c = 0
 func (l Line) Coefficients() (a, b, c float64) {
-	a = l.Start[1] - l.End[1]
-	b = l.End[0] - l.Start[0]
-	c = l.Start[0]*l.End[1] - l.End[0]*l.Start[1]
+	a = l.Start.Y() - l.End.Y()
+	b = l.End.X() - l.Start.X()
+	c = l.Start.X()*l.End.Y() - l.End.X()*l.Start.Y()
 	return a, b, c
 }
 

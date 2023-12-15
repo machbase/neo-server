@@ -29,20 +29,20 @@ func Zoom(resolution float64) int {
 	return int(zoom)
 }
 
-// LatLngToMeters converts given lat/lng in WGS84 Datum to XY in Spherical Mercator EPSG:900913
-func LatLngToMeters(lat, lng float64) (float64, float64) {
-	x := lng * originShift / 180
+// LatLonToMeters converts given lat/lon in WGS84 Datum to XY in Spherical Mercator EPSG:900913
+func LatLonToMeters(lat, lon float64) (float64, float64) {
+	x := lon * originShift / 180
 	y := math.Log(math.Tan((90+lat)*math.Pi/360)) / (math.Pi / 180)
 	y = y * originShift / 180
 	return x, y
 }
 
-// MetersToLatLng converts XY point from Spherical Mercator EPSG:900913 to lat/lng in WGS84 Datum
-func MetersToLatLng(x, y float64) (float64, float64) {
-	lng := (x / originShift) * 180
+// MetersToLatLon converts XY point from Spherical Mercator EPSG:900913 to lat/lon in WGS84 Datum
+func MetersToLatLon(x, y float64) (float64, float64) {
+	lon := (x / originShift) * 180
 	lat := (y / originShift) * 180
 	lat = 180 / math.Pi * (2*math.Atan(math.Exp(lat*math.Pi/180)) - math.Pi/2)
-	return lat, lng
+	return lat, lon
 }
 
 // PixelsToMeters converts pixel coordinates in given zoom level of pyramid to EPSG:900913
@@ -61,16 +61,16 @@ func MetersToPixels(x, y float64, zoom int) (float64, float64) {
 	return px, py
 }
 
-// LatLngToPixels converts given lat/lng in WGS84 Datum to pixel coordinates in given zoom level
-func LatLngToPixels(lat, lng float64, zoom int) (float64, float64) {
-	x, y := LatLngToMeters(lat, lng)
+// LatLonToPixels converts given lat/lon in WGS84 Datum to pixel coordinates in given zoom level
+func LatLonToPixels(lat, lon float64, zoom int) (float64, float64) {
+	x, y := LatLonToMeters(lat, lon)
 	return MetersToPixels(x, y, zoom)
 }
 
-// PixelsToLatLng converts pixel coordinates in given zoom level to lat/lng in WGS84 Datum
-func PixelsToLatLng(px, py float64, zoom int) (float64, float64) {
+// PixelsToLatLon converts pixel coordinates in given zoom level to lat/lon in WGS84 Datum
+func PixelsToLatLon(px, py float64, zoom int) (float64, float64) {
 	x, y := PixelsToMeters(px, py, zoom)
-	return MetersToLatLng(x, y)
+	return MetersToLatLon(x, y)
 }
 
 // PixelsToTile returns a tile covering region in given pixel coordinates
@@ -86,8 +86,8 @@ func MetersToTile(x, y float64, zoom int) (int, int) {
 	return PixelsToTile(px, py)
 }
 
-// LatLngToTile returns tile for given lat/lng coordinates
-func LatLngToTile(lat, lng float64, zoom int) (int, int) {
-	px, py := LatLngToPixels(lat, lng, zoom)
+// LatLonToTile returns tile for given lat/lon coordinates
+func LatLonToTile(lat, lon float64, zoom int) (int, int) {
+	px, py := LatLonToPixels(lat, lon, zoom)
 	return PixelsToTile(px, py)
 }

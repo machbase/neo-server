@@ -25,7 +25,7 @@ type GeoMap struct {
 
 	toJsonOutput bool
 
-	InitialLatLng    *nums.LatLng
+	InitialLatLon    *nums.LatLon
 	InitialZoomLevel int
 
 	mapOption string
@@ -84,8 +84,8 @@ func (gm *GeoMap) SetSize(width, height string) {
 	gm.Height = height
 }
 
-func (gm *GeoMap) SetInitialLocation(latlng *nums.LatLng, zoomLevel int) {
-	gm.InitialLatLng = latlng
+func (gm *GeoMap) SetInitialLocation(latlon *nums.LatLon, zoomLevel int) {
+	gm.InitialLatLon = latlon
 	gm.InitialZoomLevel = zoomLevel
 }
 
@@ -192,8 +192,8 @@ func (gm *GeoMap) Close() {
 	if gm.output == nil {
 		return
 	}
-	if gm.InitialLatLng == nil {
-		gm.InitialLatLng = nums.NewLatLng(51.505, -0.09) // <- London
+	if gm.InitialLatLon == nil {
+		gm.InitialLatLon = nums.NewLatLon(51.505, -0.09) // <- London
 	}
 	if gm.InitialZoomLevel == 0 {
 		gm.InitialZoomLevel = 13
@@ -272,9 +272,9 @@ func (gm *GeoMap) Layers() []*Layer {
 			switch ov := obj.(type) {
 			case *nums.Circle:
 				layer.Type = "circle"
-			case *nums.SingleLatLng:
+			case *nums.SingleLatLon:
 				layer.Type = "point"
-			case *nums.MultiLatLng:
+			case *nums.MultiLatLon:
 				switch ov.Type() {
 				case "Polygon":
 					layer.Type = "polygon"
@@ -308,7 +308,7 @@ func (gm *GeoMap) Layers() []*Layer {
 		}
 
 		switch obj.(type) {
-		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLng:
+		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLon:
 			coord := obj.Coordinates()
 			if len(coord) > 0 {
 				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
@@ -383,7 +383,7 @@ func (gm *GeoMap) renderJSON() {
 
 func (gm *GeoMap) renderHTML() {
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s", %s).setView(%s, %d);`,
-		gm.MapID, gm.MapID, gm.mapOption, gm.InitialLatLng.String(), gm.InitialZoomLevel))
+		gm.MapID, gm.MapID, gm.mapOption, gm.InitialLatLon.String(), gm.InitialZoomLevel))
 	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
 
 	for _, icn := range gm.icons {

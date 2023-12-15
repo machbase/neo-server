@@ -57,7 +57,7 @@ var JsonTemplate = `
     "jsAssets": {{ .JSAssetsNoEscaped }},
     "cssAssets": {{ .CSSAssetsNoEscaped }},
     "view": {
-        "center": {{ .InitialLatLng }},
+        "center": {{ .InitialLatLon }},
         "zoomLevel": {{ .InitialZoomLevel }}
     },
     "tile": {

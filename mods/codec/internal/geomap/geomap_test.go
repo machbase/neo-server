@@ -41,7 +41,7 @@ func TestGeoMapHtml(t *testing.T) {
 	c.SetLogger(logger.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
-	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
+	c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
 	c.SetPointStyle("rec", "circleMarker", `"color": "#ff0000"`)
 	require.Equal(t, "text/html", c.ContentType())
 
@@ -49,18 +49,18 @@ func TestGeoMapHtml(t *testing.T) {
 
 	c.AddRow([]any{
 		nums.GeoPointMarker{
-			GeoPoint: nums.NewGeoPoint(&nums.LatLng{Lat: 37.497850, Lng: 127.027756}, map[string]any{
+			GeoPoint: nums.NewGeoPoint(&nums.LatLon{Lat: 37.497850, Lon: 127.027756}, map[string]any{
 				"popup.content": "<b>Gangname</b><br/>Hello World?",
 				"popup.open":    true,
 			}),
 		},
 		nums.GeoCircleMarker{
-			GeoCircle: nums.NewGeoCircle(&nums.LatLng{Lat: 37.503058, Lng: 127.018666}, 100, `{
+			GeoCircle: nums.NewGeoCircle(&nums.LatLon{Lat: 37.503058, Lon: 127.018666}, 100, `{
 				"popup.content": "<b>circle1</b>"
 			}`),
 		},
 		nums.NewGeoPoint(
-			&nums.LatLng{Lat: 37.496727, Lng: 127.026612},
+			&nums.LatLon{Lat: 37.496727, Lon: 127.026612},
 			map[string]any{"popup.content": "<b>point1</b>"},
 		),
 	})
@@ -83,14 +83,14 @@ func TestGeoMapJson(t *testing.T) {
 	c.SetLogger(logger.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
-	c.SetInitialLocation(nums.NewLatLng(51.505, -0.09), 13)
+	c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
 	c.SetGeoMapJson(true)
 	require.Equal(t, "application/json", c.ContentType())
 
 	tick := time.Unix(0, 1692670838086467000)
 
 	c.Open()
-	c.AddRow([]any{tick.Add(0 * time.Second), nums.NewGeoPoint(nums.NewLatLng(51.505, -0.09), "")})
+	c.AddRow([]any{tick.Add(0 * time.Second), nums.NewGeoPoint(nums.NewLatLon(51.505, -0.09), "")})
 	c.Close()
 
 	expect, err := os.ReadFile(filepath.Join("test", "geomap_test.json"))

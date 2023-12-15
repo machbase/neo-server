@@ -2,16 +2,16 @@ package nums
 
 import "math"
 
-func Tile2LatLng(X, Y, Z int) (lat float64, lng float64) {
+func Tile2LatLon(X, Y, Z int) (lat float64, lon float64) {
 	n := math.Pi - 2.0*math.Pi*float64(Y)/math.Exp2(float64(Z))
 	lat = 180.0 / math.Pi * math.Atan(0.5*(math.Exp(n)-math.Exp(-n)))
-	lng = float64(X)/math.Exp2(float64(Z))*360.0 - 180.0
-	return lat, lng
+	lon = float64(X)/math.Exp2(float64(Z))*360.0 - 180.0
+	return lat, lon
 }
 
-func LatLng2Tile(lat, lng float64, z int) (x, y int) {
+func LatLon2Tile(lat, lon float64, z int) (x, y int) {
 	n := math.Exp2(float64(z))
-	x = int(math.Floor((lng + 180.0) / 360.0 * n))
+	x = int(math.Floor((lon + 180.0) / 360.0 * n))
 	if float64(x) >= n {
 		x = int(n - 1)
 	}

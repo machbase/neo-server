@@ -408,10 +408,10 @@ func Icon(name string, opt string) Option {
 //
 //	mods/codec/internal/geomap/geomap.go:85:1
 type CanSetInitialLocation interface {
-	SetInitialLocation(latlng *nums.LatLng, zoomLevel int)
+	SetInitialLocation(latlng *nums.LatLon, zoomLevel int)
 }
 
-func InitialLocation(latlng *nums.LatLng, zoomLevel int) Option {
+func InitialLocation(latlng *nums.LatLon, zoomLevel int) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetInitialLocation); ok {
 			_o.SetInitialLocation(latlng, zoomLevel)

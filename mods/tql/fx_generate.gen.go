@@ -435,7 +435,7 @@ func (x *Node) gen_latlng(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := nums.NewLatLng(p0, p1)
+	ret := nums.NewLatLon(p0, p1)
 	return ret, nil
 }
 

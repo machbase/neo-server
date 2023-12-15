@@ -56,11 +56,11 @@ func convLogger(args []any, idx int, fname string, expect string) (logger.Logger
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLng, error) {
+func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLon, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
-	if o, ok := args[idx].(*nums.LatLng); ok {
+	if o, ok := args[idx].(*nums.LatLon); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

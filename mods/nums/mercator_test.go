@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func floatEquals(a, b float64) bool {
@@ -30,21 +30,21 @@ func TestZoom(t *testing.T) {
 	}
 }
 
-func TestLatLngToMeters(t *testing.T) {
-	lat, lng := 62.3, 14.1
+func TestLatLonToMeters(t *testing.T) {
+	lat, lon := 62.3, 14.1
 	expectedX, expectedY := 1569604.8201851572, 8930630.669201756
-	x, y := LatLngToMeters(lat, lng)
+	x, y := LatLonToMeters(lat, lon)
 	if !floatEquals(x, expectedX) || !floatEquals(y, expectedY) {
-		t.Errorf("LatLngToMeters(%f, %f) == %f, %f, want %f, %f", lat, lng, x, y, expectedX, expectedY)
+		t.Errorf("LatLonToMeters(%f, %f) == %f, %f, want %f, %f", lat, lon, x, y, expectedX, expectedY)
 	}
 }
 
-func TestMetersToLatLng(t *testing.T) {
+func TestMetersToLatLon(t *testing.T) {
 	x, y := 1569604.8201851572, 8930630.669201756
-	expectedLat, expectedLng := 62.3, 14.1
-	lat, lon := MetersToLatLng(x, y)
-	if !floatEquals(lat, expectedLat) || !floatEquals(lon, expectedLng) {
-		t.Errorf("MetersToLatLng(%f, %f) == %f, %f, want %f, %f", x, y, lat, lon, expectedLat, expectedLng)
+	expectedLat, expectedLon := 62.3, 14.1
+	lat, lon := MetersToLatLon(x, y)
+	if !floatEquals(lat, expectedLat) || !floatEquals(lon, expectedLon) {
+		t.Errorf("MetersToLatLon(%f, %f) == %f, %f, want %f, %f", x, y, lat, lon, expectedLat, expectedLon)
 	}
 }
 
@@ -66,21 +66,21 @@ func TestMetersToPixels(t *testing.T) {
 	}
 }
 
-func TestLatLngToPixels(t *testing.T) {
-	lat, lng, zoom := 62.3, 14.1, 15
+func TestLatLonToPixels(t *testing.T) {
+	lat, lon, zoom := 62.3, 14.1, 15
 	expectedPx, expectedPy := 4522857.8133333335, 6063687.123767246
-	px, py := LatLngToPixels(lat, lng, zoom)
+	px, py := LatLonToPixels(lat, lon, zoom)
 	if !floatEquals(px, expectedPx) || !floatEquals(py, expectedPy) {
-		t.Errorf("LatLngToPixels(%f, %f, %d) == %f, %f, want %f, %f", lat, lng, zoom, px, py, expectedPx, expectedPy)
+		t.Errorf("LatLonToPixels(%f, %f, %d) == %f, %f, want %f, %f", lat, lon, zoom, px, py, expectedPx, expectedPy)
 	}
 }
 
 func TestPixelsToLatLon(t *testing.T) {
 	px, py, zoom := 4522857.8133333335, 6063687.123767246, 15
-	expectedLat, expectedLng := 62.3, 14.1
-	lat, lon := PixelsToLatLng(px, py, zoom)
-	if !floatEquals(lat, expectedLat) || !floatEquals(lon, expectedLng) {
-		t.Errorf("PixelsToLatLng(%f, %f, %d) == %f, %f, want %f, %f", px, py, zoom, lat, lon, expectedLat, expectedLng)
+	expectedLat, expectedLon := 62.3, 14.1
+	lat, lon := PixelsToLatLon(px, py, zoom)
+	if !floatEquals(lat, expectedLat) || !floatEquals(lon, expectedLon) {
+		t.Errorf("PixelsToLatLon(%f, %f, %d) == %f, %f, want %f, %f", px, py, zoom, lat, lon, expectedLat, expectedLon)
 	}
 }
 
@@ -102,12 +102,12 @@ func TestMetersToTile(t *testing.T) {
 	}
 }
 
-func TestLatLngToTile(t *testing.T) {
+func TestLatLonToTile(t *testing.T) {
 	lat, lon, zoom := 62.3, 14.1, 15
 	expectedTileX, expectedTileY := 17667, 23686
-	tileX, tileY := LatLngToTile(lat, lon, zoom)
+	tileX, tileY := LatLonToTile(lat, lon, zoom)
 	if tileX != expectedTileX || tileY != expectedTileY {
-		t.Errorf("LatLngToTile(%f, %f, %d) == %d, %d, want %d, %d", lat, lon, zoom, tileX, tileY, expectedTileX, expectedTileY)
+		t.Errorf("LatLonToTile(%f, %f, %d) == %d, %d, want %d, %d", lat, lon, zoom, tileX, tileY, expectedTileX, expectedTileY)
 	}
 }
 
@@ -126,9 +126,9 @@ func TestTileToLatLon(t *testing.T) {
 	fmt.Printf("pixelX       : %.f\n", pixelX)
 	fmt.Printf("pixelY       : %.f\n", pixelY)
 
-	lat, lng := PixelsToLatLng(pixelX, pixelY, zoom)
-	fmt.Printf("lat:%f lng:%f\n", lat, lng)
-	lat, lng = math.Round(lat*10)/10, math.Round(lng*10)/10
-	assert.Equal(t, expectedLat, lat)
-	assert.Equal(t, expectedLon, lng)
+	lat, lon := PixelsToLatLon(pixelX, pixelY, zoom)
+	fmt.Printf("lat:%f lon:%f\n", lat, lon)
+	lat, lon = math.Round(lat*10)/10, math.Round(lon*10)/10
+	require.Equal(t, expectedLat, lat)
+	require.Equal(t, expectedLon, lon)
 }
