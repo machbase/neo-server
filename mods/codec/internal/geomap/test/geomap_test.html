@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8">
     <title></title>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+    <script src="/web/geomap/leaflet.js"></script>
+    <link href="/web/geomap/leaflet.css" rel="stylesheet">
 </head>
 
 <body>
@@ -14,7 +14,7 @@
 
 <script type="text/javascript">
     "use strict";
-    var geomap_WejMYXCGcYNL = L.map("WejMYXCGcYNL").setView([51.505,-0.09], 13);
+    var geomap_WejMYXCGcYNL = L.map("WejMYXCGcYNL", {}).setView([51.505,-0.09], 13);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {"maxZoom":19}).addTo(geomap_WejMYXCGcYNL);
     var geo_obj_0_WejMYXCGcYNL = L.marker([37.49785,127.027756], {}).addTo(geomap_WejMYXCGcYNL);
     geo_obj_0_WejMYXCGcYNL.bindPopup("<b>Gangname</b><br/>Hello World?");

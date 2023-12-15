@@ -40,6 +40,7 @@ require (
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.0.1
 	github.com/orcaman/concurrent-map v1.0.0
+	github.com/paulmach/orb v0.10.0
 	github.com/pkg/errors v0.9.1
 	github.com/plgd-dev/go-coap/v3 v3.1.3
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
@@ -48,6 +49,7 @@ require (
 	github.com/sevlyar/go-daemon v0.1.6
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/gjson v1.14.4
+	github.com/wroge/wgs84 v1.1.7
 	github.com/yuin/goldmark v1.5.5
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
 	github.com/zclconf/go-cty v1.13.2

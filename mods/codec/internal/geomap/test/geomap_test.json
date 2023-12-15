@@ -6,10 +6,10 @@
         "grayscale": 0
     },
     "jsAssets": [
-        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        "/web/geomap/leaflet.js"
     ],
     "cssAssets": [
-        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        "/web/geomap/leaflet.css"
     ],
     "view": {
         "center": [
