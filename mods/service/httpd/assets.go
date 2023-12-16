@@ -34,7 +34,7 @@ type staticFile struct {
 
 func (fsw *StaticFSWrap) Open(name string) (http.File, error) {
 	if !strings.HasPrefix(name, fsw.TrimPrefix) {
-		name = strings.ReplaceAll(fsw.TrimPrefix+name, "//", "/")
+		name = strings.TrimSuffix(fsw.TrimPrefix, "/") + "/" + strings.TrimPrefix(name, "/")
 	}
 	f, err := fsw.Base.Open(fsw.PrependRealPath + strings.TrimPrefix(name, fsw.TrimPrefix))
 	if err != nil {
