@@ -70,6 +70,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "transpose", Func: opts.Transpose},
 	{Name: "visualMap", Func: opts.VisualMap},
 	{Name: "visualMapColor", Func: opts.VisualMapColor},
+	{Name: "volatileFileWriter", Func: opts.VolatileFileWriter},
 	{Name: "xAxis", Func: opts.XAxis},
 	{Name: "yAxis", Func: opts.YAxis},
 	{Name: "zAxis", Func: opts.ZAxis},

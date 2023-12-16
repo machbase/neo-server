@@ -264,6 +264,7 @@ func NewNode(task *Task) *Node {
 		"transpose":           x.gen_transpose,
 		"visualMap":           x.gen_visualMap,
 		"visualMapColor":      x.gen_visualMapColor,
+		"volatileFileWriter":  x.gen_volatileFileWriter,
 		"xAxis":               x.gen_xAxis,
 		"yAxis":               x.gen_yAxis,
 		"zAxis":               x.gen_zAxis,
@@ -446,7 +447,7 @@ func (x *Node) gen_geoPoint(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("geoPoint", 2, len(args))
 	}
-	p0, err := convLatLng(args, 0, "geoPoint", "*nums.LatLng")
+	p0, err := convLatLon(args, 0, "geoPoint", "*nums.LatLon")
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +466,7 @@ func (x *Node) gen_geoCircle(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("geoCircle", 3, len(args))
 	}
-	p0, err := convLatLng(args, 0, "geoCircle", "*nums.LatLng")
+	p0, err := convLatLon(args, 0, "geoCircle", "*nums.LatLon")
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +537,7 @@ func (x *Node) gen_geoPointMarker(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("geoPointMarker", 2, len(args))
 	}
-	p0, err := convLatLng(args, 0, "geoPointMarker", "*nums.LatLng")
+	p0, err := convLatLon(args, 0, "geoPointMarker", "*nums.LatLon")
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +556,7 @@ func (x *Node) gen_geoCircleMarker(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("geoCircleMarker", 3, len(args))
 	}
-	p0, err := convLatLng(args, 0, "geoCircleMarker", "*nums.LatLng")
+	p0, err := convLatLon(args, 0, "geoCircleMarker", "*nums.LatLon")
 	if err != nil {
 		return nil, err
 	}
@@ -3167,7 +3168,7 @@ func (x *Node) gen_initialLocation(args ...any) (any, error) {
 	if len(args) != 2 {
 		return nil, ErrInvalidNumOfArgs("initialLocation", 2, len(args))
 	}
-	p0, err := convLatLng(args, 0, "initialLocation", "*nums.LatLng")
+	p0, err := convLatLon(args, 0, "initialLocation", "*nums.LatLon")
 	if err != nil {
 		return nil, err
 	}
@@ -3231,7 +3232,7 @@ func (x *Node) gen_logger(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("logger", 1, len(args))
 	}
-	p0, err := convLogger(args, 0, "logger", "logger.Logger")
+	p0, err := convLogger(args, 0, "logger", "facility.Logger")
 	if err != nil {
 		return nil, err
 	}
@@ -3748,6 +3749,21 @@ func (x *Node) gen_visualMapColor(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	ret := opts.VisualMapColor(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_volatileFileWriter
+//
+// syntax: volatileFileWriter(VolatileFileWriter)
+func (x *Node) gen_volatileFileWriter(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("volatileFileWriter", 1, len(args))
+	}
+	p0, err := convVolatileFileWriter(args, 0, "volatileFileWriter", "facility.VolatileFileWriter")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.VolatileFileWriter(p0)
 	return ret, nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/transcoder"
@@ -46,31 +46,31 @@ func convOutputStream(args []any, idx int, fname string, expect string) (spec.Ou
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convLogger(args []any, idx int, fname string, expect string) (logger.Logger, error) {
+func convVolatileFileWriter(args []any, idx int, fname string, expect string) (facility.VolatileFileWriter, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
-	if o, ok := args[idx].(logger.Logger); ok {
+	if o, ok := args[idx].(facility.VolatileFileWriter); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convLatLng(args []any, idx int, fname string, expect string) (*nums.LatLon, error) {
+func convLogger(args []any, idx int, fname string, expect string) (facility.Logger, error) {
+	if idx >= len(args) {
+		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
+	}
+	if o, ok := args[idx].(facility.Logger); ok {
+		return o, nil
+	}
+	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
+}
+
+func convLatLon(args []any, idx int, fname string, expect string) (*nums.LatLon, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
 	if o, ok := args[idx].(*nums.LatLon); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
-func convGeoMarker(args []any, idx int, fname string, expect string) (nums.GeoMarker, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(nums.GeoMarker); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

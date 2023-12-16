@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/mdconv"
 )
 
 type Exporter struct {
-	logger     logger.Logger
+	logger     facility.Logger
 	htmlRender bool
 	brief      int64
 	rownum     int64
@@ -49,7 +49,7 @@ func (ex *Exporter) ContentType() string {
 	}
 }
 
-func (ex *Exporter) SetLogger(l logger.Logger) {
+func (ex *Exporter) SetLogger(l facility.Logger) {
 	ex.logger = l
 }
 

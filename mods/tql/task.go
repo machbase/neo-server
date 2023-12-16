@@ -15,7 +15,7 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
@@ -44,6 +44,8 @@ type Task struct {
 
 	httpClientFactory func() *http.Client
 
+	volatileAssetsProvider VolatileAssetsProvider
+
 	// compiled result
 	compiled   bool
 	compileErr error
@@ -57,7 +59,8 @@ type Task struct {
 }
 
 var (
-	_ logger.Logger = &Task{}
+	_ facility.Logger             = &Task{}
+	_ facility.VolatileFileWriter = &Task{}
 )
 
 func NewTask() *Task {
@@ -185,6 +188,7 @@ func (x *Task) CompileScript(sc *Script) error {
 		return err
 	}
 	defer file.Close()
+	x.volatileAssetsProvider = sc.vap
 	return x.Compile(file)
 }
 
@@ -464,6 +468,21 @@ func asNodeName(expr *expression.Expression) string {
 		}
 	}
 	return expr.String()
+}
+
+func (task *Task) SetVolatileAssetsProvider(p VolatileAssetsProvider) {
+	task.volatileAssetsProvider = p
+}
+
+func (task *Task) VolatileFilePrefix() string {
+	return task.volatileAssetsProvider.VolatileFilePrefix()
+}
+
+func (task *Task) VolatileFileWrite(name string, data []byte, deadline time.Time) {
+	if task.volatileAssetsProvider == nil {
+		return
+	}
+	task.volatileAssetsProvider.VolatileFileWrite(name, data, deadline)
 }
 
 type TaskLog interface {

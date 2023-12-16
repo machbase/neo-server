@@ -70,6 +70,8 @@ type httpd struct {
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
 
+	memoryFs *MemoryFS
+
 	lake LakeAppender // ?
 }
 
@@ -161,6 +163,10 @@ func (svr *httpd) Stop() {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
 	svr.httpServer.Shutdown(ctx)
 	cancelFunc()
+
+	if svr.memoryFs != nil {
+		svr.memoryFs.Stop()
+	}
 }
 
 func (svr *httpd) Router() *gin.Engine {
@@ -215,6 +221,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
 			if svr.tqlLoader != nil {
+				svr.memoryFs = &MemoryFS{Prefix: "/web/api/tql-assets/"}
+				go svr.memoryFs.Start()
+				svr.tqlLoader.SetVolatileAssetsProvider(svr.memoryFs)
+				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
 				group.GET("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql/*path", svr.handleTagQL)
 			}

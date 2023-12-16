@@ -10,18 +10,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 )
 
 type Chart struct {
-	logger       logger.Logger
 	output       spec.OutputStream
 	toJsonOutput bool
 	option       string
 	data         [][]any
 	plugins      []string
+
+	logger             facility.Logger
+	volatileFileWriter facility.VolatileFileWriter
 
 	// Common template
 	ChartID string
@@ -29,11 +31,11 @@ type Chart struct {
 	Height  string
 	Theme   string
 	// HTML template
-	AssetsHost     string
 	PageTitle      string
 	JSAssets       []string
 	CSSAssets      []string
 	JSCodes        []string
+	JSCodeAsset    string
 	DispatchAction string
 }
 
@@ -61,8 +63,12 @@ func (c *Chart) ContentType() string {
 	return "text/html"
 }
 
-func (c *Chart) SetLogger(l logger.Logger) {
+func (c *Chart) SetLogger(l facility.Logger) {
 	c.logger = l
+}
+
+func (c *Chart) SetVolatileFileWriter(w facility.VolatileFileWriter) {
+	c.volatileFileWriter = w
 }
 
 func (c *Chart) SetOutputStream(o spec.OutputStream) {
@@ -84,10 +90,6 @@ func (c *Chart) SetTheme(theme string) {
 
 func (c *Chart) SetPlugins(plugins ...string) {
 	c.plugins = append(c.plugins, plugins...)
-}
-
-func (c *Chart) SetAssetHost(path string) {
-	c.AssetsHost = path
 }
 
 func (c *Chart) SetChartJson(flag bool) {
@@ -272,6 +274,13 @@ func (c *Chart) RenderJSON() {
 	tpl := template.New("chart")
 	tpl = template.Must(tpl.Parse(contents[0]))
 
+	if len(c.JSCodes) > 0 {
+		code := strings.Join(c.JSCodes, "\n")
+		prefix := c.volatileFileWriter.VolatileFilePrefix()
+		path := fmt.Sprintf("%s/%s_code.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
+		c.volatileFileWriter.VolatileFileWrite(path, []byte(code), time.Now().Add(30*time.Second))
+		c.JSCodeAsset = path
+	}
 	if err := tpl.ExecuteTemplate(c.output, "chart", c); err != nil {
 		c.output.Write([]byte(err.Error()))
 	}

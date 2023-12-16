@@ -1,4 +1,4 @@
-package logger
+package facility
 
 import "testing"
 

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/codec/internal/geomap"
-	"github.com/machbase/neo-server/mods/codec/logger"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
@@ -38,7 +38,7 @@ mismatched:
 func TestGeoMapHtml(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := geomap.New()
-	c.SetLogger(logger.TestLogger(t))
+	c.SetLogger(facility.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
 	c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
@@ -80,7 +80,7 @@ func TestGeoMapHtml(t *testing.T) {
 func TestGeoMapJson(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := geomap.New()
-	c.SetLogger(logger.TestLogger(t))
+	c.SetLogger(facility.TestLogger(t))
 	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
 	c.SetMapId("WejMYXCGcYNL")
 	c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)

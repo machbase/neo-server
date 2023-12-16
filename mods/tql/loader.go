@@ -2,17 +2,26 @@ package tql
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+type VolatileAssetsProvider interface {
+	VolatileFilePrefix() string
+	VolatileFileWrite(name string, val []byte, deadline time.Time) fs.File
+}
 
 type Loader interface {
 	Load(path string) (*Script, error)
+	SetVolatileAssetsProvider(vap VolatileAssetsProvider)
 }
 
 type loader struct {
 	dirs []string
+	vap  VolatileAssetsProvider
 }
 
 func NewLoader(dirs []string) Loader {
@@ -44,6 +53,7 @@ func (ld *loader) Load(path string) (*Script, error) {
 
 		ret = &Script{
 			path: joined,
+			vap:  ld.vap,
 		}
 		break
 	}
@@ -53,8 +63,13 @@ func (ld *loader) Load(path string) (*Script, error) {
 	return ret, nil
 }
 
+func (ld *loader) SetVolatileAssetsProvider(p VolatileAssetsProvider) {
+	ld.vap = p
+}
+
 type Script struct {
 	path string
+	vap  VolatileAssetsProvider
 }
 
 func (sc *Script) String() string {

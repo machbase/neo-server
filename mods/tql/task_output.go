@@ -84,6 +84,7 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 			opts.AssetHost("/web/echarts/"),
 			opts.ChartJson(node.task.toJsonOutput),
 			opts.GeoMapJson(node.task.toJsonOutput),
+			opts.VolatileFileWriter(node.task),
 		)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true

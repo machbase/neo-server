@@ -9,13 +9,13 @@ import (
 	"github.com/go-echarts/go-echarts/v2/actions"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
 
 type ChartBase struct {
-	logger logger.Logger
+	logger facility.Logger
 	output spec.OutputStream
 
 	toJsonOutput bool
@@ -76,7 +76,7 @@ type ChartSeriesOptions struct {
 	*opts.CircularStyle `json:"circular,omitempty"`
 }
 
-func (ex *ChartBase) SetLogger(l logger.Logger) {
+func (ex *ChartBase) SetLogger(l facility.Logger) {
 	ex.logger = l
 }
 

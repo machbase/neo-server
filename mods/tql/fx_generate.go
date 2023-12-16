@@ -250,12 +250,14 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "Node"
 	case "*tql.SubContext":
 		convFunc = "Context"
-	case "logger.Logger":
+	case "facility.Logger":
 		convFunc = "Logger"
+	case "facility.VolatileFileWriter":
+		convFunc = "VolatileFileWriter"
 	case "encoding.Encoding":
 		convFunc = "Charset"
-	case "*nums.LatLng":
-		convFunc = "LatLng"
+	case "*nums.LatLon":
+		convFunc = "LatLon"
 	case "*nums.SingleLatLng":
 		convFunc = "SingleLatLng"
 	case "*nums.MultiLatLng":

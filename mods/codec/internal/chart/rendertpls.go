@@ -15,6 +15,9 @@ var ChartJsonTemplate = `
     {{ $len := len .CSSAssets }} {{ if gt $len 0 }}
     "cssAssets" : {{ .JSAssetsNoEscaped }},
     {{ end }}
+	{{ $len := len .JSCodeAsset }} {{ if gt $len 0 }}
+	"jsCodeAsset": "{{ .JSCodeAsset }}",
+	{{ end }}
     "chartOption": {{ .ChartOptionNoEscaped }},
 	"chartAction": {{ .ChartDispatchActionNoEscaped }}
 }

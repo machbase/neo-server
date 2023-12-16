@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/logger"
+	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 )
 
 type GeoMap struct {
-	logger logger.Logger
+	logger facility.Logger
 	output spec.OutputStream
 
 	MapID  string
@@ -52,7 +52,7 @@ func New() *GeoMap {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &GeoMap{
-		logger:      logger.Discard,
+		logger:      facility.Discard,
 		MapID:       id,
 		Width:       "600px",
 		Height:      "600px",
@@ -67,7 +67,7 @@ func (gm *GeoMap) ContentType() string {
 	return "text/html"
 }
 
-func (gm *GeoMap) SetLogger(l logger.Logger) {
+func (gm *GeoMap) SetLogger(l facility.Logger) {
 	gm.logger = l
 }
 
