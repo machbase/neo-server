@@ -11,13 +11,18 @@ func DegreesToRadians(d float64) float64 {
 }
 
 // A Point is a Lng/Lat 2d point.
-type Point []float64
+type Point [2]float64
 
-func (p Point) X() float64     { return p[0] }
-func (p Point) Y() float64     { return p[1] }
-func (p Point) Lat() float64   { return p[1] }
-func (p Point) Lon() float64   { return p[0] }
-func (p Point) Dimension() int { return 0 }
+func (p Point) X() float64      { return p[0] }
+func (p Point) Y() float64      { return p[1] }
+func (p Point) Lat() float64    { return p[1] }
+func (p Point) Lon() float64    { return p[0] }
+func (p Point) Dimensions() int { return 0 }
+
+// Equal returns if two points are equal.
+func (p Point) Equal(o Point) bool {
+	return p[0] == o[0] && p[1] == o[1]
+}
 
 func (p Point) String() string {
 	return fmt.Sprintf("[%v,%v]", p[0], p[1])
@@ -27,6 +32,8 @@ type Line struct {
 	Start Point
 	End   Point
 }
+
+func (l Line) Dimensions() int { return 1 }
 
 // Cartesian distance
 func (l Line) DistanceTo(p Point) float64 {
