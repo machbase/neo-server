@@ -15,7 +15,6 @@ import (
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/service/httpd/assets"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
@@ -268,12 +267,7 @@ func (svr *httpd) Router() *gin.Engine {
 		}
 	}
 
-	// handle /web/echarts/*
-	r.GET("/web/echarts/*path", gin.WrapH(http.FileServer(assets.EchartsDir())))
-	r.GET("/web/geomap/*path", gin.WrapH(http.FileServer(assets.GeomapDir())))
-	r.GET("/web/tutorials/*path", gin.WrapH(http.FileServer(assets.TutorialsDir())))
-	// handle root /favicon.ico
-	r.NoRoute(gin.WrapF(assets.Handler))
+	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
 	return r
 }
 

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/mods/service/httpd/assets"
 )
 
 func WrapAssets(path string) http.FileSystem {
@@ -41,7 +39,7 @@ func GetAssets(dir string) http.FileSystem {
 	}
 
 	return &assetFileSystem{
-		StaticFSWrap: assets.StaticFSWrap{
+		StaticFSWrap: StaticFSWrap{
 			TrimPrefix:   "",
 			Base:         http.FS(webFs),
 			FixedModTime: time.Now(),
@@ -51,7 +49,7 @@ func GetAssets(dir string) http.FileSystem {
 }
 
 type assetFileSystem struct {
-	assets.StaticFSWrap
+	StaticFSWrap
 	prefix string
 }
 
