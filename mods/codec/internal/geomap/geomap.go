@@ -52,7 +52,7 @@ func New() *GeoMap {
 		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
 	}
 	return &GeoMap{
-		logger:      facility.Discard,
+		logger:      facility.DiscardLogger,
 		MapID:       id,
 		Width:       "600px",
 		Height:      "600px",

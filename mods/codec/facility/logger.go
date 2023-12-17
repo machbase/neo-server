@@ -13,19 +13,19 @@ type Logger interface {
 	LogError(args ...any)
 }
 
-var Discard = &discard{}
+var DiscardLogger = &discardLogger{}
 
-type discard struct {
+type discardLogger struct {
 }
 
-func (l *discard) Logf(format string, args ...any)      {}
-func (l *discard) Log(args ...any)                      {}
-func (l *discard) LogDebugf(format string, args ...any) {}
-func (l *discard) LogDebug(args ...any)                 {}
-func (l *discard) LogWarnf(format string, args ...any)  {}
-func (l *discard) LogWarn(args ...any)                  {}
-func (l *discard) LogErrorf(format string, args ...any) {}
-func (l *discard) LogError(args ...any)                 {}
+func (l *discardLogger) Logf(format string, args ...any)      {}
+func (l *discardLogger) Log(args ...any)                      {}
+func (l *discardLogger) LogDebugf(format string, args ...any) {}
+func (l *discardLogger) LogDebug(args ...any)                 {}
+func (l *discardLogger) LogWarnf(format string, args ...any)  {}
+func (l *discardLogger) LogWarn(args ...any)                  {}
+func (l *discardLogger) LogErrorf(format string, args ...any) {}
+func (l *discardLogger) LogError(args ...any)                 {}
 
 type testLogger struct {
 	t *testing.T
