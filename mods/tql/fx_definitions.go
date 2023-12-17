@@ -61,7 +61,7 @@ var FxDefinitions = []Definition{
 	{"linspace50", defTask.fmLinspace50},
 	{"meshgrid", defTask.fmMeshgrid},
 	// geo
-	{"latlng", nums.NewLatLon},
+	{"latlon", nums.NewLatLon},
 	{"geoPoint", nums.NewGeoPoint},
 	{"geoCircle", nums.NewGeoCircle},
 	{"geoMultiPoint", nums.NewGeoMultiPointFunc},
