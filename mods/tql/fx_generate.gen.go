@@ -211,7 +211,7 @@ func NewNode(task *Task) *Node {
 		"brief":               x.gen_brief,
 		"briefCount":          x.gen_briefCount,
 		"charsetEncoding":     x.gen_charsetEncoding,
-		"chartCDN":            x.gen_chartCDN,
+		"chartAssets":         x.gen_chartAssets,
 		"chartDispatchAction": x.gen_chartDispatchAction,
 		"chartId":             x.gen_chartId,
 		"chartJSCode":         x.gen_chartJSCode,
@@ -233,6 +233,7 @@ func NewNode(task *Task) *Node {
 		"layer":               x.gen_layer,
 		"lineWidth":           x.gen_lineWidth,
 		"logger":              x.gen_logger,
+		"mapAssets":           x.gen_mapAssets,
 		"mapId":               x.gen_mapId,
 		"markAreaNameCoord":   x.gen_markAreaNameCoord,
 		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
@@ -2891,18 +2892,19 @@ func (x *Node) gen_charsetEncoding(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_chartCDN
+// gen_chartAssets
 //
-// syntax: chartCDN(string)
-func (x *Node) gen_chartCDN(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("chartCDN", 1, len(args))
+// syntax: chartAssets(...string)
+func (x *Node) gen_chartAssets(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "chartAssets", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convString(args, 0, "chartCDN", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.ChartCDN(p0)
+	ret := opts.ChartAssets(p0...)
 	return ret, nil
 }
 
@@ -3237,6 +3239,22 @@ func (x *Node) gen_logger(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Logger(p0)
+	return ret, nil
+}
+
+// gen_mapAssets
+//
+// syntax: mapAssets(...string)
+func (x *Node) gen_mapAssets(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "mapAssets", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := opts.MapAssets(p0...)
 	return ret, nil
 }
 

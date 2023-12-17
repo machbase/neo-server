@@ -15,8 +15,8 @@ var ChartJsonTemplate = `
     {{ $len := len .CSSAssets }} {{ if gt $len 0 }}
     "cssAssets" : {{ .JSAssetsNoEscaped }},
     {{ end }}
-	{{ $len := len .JSCodeAsset }} {{ if gt $len 0 }}
-	"jsCodeAsset": "{{ .JSCodeAsset }}",
+	{{ $len := len .JSCodeAssets }} {{ if gt $len 0 }}
+	"jsCodeAssets": {{ .JSCodeAssetsNoEscaped }},
 	{{ end }}
     "chartOption": {{ .ChartOptionNoEscaped }},
 	"chartAction": {{ .ChartDispatchActionNoEscaped }}
@@ -47,11 +47,11 @@ var BaseTemplate = `
 
 <script type="text/javascript">
     "use strict";
-    let tqlecharts_{{ .ChartID | safeJS }} = echarts.init(document.getElementById('{{ .ChartID | safeJS }}'), "{{ .Theme }}");
+    let {{ .ChartID | safeJS }} = echarts.init(document.getElementById('{{ .ChartID | safeJS }}'), "{{ .Theme }}");
     let option_{{ .ChartID | safeJS }} = {{ .ChartOptionNoEscaped | safeJS }};
     let action_{{ .ChartID | safeJS }} = {{ .ChartDispatchActionNoEscaped | safeJS }};
-    tqlecharts_{{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
-    tqlecharts_{{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
+    {{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
+    {{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
 
     {{- range .JSCodes }}
     {{ . | safeJS }}

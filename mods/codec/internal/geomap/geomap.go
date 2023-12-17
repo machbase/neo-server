@@ -84,6 +84,16 @@ func (gm *GeoMap) SetSize(width, height string) {
 	gm.Height = height
 }
 
+func (gm *GeoMap) SetMapAssets(args ...string) {
+	for _, url := range args {
+		if strings.HasSuffix(url, ".css") {
+			gm.JSAssets = append(gm.CSSAssets, url)
+		} else {
+			gm.JSAssets = append(gm.JSAssets, url)
+		}
+	}
+}
+
 func (gm *GeoMap) SetInitialLocation(latlon *nums.LatLon, zoomLevel int) {
 	gm.InitialLatLon = latlon
 	gm.InitialZoomLevel = zoomLevel

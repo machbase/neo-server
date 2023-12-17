@@ -35,7 +35,7 @@ type Chart struct {
 	JSAssets       []string
 	CSSAssets      []string
 	JSCodes        []string
-	JSCodeAsset    string
+	JSCodeAssets   []string
 	DispatchAction string
 }
 
@@ -88,10 +88,6 @@ func (c *Chart) SetTheme(theme string) {
 	c.Theme = theme
 }
 
-func (c *Chart) SetPlugins(plugins ...string) {
-	c.plugins = append(c.plugins, plugins...)
-}
-
 func (c *Chart) SetChartJson(flag bool) {
 	c.toJsonOutput = flag
 }
@@ -104,8 +100,18 @@ func (c *Chart) SetChartOption(opt string) {
 	c.option = opt
 }
 
-func (c *Chart) SetChartCDN(cdn string) {
-	c.JSAssets = append(c.JSAssets, cdn)
+func (c *Chart) SetPlugins(plugins ...string) {
+	c.plugins = append(c.plugins, plugins...)
+}
+
+func (c *Chart) SetChartAssets(args ...string) {
+	for _, url := range args {
+		if strings.HasSuffix(url, ".css") {
+			c.JSAssets = append(c.CSSAssets, url)
+		} else {
+			c.JSAssets = append(c.JSAssets, url)
+		}
+	}
 }
 
 func (c *Chart) SetChartJSCode(js string) {
@@ -142,6 +148,14 @@ func (c *Chart) JSAssetsNoEscaped() template.HTML {
 func (c *Chart) CSSAssetsNoEscaped() template.HTML {
 	lst := []string{}
 	for _, itm := range c.CSSAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
+func (c *Chart) JSCodeAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range c.JSCodeAssets {
 		lst = append(lst, fmt.Sprintf("%q", itm))
 	}
 	return template.HTML("[" + strings.Join(lst, ",") + "]")
@@ -274,12 +288,13 @@ func (c *Chart) RenderJSON() {
 	tpl := template.New("chart")
 	tpl = template.Must(tpl.Parse(contents[0]))
 
-	if len(c.JSCodes) > 0 {
-		code := strings.Join(c.JSCodes, "\n")
-		prefix := c.volatileFileWriter.VolatileFilePrefix()
-		path := fmt.Sprintf("%s/%s_code.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
-		c.volatileFileWriter.VolatileFileWrite(path, []byte(code), time.Now().Add(30*time.Second))
-		c.JSCodeAsset = path
+	if c.volatileFileWriter != nil {
+		for i, jscode := range c.JSCodes {
+			prefix := c.volatileFileWriter.VolatileFilePrefix()
+			path := fmt.Sprintf("%s/%s_code%d.js", strings.TrimSuffix(prefix, "/"), c.ChartID, i)
+			c.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
+			c.JSCodeAssets = append(c.JSCodeAssets, path)
+		}
 	}
 	if err := tpl.ExecuteTemplate(c.output, "chart", c); err != nil {
 		c.output.Write([]byte(err.Error()))

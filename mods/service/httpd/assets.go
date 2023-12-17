@@ -107,7 +107,9 @@ func (fs *MemoryFS) Open(name string) (http.File, error) {
 	fs.listLock.Lock()
 	defer fs.listLock.Unlock()
 	if f, ok := fs.list[name]; ok {
-		return f.Clone(), nil
+		if time.Now().Before(f.deadline) {
+			return f.Clone(), nil
+		}
 	}
 	return nil, os.ErrNotExist
 }
