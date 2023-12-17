@@ -208,6 +208,10 @@ func (gm *GeoMap) Close() {
 	if gm.InitialZoomLevel == 0 {
 		gm.InitialZoomLevel = 13
 	}
+	// https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+	gm.JSAssets = append([]string{"/web/geomap/leaflet.js"}, gm.JSAssets...)
+	// https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+	gm.CSSAssets = append([]string{"/web/geomap/leaflet.css"}, gm.CSSAssets...)
 	if gm.tileTemplate == "" {
 		gm.tileTemplate = `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
 	} else if gm.tileTemplate == "kakao" {
@@ -215,13 +219,12 @@ func (gm *GeoMap) Close() {
 		gm.tileOption = `{"tms": true, "subdomains": "01234", "zoomReverse":true, "zoomOffset": 1, "maxZoom":13, "minZoom":0 }`
 		crsVar := "kakaoCrs"
 		gm.mapOption = fmt.Sprintf(`{crs: %s}`, crsVar)
-		// Leaflet and proj4 must be loaded first
-		gm.JSAssets = append(gm.JSAssets, "/web/geomap/leaflet.js")
 		// https://github.com/proj4js/proj4js/releases/tag/2.9.2
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4.js")
+		// Leaflet and proj4 must be loaded first
 		// https://github.com/kartena/Proj4Leaflet/releases/tag/1.0.1
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4leaflet.js")
-
+		// add crs code
 		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
 	}
 	if gm.tileOption == "" {
@@ -230,15 +233,6 @@ func (gm *GeoMap) Close() {
 	if gm.mapOption == "" {
 		gm.mapOption = "{}"
 	}
-	if len(gm.JSAssets) == 0 {
-		// https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
-		gm.JSAssets = append(gm.JSAssets, "/web/geomap/leaflet.js")
-	}
-	if len(gm.CSSAssets) == 0 {
-		// https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
-		gm.CSSAssets = append(gm.CSSAssets, "/web/geomap/leaflet.css")
-	}
-
 	if gm.toJsonOutput {
 		gm.renderJSON()
 	} else {
