@@ -3,7 +3,7 @@ package geomap
 var HeaderTemplate = `
 {{ define "header" }}
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <title>{{ .PageTitle }}</title>
 <style>
     .geomap_container { width:100%; height:100%; display: flex;justify-content: center;align-items: center;}
@@ -26,7 +26,7 @@ var BaseTemplate = `
     <div class="geomap_item" id="{{ .MapID }}" style="width:{{ .Width }};height:{{ .Height }};"></div>
 </div>
 {{- range .JSCodeAssets }}
-<script src="{{ . }}"></script>
+<script src="{{ . }}" type="text/javascript" charset="UTF-8"></script>
 {{- end }}
 {{ end }}
 `
@@ -52,17 +52,7 @@ var JsonTemplate = `
     },
     "jsAssets": {{ .JSAssetsNoEscaped }},
     "cssAssets": {{ .CSSAssetsNoEscaped }},
-	"jsCodeAssets": {{ .JSCodeAssetsNoEscaped }},
-    "view": {
-        "center": {{ .InitialLatLon }},
-        "zoomLevel": {{ .InitialZoomLevel }}
-    },
-    "tile": {
-        "template": "{{ .TileTemplate }}",
-        "option": {{ .TileOptionNoEscaped }}
-    },
-    "icons": {{.IconsNoEscaped }},
-    "layers": {{ .LayersNoEscaped }}
+	"jsCodeAssets": {{ .JSCodeAssetsNoEscaped }}
 }
 {{ end }}
 `

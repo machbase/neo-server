@@ -251,14 +251,14 @@ func (gm *GeoMap) Close() {
 		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
 	}
 	if gm.mapOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s", %s);`, gm.MapID, gm.MapID, gm.mapOption))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s", %s);`, gm.MapID, gm.mapOption))
 	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s");`, gm.MapID, gm.MapID))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s");`, gm.MapID))
 	}
 	if gm.tileOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
 	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(%s);`, gm.tileTemplate, gm.MapID))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 
 	for _, icn := range gm.icons {
@@ -277,8 +277,8 @@ func (gm *GeoMap) Close() {
 			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
 			opt = "{}"
 		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(%s);`,
-			layer.Name, layer.Type, layer.Coord, opt, gm.MapID))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(map);`,
+			layer.Name, layer.Type, layer.Coord, opt))
 		if layer.Popup != nil {
 			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
 			if layer.Popup.Open {
@@ -288,9 +288,9 @@ func (gm *GeoMap) Close() {
 	}
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.fitBounds(%s);", gm.MapID, gm.Bound.String()))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
 	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.setView(%s, %d);", gm.MapID, gm.InitialLatLon.String(), gm.InitialZoomLevel))
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.setView(%s, %d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
 	}
 
 	if gm.volatileFileWriter != nil {
@@ -333,7 +333,7 @@ func (gm *GeoMap) Layers() []*Layer {
 	var ret []*Layer
 	for i, obj := range gm.objs {
 		layer := &Layer{
-			Name: fmt.Sprintf("geo_obj_%d_%s", i, gm.MapID),
+			Name: fmt.Sprintf("obj%d", i),
 			Type: "marker",
 		}
 
@@ -421,39 +421,6 @@ func (gm *GeoMap) JSCodeAssetsNoEscaped() template.HTML {
 		lst = append(lst, fmt.Sprintf("%q", itm))
 	}
 	return template.HTML("[" + strings.Join(lst, ",") + "]")
-}
-
-func (gm *GeoMap) TileOptionNoEscaped() template.HTML {
-	if gm.tileOption == "" {
-		return template.HTML("{}")
-	} else {
-		return template.HTML(gm.tileOption)
-	}
-}
-
-func (gm *GeoMap) IconsNoEscaped() template.HTML {
-	if len(gm.icons) == 0 {
-		return "[]"
-	}
-	if b, err := json.Marshal(gm.icons); err != nil {
-		gm.logger.LogError("GEOMAP marshal icons", err.Error())
-		return "[]"
-	} else {
-		return template.HTML(string(b))
-	}
-}
-
-func (gm *GeoMap) LayersNoEscaped() template.HTML {
-	list := gm.Layers()
-	if len(list) == 0 {
-		return "[]"
-	}
-	if b, err := json.Marshal(list); err != nil {
-		gm.logger.LogError("GEOMAP marshal layers", err.Error())
-		return "[]"
-	} else {
-		return template.HTML(string(b))
-	}
 }
 
 func (gm *GeoMap) renderJSON() {
