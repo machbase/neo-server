@@ -1,33 +1,11 @@
 {
     "chartID": "WejMYXCGcYNL",
+    "jsAssets": [
+        "/web/echarts/echarts.min.js"
+    ],
     "style": {
         "width": "600px",
         "height": "600px"
     },
-    "theme": "white",
-    "chartOption": {
-        "xAxis": {
-            "type": "time",
-            "data": [
-                1692670838086,
-                1692670839086,
-                1692670840086
-            ]
-        },
-        "yAxis": {
-            "type": "value"
-        },
-        "series": [
-            {
-                "type": "line",
-                "data": [
-                    0,
-                    1,
-                    2
-                ]
-            }
-        ]
-    },
-    "jsAssets": ["/web/echarts/echarts.min.js"],
-    "chartAction": {"areas": {}, "type": ""}
+    "theme": "white"
 }

@@ -4,6 +4,10 @@
     <meta charset="utf-8">
     <title></title>
     <script src="/web/echarts/echarts.min.js"></script>
+    <style>
+        .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
+        .chart_item {margin: auto;}
+    </style>
 </head>
 
 <body>
@@ -11,24 +15,5 @@
     <div class="chart_item" id="WejMYXCGcYNL" style="width:600px;height:600px;"></div>
 </div>
 
-<script type="text/javascript">
-    "use strict";
-    let WejMYXCGcYNL = echarts.init(document.getElementById('WejMYXCGcYNL'), "white");
-    let option_WejMYXCGcYNL = {
-                        "xAxis": { "type": "time", "data": [1692670838086,1692670839086,1692670840086] },
-                        "yAxis": { "type": "value"},
-                        "series": [
-                                { "type": "scatter", "data": [0,1,2] }
-                        ]
-                };
-    let action_WejMYXCGcYNL = {"areas": {}, "type": ""};
-    WejMYXCGcYNL.setOption(option_WejMYXCGcYNL);
-    WejMYXCGcYNL.dispatchAction(action_WejMYXCGcYNL);
-</script>
-
-<style>
-    .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
-    .chart_item {margin: auto;}
-</style>
 </body>
 </html>

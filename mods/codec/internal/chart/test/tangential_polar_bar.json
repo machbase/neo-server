@@ -1,48 +1,12 @@
 {
     "chartID": "WejMYXCGcYNL",
+    "jsAssets": [
+        "/web/echarts/echarts.min.js",
+        "/web/echarts/themes/dark.js"
+    ],
     "style": {
         "width": "600px",
         "height": "600px"
     },
-    "theme": "dark",
-    "chartOption": {
-        "polar": {
-            "radius": [
-                "30",
-                "80%"
-            ]
-        },
-        "angleAxis": {
-            "max": 4,
-            "startAngle": 75
-        },
-        "radiusAxis": {
-            "type": "category",
-            "data": [
-                "a",
-                "b",
-                "c",
-                "d"
-            ]
-        },
-        "tooltip": {},
-        "series": [
-            {
-                "type": "bar",
-                "data": [
-                    2,
-                    1.2,
-                    2.4,
-                    3.6
-                ],
-                "coordinateSystem": "polar",
-                "label": {
-                    "show": true,
-                    "position": "middle"
-                }
-            }
-        ]
-    },
-    "jsAssets": ["/web/echarts/echarts.min.js", "/web/echarts/themes/dark.js"],
-    "chartAction": {"areas": {}, "type": ""}
+    "theme": "dark"
 }

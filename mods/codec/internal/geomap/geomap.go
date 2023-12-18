@@ -261,6 +261,13 @@ func (gm *GeoMap) Close() {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 
+	for n, v := range gm.pointStyles {
+		if js, err := v.Properties.MarshalJS(); err != nil {
+			gm.logger.LogWarnf("GEOMAP invalid point style %s", err.Error())
+		} else {
+			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("var %s = %s;", n, js))
+		}
+	}
 	for _, icn := range gm.icons {
 		var icnJson string
 		if cnt, err := json.Marshal(icn); err != nil {

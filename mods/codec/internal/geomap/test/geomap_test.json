@@ -11,32 +11,5 @@
     "cssAssets": [
         "/web/geomap/leaflet.css"
     ],
-    "view": {
-        "center": [
-            51.505,
-            -0.09
-        ],
-        "zoomLevel": 13
-    },
-    "tile": {
-        "template": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "option": {
-            "maxZoom": 19
-        }
-    },
-    "icons": [],
-    "layers": [
-        {
-            "name": "geo_obj_0_WejMYXCGcYNL",
-            "type": "circleMarker",
-            "coord": "[51.505,-0.09]",
-            "option": {
-                "color": "#ff0000",
-                "fillOpacity": 1,
-                "opacity": 1,
-                "radius": 7,
-                "stroke": false
-            }
-        }
-    ]
+    "jsCodeAssets": []
 }

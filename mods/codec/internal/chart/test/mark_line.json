@@ -1,70 +1,12 @@
 {
     "chartID": "WejMYXCGcYNL",
+    "jsAssets": [
+        "/web/echarts/echarts.min.js",
+        "/web/echarts/themes/dark.js"
+    ],
     "style": {
         "width": "600px",
         "height": "600px"
     },
-    "theme": "dark",
-    "chartOption": {
-        "xAxis": {
-            "type": "time",
-            "data": [
-                1701059601000000000,
-                1701059602000000000,
-                1701059603000000000,
-                1701059604000000000,
-                1701059605000000000,
-                1701059606000000000,
-                1701059607000000000,
-                1701059608000000000,
-                1701059609000000000,
-                1701059610000000000,
-                1701059611000000000
-            ]
-        },
-        "yAxis": {
-            "type": "value"
-        },
-        "series": [
-            {
-                "type": "line",
-                "data": [
-                    4.26,
-                    5.68,
-                    7.24,
-                    4.82,
-                    6.95,
-                    8.81,
-                    8.04,
-                    8.33,
-                    10.84,
-                    7.58,
-                    9.96
-                ],
-                "color": "#5470C6",
-                "markLine": [
-                    {
-                        "data": {
-                            "name": "xmark",
-                            "xAxis": 1701059605
-                        },
-                        "itemStyle": {
-                            "color": "#ff0"
-                        }
-                    },
-                    {
-                        "data": {
-                            "name": "ymark",
-                            "yAxis": 6.0
-                        },
-                        "itemStyle": {
-                            "color": "#ff0"
-                        }
-                    }
-                ]
-            }
-        ]
-    },
-    "jsAssets": ["/web/echarts/echarts.min.js", "/web/echarts/themes/dark.js"],
-    "chartAction": {"areas": {}, "type": ""}
+    "theme": "dark"
 }
