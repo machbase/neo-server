@@ -25,7 +25,9 @@ type GeoMap struct {
 
 	toJsonOutput bool
 
-	InitialLatLon    *nums.LatLon
+	InitialLatLon *nums.LatLon
+	Bound         *nums.LatLonBound
+
 	InitialZoomLevel int
 
 	mapOption string
@@ -191,8 +193,18 @@ func (gm *GeoMap) Open() error {
 
 func (gm *GeoMap) AddRow(values []any) error {
 	for _, val := range values {
+		if val == nil {
+			continue
+		}
 		if v, ok := val.(nums.Geography); ok {
 			gm.objs = append(gm.objs, v)
+			for _, coord := range v.Coordinates() {
+				if gm.Bound == nil {
+					gm.Bound = nums.NewLatLonBound(&nums.LatLon{Lat: coord[0], Lon: coord[1]})
+				} else {
+					gm.Bound = gm.Bound.Extend(&nums.LatLon{Lat: coord[0], Lon: coord[1]})
+				}
+			}
 		}
 	}
 	return nil
@@ -203,7 +215,11 @@ func (gm *GeoMap) Close() {
 		return
 	}
 	if gm.InitialLatLon == nil {
-		gm.InitialLatLon = nums.NewLatLon(51.505, -0.09) // <- London
+		if gm.Bound != nil && !gm.Bound.IsEmpty() {
+			gm.InitialLatLon = gm.Bound.Center()
+		} else {
+			gm.InitialLatLon = nums.NewLatLon(51.505, -0.09) // <- London
+		}
 	}
 	if gm.InitialZoomLevel == 0 {
 		gm.InitialZoomLevel = 13
@@ -226,12 +242,6 @@ func (gm *GeoMap) Close() {
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4leaflet.js")
 		// add crs code
 		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
-	}
-	if gm.tileOption == "" {
-		gm.tileOption = `{"maxZoom":19}`
-	}
-	if gm.mapOption == "" {
-		gm.mapOption = "{}"
 	}
 	if gm.toJsonOutput {
 		gm.renderJSON()
@@ -316,6 +326,7 @@ func (gm *GeoMap) Layers() []*Layer {
 			coord := obj.Coordinates()
 			if len(coord) > 0 {
 				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
+				layer.Option = obj.Properties()
 			}
 		default:
 			coord := obj.Coordinates()
@@ -348,7 +359,11 @@ func (gm *GeoMap) CSSAssetsNoEscaped() template.HTML {
 }
 
 func (gm *GeoMap) TileOptionNoEscaped() template.HTML {
-	return template.HTML(gm.tileOption)
+	if gm.tileOption == "" {
+		return template.HTML("{}")
+	} else {
+		return template.HTML(gm.tileOption)
+	}
 }
 
 func (gm *GeoMap) IconsNoEscaped() template.HTML {
@@ -386,9 +401,16 @@ func (gm *GeoMap) renderJSON() {
 }
 
 func (gm *GeoMap) renderHTML() {
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var geomap_%s = L.map("%s", %s).setView(%s, %d);`,
-		gm.MapID, gm.MapID, gm.mapOption, gm.InitialLatLon.String(), gm.InitialZoomLevel))
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(geomap_%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
+	if gm.mapOption != "" {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s", %s);`, gm.MapID, gm.MapID, gm.mapOption))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s");`, gm.MapID, gm.MapID))
+	}
+	if gm.tileOption != "" {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(%s);`, gm.tileTemplate, gm.MapID))
+	}
 
 	for _, icn := range gm.icons {
 		var icnJson string
@@ -406,7 +428,7 @@ func (gm *GeoMap) renderHTML() {
 			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
 			opt = "{}"
 		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(geomap_%s);`,
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(%s);`,
 			layer.Name, layer.Type, layer.Coord, opt, gm.MapID))
 		if layer.Popup != nil {
 			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
@@ -414,6 +436,12 @@ func (gm *GeoMap) renderHTML() {
 				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.openPopup();", layer.Name))
 			}
 		}
+	}
+
+	if gm.Bound != nil && !gm.Bound.IsEmpty() {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.fitBounds(%s);", gm.MapID, gm.Bound.String()))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.setView(%s, %d);", gm.MapID, gm.InitialLatLon.String(), gm.InitialZoomLevel))
 	}
 
 	contents := []string{HeaderTemplate, BaseTemplate, HtmlTemplate}

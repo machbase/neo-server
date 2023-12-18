@@ -55,6 +55,129 @@ func (ll *LatLon) Distance(pt *LatLon) float64 {
 	return Distance(*ll, *pt)
 }
 
+type LatLonBound struct {
+	Min *LatLon
+	Max *LatLon
+}
+
+func NewLatLonBound(pts ...*LatLon) *LatLonBound {
+	if len(pts) == 0 {
+		return nil
+	}
+	var minLat, minLon, maxLat, maxLon = pts[0].Lat, pts[0].Lon, pts[0].Lat, pts[0].Lon
+	for _, pt := range pts[1:] {
+		if pt.Lat < minLat {
+			minLat = pt.Lat
+		}
+		if pt.Lon < minLon {
+			minLon = pt.Lon
+		}
+		if pt.Lat > maxLat {
+			maxLat = pt.Lat
+		}
+		if pt.Lon > maxLon {
+			maxLon = pt.Lon
+		}
+	}
+	return &LatLonBound{
+		Min: NewLatLon(minLat, minLon),
+		Max: NewLatLon(maxLat, maxLon),
+	}
+}
+
+func (b *LatLonBound) String() string {
+	return fmt.Sprintf("[[%v,%v],[%v,%v]]", b.Min.Lat, b.Min.Lon, b.Max.Lat, b.Max.Lon)
+}
+
+func (b *LatLonBound) Contains(pt *LatLon) bool {
+	if pt.Lon < b.Min.Lon || b.Max.Lon < pt.Lon {
+		return false
+	}
+	if pt.Lat < b.Min.Lat || b.Max.Lat < pt.Lat {
+		return false
+	}
+	return true
+}
+
+func (b *LatLonBound) IsEmpty() bool {
+	return b.Min.Lat > b.Max.Lat || b.Min.Lon > b.Max.Lon
+}
+
+func (b *LatLonBound) Center() *LatLon {
+	return NewLatLon(
+		(b.Min.Lat+b.Max.Lat)/2.0,
+		(b.Min.Lon+b.Max.Lon)/2.0,
+	)
+}
+
+// Top returns the top of the bound.
+func (b *LatLonBound) Top() float64 {
+	return b.Max.Lat
+}
+
+// Bottom returns the bottom of the bound.
+func (b *LatLonBound) Bottom() float64 {
+	return b.Min.Lat
+}
+
+// Right returns the right of the bound.
+func (b *LatLonBound) Right() float64 {
+	return b.Max.Lon
+}
+
+// Left returns the left of the bound.
+func (b *LatLonBound) Left() float64 {
+	return b.Min.Lon
+}
+
+// LeftTop returns the upper left point of the bound.
+func (b *LatLonBound) LeftTop() *LatLon {
+	return NewLatLon(b.Top(), b.Left())
+}
+
+// RightBottom return the lower right point of the bound.
+func (b *LatLonBound) RightBottom() *LatLon {
+	return NewLatLon(b.Bottom(), b.Right())
+}
+
+func (b *LatLonBound) Extend(pt *LatLon) *LatLonBound {
+	// already included, no big deal
+	if b.Contains(pt) {
+		return b
+	}
+	return &LatLonBound{
+		Min: NewLatLon(
+			math.Min(b.Min.Lat, pt.Lat),
+			math.Min(b.Min.Lon, pt.Lon),
+		),
+		Max: NewLatLon(
+			math.Max(b.Max.Lat, pt.Lat),
+			math.Max(b.Max.Lon, pt.Lon),
+		),
+	}
+}
+
+func (b *LatLonBound) Union(other *LatLonBound) *LatLonBound {
+	if other.IsEmpty() {
+		return b
+	}
+
+	b = b.Extend(other.Min)
+	b = b.Extend(other.Max)
+	b = b.Extend(other.LeftTop())
+	b = b.Extend(other.RightBottom())
+
+	return b
+}
+
+func (b *LatLonBound) Pad(pad float64) *LatLonBound {
+	b.Min.Lat -= pad
+	b.Min.Lon -= pad
+	b.Max.Lat += pad
+	b.Max.Lon += pad
+	return b
+}
+
 type Circle struct {
 	center     *LatLon
 	radius     float64
@@ -121,6 +244,10 @@ func (sp *SingleLatLon) MarshalGeoJSON() ([]byte, error) {
 		obj["properties"] = sp.properties
 	}
 	return json.Marshal(obj)
+}
+
+func (sp *SingleLatLon) MarshalJSON() ([]byte, error) {
+	return sp.MarshalGeoJSON()
 }
 
 type MultiLatLon struct {
@@ -202,6 +329,10 @@ func (mp *MultiLatLon) MarshalGeoJSON() ([]byte, error) {
 		obj["properties"] = mp.properties
 	}
 	return json.Marshal(obj)
+}
+
+func (mp *MultiLatLon) MarshalJSON() ([]byte, error) {
+	return mp.MarshalGeoJSON()
 }
 
 type GeoPoint = *SingleLatLon

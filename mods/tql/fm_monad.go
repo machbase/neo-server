@@ -981,7 +981,9 @@ func (node *Node) fmPopValue(idxes ...int) (any, error) {
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
 		updateCols := []*spi.Column{cols[0]}
 		for _, idx := range includes {
-			updateCols = append(updateCols, cols[idx+1])
+			if idx+1 < len(cols) {
+				updateCols = append(updateCols, cols[idx+1])
+			}
 		}
 		node.task.SetResultColumns(updateCols)
 	}
@@ -1009,6 +1011,11 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 			if len(opts) > 0 {
 				if newName, ok := opts[0].(string); ok {
 					cols := node.task.ResultColumns() // cols contains "ROWNUM"
+					if idx+1 >= len(cols) {
+						for i := len(cols); i <= idx+1; i++ {
+							cols = append(cols, &spi.Column{Name: fmt.Sprintf("column%d", i)})
+						}
+					}
 					cols[idx+1].Name = newName
 				}
 			}

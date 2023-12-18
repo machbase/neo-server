@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -194,6 +195,14 @@ func (ex *Exporter) AddRow(values []any) error {
 				strs = append(strs, fmt.Sprintf("\\x%02X", c))
 			}
 			cols[i] = strings.Join(strs, "")
+		case *nums.LatLon:
+			cols[i] = fmt.Sprintf("[%v,%v]", v.Lat, v.Lon)
+		case *nums.SingleLatLon:
+			if coord := v.Coordinates(); len(coord) == 1 && len(coord[0]) == 2 {
+				cols[i] = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
+			} else {
+				cols[i] = ""
+			}
 		default:
 			cols[i] = fmt.Sprintf("%T", r)
 		}
