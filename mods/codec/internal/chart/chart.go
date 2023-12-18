@@ -292,6 +292,7 @@ func (c *Chart) RenderJSON() {
 		for i, jscode := range c.JSCodes {
 			prefix := c.volatileFileWriter.VolatileFilePrefix()
 			path := fmt.Sprintf("%s/%s_code%d.js", strings.TrimSuffix(prefix, "/"), c.ChartID, i)
+			jscode = fmt.Sprintf(`(async ()=>{%s})();`, jscode)
 			c.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
 			c.JSCodeAssets = append(c.JSCodeAssets, path)
 		}
