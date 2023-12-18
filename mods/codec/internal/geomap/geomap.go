@@ -279,10 +279,16 @@ func (gm *GeoMap) Close() {
 	}
 
 	for _, layer := range gm.Layers() {
-		opt, err := layer.Option.MarshalJS()
-		if err != nil {
-			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
-			opt = "{}"
+		var opt string
+		if layer.Style == "" {
+			if v, err := layer.Option.MarshalJS(); err != nil {
+				gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
+				opt = "{}"
+			} else {
+				opt = v
+			}
+		} else {
+			opt = layer.Style
 		}
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(map);`,
 			layer.Name, layer.Type, layer.Coord, opt))
@@ -379,6 +385,7 @@ func (gm *GeoMap) Layers() []*Layer {
 				if st, ok := gm.pointStyles[pointStyleName]; ok {
 					layer.Type = st.Type
 					layer.Option = st.Properties
+					layer.Style = pointStyleName
 				}
 			} else {
 				layer.Option = props
@@ -390,7 +397,6 @@ func (gm *GeoMap) Layers() []*Layer {
 			coord := obj.Coordinates()
 			if len(coord) > 0 {
 				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
-				layer.Option = obj.Properties()
 			}
 		default:
 			coord := obj.Coordinates()

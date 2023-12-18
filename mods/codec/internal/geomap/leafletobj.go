@@ -36,6 +36,7 @@ type Layer struct {
 	Coord  string             `json:"coord"`
 	Option nums.GeoProperties `json:"option,omitempty"`
 	Popup  *Popup             `json:"popup,omitempty"`
+	Style  string             `json:"pointStyle,omitempty"`
 }
 
 type Popup struct {
