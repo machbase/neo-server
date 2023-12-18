@@ -16,7 +16,6 @@ import (
 )
 
 type GeoMap struct {
-	logger facility.Logger
 	output spec.OutputStream
 
 	MapID  string
@@ -24,6 +23,9 @@ type GeoMap struct {
 	Height string
 
 	toJsonOutput bool
+
+	logger             facility.Logger
+	volatileFileWriter facility.VolatileFileWriter
 
 	InitialLatLon *nums.LatLon
 	Bound         *nums.LatLonBound
@@ -36,10 +38,11 @@ type GeoMap struct {
 	tileTemplate  string
 	tileOption    string
 
-	JSCodes   []string
-	JSAssets  []string
-	CSSAssets []string
-	PageTitle string
+	JSCodes      []string
+	JSAssets     []string
+	CSSAssets    []string
+	JSCodeAssets []string
+	PageTitle    string
 
 	objs        []nums.Geography
 	icons       []*Icon
@@ -71,6 +74,10 @@ func (gm *GeoMap) ContentType() string {
 
 func (gm *GeoMap) SetLogger(l facility.Logger) {
 	gm.logger = l
+}
+
+func (gm *GeoMap) SetVolatileFileWriter(w facility.VolatileFileWriter) {
+	gm.volatileFileWriter = w
 }
 
 func (gm *GeoMap) SetOutputStream(o spec.OutputStream) {
@@ -243,6 +250,56 @@ func (gm *GeoMap) Close() {
 		// add crs code
 		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
 	}
+	if gm.mapOption != "" {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s", %s);`, gm.MapID, gm.MapID, gm.mapOption))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s");`, gm.MapID, gm.MapID))
+	}
+	if gm.tileOption != "" {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(%s);`, gm.tileTemplate, gm.MapID))
+	}
+
+	for _, icn := range gm.icons {
+		var icnJson string
+		if cnt, err := json.Marshal(icn); err != nil {
+			continue
+		} else {
+			icnJson = string(cnt)
+		}
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
+	}
+
+	for _, layer := range gm.Layers() {
+		opt, err := layer.Option.MarshalJS()
+		if err != nil {
+			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
+			opt = "{}"
+		}
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(%s);`,
+			layer.Name, layer.Type, layer.Coord, opt, gm.MapID))
+		if layer.Popup != nil {
+			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
+			if layer.Popup.Open {
+				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.openPopup();", layer.Name))
+			}
+		}
+	}
+
+	if gm.Bound != nil && !gm.Bound.IsEmpty() {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.fitBounds(%s);", gm.MapID, gm.Bound.String()))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.setView(%s, %d);", gm.MapID, gm.InitialLatLon.String(), gm.InitialZoomLevel))
+	}
+
+	if gm.volatileFileWriter != nil {
+		prefix := gm.volatileFileWriter.VolatileFilePrefix()
+		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), gm.MapID)
+		jscode := fmt.Sprintf("(()=>{\n%s\n})();", strings.Join(gm.JSCodes, "\n"))
+		gm.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
+		gm.JSCodeAssets = append(gm.JSCodeAssets, path)
+	}
 	if gm.toJsonOutput {
 		gm.renderJSON()
 	} else {
@@ -358,6 +415,14 @@ func (gm *GeoMap) CSSAssetsNoEscaped() template.HTML {
 	return template.HTML("[" + strings.Join(lst, ",") + "]")
 }
 
+func (gm *GeoMap) JSCodeAssetsNoEscaped() template.HTML {
+	lst := []string{}
+	for _, itm := range gm.JSCodeAssets {
+		lst = append(lst, fmt.Sprintf("%q", itm))
+	}
+	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
 func (gm *GeoMap) TileOptionNoEscaped() template.HTML {
 	if gm.tileOption == "" {
 		return template.HTML("{}")
@@ -401,49 +466,6 @@ func (gm *GeoMap) renderJSON() {
 }
 
 func (gm *GeoMap) renderHTML() {
-	if gm.mapOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s", %s);`, gm.MapID, gm.MapID, gm.mapOption))
-	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.map("%s");`, gm.MapID, gm.MapID))
-	}
-	if gm.tileOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(%s);`, gm.tileTemplate, gm.tileOption, gm.MapID))
-	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(%s);`, gm.tileTemplate, gm.MapID))
-	}
-
-	for _, icn := range gm.icons {
-		var icnJson string
-		if cnt, err := json.Marshal(icn); err != nil {
-			continue
-		} else {
-			icnJson = string(cnt)
-		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
-	}
-
-	for _, layer := range gm.Layers() {
-		opt, err := layer.Option.MarshalJS()
-		if err != nil {
-			gm.logger.LogWarnf("GEOMAP render %q option %s", layer.Name, err.Error())
-			opt = "{}"
-		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(%s);`,
-			layer.Name, layer.Type, layer.Coord, opt, gm.MapID))
-		if layer.Popup != nil {
-			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
-			if layer.Popup.Open {
-				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.openPopup();", layer.Name))
-			}
-		}
-	}
-
-	if gm.Bound != nil && !gm.Bound.IsEmpty() {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.fitBounds(%s);", gm.MapID, gm.Bound.String()))
-	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.setView(%s, %d);", gm.MapID, gm.InitialLatLon.String(), gm.InitialZoomLevel))
-	}
-
 	contents := []string{HeaderTemplate, BaseTemplate, HtmlTemplate}
 	tpl := template.New("geomap").Funcs(template.FuncMap{
 		"safeJS": func(s interface{}) template.JS {

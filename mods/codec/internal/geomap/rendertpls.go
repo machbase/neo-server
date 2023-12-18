@@ -25,13 +25,9 @@ var BaseTemplate = `
 <div class="geomap_container">
     <div class="geomap_item" id="{{ .MapID }}" style="width:{{ .Width }};height:{{ .Height }};"></div>
 </div>
-
-<script type="text/javascript">
-    "use strict";
-    {{- range .JSCodes }}
-    {{ . | safeJS }}
-    {{- end }}
-</script>
+{{- range .JSCodeAssets }}
+<script src="{{ . }}"></script>
+{{- end }}
 {{ end }}
 `
 
@@ -56,6 +52,7 @@ var JsonTemplate = `
     },
     "jsAssets": {{ .JSAssetsNoEscaped }},
     "cssAssets": {{ .CSSAssetsNoEscaped }},
+	"jsCodeAssets": {{ .JSCodeAssetsNoEscaped }},
     "view": {
         "center": {{ .InitialLatLon }},
         "zoomLevel": {{ .InitialZoomLevel }}
