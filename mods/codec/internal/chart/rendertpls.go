@@ -4,11 +4,6 @@ var ChartJsonTemplate = `
 {{- define "chart" }}
 {
     "chartID":"{{ .ChartID }}",
-    "style": {
-        "width": "{{ .Width }}",
-        "height": "{{ .Height }}"	
-    },
-    "theme": "{{ .Theme }}",
     {{ $len := len .JSAssets }} {{ if gt $len 0 }}
     "jsAssets": {{ .JSAssetsNoEscaped }},
     {{ end }}
@@ -18,8 +13,11 @@ var ChartJsonTemplate = `
 	{{ $len := len .JSCodeAssets }} {{ if gt $len 0 }}
 	"jsCodeAssets": {{ .JSCodeAssetsNoEscaped }},
 	{{ end }}
-    "chartOption": {{ .ChartOptionNoEscaped }},
-	"chartAction": {{ .ChartDispatchActionNoEscaped }}
+    "style": {
+        "width": "{{ .Width }}",
+        "height": "{{ .Height }}"	
+    },
+    "theme": "{{ .Theme }}"
 }
 {{ end }}
 `
@@ -35,6 +33,10 @@ var HeaderTemplate = `
 {{- range .CSSAssets }}
     <link href="{{ . }}" rel="stylesheet">
 {{- end }}
+    <style>
+        .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
+        .chart_item {margin: auto;}
+    </style>
 </head>
 {{ end }}
 `
@@ -44,19 +46,9 @@ var BaseTemplate = `
 <div class="chart_container">
     <div class="chart_item" id="{{ .ChartID }}" style="width:{{ .Width }};height:{{ .Height }};"></div>
 </div>
-
-<script type="text/javascript">
-    "use strict";
-    let {{ .ChartID | safeJS }} = echarts.init(document.getElementById('{{ .ChartID | safeJS }}'), "{{ .Theme }}");
-    let option_{{ .ChartID | safeJS }} = {{ .ChartOptionNoEscaped | safeJS }};
-    let action_{{ .ChartID | safeJS }} = {{ .ChartDispatchActionNoEscaped | safeJS }};
-    {{ .ChartID | safeJS }}.setOption(option_{{ .ChartID | safeJS }});
-    {{ .ChartID | safeJS }}.dispatchAction(action_{{ .ChartID | safeJS }});
-
-    {{- range .JSCodes }}
-    {{ . | safeJS }}
-    {{- end }}
-</script>
+{{- range .JSCodeAssets }}
+<script src="{{ . }}"></script>
+{{- end }}
 {{ end }}
 `
 
@@ -65,10 +57,6 @@ var ChartTemplate = `{{- define "chart" }}<!DOCTYPE html>
     {{- template "header" . }}
 <body>
     {{- template "base" . }}
-<style>
-    .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
-    .chart_item {margin: auto;}
-</style>
 </body>
 </html>
 {{ end }}

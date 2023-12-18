@@ -126,17 +126,6 @@ func (c *Chart) SetChartDispatchAction(action string) {
 	c.DispatchAction = action
 }
 
-func (c *Chart) ChartOptionNoEscaped() template.HTML {
-	return template.HTML(c.option)
-}
-
-func (c *Chart) ChartDispatchActionNoEscaped() template.HTML {
-	if c.DispatchAction == "" {
-		c.DispatchAction = `{"areas": {}, "type": ""}`
-	}
-	return template.HTML(c.DispatchAction)
-}
-
 func (c *Chart) JSAssetsNoEscaped() template.HTML {
 	lst := []string{}
 	for _, itm := range c.JSAssets {
@@ -260,6 +249,24 @@ func (c *Chart) Close() {
 			c.JSAssets = append(c.JSAssets, plugin)
 		}
 	}
+	if c.volatileFileWriter != nil {
+		prefix := c.volatileFileWriter.VolatileFilePrefix()
+		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
+
+		codes := []string{}
+		codes = append(codes, `"use strict";`)
+		codes = append(codes, fmt.Sprintf(`let chart = echarts.init(document.getElementById('%s'), "%s");`, c.ChartID, c.Theme))
+		codes = append(codes, fmt.Sprintf(`chart.setOption(%s);`, c.option))
+		if c.DispatchAction == "" {
+			codes = append(codes, `chart.dispatchAction({"areas": {}, "type": ""});`)
+		} else {
+			codes = append(codes, fmt.Sprintf(`chart.dispatchAction(%s);`, c.DispatchAction))
+		}
+		codes = append(codes, c.JSCodes...)
+		jscode := fmt.Sprintf("(()=>{\n%s\n})();", strings.Join(codes, "\n"))
+		c.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
+		c.JSCodeAssets = append(c.JSCodeAssets, path)
+	}
 	if c.toJsonOutput {
 		c.RenderJSON()
 	} else {
@@ -288,15 +295,6 @@ func (c *Chart) RenderJSON() {
 	tpl := template.New("chart")
 	tpl = template.Must(tpl.Parse(contents[0]))
 
-	if c.volatileFileWriter != nil {
-		for i, jscode := range c.JSCodes {
-			prefix := c.volatileFileWriter.VolatileFilePrefix()
-			path := fmt.Sprintf("%s/%s_code%d.js", strings.TrimSuffix(prefix, "/"), c.ChartID, i)
-			jscode = fmt.Sprintf(`%s.customfunc%d = (%s)=>{ %s }`, c.ChartID, i, c.ChartID, jscode)
-			c.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
-			c.JSCodeAssets = append(c.JSCodeAssets, path)
-		}
-	}
 	if err := tpl.ExecuteTemplate(c.output, "chart", c); err != nil {
 		c.output.Write([]byte(err.Error()))
 	}
