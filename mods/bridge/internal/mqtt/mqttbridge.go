@@ -226,6 +226,9 @@ func (c *bridge) notifyDisconnectListeners() {
 }
 
 func (c *bridge) OnConnect(cb func(br any)) {
+	if cb == nil {
+		return
+	}
 	c.connectListeners = append(c.connectListeners, cb)
 	if c.IsConnected() {
 		cb(c)
@@ -233,6 +236,9 @@ func (c *bridge) OnConnect(cb func(br any)) {
 }
 
 func (c *bridge) OnDisconnect(cb func(br any)) {
+	if cb == nil {
+		return
+	}
 	c.disconnectListeners = append(c.disconnectListeners, cb)
 	if !c.IsConnected() {
 		cb(c)
