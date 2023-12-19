@@ -227,10 +227,16 @@ func (c *bridge) notifyDisconnectListeners() {
 
 func (c *bridge) OnConnect(cb func(br any)) {
 	c.connectListeners = append(c.connectListeners, cb)
+	if c.IsConnected() {
+		cb(c)
+	}
 }
 
 func (c *bridge) OnDisconnect(cb func(br any)) {
 	c.disconnectListeners = append(c.disconnectListeners, cb)
+	if !c.IsConnected() {
+		cb(c)
+	}
 }
 
 func (c *bridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {
