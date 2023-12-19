@@ -22,13 +22,15 @@ type PointStyle struct {
 var defaultPointStyle = PointStyle{
 	Type: "circleMarker",
 	Properties: nums.GeoProperties{
-		"radius":      7,
+		"radius":      4,
 		"stroke":      false,
-		"color":       "#ff0000",
-		"opacity":     1.0,
-		"fillOpacity": 1.0,
+		"color":       "#2020F0",
+		"opacity":     0.5,
+		"fillOpacity": 0.5,
 	},
 }
+
+const defaultPointStyleVarName = "__ptstyle"
 
 type Layer struct {
 	Name   string             `json:"name"`

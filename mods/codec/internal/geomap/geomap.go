@@ -240,7 +240,7 @@ func (gm *GeoMap) Close() {
 	} else if gm.tileTemplate == "kakao" {
 		gm.tileTemplate = `http://map{s}.daumcdn.net/map_2d_hd/2106wof/L{z}/{y}/{x}.png`
 		gm.tileOption = `{"tms": true, "subdomains": "01234", "zoomReverse":true, "zoomOffset": 1, "maxZoom":13, "minZoom":0 }`
-		crsVar := "kakaoCrs"
+		crsVar := "__crs"
 		gm.mapOption = fmt.Sprintf(`{crs: %s}`, crsVar)
 		// https://github.com/proj4js/proj4js/releases/tag/2.9.2
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4.js")
@@ -261,6 +261,9 @@ func (gm *GeoMap) Close() {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 
+	if js, err := defaultPointStyle.Properties.MarshalJS(); err == nil {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("var %s = %s;", defaultPointStyleVarName, js))
+	}
 	for n, v := range gm.pointStyles {
 		if js, err := v.Properties.MarshalJS(); err != nil {
 			gm.logger.LogWarnf("GEOMAP invalid point style %s", err.Error())
@@ -381,10 +384,9 @@ func (gm *GeoMap) Layers() []*Layer {
 			}
 			if layer.Type == "point" {
 				layer.Type = defaultPointStyle.Type
-				layer.Option = defaultPointStyle.Properties
+				layer.Style = defaultPointStyleVarName
 				if st, ok := gm.pointStyles[pointStyleName]; ok {
 					layer.Type = st.Type
-					layer.Option = st.Properties
 					layer.Style = pointStyleName
 				}
 			} else {
