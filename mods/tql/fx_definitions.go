@@ -97,6 +97,7 @@ var FxDefinitions = []Definition{
 	{"MAP_DIFF", defTask.fmDiff},
 	{"MAP_ABSDIFF", defTask.fmAbsDiff},
 	{"MAP_NONEGDIFF", defTask.fmNonNegativeDiff},
+	{"MAP_DISTANCE", defTask.fmGeoDistance},
 	{"TRANSPOSE", defTask.fmTranspose},
 	{"fixed", defTask.fmFixed},
 	{"TIMEWINDOW", defTask.fmTimeWindow},

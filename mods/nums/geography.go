@@ -220,6 +220,10 @@ type SingleLatLon struct {
 	properties GeoProperties
 }
 
+func (sp *SingleLatLon) LatLon() *LatLon {
+	return sp.point
+}
+
 func (sp *SingleLatLon) Coordinates() [][]float64 {
 	return [][]float64{{sp.point.Lat, sp.point.Lon}}
 }

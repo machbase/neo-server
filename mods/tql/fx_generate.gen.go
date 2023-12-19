@@ -92,6 +92,7 @@ func NewNode(task *Task) *Node {
 		"MAP_DIFF":      x.gen_MAP_DIFF,
 		"MAP_ABSDIFF":   x.gen_MAP_ABSDIFF,
 		"MAP_NONEGDIFF": x.gen_MAP_NONEGDIFF,
+		"MAP_DISTANCE":  x.gen_MAP_DISTANCE,
 		"TRANSPOSE":     x.gen_TRANSPOSE,
 		"fixed":         x.gen_fixed,
 		"TIMEWINDOW":    x.gen_TIMEWINDOW,
@@ -1018,6 +1019,32 @@ func (x *Node) gen_MAP_NONEGDIFF(args ...any) (any, error) {
 		p2 = append(p2, argv)
 	}
 	return x.fmNonNegativeDiff(p0, p1, p2...)
+}
+
+// gen_MAP_DISTANCE
+//
+// syntax: MAP_DISTANCE(int, , ...interface {})
+func (x *Node) gen_MAP_DISTANCE(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("MAP_DISTANCE", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_DISTANCE", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_DISTANCE", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_DISTANCE", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmGeoDistance(p0, p1, p2...)
 }
 
 // gen_TRANSPOSE

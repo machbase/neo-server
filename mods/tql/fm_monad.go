@@ -15,6 +15,7 @@ import (
 	gocsv "encoding/csv"
 
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
@@ -1077,6 +1078,7 @@ func (node *Node) fmDiff(idx int, value any, args ...any) (any, error) {
 
 type diff struct {
 	prev        float64
+	prevTime    time.Time
 	isPrevNull  bool
 	abs         bool
 	nonNegative bool
@@ -1087,35 +1089,65 @@ func (df *diff) diff(node *Node, idx int, value any, opts []any) (any, error) {
 		df.isPrevNull = true
 		return node.fmMapValue(idx, nil, opts...)
 	}
+	var tv time.Time
+	switch val := value.(type) {
+	case *time.Time:
+		tv = *val
+		goto timediff
+	case time.Time:
+		tv = val
+		goto timediff
+	default:
+		var fv float64
+		if f, err := util.ToFloat64(value); err == nil {
+			fv = f
+		} else {
+			df.isPrevNull = true
+			return node.fmMapValue(idx, nil, opts...)
+		}
 
-	var fv float64
-	if f, err := util.ToFloat64(value); err == nil {
-		fv = f
-	} else {
+		if df.isPrevNull {
+			df.prev = fv
+			df.isPrevNull = false
+			return node.fmMapValue(idx, nil, opts...)
+		} else {
+			ret := fv - df.prev
+			if df.abs {
+				ret = math.Abs(ret)
+			} else if df.nonNegative && ret < 0 {
+				ret = 0
+			}
+			df.prev = fv
+			df.isPrevNull = false
+			return node.fmMapValue(idx, ret, opts...)
+		}
+	}
+timediff:
+	zero := time.Time{}
+	if tv == zero {
 		df.isPrevNull = true
 		return node.fmMapValue(idx, nil, opts...)
 	}
-
 	if df.isPrevNull {
-		df.prev = fv
+		df.prevTime = tv
 		df.isPrevNull = false
 		return node.fmMapValue(idx, nil, opts...)
 	} else {
-		ret := fv - df.prev
-		if df.abs {
-			ret = math.Abs(ret)
+		ret := tv.Sub(df.prevTime)
+		if df.abs && ret < 0 {
+			ret = ret * -1
 		} else if df.nonNegative && ret < 0 {
 			ret = 0
 		}
-		df.prev = fv
+		df.prevTime = tv
 		df.isPrevNull = false
-		return node.fmMapValue(idx, ret, opts...)
+		return node.fmMapValue(idx, int64(ret), opts...)
 	}
 }
 
 func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error) {
 	if lag <= 0 {
-		return 0, ErrArgs("movavg", 1, "lag should be larger than 0")
+		return 0, ErrArgs("MAP_MOVAVG", 1, "lag should be larger than 0")
 	}
 	var fv *float64
 	if f, err := util.ToFloat64(value); err == nil {
@@ -1155,6 +1187,41 @@ func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error
 
 type movavg struct {
 	elements []*float64
+}
+
+func (node *Node) fmGeoDistance(idx int, pt any, opts ...any) (any, error) {
+	var loc *nums.LatLon
+	switch v := pt.(type) {
+	case *nums.LatLon:
+		loc = v
+	case *nums.SingleLatLon:
+		loc = v.LatLon()
+	default:
+		return node.fmMapValue(idx, 0, opts...)
+	}
+
+	if loc == nil || (loc.Lat == 0 && loc.Lon == 0) {
+		return node.fmMapValue(idx, 0, opts...)
+	}
+	var gd *geoDistance
+	if v, ok := node.GetValue("geodistance"); ok {
+		gd = v.(*geoDistance)
+	} else {
+		gd = &geoDistance{}
+		node.SetValue("geodistance", gd)
+	}
+	var prev *nums.LatLon
+	if gd.prev == nil {
+		gd.prev = loc
+		return node.fmMapValue(idx, 0, opts...)
+	} else {
+		prev, gd.prev = gd.prev, loc
+		return node.fmMapValue(idx, loc.Distance(prev), opts...)
+	}
+}
+
+type geoDistance struct {
+	prev *nums.LatLon
 }
 
 func (node *Node) fmRegexp(pattern string, text string) (bool, error) {
