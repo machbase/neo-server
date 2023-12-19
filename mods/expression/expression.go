@@ -116,7 +116,11 @@ func (ee Expression) Evaluate(parameters map[string]any) (any, error) {
 	if parameters == nil {
 		return ee.Eval(nil)
 	}
-	return ee.Eval(MapParameters(parameters))
+	ret, err := ee.Eval(MapParameters(parameters))
+	if _, ok := ret.(*nullValue); ok {
+		return nil, err
+	}
+	return ret, err
 }
 
 // Runs the entire expression using the given [parameters].
@@ -236,3 +240,7 @@ func (ee Expression) Vars() []string {
 	}
 	return varlist
 }
+
+var NullValue = &nullValue{}
+
+type nullValue struct{}

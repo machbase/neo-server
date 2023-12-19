@@ -1136,6 +1136,28 @@ func TestParameterizedEvaluation(test *testing.T) {
 			Expected: 1.0,
 		},
 		{
+			Name:  "ternary false function",
+			Input: "false ? NULL : value()",
+			Functions: map[string]Function{
+				"value": func(arguments ...interface{}) (interface{}, error) {
+					return 12.3, nil
+				},
+			},
+			Parameters: []EvaluationParameter{{Name: "NULL", Value: nil}},
+			Expected:   12.3,
+		},
+		{
+			Name:  "ternary true NULL",
+			Input: "true ? NULL : value()",
+			Functions: map[string]Function{
+				"value": func(arguments ...interface{}) (interface{}, error) {
+					return 12.3, nil
+				},
+			},
+			Parameters: []EvaluationParameter{{Name: "NULL", Value: NullValue}},
+			Expected:   nil,
+		},
+		{
 			Name:  "Short-circuit coalesce",
 			Input: "'foo' ?? fail()",
 			Functions: map[string]Function{
@@ -1251,6 +1273,23 @@ func TestParameterizedEvaluation(test *testing.T) {
 	}
 
 	runEvaluationTests(evaluationTests, test)
+}
+
+func TestNilTernary(t *testing.T) {
+	evaluationTests := []EvaluationTest{
+		{
+			Name:  "ternary true nil",
+			Input: "true ? NULL : value()",
+			Functions: map[string]Function{
+				"value": func(arguments ...interface{}) (interface{}, error) {
+					return 12.3, nil
+				},
+			},
+			Parameters: []EvaluationParameter{{Name: "NULL", Value: NullValue}},
+			Expected:   nil,
+		},
+	}
+	runEvaluationTests(evaluationTests, t)
 }
 
 // Tests the behavior of a nil set of parameters.

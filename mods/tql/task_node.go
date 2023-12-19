@@ -164,7 +164,7 @@ func (node *Node) Get(name string) (any, error) {
 	case "PI":
 		return math.Pi, nil
 	case "nil", "NULL":
-		return nil, nil
+		return expression.NullValue, nil
 	default:
 		if node.task != nil {
 			return node.task.GetVariable(name)

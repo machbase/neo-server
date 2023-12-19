@@ -229,11 +229,16 @@ func makeFunctionStage(function Function) evaluationOperator {
 	return func(left any, right any, parameters Parameters) (any, error) {
 		var ret any
 		var err error
-		if right == nil {
+		if right == nil || right == NullValue {
 			ret, err = function()
 		} else {
 			switch v := right.(type) {
 			case []any:
+				for i := range v {
+					if v[i] == NullValue {
+						v[i] = nil
+					}
+				}
 				ret, err = function(v...)
 			default:
 				ret, err = function(right)
