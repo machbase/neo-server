@@ -59,6 +59,7 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 		if x := recover(); x != nil {
 			if e, ok := x.(error); ok {
 				err = fmt.Errorf("unable to apply to SINK: %s %s", code, e.Error())
+				debug.PrintStack()
 			} else {
 				err = fmt.Errorf("unable to apply to SINK: %s", code)
 			}
@@ -71,6 +72,9 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err
+	}
+	if sink == nil {
+		return nil, errors.New("NULL is not applicable for SINK")
 	}
 	ret = &output{}
 	switch val := sink.(type) {

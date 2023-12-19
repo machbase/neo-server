@@ -562,7 +562,11 @@ func (node *Node) fmGroupByKey(args ...any) any {
 			}
 		}
 	}
-	key := node.Inflight().Key()
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil
+	}
+	key := inflight.Key()
 	by := node.fmBy(key, "KEY").(*GroupAggregate)
 	gr.pushChunk(node, by)
 	return nil
