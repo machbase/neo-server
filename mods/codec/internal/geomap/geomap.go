@@ -49,16 +49,10 @@ type GeoMap struct {
 	pointStyles map[string]*PointStyle
 }
 
-var idGen, _ = snowflake.NewNode(time.Now().Unix() % 1024)
-
 func New() *GeoMap {
-	var id = "rainyDayMap"
-	if idGen != nil {
-		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
-	}
 	return &GeoMap{
 		logger:      facility.DiscardLogger,
-		MapID:       id,
+		MapID:       snowflake.Generate(),
 		Width:       "600px",
 		Height:      "600px",
 		pointStyles: map[string]*PointStyle{},

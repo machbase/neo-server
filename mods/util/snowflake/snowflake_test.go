@@ -10,25 +10,34 @@ import (
 // General Test funcs
 
 func TestNewNode(t *testing.T) {
-
 	_, err := NewNode(0)
 	if err != nil {
 		t.Fatalf("error creating NewNode, %s", err)
 	}
-
 	_, err = NewNode(5000)
 	if err == nil {
 		t.Fatalf("no error creating NewNode, %s", err)
 	}
+}
 
+// lazy check if Generate will create duplicate IDs
+// would be good to later enhance this with more smarts
+func TestGenerateDuplicateIDDefault(t *testing.T) {
+	var y string
+	var x string
+	for i := 0; i < 1000000; i++ {
+		y = Generate()
+		if x == y {
+			t.Errorf("x(%s) & y(%s) are the same", x, y)
+		}
+		x = y
+	}
 }
 
 // lazy check if Generate will create duplicate IDs
 // would be good to later enhance this with more smarts
 func TestGenerateDuplicateID(t *testing.T) {
-
 	node, _ := NewNode(1)
-
 	var x, y ID
 	for i := 0; i < 1000000; i++ {
 		y = node.Generate()
@@ -41,21 +50,16 @@ func TestGenerateDuplicateID(t *testing.T) {
 
 // I feel like there's probably a better way
 func TestRace(t *testing.T) {
-
 	node, _ := NewNode(1)
-
 	go func() {
 		for i := 0; i < 1000000000; i++ {
-
 			NewNode(1)
 		}
 	}()
 
 	for i := 0; i < 4000; i++ {
-
 		node.Generate()
 	}
-
 }
 
 //******************************************************************************

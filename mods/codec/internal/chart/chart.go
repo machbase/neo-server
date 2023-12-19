@@ -42,15 +42,9 @@ type Chart struct {
 type ChartActions struct {
 }
 
-var idGen, _ = snowflake.NewNode(time.Now().Unix() % 1024)
-
 func NewChart() *Chart {
-	var id = "snowyDayCharty"
-	if idGen != nil {
-		id = strings.TrimSuffix(idGen.Generate().Base64(), "=")
-	}
 	return &Chart{
-		ChartID: id,
+		ChartID: snowflake.Generate(),
 		Width:   "600px",
 		Height:  "600px",
 	}
