@@ -12,8 +12,8 @@
         "dataView":{"show":true, "title":"view", "lang":["Data", "Close", "Refresh"]}
     }},
     "tooltip":{"show":true, "trigger":"axis"},
-    "xAxis": {"name":"time", "type":"time", "data":[1692670838086.467,1692670839086.467,1692670840086.467,1692670841086.467,1692670842086.467]},
-    "yAxis": {"name":"y", "type": "value" },
+    "xAxis":{"name":"time","type":"time"},
+    "yAxis":{"name":"y","type":"value"},
     "series":[
         {
         "type": "line", "data": [[1692670838086.467,-2],[1692670839086.467,-1],[1692670840086.467,0],[1692670841086.467,1],[1692670842086.467,2]],

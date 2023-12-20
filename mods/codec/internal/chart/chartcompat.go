@@ -54,9 +54,10 @@ func NewRectChart(typ string) *ChartW {
 		ret.Type = "line"
 	case "scatter", "bar":
 		ret.Type = typ
-	case "line3d", "scatter3d", "bar3d":
+	case "line3D", "scatter3D", "bar3D", "surface3D":
 		ret.Type = typ
 		ret.zAxisIdx = 2
+		ret.plugins = []string{"/web/echarts/echarts-gl.min.js"}
 	}
 	return ret
 }
@@ -270,13 +271,55 @@ func (w *ChartW) SetTimeformat(f string) {
 }
 
 func (w *ChartW) Close() {
+	switch w.Type {
+	default:
+		w.Close2D()
+	case "line3D", "scatter3D", "surface3D", "bar3D":
+		w.Close3D()
+	}
+	w.Chart.Close()
+}
+
+func (w *ChartW) Close3D() {
+	xAxis := fmt.Sprintf(`"xAxis3D":{"name":%q,"type":%q,"show":true},`, w.xAxisLabel, w.xAxisType)
+	yAxis := fmt.Sprintf(`"yAxis3D":{"name":%q,"type":%q,"show":true},`, w.yAxisLabel, w.yAxisType)
+	zAxis := fmt.Sprintf(`"zAxis3D":{"name":%q,"type":%q,"show":true},`, w.zAxisLabel, w.zAxisType)
+
+	series := []string{}
+	series = append(series, `"series":[`)
+	if len(w.Chart.data) > w.xAxisIdx && len(w.Chart.data) > w.yAxisIdx && len(w.Chart.data) > w.zAxisIdx {
+		for i := range w.Chart.data {
+			if i == w.xAxisIdx || i == w.yAxisIdx {
+				continue
+			}
+			data := []string{}
+			for n, d := range w.Chart.data[i] {
+				elm := []any{w.Chart.data[w.xAxisIdx][n], w.Chart.data[w.yAxisIdx][n], d}
+				marshal, err := json.Marshal(elm)
+				if err != nil {
+					marshal = []byte(err.Error())
+				}
+				data = append(data, string(marshal))
+			}
+			shading := "lambert" // "color", "realistic"
+			series = append(series, fmt.Sprintf(`{"type":%q,"coordinateSystem":"cartesian3D","data":[%s],"shading":%q}`,
+				w.Type, strings.Join(data, ","), shading))
+		}
+	}
+	series = append(series, `]`)
+
+	lines := []string{}
+	lines = append(lines, xAxis, yAxis, zAxis)
+	lines = append(lines, `"grid3D":{"viewControl": {"projection": "orthographic"}},`)
+	lines = append(lines, series...)
+	w.Chart.option = "{\n" + strings.Join(lines, "\n") + `}`
+}
+
+func (w *ChartW) Close2D() {
 	xAxis := fmt.Sprintf(`"xAxis":{"name":%q,"type":%q},`, w.xAxisLabel, w.xAxisType)
 	yAxis := fmt.Sprintf(`"yAxis":{"name":%q,"type":%q},`, w.yAxisLabel, w.yAxisType)
-	zAxis := ""
+
 	series := []string{}
-	if w.zAxisIdx >= 0 {
-		series = append(series, fmt.Sprintf(`"zAxis":{"type":%q},`, w.zAxisType))
-	}
 	series = append(series, `"series":[`)
 	for i := range w.Chart.data {
 		if i == w.xAxisIdx {
@@ -363,10 +406,6 @@ func (w *ChartW) Close() {
 	}
 	lines = append(lines, `"tooltip":{"show":true, "trigger":"axis"},`)
 	lines = append(lines, xAxis, yAxis)
-	if zAxis != "" {
-		lines = append(lines, zAxis)
-	}
 	lines = append(lines, series...)
 	w.Chart.option = "{\n" + strings.Join(lines, "\n") + `}`
-	w.Chart.Close()
 }

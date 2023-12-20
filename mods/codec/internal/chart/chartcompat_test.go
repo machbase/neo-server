@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/internal/chart"
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -193,14 +194,15 @@ func TestBarCompat(t *testing.T) {
 }
 */
 
-/*
-func TestLine3D(t *testing.T) {
+func TestLine3DCompat(t *testing.T) {
 	buffer := &bytes.Buffer{}
+	fsmock := &VolatileFileWriterMock{}
 
-	line := echart.NewLine3D()
+	line := chart.NewRectChart("line3D")
 	opts := []opts.Option{
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.VolatileFileWriter(fsmock),
+		opts.ChartId("zmsXewYeZOqW"),
 		opts.ChartJson(true),
 		opts.TimeLocation(time.UTC),
 		opts.XAxis(0, "time", "time"),
@@ -216,7 +218,6 @@ func TestLine3D(t *testing.T) {
 	for _, o := range opts {
 		o(line)
 	}
-
 	require.Equal(t, "application/json", line.ContentType())
 
 	line.Open()
@@ -227,11 +228,28 @@ func TestLine3D(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"data":[{"value":[1692670838086,0,0]}]}`
-	require.True(t, strings.Contains(buffer.String(), substr))
-	substr = `"data":[{"value":[1692670839086,1,1]}]}`
-	require.True(t, strings.Contains(buffer.String(), substr))
-	substr = `data":[{"value":[1692670840086,2,2]}]}]`
-	require.True(t, strings.Contains(buffer.String(), substr))
+	// substr := `"data":[{"value":[1692670838086,0,0]}]}`
+	// require.True(t, strings.Contains(buffer.String(), substr))
+	// substr = `"data":[{"value":[1692670839086,1,1]}]}`
+	// require.True(t, strings.Contains(buffer.String(), substr))
+	// substr = `data":[{"value":[1692670840086,2,2]}]}]`
+	// require.True(t, strings.Contains(buffer.String(), substr))
+
+	expect, err := os.ReadFile(filepath.Join("test", fmt.Sprintf("compat_line3d.%s", "json")))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr := string(expect)
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+
+	expect, err = os.ReadFile(filepath.Join("test", "compat_line3d.js"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr = string(expect)
+	if !StringsEq(t, expectStr, fsmock.buff.String()) {
+		require.Equal(t, expectStr, fsmock.buff.String(), "js result unmatched\n%s", fsmock.buff.String())
+	}
 }
-*/
