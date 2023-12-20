@@ -23,8 +23,15 @@ func TestCompat(t *testing.T) {
 		c.SetChartJson(output == "json")
 		c.SetChartId("WejMYXCGcYNL")
 		c.SetTheme("westeros")
+		c.SetTitle("Title")
+		c.SetSubtitle("subtitle")
 		c.SetGlobalOptions(`{"animation":true, "color":["#80FFA5", "#00DDFF", "#37A2FF"]}`)
 		c.SetSize("400px", "300px")
+		c.SetDataZoom("slider", 0, 100)
+		c.SetToolboxSaveAsImage("test.png")
+		c.SetToolboxDataView()
+		c.SetToolboxDataZoom()
+		c.SetXAxis(0, "time", "time")
 		c.SetVisualMapColor(-2.0, 2.0,
 			"#a50026", "#d73027", "#f46d43", "#fdae61", "#e0f3f8",
 			"#abd9e9", "#74add1", "#4575b4", "#313695", "#313695",
@@ -38,6 +45,10 @@ func TestCompat(t *testing.T) {
 
 		tick := time.Unix(0, 1692670838086467000)
 
+		c.SetMarkAreaNameCoord(tick.Add(500*time.Millisecond), tick.Add(1*time.Second), "Area1", "#ff000033", 0.3)
+		c.SetMarkAreaNameCoord(tick.Add(600*time.Millisecond), tick.Add(1200*time.Millisecond), "Area2", "#ff000033", 0.3)
+		c.SetMarkLineXAxisCoord(tick.Add(200*time.Millisecond), "line-X")
+		c.SetMarkLineYAxisCoord(0.5, "half")
 		c.Open()
 		c.AddRow([]any{tick.Add(0 * time.Second), -2.0})
 		c.AddRow([]any{tick.Add(1 * time.Second), -1.0})
@@ -71,3 +82,156 @@ func TestCompat(t *testing.T) {
 		}
 	}
 }
+
+/*
+func TestLineCompat(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	fsmock := &VolatileFileWriterMock{}
+
+	line := chart.NewRectChart("line")
+	opts := []opts.Option{
+		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.VolatileFileWriter(fsmock),
+		opts.ChartJson(true),
+		opts.TimeLocation(time.UTC),
+		opts.XAxis(0, "time", "time"),
+		opts.YAxis(1, "demo"),
+		opts.Timeformat("15:04:05.999999999"),
+		opts.DataZoom("slider", 0, 100),
+		opts.SeriesLabels("test-data"),
+		opts.Title("Title"),
+		opts.Subtitle("substitle"),
+		opts.Theme("westerose"),
+		opts.Size("600px", "600px"),
+	}
+	for _, o := range opts {
+		o(line)
+	}
+
+	require.Equal(t, "application/json", line.ContentType())
+
+	line.Open()
+	tick := time.Unix(0, 1692670838086467000)
+	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+	line.Flush(false)
+	line.Close()
+
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
+	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
+}
+*/
+/*
+func TestScatterCompat(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	fsmock := &VolatileFileWriterMock{}
+
+	line := chart.NewRectChart("scatter")
+	opts := []opts.Option{
+		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.VolatileFileWriter(fsmock),
+		opts.ChartJson(true),
+		opts.TimeLocation(time.UTC),
+		opts.XAxis(0, "time", "time"),
+		opts.YAxis(1, "demo"),
+		opts.Timeformat("15:04:05.999999999"),
+		opts.DataZoom("slider", 0, 100),
+		opts.SeriesLabels("test-data"),
+	}
+	for _, o := range opts {
+		o(line)
+	}
+
+	require.Equal(t, "application/json", line.ContentType())
+
+	line.Open()
+	tick := time.Unix(0, 1692670838086467000)
+	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+	line.Flush(false)
+	line.Close()
+
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
+	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
+}
+*/
+/*
+func TestBarCompat(t *testing.T) {
+	buffer := &bytes.Buffer{}
+	fsmock := &VolatileFileWriterMock{}
+
+	line := chart.NewRectChart("bar")
+	opts := []opts.Option{
+		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.VolatileFileWriter(fsmock),
+		opts.ChartJson(true),
+		opts.TimeLocation(time.UTC),
+		opts.XAxis(0, "time", "time"),
+		opts.YAxis(1, "demo"),
+		opts.Timeformat("15:04:05.999999999"),
+		opts.DataZoom("slider", 0, 100),
+		opts.SeriesLabels("test-data"),
+	}
+	for _, o := range opts {
+		o(line)
+	}
+
+	require.Equal(t, "application/json", line.ContentType())
+
+	line.Open()
+	tick := time.Unix(0, 1692670838086467000)
+	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
+	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
+	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
+	line.Flush(false)
+	line.Close()
+
+	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
+	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
+}
+*/
+
+/*
+func TestLine3D(t *testing.T) {
+	buffer := &bytes.Buffer{}
+
+	line := echart.NewLine3D()
+	opts := []opts.Option{
+		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.VolatileFileWriter(fsmock),
+		opts.ChartJson(true),
+		opts.TimeLocation(time.UTC),
+		opts.XAxis(0, "time", "time"),
+		opts.YAxis(1, "demo"),
+		opts.Timeformat("15:04:05.999999999"),
+		opts.DataZoom("slider", 0, 100),
+		opts.SeriesLabels("test-data"),
+		opts.Title("Title"),
+		opts.Subtitle("substitle"),
+		opts.Theme("westerose"),
+		opts.Size("600px", "600px"),
+	}
+	for _, o := range opts {
+		o(line)
+	}
+
+	require.Equal(t, "application/json", line.ContentType())
+
+	line.Open()
+	tick := time.Unix(0, 1692670838086467000)
+	line.AddRow([]any{tick.Add(0 * time.Second), 0.0, 0.0})
+	line.AddRow([]any{tick.Add(1 * time.Second), 1.0, 1.0})
+	line.AddRow([]any{tick.Add(2 * time.Second), 2.0, 2.0})
+	line.Flush(false)
+	line.Close()
+
+	substr := `"data":[{"value":[1692670838086,0,0]}]}`
+	require.True(t, strings.Contains(buffer.String(), substr))
+	substr = `"data":[{"value":[1692670839086,1,1]}]}`
+	require.True(t, strings.Contains(buffer.String(), substr))
+	substr = `data":[{"value":[1692670840086,2,2]}]}]`
+	require.True(t, strings.Contains(buffer.String(), substr))
+}
+*/

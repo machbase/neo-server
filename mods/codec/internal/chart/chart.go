@@ -172,13 +172,9 @@ func convValue(val any) (ret any) {
 		}
 		ret = v
 	case *time.Time:
-		// t := v.UnixNano()
-		// ret = float64(t/int64(time.Millisecond)) + float64(t%int64(time.Millisecond))/float64(time.Millisecond)
-		ret = v.UnixMilli()
+		ret = float64(v.UnixMicro()) / 1000
 	case time.Time:
-		// t := v.UnixNano()
-		// ret = float64(t/int64(time.Millisecond)) + float64(t%int64(time.Millisecond))/float64(time.Millisecond)
-		ret = v.UnixMilli()
+		ret = float64(v.UnixMicro()) / 1000
 	default:
 		ret = v
 	}
