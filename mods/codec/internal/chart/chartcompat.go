@@ -35,7 +35,10 @@ type ChartW struct {
 	markAreaList []string
 	markLineList []string
 
-	grid3D string
+	gridWHD    [3]float64
+	autoRotate float64
+	opacity    float64
+	lineWidth  float64
 }
 
 func NewRectChart(typ string) *ChartW {
@@ -49,6 +52,8 @@ func NewRectChart(typ string) *ChartW {
 	ret.zAxisIdx = -1
 	ret.zAxisLabel = "z"
 	ret.zAxisType = "value"
+	ret.gridWHD[0], ret.gridWHD[1] = 100, 100
+
 	switch typ {
 	default: // case "line":
 		ret.Type = "line"
@@ -58,6 +63,9 @@ func NewRectChart(typ string) *ChartW {
 		ret.Type = typ
 		ret.zAxisIdx = 2
 		ret.plugins = []string{"/web/echarts/echarts-gl.min.js"}
+		ret.opacity = 1.0
+		ret.lineWidth = 1.0
+		ret.gridWHD[2] = 100
 	}
 	return ret
 }
@@ -202,28 +210,29 @@ func (w *ChartW) SetSubtitle(str string) {
 }
 
 func (c *ChartW) SetGridSize(args ...float64) {
-	c.grid3D = `"grid3D":{"boxWidth": 100, "boxHeight": 100, "boxDepth": 100}`
-
-	widthHeightDepth := [3]float64{100, 100, 100}
 	for i := 0; i < 3 && i < len(args); i++ {
-		widthHeightDepth[i] = args[i]
+		c.gridWHD[i] = args[i]
 	}
-	c.grid3D = fmt.Sprintf(`"grid3D":{"boxWidth": %v, "boxHeight": %v, "boxDepth": %v}`,
-		widthHeightDepth[0], widthHeightDepth[1], widthHeightDepth[2])
+}
+
+func (w *ChartW) SetLineWidth(width float64) {
+	w.lineWidth = width
 }
 
 func (w *ChartW) SetOpacity(opacity float64) {
 	// 3D only
+	w.opacity = opacity
 }
 
 func (w *ChartW) SetAutoRotate(speed float64) {
 	// 3D only
 	if speed < 0 {
-		speed = 0
+		speed = 180
 	}
 	if speed > 180 {
 		speed = 180
 	}
+	w.autoRotate = speed
 }
 
 func (w *ChartW) SetToolboxSaveAsImage(name string) {
@@ -281,6 +290,9 @@ func (w *ChartW) Close() {
 }
 
 func (w *ChartW) Close3D() {
+	grid3D := fmt.Sprintf(`"grid3D":{"boxWidth":%v, "boxHeight":%v, "boxDepth":%v, "viewControl":{"projection": "orthographic", "autoRotate":%t,"speed":%v}},`,
+		w.gridWHD[0], w.gridWHD[1], w.gridWHD[2], w.autoRotate != 0, w.autoRotate)
+
 	xAxis := fmt.Sprintf(`"xAxis3D":{"name":%q,"type":%q,"show":true},`, w.xAxisLabel, w.xAxisType)
 	yAxis := fmt.Sprintf(`"yAxis3D":{"name":%q,"type":%q,"show":true},`, w.yAxisLabel, w.yAxisType)
 	zAxis := fmt.Sprintf(`"zAxis3D":{"name":%q,"type":%q,"show":true},`, w.zAxisLabel, w.zAxisType)
@@ -302,15 +314,39 @@ func (w *ChartW) Close3D() {
 				data = append(data, string(marshal))
 			}
 			shading := "lambert" // "color", "realistic"
-			series = append(series, fmt.Sprintf(`{"type":%q,"coordinateSystem":"cartesian3D","data":[%s],"shading":%q}`,
-				w.Type, strings.Join(data, ","), shading))
+			style := fmt.Sprintf(`"itemStyle":{"opacity":%v}`, w.opacity)
+			if w.Type == "line3D" {
+				style = fmt.Sprintf(`"lineStyle":{"opacity":%v,"width":%v}`, w.opacity, w.lineWidth)
+			}
+			series = append(series, fmt.Sprintf(`{"type":%q,"coordinateSystem":"cartesian3D","data":[%s],"shading":%q,%s}`,
+				w.Type, strings.Join(data, ","), shading, style))
 		}
 	}
 	series = append(series, `]`)
 
 	lines := []string{}
 	lines = append(lines, xAxis, yAxis, zAxis)
-	lines = append(lines, `"grid3D":{"viewControl": {"projection": "orthographic"}},`)
+	lines = append(lines, grid3D)
+	if w.visualMap != "" {
+		lines = append(lines, w.visualMap+",")
+	}
+	if w.toolboxSaveAsImage != "" || w.toolboxDataZoom != "" || w.toolboxDataView != "" {
+		lines = append(lines, `"toolbox":{ "feature":{`)
+		features := []string{}
+		if w.toolboxSaveAsImage != "" {
+			features = append(features, "    "+w.toolboxSaveAsImage)
+		}
+		if w.toolboxDataZoom != "" {
+			features = append(features, "    "+w.toolboxDataZoom)
+		}
+		if w.toolboxDataView != "" {
+			features = append(features, "    "+w.toolboxDataView)
+		}
+		lines = append(lines, strings.Join(features, ",\n"))
+		lines = append(lines, `}},`)
+	}
+	lines = append(lines, `"tooltip":{"show":true, "trigger":"axis"},`)
+
 	lines = append(lines, series...)
 	w.Chart.option = "{\n" + strings.Join(lines, "\n") + `}`
 }
@@ -382,9 +418,6 @@ func (w *ChartW) Close2D() {
 	}
 	if w.dataZoom != "" {
 		lines = append(lines, w.dataZoom+",")
-	}
-	if w.grid3D != "" {
-		lines = append(lines, w.grid3D+",")
 	}
 	if w.visualMap != "" {
 		lines = append(lines, w.visualMap+",")
