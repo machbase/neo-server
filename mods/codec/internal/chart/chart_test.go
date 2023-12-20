@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func HTMLEq(t *testing.T, expect string, actual string) bool {
+func StringsEq(t *testing.T, expect string, actual string) bool {
 	matched := false
 	t.Helper()
-	re := strings.Split(actual, "\n")
-	ex := strings.Split(expect, "\n")
+	re := strings.Split(strings.TrimSpace(actual), "\n")
+	ex := strings.Split(strings.TrimSpace(expect), "\n")
 	if len(re) == len(ex) {
 		for i := range re {
 			if strings.TrimSpace(re[i]) != strings.TrimSpace(ex[i]) {
@@ -33,11 +33,27 @@ mismatched:
 	return matched
 }
 
+type VolatileFileWriterMock struct {
+	name     string
+	deadline time.Time
+	buff     bytes.Buffer
+}
+
+func (v *VolatileFileWriterMock) VolatileFilePrefix() string { return "/web/api/tql-assets/" }
+
+func (v *VolatileFileWriterMock) VolatileFileWrite(name string, data []byte, deadline time.Time) {
+	v.buff.Write(data)
+	v.name = name
+	v.deadline = deadline
+}
+
 func TestLine(t *testing.T) {
 	for _, output := range []string{"json", "html"} {
+		fsmock := &VolatileFileWriterMock{}
 		buffer := &bytes.Buffer{}
 		c := chart.NewChart()
 		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetVolatileFileWriter(fsmock)
 		c.SetChartJson(output == "json")
 		c.SetChartId("WejMYXCGcYNL")
 		c.SetTheme("white")
@@ -71,9 +87,19 @@ func TestLine(t *testing.T) {
 		if output == "json" {
 			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 		} else {
-			if !HTMLEq(t, expectStr, buffer.String()) {
+			if !StringsEq(t, expectStr, buffer.String()) {
 				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
 			}
+		}
+
+		expect, err = os.ReadFile(filepath.Join("test", "test_line.js"))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr = string(expect)
+		if !StringsEq(t, expectStr, fsmock.buff.String()) {
+			require.Equal(t, expectStr, fsmock.buff.String(), "js result unmatched\n%s", fsmock.buff.String())
 		}
 	}
 }
@@ -81,8 +107,10 @@ func TestLine(t *testing.T) {
 func TestScatter(t *testing.T) {
 	for _, output := range []string{"json", "html"} {
 		buffer := &bytes.Buffer{}
+		fsmock := &VolatileFileWriterMock{}
 		c := chart.NewChart()
 		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetVolatileFileWriter(fsmock)
 		c.SetChartJson(output == "json")
 		c.ChartID = "WejMYXCGcYNL"
 		c.Theme = "white"
@@ -116,9 +144,19 @@ func TestScatter(t *testing.T) {
 		if output == "json" {
 			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 		} else {
-			if !HTMLEq(t, expectStr, buffer.String()) {
+			if !StringsEq(t, expectStr, buffer.String()) {
 				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
 			}
+		}
+
+		expect, err = os.ReadFile(filepath.Join("test", "test_scatter.js"))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr = string(expect)
+		if !StringsEq(t, expectStr, fsmock.buff.String()) {
+			require.Equal(t, expectStr, fsmock.buff.String(), "js result unmatched\n%s", fsmock.buff.String())
 		}
 	}
 }
@@ -173,7 +211,7 @@ func TestTangentialPolarBar(t *testing.T) {
 		if output == "json" {
 			require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
 		} else {
-			if !HTMLEq(t, expectStr, buffer.String()) {
+			if !StringsEq(t, expectStr, buffer.String()) {
 				require.Equal(t, expectStr, buffer.String(), "html result unmatched\n%s", buffer.String())
 			}
 		}

@@ -6,7 +6,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
-	"github.com/machbase/neo-server/mods/codec/internal/echart"
 	"github.com/machbase/neo-server/mods/codec/internal/geomap"
 	"github.com/machbase/neo-server/mods/codec/internal/html"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
@@ -45,10 +44,6 @@ var (
 	_ RowsEncoder = &csv.Exporter{}
 	_ RowsEncoder = &markdown.Exporter{}
 	_ RowsEncoder = &html.Exporter{}
-	_ RowsEncoder = &echart.Base2D{}
-	_ RowsEncoder = &echart.Line3D{}
-	_ RowsEncoder = &echart.Bar3D{}
-	_ RowsEncoder = &echart.Scatter3D{}
 	_ RowsEncoder = &geomap.GeoMap{}
 )
 
@@ -71,19 +66,19 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case ECHART:
 		ret = chart.NewChart()
 	case ECHART_LINE:
-		ret = echart.NewRectChart(echart.LINE)
+		ret = chart.NewRectChart("line")
 	case ECHART_SCATTER:
-		ret = echart.NewRectChart(echart.SCATTER)
+		ret = chart.NewRectChart("scatter")
 	case ECHART_BAR:
-		ret = echart.NewRectChart(echart.BAR)
+		ret = chart.NewRectChart("bar")
 	case ECHART_LINE3D:
-		ret = echart.NewLine3D()
+		ret = chart.NewRectChart("line3D")
 	case ECHART_SURFACE3D:
-		ret = echart.NewSurface3D()
+		ret = chart.NewRectChart("surface3D")
 	case ECHART_SCATTER3D:
-		ret = echart.NewScatter3D()
+		ret = chart.NewRectChart("scatter3D")
 	case ECHART_BAR3D:
-		ret = echart.NewBar3D()
+		ret = chart.NewRectChart("bar3D")
 	case DISCARD:
 		ret = &DiscardSink{}
 	case GEOMAP:

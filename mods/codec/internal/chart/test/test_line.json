@@ -3,6 +3,7 @@
     "jsAssets": [
         "/web/echarts/echarts.min.js"
     ],
+    "jsCodeAssets": ["/web/api/tql-assets/WejMYXCGcYNL.js"],
     "style": {
         "width": "600px",
         "height": "600px"

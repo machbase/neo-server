@@ -1,0 +1,15 @@
+{
+    "chartID":"WejMYXCGcYNL",
+
+    "jsAssets": ["/web/echarts/echarts.min.js","/web/echarts/themes/westeros.js"],
+
+
+
+    "jsCodeAssets": ["/web/api/tql-assets/WejMYXCGcYNL.js"],
+
+    "style": {
+        "width": "400px",
+        "height": "300px"
+    },
+    "theme": "westeros"
+}

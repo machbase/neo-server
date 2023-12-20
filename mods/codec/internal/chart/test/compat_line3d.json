@@ -1,0 +1,15 @@
+{
+    "chartID": "zmsXewYeZOqW",
+    "jsAssets": [
+        "/web/echarts/echarts.min.js",
+        "/web/echarts/echarts-gl.min.js"
+    ],
+    "jsCodeAssets": [
+        "/web/api/tql-assets/zmsXewYeZOqW.js"
+    ],
+    "style": {
+        "width": "600px",
+        "height": "600px"
+    },
+    "theme": "westerose"
+}
