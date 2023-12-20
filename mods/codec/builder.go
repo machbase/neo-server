@@ -71,11 +71,11 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case ECHART:
 		ret = chart.NewChart()
 	case ECHART_LINE:
-		ret = echart.NewRectChart(echart.LINE)
+		ret = chart.NewRectChart("line")
 	case ECHART_SCATTER:
-		ret = echart.NewRectChart(echart.SCATTER)
+		ret = chart.NewRectChart("scatter")
 	case ECHART_BAR:
-		ret = echart.NewRectChart(echart.BAR)
+		ret = chart.NewRectChart("bar")
 	case ECHART_LINE3D:
 		ret = echart.NewLine3D()
 	case ECHART_SURFACE3D:
