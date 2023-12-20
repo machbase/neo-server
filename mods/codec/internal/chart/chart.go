@@ -198,9 +198,10 @@ var themeNames = map[string]bool{
 	"roma":           true,
 }
 
-var pluginNames = map[string]bool{
-	"liquidfill": true,
-	"wordcloud":  true,
+var pluginNames = map[string]string{
+	"liquidfill": "/web/echarts/echarts-liquidfill.min.js",
+	"wordcloud":  "/web/echarts/echarts-wordcloud.min.js",
+	"gl":         "/web/echarts/echarts-gl.min.js",
 }
 
 func (c *Chart) Close() {
@@ -233,8 +234,8 @@ func (c *Chart) Close() {
 		}
 	}
 	for _, plugin := range c.plugins {
-		if _, ok := pluginNames[plugin]; ok {
-			c.JSAssets = append(c.JSAssets, fmt.Sprintf("/web/echarts/echarts-%s.min.js", plugin))
+		if path, ok := pluginNames[plugin]; ok {
+			c.JSAssets = append(c.JSAssets, path)
 		} else {
 			c.JSAssets = append(c.JSAssets, plugin)
 		}
