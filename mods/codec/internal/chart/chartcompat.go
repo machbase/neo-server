@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type ChartW struct {
@@ -40,7 +42,7 @@ func NewRectChart(typ string) *ChartW {
 	var ret *ChartW = &ChartW{Chart: NewChart(), Type: "line"}
 	ret.xAxisIdx = 0
 	ret.xAxisLabel = "x"
-	ret.xAxisType = "time"
+	ret.xAxisType = "value"
 	ret.yAxisIdx = 1
 	ret.yAxisLabel = "y"
 	ret.yAxisType = "value"
@@ -91,38 +93,101 @@ func (w *ChartW) SetVisualMapColor(min float64, max float64, colors ...string) {
 		min, max, strings.Join(cls, ","))
 }
 
-func (w *ChartW) SetXAxis(idx int, label string, typ ...string) {
-	w.xAxisIdx = idx
-	w.xAxisLabel = label
-	if len(typ) > 0 {
-		if typ[0] == "time" {
-			w.xAxisType = "time"
+// xAxis(idx int, label string, type string)
+func (w *ChartW) SetXAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if w.logger != nil {
+			w.logger.LogError("xAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if w.logger != nil {
+			w.logger.LogError("xAxis() idx", err.Error())
+		}
+	} else {
+		w.xAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if w.logger != nil {
+			w.logger.LogError("xAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		w.xAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if w.logger != nil {
+				w.logger.LogError("xAxis() type should be string, got %T", args[1])
+			}
 		} else {
-			w.xAxisType = "value"
+			w.xAxisType = typ
 		}
 	}
 }
 
-func (w *ChartW) SetYAxis(idx int, label string, typ ...string) {
-	w.yAxisIdx = idx
-	w.yAxisLabel = label
-	if len(typ) > 0 {
-		if typ[0] == "time" {
-			w.yAxisType = "time"
+// yAxis(idx int, label string, type string)
+func (w *ChartW) SetYAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if w.logger != nil {
+			w.logger.LogError("yAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if w.logger != nil {
+			w.logger.LogError("yAxis() idx", err.Error())
+		}
+	} else {
+		w.yAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if w.logger != nil {
+			w.logger.LogError("yAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		w.yAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if w.logger != nil {
+				w.logger.LogError("yAxis() type should be string, got %T", args[1])
+			}
 		} else {
-			w.yAxisType = "value"
+			w.yAxisType = typ
 		}
 	}
 }
 
-func (w *ChartW) SetZAxis(idx int, label string, typ ...string) {
-	w.zAxisIdx = idx
-	w.zAxisLabel = label
-	if len(typ) > 0 {
-		if typ[0] == "time" {
-			w.zAxisType = "time"
+// zAxis(idx int, label string, type string)
+func (w *ChartW) SetZAxis(args ...any) {
+	if len(args) != 2 && len(args) != 3 {
+		if w.logger != nil {
+			w.logger.LogError("zAxis(idx, label [, type]), got %d args", len(args))
+		}
+		return
+	}
+	if n, err := util.ToFloat64(args[0]); err != nil {
+		if w.logger != nil {
+			w.logger.LogError("zAxis() idx", err.Error())
+		}
+	} else {
+		w.zAxisIdx = int(n)
+	}
+	if label, ok := args[1].(string); !ok {
+		if w.logger != nil {
+			w.logger.LogError("zAxis() label should be string, got %T", args[1])
+		}
+	} else {
+		w.zAxisLabel = label
+	}
+	if len(args) == 3 {
+		if typ, ok := args[2].(string); !ok {
+			if w.logger != nil {
+				w.logger.LogError("zAxis() type should be string, got %T", args[1])
+			}
 		} else {
-			w.zAxisType = "value"
+			w.zAxisType = typ
 		}
 	}
 }
@@ -205,21 +270,16 @@ func (w *ChartW) SetTimeformat(f string) {
 }
 
 func (w *ChartW) Close() {
-	xAxis := `"xAxis": {},`
-	yAxis := fmt.Sprintf(`"yAxis": {"name":%q, "type": %q },`, w.yAxisLabel, w.yAxisType)
+	xAxis := fmt.Sprintf(`"xAxis":{"name":%q,"type":%q},`, w.xAxisLabel, w.xAxisType)
+	yAxis := fmt.Sprintf(`"yAxis":{"name":%q,"type":%q},`, w.yAxisLabel, w.yAxisType)
 	zAxis := ""
 	series := []string{}
 	if w.zAxisIdx >= 0 {
-		series = append(series, fmt.Sprintf(`"zAxis": { "type": %q },`, w.zAxisType))
+		series = append(series, fmt.Sprintf(`"zAxis":{"type":%q},`, w.zAxisType))
 	}
 	series = append(series, `"series":[`)
 	for i := range w.Chart.data {
 		if i == w.xAxisIdx {
-			if w.xAxisType != "time" {
-				xAxis = fmt.Sprintf(`"xAxis": {"name":%q, "type":%q},`, w.xAxisLabel, w.xAxisType)
-			} else {
-				xAxis = fmt.Sprintf(`"xAxis": {"name":%q, "type":%q, "data":column(%d)},`, w.xAxisLabel, w.xAxisType, w.xAxisIdx)
-			}
 			continue
 		}
 		allMarkers := ""
@@ -248,20 +308,16 @@ func (w *ChartW) Close() {
 			comma = ",\n"
 		}
 		seriesData := ""
-		if w.xAxisType == "time" {
-			data := []string{}
-			for n, d := range w.Chart.data[i] {
-				elm := []any{w.Chart.data[w.xAxisIdx][n], d}
-				marshal, err := json.Marshal(elm)
-				if err != nil {
-					marshal = []byte(err.Error())
-				}
-				data = append(data, string(marshal))
+		data := []string{}
+		for n, d := range w.Chart.data[i] {
+			elm := []any{w.Chart.data[w.xAxisIdx][n], d}
+			marshal, err := json.Marshal(elm)
+			if err != nil {
+				marshal = []byte(err.Error())
 			}
-			seriesData = fmt.Sprintf(`"type": %q, "data": [%s]`, w.Type, strings.Join(data, ","))
-		} else {
-			seriesData = fmt.Sprintf(`"type": %q, "data": column(%d)`, w.Type, i)
+			data = append(data, string(marshal))
 		}
+		seriesData = fmt.Sprintf(`"type": %q, "data": [%s]`, w.Type, strings.Join(data, ","))
 		if allMarkers != "" {
 			series = append(series, fmt.Sprintf("    %s{\n    %s,\n    %s\n    }", comma, seriesData, allMarkers))
 		} else {
