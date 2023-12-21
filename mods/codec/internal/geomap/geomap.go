@@ -32,8 +32,6 @@ type GeoMap struct {
 
 	InitialZoomLevel int
 
-	mapOption string
-
 	tileGrayscale float64
 	tileTemplate  string
 	tileOption    string
@@ -44,6 +42,7 @@ type GeoMap struct {
 	JSCodeAssets []string
 	PageTitle    string
 
+	crs         string
 	objs        []nums.Geography
 	icons       []*Icon
 	pointStyles map[string]*PointStyle
@@ -56,6 +55,7 @@ func New() *GeoMap {
 		Width:       "600px",
 		Height:      "600px",
 		pointStyles: map[string]*PointStyle{},
+		crs:         "L.CRS.EPSG3857",
 	}
 }
 
@@ -234,21 +234,17 @@ func (gm *GeoMap) Close() {
 	} else if gm.tileTemplate == "kakao" {
 		gm.tileTemplate = `http://map{s}.daumcdn.net/map_2d_hd/2106wof/L{z}/{y}/{x}.png`
 		gm.tileOption = `{"tms": true, "subdomains": "01234", "zoomReverse":true, "zoomOffset": 1, "maxZoom":13, "minZoom":0 }`
-		crsVar := "__crs"
-		gm.mapOption = fmt.Sprintf(`{crs: %s}`, crsVar)
+		gm.crs = "__crs"
 		// https://github.com/proj4js/proj4js/releases/tag/2.9.2
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4.js")
 		// Leaflet and proj4 must be loaded first
 		// https://github.com/kartena/Proj4Leaflet/releases/tag/1.0.1
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4leaflet.js")
 		// add crs code
-		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, crsVar))
+		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, gm.crs))
 	}
-	if gm.mapOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s", %s);`, gm.MapID, gm.mapOption))
-	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s");`, gm.MapID))
-	}
+
+	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s", {crs: %s, attributionControl:false});`, gm.MapID, gm.crs))
 	if gm.tileOption != "" {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
 	} else {

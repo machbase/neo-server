@@ -11,5 +11,7 @@
     "cssAssets": [
         "/web/geomap/leaflet.css"
     ],
-    "jsCodeAssets": []
+    "jsCodeAssets": [
+        "/web/api/tql-assets/WejMYXCGcYNL.js"
+    ]
 }
