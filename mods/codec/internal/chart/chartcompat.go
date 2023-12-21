@@ -358,6 +358,9 @@ func (w *ChartW) Close3D() {
 }
 
 func (w *ChartW) Close2D() {
+	if t, ok := w.typeHint[w.xAxisIdx]; ok && t == "time" {
+		w.xAxisType = "time"
+	}
 	xAxis := fmt.Sprintf(`"xAxis":{"name":%q,"type":%q},`, w.xAxisLabel, w.xAxisType)
 	yAxis := fmt.Sprintf(`"yAxis":{"name":%q,"type":%q},`, w.yAxisLabel, w.yAxisType)
 

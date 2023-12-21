@@ -24,6 +24,7 @@ type Chart struct {
 
 	logger             facility.Logger
 	volatileFileWriter facility.VolatileFileWriter
+	typeHint           map[int]string
 
 	// Common template
 	ChartID string
@@ -159,24 +160,40 @@ func (c *Chart) AddRow(values []any) error {
 		if len(c.data) < i+1 {
 			c.data = append(c.data, []any{})
 		}
-		c.data[i] = append(c.data[i], convValue(val))
+		convVal, hint := convValueType(val)
+		c.data[i] = append(c.data[i], convVal)
+		if hint != "" {
+			if c.typeHint == nil {
+				c.typeHint = map[int]string{}
+			}
+			c.typeHint[i] = hint
+		}
 	}
 	return nil
 }
 
 func convValue(val any) (ret any) {
+	v, _ := convValueType(val)
+	return v
+}
+
+func convValueType(val any) (ret any, typeHint string) {
 	switch v := val.(type) {
 	case []any:
 		for i, elm := range v {
 			v[i] = convValue(elm)
 		}
 		ret = v
+		typeHint = ""
 	case *time.Time:
 		ret = float64(v.UnixMicro()) / 1000
+		typeHint = "time"
 	case time.Time:
 		ret = float64(v.UnixMicro()) / 1000
+		typeHint = "time"
 	default:
 		ret = v
+		typeHint = ""
 	}
 	return
 }
