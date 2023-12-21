@@ -32,6 +32,8 @@ type ChartW struct {
 	toolboxDataZoom    string
 	toolboxDataView    string
 
+	legendData []string
+
 	markAreaList []string
 	markLineList []string
 
@@ -76,6 +78,10 @@ func (w *ChartW) SetGlobalOptions(opt string) {
 		opt = strings.TrimSuffix(opt, "}")
 	}
 	w.globalOption = opt
+}
+
+func (w *ChartW) SetSeriesLabels(args ...string) {
+	w.legendData = args
 }
 
 func (w *ChartW) SetDataZoom(typ string, minPercentage float32, maxPercentage float32) {
@@ -357,12 +363,14 @@ func (w *ChartW) Close2D() {
 
 	series := []string{}
 	series = append(series, `"series":[`)
+	seriesIdx := 0
+	legendData := []string{}
 	for i := range w.Chart.data {
 		if i == w.xAxisIdx {
 			continue
 		}
 		allMarkers := ""
-		if len(series) == 1 {
+		if seriesIdx == 0 {
 			lines := []string{}
 			if len(w.markAreaList) > 0 {
 				areaData := []string{}
@@ -383,10 +391,16 @@ func (w *ChartW) Close2D() {
 			}
 		}
 		comma := ""
-		if i == 0 {
+		if seriesIdx != 0 {
 			comma = ",\n"
 		}
 		seriesData := ""
+		seriesName := fmt.Sprintf(`"column[%d]"`, i)
+		if len(w.legendData) > seriesIdx {
+			seriesName = fmt.Sprintf(`%q`, w.legendData[seriesIdx])
+		}
+		legendData = append(legendData, seriesName)
+
 		data := []string{}
 		for n, d := range w.Chart.data[i] {
 			elm := []any{w.Chart.data[w.xAxisIdx][n], d}
@@ -396,12 +410,13 @@ func (w *ChartW) Close2D() {
 			}
 			data = append(data, string(marshal))
 		}
-		seriesData = fmt.Sprintf(`"type": %q, "data": [%s]`, w.Type, strings.Join(data, ","))
+		seriesData = fmt.Sprintf(`"type":%q, "name":%s, "data":[%s]`, w.Type, seriesName, strings.Join(data, ","))
 		if allMarkers != "" {
 			series = append(series, fmt.Sprintf("    %s{\n    %s,\n    %s\n    }", comma, seriesData, allMarkers))
 		} else {
 			series = append(series, fmt.Sprintf(`    %s{%s}`, comma, seriesData))
 		}
+		seriesIdx++
 	}
 	series = append(series, `]`)
 
@@ -415,6 +430,9 @@ func (w *ChartW) Close2D() {
 	}
 	if w.globalOption != "" {
 		lines = append(lines, w.globalOption+",")
+	}
+	if len(legendData) > 0 {
+		lines = append(lines, fmt.Sprintf(`"legend":{"show":true,"data":[%s]},`, strings.Join(legendData, ",")))
 	}
 	if w.dataZoom != "" {
 		lines = append(lines, w.dataZoom+",")

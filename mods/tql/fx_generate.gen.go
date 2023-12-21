@@ -204,7 +204,6 @@ func NewNode(task *Task) *Node {
 		"tz":        x.gen_tz,
 		"sep":       x.gen_sep,
 		// codec.opts
-		"assetHost":           x.gen_assetHost,
 		"autoRotate":          x.gen_autoRotate,
 		"boxDrawBorder":       x.gen_boxDrawBorder,
 		"boxSeparateColumns":  x.gen_boxSeparateColumns,
@@ -246,8 +245,6 @@ func NewNode(task *Task) *Node {
 		"precision":           x.gen_precision,
 		"rownum":              x.gen_rownum,
 		"seriesLabels":        x.gen_seriesLabels,
-		"seriesOptions":       x.gen_seriesOptions,
-		"showGrid":            x.gen_showGrid,
 		"size":                x.gen_size,
 		"substituteNull":      x.gen_substituteNull,
 		"subtitle":            x.gen_subtitle,
@@ -2799,21 +2796,6 @@ func (x *Node) gen_sep(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_assetHost
-//
-// syntax: assetHost(string)
-func (x *Node) gen_assetHost(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("assetHost", 1, len(args))
-	}
-	p0, err := convString(args, 0, "assetHost", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.AssetHost(p0)
-	return ret, nil
-}
-
 // gen_autoRotate
 //
 // syntax: autoRotate(float64)
@@ -3481,37 +3463,6 @@ func (x *Node) gen_seriesLabels(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.SeriesLabels(p0...)
-	return ret, nil
-}
-
-// gen_seriesOptions
-//
-// syntax: seriesOptions(...string)
-func (x *Node) gen_seriesOptions(args ...any) (any, error) {
-	p0 := []string{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convString(args, n, "seriesOptions", "...string")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	ret := opts.SeriesOptions(p0...)
-	return ret, nil
-}
-
-// gen_showGrid
-//
-// syntax: showGrid(bool)
-func (x *Node) gen_showGrid(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("showGrid", 1, len(args))
-	}
-	p0, err := convBool(args, 0, "showGrid", "bool")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.ShowGrid(p0)
 	return ret, nil
 }
 

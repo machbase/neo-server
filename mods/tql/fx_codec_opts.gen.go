@@ -9,7 +9,6 @@ import (
 )
 
 var CodecOptsDefinitions = []Definition{
-	{Name: "assetHost", Func: opts.AssetHost},
 	{Name: "autoRotate", Func: opts.AutoRotate},
 	{Name: "boxDrawBorder", Func: opts.BoxDrawBorder},
 	{Name: "boxSeparateColumns", Func: opts.BoxSeparateColumns},
@@ -51,8 +50,6 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "precision", Func: opts.Precision},
 	{Name: "rownum", Func: opts.Rownum},
 	{Name: "seriesLabels", Func: opts.SeriesLabels},
-	{Name: "seriesOptions", Func: opts.SeriesOptions},
-	{Name: "showGrid", Func: opts.ShowGrid},
 	{Name: "size", Func: opts.Size},
 	{Name: "substituteNull", Func: opts.SubstituteNull},
 	{Name: "subtitle", Func: opts.Subtitle},

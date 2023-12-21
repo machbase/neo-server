@@ -85,7 +85,6 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 		ret.encoder = val.RowEncoder(
 			opts.Logger(node.task),
 			opts.OutputStream(node.task.OutputWriter()),
-			opts.AssetHost("/web/echarts/"),
 			opts.ChartJson(node.task.toJsonOutput),
 			opts.GeoMapJson(node.task.toJsonOutput),
 			opts.VolatileFileWriter(node.task),
