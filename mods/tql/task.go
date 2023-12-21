@@ -257,7 +257,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 		}
 		if curLine == tailExpr {
 			// sink
-			x.output, err = NewNode(x).compileSink(curLine.text)
+			x.output, err = NewNode(x).compileSink(curLine)
 			if err != nil {
 				x.compileErr = errors.Wrapf(err, "line %d", curLine.line)
 				return x.compileErr
@@ -271,6 +271,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 				return err
 			}
 			node.pragma = pragmas
+			node.tqlLine = curLine
 			x.nodes = append(x.nodes, node)
 			if nodeIdx > 0 {
 				x.nodes[nodeIdx-1].next = x.nodes[nodeIdx]

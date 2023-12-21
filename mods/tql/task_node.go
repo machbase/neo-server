@@ -40,7 +40,8 @@ type Node struct {
 
 	eofCallback func(*Node)
 
-	pragma []*Line
+	pragma  []*Line
+	tqlLine *Line
 
 	// Deprecated
 	Body      io.Reader

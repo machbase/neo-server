@@ -50,22 +50,23 @@ type output struct {
 	lastError   error
 	lastMessage string
 
-	pragma []*Line
+	pragma  []*Line
+	tqlLine *Line
 }
 
-func (node *Node) compileSink(code string) (ret *output, err error) {
+func (node *Node) compileSink(code *Line) (ret *output, err error) {
 	defer func() {
 		// panic case: if the 'code' is not applicable as SINK
 		if x := recover(); x != nil {
 			if e, ok := x.(error); ok {
-				err = fmt.Errorf("unable to apply to SINK: %s %s", code, e.Error())
+				err = fmt.Errorf("unable to apply to SINK: %s %s", code.text, e.Error())
 				debug.PrintStack()
 			} else {
-				err = fmt.Errorf("unable to apply to SINK: %s", code)
+				err = fmt.Errorf("unable to apply to SINK: %s", code.text)
 			}
 		}
 	}()
-	expr, err := node.Parse(code)
+	expr, err := node.Parse(code.text)
 	if err != nil {
 		return nil, err
 	}
@@ -82,13 +83,14 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 		if val == nil {
 			return nil, errors.New("no encoder found")
 		}
-		ret.encoder = val.RowEncoder(
+		options := []opts.Option{
 			opts.Logger(node.task),
 			opts.OutputStream(node.task.OutputWriter()),
 			opts.ChartJson(node.task.toJsonOutput),
 			opts.GeoMapJson(node.task.toJsonOutput),
 			opts.VolatileFileWriter(node.task),
-		)
+		}
+		ret.encoder = val.RowEncoder(options...)
 		if _, ok := ret.encoder.(opts.CanSetChartJson); ok {
 			ret.isChart = true
 		} else if _, ok := ret.encoder.(opts.CanSetGeoMapJson); ok {
@@ -101,6 +103,7 @@ func (node *Node) compileSink(code string) (ret *output, err error) {
 	}
 	ret.name = asNodeName(expr)
 	ret.task = node.task
+	ret.tqlLine = code
 	ret.src = make(chan *Record)
 	return ret, nil
 }
