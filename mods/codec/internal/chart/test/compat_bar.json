@@ -1,0 +1,14 @@
+{
+    "chartID": "MjYwMjY0NTY1OTY2MTUxNjg_",
+    "jsAssets": [
+        "/web/echarts/echarts.min.js"
+    ],
+    "jsCodeAssets": [
+        "/web/api/tql-assets/MjYwMjY0NTY1OTY2MTUxNjg_.js"
+    ],
+    "style": {
+        "width": "600px",
+        "height": "600px"
+    },
+    "theme": "white"
+}

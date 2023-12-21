@@ -20,7 +20,7 @@
         "markArea":{"data":[
         [{"name":"Area1", "itemStyle":{"color":"#ff000033", "opacity":0.3}, "xAxis":1692670838586.467}, {"xAxis":1692670839086.467}],[{"name":"Area2", "itemStyle":{"color":"#ff000033", "opacity":0.3}, "xAxis":1692670838686.467}, {"xAxis":1692670839286.467}]
         ]},"markLine":{"symbol":["none","none"], "data":[
-        {"name":"line-X", "xAxis": 1692670838286.467},{"name":"half", "yAxis": 0.5}
+        {"name":"line-X", "xAxis":1692670838286.467, "label":{"formatter":"line-X"}},{"name":"half", "yAxis":0.5, "label":{"formatter":"half"}}
         ]}
         }
     ]});

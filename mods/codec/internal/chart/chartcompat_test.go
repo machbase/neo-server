@@ -84,46 +84,6 @@ func TestCompat(t *testing.T) {
 	}
 }
 
-/*
-func TestLineCompat(t *testing.T) {
-	buffer := &bytes.Buffer{}
-	fsmock := &VolatileFileWriterMock{}
-
-	line := chart.NewRectChart("line")
-	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
-		opts.VolatileFileWriter(fsmock),
-		opts.ChartJson(true),
-		opts.TimeLocation(time.UTC),
-		opts.XAxis(0, "time", "time"),
-		opts.YAxis(1, "demo"),
-		opts.Timeformat("15:04:05.999999999"),
-		opts.DataZoom("slider", 0, 100),
-		opts.SeriesLabels("test-data"),
-		opts.Title("Title"),
-		opts.Subtitle("substitle"),
-		opts.Theme("westerose"),
-		opts.Size("600px", "600px"),
-	}
-	for _, o := range opts {
-		o(line)
-	}
-
-	require.Equal(t, "application/json", line.ContentType())
-
-	line.Open()
-	tick := time.Unix(0, 1692670838086467000)
-	line.AddRow([]any{tick.Add(0 * time.Second), 0.0})
-	line.AddRow([]any{tick.Add(1 * time.Second), 1.0})
-	line.AddRow([]any{tick.Add(2 * time.Second), 2.0})
-	line.Flush(false)
-	line.Close()
-
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
-}
-*/
-/*
 func TestScatterCompat(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	fsmock := &VolatileFileWriterMock{}
@@ -132,6 +92,7 @@ func TestScatterCompat(t *testing.T) {
 	opts := []opts.Option{
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.VolatileFileWriter(fsmock),
+		opts.ChartId("MjYwMjY0NTY1OTY2MTUxNjg_"),
 		opts.ChartJson(true),
 		opts.TimeLocation(time.UTC),
 		opts.XAxis(0, "time", "time"),
@@ -154,11 +115,25 @@ func TestScatterCompat(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
+	expect, err := os.ReadFile(filepath.Join("test", "compat_scatter.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr := string(expect)
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+
+	expect, err = os.ReadFile(filepath.Join("test", "compat_scatter.js"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr = string(expect)
+	if !StringsEq(t, expectStr, fsmock.buff.String()) {
+		require.Equal(t, expectStr, fsmock.buff.String(), "js result unmatched\n%s", fsmock.buff.String())
+	}
 }
-*/
-/*
+
 func TestBarCompat(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	fsmock := &VolatileFileWriterMock{}
@@ -168,6 +143,7 @@ func TestBarCompat(t *testing.T) {
 		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
 		opts.VolatileFileWriter(fsmock),
 		opts.ChartJson(true),
+		opts.ChartId("MjYwMjY0NTY1OTY2MTUxNjg_"),
 		opts.TimeLocation(time.UTC),
 		opts.XAxis(0, "time", "time"),
 		opts.YAxis(1, "demo"),
@@ -189,10 +165,24 @@ func TestBarCompat(t *testing.T) {
 	line.Flush(false)
 	line.Close()
 
-	substr := `"xAxis":[{"name":"time","show":true,"data":["02:20:38.086467","02:20:39.086467","02:20:40.086467"]`
-	require.True(t, strings.Contains(fsmock.buff.String(), substr), fsmock.buff.String())
+	expect, err := os.ReadFile(filepath.Join("test", "compat_bar.json"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr := string(expect)
+	require.JSONEq(t, expectStr, buffer.String(), "json result unmatched\n%s", buffer.String())
+
+	expect, err = os.ReadFile(filepath.Join("test", "compat_bar.js"))
+	if err != nil {
+		fmt.Println("Error", err.Error())
+		t.Fail()
+	}
+	expectStr = string(expect)
+	if !StringsEq(t, expectStr, fsmock.buff.String()) {
+		require.Equal(t, expectStr, fsmock.buff.String(), "js result unmatched\n%s", fsmock.buff.String())
+	}
 }
-*/
 
 func TestLine3DCompat(t *testing.T) {
 	buffer := &bytes.Buffer{}
@@ -227,13 +217,6 @@ func TestLine3DCompat(t *testing.T) {
 	line.AddRow([]any{tick.Add(2 * time.Second), 2.0, 2.0})
 	line.Flush(false)
 	line.Close()
-
-	// substr := `"data":[{"value":[1692670838086,0,0]}]}`
-	// require.True(t, strings.Contains(buffer.String(), substr))
-	// substr = `"data":[{"value":[1692670839086,1,1]}]}`
-	// require.True(t, strings.Contains(buffer.String(), substr))
-	// substr = `data":[{"value":[1692670840086,2,2]}]}]`
-	// require.True(t, strings.Contains(buffer.String(), substr))
 
 	expect, err := os.ReadFile(filepath.Join("test", fmt.Sprintf("compat_line3d.%s", "json")))
 	if err != nil {
