@@ -45,6 +45,7 @@ type ChartW struct {
 
 func NewRectChart(typ string) *ChartW {
 	var ret *ChartW = &ChartW{Chart: NewChart(), Type: "line"}
+	ret.Chart.isCompatibleMode = true
 	ret.xAxisIdx = 0
 	ret.xAxisLabel = "x"
 	ret.xAxisType = "value"

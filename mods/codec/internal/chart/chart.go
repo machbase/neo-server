@@ -35,9 +35,13 @@ type Chart struct {
 	PageTitle      string
 	JSAssets       []string
 	CSSAssets      []string
-	JSCodes        []string
 	JSCodeAssets   []string
 	DispatchAction string
+
+	jsCodesPre  []string
+	jsCodesPost []string
+
+	isCompatibleMode bool
 }
 
 type ChartActions struct {
@@ -110,7 +114,11 @@ func (c *Chart) SetChartAssets(args ...string) {
 }
 
 func (c *Chart) SetChartJSCode(js string) {
-	c.JSCodes = append(c.JSCodes, js)
+	if c.option == "" {
+		c.jsCodesPre = append(c.jsCodesPre, js)
+	} else {
+		c.jsCodesPost = append(c.jsCodesPost, js)
+	}
 }
 
 func (c *Chart) SetChartDispatchAction(action string) {
@@ -228,18 +236,25 @@ func (c *Chart) Close() {
 	if c.Theme == "" {
 		c.Theme = "white"
 	}
-	if c.option != "" {
+
+	if !c.isCompatibleMode {
+		columnVarNames := make([]string, len(c.data))
 		for i, d := range c.data {
 			exp := getValueRegexp(i)
-			if exp.FindStringIndex(c.option) != nil {
-				jsonData, err := json.Marshal(d)
-				if err != nil {
-					jsonData = []byte(err.Error())
-				}
-				c.option = exp.ReplaceAllString(c.option, string(jsonData))
+			columnVal := `""`
+			if jsonData, err := json.Marshal(d); err != nil {
+				columnVal = fmt.Sprintf("%q", err.Error())
+			} else {
+				columnVal = string(jsonData)
 			}
+			columnVarNames[i] = fmt.Sprintf("_column_%d", i)
+
+			c.jsCodesPre = append(c.jsCodesPre, fmt.Sprintf("const %s=%s;", columnVarNames[i], columnVal))
+			c.option = exp.ReplaceAllString(c.option, columnVarNames[i])
 		}
+		c.jsCodesPre = append(c.jsCodesPre, fmt.Sprintf("const _columns=[%s];", strings.Join(columnVarNames, ",")))
 	}
+
 	if len(c.JSAssets) == 0 {
 		c.JSAssets = append(c.JSAssets, "/web/echarts/echarts.min.js")
 	}
@@ -264,7 +279,6 @@ func (c *Chart) Close() {
 		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
 
 		codes := []string{}
-		codes = append(codes, `"use strict";`)
 		codes = append(codes, fmt.Sprintf(`let chart = echarts.init(document.getElementById('%s'), "%s");`, c.ChartID, c.Theme))
 		if c.option != "" {
 			codes = append(codes, fmt.Sprintf(`chart.setOption(%s);`, c.option))
@@ -274,8 +288,10 @@ func (c *Chart) Close() {
 		} else {
 			codes = append(codes, fmt.Sprintf(`chart.dispatchAction(%s);`, c.DispatchAction))
 		}
-		codes = append(codes, c.JSCodes...)
-		jscode := fmt.Sprintf("(()=>{\n%s\n})();", strings.Join(codes, "\n"))
+		codes = append(c.jsCodesPre, codes...)
+		codes = append(codes, c.jsCodesPost...)
+		strings.Join(codes, "\n")
+		jscode := fmt.Sprintf("(()=>{\n\"use strict\";\n%s\n})();", strings.Join(codes, "\n"))
 		c.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
 		c.JSCodeAssets = append(c.JSCodeAssets, path)
 	}
