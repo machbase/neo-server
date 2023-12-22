@@ -172,6 +172,7 @@ var FxDefinitions = []Definition{
 	{"random", defTask.fmRandom},
 	{"parseFloat", defTask.fmParseFloat},
 	{"parseBool", defTask.fmParseBoolean},
+	{"strTime", defTask.fmStrTime},
 	{"strTrimSpace", defTask.fmStrTrimSpace},
 	{"strTrimPrefix", defTask.fmStrTrimPrefix},
 	{"strTrimSuffix", defTask.fmStrTrimSuffix},

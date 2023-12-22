@@ -308,7 +308,13 @@ func (gr *Group) onEOF(node *Node) {
 		}
 		gr.buffer = nil
 	} else {
-		for k, cols := range gr.buffer {
+		keys := make([]any, 0, len(gr.buffer))
+		for k := range gr.buffer {
+			keys = append(keys, k)
+		}
+		keys = util.SortAny(keys)
+		for _, k := range keys {
+			cols := gr.buffer[k]
 			v := make([]any, len(cols))
 			for i, c := range cols {
 				v[i] = c.Result()

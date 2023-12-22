@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -407,4 +408,86 @@ func ParseIP(val string) (net.IP, error) {
 		return nil, fmt.Errorf("incompatible conv '%v' (%T) to IP", val, val)
 	}
 	return addr, nil
+}
+
+func SortAny(list []any) []any {
+	sort.Slice(list, func(i, j int) bool {
+		switch l := list[i].(type) {
+		case string:
+			switch r := list[j].(type) {
+			case string:
+				return l < r
+			case *string:
+				return l < *r
+			default:
+				return true
+			}
+		case *string:
+			switch r := list[j].(type) {
+			case string:
+				return *l < r
+			case *string:
+				return *l < *r
+			default:
+				return true
+			}
+		case float64:
+			switch r := list[j].(type) {
+			case float64:
+				return l < r
+			case *float64:
+				return l < *r
+			default:
+				return true
+			}
+		case *float64:
+			switch r := list[j].(type) {
+			case float64:
+				return *l < r
+			case *float64:
+				return *l < *r
+			default:
+				return true
+			}
+		case int64:
+			switch r := list[j].(type) {
+			case int64:
+				return l < r
+			case *int64:
+				return l < *r
+			default:
+				return true
+			}
+		case *int64:
+			switch r := list[j].(type) {
+			case int64:
+				return *l < r
+			case *int64:
+				return *l < *r
+			default:
+				return true
+			}
+		case time.Time:
+			switch r := list[j].(type) {
+			case time.Time:
+				return l.Before(r)
+			case *time.Time:
+				return l.Before(*r)
+			default:
+				return true
+			}
+		case *time.Time:
+			switch r := list[j].(type) {
+			case time.Time:
+				return l.Before(r)
+			case *time.Time:
+				return l.Before(*r)
+			default:
+				return true
+			}
+		default:
+			return true
+		}
+	})
+	return list
 }

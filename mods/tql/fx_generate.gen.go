@@ -159,6 +159,7 @@ func NewNode(task *Task) *Node {
 		"random":             x.gen_random,
 		"parseFloat":         x.gen_parseFloat,
 		"parseBool":          x.gen_parseBool,
+		"strTime":            x.gen_strTime,
 		"strTrimSpace":       x.gen_strTrimSpace,
 		"strTrimPrefix":      x.gen_strTrimPrefix,
 		"strTrimSuffix":      x.gen_strTrimSuffix,
@@ -2033,6 +2034,28 @@ func (x *Node) gen_parseBool(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmParseBoolean(p0)
+}
+
+// gen_strTime
+//
+// syntax: strTime(, , )
+func (x *Node) gen_strTime(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("strTime", 3, len(args))
+	}
+	p0, err := convAny(args, 0, "strTime", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "strTime", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convTimeLocation(args, 2, "strTime", "*time.Location")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmStrTime(p0, p1, p2)
 }
 
 // gen_strTrimSpace

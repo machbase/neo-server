@@ -221,37 +221,6 @@ var pluginNames = map[string]string{
 	"gl":         "/web/echarts/echarts-gl.min.js",
 }
 
-func lineAndCharacter(input string, offset int) (line int, cols int, word string, err error) {
-	lf := rune(0x0A)
-	if offset > len(input) || offset < 0 {
-		err = fmt.Errorf("couldn't find offset %d within the input", offset)
-		return
-	}
-	pos := []rune{}
-	line = 1
-	for i, b := range input {
-		if b == lf {
-			line++
-			cols = 0
-		}
-		cols++
-		if i == offset-1 {
-			pos = append(pos, b)
-		}
-		if i == offset {
-			break
-		}
-	}
-	for _, r := range input[offset:] {
-		if lf == r || len(pos) >= 16 {
-			break
-		}
-		pos = append(pos, r)
-	}
-	word = string(pos)
-	return
-}
-
 func (c *Chart) Close() {
 	if c.output == nil {
 		return
@@ -261,23 +230,13 @@ func (c *Chart) Close() {
 	}
 	if c.option != "" {
 		for i, d := range c.data {
-			jsonData, err := json.Marshal(d)
-			if err != nil {
-				jsonData = []byte(err.Error())
-			}
 			exp := getValueRegexp(i)
-			c.option = exp.ReplaceAllString(c.option, string(jsonData))
-		}
-		dummy := map[string]any{}
-		if err := json.Unmarshal([]byte(c.option), &dummy); err != nil {
-			if jsonErr, ok := err.(*json.SyntaxError); ok {
-				if _, _, word, e := lineAndCharacter(c.option, int(jsonErr.Offset)); e == nil {
-					c.logger.LogErrorf("CHART invalid json: %q, %s", word, jsonErr.Error())
-				} else {
-					c.logger.LogError("CHART invalid json: at", jsonErr.Offset, jsonErr.Error())
+			if exp.FindStringIndex(c.option) != nil {
+				jsonData, err := json.Marshal(d)
+				if err != nil {
+					jsonData = []byte(err.Error())
 				}
-			} else {
-				c.logger.LogError("CHART option invalid json:", err.Error())
+				c.option = exp.ReplaceAllString(c.option, string(jsonData))
 			}
 		}
 	}
