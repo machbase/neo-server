@@ -1,7 +1,7 @@
 (()=>{
     "use strict";
-    let chart = echarts.init(document.getElementById('WejMYXCGcYNL'), "westeros");
-    chart.setOption({
+    let _chart = echarts.init(document.getElementById('WejMYXCGcYNL'), "westeros");
+    let _chartOption = {
     "title":{"text":"Title", "subtext":"subtitle"},
     "animation":true, "color":["#80FFA5", "#00DDFF", "#37A2FF"],
     "legend":{"show":true,"data":["column[1]"]},
@@ -24,6 +24,7 @@
         {"name":"line-X", "xAxis":1692670838286.467, "label":{"formatter":"line-X"}},{"name":"half", "yAxis":0.5, "label":{"formatter":"half"}}
         ]}
         }
-    ]});
-    chart.dispatchAction({"areas": {}, "type": ""});
+    ]};
+    _chart.setOption(_chartOption);
+    _chart.dispatchAction({"areas": {}, "type": ""});
 })();

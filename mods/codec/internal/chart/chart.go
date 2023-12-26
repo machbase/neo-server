@@ -279,14 +279,15 @@ func (c *Chart) Close() {
 		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
 
 		codes := []string{}
-		codes = append(codes, fmt.Sprintf(`let chart = echarts.init(document.getElementById('%s'), "%s");`, c.ChartID, c.Theme))
+		codes = append(codes, fmt.Sprintf(`let _chart = echarts.init(document.getElementById('%s'), "%s");`, c.ChartID, c.Theme))
 		if c.option != "" {
-			codes = append(codes, fmt.Sprintf(`chart.setOption(%s);`, c.option))
+			codes = append(codes, fmt.Sprintf(`let _chartOption = %s;`, c.option))
+			codes = append(codes, `_chart.setOption(_chartOption);`)
 		}
 		if c.DispatchAction == "" {
-			codes = append(codes, `chart.dispatchAction({"areas": {}, "type": ""});`)
+			codes = append(codes, `_chart.dispatchAction({"areas": {}, "type": ""});`)
 		} else {
-			codes = append(codes, fmt.Sprintf(`chart.dispatchAction(%s);`, c.DispatchAction))
+			codes = append(codes, fmt.Sprintf(`_chart.dispatchAction(%s);`, c.DispatchAction))
 		}
 		codes = append(c.jsCodesPre, codes...)
 		codes = append(codes, c.jsCodesPost...)
