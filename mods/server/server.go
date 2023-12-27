@@ -366,6 +366,12 @@ func (s *svr) Start() error {
 		if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
 			return errors.Wrap(err, "machbase.conf")
 		}
+	} else if rewrite, err := s.checkRewriteMachbaseConf(confpath); err != nil {
+		return err
+	} else if rewrite {
+		if err := s.rewriteMachbaseConf(confpath); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
 	}
 
 	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
