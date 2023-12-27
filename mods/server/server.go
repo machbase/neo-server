@@ -705,12 +705,20 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 			return errors.Wrapf(err, "%s host:port invalid syntax", svc)
 		}
 		lsnrHost := net.ParseIP(host)
-		addrs := util.FindAllAddresses(lsnrHost)
-		for _, addr := range addrs {
-			lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
+		if lsnrHost.Equal(net.IPv4zero) || lsnrHost.Equal(net.IPv6zero) {
+			addrs := util.FindAllAddresses(lsnrHost)
+			for _, addr := range addrs {
+				lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
+				s.servicePortsLock.Lock()
+				lst := s.servicePorts[svc]
+				lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
+				s.servicePorts[svc] = lst
+				s.servicePortsLock.Unlock()
+			}
+		} else {
 			s.servicePortsLock.Lock()
 			lst := s.servicePorts[svc]
-			lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
+			lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
 			s.servicePorts[svc] = lst
 			s.servicePortsLock.Unlock()
 		}

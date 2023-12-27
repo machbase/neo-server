@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
 	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 	"golang.org/x/text/language"
 )
@@ -153,6 +155,15 @@ func (act *Actor) checkDatabase() error {
 			// if my ppid is same with server pid, this client was invoked from server directly.
 			// which means connected remotely via ssh.
 			act.remoteSession = false
+		}
+	} else if strings.HasPrefix(act.conf.ServerAddr, "tcp://") {
+		localAddrs := util.GetAllAddresses()
+		serverIP, _, _ := net.SplitHostPort(strings.TrimPrefix(act.conf.ServerAddr, "tcp://"))
+		for _, addr := range localAddrs {
+			if addr.IP.String() == serverIP {
+				act.remoteSession = false
+				break
+			}
 		}
 	}
 
