@@ -32,9 +32,14 @@ jobs:
         run: cd ~/work/neo-server; make machbase-neo;
       - name: run test
         run: cd ~/work/neo-test/testsuite; ntf main.ts;
+      - name: print result
+        run: cd ~/work/neo-test/testsuite; cat summary.txt;
       - name: check run
         run: cd ~/work/neo-test/testsuite; cat summary.txt | grep -a RUN | grep COUNT | gawk '{print $4}' > run_count.out;
       - name: check pass
         run: cd ~/work/neo-test/testsuite; cat summary.txt | grep -a PASS | grep COUNT | gawk '{print $4}' > pass_count.out;
       - name: diff
         run: cd ~/work/neo-test/testsuite; diff run_count.out pass_count.out;
+      - name: print diff error
+        if: failure()
+        run: cd ~/work/neo-test/testsuite; cat summary.txt | grep -aE 'DIFF|ERROR';
