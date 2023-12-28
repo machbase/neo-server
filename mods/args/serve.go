@@ -23,7 +23,7 @@ func Main() int {
 		return 1
 	}
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
-		return doServe(cli.Serve.Preset)
+		return doServe(cli.Serve.Preset, false)
 	}
 	switch cli.Command {
 	case "gen-config":
@@ -33,7 +33,7 @@ func Main() int {
 	case "help":
 		doHelp(cli.Help.Command, cli.Help.SubCommand)
 	case "serve":
-		doServe(cli.Serve.Preset)
+		doServe(cli.Serve.Preset, false)
 	case "shell":
 		shell.Shell(&cli.Shell)
 	case "service":
@@ -43,7 +43,7 @@ func Main() int {
 	return 0
 }
 
-func doServe(preset string) int {
+func doServe(preset string, doNotExit bool) int {
 	server.PreferredPreset = preset
 
 	booter.SetConfiFileSuffix(".conf")
@@ -52,6 +52,15 @@ func doServe(preset string) int {
 	booter.SetVersionString(mods.VersionString() + " " + mach.LinkInfo())
 	booter.Startup()
 	booter.WaitSignal()
-	booter.ShutdownAndExit(0)
+	if doNotExit {
+		// If process is running as an Windows Service, it should not call os.Exit()
+		// before send the notification report to the service manager.
+		// Otherwise Windows service control panel reports "Error 1067, the process terminated unexpectedly"
+		booter.Shutdown()
+	} else {
+		// The other cases, when process is running in foreground or other OS escept Windows.
+		// it can shutdown and exit.
+		booter.ShutdownAndExit(0)
+	}
 	return 0
 }

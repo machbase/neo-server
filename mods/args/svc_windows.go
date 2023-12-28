@@ -49,10 +49,6 @@ func doService(sc *Service) {
 		err = startService(svcName)
 	case "stop":
 		err = controlService(svcName, svc.Stop, svc.Stopped)
-	// case "pause":
-	// 	err = controlService(svcName, svc.Pause, svc.Paused)
-	// case "continue":
-	// 	err = controlService(svcName, svc.Continue, svc.Running)
 	default:
 		fmt.Println("unknown command:", sc.Args[0])
 		fmt.Println("Usage: machbase-neo service [install, remove, debug, start, stop, pause, continue]")
@@ -80,7 +76,7 @@ func installService(name string, desc string, args ...string) error {
 	s, err := m.OpenService(name)
 	if err == nil {
 		s.Close()
-		return fmt.Errorf("service %s is already exists", name)
+		return fmt.Errorf("service %s already exists", name)
 	}
 	conf := mgr.Config{
 		Description:      desc,
@@ -230,7 +226,7 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	serveWg.Add(1)
 	go func() {
 		changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-		doServe(m.preset)
+		doServe(m.preset, true)
 		serveWg.Done()
 	}()
 loop:
@@ -242,6 +238,7 @@ loop:
 			changes <- c.CurrentStatus
 		case svc.Stop, svc.Shutdown:
 			booter.NotifySignal()
+			changes <- svc.Status{State: svc.StopPending}
 			elog.Info(1, "shutting down...")
 			serveWg.Wait()
 			break loop
