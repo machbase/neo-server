@@ -621,6 +621,44 @@ func TestNoParameterEvaluation(test *testing.T) {
 	runEvaluationTests(evaluationTests, test)
 }
 
+func TestOrParameterEval(test *testing.T) {
+	evaluationTests := []EvaluationTest{
+		{
+			Name:  "NULL compare",
+			Input: "value(0) == NULL || value(0) > 0",
+			Functions: map[string]Function{
+				"value": func(arguments ...interface{}) (interface{}, error) {
+					return nil, nil
+				},
+			},
+			Parameters: []EvaluationParameter{
+				{
+					Name:  "NULL",
+					Value: NullValue,
+				},
+			},
+			Expected: true,
+		},
+		{
+			Name:  "If not NULL, ternary",
+			Input: "value(0) != NULL ? 1 : 2",
+			Functions: map[string]Function{
+				"value": func(arguments ...interface{}) (interface{}, error) {
+					return nil, nil
+				},
+			},
+			Parameters: []EvaluationParameter{
+				{
+					Name:  "NULL",
+					Value: NullValue,
+				},
+			},
+			Expected: 2.0,
+		},
+	}
+	runEvaluationTests(evaluationTests, test)
+}
+
 func TestParameterizedEvaluation(test *testing.T) {
 	evaluationTests := []EvaluationTest{
 		{

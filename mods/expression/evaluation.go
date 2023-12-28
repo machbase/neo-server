@@ -132,9 +132,15 @@ func ltStage(left any, right any, parameters Parameters) (any, error) {
 	return boolIface(left.(float64) < right.(float64)), nil
 }
 func equalStage(left any, right any, parameters Parameters) (any, error) {
+	if (left == nil || left == NullValue) && (right == nil || right == NullValue) {
+		return _true, nil
+	}
 	return boolIface(reflect.DeepEqual(left, right)), nil
 }
 func notEqualStage(left any, right any, parameters Parameters) (any, error) {
+	if (left == nil || left == NullValue) && (right == nil || right == NullValue) {
+		return _false, nil
+	}
 	return boolIface(!reflect.DeepEqual(left, right)), nil
 }
 func andStage(left any, right any, parameters Parameters) (any, error) {
