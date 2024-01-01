@@ -15,7 +15,7 @@ import (
 
 // SetAutoRotate
 //
-//	mods/codec/internal/chart/chartcompat.go:233:1
+//	mods/codec/internal/chart/chartcompat.go:234:1
 type CanSetAutoRotate interface {
 	SetAutoRotate(speed float64)
 }
@@ -120,7 +120,7 @@ func CharsetEncoding(charset encoding.Encoding) Option {
 
 // SetChartAssets
 //
-//	mods/codec/internal/chart/chart.go:102:1
+//	mods/codec/internal/chart/chart.go:106:1
 type CanSetChartAssets interface {
 	SetChartAssets(args ...string)
 }
@@ -135,7 +135,7 @@ func ChartAssets(args ...string) Option {
 
 // SetChartDispatchAction
 //
-//	mods/codec/internal/chart/chart.go:116:1
+//	mods/codec/internal/chart/chart.go:124:1
 type CanSetChartDispatchAction interface {
 	SetChartDispatchAction(action string)
 }
@@ -150,7 +150,7 @@ func ChartDispatchAction(action string) Option {
 
 // SetChartId
 //
-//	mods/codec/internal/chart/chart.go:73:1
+//	mods/codec/internal/chart/chart.go:77:1
 type CanSetChartId interface {
 	SetChartId(id string)
 }
@@ -165,7 +165,7 @@ func ChartId(id string) Option {
 
 // SetChartJSCode
 //
-//	mods/codec/internal/chart/chart.go:112:1
+//	mods/codec/internal/chart/chart.go:116:1
 type CanSetChartJSCode interface {
 	SetChartJSCode(js string)
 }
@@ -180,7 +180,7 @@ func ChartJSCode(js string) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/chart/chart.go:86:1
+//	mods/codec/internal/chart/chart.go:90:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -195,7 +195,7 @@ func ChartJson(flag bool) Option {
 
 // SetChartOption
 //
-//	mods/codec/internal/chart/chart.go:90:1
+//	mods/codec/internal/chart/chart.go:94:1
 type CanSetChartOption interface {
 	SetChartOption(opt string)
 }
@@ -246,7 +246,7 @@ func Columns(names ...string) Option {
 
 // SetDataZoom
 //
-//	mods/codec/internal/chart/chartcompat.go:87:1
+//	mods/codec/internal/chart/chartcompat.go:88:1
 type CanSetDataZoom interface {
 	SetDataZoom(typ string, minPercentage float32, maxPercentage float32)
 }
@@ -292,7 +292,7 @@ func GeoMapJson(flag bool) Option {
 
 // SetGlobalOptions
 //
-//	mods/codec/internal/chart/chartcompat.go:75:1
+//	mods/codec/internal/chart/chartcompat.go:76:1
 type CanSetGlobalOptions interface {
 	SetGlobalOptions(opt string)
 }
@@ -307,7 +307,7 @@ func GlobalOptions(opt string) Option {
 
 // SetGridSize
 //
-//	mods/codec/internal/chart/chartcompat.go:218:1
+//	mods/codec/internal/chart/chartcompat.go:219:1
 type CanSetGridSize interface {
 	SetGridSize(args ...float64)
 }
@@ -434,7 +434,7 @@ func Layer(obj nums.Geography) Option {
 
 // SetLineWidth
 //
-//	mods/codec/internal/chart/chartcompat.go:224:1
+//	mods/codec/internal/chart/chartcompat.go:225:1
 type CanSetLineWidth interface {
 	SetLineWidth(width float64)
 }
@@ -449,7 +449,7 @@ func LineWidth(width float64) Option {
 
 // SetLogger
 //
-//	mods/codec/internal/chart/chart.go:61:1
+//	mods/codec/internal/chart/chart.go:65:1
 //	mods/codec/internal/geomap/geomap.go:69:1
 //	mods/codec/internal/markdown/md_encode.go:52:1
 type CanSetLogger interface {
@@ -496,7 +496,7 @@ func MapId(id string) Option {
 
 // SetMarkAreaNameCoord
 //
-//	mods/codec/internal/chart/chartcompat.go:264:1
+//	mods/codec/internal/chart/chartcompat.go:265:1
 type CanSetMarkAreaNameCoord interface {
 	SetMarkAreaNameCoord(from any, to any, label string, color string, opacity float64)
 }
@@ -511,7 +511,7 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 
 // SetMarkLineXAxisCoord
 //
-//	mods/codec/internal/chart/chartcompat.go:272:1
+//	mods/codec/internal/chart/chartcompat.go:273:1
 type CanSetMarkLineXAxisCoord interface {
 	SetMarkLineXAxisCoord(xaxis any, name string)
 }
@@ -526,7 +526,7 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 
 // SetMarkLineYAxisCoord
 //
-//	mods/codec/internal/chart/chartcompat.go:278:1
+//	mods/codec/internal/chart/chartcompat.go:279:1
 type CanSetMarkLineYAxisCoord interface {
 	SetMarkLineYAxisCoord(yaxis any, name string)
 }
@@ -541,7 +541,7 @@ func MarkLineYAxisCoord(yaxis any, name string) Option {
 
 // SetOpacity
 //
-//	mods/codec/internal/chart/chartcompat.go:228:1
+//	mods/codec/internal/chart/chartcompat.go:229:1
 type CanSetOpacity interface {
 	SetOpacity(opacity float64)
 }
@@ -557,7 +557,7 @@ func Opacity(opacity float64) Option {
 // SetOutputStream
 //
 //	mods/codec/internal/box/box_encode.go:45:1
-//	mods/codec/internal/chart/chart.go:69:1
+//	mods/codec/internal/chart/chart.go:73:1
 //	mods/codec/internal/csv/csv_encode.go:50:1
 //	mods/codec/internal/geomap/geomap.go:77:1
 //	mods/codec/internal/json/json_encode.go:44:1
@@ -576,7 +576,7 @@ func OutputStream(o spec.OutputStream) Option {
 
 // SetPlugins
 //
-//	mods/codec/internal/chart/chart.go:98:1
+//	mods/codec/internal/chart/chart.go:102:1
 type CanSetPlugins interface {
 	SetPlugins(plugins ...string)
 }
@@ -642,7 +642,7 @@ func Rownum(show bool) Option {
 
 // SetSeriesLabels
 //
-//	mods/codec/internal/chart/chartcompat.go:83:1
+//	mods/codec/internal/chart/chartcompat.go:84:1
 type CanSetSeriesLabels interface {
 	SetSeriesLabels(args ...string)
 }
@@ -657,7 +657,7 @@ func SeriesLabels(args ...string) Option {
 
 // SetSize
 //
-//	mods/codec/internal/chart/chart.go:77:1
+//	mods/codec/internal/chart/chart.go:81:1
 //	mods/codec/internal/geomap/geomap.go:85:1
 type CanSetSize interface {
 	SetSize(width string, height string)
@@ -688,7 +688,7 @@ func SubstituteNull(nullString string) Option {
 
 // SetSubtitle
 //
-//	mods/codec/internal/chart/chartcompat.go:214:1
+//	mods/codec/internal/chart/chartcompat.go:215:1
 type CanSetSubtitle interface {
 	SetSubtitle(str string)
 }
@@ -719,7 +719,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/chart/chart.go:82:1
+//	mods/codec/internal/chart/chart.go:86:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }
@@ -800,7 +800,7 @@ func TimeLocation(tz *time.Location) Option {
 // SetTimeformat
 //
 //	mods/codec/internal/box/box_encode.go:49:1
-//	mods/codec/internal/chart/chartcompat.go:284:1
+//	mods/codec/internal/chart/chartcompat.go:285:1
 //	mods/codec/internal/csv/csv_decode.go:45:1
 //	mods/codec/internal/csv/csv_encode.go:54:1
 //	mods/codec/internal/json/json_decode.go:34:1
@@ -820,7 +820,7 @@ func Timeformat(f string) Option {
 
 // SetTitle
 //
-//	mods/codec/internal/chart/chartcompat.go:210:1
+//	mods/codec/internal/chart/chartcompat.go:211:1
 type CanSetTitle interface {
 	SetTitle(str string)
 }
@@ -835,7 +835,7 @@ func Title(str string) Option {
 
 // SetToolboxDataView
 //
-//	mods/codec/internal/chart/chartcompat.go:260:1
+//	mods/codec/internal/chart/chartcompat.go:261:1
 type CanSetToolboxDataView interface {
 	SetToolboxDataView()
 }
@@ -850,7 +850,7 @@ func ToolboxDataView() Option {
 
 // SetToolboxDataZoom
 //
-//	mods/codec/internal/chart/chartcompat.go:256:1
+//	mods/codec/internal/chart/chartcompat.go:257:1
 type CanSetToolboxDataZoom interface {
 	SetToolboxDataZoom()
 }
@@ -865,7 +865,7 @@ func ToolboxDataZoom() Option {
 
 // SetToolboxSaveAsImage
 //
-//	mods/codec/internal/chart/chartcompat.go:244:1
+//	mods/codec/internal/chart/chartcompat.go:245:1
 type CanSetToolboxSaveAsImage interface {
 	SetToolboxSaveAsImage(name string)
 }
@@ -910,7 +910,7 @@ func Transpose(flag bool) Option {
 
 // SetVisualMap
 //
-//	mods/codec/internal/chart/chartcompat.go:94:1
+//	mods/codec/internal/chart/chartcompat.go:95:1
 type CanSetVisualMap interface {
 	SetVisualMap(min float64, max float64)
 }
@@ -925,7 +925,7 @@ func VisualMap(min float64, max float64) Option {
 
 // SetVisualMapColor
 //
-//	mods/codec/internal/chart/chartcompat.go:102:1
+//	mods/codec/internal/chart/chartcompat.go:103:1
 type CanSetVisualMapColor interface {
 	SetVisualMapColor(min float64, max float64, colors ...string)
 }
@@ -940,7 +940,7 @@ func VisualMapColor(min float64, max float64, colors ...string) Option {
 
 // SetVolatileFileWriter
 //
-//	mods/codec/internal/chart/chart.go:65:1
+//	mods/codec/internal/chart/chart.go:69:1
 //	mods/codec/internal/geomap/geomap.go:73:1
 type CanSetVolatileFileWriter interface {
 	SetVolatileFileWriter(w facility.VolatileFileWriter)
@@ -956,7 +956,7 @@ func VolatileFileWriter(w facility.VolatileFileWriter) Option {
 
 // SetXAxis
 //
-//	mods/codec/internal/chart/chartcompat.go:112:1
+//	mods/codec/internal/chart/chartcompat.go:113:1
 type CanSetXAxis interface {
 	SetXAxis(args ...any)
 }
@@ -971,7 +971,7 @@ func XAxis(args ...any) Option {
 
 // SetYAxis
 //
-//	mods/codec/internal/chart/chartcompat.go:145:1
+//	mods/codec/internal/chart/chartcompat.go:146:1
 type CanSetYAxis interface {
 	SetYAxis(args ...any)
 }
@@ -986,7 +986,7 @@ func YAxis(args ...any) Option {
 
 // SetZAxis
 //
-//	mods/codec/internal/chart/chartcompat.go:178:1
+//	mods/codec/internal/chart/chartcompat.go:179:1
 type CanSetZAxis interface {
 	SetZAxis(args ...any)
 }

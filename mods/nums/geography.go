@@ -374,8 +374,12 @@ func NewGeoLineString(pts []*LatLon, opt any) GeoLineString {
 	return NewMultiLatLon("LineString", pts, opt)
 }
 
-func NewGeoLineStringFunc(args ...any) GeoLineString {
-	return NewMultiLatLonFunc("LineString", args)
+func NewGeoLineStringFunc(from *LatLon, to *LatLon, args ...any) GeoLineString {
+	var opt any
+	if len(args) == 1 {
+		opt = args[0]
+	}
+	return NewMultiLatLon("LineString", []*LatLon{from, to}, opt)
 }
 
 type GeoPolygon = *MultiLatLon

@@ -516,17 +516,28 @@ func (x *Node) gen_geoPolygon(args ...any) (any, error) {
 
 // gen_geoLineString
 //
-// syntax: geoLineString(...interface {})
+// syntax: geoLineString(, , ...interface {})
 func (x *Node) gen_geoLineString(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("geoLineString", 2, len(args))
+	}
+	p0, err := convLatLon(args, 0, "geoLineString", "*nums.LatLon")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convLatLon(args, 1, "geoLineString", "*nums.LatLon")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
 		argv, err := convAny(args, n, "geoLineString", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p0 = append(p0, argv)
+		p2 = append(p2, argv)
 	}
-	ret := nums.NewGeoLineStringFunc(p0...)
+	ret := nums.NewGeoLineStringFunc(p0, p1, p2...)
 	return ret, nil
 }
 

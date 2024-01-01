@@ -390,6 +390,13 @@ func (gm *GeoMap) Layers() []*Layer {
 			if len(coord) > 0 {
 				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
 			}
+		case *nums.MultiLatLon:
+			coord := obj.Coordinates()
+			buff := []string{}
+			for _, c := range coord {
+				buff = append(buff, fmt.Sprintf("[%v,%v]", c[0], c[1]))
+			}
+			layer.Coord = fmt.Sprintf("[%s]", strings.Join(buff, ","))
 		default:
 			coord := obj.Coordinates()
 			arr := []string{}

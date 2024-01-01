@@ -201,9 +201,7 @@ func (node *Node) fmFlatten() any {
 }
 
 func (node *Node) fmList(args ...any) any {
-	ret := []any{}
-	ret = append(ret, args...)
-	return ret
+	return args
 }
 
 func (node *Node) fmDictionary(args ...any) (any, error) {
