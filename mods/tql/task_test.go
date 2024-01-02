@@ -1757,25 +1757,26 @@ func TestSourceCSV(t *testing.T) {
 
 	codeLines = []string{
 		"CSV(payload(), header(false))",
+		`MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))`,
 		"MARKDOWN()",
 	}
 	payload = []string{
-		`NAME,TIME,VALUE`,
-		`wave.sin,1676432361,0.000000`,
-		`wave.cos,1676432361,1.000000`,
-		`wave.sin,1676432362,0.406736`,
-		`wave.cos,1676432362,0.913546`,
-		`wave.sin,1676432363,0.743144`,
+		`NAME,TIME,VALUE,BOOL`,
+		`wave.sin,1676432361,0.000000,true`,
+		`wave.cos,1676432361,1.0000000,false`,
+		`wave.sin,1676432362,0.406736,true`,
+		`wave.cos,1676432362,0.913546,false`,
+		`wave.sin,1676432363,0.743144,true`,
 	}
 	resultLines = []string{
-		`|column0|column1|column2|`,
-		`|:-----|:-----|:-----|`,
-		`|NAME|TIME|VALUE|`,
-		`|wave.sin|1676432361|0.000000|`,
-		`|wave.cos|1676432361|1.000000|`,
-		`|wave.sin|1676432362|0.406736|`,
-		`|wave.cos|1676432362|0.913546|`,
-		`|wave.sin|1676432363|0.743144|`,
+		`|column0|column1|column2|column3|`,
+		`|:-----|:-----|:-----|:-----|`,
+		`|NAME|TIME|VALUE|BOOL|`,
+		`|wave.sin|1676432361|0.000000|true|`,
+		`|wave.cos|1676432361|10.000000|false|`,
+		`|wave.sin|1676432362|4.067360|true|`,
+		`|wave.cos|1676432362|9.135460|false|`,
+		`|wave.sin|1676432363|7.431440|true|`,
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 

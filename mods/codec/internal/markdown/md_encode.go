@@ -181,6 +181,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			continue
 		}
 		switch v := r.(type) {
+		case *bool:
+			cols[i] = strconv.FormatBool(*v)
+		case bool:
+			cols[i] = strconv.FormatBool(v)
 		case *string:
 			cols[i] = *v
 		case string:
