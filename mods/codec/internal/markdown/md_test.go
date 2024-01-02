@@ -52,7 +52,7 @@ func TestMarkdown(t *testing.T) {
 		{
 			opts: func(md *markdown.Exporter) {
 				md.SetTimeformat("2006/01/02 15:04:05.999")
-				md.SetTimeLocation(time.Local)
+				md.SetTimeLocation(time.UTC)
 			},
 			result: "output_timeformat.txt",
 		},
@@ -60,14 +60,14 @@ func TestMarkdown(t *testing.T) {
 			opts: func(md *markdown.Exporter) {
 				md.SetHtml(true)
 				md.SetTimeformat("2006/01/02 15:04:05.999")
-				md.SetTimeLocation(time.Local)
+				md.SetTimeLocation(time.UTC)
 			},
 			result: "output_timeformat.html",
 		},
 		{
 			opts: func(md *markdown.Exporter) {
 				md.SetTimeformat("2006/01/02 15:04:05.999")
-				md.SetTimeLocation(time.Local)
+				md.SetTimeLocation(time.UTC)
 				md.SetBriefCount(1)
 			},
 			result: "output_brief.txt",
@@ -76,7 +76,7 @@ func TestMarkdown(t *testing.T) {
 			opts: func(md *markdown.Exporter) {
 				md.SetHtml(true)
 				md.SetTimeformat("2006/01/02 15:04:05.999")
-				md.SetTimeLocation(time.Local)
+				md.SetTimeLocation(time.UTC)
 				md.SetBriefCount(1)
 			},
 			result: "output_brief.html",
@@ -112,7 +112,7 @@ func TestMarkdown(t *testing.T) {
 		expectStr := string(expect)
 
 		if !StringsEq(t, expectStr, buffer.String()) {
-			require.Equal(t, expectStr, buffer.String(), "md result unmatched\n%s", buffer.String())
+			require.Equal(t, expectStr, buffer.String(), "md result %q unmatched\n%s", tt.result, buffer.String())
 		}
 	}
 }
