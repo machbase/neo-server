@@ -121,7 +121,7 @@ func (ex *Exporter) Close() {
 			ex.mdLines = append(headLines, ex.mdLines...)
 			ex.mdLines = append(ex.mdLines, tailLines...)
 			conv := mdconv.New(mdconv.WithDarkMode(false))
-			ex.output.Write([]byte("<div>"))
+			ex.output.Write([]byte("<div>\n"))
 			conv.ConvertString(strings.Join(ex.mdLines, ""), ex.output)
 			ex.output.Write([]byte("</div>"))
 		} else {

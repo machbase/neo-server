@@ -2,13 +2,16 @@ package markdown_test
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/stretchr/testify/require"
 )
 
 func StringsEq(t *testing.T, expect string, actual string) bool {
@@ -31,29 +34,85 @@ mismatched:
 }
 
 func TestMarkdown(t *testing.T) {
-	var expectStr = ""
 
-	buffer := &bytes.Buffer{}
+	tests := []struct {
+		opts   func(*markdown.Exporter)
+		result string
+	}{
+		{
+			opts:   func(md *markdown.Exporter) {},
+			result: "output_md.txt",
+		},
+		{
+			opts: func(md *markdown.Exporter) {
+				md.SetHtml(true)
+			},
+			result: "output_md.html",
+		},
+		{
+			opts: func(md *markdown.Exporter) {
+				md.SetTimeformat("2006/01/02 15:04:05.999")
+				md.SetTimeLocation(time.Local)
+			},
+			result: "output_timeformat.txt",
+		},
+		{
+			opts: func(md *markdown.Exporter) {
+				md.SetHtml(true)
+				md.SetTimeformat("2006/01/02 15:04:05.999")
+				md.SetTimeLocation(time.Local)
+			},
+			result: "output_timeformat.html",
+		},
+		{
+			opts: func(md *markdown.Exporter) {
+				md.SetTimeformat("2006/01/02 15:04:05.999")
+				md.SetTimeLocation(time.Local)
+				md.SetBriefCount(1)
+			},
+			result: "output_brief.txt",
+		},
+		{
+			opts: func(md *markdown.Exporter) {
+				md.SetHtml(true)
+				md.SetTimeformat("2006/01/02 15:04:05.999")
+				md.SetTimeLocation(time.Local)
+				md.SetBriefCount(1)
+			},
+			result: "output_brief.html",
+		},
+	}
 
-	md := markdown.NewEncoder()
-	md.SetOutputStream(stream.NewOutputStreamWriter(buffer))
-	tick := time.Unix(0, 1692670838086467000)
+	for _, tt := range tests {
+		buffer := &bytes.Buffer{}
 
-	md.Open()
-	md.AddRow([]any{tick.Add(0 * time.Second), 0.0, true})
-	md.AddRow([]any{tick.Add(1 * time.Second), 1.0, false})
-	md.AddRow([]any{tick.Add(2 * time.Second), 2.0, true})
-	md.Close()
+		md := markdown.NewEncoder()
+		md.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		tt.opts(md)
 
-	require.Equal(t, "text/markdown", md.ContentType())
+		tick := time.Unix(0, 1692670838086467000)
 
-	expectStr = `|column0|column1|column2|
-	|:-----|:-----|:-----|
-	|1692670838086467000|0.000000|true|
-	|1692670839086467000|1.000000|false|
-	|1692670840086467000|2.000000|true|
-	`
-	if !StringsEq(t, expectStr, buffer.String()) {
-		require.Equal(t, expectStr, buffer.String(), "md result unmatched\n%s", buffer.String())
+		md.Open()
+		md.AddRow([]any{tick.Add(0 * time.Second), 0.0, true})
+		md.AddRow([]any{tick.Add(1 * time.Second), 1.0, false})
+		md.AddRow([]any{tick.Add(2 * time.Second), 2.0, true})
+		md.Close()
+
+		if strings.HasSuffix(tt.result, ".html") {
+			require.Equal(t, "application/xhtml+xml", md.ContentType())
+		} else {
+			require.Equal(t, "text/markdown", md.ContentType())
+		}
+
+		expect, err := os.ReadFile(filepath.Join("test", tt.result))
+		if err != nil {
+			fmt.Println("Error", err.Error())
+			t.Fail()
+		}
+		expectStr := string(expect)
+
+		if !StringsEq(t, expectStr, buffer.String()) {
+			require.Equal(t, expectStr, buffer.String(), "md result unmatched\n%s", buffer.String())
+		}
 	}
 }
