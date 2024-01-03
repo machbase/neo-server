@@ -75,7 +75,11 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		return nil, err
 	}
 	if sink == nil {
-		return nil, errors.New("NULL is not applicable for SINK")
+		if code.text == "" {
+			return nil, errors.New("NULL is not applicable for SINK")
+		} else {
+			return nil, fmt.Errorf("%q is not applicable for SINK", code.text)
+		}
 	}
 	ret = &output{}
 	switch val := sink.(type) {
