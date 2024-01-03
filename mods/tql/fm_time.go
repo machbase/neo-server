@@ -226,8 +226,12 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 		node.SetValue("timewindow", tw)
 	}
 
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil
+	}
 	var values []any
-	if v, ok := node.Inflight().value.([]any); ok {
+	if v, ok := inflight.value.([]any); ok {
 		values = v
 	} else {
 		return ErrorRecord(fmt.Errorf("TIMEWINDOW value should be array"))

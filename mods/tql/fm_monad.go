@@ -331,7 +331,11 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 		chunk = &GroupColumnChunk{name: "chunk"}
 		gr.buffer[by.Value] = []GroupColumn{chunk}
 	}
-	chunk.Append(node.Inflight().Value())
+	inflight := node.Inflight()
+	if inflight == nil {
+		return
+	}
+	chunk.Append(inflight.Value())
 	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
 		if ret, ok := gr.buffer[gr.curKey]; ok {
 			r := ret[0].Result()
