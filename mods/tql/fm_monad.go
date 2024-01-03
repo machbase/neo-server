@@ -1494,6 +1494,9 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 
 		cols := node.task.ResultColumns()
 		inflight := node.Inflight()
+		if inflight == nil {
+			return nil, nil
+		}
 		switch vals := inflight.Value().(type) {
 		case []any:
 			if tr.header {
@@ -1606,7 +1609,7 @@ func (tr *Transposer) fixedAndTransposed(values []any) ([]int, []int) {
 
 func (tr *Transposer) do(node *Node) (any, error) {
 	inflight := node.Inflight()
-	if inflight.Value() == nil {
+	if inflight == nil || inflight.Value() == nil {
 		return nil, nil
 	}
 	inflightValue := inflight.Value()
