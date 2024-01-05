@@ -253,6 +253,7 @@ func (c *Chart) Close() {
 			c.option = exp.ReplaceAllString(c.option, columnVarNames[i])
 		}
 		c.jsCodesPre = append(c.jsCodesPre, fmt.Sprintf("const _columns=[%s];", strings.Join(columnVarNames, ",")))
+		c.jsCodesPre = append(c.jsCodesPre, `function column(idx) { return _columns[idx]; }`)
 	}
 
 	if len(c.JSAssets) == 0 {
