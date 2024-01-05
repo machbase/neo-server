@@ -280,7 +280,8 @@ func (c *Chart) Close() {
 		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), c.ChartID)
 
 		codes := []string{}
-		codes = append(codes, fmt.Sprintf(`let _chart = echarts.init(document.getElementById('%s'), "%s");`, c.ChartID, c.Theme))
+		codes = append(codes, fmt.Sprintf(`let _chartID = '%s';`, c.ChartID))
+		codes = append(codes, fmt.Sprintf(`let _chart = echarts.init(document.getElementById(_chartID), "%s");`, c.Theme))
 		if c.option != "" {
 			codes = append(codes, fmt.Sprintf(`let _chartOption = %s;`, c.option))
 			codes = append(codes, `_chart.setOption(_chartOption);`)

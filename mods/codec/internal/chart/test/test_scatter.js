@@ -4,7 +4,8 @@
     const _column_1=[0,1,2];
     const _columns=[_column_0,_column_1];
     function column(idx) { return _columns[idx]; }
-    let _chart = echarts.init(document.getElementById('WejMYXCGcYNL'), "white");
+    let _chartID = 'WejMYXCGcYNL';
+    let _chart = echarts.init(document.getElementById(_chartID), "white");    
     let _chartOption = {
                 "xAxis": { "type": "time", "data": _column_0 },
                 "yAxis": { "type": "value"},

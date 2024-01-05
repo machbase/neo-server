@@ -1,6 +1,7 @@
 (()=>{
     "use strict";
-    let _chart = echarts.init(document.getElementById('MjYwMjY0NTY1OTY2MTUxNjg_'), "white");
+    let _chartID = 'MjYwMjY0NTY1OTY2MTUxNjg_';
+    let _chart = echarts.init(document.getElementById(_chartID), "white");
     let _chartOption = {
     "legend":{"show":true,"data":["test-data"]},
     "dataZoom":[{"type":"slider", "start":0, "end":100}],

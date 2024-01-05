@@ -1,6 +1,7 @@
 (()=>{
     "use strict";
-    let _chart = echarts.init(document.getElementById('WejMYXCGcYNL'), "westeros");
+    let _chartID = 'WejMYXCGcYNL';
+    let _chart = echarts.init(document.getElementById(_chartID), "westeros");
     let _chartOption = {
     "title":{"text":"Title", "subtext":"subtitle"},
     "animation":true, "color":["#80FFA5", "#00DDFF", "#37A2FF"],

@@ -1,6 +1,7 @@
 (()=>{
     "use strict";
-    let _chart = echarts.init(document.getElementById('zmsXewYeZOqW'), "westerose");
+    let _chartID = 'zmsXewYeZOqW';
+    let _chart = echarts.init(document.getElementById(_chartID), "westerose");
     let _chartOption = {
     "xAxis3D":{"name":"time","type":"time","show":true},
     "yAxis3D":{"name":"demo","type":"value","show":true},
