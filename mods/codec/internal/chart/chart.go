@@ -240,7 +240,6 @@ func (c *Chart) Close() {
 	if !c.isCompatibleMode {
 		columnVarNames := make([]string, len(c.data))
 		for i, d := range c.data {
-			exp := getValueRegexp(i)
 			columnVal := `""`
 			if jsonData, err := json.Marshal(d); err != nil {
 				columnVal = fmt.Sprintf("%q", err.Error())
@@ -250,7 +249,6 @@ func (c *Chart) Close() {
 			columnVarNames[i] = fmt.Sprintf("_column_%d", i)
 
 			c.jsCodesPre = append(c.jsCodesPre, fmt.Sprintf("const %s=%s;", columnVarNames[i], columnVal))
-			c.option = exp.ReplaceAllString(c.option, columnVarNames[i])
 		}
 		c.jsCodesPre = append(c.jsCodesPre, fmt.Sprintf("const _columns=[%s];", strings.Join(columnVarNames, ",")))
 		c.jsCodesPre = append(c.jsCodesPre, `function column(idx) { return _columns[idx]; }`)
@@ -358,22 +356,3 @@ func (c *Chart) Render() {
 var (
 	pat = regexp.MustCompile(`(__f__")|("__f__)|(__f__)`)
 )
-
-var valueRegexpCache = map[int]*regexp.Regexp{}
-
-func init() {
-	for i := 0; i < 20; i++ {
-		_ = getValueRegexp(i)
-	}
-}
-
-func getValueRegexp(idx int) *regexp.Regexp {
-	if r, ok := valueRegexpCache[idx]; !ok {
-		pattern := fmt.Sprintf(`(column\s*\(\s*%d\s*\))`, idx)
-		r = regexp.MustCompile(pattern)
-		valueRegexpCache[idx] = r
-		return r
-	} else {
-		return r
-	}
-}

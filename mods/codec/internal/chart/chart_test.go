@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,13 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
 )
+
+func TestColumnRegexp(t *testing.T) {
+	for idx := 0; idx < 10; idx++ {
+		pattern := fmt.Sprintf(`(column\s*\(\s*%d\s*\))`, idx)
+		regexp.MustCompile(pattern)
+	}
+}
 
 func StringsEq(t *testing.T, expect string, actual string) bool {
 	matched := false
@@ -118,7 +126,7 @@ func TestScatter(t *testing.T) {
 			"xAxis": { "type": "time", "data": column(0) },
 			"yAxis": { "type": "value"},
 			"series": [
-				{ "type": "scatter", "data": column( 1	) }
+				{ "type": "scatter", "data": column(1) }
 			]
 		}`)
 		if output == "json" {

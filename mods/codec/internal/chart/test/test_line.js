@@ -7,10 +7,10 @@
     let _chartID = 'WejMYXCGcYNL';
     let _chart = echarts.init(document.getElementById(_chartID), "white");
     let _chartOption = {
-                "xAxis": { "type": "time", "data": _column_0 },
+                "xAxis": { "type": "time", "data": column(0 ) },
                 "yAxis": { "type": "value"},
                 "series": [
-                    { "type": "line", "data": _column_1 }
+                    { "type": "line", "data": column( 1) }
                 ]
             };
     _chart.setOption(_chartOption);
