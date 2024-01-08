@@ -1048,14 +1048,26 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 
 	// machbaseCLI 통해서 데이터 가져올때 timezone을 설정 후 쿼리,
 	// neo는 따로 설정이 없음,
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Message = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// timezone, err = svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
+
+	switch param.ReturnType {
+	case "":
+		param.ReturnType = "0"
+	case "0", "1":
+		svr.log.Trace(trackId, "return type ok")
+	default:
+		svr.log.Info(trackId, "return form range over")
+		rsp.Data = map[string]interface{}{
+			"title": "Wrong Parameter. (value_return_form) : must be 0,1",
+		}
+		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
-
-	svr.log.Info("timezone: ", timezone) // 에러 방지
 
 	if param.Separator == "" {
 		param.Separator = ","
@@ -1808,7 +1820,7 @@ func (svr *httpd) getMetaData(ctx context.Context, conn spi.Conn, sqlText string
 		return result, err
 	}
 
-	for rows.Next() { // meta table이 string이 아닌 경우가 있는가?
+	for rows.Next() {
 		meta := ""
 		err = rows.Scan(&meta)
 		if err != nil {
