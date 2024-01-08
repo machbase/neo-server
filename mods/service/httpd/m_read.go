@@ -1201,6 +1201,20 @@ func (svr *httpd) GetStatData(ctx *gin.Context) {
 
 	svr.log.Info(timezone) // 에러 방지
 
+	switch param.ReturnType {
+	case "":
+		param.ReturnType = "0"
+	case "0", "1":
+		svr.log.Trace(trackId, "return type ok")
+	default:
+		svr.log.Info(trackId, "return form range over")
+		rsp.Data = map[string]interface{}{
+			"title": "Wrong Parameter. (value_return_form) : must be 0,1",
+		}
+		ctx.JSON(http.StatusPreconditionFailed, rsp)
+		return
+	}
+
 	if param.Separator == "" {
 		param.Separator = ","
 	}
@@ -1307,6 +1321,19 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 	}
 	svr.log.Info(timezone) // 에러 방지
 
+	switch param.ReturnType {
+	case "":
+		param.ReturnType = "0"
+	case "0", "1":
+		svr.log.Trace(trackId, "return type ok")
+	default:
+		svr.log.Info(trackId, "return form range over")
+		rsp.Data = map[string]interface{}{
+			"title": "Wrong Parameter. (value_return_form) : must be 0,1",
+		}
+		ctx.JSON(http.StatusPreconditionFailed, rsp)
+		return
+	}
 	if param.Separator == "" {
 		param.Separator = ","
 	}
