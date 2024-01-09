@@ -231,6 +231,8 @@ func (gm *GeoMap) Close() {
 	gm.CSSAssets = append([]string{"/web/geomap/leaflet.css"}, gm.CSSAssets...)
 	if gm.tileTemplate == "" {
 		gm.tileTemplate = `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
+	} else if gm.tileTemplate == "vworld" {
+		gm.tileTemplate = `https://xdworld.vworld.kr/2d/Base/service/{z}/{x}/{y}.png`
 	} else if gm.tileTemplate == "kakao" {
 		gm.tileTemplate = `http://map{s}.daumcdn.net/map_2d_hd/2106wof/L{z}/{y}/{x}.png`
 		gm.tileOption = `{"tms": true, "subdomains": "01234", "zoomReverse":true, "zoomOffset": 1, "maxZoom":13, "minZoom":0 }`
