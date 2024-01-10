@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
@@ -56,6 +57,23 @@ func TestParseBool(t *testing.T) {
 	FunctionTestCase{f: node.Function("parseBool"),
 		args:      []any{"some other text"},
 		expectErr: "parseBool: parsing \"some other text\": invalid syntax",
+	}.run(t)
+}
+
+func TestStrTime(t *testing.T) {
+	now := time.Unix(0, 1704871917655327000)
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "RFC822", time.UTC},
+		expect: "10 Jan 24 07:31 UTC",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "2006/01/02 15:04:05.999999", time.UTC},
+		expect: "2024/01/10 07:31:57.655327",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, opts.Timeformat(util.ToTimeformatSql("YYYY/MM/DD HH24:MI:SS.nnnnnn")), time.UTC},
+		expect: "2024/01/10 07:31:57.655327",
 	}.run(t)
 }
 

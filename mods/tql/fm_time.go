@@ -107,7 +107,7 @@ func (node *Node) fmStrTime(t any, format any, tz *time.Location) (string, error
 	}
 	switch fm := format.(type) {
 	case string:
-		tf = fm
+		tf = util.GetTimeformat(fm)
 	case opts.Option:
 		r := &fmParseTimeReceiver{}
 		fm(r)
