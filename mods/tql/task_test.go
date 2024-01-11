@@ -781,7 +781,7 @@ func TestMathMarkdown(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestArrang(t *testing.T) {
+func TestArrange(t *testing.T) {
 	codeLines := []string{
 		"FAKE( arrange(0, 2, 1) )",
 		"CSV( heading(true), precision(1) )",
