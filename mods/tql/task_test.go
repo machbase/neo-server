@@ -741,6 +741,39 @@ func TestMath(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestLetVariables(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( linspace(0, 1, 3))`,
+		`LET(x10, value(0) * 10)`,
+		`LET(x10, $x10 + 1)`,
+		`MAPVALUE(1, $x10)`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{
+		`x,column`,
+		`0,1`,
+		`0.5,6`,
+		`1,11`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( arrange(0, 3, 1))`,
+		`LET(flag, value(0) != 0 && mod(value(0), 2) == 0 )`,
+		`MAPVALUE(1, !$flag)`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{
+		`x,column`,
+		`0,true`,
+		`1,true`,
+		`2,false`,
+		`3,true`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMathMarkdown(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{

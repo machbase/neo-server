@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,11 +168,31 @@ func (node *Node) Get(name string) (any, error) {
 	case "nil", "NULL":
 		return expression.NullValue, nil
 	default:
-		if node.task != nil {
-			return node.task.GetVariable(name)
+		inflight := node.Inflight()
+		if inflight == nil {
+			return nil, nil
+		}
+		if node.Name() == "LET()" && !strings.HasPrefix(name, "$") {
+			return func(v any) {
+				inflight.SetVariable(name, v)
+			}, nil
+		} else {
+			return inflight.GetVariable(name)
 		}
 	}
 	return nil, nil
+}
+
+func (node *Node) fmLET(left any, right any) (any, error) {
+	if left == nil {
+		return node.Inflight(), nil
+	}
+	if fn, ok := left.(func(any)); ok {
+		fn(right)
+	} else {
+		return nil, fmt.Errorf("%q left operand is not valid", "LET")
+	}
+	return node.Inflight(), nil
 }
 
 func (node *Node) GetValue(name string) (any, bool) {

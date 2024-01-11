@@ -28,6 +28,7 @@ type Record struct {
 	key         any
 	value       any
 	contentType string
+	variables   map[string]any
 }
 
 func NewRecord(k, v any) *Record {
@@ -97,6 +98,24 @@ func (r *Record) Key() any {
 
 func (r *Record) Value() any {
 	return r.value
+}
+
+func (r *Record) SetVariable(name string, value any) {
+	if r.variables == nil {
+		r.variables = map[string]any{}
+	}
+	r.variables[name] = value
+}
+
+func (r *Record) GetVariable(name string) (any, error) {
+	if r.variables != nil && strings.HasPrefix(name, "$") {
+		if v, ok := r.variables[strings.TrimPrefix(name, "$")]; ok {
+			return v, nil
+		}
+		return nil, nil
+	} else {
+		return nil, fmt.Errorf("undefined variable '%s'", name)
+	}
 }
 
 func (r *Record) Flatten() []any {

@@ -495,6 +495,7 @@ func isNotAlphanumeric(character rune) bool {
 		character == ')' ||
 		character == '[' ||
 		character == ']' ||
+		character == '$' ||
 		!isNotQuote(character))
 }
 

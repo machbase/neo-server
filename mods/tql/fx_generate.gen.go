@@ -16,6 +16,7 @@ func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
 		// context
+		"LET":         x.gen_LET,
 		"context":     x.gen_context,
 		"key":         x.gen_key,
 		"value":       x.gen_value,
@@ -271,6 +272,24 @@ func NewNode(task *Task) *Node {
 		"zAxis":               x.gen_zAxis,
 	}
 	return x
+}
+
+// gen_LET
+//
+// syntax: LET(, )
+func (x *Node) gen_LET(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("LET", 2, len(args))
+	}
+	p0, err := convAny(args, 0, "LET", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "LET", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmLET(p0, p1)
 }
 
 // gen_context
