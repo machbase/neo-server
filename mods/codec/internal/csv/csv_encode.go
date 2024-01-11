@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
@@ -132,7 +133,7 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]string, len(values))
 
 	for i, r := range values {
-		if r == nil {
+		if r == nil || r == expression.NullValue {
 			cols[i] = ex.substituteNull
 			continue
 		}
