@@ -781,6 +781,32 @@ func TestMathMarkdown(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestArrang(t *testing.T) {
+	codeLines := []string{
+		"FAKE( arrange(0, 2, 1) )",
+		"CSV( heading(true), precision(1) )",
+	}
+	resultLines := []string{
+		"x",
+		"0.0",
+		"1.0",
+		"2.0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( arrange(2, 0, -1) )",
+		"CSV( heading(true), precision(1) )",
+	}
+	resultLines = []string{
+		"x",
+		"2.0",
+		"1.0",
+		"0.0",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestLinspace(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 2, 3))",

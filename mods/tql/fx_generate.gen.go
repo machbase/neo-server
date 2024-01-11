@@ -58,6 +58,7 @@ func NewNode(task *Task) *Node {
 		"linspace":        x.gen_linspace,
 		"linspace50":      x.gen_linspace50,
 		"meshgrid":        x.gen_meshgrid,
+		"arrange":         x.gen_arrange,
 		"latlon":          x.gen_latlon,
 		"geoPoint":        x.gen_geoPoint,
 		"geoCircle":       x.gen_geoCircle,
@@ -419,6 +420,28 @@ func (x *Node) gen_meshgrid(args ...any) (any, error) {
 	}
 	ret := x.fmMeshgrid(p0, p1)
 	return ret, nil
+}
+
+// gen_arrange
+//
+// syntax: arrange(float64, float64, float64)
+func (x *Node) gen_arrange(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("arrange", 3, len(args))
+	}
+	p0, err := convFloat64(args, 0, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convFloat64(args, 2, "arrange", "float64")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmArrange(p0, p1, p2)
 }
 
 // gen_latlon

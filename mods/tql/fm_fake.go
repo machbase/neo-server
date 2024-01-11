@@ -29,6 +29,8 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genLinspace(node, gen)
 	case *meshgrid:
 		genMeshgrid(node, gen)
+	case *arrange:
+		genArrange(node, gen)
 	case *sphere:
 		genSphere(node, gen)
 	case *oscillator:
@@ -141,6 +143,46 @@ func genJsonData(node *Node, jd *jsondata) {
 	for i, v := range jd.Data {
 		rec := NewRecord(i+1, v)
 		rec.Tell(node.next)
+	}
+}
+
+func (node *Node) fmArrange(start float64, stop float64, step float64) (*arrange, error) {
+	if step == 0 {
+		return nil, fmt.Errorf("FUNCTION %q step can not be 0", "arrange")
+	}
+	if start <= stop && step < 0 {
+		return nil, fmt.Errorf("FUNCTION %q step can not be less than 0", "arrange")
+	}
+	if start > stop && step > 0 {
+		return nil, fmt.Errorf("FUNCTION %q step can not be greater than 0", "arrange")
+	}
+	return &arrange{start: start, stop: stop, step: step}, nil
+}
+
+type arrange struct {
+	start float64
+	stop  float64
+	step  float64
+}
+
+func genArrange(node *Node, ar *arrange) {
+	node.task.SetResultColumns([]*spi.Column{
+		{Name: "ROWNUM", Type: "int"},
+		{Name: "x", Type: "double"},
+	})
+	i := 0
+	if ar.start < ar.stop {
+		for v := ar.start; v <= ar.stop; v += ar.step {
+			rec := NewRecord(i+1, []any{v})
+			rec.Tell(node.next)
+			i++
+		}
+	} else {
+		for v := ar.start; v >= ar.stop; v += ar.step {
+			rec := NewRecord(i+1, []any{v})
+			rec.Tell(node.next)
+			i++
+		}
 	}
 }
 
