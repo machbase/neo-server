@@ -27,7 +27,7 @@ func TestTQL_CSV(t *testing.T) {
 	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
-	require.Equal(t, "text/csv", w.Header().Get("Content-Type"))
+	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
 	require.Equal(t, strings.Join([]string{"0", "1", ""}, "\n"), w.Body.String())
 }
 

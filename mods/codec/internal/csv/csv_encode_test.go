@@ -15,7 +15,7 @@ import (
 
 func TestCsvEncoder(t *testing.T) {
 	enc := csv.NewEncoder()
-	require.Equal(t, "text/csv", enc.ContentType())
+	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	out := &stream.WriterOutputStream{Writer: w}
@@ -103,7 +103,7 @@ func TestCsvTimeformat(t *testing.T) {
 func runTimeformat(t *testing.T, format string) string {
 	enc := csv.NewEncoder()
 
-	require.Equal(t, "text/csv", enc.ContentType())
+	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	out := &stream.WriterOutputStream{Writer: w}
