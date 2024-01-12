@@ -45,7 +45,7 @@ func NewEncoder() *Exporter {
 }
 
 func (ex *Exporter) ContentType() string {
-	return "text/csv"
+	return "text/csv; charset=utf-8"
 }
 
 func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
