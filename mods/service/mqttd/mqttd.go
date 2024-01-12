@@ -193,6 +193,10 @@ func (svr *mqttd) Stop() {
 	}
 }
 
+func (svr *mqttd) getTrustConnection(ctx context.Context) (spi.Conn, error) {
+	return svr.db.Connect(ctx, mach.WithTrustUser("sys"))
+}
+
 func (svr *mqttd) SetAuthServer(authServer security.AuthServer) {
 	svr.authServer = authServer
 }

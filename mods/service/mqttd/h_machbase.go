@@ -66,7 +66,18 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any
 		rsp.Reason = err.Error()
 		return nil
 	}
-	Query(svr.dbConn, req, rsp)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return nil
+	}
+	defer conn.Close()
+
+	Query(conn, req, rsp)
 	return nil
 }
 
@@ -87,7 +98,18 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		rsp.Reason = "table is not specified"
 		return nil
 	}
-	Write(svr.dbConn, req, rsp)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return nil
+	}
+	defer conn.Close()
+
+	Write(conn, req, rsp)
 	return nil
 }
 
