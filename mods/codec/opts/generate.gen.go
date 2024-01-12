@@ -120,7 +120,7 @@ func CharsetEncoding(charset encoding.Encoding) Option {
 
 // SetChartAssets
 //
-//	mods/codec/internal/chart/chart.go:106:1
+//	mods/codec/internal/chart/chart.go:112:1
 type CanSetChartAssets interface {
 	SetChartAssets(args ...string)
 }
@@ -135,7 +135,7 @@ func ChartAssets(args ...string) Option {
 
 // SetChartDispatchAction
 //
-//	mods/codec/internal/chart/chart.go:124:1
+//	mods/codec/internal/chart/chart.go:130:1
 type CanSetChartDispatchAction interface {
 	SetChartDispatchAction(action string)
 }
@@ -148,9 +148,24 @@ func ChartDispatchAction(action string) Option {
 	}
 }
 
-// SetChartId
+// SetChartID
 //
 //	mods/codec/internal/chart/chart.go:77:1
+type CanSetChartID interface {
+	SetChartID(id string)
+}
+
+func ChartID(id string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetChartID); ok {
+			_o.SetChartID(id)
+		}
+	}
+}
+
+// SetChartId
+//
+//	mods/codec/internal/chart/chart.go:83:1
 type CanSetChartId interface {
 	SetChartId(id string)
 }
@@ -165,7 +180,7 @@ func ChartId(id string) Option {
 
 // SetChartJSCode
 //
-//	mods/codec/internal/chart/chart.go:116:1
+//	mods/codec/internal/chart/chart.go:122:1
 type CanSetChartJSCode interface {
 	SetChartJSCode(js string)
 }
@@ -180,7 +195,7 @@ func ChartJSCode(js string) Option {
 
 // SetChartJson
 //
-//	mods/codec/internal/chart/chart.go:90:1
+//	mods/codec/internal/chart/chart.go:96:1
 type CanSetChartJson interface {
 	SetChartJson(flag bool)
 }
@@ -195,7 +210,7 @@ func ChartJson(flag bool) Option {
 
 // SetChartOption
 //
-//	mods/codec/internal/chart/chart.go:94:1
+//	mods/codec/internal/chart/chart.go:100:1
 type CanSetChartOption interface {
 	SetChartOption(opt string)
 }
@@ -576,7 +591,7 @@ func OutputStream(o spec.OutputStream) Option {
 
 // SetPlugins
 //
-//	mods/codec/internal/chart/chart.go:102:1
+//	mods/codec/internal/chart/chart.go:108:1
 type CanSetPlugins interface {
 	SetPlugins(plugins ...string)
 }
@@ -657,7 +672,7 @@ func SeriesLabels(args ...string) Option {
 
 // SetSize
 //
-//	mods/codec/internal/chart/chart.go:81:1
+//	mods/codec/internal/chart/chart.go:87:1
 //	mods/codec/internal/geomap/geomap.go:85:1
 type CanSetSize interface {
 	SetSize(width string, height string)
@@ -719,7 +734,7 @@ func TableName(tableName string) Option {
 
 // SetTheme
 //
-//	mods/codec/internal/chart/chart.go:86:1
+//	mods/codec/internal/chart/chart.go:92:1
 type CanSetTheme interface {
 	SetTheme(theme string)
 }

@@ -74,6 +74,12 @@ func (c *Chart) SetOutputStream(o spec.OutputStream) {
 	c.output = o
 }
 
+func (c *Chart) SetChartID(id string) {
+	c.ChartID = id
+}
+
+// deprecated, use SetChartID
+// keep this version for the compatibility
 func (c *Chart) SetChartId(id string) {
 	c.ChartID = id
 }
