@@ -56,7 +56,12 @@ func (l *unixSocketListener) buildRawListener() error {
 	if err = os.Chmod(l.path, fs.FileMode(l.permission)); err != nil {
 		return err
 	}
+	l.path = l.raw.Addr().String()
 	return err
+}
+
+func (l *unixSocketListener) Address() string {
+	return l.path
 }
 
 func (l *unixSocketListener) Start() error {

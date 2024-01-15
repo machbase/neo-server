@@ -28,17 +28,12 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	topic := evt.Topic
 	topic = strings.TrimPrefix(topic, prefix+"/")
 	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
+	if !ok {
+		peer = nil
+	}
 
 	if topic == "query" {
-		reply := func(msg any) {
-			if ok {
-				buff, err := json.Marshal(msg)
-				if err != nil {
-					return
-				}
-				peer.Publish(prefix+"/reply", 1, buff)
-			}
-		}
+		reply := replier(peer, prefix+"/reply", 1)
 		return svr.handleQuery(peer, evt.Raw, reply)
 	} else if strings.HasPrefix(topic, "write") {
 		return svr.handleWrite(peer, topic, evt.Raw)
@@ -52,7 +47,24 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	return nil
 }
 
-func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg any)) error {
+func replier(peer mqtt.Peer, replyTopic string, qos byte) func(*msg.QueryResponse) {
+	return func(rsp *msg.QueryResponse) {
+		if peer == nil {
+			return
+		}
+		if rsp.ContentType == "application/json" && rsp.ContentEncoding != "gzip" {
+			buff, err := json.Marshal(rsp)
+			if err != nil {
+				return
+			}
+			peer.Publish(replyTopic, qos, buff)
+		} else if rsp.Content != nil {
+			peer.Publish(replyTopic, qos, rsp.Content)
+		}
+	}
+}
+
+func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg *msg.QueryResponse)) error {
 	tick := time.Now()
 	req := &msg.QueryRequest{}
 	rsp := &msg.QueryResponse{Reason: "not specified"}

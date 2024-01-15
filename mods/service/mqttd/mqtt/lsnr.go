@@ -13,6 +13,7 @@ type Listener interface {
 	Stop() error
 	IsAlive() bool
 	SetAllowance(allowance allowance.Allowance)
+	Address() string
 }
 
 func NewTcpListener(cfg *TcpListenerConfig, acceptChan chan<- any) (Listener, error) {
