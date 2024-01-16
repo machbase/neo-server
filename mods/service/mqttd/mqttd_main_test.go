@@ -48,6 +48,7 @@ func TestMain(m *testing.M) {
 		OptionListenAddress("tcp://127.0.0.1:0"),
 		OptionTqlLoader(tqlLoader),
 		OptionHandler("db", "machbase"),
+		OptionHandler("metrics", "influx"),
 	}
 	if svr, err := New(database, opts...); err != nil {
 		panic(err)

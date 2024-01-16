@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,16 +94,16 @@ func TestWrite(t *testing.T) {
 			rt := &ResultMock{}
 			switch sqlText {
 			case "insert into EXAMPLE (NAME,TIME,VALUE) values(?,?,?)":
-				if len(params) == 3 && params[0] == "mycar" && params[2] == values[count] {
+				if len(params) == 3 && strings.HasPrefix(params[0].(string), "mycar") && params[2] == values[count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
 					rt.MessageFunc = func() string { return "a row inserted" }
 					count++
 				} else {
-					t.Log("=========> unknown mock db SQL:", params)
+					t.Log("ExecFunc => unexpected insert params:", params)
 				}
 			default:
-				t.Log("=========> unknown mock db SQL:", sqlText)
+				t.Log("ExecFunc => unknown mock db SQL:", sqlText)
 				t.Fail()
 			}
 			return rt
@@ -172,6 +173,7 @@ func TestWrite(t *testing.T) {
 
 	jsonData := []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)
 	csvData := []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")
+	ilpData := []byte("mycar speed=1.2345 167038034500000\nmycar speed=2.3456 167038034500000\n")
 	jsonGzipData := compress(jsonData)
 	csvGzipData := compress(csvData)
 
@@ -199,6 +201,12 @@ func TestWrite(t *testing.T) {
 			ConnMock: connMock,
 			Topic:    "db/write/example:csv:gzip",
 			Payload:  csvGzipData,
+		},
+		{
+			Name:     "metrics/example ILP",
+			ConnMock: connMock,
+			Topic:    "metrics/example",
+			Payload:  ilpData,
 		},
 	}
 

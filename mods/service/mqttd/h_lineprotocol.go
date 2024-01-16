@@ -12,19 +12,33 @@ import (
 )
 
 func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
-	dbName := strings.TrimPrefix(evt.Topic, prefix+"/")
+	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
+	if !ok {
+		peer = nil
+	}
+	peerLog := peer.GetLog()
+	topic := evt.Topic
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		peerLog.Warn(topic, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	dbName := strings.TrimPrefix(evt.Topic, prefix+"/")
+
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, svr.dbConn, dbName, false); err != nil {
+	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
 		svr.log.Warnf("column error: %s", err.Error())
 		return
 	} else {
 		desc = desc0.(*do.TableDescription)
 	}
-
+	tableName := strings.ToUpper(dbName)
 	precision := lineprotocol.Nanosecond
 
 	dec := lineprotocol.NewDecoder(bytes.NewBuffer(evt.Raw))
@@ -76,7 +90,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 			return
 		}
 
-		result := do.WriteLineProtocol(ctx, svr.dbConn, dbName, desc.Columns, measurement, fields, tags, ts)
+		result := do.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			svr.log.Warnf("lineprotocol fail: %s", result.Err().Error())
 		}
