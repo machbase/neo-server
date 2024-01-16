@@ -119,6 +119,8 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			field = strings.TrimSpace(field)
 		}
 		switch dec.columnTypes[i] {
+		case "varchar":
+			values[i] = field
 		case "string":
 			values[i] = field
 		case "datetime":

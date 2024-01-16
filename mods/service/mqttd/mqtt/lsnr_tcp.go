@@ -62,13 +62,19 @@ func (l *tcpListener) buildRawListener() error {
 		if rt == nil {
 			l.raw, err = net.Listen("tcp", l.address)
 			l.isTls = false
+			l.address = l.raw.Addr().String()
 			return err
 		} else {
 			l.raw, err = tls.Listen("tcp", l.address, rt)
+			l.address = l.raw.Addr().String()
 			l.isTls = true
 			return err
 		}
 	}
+}
+
+func (l *tcpListener) Address() string {
+	return l.address
 }
 
 func buildTlsConfig(tlsCfg *TlsListenerConfig, tcpCfg *TcpListenerConfig) (*tls.Config, error) {

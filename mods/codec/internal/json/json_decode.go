@@ -66,6 +66,8 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	values := make([]any, len(dec.columnTypes))
 	for i, field := range fields {
 		switch dec.columnTypes[i] {
+		case "varchar":
+			fallthrough
 		case "string":
 			switch v := field.(type) {
 			case string:
