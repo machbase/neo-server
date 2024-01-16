@@ -104,6 +104,10 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	} else if !ctx.Writer.Written() {
 		ctx.JSON(http.StatusOK, result)
 	}
+	// TODO handling error while processing TQL
+	// It could be another content-type than json.
+	// } else {
+	// }
 }
 
 // tql as RESTful API
