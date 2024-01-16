@@ -35,8 +35,7 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	}
 
 	if topic == "query" {
-		reply := replier(peer, prefix+"/reply", 1)
-		return svr.handleQuery(peer, evt.Raw, reply)
+		return svr.handleQuery(peer, evt.Raw, prefix+"/reply", 1)
 	} else if strings.HasPrefix(topic, "write/") {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {
@@ -49,30 +48,16 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	return nil
 }
 
-func replier(peer mqtt.Peer, replyTopic string, qos byte) func(*msg.QueryResponse) {
-	return func(rsp *msg.QueryResponse) {
+func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, replyTopic string, replyQoS byte) error {
+	tick := time.Now()
+	req := &msg.QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
+	rsp := &msg.QueryResponse{Reason: "not specified"}
+	defer func() {
 		if peer == nil {
 			return
 		}
-		if rsp.ContentType == "application/json" && rsp.ContentEncoding != "gzip" {
-			buff, err := json.Marshal(rsp)
-			if err != nil {
-				return
-			}
-			peer.Publish(replyTopic, qos, buff)
-		} else if rsp.Content != nil {
-			peer.Publish(replyTopic, qos, rsp.Content)
-		}
-	}
-}
-
-func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg *msg.QueryResponse)) error {
-	tick := time.Now()
-	req := &msg.QueryRequest{}
-	rsp := &msg.QueryResponse{Reason: "not specified"}
-	defer func() {
 		rsp.Elapse = time.Since(tick).String()
-		reply(rsp)
+		peer.Publish(replyTopic, replyQoS, rsp.Content)
 	}()
 
 	err := json.Unmarshal(payload, req)
@@ -80,6 +65,31 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg *ms
 		rsp.Reason = err.Error()
 		return nil
 	}
+
+	var timeLocation = parseTimeLocation(req.TimeLocation, time.UTC)
+
+	var buffer = &bytes.Buffer{}
+	var output spec.OutputStream
+	switch req.Compress {
+	case "gzip":
+		output = &stream.WriterOutputStream{Writer: gzip.NewWriter(buffer)}
+	default:
+		req.Compress = ""
+		output = &stream.WriterOutputStream{Writer: buffer}
+	}
+
+	encoder := codec.NewEncoder(req.Format,
+		opts.OutputStream(output),
+		opts.Timeformat(req.Timeformat),
+		opts.Precision(req.Precision),
+		opts.Rownum(req.Rownum),
+		opts.Heading(req.Heading),
+		opts.TimeLocation(timeLocation),
+		opts.Delimiter(","),
+		opts.BoxStyle("default"),
+		opts.BoxSeparateColumns(true),
+		opts.BoxDrawBorder(true),
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -91,7 +101,40 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg *ms
 	}
 	defer conn.Close()
 
-	Query(conn, req, rsp)
+	queryCtx := &do.QueryContext{
+		Conn: conn,
+		Ctx:  ctx,
+		OnFetchStart: func(cols spi.Columns) {
+			rsp.ContentType = encoder.ContentType()
+			codec.SetEncoderColumns(encoder, cols)
+			encoder.Open()
+		},
+		OnFetch: func(nrow int64, values []any) bool {
+			err := encoder.AddRow(values)
+			if err != nil {
+				// report error to client?
+				svr.log.Error("render", err.Error())
+				return false
+			}
+			return true
+		},
+		OnFetchEnd: func() {
+			encoder.Close()
+			rsp.Success, rsp.Reason = true, "success"
+			rsp.Content = buffer.Bytes()
+		},
+		OnExecuted: func(userMessage string, rowsAffected int64) {
+			rsp.Success, rsp.Reason = true, userMessage
+			rsp.Elapse = time.Since(tick).String()
+		},
+	}
+
+	if _, err := do.Query(queryCtx, req.SqlText); err != nil {
+		svr.log.Error("query fail", err.Error())
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+	}
+
 	return nil
 }
 
@@ -395,4 +438,27 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		svr.log.Error("tql execute fail", path, result.Err.Error())
 	}
 	return nil
+}
+
+func parseTimeLocation(str string, def *time.Location) *time.Location {
+	if str == "" {
+		return def
+	}
+
+	tz := strings.ToLower(str)
+	if tz == "local" {
+		return time.Local
+	} else if tz == "utc" {
+		return time.UTC
+	} else {
+		if loc, err := util.GetTimeLocation(str); err != nil {
+			loc, err := time.LoadLocation(str)
+			if err != nil {
+				return def
+			}
+			return loc
+		} else {
+			return loc
+		}
+	}
 }

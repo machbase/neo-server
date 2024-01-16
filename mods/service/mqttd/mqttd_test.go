@@ -41,6 +41,9 @@ func TestQuery(t *testing.T) {
 					return expectRows >= 0
 				}
 				rows.CloseFunc = func() error { return nil }
+				rows.MessageFunc = func() string {
+					return "a row selected"
+				}
 			default:
 				t.Log("=========> unknown mock db SQL:", sqlText)
 				t.Fail()
@@ -58,12 +61,30 @@ func TestQuery(t *testing.T) {
 			Subscribe: "db/reply",
 			Expect: &msg.QueryResponse{
 				Success: true,
-				Reason:  "1 rows selected",
+				Reason:  "success",
 				Data: &msg.QueryData{
-					Columns: []string{"name", "time(UTC)", "value"},
+					Columns: []string{"name", "time", "value"},
 					Types:   []string{"varchar", "datetime", "double"},
 					Rows: [][]any{
-						{"temp", testTimeTick, 3.14},
+						{"temp", testTimeTick.UnixNano(), 3.14},
+					},
+				},
+			},
+		},
+		{
+			Name:      "db/query simple timeformat",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format":"json", "tz":"UTC", "timeformat": "DEFAULT" }`),
+			Subscribe: "db/reply",
+			Expect: &msg.QueryResponse{
+				Success: true,
+				Reason:  "success",
+				Data: &msg.QueryData{
+					Columns: []string{"name", "time", "value"},
+					Types:   []string{"varchar", "datetime", "double"},
+					Rows: [][]any{
+						{"temp", "2024-01-15 04:10:59", 3.14},
 					},
 				},
 			},
@@ -74,7 +95,15 @@ func TestQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example", "format": "csv" }`),
 			Subscribe: "db/reply",
-			Expect:    "name,time(UTC),value\ntemp,1705291859000000000,3.14\n",
+			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n",
+		},
+		{
+			Name:      "db/query simple, format=csv, timeformat",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format": "csv", "tz": "UTC", "timeformat": "DEFAULT" }`),
+			Subscribe: "db/reply",
+			Expect:    "name,time,value\ntemp,2024-01-15 04:10:59,3.14\n",
 		},
 	}
 
