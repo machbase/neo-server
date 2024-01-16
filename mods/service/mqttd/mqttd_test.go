@@ -347,3 +347,50 @@ func compress(data []byte) []byte {
 
 	return buf.Bytes()
 }
+
+func TestTql(t *testing.T) {
+	var count = 0
+	connMock := &ConnMock{
+		CloseFunc: func() error { return nil },
+		AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+			app := &AppenderMock{}
+			app.CloseFunc = func() (int64, int64, error) { return int64(count), 0, nil }
+			app.AppendFunc = func(values ...any) error {
+				if len(values) == 3 && values[0] == "mycar" {
+					count++
+				} else {
+					t.Log("=========> invalid append:", values)
+					t.Fail()
+				}
+				return nil
+			}
+			app.ColumnsFunc = func() (spi.Columns, error) {
+				return []*spi.Column{
+					{Name: "name", Type: spi.ColumnTypeString(spi.VarcharColumnType)},
+					{Name: "time", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
+					{Name: "value", Type: spi.ColumnTypeString(spi.Float64ColumnType)},
+				}, nil
+			}
+			return app, nil
+		},
+	}
+
+	csvData := []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")
+
+	tests := []TestCase{
+		{
+			Name:     "db/tql/csv_append.tql",
+			ConnMock: connMock,
+			Topic:    "db/tql/csv_append.tql",
+			Payload:  csvData,
+		},
+	}
+	for _, tt := range tests {
+		count = 0
+		runTest(t, &tt)
+		if count != 2 {
+			t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
+			t.Fail()
+		}
+	}
+}
