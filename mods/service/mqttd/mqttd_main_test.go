@@ -81,6 +81,7 @@ func runTest(t *testing.T, tc *TestCase) {
 
 	databaseLock.Lock()
 	mqttServer.dbConn = tc.ConnMock
+	mqttServer.db = &dbMock{conn: tc.ConnMock}
 	defer databaseLock.Unlock()
 
 	cfg := paho.NewClientOptions()

@@ -1,6 +1,8 @@
 package mqttd
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"testing"
@@ -82,16 +84,20 @@ func TestQuery(t *testing.T) {
 }
 
 func TestWrite(t *testing.T) {
+	var count int
+	var values = []float64{1.2345, 2.3456}
+
 	connMock := &ConnMock{
 		CloseFunc: func() error { return nil },
 		ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
 			rt := &ResultMock{}
 			switch sqlText {
-			case "insert into example (name,time,value) values(?,?,?)":
-				if len(params) == 3 && params[0] == "mycar" && params[2] == 1.2345 {
+			case "insert into EXAMPLE (NAME,TIME,VALUE) values(?,?,?)":
+				if len(params) == 3 && params[0] == "mycar" && params[2] == values[count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
 					rt.MessageFunc = func() string { return "a row inserted" }
+					count++
 				} else {
 					t.Log("=========> unknown mock db SQL:", params)
 				}
@@ -101,26 +107,157 @@ func TestWrite(t *testing.T) {
 			}
 			return rt
 		},
+		QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) spi.Row {
+			if sqlText == "select count(*) from M$SYS_TABLES where name = ?" && params[0] == "EXAMPLE" {
+				return &RowMock{
+					ErrFunc: func() error { return nil },
+					ScanFunc: func(cols ...any) error {
+						*(cols[0].(*int)) = 1
+						return nil
+					},
+				}
+			} else if len(params) == 3 && params[0] == "SYS" && params[1] == -1 && params[2] == "EXAMPLE" {
+				return &RowMock{
+					ErrFunc: func() error { return nil },
+					ScanFunc: func(cols ...any) error {
+						*(cols[0].(*int)) = 0                // TABLE_ID
+						*(cols[1].(*int)) = spi.TagTableType // TABLE_TYPE
+						*(cols[3].(*int)) = 3                // TABLE_COLCOUNT
+						return nil
+					},
+				}
+			} else {
+				fmt.Println("QueryRowFunc ->", sqlText, params)
+				t.Fail()
+			}
+			return nil
+		},
+		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+			if sqlText == "select name, type, length, id from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id" {
+				return NewRowsWrap([]*spi.Column{
+					{Name: "NAME", Type: "string"},
+					{Name: "TYPE", Type: "int"},
+					{Name: "LENGTH", Type: "int"},
+					{Name: "ID", Type: "int"},
+				},
+					[][]any{
+						{"NAME", spi.VarcharColumnType, 0, 0},
+						{"TIME", spi.DatetimeColumnType, 0, 1},
+						{"VALUE", spi.Float64ColumnType, 0, 2},
+					}), nil
+			} else if sqlText == "select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?" {
+				return NewRowsWrap(
+					[]*spi.Column{
+						{Name: "NAME", Type: "string"},
+						{Name: "TYPE", Type: "int"},
+						{Name: "ID", Type: "int"},
+					},
+					[][]any{
+						{"NAME", 8, 0},
+						{"TYPE", 1, 1},
+						{"ID", 1, 2},
+					}), nil
+			} else if sqlText == "select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id" {
+				return NewRowsWrap(
+					[]*spi.Column{{Name: "NAME", Type: "string"}},
+					[][]any{},
+				), nil
+			} else {
+				fmt.Println("QueryFunc ->", sqlText)
+				t.Fail()
+			}
+			return nil, nil
+		},
 	}
+
+	jsonData := []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)
+	csvData := []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")
+	jsonGzipData := compress(jsonData)
+	csvGzipData := compress(csvData)
 
 	tests := []TestCase{
 		{
-			Name:     "db/write/example json single",
+			Name:     "db/write/example json",
 			ConnMock: connMock,
 			Topic:    "db/write/example",
-			Payload:  []byte(`{ "data": { "columns":["name", "time", "value"], "rows":[["mycar", 1705291859, 1.2345]]}}`),
+			Payload:  jsonData,
 		},
 		{
-			Name:     "db/write/example csv single",
+			Name:     "db/write/example csv",
 			ConnMock: connMock,
 			Topic:    "db/write/example:csv",
-			Payload:  []byte(`mycar,1705291859,1.2345`),
+			Payload:  csvData,
+		},
+		{
+			Name:     "db/write/example json gzip",
+			ConnMock: connMock,
+			Topic:    "db/write/example:json:gzip",
+			Payload:  jsonGzipData,
+		},
+		{
+			Name:     "db/write/example csv gzip",
+			ConnMock: connMock,
+			Topic:    "db/write/example:csv:gzip",
+			Payload:  csvGzipData,
 		},
 	}
 
 	for _, tt := range tests {
+		count = 0
 		runTest(t, &tt)
+		if count != 2 {
+			t.Logf("Test %q count should be 2, got %d", tt.Name, count)
+			t.Fail()
+		}
 	}
+}
+
+func NewRowsWrap(columns spi.Columns, values [][]any) *RowsMockWrap {
+	ret := &RowsMockWrap{columns: columns, values: values}
+	rows := &RowsMock{}
+	rows.NextFunc = ret.Next
+	rows.CloseFunc = ret.Close
+	rows.ColumnsFunc = ret.Columns
+	rows.ScanFunc = ret.Scan
+	ret.RowsMock = rows
+	ret.cursor = -1
+	return ret
+}
+
+type RowsMockWrap struct {
+	*RowsMock
+	columns spi.Columns
+	values  [][]any
+	cursor  int
+}
+
+func (rw *RowsMockWrap) Close() error {
+	return nil
+}
+
+func (rw *RowsMockWrap) Columns() (spi.Columns, error) {
+	return rw.columns, nil
+}
+
+func (rw *RowsMockWrap) Next() bool {
+	rw.cursor++
+	return rw.cursor < len(rw.values)
+}
+
+func (rw *RowsMockWrap) Scan(cols ...any) error {
+	for i := range cols {
+		switch v := cols[i].(type) {
+		case *string:
+			*v = rw.values[rw.cursor][i].(string)
+		case *int:
+			*v = rw.values[rw.cursor][i].(int)
+		case *uint64:
+			*v = uint64(rw.values[rw.cursor][i].(int))
+		default:
+			fmt.Printf("ERR RowsMockWrap.Scan() %T\n", v)
+		}
+	}
+	return nil
 }
 
 func TestAppend(t *testing.T) {
@@ -131,7 +268,6 @@ func TestAppend(t *testing.T) {
 			app := &AppenderMock{}
 			app.CloseFunc = func() (int64, int64, error) { return int64(count), 0, nil }
 			app.AppendFunc = func(values ...any) error {
-				fmt.Println("=========> append", tableName, values)
 				if len(values) == 3 && values[0] == "mycar" {
 					count++
 				} else {
@@ -151,18 +287,40 @@ func TestAppend(t *testing.T) {
 		},
 	}
 
+	jsonData := []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)
+	csvData := []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")
+	jsonGzipData := compress(jsonData)
+	csvGzipData := compress(csvData)
 	tests := []TestCase{
+		{
+			Name:     "db/append/example",
+			ConnMock: connMock,
+			Topic:    "db/append/example",
+			Payload:  jsonData,
+		},
 		{
 			Name:     "db/append/example json",
 			ConnMock: connMock,
 			Topic:    "db/append/example:json",
-			Payload:  []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`),
+			Payload:  jsonData,
+		},
+		{
+			Name:     "db/append/example json gzip",
+			ConnMock: connMock,
+			Topic:    "db/append/example:json:gzip",
+			Payload:  jsonGzipData,
 		},
 		{
 			Name:     "db/append/example csv",
 			ConnMock: connMock,
 			Topic:    "db/append/example:csv",
-			Payload:  []byte(`mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456`),
+			Payload:  csvData,
+		},
+		{
+			Name:     "db/append/example csv gzip",
+			ConnMock: connMock,
+			Topic:    "db/append/example:csv: gzip",
+			Payload:  csvGzipData,
 		},
 	}
 
@@ -174,4 +332,18 @@ func TestAppend(t *testing.T) {
 			t.Fail()
 		}
 	}
+}
+
+func compress(data []byte) []byte {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+
+	_, err := zw.Write(data)
+	if err != nil {
+		panic(err)
+	}
+
+	zw.Close()
+
+	return buf.Bytes()
 }

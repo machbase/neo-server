@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
@@ -35,7 +37,7 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	if topic == "query" {
 		reply := replier(peer, prefix+"/reply", 1)
 		return svr.handleQuery(peer, evt.Raw, reply)
-	} else if strings.HasPrefix(topic, "write") {
+	} else if strings.HasPrefix(topic, "write/") {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {
 		return svr.handleAppend(peer, topic, evt.Raw)
@@ -94,20 +96,36 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, reply func(msg *ms
 }
 
 func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) error {
-	req := &msg.WriteRequest{}
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	peerLog := peer.GetLog()
 
-	err := json.Unmarshal(payload, req)
+	writePath := strings.ToUpper(strings.TrimPrefix(topic, "write/"))
+	wp, err := util.ParseWritePath(writePath)
 	if err != nil {
-		rsp.Reason = err.Error()
+		peerLog.Warn(topic, err.Error())
 		return nil
 	}
-	if len(req.Table) == 0 {
-		req.Table = strings.TrimPrefix(topic, "write/")
+	if wp.Format == "" {
+		wp.Format = "json"
 	}
 
-	if len(req.Table) == 0 {
-		rsp.Reason = "table is not specified"
+	switch wp.Format {
+	case "json":
+	case "csv":
+	default:
+		peerLog.Warnf("%s unsupported format %q", topic, wp.Format)
+		return nil
+	}
+	switch wp.Compress {
+	case "": // no compression
+	case "-": // no compression
+	case "gzip": // gzip compression
+	default: // others
+		peerLog.Warnf("%s unsupproted compress %q", topic, wp.Compress)
+		return nil
+	}
+
+	if wp.Table == "" {
+		peerLog.Warn(topic, "table is not specified")
 		return nil
 	}
 
@@ -116,12 +134,90 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
-		rsp.Reason = err.Error()
+		peerLog.Warn(topic, err.Error())
 		return nil
 	}
 	defer conn.Close()
 
-	Write(conn, req, rsp)
+	exists, err := do.ExistsTable(ctx, conn, wp.Table)
+	if err != nil {
+		peerLog.Warnf(topic, err.Error())
+		return nil
+	}
+	if !exists {
+		peerLog.Warnf("%s Table %q does not exist", topic, wp.Table)
+		return nil
+	}
+
+	var desc *do.TableDescription
+	if desc0, err := do.Describe(ctx, conn, wp.Table, false); err != nil {
+		peerLog.Warnf(topic, err.Error())
+		return nil
+	} else {
+		desc = desc0.(*do.TableDescription)
+	}
+
+	var instream spec.InputStream
+	if wp.Compress == "gzip" {
+		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
+		defer func() {
+			if gr != nil {
+				err = gr.Close()
+				if err != nil {
+					peerLog.Warnf("---- fail to close decompressor, %s", err.Error())
+				}
+			}
+		}()
+		if err != nil {
+			peerLog.Warnf("---- fail to gunzip, %s", err.Error())
+			return nil
+		}
+		instream = &stream.ReaderInputStream{Reader: gr}
+	} else {
+		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(payload)}
+	}
+
+	codecOpts := []opts.Option{
+		opts.InputStream(instream),
+		opts.Timeformat("ns"),
+		opts.TimeLocation(time.UTC),
+		opts.TableName(wp.Table),
+		opts.Columns(desc.Columns.Columns().Names()...),
+		opts.ColumnTypes(desc.Columns.Columns().Types()...),
+		opts.Delimiter(","),
+		opts.Heading(false),
+	}
+
+	decoder := codec.NewDecoder(wp.Format, codecOpts...)
+	lineno := 0
+	_hold := []string{}
+	for i := 0; i < len(desc.Columns); i++ {
+		_hold = append(_hold, "?")
+	}
+	valueHolder := strings.Join(_hold, ",")
+	_hold = []string{}
+	for i := 0; i < len(desc.Columns); i++ {
+		_hold = append(_hold, desc.Columns[i].Name)
+	}
+	columnsHolder := strings.Join(_hold, ",")
+	insertQuery := fmt.Sprintf("insert into %s (%s) values(%s)", wp.Table, columnsHolder, valueHolder)
+
+	for {
+		vals, err := decoder.NextRow()
+		if err != nil {
+			if err != io.EOF {
+				peerLog.Warnf(topic, err.Error())
+				return nil
+			}
+			break
+		}
+		lineno++
+
+		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
+			peerLog.Warn(topic, result.Err().Error())
+			return nil
+		}
+	}
 	return nil
 }
 
