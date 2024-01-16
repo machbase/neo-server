@@ -741,12 +741,12 @@ func TestMath(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestLetVariables(t *testing.T) {
+func TestSetVariables(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
 		`FAKE( linspace(0, 1, 3))`,
-		`LET(x10, value(0) * 10)`,
-		`LET(x10, $x10 + 1)`,
+		`SET(x10, value(0) * 10)`,
+		`SET(x10, $x10 + 1)`,
 		`MAPVALUE(1, $x10)`,
 		`CSV(header(true))`,
 	}
@@ -760,7 +760,7 @@ func TestLetVariables(t *testing.T) {
 
 	codeLines = []string{
 		`FAKE( arrange(0, 3, 1))`,
-		`LET(flag, value(0) != 0 && mod(value(0), 2) == 0 )`,
+		`SET(flag, value(0) != 0 && mod(value(0), 2) == 0 )`,
 		`MAPVALUE(1, !$flag)`,
 		`CSV(header(true))`,
 	}

@@ -172,7 +172,7 @@ func (node *Node) Get(name string) (any, error) {
 		if inflight == nil {
 			return nil, nil
 		}
-		if node.Name() == "LET()" && !strings.HasPrefix(name, "$") {
+		if node.Name() == "SET()" && !strings.HasPrefix(name, "$") {
 			return func(v any) {
 				inflight.SetVariable(name, v)
 			}, nil
@@ -183,7 +183,7 @@ func (node *Node) Get(name string) (any, error) {
 	return nil, nil
 }
 
-func (node *Node) fmLET(left any, right any) (any, error) {
+func (node *Node) fmSET(left any, right any) (any, error) {
 	if left == nil {
 		return node.Inflight(), nil
 	}

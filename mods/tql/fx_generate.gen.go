@@ -16,7 +16,7 @@ func NewNode(task *Task) *Node {
 	x := &Node{task: task}
 	x.functions = map[string]expression.Function{
 		// context
-		"LET":         x.gen_LET,
+		"SET":         x.gen_SET,
 		"context":     x.gen_context,
 		"key":         x.gen_key,
 		"value":       x.gen_value,
@@ -275,22 +275,22 @@ func NewNode(task *Task) *Node {
 	return x
 }
 
-// gen_LET
+// gen_SET
 //
-// syntax: LET(, )
-func (x *Node) gen_LET(args ...any) (any, error) {
+// syntax: SET(, )
+func (x *Node) gen_SET(args ...any) (any, error) {
 	if len(args) != 2 {
-		return nil, ErrInvalidNumOfArgs("LET", 2, len(args))
+		return nil, ErrInvalidNumOfArgs("SET", 2, len(args))
 	}
-	p0, err := convAny(args, 0, "LET", "interface {}")
+	p0, err := convAny(args, 0, "SET", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "LET", "interface {}")
+	p1, err := convAny(args, 1, "SET", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	return x.fmLET(p0, p1)
+	return x.fmSET(p0, p1)
 }
 
 // gen_context

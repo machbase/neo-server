@@ -16,7 +16,7 @@ var defTask = &Node{}
 var FxDefinitions = []Definition{
 	// context
 	{"// context", nil},
-	{"LET", defTask.fmLET},
+	{"SET", defTask.fmSET},
 	{"context", defTask.GetContext},
 	{"key", defTask.GetRecordKey},
 	{"value", defTask.GetRecordValue},
