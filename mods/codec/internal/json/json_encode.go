@@ -26,8 +26,9 @@ type Exporter struct {
 	colNames []string
 	colTypes []string
 
-	transpose bool
-	series    [][]any
+	transpose   bool
+	rowsFlatten bool
+	series      [][]any
 }
 
 func NewEncoder() *Exporter {
@@ -79,6 +80,10 @@ func (ex *Exporter) SetColumnTypes(types ...string) {
 
 func (ex *Exporter) SetTranspose(flag bool) {
 	ex.transpose = flag
+}
+
+func (ex *Exporter) SetRowsFlatten(flag bool) {
+	ex.rowsFlatten = flag
 }
 
 func (ex *Exporter) Open() error {
@@ -212,6 +217,23 @@ func (ex *Exporter) AddRow(source []any) error {
 		}
 		for n, v := range values {
 			ex.series[n] = append(ex.series[n], v)
+		}
+	} else if ex.rowsFlatten {
+		var recJson []byte
+		var err error
+		vs := values
+		if ex.Rownum {
+			vs = append([]any{ex.nrow}, values...)
+		}
+		for i, v := range vs {
+			recJson, err = gojson.Marshal(v)
+			if err != nil {
+				return err
+			}
+			if ex.nrow > 1 || i > 0 {
+				ex.output.Write([]byte(","))
+			}
+			ex.output.Write(recJson)
 		}
 	} else {
 		var recJson []byte

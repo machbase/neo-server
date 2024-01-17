@@ -194,7 +194,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 					reg := regexp.MustCompile("^" + strings.TrimPrefix(expectLine, "/r/"))
 					if !reg.MatchString(resultLines[n]) {
 						t.Logf("Expected: %s", expectLine)
-						t.Logf("Actual  : %s", resultLines[n])
+						t.Logf("Actual  :    %s", resultLines[n])
 						t.Fail()
 					}
 				} else {
@@ -330,6 +330,32 @@ func TestDBQuery(t *testing.T) {
 		"time,value",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestDBQueryRowsFlatten(t *testing.T) {
+	mockDbCursor = 0
+	mockDbResult = [][]any{
+		{1692686707380411000, 0.1},
+		{1692686708380411000, 0.2},
+	}
+	codeLines := []string{
+		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`JSON( precision(3), rowsFlatten(true) )`,
+	}
+	resultLines := []string{
+		`/r/{"data":{"columns":\["time","value"\],"types":\["datetime","double"\],"rows":\[1692686707380411000,0.1,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	mockDbCursor = 0
+	codeLines = []string{
+		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`JSON( precision(3), rowsFlatten(true), rownum(true) )`,
+	}
+	resultLines = []string{
+		`/r/{"data":{"columns":\["ROWNUM","time","value"\],"types":\["int64","datetime","double"\],"rows":\[1,1692686707380411000,0.1,2,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
 	runTest(t, codeLines, resultLines)
 }

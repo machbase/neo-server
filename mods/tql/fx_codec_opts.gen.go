@@ -50,6 +50,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "pointStyle", Func: opts.PointStyle},
 	{Name: "precision", Func: opts.Precision},
 	{Name: "rownum", Func: opts.Rownum},
+	{Name: "rowsFlatten", Func: opts.RowsFlatten},
 	{Name: "seriesLabels", Func: opts.SeriesLabels},
 	{Name: "size", Func: opts.Size},
 	{Name: "substituteNull", Func: opts.SubstituteNull},
