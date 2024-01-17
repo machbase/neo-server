@@ -162,3 +162,48 @@ func TestEncoder(t *testing.T) {
 	require.Equal(t, expect, result)
 
 }
+
+func TestEncoderRowsFlatten(t *testing.T) {
+	w := &bytes.Buffer{}
+
+	enc := json.NewEncoder()
+	enc.SetTimeformat("ns")
+	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetColumnTypes("string", "datetime", "double", "string")
+	enc.SetColumns("name", "time", "value", "place")
+	enc.SetRowsFlatten(true)
+	require.Equal(t, enc.ContentType(), "application/json")
+
+	enc.Open()
+	enc.AddRow([]any{"name1", 1676432363333444555, 0.1234, "Office"})
+	enc.AddRow([]any{"name2", 1676432364666777888, 0.2345, "Home"})
+	enc.Close()
+
+	result := w.String()
+	result = result[0:strings.LastIndex(result, `,"elapse`)]
+	expect := `{"data":{"columns":["name","time","value","place"],"types":["string","datetime","double","string"],"rows":["name1",1676432363333444555,0.1234,"Office","name2",1676432364666777888,0.2345,"Home"]},"success":true,"reason":"success"`
+	require.Equal(t, expect, result)
+}
+
+func TestEncoderRowsFlattenWithRownum(t *testing.T) {
+	w := &bytes.Buffer{}
+
+	enc := json.NewEncoder()
+	enc.SetTimeformat("ns")
+	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetColumnTypes("string", "datetime", "double", "string")
+	enc.SetColumns("name", "time", "value", "place")
+	enc.SetRowsFlatten(true)
+	enc.SetRownum(true)
+	require.Equal(t, enc.ContentType(), "application/json")
+
+	enc.Open()
+	enc.AddRow([]any{"name1", 1676432363333444555, 0.1234, "Office"})
+	enc.AddRow([]any{"name2", 1676432364666777888, 0.2345, "Home"})
+	enc.Close()
+
+	result := w.String()
+	result = result[0:strings.LastIndex(result, `,"elapse`)]
+	expect := `{"data":{"columns":["ROWNUM","name","time","value","place"],"types":["int64","string","datetime","double","string"],"rows":[1,"name1",1676432363333444555,0.1234,"Office",2,"name2",1676432364666777888,0.2345,"Home"]},"success":true,"reason":"success"`
+	require.Equal(t, expect, result)
+}
