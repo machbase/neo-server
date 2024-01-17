@@ -2,6 +2,7 @@ package mqttd
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"sync"
 	"testing"
@@ -150,5 +151,8 @@ func runTest(t *testing.T, tc *TestCase) {
 	case string:
 		actual := string(recvPayload)
 		require.Equal(t, expect, actual)
+	case []byte:
+		actual := recvPayload
+		require.Equal(t, hex.Dump(expect), hex.Dump(actual))
 	}
 }

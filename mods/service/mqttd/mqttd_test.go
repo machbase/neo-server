@@ -98,6 +98,14 @@ func TestQuery(t *testing.T) {
 			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n",
 		},
 		{
+			Name:      "db/query simple, format=csv, compress",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format": "csv", "compress":"gzip" }`),
+			Subscribe: "db/reply",
+			Expect:    compress([]byte("name,time,value\ntemp,1705291859000000000,3.14\n")),
+		},
+		{
 			Name:      "db/query simple, format=csv, timeformat",
 			ConnMock:  connMock,
 			Topic:     "db/query",
