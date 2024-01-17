@@ -2,7 +2,8 @@ package msg
 
 type QueryRequest struct {
 	SqlText      string `json:"q"`
-	ReplyTo      string `json:"reply,omitempty"`
+	ReplyTo      string `json:"reply,omitempty"`       // for mqtt query only
+	RowsFlatten  bool   `json:"rowsFlatten,omitempty"` // json output only
 	Timeformat   string `json:"timeformat,omitempty"`
 	TimeLocation string `json:"tz,omitempty"`
 	Format       string `json:"format,omitempty"`
