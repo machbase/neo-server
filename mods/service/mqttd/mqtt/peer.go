@@ -462,7 +462,13 @@ func (p *peer) recv(pkt any) {
 			p.log.Debugf("Recv PUBACK      mid:%d", msg.PacketID)
 			p.RecvPuback5(msg)
 		case *packet5.Subscribe:
-			p.log.Debugf("Recv SUBSCRIBE   mid:%d %s", msg.PacketID, msg.Subscriptions)
+			if p.log.DebugEnabled() {
+				var extra = []string{}
+				for k, v := range msg.Subscriptions {
+					extra = append(extra, fmt.Sprintf("%s %+v", k, v))
+				}
+				p.log.Debugf("Recv SUBSCRIBE   mid:%d %s", msg.PacketID, strings.Join(extra, ", "))
+			}
 			p.RecvSubscribe5(msg)
 		case *packet5.Unsubscribe:
 			p.log.Debugf("Recv UNSUBSCRIBE mid:%d %s", msg.PacketID, msg.Topics)
@@ -564,24 +570,23 @@ func (p *peer) egress(sendMsg any) {
 	switch msg := sendMsg.(type) {
 	case *packet4.PublishPacket:
 		p.send(msg)
-		//p.Infof("Egrs Publish %s mid:%d d:%t r:%t len:%d", msg.TopicName, msg.MessageID, msg.Dup, msg.Retain, len(msg.Payload))
 		if p.logPayloadDump && p.log.TraceEnabled() {
 			dump := strings.Split(hex.Dump(msg.Payload), "\n")
 			for _, line := range dump {
 				p.log.Tracef("Dump %s", line)
 			}
 		}
-	case *packet5.Publish:
+	case *packet5.ControlPacket:
 		p.send(msg)
-		//p.Infof("Egrs Publish %s mid:%d d:%t r:%t len:%d", msg.Topic, msg.PacketID, msg.Duplicate, msg.Retain, len(msg.Payload))
-		if p.logPayloadDump && p.log.TraceEnabled() {
-			dump := strings.Split(hex.Dump(msg.Payload), "\n")
+		if p.logPayloadDump && p.log.TraceEnabled() && msg.FixedHeader.Type == packet5.PUBLISH {
+			pub := msg.Content.(*packet5.Publish)
+			dump := strings.Split(hex.Dump(pub.Payload), "\n")
 			for _, line := range dump {
 				p.log.Tracef("Dump %s", line)
 			}
 		}
 	default:
-		p.log.Warnf("Egrs XX %+v", msg)
+		p.log.Warnf("Egrs XX %T %+v", msg, msg)
 	}
 }
 
