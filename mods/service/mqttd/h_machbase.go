@@ -48,10 +48,11 @@ func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
 	return nil
 }
 
-func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, replyTopic string, replyQoS byte) error {
+func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic string, replyQoS byte) error {
 	tick := time.Now()
 	req := &msg.QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
 	rsp := &msg.QueryResponse{Reason: "not specified"}
+	replyTopic := defaultReplyTopic
 	defer func() {
 		if peer == nil {
 			return
@@ -65,7 +66,9 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, replyTopic string,
 		rsp.Reason = err.Error()
 		return nil
 	}
-
+	if req.ReplyTo != "" {
+		replyTopic = req.ReplyTo
+	}
 	var timeLocation = parseTimeLocation(req.TimeLocation, time.UTC)
 
 	var buffer = &bytes.Buffer{}

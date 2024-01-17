@@ -101,6 +101,7 @@ func runTest(t *testing.T, tc *TestCase) {
 
 	var Wait sync.WaitGroup
 	var recvPayload []byte
+	var recvTopic string
 
 	conAck := cli.Connect()
 	if !conAck.WaitTimeout(time.Second) {
@@ -114,6 +115,11 @@ func runTest(t *testing.T, tc *TestCase) {
 		subAck := cli.Subscribe(tc.Subscribe, 1, func(c paho.Client, m paho.Message) {
 			// received
 			recvPayload = m.Payload()
+			recvTopic = m.Topic()
+			if recvTopic != tc.Subscribe {
+				t.Logf("Expect recv topic %q, got %q", tc.Subscribe, recvTopic)
+				t.Fail()
+			}
 			Wait.Done()
 		})
 		if !subAck.WaitTimeout(time.Second) {
