@@ -248,6 +248,7 @@ func NewNode(task *Task) *Node {
 		"pointStyle":          x.gen_pointStyle,
 		"precision":           x.gen_precision,
 		"rownum":              x.gen_rownum,
+		"rowsArray":           x.gen_rowsArray,
 		"rowsFlatten":         x.gen_rowsFlatten,
 		"seriesLabels":        x.gen_seriesLabels,
 		"size":                x.gen_size,
@@ -3540,6 +3541,21 @@ func (x *Node) gen_rownum(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Rownum(p0)
+	return ret, nil
+}
+
+// gen_rowsArray
+//
+// syntax: rowsArray(bool)
+func (x *Node) gen_rowsArray(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("rowsArray", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "rowsArray", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.RowsArray(p0)
 	return ret, nil
 }
 

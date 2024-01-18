@@ -90,6 +90,22 @@ func TestQuery(t *testing.T) {
 			},
 		},
 		{
+			Name:      "db/query json timeformat rowsFlatten",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format":"json", "tz":"UTC", "timeformat": "DEFAULT", "rowsFlatten": true }`),
+			Subscribe: "db/reply",
+			Expect:    `/r/{"data":{"columns":\["name","time","value"\],"types":\["varchar","datetime","double"\],"rows":\["temp","2024-01-15 04:10:59",3.14\]},"success":true,"reason":"success","elapse":".*"}`,
+		},
+		{
+			Name:      "db/query json timeformat rowsArray",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format":"json", "tz":"UTC", "timeformat": "DEFAULT", "rowsArray": true }`),
+			Subscribe: "db/reply",
+			Expect:    `[{"name":"temp","time":"2024-01-15 04:10:59","value":3.14}]`,
+		},
+		{
 			Name:      "db/query simple, format=csv, reply",
 			ConnMock:  connMock,
 			Topic:     "db/query",

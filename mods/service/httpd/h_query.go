@@ -56,6 +56,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Heading = strBool(ctx.PostForm("heading"), true)
 			req.Precision = strInt(ctx.PostForm("precision"), -1)
 			req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), false)
+			req.RowsArray = strBool(ctx.PostForm("rowsArray"), false)
 		} else {
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
@@ -72,6 +73,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		req.Heading = strBool(ctx.Query("heading"), true)
 		req.Precision = strInt(ctx.Query("precision"), -1)
 		req.RowsFlatten = strBool(ctx.Query("rowsFlatten"), false)
+		req.RowsArray = strBool(ctx.Query("rowsArray"), false)
 	}
 
 	if len(req.SqlText) == 0 {
@@ -104,6 +106,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.BoxSeparateColumns(true),
 		opts.BoxDrawBorder(true),
 		opts.RowsFlatten(req.RowsFlatten),
+		opts.RowsArray(req.RowsArray),
 	)
 
 	conn, err := svr.getTrustConnection(ctx)

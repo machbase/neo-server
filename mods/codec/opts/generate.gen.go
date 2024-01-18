@@ -227,7 +227,7 @@ func ChartOption(opt string) Option {
 //
 //	mods/codec/internal/csv/csv_decode.go:79:1
 //	mods/codec/internal/json/json_decode.go:46:1
-//	mods/codec/internal/json/json_encode.go:77:1
+//	mods/codec/internal/json/json_encode.go:78:1
 type CanSetColumnTypes interface {
 	SetColumnTypes(types ...string)
 }
@@ -245,7 +245,7 @@ func ColumnTypes(types ...string) Option {
 //	mods/codec/internal/box/box_encode.go:85:1
 //	mods/codec/internal/csv/csv_decode.go:75:1
 //	mods/codec/internal/csv/csv_encode.go:85:1
-//	mods/codec/internal/json/json_encode.go:73:1
+//	mods/codec/internal/json/json_encode.go:74:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
 type CanSetColumns interface {
 	SetColumns(names ...string)
@@ -340,7 +340,7 @@ func GridSize(args ...float64) Option {
 //	mods/codec/internal/box/box_encode.go:65:1
 //	mods/codec/internal/csv/csv_decode.go:58:1
 //	mods/codec/internal/csv/csv_encode.go:76:1
-//	mods/codec/internal/json/json_encode.go:65:1
+//	mods/codec/internal/json/json_encode.go:66:1
 type CanSetHeader interface {
 	SetHeader(show bool)
 }
@@ -358,7 +358,7 @@ func Header(show bool) Option {
 //	mods/codec/internal/box/box_encode.go:69:1
 //	mods/codec/internal/csv/csv_decode.go:54:1
 //	mods/codec/internal/csv/csv_encode.go:72:1
-//	mods/codec/internal/json/json_encode.go:69:1
+//	mods/codec/internal/json/json_encode.go:70:1
 type CanSetHeading interface {
 	SetHeading(show bool)
 }
@@ -575,7 +575,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/chart/chart.go:73:1
 //	mods/codec/internal/csv/csv_encode.go:51:1
 //	mods/codec/internal/geomap/geomap.go:77:1
-//	mods/codec/internal/json/json_encode.go:45:1
+//	mods/codec/internal/json/json_encode.go:46:1
 //	mods/codec/internal/markdown/md_encode.go:56:1
 type CanSetOutputStream interface {
 	SetOutputStream(o spec.OutputStream)
@@ -623,7 +623,7 @@ func PointStyle(name string, typ string, opt string) Option {
 //
 //	mods/codec/internal/box/box_encode.go:57:1
 //	mods/codec/internal/csv/csv_encode.go:63:1
-//	mods/codec/internal/json/json_encode.go:57:1
+//	mods/codec/internal/json/json_encode.go:58:1
 //	mods/codec/internal/markdown/md_encode.go:72:1
 type CanSetPrecision interface {
 	SetPrecision(precision int)
@@ -641,7 +641,7 @@ func Precision(precision int) Option {
 //
 //	mods/codec/internal/box/box_encode.go:61:1
 //	mods/codec/internal/csv/csv_encode.go:67:1
-//	mods/codec/internal/json/json_encode.go:61:1
+//	mods/codec/internal/json/json_encode.go:62:1
 //	mods/codec/internal/markdown/md_encode.go:76:1
 type CanSetRownum interface {
 	SetRownum(show bool)
@@ -655,9 +655,24 @@ func Rownum(show bool) Option {
 	}
 }
 
+// SetRowsArray
+//
+//	mods/codec/internal/json/json_encode.go:90:1
+type CanSetRowsArray interface {
+	SetRowsArray(flag bool)
+}
+
+func RowsArray(flag bool) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetRowsArray); ok {
+			_o.SetRowsArray(flag)
+		}
+	}
+}
+
 // SetRowsFlatten
 //
-//	mods/codec/internal/json/json_encode.go:85:1
+//	mods/codec/internal/json/json_encode.go:86:1
 type CanSetRowsFlatten interface {
 	SetRowsFlatten(flag bool)
 }
@@ -813,7 +828,7 @@ func TileTemplate(url string) Option {
 //	mods/codec/internal/csv/csv_decode.go:49:1
 //	mods/codec/internal/csv/csv_encode.go:59:1
 //	mods/codec/internal/json/json_decode.go:38:1
-//	mods/codec/internal/json/json_encode.go:53:1
+//	mods/codec/internal/json/json_encode.go:54:1
 //	mods/codec/internal/markdown/md_encode.go:68:1
 type CanSetTimeLocation interface {
 	SetTimeLocation(tz *time.Location)
@@ -834,7 +849,7 @@ func TimeLocation(tz *time.Location) Option {
 //	mods/codec/internal/csv/csv_decode.go:45:1
 //	mods/codec/internal/csv/csv_encode.go:55:1
 //	mods/codec/internal/json/json_decode.go:34:1
-//	mods/codec/internal/json/json_encode.go:49:1
+//	mods/codec/internal/json/json_encode.go:50:1
 //	mods/codec/internal/markdown/md_encode.go:64:1
 type CanSetTimeformat interface {
 	SetTimeformat(f string)
@@ -925,7 +940,7 @@ func Transcoder(trans transcoder.Transcoder) Option {
 
 // SetTranspose
 //
-//	mods/codec/internal/json/json_encode.go:81:1
+//	mods/codec/internal/json/json_encode.go:82:1
 type CanSetTranspose interface {
 	SetTranspose(flag bool)
 }

@@ -28,6 +28,7 @@ type Exporter struct {
 
 	transpose   bool
 	rowsFlatten bool
+	rowsArray   bool
 	series      [][]any
 }
 
@@ -86,10 +87,14 @@ func (ex *Exporter) SetRowsFlatten(flag bool) {
 	ex.rowsFlatten = flag
 }
 
+func (ex *Exporter) SetRowsArray(flag bool) {
+	ex.rowsArray = flag
+}
+
 func (ex *Exporter) Open() error {
 	var names []string
 	var types []string
-	if ex.Rownum {
+	if ex.Rownum && !ex.transpose { // rownum does not effective in transpose mode
 		names = append([]string{"ROWNUM"}, ex.colNames...)
 		types = append([]string{spi.ColumnBufferTypeInt64}, ex.colTypes...)
 	} else {
@@ -100,7 +105,9 @@ func (ex *Exporter) Open() error {
 	columnsJson, _ := gojson.Marshal(names)
 	typesJson, _ := gojson.Marshal(types)
 
-	if ex.transpose {
+	if ex.rowsArray {
+		ex.output.Write([]byte(`[`))
+	} else if ex.transpose {
 		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"cols":[`,
 			string(columnsJson), string(typesJson))
 		ex.output.Write([]byte(header))
@@ -114,21 +121,25 @@ func (ex *Exporter) Open() error {
 }
 
 func (ex *Exporter) Close() {
-	if ex.transpose {
-		for n, ser := range ex.series {
-			recJson, err := gojson.Marshal(ser)
-			if err != nil {
-				// TODO how to report error?
-				break
+	if ex.rowsArray {
+		ex.output.Write([]byte(`]`))
+	} else {
+		if ex.transpose {
+			for n, ser := range ex.series {
+				recJson, err := gojson.Marshal(ser)
+				if err != nil {
+					// TODO how to report error?
+					break
+				}
+				if n > 0 {
+					ex.output.Write([]byte(","))
+				}
+				ex.output.Write(recJson)
 			}
-			if n > 0 {
-				ex.output.Write([]byte(","))
-			}
-			ex.output.Write(recJson)
 		}
+		footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
+		ex.output.Write([]byte(footer))
 	}
-	footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
-	ex.output.Write([]byte(footer))
 	ex.output.Close()
 }
 
@@ -206,7 +217,26 @@ func (ex *Exporter) AddRow(source []any) error {
 		}
 	}
 
-	if ex.transpose {
+	if ex.rowsArray {
+		var vs = map[string]any{}
+		if ex.Rownum {
+			vs["ROWNUM"] = ex.nrow
+		}
+		for i, v := range values {
+			if i >= len(ex.colNames) {
+				break
+			}
+			vs[ex.colNames[i]] = v
+		}
+		recJson, err := gojson.Marshal(vs)
+		if err != nil {
+			return err
+		}
+		if ex.nrow > 1 {
+			ex.output.Write([]byte(","))
+		}
+		ex.output.Write(recJson)
+	} else if ex.transpose {
 		if ex.series == nil {
 			ex.series = make([][]any, len(values)-1)
 		}
