@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -156,7 +158,17 @@ func runTest(t *testing.T, tc *TestCase) {
 		require.JSONEq(t, string(expectJson), string(actualJson), string(recvPayload))
 	case string:
 		actual := string(recvPayload)
-		require.Equal(t, expect, actual)
+		if strings.HasPrefix(expect, "/r/") {
+			reg := regexp.MustCompile("^" + strings.TrimPrefix(expect, "/r/"))
+			if !reg.MatchString(actual) {
+				t.Logf("Test  : %s", tc.Name)
+				t.Logf("Expect: %s", expect)
+				t.Logf("Actual: %s", actual)
+				t.Fail()
+			}
+		} else {
+			require.Equal(t, expect, actual)
+		}
 	case []byte:
 		actual := recvPayload
 		require.Equal(t, hex.Dump(expect), hex.Dump(actual))
