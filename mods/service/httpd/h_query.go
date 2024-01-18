@@ -55,6 +55,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Rownum = strBool(ctx.PostForm("rownum"), false)
 			req.Heading = strBool(ctx.PostForm("heading"), true)
 			req.Precision = strInt(ctx.PostForm("precision"), -1)
+			req.Transpose = strBool(ctx.PostForm("transpose"), false)
 			req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), false)
 			req.RowsArray = strBool(ctx.PostForm("rowsArray"), false)
 		} else {
@@ -72,6 +73,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		req.Rownum = strBool(ctx.Query("rownum"), false)
 		req.Heading = strBool(ctx.Query("heading"), true)
 		req.Precision = strInt(ctx.Query("precision"), -1)
+		req.Transpose = strBool(ctx.Query("transpose"), false)
 		req.RowsFlatten = strBool(ctx.Query("rowsFlatten"), false)
 		req.RowsArray = strBool(ctx.Query("rowsArray"), false)
 	}
@@ -107,6 +109,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.BoxDrawBorder(true),
 		opts.RowsFlatten(req.RowsFlatten),
 		opts.RowsArray(req.RowsArray),
+		opts.Transpose(req.Transpose),
 	)
 
 	conn, err := svr.getTrustConnection(ctx)

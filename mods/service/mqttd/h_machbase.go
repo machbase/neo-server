@@ -94,6 +94,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 		opts.BoxDrawBorder(true),
 		opts.RowsFlatten(req.RowsFlatten),
 		opts.RowsArray(req.RowsArray),
+		opts.Transpose(req.Transpose),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

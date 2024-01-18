@@ -98,6 +98,14 @@ func TestQuery(t *testing.T) {
 			Expect:    `/r/{"data":{"columns":\["name","time","value"\],"types":\["varchar","datetime","double"\],"rows":\["temp","2024-01-15 04:10:59",3.14\]},"success":true,"reason":"success","elapse":".*"}`,
 		},
 		{
+			Name:      "db/query json transpose",
+			ConnMock:  connMock,
+			Topic:     "db/query",
+			Payload:   []byte(`{"q": "select * from example", "format":"json", "transpose": true }`),
+			Subscribe: "db/reply",
+			Expect:    `/r/{"data":{"columns":\["name","time","value"\],"types":\["varchar","datetime","double"\],"cols":\[\["temp"\],\[1705291859000000000\],\[3.14\]\]},"success":true,"reason":"success","elapse":".+"}`,
+		},
+		{
 			Name:      "db/query json timeformat rowsArray",
 			ConnMock:  connMock,
 			Topic:     "db/query",
