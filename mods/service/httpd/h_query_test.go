@@ -124,7 +124,7 @@ func TestQuery(t *testing.T) {
 		map[string]string{"format": "json", "rowsFlatten": "true"})
 
 	runTestQuery(`select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`,
-		`[{"max(max_time)":-6795364578871345152,"min(min_time)":-6795364578871345152}]`,
+		`/r/{"data":{"columns":\["min\(min_time\)","max\(max_time\)"\],"types":\["datetime","datetime"\],"rows":\[{"max\(max_time\)":-6795364578871345152,"min\(min_time\)":-6795364578871345152}\]},"success":true,"reason":"success","elapse":".+"}`,
 		map[string]string{"format": "json", "rowsArray": "true"})
 
 	runTestQuery(`SELECT to_timestamp((mTime))/1000000 AS TIME, SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE from (select TIME / (1 * 1 * 1000000000) * (1 * 1 * 1000000000) as mtime, sum(VALUE) as SUMMVAL, count(VALUE) as CNTMVAL from EXAMPLE where NAME in ('wave%3B') and TIME between 1693552595418000000 and 1693552598408000000 group by mTime) Group by TIME order by TIME LIMIT 441`,

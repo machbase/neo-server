@@ -3,6 +3,7 @@ package json_test
 import (
 	"bytes"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -296,8 +297,13 @@ func TestEncoderRowsArray(t *testing.T) {
 	enc.Close()
 
 	result := w.String()
-	expect := `[{"name":"name1","place":"Office","time":1676432363333444555,"value":0.1234},{"name":"name2","place":"Home","time":1676432364666777888,"value":0.2345}]`
-	require.Equal(t, expect, result)
+	expect := `^{"data":{"columns":\["name","time","value","place"\],"types":\["string","datetime","double","string"\],"rows":\[{"name":"name1","place":"Office","time":1676432363333444555,"value":0.1234},{"name":"name2","place":"Home","time":1676432364666777888,"value":0.2345}\]},"success":true,"reason":"success","elapse":".+"}`
+	reg := regexp.MustCompile(expect)
+	if !reg.MatchString(result) {
+		t.Log("Expect:", expect)
+		t.Log("Actual:", result)
+		t.Fail()
+	}
 }
 
 func TestEncoderRowsArrayWithRownum(t *testing.T) {
@@ -319,6 +325,11 @@ func TestEncoderRowsArrayWithRownum(t *testing.T) {
 	enc.Close()
 
 	result := w.String()
-	expect := `[{"ROWNUM":1,"name":"name1","place":"Office","time":1676432363333444555,"value":0.1234},{"ROWNUM":2,"name":"name2","place":"Home","time":1676432364666777888,"value":0.2345}]`
-	require.Equal(t, expect, result)
+	expect := `^{"data":{"columns":\["ROWNUM","name","time","value","place"\],"types":\["int64","string","datetime","double","string"\],"rows":\[{"ROWNUM":1,"name":"name1","place":"Office","time":1676432363333444555,"value":0.1234},{"ROWNUM":2,"name":"name2","place":"Home","time":1676432364666777888,"value":0.2345}\]},"success":true,"reason":"success","elapse":".+"}`
+	reg := regexp.MustCompile(expect)
+	if !reg.MatchString(result) {
+		t.Log("Expect:", expect)
+		t.Log("Actual:", result)
+		t.Fail()
+	}
 }

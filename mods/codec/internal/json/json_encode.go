@@ -105,9 +105,7 @@ func (ex *Exporter) Open() error {
 	columnsJson, _ := gojson.Marshal(names)
 	typesJson, _ := gojson.Marshal(types)
 
-	if ex.rowsArray {
-		ex.output.Write([]byte(`[`))
-	} else if ex.transpose {
+	if ex.transpose && !ex.rowsArray {
 		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"cols":[`,
 			string(columnsJson), string(typesJson))
 		ex.output.Write([]byte(header))
@@ -121,25 +119,21 @@ func (ex *Exporter) Open() error {
 }
 
 func (ex *Exporter) Close() {
-	if ex.rowsArray {
-		ex.output.Write([]byte(`]`))
-	} else {
-		if ex.transpose {
-			for n, ser := range ex.series {
-				recJson, err := gojson.Marshal(ser)
-				if err != nil {
-					// TODO how to report error?
-					break
-				}
-				if n > 0 {
-					ex.output.Write([]byte(","))
-				}
-				ex.output.Write(recJson)
+	if ex.transpose && !ex.rowsArray {
+		for n, ser := range ex.series {
+			recJson, err := gojson.Marshal(ser)
+			if err != nil {
+				// TODO how to report error?
+				break
 			}
+			if n > 0 {
+				ex.output.Write([]byte(","))
+			}
+			ex.output.Write(recJson)
 		}
-		footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
-		ex.output.Write([]byte(footer))
 	}
+	footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
+	ex.output.Write([]byte(footer))
 	ex.output.Close()
 }
 
