@@ -80,7 +80,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	d.User = userName
 	d.Name = tableName
 
-	rows, err := conn.Query(ctx, "select name, type, length, id from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id", d.Id, dbId)
+	rows, err := conn.Query(ctx, "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id", d.Id, dbId)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 
 	for rows.Next() {
 		col := &ColumnDescription{}
-		err = rows.Scan(&col.Name, &colType, &col.Length, &col.Id)
+		err = rows.Scan(&col.Name, &colType, &col.Length, &col.Id, &col.Flag)
 		if err != nil {
 			return nil, err
 		}
@@ -259,6 +259,7 @@ type ColumnDescription struct {
 	Name   string         `json:"name"`
 	Type   spi.ColumnType `json:"type"`
 	Length int            `json:"length"`
+	Flag   int            `json:"flag"`
 }
 
 // TypeString returns string representation of column type.

@@ -74,11 +74,11 @@ func doDescribe(ctx *action.ActionContext) {
 		ctx.Println("[ COLUMN ]")
 	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})
+	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
 		colType := spi.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Size())
+		box.AppendRow(nrow, col.Name, colType, col.Size(), spi.ColumnFlagString(col.Flag))
 	}
 	box.Render()
 
