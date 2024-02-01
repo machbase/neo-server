@@ -150,6 +150,9 @@ func (node *Node) fmArrange(start float64, stop float64, step float64) (*arrange
 	if step == 0 {
 		return nil, fmt.Errorf("FUNCTION %q step can not be 0", "arrange")
 	}
+	if start == stop {
+		return nil, fmt.Errorf("FUNCTION %q start, stop can not be equal", "arrange")
+	}
 	if start <= stop && step < 0 {
 		return nil, fmt.Errorf("FUNCTION %q step can not be less than 0", "arrange")
 	}
