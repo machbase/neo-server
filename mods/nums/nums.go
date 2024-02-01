@@ -49,14 +49,16 @@ func Arrange(start float64, stop float64, step float64) []float64 {
 	}
 	i := 0
 	if start < stop {
-		ret := make([]float64, 0, int((stop-start)/step)+1)
+		cap := int(math.Abs(step)) + 1
+		ret := make([]float64, 0, cap)
 		for v := start; v <= stop; v += step {
 			ret = append(ret, v)
 			i++
 		}
 		return ret
 	} else {
-		ret := make([]float64, 0, int((start-stop)/step)+1)
+		cap := int(math.Abs(step)) + 1
+		ret := make([]float64, 0, cap)
 		for v := start; v >= stop; v += step {
 			ret = append(ret, v)
 			i++

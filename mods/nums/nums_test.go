@@ -58,6 +58,41 @@ func TestLinspace(t *testing.T) {
 
 	ret = nums.Linspace(0, 1, -1)
 	require.Equal(t, 0, len(ret))
+
+	ret = nums.Linspace(1, 1, 1)
+	require.Equal(t, 1, len(ret))
+
+	ret = nums.Linspace(1, 1, 3)
+	require.Equal(t, 3, len(ret))
+}
+
+func TestArrange(t *testing.T) {
+	var ret, expect []float64
+
+	ret = nums.Arrange(-2, 2, 1)
+	expect = []float64{-2, -1, 0, 1, 2}
+	require.Equal(t, 5, len(ret))
+	for i := range ret {
+		require.Equal(t, expect[i], ret[i])
+	}
+
+	ret = nums.Arrange(0, 1, 1)
+	require.Equal(t, 2, len(ret))
+	require.Equal(t, 0.0, ret[0])
+	require.Equal(t, 1.0, ret[1])
+
+	ret = nums.Arrange(0, 1, 0)
+	require.Equal(t, 0, len(ret))
+
+	ret = nums.Arrange(0, 1, -1)
+	require.Equal(t, 0, len(ret))
+
+	ret = nums.Arrange(1, 0, -0.3)
+	require.Equal(t, 4, len(ret))
+	require.Equal(t, 1.0, ret[0])
+
+	ret = nums.Arrange(1, 1, 1)
+	require.Equal(t, 0, len(ret))
 }
 
 func TestMeshgrid(t *testing.T) {
