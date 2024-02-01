@@ -230,12 +230,16 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 	switch v := ms.x.(type) {
 	case *linspace:
 		xv = nums.Linspace(v.start, v.stop, v.num)
+	case *arrange:
+		xv = nums.Arrange(v.start, v.stop, v.step)
 	case []float64:
 		xv = v
 	}
 	switch v := ms.y.(type) {
 	case *linspace:
 		yv = nums.Linspace(v.start, v.stop, v.num)
+	case *arrange:
+		yv = nums.Arrange(v.start, v.stop, v.step)
 	case []float64:
 		yv = v
 	}

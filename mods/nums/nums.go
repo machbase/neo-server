@@ -37,6 +37,34 @@ func Mod(x, y float64) float64 {
 	return math.Mod(x, y)
 }
 
+func Arrange(start float64, stop float64, step float64) []float64 {
+	if start == stop || step == 0 {
+		return []float64{}
+	}
+	if start <= stop && step < 0 {
+		return []float64{}
+	}
+	if start > stop && step > 0 {
+		return []float64{}
+	}
+	i := 0
+	if start < stop {
+		ret := make([]float64, 0, int((stop-start)/step)+1)
+		for v := start; v <= stop; v += step {
+			ret = append(ret, v)
+			i++
+		}
+		return ret
+	} else {
+		ret := make([]float64, 0, int((start-stop)/step)+1)
+		for v := start; v >= stop; v += step {
+			ret = append(ret, v)
+			i++
+		}
+		return ret
+	}
+}
+
 func Linspace50(start float64, stop float64) []float64 {
 	return Linspace(start, stop, 50)
 }
