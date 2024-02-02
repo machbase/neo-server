@@ -1708,6 +1708,23 @@ func TestDropTake(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestSrcError(t *testing.T) {
+	codeLines := []string{
+		"SQL('select * from example')",
+		"SQL('select * from example')",
+		"JSON()",
+	}
+	resultLines := []string{}
+	runTest(t, codeLines, resultLines, CompileErr("\"SQL()\" is not applicable for MAP, line 2"))
+
+	codeLines = []string{
+		"MAPVALUE(0, 1)",
+		"SQL('select * from example')",
+		"JSON()",
+	}
+	runTest(t, codeLines, resultLines, CompileErr("\"MAPVALUE()\" is not applicable for SRC, line 1"))
+}
+
 func TestOcillator(t *testing.T) {
 	tick := time.Unix(0, 1692329338315327000)
 	util.StandardTimeNow = func() time.Time { return tick }

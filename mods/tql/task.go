@@ -270,6 +270,17 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if err := node.compile(curLine.text); err != nil {
 				return err
 			}
+			if v, ok := srcFunctions[node.name]; v && ok {
+				// this node is SRC function
+				if nodeIdx > 0 {
+					x.compileErr = fmt.Errorf("%q is not applicable for MAP, line %d", node.name, curLine.line)
+					return x.compileErr
+				}
+			} else if nodeIdx == 0 {
+				// this node is NOT a SRC function, but used for the first node
+				x.compileErr = fmt.Errorf("%q is not applicable for SRC, line %d", node.name, curLine.line)
+				return x.compileErr
+			}
 			node.pragma = pragmas
 			node.tqlLine = curLine
 			x.nodes = append(x.nodes, node)
@@ -287,6 +298,16 @@ func (x *Task) compile(codeReader io.Reader) error {
 	}
 	x.compiled = true
 	return nil
+}
+
+var srcFunctions = map[string]bool{
+	"SQL()":    true,
+	"QUERY()":  true,
+	"FAKE()":   true,
+	"CSV()":    true,
+	"BYTES()":  true,
+	"STRING()": true,
+	"ARGS()":   true,
 }
 
 type Result struct {
