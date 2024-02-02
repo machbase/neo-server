@@ -132,7 +132,6 @@ var FxDefinitions = []Definition{
 	// maps.bridge
 	{"// maps.bridge", nil},
 	{"bridge", defTask.fmBridge},
-	{"BRIDGE_QUERY", defTask.fmBridgeQuery}, // do not use, under development...
 	// maps.fourier
 	{"// maps.fourier", nil},
 	{"minHz", defTask.fmMinHz},

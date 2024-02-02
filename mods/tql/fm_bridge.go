@@ -26,15 +26,6 @@ type bridgeNode struct {
 	params   []any
 }
 
-// TODO not registered yet
-// BRIDGE_QUERY('my-sqlite', 'select * from table where id=?', 123)
-func (x *Node) fmBridgeQuery(name string, command string, params ...any) (any, error) {
-	ret := &bridgeNode{name: name, command: command, params: params}
-	ret.execType = "query"
-	ret.gen(x)
-	return nil, nil
-}
-
 func (bn *bridgeNode) gen(node *Node) {
 	switch bn.execType {
 	case "query":

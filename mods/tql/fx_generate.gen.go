@@ -1576,23 +1576,7 @@ func (x *Node) gen_BRIDGE_QUERY(args ...any) (any, error) {
 	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("BRIDGE_QUERY", 2, len(args))
 	}
-	p0, err := convString(args, 0, "BRIDGE_QUERY", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "BRIDGE_QUERY", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2 := []interface{}{}
-	for n := 2; n < len(args); n++ {
-		argv, err := convAny(args, n, "BRIDGE_QUERY", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p2 = append(p2, argv)
-	}
-	return x.fmBridgeQuery(p0, p1, p2...)
+	return nil, nil
 }
 
 // gen_minHz

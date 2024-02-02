@@ -2081,7 +2081,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 	require.Nil(t, err)
 
 	codeLines := []string{
-		"BRIDGE_QUERY('sqlite', `select * from example`)",
+		"SQL(bridge('sqlite'), `select * from example`)",
 		"CSV(heading(true))",
 	}
 	resultLines := []string{

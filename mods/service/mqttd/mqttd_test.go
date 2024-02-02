@@ -203,17 +203,18 @@ func TestWrite(t *testing.T) {
 			return nil
 		},
 		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
-			if sqlText == "select name, type, length, id from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id" {
+			if sqlText == "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id" {
 				return NewRowsWrap([]*spi.Column{
 					{Name: "NAME", Type: "string"},
 					{Name: "TYPE", Type: "int"},
 					{Name: "LENGTH", Type: "int"},
 					{Name: "ID", Type: "int"},
+					{Name: "FLAG", Type: "int"},
 				},
 					[][]any{
-						{"NAME", spi.VarcharColumnType, 0, 0},
-						{"TIME", spi.DatetimeColumnType, 0, 1},
-						{"VALUE", spi.Float64ColumnType, 0, 2},
+						{"NAME", spi.VarcharColumnType, 0, 0, 0},
+						{"TIME", spi.DatetimeColumnType, 0, 1, 0},
+						{"VALUE", spi.Float64ColumnType, 0, 2, 0},
 					}), nil
 			} else if sqlText == "select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?" {
 				return NewRowsWrap(

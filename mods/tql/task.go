@@ -270,15 +270,14 @@ func (x *Task) compile(codeReader io.Reader) error {
 			if err := node.compile(curLine.text); err != nil {
 				return err
 			}
-			if v, ok := srcFunctions[node.name]; v && ok {
-				// this node is SRC function
-				if nodeIdx > 0 {
-					x.compileErr = fmt.Errorf("%q is not applicable for MAP, line %d", node.name, curLine.line)
-					return x.compileErr
-				}
-			} else if nodeIdx == 0 {
+
+			if nodeIdx == 0 && !srcOnlyFunctions[node.name] && !srcOrMapFunctions[node.name] && !srcOrSinkFunctions[node.name] {
 				// this node is NOT a SRC function, but used for the first node
 				x.compileErr = fmt.Errorf("%q is not applicable for SRC, line %d", node.name, curLine.line)
+				return x.compileErr
+			} else if nodeIdx > 0 && (srcOnlyFunctions[node.name] || srcOrSinkFunctions[node.name] || sinkOnlyFunctions[node.name]) {
+				// this node is SRC function
+				x.compileErr = fmt.Errorf("%q is not applicable for MAP, line %d", node.name, curLine.line)
 				return x.compileErr
 			}
 			node.pragma = pragmas
@@ -300,14 +299,36 @@ func (x *Task) compile(codeReader io.Reader) error {
 	return nil
 }
 
-var srcFunctions = map[string]bool{
+var srcOnlyFunctions = map[string]bool{
 	"SQL()":    true,
 	"QUERY()":  true,
 	"FAKE()":   true,
-	"CSV()":    true,
 	"BYTES()":  true,
 	"STRING()": true,
 	"ARGS()":   true,
+}
+
+var srcOrMapFunctions = map[string]bool{
+	"SCRIPT()": true,
+}
+
+var srcOrSinkFunctions = map[string]bool{
+	"CSV()": true,
+}
+
+var sinkOnlyFunctions = map[string]bool{
+	"INSERT()":          true,
+	"APPEND()":          true,
+	"JSON()":            true,
+	"MARKDOWN()":        true,
+	"DISCARD()":         true,
+	"CHART()":           true,
+	"CHART_LINE()":      true,
+	"CHART_BAR()":       true,
+	"CHART_SCATTER()":   true,
+	"CHART_LINE3D()":    true,
+	"CHART_BAR3D()":     true,
+	"CHART_SCATTER3D()": true,
 }
 
 type Result struct {
