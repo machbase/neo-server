@@ -47,6 +47,13 @@ module "machbase.com/neo-logging" {
     config {
         Console                     = false
         Filename                    = flag("--log-filename", "-")
+        Append                      = flag("--log-append", true)
+        RotateSchedule              = flag("--log-rotate-schedule", "@midnight")
+        MaxSize                     = flag("--log-max-size", 10)
+        MaxBackups                  = flag("--log-max-backups", 1)
+        MaxAge                      = flag("--log-max-age", 7)
+        Compress                    = flag("--log-compress", false)
+        UTC                         = flag("--log-time-utc", false)
         DefaultPrefixWidth          = 16
         DefaultEnableSourceLocation = flag("--log-source-location", false)
         DefaultLevel                = flag("--log-level", "INFO")
