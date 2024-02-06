@@ -300,7 +300,7 @@ func (svr *httpd) getUserConnection(ctx *gin.Context) (spi.Conn, error) {
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 	auth, exist := ctx.Request.Header["Authorization"]
 	if !exist {
-		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization header"})
+		ctx.AsciiJSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization header"})
 		ctx.Abort()
 		return
 	}
@@ -319,7 +319,7 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 				found = true
 				break
 			} else {
-				ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": err.Error()})
+				ctx.AsciiJSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": err.Error()})
 				ctx.Abort()
 				return
 			}
@@ -335,7 +335,7 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 	if found {
 		ctx.Set("jwt-claim", claim)
 	} else {
-		ctx.JSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
+		ctx.AsciiJSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "user not found or wrong password"})
 		ctx.Abort()
 		return
 	}
