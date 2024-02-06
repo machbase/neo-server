@@ -84,7 +84,7 @@ func TestLoginRoute(t *testing.T) {
 	// Access Token default expire 5 minutes
 	claim := security.NewClaimEmpty()
 	_, err = jwt.ParseWithClaims(loginRsp.AccessToken, claim, func(t *jwt.Token) (interface{}, error) {
-		return []byte("__secret__"), nil
+		return []byte("__secr3t__"), nil
 	})
 	require.Nil(t, err, "parse access token")
 	require.True(t, claim.VerifyExpiresAt(time.Now().Add(4*time.Minute), true))
@@ -93,7 +93,7 @@ func TestLoginRoute(t *testing.T) {
 	// Access Token default expire 60 minutes
 	claim = security.NewClaimEmpty()
 	_, err = jwt.ParseWithClaims(loginRsp.RefreshToken, claim, func(t *jwt.Token) (interface{}, error) {
-		return []byte("__secret__"), nil
+		return []byte("__secr3t__"), nil
 	})
 	require.Nil(t, err, "parse refresh token")
 	require.True(t, claim.VerifyExpiresAt(time.Now().Add(59*time.Minute), true))

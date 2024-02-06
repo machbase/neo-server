@@ -111,6 +111,10 @@ module "machbase.com/neo-server" {
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
         }
+        Jwt = {
+            AtDuration = flag("--jwt-at-expire", "5m")
+            RtDuration = flag("--jwt-rt-expire", "60m")
+        }
         MachbaseInitOption       = VARS_MACHBASE_INIT_OPTION
         EnableMachbaseSigHandler = VARS_MACHBASE_ENABLE_SIGHANDLER
     }

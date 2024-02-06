@@ -17,7 +17,7 @@ type JwtConfig struct {
 var jwtConf = &JwtConfig{
 	AtDuration: 5 * time.Minute,
 	RtDuration: 60 * time.Minute,
-	Secret:     "__secret__",
+	Secret:     "__secr3t__",
 }
 
 func JwtConfigure(conf *JwtConfig) {

@@ -100,6 +100,7 @@ type Config struct {
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           MqttConfig
+	Jwt            security.JwtConfig
 
 	CreateDBQueries     []string // sql sentences
 	CreateDBScriptFiles []string // file path
@@ -221,6 +222,11 @@ func NewConfig() *Config {
 			Listeners:   []string{},
 			IdleTimeout: 2 * time.Minute,
 		},
+		Jwt: security.JwtConfig{
+			AtDuration: 5 * time.Minute,
+			RtDuration: 60 * time.Minute,
+			Secret:     "__secret__",
+		},
 		NoBanner: false,
 	}
 
@@ -284,6 +290,10 @@ func (s *svr) Start() error {
 	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
 	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
 		s.licenseFileTime = stat.ModTime()
+	}
+
+	if s.conf.Jwt.AtDuration > 0 && s.conf.Jwt.RtDuration > 0 {
+		security.JwtConfigure(&s.conf.Jwt)
 	}
 
 	s.models = model.NewService(
