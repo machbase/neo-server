@@ -123,8 +123,7 @@ func NewNode(task *Task) *Node {
 		"INSERT": x.gen_INSERT,
 		"APPEND": x.gen_APPEND,
 		// maps.bridge
-		"bridge":       x.gen_bridge,
-		"BRIDGE_QUERY": x.gen_BRIDGE_QUERY,
+		"bridge": x.gen_bridge,
 		// maps.fourier
 		"minHz": x.gen_minHz,
 		"maxHz": x.gen_maxHz,
@@ -152,50 +151,52 @@ func NewNode(task *Task) *Node {
 		"STRING":    x.gen_STRING,
 		"BYTES":     x.gen_BYTES,
 		// maps.csv
-		"col":                x.gen_col,
-		"field":              x.gen_field,
-		"datetimeType":       x.gen_datetimeType,
-		"stringType":         x.gen_stringType,
-		"doubleType":         x.gen_doubleType,
-		"simplex":            x.gen_simplex,
-		"random":             x.gen_random,
-		"parseFloat":         x.gen_parseFloat,
-		"parseBool":          x.gen_parseBool,
-		"strTime":            x.gen_strTime,
-		"strTrimSpace":       x.gen_strTrimSpace,
-		"strTrimPrefix":      x.gen_strTrimPrefix,
-		"strTrimSuffix":      x.gen_strTrimSuffix,
-		"strReplaceAll":      x.gen_strReplaceAll,
-		"strReplace":         x.gen_strReplace,
-		"strHasPrefix":       x.gen_strHasPrefix,
-		"strHasSuffix":       x.gen_strHasSuffix,
-		"strSprintf":         x.gen_strSprintf,
-		"strSub":             x.gen_strSub,
-		"strToUpper":         x.gen_strToUpper,
-		"strToLower":         x.gen_strToLower,
-		"freq":               x.gen_freq,
-		"oscillator":         x.gen_oscillator,
-		"sphere":             x.gen_sphere,
-		"json":               x.gen_json,
-		"csv":                x.gen_csv,
-		"FAKE":               x.gen_FAKE,
-		"GROUP":              x.gen_GROUP,
-		"by":                 x.gen_by,
-		"first":              x.gen_first,
-		"last":               x.gen_last,
-		"min":                x.gen_min,
-		"max":                x.gen_max,
-		"sum":                x.gen_sum,
-		"mean":               x.gen_mean,
-		"median":             x.gen_median,
-		"medianInterpolated": x.gen_medianInterpolated,
-		"stddev":             x.gen_stddev,
-		"stderr":             x.gen_stderr,
-		"entropy":            x.gen_entropy,
-		"mode":               x.gen_mode,
-		"avg":                x.gen_avg,
-		"rss":                x.gen_rss,
-		"rms":                x.gen_rms,
+		"col":                  x.gen_col,
+		"field":                x.gen_field,
+		"datetimeType":         x.gen_datetimeType,
+		"stringType":           x.gen_stringType,
+		"doubleType":           x.gen_doubleType,
+		"simplex":              x.gen_simplex,
+		"random":               x.gen_random,
+		"parseFloat":           x.gen_parseFloat,
+		"parseBool":            x.gen_parseBool,
+		"strTime":              x.gen_strTime,
+		"strTrimSpace":         x.gen_strTrimSpace,
+		"strTrimPrefix":        x.gen_strTrimPrefix,
+		"strTrimSuffix":        x.gen_strTrimSuffix,
+		"strReplaceAll":        x.gen_strReplaceAll,
+		"strReplace":           x.gen_strReplace,
+		"strHasPrefix":         x.gen_strHasPrefix,
+		"strHasSuffix":         x.gen_strHasSuffix,
+		"strSprintf":           x.gen_strSprintf,
+		"strSub":               x.gen_strSub,
+		"strToUpper":           x.gen_strToUpper,
+		"strToLower":           x.gen_strToLower,
+		"freq":                 x.gen_freq,
+		"oscillator":           x.gen_oscillator,
+		"sphere":               x.gen_sphere,
+		"json":                 x.gen_json,
+		"csv":                  x.gen_csv,
+		"FAKE":                 x.gen_FAKE,
+		"GROUP":                x.gen_GROUP,
+		"by":                   x.gen_by,
+		"first":                x.gen_first,
+		"last":                 x.gen_last,
+		"min":                  x.gen_min,
+		"max":                  x.gen_max,
+		"sum":                  x.gen_sum,
+		"mean":                 x.gen_mean,
+		"quantile":             x.gen_quantile,
+		"quantileInterpolated": x.gen_quantileInterpolated,
+		"median":               x.gen_median,
+		"medianInterpolated":   x.gen_medianInterpolated,
+		"stddev":               x.gen_stddev,
+		"stderr":               x.gen_stderr,
+		"entropy":              x.gen_entropy,
+		"mode":                 x.gen_mode,
+		"avg":                  x.gen_avg,
+		"rss":                  x.gen_rss,
+		"rms":                  x.gen_rms,
 		// maps.input
 		"INPUT": x.gen_INPUT,
 		// maps.output
@@ -1569,16 +1570,6 @@ func (x *Node) gen_bridge(args ...any) (any, error) {
 	return ret, nil
 }
 
-// gen_BRIDGE_QUERY
-//
-// syntax: BRIDGE_QUERY(string, string, ...interface {})
-func (x *Node) gen_BRIDGE_QUERY(args ...any) (any, error) {
-	if len(args) < 2 {
-		return nil, ErrInvalidNumOfArgs("BRIDGE_QUERY", 2, len(args))
-	}
-	return nil, nil
-}
-
 // gen_minHz
 //
 // syntax: minHz(float64)
@@ -2590,6 +2581,60 @@ func (x *Node) gen_mean(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmMean(p0, p1...)
+	return ret, nil
+}
+
+// gen_quantile
+//
+// syntax: quantile(float64, float64, ...string)
+func (x *Node) gen_quantile(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("quantile", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "quantile", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "quantile", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "quantile", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmQuantile(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_quantileInterpolated
+//
+// syntax: quantileInterpolated(float64, float64, ...string)
+func (x *Node) gen_quantileInterpolated(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("quantileInterpolated", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "quantileInterpolated", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "quantileInterpolated", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []string{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convString(args, n, "quantileInterpolated", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmQuantileInterpolated(p0, p1, p2...)
 	return ret, nil
 }
 

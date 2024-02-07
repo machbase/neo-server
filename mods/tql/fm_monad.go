@@ -396,9 +396,11 @@ func (node *Node) fmBy(value any, args ...string) any {
 }
 
 type GroupAggregate struct {
-	Type  string
-	Value any
-	Name  string
+	Type       string
+	Value      any
+	Name       string
+	Percentile float64
+	Cumulant   stat.CumulantKind
 }
 
 func newAggregate(typ string, value any, args ...string) *GroupAggregate {
@@ -439,8 +441,10 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnConst{value: ga.Value}
 	case "chunk":
 		return &GroupColumnChunk{name: ga.Type}
-	case "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode":
+	case "mean", "stddev", "stderr", "entropy", "mode":
 		return &GroupColumnContainer{name: ga.Type}
+	case "quantile":
+		return &GroupColumnContainer{name: ga.Type, percentile: ga.Percentile, cumulant: ga.Cumulant}
 	case "first", "last", "min", "max", "sum":
 		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "rss", "rms":
@@ -518,12 +522,32 @@ func (node *Node) fmMean(value float64, args ...string) any {
 	return newAggregate("mean", value, args...)
 }
 
+func (node *Node) fmQuantile(value float64, p float64, args ...string) any {
+	ret := newAggregate("quantile", value, args...)
+	ret.Cumulant = stat.Empirical
+	ret.Percentile = p
+	return ret
+}
+
+func (node *Node) fmQuantileInterpolated(value float64, p float64, args ...string) any {
+	ret := newAggregate("quantile", value, args...)
+	ret.Cumulant = stat.LinInterp
+	ret.Percentile = p
+	return ret
+}
+
 func (node *Node) fmMedian(value float64, args ...string) any {
-	return newAggregate("median", value, args...)
+	ret := newAggregate("quantile", value, args...)
+	ret.Cumulant = stat.Empirical
+	ret.Percentile = 0.5
+	return ret
 }
 
 func (node *Node) fmMedianInterpolated(value float64, args ...string) any {
-	return newAggregate("median-interpolated", value, args...)
+	ret := newAggregate("quantile", value, args...)
+	ret.Cumulant = stat.LinInterp
+	ret.Percentile = 0.5
+	return ret
 }
 
 func (node *Node) fmStdDev(value float64, args ...string) any {
@@ -623,10 +647,12 @@ func (gc *GroupColumnConst) Append(v any) error {
 	return nil
 }
 
-// "mean", "median", "median-interpolated", "stddev", "stderr", "entropy", "mode"
+// "mean", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
-	name   string
-	values []float64
+	name       string
+	values     []float64
+	percentile float64
+	cumulant   stat.CumulantKind
 }
 
 func (gc *GroupColumnContainer) Result() any {
@@ -640,18 +666,12 @@ func (gc *GroupColumnContainer) Result() any {
 			return nil
 		}
 		ret, _ = stat.MeanStdDev(gc.values, nil)
-	case "median":
+	case "quantile":
 		if len(gc.values) == 0 {
 			return nil
 		}
 		sort.Float64s(gc.values)
-		ret = stat.Quantile(0.5, stat.Empirical, gc.values, nil)
-	case "median-interpolated":
-		if len(gc.values) == 0 {
-			return nil
-		}
-		sort.Float64s(gc.values)
-		ret = stat.Quantile(0.5, stat.LinInterp, gc.values, nil)
+		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, nil)
 	case "stddev":
 		if len(gc.values) < 1 {
 			return nil
