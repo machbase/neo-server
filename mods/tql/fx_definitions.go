@@ -200,6 +200,8 @@ var FxDefinitions = []Definition{
 	{"max", defTask.fmMax},
 	{"sum", defTask.fmSum},
 	{"mean", defTask.fmMean},
+	{"quantile", defTask.fmQuantile},
+	{"quantileInterpolated", defTask.fmQuantileInterpolated},
 	{"median", defTask.fmMedian},
 	{"medianInterpolated", defTask.fmMedianInterpolated},
 	{"stddev", defTask.fmStdDev},

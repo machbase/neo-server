@@ -1361,6 +1361,117 @@ func TestWhen(t *testing.T) {
 	runTest(t, codeLines, resultLines, httpClient)
 }
 
+func TestGroup(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	payload = []string{
+		"A,1",
+		"A,2",
+		"B,3",
+		"B,4",
+		"B,5",
+		"C,6",
+		"C,7",
+		"C,8",
+		"C,9",
+	}
+	// first, last, avg, sum
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), first(value(1)), last(value(1)), avg(value(1)), sum(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,FIRST,LAST,AVG,SUM",
+		"A,1.00,2.00,1.50,3.00",
+		"B,3.00,5.00,4.00,12.00",
+		"C,6.00,9.00,7.50,30.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// min, max, rss, rms
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), min(value(1)), max(value(1)), rss(value(1)), rms(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MIN,MAX,RSS,RMS",
+		"A,1.00,2.00,2.24,1.58",
+		"B,3.00,5.00,7.07,4.08",
+		"C,6.00,9.00,15.17,7.58",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// mean, median, stddev, stderr, entropy
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mean(value(1)), median(value(1)), stddev(value(1)), stderr(value(1)), entropy(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MEAN,QUANTILE,STDDEV,STDERR,ENTROPY",
+		"A,1.50,1.00,0.71,0.50,-1.39",
+		"B,4.00,4.00,1.00,0.58,-16.89",
+		"C,7.50,7.00,1.29,0.65,-60.78",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, "P99"), quantile(value(1), 0.5, "P50"), median(value(1), "MEDIAN") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50,MEDIAN",
+		"A,2.00,1.00,1.00",
+		"B,5.00,4.00,4.00",
+		"C,9.00,7.00,7.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"A,1.1",
+		"A,1.1",
+		"B,2.1",
+		"B,2.2",
+		"B,2.1",
+		"C,3.1",
+		"C,3.2",
+		"C,3.3",
+		"C,3.3",
+	}
+	// mode
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mode(value(1)) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MODE",
+		"A,1.10",
+		"B,2.10",
+		"C,3.30",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, "P99"), quantile(value(1), 0.5, "P50") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50",
+		"A,1.10,1.10",
+		"B,2.20,2.10",
+		"C,3.30,3.20",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
 func TestTimeWindow(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
