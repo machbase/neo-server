@@ -209,12 +209,12 @@ func (node *Node) fmDictionary(args ...any) (any, error) {
 	ret := map[string]any{}
 	for i := 0; i < len(args); i += 2 {
 		if i+1 >= len(args) {
-			return nil, fmt.Errorf("dictionary name %q doen't match with any value", args[i])
+			return nil, fmt.Errorf("dict() name %q doen't match with any value", args[i])
 		}
 		if name, ok := args[i].(string); ok {
 			ret[name] = args[i+1]
 		} else {
-			return nil, fmt.Errorf("dictionary name should be string, got args[%d] %T", i, args[i])
+			return nil, fmt.Errorf("dict() name should be string, got args[%d] %T", i, args[i])
 		}
 	}
 	return ret, nil
@@ -272,7 +272,7 @@ func (node *Node) fmGroup(args ...any) any {
 		return ErrorRecord(fmt.Errorf("GROUP() has no by() argument"))
 	}
 	if by.Value == nil {
-		return ErrorRecord(fmt.Errorf("GROUP() by() can not be NULL"))
+		return ErrorRecord(fmt.Errorf("GROUP() has by() with NULL"))
 	}
 	if shouldSetColumns {
 		if !gr.chunkMode {

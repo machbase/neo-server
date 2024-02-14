@@ -1366,6 +1366,33 @@ func TestGroup(t *testing.T) {
 
 	payload = []string{
 		"A,1",
+		"B,3",
+		"C,6",
+	}
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(avg(value(1)))`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has no by() argument"))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`SET(ErrKey, NULL)`,
+		`GROUP( by($ErrKey, "NAME"), avg(value(1)))`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has by() with NULL"))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP( by(value(0), "NAME"), avg(value(1)), true)`,
+		"CSV()",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() unknown type 'bool' in arguments"))
+
+	payload = []string{
+		"A,1",
 		"A,2",
 		"B,3",
 		"B,4",
@@ -1960,6 +1987,49 @@ func TestDropTake(t *testing.T) {
 		"53,1.050505",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100) )",
+		"TAKE(5, -1)",
+		"CSV(precision(6))",
+	}
+	runTest(t, codeLines, []string{}, ExpectErr("f(TAKE) arg(1) limit should be larger than 0"))
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 100) )",
+		"DROP(5, -1)",
+		"CSV(precision(6))",
+	}
+	runTest(t, codeLines, []string{}, ExpectErr("f(DROP) arg(1) limit should be larger than 0"))
+}
+
+func TestDict(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict("key", value(0)) )`,
+		"JSON(precision(0))",
+	}
+	resultLines = []string{`/r/{"data":{"columns":\["x"\],"types":\["double"\],"rows":\[\[{"key":0}\],\[{"key":1}\]\]},"success":true,"reason":"success","elapse":".+"}`}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict("key", value(0), "value") )`,
+		"JSON(precision(0))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines, ExpectErr("dict() name \"value\" doen't match with any value"))
+
+	codeLines = []string{
+		"FAKE( arrange(0, 1, 1) )",
+		`MAPVALUE(0, dict(123, value(0)) )`,
+		"JSON(precision(0))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines, ExpectErr("dict() name should be string, got args[0] float64"))
+
 }
 
 func TestSrcError(t *testing.T) {
