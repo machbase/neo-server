@@ -194,7 +194,7 @@ var FxDefinitions = []Definition{
 	// maps.group
 	{"GROUP", defTask.fmGroup},
 	{"by", defTask.fmBy},
-	{"byTimeWindow", defTask.fmByTimeWindow},
+	{"timewindow", defTask.fmByTimeWindow},
 	{"where", defTask.fmWhere},
 	{"predict", defTask.fmPredict},
 	{"first", defTask.fmFirst},

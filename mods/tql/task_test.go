@@ -1541,10 +1541,10 @@ func TestGroupByTimeWindow(t *testing.T) {
 	}
 	codeLines = []string{
 		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
-		`GROUP( byTimeWindow( value(0), `,
+		`GROUP( by( value(0), timewindow(`,
 		`           time(1700256255 * 1000000000),`,
 		`           time(1700256282 * 1000000000),`,
-		`           period("2s")),`,
+		`           period("2s"))),`,
 		`      avg(value(1)),`,
 		`      last(value(1), nullValue(0)),`,
 		`      last(value(1), predict("linearregression"), "PREDICT"),`,
@@ -1572,10 +1572,10 @@ func TestGroupByTimeWindow(t *testing.T) {
 
 	codeLines = []string{
 		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
-		`GROUP( byTimeWindow( value(0), `,
-		`           time(1700256255 * 1000000000),`,
-		`           time(1700256282 * 1000000000),`,
-		`           period("4s")),`,
+		`GROUP( by( value(0), timewindow(`,
+		`             time(1700256255 * 1000000000),`,
+		`             time(1700256282 * 1000000000),`,
+		`             period("4s"))),`,
 		`      avg(value(1)),`,
 		`      sum(value(1)),`,
 		`      last(value(1))`,

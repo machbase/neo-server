@@ -446,65 +446,62 @@ const (
 	GroupByTimeWindow = "byTimeWindow"
 )
 
-func (node *Node) fmBy(value any, args ...any) any {
-	ret := &GroupAggregate{Type: GroupBy}
-	ret.Value = unboxValue(value)
+func (node *Node) fmBy(value any, args ...any) (any, error) {
+	var name string
+	var ret *GroupAggregate
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case string:
-			ret.Name = v
+			name = v
+		case *GroupAggregate:
+			ret = v
 		}
 	}
+	if ret == nil {
+		ret = &GroupAggregate{Type: GroupBy}
+	}
+	ret.Name = name
 	if ret.Name == "" {
 		ret.Name = "GROUP"
 	}
-	return ret
+
+	ret.Value = unboxValue(value)
+	if ret.Type == GroupByTimeWindow {
+		ts, err := util.ToTime(ret.Value)
+		if err != nil {
+			return nil, ErrArgs("timewindow()", 0, "value should be time")
+		}
+		ret.Value = time.Unix(0, (ts.UnixNano()/int64(ret.twPeriod))*int64(ret.twPeriod))
+	}
+
+	return ret, nil
 }
 
-func (node *Node) fmByTimeWindow(value any, from any, until any, duration any, args ...any) (any, error) {
+func (node *Node) fmByTimeWindow(from any, until any, duration any) (any, error) {
 	ret := &GroupAggregate{Type: GroupByTimeWindow}
-	ret.Value = unboxValue(value)
-	nodeName := "byTimeWindow()"
+	fnName := "timewindow()"
 	if ts, err := util.ToTime(from); err != nil {
-		return nil, ErrArgs(nodeName, 0, fmt.Sprintf("from is not compatible type, %T", from))
+		return nil, ErrArgs(fnName, 0, fmt.Sprintf("from is not compatible type, %T", from))
 	} else {
 		ret.twFrom = ts
 	}
 	if ts, err := util.ToTime(until); err != nil {
-		return nil, ErrArgs(nodeName, 1, fmt.Sprintf("until is not compatible type, %T", until))
+		return nil, ErrArgs(fnName, 1, fmt.Sprintf("until is not compatible type, %T", until))
 	} else {
 		ret.twUntil = ts
 	}
 	if d, err := util.ToDuration(duration); err != nil {
-		return nil, ErrArgs(nodeName, 2, fmt.Sprintf("duration is not compatible, %T", duration))
+		return nil, ErrArgs(fnName, 2, fmt.Sprintf("duration is not compatible, %T", duration))
 	} else if d == 0 {
-		return nil, ErrArgs(nodeName, 2, "duration is zero")
+		return nil, ErrArgs(fnName, 2, "duration is zero")
 	} else if d < 0 {
-		return nil, ErrArgs(nodeName, 2, "duration is negative")
+		return nil, ErrArgs(fnName, 2, "duration is negative")
 	} else {
 		ret.twPeriod = d
 	}
 	if ret.twUntil.Sub(ret.twFrom) <= ret.twPeriod {
-		return nil, ErrArgs(nodeName, 0, "from ~ until should be larger than duration")
+		return nil, ErrArgs(fnName, 0, "from ~ until should be larger than duration")
 	}
-	for i, arg := range args {
-		switch v := arg.(type) {
-		case string:
-			ret.Name = v
-		default:
-			return nil, ErrArgs(nodeName, 3+i, fmt.Sprintf("unknown argument, %T", v))
-		}
-	}
-	if ret.Name == "" {
-		ret.Name = "GROUP"
-	}
-
-	ts, err := util.ToTime(ret.Value)
-	if err != nil {
-		return nil, ErrArgs(nodeName, 0, "value should be time")
-	}
-	ret.Value = time.Unix(0, (ts.UnixNano()/int64(ret.twPeriod))*int64(ret.twPeriod))
-
 	return ret, nil
 }
 
@@ -761,7 +758,8 @@ func (node *Node) fmGroupByKey(args ...any) any {
 		return nil
 	}
 	key := inflight.Key()
-	by := node.fmBy(key, "KEY").(*GroupAggregate)
+	agg, _ := node.fmBy(key, "KEY")
+	by := agg.(*GroupAggregate)
 	gr.pushChunk(node, by)
 	return nil
 }

@@ -180,7 +180,7 @@ func NewNode(task *Task) *Node {
 		"FAKE":                 x.gen_FAKE,
 		"GROUP":                x.gen_GROUP,
 		"by":                   x.gen_by,
-		"byTimeWindow":         x.gen_byTimeWindow,
+		"timewindow":           x.gen_timewindow,
 		"where":                x.gen_where,
 		"predict":              x.gen_predict,
 		"first":                x.gen_first,
@@ -2447,42 +2447,29 @@ func (x *Node) gen_by(args ...any) (any, error) {
 		}
 		p1 = append(p1, argv)
 	}
-	ret := x.fmBy(p0, p1...)
-	return ret, nil
+	return x.fmBy(p0, p1...)
 }
 
-// gen_byTimeWindow
+// gen_timewindow
 //
-// syntax: byTimeWindow(, , , , ...interface {})
-func (x *Node) gen_byTimeWindow(args ...any) (any, error) {
-	if len(args) < 4 {
-		return nil, ErrInvalidNumOfArgs("byTimeWindow", 4, len(args))
+// syntax: timewindow(, , )
+func (x *Node) gen_timewindow(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("timewindow", 3, len(args))
 	}
-	p0, err := convAny(args, 0, "byTimeWindow", "interface {}")
+	p0, err := convAny(args, 0, "timewindow", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p1, err := convAny(args, 1, "byTimeWindow", "interface {}")
+	p1, err := convAny(args, 1, "timewindow", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convAny(args, 2, "byTimeWindow", "interface {}")
+	p2, err := convAny(args, 2, "timewindow", "interface {}")
 	if err != nil {
 		return nil, err
 	}
-	p3, err := convAny(args, 3, "byTimeWindow", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p4 := []interface{}{}
-	for n := 4; n < len(args); n++ {
-		argv, err := convAny(args, n, "byTimeWindow", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p4 = append(p4, argv)
-	}
-	return x.fmByTimeWindow(p0, p1, p2, p3, p4...)
+	return x.fmByTimeWindow(p0, p1, p2)
 }
 
 // gen_where
