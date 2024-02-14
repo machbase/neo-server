@@ -19,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
+	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -230,19 +231,24 @@ func (node *Node) fmGroup(args ...any) any {
 	} else {
 		gr = &Group{
 			buffer:    map[any][]GroupColumn{},
+			filler:    []GroupFiller{},
 			chunkMode: true,
 		}
 		node.SetValue("group", gr)
 		node.SetEOF(gr.onEOF)
 		shouldSetColumns = true
 		for _, arg := range args {
-			switch arg.(type) {
+			switch v := arg.(type) {
 			case *GroupAggregate:
+				// if has at least one aggregate, chunk mode is off
 				gr.chunkMode = false
-			}
-			// if has at least one aggregate, chunk mode is off
-			if !gr.chunkMode {
-				break
+				if v.Type == GroupByTimeWindow {
+					gr.byTimeWindow = true
+					gr.twFrom = v.twFrom
+					gr.twUntil = v.twUntil
+					gr.twPeriod = v.twPeriod
+				}
+				gr.filler = append(gr.filler, v.newFiller())
 			}
 		}
 	}
@@ -251,7 +257,9 @@ func (node *Node) fmGroup(args ...any) any {
 		switch v := arg.(type) {
 		case *GroupAggregate:
 			columns = append(columns, v)
-			if v.Type == "by" {
+			if v.Type == GroupBy {
+				by = v
+			} else if v.Type == GroupByTimeWindow {
 				by = v
 			}
 		case *lazyOption:
@@ -290,8 +298,15 @@ func (node *Node) fmGroup(args ...any) any {
 type Group struct {
 	lazy      bool
 	buffer    map[any][]GroupColumn
+	filler    []GroupFiller
 	curKey    any
 	chunkMode bool
+
+	byTimeWindow bool
+	twFrom       time.Time
+	twUntil      time.Time
+	twPeriod     time.Duration
+	twCurWindow  time.Time
 }
 
 func (gr *Group) onEOF(node *Node) {
@@ -299,9 +314,9 @@ func (gr *Group) onEOF(node *Node) {
 		for k, cols := range gr.buffer {
 			r := cols[0].Result()
 			if v, ok := r.([]any); ok {
-				node.yield(k, v)
+				gr.yield(node, k, v, true)
 			} else {
-				node.yield(k, []any{r})
+				gr.yield(node, k, []any{r}, true)
 			}
 		}
 		gr.buffer = nil
@@ -317,7 +332,7 @@ func (gr *Group) onEOF(node *Node) {
 			for i, c := range cols {
 				v[i] = c.Result()
 			}
-			node.yield(k, v)
+			gr.yield(node, k, v, true)
 		}
 		gr.buffer = nil
 	}
@@ -340,9 +355,9 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 		if ret, ok := gr.buffer[gr.curKey]; ok {
 			r := ret[0].Result()
 			if v, ok := r.([]any); ok {
-				node.yield(gr.curKey, v)
+				gr.yield(node, gr.curKey, v, false)
 			} else {
-				node.yield(gr.curKey, []any{r})
+				gr.yield(node, gr.curKey, []any{r}, false)
 			}
 			delete(gr.buffer, gr.curKey)
 		}
@@ -368,7 +383,9 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 	}
 
 	for i, c := range columns {
-		cols[i].Append(c.Value)
+		if c.where {
+			cols[i].Append(c.Value)
+		}
 	}
 
 	if !gr.lazy && gr.curKey != nil && gr.curKey != by.Value {
@@ -377,22 +394,118 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 			for i, c := range cols {
 				v[i] = c.Result()
 			}
-			node.yield(gr.curKey, v)
+			gr.yield(node, gr.curKey, v, false)
 			delete(gr.buffer, gr.curKey)
 		}
 	}
 	gr.curKey = by.Value
 }
 
-func (node *Node) fmBy(value any, args ...string) any {
-	ret := &GroupAggregate{Type: "by"}
-	ret.Value = unboxValue(value)
-	if len(args) > 0 {
-		ret.Name = args[0]
+func (gr *Group) yield(node *Node, key any, values []any, isLast bool) {
+	if gr.byTimeWindow {
+		recWindow := key.(time.Time)
+		if gr.twCurWindow.IsZero() {
+			fromWindow := time.Unix(0, (gr.twFrom.UnixNano()/int64(gr.twPeriod))*int64(gr.twPeriod))
+			if isLast {
+				untilWindow := time.Unix(0, (gr.twUntil.UnixNano()/int64(gr.twPeriod))*int64(gr.twPeriod))
+				gr.fill(node, fromWindow, untilWindow)
+			} else {
+				gr.fill(node, fromWindow, recWindow)
+			}
+		} else {
+			gr.fill(node, gr.twCurWindow.Add(gr.twPeriod), recWindow)
+		}
+		gr.twCurWindow = recWindow
+		node.yield(key, values)
+		for i, v := range values {
+			gr.filler[i].Fit(key, v)
+		}
+		if isLast {
+			gr.fill(node, recWindow.Add(gr.twPeriod), gr.twUntil.Add(gr.twPeriod-1))
+		}
 	} else {
+		node.yield(key, values)
+	}
+}
+
+func (gr *Group) fill(node *Node, curWindow time.Time, nextWindow time.Time) {
+	for nextWindow.Sub(curWindow) >= gr.twPeriod {
+		if curWindow.Sub(gr.twFrom) >= 0 {
+			ret := make([]any, len(gr.filler))
+			for i, fill := range gr.filler {
+				ret[i] = fill.Predict(curWindow)
+			}
+			node.yield(curWindow, ret)
+		}
+		curWindow = curWindow.Add(gr.twPeriod)
+	}
+}
+
+const (
+	GroupBy           = "by"
+	GroupByTimeWindow = "byTimeWindow"
+)
+
+func (node *Node) fmBy(value any, args ...any) any {
+	ret := &GroupAggregate{Type: GroupBy}
+	ret.Value = unboxValue(value)
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			ret.Name = v
+		}
+	}
+	if ret.Name == "" {
 		ret.Name = "GROUP"
 	}
 	return ret
+}
+
+func (node *Node) fmByTimeWindow(value any, from any, until any, duration any, args ...any) (any, error) {
+	ret := &GroupAggregate{Type: GroupByTimeWindow}
+	ret.Value = unboxValue(value)
+	nodeName := "byTimeWindow()"
+	if ts, err := util.ToTime(from); err != nil {
+		return nil, ErrArgs(nodeName, 0, fmt.Sprintf("from is not compatible type, %T", from))
+	} else {
+		ret.twFrom = ts
+	}
+	if ts, err := util.ToTime(until); err != nil {
+		return nil, ErrArgs(nodeName, 1, fmt.Sprintf("until is not compatible type, %T", until))
+	} else {
+		ret.twUntil = ts
+	}
+	if d, err := util.ToDuration(duration); err != nil {
+		return nil, ErrArgs(nodeName, 2, fmt.Sprintf("duration is not compatible, %T", duration))
+	} else if d == 0 {
+		return nil, ErrArgs(nodeName, 2, "duration is zero")
+	} else if d < 0 {
+		return nil, ErrArgs(nodeName, 2, "duration is negative")
+	} else {
+		ret.twPeriod = d
+	}
+	if ret.twUntil.Sub(ret.twFrom) <= ret.twPeriod {
+		return nil, ErrArgs(nodeName, 0, "from ~ until should be larger than duration")
+	}
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			ret.Name = v
+		default:
+			return nil, ErrArgs(nodeName, 3+i, fmt.Sprintf("unknown argument, %T", v))
+		}
+	}
+	if ret.Name == "" {
+		ret.Name = "GROUP"
+	}
+
+	ts, err := util.ToTime(ret.Value)
+	if err != nil {
+		return nil, ErrArgs(nodeName, 0, "value should be time")
+	}
+	ret.Value = time.Unix(0, (ts.UnixNano()/int64(ret.twPeriod))*int64(ret.twPeriod))
+
+	return ret, nil
 }
 
 type GroupAggregate struct {
@@ -401,21 +514,84 @@ type GroupAggregate struct {
 	Name       string
 	Percentile float64
 	Cumulant   stat.CumulantKind
+
+	twFrom    time.Time
+	twUntil   time.Time
+	twPeriod  time.Duration
+	where     WherePredicate
+	nullValue any
+	predict   PredictType
 }
 
-func newAggregate(typ string, value any, args ...string) *GroupAggregate {
-	ret := &GroupAggregate{Type: typ, Value: value}
-	if len(args) > 0 {
-		ret.Name = args[0]
-	} else {
+type WherePredicate bool
+
+func (node *Node) fmWhere(predicate bool) any {
+	return WherePredicate(predicate)
+}
+
+type PredictType string
+
+func (node *Node) fmPredict(predict string) (PredictType, error) {
+	typ := strings.ToLower(predict)
+	switch typ {
+	case "piecewiseconstant":
+		return PredictType(typ), nil
+	case "piecewiselinear":
+		return PredictType(typ), nil
+	case "akimaspline":
+		return PredictType(typ), nil
+	case "fritschbutland":
+		return PredictType(typ), nil
+	case "linearregression":
+		return PredictType(typ), nil
+	default:
+		return "", fmt.Errorf("unknown predict %q", predict)
+	}
+}
+
+func newAggregate(typ string, value any, args ...any) *GroupAggregate {
+	ret := &GroupAggregate{Type: typ, Value: value, where: WherePredicate(true)}
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			ret.Name = v
+		case WherePredicate:
+			ret.where = v
+		case *NullValue:
+			ret.nullValue = v.altValue
+		case PredictType:
+			ret.predict = v
+		}
+	}
+	if ret.Name == "" {
 		ret.Name = strings.ToUpper(typ)
 	}
 	return ret
 }
 
+func (g *GroupAggregate) newFiller() GroupFiller {
+	if g.Type == GroupByTimeWindow {
+		return &GroupFillerTimeWindow{}
+	}
+	switch g.predict {
+	case "piecewiseconstant":
+		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+	case "piecewiselinear":
+		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+	case "akimaspline":
+		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+	case "fritschbutland":
+		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+	case "linearregression":
+		return &GroupFillerPredict{useLinearRegression: true, fallback: g.nullValue}
+	default:
+		return &GroupFillerNullValue{alt: g.nullValue}
+	}
+}
+
 func (ga *GroupAggregate) ColumnType() string {
 	switch ga.Type {
-	case "by":
+	case GroupBy:
 		if ga.Value == nil {
 			return "string"
 		}
@@ -429,6 +605,8 @@ func (ga *GroupAggregate) ColumnType() string {
 		default:
 			return "interface{}"
 		}
+	case GroupByTimeWindow:
+		return "time"
 	case "chunk":
 		return "array"
 	}
@@ -437,8 +615,10 @@ func (ga *GroupAggregate) ColumnType() string {
 
 func (ga *GroupAggregate) NewBuffer() GroupColumn {
 	switch ga.Type {
-	case "by":
+	case GroupBy:
 		return &GroupColumnConst{value: ga.Value}
+	case GroupByTimeWindow:
+		return &GroupColumnTimeWindow{value: ga.Value}
 	case "chunk":
 		return &GroupColumnChunk{name: ga.Type}
 	case "mean", "stddev", "stderr", "entropy", "mode":
@@ -454,27 +634,17 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 	}
 }
 
-func (node *Node) fmFirst(value float64, args ...string) any {
+func (node *Node) fmFirst(value float64, args ...any) any {
 	return newAggregate("first", value, args...)
 }
 
-func (node *Node) fmLast(value float64, args ...string) any {
+func (node *Node) fmLast(value float64, args ...any) any {
 	return newAggregate("last", value, args...)
 }
 
 func (node *Node) fmMin(value float64, other ...any) (any, error) {
 	if node.Name() == "GROUP()" {
-		if len(other) > 0 {
-			var name string
-			if str, ok := other[0].(string); ok {
-				name = str
-			} else {
-				name = fmt.Sprintf("%v", other[0])
-			}
-			return newAggregate("min", value, name), nil
-		} else {
-			return newAggregate("min", value), nil
-		}
+		return newAggregate("min", value, other...), nil
 	} else { // math.Min
 		if len(other) == 1 {
 			rv, err := util.ToFloat64(other[0])
@@ -490,17 +660,7 @@ func (node *Node) fmMin(value float64, other ...any) (any, error) {
 
 func (node *Node) fmMax(value float64, other ...any) (any, error) {
 	if node.Name() == "GROUP()" {
-		if len(other) > 0 {
-			var name string
-			if str, ok := other[0].(string); ok {
-				name = str
-			} else {
-				name = fmt.Sprintf("%v", other[0])
-			}
-			return newAggregate("max", value, name), nil
-		} else {
-			return newAggregate("max", value), nil
-		}
+		return newAggregate("max", value, other...), nil
 	} else { // math.Max
 		if len(other) == 1 {
 			rv, err := util.ToFloat64(other[0])
@@ -514,65 +674,67 @@ func (node *Node) fmMax(value float64, other ...any) (any, error) {
 	}
 }
 
-func (node *Node) fmSum(value float64, args ...string) any {
+func (node *Node) fmSum(value float64, args ...any) any {
 	return newAggregate("sum", value, args...)
 }
 
-func (node *Node) fmMean(value float64, args ...string) any {
+func (node *Node) fmMean(value float64, args ...any) any {
 	return newAggregate("mean", value, args...)
 }
 
-func (node *Node) fmQuantile(value float64, p float64, args ...string) any {
+func (node *Node) fmQuantile(value float64, p float64, args ...any) any {
 	ret := newAggregate("quantile", value, args...)
 	ret.Cumulant = stat.Empirical
 	ret.Percentile = p
 	return ret
 }
 
-func (node *Node) fmQuantileInterpolated(value float64, p float64, args ...string) any {
+func (node *Node) fmQuantileInterpolated(value float64, p float64, args ...any) any {
 	ret := newAggregate("quantile", value, args...)
 	ret.Cumulant = stat.LinInterp
 	ret.Percentile = p
 	return ret
 }
 
-func (node *Node) fmMedian(value float64, args ...string) any {
+func (node *Node) fmMedian(value float64, args ...any) any {
 	ret := newAggregate("quantile", value, args...)
 	ret.Cumulant = stat.Empirical
 	ret.Percentile = 0.5
 	return ret
 }
 
-func (node *Node) fmMedianInterpolated(value float64, args ...string) any {
+func (node *Node) fmMedianInterpolated(value float64, args ...any) any {
 	ret := newAggregate("quantile", value, args...)
 	ret.Cumulant = stat.LinInterp
 	ret.Percentile = 0.5
 	return ret
 }
 
-func (node *Node) fmStdDev(value float64, args ...string) any {
+func (node *Node) fmStdDev(value float64, args ...any) any {
 	return newAggregate("stddev", value, args...)
 }
 
-func (node *Node) fmStdErr(value float64, args ...string) any {
+func (node *Node) fmStdErr(value float64, args ...any) any {
 	return newAggregate("stderr", value, args...)
 }
 
-func (node *Node) fmEntropy(value float64, args ...string) any {
+func (node *Node) fmEntropy(value float64, args ...any) any {
 	return newAggregate("entropy", value, args...)
 }
 
-func (node *Node) fmMode(value float64, args ...string) any {
+func (node *Node) fmMode(value float64, args ...any) any {
 	return newAggregate("mode", value, args...)
 }
 
-func (node *Node) fmAvg(value float64, args ...string) any {
+func (node *Node) fmAvg(value float64, args ...any) any {
 	return newAggregate("avg", value, args...)
 }
-func (node *Node) fmRSS(value float64, args ...string) any {
+
+func (node *Node) fmRSS(value float64, args ...any) any {
 	return newAggregate("rss", value, args...)
 }
-func (node *Node) fmRMS(value float64, args ...string) any {
+
+func (node *Node) fmRMS(value float64, args ...any) any {
 	return newAggregate("rms", value, args...)
 }
 
@@ -604,6 +766,125 @@ func (node *Node) fmGroupByKey(args ...any) any {
 	return nil
 }
 
+type GroupFiller interface {
+	Fit(x, y any)
+	Predict(x any) any
+}
+
+var (
+	_ GroupFiller = &GroupFillerNullValue{}
+	_ GroupFiller = &GroupFillerPredict{}
+	_ GroupFiller = &GroupFillerTimeWindow{}
+)
+
+type GroupFillerNullValue struct {
+	alt any
+}
+
+func (nv *GroupFillerNullValue) Fit(x, y any) {
+}
+
+func (nv *GroupFillerNullValue) Predict(x any) any {
+	return nv.alt
+}
+
+type GroupFillerTimeWindow struct {
+}
+
+func (tf *GroupFillerTimeWindow) Fit(x, y any) {
+}
+
+func (tf *GroupFillerTimeWindow) Predict(x any) any {
+	return x
+}
+
+type GroupFillerPredict struct {
+	fallback            any
+	predictor           interp.FittablePredictor
+	useLinearRegression bool
+	xs                  []float64
+	ys                  []float64
+}
+
+func (p *GroupFillerPredict) unbox(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	switch vv := v.(type) {
+	case *float64:
+		return *vv, true
+	case float64:
+		return vv, true
+	case *time.Time:
+		return float64(vv.UnixNano()), true
+	case time.Time:
+		return float64(vv.UnixNano()), true
+	case int:
+		return float64(vv), true
+	case *int:
+		return float64(*vv), true
+	case int32:
+		return float64(vv), true
+	case *int32:
+		return float64(*vv), true
+	case int64:
+		return float64(vv), true
+	case *int64:
+		return float64(*vv), true
+	default:
+		return 0, false
+	}
+}
+
+func (p *GroupFillerPredict) Fit(x, y any) {
+	if p.predictor == nil && !p.useLinearRegression {
+		return
+	}
+
+	xv, ok := p.unbox(x)
+	if !ok {
+		return
+	}
+	yv, ok := p.unbox(y)
+	if !ok {
+		return
+	}
+	p.xs = append(p.xs, xv)
+	p.ys = append(p.ys, yv)
+
+	limit := 100
+	if len(p.xs) > limit {
+		p.xs = p.xs[len(p.xs)-limit:]
+		p.ys = p.ys[len(p.ys)-limit:]
+	}
+}
+
+func (p *GroupFillerPredict) Predict(x any) any {
+	if p.predictor == nil && !p.useLinearRegression {
+		return p.fallback
+	}
+	if len(p.xs) < 2 || len(p.xs) != len(p.ys) {
+		return p.fallback
+	}
+
+	ret := p.fallback
+	if p.useLinearRegression {
+		origin := false
+		// y = alpha + beta*x
+		alpha, beta := stat.LinearRegression(p.xs, p.ys, nil, origin)
+		if xv, ok := p.unbox(x); ok {
+			ret = alpha + beta*xv
+		}
+	} else if p.predictor != nil {
+		if err := p.predictor.Fit(p.xs, p.ys); err == nil {
+			if xv, ok := p.unbox(x); ok {
+				ret = p.predictor.Predict(xv)
+			}
+		}
+	}
+	return ret
+}
+
 type GroupColumn interface {
 	Append(any) error
 	Result() any
@@ -615,6 +896,7 @@ var (
 	_ GroupColumn = &GroupColumnCounter{}
 	_ GroupColumn = &GroupColumnChunk{}
 	_ GroupColumn = &GroupColumnConst{}
+	_ GroupColumn = &GroupColumnTimeWindow{}
 )
 
 // chunk
@@ -644,6 +926,19 @@ func (gc *GroupColumnConst) Result() any {
 }
 
 func (gc *GroupColumnConst) Append(v any) error {
+	return nil
+}
+
+// timewindow
+type GroupColumnTimeWindow struct {
+	value any
+}
+
+func (gt *GroupColumnTimeWindow) Result() any {
+	return gt.value
+}
+
+func (gt *GroupColumnTimeWindow) Append(v any) error {
 	return nil
 }
 
