@@ -1516,6 +1516,25 @@ func TestGroupWhere(t *testing.T) {
 		"1700256276,10.00,NULL",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(2, doubleType(), "value"))`,
+		`GROUP(`,
+		`  by( roundTime(value(0), "2s")),`,
+		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,
+		`  last(value(2), where(value(1) == "wet"), nullValue("1"), "WET") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,DRY,WET",
+		"1700256260,1.00,1",
+		"1700256262,2.50,2.00",
+		"1700256264,4.50,5.00",
+		"1700256266,6.50,1",
+		"1700256268,8.50,1",
+		"1700256276,10.00,1",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
 
 func TestGroupByTimeWindow(t *testing.T) {
@@ -1548,14 +1567,14 @@ func TestGroupByTimeWindow(t *testing.T) {
 		`      avg(value(1)),`,
 		`      last(value(1), nullValue(0)),`,
 		`      last(value(1), predict("linearregression"), "PREDICT"),`,
-		`      last(value(1), predict("akimaspline"), "PREDICT")`,
+		`      last(value(1), predict("akimaspline"), nullValue(100), "PREDICT")`,
 		` )`,
 		`CSV(timeformat("s"), heading(true), precision(2))`,
 	}
 	resultLines = []string{
 		"GROUP,AVG,LAST,PREDICT,PREDICT",
-		"1700256256,NULL,0.00,NULL,NULL",
-		"1700256258,NULL,0.00,NULL,NULL",
+		"1700256256,NULL,0.00,NULL,100.00",
+		"1700256258,NULL,0.00,NULL,100.00",
 		"1700256260,1.00,1.00,1.00,1.00",
 		"1700256262,2.50,3.00,3.00,3.00",
 		"1700256264,4.00,4.00,4.00,4.00",

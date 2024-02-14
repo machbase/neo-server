@@ -416,14 +416,29 @@ func (gr *Group) yield(node *Node, key any, values []any, isLast bool) {
 			gr.fill(node, gr.twCurWindow.Add(gr.twPeriod), recWindow)
 		}
 		gr.twCurWindow = recWindow
-		node.yield(key, values)
 		for i, v := range values {
-			gr.filler[i].Fit(key, v)
+			if v == nil {
+				values[i] = gr.filler[i].Predict(key)
+			} else {
+				gr.filler[i].Fit(key, v)
+			}
 		}
+		node.yield(key, values)
 		if isLast {
 			gr.fill(node, recWindow.Add(gr.twPeriod), gr.twUntil.Add(gr.twPeriod-1))
 		}
 	} else {
+		for i, v := range values {
+			if v == nil {
+				values[i] = gr.filler[i].Predict(key)
+			} else {
+				if _, ok := key.(time.Time); ok {
+					if _, ok := v.(float64); ok {
+						gr.filler[i].Fit(key, v)
+					}
+				}
+			}
+		}
 		node.yield(key, values)
 	}
 }
