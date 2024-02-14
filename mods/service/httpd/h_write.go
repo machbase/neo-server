@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/transcoder"
 	spi "github.com/machbase/neo-spi"
 )
 
@@ -48,7 +45,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	heading := strBool(ctx.Query("heading"), false)
 	createTable := strBool(ctx.Query("create-table"), false)
 	truncateTable := strBool(ctx.Query("truncate-table"), false)
-	trans := strString(ctx.Query("transcoder"), "")
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
@@ -108,16 +104,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.Heading(heading),
 	}
 
-	if len(trans) > 0 {
-		transcoderOpts := []transcoder.Option{}
-		if exepath, err := os.Executable(); err == nil {
-			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
-		}
-		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("http"))
-		trans := transcoder.New(trans, transcoderOpts...)
-
-		codecOpts = append(codecOpts, opts.Transcoder(trans))
-	}
 	decoder := codec.NewDecoder(format, codecOpts...)
 
 	if decoder == nil {

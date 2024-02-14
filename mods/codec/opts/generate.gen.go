@@ -8,7 +8,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/transcoder"
 	"golang.org/x/text/encoding"
 	"time"
 )
@@ -105,7 +104,7 @@ func BriefCount(count int) Option {
 
 // SetCharsetEncoding
 //
-//	mods/codec/internal/csv/csv_decode.go:41:1
+//	mods/codec/internal/csv/csv_decode.go:38:1
 type CanSetCharsetEncoding interface {
 	SetCharsetEncoding(charset encoding.Encoding)
 }
@@ -225,7 +224,7 @@ func ChartOption(opt string) Option {
 
 // SetColumnTypes
 //
-//	mods/codec/internal/csv/csv_decode.go:79:1
+//	mods/codec/internal/csv/csv_decode.go:72:1
 //	mods/codec/internal/json/json_decode.go:46:1
 //	mods/codec/internal/json/json_encode.go:78:1
 type CanSetColumnTypes interface {
@@ -243,7 +242,7 @@ func ColumnTypes(types ...string) Option {
 // SetColumns
 //
 //	mods/codec/internal/box/box_encode.go:85:1
-//	mods/codec/internal/csv/csv_decode.go:75:1
+//	mods/codec/internal/csv/csv_decode.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:85:1
 //	mods/codec/internal/json/json_encode.go:74:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
@@ -276,7 +275,7 @@ func DataZoom(typ string, minPercentage float32, maxPercentage float32) Option {
 
 // SetDelimiter
 //
-//	mods/codec/internal/csv/csv_decode.go:62:1
+//	mods/codec/internal/csv/csv_decode.go:59:1
 //	mods/codec/internal/csv/csv_encode.go:80:1
 type CanSetDelimiter interface {
 	SetDelimiter(delimiter string)
@@ -338,7 +337,7 @@ func GridSize(args ...float64) Option {
 // SetHeader
 //
 //	mods/codec/internal/box/box_encode.go:65:1
-//	mods/codec/internal/csv/csv_decode.go:58:1
+//	mods/codec/internal/csv/csv_decode.go:55:1
 //	mods/codec/internal/csv/csv_encode.go:76:1
 //	mods/codec/internal/json/json_encode.go:66:1
 type CanSetHeader interface {
@@ -356,7 +355,7 @@ func Header(show bool) Option {
 // SetHeading
 //
 //	mods/codec/internal/box/box_encode.go:69:1
-//	mods/codec/internal/csv/csv_decode.go:54:1
+//	mods/codec/internal/csv/csv_decode.go:51:1
 //	mods/codec/internal/csv/csv_encode.go:72:1
 //	mods/codec/internal/json/json_encode.go:70:1
 type CanSetHeading interface {
@@ -418,7 +417,7 @@ func InitialLocation(latlon *nums.LatLon, zoomLevel int) Option {
 
 // SetInputStream
 //
-//	mods/codec/internal/csv/csv_decode.go:37:1
+//	mods/codec/internal/csv/csv_decode.go:34:1
 //	mods/codec/internal/json/json_decode.go:30:1
 type CanSetInputStream interface {
 	SetInputStream(in spec.InputStream)
@@ -748,7 +747,7 @@ func Subtitle(str string) Option {
 
 // SetTableName
 //
-//	mods/codec/internal/csv/csv_decode.go:67:1
+//	mods/codec/internal/csv/csv_decode.go:64:1
 //	mods/codec/internal/json/json_decode.go:42:1
 type CanSetTableName interface {
 	SetTableName(tableName string)
@@ -825,7 +824,7 @@ func TileTemplate(url string) Option {
 // SetTimeLocation
 //
 //	mods/codec/internal/box/box_encode.go:53:1
-//	mods/codec/internal/csv/csv_decode.go:49:1
+//	mods/codec/internal/csv/csv_decode.go:46:1
 //	mods/codec/internal/csv/csv_encode.go:59:1
 //	mods/codec/internal/json/json_decode.go:38:1
 //	mods/codec/internal/json/json_encode.go:54:1
@@ -846,7 +845,7 @@ func TimeLocation(tz *time.Location) Option {
 //
 //	mods/codec/internal/box/box_encode.go:49:1
 //	mods/codec/internal/chart/chartcompat.go:285:1
-//	mods/codec/internal/csv/csv_decode.go:45:1
+//	mods/codec/internal/csv/csv_decode.go:42:1
 //	mods/codec/internal/csv/csv_encode.go:55:1
 //	mods/codec/internal/json/json_decode.go:34:1
 //	mods/codec/internal/json/json_encode.go:50:1
@@ -919,21 +918,6 @@ func ToolboxSaveAsImage(name string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetToolboxSaveAsImage); ok {
 			_o.SetToolboxSaveAsImage(name)
-		}
-	}
-}
-
-// SetTranscoder
-//
-//	mods/codec/internal/csv/csv_decode.go:71:1
-type CanSetTranscoder interface {
-	SetTranscoder(trans transcoder.Transcoder)
-}
-
-func Transcoder(trans transcoder.Transcoder) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetTranscoder); ok {
-			_o.SetTranscoder(trans)
 		}
 	}
 }

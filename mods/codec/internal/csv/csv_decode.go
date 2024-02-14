@@ -10,9 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
-	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
 )
 
@@ -20,7 +18,6 @@ type Decoder struct {
 	reader       *csv.Reader
 	columnTypes  []string
 	columnNames  []string
-	translator   transcoder.Transcoder
 	comma        rune
 	heading      bool
 	input        spec.InputStream
@@ -66,10 +63,6 @@ func (dec *Decoder) SetDelimiter(delimiter string) {
 
 func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
-}
-
-func (dec *Decoder) SetTranscoder(trans transcoder.Transcoder) {
-	dec.translator = trans
 }
 
 func (dec *Decoder) SetColumns(names ...string) {
@@ -170,17 +163,6 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			}
 		default:
 			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
-		}
-	}
-	if len(errs) == 0 && dec.translator != nil {
-		result, err := dec.translator.Process(values)
-		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("transcoder internal error '%T'", dec.translator))
-		}
-		if conv, ok := result.([]any); !ok {
-			return nil, errors.Wrap(err, fmt.Sprintf("transcoder returns invalid type '%T'", result))
-		} else {
-			values = conv
 		}
 	}
 	if len(errs) > 0 {

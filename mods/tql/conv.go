@@ -9,7 +9,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	"golang.org/x/text/encoding"
 )
@@ -125,16 +124,6 @@ func convTimeLocation(args []any, idx int, fname string, expect string) (*time.L
 	default:
 		return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 	}
-}
-
-func convTranscoder(args []any, idx int, fname string, expect string) (transcoder.Transcoder, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(transcoder.Transcoder); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
 func convString(args []any, idx int, fname string, expect string) (string, error) {

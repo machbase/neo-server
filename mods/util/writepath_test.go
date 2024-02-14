@@ -13,11 +13,10 @@ type CaseWritePath struct {
 }
 
 func TestWritePath(t *testing.T) {
-	testWritePath(t, CaseWritePath{"table_1", &WritePath{"TABLE_1", "", "", ""}}, "")
-	testWritePath(t, CaseWritePath{"table_1:csv", &WritePath{"TABLE_1", "csv", "", ""}}, "")
-	testWritePath(t, CaseWritePath{"table_1:json", &WritePath{"TABLE_1", "json", "", ""}}, "")
-	testWritePath(t, CaseWritePath{"table_1:csv:GZIP", &WritePath{"TABLE_1", "csv", "", "gzip"}}, "")
-	testWritePath(t, CaseWritePath{"table_1:json:trans1:gzip", &WritePath{"TABLE_1", "json", "trans1", "gzip"}}, "")
+	testWritePath(t, CaseWritePath{"table_1", &WritePath{"TABLE_1", "", ""}}, "")
+	testWritePath(t, CaseWritePath{"table_1:csv", &WritePath{"TABLE_1", "csv", ""}}, "")
+	testWritePath(t, CaseWritePath{"table_1:json", &WritePath{"TABLE_1", "json", ""}}, "")
+	testWritePath(t, CaseWritePath{"table_1:csv:GZIP", &WritePath{"TABLE_1", "csv", "gzip"}}, "")
 }
 
 func testWritePath(t *testing.T, tc CaseWritePath, expectedErr string) {
@@ -31,6 +30,5 @@ func testWritePath(t *testing.T, tc CaseWritePath, expectedErr string) {
 	require.NotNil(t, p)
 	require.Equal(t, tc.expect.Table, p.Table)
 	require.Equal(t, tc.expect.Format, p.Format)
-	require.Equal(t, tc.expect.Transform, p.Transform)
 	require.Equal(t, tc.expect.Compress, p.Compress)
 }

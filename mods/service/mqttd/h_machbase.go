@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,7 +19,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/transcoder"
 	"github.com/machbase/neo-server/mods/util"
 	spi "github.com/machbase/neo-spi"
 )
@@ -358,16 +355,6 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		opts.ColumnTypes(cols.Types()...),
 		opts.Delimiter(","),
 		opts.Heading(false),
-	}
-
-	if len(wp.Transform) > 0 {
-		transcoderOpts := []transcoder.Option{}
-		if exepath, err := os.Executable(); err == nil {
-			transcoderOpts = append(transcoderOpts, transcoder.OptionPath(filepath.Dir(exepath)))
-		}
-		transcoderOpts = append(transcoderOpts, transcoder.OptionPname("mqtt"))
-		trans := transcoder.New(wp.Transform, transcoderOpts...)
-		codecOpts = append(codecOpts, opts.Transcoder(trans))
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)

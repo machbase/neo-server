@@ -67,7 +67,6 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "toolboxDataView", Func: opts.ToolboxDataView},
 	{Name: "toolboxDataZoom", Func: opts.ToolboxDataZoom},
 	{Name: "toolboxSaveAsImage", Func: opts.ToolboxSaveAsImage},
-	{Name: "transcoder", Func: opts.Transcoder},
 	{Name: "transpose", Func: opts.Transpose},
 	{Name: "visualMap", Func: opts.VisualMap},
 	{Name: "visualMapColor", Func: opts.VisualMapColor},

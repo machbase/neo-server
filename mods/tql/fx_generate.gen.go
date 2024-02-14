@@ -269,7 +269,6 @@ func NewNode(task *Task) *Node {
 		"toolboxDataView":     x.gen_toolboxDataView,
 		"toolboxDataZoom":     x.gen_toolboxDataZoom,
 		"toolboxSaveAsImage":  x.gen_toolboxSaveAsImage,
-		"transcoder":          x.gen_transcoder,
 		"transpose":           x.gen_transpose,
 		"visualMap":           x.gen_visualMap,
 		"visualMapColor":      x.gen_visualMapColor,
@@ -3875,21 +3874,6 @@ func (x *Node) gen_toolboxSaveAsImage(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.ToolboxSaveAsImage(p0)
-	return ret, nil
-}
-
-// gen_transcoder
-//
-// syntax: transcoder(Transcoder)
-func (x *Node) gen_transcoder(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("transcoder", 1, len(args))
-	}
-	p0, err := convTranscoder(args, 0, "transcoder", "transcoder.Transcoder")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.Transcoder(p0)
 	return ret, nil
 }
 

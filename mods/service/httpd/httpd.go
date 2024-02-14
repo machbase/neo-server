@@ -241,8 +241,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
 			group.POST("/api/shell/:id", svr.handlePostShell)
 			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
-			group.GET("/api/chart", svr.handleChart)
-			group.POST("/api/chart", svr.handleChart)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
@@ -264,8 +262,6 @@ func (svr *httpd) Router() *gin.Engine {
 			}
 			group.GET("/query", svr.handleQuery)
 			group.POST("/query", svr.handleQuery)
-			group.GET("/chart", svr.handleChart)
-			group.POST("/chart", svr.handleChart)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
 			if svr.tqlLoader != nil {

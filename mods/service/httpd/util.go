@@ -55,14 +55,3 @@ func strTimeLocation(str string, def *time.Location) *time.Location {
 		}
 	}
 }
-
-func strDuration(str string, def time.Duration) time.Duration {
-	if str == "" {
-		return def
-	}
-	d, err := time.ParseDuration(str)
-	if err != nil {
-		return def
-	}
-	return d
-}
