@@ -1,6 +1,7 @@
 package util_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -85,6 +86,10 @@ func TestTimeFormatter(t *testing.T) {
 	require.Equal(t, "2006-01-02 15:04:05.999999999", sqltf)
 
 	tf = util.NewTimeFormatter(util.Timeformat(sqltf), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "2023-08-24 19:58:04.548634123", obj)
+
+	tf = util.NewTimeFormatter(util.TimeformatSql("YYYY-MM-DD HH24:MI:SS.mmmuuunnn"))
 	obj = tf.FormatEpoch(ts)
 	require.Equal(t, "2023-08-24 19:58:04.548634123", obj)
 
@@ -355,6 +360,11 @@ func TestConvDuration(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, 24*time.Hour, ret)
 
+	var str1d = "1d"
+	ret, err = util.ToDuration(&str1d)
+	require.Nil(t, err)
+	require.Equal(t, 24*time.Hour, ret)
+
 	ret, err = util.ToDuration("-1d2h3m")
 	require.Nil(t, err)
 	require.Equal(t, -1*(24*time.Hour+2*time.Hour+3*time.Minute), ret)
@@ -374,19 +384,43 @@ func TestConvDuration(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, dur, ret)
 
-	ret, err = util.ToDuration(int32(i64))
+	i32 := int32(i64)
+	ret, err = util.ToDuration(i32)
 	require.Nil(t, err)
 	require.Equal(t, int32(dur), int32(ret))
+
+	ret, err = util.ToDuration(&i32)
+	require.Nil(t, err)
+	require.Equal(t, int32(dur), int32(ret))
+
+	i16 := int16(i64)
+	ret, err = util.ToDuration(i16)
+	require.Nil(t, err)
+	require.Equal(t, int16(dur), int16(ret))
+
+	ret, err = util.ToDuration(&i16)
+	require.Nil(t, err)
+	require.Equal(t, int16(dur), int16(ret))
 
 	ret, err = util.ToDuration(int16(i64))
 	require.Nil(t, err)
 	require.Equal(t, int16(dur), int16(ret))
 
-	ret, err = util.ToDuration(int8(i64))
+	i8 := int8(i64)
+	ret, err = util.ToDuration(i8)
 	require.Nil(t, err)
 	require.Equal(t, int8(dur), int8(ret))
 
-	ret, err = util.ToDuration(int(i64))
+	ret, err = util.ToDuration(&i8)
+	require.Nil(t, err)
+	require.Equal(t, int8(dur), int8(ret))
+
+	iv := int(i64)
+	ret, err = util.ToDuration(iv)
+	require.Nil(t, err)
+	require.Equal(t, int(dur), int(ret))
+
+	ret, err = util.ToDuration(&iv)
 	require.Nil(t, err)
 	require.Equal(t, int(dur), int(ret))
 
@@ -685,4 +719,55 @@ var timezoneTests = map[string]string{
 	"MYT":       "Asia/Kuala_Lumpur",
 	"GALT":      "Pacific/Galapagos",
 	"GMT-9":     "Etc/GMT+9",
+}
+
+func TestSortAn(t *testing.T) {
+	var a1, a2, a3 int64 = 1, 2, 3
+	var f1, f2, f3 float64 = 1, 2, 3
+	var s1, s2, s3 string = "a", "b", "c"
+	var t1, t2, t3 time.Time = time.Unix(1, 0), time.Unix(2, 0), time.Unix(3, 0)
+
+	tests := []struct {
+		input  []any
+		expect []any
+	}{
+		{
+			input:  []any{a3, a2, a1},
+			expect: []any{a1, a2, a3},
+		},
+		{
+			input:  []any{&a3, &a2, &a1},
+			expect: []any{&a1, &a2, &a3},
+		},
+		{
+			input:  []any{f3, &f2, f1},
+			expect: []any{f1, &f2, f3},
+		},
+		{
+			input:  []any{&f3, f2, &f1},
+			expect: []any{&f1, f2, &f3},
+		},
+		{
+			input:  []any{s3, s2, &s1},
+			expect: []any{&s1, s2, s3},
+		},
+		{
+			input:  []any{&s3, s2, &s1},
+			expect: []any{&s1, s2, &s3},
+		},
+		{
+			input:  []any{t3, t2, &t1},
+			expect: []any{&t1, t2, t3},
+		},
+		{
+			input:  []any{&t3, t2, &t1},
+			expect: []any{&t1, t2, &t3},
+		},
+	}
+
+	for _, tt := range tests {
+		output := util.SortAny(tt.input)
+		require.EqualValues(t, tt.expect, output,
+			fmt.Sprintf("input: %v, output: %v", tt.input, output))
+	}
 }
