@@ -215,25 +215,22 @@ func ParseTime(strval string, format string, location *time.Location) (time.Time
 	var err error
 	switch timeLayout {
 	case "s":
-		if ts, err = strconv.ParseInt(strval, 10, 64); err != nil {
+		if ts, err = ToInt64(strval); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(ts, 0), nil
 	case "ms":
-		var ts int64
-		if ts, err = strconv.ParseInt(strval, 10, 64); err != nil {
+		if ts, err = ToInt64(strval); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts*int64(time.Millisecond)), nil
 	case "us":
-		var ts int64
-		if ts, err = strconv.ParseInt(strval, 10, 64); err != nil {
+		if ts, err = ToInt64(strval); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts*int64(time.Microsecond)), nil
-	case "ns": // "ns"
-		var ts int64
-		if ts, err = strconv.ParseInt(strval, 10, 64); err != nil {
+	case "ns":
+		if ts, err = ToInt64(strval); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts), nil
@@ -313,6 +310,61 @@ func ParseDuration(val string) (time.Duration, error) {
 		return 0, err
 	} else {
 		return d, nil
+	}
+}
+
+func ToInt64(one any) (int64, error) {
+	switch val := one.(type) {
+	case string:
+		if v, err := strconv.ParseInt(val, 10, 64); err != nil {
+			if f, err := ToFloat64(val); err != nil {
+				return 0, ErrIncompatible("int64", val)
+			} else {
+				return int64(f), nil
+			}
+		} else {
+			return v, nil
+		}
+	case *string:
+		if v, err := strconv.ParseInt(*val, 10, 64); err != nil {
+			if f, err := ToFloat64(*val); err != nil {
+				return 0, ErrIncompatible("int64", val)
+			} else {
+				return int64(f), nil
+			}
+		} else {
+			return v, nil
+		}
+	case float32:
+		return int64(val), nil
+	case *float32:
+		return int64(*val), nil
+	case float64:
+		return int64(val), nil
+	case *float64:
+		return int64(*val), nil
+	case int64:
+		return val, nil
+	case *int64:
+		return *val, nil
+	case int:
+		return int64(val), nil
+	case *int:
+		return int64(*val), nil
+	case int32:
+		return int64(val), nil
+	case *int32:
+		return int64(*val), nil
+	case int16:
+		return int64(val), nil
+	case *int16:
+		return int64(*val), nil
+	case int8:
+		return int64(val), nil
+	case *int8:
+		return int64(*val), nil
+	default:
+		return 0, ErrIncompatible("int64", val)
 	}
 }
 

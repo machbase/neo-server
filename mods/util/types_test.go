@@ -337,6 +337,11 @@ func TestTimeFormat(t *testing.T) {
 	ts = time.Unix(1691800174, 0)
 	require.Equal(t, ts, ret)
 
+	ret, err = util.ParseTime("1.691800174e+09", "s", nil)
+	require.Nil(t, err)
+	ts = time.Unix(1691800174, 0)
+	require.Equal(t, ts, ret)
+
 	require.Nil(t, err)
 	ret, err = util.ParseTime("2023-08-12 00:29:34.123", "2006-01-02 15:04:05.999", time.UTC)
 	require.Nil(t, err)
