@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1657,51 +1658,76 @@ type HttpDoer struct {
 	content any
 
 	client *http.Client
+
+	contentType string
+	headers     map[string]string
 }
 
 func (doer *HttpDoer) Do(node *Node) error {
-	var body io.Reader
-	if doer.content != nil {
-		buff := &bytes.Buffer{}
-		csvEnc := gocsv.NewWriter(buff)
-		switch v := doer.content.(type) {
-		case []float64:
-			arr := make([]string, len(v))
-			for i, a := range v {
-				arr[i] = fmt.Sprintf("%v", a)
+	for _, str := range doer.args {
+		k, v, ok := strings.Cut(str, ":")
+		if ok {
+			k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+			doer.headers[k] = v
+			if strings.ToLower(k) == "content-type" {
+				if ct, _, ok := strings.Cut(v, ";"); ok {
+					doer.contentType = strings.TrimSpace(ct)
+				} else {
+					doer.contentType = v
+				}
 			}
-			csvEnc.Write(arr)
-		case float64:
-			csvEnc.Write([]string{fmt.Sprintf("%v", v)})
-		case []string:
-			csvEnc.Write(v)
-		case string:
-			csvEnc.Write([]string{v})
-		case []any:
-			arr := make([]string, len(v))
-			for i, a := range v {
-				arr[i] = fmt.Sprintf("%v", a)
-			}
-			csvEnc.Write(arr)
-		case any:
-			csvEnc.Write([]string{fmt.Sprintf("%v", v)})
-		default:
-			return fmt.Errorf("unhandled content value type %T", v)
 		}
-		csvEnc.Flush()
+	}
+
+	var body io.Reader
+	if doer.method == "POST" && doer.content != nil {
+		buff := &bytes.Buffer{}
+		if doer.contentType == "" {
+			doer.headers["Content-Type"] = "text/csv" // default
+			csvEnc := gocsv.NewWriter(buff)
+			switch v := doer.content.(type) {
+			case []float64:
+				arr := make([]string, len(v))
+				for i, a := range v {
+					arr[i] = strconv.FormatFloat(a, 'f', -1, 64)
+				}
+				csvEnc.Write(arr)
+			case float64:
+				csvEnc.Write([]string{strconv.FormatFloat(v, 'f', -1, 64)})
+			case []string:
+				csvEnc.Write(v)
+			case string:
+				csvEnc.Write([]string{v})
+			case []any:
+				arr := make([]string, len(v))
+				for i, a := range v {
+					arr[i] = fmt.Sprintf("%v", a)
+				}
+				csvEnc.Write(arr)
+			case any:
+				csvEnc.Write([]string{fmt.Sprintf("%v", v)})
+			default:
+				return fmt.Errorf("unhandled content value type %T", v)
+			}
+			csvEnc.Flush()
+		} else {
+			switch v := doer.content.(type) {
+			case string:
+				buff.WriteString(v)
+			case any:
+				buff.WriteString(fmt.Sprintf("%v", v))
+			}
+		}
 		body = buff
 	}
+
 	req, err := http.NewRequestWithContext(node.task.ctx, doer.method, doer.url, body)
 	if err != nil {
 		return err
 	}
 
-	for _, str := range doer.args {
-		k, v, ok := strings.Cut(str, ":")
-		if ok {
-			k, v = strings.TrimSpace(k), strings.TrimSpace(v)
-			req.Header.Add(k, v)
-		}
+	for k, v := range doer.headers {
+		req.Header.Add(k, v)
 	}
 
 	if body != nil {
@@ -1720,12 +1746,21 @@ func (doer *HttpDoer) Do(node *Node) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	replyLength := int(resp.ContentLength)
+	if replyLength > 500 {
+		replyLength = 500
+	}
+	replyBuff := make([]byte, replyLength)
+	resp.Body.Read(replyBuff)
+	reply := string(replyBuff)
+
 	if resp.StatusCode >= 400 {
-		node.task.LogWarn("http-doer", doer.method, doer.url, resp.Status)
+		node.task.LogWarn("http-doer", doer.method, doer.url, resp.Status, reply)
 	} else if resp.StatusCode >= 300 {
-		node.task.LogInfo("http-doer", doer.method, doer.url, resp.Status)
+		node.task.LogInfo("http-doer", doer.method, doer.url, resp.Status, reply)
 	} else {
-		node.task.LogDebug("http-doer", doer.method, doer.url, resp.Status)
+		node.task.LogDebug("http-doer", doer.method, doer.url, resp.Status, reply)
 	}
 	return nil
 }
@@ -1738,10 +1773,11 @@ func (node *Node) fmDoHttp(method string, url string, body any, args ...string) 
 	} else {
 		ret = v.(*HttpDoer)
 	}
-	ret.method = method
+	ret.method = strings.ToUpper(method)
 	ret.url = url
 	ret.args = args
 	ret.content = body
+	ret.headers = map[string]string{}
 	return ret
 }
 
