@@ -326,6 +326,24 @@ func TestTime(t *testing.T) {
 		args:   []any{&tick},
 		expect: tick,
 	}.run(t)
+
+	FunctionTestCase{f: node.Function("timeUnix"),
+		args:   []any{&tick},
+		expect: float64(tick.Unix()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeUnixMilli"),
+		args:   []any{&tick},
+		expect: float64(tick.UnixMilli()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeUnixMicro"),
+		args:   []any{tick},
+		expect: float64(tick.UnixMicro()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeUnixNano"),
+		args:   []any{tick},
+		expect: float64(tick.UnixNano()),
+	}.run(t)
+
 }
 
 func TestParseTime(t *testing.T) {

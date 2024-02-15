@@ -92,6 +92,44 @@ func (x *Node) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	return baseTime.Add(delta), nil
 }
 
+func (node *Node) fmTimeUnix(t any) (float64, error) {
+	return node.fmTimeUnix0(t, "")
+}
+
+func (node *Node) fmTimeUnixMilli(t any) (float64, error) {
+	return node.fmTimeUnix0(t, "Milli")
+}
+
+func (node *Node) fmTimeUnixMicro(t any) (float64, error) {
+	return node.fmTimeUnix0(t, "Micro")
+}
+
+func (node *Node) fmTimeUnixNano(t any) (float64, error) {
+	return node.fmTimeUnix0(t, "Nano")
+}
+
+func (node *Node) fmTimeUnix0(t any, unit string) (float64, error) {
+	var tm time.Time
+	switch v := t.(type) {
+	case time.Time:
+		tm = v
+	case *time.Time:
+		tm = *v
+	default:
+		return 0, fmt.Errorf("timeUnix%s: %T(%v) is not time type", unit, t, t)
+	}
+	switch unit {
+	case "Nano":
+		return float64(tm.UnixNano()), nil
+	case "Micro":
+		return float64(tm.UnixMicro()), nil
+	case "Milli":
+		return float64(tm.UnixMilli()), nil
+	default:
+		return float64(tm.Unix()), nil
+	}
+}
+
 func (node *Node) fmStrTime(t any, format any, tz *time.Location) (string, error) {
 	var tm time.Time
 	var tf string

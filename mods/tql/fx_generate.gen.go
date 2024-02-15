@@ -72,6 +72,10 @@ func NewNode(task *Task) *Node {
 		"period":         x.gen_period,
 		"nullValue":      x.gen_nullValue,
 		"time":           x.gen_time,
+		"timeUnix":       x.gen_timeUnix,
+		"timeUnixMilli":  x.gen_timeUnixMilli,
+		"timeUnixMicro":  x.gen_timeUnixMicro,
+		"timeUnixNano":   x.gen_timeUnixNano,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
 		"roundTime":      x.gen_roundTime,
@@ -200,6 +204,7 @@ func NewNode(task *Task) *Node {
 		"avg":                  x.gen_avg,
 		"rss":                  x.gen_rss,
 		"rms":                  x.gen_rms,
+		"lrs":                  x.gen_lrs,
 		// maps.input
 		"INPUT": x.gen_INPUT,
 		// maps.output
@@ -672,6 +677,62 @@ func (x *Node) gen_time(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmTime(p0)
+}
+
+// gen_timeUnix
+//
+// syntax: timeUnix()
+func (x *Node) gen_timeUnix(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("timeUnix", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeUnix", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmTimeUnix(p0)
+}
+
+// gen_timeUnixMilli
+//
+// syntax: timeUnixMilli()
+func (x *Node) gen_timeUnixMilli(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("timeUnixMilli", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeUnixMilli", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmTimeUnixMilli(p0)
+}
+
+// gen_timeUnixMicro
+//
+// syntax: timeUnixMicro()
+func (x *Node) gen_timeUnixMicro(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("timeUnixMicro", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeUnixMicro", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmTimeUnixMicro(p0)
+}
+
+// gen_timeUnixNano
+//
+// syntax: timeUnixNano()
+func (x *Node) gen_timeUnixNano(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("timeUnixNano", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeUnixNano", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmTimeUnixNano(p0)
 }
 
 // gen_parseTime
@@ -2894,6 +2955,33 @@ func (x *Node) gen_rms(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmRMS(p0, p1...)
+	return ret, nil
+}
+
+// gen_lrs
+//
+// syntax: lrs(, float64, ...interface {})
+func (x *Node) gen_lrs(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("lrs", 2, len(args))
+	}
+	p0, err := convAny(args, 0, "lrs", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "lrs", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "lrs", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmLRS(p0, p1, p2...)
 	return ret, nil
 }
 

@@ -1497,6 +1497,34 @@ func TestGroup(t *testing.T) {
 		"C,3.30,3.20",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"A,0,0",
+		"A,1,1",
+		"A,2,2",
+		"B,1,1",
+		"B,1,1",
+		"B,1,1",
+		"C,1,10",
+		"C,2,100",
+		"C,3,200",
+		"C,4,300",
+	}
+
+	// lrs - linear regression slope
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), lrs(value(1), value(2), "SLOPE") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,SLOPE",
+		"A,1.00",
+		"B,NULL",
+		"C,97.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
 
 func TestGroupWhere(t *testing.T) {

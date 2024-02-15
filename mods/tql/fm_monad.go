@@ -641,6 +641,8 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "rss", "rms":
 		return &GroupColumnCounter{name: ga.Type}
+	case "lrs":
+		return &GroupColumnOthogonalCoord{name: ga.Type}
 	default:
 		return nil
 	}
@@ -748,6 +750,23 @@ func (node *Node) fmRSS(value float64, args ...any) any {
 
 func (node *Node) fmRMS(value float64, args ...any) any {
 	return newAggregate("rms", value, args...)
+}
+
+func (node *Node) fmLRS(xval any, yval float64, args ...any) any {
+	var x float64
+	switch xv := xval.(type) {
+	case float64:
+		x = xv
+	case *float64:
+		x = *xv
+	case time.Time:
+		x = float64(xv.UnixNano())
+	case *time.Time:
+		x = float64(xv.UnixNano())
+	default:
+		return ErrWrongTypeOfArgs("lrs", 0, "float or time", xv)
+	}
+	return newAggregate("lrs", [2]float64{x, yval}, args...)
 }
 
 func (node *Node) fmGroupByKey(args ...any) any {
@@ -910,6 +929,7 @@ var (
 	_ GroupColumn = &GroupColumnChunk{}
 	_ GroupColumn = &GroupColumnConst{}
 	_ GroupColumn = &GroupColumnTimeWindow{}
+	_ GroupColumn = &GroupColumnOthogonalCoord{}
 )
 
 // chunk
@@ -953,6 +973,36 @@ func (gt *GroupColumnTimeWindow) Result() any {
 
 func (gt *GroupColumnTimeWindow) Append(v any) error {
 	return nil
+}
+
+// "lrs" = lenar regression slope
+type GroupColumnOthogonalCoord struct {
+	name   string
+	x      []float64
+	y      []float64
+	origin bool
+}
+
+func (goc *GroupColumnOthogonalCoord) Result() any {
+	if len(goc.x) != len(goc.y) || len(goc.x) < 2 {
+		return nil
+	}
+	// y = alpha + beta*x
+	_, beta := stat.LinearRegression(goc.x, goc.y, nil, goc.origin)
+	if beta != beta { // NaN
+		return nil
+	}
+	return beta
+}
+
+func (goc *GroupColumnOthogonalCoord) Append(value any) error {
+	if arr, ok := value.([2]float64); !ok {
+		return nil
+	} else {
+		goc.x = append(goc.x, arr[0])
+		goc.y = append(goc.y, arr[1])
+		return nil
+	}
 }
 
 // "mean", "quantile", "stddev", "stderr", "entropy", "mode"

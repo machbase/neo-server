@@ -76,6 +76,10 @@ var FxDefinitions = []Definition{
 	{"period", defTask.fmPeriod},
 	{"nullValue", defTask.fmNullValue},
 	{"time", defTask.fmTime},
+	{"timeUnix", defTask.fmTimeUnix},
+	{"timeUnixMilli", defTask.fmTimeUnixMilli},
+	{"timeUnixMicro", defTask.fmTimeUnixMicro},
+	{"timeUnixNano", defTask.fmTimeUnixNano},
 	{"parseTime", defTask.fmParseTime},
 	{"timeAdd", defTask.fmTimeAdd},
 	{"roundTime", defTask.fmRoundTime},
@@ -214,6 +218,7 @@ var FxDefinitions = []Definition{
 	{"avg", defTask.fmAvg},
 	{"rss", defTask.fmRSS},
 	{"rms", defTask.fmRMS},
+	{"lrs", defTask.fmLRS},
 	// input, output
 	{"// maps.input", nil},
 	{"INPUT", defTask.fmINPUT},
