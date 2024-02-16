@@ -8,126 +8,130 @@ on:
 
 jobs:
   darwin-arm64:
-    runs-on: [ self-hosted, ARM64, macOS ]
+    runs-on: [macos-14] # macos-14 is M1 in beta. instead of [ self-hosted, ARM64, macOS ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Packages
-          path: |
-            packages/machbase-neo-v*.zip
-            packages/neow-v*.zip
+          name: machbase-neo-snapshot-darwin-arm64
+          path: packages/machbase-neo-v*.zip
           retention-days: 5
   darwin-amd64:
-    runs-on: [ self-hosted, X64, macOS ]
+    runs-on: [ macos-13 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
       - name: Build
-        run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
+        run: go run mage.go test machbase-neo package-machbase-neo
       - name: Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Packages
-          path: |
-            packages/machbase-neo-v*.zip
-            packages/neow-v*.zip
+          name: machbase-neo-snapshot-darwin-x64
+          path: packages/machbase-neo-v*.zip
           retention-days: 5
   linux-arm64:
     runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3 # checkout@v4 requires GLIBC_2.28
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4 # setup-go@v5 requires GLIBC_2.28
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: false # do not cache for self-hosted runner
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v3 # upload-artifact@v4 requires GLIBC_2.28
         with:
-          name: Packages
+          name: machbase-neo-snapshot-linux-arm64
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   linux-amd64:
-    runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+    runs-on: [ ubuntu-20.04 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
+      - name: Codecov
+        uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Packages
+          name: machbase-neo-snapshot-linux-x64
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   linux-arm32:
     runs-on: [ ubuntu-20.04 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
       - name: Build
         run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Packages
+          name: machbase-neo-snapshot-linux-arm32
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   windows-amd64:
     runs-on: [ self-hosted, Windows, X64 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # - name: Install MinGW package
-      #   # windows gcc env issue: https://github.com/actions/runner-images/pull/8444/files
-      #   run: |
-      #         choco install mingw --version 11.2.0 --force
       - name: Setup go compiler
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version-file: 'go.mod'
+          check-latest: true
+          cache: false # do not cache for self-hosted runner
       - name: Build
         run: go run mage.go test machbase-neo neow
         shell: cmd
@@ -141,17 +145,17 @@ jobs:
           files: |
             machbase-neo.exe
             neow.exe
-      - name: Package
+      - name: Archive
         run: go run mage.go package-machbase-neo
         shell: cmd
       - name: Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Packages
+          name: machbase-neo-snapshot-windows-x64
           path: packages/machbase-neo-*.zip
           retention-days: 5
         
