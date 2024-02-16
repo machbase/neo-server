@@ -640,7 +640,7 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnContainer{name: ga.Type, percentile: ga.Percentile, cumulant: ga.Cumulant}
 	case "first", "last", "min", "max", "sum":
 		return &GroupColumnSingle{name: ga.Type}
-	case "avg", "rss", "rms":
+	case "avg", "count", "rss", "rms":
 		return &GroupColumnCounter{name: ga.Type}
 	case "lrs":
 		return &GroupColumnOthogonalCoord{name: ga.Type}
@@ -691,6 +691,23 @@ func (node *Node) fmMax(value float64, other ...any) (any, error) {
 
 func (node *Node) fmSum(value float64, args ...any) any {
 	return newAggregate("sum", value, args...)
+}
+
+func (node *Node) fmCount(args ...any) (any, error) {
+	if node.Name() == "GROUP()" {
+		var value any
+		var remain []any
+		if len(args) > 0 {
+			value = args[0]
+		}
+		if len(args) > 1 {
+			remain = args[1:]
+		}
+		agg := newAggregate("count", value, remain...)
+		return agg, nil
+	} else {
+		return nums.Count(args...)
+	}
 }
 
 func (node *Node) fmMean(value float64, args ...any) any {
@@ -1070,7 +1087,7 @@ func (gc *GroupColumnContainer) Append(v any) error {
 	return nil
 }
 
-// avg, rss, rms
+// count, avg, rss, rms
 type GroupColumnCounter struct {
 	name  string
 	value float64
@@ -1088,6 +1105,8 @@ func (gc *GroupColumnCounter) Result() any {
 
 	var ret float64
 	switch gc.name {
+	case "count":
+		ret = float64(gc.count)
 	case "avg":
 		ret = gc.value / float64(gc.count)
 	case "rss":
@@ -1099,6 +1118,11 @@ func (gc *GroupColumnCounter) Result() any {
 }
 
 func (gc *GroupColumnCounter) Append(v any) error {
+	if gc.name == "count" {
+		gc.count++
+		return nil
+	}
+
 	f, err := util.ToFloat64(v)
 	if err != nil {
 		return err

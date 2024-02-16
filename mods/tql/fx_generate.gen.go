@@ -53,7 +53,6 @@ func NewNode(task *Task) *Node {
 		"tanh":      mathWrap("tanh", math.Tanh),
 		"trunc":     mathWrap("trunc", math.Trunc),
 		// nums
-		"count":           nums.Count,
 		"len":             nums.Len,
 		"element":         nums.Element,
 		"linspace":        x.gen_linspace,
@@ -191,6 +190,7 @@ func NewNode(task *Task) *Node {
 		"last":                 x.gen_last,
 		"min":                  x.gen_min,
 		"max":                  x.gen_max,
+		"count":                x.gen_count,
 		"sum":                  x.gen_sum,
 		"mean":                 x.gen_mean,
 		"quantile":             x.gen_quantile,
@@ -2649,6 +2649,21 @@ func (x *Node) gen_max(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	return x.fmMax(p0, p1...)
+}
+
+// gen_count
+//
+// syntax: count(...interface {})
+func (x *Node) gen_count(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "count", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmCount(p0...)
 }
 
 // gen_sum

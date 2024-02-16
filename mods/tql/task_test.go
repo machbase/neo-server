@@ -1405,14 +1405,14 @@ func TestGroup(t *testing.T) {
 	// first, last, avg, sum
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(by(value(0)), first(value(1)), last(value(1)), avg(value(1)), sum(value(1)) )`,
+		`GROUP(by(value(0)), first(value(1)), last(value(1)), avg(value(1)), sum(value(1)), count(value(1)) )`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,FIRST,LAST,AVG,SUM",
-		"A,1.00,2.00,1.50,3.00",
-		"B,3.00,5.00,4.00,12.00",
-		"C,6.00,9.00,7.50,30.00",
+		"GROUP,FIRST,LAST,AVG,SUM,COUNT",
+		"A,1.00,2.00,1.50,3.00,2.00",
+		"B,3.00,5.00,4.00,12.00,3.00",
+		"C,6.00,9.00,7.50,30.00,4.00",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 

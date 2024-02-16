@@ -55,7 +55,6 @@ var FxDefinitions = []Definition{
 	{"trunc", `mathWrap("trunc", math.Trunc)`},
 	// nums
 	{"// nums", nil},
-	{"count", "nums.Count"},
 	{"len", "nums.Len"},
 	{"element", "nums.Element"},
 	{"linspace", defTask.fmLinspace},
@@ -205,6 +204,7 @@ var FxDefinitions = []Definition{
 	{"last", defTask.fmLast},
 	{"min", defTask.fmMin},
 	{"max", defTask.fmMax},
+	{"count", defTask.fmCount},
 	{"sum", defTask.fmSum},
 	{"mean", defTask.fmMean},
 	{"quantile", defTask.fmQuantile},
