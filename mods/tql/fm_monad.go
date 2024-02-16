@@ -527,6 +527,7 @@ type GroupAggregate struct {
 	Name       string
 	Percentile float64
 	Quantile   float64
+	Moment     float64
 	Cumulant   stat.CumulantKind
 
 	twFrom    time.Time
@@ -655,6 +656,8 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnContainer{name: ga.Type, quantile: ga.Quantile, cumulant: ga.Cumulant}
 	case "correlation", "covariance":
 		return &GroupColumnRelation{name: ga.Type}
+	case "moment":
+		return &GroupColumnMoment{name: ga.Type, moment: ga.Moment}
 	case "first", "last", "min", "max", "sum":
 		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "count", "rss", "rms":
@@ -773,6 +776,12 @@ func (node *Node) fmMedianInterpolated(value float64, args ...any) any {
 	ret := newAggregate("quantile", value, args...)
 	ret.Cumulant = stat.LinInterp
 	ret.Percentile = 0.5
+	return ret
+}
+
+func (node *Node) fmMoment(value float64, moment float64, args ...any) any {
+	ret := newAggregate("moment", value, args...)
+	ret.Moment = moment
 	return ret
 }
 
@@ -983,6 +992,7 @@ var (
 	_ GroupColumn = &GroupColumnTimeWindow{}
 	_ GroupColumn = &GroupColumnOthogonalCoord{}
 	_ GroupColumn = &GroupColumnRelation{}
+	_ GroupColumn = &GroupColumnMoment{}
 )
 
 // chunk
@@ -1103,6 +1113,53 @@ func (cr *GroupColumnRelation) Append(value any) error {
 	}
 }
 
+// "moment"
+type GroupColumnMoment struct {
+	name    string
+	moment  float64
+	x       []float64
+	weights []float64
+}
+
+func (cr *GroupColumnMoment) Result() any {
+	if len(cr.x) == 0 || (cr.weights != nil && len(cr.weights) != len(cr.x)) {
+		return nil
+	}
+	switch cr.name {
+	case "moment":
+		sort.Float64s(cr.x)
+		return stat.Moment(cr.moment, cr.x, cr.weights)
+	}
+	return nil
+}
+
+func (cm *GroupColumnMoment) Append(value any) error {
+	if arr, ok := value.([]any); ok {
+		if len(arr) > 0 {
+			if f, err := util.ToFloat64(arr[0]); err != nil {
+				return err
+			} else {
+				cm.x = append(cm.x, f)
+			}
+		}
+		if len(arr) > 1 {
+			for _, elm := range arr[1:] {
+				switch f := elm.(type) {
+				case Weight:
+					cm.weights = append(cm.weights, float64(f))
+				}
+			}
+		}
+		return nil
+	}
+	if f, err := util.ToFloat64(value); err != nil {
+		return err
+	} else {
+		cm.x = append(cm.x, f)
+	}
+	return nil
+}
+
 // "mean", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
 	name       string
@@ -1137,13 +1194,15 @@ func (gc *GroupColumnContainer) Result() any {
 			return nil
 		}
 		sort.Float64s(gc.values)
-		ret = stat.CDF(gc.quantile, gc.cumulant, gc.values, gc.weights)
+		// FIXME: how to sort weights
+		ret = stat.CDF(gc.quantile, gc.cumulant, gc.values, nil)
 	case "quantile":
 		if len(gc.values) == 0 {
 			return nil
 		}
 		sort.Float64s(gc.values)
-		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, gc.weights)
+		// FIXME: how to sort weights
+		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, nil)
 	case "stddev":
 		if len(gc.values) < 1 {
 			return nil

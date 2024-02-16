@@ -205,6 +205,7 @@ func NewNode(task *Task) *Node {
 		"stderr":               x.gen_stderr,
 		"entropy":              x.gen_entropy,
 		"mode":                 x.gen_mode,
+		"moment":               x.gen_moment,
 		"avg":                  x.gen_avg,
 		"rss":                  x.gen_rss,
 		"rms":                  x.gen_rms,
@@ -3001,6 +3002,33 @@ func (x *Node) gen_mode(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmMode(p0, p1...)
+	return ret, nil
+}
+
+// gen_moment
+//
+// syntax: moment(float64, float64, ...interface {})
+func (x *Node) gen_moment(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("moment", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "moment", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "moment", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "moment", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmMoment(p0, p1, p2...)
 	return ret, nil
 }
 

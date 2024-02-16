@@ -219,6 +219,7 @@ var FxDefinitions = []Definition{
 	{"stderr", defTask.fmStdErr},
 	{"entropy", defTask.fmEntropy},
 	{"mode", defTask.fmMode},
+	{"moment", defTask.fmMoment},
 	{"avg", defTask.fmAvg},
 	{"rss", defTask.fmRSS},
 	{"rms", defTask.fmRMS},

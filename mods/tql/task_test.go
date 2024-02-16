@@ -1503,14 +1503,14 @@ func TestGroup(t *testing.T) {
 	// weighted quantile
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(by(value(0)), quantile(value(1), 0.99, weight(value(1)), "P99"), quantile(value(1), 0.5, weight(value(1)), "P50"), median(value(1), weight(value(1)), "MEDIAN") )`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, weight(value(1)), "P99"), quantile(value(1), 0.5, "P50"), median(value(1), "MEDIAN") )`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
 		"GROUP,P99,P50,MEDIAN",
-		"A,2.00,2.00,2.00",
+		"A,2.00,1.00,1.00",
 		"B,5.00,4.00,4.00",
-		"C,9.00,8.00,8.00",
+		"C,9.00,7.00,7.00",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1624,18 +1624,18 @@ func TestGroup(t *testing.T) {
 		"8,4,12",
 		"-4,1,0",
 	}
-	// covariance
+	// moment
 	codeLines = []string{
 		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y1"), field(2, doubleType(), "y2"))`,
 		`GROUP(by("all"),
-			covariance(value(0), value(1), "Y1"),
-			covariance(value(0), value(2), "Y2")
+			moment(value(0), 2, "N1"),
+			moment(value(1), 3, "N2")
 		)`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,Y1,Y2",
-		"all,13.80,37.70",
+		"GROUP,N1,N2",
+		"all,30.16,40.94",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
