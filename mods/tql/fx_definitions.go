@@ -200,6 +200,7 @@ var FxDefinitions = []Definition{
 	{"timewindow", defTask.fmByTimeWindow},
 	{"where", defTask.fmWhere},
 	{"predict", defTask.fmPredict},
+	{"weight", defTask.fmWeight},
 	{"first", defTask.fmFirst},
 	{"last", defTask.fmLast},
 	{"min", defTask.fmMin},

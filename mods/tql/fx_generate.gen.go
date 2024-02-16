@@ -186,6 +186,7 @@ func NewNode(task *Task) *Node {
 		"timewindow":           x.gen_timewindow,
 		"where":                x.gen_where,
 		"predict":              x.gen_predict,
+		"weight":               x.gen_weight,
 		"first":                x.gen_first,
 		"last":                 x.gen_last,
 		"min":                  x.gen_min,
@@ -2559,6 +2560,21 @@ func (x *Node) gen_predict(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmPredict(p0)
+}
+
+// gen_weight
+//
+// syntax: weight(float64)
+func (x *Node) gen_weight(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("weight", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "weight", "float64")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmWeight(p0)
+	return ret, nil
 }
 
 // gen_first

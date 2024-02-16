@@ -562,6 +562,12 @@ func (node *Node) fmPredict(predict string) (PredictType, error) {
 	}
 }
 
+type Weight float64
+
+func (node *Node) fmWeight(v float64) Weight {
+	return Weight(v)
+}
+
 func newAggregate(typ string, value any, args ...any) *GroupAggregate {
 	ret := &GroupAggregate{Type: typ, Value: value, where: WherePredicate(true)}
 	for _, arg := range args {
@@ -574,6 +580,8 @@ func newAggregate(typ string, value any, args ...any) *GroupAggregate {
 			ret.nullValue = v.altValue
 		case PredictType:
 			ret.predict = v
+		case Weight:
+			ret.Value = []any{ret.Value, v}
 		}
 	}
 	if ret.Name == "" {
@@ -1027,37 +1035,46 @@ func (goc *GroupColumnOthogonalCoord) Append(value any) error {
 type GroupColumnContainer struct {
 	name       string
 	values     []float64
+	weights    []float64
 	percentile float64
 	cumulant   stat.CumulantKind
 }
 
 func (gc *GroupColumnContainer) Result() any {
 	defer func() {
-		gc.values = gc.values[0:]
+		gc.values = gc.values[0:0]
+		if gc.weights != nil {
+			gc.weights = gc.weights[0:0]
+		}
 	}()
+	if gc.weights != nil {
+		if len(gc.values) != len(gc.weights) {
+			return nil
+		}
+	}
 	var ret float64
 	switch gc.name {
 	case "mean":
 		if len(gc.values) == 0 {
 			return nil
 		}
-		ret, _ = stat.MeanStdDev(gc.values, nil)
+		ret, _ = stat.MeanStdDev(gc.values, gc.weights)
 	case "quantile":
 		if len(gc.values) == 0 {
 			return nil
 		}
 		sort.Float64s(gc.values)
-		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, nil)
+		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, gc.weights)
 	case "stddev":
 		if len(gc.values) < 1 {
 			return nil
 		}
-		_, ret = stat.MeanStdDev(gc.values, nil)
+		_, ret = stat.MeanStdDev(gc.values, gc.weights)
 	case "stderr":
 		if len(gc.values) < 1 {
 			return nil
 		}
-		_, std := stat.MeanStdDev(gc.values, nil)
+		_, std := stat.MeanStdDev(gc.values, gc.weights)
 		ret = stat.StdErr(std, float64(len(gc.values)))
 	case "entropy":
 		if len(gc.values) == 0 {
@@ -1068,7 +1085,7 @@ func (gc *GroupColumnContainer) Result() any {
 		if len(gc.values) == 0 {
 			return nil
 		}
-		ret, _ = stat.Mode(gc.values, nil)
+		ret, _ = stat.Mode(gc.values, gc.weights)
 	default:
 		return nil
 	}
@@ -1079,11 +1096,29 @@ func (gc *GroupColumnContainer) Result() any {
 }
 
 func (gc *GroupColumnContainer) Append(v any) error {
-	f, err := util.ToFloat64(v)
-	if err != nil {
-		return err
+	if arr, ok := v.([]any); ok {
+		if len(arr) > 0 {
+			if f, err := util.ToFloat64(arr[0]); err != nil {
+				return err
+			} else {
+				gc.values = append(gc.values, f)
+			}
+		}
+		if len(arr) > 1 {
+			for _, elm := range arr[1:] {
+				switch f := elm.(type) {
+				case Weight:
+					gc.weights = append(gc.weights, float64(f))
+				}
+			}
+		}
+		return nil
 	}
-	gc.values = append(gc.values, f)
+	if f, err := util.ToFloat64(v); err != nil {
+		return err
+	} else {
+		gc.values = append(gc.values, f)
+	}
 	return nil
 }
 

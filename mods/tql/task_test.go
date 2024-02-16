@@ -1444,6 +1444,20 @@ func TestGroup(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
+	// weighted mean
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), mean(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,MEAN",
+		"A,1.67",
+		"B,4.17",
+		"C,7.67",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
 	// quantile
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
@@ -1455,6 +1469,20 @@ func TestGroup(t *testing.T) {
 		"A,2.00,1.00,1.00",
 		"B,5.00,4.00,4.00",
 		"C,9.00,7.00,7.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// weighted quantile
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), quantile(value(1), 0.99, weight(value(1)), "P99"), quantile(value(1), 0.5, weight(value(1)), "P50"), median(value(1), weight(value(1)), "MEDIAN") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,P99,P50,MEDIAN",
+		"A,2.00,2.00,2.00",
+		"B,5.00,4.00,4.00",
+		"C,9.00,8.00,8.00",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
