@@ -368,24 +368,24 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 }
 
 func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
-	var cols []GroupColumn
+	var buffers []GroupColumn
 	if cs, ok := gr.buffer[by.Value]; ok {
-		cols = cs
+		buffers = cs
 	} else {
 		for _, c := range columns {
 			if buff := c.NewBuffer(); buff != nil {
-				cols = append(cols, buff)
+				buffers = append(buffers, buff)
 			} else {
 				node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
 				return
 			}
 		}
-		gr.buffer[by.Value] = cols
+		gr.buffer[by.Value] = buffers
 	}
 
 	for i, c := range columns {
 		if c.where {
-			cols[i].Append(c.Value)
+			buffers[i].Append(c.Value)
 		}
 	}
 
@@ -526,6 +526,7 @@ type GroupAggregate struct {
 	Value      any
 	Name       string
 	Percentile float64
+	Quantile   float64
 	Cumulant   stat.CumulantKind
 
 	twFrom    time.Time
@@ -581,7 +582,11 @@ func newAggregate(typ string, value any, args ...any) *GroupAggregate {
 		case PredictType:
 			ret.predict = v
 		case Weight:
-			ret.Value = []any{ret.Value, v}
+			if arr, ok := ret.Value.([]any); ok {
+				ret.Value = append(arr, v)
+			} else {
+				ret.Value = []any{ret.Value, v}
+			}
 		}
 	}
 	if ret.Name == "" {
@@ -646,6 +651,10 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnContainer{name: ga.Type}
 	case "quantile":
 		return &GroupColumnContainer{name: ga.Type, percentile: ga.Percentile, cumulant: ga.Cumulant}
+	case "cdf":
+		return &GroupColumnContainer{name: ga.Type, quantile: ga.Quantile, cumulant: ga.Cumulant}
+	case "correlation", "covariance":
+		return &GroupColumnRelation{name: ga.Type}
 	case "first", "last", "min", "max", "sum":
 		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "count", "rss", "rms":
@@ -720,6 +729,23 @@ func (node *Node) fmCount(args ...any) (any, error) {
 
 func (node *Node) fmMean(value float64, args ...any) any {
 	return newAggregate("mean", value, args...)
+}
+
+func (node *Node) fmCDF(value float64, q float64, args ...any) any {
+	ret := newAggregate("cdf", value, args...)
+	ret.Cumulant = stat.Empirical
+	ret.Quantile = q
+	return ret
+}
+
+func (node *Node) fmCorrelation(x, y float64, args ...any) any {
+	ret := newAggregate("correlation", []any{x, y}, args...)
+	return ret
+}
+
+func (node *Node) fmCovariance(x, y float64, args ...any) any {
+	ret := newAggregate("covariance", []any{x, y}, args...)
+	return ret
 }
 
 func (node *Node) fmQuantile(value float64, p float64, args ...any) any {
@@ -956,6 +982,7 @@ var (
 	_ GroupColumn = &GroupColumnConst{}
 	_ GroupColumn = &GroupColumnTimeWindow{}
 	_ GroupColumn = &GroupColumnOthogonalCoord{}
+	_ GroupColumn = &GroupColumnRelation{}
 )
 
 // chunk
@@ -1031,11 +1058,57 @@ func (goc *GroupColumnOthogonalCoord) Append(value any) error {
 	}
 }
 
-// "mean", "quantile", "stddev", "stderr", "entropy", "mode"
+// correlation, covariance
+type GroupColumnRelation struct {
+	name    string
+	x       []float64
+	y       []float64
+	weights []float64
+}
+
+func (cr *GroupColumnRelation) Result() any {
+	if len(cr.x) != len(cr.y) || len(cr.x) == 0 || (cr.weights != nil && len(cr.weights) != len(cr.x)) {
+		return nil
+	}
+	switch cr.name {
+	case "correlation":
+		return stat.Correlation(cr.x, cr.y, cr.weights)
+	case "covariance":
+		return stat.Covariance(cr.x, cr.y, cr.weights)
+	}
+	return nil
+}
+
+func (cr *GroupColumnRelation) Append(value any) error {
+	if arr, ok := value.([]any); !ok || len(arr) < 2 {
+		return nil
+	} else {
+		if v, err := util.ToFloat64(arr[0]); err != nil {
+			return nil
+		} else {
+			cr.x = append(cr.x, v)
+		}
+		if v, err := util.ToFloat64(arr[1]); err != nil {
+			return nil
+		} else {
+			cr.y = append(cr.y, v)
+		}
+		for _, elm := range arr[2:] {
+			switch f := elm.(type) {
+			case Weight:
+				cr.weights = append(cr.weights, float64(f))
+			}
+		}
+		return nil
+	}
+}
+
+// "mean", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
 	name       string
 	values     []float64
 	weights    []float64
+	quantile   float64
 	percentile float64
 	cumulant   stat.CumulantKind
 }
@@ -1059,6 +1132,12 @@ func (gc *GroupColumnContainer) Result() any {
 			return nil
 		}
 		ret, _ = stat.MeanStdDev(gc.values, gc.weights)
+	case "cdf":
+		if len(gc.values) == 0 {
+			return nil
+		}
+		sort.Float64s(gc.values)
+		ret = stat.CDF(gc.quantile, gc.cumulant, gc.values, gc.weights)
 	case "quantile":
 		if len(gc.values) == 0 {
 			return nil

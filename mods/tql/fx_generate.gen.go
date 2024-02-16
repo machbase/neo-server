@@ -194,6 +194,9 @@ func NewNode(task *Task) *Node {
 		"count":                x.gen_count,
 		"sum":                  x.gen_sum,
 		"mean":                 x.gen_mean,
+		"cdf":                  x.gen_cdf,
+		"correlation":          x.gen_correlation,
+		"covariance":           x.gen_covariance,
 		"quantile":             x.gen_quantile,
 		"quantileInterpolated": x.gen_quantileInterpolated,
 		"median":               x.gen_median,
@@ -2725,6 +2728,87 @@ func (x *Node) gen_mean(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmMean(p0, p1...)
+	return ret, nil
+}
+
+// gen_cdf
+//
+// syntax: cdf(float64, float64, ...interface {})
+func (x *Node) gen_cdf(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("cdf", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "cdf", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "cdf", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "cdf", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmCDF(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_correlation
+//
+// syntax: correlation(float64, float64, ...interface {})
+func (x *Node) gen_correlation(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("correlation", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "correlation", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "correlation", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "correlation", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmCorrelation(p0, p1, p2...)
+	return ret, nil
+}
+
+// gen_covariance
+//
+// syntax: covariance(float64, float64, ...interface {})
+func (x *Node) gen_covariance(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("covariance", 2, len(args))
+	}
+	p0, err := convFloat64(args, 0, "covariance", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "covariance", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "covariance", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	ret := x.fmCovariance(p0, p1, p2...)
 	return ret, nil
 }
 

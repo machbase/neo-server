@@ -1444,17 +1444,45 @@ func TestGroup(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
-	// weighted mean
+	// mean
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(by(value(0)), mean(value(1), weight(value(1))) )`,
+		`GROUP(by(value(0)), mean(value(1)), mean(value(1), weight(value(1))) )`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,MEAN",
-		"A,1.67",
-		"B,4.17",
-		"C,7.67",
+		"GROUP,MEAN,MEAN",
+		"A,1.50,1.67",
+		"B,4.00,4.17",
+		"C,7.50,7.67",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// stddev
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), stddev(value(1)), stddev(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,STDDEV,STDDEV",
+		"A,0.71,0.58",
+		"B,1.00,0.83",
+		"C,1.29,1.12",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// stderr
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), stderr(value(1)), stderr(value(1), weight(value(1))) )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,STDERR,STDERR",
+		"A,0.50,0.41",
+		"B,0.58,0.48",
+		"C,0.65,0.56",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1501,14 +1529,14 @@ func TestGroup(t *testing.T) {
 	// mode
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(by(value(0)), mode(value(1)) )`,
+		`GROUP(by(value(0)), mode(value(1)), mode(value(1), weight(value(1))) )`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,MODE",
-		"A,1.10",
-		"B,2.10",
-		"C,3.30",
+		"GROUP,MODE,MODE",
+		"A,1.10,1.10",
+		"B,2.10,2.10",
+		"C,3.30,3.30",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1523,6 +1551,20 @@ func TestGroup(t *testing.T) {
 		"A,1.10,1.10",
 		"B,2.20,2.10",
 		"C,3.30,3.20",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// cdf
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
+		`GROUP(by(value(0)), cdf(value(1), 3.1, "Q99") )`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,Q99",
+		"A,1.00",
+		"B,1.00",
+		"C,0.25",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1551,6 +1593,49 @@ func TestGroup(t *testing.T) {
 		"A,1.00",
 		"B,NULL",
 		"C,97.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,10,2",
+		"-3,5,1.5",
+		"7,6,3",
+		"8,3,3",
+		"-4,-1,2",
+	}
+	// correlation
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y"), field(2, doubleType(), "w"))`,
+		`GROUP(by("all"), correlation(value(0), value(1), weight(value(2)), "CORR") )`,
+		`CSV(heading(true), precision(5))`,
+	}
+	resultLines = []string{
+		"GROUP,CORR",
+		"all,0.59915",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,10,12",
+		"-3,2,1",
+		"7,2,11",
+		"8,4,12",
+		"-4,1,0",
+	}
+	// covariance
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y1"), field(2, doubleType(), "y2"))`,
+		`GROUP(by("all"),
+			covariance(value(0), value(1), "Y1"),
+			covariance(value(0), value(2), "Y2")
+		)`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,Y1,Y2",
+		"all,13.80,37.70",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
