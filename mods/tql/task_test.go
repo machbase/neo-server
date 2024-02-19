@@ -1618,24 +1618,25 @@ func TestGroup(t *testing.T) {
 
 	// payload
 	payload = []string{
-		"8,10,12",
-		"-3,2,1",
-		"7,2,11",
-		"8,4,12",
-		"-4,1,0",
+		"8,10,1",
+		"-3,2,2",
+		"7,2,3",
+		"8,4,4",
+		"-4,1,5",
 	}
 	// moment
 	codeLines = []string{
 		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y1"), field(2, doubleType(), "y2"))`,
 		`GROUP(by("all"),
-			moment(value(0), 2, "N1"),
-			moment(value(1), 3, "N2")
+			moment(value(0), 2, weight(2.0), "N1"),
+			moment(value(2), 2, weight(1.0), "N2"),
+			moment(value(2), 1, "N3")
 		)`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,N1,N2",
-		"all,30.16,40.94",
+		"GROUP,N1,N2,N3",
+		"all,30.16,2.00,0.00",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }

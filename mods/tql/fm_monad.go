@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -570,32 +569,6 @@ func (node *Node) fmWeight(v float64) Weight {
 	return Weight(v)
 }
 
-func newAggregate(typ string, value any, args ...any) *GroupAggregate {
-	ret := &GroupAggregate{Type: typ, Value: value, where: WherePredicate(true)}
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case string:
-			ret.Name = v
-		case WherePredicate:
-			ret.where = v
-		case *NullValue:
-			ret.nullValue = v.altValue
-		case PredictType:
-			ret.predict = v
-		case Weight:
-			if arr, ok := ret.Value.([]any); ok {
-				ret.Value = append(arr, v)
-			} else {
-				ret.Value = []any{ret.Value, v}
-			}
-		}
-	}
-	if ret.Name == "" {
-		ret.Name = strings.ToUpper(typ)
-	}
-	return ret
-}
-
 func (g *GroupAggregate) newFiller() GroupFiller {
 	if g.Type == GroupByTimeWindow {
 		return &GroupFillerTimeWindow{}
@@ -654,7 +627,7 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnContainer{name: ga.Type, percentile: ga.Percentile, cumulant: ga.Cumulant}
 	case "cdf":
 		return &GroupColumnContainer{name: ga.Type, quantile: ga.Quantile, cumulant: ga.Cumulant}
-	case "correlation", "covariance":
+	case "lrs", "correlation", "covariance":
 		return &GroupColumnRelation{name: ga.Type}
 	case "moment":
 		return &GroupColumnMoment{name: ga.Type, moment: ga.Moment}
@@ -662,11 +635,35 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnSingle{name: ga.Type}
 	case "avg", "count", "rss", "rms":
 		return &GroupColumnCounter{name: ga.Type}
-	case "lrs":
-		return &GroupColumnOthogonalCoord{name: ga.Type}
 	default:
 		return nil
 	}
+}
+
+func newAggregate(typ string, value any, args ...any) *GroupAggregate {
+	ret := &GroupAggregate{Type: typ, Value: value, where: WherePredicate(true)}
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			ret.Name = v
+		case WherePredicate:
+			ret.where = v
+		case *NullValue:
+			ret.nullValue = v.altValue
+		case PredictType:
+			ret.predict = v
+		case Weight:
+			if arr, ok := ret.Value.([]any); ok {
+				ret.Value = append(arr, v)
+			} else {
+				ret.Value = []any{ret.Value, v}
+			}
+		}
+	}
+	if ret.Name == "" {
+		ret.Name = strings.ToUpper(typ)
+	}
+	return ret
 }
 
 func (node *Node) fmFirst(value float64, args ...any) any {
@@ -734,11 +731,21 @@ func (node *Node) fmMean(value float64, args ...any) any {
 	return newAggregate("mean", value, args...)
 }
 
-func (node *Node) fmCDF(value float64, q float64, args ...any) any {
-	ret := newAggregate("cdf", value, args...)
-	ret.Cumulant = stat.Empirical
-	ret.Quantile = q
-	return ret
+func (node *Node) fmLRS(xval any, yval float64, args ...any) any {
+	var x any
+	switch xv := xval.(type) {
+	case float64:
+		x = xv
+	case *float64:
+		x = *xv
+	case time.Time:
+		x = float64(xv.UnixNano())
+	case *time.Time:
+		x = float64(xv.UnixNano())
+	default:
+		return ErrWrongTypeOfArgs("lrs", 0, "float or time", xv)
+	}
+	return newAggregate("lrs", []any{x, yval}, args...)
 }
 
 func (node *Node) fmCorrelation(x, y float64, args ...any) any {
@@ -748,6 +755,13 @@ func (node *Node) fmCorrelation(x, y float64, args ...any) any {
 
 func (node *Node) fmCovariance(x, y float64, args ...any) any {
 	ret := newAggregate("covariance", []any{x, y}, args...)
+	return ret
+}
+
+func (node *Node) fmCDF(value float64, q float64, args ...any) any {
+	ret := newAggregate("cdf", value, args...)
+	ret.Cumulant = stat.Empirical
+	ret.Quantile = q
 	return ret
 }
 
@@ -811,23 +825,6 @@ func (node *Node) fmRSS(value float64, args ...any) any {
 
 func (node *Node) fmRMS(value float64, args ...any) any {
 	return newAggregate("rms", value, args...)
-}
-
-func (node *Node) fmLRS(xval any, yval float64, args ...any) any {
-	var x float64
-	switch xv := xval.(type) {
-	case float64:
-		x = xv
-	case *float64:
-		x = *xv
-	case time.Time:
-		x = float64(xv.UnixNano())
-	case *time.Time:
-		x = float64(xv.UnixNano())
-	default:
-		return ErrWrongTypeOfArgs("lrs", 0, "float or time", xv)
-	}
-	return newAggregate("lrs", [2]float64{x, yval}, args...)
 }
 
 func (node *Node) fmGroupByKey(args ...any) any {
@@ -990,7 +987,6 @@ var (
 	_ GroupColumn = &GroupColumnChunk{}
 	_ GroupColumn = &GroupColumnConst{}
 	_ GroupColumn = &GroupColumnTimeWindow{}
-	_ GroupColumn = &GroupColumnOthogonalCoord{}
 	_ GroupColumn = &GroupColumnRelation{}
 	_ GroupColumn = &GroupColumnMoment{}
 )
@@ -1038,53 +1034,28 @@ func (gt *GroupColumnTimeWindow) Append(v any) error {
 	return nil
 }
 
-// "lrs" = lenar regression slope
-type GroupColumnOthogonalCoord struct {
-	name   string
-	x      []float64
-	y      []float64
-	origin bool
-}
-
-func (goc *GroupColumnOthogonalCoord) Result() any {
-	if len(goc.x) != len(goc.y) || len(goc.x) < 2 {
-		return nil
-	}
-	// y = alpha + beta*x
-	_, beta := stat.LinearRegression(goc.x, goc.y, nil, goc.origin)
-	if beta != beta { // NaN
-		return nil
-	}
-	return beta
-}
-
-func (goc *GroupColumnOthogonalCoord) Append(value any) error {
-	if arr, ok := value.([2]float64); !ok {
-		return nil
-	} else {
-		goc.x = append(goc.x, arr[0])
-		goc.y = append(goc.y, arr[1])
-		return nil
-	}
-}
-
-// correlation, covariance
+// lrs, correlation, covariance
 type GroupColumnRelation struct {
-	name    string
-	x       []float64
-	y       []float64
-	weights []float64
+	name string
+	x    []float64
+	wv   nums.WeightedFloat64Slice
 }
 
 func (cr *GroupColumnRelation) Result() any {
-	if len(cr.x) != len(cr.y) || len(cr.x) == 0 || (cr.weights != nil && len(cr.weights) != len(cr.x)) {
+	if len(cr.x) != len(cr.wv) || len(cr.x) == 0 {
 		return nil
 	}
 	switch cr.name {
+	case "lrs": // y = alpha + beta*x
+		_, beta := stat.LinearRegression(cr.x, cr.wv.Values(), cr.wv.Weights(), false)
+		if beta != beta { // NaN
+			return nil
+		}
+		return beta
 	case "correlation":
-		return stat.Correlation(cr.x, cr.y, cr.weights)
+		return stat.Correlation(cr.x, cr.wv.Values(), cr.wv.Weights())
 	case "covariance":
-		return stat.Covariance(cr.x, cr.y, cr.weights)
+		return stat.Covariance(cr.x, cr.wv.Values(), cr.wv.Weights())
 	}
 	return nil
 }
@@ -1093,78 +1064,77 @@ func (cr *GroupColumnRelation) Append(value any) error {
 	if arr, ok := value.([]any); !ok || len(arr) < 2 {
 		return nil
 	} else {
-		if v, err := util.ToFloat64(arr[0]); err != nil {
+		if val, err := util.ToFloat64(arr[0]); err != nil {
 			return nil
 		} else {
-			cr.x = append(cr.x, v)
+			cr.x = append(cr.x, val)
 		}
-		if v, err := util.ToFloat64(arr[1]); err != nil {
+		var v, w float64 = 0.0, 1.0
+		if f, err := util.ToFloat64(arr[1]); err != nil {
 			return nil
 		} else {
-			cr.y = append(cr.y, v)
+			v = f
 		}
 		for _, elm := range arr[2:] {
 			switch f := elm.(type) {
 			case Weight:
-				cr.weights = append(cr.weights, float64(f))
+				w = float64(f)
 			}
 		}
+		cr.wv = append(cr.wv, nums.WeightedFloat64ValueWeight(v, w))
 		return nil
 	}
 }
 
 // "moment"
 type GroupColumnMoment struct {
-	name    string
-	moment  float64
-	x       []float64
-	weights []float64
+	name   string
+	moment float64
+	wv     nums.WeightedFloat64Slice
 }
 
 func (cr *GroupColumnMoment) Result() any {
-	if len(cr.x) == 0 || (cr.weights != nil && len(cr.weights) != len(cr.x)) {
+	if len(cr.wv) == 0 {
 		return nil
 	}
 	switch cr.name {
 	case "moment":
-		sort.Float64s(cr.x)
-		return stat.Moment(cr.moment, cr.x, cr.weights)
+		return stat.Moment(cr.moment, cr.wv.Values(), cr.wv.Weights())
 	}
 	return nil
 }
 
 func (cm *GroupColumnMoment) Append(value any) error {
+	var v, w float64
 	if arr, ok := value.([]any); ok {
 		if len(arr) > 0 {
 			if f, err := util.ToFloat64(arr[0]); err != nil {
 				return err
 			} else {
-				cm.x = append(cm.x, f)
+				v = f
 			}
 		}
 		if len(arr) > 1 {
 			for _, elm := range arr[1:] {
 				switch f := elm.(type) {
 				case Weight:
-					cm.weights = append(cm.weights, float64(f))
+					w = float64(f)
 				}
 			}
 		}
-		return nil
-	}
-	if f, err := util.ToFloat64(value); err != nil {
+	} else if f, err := util.ToFloat64(value); err != nil {
 		return err
 	} else {
-		cm.x = append(cm.x, f)
+		v, w = f, 1.0
 	}
+	cm.wv = append(cm.wv, nums.WeightedFloat64ValueWeight(v, w))
 	return nil
 }
 
 // "mean", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
 	name       string
-	values     []float64
-	weights    []float64
+	wv         nums.WeightedFloat64Slice
 	quantile   float64
 	percentile float64
 	cumulant   stat.CumulantKind
@@ -1172,58 +1142,48 @@ type GroupColumnContainer struct {
 
 func (gc *GroupColumnContainer) Result() any {
 	defer func() {
-		gc.values = gc.values[0:0]
-		if gc.weights != nil {
-			gc.weights = gc.weights[0:0]
-		}
+		gc.wv = gc.wv[0:0]
 	}()
-	if gc.weights != nil {
-		if len(gc.values) != len(gc.weights) {
-			return nil
-		}
-	}
 	var ret float64
 	switch gc.name {
 	case "mean":
-		if len(gc.values) == 0 {
+		if len(gc.wv) == 0 {
 			return nil
 		}
-		ret, _ = stat.MeanStdDev(gc.values, gc.weights)
+		ret, _ = stat.MeanStdDev(gc.wv.Values(), gc.wv.Weights())
 	case "cdf":
-		if len(gc.values) == 0 {
+		if len(gc.wv) == 0 {
 			return nil
 		}
-		sort.Float64s(gc.values)
-		// FIXME: how to sort weights
-		ret = stat.CDF(gc.quantile, gc.cumulant, gc.values, nil)
+		gc.wv.Sort()
+		ret = stat.CDF(gc.quantile, gc.cumulant, gc.wv.Values(), gc.wv.Weights())
 	case "quantile":
-		if len(gc.values) == 0 {
+		if len(gc.wv) == 0 {
 			return nil
 		}
-		sort.Float64s(gc.values)
-		// FIXME: how to sort weights
-		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.values, nil)
+		gc.wv.Sort()
+		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.wv.Values(), gc.wv.Weights())
 	case "stddev":
-		if len(gc.values) < 1 {
+		if len(gc.wv) < 1 {
 			return nil
 		}
-		_, ret = stat.MeanStdDev(gc.values, gc.weights)
+		_, ret = stat.MeanStdDev(gc.wv.Values(), gc.wv.Weights())
 	case "stderr":
-		if len(gc.values) < 1 {
+		if len(gc.wv) < 1 {
 			return nil
 		}
-		_, std := stat.MeanStdDev(gc.values, gc.weights)
-		ret = stat.StdErr(std, float64(len(gc.values)))
+		_, std := stat.MeanStdDev(gc.wv.Values(), gc.wv.Weights())
+		ret = stat.StdErr(std, float64(len(gc.wv)))
 	case "entropy":
-		if len(gc.values) == 0 {
+		if len(gc.wv) == 0 {
 			return nil
 		}
-		ret = stat.Entropy(gc.values)
+		ret = stat.Entropy(gc.wv.Values())
 	case "mode":
-		if len(gc.values) == 0 {
+		if len(gc.wv) == 0 {
 			return nil
 		}
-		ret, _ = stat.Mode(gc.values, gc.weights)
+		ret, _ = stat.Mode(gc.wv.Values(), gc.wv.Weights())
 	default:
 		return nil
 	}
@@ -1233,30 +1193,30 @@ func (gc *GroupColumnContainer) Result() any {
 	return ret
 }
 
-func (gc *GroupColumnContainer) Append(v any) error {
-	if arr, ok := v.([]any); ok {
+func (gc *GroupColumnContainer) Append(value any) error {
+	var v, w float64
+	if arr, ok := value.([]any); ok {
 		if len(arr) > 0 {
 			if f, err := util.ToFloat64(arr[0]); err != nil {
 				return err
 			} else {
-				gc.values = append(gc.values, f)
+				v = f
 			}
 		}
 		if len(arr) > 1 {
 			for _, elm := range arr[1:] {
 				switch f := elm.(type) {
 				case Weight:
-					gc.weights = append(gc.weights, float64(f))
+					w = float64(f)
 				}
 			}
 		}
-		return nil
-	}
-	if f, err := util.ToFloat64(v); err != nil {
+	} else if f, err := util.ToFloat64(value); err != nil {
 		return err
 	} else {
-		gc.values = append(gc.values, f)
+		v, w = f, 1.0
 	}
+	gc.wv = append(gc.wv, nums.WeightedFloat64ValueWeight(v, w))
 	return nil
 }
 
