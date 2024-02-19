@@ -146,3 +146,21 @@ func TestArray(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, 2.0, val)
 }
+
+func TestWeightedFloat64(t *testing.T) {
+	sf := nums.WeightedFloat64Slice{
+		nums.WeightedFloat64ValueWeight(1.23, 1),
+		nums.WeightedFloat64ValueWeight(2.34, 2),
+		nums.WeightedFloat64ValueWeight(0.12, 3),
+	}
+	sf.Sort()
+
+	require.Equal(t, 0.12, sf[0].Value())
+	require.Equal(t, 3.0, sf[0].Weight())
+	require.Equal(t, 1.23, sf[1].Value())
+	require.Equal(t, 1.0, sf[1].Weight())
+	require.Equal(t, 2.34, sf[2].Value())
+	require.Equal(t, 2.0, sf[2].Weight())
+	require.EqualValues(t, []float64{0.12, 1.23, 2.34}, sf.Values())
+	require.EqualValues(t, []float64{3.0, 1.0, 2.0}, sf.Weights())
+}

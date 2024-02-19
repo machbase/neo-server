@@ -2,6 +2,7 @@ package nums
 
 import (
 	"math"
+	"sort"
 )
 
 // greatest common divisor (GCD) via Euclidean algorithm
@@ -97,6 +98,42 @@ func Meshgrid(x []float64, y []float64) [][][]float64 {
 		for n := 0; n < len(y); n++ {
 			ret[i][n] = []float64{x[i], y[n]}
 		}
+	}
+	return ret
+}
+
+type WeightedFloat64 [2]float64
+
+func WeightedFloat64ValueWeight(v float64, weight float64) WeightedFloat64 {
+	return WeightedFloat64{v, weight}
+}
+
+func WeightedFloat64Value(v float64) WeightedFloat64 {
+	return WeightedFloat64{v, 1.0}
+}
+
+func (x WeightedFloat64) Value() float64  { return x[0] }
+func (x WeightedFloat64) Weight() float64 { return x[1] }
+
+type WeightedFloat64Slice []WeightedFloat64
+
+func (x WeightedFloat64Slice) Len() int           { return len(x) }
+func (x WeightedFloat64Slice) Less(i, j int) bool { return x[i][0] < x[j][0] }
+func (x WeightedFloat64Slice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
+func (x WeightedFloat64Slice) Sort()              { sort.Sort(x) }
+
+func (x WeightedFloat64Slice) Values() []float64 {
+	var ret = make([]float64, len(x))
+	for i, v := range x {
+		ret[i] = v[0]
+	}
+	return ret
+}
+
+func (x WeightedFloat64Slice) Weights() []float64 {
+	var ret = make([]float64, len(x))
+	for i, v := range x {
+		ret[i] = v[1]
 	}
 	return ret
 }
