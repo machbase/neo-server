@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	spi "github.com/machbase/neo-spi"
 )
 
 type NodeContext struct {
@@ -100,7 +102,9 @@ func (node *Node) fmArgs() (any, error) {
 func (node *Node) fmArgsParam(args ...any) (any, error) {
 	argValues := node.task.argValues
 	if len(argValues) == 0 {
-		return nil, nil
+		cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+		node.task.SetResultColumns(cols)
+		return []any{}, nil
 	}
 	var ret any
 

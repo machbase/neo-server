@@ -1361,6 +1361,22 @@ func TestWhen(t *testing.T) {
 	runTest(t, codeLines, resultLines, httpClient)
 }
 
+func TestArgs(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`ARGS()`,
+		`MAPVALUE(0, 'tag-1', 'name')`,
+		`MAPVALUE(1, 123.4, 'value')`,
+		`CSV(heading(true))`,
+	}
+	resultLines = []string{
+		`name,value`,
+		`tag-1,123.4`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestGroup(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
