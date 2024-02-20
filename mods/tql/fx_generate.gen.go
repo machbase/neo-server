@@ -194,6 +194,7 @@ func NewNode(task *Task) *Node {
 		"count":                x.gen_count,
 		"sum":                  x.gen_sum,
 		"mean":                 x.gen_mean,
+		"variance":             x.gen_variance,
 		"cdf":                  x.gen_cdf,
 		"correlation":          x.gen_correlation,
 		"covariance":           x.gen_covariance,
@@ -2729,6 +2730,29 @@ func (x *Node) gen_mean(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmMean(p0, p1...)
+	return ret, nil
+}
+
+// gen_variance
+//
+// syntax: variance(float64, ...interface {})
+func (x *Node) gen_variance(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("variance", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "variance", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "variance", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmVariance(p0, p1...)
 	return ret, nil
 }
 

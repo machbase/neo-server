@@ -1447,14 +1447,14 @@ func TestGroup(t *testing.T) {
 	// mean
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(by(value(0)), mean(value(1)), mean(value(1), weight(value(1))) )`,
+		`GROUP(by(value(0)), mean(value(1)), mean(value(1), weight(value(1))), variance(value(1)) )`,
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,MEAN,MEAN",
-		"A,1.50,1.67",
-		"B,4.00,4.17",
-		"C,7.50,7.67",
+		"GROUP,MEAN,MEAN,VARIANCE",
+		"A,1.50,1.67,0.50",
+		"B,4.00,4.17,1.00",
+		"C,7.50,7.67,1.67",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1637,6 +1637,29 @@ func TestGroup(t *testing.T) {
 	resultLines = []string{
 		"GROUP,N1,N2,N3",
 		"all,30.16,2.00,0.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// payload
+	payload = []string{
+		"8,2",
+		"2,2",
+		"-9,6",
+		"15,7",
+		"4,1",
+	}
+	// variance
+	codeLines = []string{
+		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "w") )`,
+		`GROUP(by("all"),
+		variance(value(0), "VARIANCE"),
+		variance(value(0), weight(value(1)), "VARIANCE-WEIGHTED")
+		)`,
+		`CSV(heading(true), precision(4))`,
+	}
+	resultLines = []string{
+		"GROUP,VARIANCE,VARIANCE-WEIGHTED",
+		"all,77.5000,111.7941",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }

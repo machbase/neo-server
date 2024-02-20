@@ -208,6 +208,7 @@ var FxDefinitions = []Definition{
 	{"count", defTask.fmCount},
 	{"sum", defTask.fmSum},
 	{"mean", defTask.fmMean},
+	{"variance", defTask.fmVariance},
 	{"cdf", defTask.fmCDF},
 	{"correlation", defTask.fmCorrelation},
 	{"covariance", defTask.fmCovariance},

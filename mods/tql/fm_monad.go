@@ -621,7 +621,7 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnTimeWindow{value: ga.Value}
 	case "chunk":
 		return &GroupColumnChunk{name: ga.Type}
-	case "mean", "stddev", "stderr", "entropy", "mode":
+	case "mean", "variance", "stddev", "stderr", "entropy", "mode":
 		return &GroupColumnContainer{name: ga.Type}
 	case "quantile":
 		return &GroupColumnContainer{name: ga.Type, percentile: ga.Percentile, cumulant: ga.Cumulant}
@@ -729,6 +729,10 @@ func (node *Node) fmCount(args ...any) (any, error) {
 
 func (node *Node) fmMean(value float64, args ...any) any {
 	return newAggregate("mean", value, args...)
+}
+
+func (node *Node) fmVariance(value float64, args ...any) any {
+	return newAggregate("variance", value, args...)
 }
 
 func (node *Node) fmLRS(xval any, yval float64, args ...any) any {
@@ -1131,7 +1135,7 @@ func (cm *GroupColumnMoment) Append(value any) error {
 	return nil
 }
 
-// "mean", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
+// "mean", "variance", "cdf", "quantile", "stddev", "stderr", "entropy", "mode"
 type GroupColumnContainer struct {
 	name       string
 	wv         nums.WeightedFloat64Slice
@@ -1146,11 +1150,6 @@ func (gc *GroupColumnContainer) Result() any {
 	}()
 	var ret float64
 	switch gc.name {
-	case "mean":
-		if len(gc.wv) == 0 {
-			return nil
-		}
-		ret, _ = stat.MeanStdDev(gc.wv.Values(), gc.wv.Weights())
 	case "cdf":
 		if len(gc.wv) == 0 {
 			return nil
@@ -1163,6 +1162,16 @@ func (gc *GroupColumnContainer) Result() any {
 		}
 		gc.wv.Sort()
 		ret = stat.Quantile(gc.percentile, gc.cumulant, gc.wv.Values(), gc.wv.Weights())
+	case "mean":
+		if len(gc.wv) == 0 {
+			return nil
+		}
+		ret, _ = stat.MeanStdDev(gc.wv.Values(), gc.wv.Weights())
+	case "variance":
+		if len(gc.wv) == 0 {
+			return nil
+		}
+		_, ret = stat.MeanVariance(gc.wv.Values(), gc.wv.Weights())
 	case "stddev":
 		if len(gc.wv) < 1 {
 			return nil
