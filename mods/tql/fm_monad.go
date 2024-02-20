@@ -268,14 +268,15 @@ func (node *Node) fmGroup(args ...any) any {
 			return ErrorRecord(fmt.Errorf("GROUP() unknown type '%T' in arguments", v))
 		}
 	}
-	if by == nil {
-		return ErrorRecord(fmt.Errorf("GROUP() has no by() argument"))
-	}
-	if by.Value == nil {
+	if by != nil && by.Value == nil {
 		return ErrorRecord(fmt.Errorf("GROUP() has by() with NULL"))
 	}
 	if shouldSetColumns {
-		if !gr.chunkMode {
+		if gr.chunkMode {
+			if by == nil || by.Value == nil {
+				return ErrorRecord(fmt.Errorf("GROUP() has no aggregator"))
+			}
+		} else {
 			cols := make([]*spi.Column, len(columns)+1)
 			cols[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
 			for i, c := range columns {
@@ -338,13 +339,24 @@ func (gr *Group) onEOF(node *Node) {
 	}
 }
 
+const __group_by_all = "__group_by_all__"
+
 func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 	var chunk *GroupColumnChunk
-	if cs, ok := gr.buffer[by.Value]; ok {
-		chunk = cs[0].(*GroupColumnChunk)
+	if by == nil {
+		if cs, ok := gr.buffer[__group_by_all]; ok {
+			chunk = cs[0].(*GroupColumnChunk)
+		} else {
+			chunk = &GroupColumnChunk{name: "chunk"}
+			gr.buffer[__group_by_all] = []GroupColumn{chunk}
+		}
 	} else {
-		chunk = &GroupColumnChunk{name: "chunk"}
-		gr.buffer[by.Value] = []GroupColumn{chunk}
+		if cs, ok := gr.buffer[by.Value]; ok {
+			chunk = cs[0].(*GroupColumnChunk)
+		} else {
+			chunk = &GroupColumnChunk{name: "chunk"}
+			gr.buffer[by.Value] = []GroupColumn{chunk}
+		}
 	}
 	inflight := node.Inflight()
 	if inflight == nil {
@@ -362,24 +374,41 @@ func (gr *Group) pushChunk(node *Node, by *GroupAggregate) {
 			delete(gr.buffer, gr.curKey)
 		}
 	}
-	gr.curKey = by.Value
-
+	if by != nil {
+		gr.curKey = by.Value
+	}
 }
 
 func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate) {
 	var buffers []GroupColumn
-	if cs, ok := gr.buffer[by.Value]; ok {
-		buffers = cs
-	} else {
-		for _, c := range columns {
-			if buff := c.NewBuffer(); buff != nil {
-				buffers = append(buffers, buff)
-			} else {
-				node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
-				return
+	if by == nil {
+		if cs, ok := gr.buffer[__group_by_all]; ok {
+			buffers = cs
+		} else {
+			for _, c := range columns {
+				if buff := c.NewBuffer(); buff != nil {
+					buffers = append(buffers, buff)
+				} else {
+					node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+					return
+				}
 			}
+			gr.buffer[__group_by_all] = buffers
 		}
-		gr.buffer[by.Value] = buffers
+	} else {
+		if cs, ok := gr.buffer[by.Value]; ok {
+			buffers = cs
+		} else {
+			for _, c := range columns {
+				if buff := c.NewBuffer(); buff != nil {
+					buffers = append(buffers, buff)
+				} else {
+					node.task.LogErrorf("%s, invalid aggregate %q", node.Name(), c.Type)
+					return
+				}
+			}
+			gr.buffer[by.Value] = buffers
+		}
 	}
 
 	for i, c := range columns {
@@ -398,7 +427,9 @@ func (gr *Group) push(node *Node, by *GroupAggregate, columns []*GroupAggregate)
 			delete(gr.buffer, gr.curKey)
 		}
 	}
-	gr.curKey = by.Value
+	if by != nil {
+		gr.curKey = by.Value
+	}
 }
 
 func (gr *Group) yield(node *Node, key any, values []any, isLast bool) {

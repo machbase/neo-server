@@ -1369,12 +1369,13 @@ func TestGroup(t *testing.T) {
 		"B,3",
 		"C,6",
 	}
+
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
-		`GROUP(avg(value(1)))`,
+		`GROUP( )`,
 		"CSV()",
 	}
-	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has no by() argument"))
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")), ExpectErr("GROUP() has no aggregator"))
 
 	codeLines = []string{
 		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "value"))`,
@@ -1607,12 +1608,12 @@ func TestGroup(t *testing.T) {
 	// correlation
 	codeLines = []string{
 		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y"), field(2, doubleType(), "w"))`,
-		`GROUP(by("all"), correlation(value(0), value(1), weight(value(2)), "CORR") )`,
+		`GROUP(correlation(value(0), value(1), weight(value(2)), "CORR") )`,
 		`CSV(heading(true), precision(5))`,
 	}
 	resultLines = []string{
-		"GROUP,CORR",
-		"all,0.59915",
+		"CORR",
+		"0.59915",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1627,7 +1628,7 @@ func TestGroup(t *testing.T) {
 	// moment
 	codeLines = []string{
 		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "y1"), field(2, doubleType(), "y2"))`,
-		`GROUP(by("all"),
+		`GROUP(
 			moment(value(0), 2, weight(2.0), "N1"),
 			moment(value(2), 2, weight(1.0), "N2"),
 			moment(value(2), 1, "N3")
@@ -1635,8 +1636,8 @@ func TestGroup(t *testing.T) {
 		`CSV(heading(true), precision(2))`,
 	}
 	resultLines = []string{
-		"GROUP,N1,N2,N3",
-		"all,30.16,2.00,0.00",
+		"N1,N2,N3",
+		"30.16,2.00,0.00",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1651,15 +1652,15 @@ func TestGroup(t *testing.T) {
 	// variance
 	codeLines = []string{
 		`CSV(payload(), field(0, doubleType(), "x"), field(1, doubleType(), "w") )`,
-		`GROUP(by("all"),
-		variance(value(0), "VARIANCE"),
-		variance(value(0), weight(value(1)), "VARIANCE-WEIGHTED")
+		`GROUP(
+			variance(value(0), "VARIANCE"),
+			variance(value(0), weight(value(1)), "VARIANCE-WEIGHTED")
 		)`,
 		`CSV(heading(true), precision(4))`,
 	}
 	resultLines = []string{
-		"GROUP,VARIANCE,VARIANCE-WEIGHTED",
-		"all,77.5000,111.7941",
+		"VARIANCE,VARIANCE-WEIGHTED",
+		"77.5000,111.7941",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
