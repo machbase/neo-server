@@ -798,6 +798,18 @@ func TestSetVariables(t *testing.T) {
 		`3,true`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`STRING("temp")`,
+		`SET(temp, 11)`,
+		`MAPVALUE(0, 1.234)`,
+		`MAPVALUE(1, $temp)`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		`1.234,11`,
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestMathMarkdown(t *testing.T) {

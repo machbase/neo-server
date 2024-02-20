@@ -28,11 +28,15 @@ type Record struct {
 	key         any
 	value       any
 	contentType string
-	variables   map[string]any
+	vars        map[string]any
 }
 
 func NewRecord(k, v any) *Record {
 	return &Record{key: k, value: v}
+}
+
+func NewRecordVars(k, v any, vars map[string]any) *Record {
+	return &Record{key: k, value: v, vars: vars}
 }
 
 func NewBytesRecord(raw []byte) *Record {
@@ -41,6 +45,22 @@ func NewBytesRecord(raw []byte) *Record {
 
 func NewImageRecord(raw []byte, contentType string) *Record {
 	return &Record{key: kIMAGE, value: raw, contentType: contentType}
+}
+
+func (r *Record) ReplaceValue(v any) *Record {
+	r.value = v
+	return r
+}
+
+func (r *Record) ReplaceKey(k any) *Record {
+	r.key = k
+	return r
+}
+
+func (r *Record) ReplaceKeyValue(k, v any) *Record {
+	r.key = k
+	r.value = v
+	return r
 }
 
 func (r *Record) IsEOF() bool {
@@ -101,15 +121,15 @@ func (r *Record) Value() any {
 }
 
 func (r *Record) SetVariable(name string, value any) {
-	if r.variables == nil {
-		r.variables = map[string]any{}
+	if r.vars == nil {
+		r.vars = map[string]any{}
 	}
-	r.variables[name] = value
+	r.vars[name] = value
 }
 
 func (r *Record) GetVariable(name string) (any, error) {
-	if r.variables != nil && strings.HasPrefix(name, "$") {
-		if v, ok := r.variables[strings.TrimPrefix(name, "$")]; ok {
+	if r.vars != nil && strings.HasPrefix(name, "$") {
+		if v, ok := r.vars[strings.TrimPrefix(name, "$")]; ok {
 			return v, nil
 		}
 		return nil, nil

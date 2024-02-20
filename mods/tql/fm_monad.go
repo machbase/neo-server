@@ -1405,8 +1405,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 		}
 		newKey := val[nth]
 		newVal := append(val[0:nth], val[nth+1:]...)
-		ret := NewRecord(newKey, newVal)
-		return ret, nil
+		return inflight.ReplaceKeyValue(newKey, newVal), nil
 	case [][]any:
 		ret := make([]*Record, len(val))
 		if _, ok := node.GetValue("isFirst"); !ok {
@@ -1421,9 +1420,9 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 				return nil, fmt.Errorf("f(POPKEY) arg elements should be larger than 2, but %d", len(v))
 			}
 			if len(v) == 2 {
-				ret[i] = NewRecord(v[0], v[1])
+				ret[i] = NewRecordVars(v[0], v[1], inflight.vars)
 			} else {
-				ret[i] = NewRecord(v[0], v[1:])
+				ret[i] = NewRecordVars(v[0], v[1:], inflight.vars)
 			}
 		}
 		return ret, nil
@@ -1452,7 +1451,7 @@ func (node *Node) fmPushKey(newKey any) (any, error) {
 	default:
 		return nil, ErrArgs("PUSHKEY", 0, fmt.Sprintf("Value should be array, but %T", value))
 	}
-	return NewRecord(newKey, newVal), nil
+	return rec.ReplaceKeyValue(newKey, newVal), nil
 }
 
 func (node *Node) fmMapKey(newKey any) (any, error) {
@@ -1467,7 +1466,7 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 	if rec == nil {
 		return nil, nil
 	}
-	return NewRecord(newKey, rec.value), nil
+	return rec.ReplaceKey(newKey), nil
 }
 
 func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
@@ -1528,12 +1527,12 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		updateVal = append(updateVal, head...)
 		updateVal = append(updateVal, newValue)
 		updateVal = append(updateVal, tail...)
-		return NewRecord(inflight.key, updateVal), nil
+		return NewRecordVars(inflight.key, updateVal, inflight.vars), nil
 	default:
 		if idx <= 0 {
-			return NewRecord(inflight.key, []any{newValue, val}), nil
+			return inflight.ReplaceValue([]any{newValue, val}), nil
 		} else {
-			return NewRecord(inflight.key, []any{val, newValue}), nil
+			return inflight.ReplaceValue([]any{val, newValue}), nil
 		}
 	}
 }
@@ -1582,7 +1581,7 @@ func (node *Node) fmPopValue(idxes ...int) (any, error) {
 	for _, idx := range includes {
 		updateVal = append(updateVal, val[idx])
 	}
-	return NewRecord(inflight.key, updateVal), nil
+	return inflight.ReplaceValue(updateVal), nil
 }
 
 func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
@@ -1610,8 +1609,7 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 			}
 		}
 		val[idx] = newValue
-		ret := NewRecord(inflight.key, val)
-		return ret, nil
+		return inflight.ReplaceValue(val), nil
 	default:
 		if idx != 0 {
 			return node.fmPushValue(idx, newValue, opts...)
@@ -1626,8 +1624,7 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 				}
 			}
 		}
-		ret := NewRecord(inflight.key, newValue)
-		return ret, nil
+		return inflight.ReplaceValue(newValue), nil
 	}
 }
 
