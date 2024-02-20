@@ -123,7 +123,8 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 		contentType := contentTypeOfFile(path)
 		if contentType != "" && ctx.Request.Method == http.MethodGet {
 			if ent, err := svr.serverFs.Get(path); err == nil && !ent.IsDir {
-				ctx.Data(http.StatusOK, contentType, ent.Content)
+				ctx.Header("Content-Type", contentType)
+				ctx.Writer.Write(ent.Content)
 				return
 			}
 		}
