@@ -74,6 +74,12 @@ func contentTypeOfFile(name string) string {
 		return "text/csv"
 	case ".md", ".markdown":
 		return "text/markdown"
+	case ".css":
+		return "text/css"
+	case ".js":
+		return "text/javascript"
+	case ".htm", ".html":
+		return "text/html"
 	}
 }
 
