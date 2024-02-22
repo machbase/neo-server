@@ -16,6 +16,7 @@ import (
 )
 
 const TqlHeaderChartType = "X-Chart-Type"
+const TqlHeaderChartOutput = "X-Chart-Output"
 const TqlHeaderConsoleId = "X-Console-Id"
 
 type ConsoleInfo struct {
@@ -154,8 +155,12 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	task := tql.NewTaskContext(ctx)
 	task.SetDatabase(svr.db)
 	task.SetInputReader(ctx.Request.Body)
-	task.SetOutputWriter(ctx.Writer)
 	task.SetParams(params)
+	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" {
+		task.SetOutputWriterJson(ctx.Writer, true)
+	} else {
+		task.SetOutputWriter(ctx.Writer)
+	}
 	if err := task.CompileScript(script); err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
 		rsp.Reason = err.Error()
