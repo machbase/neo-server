@@ -70,6 +70,7 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 	if err != nil {
 		return nil, err
 	}
+	node.name = asNodeName(expr)
 	sink, err := expr.Eval(node)
 	if err != nil {
 		return nil, err

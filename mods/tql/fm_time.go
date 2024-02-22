@@ -213,7 +213,11 @@ func (n *NullValue) Value() any {
 }
 
 func (node *Node) fmNullValue(v any) any {
-	return &NullValue{altValue: v}
+	if node.Name() == "CSV()" { // if CSV sink, obsolete substituteNull()
+		return opts.SubstituteNull(fmt.Sprintf("%v", v))
+	} else {
+		return &NullValue{altValue: v}
+	}
 }
 
 func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) any {

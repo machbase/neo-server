@@ -638,6 +638,50 @@ func TestCsvToCsv(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestJsonToCsv(t *testing.T) {
+
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))`,
+		`CSV( nullValue("<NULL>") )`,
+	}
+	resultLines = []string{
+		"A,123",
+		"B,<NULL>",
+		"C,234",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))`,
+		`CSV( substituteNull("<NULL>") )`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))`,
+		`CSV( nullValue(false) )`,
+	}
+	resultLines = []string{
+		"A,123",
+		"B,false",
+		"C,234",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))`,
+		`CSV( nullValue(3.14) )`,
+	}
+	resultLines = []string{
+		"A,123",
+		"B,3.14",
+		"C,234",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMath(t *testing.T) {
 	codeLines := []string{
 		"FAKE( linspace(0, 3.141592/2, 3))",
