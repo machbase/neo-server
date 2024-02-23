@@ -1878,6 +1878,27 @@ func TestGroupByTimeWindow(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
+	// src data is larger time range than timewindow.
+	codeLines = []string{
+		`CSV(payload(), field(0, datetimeType("s"), "time"), field(1, doubleType(), "value"))`,
+		`GROUP( by( value(0), timewindow(`,
+		`             time(1700256262 * 1000000000),`,
+		`             time(1700256276 * 1000000000),`,
+		`             period("4s"))),`,
+		`      avg(value(1)),`,
+		`      sum(value(1)),`,
+		`      last(value(1))`,
+		`)`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,AVG,SUM,LAST",
+		"1700256264,5.00,15.00,6.00",
+		"1700256268,7.50,15.00,8.00",
+		"1700256272,NULL,NULL,NULL",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
 }
 
 func TestTimeWindow(t *testing.T) {

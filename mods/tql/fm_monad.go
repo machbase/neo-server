@@ -288,6 +288,16 @@ func (node *Node) fmGroup(args ...any) any {
 			node.task.SetResultColumns(cols)
 		}
 	}
+	if gr.byTimeWindow {
+		// if current record's time is out of the timewindow range.
+		if byTime, ok := by.Value.(time.Time); ok {
+			if byTime.Before(by.twFrom) {
+				return nil
+			} else if byTime == by.twUntil || byTime.After(by.twUntil) {
+				return nil
+			}
+		}
+	}
 	if gr.chunkMode {
 		gr.pushChunk(node, by)
 	} else {
