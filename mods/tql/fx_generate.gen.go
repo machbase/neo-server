@@ -2138,10 +2138,10 @@ func (x *Node) gen_parseBool(args ...any) (any, error) {
 
 // gen_strTime
 //
-// syntax: strTime(, , )
+// syntax: strTime(, , ...interface {})
 func (x *Node) gen_strTime(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("strTime", 3, len(args))
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("strTime", 2, len(args))
 	}
 	p0, err := convAny(args, 0, "strTime", "interface {}")
 	if err != nil {
@@ -2151,11 +2151,15 @@ func (x *Node) gen_strTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convTimeLocation(args, 2, "strTime", "*time.Location")
-	if err != nil {
-		return nil, err
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "strTime", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
 	}
-	return x.fmStrTime(p0, p1, p2)
+	return x.fmStrTime(p0, p1, p2...)
 }
 
 // gen_strTrimSpace

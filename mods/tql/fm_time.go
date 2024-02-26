@@ -130,7 +130,7 @@ func (node *Node) fmTimeUnix0(t any, unit string) (float64, error) {
 	}
 }
 
-func (node *Node) fmStrTime(t any, format any, tz *time.Location) (string, error) {
+func (node *Node) fmStrTime(t any, format any, args ...any) (string, error) {
 	var tm time.Time
 	var tf string
 	switch tv := t.(type) {
@@ -145,7 +145,12 @@ func (node *Node) fmStrTime(t any, format any, tz *time.Location) (string, error
 	}
 	switch fm := format.(type) {
 	case string:
-		tf = util.GetTimeformat(fm)
+		switch fm {
+		case "s", "ms", "us", "ns":
+			tf = fm
+		default:
+			tf = util.GetTimeformat(fm)
+		}
 	case opts.Option:
 		r := &fmParseTimeReceiver{}
 		fm(r)
@@ -156,8 +161,15 @@ func (node *Node) fmStrTime(t any, format any, tz *time.Location) (string, error
 	default:
 		return "", fmt.Errorf("strTime: %T(%v) is not time formatter", format, format)
 	}
-
-	return tm.In(tz).Format(tf), nil
+	tz := time.UTC
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case *time.Location:
+			tz = v
+		}
+	}
+	formatter := util.NewTimeFormatter(util.Timeformat(tf), util.TimeLocation(tz))
+	return formatter.Format(tm), nil
 }
 
 type fmParseTimeReceiver struct {

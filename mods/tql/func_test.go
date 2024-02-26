@@ -75,6 +75,22 @@ func TestStrTime(t *testing.T) {
 		args:   []any{now, opts.Timeformat(util.ToTimeformatSql("YYYY/MM/DD HH24:MI:SS.nnnnnn")), time.UTC},
 		expect: "2024/01/10 07:31:57.655327",
 	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "ns", time.UTC},
+		expect: "1704871917655327000",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "us"},
+		expect: "1704871917655327",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "ms", time.UTC},
+		expect: "1704871917655",
+	}.run(t)
+	FunctionTestCase{f: node.Function("strTime"),
+		args:   []any{now, "s"},
+		expect: "1704871917",
+	}.run(t)
 }
 
 func TestStrTrimSpace(t *testing.T) {
