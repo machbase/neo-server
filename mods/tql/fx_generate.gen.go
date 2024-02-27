@@ -173,6 +173,8 @@ func NewNode(task *Task) *Node {
 		"strHasSuffix":         x.gen_strHasSuffix,
 		"strSprintf":           x.gen_strSprintf,
 		"strSub":               x.gen_strSub,
+		"strIndex":             x.gen_strIndex,
+		"strLastIndex":         x.gen_strLastIndex,
 		"strToUpper":           x.gen_strToUpper,
 		"strToLower":           x.gen_strToLower,
 		"freq":                 x.gen_freq,
@@ -2346,6 +2348,44 @@ func (x *Node) gen_strSub(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	ret := x.fmStrSub(p0, p1...)
+	return ret, nil
+}
+
+// gen_strIndex
+//
+// syntax: strIndex(string, string)
+func (x *Node) gen_strIndex(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strIndex", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strIndex", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strIndex", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrIndex(p0, p1)
+	return ret, nil
+}
+
+// gen_strLastIndex
+//
+// syntax: strLastIndex(string, string)
+func (x *Node) gen_strLastIndex(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("strLastIndex", 2, len(args))
+	}
+	p0, err := convString(args, 0, "strLastIndex", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "strLastIndex", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmStrLastIndex(p0, p1)
 	return ret, nil
 }
 

@@ -496,3 +496,11 @@ func (node *Node) fmStrSub(str string, args ...int) string {
 		return string(rs[idx:end])
 	}
 }
+
+func (node *Node) fmStrIndex(str string, substr string) int {
+	return strings.Index(str, substr)
+}
+
+func (node *Node) fmStrLastIndex(str string, substr string) int {
+	return strings.LastIndex(str, substr)
+}

@@ -186,6 +186,8 @@ var FxDefinitions = []Definition{
 	{"strHasSuffix", defTask.fmStrHasSuffix},
 	{"strSprintf", defTask.fmStrSprintf},
 	{"strSub", defTask.fmStrSub},
+	{"strIndex", defTask.fmStrIndex},
+	{"strLastIndex", defTask.fmStrLastIndex},
 	{"strToUpper", defTask.fmStrToUpper},
 	{"strToLower", defTask.fmStrToLower},
 	{"freq", defTask.fmFreq},

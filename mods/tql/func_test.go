@@ -209,6 +209,42 @@ func TestStrSub(t *testing.T) {
 	}.run(t)
 }
 
+func TestStrIndex(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strIndex"),
+		args:   []any{"HelLo 😀 World", "😀"},
+		expect: 6,
+	}.run(t)
+	FunctionTestCase{f: node.Function("strIndex"),
+		args:   []any{"HelLo 😀 World", "o"},
+		expect: 4,
+	}.run(t)
+	FunctionTestCase{f: node.Function("strIndex"),
+		args:   []any{"HelLo 😀 World", "l"},
+		expect: 2,
+	}.run(t)
+}
+
+func TestStrLastIndex(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("strLastIndex"),
+		args:   []any{"HelLo 😀 World", "😀"},
+		expect: 6,
+	}.run(t)
+	FunctionTestCase{f: node.Function("strLastIndex"),
+		args:   []any{"HelLo 😀 World", "o"},
+		expect: 12,
+	}.run(t)
+	FunctionTestCase{f: node.Function("strLastIndex"),
+		args:   []any{"HelLo 😀 World", "H"},
+		expect: 0,
+	}.run(t)
+	FunctionTestCase{f: node.Function("strLastIndex"),
+		args:   []any{"HelLo 😀 World", "l"},
+		expect: 14,
+	}.run(t)
+}
+
 func TestList(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("list"),
