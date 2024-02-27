@@ -19,14 +19,21 @@ func TestFsGET(t *testing.T) {
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
 	require.Equal(t, string(os.PathSeparator), ret.Name)
-	require.Equal(t, 3, len(ret.Children))
+	if enableGitSample {
+		require.Equal(t, 3, len(ret.Children))
+	} else {
+		require.Equal(t, 2, len(ret.Children))
+	}
 	require.Equal(t, "hello.sql", ret.Children[0].Name)
 	require.Equal(t, ".sql", ret.Children[0].Type)
 	require.Equal(t, "select.sql", ret.Children[1].Name)
 	require.Equal(t, ".sql", ret.Children[1].Type)
-	require.Equal(t, "Tutorials", ret.Children[2].Name)
-	require.Equal(t, urlGitSample, ret.Children[2].GitUrl)
-	require.True(t, ret.Children[2].Virtual)
+	if enableGitSample {
+		require.Equal(t, 3, len(ret.Children))
+		require.Equal(t, "Tutorials", ret.Children[2].Name)
+		require.Equal(t, urlGitSample, ret.Children[2].GitUrl)
+		require.True(t, ret.Children[2].Virtual)
+	}
 
 	ssfs, err = NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
 	require.Nil(t, err)
@@ -37,7 +44,11 @@ func TestFsGET(t *testing.T) {
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
 	require.Equal(t, string(os.PathSeparator), ret.Name)
-	require.Equal(t, 5, len(ret.Children))
+	if enableGitSample {
+		require.Equal(t, 5, len(ret.Children))
+	} else {
+		require.Equal(t, 4, len(ret.Children))
+	}
 	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Children[0].Name)
 	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
@@ -50,8 +61,10 @@ func TestFsGET(t *testing.T) {
 	require.Equal(t, "select.sql", ret.Children[3].Name)
 	require.Equal(t, ".sql", ret.Children[3].Type)
 	require.Equal(t, false, ret.Children[3].IsDir)
-	require.Equal(t, "Tutorials", ret.Children[4].Name)
-	require.Equal(t, urlGitSample, ret.Children[4].GitUrl)
+	if enableGitSample {
+		require.Equal(t, "Tutorials", ret.Children[4].Name)
+		require.Equal(t, urlGitSample, ret.Children[4].GitUrl)
+	}
 
 	// do not allow accessing out side of the given dirs
 	ret, err = ssfs.Get("/../notaccess.tql")

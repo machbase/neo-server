@@ -34,7 +34,7 @@ func TestRefsFiles(t *testing.T) {
 
 	require.Equal(t, 3, len(rsp.Data.Refs))
 	require.Equal(t, rsp.Data.Refs[0].Label, "REFERENCES")
-	require.Equal(t, 3, len(rsp.Data.Refs[0].Items))
+	require.Equal(t, 5, len(rsp.Data.Refs[0].Items))
 
 	require.Equal(t, rsp.Data.Refs[1].Label, "SDK")
 	require.Equal(t, 5, len(rsp.Data.Refs[1].Items))

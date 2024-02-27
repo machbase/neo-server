@@ -27,6 +27,8 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://machbase.com/neo", Target: "_blank"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://machbase.com/dbms/sql-ref/", Target: "_docs_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_home_machbase"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Tutorials", Addr: "https://github.com/machbase/neo-tutorials", Target: "_blank"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Demo web app", Addr: "https://github.com/machbase/neo-apps"})
 
 		sdk := &WebReferenceGroup{Label: "SDK"}
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK Download", Addr: "https://machbase.com/home/download/", Target: "_home_machbase"})
