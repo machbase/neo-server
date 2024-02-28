@@ -148,6 +148,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) *Record {
 		if bf.last != val {
 			bf.last = val
 			bf.lastTimestamp = retain.timestamp
+			bf.lastYield = false
 			return nil
 		}
 		if !bf.lastYield && retain.timestamp.Sub(bf.lastTimestamp) >= retain.duration {

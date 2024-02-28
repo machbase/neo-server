@@ -489,7 +489,9 @@ func TestMapChanged(t *testing.T) {
 			["B", 1692329344, 7.0],
 			["B", 1692329345, 8.0],
 			["C", 1692329346, 9.0],
-			["D", 1692329347, 9.1]
+			["D", 1692329347, 9.1],
+			["D", 1692329348, 9.2],
+			["D", 1692329349, 9.3]
 		}))`,
 		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
 		`FILTER_CHANGED(value(0), retain(value(1), "2s"))`,
@@ -498,6 +500,7 @@ func TestMapChanged(t *testing.T) {
 	resultLines = []string{
 		"A,1692329338,1",
 		"B,1692329342,5",
+		"D,1692329349,9.3",
 	}
 	runTest(t, codeLines, resultLines)
 }
