@@ -405,7 +405,7 @@ func TestStrLib(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestMovingAvg(t *testing.T) {
+func TestMovAvg(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
 		`FAKE( linspace(0, 100, 100) )`,
@@ -414,7 +414,10 @@ func TestMovingAvg(t *testing.T) {
 	}
 	resultLines = loadLines("./test/movavg_result.txt")
 	runTest(t, codeLines, resultLines)
+}
 
+func TestMapDiff(t *testing.T) {
+	var codeLines, resultLines []string
 	codeLines = []string{
 		`FAKE( csv("1\n3\n2\n7") )`,
 		`MAP_DIFF(0, value(0))`,
@@ -437,6 +440,65 @@ func TestMovingAvg(t *testing.T) {
 		`CSV()`,
 	}
 	resultLines = []string{"NULL", "2", "1", "5"}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapChanged(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE(json({
+			["A", 1.0],
+			["A", 2.0],
+			["B", 3.0],
+			["B", 4.0]
+		}))`,
+		`FILTER_CHANGED(value(0))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		"A,1",
+		"B,3",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({
+			["A", true, 1.0],
+			["A", false, 2.0],
+			["B", false, 3.0],
+			["B", true, 4.0]
+		}))`,
+		`FILTER_CHANGED(value(1))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		"A,true,1",
+		"A,false,2",
+		"B,true,4",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({
+			["A", 1692329338, 1.0],
+			["A", 1692329339, 2.0],
+			["B", 1692329340, 3.0],
+			["B", 1692329341, 4.0],
+			["B", 1692329342, 5.0],
+			["B", 1692329343, 6.0],
+			["B", 1692329344, 7.0],
+			["B", 1692329345, 8.0],
+			["C", 1692329346, 9.0],
+			["D", 1692329347, 9.1]
+		}))`,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), retain(value(1), "2s"))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"B,1692329342,5",
+	}
 	runTest(t, codeLines, resultLines)
 }
 

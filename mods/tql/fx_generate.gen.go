@@ -82,37 +82,39 @@ func NewNode(task *Task) *Node {
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.monad
-		"TAKE":          x.gen_TAKE,
-		"DROP":          x.gen_DROP,
-		"FILTER":        x.gen_FILTER,
-		"FLATTEN":       x.gen_FLATTEN,
-		"GROUPBYKEY":    x.gen_GROUPBYKEY,
-		"POPKEY":        x.gen_POPKEY,
-		"PUSHKEY":       x.gen_PUSHKEY,
-		"MAPKEY":        x.gen_MAPKEY,
-		"POPVALUE":      x.gen_POPVALUE,
-		"PUSHVALUE":     x.gen_PUSHVALUE,
-		"MAPVALUE":      x.gen_MAPVALUE,
-		"MAP_MOVAVG":    x.gen_MAP_MOVAVG,
-		"MAP_DIFF":      x.gen_MAP_DIFF,
-		"MAP_ABSDIFF":   x.gen_MAP_ABSDIFF,
-		"MAP_NONEGDIFF": x.gen_MAP_NONEGDIFF,
-		"MAP_DISTANCE":  x.gen_MAP_DISTANCE,
-		"TRANSPOSE":     x.gen_TRANSPOSE,
-		"fixed":         x.gen_fixed,
-		"TIMEWINDOW":    x.gen_TIMEWINDOW,
-		"SCRIPT":        x.gen_SCRIPT,
-		"list":          x.gen_list,
-		"dict":          x.gen_dict,
-		"lazy":          x.gen_lazy,
-		"glob":          x.gen_glob,
-		"regexp":        x.gen_regexp,
-		"doLog":         x.gen_doLog,
-		"doHttp":        x.gen_doHttp,
-		"do":            x.gen_do,
-		"args":          x.gen_args,
-		"WHEN":          x.gen_WHEN,
-		"THROTTLE":      x.gen_THROTTLE,
+		"TAKE":           x.gen_TAKE,
+		"DROP":           x.gen_DROP,
+		"FILTER":         x.gen_FILTER,
+		"FILTER_CHANGED": x.gen_FILTER_CHANGED,
+		"retain":         x.gen_retain,
+		"FLATTEN":        x.gen_FLATTEN,
+		"GROUPBYKEY":     x.gen_GROUPBYKEY,
+		"POPKEY":         x.gen_POPKEY,
+		"PUSHKEY":        x.gen_PUSHKEY,
+		"MAPKEY":         x.gen_MAPKEY,
+		"POPVALUE":       x.gen_POPVALUE,
+		"PUSHVALUE":      x.gen_PUSHVALUE,
+		"MAPVALUE":       x.gen_MAPVALUE,
+		"MAP_MOVAVG":     x.gen_MAP_MOVAVG,
+		"MAP_DIFF":       x.gen_MAP_DIFF,
+		"MAP_ABSDIFF":    x.gen_MAP_ABSDIFF,
+		"MAP_NONEGDIFF":  x.gen_MAP_NONEGDIFF,
+		"MAP_DISTANCE":   x.gen_MAP_DISTANCE,
+		"TRANSPOSE":      x.gen_TRANSPOSE,
+		"fixed":          x.gen_fixed,
+		"TIMEWINDOW":     x.gen_TIMEWINDOW,
+		"SCRIPT":         x.gen_SCRIPT,
+		"list":           x.gen_list,
+		"dict":           x.gen_dict,
+		"lazy":           x.gen_lazy,
+		"glob":           x.gen_glob,
+		"regexp":         x.gen_regexp,
+		"doLog":          x.gen_doLog,
+		"doHttp":         x.gen_doHttp,
+		"do":             x.gen_do,
+		"args":           x.gen_args,
+		"WHEN":           x.gen_WHEN,
+		"THROTTLE":       x.gen_THROTTLE,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -900,6 +902,47 @@ func (x *Node) gen_FILTER(args ...any) (any, error) {
 	}
 	ret := x.fmFilter(p0)
 	return ret, nil
+}
+
+// gen_FILTER_CHANGED
+//
+// syntax: FILTER_CHANGED(, ...interface {})
+func (x *Node) gen_FILTER_CHANGED(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("FILTER_CHANGED", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "FILTER_CHANGED", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "FILTER_CHANGED", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmFilterChanged(p0, p1...)
+	return ret, nil
+}
+
+// gen_retain
+//
+// syntax: retain(, )
+func (x *Node) gen_retain(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("retain", 2, len(args))
+	}
+	p0, err := convAny(args, 0, "retain", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "retain", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmRetain(p0, p1)
 }
 
 // gen_FLATTEN

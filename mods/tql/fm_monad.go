@@ -115,6 +115,81 @@ func (node *Node) fmFilter(flag bool) *Record {
 	return node.Inflight()
 }
 
+func (node *Node) fmFilterChanged(value any, args ...any) *Record {
+	inflight := node.Inflight()
+	if inflight == nil {
+		return nil
+	}
+	var bf *BufferedFilter
+	var retain *RetainDuration
+
+	for _, arg := range args {
+		switch av := arg.(type) {
+		case *RetainDuration:
+			retain = av
+		}
+	}
+
+	if v, ok := node.GetValue("filter_changed"); ok {
+		bf = v.(*BufferedFilter)
+	} else {
+		bf = &BufferedFilter{
+			last: unboxValue(value),
+		}
+		if retain != nil {
+			bf.lastTimestamp = retain.timestamp
+		}
+		node.SetValue("filter_changed", bf)
+		return inflight
+	}
+
+	val := unboxValue(value)
+	if retain != nil {
+		if bf.last != val {
+			bf.last = val
+			bf.lastTimestamp = retain.timestamp
+			return nil
+		}
+		if !bf.lastYield && retain.timestamp.Sub(bf.lastTimestamp) >= retain.duration {
+			bf.lastYield = true
+			return inflight
+		}
+	} else {
+		if bf.last != val {
+			bf.last = val
+			bf.lastYield = true
+			return inflight
+		}
+	}
+	return nil
+}
+
+type BufferedFilter struct {
+	last          any
+	lastTimestamp time.Time
+	lastYield     bool
+}
+
+type RetainDuration struct {
+	timestamp time.Time
+	duration  time.Duration
+}
+
+func (node *Node) fmRetain(value any, duration any) (*RetainDuration, error) {
+	ret := &RetainDuration{}
+	if v, err := util.ToTime(value); err != nil {
+		return nil, err
+	} else {
+		ret.timestamp = v
+	}
+	if v, err := util.ToDuration(duration); err != nil {
+		return nil, err
+	} else {
+		ret.duration = v
+	}
+	return ret, nil
+}
+
 func (node *Node) fmThrottle(tps float64) *Record {
 	var th *Throttle
 	if v, ok := node.GetValue("throttle"); ok {

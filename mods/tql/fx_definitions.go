@@ -90,6 +90,8 @@ var FxDefinitions = []Definition{
 	{"TAKE", defTask.fmTake},
 	{"DROP", defTask.fmDrop},
 	{"FILTER", defTask.fmFilter},
+	{"FILTER_CHANGED", defTask.fmFilterChanged},
+	{"retain", defTask.fmRetain},
 	{"FLATTEN", defTask.fmFlatten},
 	{"GROUPBYKEY", defTask.fmGroupByKey},
 	{"POPKEY", defTask.fmPopKey},
