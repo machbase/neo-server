@@ -180,7 +180,14 @@ func (r *fmParseTimeReceiver) SetTimeformat(f string) {
 	r.format = f
 }
 
-func (x *Node) fmParseTime(expr string, format any, tz *time.Location) (time.Time, error) {
+func (x *Node) fmParseTime(expr string, format any, args ...any) (time.Time, error) {
+	var tz = time.UTC
+	for _, arg := range args {
+		switch av := arg.(type) {
+		case *time.Location:
+			tz = av
+		}
+	}
 	switch fv := format.(type) {
 	case string:
 		return util.ParseTime(expr, fv, tz)

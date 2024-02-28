@@ -747,10 +747,10 @@ func (x *Node) gen_timeUnixNano(args ...any) (any, error) {
 
 // gen_parseTime
 //
-// syntax: parseTime(string, , )
+// syntax: parseTime(string, , ...interface {})
 func (x *Node) gen_parseTime(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("parseTime", 3, len(args))
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("parseTime", 2, len(args))
 	}
 	p0, err := convString(args, 0, "parseTime", "string")
 	if err != nil {
@@ -760,11 +760,15 @@ func (x *Node) gen_parseTime(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convTimeLocation(args, 2, "parseTime", "*time.Location")
-	if err != nil {
-		return nil, err
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "parseTime", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
 	}
-	return x.fmParseTime(p0, p1, p2)
+	return x.fmParseTime(p0, p1, p2...)
 }
 
 // gen_timeAdd

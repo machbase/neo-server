@@ -421,6 +421,11 @@ func TestParseTime(t *testing.T) {
 		args:   []any{"2023-03-01 14:01:02", "DEFAULT", time.UTC},
 		expect: time.Time(time.Date(2023, time.March, 1, 14, 1, 2, 0, time.UTC)),
 	}.run(t)
+
+	FunctionTestCase{f: node.Function("parseTime"),
+		args:   []any{"2023-03-01 14:01:02", "DEFAULT"},
+		expect: time.Time(time.Date(2023, time.March, 1, 14, 1, 2, 0, time.UTC)),
+	}.run(t)
 }
 
 func TestRoundTime(t *testing.T) {
