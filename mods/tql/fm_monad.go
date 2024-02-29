@@ -115,7 +115,7 @@ func (node *Node) fmFilter(flag bool) *Record {
 	return node.Inflight()
 }
 
-func (node *Node) fmFilterChanged(value any, args ...any) *Record {
+func (node *Node) fmFilterChanged(value any, args ...any) any {
 	inflight := node.Inflight()
 	if inflight == nil {
 		return nil
@@ -183,7 +183,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) *Record {
 			bf.lastYield = true
 			if withLast {
 				if bf.lastRecord != nil {
-					ret := ArrayRecord([]*Record{bf.lastRecord, inflight})
+					ret := []*Record{bf.lastRecord, inflight}
 					bf.lastRecord = inflight
 					return ret
 				}
