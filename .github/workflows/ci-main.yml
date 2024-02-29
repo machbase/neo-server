@@ -132,10 +132,6 @@ jobs:
           go-version-file: 'go.mod'
           check-latest: true
           cache: false # do not cache for self-hosted runner
-      - name: Build-Env2
-        run: echo MAGEFILE_VERBOSE=1 >> $env:GITHUB_ENV
-      - name: Build-Env3
-        run: echo MAGEFILE_DEBUG=1 >> $env:GITHUB_ENV
       - name: Build-Mage
         run: go run mage.go -compile ./tmp/mage_output.exe
       - name: Build
@@ -152,7 +148,7 @@ jobs:
             machbase-neo.exe
             neow.exe
       - name: Archive
-        run: go run mage.go package-machbase-neo
+        run: magefiles\tmp\mage_output.exe package-machbase-neo
         shell: cmd
       - name: Codecov
         uses: codecov/codecov-action@v4
