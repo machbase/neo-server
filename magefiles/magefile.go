@@ -1,5 +1,3 @@
-//go:build mage
-
 package main
 
 import (
@@ -291,6 +289,9 @@ func CheckFyne() error {
 	const fyneRepo = "fyne.io/fyne/v2/cmd/fyne@latest"
 	if verout, err := sh.Output("fyne", "--version"); err != nil {
 		err = sh.RunV("go", "install", fyneRepo)
+		if err != nil {
+			return err
+		}
 	} else {
 		// fyne version v2.3.5
 		tok := strings.Fields(verout)
@@ -304,16 +305,21 @@ func CheckFyne() error {
 		expectedFyneVer, _ := semver.NewVersion(fyneVersion)
 		if ver.Compare(expectedFyneVer) < 0 {
 			err = sh.RunV("go", "install", fyneRepo)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 func CheckMoq() error {
-	const moqVersion = "v0.3.2"
 	const moqRepo = "github.com/matryer/moq@latest"
 	if _, err := sh.Output("moq", "-version"); err != nil {
 		err = sh.RunV("go", "install", moqRepo)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

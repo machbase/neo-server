@@ -55,14 +55,14 @@ https://hub.docker.com/r/machbase/machbase-neo
 - Require C compiler and linker (e.g: gcc) 
 - Checkout machbase/neo-server
 - Execute `go run mage.go machbase-neo`
-- Find the executable binary `./tmp/machbase-neo`
+- Find the executable binary from `./tmp/machbase-neo`
 
 ## Web User Interface
 
 - SQL
 ![screen](./docs/screenshot02.jpg)
 
-- TQL Script
+- TQL Script for transforming data
 ![screen](./docs/screenshot01.jpg)
 
 - Data Visualization<br/>
