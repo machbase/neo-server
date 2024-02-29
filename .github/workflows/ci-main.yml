@@ -132,8 +132,12 @@ jobs:
           go-version-file: 'go.mod'
           check-latest: true
           cache: false # do not cache for self-hosted runner
-      - name: Build-Env
+      - name: Build-Env1
         run: echo MAGEFILE_CACHE=./tmp >> $env:GITHUB_ENV
+      - name: Build-Env2
+        run: echo MAGEFILE_VERBOSE=1 >> $env:GITHUB_ENV
+      - name: Build-Env3
+        run: echo MAGEFILE_DEBUG=1 >> $env:GITHUB_ENV
       - name: Build
         run: go run mage.go test machbase-neo neow
         shell: cmd
