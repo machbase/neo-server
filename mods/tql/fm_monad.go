@@ -122,11 +122,14 @@ func (node *Node) fmFilterChanged(value any, args ...any) *Record {
 	}
 	var bf *BufferedFilter
 	var retain *RetainDuration
+	var useFirst, withLast bool
 
 	for _, arg := range args {
 		switch av := arg.(type) {
 		case *RetainDuration:
 			retain = av
+		case BufferedFilterUseFirst:
+			useFirst, withLast = true, bool(av)
 		}
 	}
 
@@ -140,27 +143,56 @@ func (node *Node) fmFilterChanged(value any, args ...any) *Record {
 			bf.lastTimestamp = retain.timestamp
 		}
 		node.SetValue("filter_changed", bf)
+		node.SetEOF(func(node *Node) {
+			if withLast && bf.lastRecord != nil {
+				bf.lastRecord.Tell(node.next)
+			}
+		})
 		return inflight
 	}
 
 	val := unboxValue(value)
 	if retain != nil {
-		if bf.last != val {
+		if inflight.IsEOF() || bf.last != val {
+			var ret *Record
+			if withLast {
+				ret = bf.lastRecord
+			}
 			bf.last = val
 			bf.lastTimestamp = retain.timestamp
 			bf.lastYield = false
-			return nil
+			bf.firstRecord = inflight
+			bf.lastRecord = nil
+			return ret
 		}
 		if !bf.lastYield && retain.timestamp.Sub(bf.lastTimestamp) >= retain.duration {
 			bf.lastYield = true
-			return inflight
+			if useFirst {
+				ret := bf.firstRecord
+				bf.firstRecord = nil
+				bf.lastRecord = inflight
+				return ret
+			} else {
+				return inflight
+			}
 		}
+		bf.lastRecord = inflight
 	} else {
 		if bf.last != val {
 			bf.last = val
 			bf.lastYield = true
-			return inflight
+			if withLast {
+				if bf.lastRecord != nil {
+					ret := ArrayRecord([]*Record{bf.lastRecord, inflight})
+					bf.lastRecord = nil
+					return ret
+				}
+			} else {
+				bf.lastRecord = nil
+				return inflight
+			}
 		}
+		bf.lastRecord = inflight
 	}
 	return nil
 }
@@ -169,6 +201,14 @@ type BufferedFilter struct {
 	last          any
 	lastTimestamp time.Time
 	lastYield     bool
+	firstRecord   *Record
+	lastRecord    *Record
+}
+
+type BufferedFilterUseFirst bool
+
+func (node *Node) fmUseFirstWithLast(flag bool) BufferedFilterUseFirst {
+	return BufferedFilterUseFirst(flag)
 }
 
 type RetainDuration struct {

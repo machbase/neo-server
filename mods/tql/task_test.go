@@ -503,6 +503,104 @@ func TestMapChanged(t *testing.T) {
 		"D,1692329349,9.3",
 	}
 	runTest(t, codeLines, resultLines)
+
+	data := `FAKE(json({
+		["A", 1.0],
+		["A", 2.0],
+		["B", 3.0],
+		["B", 4.0],
+		["B", 5.0],
+		["C", 6.0],
+		["C", 7.0],
+		["D", 8.0],
+		["D", 9.0]
+	}))`
+	codeLines = []string{
+		data,
+		`FILTER_CHANGED(value(0), useFirstWithLast(true))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		"A,1",
+		"A,2",
+		"B,3",
+		"B,5",
+		"C,6",
+		"C,7",
+		"D,8",
+		"D,9",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`FILTER_CHANGED(value(0))`, // should be same with 'useFirstWithLast(false)'
+		`CSV()`,
+	}
+	resultLines = []string{
+		"A,1",
+		"B,3",
+		"C,6",
+		"D,8",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`FILTER_CHANGED(value(0), useFirstWithLast(false))`,
+		`CSV()`,
+	}
+	resultLines = []string{
+		"A,1",
+		"B,3",
+		"C,6",
+		"D,8",
+	}
+	runTest(t, codeLines, resultLines)
+
+	data = `FAKE(json({
+		["A", 1692329338, 1.0],
+		["A", 1692329339, 2.0],
+		["B", 1692329340, 3.0],
+		["B", 1692329341, 4.0],
+		["B", 1692329342, 5.0],
+		["B", 1692329343, 6.0],
+		["B", 1692329344, 7.0],
+		["B", 1692329345, 8.0],
+		["C", 1692329346, 9.0],
+		["D", 1692329347, 9.1],
+		["D", 1692329348, 9.2],
+		["D", 1692329349, 9.3]
+	}))`
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), retain(value(1), "2s"), useFirstWithLast(false))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"B,1692329340,3",
+		"D,1692329347,9.1",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), retain(value(1), "2s"), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"A,1692329339,2",
+		"B,1692329340,3",
+		"B,1692329345,8",
+		"D,1692329347,9.1",
+		"D,1692329349,9.3",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {

@@ -92,6 +92,7 @@ var FxDefinitions = []Definition{
 	{"FILTER", defTask.fmFilter},
 	{"FILTER_CHANGED", defTask.fmFilterChanged},
 	{"retain", defTask.fmRetain},
+	{"useFirstWithLast", defTask.fmUseFirstWithLast},
 	{"FLATTEN", defTask.fmFlatten},
 	{"GROUPBYKEY", defTask.fmGroupByKey},
 	{"POPKEY", defTask.fmPopKey},

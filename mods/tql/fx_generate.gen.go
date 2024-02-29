@@ -82,39 +82,40 @@ func NewNode(task *Task) *Node {
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.monad
-		"TAKE":           x.gen_TAKE,
-		"DROP":           x.gen_DROP,
-		"FILTER":         x.gen_FILTER,
-		"FILTER_CHANGED": x.gen_FILTER_CHANGED,
-		"retain":         x.gen_retain,
-		"FLATTEN":        x.gen_FLATTEN,
-		"GROUPBYKEY":     x.gen_GROUPBYKEY,
-		"POPKEY":         x.gen_POPKEY,
-		"PUSHKEY":        x.gen_PUSHKEY,
-		"MAPKEY":         x.gen_MAPKEY,
-		"POPVALUE":       x.gen_POPVALUE,
-		"PUSHVALUE":      x.gen_PUSHVALUE,
-		"MAPVALUE":       x.gen_MAPVALUE,
-		"MAP_MOVAVG":     x.gen_MAP_MOVAVG,
-		"MAP_DIFF":       x.gen_MAP_DIFF,
-		"MAP_ABSDIFF":    x.gen_MAP_ABSDIFF,
-		"MAP_NONEGDIFF":  x.gen_MAP_NONEGDIFF,
-		"MAP_DISTANCE":   x.gen_MAP_DISTANCE,
-		"TRANSPOSE":      x.gen_TRANSPOSE,
-		"fixed":          x.gen_fixed,
-		"TIMEWINDOW":     x.gen_TIMEWINDOW,
-		"SCRIPT":         x.gen_SCRIPT,
-		"list":           x.gen_list,
-		"dict":           x.gen_dict,
-		"lazy":           x.gen_lazy,
-		"glob":           x.gen_glob,
-		"regexp":         x.gen_regexp,
-		"doLog":          x.gen_doLog,
-		"doHttp":         x.gen_doHttp,
-		"do":             x.gen_do,
-		"args":           x.gen_args,
-		"WHEN":           x.gen_WHEN,
-		"THROTTLE":       x.gen_THROTTLE,
+		"TAKE":             x.gen_TAKE,
+		"DROP":             x.gen_DROP,
+		"FILTER":           x.gen_FILTER,
+		"FILTER_CHANGED":   x.gen_FILTER_CHANGED,
+		"retain":           x.gen_retain,
+		"useFirstWithLast": x.gen_useFirstWithLast,
+		"FLATTEN":          x.gen_FLATTEN,
+		"GROUPBYKEY":       x.gen_GROUPBYKEY,
+		"POPKEY":           x.gen_POPKEY,
+		"PUSHKEY":          x.gen_PUSHKEY,
+		"MAPKEY":           x.gen_MAPKEY,
+		"POPVALUE":         x.gen_POPVALUE,
+		"PUSHVALUE":        x.gen_PUSHVALUE,
+		"MAPVALUE":         x.gen_MAPVALUE,
+		"MAP_MOVAVG":       x.gen_MAP_MOVAVG,
+		"MAP_DIFF":         x.gen_MAP_DIFF,
+		"MAP_ABSDIFF":      x.gen_MAP_ABSDIFF,
+		"MAP_NONEGDIFF":    x.gen_MAP_NONEGDIFF,
+		"MAP_DISTANCE":     x.gen_MAP_DISTANCE,
+		"TRANSPOSE":        x.gen_TRANSPOSE,
+		"fixed":            x.gen_fixed,
+		"TIMEWINDOW":       x.gen_TIMEWINDOW,
+		"SCRIPT":           x.gen_SCRIPT,
+		"list":             x.gen_list,
+		"dict":             x.gen_dict,
+		"lazy":             x.gen_lazy,
+		"glob":             x.gen_glob,
+		"regexp":           x.gen_regexp,
+		"doLog":            x.gen_doLog,
+		"doHttp":           x.gen_doHttp,
+		"do":               x.gen_do,
+		"args":             x.gen_args,
+		"WHEN":             x.gen_WHEN,
+		"THROTTLE":         x.gen_THROTTLE,
 		// maps.dbsrc
 		"from":    x.gen_from,
 		"limit":   x.gen_limit,
@@ -947,6 +948,21 @@ func (x *Node) gen_retain(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmRetain(p0, p1)
+}
+
+// gen_useFirstWithLast
+//
+// syntax: useFirstWithLast(bool)
+func (x *Node) gen_useFirstWithLast(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("useFirstWithLast", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "useFirstWithLast", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmUseFirstWithLast(p0)
+	return ret, nil
 }
 
 // gen_FLATTEN
