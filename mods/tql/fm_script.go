@@ -383,7 +383,7 @@ func tengof_uuid(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	}
 }
 
-func tengof_nil(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
+func tengof_nil(_ *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
 		return tengo.UndefinedValue, nil
 	}

@@ -95,7 +95,7 @@ func convCharset(args []any, idx int, fname string, expect string) (encoding.Enc
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convAny(args []any, idx int, fname string, expect string) (any, error) {
+func convAny(args []any, idx int, fname string, _ string) (any, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}

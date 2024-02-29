@@ -18,7 +18,7 @@ type Line struct {
 
 var functions = NewNode(nil).functions
 
-func readLines(task *Task, codeReader io.Reader) ([]*Line, error) {
+func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 	reader := bufio.NewReader(codeReader)
 	parts := []byte{}
 	stmt := []string{}

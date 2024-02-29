@@ -423,7 +423,7 @@ func (x *Task) execute() *Result {
 	}
 }
 
-func (x *Task) onCircuitBreak(fromNode *Node) {
+func (x *Task) onCircuitBreak(_ *Node) {
 	x._stateLock.Lock()
 	x._shouldStop = true
 	x._stateLock.Unlock()
