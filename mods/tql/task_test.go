@@ -601,6 +601,24 @@ func TestMapChanged(t *testing.T) {
 		"D,1692329349,9.3",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(value(0), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		"A,1692329338,1",
+		"A,1692329339,2",
+		"B,1692329340,3",
+		"B,1692329345,8",
+		"C,1692329346,9",
+		"C,1692329346,9",
+		"D,1692329347,9.1",
+		"D,1692329349,9.3",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {

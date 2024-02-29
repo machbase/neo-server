@@ -184,7 +184,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) *Record {
 			if withLast {
 				if bf.lastRecord != nil {
 					ret := ArrayRecord([]*Record{bf.lastRecord, inflight})
-					bf.lastRecord = nil
+					bf.lastRecord = inflight
 					return ret
 				}
 			} else {
