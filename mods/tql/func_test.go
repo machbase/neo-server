@@ -395,7 +395,96 @@ func TestTime(t *testing.T) {
 		args:   []any{tick},
 		expect: float64(tick.UnixNano()),
 	}.run(t)
+}
 
+func TestTimeYear(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+
+	tick := time.Now().In(time.UTC)
+	util.StandardTimeNow = func() time.Time { return tick }
+
+	FunctionTestCase{f: node.Function("timeYear"),
+		args:   []any{tick},
+		expect: tick.Year(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeYear"),
+		args:   []any{tick, time.Local},
+		expect: tick.In(time.Local).Year(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeMonth"),
+		args:   []any{tick},
+		expect: int(tick.Month()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeMonth"),
+		args:   []any{tick, time.Local},
+		expect: int(tick.In(time.Local).Month()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeDay"),
+		args:   []any{tick},
+		expect: tick.Day(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeDay"),
+		args:   []any{tick, time.Local},
+		expect: tick.In(time.Local).Day(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeHour"),
+		args:   []any{tick},
+		expect: tick.Hour(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeHour"),
+		args:   []any{tick, time.Local},
+		expect: tick.In(time.Local).Hour(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeMinute"),
+		args:   []any{tick},
+		expect: tick.Minute(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeMinute"),
+		args:   []any{tick, time.Local},
+		expect: tick.In(time.Local).Minute(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeSecond"),
+		args:   []any{tick},
+		expect: tick.Second(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeNanosecond"),
+		args:   []any{tick},
+		expect: tick.Nanosecond(),
+	}.run(t)
+	year, week := tick.ISOWeek()
+	FunctionTestCase{f: node.Function("timeISOYear"),
+		args:   []any{tick},
+		expect: year,
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeISOWeek"),
+		args:   []any{tick},
+		expect: week,
+	}.run(t)
+	year, week = tick.In(time.Local).ISOWeek()
+	FunctionTestCase{f: node.Function("timeISOYear"),
+		args:   []any{tick, time.Local},
+		expect: year,
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeISOWeek"),
+		args:   []any{tick, time.Local},
+		expect: week,
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeYearDay"),
+		args:   []any{tick},
+		expect: tick.YearDay(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeYearDay"),
+		args:   []any{tick, time.Local},
+		expect: tick.In(time.Local).YearDay(),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeWeekDay"),
+		args:   []any{tick},
+		expect: int(tick.Weekday()),
+	}.run(t)
+	FunctionTestCase{f: node.Function("timeWeekDay"),
+		args:   []any{tick, time.Local},
+		expect: int(tick.In(time.Local).Weekday()),
+	}.run(t)
 }
 
 func TestParseTime(t *testing.T) {
