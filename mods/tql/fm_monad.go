@@ -1875,24 +1875,21 @@ func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error
 	if len(ma.elements) > lag {
 		ma.elements = ma.elements[len(ma.elements)-lag:]
 	}
-	if len(ma.elements) == lag {
-		sum := 0.0
-		countNil := 0
-		for _, e := range ma.elements {
-			if e != nil {
-				sum += *e
-			} else {
-				countNil++
-			}
-		}
-		if countNil == lag {
-			return node.fmMapValue(idx, nil, opts...)
+	countMember := len(ma.elements)
+	sum := 0.0
+	countNil := 0
+	for _, e := range ma.elements {
+		if e != nil {
+			sum += *e
 		} else {
-			ret := sum / float64(lag-countNil)
-			return node.fmMapValue(idx, ret, opts...)
+			countNil++
 		}
-	} else {
+	}
+	if countNil == countMember {
 		return node.fmMapValue(idx, nil, opts...)
+	} else {
+		ret := sum / float64(countMember-countNil)
+		return node.fmMapValue(idx, ret, opts...)
 	}
 }
 
