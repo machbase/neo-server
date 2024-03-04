@@ -23,11 +23,11 @@ type Exporter struct {
 	writer *csv.Writer
 	comma  rune
 
-	output         spec.OutputStream
-	showRownum     bool
-	precision      int
-	substituteNull string
-	timeformatter  *util.TimeFormatter
+	output          spec.OutputStream
+	showRownum      bool
+	precision       int
+	nullAlternative any
+	timeformatter   *util.TimeFormatter
 
 	heading  bool
 	colNames []string
@@ -37,9 +37,9 @@ type Exporter struct {
 
 func NewEncoder() *Exporter {
 	rr := &Exporter{
-		precision:      -1,
-		substituteNull: "NULL",
-		timeformatter:  util.NewTimeFormatter(),
+		precision:       -1,
+		nullAlternative: "NULL",
+		timeformatter:   util.NewTimeFormatter(),
 	}
 	return rr
 }
@@ -86,8 +86,8 @@ func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
-func (ex *Exporter) SetSubstituteNull(nullString string) {
-	ex.substituteNull = nullString
+func (ex *Exporter) SetSubstituteNull(alternative any) {
+	ex.nullAlternative = alternative
 }
 
 func (ex *Exporter) Open() error {
@@ -134,8 +134,7 @@ func (ex *Exporter) AddRow(values []any) error {
 
 	for i, r := range values {
 		if r == nil || r == expression.NullValue {
-			cols[i] = ex.substituteNull
-			continue
+			r = ex.nullAlternative
 		}
 		switch v := r.(type) {
 		case *string:

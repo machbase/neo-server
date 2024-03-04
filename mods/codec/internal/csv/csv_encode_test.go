@@ -62,6 +62,56 @@ func TestCsvEncoder(t *testing.T) {
 	fmt.Println()
 }
 
+func TestCsvEncoderNullValue(t *testing.T) {
+	enc := csv.NewEncoder()
+	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
+
+	w := &bytes.Buffer{}
+	out := &stream.WriterOutputStream{Writer: w}
+
+	enc.SetOutputStream(out)
+	enc.SetTimeformat("KITCHEN")
+	enc.SetPrecision(2)
+	enc.SetRownum(true)
+	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
+	enc.SetHeading(true)
+	enc.SetSubstituteNull(1.234567)
+	err := enc.Open()
+	require.Nil(t, err)
+
+	ts := time.Unix(1691800174, 123456789).UTC()
+	i64 := int64(98765)
+	sval := "text some"
+	i16 := int16(16)
+	enc.AddRow([]any{
+		int8(1),
+		float64(3.141592),
+		sval,
+		ts,
+		i64,
+		i16,
+	})
+	enc.AddRow([]any{
+		int32(1),
+		float32(3.141592),
+		&sval,
+		&ts,
+		&i64,
+		nil,
+	})
+
+	enc.Close()
+
+	expects := []string{
+		"ROWNUM,col1,col2,col3,col4,col5,col6",
+		"1,1,3.14,text some,12:29:34AM,98765,16",
+		"2,1,3.14,text some,12:29:34AM,98765,1.23",
+		"",
+	}
+	require.Equal(t, strings.Join(expects, "\n"), w.String())
+	fmt.Println()
+}
+
 func TestCsvTimeformat(t *testing.T) {
 	result := runTimeformat(t, "ns")
 	expects := []string{

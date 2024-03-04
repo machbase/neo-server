@@ -424,7 +424,7 @@ func (n *NullValue) Value() any {
 
 func (node *Node) fmNullValue(v any) any {
 	if node.Name() == "CSV()" { // if CSV sink, obsolete substituteNull()
-		return opts.SubstituteNull(fmt.Sprintf("%v", v))
+		return opts.SubstituteNull(v)
 	} else {
 		return &NullValue{altValue: v}
 	}

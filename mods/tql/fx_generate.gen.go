@@ -4307,12 +4307,12 @@ func (x *Node) gen_size(args ...any) (any, error) {
 
 // gen_substituteNull
 //
-// syntax: substituteNull(string)
+// syntax: substituteNull()
 func (x *Node) gen_substituteNull(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("substituteNull", 1, len(args))
 	}
-	p0, err := convString(args, 0, "substituteNull", "string")
+	p0, err := convAny(args, 0, "substituteNull", "interface {}")
 	if err != nil {
 		return nil, err
 	}

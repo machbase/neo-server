@@ -719,13 +719,13 @@ func Size(width string, height string) Option {
 //
 //	mods/codec/internal/csv/csv_encode.go:89:1
 type CanSetSubstituteNull interface {
-	SetSubstituteNull(nullString string)
+	SetSubstituteNull(alternative any)
 }
 
-func SubstituteNull(nullString string) Option {
+func SubstituteNull(alternative any) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetSubstituteNull); ok {
-			_o.SetSubstituteNull(nullString)
+			_o.SetSubstituteNull(alternative)
 		}
 	}
 }

@@ -861,6 +861,17 @@ func TestJsonToCsv(t *testing.T) {
 		"C,234",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE(json({ ["A", 123], ["B", null], ["C", 234] }))`,
+		`CSV( nullValue(3.14), precision(1) )`,
+	}
+	resultLines = []string{
+		"A,123.0",
+		"B,3.1",
+		"C,234.0",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestMath(t *testing.T) {
