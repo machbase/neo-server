@@ -75,6 +75,17 @@ func NewNode(task *Task) *Node {
 		"timeUnixMilli":  x.gen_timeUnixMilli,
 		"timeUnixMicro":  x.gen_timeUnixMicro,
 		"timeUnixNano":   x.gen_timeUnixNano,
+		"timeYear":       x.gen_timeYear,
+		"timeMonth":      x.gen_timeMonth,
+		"timeDay":        x.gen_timeDay,
+		"timeHour":       x.gen_timeHour,
+		"timeMinute":     x.gen_timeMinute,
+		"timeSecond":     x.gen_timeSecond,
+		"timeNanosecond": x.gen_timeNanosecond,
+		"timeISOYear":    x.gen_timeISOYear,
+		"timeISOWeek":    x.gen_timeISOWeek,
+		"timeYearDay":    x.gen_timeYearDay,
+		"timeWeekDay":    x.gen_timeWeekDay,
 		"parseTime":      x.gen_parseTime,
 		"timeAdd":        x.gen_timeAdd,
 		"roundTime":      x.gen_roundTime,
@@ -744,6 +755,248 @@ func (x *Node) gen_timeUnixNano(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmTimeUnixNano(p0)
+}
+
+// gen_timeYear
+//
+// syntax: timeYear(, ...interface {})
+func (x *Node) gen_timeYear(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeYear", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeYear", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeYear", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeYear(p0, p1...)
+}
+
+// gen_timeMonth
+//
+// syntax: timeMonth(, ...interface {})
+func (x *Node) gen_timeMonth(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeMonth", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeMonth", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeMonth", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeMonth(p0, p1...)
+}
+
+// gen_timeDay
+//
+// syntax: timeDay(, ...interface {})
+func (x *Node) gen_timeDay(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeDay", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeDay", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeDay", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeDay(p0, p1...)
+}
+
+// gen_timeHour
+//
+// syntax: timeHour(, ...interface {})
+func (x *Node) gen_timeHour(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeHour", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeHour", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeHour", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeHour(p0, p1...)
+}
+
+// gen_timeMinute
+//
+// syntax: timeMinute(, ...interface {})
+func (x *Node) gen_timeMinute(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeMinute", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeMinute", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeMinute", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeMinute(p0, p1...)
+}
+
+// gen_timeSecond
+//
+// syntax: timeSecond(, ...interface {})
+func (x *Node) gen_timeSecond(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeSecond", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeSecond", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeSecond", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeSecond(p0, p1...)
+}
+
+// gen_timeNanosecond
+//
+// syntax: timeNanosecond(, ...interface {})
+func (x *Node) gen_timeNanosecond(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeNanosecond", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeNanosecond", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeNanosecond", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeNanosecond(p0, p1...)
+}
+
+// gen_timeISOYear
+//
+// syntax: timeISOYear(, ...interface {})
+func (x *Node) gen_timeISOYear(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeISOYear", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeISOYear", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeISOYear", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeISOYear(p0, p1...)
+}
+
+// gen_timeISOWeek
+//
+// syntax: timeISOWeek(, ...interface {})
+func (x *Node) gen_timeISOWeek(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeISOWeek", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeISOWeek", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeISOWeek", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeISOWeek(p0, p1...)
+}
+
+// gen_timeYearDay
+//
+// syntax: timeYearDay(, ...interface {})
+func (x *Node) gen_timeYearDay(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeYearDay", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeYearDay", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeYearDay", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeYearDay(p0, p1...)
+}
+
+// gen_timeWeekDay
+//
+// syntax: timeWeekDay(, ...interface {})
+func (x *Node) gen_timeWeekDay(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("timeWeekDay", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "timeWeekDay", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeWeekDay", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmTimeWeekDay(p0, p1...)
 }
 
 // gen_parseTime
