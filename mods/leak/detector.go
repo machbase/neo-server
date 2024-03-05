@@ -223,8 +223,6 @@ func (det *Detector) detainRows(key string, rows spi.Rows, sqlText string) *Rows
 				err := ret.Rows.Close()
 				if err != nil {
 					det.log.Warnf("error on rows.close; %s, statement: %s", err.Error(), ret.String())
-				} else {
-					det.log.Tracef("close %s", ret.String())
 				}
 				ret.releaseTime = time.Now()
 				det.addHistoryRows(ret)
