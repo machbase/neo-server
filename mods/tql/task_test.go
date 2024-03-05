@@ -619,6 +619,39 @@ func TestMapChanged(t *testing.T) {
 		"D,1692329349,9.3",
 	}
 	runTest(t, codeLines, resultLines)
+
+	data = `FAKE(json({
+		["A", 1692329338, 1.0],
+		["A", 1692329341, 2.0],
+		["A", 1692329344, 2.0],
+		["B", 1692329339, 1.0],
+		["B", 1692329342, 2.0],
+		["B", 1692329345, 1.0],
+		["C", 1692329340, 1.0],
+		["C", 1692329343, 1.0],
+		["C", 1692329346, 1.0]
+	}))`
+	codeLines = []string{
+		data,
+		`MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))`,
+		`FILTER_CHANGED(strSprintf("%s.%.f", value(0),value(2)), useFirstWithLast(true))`,
+		`CSV(timeformat("s"))`,
+	}
+	resultLines = []string{
+		`A,1692329338,1`,
+		`A,1692329338,1`,
+		`A,1692329341,2`,
+		`A,1692329344,2`,
+		`B,1692329339,1`,
+		`B,1692329339,1`,
+		`B,1692329342,2`,
+		`B,1692329342,2`,
+		`B,1692329345,1`,
+		`B,1692329345,1`,
+		`C,1692329340,1`,
+		`C,1692329346,1`,
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestString(t *testing.T) {

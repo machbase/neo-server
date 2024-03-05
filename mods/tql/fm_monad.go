@@ -142,6 +142,9 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 		if retain != nil {
 			bf.lastTimestamp = retain.timestamp
 		}
+		if withLast {
+			bf.lastRecord = inflight
+		}
 		node.SetValue("filter_changed", bf)
 		node.SetEOF(func(node *Node) {
 			if withLast && bf.lastRecord != nil {
