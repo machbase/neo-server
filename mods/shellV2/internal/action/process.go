@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/machbase/neo-grpc/machrpc"
@@ -48,12 +49,14 @@ func (cli *Actor) Process(line string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var conn spi.Conn
+	closeOnce := sync.Once{}
+
 	conn, err := cli.db.Connect(ctx, machrpc.WithPassword(cli.conf.User, cli.conf.Password))
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		return
 	}
-	defer conn.Close()
+	defer closeOnce.Do(func() { conn.Close() })
 
 	actCtx := &ActionContext{
 		Line:         line,
@@ -83,6 +86,7 @@ func (cli *Actor) Process(line string) {
 			}
 		}
 	exit:
+		closeOnce.Do(func() { conn.Close() })
 		actCtx.CtxCancel()
 		close(c)
 	}()
