@@ -269,6 +269,10 @@ func (svr *httpd) Router() *gin.Engine {
 				group.POST("/tql/*path", svr.handleTagQL)
 				group.POST("/tql", svr.handlePostTagQL)
 			}
+			group.GET("/statz", func(ctx *gin.Context) {
+				mv := mach.StatzSnapshot()
+				ctx.JSON(http.StatusOK, mv)
+			})
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
@@ -323,10 +327,8 @@ func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 		if claim == nil {
 			continue
 		}
-		if err == nil && claim != nil {
-			found = true
-			break
-		}
+		found = true
+		break
 	}
 	if found {
 		ctx.Set("jwt-claim", claim)

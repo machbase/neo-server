@@ -86,7 +86,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 			return
 		}
 		if ts.IsZero() {
-			svr.log.Warnf("timestamp error: %s", err.Error())
+			svr.log.Warn("timestamp is zero")
 			return
 		}
 

@@ -86,6 +86,13 @@ func OptionTqlLoader(loader tql.Loader) Option {
 	}
 }
 
+type AppenderWrapper struct {
+	conn      spi.Conn
+	appender  spi.Appender
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+}
+
 type HandlerType string
 
 const (
@@ -102,14 +109,10 @@ type HandlerConfig struct {
 type mqttd struct {
 	mqttd      mqtt.Server
 	db         spi.Database
-	dbConn     spi.Conn
 	log        logging.Log
 	appenders  cmap.ConcurrentMap
 	authServer security.AuthServer
 	tqlLoader  tql.Loader
-
-	dbCtx       context.Context
-	dbCtxCancel context.CancelFunc
 
 	listenAddresses     []string
 	handlers            []*HandlerConfig
@@ -124,13 +127,6 @@ type mqttd struct {
 func (svr *mqttd) Start() error {
 	if svr.db == nil {
 		return errors.New("no database instance")
-	}
-
-	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
-	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
-		return err
-	} else {
-		svr.dbConn = conn
 	}
 
 	for i, h := range svr.handlers {
@@ -187,9 +183,16 @@ func (svr *mqttd) Stop() {
 	if svr.mqttd != nil {
 		svr.mqttd.Stop()
 	}
-	if svr.dbConn != nil {
-		svr.dbConn.Close()
-		svr.dbCtxCancel()
+	for _, k := range svr.appenders.Keys() {
+		svr.appenders.RemoveCb(k, func(key string, v interface{}, exists bool) bool {
+			if as, ok := v.([]*AppenderWrapper); ok {
+				for _, aw := range as {
+					aw.conn.Close()
+					aw.ctxCancel()
+				}
+			}
+			return true
+		})
 	}
 }
 
@@ -253,9 +256,11 @@ func (svr *mqttd) OnDisconnect(evt *mqtt.EvtDisconnect) {
 		if !exists {
 			return false
 		}
-		appenders := v.([]spi.Appender)
-		for _, ap := range appenders {
-			ap.Close()
+		appenders := v.([]*AppenderWrapper)
+		for _, aw := range appenders {
+			aw.appender.Close()
+			aw.conn.Close()
+			aw.ctxCancel()
 		}
 		return true
 	})

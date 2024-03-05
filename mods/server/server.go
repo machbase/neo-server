@@ -443,16 +443,14 @@ func (s *svr) Start() error {
 			s.log.Error("ERR", err.Error())
 			return err
 		}
-		if err != nil {
-			s.log.Error("ERR", err.Error())
-			return err
-		}
 		if _, err = do.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 			s.log.Warn("set license fail,", err.Error())
 		} else {
 			s.log.Info("set license success")
 		}
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			s.log.Warn("ERR", err.Error())
+		}
 		cancel()
 	}
 

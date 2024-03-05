@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -297,31 +298,44 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		return nil
 	}
 
-	var appenderSet []spi.Appender
+	var appenderSet []*AppenderWrapper
 	var appender spi.Appender
 	var peerId = peer.Id()
 
-	val, exists := svr.appenders.Get(peerId)
-	if exists {
-		appenderSet = val.([]spi.Appender)
+	if val, exists := svr.appenders.Get(peerId); exists {
+		appenderSet = val.([]*AppenderWrapper)
 		for _, a := range appenderSet {
-			if a.TableName() == wp.Table {
-				appender = a
+			if a.appender.TableName() == wp.Table {
+				appender = a.appender
 				break
 			}
 		}
 	}
+
 	if appender == nil {
-		appender, err = svr.dbConn.Appender(svr.dbCtx, wp.Table)
-		if err != nil {
-			peerLog.Errorf("---- fail to create appender, %s", err.Error())
-			return nil
+		ctx, ctxCancel := context.WithCancel(context.Background())
+		if conn, err := svr.db.Connect(ctx, mach.WithTrustUser("sys")); err != nil {
+			ctxCancel()
+			return err
+		} else {
+			appender, err = conn.Appender(ctx, wp.Table)
+			if err != nil {
+				ctxCancel()
+				peerLog.Errorf("---- fail to create appender, %s", err.Error())
+				return nil
+			}
+			aw := &AppenderWrapper{
+				conn:      conn,
+				appender:  appender,
+				ctx:       ctx,
+				ctxCancel: ctxCancel,
+			}
+			if len(appenderSet) == 0 {
+				appenderSet = []*AppenderWrapper{}
+			}
+			appenderSet = append(appenderSet, aw)
+			svr.appenders.Set(peerId, appenderSet)
 		}
-		if len(appenderSet) == 0 {
-			appenderSet = []spi.Appender{}
-		}
-		appenderSet = append(appenderSet, appender)
-		svr.appenders.Set(peerId, appenderSet)
 	}
 
 	var instream spec.InputStream

@@ -1,7 +1,6 @@
 package grpcd
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -11,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-grpc/bridge"
 	"github.com/machbase/neo-grpc/machrpc"
 	"github.com/machbase/neo-grpc/mgmt"
@@ -122,11 +120,7 @@ type grpcd struct {
 
 	authServer security.AuthServer
 
-	db          spi.Database
-	dbConn      spi.Conn
-	dbCtx       context.Context
-	dbCtxCancel context.CancelFunc
-
+	db           spi.Database
 	sessions     map[string]*connParole
 	sessionsLock sync.Mutex
 
@@ -166,12 +160,6 @@ func (svr *grpcd) Start() error {
 	}
 
 	svr.sessions = map[string]*connParole{}
-	svr.dbCtx, svr.dbCtxCancel = context.WithCancel(context.Background())
-	if conn, err := svr.db.Connect(svr.dbCtx, mach.WithTrustUser("sys")); err != nil {
-		return err
-	} else {
-		svr.dbConn = conn
-	}
 
 	// create grpc server insecure
 	svr.mgmtServerInsecure = grpc.NewServer(grpcOptions...)
@@ -259,10 +247,6 @@ func (svr *grpcd) Stop() {
 	}
 	if svr.mgmtServerInsecure != nil {
 		svr.mgmtServerInsecure.Stop()
-	}
-	if svr.dbConn != nil {
-		svr.dbConn.Close()
-		svr.dbCtxCancel()
 	}
 }
 
