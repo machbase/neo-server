@@ -132,7 +132,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(
 				http.StatusBadRequest,
-				gin.H{"error": fmt.Sprintf("unsupproted data type fields %s", err.Error())})
+				gin.H{"error": fmt.Sprintf("%s; %s", err.Error(), result.Message())})
 			return
 		}
 	}

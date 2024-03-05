@@ -32,7 +32,7 @@ func Insert(ctx context.Context, conn spi.Conn, tableName string, columns []stri
 			return &InsertResult{
 				err:          result.Err(),
 				rowsAffected: nrows,
-				message:      "batch inserts aborted by error",
+				message:      "batch inserts aborted - " + sqlText,
 			}
 		}
 		nrows++
