@@ -142,6 +142,7 @@ var FxDefinitions = []Definition{
 	{"dump", defTask.fmDump},
 	{"QUERY", defTask.fmQuery},
 	{"SQL", defTask.fmSql},
+	{"SQL_SELECT", defTask.fmSqlSelect},
 	// maps.dbsink
 	{"// maps.dbsink", nil},
 	{"table", defTask.fmTable},

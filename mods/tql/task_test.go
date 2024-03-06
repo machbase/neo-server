@@ -1510,7 +1510,7 @@ func TestMapValue(t *testing.T) {
 
 	codeLines = []string{
 		`FAKE( json({[1],[null],[3]}) )`,
-		"MAPVALUE(0, parseFloat(value(0)), nullValue(2))",
+		"MAPVALUE(0, value(0), nullValue(2))",
 		"CSV()",
 	}
 	resultLines = []string{
@@ -3231,6 +3231,144 @@ func TestQuerySql(t *testing.T) {
 		"CSV()",
 	}
 	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`)}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestSqlSelect(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`SQL_SELECT('value', between('last-10s', 'last'), from("table", "tag", "time"), dump(true))`,
+		`CSV()`,
+	}
+	resultLines = []string{normalize(`
+		SELECT value 
+		FROM TABLE WHERE name = 'tag' 
+		AND time BETWEEN 
+				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
+			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
+		LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// basic
+	codeLines = []string{
+		`SQL_SELECT('time', 'value', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('val', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('val1', 'val2' , from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// between()
+	codeLines = []string{
+		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'time', 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	runTest(t, codeLines, resultLines)
+
+	// GroupBy time
+	codeLines = []string{
+		`SQL_SELECT('time', 'STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('time', 'STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`)}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL_SELECT('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
+		"CSV()",
+	}
+	resultLines = []string{normalize(`SELECT STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`)}
 	runTest(t, codeLines, resultLines)
 }
 

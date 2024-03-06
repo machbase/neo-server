@@ -300,12 +300,13 @@ func (x *Task) compile(codeReader io.Reader) error {
 }
 
 var srcOnlyFunctions = map[string]bool{
-	"SQL()":    true,
-	"QUERY()":  true,
-	"FAKE()":   true,
-	"BYTES()":  true,
-	"STRING()": true,
-	"ARGS()":   true,
+	"SQL()":        true,
+	"SQL_SELECT()": true,
+	"QUERY()":      true,
+	"FAKE()":       true,
+	"BYTES()":      true,
+	"STRING()":     true,
+	"ARGS()":       true,
 }
 
 var srcOrMapFunctions = map[string]bool{

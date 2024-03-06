@@ -21,34 +21,51 @@ func (node *Node) fmINPUT(args ...any) (any, error) {
 	}
 }
 
+func (node *Node) fmSqlSelect(args ...any) (any, error) {
+	ret, err := node.sqlbuilder("SQL_SELECT", args...)
+	if err != nil {
+		return nil, err
+	}
+	ret.version = 1
+
+	tick := time.Now()
+	var ds *databaseSource
+	var sqlText string
+	defer func() {
+		if ds != nil {
+			node.task.LogTrace("╰─➤", ds.resultMsg, time.Since(tick).String())
+		} else {
+			node.task.LogTrace("SQL_SELECT dump:", sqlText)
+		}
+	}()
+
+	if ret.dump == nil || !ret.dump.Flag {
+		node.task.LogTrace("╭─", ret.ToSQL())
+		ds = &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		ds.gen(node)
+	} else {
+		if ret.between != nil {
+			if ret.between.HasPeriod() {
+				sqlText = ret.toSqlGroup()
+			} else {
+				sqlText = ret.toSql()
+			}
+		}
+		if ret.dump.Escape {
+			sqlText = url.QueryEscape(sqlText)
+		}
+		NewRecord("SQLDUMP", sqlText).Tell(node.next)
+		return nil, nil
+	}
+	return nil, nil
+}
+
 // QUERY('value', 'STDDEV(val)', from('example', 'sig.1'), range('last', '10s', '1s'), limit(100000) )
 func (node *Node) fmQuery(args ...any) (any, error) {
-	between, _ := node.fmBetween("last-1s", "last")
-	ret := &querySource{
-		columns: []string{},
-		between: between,
-		limit:   node.fmLimit(1000000),
+	ret, err := node.sqlbuilder("QUERY", args...)
+	if err != nil {
+		return nil, err
 	}
-	for i, arg := range args {
-		switch tok := arg.(type) {
-		case string:
-			ret.columns = append(ret.columns, tok)
-		case *QueryFrom:
-			ret.from = tok
-		case *QueryBetween:
-			ret.between = tok
-		case *QueryLimit:
-			ret.limit = tok
-		case *QueryDump:
-			ret.dump = tok
-		default:
-			return nil, ErrArgs("QUERY", i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
-		}
-	}
-	if ret.from == nil {
-		return nil, ErrArgs("QUERY", 0, "'from' should be specified")
-	}
-
 	tick := time.Now()
 	var ds *databaseSource
 	var sqlText string
@@ -81,7 +98,38 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 	return nil, nil
 }
 
+func (node *Node) sqlbuilder(name string, args ...any) (*querySource, error) {
+	between, _ := node.fmBetween("last-1s", "last")
+	ret := &querySource{
+		columns: []string{},
+		between: between,
+		limit:   node.fmLimit(1000000),
+	}
+	for i, arg := range args {
+		switch tok := arg.(type) {
+		case string:
+			ret.columns = append(ret.columns, tok)
+		case *QueryFrom:
+			ret.from = tok
+		case *QueryBetween:
+			ret.between = tok
+		case *QueryLimit:
+			ret.limit = tok
+		case *QueryDump:
+			ret.dump = tok
+		default:
+			return nil, ErrArgs(name, i, fmt.Sprintf("unsupported args[%d] %T", i, tok))
+		}
+	}
+	if ret.from == nil {
+		return nil, ErrArgs(name, 0, "'from' should be specified")
+	}
+
+	return ret, nil
+}
+
 type querySource struct {
+	version int
 	columns []string
 	from    *QueryFrom
 	between *QueryBetween
@@ -117,12 +165,21 @@ func (si *querySource) toSql() string {
 	aPart := si.between.BeginPart(table, tag)
 	bPart := si.between.EndPart(table, tag)
 
-	ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
-		baseTime, columns, table,
-		baseName, tag,
-		baseTime, aPart, bPart,
-		si.limit.Offset, si.limit.Limit,
-	)
+	if si.version == 1 {
+		ret = fmt.Sprintf(`SELECT %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
+			columns, table,
+			baseName, tag,
+			baseTime, aPart, bPart,
+			si.limit.Offset, si.limit.Limit,
+		)
+	} else {
+		ret = fmt.Sprintf(`SELECT %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s LIMIT %d, %d`,
+			baseTime, columns, table,
+			baseName, tag,
+			baseTime, aPart, bPart,
+			si.limit.Offset, si.limit.Limit,
+		)
+	}
 
 	return ret
 }
@@ -134,20 +191,46 @@ func (si *querySource) toSqlGroup() string {
 	baseName := si.from.BaseName
 	ret := ""
 	columns := "value"
-	if len(si.columns) > 0 {
-		columns = strings.Join(si.columns, ", ")
+	if si.version == 1 {
+		if len(si.columns) > 0 {
+			arr := make([]string, len(si.columns))
+			for i, c := range si.columns {
+				if c == baseTime {
+					arr[i] = fmt.Sprintf("from_timestamp(round(to_timestamp(%s)/%d)*%d) %s",
+						baseTime, si.between.Period(), si.between.Period(), baseTime)
+				} else {
+					arr[i] = c
+				}
+			}
+			columns = strings.Join(arr, ", ")
+		}
+	} else {
+		if len(si.columns) > 0 {
+			columns = strings.Join(si.columns, ", ")
+		}
 	}
 	aPart := si.between.BeginPart(table, tag)
 	bPart := si.between.EndPart(table, tag)
 
-	ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
-		baseTime, si.between.Period(), si.between.Period(), baseTime, columns, table,
-		baseName, tag,
-		baseTime, aPart, bPart,
-		baseTime,
-		baseTime,
-		si.limit.Offset, si.limit.Limit,
-	)
+	if si.version == 1 {
+		ret = fmt.Sprintf(`SELECT %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
+			columns, table,
+			baseName, tag,
+			baseTime, aPart, bPart,
+			baseTime,
+			baseTime,
+			si.limit.Offset, si.limit.Limit,
+		)
+	} else {
+		ret = fmt.Sprintf(`SELECT from_timestamp(round(to_timestamp(%s)/%d)*%d) %s, %s FROM %s WHERE %s = '%s' AND %s BETWEEN %s AND %s GROUP BY %s ORDER BY %s LIMIT %d, %d`,
+			baseTime, si.between.Period(), si.between.Period(), baseTime, columns, table,
+			baseName, tag,
+			baseTime, aPart, bPart,
+			baseTime,
+			baseTime,
+			si.limit.Offset, si.limit.Limit,
+		)
+	}
 	return ret
 }
 

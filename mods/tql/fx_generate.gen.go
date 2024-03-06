@@ -130,12 +130,13 @@ func NewNode(task *Task) *Node {
 		"WHEN":             x.gen_WHEN,
 		"THROTTLE":         x.gen_THROTTLE,
 		// maps.dbsrc
-		"from":    x.gen_from,
-		"limit":   x.gen_limit,
-		"between": x.gen_between,
-		"dump":    x.gen_dump,
-		"QUERY":   x.gen_QUERY,
-		"SQL":     x.gen_SQL,
+		"from":       x.gen_from,
+		"limit":      x.gen_limit,
+		"between":    x.gen_between,
+		"dump":       x.gen_dump,
+		"QUERY":      x.gen_QUERY,
+		"SQL":        x.gen_SQL,
+		"SQL_SELECT": x.gen_SQL_SELECT,
 		// maps.dbsink
 		"table":  x.gen_table,
 		"tag":    x.gen_tag,
@@ -1930,6 +1931,21 @@ func (x *Node) gen_SQL(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmSql(p0...)
+}
+
+// gen_SQL_SELECT
+//
+// syntax: SQL_SELECT(...interface {})
+func (x *Node) gen_SQL_SELECT(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "SQL_SELECT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmSqlSelect(p0...)
 }
 
 // gen_table
