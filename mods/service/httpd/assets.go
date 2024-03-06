@@ -132,6 +132,21 @@ func (fs *MemoryFS) VolatileFileWrite(name string, val []byte, deadline time.Tim
 	return ret
 }
 
+func (fs *MemoryFS) Statz() map[string]any {
+	fs.listLock.Lock()
+	total := int64(0)
+	count := len(fs.list)
+	for _, v := range fs.list {
+		total += int64(len(v.data))
+	}
+	fs.listLock.Unlock()
+
+	return map[string]any{
+		"count":      count,
+		"total_size": total,
+	}
+}
+
 type MemoryFile struct {
 	Name     string
 	deadline time.Time

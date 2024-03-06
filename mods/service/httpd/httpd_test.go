@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	spi "github.com/machbase/neo-spi"
+	"github.com/stretchr/testify/require"
 )
 
 type mockServer struct {
@@ -102,6 +104,7 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 		db:              ret,
 		neoShellAccount: map[string]string{},
 		jwtCache:        security.NewJwtCache(),
+		memoryFs:        &MemoryFS{},
 	}
 	ctx, engine := gin.CreateTestContext(w)
 	engine.POST("/web/api/login", svr.handleLogin)
@@ -112,7 +115,8 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 	engine.GET("/web/api/refs/*path", svr.handleRefs)
 	engine.GET("/db/query", svr.handleQuery)
 	engine.POST("/db/query", svr.handleQuery)
-	// engine.NoRoute(func(ctx *gin.Context) { ctx.String(http.StatusNotFound, "no-route") })
+	engine.GET("/db/statz", svr.handleStatz)
+
 	ret.w = w
 	ret.ctx = ctx
 	ret.engine = engine
@@ -124,4 +128,24 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 func (fds *mockServer) Shutdown() {
 	fds.svr.Close()
 	singleMockServer.Unlock()
+}
+
+func TestStatz(t *testing.T) {
+	w := httptest.NewRecorder()
+	s, ctx, engine := NewMockServer(w)
+	err := s.Login("sys", "manager")
+	require.Nil(t, err)
+	defer s.Shutdown()
+
+	ctx.Request, _ = http.NewRequest("GET", "/db/statz", nil)
+	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
+	engine.HandleContext(ctx)
+
+	result := map[string]any{}
+	err = json.Unmarshal(w.Body.Bytes(), &result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log(result)
 }

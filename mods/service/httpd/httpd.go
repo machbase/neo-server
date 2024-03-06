@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"runtime"
 	"strings"
 	"time"
 
@@ -269,10 +270,7 @@ func (svr *httpd) Router() *gin.Engine {
 				group.POST("/tql/*path", svr.handleTagQL)
 				group.POST("/tql", svr.handlePostTagQL)
 			}
-			group.GET("/statz", func(ctx *gin.Context) {
-				mv := mach.StatzSnapshot()
-				ctx.JSON(http.StatusOK, mv)
-			})
+			group.GET("/statz", svr.handleStatz)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
@@ -403,4 +401,42 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 		MaxAge:        12 * time.Hour,
 	})
 	return corsHandler
+}
+
+func (svr *httpd) handleStatz(ctx *gin.Context) {
+	ms := runtime.MemStats{}
+	runtime.ReadMemStats(&ms)
+	mem := map[string]any{}
+	mem["alloc"] = ms.Alloc
+	mem["total_alloc"] = ms.TotalAlloc
+	mem["sys"] = ms.Sys
+	mem["lookups"] = ms.Lookups
+	mem["mallocs"] = ms.Mallocs
+	mem["frees"] = ms.Frees
+	mem["heep_alloc"] = ms.HeapAlloc
+	mem["heap_sys"] = ms.HeapSys
+	mem["heap_idle"] = ms.HeapIdle
+	mem["heap_inuse"] = ms.HeapInuse
+	mem["heap_released"] = ms.HeapReleased
+	mem["heap_objects"] = ms.HeapObjects
+	mem["stack_inuse"] = ms.StackInuse
+	mem["stack_sys"] = ms.StackSys
+	mem["mspan_inuse"] = ms.MSpanInuse
+	mem["mspan_sys"] = ms.MSpanSys
+	mem["mcache_inuse"] = ms.MCacheInuse
+	mem["mcache_sys"] = ms.MCacheSys
+	mem["buck_hash_sys"] = ms.BuckHashSys
+	mem["gc_sys"] = ms.GCSys
+	mem["other_sys"] = ms.OtherSys
+	mem["gc_next"] = ms.NextGC
+	mem["gc_last"] = ms.LastGC
+	mem["gc_pauseTotal"] = ms.PauseTotalNs
+
+	ret := map[string]any{}
+	ret["neo"] = map[string]any{
+		"mem":         mem,
+		"sess":        mach.StatzSnapshot(),
+		"volatile_fs": svr.memoryFs.Statz(),
+	}
+	ctx.JSON(http.StatusOK, ret)
 }
