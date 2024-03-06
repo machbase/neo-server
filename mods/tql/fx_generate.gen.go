@@ -110,6 +110,8 @@ func NewNode(task *Task) *Node {
 		"MAP_AVG":          x.gen_MAP_AVG,
 		"MAP_MOVAVG":       x.gen_MAP_MOVAVG,
 		"MAP_LOWPASS":      x.gen_MAP_LOWPASS,
+		"MAP_KALMAN":       x.gen_MAP_KALMAN,
+		"model":            x.gen_model,
 		"MAP_DIFF":         x.gen_MAP_DIFF,
 		"MAP_ABSDIFF":      x.gen_MAP_ABSDIFF,
 		"MAP_NONEGDIFF":    x.gen_MAP_NONEGDIFF,
@@ -1442,6 +1444,47 @@ func (x *Node) gen_MAP_LOWPASS(args ...any) (any, error) {
 		p3 = append(p3, argv)
 	}
 	return x.fmMapLowPass(p0, p1, p2, p3...)
+}
+
+// gen_MAP_KALMAN
+//
+// syntax: MAP_KALMAN(int, , ...interface {})
+func (x *Node) gen_MAP_KALMAN(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("MAP_KALMAN", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_KALMAN", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_KALMAN", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_KALMAN", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmMapKalman(p0, p1, p2...)
+}
+
+// gen_model
+//
+// syntax: model(...interface {})
+func (x *Node) gen_model(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "model", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmKalmanModel(p0...)
 }
 
 // gen_MAP_DIFF

@@ -454,6 +454,22 @@ func TestMapLowPass(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestMapKalman(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE(json({[1.3], [10.2], [5.0], [3.4]}))`,
+		`MAP_KALMAN(1, value(0), model(1.0, 1.0, 2.0))`,
+		`CSV(precision(1))`,
+	}
+	resultLines = []string{
+		`1.3,1.3`,
+		`10.2,5.7`,
+		`5.0,5.4`,
+		`3.4,4.4`,
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMapDiff(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{

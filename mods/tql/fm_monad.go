@@ -16,6 +16,8 @@ import (
 
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/mods/nums/kalman"
+	"github.com/machbase/neo-server/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
@@ -1866,6 +1868,91 @@ timediff:
 		df.isPrevNull = false
 		return node.fmMapValue(idx, int64(ret), opts...)
 	}
+}
+
+func (node *Node) fmMapKalman(idx int, value any, opts ...any) (any, error) {
+	var fv float64
+	if f, err := util.ToFloat64(value); err != nil {
+		return nil, err
+	} else {
+		fv = f
+	}
+	var kf *filterKalman
+	if v, ok := node.GetValue("mapKalman"); ok {
+		kf = v.(*filterKalman)
+	} else {
+		kf = &filterKalman{
+			ts: time.Now(),
+		}
+		var simpleModelConfig *models.SimpleModelConfig
+		for _, opt := range opts {
+			if sm, ok := opt.(*kalmanModel); ok {
+				simpleModelConfig = &models.SimpleModelConfig{
+					InitialVariance:     sm.initialVariance,
+					ProcessVariance:     sm.processVariance,
+					ObservationVariance: sm.observationVariance,
+				}
+				break
+			}
+		}
+		if simpleModelConfig == nil {
+			simpleModelConfig = &models.SimpleModelConfig{
+				InitialVariance:     2.0,
+				ProcessVariance:     0.01,
+				ObservationVariance: 2.0,
+			}
+		}
+		model := models.NewSimpleModel(kf.ts, fv, *simpleModelConfig)
+		kf.model = model
+		kf.filter = kalman.NewKalmanFilter(kf.model)
+		node.SetValue("mapKalman", kf)
+	}
+	kf.ts = kf.ts.Add(time.Second)
+	kf.filter.Update(kf.ts, kf.model.NewMeasurement(fv))
+	newVal := kf.model.Value(kf.filter.State())
+	return node.fmMapValue(idx, newVal, opts...)
+}
+
+type filterKalman struct {
+	ts     time.Time
+	model  *models.SimpleModel
+	filter *kalman.KalmanFilter
+}
+
+type kalmanModel struct {
+	typ                 string
+	initialVariance     float64 // entries for the diagonal of P_0
+	processVariance     float64 // entries for the diagonal of Q_k
+	observationVariance float64 // entries for the diagonal of R_k
+}
+
+func (node *Node) fmKalmanModel(args ...any) (*kalmanModel, error) {
+	ret := &kalmanModel{}
+	idx := 0
+	if str, ok := args[idx].(string); ok {
+		// model name
+		// expect "simple"
+		ret.typ = str
+		idx++
+	}
+	variances := []float64{}
+	for _, arg := range args[idx:] {
+		f, err := util.ToFloat64(arg)
+		if err != nil {
+			return nil, err
+		}
+		variances = append(variances, f)
+	}
+	if len(variances) > 0 {
+		ret.initialVariance = variances[0]
+	}
+	if len(variances) > 1 {
+		ret.processVariance = variances[1]
+	}
+	if len(variances) > 2 {
+		ret.observationVariance = variances[2]
+	}
+	return ret, nil
 }
 
 func (node *Node) fmMapAvg(idx int, value any, opts ...any) (any, error) {

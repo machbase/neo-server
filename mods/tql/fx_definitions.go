@@ -115,6 +115,8 @@ var FxDefinitions = []Definition{
 	{"MAP_AVG", defTask.fmMapAvg},
 	{"MAP_MOVAVG", defTask.fmMapMovAvg},
 	{"MAP_LOWPASS", defTask.fmMapLowPass},
+	{"MAP_KALMAN", defTask.fmMapKalman},
+	{"model", defTask.fmKalmanModel},
 	{"MAP_DIFF", defTask.fmDiff},
 	{"MAP_ABSDIFF", defTask.fmAbsDiff},
 	{"MAP_NONEGDIFF", defTask.fmNonNegativeDiff},
