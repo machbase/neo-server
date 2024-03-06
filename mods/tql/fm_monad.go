@@ -19,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
 )
@@ -1859,7 +1860,37 @@ timediff:
 	}
 }
 
-func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error) {
+func (node *Node) fmMapAvg(idx int, value any, opts ...any) (any, error) {
+	var fv float64
+	if f, err := util.ToFloat64(value); err != nil {
+		return nil, err
+	} else {
+		fv = f
+	}
+	var af *filterAvg
+	if v, ok := node.GetValue("mapAvg"); ok {
+		af = v.(*filterAvg)
+	} else {
+		af = &filterAvg{}
+		node.SetValue("mapAvg", af)
+	}
+
+	af.k += 1
+	if af.k == 0 {
+		af.prevAvg = fv
+	} else {
+		alpha := 1 - 1/af.k
+		af.prevAvg = alpha*af.prevAvg + (1-alpha)*fv
+	}
+	return node.fmMapValue(idx, af.prevAvg, opts...)
+}
+
+type filterAvg struct {
+	prevAvg float64
+	k       float64
+}
+
+func (node *Node) fmMapMovAvg(idx int, value any, lag int, opts ...any) (any, error) {
 	if lag <= 0 {
 		return 0, ErrArgs("MAP_MOVAVG", 1, "lag should be larger than 0")
 	}
@@ -1867,11 +1898,11 @@ func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error
 	if f, err := util.ToFloat64(value); err == nil {
 		fv = &f
 	}
-	var ma *movavg
+	var ma *filterMovAvg
 	if v, ok := node.GetValue("movavg"); ok {
-		ma = v.(*movavg)
+		ma = v.(*filterMovAvg)
 	} else {
-		ma = &movavg{}
+		ma = &filterMovAvg{}
 		node.SetValue("movavg", ma)
 	}
 	ma.elements = append(ma.elements, fv)
@@ -1896,8 +1927,36 @@ func (node *Node) fmMovAvg(idx int, value any, lag int, opts ...any) (any, error
 	}
 }
 
-type movavg struct {
+type filterMovAvg struct {
 	elements []*float64
+}
+
+func (node *Node) fmMapLowPass(idx int, value any, alpha float64, opts ...any) (any, error) {
+	var fv float64
+	if f, err := util.ToFloat64(value); err != nil {
+		return nil, err
+	} else {
+		fv = f
+	}
+	var lpf *lowPassFilter
+	if v, ok := node.GetValue("mapLpf"); ok {
+		lpf = v.(*lowPassFilter)
+		lpf.prev = (1-alpha)*lpf.prev + alpha*fv
+		return node.fmMapValue(idx, lpf.prev, opts...)
+	} else {
+		if alpha <= 0 || alpha >= 1 {
+			return nil, errors.New("MAP_LOWPASS() should have 0 < alpha < 1 ")
+		}
+		lpf = &lowPassFilter{alpha: alpha}
+		node.SetValue("mapLpf", lpf)
+		lpf.prev = fv
+		return node.fmMapValue(idx, lpf.prev, opts...)
+	}
+}
+
+type lowPassFilter struct {
+	prev  float64
+	alpha float64
 }
 
 func (node *Node) fmGeoDistance(idx int, pt any, opts ...any) (any, error) {

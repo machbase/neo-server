@@ -6,7 +6,7 @@ require (
 	fyne.io/fyne/v2 v2.4.1
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/alecthomas/chroma/v2 v2.8.0
+	github.com/alecthomas/chroma/v2 v2.12.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
 	github.com/atotto/clipboard v0.1.4
@@ -47,10 +47,10 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/gjson v1.14.4
 	github.com/wroge/wgs84 v1.1.7
-	github.com/yuin/goldmark v1.5.5
-	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20220924101305-151362477c87
+	github.com/yuin/goldmark v1.7.0
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	github.com/zclconf/go-cty v1.13.2
-	go.abhg.dev/goldmark/mermaid v0.4.0
+	go.abhg.dev/goldmark/mermaid v0.5.0
 	golang.org/x/crypto v0.17.0
 	golang.org/x/net v0.19.0
 	golang.org/x/sys v0.15.0
@@ -80,7 +80,7 @@ require (
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dlclark/regexp2 v1.10.0 // indirect
+	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7 // indirect
 	github.com/dsnet/golib/memfile v1.0.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect

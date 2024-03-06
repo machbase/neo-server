@@ -405,7 +405,22 @@ func TestStrLib(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestMovAvg(t *testing.T) {
+func TestMapAvg(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( arrange(10, 30, 10) )`,
+		`MAP_AVG(1, value(0))`,
+		`CSV( precision(0) )`,
+	}
+	resultLines = []string{
+		"10,10",
+		"20,15",
+		"30,20",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapMovAvg(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
 		`FAKE( linspace(0, 100, 100) )`,
@@ -413,6 +428,29 @@ func TestMovAvg(t *testing.T) {
 		`CSV( precision(4) )`,
 	}
 	resultLines = loadLines("./test/movavg_result.txt")
+	runTest(t, codeLines, resultLines)
+}
+
+func TestMapLowPass(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE(arrange(1, 10, 1))`,
+		`MAPVALUE(1, value(0) + simplex(1, value(0))*3)`,
+		`MAP_LOWPASS(2, value(1), 0.3)`,
+		`CSV(precision(2))`,
+	}
+	resultLines = []string{
+		`1.00,1.48,1.48`,
+		`2.00,0.40,1.15`,
+		`3.00,3.84,1.96`,
+		`4.00,2.89,2.24`,
+		`5.00,5.47,3.21`,
+		`6.00,5.29,3.83`,
+		`7.00,7.22,4.85`,
+		`8.00,10.31,6.49`,
+		`9.00,8.36,7.05`,
+		`10.00,8.56,7.50`,
+	}
 	runTest(t, codeLines, resultLines)
 }
 

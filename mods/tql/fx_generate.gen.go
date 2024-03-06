@@ -107,7 +107,9 @@ func NewNode(task *Task) *Node {
 		"POPVALUE":         x.gen_POPVALUE,
 		"PUSHVALUE":        x.gen_PUSHVALUE,
 		"MAPVALUE":         x.gen_MAPVALUE,
+		"MAP_AVG":          x.gen_MAP_AVG,
 		"MAP_MOVAVG":       x.gen_MAP_MOVAVG,
+		"MAP_LOWPASS":      x.gen_MAP_LOWPASS,
 		"MAP_DIFF":         x.gen_MAP_DIFF,
 		"MAP_ABSDIFF":      x.gen_MAP_ABSDIFF,
 		"MAP_NONEGDIFF":    x.gen_MAP_NONEGDIFF,
@@ -1355,6 +1357,32 @@ func (x *Node) gen_MAPVALUE(args ...any) (any, error) {
 	return x.fmMapValue(p0, p1, p2...)
 }
 
+// gen_MAP_AVG
+//
+// syntax: MAP_AVG(int, , ...interface {})
+func (x *Node) gen_MAP_AVG(args ...any) (any, error) {
+	if len(args) < 2 {
+		return nil, ErrInvalidNumOfArgs("MAP_AVG", 2, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_AVG", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_AVG", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2 := []interface{}{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_AVG", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmMapAvg(p0, p1, p2...)
+}
+
 // gen_MAP_MOVAVG
 //
 // syntax: MAP_MOVAVG(int, , int, ...interface {})
@@ -1382,7 +1410,37 @@ func (x *Node) gen_MAP_MOVAVG(args ...any) (any, error) {
 		}
 		p3 = append(p3, argv)
 	}
-	return x.fmMovAvg(p0, p1, p2, p3...)
+	return x.fmMapMovAvg(p0, p1, p2, p3...)
+}
+
+// gen_MAP_LOWPASS
+//
+// syntax: MAP_LOWPASS(int, , float64, ...interface {})
+func (x *Node) gen_MAP_LOWPASS(args ...any) (any, error) {
+	if len(args) < 3 {
+		return nil, ErrInvalidNumOfArgs("MAP_LOWPASS", 3, len(args))
+	}
+	p0, err := convInt(args, 0, "MAP_LOWPASS", "int")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convAny(args, 1, "MAP_LOWPASS", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convFloat64(args, 2, "MAP_LOWPASS", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p3 := []interface{}{}
+	for n := 3; n < len(args); n++ {
+		argv, err := convAny(args, n, "MAP_LOWPASS", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p3 = append(p3, argv)
+	}
+	return x.fmMapLowPass(p0, p1, p2, p3...)
 }
 
 // gen_MAP_DIFF
