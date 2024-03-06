@@ -1719,6 +1719,14 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 	if inflight == nil {
 		return nil, nil
 	}
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *NullValue:
+			if newValue == nil {
+				newValue = v.altValue
+			}
+		}
+	}
 	switch val := inflight.value.(type) {
 	case []any:
 		if idx < 0 || idx >= len(val) {

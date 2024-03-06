@@ -1507,6 +1507,18 @@ func TestMapValue(t *testing.T) {
 		"1,100,3",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( json({[1],[null],[3]}) )`,
+		"MAPVALUE(0, parseFloat(value(0)), nullValue(2))",
+		"CSV()",
+	}
+	resultLines = []string{
+		"1",
+		"2",
+		"3",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestThrottle(t *testing.T) {
