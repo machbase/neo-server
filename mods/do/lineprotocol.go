@@ -3,6 +3,7 @@ package do
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	spi "github.com/machbase/neo-spi"
@@ -58,7 +59,7 @@ func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descCo
 		case int64:
 			values = append(values, float64(val))
 		default:
-			// fmt.Printf("unsupproted value type '%T' of field '%s'\n", val, k)
+			// unsupported value type
 			continue
 		}
 
@@ -69,5 +70,64 @@ func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descCo
 		rows = append(rows, values)
 	}
 
-	return Insert(ctx, conn, dbName, columns, rows)
+	if len(rows) == 0 {
+		return &InsertResult{
+			rowsAffected: 0,
+			message:      "no row inserted",
+		}
+	}
+
+	vf := make([]string, len(columns))
+	for i := range vf {
+		vf[i] = "?"
+	}
+	tableName := dbName
+	valuesPlaces := strings.Join(vf, ",")
+	columnsPhrase := strings.Join(columns, ",")
+
+	sqlText := fmt.Sprintf("insert into %s (%s) values(%s)", tableName, columnsPhrase, valuesPlaces)
+	var nrows int
+	for _, rec := range rows {
+		result := conn.Exec(ctx, sqlText, rec...)
+		if result.Err() != nil {
+			return &InsertResult{
+				err:          result.Err(),
+				rowsAffected: nrows,
+				message:      "batch inserts aborted - " + sqlText,
+			}
+		}
+		nrows++
+	}
+
+	ret := &InsertResult{
+		rowsAffected: nrows,
+	}
+	if nrows == 0 {
+		ret.message = "no row inserted"
+	} else if nrows == 1 {
+		ret.message = "a row inserted"
+	} else {
+		ret.message = fmt.Sprintf("%d rows inserted", nrows)
+	}
+	return ret
+}
+
+var _ spi.Result = &InsertResult{}
+
+type InsertResult struct {
+	err          error
+	rowsAffected int
+	message      string
+}
+
+func (ir *InsertResult) Err() error {
+	return ir.err
+}
+
+func (ir *InsertResult) RowsAffected() int64 {
+	return int64(ir.rowsAffected)
+}
+
+func (ir *InsertResult) Message() string {
+	return ir.message
 }
