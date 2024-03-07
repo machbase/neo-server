@@ -138,6 +138,7 @@ func TestStatz(t *testing.T) {
 	defer s.Shutdown()
 
 	ctx.Request, _ = http.NewRequest("GET", "/db/statz", nil)
+	ctx.Request.RemoteAddr = "127.0.0.1:123"
 	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
 	engine.HandleContext(ctx)
 
