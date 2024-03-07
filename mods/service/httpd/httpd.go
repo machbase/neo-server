@@ -73,6 +73,8 @@ type httpd struct {
 
 	memoryFs *MemoryFS
 
+	statzAllowed []string
+
 	lake LakeAppender // ?
 }
 
@@ -403,7 +405,24 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 	return corsHandler
 }
 
+func (svr *httpd) allowStatz(remote string) bool {
+	if remote == "127.0.0.1" {
+		return true
+	}
+	for _, p := range svr.statzAllowed {
+		if p == remote {
+			return true
+		}
+	}
+	return false
+}
+
 func (svr *httpd) handleStatz(ctx *gin.Context) {
+	remote := ctx.RemoteIP()
+	if !svr.allowStatz(remote) {
+		ctx.String(http.StatusForbidden, "")
+		return
+	}
 	ms := runtime.MemStats{}
 	runtime.ReadMemStats(&ms)
 	mem := map[string]any{}

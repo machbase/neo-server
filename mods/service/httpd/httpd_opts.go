@@ -103,3 +103,9 @@ func OptionWebShellProvider(provider model.ShellProvider) Option {
 		s.webShellProvider = provider
 	}
 }
+
+func OptionStatzAllow(remotes ...string) Option {
+	return func(s *httpd) {
+		s.statzAllowed = append(s.statzAllowed, remotes...)
+	}
+}
