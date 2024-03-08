@@ -164,7 +164,7 @@ jobs:
                 machbase-neo.exe
                 neow.exe
           - name: Package
-            run: go run mage.go package-machbase-neo
+            run: magefiles\tmp\mage_output.exe package-machbase-neo
             shell: cmd
           - name: Release files
             uses: svenstaro/upload-release-action@v2
