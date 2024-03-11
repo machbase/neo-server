@@ -405,6 +405,45 @@ func TestStrLib(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestHistogram(t *testing.T) {
+	var codeLines, resultLines []string
+	codeLines = []string{
+		`FAKE( arrange(1, 100, 1) )`,
+		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
+		`HISTOGRAM(value(0), bins(0, 200, 10))`,
+		`CSV( precision(0) )`,
+	}
+	resultLines = []string{
+		"0,20,0",
+		"20,40,2",
+		"40,60,12",
+		"60,80,19",
+		"80,100,25",
+		"100,120,22",
+		"120,140,8",
+		"140,160,8",
+		"160,180,4",
+		"180,200,0",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( arrange(1, 100, 1) )`,
+		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
+		`HISTOGRAM(value(0), bins(80, 120, 3))`,
+		`CSV( precision(0), header(true) )`,
+	}
+	resultLines = []string{
+		"low,high,count",
+		"23,80,19",
+		"80,93,28",
+		"93,107,20",
+		"107,120,13",
+		"120,176,20",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMapAvg(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
@@ -422,6 +461,7 @@ func TestMapAvg(t *testing.T) {
 
 func TestMapMovAvg(t *testing.T) {
 	var codeLines, resultLines []string
+
 	codeLines = []string{
 		`FAKE( linspace(0, 100, 100) )`,
 		`MAP_MOVAVG(1, value(0), 10)`,
@@ -429,6 +469,15 @@ func TestMapMovAvg(t *testing.T) {
 	}
 	resultLines = loadLines("./test/movavg_result.txt")
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(0, 100, 100) )`,
+		`MAP_MOVAVG(1, value(0), 10, noWait(true))`,
+		`CSV( precision(4) )`,
+	}
+	resultLines = loadLines("./test/movavg_result_nowait.txt")
+	runTest(t, codeLines, resultLines)
+
 }
 
 func TestMapLowPass(t *testing.T) {

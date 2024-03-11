@@ -1985,9 +1985,9 @@ type filterAvg struct {
 	k       float64
 }
 
-func (node *Node) fmMapMovAvg(idx int, value any, lag int, opts ...any) (any, error) {
-	if lag <= 0 {
-		return 0, ErrArgs("MAP_MOVAVG", 1, "lag should be larger than 0")
+func (node *Node) fmMapMovAvg(idx int, value any, window int, opts ...any) (any, error) {
+	if window <= 1 {
+		return 0, ErrArgs("MAP_MOVAVG", 1, "window should be larger than 1")
 	}
 	var fv *float64
 	if f, err := util.ToFloat64(value); err == nil {
@@ -1998,11 +1998,21 @@ func (node *Node) fmMapMovAvg(idx int, value any, lag int, opts ...any) (any, er
 		ma = v.(*filterMovAvg)
 	} else {
 		ma = &filterMovAvg{}
+		for _, opt := range opts {
+			switch v := opt.(type) {
+			case NoWait:
+				ma.noWait = bool(v)
+			}
+		}
 		node.SetValue("movavg", ma)
 	}
 	ma.elements = append(ma.elements, fv)
-	if len(ma.elements) > lag {
-		ma.elements = ma.elements[len(ma.elements)-lag:]
+	if len(ma.elements) >= window {
+		ma.elements = ma.elements[len(ma.elements)-window:]
+	} else {
+		if !ma.noWait {
+			return node.fmMapValue(idx, nil, opts...)
+		}
 	}
 	countMember := len(ma.elements)
 	sum := 0.0
@@ -2024,6 +2034,13 @@ func (node *Node) fmMapMovAvg(idx int, value any, lag int, opts ...any) (any, er
 
 type filterMovAvg struct {
 	elements []*float64
+	noWait   bool
+}
+
+type NoWait bool
+
+func (node *Node) fmNoWait(flag bool) NoWait {
+	return NoWait(flag)
 }
 
 func (node *Node) fmMapLowPass(idx int, value any, alpha float64, opts ...any) (any, error) {

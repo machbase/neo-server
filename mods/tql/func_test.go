@@ -648,10 +648,6 @@ func TestMathFunctions(t *testing.T) {
 		args:      []any{"not_a_number"},
 		expectErr: "f(round) arg(0) should be float64, but string",
 	}.run(t)
-	FunctionTestCase{f: node.Function("round"),
-		args:      nil,
-		expectErr: "f(round) <nil> is invalid argument",
-	}.run(t)
 
 	FunctionTestCase{f: node.Function("pow10"),
 		args:      []any{},
@@ -660,10 +656,6 @@ func TestMathFunctions(t *testing.T) {
 	FunctionTestCase{f: node.Function("pow10"),
 		args:      []any{"not_a_number"},
 		expectErr: "f(pow10) arg(0) should be int, but string",
-	}.run(t)
-	FunctionTestCase{f: node.Function("pow10"),
-		args:      nil,
-		expectErr: "f(pow10) <nil> is invalid argument",
 	}.run(t)
 
 	FunctionTestCase{f: node.Function("pow"),
@@ -681,10 +673,6 @@ func TestMathFunctions(t *testing.T) {
 	FunctionTestCase{f: node.Function("pow"),
 		args:      []any{"1.0", "not_a_number"},
 		expectErr: "f(pow) arg(1) should be float64, but string",
-	}.run(t)
-	FunctionTestCase{f: node.Function("pow"),
-		args:   []any{1.0, nil},
-		expect: nil,
 	}.run(t)
 
 	tests := []FunctionTestCase{
@@ -704,10 +692,13 @@ func TestMathFunctions(t *testing.T) {
 		{f: node.Function("max"), args: []any{1.0, 1.1}, expect: float64(1.1)},
 		{f: node.Function("mod"), args: []any{5.0, 2.0}, expect: float64(1.0)},
 		{f: node.Function("pow"), args: []any{2.0, 3.0}, expect: float64(8.0)},
+		{f: node.Function("pow"), args: []any{nil, nil}, expect: nil},
 		{f: node.Function("pow10"), args: []any{3.0}, expect: float64(1000.0)},
+		{f: node.Function("pow10"), args: []any{nil}, expect: nil},
 		{f: node.Function("remainder"), args: []any{5.0, 2.0}, expect: float64(1.0)},
 		{f: node.Function("round"), args: []any{123.4567}, expect: float64(123)},
 		{f: node.Function("round"), args: []any{234.5678}, expect: float64(235)},
+		{f: node.Function("round"), args: []any{nil}, expect: nil},
 		{f: node.Function("sin"), args: []any{math.Pi / 2}, expect: 1.0},
 		{f: node.Function("sqrt"), args: []any{4.0}, expect: 2.0},
 		{f: node.Function("tan"), args: []any{0.0}, expect: 0.0},

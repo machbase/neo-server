@@ -1,8 +1,6 @@
 package tql
 
 import (
-	"fmt"
-
 	"github.com/machbase/neo-server/mods/nums"
 )
 
@@ -96,6 +94,10 @@ var FxDefinitions = []Definition{
 	{"range", defTask.fmTimeRange},
 	{"sqlTimeformat", defTask.fmSqlTimeformat},
 	{"ansiTimeformat", defTask.fmAnsiTimeformat},
+	// maps.stat
+	{"// maps.stat", nil},
+	{"HISTOGRAM", defTask.fmHistogram},
+	{"bins", defTask.fmBins},
 	// maps.monad
 	{"// maps.monad", nil},
 	{"TAKE", defTask.fmTake},
@@ -114,6 +116,7 @@ var FxDefinitions = []Definition{
 	{"MAPVALUE", defTask.fmMapValue},
 	{"MAP_AVG", defTask.fmMapAvg},
 	{"MAP_MOVAVG", defTask.fmMapMovAvg},
+	{"noWait", defTask.fmNoWait},
 	{"MAP_LOWPASS", defTask.fmMapLowPass},
 	{"MAP_KALMAN", defTask.fmMapKalman},
 	{"model", defTask.fmKalmanModel},
@@ -262,11 +265,11 @@ var FxDefinitions = []Definition{
 
 func mathWrap(name string, f func(float64) float64) func(args ...any) (any, error) {
 	return func(args ...any) (any, error) {
-		if args == nil {
-			return nil, fmt.Errorf("f(%s) <nil> is invalid argument", name)
-		}
 		if len(args) != 1 {
 			return nil, ErrInvalidNumOfArgs(name, 1, len(args))
+		}
+		if args[0] == nil {
+			return nil, nil
 		}
 		p0, err := convFloat64(args, 0, name, "float64")
 		if err != nil {
@@ -280,10 +283,13 @@ func mathWrap(name string, f func(float64) float64) func(args ...any) (any, erro
 func mathWrapi(name string, f func(int) float64) func(args ...any) (any, error) {
 	return func(args ...any) (any, error) {
 		if args == nil {
-			return nil, fmt.Errorf("f(%s) <nil> is invalid argument", name)
+			return nil, nil
 		}
 		if len(args) != 1 {
 			return nil, ErrInvalidNumOfArgs(name, 1, len(args))
+		}
+		if args[0] == nil {
+			return nil, nil
 		}
 		p0, err := convInt(args, 0, name, "int")
 		if err != nil {

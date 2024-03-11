@@ -92,6 +92,9 @@ func NewNode(task *Task) *Node {
 		"range":          x.gen_range,
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
+		// maps.stat
+		"HISTOGRAM": x.gen_HISTOGRAM,
+		"bins":      x.gen_bins,
 		// maps.monad
 		"TAKE":             x.gen_TAKE,
 		"DROP":             x.gen_DROP,
@@ -109,6 +112,7 @@ func NewNode(task *Task) *Node {
 		"MAPVALUE":         x.gen_MAPVALUE,
 		"MAP_AVG":          x.gen_MAP_AVG,
 		"MAP_MOVAVG":       x.gen_MAP_MOVAVG,
+		"noWait":           x.gen_noWait,
 		"MAP_LOWPASS":      x.gen_MAP_LOWPASS,
 		"MAP_KALMAN":       x.gen_MAP_KALMAN,
 		"model":            x.gen_model,
@@ -1122,6 +1126,50 @@ func (x *Node) gen_ansiTimeformat(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_HISTOGRAM
+//
+// syntax: HISTOGRAM(, ...interface {})
+func (x *Node) gen_HISTOGRAM(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("HISTOGRAM", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "HISTOGRAM", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "HISTOGRAM", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmHistogram(p0, p1...)
+}
+
+// gen_bins
+//
+// syntax: bins(float64, float64, int)
+func (x *Node) gen_bins(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("bins", 3, len(args))
+	}
+	p0, err := convFloat64(args, 0, "bins", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convFloat64(args, 1, "bins", "float64")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convInt(args, 2, "bins", "int")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmBins(p0, p1, p2)
+}
+
 // gen_TAKE
 //
 // syntax: TAKE(...int)
@@ -1414,6 +1462,21 @@ func (x *Node) gen_MAP_MOVAVG(args ...any) (any, error) {
 		p3 = append(p3, argv)
 	}
 	return x.fmMapMovAvg(p0, p1, p2, p3...)
+}
+
+// gen_noWait
+//
+// syntax: noWait(bool)
+func (x *Node) gen_noWait(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("noWait", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "noWait", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmNoWait(p0)
+	return ret, nil
 }
 
 // gen_MAP_LOWPASS
