@@ -324,6 +324,15 @@ func (node *Node) fmFlatten() any {
 }
 
 func (node *Node) fmList(args ...any) any {
+	if node.Name() == "GROUP()" {
+		var ret *GroupAggregate
+		if len(args) == 0 {
+			ret = newAggregate("list", []any{nil})
+		} else {
+			ret = newAggregate("list", args[0], args[1:]...)
+		}
+		return ret
+	}
 	return args
 }
 
@@ -402,9 +411,13 @@ func (node *Node) fmGroup(args ...any) any {
 			cols := make([]*spi.Column, len(columns)+1)
 			cols[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
 			for i, c := range columns {
+				resultType := c.ColumnType()
+				if c.ValueType != "" {
+					resultType = c.ValueType
+				}
 				cols[i+1] = &spi.Column{
 					Name: c.Name,
-					Type: c.ColumnType(),
+					Type: resultType,
 				}
 			}
 			node.task.SetResultColumns(cols)
@@ -687,6 +700,7 @@ type GroupAggregate struct {
 	Type       string
 	Value      any
 	Name       string
+	ValueType  string
 	Percentile float64
 	Quantile   float64
 	Moment     float64
@@ -782,7 +796,7 @@ func (ga *GroupAggregate) NewBuffer() GroupColumn {
 		return &GroupColumnConst{value: ga.Value}
 	case GroupByTimeWindow:
 		return &GroupColumnTimeWindow{value: ga.Value}
-	case "chunk":
+	case "chunk", "list":
 		return &GroupColumnChunk{name: ga.Type}
 	case "mean", "variance", "stddev", "stderr", "entropy", "mode":
 		return &GroupColumnContainer{name: ga.Type}
@@ -825,6 +839,9 @@ func newAggregate(typ string, value any, args ...any) *GroupAggregate {
 	}
 	if ret.Name == "" {
 		ret.Name = strings.ToUpper(typ)
+	}
+	if ret.Type == "list" {
+		ret.ValueType = "list"
 	}
 	return ret
 }

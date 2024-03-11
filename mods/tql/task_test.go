@@ -2009,6 +2009,40 @@ func TestGroup(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
+	// list - list array
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), list(value(2)) )`,
+		`POPKEY(0)`,
+		`FLATTEN()`,
+		`PUSHKEY('result')`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,LIST",
+		"A,0.00,1.00,2.00",
+		"B,1.00,1.00,1.00",
+		"C,10.00,100.00,200.00,300.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	// list - list array
+	codeLines = []string{
+		`CSV(payload(), field(0, stringType(), "name"), field(1, doubleType(), "x"), field(2, doubleType(), "y"))`,
+		`GROUP(by(value(0)), list(value(2),"VALUES") )`,
+		`POPKEY(0)`,
+		`FLATTEN()`,
+		`PUSHKEY('result')`,
+		`CSV(heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,VALUES",
+		"A,0.00,1.00,2.00",
+		"B,1.00,1.00,1.00",
+		"C,10.00,100.00,200.00,300.00",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
 	// payload
 	payload = []string{
 		"8,10,2",
