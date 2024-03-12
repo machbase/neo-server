@@ -1738,12 +1738,15 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 	if inflight == nil {
 		return nil, nil
 	}
+	wherePredicate := true
 	for _, opt := range opts {
 		switch v := opt.(type) {
 		case *NullValue:
 			if newValue == nil {
 				newValue = v.altValue
 			}
+		case WherePredicate:
+			wherePredicate = bool(v)
 		}
 	}
 	switch val := inflight.value.(type) {
@@ -1765,7 +1768,9 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 				}
 			}
 		}
-		val[idx] = newValue
+		if wherePredicate {
+			val[idx] = newValue
+		}
 		return inflight.ReplaceValue(val), nil
 	default:
 		if idx != 0 {
@@ -1781,7 +1786,10 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 				}
 			}
 		}
-		return inflight.ReplaceValue(newValue), nil
+		if wherePredicate {
+			val = newValue
+		}
+		return inflight.ReplaceValue(val), nil
 	}
 }
 
