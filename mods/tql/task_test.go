@@ -410,7 +410,7 @@ func TestHistogram(t *testing.T) {
 	codeLines = []string{
 		`FAKE( arrange(1, 100, 1) )`,
 		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
-		`HISTOGRAM(value(0), bins(0, 200, 10))`,
+		`HISTOGRAM(value(0), bins(0, 200, 20))`,
 		`CSV( precision(0) )`,
 	}
 	resultLines = []string{
@@ -430,16 +430,57 @@ func TestHistogram(t *testing.T) {
 	codeLines = []string{
 		`FAKE( arrange(1, 100, 1) )`,
 		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
-		`HISTOGRAM(value(0), bins(80, 120, 3))`,
+		`HISTOGRAM(value(0), bins(80, 120, 13))`,
 		`CSV( precision(0), header(true) )`,
 	}
 	resultLines = []string{
 		"low,high,count",
-		"23,80,19",
+		"-Inf,80,19",
 		"80,93,28",
-		"93,107,20",
-		"107,120,13",
-		"120,176,20",
+		"93,106,19",
+		"106,119,14",
+		"119,+Inf,20",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( arrange(1, 100, 1) )`,
+		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
+		`HISTOGRAM(value(0), bins(20, 180, 20))`,
+		`CSV( header(true), precision(0) )`,
+	}
+	resultLines = []string{
+		"low,high,count",
+		"20,40,2",
+		"40,60,12",
+		"60,80,19",
+		"80,100,25",
+		"100,120,22",
+		"120,140,8",
+		"140,160,8",
+		"160,180,4",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( arrange(1, 100, 1) )`,
+		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
+		`PUSHVALUE(0, key() % 2 == 0 ? "Cat.A" : "Cat.B")`,
+		`HISTOGRAM(value(1), bins(0, 200, 20), category(value(0)), order("Cat.B", "Cat.A"))`,
+		`CSV( header(true), precision(0) )`,
+	}
+	resultLines = []string{
+		"low,high,Cat.B,Cat.A",
+		"0,20,0,0",
+		"20,40,1,1",
+		"40,60,5,7",
+		"60,80,6,13",
+		"80,100,14,11",
+		"100,120,14,8",
+		"120,140,4,4",
+		"140,160,5,3",
+		"160,180,1,3",
+		"180,200,0,0",
 	}
 	runTest(t, codeLines, resultLines)
 }

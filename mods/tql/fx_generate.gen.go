@@ -95,6 +95,8 @@ func NewNode(task *Task) *Node {
 		// maps.stat
 		"HISTOGRAM": x.gen_HISTOGRAM,
 		"bins":      x.gen_bins,
+		"category":  x.gen_category,
+		"order":     x.gen_order,
 		// maps.monad
 		"TAKE":             x.gen_TAKE,
 		"DROP":             x.gen_DROP,
@@ -1163,11 +1165,42 @@ func (x *Node) gen_bins(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convInt(args, 2, "bins", "int")
+	p2, err := convFloat64(args, 2, "bins", "int")
 	if err != nil {
 		return nil, err
 	}
 	return x.fmBins(p0, p1, p2)
+}
+
+// gen_category
+//
+// syntax: category()
+func (x *Node) gen_category(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("category", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "category", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmCategory(p0)
+	return ret, nil
+}
+
+// gen_order
+//
+// syntax: order(...string)
+func (x *Node) gen_order(args ...any) (any, error) {
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "order", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	ret := x.fmOrder(p0...)
+	return ret, nil
 }
 
 // gen_TAKE
