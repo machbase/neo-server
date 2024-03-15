@@ -217,13 +217,8 @@ func (hc *HistogramStepBins) NewBuckets() *HistogramBuckets {
 	return cat
 }
 
-func (node *Node) fmBoxplot(value any, args ...any) (any, error) {
+func (node *Node) fmBoxplot(args ...any) (any, error) {
 	var fv float64
-	if f, err := util.ToFloat64(value); err != nil {
-		return nil, err
-	} else {
-		fv = f
-	}
 	var category StatCategoryName
 	var orders []StatCategoryName
 	var cumulant = BoxplotCumulant{false, false, false}
@@ -241,6 +236,12 @@ func (node *Node) fmBoxplot(value any, args ...any) (any, error) {
 			cumulant = v
 		case BoxplotFormat:
 			format = string(v)
+		default:
+			if f, err := util.ToFloat64(v); err != nil {
+				return nil, err
+			} else {
+				fv = f
+			}
 		}
 	}
 

@@ -1177,24 +1177,17 @@ func (x *Node) gen_bins(args ...any) (any, error) {
 
 // gen_BOXPLOT
 //
-// syntax: BOXPLOT(, ...interface {})
+// syntax: BOXPLOT(...interface {})
 func (x *Node) gen_BOXPLOT(args ...any) (any, error) {
-	if len(args) < 1 {
-		return nil, ErrInvalidNumOfArgs("BOXPLOT", 1, len(args))
-	}
-	p0, err := convAny(args, 0, "BOXPLOT", "interface {}")
-	if err != nil {
-		return nil, err
-	}
-	p1 := []interface{}{}
-	for n := 1; n < len(args); n++ {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
 		argv, err := convAny(args, n, "BOXPLOT", "...interface {}")
 		if err != nil {
 			return nil, err
 		}
-		p1 = append(p1, argv)
+		p0 = append(p0, argv)
 	}
-	return x.fmBoxplot(p0, p1...)
+	return x.fmBoxplot(p0...)
 }
 
 // gen_boxplotInterp
