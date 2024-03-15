@@ -93,10 +93,13 @@ func NewNode(task *Task) *Node {
 		"sqlTimeformat":  x.gen_sqlTimeformat,
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.stat
-		"HISTOGRAM": x.gen_HISTOGRAM,
-		"bins":      x.gen_bins,
-		"category":  x.gen_category,
-		"order":     x.gen_order,
+		"HISTOGRAM":     x.gen_HISTOGRAM,
+		"bins":          x.gen_bins,
+		"BOXPLOT":       x.gen_BOXPLOT,
+		"boxplotInterp": x.gen_boxplotInterp,
+		"boxplotOutput": x.gen_boxplotOutput,
+		"category":      x.gen_category,
+		"order":         x.gen_order,
 		// maps.monad
 		"TAKE":             x.gen_TAKE,
 		"DROP":             x.gen_DROP,
@@ -1152,7 +1155,7 @@ func (x *Node) gen_HISTOGRAM(args ...any) (any, error) {
 
 // gen_bins
 //
-// syntax: bins(float64, float64, int)
+// syntax: bins(float64, float64, float64)
 func (x *Node) gen_bins(args ...any) (any, error) {
 	if len(args) != 3 {
 		return nil, ErrInvalidNumOfArgs("bins", 3, len(args))
@@ -1165,11 +1168,71 @@ func (x *Node) gen_bins(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	p2, err := convFloat64(args, 2, "bins", "int")
+	p2, err := convFloat64(args, 2, "bins", "float64")
 	if err != nil {
 		return nil, err
 	}
 	return x.fmBins(p0, p1, p2)
+}
+
+// gen_BOXPLOT
+//
+// syntax: BOXPLOT(, ...interface {})
+func (x *Node) gen_BOXPLOT(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("BOXPLOT", 1, len(args))
+	}
+	p0, err := convAny(args, 0, "BOXPLOT", "interface {}")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []interface{}{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convAny(args, n, "BOXPLOT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	return x.fmBoxplot(p0, p1...)
+}
+
+// gen_boxplotInterp
+//
+// syntax: boxplotInterp(bool, bool, bool)
+func (x *Node) gen_boxplotInterp(args ...any) (any, error) {
+	if len(args) != 3 {
+		return nil, ErrInvalidNumOfArgs("boxplotInterp", 3, len(args))
+	}
+	p0, err := convBool(args, 0, "boxplotInterp", "bool")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convBool(args, 1, "boxplotInterp", "bool")
+	if err != nil {
+		return nil, err
+	}
+	p2, err := convBool(args, 2, "boxplotInterp", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmBoxplotInterp(p0, p1, p2)
+	return ret, nil
+}
+
+// gen_boxplotOutput
+//
+// syntax: boxplotOutput(string)
+func (x *Node) gen_boxplotOutput(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("boxplotOutput", 1, len(args))
+	}
+	p0, err := convString(args, 0, "boxplotOutput", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmBoxplotOutputFormat(p0)
+	return ret, nil
 }
 
 // gen_category

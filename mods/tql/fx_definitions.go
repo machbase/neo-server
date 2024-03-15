@@ -98,6 +98,9 @@ var FxDefinitions = []Definition{
 	{"// maps.stat", nil},
 	{"HISTOGRAM", defTask.fmHistogram},
 	{"bins", defTask.fmBins},
+	{"BOXPLOT", defTask.fmBoxplot},
+	{"boxplotInterp", defTask.fmBoxplotInterp},
+	{"boxplotOutput", defTask.fmBoxplotOutputFormat},
 	{"category", defTask.fmCategory},
 	{"order", defTask.fmOrder},
 	// maps.monad

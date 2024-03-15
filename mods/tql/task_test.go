@@ -485,6 +485,64 @@ func TestHistogram(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestBoxplot(t *testing.T) {
+	var codeLines, resultLines []string
+	src := `
+	FAKE(json({
+		["A", 850, 740, 900, 1070, 930, 850, 950, 980, 980, 880, 1000, 980, 930, 650, 760, 810, 1000, 1000, 960, 960],
+		["B", 960, 940, 960, 940, 880, 800, 850, 880, 900, 840, 830, 790, 810, 880, 880, 830, 800, 790, 760, 800],
+		["C", 880, 880, 880, 860, 720, 720, 620, 860, 970, 950, 880, 910, 850, 870, 840, 840, 850, 840, 840, 840],
+		["D", 890, 810, 810, 820, 800, 770, 760, 740, 750, 760, 910, 920, 890, 860, 880, 720, 840, 850, 850, 780],
+		["E", 890, 840, 780, 810, 760, 810, 790, 810, 820, 850, 870, 870, 810, 740, 810, 940, 950, 800, 810, 870]
+	}))`
+	codeLines = []string{
+		src,
+		`TRANSPOSE(fixed(0))`,
+		`BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true))`,
+		`FILTER(value(0) != "OUTLIER")`,
+		`CSV( header(true), precision(0) )`,
+	}
+	resultLines = []string{
+		"CATEGORY,A,D,C,B,E",
+		"MIN,650,720,620,760,740",
+		"LOWER,655,610,780,680,695",
+		"Q1,850,760,840,800,800",
+		"Q2,930,810,850,840,810",
+		"Q3,980,860,880,880,870",
+		"UPPER,1175,1010,940,1000,975",
+		"MAX,1070,920,970,960,950",
+		"IQR,130,100,40,80,70",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		src,
+		`TRANSPOSE(fixed(0))`,
+		`BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true), boxplotOutput("dict"))`,
+		`JSON()`,
+	}
+	resultLines = []string{
+		`/r/{"data":{"columns":\["A","D","C","B","E"\],"types":\["dict","dict","dict","dict","dict"\],"rows":\[\[{"iqr":130,"lower":655,"max":1070,"min":650,"outlier":\[650\],"q1":850,"q2":930,"q3":980,"upper":1175},{"iqr":100,"lower":610,"max":920,"min":720,"outlier":null,"q1":760,"q2":810,"q3":860,"upper":1010},{"iqr":40,"lower":780,"max":970,"min":620,"outlier":\[620,720,720,950,970\],"q1":840,"q2":850,"q3":880,"upper":940},{"iqr":80,"lower":680,"max":960,"min":760,"outlier":null,"q1":800,"q2":840,"q3":880,"upper":1000},{"iqr":70,"lower":695,"max":950,"min":740,"outlier":null,"q1":800,"q2":810,"q3":870,"upper":975}\]\]},"success":true,"reason":"success","elapse":".+s"}`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		src,
+		`TRANSPOSE(fixed(0))`,
+		`BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true), boxplotOutput("chart"))`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{
+		"CATEGORY,BOXPLOT,OUTLIER",
+		"A,[]interface {},[]interface {}",
+		"D,[]interface {},[]interface {}",
+		"C,[]interface {},[]interface {}",
+		"B,[]interface {},[]interface {}",
+		"E,[]interface {},[]interface {}",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestMapAvg(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
