@@ -180,9 +180,6 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 		if err != nil {
 			return nil, nil, "", err
 		}
-		if err != nil {
-			return nil, nil, "", err
-		}
 		clientKey = key
 		clientPub = &key.PublicKey
 		var keyBytes []byte

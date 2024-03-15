@@ -1234,7 +1234,7 @@ func (s *svr) runSqlScriptFile(title string, path string) error {
 		s.log.Warnf("fail to read script %s, %q", err.Error(), path)
 		return nil
 	} else if stat.IsDir() {
-		s.log.Warnf("fail to read script, dir %q", err.Error(), path)
+		s.log.Warnf("fail to read script dir %q", path)
 		return nil
 	}
 	fd, err := os.Open(path)
