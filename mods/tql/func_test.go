@@ -32,6 +32,14 @@ func (tc FunctionTestCase) run(t *testing.T) {
 	require.Equal(t, tc.expect, ret)
 }
 
+func TestEscapeParam(t *testing.T) {
+	node := tql.NewNode(tql.NewTask())
+	FunctionTestCase{f: node.Function("escapeParam"),
+		args:   []any{"a b"},
+		expect: "a+b",
+	}.run(t)
+}
+
 func TestParseFloat(t *testing.T) {
 	node := tql.NewNode(tql.NewTask())
 	FunctionTestCase{f: node.Function("parseFloat"),

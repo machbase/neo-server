@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/machbase/neo-server/mods/codec/opts"
 	spi "github.com/machbase/neo-spi"
+	"github.com/pkg/errors"
 )
 
 type NodeContext struct {
@@ -144,6 +146,24 @@ func (node *Node) fmArgsParam(args ...any) (any, error) {
 // tql function: escapeParam()
 func (node *Node) EscapeParam(str string) any {
 	return url.QueryEscape(str)
+}
+
+// tql function: option()
+func (node *Node) fmOption(args ...any) (any, error) {
+	switch node.Name() {
+	case "CHART()":
+		if len(args) == 1 {
+			if opt, ok := args[0].(string); ok {
+				ret := func(_one any) {
+					if _o, ok := _one.(opts.CanSetChartOption); ok {
+						_o.SetChartOption(opt)
+					}
+				}
+				return opts.Option(ret), nil
+			}
+		}
+	}
+	return nil, errors.New("invalid use of option()")
 }
 
 func unboxValue(val any) any {

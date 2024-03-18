@@ -23,6 +23,7 @@ func NewNode(task *Task) *Node {
 		"param":       x.gen_param,
 		"payload":     x.gen_payload,
 		"escapeParam": x.gen_escapeParam,
+		"option":      x.gen_option,
 		"ARGS":        x.gen_ARGS,
 		// math
 		"abs":       mathWrap("abs", math.Abs),
@@ -415,6 +416,21 @@ func (x *Node) gen_escapeParam(args ...any) (any, error) {
 	}
 	ret := x.EscapeParam(p0)
 	return ret, nil
+}
+
+// gen_option
+//
+// syntax: option(...interface {})
+func (x *Node) gen_option(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "option", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmOption(p0...)
 }
 
 // gen_ARGS

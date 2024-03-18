@@ -21,6 +21,7 @@ var FxDefinitions = []Definition{
 	{"param", defTask.GetRequestParam},
 	{"payload", defTask.GetRequestPayload},
 	{"escapeParam", defTask.EscapeParam},
+	{"option", defTask.fmOption},
 	{"ARGS", defTask.fmArgs},
 	// math
 	{"// math", nil},
