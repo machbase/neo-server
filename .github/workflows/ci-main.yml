@@ -73,25 +73,25 @@ jobs:
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   linux-amd64:
-    runs-on: [ ubuntu-20.04 ]
+    runs-on: [ self-hosted, linux, AMD64, ubuntu18 ] #[ ubuntu-20.04 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3 #actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v4 #actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           check-latest: true
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3 #codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses:  actions/upload-artifact@v3 # actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-linux-x64
           path: packages/machbase-neo-v*.zip
