@@ -422,8 +422,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/machbase/neo-engine v1.2.9 h1:ArcoHAZZ1Wl5Bw0IcNDaU9I9zMd36LqI8gl9HyBivks=
 github.com/machbase/neo-engine v1.2.9/go.mod h1:3P8Fhvz+zCPqhBcCzN3TjlBUbeRr9Cf1lpzeyZk3/a0=
-github.com/machbase/neo-grpc v1.1.2-0.20240308023737-476d8308a43e h1:2MsTO4h5lc0iZiDxpVN6kdgBAOGwMZT71R7TEel/J2k=
-github.com/machbase/neo-grpc v1.1.2-0.20240308023737-476d8308a43e/go.mod h1:roj6WS/mOMbRHsjUfBgZWWuAiyNaWp9aj1GTNxTq674=
+github.com/machbase/neo-grpc v1.1.2-0.20240321014159-93215abba235 h1:YqlTq5P0svsLv1yrtSNYeOivBBTqkktFdezFXOpbvWE=
+github.com/machbase/neo-grpc v1.1.2-0.20240321014159-93215abba235/go.mod h1:cvOtEcSx/mdEsleT5TaMv2ZAZ2534Yrj/LBzfkhgKGc=
 github.com/machbase/neo-spi v1.5.2-0.20240201044002-5c10c3799ab5 h1:sY2avkpd6DFCYyHFPtic8gS4wvvhe5EJh3kwRMo6Wpc=
 github.com/machbase/neo-spi v1.5.2-0.20240201044002-5c10c3799ab5/go.mod h1:oZccXY3mkN6G6VtYVrfsp7UVmXsWgrTRUPz85rgpAQ4=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
@@ -1044,8 +1044,8 @@ google.golang.org/protobuf v1.25.0/go.mod h1:9JNX74DMeImyA3h4bdi1ymwjUzf21/xIlba
 google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
 google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
 google.golang.org/protobuf v1.28.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
-google.golang.org/protobuf v1.31.0 h1:g0LDEJHgrBl9N9r17Ru3sqWhkIx2NB67okBHPwC7hs8=
-google.golang.org/protobuf v1.31.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
+google.golang.org/protobuf v1.33.0 h1:uNO2rsAINq/JlFpSdYEKIZ0uKD/R9cpdv0T+yoGwGmI=
+google.golang.org/protobuf v1.33.0/go.mod h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

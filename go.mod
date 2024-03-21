@@ -28,7 +28,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-engine v1.2.9
-	github.com/machbase/neo-grpc v1.1.2-0.20240308023737-476d8308a43e
+	github.com/machbase/neo-grpc v1.1.2-0.20240321014159-93215abba235
 	github.com/machbase/neo-spi v1.5.2-0.20240201044002-5c10c3799ab5
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
@@ -158,7 +158,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	gonum.org/v1/plot v0.12.0 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/js/dom v0.0.0-20210725211120-f030747120f2 // indirect
