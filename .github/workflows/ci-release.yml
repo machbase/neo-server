@@ -72,7 +72,7 @@ jobs:
           - name: Build
             run: go run mage.go test machbase-neo package-machbase-neo
           - name: Release files
-            uses: svenstaro/upload-release-action@2.7.0
+            uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
             with:
               repo_token: ${{ secrets.GIT_PASS }}
