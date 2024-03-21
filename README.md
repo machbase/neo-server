@@ -62,8 +62,11 @@ https://hub.docker.com/r/machbase/machbase-neo
 - SQL
 ![screen](./docs/screenshot02.jpg)
 
-- TQL Script for transforming data
+- TQL : Script for transforming data
 ![screen](./docs/screenshot01.jpg)
+
+- Dashboard : Data Monitoring
+![screen](./docs/dashboard.png)
 
 - Data Visualization<br/>
 Find more samples from the [documents](https://machbase.com/neo/tql/chart/).
