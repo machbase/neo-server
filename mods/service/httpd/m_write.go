@@ -111,6 +111,11 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 
 	var req lakeReq
 	var err error
+	bdata, err := io.ReadAll(ctx.Request.Body)
+	if err != nil {
+		svr.log.Errorf("%+v", err)
+	}
+	svr.log.Debug("body: ", string(bdata))
 
 	switch dataType {
 	case "standard":
@@ -121,9 +126,11 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		}
 		stdReq.timeParser = ymd.NewParser(stdReq.Dateformat).WithLocation(time.Local)
 		req = &stdReq
+		svr.log.Infof("bind: %+v", stdReq.Values)
 	default:
 		defReq := lakeDefaultReq{}
 		err = ctx.Bind(&defReq)
+		svr.log.Infof("bind: %+v", defReq.Values)
 		req = &defReq
 	}
 

@@ -585,13 +585,12 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		return
 	}
 
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	_, err = svr.makeTimezone(ctx, param.Timezone)
 	if err != nil {
 		rsp.Message = err.Error()
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
-	svr.log.Info("timezone: ", timezone) // 에러 방지
 
 	if param.Separator == "" {
 		param.Separator = ","
@@ -734,11 +733,8 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	} else if param.TableName == "TAGDATA" { //TAGDATA 테이블인 경우 롤업이 없으므로 DateTrunc 함수 사용
 		sqlText = fmt.Sprintf(SqlTidy(`
 		SELECT NAME, %s, %s(VALUE) AS VALUE
-		FROM (
-				SELECT NAME, TIME, DECODE(type, 'float64', value, ivalue) as VALUE
-				FROM TAGDATA
-				WHERE %s %s
-			)
+		FROM TAGDATA
+		WHERE %s %s
 		GROUP BY NAME, TIME
 		ORDER BY TIME
 		`),
@@ -1046,15 +1042,6 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 
 	svr.log.Debugf("%s request data %+v", trackId, param)
 
-	// machbaseCLI 통해서 데이터 가져올때 timezone을 설정 후 쿼리,
-	// neo는 따로 설정이 없음,
-	// timezone, err = svr.makeTimezone(ctx, param.Timezone)
-	// if err != nil {
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
-	// 	return
-	// }
-
 	switch param.ReturnType {
 	case "":
 		param.ReturnType = "0"
@@ -1121,49 +1108,68 @@ func (svr *httpd) GetCurrentData(ctx *gin.Context) {
 	defer conn.Close()
 
 	//  SELECT /*+ SCAN_BACKWARD(TAG) */ NAME, TO_TIMESTAMP(TIME) AS TIME, VALUE FROM TAG
-	sqlText := "SELECT " + makeScanHint("1", "TAG") //
-	sqlText += "NAME, "
-	sqlText += makeTimeColumn("TIME", param.DateFormat, "TIME")
-	sqlText += makeValueColumn(param.ColumnList, param.AliasList) + " "
-	sqlText += "FROM " + "TAG"
+	// sqlText := "SELECT " + makeScanHint("1", "TAG") //
+	// sqlText += "NAME, "
+	// sqlText += makeTimeColumn("TIME", param.DateFormat, "TIME")
+	// sqlText += makeValueColumn(param.ColumnList, param.AliasList) + " "
+	// sqlText += "FROM " + "TAG"
 
-	dataChannel := make(chan []interface{}, len(param.TagList))
+	//
+	sqlText := "SELECT name, " + makeTimeColumn("last(time, time)", param.DateFormat, "TIME") + ", last(time, value) AS value "
+	sqlText += "FROM TAG "
+	sqlText += "WHERE name IN ("
+	sqlText += "SELECT name FROM _TAG_META WHERE name LIKE " + makeLikeTag(param.TagList[0])
+	sqlText += ") AND time >= (SELECT min(RECENT_ROW_TIME) FROM V$TAG_STAT WHERE name IN ("
+	sqlText += "SELECT name FROM _TAG_META WHERE name LIKE " + makeLikeTag(param.TagList[0]) + "))"
+	sqlText += "GROUP BY name"
+
+	// dataChannel := make(chan []interface{}, len(param.TagList))
 	result := MachbaseResult{}
 
-	wg := sync.WaitGroup{}
-	for idx, tagName := range param.TagList {
-		wg.Add(1)
+	// wg := sync.WaitGroup{}
+	// for idx, tagName := range param.TagList {
+	// 	wg.Add(1)
 
-		go func(svr *httpd, where string, idx int) {
-			defer wg.Done()
+	// 	go func(svr *httpd, where string, idx int) {
+	// 		defer wg.Done()
 
-			sqlQuery := fmt.Sprintf("%s %s", sqlText, where)
-			svr.log.Debugf("%s [%d] query : %s", trackId, idx, sqlQuery)
+	// 		sqlQuery := fmt.Sprintf("%s %s", sqlText, where)
+	// 		svr.log.Debugf("%s [%d] query : %s", trackId, idx, sqlQuery)
 
-			dbData, err := svr.getData(ctx, conn, sqlQuery, param.Scale)
-			if err != nil {
-				svr.log.Infof("%s [%d] get data error : %s", trackId, idx, err.Error())
-				return
-			}
+	// 		dbData, err := svr.getData(ctx, conn, sqlQuery, param.Scale)
+	// 		if err != nil {
+	// 			svr.log.Infof("%s [%d] get data error : %s", trackId, idx, err.Error())
+	// 			return
+	// 		}
 
-			result.Columns = dbData.Columns //  columns 는 slice인데 append가 아닌 대입만 하는 이유는? 어차피 컬럼이 똑같아서 첫번째만 대입?
+	// 		result.Columns = dbData.Columns //  columns 는 slice인데 append가 아닌 대입만 하는 이유는? 어차피 컬럼이 똑같아서 첫번째만 대입?
 
-			// add success select data
-			if len(dbData.Data) > 0 {
-				if len(dbData.Data[0]) > 0 {
-					dataChannel <- dbData.Data[0] // 첫번째 인덱스만 가져가는 이유 : WHERE절 Limit 1 , scan_backward로 가장 최근 데이터
-				}
-			}
-		}(svr, fmt.Sprintf("WHERE NAME='%s' LIMIT 1", tagName), idx)
+	// 		// add success select data
+	// 		if len(dbData.Data) > 0 {
+	// 			if len(dbData.Data[0]) > 0 {
+	// 				dataChannel <- dbData.Data[0] // 첫번째 인덱스만 가져가는 이유 : WHERE절 Limit 1 , scan_backward로 가장 최근 데이터
+	// 			}
+	// 		}
+	// 	}(svr, fmt.Sprintf("WHERE NAME='%s' LIMIT 1", tagName), idx)
+	// }
+
+	svr.log.Debugf("[current] sqlText : %s", sqlText)
+
+	dbData, err := svr.getData(ctx, conn, sqlText, param.Scale)
+	if err != nil {
+		svr.log.Infof("%s get data error : %s", trackId, err.Error())
+		return
 	}
 
-	wg.Wait()
-	close(dataChannel)
+	result.Columns = dbData.Columns
+	result.Data = dbData.Data
 
-	// 아래 구문도 고루틴으로 수신?
-	for row := range dataChannel {
-		result.Data = append(result.Data, row)
-	}
+	// wg.Wait()
+	// close(dataChannel)
+
+	// for row := range dataChannel {
+	// 	result.Data = append(result.Data, row)
+	// }
 
 	data := MakeReturnFormat(&result, "raw", param.ReturnType, "tag", param.TagList)
 
@@ -1695,9 +1701,19 @@ func ConvertFormat0(dbData *MachbaseResult, tagList []string) []ReturnData {
 			defer wg.Done()
 
 			for _, value := range dbData.Data {
-				if (len(value) < 1) || (*value[0].(*string) != name) {
+				switch nv := value[0].(type) {
+				case *string:
+					if *nv != name {
+						continue
+					}
+				case string:
+					if nv != name {
+						continue
+					}
+				default:
 					continue
 				}
+
 				for i := 1; i < len(value); i++ {
 					data[dbData.Columns[i].Name] = value[i]
 				}
@@ -1877,19 +1893,12 @@ func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, sc
 	colsLen := len(cols.Names())
 	colsList := make([]MachbaseColumn, colsLen)
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		for idx, col := range cols {
-			colsList[idx].Name = col.Name
-			// colsList[idx].Type = col.Type
-			colsList[idx].Type = ColumnTypeConvert(col.Type)
-			colsList[idx].Length = col.Length
-		}
-	}()
+	for idx, col := range cols {
+		colsList[idx].Name = col.Name
+		// colsList[idx].Type = col.Type
+		colsList[idx].Type = ColumnTypeConvert(col.Type)
+		colsList[idx].Length = col.Length
+	}
 
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
 		buffer := cols.MakeBuffer()
@@ -1900,8 +1909,6 @@ func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, sc
 		}
 		result.Data = append(result.Data, buffer)
 	}
-
-	wg.Wait()
 
 	result.Columns = colsList
 
@@ -2032,6 +2039,13 @@ func makeInCondition(column string, value []string, flag, stringFlag bool) strin
 	}
 
 	return result
+}
+
+func makeLikeTag(tag string) string {
+	split := strings.Split(tag, ".")
+	text := strings.Join(split[:2], ".")
+	text = fmt.Sprintf("'%s.%%'", text)
+	return text
 }
 
 func makeValueColumn(columns, aliases []string) string {
