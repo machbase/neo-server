@@ -357,14 +357,14 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 
 	svr.log.Infof("param: %+v", param)
 
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Message = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
-		return
-	}
+	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
 
-	svr.log.Info("timezone : ", timezone)
+	// svr.log.Info("timezone : ", timezone)
 
 	switch param.ReturnType {
 	case "":
@@ -500,7 +500,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	sqlText += makeAndCondition(param.AndCondition, param.Separator, true)
 	sqlText += makeLimit(param.Offset, param.Limit)
 
-	svr.log.Info(trackId, "query : ", sqlText)
+	svr.log.Debug(trackId, "query : ", sqlText)
 
 	// scale의 수만큼 소수점 자릿수를 보여줌
 	// 기존 Lake getDataCli() 에서는 scale 을 설정하는 함수가 존재
@@ -570,7 +570,6 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnprocessableEntity, rsp)
 		return
 	}
-
 	svr.log.Debugf("%s request data %+v", trackId, param)
 
 	switch param.ReturnType {
@@ -585,12 +584,12 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		return
 	}
 
-	_, err = svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Message = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
-		return
-	}
+	// _, err = svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
 
 	if param.Separator == "" {
 		param.Separator = ","
@@ -698,7 +697,6 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 	}
 
 	columnList := []string{"TIME", "NAME"}
-
 	var sqlText string
 	if param.TableName == "TAG" {
 		sqlText += "SELECT NAME, "
@@ -743,8 +741,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 			makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true)+" ")
 		sqlText += " " + makeLimit(param.Offset, param.Limit) // add space
 	}
-	svr.log.Info(trackId, "query : ", sqlText)
-
+	svr.log.Debug(trackId, "query : ", sqlText)
 	// dbData, err := svr.getData(sqlText, param.Scale)
 	// if err != nil {
 	// 	svr.log.Info(trackId, "get data error : ", err.Error())
@@ -842,7 +839,7 @@ func (svr *httpd) GetGroupData(ctx *gin.Context) {
 		makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), true),
 	)
 
-	svr.log.Infof(trackId, "query : ", sqlText)
+	svr.log.Debug(trackId, "query : ", sqlText)
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
@@ -928,7 +925,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 		makeInCondition("NAME", tagList, false, true),
 		makeBetweenCondition("TIME", svr.makeFromTimestamp(ctx, param.StartTime), svr.makeFromTimestamp(ctx, param.EndTime), false))
 
-	svr.log.Infof(trackId, "query : ", sqlText)
+	svr.log.Debug(trackId, "query : ", sqlText)
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
@@ -965,6 +962,7 @@ func (svr *httpd) selectData(ctx context.Context, conn spi.Conn, sqlText string,
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
@@ -1198,14 +1196,14 @@ func (svr *httpd) GetStatData(ctx *gin.Context) {
 
 	svr.log.Debugf("%s request data %+v", trackId, param)
 
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Message = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
-		return
-	}
+	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
 
-	svr.log.Info(timezone) // 에러 방지
+	// svr.log.Info(timezone)
 
 	switch param.ReturnType {
 	case "":
@@ -1319,13 +1317,13 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 
 	svr.log.Debugf("%s request data %+v", trackId, param)
 
-	timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	if err != nil {
-		rsp.Message = err.Error()
-		ctx.JSON(http.StatusUnprocessableEntity, rsp)
-		return
-	}
-	svr.log.Info(timezone) // 에러 방지
+	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
+	// if err != nil {
+	// 	rsp.Message = err.Error()
+	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
+	// 	return
+	// }
+	// svr.log.Info(timezone)
 
 	switch param.ReturnType {
 	case "":
@@ -1862,6 +1860,7 @@ func (svr *httpd) getMetaData(ctx context.Context, conn spi.Conn, sqlText string
 	if err != nil {
 		return result, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		meta := ""
@@ -1885,6 +1884,7 @@ func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, sc
 	if err != nil {
 		return result, err
 	}
+	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
@@ -2462,6 +2462,7 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
+	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
@@ -2471,8 +2472,6 @@ func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
 	} else {
 		rsp.Columns = cols.Names()
 	}
-
-	defer rows.Close()
 
 	for rows.Next() {
 		row := queryRow{}
