@@ -111,11 +111,6 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 
 	var req lakeReq
 	var err error
-	bdata, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		svr.log.Errorf("%+v", err)
-	}
-	svr.log.Debug("body: ", string(bdata))
 
 	switch dataType {
 	case "standard":

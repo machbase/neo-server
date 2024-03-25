@@ -23,8 +23,7 @@ type TestAppenderMock struct {
 }
 
 func TestAppendRoute(t *testing.T) {
-	columnDefaultLen := 3
-
+	count := 0
 	dbMock := &TestClientMock{}
 	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
 		conn := &ConnMock{}
@@ -52,7 +51,7 @@ func TestAppendRoute(t *testing.T) {
 		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
 			am := &TestAppenderMock{}
 			am.AppendFunc = func(value ...any) error {
-				count := 0
+				count = 0
 				for _, val := range value {
 					switch v := val.(type) {
 					case time.Time:
@@ -74,15 +73,16 @@ func TestAppendRoute(t *testing.T) {
 						count++
 					}
 				}
-
-				if count != columnDefaultLen {
+				if count != 3 {
 					return errors.New("values and number of columns do not match")
 				}
-
 				return nil
 			}
 			am.CloseFunc = func() (int64, int64, error) {
-				return 1, 1, nil
+				if count == 3 {
+					return 1, 0, nil
+				}
+				return 0, 1, nil
 			}
 			return am, nil
 		}
@@ -91,7 +91,7 @@ func TestAppendRoute(t *testing.T) {
 
 	webService, err := New(dbMock,
 		OptionDebugMode(true),
-		OptionHandler("/lake", HandlerLake),
+		OptionHandler("/lakes", HandlerLake),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/lake/values", b)
+	req, _ = http.NewRequest("POST", "/lakes/values", b)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
@@ -152,12 +152,13 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/lake/values/standard", b)
+	req, _ = http.NewRequest("POST", "/lakes/values/standard", b)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
 	err = json.Unmarshal(w.Body.Bytes(), &lakersp)
 	if err != nil {
+		t.Log(w.Body.String())
 		t.Fatal(err)
 	}
 
@@ -179,12 +180,13 @@ func TestAppendRoute(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, _ = http.NewRequest("POST", "/lake/values", b)
+	req, _ = http.NewRequest("POST", "/lakes/values", b)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
 	err = json.Unmarshal(w.Body.Bytes(), &lakersp)
 	if err != nil {
+		t.Log(w.Body.String())
 		t.Fatal(err)
 	}
 
