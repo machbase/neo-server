@@ -121,9 +121,11 @@ func (svr *httpd) handleLakePostValues(ctx *gin.Context) {
 		}
 		stdReq.timeParser = ymd.NewParser(stdReq.Dateformat).WithLocation(time.Local)
 		req = &stdReq
+		svr.log.Infof("bind: %+v", stdReq.Values)
 	default:
 		defReq := lakeDefaultReq{}
 		err = ctx.Bind(&defReq)
+		svr.log.Infof("bind: %+v", defReq.Values)
 		req = &defReq
 	}
 
