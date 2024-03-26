@@ -418,6 +418,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/machbase/neo-client v0.0.0-20240326042548-fdcd2d619b10 h1:nqMCyB/pwYMiaeErvqfvBRfAxIdmlIxSf5Ko2vR2qvA=
 github.com/machbase/neo-client v0.0.0-20240326042548-fdcd2d619b10/go.mod h1:FWWw0ghU8ITXHtYEyn01ihe+EotvXWV5goBarkx0IOw=
+github.com/machbase/neo-engine v1.2.10-0.20240326025441-9a96b323294d h1:xr0H9WoSwGVsJlbwaVQdEiRN5IVZApNh3K+1/Z9+slA=
+github.com/machbase/neo-engine v1.2.10-0.20240326025441-9a96b323294d/go.mod h1:MXTE4rp3g6Anknrt9zuLE6zZLNe0IhmE80j95RTAMtk=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
