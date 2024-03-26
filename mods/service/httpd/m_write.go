@@ -256,6 +256,7 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 	if err != nil {
 		return result, err
 	}
+	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
