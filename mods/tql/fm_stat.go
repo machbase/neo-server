@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"gonum.org/v1/gonum/stat"
 )
 

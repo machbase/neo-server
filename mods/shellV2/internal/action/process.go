@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (cli *Actor) Process(line string) {

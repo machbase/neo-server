@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/service/msg"
-	spi "github.com/machbase/neo-spi"
 )
 
 func TestQuery(t *testing.T) {

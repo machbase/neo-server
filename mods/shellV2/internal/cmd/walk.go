@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/rivo/tview"
 )
 

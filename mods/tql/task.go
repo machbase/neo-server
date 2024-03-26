@@ -15,12 +15,12 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 

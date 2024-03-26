@@ -5,14 +5,15 @@ import (
 	"net"
 	"net/http"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-client/machrpc"
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
@@ -21,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -53,6 +53,9 @@ type httpd struct {
 	listenAddresses []string
 	enableTokenAUth bool
 	handlers        []*HandlerConfig
+
+	serverInfoFunc     func() (*machrpc.ServerInfo, error)
+	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
 
 	httpServer *http.Server
 	listeners  []net.Listener
@@ -423,39 +426,34 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		ctx.String(http.StatusForbidden, "")
 		return
 	}
-	ms := runtime.MemStats{}
-	runtime.ReadMemStats(&ms)
-	mem := map[string]any{}
-	mem["alloc"] = ms.Alloc
-	mem["total_alloc"] = ms.TotalAlloc
-	mem["sys"] = ms.Sys
-	mem["lookups"] = ms.Lookups
-	mem["mallocs"] = ms.Mallocs
-	mem["frees"] = ms.Frees
-	mem["heep_alloc"] = ms.HeapAlloc
-	mem["heap_sys"] = ms.HeapSys
-	mem["heap_idle"] = ms.HeapIdle
-	mem["heap_inuse"] = ms.HeapInuse
-	mem["heap_released"] = ms.HeapReleased
-	mem["heap_objects"] = ms.HeapObjects
-	mem["stack_inuse"] = ms.StackInuse
-	mem["stack_sys"] = ms.StackSys
-	mem["mspan_inuse"] = ms.MSpanInuse
-	mem["mspan_sys"] = ms.MSpanSys
-	mem["mcache_inuse"] = ms.MCacheInuse
-	mem["mcache_sys"] = ms.MCacheSys
-	mem["buck_hash_sys"] = ms.BuckHashSys
-	mem["gc_sys"] = ms.GCSys
-	mem["other_sys"] = ms.OtherSys
-	mem["gc_next"] = ms.NextGC
-	mem["gc_last"] = ms.LastGC
-	mem["gc_pauseTotal"] = ms.PauseTotalNs
+	if svr.serverInfoFunc == nil {
+		ctx.String(http.StatusServiceUnavailable, "")
+		return
+	}
+	stat, err := svr.serverInfoFunc()
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	ret := map[string]any{}
 	ret["neo"] = map[string]any{
-		"mem":         mem,
-		"sess":        mach.StatzSnapshot(),
+		"mem":         stat.Runtime.Mem,
 		"volatile_fs": svr.memoryFs.Statz(),
 	}
+
+	if svr.serverSessionsFunc != nil {
+		statz, _, _ := svr.serverSessionsFunc(true, false)
+		ret["sess"] = map[string]any{
+			"conns":          statz.ConnsInUse,
+			"conns_used":     statz.Conns,
+			"stmts":          statz.StmtsInUse,
+			"stmts_used":     statz.Stmts,
+			"appenders":      statz.AppendersInUse,
+			"appenders_used": statz.Appenders,
+			"raw_conns":      statz.RawConns,
+		}
+	}
+
 	ctx.JSON(http.StatusOK, ret)
 }

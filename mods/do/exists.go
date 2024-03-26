@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/pkg/errors"
 )
 

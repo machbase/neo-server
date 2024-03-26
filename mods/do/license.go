@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 type LicenseInfo struct {

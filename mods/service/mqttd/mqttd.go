@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/allowance"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
-	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
 

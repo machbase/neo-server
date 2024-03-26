@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-grpc/bridge"
-	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-engine/spi"
+	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/text/language"
 )
 
@@ -64,7 +64,7 @@ var Formats = struct {
 
 type Actor struct {
 	conf   *Config
-	db     spi.DatabaseClient
+	db     *machrpc.Client
 	dbLock sync.Mutex
 	pref   *Pref
 	ctx    context.Context
@@ -132,16 +132,14 @@ func (act *Actor) checkDatabase() error {
 	}
 
 	// user authentication
-	auth := machcli.(spi.DatabaseAuth)
-	if result, err := auth.UserAuth(act.conf.User, act.conf.Password); err != nil {
+	if result, err := machcli.UserAuth(act.conf.User, act.conf.Password); err != nil {
 		return err
 	} else if !result {
 		return errors.New("invalid username or password")
 	}
 
 	// check connectivity to server
-	aux := machcli.(spi.DatabaseAux)
-	serverInfo, err := aux.GetServerInfo()
+	serverInfo, err := machcli.GetServerInfo()
 	if err != nil {
 		return err
 	}
@@ -180,8 +178,7 @@ func makePrompt(username string) string {
 }
 
 func (act *Actor) Reconnect(username string, password string) (bool, error) {
-	auth := act.db.(spi.DatabaseAuth)
-	ok, err := auth.UserAuth(username, password)
+	ok, err := act.db.UserAuth(username, password)
 	if err == nil && ok {
 		act.conf.User = strings.ToLower(username)
 		act.conf.Password = password

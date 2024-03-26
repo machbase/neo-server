@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package bridge;
+
+option go_package = "github.com/machbase/neo-grpc/bridge";
+
+service Management {
+    rpc ListBridge(ListBridgeRequest) returns (ListBridgeResponse) {}
+    rpc AddBridge(AddBridgeRequest) returns (AddBridgeResponse) {}
+    rpc GetBridge(GetBridgeRequest) returns (GetBridgeResponse) {}
+    rpc DelBridge(DelBridgeRequest) returns (DelBridgeResponse) {}
+    rpc TestBridge(TestBridgeRequest) returns (TestBridgeResponse) {}
+}
+
+service Runtime {
+    rpc Exec(ExecRequest) returns (ExecResponse) {}
+    rpc SqlQueryResultFetch(SqlQueryResult) returns (SqlQueryResultFetchResponse) {}
+    rpc SqlQueryResultClose(SqlQueryResult) returns (SqlQueryResultCloseResponse) {}
+}
+
+message ListBridgeRequest{
+}
+
+message ListBridgeResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    repeated Bridge bridges = 4;
+}
+
+message Bridge {
+    string name = 1;
+    string type = 2;
+    string path = 3;
+}
+
+message AddBridgeRequest{
+    string name = 1;
+    string type = 2;
+    string path = 3;
+}
+
+message AddBridgeResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message GetBridgeRequest {
+    string name = 1;
+}
+
+message GetBridgeResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    Bridge bridge = 4;
+}
+
+message DelBridgeRequest{
+    string name = 1;
+}
+
+message DelBridgeResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message TestBridgeRequest{
+    string name = 1;
+}
+
+message TestBridgeResponse{
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message ExecRequest {
+    string name = 1;
+    oneof command {
+        SqlRequest sqlExec = 2;
+        SqlRequest sqlQuery = 3;
+        InvokeRequest invoke = 4;
+    }
+}
+
+message ExecResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    oneof result {
+        SqlExecResult sqlExecResult = 4;
+        SqlQueryResult sqlQueryResult = 5;
+        InvokeResult invokeResult = 6;
+    }
+}
+
+message SqlRequest {
+    string sqlText = 1;
+    repeated Datum params = 2;
+}
+
+message SqlExecResult {
+    int64 lastInsertedId = 1;
+    int64 rowsAffected = 2;
+}
+
+message SqlQueryResult {
+    string handle = 1;
+    repeated SqlQueryResultField fields = 4;
+}
+
+message InvokeRequest {
+    repeated string args = 1;
+    bytes stdin = 2;
+}
+
+message InvokeResult {
+    int32 exitCode = 1;
+    bytes stdout = 2;
+    bytes stderr = 3;
+}
+
+message SqlQueryResultField {
+    string name = 1;
+    string type = 2;
+    int32 size = 3;
+    int32 length = 4;
+}
+
+message SqlQueryResultFetchResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    bool hasNoRows = 4;
+    repeated Datum values = 5;
+}
+
+message Datum {
+    oneof value {
+        int32   v_int32   = 1;
+        uint32  v_uint32  = 11;
+        int64   v_int64   = 2;
+        uint64  v_uint64  = 12;
+        float   v_float   = 3;
+        double  v_double  = 4;
+        string  v_string  = 5;
+        bool    v_bool    = 6;
+        bytes   v_bytes   = 7;
+        string  v_ip      = 8;
+        int64   v_time    = 9;
+        bool    v_null    = 10;
+    }
+}
+
+message SqlQueryResultCloseResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+

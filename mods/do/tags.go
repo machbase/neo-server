@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 func Tags(ctx context.Context, conn spi.Conn, table string, callback func(string, error) bool) {

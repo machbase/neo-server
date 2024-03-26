@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -35,6 +35,11 @@ func pcExplain() action.PrefixCompleterInterface {
 	return action.PcItem("explain")
 }
 
+type Explainer interface {
+	// Explain retrieves execution plan of the given SQL statement.
+	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
 func doExplain(ctx *action.ActionContext) {
 	cmd := &ExplainCmd{}
 	parser, err := action.Kong(cmd, func() error { ctx.Println(helpExplain); cmd.Help = true; return nil })
@@ -53,7 +58,7 @@ func doExplain(ctx *action.ActionContext) {
 
 	tick := time.Now()
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	if explainer, ok := ctx.Conn.(spi.Explainer); ok {
+	if explainer, ok := ctx.Conn.(Explainer); ok {
 		plan, err := explainer.Explain(ctx.Ctx, sqlText, cmd.Full)
 		if err != nil {
 			ctx.Println(err.Error())

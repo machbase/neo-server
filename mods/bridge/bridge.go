@@ -1,7 +1,7 @@
 package bridge
 
 import (
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	cmap "github.com/orcaman/concurrent-map"

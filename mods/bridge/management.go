@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/mods/model"
 )
 

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 

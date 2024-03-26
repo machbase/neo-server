@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 type QueryContext struct {

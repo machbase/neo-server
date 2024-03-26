@@ -10,15 +10,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-grpc/bridge"
-	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-engine/spi"
+	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -113,6 +114,24 @@ func OptionAuthServer(authServer security.AuthServer) Option {
 	}
 }
 
+func OptionServicePortsFunc(portz func(svc string) ([]*model.ServicePort, error)) Option {
+	return func(s *grpcd) {
+		s.servicePortsFunc = portz
+	}
+}
+
+func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
+	return func(s *grpcd) {
+		s.serverInfoFunc = fn
+	}
+}
+
+func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)) Option {
+	return func(s *grpcd) {
+		s.serverSessionsFunc = fn
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -130,11 +149,14 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
-	leakDetector      *leak.Detector
-	mgmtImpl          mgmt.ManagementServer
-	bridgeMgmtImpl    bridge.ManagementServer
-	bridgeRuntimeImpl bridge.RuntimeServer
-	schedMgmtImpl     schedule.ManagementServer
+	leakDetector       *leak.Detector
+	mgmtImpl           mgmt.ManagementServer
+	bridgeMgmtImpl     bridge.ManagementServer
+	bridgeRuntimeImpl  bridge.RuntimeServer
+	schedMgmtImpl      schedule.ManagementServer
+	servicePortsFunc   func(svc string) ([]*model.ServicePort, error)
+	serverInfoFunc     func() (*machrpc.ServerInfo, error)
+	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
 
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server

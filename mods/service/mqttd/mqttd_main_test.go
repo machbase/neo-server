@@ -11,14 +11,14 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate moq -out ./mqttd_mock_test.go -pkg mqttd ../../../../neo-spi Conn Rows Row Result Appender
+//go:generate moq -out ./mqttd_mock_test.go -pkg mqttd ../../../spi Conn Rows Row Result Appender
 
 type dbMock struct {
 	spi.Database

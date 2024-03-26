@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"

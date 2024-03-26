@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 )

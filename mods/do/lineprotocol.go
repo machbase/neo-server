@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 /* Interpreting Influx lineprotocol

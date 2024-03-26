@@ -1,6 +1,6 @@
 package tql_test
 
-//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Conn Rows Result Appender
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../spi Database Conn Rows Result Appender
 
 import (
 	"bufio"
@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 

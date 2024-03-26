@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 

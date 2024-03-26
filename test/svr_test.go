@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/booter"
 	_ "github.com/machbase/neo-server/mods/logging"
 	_ "github.com/machbase/neo-server/mods/server"
-	spi "github.com/machbase/neo-spi"
 )
 
 var serverConf = []byte(`
@@ -92,7 +92,7 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db, err := spi.NewDatabase(mach.FactoryName)
+	db, err := spi.NewDatabaseNamed(mach.FactoryName)
 	if err != nil {
 		panic(err)
 	}

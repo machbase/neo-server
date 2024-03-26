@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 func TestQuery(t *testing.T) {

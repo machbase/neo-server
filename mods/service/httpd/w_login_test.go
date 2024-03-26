@@ -14,16 +14,16 @@ import (
 )
 
 type TestServerMock struct {
-	DatabaseServerMock
-	DatabaseAuthMock
+	DatabaseMock
+}
+
+func (dbmock *TestServerMock) UserAuth(user, password string) (bool, error) {
+	return user == "sys" && password == "manager", nil
 }
 
 func TestLoginRoute(t *testing.T) {
 
 	dbMock := &TestServerMock{}
-	dbMock.UserAuthFunc = func(user, password string) (bool, error) {
-		return user == "sys" && password == "manager", nil
-	}
 
 	wservice, err := New(dbMock,
 		OptionDebugMode(true),

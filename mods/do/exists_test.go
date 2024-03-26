@@ -1,13 +1,13 @@
 package do_test
 
-//go:generate moq -out ./mock_test.go -pkg do_test ../../../neo-spi Database Conn Row Result
+//go:generate moq -out ./mock_test.go -pkg do_test ../../spi Database Conn Row Result
 
 import (
 	"context"
 	"testing"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -21,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {

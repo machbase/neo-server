@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 )
 
 const (

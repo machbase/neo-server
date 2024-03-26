@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	schedrpc "github.com/machbase/neo-grpc/schedule"
+	schedrpc "github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 )

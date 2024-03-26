@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	codecOpts "github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
 )

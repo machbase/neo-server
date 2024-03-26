@@ -1,6 +1,6 @@
 package httpd
 
-//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../../neo-spi Database DatabaseServer DatabaseClient DatabaseAuth Conn Result Rows Row Appender
+//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../spi Database Conn Result Rows Row Appender
 
 import (
 	"bytes"
@@ -14,9 +14,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -105,6 +106,14 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 		neoShellAccount: map[string]string{},
 		jwtCache:        security.NewJwtCache(),
 		memoryFs:        &MemoryFS{},
+		serverInfoFunc: func() (*machrpc.ServerInfo, error) {
+			return &machrpc.ServerInfo{
+				Success: true,
+				Reason:  "success",
+				Version: &machrpc.Version{},
+				Runtime: &machrpc.Runtime{},
+			}, nil
+		},
 	}
 	ctx, engine := gin.CreateTestContext(w)
 	engine.POST("/web/api/login", svr.handleLogin)
@@ -143,8 +152,10 @@ func TestStatz(t *testing.T) {
 	engine.HandleContext(ctx)
 
 	result := map[string]any{}
-	err = json.Unmarshal(w.Body.Bytes(), &result)
+	payload := w.Body.Bytes()
+	err = json.Unmarshal(payload, &result)
 	if err != nil {
+		t.Log(string(payload))
 		t.Fatal(err)
 	}
 

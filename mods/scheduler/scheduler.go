@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	schedrpc "github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-engine/spi"
+	schedrpc "github.com/machbase/neo-server/api/schedule"
 	logging "github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
-	spi "github.com/machbase/neo-spi"
 	"github.com/robfig/cron/v3"
 )
 

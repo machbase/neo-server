@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/expression"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 

@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util/charset"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (x *Node) fmCharset(charsetName string) (opts.Option, error) {

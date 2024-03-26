@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -12,7 +14,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -35,6 +36,7 @@ const helpShow = `  show [options] <object>
     table [-a] <table>     describe the table
     meta-tables            list meta tables
     virtual-tables         list virtual tables
+    sessions               list sessions
     statements             list statements
     indexes                list indexes
     index <index>          describe the index
@@ -60,6 +62,7 @@ func pcShow() action.PrefixCompleterInterface {
 	return action.PcItem("show",
 		action.PcItem("info"),
 		action.PcItem("license"),
+		action.PcItem("sessions"),
 		action.PcItem("ports"),
 		action.PcItem("users"),
 		action.PcItem("tables"),
@@ -100,10 +103,6 @@ func doShow(ctx *action.ActionContext) {
 	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
-	case "inflights":
-		doShowInflights(ctx)
-	case "postflights":
-		doShowPostflights(ctx)
 	case "ports":
 		doShowPorts(ctx)
 	case "users":
@@ -121,7 +120,7 @@ func doShow(ctx *action.ActionContext) {
 	case "index":
 		doShowIndex(ctx, cmd.Args)
 	case "sessions":
-		doShowSessions(ctx)
+		doShowSessions(ctx, cmd.ShowAll)
 	case "license":
 		doShowLicense(ctx)
 	case "statements":
@@ -239,11 +238,6 @@ func doShowIndex(ctx *action.ActionContext, args []string) {
 	and b.id = c.index_id
 	and b.name = '%s'`
 	sqlText = fmt.Sprintf(sqlText, args[0])
-	doShowByQuery0(ctx, sqlText)
-}
-
-func doShowSessions(ctx *action.ActionContext) {
-	sqlText := "select ID, USER_ID, LOGIN_TIME, MAX_QPX_MEM from v$session"
 	doShowByQuery0(ctx, sqlText)
 }
 
@@ -519,8 +513,68 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 	t.Render()
 }
 
+type ServerInfoz interface {
+	GetServerInfo() (*machrpc.ServerInfo, error)
+	GetServicePorts(string) ([]*machrpc.Port, error)
+	ServerSessions(reqStatz, reqSessions bool) (*machrpc.Statz, []*machrpc.Session, error)
+}
+
+func doShowSessions(ctx *action.ActionContext, showAll bool) {
+	if showAll {
+		ctx.Println("[ V$NEO_SESSION ]")
+		doShowByQuery0(ctx, "select ID, USER_ID, USER_NAME, STMT_COUNT from v$neo_session")
+
+		ctx.Println("[ V$SESSION ]")
+		doShowByQuery0(ctx, "SELECT ID, USER_ID, LOGIN_TIME, MAX_QPX_MEM FROM V$SESSION")
+	}
+	aux, ok := ctx.Actor.Database().(ServerInfoz)
+	if !ok {
+		ctx.Println("ERR server statz is unavailable")
+		return
+	}
+	statz, sessions, err := aux.ServerSessions(true, true)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	ctx.Println("[ SESSIONS ]")
+	if sessions != nil {
+		now := time.Now().UnixNano()
+		box := ctx.NewBox([]string{"ID", "CREATED", "USED", "LATEST SQL"})
+		for _, s := range sessions {
+			var created, used string
+			creDur := time.Duration(now - s.CreTime)
+			useDur := time.Duration(now - s.LatestSqlTime)
+			if creDur < time.Second {
+				created = creDur.String()
+			} else {
+				created = util.HumanizeDurationWithFormat(creDur, util.HumanizeDurationFormatShortPadding)
+			}
+			if useDur < time.Second {
+				used = useDur.String()
+			} else {
+				used = util.HumanizeDurationWithFormat(useDur, util.HumanizeDurationFormatShortPadding)
+			}
+			box.AppendRow(s.Key, created, used, s.LatestSql)
+		}
+		box.Render()
+	}
+	ctx.Println("[ STATZ ]")
+	if statz != nil {
+		box := ctx.NewBox([]string{"NAME", "VALUE"})
+		box.AppendRow("CONNS_USED", util.NumberFormat(statz.Conns))
+		box.AppendRow("CONNS", util.NumberFormat(statz.ConnsInUse))
+		box.AppendRow("STMTS_USED", util.NumberFormat(statz.Stmts))
+		box.AppendRow("STMTS", util.NumberFormat(statz.StmtsInUse))
+		box.AppendRow("APPENDERS_USED", util.NumberFormat(statz.Appenders))
+		box.AppendRow("APPENDERS", util.NumberFormat(statz.AppendersInUse))
+		box.AppendRow("RAW_CONNS", util.NumberFormat(statz.RawConns))
+		box.Render()
+	}
+}
+
 func doShowInfo(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
+	aux, ok := ctx.Actor.Database().(ServerInfoz)
 	if !ok {
 		ctx.Println("ERR server info is unavailable")
 		return
@@ -544,69 +598,23 @@ func doShowInfo(ctx *action.ActionContext) {
 	box.AppendRow("runtime.arch", nfo.Runtime.Arch)
 	box.AppendRow("runtime.pid", nfo.Runtime.Pid)
 	box.AppendRow("runtime.uptime", util.HumanizeDurationWithFormat(uptime, util.HumanizeDurationFormatSimple))
+	box.AppendRow("runtime.processors", nfo.Runtime.Processes)
 	box.AppendRow("runtime.goroutines", nfo.Runtime.Goroutines)
 
-	box.AppendRow("mem.sys", util.BytesUnit(nfo.Runtime.MemSys, ctx.Lang))
-	box.AppendRow("mem.heap.sys", util.BytesUnit(nfo.Runtime.MemHeapSys, ctx.Lang))
-	box.AppendRow("mem.heap.alloc", util.BytesUnit(nfo.Runtime.MemHeapAlloc, ctx.Lang))
-	box.AppendRow("mem.heap.in-use", util.BytesUnit(nfo.Runtime.MemHeapInUse, ctx.Lang))
-	box.AppendRow("mem.stack.sys", util.BytesUnit(nfo.Runtime.MemStackSys, ctx.Lang))
-	box.AppendRow("mem.stack.in-use", util.BytesUnit(nfo.Runtime.MemStackInUse, ctx.Lang))
-
-	box.Render()
-}
-
-func doShowInflights(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server inflights is unavailable")
-		return
-	}
-
-	inflights, err := aux.GetInflights()
-	if err != nil {
-		ctx.Println("ERR", err.Error())
-		return
-	}
-
-	box := ctx.NewBox([]string{"ID", "TYPE", "AGED", "STATEMENT"})
-	for _, itm := range inflights {
-		sqlText := itm.SqlText
-		if len(sqlText) > 40 {
-			sqlText = sqlText[0:40] + "..."
-		}
-		box.AppendRow(itm.Id, itm.Type, itm.Elapsed.String(), sqlText)
-	}
-	box.Render()
-}
-
-func doShowPostflights(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server postflighs is unavailable")
-		return
-	}
-
-	postflights, err := aux.GetPostflights()
-	if err != nil {
-		ctx.Println("ERR", err.Error())
-		return
-	}
-
-	box := ctx.NewBox([]string{"COUNT", "AVG. TIME", "TOTAL TIME", "STATEMENT"})
-	for _, itm := range postflights {
-		sqlText := itm.SqlText
-		if len(sqlText) > 40 {
-			sqlText = sqlText[0:40] + "..."
-		}
-		avgTime := time.Duration(int64(itm.TotalTime) / itm.Count)
-		box.AppendRow(itm.Count, avgTime.String(), itm.TotalTime.String(), sqlText)
-	}
+	box.AppendRow("mem.mallocs", util.NumberFormat(nfo.Runtime.Mem["mallocs"]))
+	box.AppendRow("mem.frees", util.NumberFormat(nfo.Runtime.Mem["frees"]))
+	box.AppendRow("mem.lives", util.NumberFormat(nfo.Runtime.Mem["lives"]))
+	box.AppendRow("mem.sys", util.BytesUnit(nfo.Runtime.Mem["sys"], ctx.Lang))
+	box.AppendRow("mem.heap_sys", util.BytesUnit(nfo.Runtime.Mem["heap_sys"], ctx.Lang))
+	box.AppendRow("mem.heap_alloc", util.BytesUnit(nfo.Runtime.Mem["heap_alloc"], ctx.Lang))
+	box.AppendRow("mem.heap_in_use", util.BytesUnit(nfo.Runtime.Mem["heap_in_use"], ctx.Lang))
+	box.AppendRow("mem.stack_sys", util.BytesUnit(nfo.Runtime.Mem["stack_sys"], ctx.Lang))
+	box.AppendRow("mem.stack_in_use", util.BytesUnit(nfo.Runtime.Mem["stack_in_use"], ctx.Lang))
 	box.Render()
 }
 
 func doShowPorts(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
+	aux, ok := ctx.Actor.Database().(ServerInfoz)
 	if !ok {
 		ctx.Println("ERR server info is unavailable")
 		return

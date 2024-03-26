@@ -6,8 +6,8 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/bridge"
-	spi "github.com/machbase/neo-spi"
 )
 
 type bridgeName struct {

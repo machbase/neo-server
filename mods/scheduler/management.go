@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	schedrpc "github.com/machbase/neo-grpc/schedule"
+	schedrpc "github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
 )
 

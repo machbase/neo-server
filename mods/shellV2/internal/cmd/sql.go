@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -15,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/term"
 )
 

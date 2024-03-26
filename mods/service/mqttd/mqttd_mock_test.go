@@ -5,7 +5,7 @@ package mqttd
 
 import (
 	"context"
-	"github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 	"sync"
 	"time"
 )

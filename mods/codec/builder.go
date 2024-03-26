@@ -3,6 +3,7 @@ package codec
 import (
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
@@ -11,7 +12,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	spi "github.com/machbase/neo-spi"
 )
 
 const DISCARD = "discard"

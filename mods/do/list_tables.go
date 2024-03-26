@@ -3,7 +3,7 @@ package do
 import (
 	"context"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 func ListTables(ctx context.Context, conn spi.Conn) []string {

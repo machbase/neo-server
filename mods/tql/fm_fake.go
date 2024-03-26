@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/opensimplex"
-	spi "github.com/machbase/neo-spi"
 )
 
 /*

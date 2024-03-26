@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 )
 
 // Deprecated: no more required

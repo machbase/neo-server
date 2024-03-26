@@ -4,7 +4,7 @@
 package leak_test
 
 import (
-	"github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 	"sync"
 	"time"
 )

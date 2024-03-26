@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 	"golang.org/x/net/context"
 	"golang.org/x/text/language"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-engine/spi"
 )
 
 func TableType(ctx context.Context, conn spi.Conn, tableName string) (spi.TableType, error) {

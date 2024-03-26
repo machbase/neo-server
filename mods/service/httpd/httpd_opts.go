@@ -3,6 +3,7 @@ package httpd
 import (
 	"strings"
 
+	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
@@ -107,5 +108,17 @@ func OptionWebShellProvider(provider model.ShellProvider) Option {
 func OptionStatzAllow(remotes ...string) Option {
 	return func(s *httpd) {
 		s.statzAllowed = append(s.statzAllowed, remotes...)
+	}
+}
+
+func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
+	return func(s *httpd) {
+		s.serverInfoFunc = fn
+	}
+}
+
+func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)) Option {
+	return func(s *httpd) {
+		s.serverSessionsFunc = fn
 	}
 }

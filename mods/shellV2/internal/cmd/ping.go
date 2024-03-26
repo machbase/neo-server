@@ -6,7 +6,6 @@ import (
 
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -35,6 +34,10 @@ func pcPing() action.PrefixCompleterInterface {
 	return action.PcItem("ping")
 }
 
+type Pinger interface {
+	Ping() (time.Duration, error)
+}
+
 func doPing(ctx *action.ActionContext) {
 	cmd := &PingCmd{}
 	parser, err := action.Kong(cmd, func() error { fmt.Println(helpPing); cmd.Help = true; return nil })
@@ -51,7 +54,7 @@ func doPing(ctx *action.ActionContext) {
 		return
 	}
 
-	if pinger, ok := ctx.Conn.(spi.Pinger); ok {
+	if pinger, ok := ctx.Conn.(Pinger); ok {
 		for i := 0; i < cmd.Repeat && ctx.Ctx.Err() == nil; i++ {
 			if i != 0 {
 				time.Sleep(time.Second)

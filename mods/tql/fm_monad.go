@@ -14,13 +14,13 @@ import (
 
 	gocsv "encoding/csv"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/kalman"
 	"github.com/machbase/neo-server/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"

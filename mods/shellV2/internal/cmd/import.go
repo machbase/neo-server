@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-engine/spi"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -16,7 +17,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/charset"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/text/encoding"
 )
 

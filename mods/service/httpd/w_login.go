@@ -11,7 +11,6 @@ import (
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -91,6 +90,10 @@ type ReferenceItem struct {
 	Target string `json:"target,omitempty"`
 }
 
+type AuthServer interface {
+	UserAuth(string, string) (bool, error)
+}
+
 func (svr *httpd) handleLogin(ctx *gin.Context) {
 	var req = &LoginReq{}
 	var rsp = &LoginRsp{
@@ -117,7 +120,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 
 	passed := false
 
-	if dbauth, ok := svr.db.(spi.DatabaseAuth); !ok {
+	if dbauth, ok := svr.db.(AuthServer); !ok {
 		svr.log.Warnf("database auth is not implemented by %T", svr.db)
 		rsp.Reason = fmt.Sprintf("database (%T) is not supporting user authentication", svr.db)
 		rsp.Elapse = time.Since(tick).String()
