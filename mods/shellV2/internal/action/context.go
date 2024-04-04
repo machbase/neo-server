@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-client/machrpc"
 	"golang.org/x/net/context"
 	"golang.org/x/text/language"
 )
@@ -12,7 +12,7 @@ import (
 type ActionContext struct {
 	Actor        *Actor
 	Line         string
-	Conn         spi.Conn
+	Conn         *machrpc.Conn
 	Ctx          context.Context
 	CtxCancel    context.CancelFunc
 	Lang         language.Tag

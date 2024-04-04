@@ -7,13 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-client/machrpc"
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/leak"
-	spi "github.com/machbase/neo-spi"
 )
-
-//// machrpc server handler
 
 var _ machrpc.MachbaseServer = &grpcd{}
 
@@ -31,14 +29,10 @@ func (s *grpcd) Ping(pctx context.Context, req *machrpc.PingRequest) (*machrpc.P
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		if pinger, ok := conn.rawConn.(spi.Pinger); ok {
-			if _, err := pinger.Ping(); err != nil {
-				rsp.Reason = err.Error()
-			} else {
-				rsp.Success, rsp.Reason = true, "success"
-			}
+		if _, err := conn.rawConn.Ping(); err != nil {
+			rsp.Reason = err.Error()
 		} else {
-			rsp.Reason = "ping not supproted"
+			rsp.Success, rsp.Reason = true, "success"
 		}
 	}
 	rsp.Token = req.Token
@@ -54,24 +48,19 @@ func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.C
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	connOpts := []spi.ConnectOption{}
-	switch s.db.(type) {
-	case spi.DatabaseClient:
-		connOpts = append(connOpts, machrpc.WithPassword(req.User, req.Password))
-	case spi.DatabaseServer:
-		if strings.HasPrefix(req.Password, "$otp$:") {
-			if passed, err := s.authServer.ValidateUserOtp(req.User, strings.TrimPrefix(req.Password, "$otp$:")); passed {
-				connOpts = append(connOpts, mach.WithTrustUser(req.User))
-			} else if err != nil {
-				rsp.Reason = err.Error()
-				return rsp, nil
-			} else {
-				rsp.Reason = "invalid user or password"
-				return rsp, nil
-			}
+	connOpts := []mach.ConnectOption{}
+	if strings.HasPrefix(req.Password, "$otp$:") {
+		if passed, err := s.authServer.ValidateUserOtp(req.User, strings.TrimPrefix(req.Password, "$otp$:")); passed {
+			connOpts = append(connOpts, mach.WithTrustUser(req.User))
+		} else if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
 		} else {
-			connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+			rsp.Reason = "invalid user or password"
+			return rsp, nil
 		}
+	} else {
+		connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
 	}
 	if conn, err := s.db.Connect(pctx, connOpts...); err != nil {
 		rsp.Reason = err.Error()
@@ -113,6 +102,10 @@ func (s *grpcd) ConnClose(pctx context.Context, req *machrpc.ConnCloseRequest) (
 	return rsp, nil
 }
 
+type Explainer interface {
+	Explain(ctx context.Context, sqlText string, full bool) (string, error)
+}
+
 func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*machrpc.ExplainResponse, error) {
 	rsp := &machrpc.ExplainResponse{}
 	tick := time.Now()
@@ -128,11 +121,7 @@ func (s *grpcd) Explain(pctx context.Context, req *machrpc.ExplainRequest) (*mac
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		explainer, ok := conn.rawConn.(spi.Explainer)
-		if !ok {
-			return nil, fmt.Errorf("server info is unavailable")
-		}
-		if plan, err := explainer.Explain(pctx, req.Sql, req.Full); err == nil {
+		if plan, err := conn.rawConn.Explain(pctx, req.Sql, req.Full); err == nil {
 			rsp.Success, rsp.Reason = true, "success"
 			rsp.Plan = plan
 		} else {
@@ -267,7 +256,7 @@ func (s *grpcd) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 		return rsp, nil
 	}
 
-	cols, err := rowsWrap.Rows.Columns()
+	cols, err := api.RowsColumns(rowsWrap.Rows)
 	if err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
@@ -276,10 +265,8 @@ func (s *grpcd) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 	rsp.Columns = make([]*machrpc.Column, len(cols))
 	for i, c := range cols {
 		rsp.Columns[i] = &machrpc.Column{
-			Name:   c.Name,
-			Type:   c.Type,
-			Size:   int32(c.Size),
-			Length: int32(c.Length),
+			Name: c.Name,
+			Type: c.Type,
 		}
 	}
 	rsp.Success = true
@@ -310,14 +297,14 @@ func (s *grpcd) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machr
 		return rsp, nil
 	}
 
-	columns, err := rowsWrap.Rows.Columns()
+	columns, err := api.RowsColumns(rowsWrap.Rows)
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
 
-	values := columns.MakeBuffer()
+	values := api.MakeBuffer(columns)
 	err = rowsWrap.Rows.Scan(values...)
 	if err != nil {
 		rsp.Success = false
@@ -372,14 +359,9 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		opts := []spi.AppenderOption{}
+		opts := []mach.AppenderOption{}
 		if len(req.Timeformat) > 0 {
-			switch conn.rawConn.(type) {
-			case *machrpc.ClientConn:
-				opts = append(opts, machrpc.AppenderTimeformat(req.Timeformat))
-			default:
-				opts = append(opts, mach.AppenderTimeformat(req.Timeformat))
-			}
+			opts = append(opts, mach.AppenderTimeformat(req.Timeformat))
 		}
 		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
 		if err != nil {
@@ -496,70 +478,21 @@ func (s *grpcd) UserAuth(pctx context.Context, req *machrpc.UserAuthRequest) (*m
 }
 
 func (s *grpcd) GetServerInfo(pctx context.Context, req *machrpc.ServerInfoRequest) (*machrpc.ServerInfo, error) {
-	rsp := &machrpc.ServerInfo{
-		Runtime: &machrpc.Runtime{},
-		Version: &machrpc.Version{},
-	}
 	tick := time.Now()
+	rsp, err := s.serverInfoFunc()
+	if err != nil {
+		return nil, err
+	}
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("GetServerInfo panic recover", panic)
 		}
-		rsp.Elapse = time.Since(tick).String()
+		if rsp != nil {
+			rsp.Elapse = time.Since(tick).String()
+		}
 	}()
-	aux, ok := s.db.(spi.DatabaseAux)
-	if !ok {
-		return nil, fmt.Errorf("server info is unavailable")
-	}
-	nfo, err := aux.GetServerInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	if req.Inflights {
-		items := s.leakDetector.Inflights()
-		rsp.Inflights = make([]*machrpc.Inflight, len(items))
-		for i := range items {
-			rsp.Inflights[i] = &machrpc.Inflight{
-				Id:          items[i].Id,
-				Type:        items[i].Type,
-				SqlText:     items[i].SqlText,
-				ElapsedTime: int64(items[i].Elapsed),
-			}
-		}
-	}
-	if req.Postflights {
-		items := s.leakDetector.Postflights()
-		rsp.Postflights = make([]*machrpc.Postflight, len(items))
-		for i := range items {
-			rsp.Postflights[i] = &machrpc.Postflight{
-				SqlText:   items[i].SqlText,
-				Count:     items[i].Count,
-				TotalTime: int64(items[i].TotalTime),
-			}
-		}
-	}
-	if !req.Inflights && !req.Postflights {
-		rsp.Runtime.OS = nfo.Runtime.OS
-		rsp.Runtime.Arch = nfo.Runtime.Arch
-		rsp.Runtime.Pid = nfo.Runtime.Pid
-		rsp.Runtime.UptimeInSecond = nfo.Runtime.UptimeInSecond
-		rsp.Runtime.Processes = nfo.Runtime.Processes
-		rsp.Runtime.Goroutines = nfo.Runtime.Goroutines
-		rsp.Runtime.MemSys = nfo.Runtime.MemSys
-		rsp.Runtime.MemHeapSys = nfo.Runtime.MemHeapSys
-		rsp.Runtime.MemHeapAlloc = nfo.Runtime.MemHeapAlloc
-		rsp.Runtime.MemHeapInUse = nfo.Runtime.MemHeapInUse
-		rsp.Runtime.MemStackSys = nfo.Runtime.MemStackSys
-		rsp.Runtime.MemStackInUse = nfo.Runtime.MemStackInUse
-
-		rsp.Version.Major = nfo.Version.Major
-		rsp.Version.Minor = nfo.Version.Minor
-		rsp.Version.Patch = nfo.Version.Patch
-		rsp.Version.GitSHA = nfo.Version.GitSHA
-		rsp.Version.BuildTimestamp = nfo.Version.BuildTimestamp
-		rsp.Version.BuildCompiler = nfo.Version.BuildCompiler
-		rsp.Version.Engine = nfo.Version.Engine
+	if s.serverInfoFunc == nil {
+		return nil, fmt.Errorf("server info is unavailable (%T)", s.db)
 	}
 
 	rsp.Success = true
@@ -578,12 +511,11 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	aux, ok := s.db.(spi.DatabaseAux)
-	if !ok {
+	if s.servicePortsFunc == nil {
 		return nil, fmt.Errorf("server info is unavailable")
 	}
 
-	list, err := aux.GetServicePorts(req.Service)
+	list, err := s.servicePortsFunc(req.Service)
 	if err != nil {
 		return nil, err
 	}
@@ -592,5 +524,57 @@ func (s *grpcd) GetServicePorts(pctx context.Context, req *machrpc.ServicePortsR
 	}
 	rsp.Success = true
 	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *grpcd) Sessions(pctx context.Context, req *machrpc.SessionsRequest) (*machrpc.SessionsResponse, error) {
+	rsp := &machrpc.SessionsResponse{}
+	tick := time.Now()
+
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Sessions panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if s.serverSessionsFunc == nil {
+		return nil, fmt.Errorf("session info is unavailable")
+	}
+
+	if statz, sessions, err := s.serverSessionsFunc(req.Statz, req.Sessions); err != nil {
+		rsp.Reason = err.Error()
+		return nil, err
+	} else {
+		rsp.Success = true
+		rsp.Reason = "success"
+		rsp.Statz = statz
+		rsp.Sessions = sessions
+	}
+
+	return rsp, nil
+}
+
+func (s *grpcd) KillSession(pctx context.Context, req *machrpc.KillSessionRequest) (*machrpc.KillSessionResponse, error) {
+	rsp := &machrpc.KillSessionResponse{}
+	tick := time.Now()
+
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Sessions kill panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if s.serverKillSessionFunc == nil {
+		return nil, fmt.Errorf("session kill is unavailable")
+	}
+
+	if err := s.serverKillSessionFunc(req.Id); err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		rsp.Success = true
+		rsp.Reason = "success"
+	}
 	return rsp, nil
 }

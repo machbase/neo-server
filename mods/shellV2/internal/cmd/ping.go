@@ -6,7 +6,6 @@ import (
 
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -51,19 +50,15 @@ func doPing(ctx *action.ActionContext) {
 		return
 	}
 
-	if pinger, ok := ctx.Conn.(spi.Pinger); ok {
-		for i := 0; i < cmd.Repeat && ctx.Ctx.Err() == nil; i++ {
-			if i != 0 {
-				time.Sleep(time.Second)
-			}
-			latency, err := pinger.Ping()
-			if err != nil {
-				fmt.Println("ping", err.Error())
-			} else {
-				fmt.Printf("seq=%d time=%s\n", i, latency)
-			}
+	for i := 0; i < cmd.Repeat && ctx.Ctx.Err() == nil; i++ {
+		if i != 0 {
+			time.Sleep(time.Second)
 		}
-	} else {
-		fmt.Println("ping is not avaliable")
+		latency, err := ctx.Conn.Ping()
+		if err != nil {
+			fmt.Println("ping", err.Error())
+		} else {
+			fmt.Printf("seq=%d time=%s\n", i, latency)
+		}
 	}
 }

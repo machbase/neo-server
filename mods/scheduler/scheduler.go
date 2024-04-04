@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	schedrpc "github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-server/api"
+	schedrpc "github.com/machbase/neo-server/api/schedule"
 	logging "github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
-	spi "github.com/machbase/neo-spi"
 	"github.com/robfig/cron/v3"
 )
 
@@ -41,7 +41,7 @@ type svr struct {
 	log       logging.Log
 	crons     *cron.Cron
 	tqlLoader tql.Loader
-	db        spi.Database
+	db        api.Database
 	verbose   bool
 
 	models model.ScheduleProvider
@@ -61,7 +61,7 @@ func WithTqlLoader(ldr tql.Loader) Option {
 	}
 }
 
-func WithDatabase(db spi.Database) Option {
+func WithDatabase(db api.Database) Option {
 	return func(s *svr) {
 		s.db = db
 	}

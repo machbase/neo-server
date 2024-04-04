@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 	"github.com/pkg/errors"
 )
 
-func ExistsTable(ctx context.Context, conn spi.Conn, tableName string) (bool, error) {
+func ExistsTable(ctx context.Context, conn api.Conn, tableName string) (bool, error) {
 	r := conn.QueryRow(ctx, "select count(*) from M$SYS_TABLES where name = ?", strings.ToUpper(tableName))
 	var count = 0
 	if err := r.Scan(&count); err != nil {
@@ -18,7 +18,7 @@ func ExistsTable(ctx context.Context, conn spi.Conn, tableName string) (bool, er
 	return (count == 1), nil
 }
 
-func ExistsTableOrCreate(ctx context.Context, conn spi.Conn, tableName string, create bool, truncate bool) (exists bool, created bool, truncated bool, err error) {
+func ExistsTableOrCreate(ctx context.Context, conn api.Conn, tableName string, create bool, truncate bool) (exists bool, created bool, truncated bool, err error) {
 	exists, err = ExistsTable(ctx, conn, tableName)
 	if err != nil {
 		return
@@ -48,7 +48,7 @@ func ExistsTableOrCreate(ctx context.Context, conn spi.Conn, tableName string, c
 			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", tableName))
 			return
 		}
-		if tableType == spi.LogTableType {
+		if tableType == api.LogTableType {
 			result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", tableName))
 			if result.Err() != nil {
 				err = result.Err()

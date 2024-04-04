@@ -9,15 +9,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 func TestRead(t *testing.T) {
 	dbMock := &TestClientMock{}
-	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	dbMock.ConnectFunc = func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 		conn := &ConnMock{}
 		conn.CloseFunc = func() error { return nil }
-		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) spi.Row {
+		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
 			rm := &RowMock{}
 
 			switch sqlText {
@@ -31,15 +31,18 @@ func TestRead(t *testing.T) {
 			}
 			return rm
 		}
-		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			rm := &RowsMock{}
 			nextCount := 0
 
 			switch sqlText {
 			case "SELECT NAME, TO_CHAR(DATE_TRUNC('SEC', TIME, 1), 'YYYY-MM-DD HH24:MI:SS') AS TIME, AVG(VALUE) AS VALUE FROM (SELECT NAME, TIME ROLLUP 1 SEC TIME, AVG(VALUE) VALUE FROM TAG WHERE NAME IN('LAKE_TEST_RASPBERY001') AND TIME BETWEEN TO_DATE('2024-01-08 09:12:00 000', 'YYYY-MM-DD HH24:MI:SS mmm') AND TO_DATE('2024-01-08 10:12:00 000', 'YYYY-MM-DD HH24:MI:SS mmm') GROUP BY TIME, NAME) GROUP BY TIME, NAME ORDER BY TIME ASC LIMIT 1000":
-				rm.ColumnsFunc = func() (spi.Columns, error) {
-					columns := spi.Columns{&spi.Column{Name: "name", Type: "string"}, &spi.Column{Name: "time", Type: "string"}, &spi.Column{Name: "value", Type: "double"}}
-					return columns, nil
+				rm.ColumnsFunc = func() ([]string, []string, error) {
+					return []string{
+							"name", "time", "value",
+						}, []string{
+							"string", "string", "double",
+						}, nil
 				}
 				rm.ScanFunc = func(cols ...any) error {
 					if len(cols) != 3 {
@@ -78,8 +81,6 @@ func TestRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Log("b : ", b.String())
-
 	webService, err := New(dbMock,
 		OptionDebugMode(true),
 		OptionHandler("/lakes", HandlerLake),
@@ -107,5 +108,4 @@ func TestRead(t *testing.T) {
 		t.Log(w.Body.String())
 		t.Fatal(err)
 	}
-	t.Logf("rsp: %+v", rsp)
 }

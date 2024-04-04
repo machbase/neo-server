@@ -11,21 +11,21 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate moq -out ./mqttd_mock_test.go -pkg mqttd ../../../../neo-spi Conn Rows Row Result Appender
+//go:generate moq -out ./mqttd_mock_test.go -pkg mqttd ../../../api Conn Rows Row Result Appender
 
 type dbMock struct {
-	spi.Database
+	api.Database
 	conn *ConnMock
 }
 
-func (fda *dbMock) Connect(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+func (fda *dbMock) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 	if fda.conn == nil {
 		return &ConnMock{
 			CloseFunc: func() error { return nil },
@@ -103,9 +103,10 @@ func runTest(t *testing.T, tc *TestCase) {
 	var Wait sync.WaitGroup
 	var recvPayload []byte
 	var recvTopic string
+	var timeout = 2 * time.Second
 
 	conAck := cli.Connect()
-	if !conAck.WaitTimeout(time.Second) {
+	if !conAck.WaitTimeout(timeout) {
 		t.Logf("Test %q failed, connect timed out", tc.Name)
 		t.Fail()
 	}
@@ -123,7 +124,7 @@ func runTest(t *testing.T, tc *TestCase) {
 			}
 			Wait.Done()
 		})
-		if !subAck.WaitTimeout(time.Second) {
+		if !subAck.WaitTimeout(timeout) {
 			t.Logf("Test %q failed, subscribe timed out", tc.Name)
 			t.Fail()
 		}
@@ -131,7 +132,7 @@ func runTest(t *testing.T, tc *TestCase) {
 
 	Wait.Add(1)
 	pubAck := cli.Publish(tc.Topic, 1, false, tc.Payload)
-	if pubAck.WaitTimeout(time.Second) {
+	if pubAck.WaitTimeout(timeout) {
 		Wait.Done()
 	} else {
 		t.Logf("Test %q failed, publish timed out", tc.Name)

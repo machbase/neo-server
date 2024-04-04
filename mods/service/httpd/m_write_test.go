@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,10 +25,10 @@ type TestAppenderMock struct {
 func TestAppendRoute(t *testing.T) {
 	count := 0
 	dbMock := &TestClientMock{}
-	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	dbMock.ConnectFunc = func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 		conn := &ConnMock{}
 		conn.CloseFunc = func() error { return nil }
-		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) spi.Row {
+		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
 			rm := &RowMock{}
 
 			switch sqlText {
@@ -48,7 +48,7 @@ func TestAppendRoute(t *testing.T) {
 			}
 			return rm
 		}
-		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+		conn.AppenderFunc = func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 			am := &TestAppenderMock{}
 			am.AppendFunc = func(value ...any) error {
 				count = 0

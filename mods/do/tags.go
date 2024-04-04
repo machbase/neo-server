@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
-func Tags(ctx context.Context, conn spi.Conn, table string, callback func(string, error) bool) {
+func Tags(ctx context.Context, conn api.Conn, table string, callback func(string, error) bool) {
 	var sqlText string
 	if strings.Contains(table, ".") {
 		idx := strings.LastIndex(table, ".")

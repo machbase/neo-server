@@ -8,9 +8,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 type Exporter struct {
@@ -96,7 +96,7 @@ func (ex *Exporter) Open() error {
 	var types []string
 	if ex.Rownum && !ex.transpose { // rownum does not effective in transpose mode
 		names = append([]string{"ROWNUM"}, ex.colNames...)
-		types = append([]string{spi.ColumnBufferTypeInt64}, ex.colTypes...)
+		types = append([]string{api.ColumnBufferTypeInt64}, ex.colTypes...)
 	} else {
 		names = ex.colNames
 		types = ex.colTypes

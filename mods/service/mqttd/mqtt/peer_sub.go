@@ -47,7 +47,7 @@ type SubReq struct {
 	QoS       byte
 }
 
-func (p *peer) handleSubscribe(subs map[string]packet5.SubOptions, isDup bool) []byte {
+func (p *peer) handleSubscribe(subs map[string]packet5.SubOptions, _ /*isDup*/ bool) []byte {
 	codes := make([]byte, 0)
 	for topic, op := range subs {
 		if p.CanSubscribe(topic) {

@@ -1,7 +1,6 @@
 package leak_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ Require moq:
 
 - Run
 
-	moq -out ./mods/leak/mock_test.go -pkg leak_test ../neo-spi Rows Appender
+	moq -out ./mods/leak/mock_test.go -pkg leak_test ./spi Rows Appender
 */
 
 func TestDetector(t *testing.T) {
@@ -41,13 +40,6 @@ func TestDetector(t *testing.T) {
 	}
 
 	var err error
-	var count int
-
-	for i, item := range det.Inflights() {
-		count++
-		fmt.Println(i, item.Id, item.Elapsed, item.Type, item.SqlText)
-	}
-	require.Equal(t, 3, count)
 
 	rowsWrap, err = det.Rows(rowsWrap.Id())
 	require.Nil(t, err)
@@ -59,20 +51,6 @@ func TestDetector(t *testing.T) {
 
 	det.DelistDetective(rows)
 	det.Detect()
-
-	count = 0
-	for i, item := range det.Inflights() {
-		count++
-		fmt.Println(i, item.Id, item.Elapsed, item.Type, item.SqlText)
-	}
-	require.Equal(t, 0, count)
-
-	count = 0
-	for i, item := range det.Postflights() {
-		count++
-		fmt.Println(i, item.Count, item.SqlText)
-	}
-	require.Equal(t, 2, count)
 
 	det.Stop()
 }

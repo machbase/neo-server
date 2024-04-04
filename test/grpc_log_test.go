@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/machbase/neo-grpc/machrpc"
+	"github.com/machbase/neo-client/machrpc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,10 +18,15 @@ func TestGrpcLogTable(t *testing.T) {
 	var count int
 	var tableName = strings.ToUpper("logdata")
 
-	client, err := machrpc.NewClient(
-		machrpc.WithServer("unix://../tmp/mach.sock"),
-		machrpc.WithCertificate("../tmp/machbase_pref/cert/machbase_key.pem", "../tmp/machbase_pref/cert/machbase_cert.pem", "../tmp/machbase_pref/cert/machbase_cert.pem"),
-		machrpc.WithQueryTimeout(10*time.Second))
+	client, err := machrpc.NewClient(&machrpc.Config{
+		ServerAddr:   "unix://../tmp/mach.sock",
+		QueryTimeout: 10 * time.Second,
+		Tls: &machrpc.TlsConfig{
+			ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
+			ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+			ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+		},
+	})
 	require.Nil(t, err)
 
 	defer client.Close()
@@ -50,7 +55,7 @@ func TestGrpcLogTable(t *testing.T) {
 			t.Logf("drop table %q", tableName)
 			result := conn.Exec(ctx, "drop table "+tableName)
 			if result.Err() != nil {
-				t.Fatalf("drop table: %s", err.Error())
+				t.Fatalf("drop table: %s", result.Err().Error())
 			}
 			tableExists = false
 		}

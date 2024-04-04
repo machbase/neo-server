@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 type LicenseInfo struct {
@@ -21,7 +21,7 @@ type LicenseInfo struct {
 	IssueDate   string `json:"issueDate"`
 }
 
-func GetLicenseInfo(ctx context.Context, conn spi.Conn) (*LicenseInfo, error) {
+func GetLicenseInfo(ctx context.Context, conn api.Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info")
 	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate); err != nil {
@@ -30,7 +30,7 @@ func GetLicenseInfo(ctx context.Context, conn spi.Conn) (*LicenseInfo, error) {
 	return ret, nil
 }
 
-func InstallLicenseFile(ctx context.Context, conn spi.Conn, path string) (*LicenseInfo, error) {
+func InstallLicenseFile(ctx context.Context, conn api.Conn, path string) (*LicenseInfo, error) {
 	if strings.ContainsRune(path, ';') {
 		return nil, errors.New("invalid license file path")
 	}
@@ -41,7 +41,7 @@ func InstallLicenseFile(ctx context.Context, conn spi.Conn, path string) (*Licen
 	return GetLicenseInfo(ctx, conn)
 }
 
-func InstallLicenseData(ctx context.Context, conn spi.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
+func InstallLicenseData(ctx context.Context, conn api.Conn, licenseFilePath string, content []byte) (*LicenseInfo, error) {
 	_, err := os.Stat(licenseFilePath)
 	if err == nil {
 		// backup existing file

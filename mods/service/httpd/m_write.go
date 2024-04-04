@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/util/ymd"
-	spi "github.com/machbase/neo-spi"
 )
 
 type lakeReq interface {
@@ -250,14 +250,15 @@ type ExecData struct {
 	Value float64 `json:"value"`
 }
 
-func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*ExecResult, error) {
+func (svr *httpd) getExec(ctx context.Context, conn api.Conn, sqlText string) (*ExecResult, error) {
 	result := &ExecResult{}
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		return result, err
 	}
+	defer rows.Close()
 
-	cols, err := rows.Columns()
+	cols, err := api.RowsColumns(rows)
 	if err != nil {
 		return result, err
 	}
@@ -272,14 +273,12 @@ func (svr *httpd) getExec(ctx context.Context, conn spi.Conn, sqlText string) (*
 
 		for idx, col := range cols {
 			colsList[idx].Name = col.Name
-			// colsList[idx].Type = col.Type
 			colsList[idx].Type = ColumnTypeConvert(col.Type)
-			colsList[idx].Length = col.Length
 		}
 	}()
 
 	for rows.Next() {
-		buffer := cols.MakeBuffer()
+		buffer := api.MakeBuffer(cols)
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())

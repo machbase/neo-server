@@ -14,13 +14,12 @@ import (
 	"sync"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -28,7 +27,7 @@ type Task struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
 	params       map[string][]string
-	db           spi.Database
+	db           api.Database
 	inputReader  io.Reader
 	outputWriter spec.OutputStream
 	toJsonOutput bool
@@ -53,7 +52,7 @@ type Task struct {
 	nodes      []*Node
 
 	_shouldStop    bool
-	_resultColumns spi.Columns
+	_resultColumns api.Columns
 	_stateLock     sync.RWMutex
 	_created       time.Time
 }
@@ -73,18 +72,18 @@ func NewTaskContext(ctx context.Context) *Task {
 	return ret
 }
 
-func (x *Task) SetDatabase(db spi.Database) {
+func (x *Task) SetDatabase(db api.Database) {
 	x.db = db
 }
 
-func (x *Task) ConnDatabase(ctx context.Context) (spi.Conn, error) {
+func (x *Task) ConnDatabase(ctx context.Context) (api.Conn, error) {
 	if x.consoleUser != "" {
 		// web login user
-		conn, err := x.db.Connect(ctx, mach.WithTrustUser(x.consoleUser))
+		conn, err := x.db.Connect(ctx, api.WithTrustUser(x.consoleUser))
 		return conn, err
 	} else {
 		// request script file
-		conn, err := x.db.Connect(ctx, mach.WithTrustUser("sys"))
+		conn, err := x.db.Connect(ctx, api.WithTrustUser("sys"))
 		return conn, err
 	}
 }
@@ -437,30 +436,30 @@ func (x *Task) shouldStop() bool {
 	return ret
 }
 
-func (x *Task) SetResultColumns(cols spi.Columns) {
+func (x *Task) SetResultColumns(cols api.Columns) {
 	x._stateLock.Lock()
-	types := make([]*spi.Column, len(cols))
+	types := make([]*api.Column, len(cols))
 	for i, c := range cols {
 		x := *c
 		switch x.Type {
 		case "sql.RawBytes":
-			x.Type = spi.ColumnBufferTypeBinary
+			x.Type = api.ColumnBufferTypeBinary
 		case "sql.NullBool":
-			x.Type = spi.ColumnBufferTypeBoolean
+			x.Type = api.ColumnBufferTypeBoolean
 		case "sql.NullByte":
-			x.Type = spi.ColumnBufferTypeByte
+			x.Type = api.ColumnBufferTypeByte
 		case "sql.NullFloat64":
-			x.Type = spi.ColumnBufferTypeDouble
+			x.Type = api.ColumnBufferTypeDouble
 		case "sql.NullInt16":
-			x.Type = spi.ColumnBufferTypeInt16
+			x.Type = api.ColumnBufferTypeInt16
 		case "sql.NullInt32":
-			x.Type = spi.ColumnBufferTypeInt32
+			x.Type = api.ColumnBufferTypeInt32
 		case "sql.NullInt64":
-			x.Type = spi.ColumnBufferTypeInt64
+			x.Type = api.ColumnBufferTypeInt64
 		case "sql.NullString":
-			x.Type = spi.ColumnBufferTypeString
+			x.Type = api.ColumnBufferTypeString
 		case "sql.NullTime":
-			x.Type = spi.ColumnBufferTypeDatetime
+			x.Type = api.ColumnBufferTypeDatetime
 		}
 		types[i] = &x
 	}
@@ -468,7 +467,7 @@ func (x *Task) SetResultColumns(cols spi.Columns) {
 	x._stateLock.Unlock()
 }
 
-func (x *Task) ResultColumns() spi.Columns {
+func (x *Task) ResultColumns() api.Columns {
 	x._stateLock.RLock()
 	ret := x._resultColumns
 	x._stateLock.RUnlock()

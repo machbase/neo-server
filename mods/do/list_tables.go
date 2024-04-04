@@ -3,10 +3,10 @@ package do
 import (
 	"context"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
-func ListTables(ctx context.Context, conn spi.Conn) []string {
+func ListTables(ctx context.Context, conn api.Conn) []string {
 	rows, err := conn.Query(ctx, "select NAME, TYPE, FLAG from M$SYS_TABLES order by NAME")
 	if err != nil {
 		return nil

@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/service/msg"
-	spi "github.com/machbase/neo-spi"
 )
 
 func TestQuery(t *testing.T) {
 	expectRows := 1
 	connMock := &ConnMock{
 		CloseFunc: func() error { return nil },
-		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			rows := &RowsMock{}
 			switch sqlText {
 			case "select * from example":
@@ -28,12 +28,14 @@ func TestQuery(t *testing.T) {
 					*(cols[2].(*float64)) = 3.14
 					return nil
 				}
-				rows.ColumnsFunc = func() (spi.Columns, error) {
-					return []*spi.Column{
-						{Name: "name", Type: spi.ColumnTypeString(spi.VarcharColumnType)},
-						{Name: "time", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-						{Name: "value", Type: spi.ColumnTypeString(spi.Float64ColumnType)},
-					}, nil
+				rows.ColumnsFunc = func() ([]string, []string, error) {
+					return []string{
+							"name", "time", "value",
+						}, []string{
+							api.ColumnTypeString(api.VarcharColumnType),
+							api.ColumnTypeString(api.DatetimeColumnType),
+							api.ColumnTypeString(api.Float64ColumnType),
+						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
 				rows.NextFunc = func() bool {
@@ -159,10 +161,10 @@ func TestWrite(t *testing.T) {
 
 	connMock := &ConnMock{
 		CloseFunc: func() error { return nil },
-		ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
+		ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
 			rt := &ResultMock{}
 			switch sqlText {
-			case "insert into EXAMPLE (NAME,TIME,VALUE) values(?,?,?)":
+			case "INSERT INTO EXAMPLE(NAME,TIME,VALUE) VALUES(?,?,?)":
 				if len(params) == 3 && strings.HasPrefix(params[0].(string), "mycar") && params[2] == values[count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
@@ -170,6 +172,7 @@ func TestWrite(t *testing.T) {
 					count++
 				} else {
 					t.Log("ExecFunc => unexpected insert params:", params)
+					t.Fatal(sqlText)
 				}
 			default:
 				t.Log("ExecFunc => unknown mock db SQL:", sqlText)
@@ -177,7 +180,7 @@ func TestWrite(t *testing.T) {
 			}
 			return rt
 		},
-		QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) spi.Row {
+		QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) api.Row {
 			if sqlText == "select count(*) from M$SYS_TABLES where name = ?" && params[0] == "EXAMPLE" {
 				return &RowMock{
 					ErrFunc: func() error { return nil },
@@ -190,9 +193,9 @@ func TestWrite(t *testing.T) {
 				return &RowMock{
 					ErrFunc: func() error { return nil },
 					ScanFunc: func(cols ...any) error {
-						*(cols[0].(*int)) = 0                // TABLE_ID
-						*(cols[1].(*int)) = spi.TagTableType // TABLE_TYPE
-						*(cols[3].(*int)) = 3                // TABLE_COLCOUNT
+						*(cols[0].(*int)) = 0                     // TABLE_ID
+						*(cols[1].(*int)) = int(api.TagTableType) // TABLE_TYPE
+						*(cols[3].(*int)) = 3                     // TABLE_COLCOUNT
 						return nil
 					},
 				}
@@ -202,9 +205,9 @@ func TestWrite(t *testing.T) {
 			}
 			return nil
 		},
-		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			if sqlText == "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id" {
-				return NewRowsWrap([]*spi.Column{
+				return NewRowsWrap([]*api.Column{
 					{Name: "NAME", Type: "string"},
 					{Name: "TYPE", Type: "int"},
 					{Name: "LENGTH", Type: "int"},
@@ -212,13 +215,13 @@ func TestWrite(t *testing.T) {
 					{Name: "FLAG", Type: "int"},
 				},
 					[][]any{
-						{"NAME", spi.VarcharColumnType, 0, 0, 0},
-						{"TIME", spi.DatetimeColumnType, 0, 1, 0},
-						{"VALUE", spi.Float64ColumnType, 0, 2, 0},
+						{"NAME", api.VarcharColumnType, 0, 0, 0},
+						{"TIME", api.DatetimeColumnType, 0, 1, 0},
+						{"VALUE", api.Float64ColumnType, 0, 2, 0},
 					}), nil
 			} else if sqlText == "select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?" {
 				return NewRowsWrap(
-					[]*spi.Column{
+					[]*api.Column{
 						{Name: "NAME", Type: "string"},
 						{Name: "TYPE", Type: "int"},
 						{Name: "ID", Type: "int"},
@@ -230,7 +233,7 @@ func TestWrite(t *testing.T) {
 					}), nil
 			} else if sqlText == "select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id" {
 				return NewRowsWrap(
-					[]*spi.Column{{Name: "NAME", Type: "string"}},
+					[]*api.Column{{Name: "NAME", Type: "string"}},
 					[][]any{},
 				), nil
 			} else {
@@ -290,7 +293,7 @@ func TestWrite(t *testing.T) {
 	}
 }
 
-func NewRowsWrap(columns spi.Columns, values [][]any) *RowsMockWrap {
+func NewRowsWrap(columns api.Columns, values [][]any) *RowsMockWrap {
 	ret := &RowsMockWrap{columns: columns, values: values}
 	rows := &RowsMock{}
 	rows.NextFunc = ret.Next
@@ -304,7 +307,7 @@ func NewRowsWrap(columns spi.Columns, values [][]any) *RowsMockWrap {
 
 type RowsMockWrap struct {
 	*RowsMock
-	columns spi.Columns
+	columns api.Columns
 	values  [][]any
 	cursor  int
 }
@@ -313,8 +316,14 @@ func (rw *RowsMockWrap) Close() error {
 	return nil
 }
 
-func (rw *RowsMockWrap) Columns() (spi.Columns, error) {
-	return rw.columns, nil
+func (rw *RowsMockWrap) Columns() ([]string, []string, error) {
+	names := make([]string, len(rw.columns))
+	types := make([]string, len(rw.columns))
+	for i, c := range rw.columns {
+		names[i] = c.Name
+		types[i] = c.Type
+	}
+	return names, types, nil
 }
 
 func (rw *RowsMockWrap) Next() bool {
@@ -342,7 +351,7 @@ func TestAppend(t *testing.T) {
 	count := 0
 	connMock := &ConnMock{
 		CloseFunc: func() error { return nil },
-		AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+		AppenderFunc: func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 			app := &AppenderMock{}
 			app.CloseFunc = func() (int64, int64, error) { return int64(count), 0, nil }
 			app.AppendFunc = func(values ...any) error {
@@ -354,12 +363,14 @@ func TestAppend(t *testing.T) {
 				}
 				return nil
 			}
-			app.ColumnsFunc = func() (spi.Columns, error) {
-				return []*spi.Column{
-					{Name: "name", Type: spi.ColumnTypeString(spi.VarcharColumnType)},
-					{Name: "time", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-					{Name: "value", Type: spi.ColumnTypeString(spi.Float64ColumnType)},
-				}, nil
+			app.ColumnsFunc = func() ([]string, []string, error) {
+				return []string{
+						"name", "time", "value",
+					}, []string{
+						api.ColumnTypeString(api.VarcharColumnType),
+						api.ColumnTypeString(api.DatetimeColumnType),
+						api.ColumnTypeString(api.Float64ColumnType),
+					}, nil
 			}
 			return app, nil
 		},
@@ -430,7 +441,7 @@ func TestTql(t *testing.T) {
 	var count = 0
 	connMock := &ConnMock{
 		CloseFunc: func() error { return nil },
-		AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+		AppenderFunc: func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 			app := &AppenderMock{}
 			app.CloseFunc = func() (int64, int64, error) { return int64(count), 0, nil }
 			app.AppendFunc = func(values ...any) error {
@@ -442,12 +453,14 @@ func TestTql(t *testing.T) {
 				}
 				return nil
 			}
-			app.ColumnsFunc = func() (spi.Columns, error) {
-				return []*spi.Column{
-					{Name: "name", Type: spi.ColumnTypeString(spi.VarcharColumnType)},
-					{Name: "time", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-					{Name: "value", Type: spi.ColumnTypeString(spi.Float64ColumnType)},
-				}, nil
+			app.ColumnsFunc = func() ([]string, []string, error) {
+				return []string{
+						"name", "time", "value",
+					}, []string{
+						api.ColumnTypeString(api.VarcharColumnType),
+						api.ColumnTypeString(api.DatetimeColumnType),
+						api.ColumnTypeString(api.Float64ColumnType),
+					}, nil
 			}
 			return app, nil
 		},

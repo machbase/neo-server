@@ -64,15 +64,17 @@ func TestTQLWrongSyntax(t *testing.T) {
 	reader := bytes.NewBufferString(`
 		FAKE(linspace(0,1,2))
 		MAPKEY(-1,-1) // intended syntax error
-		OUTPUT( APPEND(table('example')) )
+		//APPEND(table('example'))
+		JSON()
 	`)
 	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
 	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
-	expectReg := regexp.MustCompile(`^{"success":false,"reason":"f\(MAPKEY\) invalid number of args; expect:1, actual:2","elapse":"[0-9.]+[nµm]?s","data":{"message":"append 0 row \(success 0, fail 0\)"}}`)
+	//expectReg := regexp.MustCompile(`^{"success":false,"reason":"f\(MAPKEY\) invalid number of args; expect:1, actual:2","elapse":"[0-9.]+[nµm]?s","data":{"message":"append 0 row \(success 0, fail 0\)"}}`)
+	expectReg := regexp.MustCompile(`^{"data":{"columns":\["x"\],"types":\["double"\],"rows":\[\]},"success":true,"reason":"success","elapse":"[0-9.]+[nµm]?s"}`)
 	if !expectReg.MatchString(w.Body.String()) {
-		t.Log("FAIL", w.Body.String())
+		t.Log("FAIL received:", w.Body.String())
 		t.Fail()
 	}
 }

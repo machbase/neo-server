@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -70,7 +70,7 @@ func (node *Node) fmHistogram(value any, args ...any) (any, error) {
 		}
 		node.SetValue("histogram", hist)
 		node.SetEOF(func(n *Node) {
-			cols := []*spi.Column{
+			cols := []*api.Column{
 				{Name: "ROWNUM", Type: "int"},
 				{Name: "low", Type: "double"},
 				{Name: "high", Type: "double"},
@@ -79,9 +79,9 @@ func (node *Node) fmHistogram(value any, args ...any) (any, error) {
 
 			for _, catName := range catNames {
 				if catName == "" {
-					cols = append(cols, &spi.Column{Name: "count", Type: "int"})
+					cols = append(cols, &api.Column{Name: "count", Type: "int"})
 				} else {
-					cols = append(cols, &spi.Column{Name: string(catName), Type: "int"})
+					cols = append(cols, &api.Column{Name: string(catName), Type: "int"})
 				}
 			}
 			node.task.SetResultColumns(cols)
@@ -312,14 +312,14 @@ func (node *Node) fmBoxplot(args ...any) (any, error) {
 			if format == "dict" {
 				//////////////////////////////////
 				// boxplot dictionary format
-				cols := []*spi.Column{
+				cols := []*api.Column{
 					{Name: "ROWNUM", Type: "int"},
 				}
 				for id, catName := range box.resultCatNames {
 					if catName == "" {
-						cols = append(cols, &spi.Column{Name: fmt.Sprintf("boxplot_%d", id), Type: "dict"})
+						cols = append(cols, &api.Column{Name: fmt.Sprintf("boxplot_%d", id), Type: "dict"})
 					} else {
-						cols = append(cols, &spi.Column{Name: string(catName), Type: "dict"})
+						cols = append(cols, &api.Column{Name: string(catName), Type: "dict"})
 					}
 				}
 				node.task.SetResultColumns(cols)
@@ -346,7 +346,7 @@ func (node *Node) fmBoxplot(args ...any) (any, error) {
 			} else if format == "chart" {
 				//////////////////////////////////
 				// boxplot chart format
-				cols := []*spi.Column{
+				cols := []*api.Column{
 					{Name: "ROWNUM", Type: "int"},
 					{Name: "CATEGORY", Type: "string"},
 					{Name: "BOXPLOT", Type: "list"},
@@ -378,15 +378,15 @@ func (node *Node) fmBoxplot(args ...any) (any, error) {
 			} else {
 				//////////////////////////////////
 				// boxplot standard
-				cols := []*spi.Column{
+				cols := []*api.Column{
 					{Name: "ROWNUM", Type: "int"},
 					{Name: "CATEGORY", Type: "string"},
 				}
 				for id, catName := range box.resultCatNames {
 					if catName == "" {
-						cols = append(cols, &spi.Column{Name: fmt.Sprintf("boxplot_%d", id), Type: "double"})
+						cols = append(cols, &api.Column{Name: fmt.Sprintf("boxplot_%d", id), Type: "double"})
 					} else {
-						cols = append(cols, &spi.Column{Name: string(catName), Type: "double"})
+						cols = append(cols, &api.Column{Name: string(catName), Type: "double"})
 					}
 				}
 				node.task.SetResultColumns(cols)

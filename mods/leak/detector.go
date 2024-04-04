@@ -6,10 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/leak/lru"
 	"github.com/machbase/neo-server/mods/logging"
-	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
@@ -84,26 +83,6 @@ func (det *Detector) Stop() {
 	close(det.runCh)
 }
 
-func (det *Detector) Inflights() []*spi.Inflight {
-	ret := make([]*spi.Inflight, 0, det.inflights.Count())
-	now := time.Now()
-	det.inflights.IterCb(func(key string, value any) {
-		item := &spi.Inflight{Id: key}
-		switch val := value.(type) {
-		case *RowsParole:
-			item.Type = "QUERY"
-			item.SqlText = val.sqlText
-			item.Elapsed = now.Sub(val.lastAccessTime)
-		case *AppenderParole:
-			item.Type = "APPEND"
-			item.SqlText = val.tableName
-			item.Elapsed = now.Sub(val.createTime)
-		}
-		ret = append(ret, item)
-	})
-	return ret
-}
-
 func (det *Detector) Detect() {
 	det.runCh <- time.Now()
 }
@@ -132,7 +111,7 @@ func (det *Detector) runDetection() {
 var idSerial int64
 
 type RowsParole struct {
-	Rows        spi.Rows
+	Rows        api.Rows
 	id          string
 	release     func()
 	releaseOnce sync.Once
@@ -157,13 +136,11 @@ func (rp *RowsParole) Release() {
 	}
 }
 
-var _ mach.Detective = &Detector{}
-
 func (det *Detector) EnlistDetective(obj any, sqlTextOrTableName string) {
 	key := fmt.Sprintf("%p#0", obj)
-	if rows, ok := obj.(spi.Rows); ok {
+	if rows, ok := obj.(api.Rows); ok {
 		det.detainRows(key, rows, sqlTextOrTableName)
-	} else if appender, ok := obj.(spi.Appender); ok {
+	} else if appender, ok := obj.(api.Appender); ok {
 		det.detainAppender(key, appender, sqlTextOrTableName)
 	}
 }
@@ -195,21 +172,13 @@ func (det *Detector) UpdateDetective(obj any) {
 	}
 }
 
-func (det *Detector) InflightsDetective() []*spi.Inflight {
-	return det.Inflights()
-}
-
-func (det *Detector) PostflightsDetective() []*spi.Postflight {
-	return det.Postflights()
-}
-
-func (det *Detector) DetainRows(rows spi.Rows, sqlText string) *RowsParole {
+func (det *Detector) DetainRows(rows api.Rows, sqlText string) *RowsParole {
 	ser := atomic.AddInt64(&idSerial, 1)
 	key := fmt.Sprintf("%p#%d", rows, ser)
 	return det.detainRows(key, rows, sqlText)
 }
 
-func (det *Detector) detainRows(key string, rows spi.Rows, sqlText string) *RowsParole {
+func (det *Detector) detainRows(key string, rows api.Rows, sqlText string) *RowsParole {
 	ret := &RowsParole{
 		Rows:       rows,
 		id:         key,
@@ -248,7 +217,7 @@ func (det *Detector) Rows(id string) (*RowsParole, error) {
 }
 
 type AppenderParole struct {
-	Appender    spi.Appender
+	Appender    api.Appender
 	id          string
 	release     func()
 	releaseOnce sync.Once
@@ -271,13 +240,13 @@ func (ap *AppenderParole) Release() {
 	}
 }
 
-func (det *Detector) DetainAppender(appender spi.Appender, tableName string) *AppenderParole {
+func (det *Detector) DetainAppender(appender api.Appender, tableName string) *AppenderParole {
 	ser := atomic.AddInt64(&idSerial, 1)
 	key := fmt.Sprintf("%p#%d", appender, ser)
 	return det.detainAppender(key, appender, tableName)
 }
 
-func (det *Detector) detainAppender(key string, appender spi.Appender, tableName string) *AppenderParole {
+func (det *Detector) detainAppender(key string, appender api.Appender, tableName string) *AppenderParole {
 	ret := &AppenderParole{
 		Appender:   appender,
 		id:         key,
@@ -355,21 +324,4 @@ func (det *Detector) addHistoryRows(rp *RowsParole) {
 }
 
 func (det *Detector) addHistoryAppender(ap *AppenderParole) {
-}
-
-func (det *Detector) Postflights() []*spi.Postflight {
-	det.historyLock.Lock()
-	lst := det.history.Snapshot()
-	det.historyLock.Unlock()
-	ret := make([]*spi.Postflight, 0)
-	for _, item := range lst {
-		if rowstat, ok := item.(*RowsStat); ok {
-			ret = append(ret, &spi.Postflight{
-				SqlText:   rowstat.sqlText,
-				Count:     rowstat.count,
-				TotalTime: rowstat.ageTotal,
-			})
-		}
-	}
-	return ret
 }

@@ -1,6 +1,6 @@
 package tql_test
 
-//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-spi Database Conn Rows Result Appender
+//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-server/api Database Conn Rows Result Appender
 
 import (
 	"bufio"
@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -212,10 +212,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 var mockDbResult [][]any
 var mockDbCursor = 0
 var mockDb = DatabaseMock{
-	ConnectFunc: func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	ConnectFunc: func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 		conn := &ConnMock{
 			CloseFunc: func() error { return nil },
-			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 				switch sqlText {
 				case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
 					fallthrough
@@ -224,11 +224,8 @@ var mockDb = DatabaseMock{
 						IsFetchableFunc: func() bool { return true },
 						NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
 						CloseFunc:       func() error { return nil },
-						ColumnsFunc: func() (spi.Columns, error) {
-							return []*spi.Column{
-								{Name: "time", Type: "datetime"},
-								{Name: "value", Type: "double"},
-							}, nil
+						ColumnsFunc: func() ([]string, []string, error) {
+							return []string{"time", "value"}, []string{"datetime", "double"}, nil
 						},
 						MessageFunc: func() string { return "no rows selected." },
 						ScanFunc: func(cols ...any) error {
@@ -254,9 +251,9 @@ var mockDb = DatabaseMock{
 					}, nil
 				}
 			},
-			ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
+			ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
 				switch sqlText {
-				case `INSERT INTO example (name,a) VALUES(?,?)`:
+				case `INSERT INTO example(name,a) VALUES(?,?)`:
 					fmt.Println("task_test, mockdb: ", sqlText, params)
 					return &ResultMock{
 						ErrFunc:          func() error { return nil },
@@ -268,7 +265,7 @@ var mockDb = DatabaseMock{
 				}
 				return nil
 			},
-			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+			AppenderFunc: func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 				return &AppenderMock{
 					AppendFunc: func(values ...any) error { return nil },
 					CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },

@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
-func Indexes(ctx context.Context, conn spi.Conn) ([]*IndexInfo, error) {
+func Indexes(ctx context.Context, conn api.Conn) ([]*IndexInfo, error) {
 	ret := []*IndexInfo{}
 
 	sqlText := `select 

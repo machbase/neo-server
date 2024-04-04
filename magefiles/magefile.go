@@ -257,11 +257,18 @@ func Test() error {
 		"CGO_ENABLED": "1",
 	}
 
+	if runtime.GOOS == "linux" {
+		env["CGO_LDFLAGS"] = "-lpthread -ljemalloc"
+	}
 	if err := sh.RunWithV(env, "go", "mod", "tidy"); err != nil {
 		return err
 	}
 
-	if err := sh.RunWithV(env, "go", "test", "./booter/...", "./mods/...", "-cover", "-coverprofile", "./tmp/cover.out"); err != nil {
+	if err := sh.RunWithV(env, "go", "test", "-cover", "-coverprofile", "./tmp/cover.out",
+		"./booter/...",
+		"./mods/...",
+		"./api/...",
+	); err != nil {
 		return err
 	}
 	if output, err := sh.Output("go", "tool", "cover", "-func=./tmp/cover.out"); err != nil {
@@ -327,6 +334,25 @@ func CheckMoq() error {
 func Generate() error {
 	mg.Deps(CheckMoq)
 	return sh.RunV("go", "generate", "./...")
+}
+
+func Protoc() error {
+	args := []string{}
+	if len(args) == 0 {
+		args = []string{
+			"machrpc", "mgmt", "bridge", "schedule",
+		}
+	}
+
+	for _, mod := range args {
+		fmt.Printf("protoc regen api/proto/%s.proto...\n", mod)
+		sh.RunV("protoc", "-I", "api/proto", mod+".proto",
+			"--experimental_allow_proto3_optional",
+			fmt.Sprintf("--go_out=./api/%s", mod), "--go_opt=paths=source_relative",
+			fmt.Sprintf("--go-grpc_out=./api/%s", mod), "--go-grpc_opt=paths=source_relative",
+		)
+	}
+	return nil
 }
 
 func Package() error {

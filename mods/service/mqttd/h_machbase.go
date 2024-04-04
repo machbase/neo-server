@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -21,7 +21,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
@@ -56,7 +55,12 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 			return
 		}
 		rsp.Elapse = time.Since(tick).String()
-		peer.Publish(replyTopic, replyQoS, rsp.Content)
+		if len(rsp.Content) == 0 {
+			buff, _ := json.Marshal(rsp)
+			peer.Publish(replyTopic, replyQoS, buff)
+		} else {
+			peer.Publish(replyTopic, replyQoS, rsp.Content)
+		}
 	}()
 
 	err := json.Unmarshal(payload, req)
@@ -108,7 +112,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols spi.Columns) {
+		OnFetchStart: func(cols api.Columns) {
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
@@ -143,6 +147,23 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 }
 
 func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) error {
+	tick := time.Now()
+	var replyQoS = byte(0)
+	var replyTopic string
+	var rsp = &msg.WriteResponse{Reason: "not specified"}
+
+	// TEST
+	// replyTopic = "db/reply"
+
+	defer func() {
+		if peer == nil || replyTopic == "" {
+			return
+		}
+		rsp.Elapse = time.Since(tick).String()
+		buff, _ := json.Marshal(rsp)
+		peer.Publish(replyTopic, replyQoS, buff)
+	}()
+
 	peerLog := peer.GetLog()
 
 	writePath := strings.ToUpper(strings.TrimPrefix(topic, "write/"))
@@ -159,7 +180,8 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	case "json":
 	case "csv":
 	default:
-		peerLog.Warnf("%s unsupported format %q", topic, wp.Format)
+		rsp.Reason = fmt.Sprintf("%s unsupported format %q", topic, wp.Format)
+		peerLog.Warnf(rsp.Reason)
 		return nil
 	}
 	switch wp.Compress {
@@ -167,12 +189,14 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		peerLog.Warnf("%s unsupproted compress %q", topic, wp.Compress)
+		rsp.Reason = fmt.Sprintf("%s unsupproted compress %q", topic, wp.Compress)
+		peerLog.Warnf(rsp.Reason)
 		return nil
 	}
 
 	if wp.Table == "" {
-		peerLog.Warn(topic, "table is not specified")
+		rsp.Reason = "table is not specified"
+		peerLog.Warn(topic, rsp.Reason)
 		return nil
 	}
 
@@ -181,14 +205,16 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
-		peerLog.Warn(topic, err.Error())
+		rsp.Reason = err.Error()
+		peerLog.Warn(topic, rsp.Reason)
 		return nil
 	}
 	defer conn.Close()
 
 	exists, err := do.ExistsTable(ctx, conn, wp.Table)
 	if err != nil {
-		peerLog.Warnf(topic, err.Error())
+		rsp.Reason = err.Error()
+		peerLog.Warnf(topic, rsp.Reason)
 		return nil
 	}
 	if !exists {
@@ -198,7 +224,8 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 
 	var desc *do.TableDescription
 	if desc0, err := do.Describe(ctx, conn, wp.Table, false); err != nil {
-		peerLog.Warnf(topic, err.Error())
+		rsp.Reason = err.Error()
+		peerLog.Warnf(topic, rsp.Reason)
 		return nil
 	} else {
 		desc = desc0.(*do.TableDescription)
@@ -211,12 +238,14 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 			if gr != nil {
 				err = gr.Close()
 				if err != nil {
-					peerLog.Warnf("---- fail to close decompressor, %s", err.Error())
+					rsp.Reason = fmt.Sprintf("fail to close decompressor, %s", err.Error())
+					peerLog.Warn("----", rsp.Reason)
 				}
 			}
 		}()
 		if err != nil {
-			peerLog.Warnf("---- fail to gunzip, %s", err.Error())
+			rsp.Reason = fmt.Sprintf("fail to unzip, %s", err.Error())
+			peerLog.Warn("----", rsp.Reason)
 			return nil
 		}
 		instream = &stream.ReaderInputStream{Reader: gr}
@@ -229,42 +258,109 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		opts.Timeformat("ns"),
 		opts.TimeLocation(time.UTC),
 		opts.TableName(wp.Table),
-		opts.Columns(desc.Columns.Columns().Names()...),
-		opts.ColumnTypes(desc.Columns.Columns().Types()...),
 		opts.Delimiter(","),
 		opts.Heading(false),
 	}
 
+	var recno int
+	var insertQuery string
+	var columnNames []string
+	var columnTypes []string
+
+	if wp.Format == "json" {
+		bs, err := io.ReadAll(instream)
+		if err != nil {
+			rsp.Reason = err.Error()
+			peerLog.Warn("----", rsp.Reason)
+			return nil
+		}
+		/// the json of payload can have 3 types of forms.
+		// 1. Array of Array: [[field1, field2],[field1,field]]
+		// 2. Array : [field1, field2]
+		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
+		wr := msg.WriteRequest{}
+		dec := json.NewDecoder(bytes.NewBuffer(bs))
+		// ignore json decoder error, the payload json can be non-full-document json.
+		dec.Decode(&wr)
+
+		if wr.Data != nil && len(wr.Data.Columns) > 0 {
+			columnNames = wr.Data.Columns
+			columnTypes = make([]string, 0, len(columnNames))
+			_hold := make([]string, 0, len(columnNames))
+			for _, colName := range columnNames {
+				_hold = append(_hold, "?")
+				_type := ""
+				for _, d := range desc.Columns {
+					if d.Name == strings.ToUpper(colName) {
+						_type = d.TypeString()
+						break
+					}
+				}
+				if _type == "" {
+					rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, wp.Table)
+					peerLog.Warn("----", rsp.Reason)
+					return nil
+				}
+				columnTypes = append(columnTypes, _type)
+			}
+			valueHolder := strings.Join(_hold, ",")
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, strings.Join(columnNames, ","), valueHolder)
+		}
+		instream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
+	}
+
+	if len(columnNames) == 0 {
+		columnNames = desc.Columns.Columns().Names()
+		columnTypes = desc.Columns.Columns().Types()
+	}
+
+	codecOpts = append(codecOpts,
+		opts.InputStream(instream),
+		opts.Columns(columnNames...),
+		opts.ColumnTypes(columnTypes...),
+	)
+	if insertQuery == "" {
+		_hold := []string{}
+		for i := 0; i < len(desc.Columns); i++ {
+			_hold = append(_hold, "?")
+		}
+		valueHolder := strings.Join(_hold, ",")
+		_hold = []string{}
+		for i := 0; i < len(desc.Columns); i++ {
+			_hold = append(_hold, desc.Columns[i].Name)
+		}
+		columnsHolder := strings.Join(_hold, ",")
+		insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, columnsHolder, valueHolder)
+	}
+
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
-	lineno := 0
-	_hold := []string{}
-	for i := 0; i < len(desc.Columns); i++ {
-		_hold = append(_hold, "?")
+
+	if decoder == nil {
+		rsp.Reason = fmt.Sprintf("codec %q not found", wp.Format)
+		peerLog.Errorf("----", rsp.Reason)
+		return nil
 	}
-	valueHolder := strings.Join(_hold, ",")
-	_hold = []string{}
-	for i := 0; i < len(desc.Columns); i++ {
-		_hold = append(_hold, desc.Columns[i].Name)
-	}
-	columnsHolder := strings.Join(_hold, ",")
-	insertQuery := fmt.Sprintf("insert into %s (%s) values(%s)", wp.Table, columnsHolder, valueHolder)
 
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
-				peerLog.Warnf(topic, err.Error())
+				rsp.Reason = err.Error()
+				peerLog.Warn(topic, err.Error())
 				return nil
 			}
 			break
 		}
-		lineno++
+		recno++
 
 		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
+			rsp.Reason = result.Err().Error()
 			peerLog.Warn(topic, result.Err().Error())
 			return nil
 		}
 	}
+
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) inserted", recno)
 	return nil
 }
 
@@ -299,7 +395,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	var appenderSet []*AppenderWrapper
-	var appender spi.Appender
+	var appender api.Appender
 	var peerId = peer.Id()
 
 	if val, exists := svr.appenders.Get(peerId); exists {
@@ -314,7 +410,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 	if appender == nil {
 		ctx, ctxCancel := context.WithCancel(context.Background())
-		if conn, err := svr.db.Connect(ctx, mach.WithTrustUser("sys")); err != nil {
+		if conn, err := svr.db.Connect(ctx, api.WithTrustUser("sys")); err != nil {
 			ctxCancel()
 			return err
 		} else {
@@ -359,7 +455,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(payload)}
 	}
 
-	cols, _ := appender.Columns()
+	cols, _ := api.AppenderColumns(appender)
 	codecOpts := []opts.Option{
 		opts.InputStream(instream),
 		opts.Timeformat("ns"),

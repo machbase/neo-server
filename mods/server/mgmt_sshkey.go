@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/api/mgmt"
 )
 
 func (s *svr) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*mgmt.ListSshKeyResponse, error) {

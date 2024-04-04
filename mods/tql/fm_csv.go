@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	codecOpts "github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
 )
@@ -216,9 +216,9 @@ func (src *csvSource) SetCharsetEncoding(enc encoding.Encoding) {
 	src.srcEncoding = enc
 }
 
-func (fs *csvSource) header() spi.Columns {
+func (fs *csvSource) header() api.Columns {
 	if len(fs.columns) == 0 {
-		return []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+		return []*api.Column{{Name: "ROWNUM", Type: "int"}}
 	}
 	max := 0
 	for i := range fs.columns {
@@ -226,10 +226,10 @@ func (fs *csvSource) header() spi.Columns {
 			max = i
 		}
 	}
-	ret := make([]*spi.Column, max+2)
-	ret[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
+	ret := make([]*api.Column, max+2)
+	ret[0] = &api.Column{Name: "ROWNUM", Type: "int"}
 	for i, c := range fs.columns {
-		ret[i+1] = &spi.Column{Name: c.label, Type: c.dataType.spiType()}
+		ret[i+1] = &api.Column{Name: c.label, Type: c.dataType.spiType()}
 	}
 	return ret
 }

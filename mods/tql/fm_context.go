@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -104,7 +104,7 @@ func (node *Node) fmArgs() (any, error) {
 func (node *Node) fmArgsParam(args ...any) (any, error) {
 	argValues := node.task.argValues
 	if len(argValues) == 0 {
-		cols := []*spi.Column{{Name: "ROWNUM", Type: "int"}}
+		cols := []*api.Column{{Name: "ROWNUM", Type: "int"}}
 		node.task.SetResultColumns(cols)
 		return []any{}, nil
 	}

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 )
 
 func ConvertToDatum(arr ...any) ([]*bridgerpc.Datum, error) {

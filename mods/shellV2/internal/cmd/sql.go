@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -15,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/term"
 )
 
@@ -162,9 +162,9 @@ func doSql(ctx *action.ActionContext) {
 	nextPauseRow := int64(pageHeight)
 
 	queryCtx := &do.QueryContext{
-		Conn: ctx.Conn,
+		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols spi.Columns) {
+		OnFetchStart: func(cols api.Columns) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
 		},

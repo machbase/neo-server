@@ -6,7 +6,6 @@ import (
 
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -53,18 +52,14 @@ func doExplain(ctx *action.ActionContext) {
 
 	tick := time.Now()
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	if explainer, ok := ctx.Conn.(spi.Explainer); ok {
-		plan, err := explainer.Explain(ctx.Ctx, sqlText, cmd.Full)
-		if err != nil {
-			ctx.Println(err.Error())
-			return
-		}
-		elapsed := time.Since(tick).String()
-		ctx.Println(plan)
-		if cmd.Full {
-			ctx.Printfln("Elapsed time %s", elapsed)
-		}
-	} else {
-		ctx.Println("Explain is unavailable")
+	plan, err := ctx.Conn.Explain(ctx.Ctx, sqlText, cmd.Full)
+	if err != nil {
+		ctx.Println(err.Error())
+		return
+	}
+	elapsed := time.Since(tick).String()
+	ctx.Println(plan)
+	if cmd.Full {
+		ctx.Printfln("Elapsed time %s", elapsed)
 	}
 }

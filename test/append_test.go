@@ -7,7 +7,6 @@ import (
 	"time"
 
 	mach "github.com/machbase/neo-engine"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +21,7 @@ func TestAppendTag(t *testing.T) {
 		fmt.Println(e)
 	}()
 
-	db, err := spi.New()
+	db, err := mach.NewDatabase()
 	require.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,7 +70,7 @@ func TestAppendTag(t *testing.T) {
 }
 
 func TestAppendTagNotExist(t *testing.T) {
-	db, err := spi.New()
+	db, err := mach.NewDatabase()
 	require.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

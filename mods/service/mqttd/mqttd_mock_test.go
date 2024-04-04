@@ -5,57 +5,57 @@ package mqttd
 
 import (
 	"context"
-	"github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 	"sync"
 	"time"
 )
 
-// Ensure, that ConnMock does implement spi.Conn.
+// Ensure, that ConnMock does implement api.Conn.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Conn = &ConnMock{}
+var _ api.Conn = &ConnMock{}
 
-// ConnMock is a mock implementation of spi.Conn.
+// ConnMock is a mock implementation of api.Conn.
 //
 //	func TestSomethingThatUsesConn(t *testing.T) {
 //
-//		// make and configure a mocked spi.Conn
+//		// make and configure a mocked api.Conn
 //		mockedConn := &ConnMock{
-//			AppenderFunc: func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+//			AppenderFunc: func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 //				panic("mock out the Appender method")
 //			},
 //			CloseFunc: func() error {
 //				panic("mock out the Close method")
 //			},
-//			ExecFunc: func(ctx context.Context, sqlText string, params ...any) spi.Result {
+//			ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
 //				panic("mock out the Exec method")
 //			},
-//			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+//			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 //				panic("mock out the Query method")
 //			},
-//			QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) spi.Row {
+//			QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) api.Row {
 //				panic("mock out the QueryRow method")
 //			},
 //		}
 //
-//		// use mockedConn in code that requires spi.Conn
+//		// use mockedConn in code that requires api.Conn
 //		// and then make assertions.
 //
 //	}
 type ConnMock struct {
 	// AppenderFunc mocks the Appender method.
-	AppenderFunc func(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error)
+	AppenderFunc func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error)
 
 	// CloseFunc mocks the Close method.
 	CloseFunc func() error
 
 	// ExecFunc mocks the Exec method.
-	ExecFunc func(ctx context.Context, sqlText string, params ...any) spi.Result
+	ExecFunc func(ctx context.Context, sqlText string, params ...any) api.Result
 
 	// QueryFunc mocks the Query method.
-	QueryFunc func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error)
+	QueryFunc func(ctx context.Context, sqlText string, params ...any) (api.Rows, error)
 
 	// QueryRowFunc mocks the QueryRow method.
-	QueryRowFunc func(ctx context.Context, sqlText string, params ...any) spi.Row
+	QueryRowFunc func(ctx context.Context, sqlText string, params ...any) api.Row
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -66,7 +66,7 @@ type ConnMock struct {
 			// TableName is the tableName argument value.
 			TableName string
 			// Opts is the opts argument value.
-			Opts []spi.AppenderOption
+			Opts []api.AppenderOption
 		}
 		// Close holds details about calls to the Close method.
 		Close []struct {
@@ -107,14 +107,14 @@ type ConnMock struct {
 }
 
 // Appender calls AppenderFunc.
-func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	if mock.AppenderFunc == nil {
 		panic("ConnMock.AppenderFunc: method is nil but Conn.Appender was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
 		TableName string
-		Opts      []spi.AppenderOption
+		Opts      []api.AppenderOption
 	}{
 		Ctx:       ctx,
 		TableName: tableName,
@@ -133,12 +133,12 @@ func (mock *ConnMock) Appender(ctx context.Context, tableName string, opts ...sp
 func (mock *ConnMock) AppenderCalls() []struct {
 	Ctx       context.Context
 	TableName string
-	Opts      []spi.AppenderOption
+	Opts      []api.AppenderOption
 } {
 	var calls []struct {
 		Ctx       context.Context
 		TableName string
-		Opts      []spi.AppenderOption
+		Opts      []api.AppenderOption
 	}
 	mock.lockAppender.RLock()
 	calls = mock.calls.Appender
@@ -174,7 +174,7 @@ func (mock *ConnMock) CloseCalls() []struct {
 }
 
 // Exec calls ExecFunc.
-func (mock *ConnMock) Exec(ctx context.Context, sqlText string, params ...any) spi.Result {
+func (mock *ConnMock) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	if mock.ExecFunc == nil {
 		panic("ConnMock.ExecFunc: method is nil but Conn.Exec was just called")
 	}
@@ -214,7 +214,7 @@ func (mock *ConnMock) ExecCalls() []struct {
 }
 
 // Query calls QueryFunc.
-func (mock *ConnMock) Query(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+func (mock *ConnMock) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	if mock.QueryFunc == nil {
 		panic("ConnMock.QueryFunc: method is nil but Conn.Query was just called")
 	}
@@ -254,7 +254,7 @@ func (mock *ConnMock) QueryCalls() []struct {
 }
 
 // QueryRow calls QueryRowFunc.
-func (mock *ConnMock) QueryRow(ctx context.Context, sqlText string, params ...any) spi.Row {
+func (mock *ConnMock) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
 	if mock.QueryRowFunc == nil {
 		panic("ConnMock.QueryRowFunc: method is nil but Conn.QueryRow was just called")
 	}
@@ -293,20 +293,20 @@ func (mock *ConnMock) QueryRowCalls() []struct {
 	return calls
 }
 
-// Ensure, that RowsMock does implement spi.Rows.
+// Ensure, that RowsMock does implement api.Rows.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Rows = &RowsMock{}
+var _ api.Rows = &RowsMock{}
 
-// RowsMock is a mock implementation of spi.Rows.
+// RowsMock is a mock implementation of api.Rows.
 //
 //	func TestSomethingThatUsesRows(t *testing.T) {
 //
-//		// make and configure a mocked spi.Rows
+//		// make and configure a mocked api.Rows
 //		mockedRows := &RowsMock{
 //			CloseFunc: func() error {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() (spi.Columns, error) {
+//			ColumnsFunc: func() ([]string, []string, error) {
 //				panic("mock out the Columns method")
 //			},
 //			IsFetchableFunc: func() bool {
@@ -326,7 +326,7 @@ var _ spi.Rows = &RowsMock{}
 //			},
 //		}
 //
-//		// use mockedRows in code that requires spi.Rows
+//		// use mockedRows in code that requires api.Rows
 //		// and then make assertions.
 //
 //	}
@@ -335,7 +335,7 @@ type RowsMock struct {
 	CloseFunc func() error
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() (spi.Columns, error)
+	ColumnsFunc func() ([]string, []string, error)
 
 	// IsFetchableFunc mocks the IsFetchable method.
 	IsFetchableFunc func() bool
@@ -415,7 +415,7 @@ func (mock *RowsMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *RowsMock) Columns() (spi.Columns, error) {
+func (mock *RowsMock) Columns() ([]string, []string, error) {
 	if mock.ColumnsFunc == nil {
 		panic("RowsMock.ColumnsFunc: method is nil but Rows.Columns was just called")
 	}
@@ -581,15 +581,15 @@ func (mock *RowsMock) ScanCalls() []struct {
 	return calls
 }
 
-// Ensure, that RowMock does implement spi.Row.
+// Ensure, that RowMock does implement api.Row.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Row = &RowMock{}
+var _ api.Row = &RowMock{}
 
-// RowMock is a mock implementation of spi.Row.
+// RowMock is a mock implementation of api.Row.
 //
 //	func TestSomethingThatUsesRow(t *testing.T) {
 //
-//		// make and configure a mocked spi.Row
+//		// make and configure a mocked api.Row
 //		mockedRow := &RowMock{
 //			ErrFunc: func() error {
 //				panic("mock out the Err method")
@@ -611,7 +611,7 @@ var _ spi.Row = &RowMock{}
 //			},
 //		}
 //
-//		// use mockedRow in code that requires spi.Row
+//		// use mockedRow in code that requires api.Row
 //		// and then make assertions.
 //
 //	}
@@ -832,15 +832,15 @@ func (mock *RowMock) ValuesCalls() []struct {
 	return calls
 }
 
-// Ensure, that ResultMock does implement spi.Result.
+// Ensure, that ResultMock does implement api.Result.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Result = &ResultMock{}
+var _ api.Result = &ResultMock{}
 
-// ResultMock is a mock implementation of spi.Result.
+// ResultMock is a mock implementation of api.Result.
 //
 //	func TestSomethingThatUsesResult(t *testing.T) {
 //
-//		// make and configure a mocked spi.Result
+//		// make and configure a mocked api.Result
 //		mockedResult := &ResultMock{
 //			ErrFunc: func() error {
 //				panic("mock out the Err method")
@@ -853,7 +853,7 @@ var _ spi.Result = &ResultMock{}
 //			},
 //		}
 //
-//		// use mockedResult in code that requires spi.Result
+//		// use mockedResult in code that requires api.Result
 //		// and then make assertions.
 //
 //	}
@@ -965,15 +965,15 @@ func (mock *ResultMock) RowsAffectedCalls() []struct {
 	return calls
 }
 
-// Ensure, that AppenderMock does implement spi.Appender.
+// Ensure, that AppenderMock does implement api.Appender.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Appender = &AppenderMock{}
+var _ api.Appender = &AppenderMock{}
 
-// AppenderMock is a mock implementation of spi.Appender.
+// AppenderMock is a mock implementation of api.Appender.
 //
 //	func TestSomethingThatUsesAppender(t *testing.T) {
 //
-//		// make and configure a mocked spi.Appender
+//		// make and configure a mocked api.Appender
 //		mockedAppender := &AppenderMock{
 //			AppendFunc: func(values ...any) error {
 //				panic("mock out the Append method")
@@ -984,18 +984,15 @@ var _ spi.Appender = &AppenderMock{}
 //			CloseFunc: func() (int64, int64, error) {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() (spi.Columns, error) {
+//			ColumnsFunc: func() ([]string, []string, error) {
 //				panic("mock out the Columns method")
 //			},
 //			TableNameFunc: func() string {
 //				panic("mock out the TableName method")
 //			},
-//			TableTypeFunc: func() spi.TableType {
-//				panic("mock out the TableType method")
-//			},
 //		}
 //
-//		// use mockedAppender in code that requires spi.Appender
+//		// use mockedAppender in code that requires api.Appender
 //		// and then make assertions.
 //
 //	}
@@ -1010,13 +1007,10 @@ type AppenderMock struct {
 	CloseFunc func() (int64, int64, error)
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() (spi.Columns, error)
+	ColumnsFunc func() ([]string, []string, error)
 
 	// TableNameFunc mocks the TableName method.
 	TableNameFunc func() string
-
-	// TableTypeFunc mocks the TableType method.
-	TableTypeFunc func() spi.TableType
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -1041,16 +1035,12 @@ type AppenderMock struct {
 		// TableName holds details about calls to the TableName method.
 		TableName []struct {
 		}
-		// TableType holds details about calls to the TableType method.
-		TableType []struct {
-		}
 	}
 	lockAppend              sync.RWMutex
 	lockAppendWithTimestamp sync.RWMutex
 	lockClose               sync.RWMutex
 	lockColumns             sync.RWMutex
 	lockTableName           sync.RWMutex
-	lockTableType           sync.RWMutex
 }
 
 // Append calls AppendFunc.
@@ -1149,7 +1139,7 @@ func (mock *AppenderMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *AppenderMock) Columns() (spi.Columns, error) {
+func (mock *AppenderMock) Columns() ([]string, []string, error) {
 	if mock.ColumnsFunc == nil {
 		panic("AppenderMock.ColumnsFunc: method is nil but Appender.Columns was just called")
 	}
@@ -1199,32 +1189,5 @@ func (mock *AppenderMock) TableNameCalls() []struct {
 	mock.lockTableName.RLock()
 	calls = mock.calls.TableName
 	mock.lockTableName.RUnlock()
-	return calls
-}
-
-// TableType calls TableTypeFunc.
-func (mock *AppenderMock) TableType() spi.TableType {
-	if mock.TableTypeFunc == nil {
-		panic("AppenderMock.TableTypeFunc: method is nil but Appender.TableType was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockTableType.Lock()
-	mock.calls.TableType = append(mock.calls.TableType, callInfo)
-	mock.lockTableType.Unlock()
-	return mock.TableTypeFunc()
-}
-
-// TableTypeCalls gets all the calls that were made to TableType.
-// Check the length with:
-//
-//	len(mockedAppender.TableTypeCalls())
-func (mock *AppenderMock) TableTypeCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockTableType.RLock()
-	calls = mock.calls.TableType
-	mock.lockTableType.RUnlock()
 	return calls
 }
