@@ -754,11 +754,11 @@ func (g *GroupAggregate) newFiller() GroupFiller {
 	case "piecewiseconstant":
 		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
 	case "piecewiselinear":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.PiecewiseLinear{}, fallback: g.nullValue}
 	case "akimaspline":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.AkimaSpline{}, fallback: g.nullValue}
 	case "fritschbutland":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.FritschButland{}, fallback: g.nullValue}
 	case "linearregression":
 		return &GroupFillerPredict{useLinearRegression: true, fallback: g.nullValue}
 	default:
