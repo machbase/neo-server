@@ -1,12 +1,14 @@
 package nums_test
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/stretchr/testify/require"
+	"gonum.org/v1/gonum/interp"
 )
 
 func TestGCD(t *testing.T) {
@@ -163,4 +165,49 @@ func TestWeightedFloat64(t *testing.T) {
 	require.Equal(t, 2.0, sf[2].Weight())
 	require.EqualValues(t, []float64{0.12, 1.23, 2.34}, sf.Values())
 	require.EqualValues(t, []float64{3.0, 1.0, 2.0}, sf.Weights())
+}
+
+func TestPredict(t *testing.T) {
+	xs := []float64{
+		1712285745000000000,
+		1712285748000000000,
+		1712285751000000000,
+	}
+	ys := []float64{
+		2.0,
+		5.0,
+		8.0,
+	}
+	expect := []float64{
+		1712285754000000000,
+		1712285757000000000,
+		1712285760000000000,
+	}
+
+	type Predict interface {
+		Fit([]float64, []float64) error
+		Predict(float64) float64
+	}
+	tests := []struct {
+		p Predict
+	}{
+		{p: &interp.PiecewiseConstant{}},
+		{p: &interp.PiecewiseLinear{}},
+		{p: &interp.AkimaSpline{}},
+		{p: &interp.FritschButland{}},
+	}
+
+	for _, tt := range tests {
+		fmt.Println("===", fmt.Sprintf("%T", tt.p), "<-", ys)
+		if err := tt.p.Fit(xs, ys); err != nil {
+			t.Log("ERROR", err.Error())
+			t.Fail()
+			continue
+		}
+
+		for _, x := range expect {
+			y := tt.p.Predict(x)
+			fmt.Println("    x:", int64(x), "y:", y)
+		}
+	}
 }

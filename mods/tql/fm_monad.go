@@ -1620,9 +1620,20 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 
 func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 	var columnName = "column"
+	var wherePredicate = true
 	if len(opts) > 0 {
 		if str, ok := opts[0].(string); ok {
 			columnName = str
+		}
+	}
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *NullValue:
+			if newValue == nil {
+				newValue = v.altValue
+			}
+		case WherePredicate:
+			wherePredicate = bool(v)
 		}
 	}
 
@@ -1668,6 +1679,9 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		}
 	}
 
+	if !wherePredicate {
+		newValue = nil
+	}
 	switch val := inflight.value.(type) {
 	case []any:
 		head := val[0:idx]

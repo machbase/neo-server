@@ -1584,6 +1584,20 @@ func TestPushValue(t *testing.T) {
 		"2.0,3.0,13.0",
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"FAKE( linspace(0, 2, 3))",
+		"PUSHVALUE(1, value(0)*1.5, 'x1.5')",
+		"PUSHVALUE(2, value(1)+10, 'add', where(value(0) != 1.0 ))",
+		"CSV(precision(1), heading(true), rownum(false))",
+	}
+	resultLines = []string{
+		"x,x1.5,add",
+		"0.0,0.0,10.0",
+		"1.0,1.5,NULL",
+		"2.0,3.0,13.0",
+	}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestPushPopValue(t *testing.T) {
