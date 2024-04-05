@@ -19,7 +19,7 @@ func TestPrefixComplete(t *testing.T) {
 			expectLength: 0,
 			expectLines: []string{
 				"bridge", "connect", "desc", "explain", "export", "fake", "help",
-				"import", "key", "ping", "run", "set", "shell", "show", "shutdown",
+				"import", "key", "ping", "run", "session", "set", "shell", "show", "shutdown",
 				"sql", "ssh-key", "subscriber", "timer", "walk",
 			},
 		},
@@ -31,7 +31,7 @@ func TestPrefixComplete(t *testing.T) {
 		{
 			line:         "s",
 			expectLength: 1,
-			expectLines:  []string{"et", "hell", "how", "hutdown", "ql", "sh-key", "ubscriber"},
+			expectLines:  []string{"ession", "et", "hell", "how", "hutdown", "ql", "sh-key", "ubscriber"},
 		},
 		{
 			line:         "sh",

@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/mods/model"
 )
 
@@ -157,10 +157,6 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 		return rsp, nil
 	case MqttBridge:
 		connected := con.IsConnected()
-		if err != nil {
-			rsp.Reason = err.Error()
-			return rsp, nil
-		}
 		if !connected {
 			rsp.Reason = "not connected"
 			return rsp, nil

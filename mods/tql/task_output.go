@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -144,7 +144,7 @@ func (out *output) start() {
 						arr := rec.Flatten()
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
-								&spi.Column{
+								&api.Column{
 									Name: fmt.Sprintf("column%d", i-1),
 									Type: out.columnTypeName(v),
 								})
@@ -174,7 +174,6 @@ func (out *output) start() {
 				}
 			}
 		}
-
 		if shouldClose {
 			out.closeEncoder()
 		} else {
@@ -204,7 +203,7 @@ func (out *output) stop() {
 	out.closeWg.Wait()
 }
 
-func (out *output) setHeader(cols spi.Columns) {
+func (out *output) setHeader(cols api.Columns) {
 	if out.encoder != nil {
 		codec.SetEncoderColumns(out.encoder, cols)
 	}

@@ -10,12 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-grpc/bridge"
-	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/text/language"
 )
 
@@ -64,7 +63,7 @@ var Formats = struct {
 
 type Actor struct {
 	conf   *Config
-	db     spi.DatabaseClient
+	db     *machrpc.Client
 	dbLock sync.Mutex
 	pref   *Pref
 	ctx    context.Context
@@ -123,25 +122,28 @@ func (act *Actor) checkDatabase() error {
 		return nil
 	}
 
-	machcli, err := machrpc.NewClient(
-		machrpc.WithServer(act.conf.ServerAddr),
-		machrpc.WithCertificate(act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath),
-		machrpc.WithQueryTimeout(act.conf.QueryTimeout))
+	machcli, err := machrpc.NewClient(&machrpc.Config{
+		ServerAddr:   act.conf.ServerAddr,
+		QueryTimeout: act.conf.QueryTimeout,
+		Tls: &machrpc.TlsConfig{
+			ClientKey:  act.conf.ClientKeyPath,
+			ClientCert: act.conf.ClientCertPath,
+			ServerCert: act.conf.ServerCertPath,
+		},
+	})
 	if err != nil {
 		return err
 	}
 
 	// user authentication
-	auth := machcli.(spi.DatabaseAuth)
-	if result, err := auth.UserAuth(act.conf.User, act.conf.Password); err != nil {
+	if result, err := machcli.UserAuth(act.conf.User, act.conf.Password); err != nil {
 		return err
 	} else if !result {
 		return errors.New("invalid username or password")
 	}
 
 	// check connectivity to server
-	aux := machcli.(spi.DatabaseAux)
-	serverInfo, err := aux.GetServerInfo()
+	serverInfo, err := machcli.GetServerInfo()
 	if err != nil {
 		return err
 	}
@@ -180,8 +182,7 @@ func makePrompt(username string) string {
 }
 
 func (act *Actor) Reconnect(username string, password string) (bool, error) {
-	auth := act.db.(spi.DatabaseAuth)
-	ok, err := auth.UserAuth(username, password)
+	ok, err := act.db.UserAuth(username, password)
 	if err == nil && ok {
 		act.conf.User = strings.ToLower(username)
 		act.conf.Password = password
@@ -215,7 +216,7 @@ func (act *Actor) ShutdownServer() error {
 	return nil
 }
 
-func (act *Actor) Database() spi.Database {
+func (act *Actor) Database() *machrpc.Client {
 	if err := act.checkDatabase(); err != nil {
 		fmt.Println("ERR", err.Error())
 	}

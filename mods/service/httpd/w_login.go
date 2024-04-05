@@ -1,17 +1,16 @@
 package httpd
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -116,15 +115,8 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 	}
 
 	passed := false
-
-	if dbauth, ok := svr.db.(spi.DatabaseAuth); !ok {
-		svr.log.Warnf("database auth is not implemented by %T", svr.db)
-		rsp.Reason = fmt.Sprintf("database (%T) is not supporting user authentication", svr.db)
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	} else {
-		passed, err = dbauth.UserAuth(req.LoginName, req.Password)
+	if db, ok := svr.db.(api.AuthServer); ok {
+		passed, err = db.UserAuth(req.LoginName, req.Password)
 		if err != nil {
 			svr.log.Warnf("database auth failed %s", err.Error())
 			rsp.Reason = "database error for user authentication"
@@ -132,6 +124,12 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
+	} else {
+		svr.log.Warn("database doesn't provide UserAuth()")
+		rsp.Reason = "database doesn't provide UserAuth()"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
 	}
 
 	if !passed {

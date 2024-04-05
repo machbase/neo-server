@@ -4,14 +4,14 @@
 package leak_test
 
 import (
-	"github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 	"sync"
 	"time"
 )
 
 // Ensure, that RowsMock does implement spi.Rows.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Rows = &RowsMock{}
+var _ api.Rows = &RowsMock{}
 
 // RowsMock is a mock implementation of spi.Rows.
 //
@@ -51,7 +51,7 @@ type RowsMock struct {
 	CloseFunc func() error
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() (spi.Columns, error)
+	ColumnsFunc func() ([]string, []string, error)
 
 	// IsFetchableFunc mocks the IsFetchable method.
 	IsFetchableFunc func() bool
@@ -131,7 +131,7 @@ func (mock *RowsMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *RowsMock) Columns() (spi.Columns, error) {
+func (mock *RowsMock) Columns() ([]string, []string, error) {
 	if mock.ColumnsFunc == nil {
 		panic("RowsMock.ColumnsFunc: method is nil but Rows.Columns was just called")
 	}
@@ -299,7 +299,7 @@ func (mock *RowsMock) ScanCalls() []struct {
 
 // Ensure, that AppenderMock does implement spi.Appender.
 // If this is not the case, regenerate this file with moq.
-var _ spi.Appender = &AppenderMock{}
+var _ api.Appender = &AppenderMock{}
 
 // AppenderMock is a mock implementation of spi.Appender.
 //
@@ -342,13 +342,13 @@ type AppenderMock struct {
 	CloseFunc func() (int64, int64, error)
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() (spi.Columns, error)
+	ColumnsFunc func() ([]string, []string, error)
 
 	// TableNameFunc mocks the TableName method.
 	TableNameFunc func() string
 
 	// TableTypeFunc mocks the TableType method.
-	TableTypeFunc func() spi.TableType
+	TableTypeFunc func() api.TableType
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -481,7 +481,7 @@ func (mock *AppenderMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *AppenderMock) Columns() (spi.Columns, error) {
+func (mock *AppenderMock) Columns() ([]string, []string, error) {
 	if mock.ColumnsFunc == nil {
 		panic("AppenderMock.ColumnsFunc: method is nil but Appender.Columns was just called")
 	}
@@ -535,7 +535,7 @@ func (mock *AppenderMock) TableNameCalls() []struct {
 }
 
 // TableType calls TableTypeFunc.
-func (mock *AppenderMock) TableType() spi.TableType {
+func (mock *AppenderMock) TableType() api.TableType {
 	if mock.TableTypeFunc == nil {
 		panic("AppenderMock.TableTypeFunc: method is nil but Appender.TableType was just called")
 	}

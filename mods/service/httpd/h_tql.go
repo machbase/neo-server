@@ -129,7 +129,7 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 				return
 			}
 		}
-		rsp.Reason = "no tql found"
+		rsp.Reason = "tql not found"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return

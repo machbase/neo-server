@@ -14,13 +14,13 @@ import (
 
 	gocsv "encoding/csv"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/kalman"
 	"github.com/machbase/neo-server/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
@@ -408,14 +408,14 @@ func (node *Node) fmGroup(args ...any) any {
 				return ErrorRecord(fmt.Errorf("GROUP() has no aggregator"))
 			}
 		} else {
-			cols := make([]*spi.Column, len(columns)+1)
-			cols[0] = &spi.Column{Name: "ROWNUM", Type: "int"}
+			cols := make([]*api.Column, len(columns)+1)
+			cols[0] = &api.Column{Name: "ROWNUM", Type: "int"}
 			for i, c := range columns {
 				resultType := c.ColumnType()
 				if c.ValueType != "" {
 					resultType = c.ValueType
 				}
-				cols[i+1] = &spi.Column{
+				cols[i+1] = &api.Column{
 					Name: c.Name,
 					Type: resultType,
 				}
@@ -754,11 +754,11 @@ func (g *GroupAggregate) newFiller() GroupFiller {
 	case "piecewiseconstant":
 		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
 	case "piecewiselinear":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.PiecewiseLinear{}, fallback: g.nullValue}
 	case "akimaspline":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.AkimaSpline{}, fallback: g.nullValue}
 	case "fritschbutland":
-		return &GroupFillerPredict{predictor: &interp.PiecewiseConstant{}, fallback: g.nullValue}
+		return &GroupFillerPredict{predictor: &interp.FritschButland{}, fallback: g.nullValue}
 	case "linearregression":
 		return &GroupFillerPredict{useLinearRegression: true, fallback: g.nullValue}
 	default:
@@ -1544,7 +1544,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 			columns := node.task.ResultColumns() // it contains ROWNUM
 			cols := columns
 			if len(columns) > nth+1 {
-				cols = []*spi.Column{columns[nth+1]}
+				cols = []*api.Column{columns[nth+1]}
 				cols = append(cols, columns[1:nth+1]...)
 			}
 			if len(columns) >= nth+2 {
@@ -1584,7 +1584,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 func (node *Node) fmPushKey(newKey any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()...))
+		node.task.SetResultColumns(append([]*api.Column{api.ColumnTypeOf(newKey)}, node.task.ResultColumns()...))
 	}
 	rec := node.Inflight()
 	if rec == nil {
@@ -1608,7 +1608,7 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns()
 		if len(cols) > 0 {
-			node.task.SetResultColumns(append([]*spi.Column{node.AsColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
+			node.task.SetResultColumns(append([]*api.Column{api.ColumnTypeOf(newKey)}, node.task.ResultColumns()[1:]...))
 		}
 	}
 	rec := node.Inflight()
@@ -1620,9 +1620,20 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 
 func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 	var columnName = "column"
+	var wherePredicate = true
 	if len(opts) > 0 {
 		if str, ok := opts[0].(string); ok {
 			columnName = str
+		}
+	}
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *NullValue:
+			if newValue == nil {
+				newValue = v.altValue
+			}
+		case WherePredicate:
+			wherePredicate = bool(v)
 		}
 	}
 
@@ -1649,18 +1660,18 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
 		if len(cols) >= idx {
-			newCol := node.AsColumnTypeOf(newValue)
+			newCol := api.ColumnTypeOf(newValue)
 			newCol.Name = columnName
 			head := cols[0 : idx+1]
 			tail := cols[idx+1:]
-			updateCols := []*spi.Column{}
+			updateCols := []*api.Column{}
 			updateCols = append(updateCols, head...)
 			updateCols = append(updateCols, newCol)
 			updateCols = append(updateCols, tail...)
 			node.task.SetResultColumns(updateCols)
 		} else {
 			for i := len(cols); i < idx; i++ {
-				newCol := &spi.Column{}
+				newCol := &api.Column{}
 				newCol.Name = fmt.Sprintf("column%d", i)
 				cols = append(cols, newCol)
 			}
@@ -1668,6 +1679,9 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		}
 	}
 
+	if !wherePredicate {
+		newValue = nil
+	}
 	switch val := inflight.value.(type) {
 	case []any:
 		head := val[0:idx]
@@ -1716,7 +1730,7 @@ func (node *Node) fmPopValue(idxes ...int) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
-		updateCols := []*spi.Column{cols[0]}
+		updateCols := []*api.Column{cols[0]}
 		for _, idx := range includes {
 			if idx+1 < len(cols) {
 				updateCols = append(updateCols, cols[idx+1])
@@ -1761,7 +1775,7 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 					cols := node.task.ResultColumns() // cols contains "ROWNUM"
 					if idx+1 >= len(cols) {
 						for i := len(cols); i <= idx+1; i++ {
-							cols = append(cols, &spi.Column{Name: fmt.Sprintf("column%d", i)})
+							cols = append(cols, &api.Column{Name: fmt.Sprintf("column%d", i)})
 						}
 					}
 					cols[idx+1].Name = newName
@@ -2446,7 +2460,7 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				}
 			}
 			fixed, _ := tr.fixedAndTransposed(vals)
-			newCols := spi.Columns{cols[0]}
+			newCols := api.Columns{cols[0]}
 			for i, n := range fixed {
 				if len(tr.headerNames) > n {
 					cols[n+1].Name = tr.headerNames[n]
@@ -2458,17 +2472,17 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				newCols = append(newCols, cols[n+1])
 			}
 			if tr.header {
-				newCols = append(newCols, &spi.Column{Name: "header"})
+				newCols = append(newCols, &api.Column{Name: "header"})
 			}
-			newCols = append(newCols, &spi.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
+			newCols = append(newCols, &api.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
 			node.task.SetResultColumns(newCols)
 		case any:
-			newCols := spi.Columns{cols[0]}
+			newCols := api.Columns{cols[0]}
 			if tr.header {
 				tr.headerNames = []string{fmt.Sprintf("%v", vals)}
-				newCols = append(newCols, &spi.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
+				newCols = append(newCols, &api.Column{Name: fmt.Sprintf("column%d", len(newCols)-1)})
 			}
-			newCols = append(newCols, &spi.Column{Name: "column1"})
+			newCols = append(newCols, &api.Column{Name: "column1"})
 			node.task.SetResultColumns(newCols)
 		}
 		if tr.header {

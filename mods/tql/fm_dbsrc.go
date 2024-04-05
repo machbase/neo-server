@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 )
 
 // Deprecated: no more required
@@ -258,8 +258,8 @@ func (dc *databaseSource) gen(node *Node) {
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols spi.Columns) {
-			cols = append([]*spi.Column{{Name: "ROWNUM", Type: spi.ColumnTypeString(spi.Int64ColumnType)}}, cols...)
+		OnFetchStart: func(cols api.Columns) {
+			cols = append([]*api.Column{{Name: "ROWNUM", Type: api.ColumnTypeString(api.Int64ColumnType)}}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
@@ -280,7 +280,7 @@ func (dc *databaseSource) gen(node *Node) {
 	} else {
 		dc.resultMsg = msg
 		if dc.executed {
-			dc.task.SetResultColumns(spi.Columns{
+			dc.task.SetResultColumns(api.Columns{
 				{Name: "ROWNUM", Type: "int"},
 				{Name: "MESSAGE", Type: "string"},
 			})

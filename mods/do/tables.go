@@ -3,7 +3,7 @@ package do
 import (
 	"context"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 type TableInfo struct {
@@ -14,7 +14,7 @@ type TableInfo struct {
 	Flag     int    `json:"flag"`
 }
 
-func Tables(ctx context.Context, conn spi.Conn, callback func(*TableInfo, error) bool) {
+func Tables(ctx context.Context, conn api.Conn, callback func(*TableInfo, error) bool) {
 	sqlText := `SELECT
 			j.DB_NAME as DB_NAME,
 			u.NAME as USER_NAME,

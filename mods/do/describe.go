@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 func tokenizeFullTableName(name string) (string, string, string) {
@@ -28,7 +28,7 @@ func tokenizeFullTableName(name string) (string, string, string) {
 //
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
-func Describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
+func Describe(ctx context.Context, conn api.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	_, _, tableName := tokenizeFullTableName(name)
 	if strings.HasPrefix(tableName, "V$") {
 		return describe_mv(ctx, conn, name, includeHiddenColumns)
@@ -39,7 +39,7 @@ func Describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	}
 }
 
-func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
+func describe(ctx context.Context, conn api.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
@@ -75,7 +75,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	if err := r.Scan(&d.Id, &tableType, &d.Flag, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = spi.TableType(tableType)
+	d.Type = api.TableType(tableType)
 	d.Database = dbName
 	d.User = userName
 	d.Name = tableName
@@ -95,7 +95,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
-		col.Type = spi.ColumnType(colType)
+		col.Type = api.ColumnType(colType)
 		d.Columns = append(d.Columns, col)
 	}
 	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
@@ -106,7 +106,7 @@ func describe(ctx context.Context, conn spi.Conn, name string, includeHiddenColu
 	return d, nil
 }
 
-func describe_idx(ctx context.Context, conn spi.Conn, tableId int, dbId int) ([]*IndexDescription, error) {
+func describe_idx(ctx context.Context, conn api.Conn, tableId int, dbId int) ([]*IndexDescription, error) {
 	rows, err := conn.Query(ctx, `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?`, tableId, dbId)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ func describe_idx(ctx context.Context, conn spi.Conn, tableId int, dbId int) ([]
 		if err = rows.Scan(&d.Name, &indexType, &d.Id); err != nil {
 			return nil, err
 		}
-		d.Type = spi.IndexType(indexType)
+		d.Type = api.IndexType(indexType)
 		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
 		if err != nil {
 			return nil, err
@@ -139,7 +139,7 @@ func describe_idx(ctx context.Context, conn spi.Conn, tableId int, dbId int) ([]
 	return indexes, nil
 }
 
-func describe_mv(ctx context.Context, conn spi.Conn, name string, includeHiddenColumns bool) (Description, error) {
+func describe_mv(ctx context.Context, conn api.Conn, name string, includeHiddenColumns bool) (Description, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
@@ -159,7 +159,7 @@ func describe_mv(ctx context.Context, conn spi.Conn, name string, includeHiddenC
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = spi.TableType(tableType)
+	d.Type = api.TableType(tableType)
 
 	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {
@@ -176,7 +176,7 @@ func describe_mv(ctx context.Context, conn spi.Conn, name string, includeHiddenC
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
-		col.Type = spi.ColumnType(colType)
+		col.Type = api.ColumnType(colType)
 		d.Columns = append(d.Columns, col)
 	}
 	return d, nil
@@ -195,7 +195,7 @@ type TableDescription struct {
 	Database string              `json:"database"`
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
-	Type     spi.TableType       `json:"type"`
+	Type     api.TableType       `json:"type"`
 	Flag     int                 `json:"flag"`
 	Id       int                 `json:"id"`
 	Columns  ColumnDescriptions  `json:"columns"`
@@ -208,20 +208,20 @@ func (td *TableDescription) TypeString() string {
 }
 
 // TableTypeDescription converts the given TableType and flag into string representation.
-func TableTypeDescription(typ spi.TableType, flag int) string {
+func TableTypeDescription(typ api.TableType, flag int) string {
 	desc := "undef"
 	switch typ {
-	case spi.LogTableType:
+	case api.LogTableType:
 		desc = "Log Table"
-	case spi.FixedTableType:
+	case api.FixedTableType:
 		desc = "Fixed Table"
-	case spi.VolatileTableType:
+	case api.VolatileTableType:
 		desc = "Volatile Table"
-	case spi.LookupTableType:
+	case api.LookupTableType:
 		desc = "Lookup Table"
-	case spi.KeyValueTableType:
+	case api.KeyValueTableType:
 		desc = "KeyValue Table"
-	case spi.TagTableType:
+	case api.TagTableType:
 		desc = "Tag Table"
 	}
 	switch flag {
@@ -239,14 +239,12 @@ func TableTypeDescription(typ spi.TableType, flag int) string {
 
 type ColumnDescriptions []*ColumnDescription
 
-func (cds ColumnDescriptions) Columns() spi.Columns {
-	cols := make([]*spi.Column, len(cds))
+func (cds ColumnDescriptions) Columns() api.Columns {
+	cols := make([]*api.Column, len(cds))
 	for i, cd := range cds {
-		col := &spi.Column{
-			Name:   cd.Name,
-			Type:   spi.ColumnBufferType(cd.Type),
-			Size:   cd.Size(),
-			Length: cd.Length,
+		col := &api.Column{
+			Name: cd.Name,
+			Type: api.ColumnBufferType(cd.Type),
 		}
 		cols[i] = col
 	}
@@ -257,39 +255,39 @@ func (cds ColumnDescriptions) Columns() spi.Columns {
 type ColumnDescription struct {
 	Id     uint64         `json:"id"`
 	Name   string         `json:"name"`
-	Type   spi.ColumnType `json:"type"`
+	Type   api.ColumnType `json:"type"`
 	Length int            `json:"length"`
 	Flag   int            `json:"flag"`
 }
 
 // TypeString returns string representation of column type.
 func (cd *ColumnDescription) TypeString() string {
-	return spi.ColumnTypeString(cd.Type)
+	return api.ColumnTypeString(cd.Type)
 }
 
 func (cd *ColumnDescription) Size() int {
 	switch cd.Type {
-	case spi.Int16ColumnType:
+	case api.Int16ColumnType:
 		return 6
-	case spi.Uint16ColumnType:
+	case api.Uint16ColumnType:
 		return 5
-	case spi.Int32ColumnType:
+	case api.Int32ColumnType:
 		return 11
-	case spi.Uint32ColumnType:
+	case api.Uint32ColumnType:
 		return 10
-	case spi.Int64ColumnType:
+	case api.Int64ColumnType:
 		return 20
-	case spi.Uint64ColumnType:
+	case api.Uint64ColumnType:
 		return 20
-	case spi.Float32ColumnType:
+	case api.Float32ColumnType:
 		return 17
-	case spi.Float64ColumnType:
+	case api.Float64ColumnType:
 		return 17
-	case spi.IpV4ColumnType:
+	case api.IpV4ColumnType:
 		return 15
-	case spi.IpV6ColumnType:
+	case api.IpV6ColumnType:
 		return 45
-	case spi.DatetimeColumnType:
+	case api.DatetimeColumnType:
 		return 31
 	}
 	return cd.Length
@@ -298,6 +296,6 @@ func (cd *ColumnDescription) Size() int {
 type IndexDescription struct {
 	Id   uint64        `json:"id"`
 	Name string        `json:"name"`
-	Type spi.IndexType `json:"type"`
+	Type api.IndexType `json:"type"`
 	Cols []string      `json:"cols"`
 }

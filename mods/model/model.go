@@ -15,6 +15,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+type ServicePort struct {
+	Service string
+	Address string
+}
+
 func NewService(opts ...Option) Service {
 	ret := &svr{
 		log: logging.GetLog("scheduler"),

@@ -2,7 +2,9 @@ package httpd
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,13 +12,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (svr *httpd) handleWrite(ctx *gin.Context) {
@@ -43,8 +45,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	compress = strString(ctx.Query("compress"), compress)
 	delimiter := strString(ctx.Query("delimiter"), ",")
 	heading := strBool(ctx.Query("heading"), false)
-	createTable := strBool(ctx.Query("create-table"), false)
-	truncateTable := strBool(ctx.Query("truncate-table"), false)
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
@@ -55,7 +55,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	exists, _, _, err := do.ExistsTableOrCreate(ctx, conn, tableName, createTable, truncateTable)
+	exists, err := do.ExistsTable(ctx, conn, tableName)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -94,14 +94,85 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	codecOpts := []opts.Option{
-		opts.InputStream(in),
 		opts.TableName(tableName),
-		opts.Columns(desc.Columns.Columns().Names()...),
-		opts.ColumnTypes(desc.Columns.Columns().Types()...),
 		opts.Timeformat(timeformat),
 		opts.TimeLocation(timeLocation),
 		opts.Delimiter(delimiter),
 		opts.Heading(heading),
+	}
+
+	var appender api.Appender
+	var recno int
+	var insertQuery string
+
+	if method == "append" {
+		codecOpts = append(codecOpts,
+			opts.InputStream(in),
+			opts.Columns(desc.Columns.Columns().Names()...),
+			opts.ColumnTypes(desc.Columns.Columns().Types()...),
+		)
+	} else { // insert
+		var columnNames []string
+		var columnTypes []string
+		if format == "json" {
+			bs, err := io.ReadAll(in)
+			if err != nil {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusBadRequest, rsp)
+				return
+			}
+
+			wr := msg.WriteRequest{}
+			dec := json.NewDecoder(bytes.NewBuffer(bs))
+			if err := dec.Decode(&wr); err != nil {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusBadRequest, rsp)
+				return
+			}
+			if wr.Data != nil && len(wr.Data.Columns) > 0 {
+				columnNames = wr.Data.Columns
+				columnTypes = make([]string, 0, len(columnNames))
+				_hold := make([]string, 0, len(columnNames))
+				for _, colName := range columnNames {
+					_hold = append(_hold, "?")
+					_type := ""
+					for _, d := range desc.Columns {
+						if d.Name == strings.ToUpper(colName) {
+							_type = d.TypeString()
+							break
+						}
+					}
+					if _type == "" {
+						rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, tableName)
+						rsp.Elapse = time.Since(tick).String()
+						ctx.JSON(http.StatusBadRequest, rsp)
+						return
+					}
+					columnTypes = append(columnTypes, _type)
+				}
+				valueHolder := strings.Join(_hold, ",")
+				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
+			}
+			in = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
+		}
+		if len(columnNames) == 0 {
+			columnNames = desc.Columns.Columns().Names()
+			columnTypes = make([]string, 0, len(desc.Columns))
+			_hold := make([]string, 0, len(desc.Columns))
+			for _, c := range desc.Columns {
+				_hold = append(_hold, "?")
+				columnTypes = append(columnTypes, c.TypeString())
+			}
+			valueHolder := strings.Join(_hold, ",")
+			insertQuery = fmt.Sprintf("INsERT INTO %s VALUES(%s)", tableName, valueHolder)
+		}
+		codecOpts = append(codecOpts,
+			opts.InputStream(in),
+			opts.Columns(columnNames...),
+			opts.ColumnTypes(columnTypes...),
+		)
 	}
 
 	decoder := codec.NewDecoder(format, codecOpts...)
@@ -112,16 +183,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	var appender spi.Appender
-	lineno := 0
-
-	_hold := []string{}
-	for i := 0; i < len(desc.Columns); i++ {
-		_hold = append(_hold, "?")
-	}
-	valueHolder := strings.Join(_hold, ",")
-	insertQuery := fmt.Sprintf("insert into %s values(%s)", tableName, valueHolder)
 
 	for {
 		vals, err := decoder.NextRow()
@@ -134,7 +195,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 			break
 		}
-		lineno++
+		recno++
 
 		if method == "insert" {
 			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
@@ -163,7 +224,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 		}
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", lineno, method)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", recno, method)
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }

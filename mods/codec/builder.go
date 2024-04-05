@@ -3,6 +3,7 @@ package codec
 import (
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
@@ -11,7 +12,6 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	spi "github.com/machbase/neo-spi"
 )
 
 const DISCARD = "discard"
@@ -107,11 +107,11 @@ func NewDecoder(decoderType string, opts ...opts.Option) RowsDecoder {
 	return ret
 }
 
-func SetEncoderColumns(encoder RowsEncoder, cols spi.Columns) {
+func SetEncoderColumns(encoder RowsEncoder, cols api.Columns) {
 	SetEncoderColumnsTimeLocation(encoder, cols, nil)
 }
 
-func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols spi.Columns, tz *time.Location) {
+func SetEncoderColumnsTimeLocation(encoder RowsEncoder, cols api.Columns, tz *time.Location) {
 	var colNames []string
 	if tz != nil {
 		colNames = cols.NamesWithTimeLocation(tz)

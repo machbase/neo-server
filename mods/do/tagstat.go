@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 type TagStatInfo struct {
@@ -21,7 +21,7 @@ type TagStatInfo struct {
 	RecentRowTime time.Time `json:"recent_row_time"`
 }
 
-func TagStat(ctx context.Context, conn spi.Conn, table string, tag string) (*TagStatInfo, error) {
+func TagStat(ctx context.Context, conn api.Conn, table string, tag string) (*TagStatInfo, error) {
 	sqlText := fmt.Sprintf(`select
 			name, row_count, min_time, max_time,
 			min_value, min_value_time,
@@ -40,7 +40,6 @@ func TagStat(ctx context.Context, conn spi.Conn, table string, tag string) (*Tag
 	}
 
 	// if nfo.MinValueTime.IsZero() && nfo.MinValue == 0 {
-
 	// }
 
 	return nfo, nil

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -12,7 +13,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 )
 
 func init() {
@@ -100,10 +100,6 @@ func doShow(ctx *action.ActionContext) {
 	switch strings.ToLower(cmd.Object) {
 	case "info":
 		doShowInfo(ctx)
-	case "inflights":
-		doShowInflights(ctx)
-	case "postflights":
-		doShowPostflights(ctx)
 	case "ports":
 		doShowPorts(ctx)
 	case "users":
@@ -120,8 +116,6 @@ func doShow(ctx *action.ActionContext) {
 		doShowIndexes(ctx)
 	case "index":
 		doShowIndex(ctx, cmd.Args)
-	case "sessions":
-		doShowSessions(ctx)
 	case "license":
 		doShowLicense(ctx)
 	case "statements":
@@ -161,7 +155,7 @@ func doShowIndexGap(ctx *action.ActionContext) {
 	and c.table_id = b.id 
 	order by 3 desc`
 
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowLsm(ctx *action.ActionContext) {
@@ -178,16 +172,16 @@ func doShowLsm(ctx *action.ActionContext) {
 	and b.id = a.table_id
 	order by 1, 2, 3`
 
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowUsers(ctx *action.ActionContext) {
 	sqlText := "select name USER_NAME from m$sys_users"
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
-	list, err := do.Indexes(ctx.Ctx, ctx.Conn)
+	list, err := do.Indexes(ctx.Ctx, api.ConnRpc(ctx.Conn))
 	if err != nil {
 		ctx.Println("unable to find indexes; ERR", err.Error())
 		return
@@ -239,22 +233,17 @@ func doShowIndex(ctx *action.ActionContext, args []string) {
 	and b.id = c.index_id
 	and b.name = '%s'`
 	sqlText = fmt.Sprintf(sqlText, args[0])
-	doShowByQuery0(ctx, sqlText)
-}
-
-func doShowSessions(ctx *action.ActionContext) {
-	sqlText := "select ID, USER_ID, LOGIN_TIME, MAX_QPX_MEM from v$session"
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowLicense(ctx *action.ActionContext) {
 	sqlText := "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE from v$license_info"
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowStatements(ctx *action.ActionContext) {
 	sqlText := "SELECT ID USER_ID, SESS_ID SESSION_ID, QUERY FROM V$STMT"
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowStorage(ctx *action.ActionContext) {
@@ -289,7 +278,7 @@ func doShowStorage(ctx *action.ActionContext) {
 		group by a.name) as b
 	on a.table_name = b.name
 	order by a.table_name`
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowTableUsage(ctx *action.ActionContext) {
@@ -304,7 +293,7 @@ func doShowTableUsage(ctx *action.ActionContext) {
 		a.user_id = u.user_id
 	AND t.ID = a.id
 	ORDER BY a.NAME`
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowRollupGap(ctx *action.ActionContext) {
@@ -323,7 +312,7 @@ func doShowRollupGap(ctx *action.ActionContext) {
 		A.ID=B.ID
 	AND A.NAME=C.SOURCE_TABLE
 	ORDER BY SRC_TABLE`
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowTagIndexGap(ctx *action.ActionContext) {
@@ -335,7 +324,7 @@ func doShowTagIndexGap(ctx *action.ActionContext) {
 	FROM
 		V$STORAGE_TAG_TABLES
 	ORDER BY 1`
-	doShowByQuery0(ctx, sqlText)
+	doShowByQuery0(ctx, sqlText, true)
 }
 
 func doShowTags(ctx *action.ActionContext, args []string) {
@@ -347,7 +336,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 
 	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
 	nrow := 0
-	do.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, err error) bool {
+	do.Tags(ctx.Ctx, api.ConnRpc(ctx.Conn), strings.ToUpper(args[0]), func(name string, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -367,7 +356,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 	}
 
 	t := ctx.NewBox([]string{"NAME", "VALUE"})
-	stat, err := do.TagStat(ctx.Ctx, ctx.Conn, args[0], args[1])
+	stat, err := do.TagStat(ctx.Ctx, api.ConnRpc(ctx.Conn), args[0], args[1])
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -400,7 +389,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 	t.Render()
 }
 
-func doShowByQuery0(ctx *action.ActionContext, sqlText string) {
+func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) {
 	var output spec.OutputStream
 	output, err := stream.NewOutputStream("-")
 	if err != nil {
@@ -410,15 +399,15 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string) {
 
 	encoder := codec.NewEncoder(codec.BOX,
 		opts.OutputStream(output),
-		opts.Rownum(true),
+		opts.Rownum(showRownum),
 		opts.Heading(true),
 		opts.BoxStyle(ctx.Pref().BoxStyle().Value()),
 	)
 
 	queryCtx := &do.QueryContext{
-		Conn: ctx.Conn,
+		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols spi.Columns) {
+		OnFetchStart: func(cols api.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
@@ -450,7 +439,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 
 	table := args[0]
 
-	_desc, err := do.Describe(ctx.Ctx, ctx.Conn, table, showAll)
+	_desc, err := do.Describe(ctx.Ctx, api.ConnRpc(ctx.Conn), table, showAll)
 	if err != nil {
 		ctx.Println("unable to describe", table, "; ERR", err.Error())
 		return
@@ -461,7 +450,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := spi.ColumnTypeString(col.Type)
+		colType := api.ColumnTypeString(col.Type)
 		box.AppendRow(nrow, col.Name, colType, col.Length)
 	}
 
@@ -471,7 +460,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
 	nrow := 0
-	do.Tables(ctx.Ctx, ctx.Conn, func(ti *do.TableInfo, err error) bool {
+	do.Tables(ctx.Ctx, api.ConnRpc(ctx.Conn), func(ti *do.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -483,7 +472,7 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 			return true
 		}
 		nrow++
-		desc := do.TableTypeDescription(spi.TableType(ti.Type), ti.Flag)
+		desc := do.TableTypeDescription(api.TableType(ti.Type), ti.Flag)
 		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
 		return true
 	})
@@ -513,19 +502,14 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 		}
 		nrow++
 
-		desc := do.TableTypeDescription(spi.TableType(typ), flg)
+		desc := do.TableTypeDescription(api.TableType(typ), flg)
 		t.AppendRow(nrow, id, name, desc)
 	}
 	t.Render()
 }
 
 func doShowInfo(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server info is unavailable")
-		return
-	}
-	nfo, err := aux.GetServerInfo()
+	nfo, err := ctx.Actor.Database().GetServerInfo()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -544,74 +528,23 @@ func doShowInfo(ctx *action.ActionContext) {
 	box.AppendRow("runtime.arch", nfo.Runtime.Arch)
 	box.AppendRow("runtime.pid", nfo.Runtime.Pid)
 	box.AppendRow("runtime.uptime", util.HumanizeDurationWithFormat(uptime, util.HumanizeDurationFormatSimple))
+	box.AppendRow("runtime.processors", nfo.Runtime.Processes)
 	box.AppendRow("runtime.goroutines", nfo.Runtime.Goroutines)
 
-	box.AppendRow("mem.sys", util.BytesUnit(nfo.Runtime.MemSys, ctx.Lang))
-	box.AppendRow("mem.heap.sys", util.BytesUnit(nfo.Runtime.MemHeapSys, ctx.Lang))
-	box.AppendRow("mem.heap.alloc", util.BytesUnit(nfo.Runtime.MemHeapAlloc, ctx.Lang))
-	box.AppendRow("mem.heap.in-use", util.BytesUnit(nfo.Runtime.MemHeapInUse, ctx.Lang))
-	box.AppendRow("mem.stack.sys", util.BytesUnit(nfo.Runtime.MemStackSys, ctx.Lang))
-	box.AppendRow("mem.stack.in-use", util.BytesUnit(nfo.Runtime.MemStackInUse, ctx.Lang))
-
-	box.Render()
-}
-
-func doShowInflights(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server inflights is unavailable")
-		return
-	}
-
-	inflights, err := aux.GetInflights()
-	if err != nil {
-		ctx.Println("ERR", err.Error())
-		return
-	}
-
-	box := ctx.NewBox([]string{"ID", "TYPE", "AGED", "STATEMENT"})
-	for _, itm := range inflights {
-		sqlText := itm.SqlText
-		if len(sqlText) > 40 {
-			sqlText = sqlText[0:40] + "..."
-		}
-		box.AppendRow(itm.Id, itm.Type, itm.Elapsed.String(), sqlText)
-	}
-	box.Render()
-}
-
-func doShowPostflights(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server postflighs is unavailable")
-		return
-	}
-
-	postflights, err := aux.GetPostflights()
-	if err != nil {
-		ctx.Println("ERR", err.Error())
-		return
-	}
-
-	box := ctx.NewBox([]string{"COUNT", "AVG. TIME", "TOTAL TIME", "STATEMENT"})
-	for _, itm := range postflights {
-		sqlText := itm.SqlText
-		if len(sqlText) > 40 {
-			sqlText = sqlText[0:40] + "..."
-		}
-		avgTime := time.Duration(int64(itm.TotalTime) / itm.Count)
-		box.AppendRow(itm.Count, avgTime.String(), itm.TotalTime.String(), sqlText)
-	}
+	box.AppendRow("mem.mallocs", util.NumberFormat(nfo.Runtime.Mem["mallocs"]))
+	box.AppendRow("mem.frees", util.NumberFormat(nfo.Runtime.Mem["frees"]))
+	box.AppendRow("mem.lives", util.NumberFormat(nfo.Runtime.Mem["lives"]))
+	box.AppendRow("mem.sys", util.BytesUnit(nfo.Runtime.Mem["sys"], ctx.Lang))
+	box.AppendRow("mem.heap_sys", util.BytesUnit(nfo.Runtime.Mem["heap_sys"], ctx.Lang))
+	box.AppendRow("mem.heap_alloc", util.BytesUnit(nfo.Runtime.Mem["heap_alloc"], ctx.Lang))
+	box.AppendRow("mem.heap_in_use", util.BytesUnit(nfo.Runtime.Mem["heap_in_use"], ctx.Lang))
+	box.AppendRow("mem.stack_sys", util.BytesUnit(nfo.Runtime.Mem["stack_sys"], ctx.Lang))
+	box.AppendRow("mem.stack_in_use", util.BytesUnit(nfo.Runtime.Mem["stack_in_use"], ctx.Lang))
 	box.Render()
 }
 
 func doShowPorts(ctx *action.ActionContext) {
-	aux, ok := ctx.Actor.Database().(spi.DatabaseAux)
-	if !ok {
-		ctx.Println("ERR server info is unavailable")
-		return
-	}
-	ports, err := aux.GetServicePorts("")
+	ports, err := ctx.Actor.Database().GetServicePorts("")
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

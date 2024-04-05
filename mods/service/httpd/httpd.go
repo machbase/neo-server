@@ -5,15 +5,15 @@ import (
 	"net"
 	"net/http"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
@@ -21,7 +21,6 @@ import (
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +30,7 @@ type Service interface {
 }
 
 // Factory
-func New(db spi.Database, options ...Option) (Service, error) {
+func New(db api.Database, options ...Option) (Service, error) {
 	s := &httpd{
 		log:      logging.GetLog("httpd"),
 		db:       db,
@@ -47,17 +46,21 @@ func New(db spi.Database, options ...Option) (Service, error) {
 
 type httpd struct {
 	log   logging.Log
-	db    spi.Database
+	db    api.Database
 	alive bool
 
 	listenAddresses []string
 	enableTokenAUth bool
 	handlers        []*HandlerConfig
 
+	serverInfoFunc     func() (*machrpc.ServerInfo, error)
+	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
+
 	httpServer *http.Server
 	listeners  []net.Listener
 	jwtCache   security.JwtCache
 	authServer security.AuthServer
+	mgmtImpl   mgmt.ManagementServer
 
 	neoShellAddress string
 	neoShellAccount map[string]string
@@ -74,8 +77,6 @@ type httpd struct {
 	memoryFs *MemoryFS
 
 	statzAllowed []string
-
-	lake LakeAppender // ?
 }
 
 type HandlerType string
@@ -91,13 +92,6 @@ const (
 type HandlerConfig struct {
 	Prefix  string
 	Handler HandlerType
-}
-
-// ?
-type LakeAppender struct {
-	appender spi.Appender
-	conn     spi.Conn
-	ctx      *gin.Context
 }
 
 func (svr *httpd) Start() error {
@@ -116,9 +110,6 @@ func (svr *httpd) Start() error {
 	svr.httpServer = &http.Server{}
 	svr.httpServer.Handler = svr.Router()
 
-	//?
-	// svr.LoadAppender()
-
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := netutil.MakeListener(listen)
 		if err != nil {
@@ -129,34 +120,6 @@ func (svr *httpd) Start() error {
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
 	return nil
-}
-
-// ?
-func (svr *httpd) LoadAppender() {
-	var err error
-	svr.lake.ctx = &gin.Context{}
-	svr.lake.conn, err = svr.getTrustConnection(svr.lake.ctx)
-	if err != nil {
-		svr.log.Error("connection failed.")
-		return
-	}
-	//Stop 에서 close?
-
-	exist, err := do.ExistsTable(svr.lake.ctx, svr.lake.conn, "TAG")
-	if err != nil {
-		svr.log.Error("exist table error: ", err)
-		return
-	}
-	if !exist {
-		svr.log.Error("not exist 'TAG' table")
-		return
-	}
-
-	svr.lake.appender, err = svr.lake.conn.Appender(svr.lake.ctx, "TAG")
-	if err != nil {
-		svr.log.Error("appender error: ", err)
-		return
-	}
 }
 
 func (svr *httpd) Stop() {
@@ -228,15 +191,16 @@ func (svr *httpd) Router() *gin.Engine {
 				go svr.memoryFs.Start()
 				svr.tqlLoader.SetVolatileAssetsProvider(svr.memoryFs)
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
-				group.GET("/api/tql/*path", svr.handleTagQL)
-				group.POST("/api/tql/*path", svr.handleTagQL)
 			}
 			group.Use(svr.handleJwtToken)
 			if svr.tqlLoader != nil {
+				group.GET("/api/tql/*path", svr.handleTagQL)
+				group.POST("/api/tql/*path", svr.handleTagQL)
 				group.POST("/api/tql", svr.handlePostTagQL)
 			}
 			group.POST("/api/md", svr.handleMarkdown)
-			group.Any("/machbase", svr.handleQuery)
+			group.Any("/machbase", svr.handleQuery) // TODO depcreated, use /web/api/query
+			group.Any("/api/query", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
 			group.POST("/api/logout", svr.handleLogout)
@@ -244,6 +208,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
 			group.POST("/api/shell/:id", svr.handlePostShell)
 			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
+			group.GET("/api/keys/:id", svr.handleGetKeys)
+			group.POST("/api/keys", svr.handleGenKey)
+			group.DELETE("/api/keys/:id", svr.handleDeleteKey)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)
@@ -282,16 +249,16 @@ func (svr *httpd) Router() *gin.Engine {
 }
 
 // for the internal processor
-func (svr *httpd) getTrustConnection(ctx *gin.Context) (spi.Conn, error) {
+func (svr *httpd) getTrustConnection(ctx *gin.Context) (api.Conn, error) {
 	// TODO handle API Token
-	return svr.db.Connect(ctx, mach.WithTrustUser("sys"))
+	return svr.db.Connect(ctx, api.WithTrustUser("sys"))
 }
 
 // for the api called from web-client that authorized by JWT
-func (svr *httpd) getUserConnection(ctx *gin.Context) (spi.Conn, error) {
+func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
 	claim, _ := svr.getJwtClaim(ctx)
 	if claim != nil {
-		return svr.db.Connect(ctx, mach.WithTrustUser(claim.Subject))
+		return svr.db.Connect(ctx, api.WithTrustUser(claim.Subject))
 	} else {
 		return nil, errors.New("unathorized db request")
 	}
@@ -396,11 +363,10 @@ func (svr *httpd) handleAuthToken(ctx *gin.Context) {
 func (svr *httpd) corsHandler() gin.HandlerFunc {
 	corsHandler := cors.New(cors.Config{
 		AllowAllOrigins: true,
-		//AllowOrigins:    []string{"*"},
-		AllowMethods:  []string{http.MethodGet, http.MethodHead, http.MethodOptions},
-		AllowHeaders:  []string{"Origin", "Accept", "Content-Type"},
-		ExposeHeaders: []string{"Content-Length"},
-		MaxAge:        12 * time.Hour,
+		AllowMethods:    []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+		AllowHeaders:    []string{"Origin", "Accept", "Content-Type"},
+		ExposeHeaders:   []string{"Content-Length"},
+		MaxAge:          12 * time.Hour,
 	})
 	return corsHandler
 }
@@ -423,39 +389,34 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		ctx.String(http.StatusForbidden, "")
 		return
 	}
-	ms := runtime.MemStats{}
-	runtime.ReadMemStats(&ms)
-	mem := map[string]any{}
-	mem["alloc"] = ms.Alloc
-	mem["total_alloc"] = ms.TotalAlloc
-	mem["sys"] = ms.Sys
-	mem["lookups"] = ms.Lookups
-	mem["mallocs"] = ms.Mallocs
-	mem["frees"] = ms.Frees
-	mem["heep_alloc"] = ms.HeapAlloc
-	mem["heap_sys"] = ms.HeapSys
-	mem["heap_idle"] = ms.HeapIdle
-	mem["heap_inuse"] = ms.HeapInuse
-	mem["heap_released"] = ms.HeapReleased
-	mem["heap_objects"] = ms.HeapObjects
-	mem["stack_inuse"] = ms.StackInuse
-	mem["stack_sys"] = ms.StackSys
-	mem["mspan_inuse"] = ms.MSpanInuse
-	mem["mspan_sys"] = ms.MSpanSys
-	mem["mcache_inuse"] = ms.MCacheInuse
-	mem["mcache_sys"] = ms.MCacheSys
-	mem["buck_hash_sys"] = ms.BuckHashSys
-	mem["gc_sys"] = ms.GCSys
-	mem["other_sys"] = ms.OtherSys
-	mem["gc_next"] = ms.NextGC
-	mem["gc_last"] = ms.LastGC
-	mem["gc_pauseTotal"] = ms.PauseTotalNs
+	if svr.serverInfoFunc == nil {
+		ctx.String(http.StatusServiceUnavailable, "")
+		return
+	}
+	stat, err := svr.serverInfoFunc()
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	ret := map[string]any{}
 	ret["neo"] = map[string]any{
-		"mem":         mem,
-		"sess":        mach.StatzSnapshot(),
+		"mem":         stat.Runtime.Mem,
 		"volatile_fs": svr.memoryFs.Statz(),
 	}
+
+	if svr.serverSessionsFunc != nil {
+		statz, _, _ := svr.serverSessionsFunc(true, false)
+		ret["sess"] = map[string]any{
+			"conns":          statz.ConnsInUse,
+			"conns_used":     statz.Conns,
+			"stmts":          statz.StmtsInUse,
+			"stmts_used":     statz.Stmts,
+			"appenders":      statz.AppendersInUse,
+			"appenders_used": statz.Appenders,
+			"raw_conns":      statz.RawConns,
+		}
+	}
+
 	ctx.JSON(http.StatusOK, ret)
 }

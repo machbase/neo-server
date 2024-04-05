@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 /* Interpreting Influx lineprotocol
@@ -19,7 +19,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) spi.Result {
+func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descColumns ColumnDescriptions, measurement string, fields map[string]any, tags map[string]string, ts time.Time) api.Result {
 	columns := descColumns.Columns().Names()
 	columns = columns[:3]
 
@@ -34,7 +34,7 @@ func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descCo
 	compareTypes = compareTypes[3:]
 	for idx, val := range compareNames {
 		if _, ok := tags[val]; ok {
-			if compareTypes[idx] == spi.ColumnBufferTypeString {
+			if compareTypes[idx] == api.ColumnBufferTypeString {
 				columns = append(columns, val)
 			}
 		}
@@ -85,7 +85,7 @@ func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descCo
 	valuesPlaces := strings.Join(vf, ",")
 	columnsPhrase := strings.Join(columns, ",")
 
-	sqlText := fmt.Sprintf("insert into %s (%s) values(%s)", tableName, columnsPhrase, valuesPlaces)
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, columnsPhrase, valuesPlaces)
 	var nrows int
 	for _, rec := range rows {
 		result := conn.Exec(ctx, sqlText, rec...)
@@ -112,7 +112,7 @@ func WriteLineProtocol(ctx context.Context, conn spi.Conn, dbName string, descCo
 	return ret
 }
 
-var _ spi.Result = &InsertResult{}
+var _ api.Result = &InsertResult{}
 
 type InsertResult struct {
 	err          error

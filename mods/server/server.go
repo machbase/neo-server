@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +28,8 @@ import (
 
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
-	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/bridge"
@@ -45,7 +47,6 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
 )
@@ -161,7 +162,7 @@ type svr struct {
 
 	conf *Config
 	log  logging.Log
-	db   spi.Database
+	db   *mach.Database
 
 	mqttd mqttd.Service
 	grpcd grpcd.Service
@@ -182,7 +183,8 @@ type svr struct {
 
 	cachedServerPrivateKey crypto.PrivateKey
 
-	servicePorts     map[string][]*spi.ServicePort
+	startupTime      time.Time
+	servicePorts     map[string][]*model.ServicePort
 	servicePortsLock sync.RWMutex
 
 	authorizedSshKeysLock sync.RWMutex
@@ -251,12 +253,24 @@ func NewConfig() *Config {
 func NewServer(conf *Config) (Server, error) {
 	return &svr{
 		conf:         conf,
-		servicePorts: make(map[string][]*spi.ServicePort),
+		servicePorts: make(map[string][]*model.ServicePort),
 	}, nil
 }
 
+type DatabaseServer interface {
+	Startup() error
+	Shutdown() error
+}
+
+type DatabaseAuthServer interface {
+	UserAuth(user string, password string) (bool, error)
+}
+
+var _ DatabaseServer = &mach.Database{}
+var _ DatabaseAuthServer = &mach.Database{}
+
 func (s *svr) Start() error {
-	tick := time.Now()
+	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 
 	s.genSnowflake, _ = snowflake.NewNode(0)
@@ -406,28 +420,15 @@ func (s *svr) Start() error {
 	// mach.DefaultDetective = leakDetector
 
 	// create database instance
-	s.db, err = spi.NewDatabase(mach.FactoryName)
+	s.db, err = mach.NewDatabaseNamed(mach.FactoryName)
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
 	}
 	if s.db == nil {
 		return errors.New("database instance failed")
 	}
-	if mdb, ok := s.db.(spi.DatabaseServer); ok {
-		ver := mods.GetVersion()
-		if ver != nil {
-			mach.BuildVersion.Major = int32(ver.Major)
-			mach.BuildVersion.Minor = int32(ver.Minor)
-			mach.BuildVersion.Patch = int32(ver.Patch)
-			mach.BuildVersion.GitSHA = ver.GitSHA
-			mach.BuildVersion.BuildTimestamp = mods.BuildTimestamp()
-			mach.BuildVersion.BuildCompiler = mods.BuildCompiler()
-		}
-		mach.ServicePorts = s.servicePorts
-
-		if err := mdb.Startup(); err != nil {
-			return errors.Wrap(err, "startup database")
-		}
+	if err := s.db.Startup(); err != nil {
+		return errors.Wrap(err, "startup database")
 	}
 
 	if !s.conf.NoBanner {
@@ -438,7 +439,7 @@ func (s *svr) Start() error {
 	if shouldInstallLicense {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
+		conn, err := api.NewDatabase(s.db).Connect(ctx, api.WithTrustUser("sys"))
 		if err != nil {
 			s.log.Error("ERR", err.Error())
 			return err
@@ -507,7 +508,7 @@ func (s *svr) Start() error {
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tqlLoader),
-		scheduler.WithDatabase(s.db),
+		scheduler.WithDatabase(api.NewDatabase(s.db)),
 	)
 
 	// start bridge service
@@ -534,6 +535,10 @@ func (s *svr) Start() error {
 			grpcd.OptionScheduleServer(s.schedSvc),
 			grpcd.OptionLeakDetector(leakDetector),
 			grpcd.OptionAuthServer(s),
+			grpcd.OptionServicePortsFunc(s.ServicePorts),
+			grpcd.OptionServerInfoFunc(s.ServerInfo),
+			grpcd.OptionServerSessionsFunc(s.ServerSessions),
+			grpcd.OptionServerKillSessionFunc(s.ServerKillSession),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -552,10 +557,13 @@ func (s *svr) Start() error {
 			httpd.OptionListenAddress(s.conf.Http.Listeners...),
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
+			httpd.OptionManagementServer(s), // add, mgmt server
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
+			httpd.OptionServerInfoFunc(s.ServerInfo),
+			httpd.OptionServerSessionsFunc(s.ServerSessions),
 		}
 		for _, h := range s.conf.Http.Handlers {
 			if h.Handler == httpd.HandlerWeb {
@@ -563,7 +571,7 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
 		}
-		shellPorts := s.servicePorts["shell"]
+		shellPorts, _ := s.ServicePorts("shell")
 		shellAddrs := []string{}
 		for _, sp := range shellPorts {
 			shellAddrs = append(shellAddrs, sp.Address)
@@ -579,7 +587,7 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
 		}
-		s.httpd, err = httpd.New(s.db, opts...)
+		s.httpd, err = httpd.New(api.NewDatabase(s.db), opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
 		}
@@ -611,7 +619,7 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, mqttd.OptionTls(serverCert, serverKey))
 		}
-		s.mqttd, err = mqttd.New(s.db, opts...)
+		s.mqttd, err = mqttd.New(api.NewDatabase(s.db), opts...)
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
 		}
@@ -643,8 +651,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if aux, ok := s.db.(spi.DatabaseAux); ok && enabledWebUI {
-		svcPorts, err := aux.GetServicePorts("http")
+	if enabledWebUI {
+		svcPorts, err := s.ServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
 		}
@@ -666,9 +674,9 @@ func (s *svr) Start() error {
 			}, "\n")
 		}
 		s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(tick).Round(time.Millisecond).String())
+			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
 	} else {
-		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(tick).Round(time.Millisecond).String())
+		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(s.startupTime).Round(time.Millisecond).String())
 	}
 
 	return nil
@@ -696,10 +704,8 @@ func (s *svr) Stop() {
 	if s.models != nil {
 		s.models.Stop()
 	}
-	if mdb, ok := s.db.(spi.DatabaseServer); ok {
-		if err := mdb.Shutdown(); err != nil {
-			s.log.Warnf("db shutdown; %s", err.Error())
-		}
+	if err := s.db.Shutdown(); err != nil {
+		s.log.Warnf("db shutdown; %s", err.Error())
 	}
 	mach.Finalize()
 	s.log.Infof("shutdown.")
@@ -719,14 +725,14 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 				lsnrPort := fmt.Sprintf("tcp://%s:%s", addr.IP.String(), port)
 				s.servicePortsLock.Lock()
 				lst := s.servicePorts[svc]
-				lst = append(lst, &spi.ServicePort{Service: svc, Address: lsnrPort})
+				lst = append(lst, &model.ServicePort{Service: svc, Address: lsnrPort})
 				s.servicePorts[svc] = lst
 				s.servicePortsLock.Unlock()
 			}
 		} else {
 			s.servicePortsLock.Lock()
 			lst := s.servicePorts[svc]
-			lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
+			lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
 			s.servicePorts[svc] = lst
 			s.servicePortsLock.Unlock()
 		}
@@ -736,15 +742,33 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 		}
 		s.servicePortsLock.Lock()
 		lst := s.servicePorts[svc]
-		lst = append(lst, &spi.ServicePort{Service: svc, Address: addr})
+		lst = append(lst, &model.ServicePort{Service: svc, Address: addr})
 		s.servicePorts[svc] = lst
 		s.servicePortsLock.Unlock()
 	}
 	return nil
 }
 
-func (s *svr) ServicePort(svc string) []*spi.ServicePort {
-	return s.servicePorts[strings.ToLower(svc)]
+func (s *svr) ServicePorts(svc string) ([]*model.ServicePort, error) {
+	s.servicePortsLock.RLock()
+	defer s.servicePortsLock.RUnlock()
+
+	ports := []*model.ServicePort{}
+	for k, s := range s.servicePorts {
+		if svc != "" {
+			if strings.ToLower(svc) != k {
+				continue
+			}
+		}
+		ports = append(ports, s...)
+	}
+	sort.Slice(ports, func(i, j int) bool {
+		if ports[i].Service == ports[j].Service {
+			return ports[i].Address < ports[j].Address
+		}
+		return ports[i].Service < ports[j].Service
+	})
+	return ports, nil
 }
 
 func GenBanner() string {
@@ -1199,17 +1223,13 @@ func (s *svr) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool,
 }
 
 func (s *svr) ValidateUserPassword(user string, password string) (bool, string, error) {
-	if db, ok := s.db.(spi.DatabaseAuth); ok {
-		passed, err := db.UserAuth(user, password)
-		if err != nil {
-			return false, "", err
-		} else if !passed {
-			return false, "", nil
-		} else {
-			return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
-		}
+	passed, err := s.db.UserAuth(user, password)
+	if err != nil {
+		return false, "", err
+	} else if !passed {
+		return false, "", nil
 	} else {
-		return false, "", errors.New("database does not support user-auth")
+		return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
 	}
 }
 

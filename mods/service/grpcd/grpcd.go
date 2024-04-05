@@ -10,15 +10,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-grpc/bridge"
-	"github.com/machbase/neo-grpc/machrpc"
-	"github.com/machbase/neo-grpc/mgmt"
-	"github.com/machbase/neo-grpc/schedule"
+	"github.com/machbase/neo-client/machrpc"
+	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -30,7 +31,7 @@ type Service interface {
 }
 
 // Factory
-func New(db spi.Database, options ...Option) (Service, error) {
+func New(db *mach.Database, options ...Option) (Service, error) {
 	s := &grpcd{
 		log:            logging.GetLog("grpcd"),
 		db:             db,
@@ -113,6 +114,30 @@ func OptionAuthServer(authServer security.AuthServer) Option {
 	}
 }
 
+func OptionServicePortsFunc(portz func(svc string) ([]*model.ServicePort, error)) Option {
+	return func(s *grpcd) {
+		s.servicePortsFunc = portz
+	}
+}
+
+func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
+	return func(s *grpcd) {
+		s.serverInfoFunc = fn
+	}
+}
+
+func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)) Option {
+	return func(s *grpcd) {
+		s.serverSessionsFunc = fn
+	}
+}
+
+func OptionServerKillSessionFunc(fn func(id string) error) Option {
+	return func(s *grpcd) {
+		s.serverKillSessionFunc = fn
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -120,7 +145,7 @@ type grpcd struct {
 
 	authServer security.AuthServer
 
-	db           spi.Database
+	db           *mach.Database
 	sessions     map[string]*connParole
 	sessionsLock sync.Mutex
 
@@ -130,11 +155,15 @@ type grpcd struct {
 	keyPath         string
 	certPath        string
 
-	leakDetector      *leak.Detector
-	mgmtImpl          mgmt.ManagementServer
-	bridgeMgmtImpl    bridge.ManagementServer
-	bridgeRuntimeImpl bridge.RuntimeServer
-	schedMgmtImpl     schedule.ManagementServer
+	leakDetector          *leak.Detector
+	mgmtImpl              mgmt.ManagementServer
+	bridgeMgmtImpl        bridge.ManagementServer
+	bridgeRuntimeImpl     bridge.RuntimeServer
+	schedMgmtImpl         schedule.ManagementServer
+	servicePortsFunc      func(svc string) ([]*model.ServicePort, error)
+	serverInfoFunc        func() (*machrpc.ServerInfo, error)
+	serverSessionsFunc    func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
+	serverKillSessionFunc func(id string) error
 
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
@@ -143,7 +172,7 @@ type grpcd struct {
 }
 
 type connParole struct {
-	rawConn spi.Conn
+	rawConn *mach.Conn
 	handle  string
 	cretime time.Time
 }

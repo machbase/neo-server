@@ -13,8 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 const (
@@ -278,7 +277,7 @@ func (svr *httpd) handleLakeGetTagList(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) selectTagMetaList(ctx *gin.Context, conn spi.Conn, sqlText string) (*SelectTagList, error) {
+func (svr *httpd) selectTagMetaList(ctx *gin.Context, conn api.Conn, sqlText string) (*SelectTagList, error) {
 	result := &SelectTagList{}
 	metaList, err := svr.getMetaData(ctx, conn, sqlText)
 	if err != nil {
@@ -356,15 +355,6 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	}
 
 	svr.log.Infof("param: %+v", param)
-
-	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	// if err != nil {
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
-	// 	return
-	// }
-
-	// svr.log.Info("timezone : ", timezone)
 
 	switch param.ReturnType {
 	case "":
@@ -583,13 +573,6 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		ctx.JSON(http.StatusPreconditionFailed, rsp)
 		return
 	}
-
-	// _, err = svr.makeTimezone(ctx, param.Timezone)
-	// if err != nil {
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
-	// 	return
-	// }
 
 	if param.Separator == "" {
 		param.Separator = ","
@@ -954,7 +937,7 @@ func (svr *httpd) GetLastData(ctx *gin.Context) {
 
 // struct 를 이용한 데이터 receive or map[string]interface => 모든 api에서 name,time,value일 경우
 // tagList []string 으로 매개변수 변경 후, split 된 길이를 체크 한 후에 2개 이상일 시 if문 추가
-func (svr *httpd) selectData(ctx context.Context, conn spi.Conn, sqlText string, tagList []string) (*SelectReturn, error) {
+func (svr *httpd) selectData(ctx context.Context, conn api.Conn, sqlText string, tagList []string) (*SelectReturn, error) {
 	t := time.Now()
 	result := &SelectReturn{}
 
@@ -964,7 +947,7 @@ func (svr *httpd) selectData(ctx context.Context, conn spi.Conn, sqlText string,
 	}
 	defer rows.Close()
 
-	columns, err := rows.Columns()
+	columns, err := api.RowsColumns(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -980,14 +963,13 @@ func (svr *httpd) selectData(ctx context.Context, conn spi.Conn, sqlText string,
 		for i, col := range columns {
 			columnsList[i].Name = col.Name
 			columnsList[i].Type = ColumnTypeConvert(col.Type)
-			columnsList[i].Length = col.Length
 		}
 	}()
 
 	dataList := []map[string]interface{}{}
 	for rows.Next() {
 		data := map[string]interface{}{}
-		buffer := columns.MakeBuffer()
+		buffer := api.MakeBuffer(columns)
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Error("scan error: ", err.Error())
@@ -1196,15 +1178,6 @@ func (svr *httpd) GetStatData(ctx *gin.Context) {
 
 	svr.log.Debugf("%s request data %+v", trackId, param)
 
-	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	// if err != nil {
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
-	// 	return
-	// }
-
-	// svr.log.Info(timezone)
-
 	switch param.ReturnType {
 	case "":
 		param.ReturnType = "0"
@@ -1316,14 +1289,6 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 	}
 
 	svr.log.Debugf("%s request data %+v", trackId, param)
-
-	// timezone, err := svr.makeTimezone(ctx, param.Timezone)
-	// if err != nil {
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusUnprocessableEntity, rsp)
-	// 	return
-	// }
-	// svr.log.Info(timezone)
 
 	switch param.ReturnType {
 	case "":
@@ -1853,7 +1818,7 @@ func (svr *httpd) checkCalcUnit(ctx *gin.Context, calcMode string) (string, erro
 	return calcMode, err
 }
 
-func (svr *httpd) getMetaData(ctx context.Context, conn spi.Conn, sqlText string) (*MetaResult, error) {
+func (svr *httpd) getMetaData(ctx context.Context, conn api.Conn, sqlText string) (*MetaResult, error) {
 	result := &MetaResult{}
 
 	rows, err := conn.Query(ctx, sqlText)
@@ -1877,7 +1842,7 @@ func (svr *httpd) getMetaData(ctx context.Context, conn spi.Conn, sqlText string
 }
 
 // scale 적용, 데이터 받은 후에 수정
-func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, scale int) (*MachbaseResult, error) {
+func (svr *httpd) getData(ctx context.Context, conn api.Conn, sqlText string /*scale*/, _ int) (*MachbaseResult, error) {
 	result := &MachbaseResult{}
 
 	rows, err := conn.Query(ctx, sqlText)
@@ -1886,7 +1851,7 @@ func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, sc
 	}
 	defer rows.Close()
 
-	cols, err := rows.Columns()
+	cols, err := api.RowsColumns(rows)
 	if err != nil {
 		return result, err
 	}
@@ -1895,13 +1860,11 @@ func (svr *httpd) getData(ctx context.Context, conn spi.Conn, sqlText string, sc
 
 	for idx, col := range cols {
 		colsList[idx].Name = col.Name
-		// colsList[idx].Type = col.Type
 		colsList[idx].Type = ColumnTypeConvert(col.Type)
-		colsList[idx].Length = col.Length
 	}
 
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
-		buffer := cols.MakeBuffer()
+		buffer := api.MakeBuffer(cols)
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())
@@ -2111,8 +2074,7 @@ func makeScanHint(flag, tableName string) string {
 	}
 }
 
-// svr 안에 currentPlan이 없으므로, limitSelectValue값을 매개변수로 받아야 됨
-func (svr *httpd) checkSelectValueLimit(ctx *gin.Context, limit string, limitSelectValue int64) string {
+func (svr *httpd) checkSelectValueLimit(_ *gin.Context, limit string, limitSelectValue int64) string {
 	result := ""
 	limitInt, err := strconv.ParseInt(limit, 10, 64)
 	if err != nil {
@@ -2126,7 +2088,7 @@ func (svr *httpd) checkSelectValueLimit(ctx *gin.Context, limit string, limitSel
 	return result
 }
 
-func (svr *httpd) checkTimeFormat(ctx *gin.Context, timeValue string, nilOk bool) (string, error) {
+func (svr *httpd) checkTimeFormat(_ *gin.Context, timeValue string, nilOk bool) (string, error) {
 	var err error
 	var timeType string
 
@@ -2152,8 +2114,7 @@ func (svr *httpd) checkTimeFormat(ctx *gin.Context, timeValue string, nilOk bool
 			svr.log.Debugf("format : timestamp(%s)", timeValue)
 		}
 	} else {
-		//[\d] = [0-9] , {4} = {반복횟수} ,  ( -  .  ) 일반 문자열로 사용
-		// 2023-05-16.99:10:20.123.456.789
+		//ex: 2023-05-16.99:10:20.123.456.789
 		matched := regexp.MustCompile(`[\d]{4}-[\d]{2}-[\d]{2}.\d{2}:\d{2}:\d{2}(.\d{3}){0,3}$`)
 		if matched.MatchString(timeValue) {
 			err = nil
@@ -2168,7 +2129,7 @@ func (svr *httpd) checkTimeFormat(ctx *gin.Context, timeValue string, nilOk bool
 	return timeType, err
 }
 
-func (svr *httpd) checkTimePeriod(ctx *gin.Context, startTime, startType, endTime, endType string) error {
+func (svr *httpd) checkTimePeriod(_ *gin.Context, startTime, startType, endTime, endType string) error {
 	if startType != endType {
 		svr.log.Info("StartTime, EndTime Format Different")
 		return fmt.Errorf("StartTime, EndTime Format Different")
@@ -2199,62 +2160,6 @@ func (svr *httpd) checkTimePeriod(ctx *gin.Context, startTime, startType, endTim
 	} else {
 		return nil
 	}
-}
-
-// 사용자가 보낸 Timezone을 확인하고 machbase에서 사용 가능한 Timezone으로 변경하는 함수
-func (svr *httpd) makeTimezone(ctx *gin.Context, timezone string) (string, error) {
-	trackId := ctx.Value(HTTP_TRACKID)
-	resultTimezone := ""
-
-	if timezone == "" {
-		svr.log.Info(trackId, "custom timezone is nil. use default timezone 'Etc/UTC'")
-		resultTimezone = "Etc/UTC"
-		return resultTimezone, nil
-	}
-
-	matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
-	if matched.MatchString(timezone) {
-		svr.log.Infof("available timezone format : %s", timezone)
-		resultTimezone = timezone
-		return resultTimezone, nil
-	}
-
-	return svr.convertTimezone(ctx, timezone)
-}
-
-// convertTimezone 함수만 사용 하는 곳도 존재, 아래 기능이 있으면 makeTimezone 함수와 중복, convert 함수만 사용 가능
-func (svr *httpd) convertTimezone(ctx *gin.Context, timezone string) (string, error) {
-	trackId := ctx.Value(HTTP_TRACKID)
-	resultTimezone := ""
-
-	if timezone == "" {
-		svr.log.Info(trackId, "timezone is nil")
-		return resultTimezone, fmt.Errorf("must entered timezone name")
-	}
-
-	matched := regexp.MustCompile(`[+-](0[0-9]|1[0-4])[0-5][0-9]$`)
-	if matched.MatchString(timezone) {
-		svr.log.Info(trackId, "available timezone format : ", timezone)
-		resultTimezone = timezone
-		return resultTimezone, nil
-	}
-
-	loc, err := time.LoadLocation(timezone)
-	if err != nil {
-		svr.log.Info(trackId, "not available Timezone name : ", timezone)
-		return resultTimezone, fmt.Errorf("%s is not available Timezone name", timezone)
-	}
-
-	sampleDate := time.Date(2021, 1, 1, 12, 0, 0, 0, time.UTC)
-	locDate := sampleDate.In(loc).String()
-	if len(locDate) < 25 {
-		svr.log.Info(trackId, "convert timezone failed : ", locDate)
-		return resultTimezone, fmt.Errorf("convert timezone failed")
-	}
-
-	resultTimezone = locDate[20:25]                                                     // ex) +0900, -0900
-	svr.log.Debugf("%s convert timezone (%s -> %s)", trackId, timezone, resultTimezone) // ex) aTimezone = Asia/Seoul,  sResTimezone = +0900
-	return resultTimezone, nil
 }
 
 type (
@@ -2302,188 +2207,3 @@ type (
 		TableName     string `form:"table_name,default=TAG" json:"table_name"`
 	}
 )
-
-//lint:ignore U1000 unused
-type queryRequest struct {
-	EdgeId    string `form:"edge_id"`
-	StartTime string `form:"start_time"`
-	EndTime   string `form:"end_time"`
-	Offset    int    `form:"offse"`
-	Limit     int    `form:"limit"`
-	Level     int    `form:"level"`
-	Job       string `form:"job"`
-	Keyword   string `form:"keyword"`
-	TableName string `form:"table_name"`
-}
-
-//lint:ignore U1000 unused
-type queryResponse struct {
-	Success bool     `json:"success"`
-	Reason  string   `json:"reason,omitempty"`
-	Columns []string `json:"columns"`
-	Data    []any    `json:"data"`
-}
-
-//lint:ignore U1000 unused
-type queryRow struct {
-	EdgeId   string `json:"EDGEID"`
-	Time     string `json:"TIME"`
-	FileName string `json:"FILENAME"`
-	Job      string `json:"JOB"`
-	Level    int    `json:"LEVEL"`
-	Line     string `json:"LINE"`
-}
-
-//lint:ignore U1000 unused
-func (svr *httpd) handleLakeGetLogs(ctx *gin.Context) {
-	rsp := queryResponse{Success: false}
-	req := queryRequest{}
-
-	if ctx.Request.Method == http.MethodGet {
-		// err := ctx.ShouldBind(&req)
-		// if err != nil {
-		// 	rsp.Reason = fmt.Sprintf("form data bind error : %s", err.Error())
-		// 	ctx.JSON(http.StatusBadRequest, rsp)
-		// 	return
-		// }
-
-		req.EdgeId = ctx.Query("edge_id")
-		req.StartTime = ctx.Query("start_time")
-		req.EndTime = ctx.Query("end_time")
-		req.Level = strInt(ctx.Query("level"), 0)
-		req.Limit = strInt(ctx.Query("limit"), 0)
-		req.Offset = strInt(ctx.Query("offset"), 0)
-		req.Job = ctx.Query("job")
-		req.Keyword = ctx.Query("keyword") //  % -> URL escape code '%25'
-		req.TableName = ctx.Query("table_name")
-	} else {
-		rsp.Reason = fmt.Sprintf("unsupported method %s", ctx.Request.Method)
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-
-	if req.TableName == "" {
-		rsp.Reason = "table name is empty"
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-
-	conn, err := svr.getTrustConnection(ctx)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-	defer conn.Close()
-
-	// check table existence ? or just use fixed table.
-	exists, _ := do.ExistsTable(ctx, conn, req.TableName)
-	if !exists {
-		rsp.Reason = fmt.Sprintf("%q table does not exist.", req.TableName)
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
-	}
-
-	sqlText := fmt.Sprintf("SELECT * FROM %s WHERE ", req.TableName)
-	queryLen := len(ctx.Request.URL.Query())
-	if queryLen == 2 { // TableName, limit
-		limit := ctx.Request.URL.Query().Get("limit")
-		if limit != "" {
-			sqlText = fmt.Sprintf("SELECT * FROM %s ", req.TableName)
-		}
-	} else if queryLen == 1 {
-		sqlText = fmt.Sprintf("SELECT * FROM %s", req.TableName)
-	}
-
-	params := []any{}
-	andFlag := false
-	if req.EdgeId != "" {
-		sqlText += "edgeid = ?"
-		params = append(params, req.EdgeId)
-		andFlag = true
-	}
-	if req.StartTime != "" {
-		if andFlag {
-			sqlText += " AND "
-		}
-		sqlText += fmt.Sprintf("time >= FROM_TIMESTAMP(%s)", req.StartTime)
-		andFlag = true
-	}
-	if req.EndTime != "" {
-		if andFlag {
-			sqlText += " AND "
-		}
-		sqlText += fmt.Sprintf("time <= FROM_TIMESTAMP(%s)", req.EndTime)
-		andFlag = true
-	}
-	if req.Level >= 1 && req.Level <= 5 {
-		if andFlag {
-			sqlText += " AND "
-		}
-		sqlText += "level = ?"
-		params = append(params, req.Level)
-		andFlag = true
-	}
-	if req.Job != "" {
-		if andFlag {
-			sqlText += " AND "
-		}
-		sqlText += "job = ?"
-		params = append(params, req.Job)
-		andFlag = true
-	}
-	if req.Keyword != "" {
-		if andFlag {
-			sqlText += " AND "
-		}
-		if strings.Contains(req.Keyword, "%") {
-			sqlText += "line esearch ?"
-		} else {
-			sqlText += "line search ?"
-		}
-		params = append(params, req.Keyword)
-		andFlag = true
-	}
-	if andFlag {
-		sqlText += " "
-	}
-	if req.Offset > 0 {
-		sqlText += "limit ?, ?"
-		params = append(params, req.Offset)
-		params = append(params, req.Limit)
-	} else if req.Limit > 0 {
-		sqlText += "limit ?"
-		params = append(params, req.Limit)
-	}
-
-	rows, err := conn.Query(ctx, sqlText, params...)
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		rsp.Reason = err.Error()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	} else {
-		rsp.Columns = cols.Names()
-	}
-
-	for rows.Next() {
-		row := queryRow{}
-		err = rows.Scan(&row.EdgeId, &row.Time, &row.FileName, &row.Job, &row.Level, &row.Line)
-		if err != nil {
-			rsp.Reason = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		rsp.Data = append(rsp.Data, row)
-	}
-
-	rsp.Success = true
-	ctx.JSON(http.StatusOK, rsp)
-}

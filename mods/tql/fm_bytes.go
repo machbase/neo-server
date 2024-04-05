@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util/charset"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	spi "github.com/machbase/neo-spi"
 )
 
 func (x *Node) fmCharset(charsetName string) (opts.Option, error) {
@@ -179,9 +179,9 @@ func (src *bytesSource) gen(node *Node) {
 	} else {
 		label = "BYTES"
 	}
-	node.task.SetResultColumns([]*spi.Column{
+	node.task.SetResultColumns([]*api.Column{
 		{Name: "ROWNUM", Type: "int"},
-		{Name: label, Type: spi.ColumnBufferTypeString},
+		{Name: label, Type: api.ColumnBufferTypeString},
 	})
 
 	num := 1

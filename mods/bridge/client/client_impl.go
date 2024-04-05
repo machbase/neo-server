@@ -4,9 +4,9 @@ import (
 	context "context"
 	"fmt"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	"github.com/machbase/neo-server/api"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/mods/bridge"
-	spi "github.com/machbase/neo-spi"
 )
 
 type BridgeClient struct {
@@ -23,7 +23,6 @@ type ConnectorResult struct {
 	Elapse         string
 	cli            *BridgeClient
 	sqlQueryResult *bridgerpc.SqlQueryResult
-	// sqlExecResult  *bridgerpc.SqlExecResult
 }
 
 func (cli *BridgeClient) Exec(ctx context.Context, name string, command string, params ...any) (*ConnectorResult, error) {
@@ -59,14 +58,12 @@ func (cli *BridgeClient) Query(ctx context.Context, name string, command string,
 	return ret, nil
 }
 
-func (rs *ConnectorResult) Columns(ctx context.Context) (spi.Columns, error) {
-	ret := []*spi.Column{}
+func (rs *ConnectorResult) Columns(ctx context.Context) (api.Columns, error) {
+	ret := []*api.Column{}
 	for _, c := range rs.sqlQueryResult.Fields {
-		ret = append(ret, &spi.Column{
-			Name:   c.Name,
-			Type:   c.Type,
-			Size:   int(c.Size),
-			Length: int(c.Length),
+		ret = append(ret, &api.Column{
+			Name: c.Name,
+			Type: c.Type,
 		})
 	}
 	return ret, nil

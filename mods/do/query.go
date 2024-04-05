@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 type QueryContext struct {
-	Conn         spi.Conn
+	Conn         api.Conn
 	Ctx          context.Context
-	OnFetchStart func(spi.Columns)
+	OnFetchStart func(api.Columns)
 	OnFetch      func(rownum int64, values []any) bool
 	OnFetchEnd   func()
 	OnExecuted   func(userMessage string, rowsAffected int64) // callback if query is not a fetchable (e.g: create/drop table)
@@ -30,7 +30,7 @@ func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
 		return rows.Message(), nil
 	}
 
-	cols, err := rows.Columns()
+	cols, err := api.RowsColumns(rows)
 	if err != nil {
 		return "", err
 	}
@@ -43,7 +43,7 @@ func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
 
 	var nrow int64
 	for rows.Next() {
-		rec := cols.MakeBuffer()
+		rec := api.MakeBuffer(cols)
 		err = rows.Scan(rec...)
 		if err != nil {
 			return "", err

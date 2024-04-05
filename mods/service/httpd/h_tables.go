@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/util/glob"
-	spi "github.com/machbase/neo-spi"
 )
 
 // Get a list of existing tables
@@ -35,11 +36,11 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
 		Types: []string{
-			spi.ColumnBufferTypeInt32,  // rownum
-			spi.ColumnBufferTypeString, // db
-			spi.ColumnBufferTypeString, // user
-			spi.ColumnBufferTypeString, // name
-			spi.ColumnBufferTypeString, // type
+			mach.ColumnBufferTypeInt32,  // rownum
+			mach.ColumnBufferTypeString, // db
+			mach.ColumnBufferTypeString, // user
+			mach.ColumnBufferTypeString, // name
+			mach.ColumnBufferTypeString, // type
 		},
 	}
 
@@ -81,7 +82,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 			ti.Database,
 			ti.User,
 			ti.Name,
-			do.TableTypeDescription(spi.TableType(ti.Type), ti.Flag),
+			do.TableTypeDescription(api.TableType(ti.Type), ti.Flag),
 		})
 		return true
 	})
@@ -113,8 +114,8 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "NAME"},
 		Types: []string{
-			spi.ColumnBufferTypeInt32,  // rownum
-			spi.ColumnBufferTypeString, // name
+			mach.ColumnBufferTypeInt32,  // rownum
+			mach.ColumnBufferTypeString, // name
 		},
 		Rows: [][]any{},
 	}
@@ -191,16 +192,16 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 			"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
 			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
 		Types: []string{
-			spi.ColumnBufferTypeInt32,    // rownum
-			spi.ColumnBufferTypeString,   // name
-			spi.ColumnBufferTypeInt64,    // row_count
-			spi.ColumnBufferTypeDatetime, // min_time
-			spi.ColumnBufferTypeDatetime, // max_time
-			spi.ColumnBufferTypeDouble,   // min_value
-			spi.ColumnBufferTypeDatetime, // min_value_time
-			spi.ColumnBufferTypeDouble,   // max_value
-			spi.ColumnBufferTypeDatetime, // max_value_time
-			spi.ColumnBufferTypeDatetime, // recent_row_time
+			mach.ColumnBufferTypeInt32,    // rownum
+			mach.ColumnBufferTypeString,   // name
+			mach.ColumnBufferTypeInt64,    // row_count
+			mach.ColumnBufferTypeDatetime, // min_time
+			mach.ColumnBufferTypeDatetime, // max_time
+			mach.ColumnBufferTypeDouble,   // min_value
+			mach.ColumnBufferTypeDatetime, // min_value_time
+			mach.ColumnBufferTypeDouble,   // max_value
+			mach.ColumnBufferTypeDatetime, // max_value_time
+			mach.ColumnBufferTypeDatetime, // recent_row_time
 		},
 		Rows: [][]any{},
 	}

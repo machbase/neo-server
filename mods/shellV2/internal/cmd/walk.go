@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
-	spi "github.com/machbase/neo-spi"
 	"github.com/rivo/tview"
 )
 
@@ -111,11 +112,11 @@ func doWalk(ctx *action.ActionContext) {
 type Walker struct {
 	tview.TableContentReadOnly
 	sqlText    string
-	conn       spi.Conn
+	conn       *machrpc.Conn
 	ctx        context.Context
 	mutex      sync.Mutex
-	rows       spi.Rows
-	cols       spi.Columns
+	rows       *machrpc.Rows
+	cols       api.Columns
 	values     [][]string
 	eof        bool
 	fetchSize  int
@@ -124,7 +125,7 @@ type Walker struct {
 	precision  int
 }
 
-func NewWalker(ctx context.Context, conn spi.Conn, sqlText string, timeformat string, tz *time.Location, precision int) (*Walker, error) {
+func NewWalker(ctx context.Context, conn *machrpc.Conn, sqlText string, timeformat string, tz *time.Location, precision int) (*Walker, error) {
 	w := &Walker{
 		sqlText:    sqlText,
 		conn:       conn,
@@ -161,7 +162,7 @@ func (w *Walker) Reload() error {
 		return err
 	}
 
-	cols, err := rows.Columns()
+	cols, err := api.RowsColumns(rows)
 	if err != nil {
 		rows.Close()
 		return err
@@ -213,7 +214,7 @@ func (w *Walker) fetchMore() {
 		return
 	}
 
-	buffer := w.cols.MakeBuffer()
+	buffer := api.MakeBuffer(w.cols)
 
 	count := 0
 	nrows := len(w.values)

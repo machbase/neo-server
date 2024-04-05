@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/bridge"
-	spi "github.com/machbase/neo-spi"
 	"github.com/pkg/errors"
 )
 
@@ -65,7 +65,7 @@ func (x *Node) fmInsert(args ...any) (*insert, error) {
 }
 
 type insert struct {
-	conn      spi.Conn
+	conn      api.Conn
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
@@ -119,7 +119,7 @@ func (ins *insert) _addRowBridge(values []any) error {
 	for idx := range ins.columns {
 		placeHolders = append(placeHolders, br.ParameterMarker(idx))
 	}
-	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)",
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)",
 		ins.table.Name,
 		strings.Join(ins.columns, ","),
 		strings.Join(placeHolders, ","))
@@ -152,7 +152,7 @@ func (ins *insert) _addRow(values []any) error {
 	for range ins.columns {
 		placeHolders = append(placeHolders, "?")
 	}
-	sqlText := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)",
+	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)",
 		ins.table.Name,
 		strings.Join(ins.columns, ","),
 		strings.Join(placeHolders, ","))
@@ -189,13 +189,13 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 }
 
 type appender struct {
-	conn      spi.Conn
+	conn      api.Conn
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
 	nrows int
 
-	dbAppender spi.Appender
+	dbAppender api.Appender
 
 	table *Table
 }

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/machbase/neo-grpc/mgmt"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods/model"
 )
 

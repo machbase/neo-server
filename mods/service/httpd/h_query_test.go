@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 )
 
 func TestQuery(t *testing.T) {
 	var expectRows = 0
 
 	dbMock := &DatabaseMock{}
-	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	dbMock.ConnectFunc = func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 		conn := &ConnMock{}
 		conn.CloseFunc = func() error { return nil }
-		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			rows := &RowsMock{}
 			switch sqlText {
 			case `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`:
@@ -32,11 +32,14 @@ func TestQuery(t *testing.T) {
 					}
 					return nil
 				}
-				rows.ColumnsFunc = func() (spi.Columns, error) {
-					return []*spi.Column{
-						{Name: "min(min_time)", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-						{Name: "max(max_time)", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-					}, nil
+				rows.ColumnsFunc = func() ([]string, []string, error) {
+					return []string{
+							"min(min_time)",
+							"max(max_time)",
+						}, []string{
+							api.ColumnTypeString(api.DatetimeColumnType),
+							api.ColumnTypeString(api.DatetimeColumnType),
+						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
 				rows.NextFunc = func() bool {
@@ -52,11 +55,12 @@ func TestQuery(t *testing.T) {
 					}
 					return nil
 				}
-				rows.ColumnsFunc = func() (spi.Columns, error) {
-					return []*spi.Column{
-						{Name: "TIME", Type: spi.ColumnTypeString(spi.DatetimeColumnType)},
-						{Name: "VALUE", Type: spi.ColumnTypeString(spi.Float64ColumnType)},
-					}, nil
+				rows.ColumnsFunc = func() ([]string, []string, error) {
+					return []string{
+							"TIME", "VALUE",
+						}, []string{
+							api.ColumnTypeString(api.DatetimeColumnType), api.ColumnTypeString(api.Float64ColumnType),
+						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
 				rows.NextFunc = func() bool {

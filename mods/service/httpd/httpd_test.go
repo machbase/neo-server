@@ -1,6 +1,6 @@
 package httpd
 
-//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../../neo-spi Database DatabaseServer DatabaseClient DatabaseAuth Conn Result Rows Row Appender
+//go:generate moq -out ./httpd_mock_test.go -pkg httpd ../../../../neo-server/api Database Conn Result Rows Row Appender
 
 import (
 	"bytes"
@@ -14,14 +14,15 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
 type mockServer struct {
-	spi.Database
+	api.Database
 	svr *httptest.Server
 	w   *httptest.ResponseRecorder
 
@@ -70,26 +71,30 @@ func (fda *mockServer) RefreshToken() string {
 	return fda.refreshToken
 }
 
-func (fda *mockServer) Connect(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+func (fda *mockServer) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 	return &mockConn{}, nil
 }
 
 type mockConn struct {
-	spi.Conn
+	api.Conn
 }
 
 func (fda *mockConn) Close() error { return nil }
-func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...spi.AppenderOption) (spi.Appender, error) {
+func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	ret := &AppenderMock{}
 	ret.AppendFunc = func(values ...any) error { return nil }
 	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
 	ret.TableNameFunc = func() string { return tableName }
-	ret.ColumnsFunc = func() (spi.Columns, error) {
-		return []*spi.Column{
-			{Name: "TIME", Type: "string"},
-			{Name: "TIME", Type: "datetime"},
-			{Name: "VALUE", Type: "double"},
-		}, nil
+	ret.ColumnsFunc = func() ([]string, []string, error) {
+		return []string{
+				"TIME",
+				"TIME",
+				"VALUE",
+			}, []string{
+				"string",
+				"datetime",
+				"double",
+			}, nil
 	}
 	return ret, nil
 }
@@ -105,6 +110,14 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 		neoShellAccount: map[string]string{},
 		jwtCache:        security.NewJwtCache(),
 		memoryFs:        &MemoryFS{},
+		serverInfoFunc: func() (*machrpc.ServerInfo, error) {
+			return &machrpc.ServerInfo{
+				Success: true,
+				Reason:  "success",
+				Version: &machrpc.Version{},
+				Runtime: &machrpc.Runtime{},
+			}, nil
+		},
 	}
 	ctx, engine := gin.CreateTestContext(w)
 	engine.POST("/web/api/login", svr.handleLogin)
@@ -143,10 +156,10 @@ func TestStatz(t *testing.T) {
 	engine.HandleContext(ctx)
 
 	result := map[string]any{}
-	err = json.Unmarshal(w.Body.Bytes(), &result)
+	payload := w.Body.Bytes()
+	err = json.Unmarshal(payload, &result)
 	if err != nil {
+		t.Log(string(payload))
 		t.Fatal(err)
 	}
-
-	t.Log(result)
 }

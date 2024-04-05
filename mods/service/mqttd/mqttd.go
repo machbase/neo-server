@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/allowance"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
-	spi "github.com/machbase/neo-spi"
 	cmap "github.com/orcaman/concurrent-map"
 )
 
@@ -23,7 +22,7 @@ type Service interface {
 
 type Option func(s *mqttd)
 
-func New(db spi.Database, options ...Option) (Service, error) {
+func New(db api.Database, options ...Option) (Service, error) {
 	svr := &mqttd{
 		log:       logging.GetLog("mqttd"),
 		db:        db,
@@ -87,8 +86,8 @@ func OptionTqlLoader(loader tql.Loader) Option {
 }
 
 type AppenderWrapper struct {
-	conn      spi.Conn
-	appender  spi.Appender
+	conn      api.Conn
+	appender  api.Appender
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 }
@@ -108,7 +107,7 @@ type HandlerConfig struct {
 
 type mqttd struct {
 	mqttd      mqtt.Server
-	db         spi.Database
+	db         api.Database
 	log        logging.Log
 	appenders  cmap.ConcurrentMap
 	authServer security.AuthServer
@@ -196,8 +195,8 @@ func (svr *mqttd) Stop() {
 	}
 }
 
-func (svr *mqttd) getTrustConnection(ctx context.Context) (spi.Conn, error) {
-	return svr.db.Connect(ctx, mach.WithTrustUser("sys"))
+func (svr *mqttd) getTrustConnection(ctx context.Context) (api.Conn, error) {
+	return svr.db.Connect(ctx, api.WithTrustUser("sys"))
 }
 
 func (svr *mqttd) SetAuthServer(authServer security.AuthServer) {

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"testing"
 
-	spi "github.com/machbase/neo-spi"
+	"github.com/machbase/neo-server/api"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,10 +46,10 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 func TestLineprotocol(t *testing.T) {
 	columnDefaultLen := 4
 	dbMock := &TestClientMock{}
-	dbMock.ConnectFunc = func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+	dbMock.ConnectFunc = func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 		conn := &ConnMock{}
 		conn.CloseFunc = func() error { return nil }
-		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) spi.Row {
+		conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
 			rm := &RowMock{}
 
 			switch sqlText {
@@ -55,7 +57,7 @@ func TestLineprotocol(t *testing.T) {
 				rm.ScanFunc = func(cols ...any) error {
 					if len(params) == 3 {
 						*(cols[0].(*int)) = 0
-						*(cols[1].(*int)) = spi.TagTableType
+						*(cols[1].(*int)) = int(api.TagTableType)
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*int)) = 0
 					}
@@ -70,7 +72,7 @@ func TestLineprotocol(t *testing.T) {
 			}
 			return rm
 		}
-		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (spi.Rows, error) {
+		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			rm := &RowsMock{}
 			tCnt := columnDefaultLen
 			cnt := 0
@@ -87,28 +89,36 @@ func TestLineprotocol(t *testing.T) {
 				}
 
 				rm.ScanFunc = func(cols ...any) error {
-					if len(cols) != 4 {
-						t.Logf("ColumnCount: %d", len(cols))
+					if len(cols) != 5 {
+						t.Logf("ERROR ColumnCount, expect: 5, actual: %d", len(cols))
+						debug.PrintStack()
+						return errors.New("invalid column count")
 					}
+					// name, type, length, id, flag
 					switch cnt - 1 {
 					case 0:
 						*(cols[0].(*string)) = "NAME"
-						*(cols[1].(*int)) = spi.VarcharColumnType
+						*(cols[1].(*int)) = int(api.VarcharColumnType)
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 1:
-						*(cols[0].(*string)) = "TIME"
-						*(cols[1].(*int)) = spi.DatetimeColumnType
+						*(cols[0].(*string)) = "TYPE"
+						*(cols[1].(*int)) = int(api.Int32ColumnType)
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 2:
-						*(cols[0].(*string)) = "VALUE"
-						*(cols[1].(*int)) = spi.Float64ColumnType
+						*(cols[0].(*string)) = "LENGTH"
+						*(cols[1].(*int)) = int(api.Int32ColumnType)
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 3:
-						*(cols[0].(*string)) = "HOST"
-						*(cols[1].(*int)) = spi.VarcharColumnType
+						*(cols[0].(*string)) = "ID"
+						*(cols[1].(*int)) = int(api.Int32ColumnType)
+						*(cols[2].(*int)) = 0
+						*(cols[3].(*uint64)) = 0
+					case 4:
+						*(cols[0].(*string)) = "FLAG"
+						*(cols[1].(*int)) = int(api.Int32ColumnType)
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					}
@@ -125,13 +135,26 @@ func TestLineprotocol(t *testing.T) {
 			}
 			return rm, nil
 		}
-		conn.ExecFunc = func(ctx context.Context, sqlText string, params ...any) spi.Result {
-			rm := &ResultMock{}
-
-			if len(params) != columnDefaultLen {
-				t.Fatal(errors.New("column len different"))
+		conn.ExecFunc = func(ctx context.Context, sqlText string, params ...any) api.Result {
+			var failed bool
+			var expected int
+			if sqlText == "INSERT INTO tag(NAME,TYPE,LENGTH) VALUES(?,?,?)" {
+				expected = 3
+				failed = len(params) != expected
+			} else {
+				fmt.Println("========>", sqlText)
+				if len(params) != columnDefaultLen {
+					expected = columnDefaultLen
+					failed = true
+				}
 			}
-
+			if failed {
+				t.Logf("ERROR column len different, expect: %d, actual: %d\nSQL:%s", expected, len(params), sqlText)
+				t.Fail()
+				debug.PrintStack()
+				return nil
+			}
+			rm := &ResultMock{}
 			rm.ErrFunc = func() error {
 				return nil
 			}
@@ -165,7 +188,8 @@ func TestLineprotocol(t *testing.T) {
 	expectStatus = http.StatusNoContent
 	if expectStatus != w.Code {
 		content, _ := io.ReadAll(w.Result().Body)
-		t.Fatalf("respose code %d expected, got=%d %q", expectStatus, w.Code, string(content))
+		t.Logf("respose code %d expected, got=%d %q\nrequest: %v", expectStatus, w.Code, string(content), LINEPROTOCOLDATA)
+		t.FailNow()
 	}
 
 	//wrong case - wrong request

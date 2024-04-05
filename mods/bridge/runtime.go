@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-grpc/bridge"
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 )
 
 type rowsWrap struct {
@@ -238,7 +238,6 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 	fields := make([]any, len(columns))
 	for i, c := range columns {
 		fields[i] = rowsWrap.bridge.NewScanType(c.ScanType().String(), strings.ToUpper(c.DatabaseTypeName()))
-		//fields[i] = reflect.New(c.ScanType()).Interface()
 	}
 	err = rowsWrap.rows.Scan(fields...)
 	if err != nil {

@@ -1,22 +1,22 @@
 package do_test
 
-//go:generate moq -out ./mock_test.go -pkg do_test ../../../neo-spi Database Conn Row Result
+//go:generate moq -out ./mock_test.go -pkg do_test ../../../neo-server/api Database Conn Row Result
 
 import (
 	"context"
 	"testing"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/do"
-	spi "github.com/machbase/neo-spi"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExists(t *testing.T) {
 	mockdb := &DatabaseMock{
-		ConnectFunc: func(ctx context.Context, options ...spi.ConnectOption) (spi.Conn, error) {
+		ConnectFunc: func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 			conn := &ConnMock{}
 			conn.CloseFunc = func() error { return nil }
-			conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) spi.Row {
+			conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
 				switch sqlText {
 				case "select count(*) from M$SYS_TABLES where name = ?":
 					return &RowMock{
@@ -34,7 +34,7 @@ func TestExists(t *testing.T) {
 				case "select type from M$SYS_TABLES where name = ?":
 					return &RowMock{
 						ScanFunc: func(cols ...any) error {
-							*(cols[0].(*int)) = spi.TagTableType
+							*(cols[0].(*int)) = int(api.TagTableType)
 							return nil
 						},
 					}
@@ -43,7 +43,7 @@ func TestExists(t *testing.T) {
 					return &RowMock{}
 				}
 			}
-			conn.ExecFunc = func(ctx context.Context, sqlText string, params ...any) spi.Result {
+			conn.ExecFunc = func(ctx context.Context, sqlText string, params ...any) api.Result {
 				switch sqlText {
 				case "delete from example":
 					return &ResultMock{

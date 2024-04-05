@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -16,7 +18,6 @@ import (
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/charset"
-	spi "github.com/machbase/neo-spi"
 	"golang.org/x/text/encoding"
 )
 
@@ -113,7 +114,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, created, truncated, err := do.ExistsTableOrCreate(ctx.Ctx, ctx.Conn, cmd.Table, cmd.CreateTable, cmd.TruncateTable)
+	exists, created, truncated, err := do.ExistsTableOrCreate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.CreateTable, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -130,7 +131,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx.Ctx, ctx.Conn, cmd.Table, false); err != nil {
+	if desc0, err := do.Describe(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, false); err != nil {
 		ctx.Printfln("ERR fail to get table info '%s', %s", cmd.Table, err.Error())
 		return
 	} else {
@@ -183,7 +184,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	decoder := codec.NewDecoder(cmd.InputFormat, decOpts...)
-	var appender spi.Appender
+	var appender *machrpc.Appender
 	var lineno int = 0
 
 	hold := []string{}
