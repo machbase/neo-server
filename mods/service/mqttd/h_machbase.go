@@ -152,9 +152,6 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	var replyTopic string
 	var rsp = &msg.WriteResponse{Reason: "not specified"}
 
-	// TEST
-	// replyTopic = "db/reply"
-
 	defer func() {
 		if peer == nil || replyTopic == "" {
 			return
@@ -282,6 +279,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		dec := json.NewDecoder(bytes.NewBuffer(bs))
 		// ignore json decoder error, the payload json can be non-full-document json.
 		dec.Decode(&wr)
+		replyTopic = wr.ReplyTo
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
@@ -332,6 +330,8 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		columnsHolder := strings.Join(_hold, ",")
 		insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, columnsHolder, valueHolder)
 	}
+
+	fmt.Println("-->", insertQuery)
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 

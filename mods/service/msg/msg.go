@@ -32,8 +32,9 @@ type QueryData struct {
 }
 
 type WriteRequest struct {
-	Table string            `json:"table"`
-	Data  *WriteRequestData `json:"data"`
+	Table   string            `json:"table"`
+	ReplyTo string            `json:"reply,omitempty"` // for mqtt query only
+	Data    *WriteRequestData `json:"data"`
 }
 
 type WriteRequestData struct {
