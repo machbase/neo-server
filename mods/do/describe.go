@@ -262,7 +262,7 @@ type ColumnDescription struct {
 
 // TypeString returns string representation of column type.
 func (cd *ColumnDescription) TypeString() string {
-	return api.ColumnTypeString(cd.Type)
+	return api.ColumnTypeStringNative(cd.Type)
 }
 
 func (cd *ColumnDescription) Size() int {

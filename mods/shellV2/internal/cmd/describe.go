@@ -77,7 +77,7 @@ func doDescribe(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeString(col.Type)
+		colType := api.ColumnTypeStringNative(col.Type)
 		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
 	}
 	box.Render()

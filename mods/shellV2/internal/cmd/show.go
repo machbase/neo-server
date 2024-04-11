@@ -450,7 +450,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeString(col.Type)
+		colType := api.ColumnTypeStringNative(col.Type)
 		box.AppendRow(nrow, col.Name, colType, col.Length)
 	}
 
