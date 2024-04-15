@@ -15,7 +15,7 @@ API and Interfaces
 - [x] gRPC : The first class API for extensions
 - [x] SSH : Command line interface for human and batch process
 - [x] WEB UI (Batteries included)
-- [x] [UI API](https://machbase.com/neo/api-http/ui-api) to build custom UI (Batteries replaceable)
+- [x] [UI API](https://docs.machbase.com/neo/api-http/ui-api) to build custom UI (Batteries replaceable)
 
 Bridges integrated with external systems
 
@@ -29,14 +29,14 @@ Bridges integrated with external systems
 
 ## Documents
 
-[https://machbase.com/neo](https://machbase.com/neo)
+[https://docs.machbase.com/neo](https://docs.machbase.com/neo)
 
 ## Install Prebuilt Binary
 
 - Download
 
 ```sh
-sh -c "$(curl -fsSL https://machbase.com/install.sh)"
+sh -c "$(curl -fsSL https://docs.machbase.com/install.sh)"
 ```
 
 - Unzip the archive file
@@ -69,5 +69,5 @@ https://hub.docker.com/r/machbase/machbase-neo
 ![screen](./docs/dashboard.png)
 
 - Data Visualization<br/>
-Find more samples from the [documents](https://machbase.com/neo/tql/chart/).
+Find more samples from the [documents](https://docs.machbase.com/neo/tql/chart/).
 ![charts](./docs/charts_demo.jpg)

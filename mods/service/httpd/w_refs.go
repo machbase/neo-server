@@ -24,18 +24,18 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 
 	if path == "/" {
 		references := &WebReferenceGroup{Label: "REFERENCES"}
-		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://machbase.com/neo", Target: "_blank"})
-		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://machbase.com/dbms/sql-ref/", Target: "_docs_machbase"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase-neo docs", Addr: "https://docs.machbase.com/neo", Target: "_blank"})
+		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "machbase sql reference", Addr: "https://docs.machbase.com/dbms/sql-ref/", Target: "_docs_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "https://machbase.com", Addr: "https://machbase.com/", Target: "_home_machbase"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Tutorials", Addr: "https://github.com/machbase/neo-tutorials", Target: "_blank"})
 		references.Items = append(references.Items, ReferenceItem{Type: "url", Title: "Demo web app", Addr: "https://github.com/machbase/neo-apps"})
 
 		sdk := &WebReferenceGroup{Label: "SDK"}
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK Download", Addr: "https://machbase.com/home/download/", Target: "_home_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://machbase.com/dbms/sdk/dotnet/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://machbase.com/dbms/sdk/jdbc/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://machbase.com/dbms/sdk/cli-odbc/", Target: "_docs_machbase"})
-		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://machbase.com/dbms/sdk/cli-odbc-example/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "SDK Download", Addr: "https://docs.machbase.com/home/download/", Target: "_home_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: ".NET Connector", Addr: "https://docs.machbase.com/dbms/sdk/dotnet/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "JDBC Driver", Addr: "https://docs.machbase.com/dbms/sdk/jdbc/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc/", Target: "_docs_machbase"})
+		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc-example/", Target: "_docs_machbase"})
 
 		cheatsheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
 		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
