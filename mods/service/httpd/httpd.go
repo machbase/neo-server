@@ -193,11 +193,9 @@ func (svr *httpd) Router() *gin.Engine {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
 			}
 			group.Use(svr.handleJwtToken)
-			if svr.tqlLoader != nil {
-				group.GET("/api/tql/*path", svr.handleTagQL)
-				group.POST("/api/tql/*path", svr.handleTagQL)
-				group.POST("/api/tql", svr.handlePostTagQL)
-			}
+			group.GET("/api/tql/*path", svr.handleTagQL)
+			group.POST("/api/tql/*path", svr.handleTagQL)
+			group.POST("/api/tql", svr.handlePostTagQL)
 			group.POST("/api/md", svr.handleMarkdown)
 			group.Any("/machbase", svr.handleQuery) // TODO depcreated, use /web/api/query
 			group.Any("/api/query", svr.handleQuery)
@@ -234,11 +232,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/query", svr.handleQuery)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
-			if svr.tqlLoader != nil {
-				group.GET("/tql/*path", svr.handleTagQL)
-				group.POST("/tql/*path", svr.handleTagQL)
-				group.POST("/tql", svr.handlePostTagQL)
-			}
+			group.GET("/tql/*path", svr.handleTagQL)
+			group.POST("/tql/*path", svr.handleTagQL)
+			group.POST("/tql", svr.handlePostTagQL)
 			group.GET("/statz", svr.handleStatz)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}

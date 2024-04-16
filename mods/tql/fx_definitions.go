@@ -271,6 +271,9 @@ var FxDefinitions = []Definition{
 
 func mathWrap(name string, f func(float64) float64) func(args ...any) (any, error) {
 	return func(args ...any) (any, error) {
+		if args == nil {
+			return nil, nil
+		}
 		if len(args) != 1 {
 			return nil, ErrInvalidNumOfArgs(name, 1, len(args))
 		}
