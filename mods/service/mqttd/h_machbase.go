@@ -331,8 +331,6 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 		insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, columnsHolder, valueHolder)
 	}
 
-	fmt.Println("-->", insertQuery)
-
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
 	if decoder == nil {
