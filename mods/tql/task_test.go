@@ -3316,6 +3316,22 @@ func TestBridgeSqlite(t *testing.T) {
 		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"SQL(bridge('sqlite'), `select * from example_sql where id = -1`)",
+		"CSV(heading(true))",
+	}
+	resultLines = []string{
+		"id,name,age,address,weight,memo",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		"SQL(bridge('sqlite'), `select * from example_sql where id = -1`)",
+		"CSV(heading(false))",
+	}
+	resultLines = []string{}
+	runTest(t, codeLines, resultLines)
 }
 
 func TestQuerySql(t *testing.T) {
