@@ -3,9 +3,12 @@ package args
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/alecthomas/kong"
 	shell "github.com/machbase/neo-server/mods/shellV2"
 )
 
@@ -21,7 +24,7 @@ type NeoCommand struct {
 		Command    string
 		SubCommand string
 	}
-
+	Restore Restore
 	Service Service
 
 	args []string
@@ -62,6 +65,8 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 	switch cli.Command {
 	case "serve":
 		return parseServe(cli)
+	case "restore":
+		return parseRestore(cli)
 	case "shell":
 		return parseShell(cli)
 	case "help":
@@ -107,6 +112,31 @@ func parseServe(cli *NeoCommand) (*NeoCommand, error) {
 		} else if s == "--preset" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Serve.Preset = cli.args[i+1]
 			i++
+		}
+	}
+	return cli, nil
+}
+
+type Restore struct {
+	Help      bool   `kong:"-"`
+	DataDir   string `name:"data"`
+	BackupDir string `arg:"" name:"path"`
+}
+
+func parseRestore(cli *NeoCommand) (*NeoCommand, error) {
+	parser, err := kong.New(&cli.Restore, kong.HelpOptions{Compact: true})
+	if err != nil {
+		return nil, err
+	}
+	_, err = parser.Parse(cli.args)
+	if err != nil {
+		return nil, err
+	}
+	if cli.Restore.DataDir == "" {
+		if ep, err := os.Executable(); err != nil {
+			return nil, err
+		} else {
+			cli.Restore.DataDir = filepath.Join(filepath.Dir(ep), "machbase_home")
 		}
 	}
 	return cli, nil

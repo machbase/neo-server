@@ -257,6 +257,16 @@ func NewServer(conf *Config) (Server, error) {
 	}, nil
 }
 
+func Restore(dataDir string, backupDir string) error {
+	if err := mach.Initialize(dataDir, 0); err != nil {
+		return err
+	}
+	if err := mach.RestoreDatabase(backupDir); err != nil {
+		return err
+	}
+	return nil
+}
+
 type DatabaseServer interface {
 	Startup() error
 	Shutdown() error

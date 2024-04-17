@@ -33,7 +33,9 @@ func Main() int {
 	case "help":
 		doHelp(cli.Help.Command, cli.Help.SubCommand)
 	case "serve":
-		doServe(cli.Serve.Preset, false)
+		return doServe(cli.Serve.Preset, false)
+	case "restore":
+		return doRestore(&cli.Restore)
 	case "shell":
 		shell.Shell(&cli.Shell)
 	case "service":
@@ -61,6 +63,14 @@ func doServe(preset string, doNotExit bool) int {
 		// The other cases, when process is running in foreground or other OS escept Windows.
 		// it can shutdown and exit.
 		booter.ShutdownAndExit(0)
+	}
+	return 0
+}
+
+func doRestore(r *Restore) int {
+	if err := server.Restore(r.DataDir, r.BackupDir); err != nil {
+		fmt.Println("ERR", err.Error())
+		return -1
 	}
 	return 0
 }
