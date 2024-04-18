@@ -23,7 +23,7 @@ const helpSession = `    session command [options]
   commands:
     list              list sessions
     kill <id>         force to close a session
-	stat              show session stat
+    stat              show session stat
   options:
     -a,--all          includes detail description`
 
