@@ -3630,6 +3630,21 @@ func TestTengoScript(t *testing.T) {
 	}
 	resultLines = []string{"22,2,3,4"}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`FAKE( linspace(1,2,2))`,
+		`MAPKEY("hello")`,
+		`SCRIPT({`,
+		`    ctx := import("context")`,
+		`    ctx.yield(ctx.key(), ctx.value(0), ctx.param("temp", 0))`,
+		`})`,
+		`MAPVALUE(0, value(0), "key")`,
+		`MAPVALUE(1, value(1), "value")`,
+		`MAPVALUE(2, value(2), "parameter")`,
+		`CSV(header(true))`,
+	}
+	resultLines = []string{`key,value,parameter`, `hello,1,0`, `hello,2,0`}
+	runTest(t, codeLines, resultLines)
 }
 
 func normalize(ret string) string {

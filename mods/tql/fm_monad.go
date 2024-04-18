@@ -1778,7 +1778,10 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 							cols = append(cols, &api.Column{Name: fmt.Sprintf("column%d", i)})
 						}
 					}
-					cols[idx+1].Name = newName
+					newCol := api.ColumnTypeOf(newValue)
+					newCol.Name = newName
+					cols[idx+1] = newCol
+					node.task.SetResultColumns(cols)
 				}
 			}
 		}
