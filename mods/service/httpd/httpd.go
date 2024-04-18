@@ -35,7 +35,12 @@ func New(db api.Database, options ...Option) (Service, error) {
 		log:      logging.GetLog("httpd"),
 		db:       db,
 		jwtCache: security.NewJwtCache(),
-
+		handlers: []*HandlerConfig{
+			{Prefix: "/db", Handler: "machbase"},
+			{Prefix: "/lakes", Handler: "lakes"},
+			{Prefix: "/metrics", Handler: "influx"},
+			{Prefix: "/web", Handler: "web"},
+		},
 		neoShellAccount: make(map[string]string),
 	}
 	for _, opt := range options {
@@ -50,8 +55,9 @@ type httpd struct {
 	alive bool
 
 	listenAddresses []string
-	enableTokenAUth bool
+	enableTokenAuth bool
 	handlers        []*HandlerConfig
+	disableWeb      bool
 
 	serverInfoFunc     func() (*machrpc.ServerInfo, error)
 	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
@@ -167,12 +173,15 @@ func (svr *httpd) Router() *gin.Engine {
 
 		switch h.Handler {
 		case HandlerInflux: // "influx line protocol"
-			if svr.enableTokenAUth && svr.authServer != nil {
+			if svr.enableTokenAuth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
 			}
 			group.POST("/:oper", svr.handleLineProtocol)
 			svr.log.Infof("HTTP path %s for the line protocol", prefix)
 		case HandlerWeb: // web ui
+			if svr.disableWeb {
+				continue
+			}
 			contentBase := "/ui/"
 			group.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))
@@ -225,7 +234,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/inter/execquery", svr.handleLakeExecQuery)
 			svr.log.Infof("HTTP path %s for lake api", prefix)
 		case HandlerMachbase: // "machbase"
-			if svr.enableTokenAUth && svr.authServer != nil {
+			if svr.enableTokenAuth && svr.authServer != nil {
 				group.Use(svr.handleAuthToken)
 			}
 			group.GET("/query", svr.handleQuery)

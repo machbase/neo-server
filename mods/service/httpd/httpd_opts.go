@@ -24,7 +24,7 @@ func OptionListenAddress(addrs ...string) Option {
 func OptionAuthServer(authSvc security.AuthServer, enabled bool) Option {
 	return func(s *httpd) {
 		s.authServer = authSvc
-		s.enableTokenAUth = enabled
+		s.enableTokenAuth = enabled
 		if enabled {
 			s.log.Infof("HTTP token authentication enabled")
 		} else {
@@ -62,10 +62,9 @@ func OptionLicenseFilePath(path string) Option {
 	}
 }
 
-// Handler
-func OptionHandler(prefix string, handler HandlerType) Option {
+func OptionEnableWeb(enable bool) Option {
 	return func(s *httpd) {
-		s.handlers = append(s.handlers, &HandlerConfig{Prefix: prefix, Handler: handler})
+		s.disableWeb = !enable
 	}
 }
 

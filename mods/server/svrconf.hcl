@@ -91,22 +91,13 @@ module "machbase.com/neo-server" {
         }
         Http = {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
-            Handlers         = [
-                { Prefix: "/db",      Handler: "machbase" },
-                { Prefix: "/lakes",      Handler: "lakes" },
-                { Prefix: "/metrics", Handler: "influx" },
-                { Prefix: "/web",     Handler: VARS_HTTP_ENABLE_WEBUI ? "web" : "-" },
-            ]
             WebDir           = VARS_UI_DIR
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
+            EnableWebUI      = VARS_HTTP_ENABLE_WEBUI
         }
         Mqtt = {
-            Listeners        = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}"]
-            Handlers         = [
-                { Prefix: "db",       Handler: "machbase" },
-                { Prefix: "metrics",  Handler: "influx" },
-            ]
+            Listeners           = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}"]
             EnableTokenAuth     = VARS_MQTT_ENABLE_TOKENAUTH
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE

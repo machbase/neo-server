@@ -56,7 +56,6 @@ func (mock *mgmtServerMock) DelKey(context.Context, *mgmt.DelKeyRequest) (*mgmt.
 func TestKey(t *testing.T) {
 	webService, err := New(&DatabaseMock{},
 		OptionDebugMode(true),
-		OptionHandler("/web", HandlerWeb),
 	)
 	if err != nil {
 		t.Fatal(err)

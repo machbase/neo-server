@@ -165,7 +165,6 @@ func TestLineprotocol(t *testing.T) {
 
 	webService, err := New(dbMock,
 		OptionDebugMode(true),
-		OptionHandler("/metrics", HandlerInflux),
 	)
 	if err != nil {
 		t.Fatal(err)

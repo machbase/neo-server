@@ -83,7 +83,6 @@ func TestRead(t *testing.T) {
 
 	webService, err := New(dbMock,
 		OptionDebugMode(true),
-		OptionHandler("/lakes", HandlerLake),
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -78,7 +78,6 @@ func TestQuery(t *testing.T) {
 
 	svr, err := New(dbMock,
 		OptionDebugMode(true),
-		OptionHandler("/db", HandlerMachbase),
 	)
 	if err != nil {
 		t.Fatal(err)

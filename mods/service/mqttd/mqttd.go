@@ -27,6 +27,10 @@ func New(db api.Database, options ...Option) (Service, error) {
 		log:       logging.GetLog("mqttd"),
 		db:        db,
 		appenders: cmap.New(),
+		handlers: []*HandlerConfig{
+			{Prefix: "db", Handler: "machbase"},
+			{Prefix: "metrics", Handler: "influx"},
+		},
 	}
 	for _, opt := range options {
 		opt(svr)
@@ -37,12 +41,6 @@ func New(db api.Database, options ...Option) (Service, error) {
 func OptionListenAddress(addr ...string) Option {
 	return func(s *mqttd) {
 		s.listenAddresses = append(s.listenAddresses, addr...)
-	}
-}
-
-func OptionHandler(prefix string, handler HandlerType) Option {
-	return func(s *mqttd) {
-		s.handlers = append(s.handlers, &HandlerConfig{Prefix: prefix, Handler: handler})
 	}
 }
 

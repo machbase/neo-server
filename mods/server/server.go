@@ -128,16 +128,17 @@ type GrpcConfig struct {
 
 type HttpConfig struct {
 	Listeners []string
-	Handlers  []httpd.HandlerConfig
+	Handlers  []httpd.HandlerConfig // deprecated, TODO: remove
 	WebDir    string
 
+	EnableWebUI     bool
 	EnableTokenAuth bool
 	DebugMode       bool
 }
 
 type MqttConfig struct {
 	Listeners []string
-	Handlers  []mqttd.HandlerConfig
+	Handlers  []mqttd.HandlerConfig // deprecated, TODO: remove
 
 	EnableTokenAuth bool
 	EnableTls       bool
@@ -559,7 +560,6 @@ func (s *svr) Start() error {
 		}
 	}
 
-	enabledWebUI := false
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
 		opts := []httpd.Option{
@@ -574,12 +574,7 @@ func (s *svr) Start() error {
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 			httpd.OptionServerInfoFunc(s.ServerInfo),
 			httpd.OptionServerSessionsFunc(s.ServerSessions),
-		}
-		for _, h := range s.conf.Http.Handlers {
-			if h.Handler == httpd.HandlerWeb {
-				enabledWebUI = true
-			}
-			opts = append(opts, httpd.OptionHandler(h.Prefix, h.Handler))
+			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
 		}
 		shellPorts, _ := s.ServicePorts("shell")
 		shellAddrs := []string{}
@@ -614,9 +609,6 @@ func (s *svr) Start() error {
 			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
 			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
 			mqttd.OptionTqlLoader(tqlLoader),
-		}
-		for _, h := range s.conf.Mqtt.Handlers {
-			opts = append(opts, mqttd.OptionHandler(h.Prefix, h.Handler))
 		}
 		if s.conf.Mqtt.EnableTls {
 			serverCert := s.conf.Mqtt.ServerCertPath
@@ -661,7 +653,7 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if enabledWebUI {
+	if s.conf.Http.EnableWebUI {
 		svcPorts, err := s.ServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
