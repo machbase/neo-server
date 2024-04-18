@@ -45,6 +45,8 @@ func parseConsoleId(ctx *gin.Context) *ConsoleInfo {
 	return ret
 }
 
+const TQL_SCRIPT_PARAM = "$"
+
 // POST "/tql"
 func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
@@ -62,18 +64,29 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 		return
 	}
 
+	var codeReader io.Reader
 	var input io.Reader
 	var debug = false
-	if debug {
-		b, _ := io.ReadAll(ctx.Request.Body)
-		fmt.Println("...", string(b), "...")
-		input = bytes.NewBuffer(b)
+	if script := ctx.Query(TQL_SCRIPT_PARAM); script == "" {
+		if debug {
+			b, _ := io.ReadAll(ctx.Request.Body)
+			fmt.Println("...", string(b), "...")
+			codeReader = bytes.NewBuffer(b)
+		} else {
+			codeReader = ctx.Request.Body
+		}
 	} else {
+		codeReader = bytes.NewBufferString(script)
+		if debug {
+			fmt.Println("...", script, "...")
+		}
+		params.Del(TQL_SCRIPT_PARAM)
 		input = ctx.Request.Body
 	}
 
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
+	task.SetInputReader(input)
 	task.SetLogLevel(consoleInfo.logLevel)
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
 	if claim != nil && consoleInfo.consoleId != "" {
@@ -81,7 +94,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	}
 	task.SetOutputWriterJson(ctx.Writer, true)
 	task.SetDatabase(svr.db)
-	if err := task.Compile(input); err != nil {
+	if err := task.Compile(codeReader); err != nil {
 		svr.log.Error("tql parse error", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

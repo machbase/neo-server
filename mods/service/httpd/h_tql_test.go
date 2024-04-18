@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -77,4 +78,26 @@ func TestTQLWrongSyntax(t *testing.T) {
 		t.Log("FAIL received:", w.Body.String())
 		t.Fail()
 	}
+}
+
+func TestTQLParam_CSV(t *testing.T) {
+	w := httptest.NewRecorder()
+	s, ctx, engine := NewMockServer(w)
+	err := s.Login("sys", "manager")
+	require.Nil(t, err)
+	defer s.Shutdown()
+
+	script := url.QueryEscape(`
+		CSV(payload())
+		CSV()
+	`)
+	payload := bytes.NewBufferString("a,1\nb,2\n")
+
+	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql?"+TQL_SCRIPT_PARAM+"="+script, payload)
+	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
+	ctx.Request.Header.Set("Content-Type", "text/csv")
+	engine.HandleContext(ctx)
+	require.Equal(t, 200, w.Result().StatusCode)
+	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
+	require.Equal(t, strings.Join([]string{"a,1", "b,2", ""}, "\n"), w.Body.String())
 }
