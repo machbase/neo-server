@@ -116,12 +116,12 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	} else if result.IsDbSink {
 		ctx.JSON(http.StatusOK, result)
 	} else if !ctx.Writer.Written() {
+		// clear headers for the json result
+		ctx.Writer.Header().Set("Content-Type", "application/json")
+		ctx.Writer.Header().Del("Content-Encoding")
+		ctx.Writer.Header().Del(TqlHeaderChartType)
 		ctx.JSON(http.StatusOK, result)
 	}
-	// TODO handling error while processing TQL
-	// It could be another content-type than json.
-	// } else {
-	// }
 }
 
 // tql as RESTful API
