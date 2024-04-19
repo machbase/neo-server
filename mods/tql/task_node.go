@@ -241,7 +241,7 @@ func (node *Node) start() {
 							rec.Tell(node.next)
 							return false
 						} else if rec.IsCircuitBreak() {
-							node.task.onCircuitBreak(node)
+							node.task.fireCircuitBreak(node)
 							return false
 						} else {
 							rec.Tell(node.next)

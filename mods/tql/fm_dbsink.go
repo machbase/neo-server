@@ -201,7 +201,7 @@ type appender struct {
 }
 
 func (app *appender) Open(task *Task) (err error) {
-	app.ctx, app.ctxCancel = context.WithCancel(context.Background())
+	app.ctx, app.ctxCancel = context.WithCancel(task.ctx)
 	if conn, err := task.ConnDatabase(app.ctx); err != nil {
 		return err
 	} else {

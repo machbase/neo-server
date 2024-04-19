@@ -125,6 +125,7 @@ func (out *output) start() {
 		}()
 
 		shouldClose := false
+		saneEncoder := true
 	loop:
 		for {
 			select {
@@ -138,7 +139,7 @@ func (out *output) start() {
 					out.lastError = rec.Error()
 					continue
 				}
-				if !shouldClose {
+				if !shouldClose && saneEncoder {
 					resultColumns := out.task.ResultColumns()
 					if len(resultColumns) == 0 {
 						arr := rec.Flatten()
@@ -151,11 +152,20 @@ func (out *output) start() {
 						}
 					}
 					out.setHeader(resultColumns[1:])
-					if err := out.openEncoder(); err != nil {
+					if err := out.openEncoder(); err == nil {
+						// success to open sink encoder
+						shouldClose = true
+						saneEncoder = true
+					} else {
+						// fail to open sink encoder
 						out.lastError = err
 						out.task.LogErrorf(err.Error())
+						out.task.fireCircuitBreak(nil)
+						saneEncoder = false
 					}
-					shouldClose = true
+				}
+				if !saneEncoder {
+					continue
 				}
 				if rec.IsArray() {
 					for _, v := range rec.Array() {
@@ -174,14 +184,15 @@ func (out *output) start() {
 				}
 			}
 		}
-		if shouldClose {
+		if shouldClose && saneEncoder {
 			out.closeEncoder()
-		} else {
+		} else if saneEncoder {
 			// encoder has not been opened, which means no records are produced
 			if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
 				out.setHeader(resultColumns[1:])
-				out.openEncoder()
-				out.closeEncoder()
+				if err := out.openEncoder(); err == nil {
+					out.closeEncoder()
+				}
 			}
 		}
 		out.closeWg.Done()
