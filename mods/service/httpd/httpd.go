@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
@@ -62,11 +63,12 @@ type httpd struct {
 	serverInfoFunc     func() (*machrpc.ServerInfo, error)
 	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
 
-	httpServer *http.Server
-	listeners  []net.Listener
-	jwtCache   security.JwtCache
-	authServer security.AuthServer
-	mgmtImpl   mgmt.ManagementServer
+	httpServer    *http.Server
+	listeners     []net.Listener
+	jwtCache      security.JwtCache
+	authServer    security.AuthServer
+	mgmtImpl      mgmt.ManagementServer
+	schedMgmtImpl schedule.ManagementServer
 
 	neoShellAddress string
 	neoShellAccount map[string]string
@@ -218,6 +220,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/keys/:id", svr.handleGetKeys)
 			group.POST("/api/keys", svr.handleGenKey)
 			group.DELETE("/api/keys/:id", svr.handleDeleteKey)
+			group.GET("/api/timers", svr.handleListTimers)
+			group.POST("/api/timers/:name", svr.handleDoTimer)
+			group.POST("/api/timers/:name/add", svr.handleAddTimer)
+			group.DELETE("/api/timers/:name", svr.handleDeleteTimer)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)

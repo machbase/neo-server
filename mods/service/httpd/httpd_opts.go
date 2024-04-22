@@ -5,6 +5,7 @@ import (
 
 	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
@@ -126,5 +127,11 @@ func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*m
 func OptionManagementServer(handler mgmt.ManagementServer) Option {
 	return func(s *httpd) {
 		s.mgmtImpl = handler
+	}
+}
+
+func OptionScheduleServer(handler schedule.ManagementServer) Option {
+	return func(s *httpd) {
+		s.schedMgmtImpl = handler
 	}
 }

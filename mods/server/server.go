@@ -568,6 +568,7 @@ func (s *svr) Start() error {
 			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
 			httpd.OptionTqlLoader(tqlLoader),
 			httpd.OptionManagementServer(s), // add, mgmt server
+			httpd.OptionScheduleServer(s.schedSvc),
 			httpd.OptionServerSideFileSystem(serverFs),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),

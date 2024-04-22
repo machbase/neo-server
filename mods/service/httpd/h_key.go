@@ -1,6 +1,9 @@
 package httpd
 
 import (
+	"archive/zip"
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -10,6 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api/mgmt"
 )
+
+type KeyInfo struct {
+	Idx       int    `json:"idx"`
+	Id        string `json:"id"`
+	NotBefore int64  `json:"notBefore"`
+	NotAfter  int64  `json:"notAfter"`
+}
 
 func (svr *httpd) handleGetKeys(ctx *gin.Context) {
 	tick := time.Now()
@@ -28,20 +38,25 @@ func (svr *httpd) handleGetKeys(ctx *gin.Context) {
 		return
 	}
 
-	keyList := make([][]string, 0, len(mgmtRsp.Keys))
+	infoList := make([]KeyInfo, 0, len(mgmtRsp.Keys))
 	for i, k := range mgmtRsp.Keys {
 		if id != "" && k.Id != id {
 			continue
 		}
-		nb := time.Unix(k.NotBefore, 0).UTC()
-		na := time.Unix(k.NotAfter, 0).UTC()
-		key := []string{fmt.Sprintf("%d", i), k.Id, nb.String(), na.String()}
-		keyList = append(keyList, key)
+
+		info := KeyInfo{
+			Idx:       i,
+			Id:        k.Id,
+			NotBefore: k.NotBefore,
+			NotAfter:  k.NotAfter,
+		}
+
+		infoList = append(infoList, info)
 	}
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["list"] = keyList
+	rsp["list"] = infoList
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
@@ -62,6 +77,26 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 		return
 	}
 
+	// name duplicate
+	listRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !listRsp.Success {
+		rsp["reason"] = listRsp.Reason
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	for _, key := range listRsp.Keys {
+		if key.Id == req.Name {
+			rsp["reason"] = fmt.Sprintf("'%s' is duplicate id.", req.Name)
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
+	}
+
 	name := strings.ToLower(req.Name)
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", name)
 	if !pass {
@@ -71,16 +106,17 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	}
 
 	if req.NotBefore == 0 {
-		req.NotBefore = time.Now().UnixNano()
+		// req.NotBefore = time.Now().UnixNano() // client certificate: asn1: structure error: cannot represent time as GeneralizedTime 에러 발생
+		req.NotBefore = time.Now().Unix()
 	}
 	if req.NotAfter <= req.NotBefore {
 		req.NotAfter = time.Now().Add(10 * time.Hour * 24 * 365).Unix() // 10 years
 	}
 
-	mgmtRsp, err := svr.mgmtImpl.GenKey(ctx, &mgmt.GenKeyRequest{
+	genRsp, err := svr.mgmtImpl.GenKey(ctx, &mgmt.GenKeyRequest{
 		Id:        req.Name,
 		Type:      "ec",
-		NotBefore: time.Now().Unix(),
+		NotBefore: req.NotBefore,
 		NotAfter:  req.NotAfter,
 	})
 	if err != nil {
@@ -88,17 +124,68 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !mgmtRsp.Success {
-		rsp["reason"] = mgmtRsp.Reason
+	if !genRsp.Success {
+		rsp["reason"] = genRsp.Reason
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	serverRsp, err := svr.mgmtImpl.ServerKey(ctx, &mgmt.ServerKeyRequest{})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !serverRsp.Success {
+		rsp["reason"] = genRsp.Reason
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+
+	var files = []struct {
+		Name, Body string
+	}{
+		{"server.pem", base64.StdEncoding.EncodeToString([]byte(serverRsp.Certificate))},
+		{req.Name + "_cert.pem", base64.StdEncoding.EncodeToString([]byte(genRsp.Certificate))},
+		{req.Name + "_key.pem", base64.StdEncoding.EncodeToString([]byte(genRsp.Key))},
+		{req.Name + "_token.txt", base64.StdEncoding.EncodeToString([]byte(genRsp.Token))},
+	}
+
+	for _, file := range files {
+		f, err := zipWriter.CreateHeader(&zip.FileHeader{
+			Name:     file.Name,
+			Modified: time.Now().UTC(),
+		})
+		if err != nil {
+			rsp["reason"] = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		_, err = f.Write([]byte(file.Body))
+		if err != nil {
+			rsp["reason"] = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+	}
+
+	err = zipWriter.Close()
+	if err != nil {
+		rsp["reason"] = err.Error()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["certificate"] = mgmtRsp.Certificate
-	rsp["privateKey"] = mgmtRsp.Key
-	rsp["token"] = mgmtRsp.Token
+	rsp["serverKey"] = serverRsp.Certificate
+	rsp["certificate"] = genRsp.Certificate
+	rsp["privateKey"] = genRsp.Key
+	rsp["token"] = genRsp.Token
+	rsp["zip"] = buf.Bytes()
 	rsp["elapse"] = time.Since(tick).String()
 
 	ctx.JSON(http.StatusOK, rsp)
