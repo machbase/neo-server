@@ -447,11 +447,11 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 	desc := _desc.(*do.TableDescription)
 
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH"})
+	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
 		colType := api.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Length)
+		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
 	}
 
 	box.Render()
