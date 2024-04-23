@@ -24,8 +24,6 @@ Bridges integrated with external systems
 - [x] MySQL
 - [x] MS-SQL
 - [x] MQTT Broker
-- [ ] Kafka
-- [ ] NATS
 
 ## Documents
 
