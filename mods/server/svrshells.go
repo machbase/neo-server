@@ -41,7 +41,12 @@ func (s *svr) initShellProvider() {
 			shellCmd = exename
 		}
 	}
-	s.models.ShellProvider().SetDefaultShellCommand(fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0]))
+	if s.conf.Grpc.Insecure {
+		shellCmd = fmt.Sprintf(`"%s" shell --insecure --server %s`, shellCmd, candidates[0])
+	} else {
+		shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
+	}
+	s.models.ShellProvider().SetDefaultShellCommand(shellCmd)
 }
 
 // sshd shell provider

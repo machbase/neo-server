@@ -28,6 +28,7 @@ type ShellCmd struct {
 	Args           []string `arg:"" optional:"" name:"ARGS" passthrough:""`
 	Version        bool     `name:"version" default:"false" help:"show version"`
 	ServerAddr     string   `name:"server" short:"s" help:"server address"`
+	Insecure       bool     `name:"insecure" help:"use insecure plain socket"`
 	ServerCertPath string   `name:"server-cert" help:"path to server certificate"`
 	ClientCertPath string   `name:"client-cert" help:"path to client certificate"`
 	ClientKeyPath  string   `name:"client-key" help:"path to client key"`
@@ -64,20 +65,23 @@ func Shell(cmd *ShellCmd) {
 			cmd.ServerAddr = "tcp://127.0.0.1:5655"
 		}
 	}
-	if cmd.ServerCertPath == "" && pref != nil {
+	if !cmd.Insecure && cmd.ServerCertPath == "" && pref != nil {
 		cmd.ServerCertPath = pref.ServerCert().Value()
 	}
-	if cmd.ClientCertPath == "" && pref != nil {
+	if !cmd.Insecure && cmd.ClientCertPath == "" && pref != nil {
 		cmd.ClientCertPath = pref.ClientCert().Value()
 	}
-	if cmd.ClientKeyPath == "" && pref != nil {
+	if !cmd.Insecure && cmd.ClientKeyPath == "" && pref != nil {
 		cmd.ClientKeyPath = pref.ClientKey().Value()
 	}
 	actorConf := action.DefaultConfig()
 	actorConf.ServerAddr = cmd.ServerAddr
-	actorConf.ServerCertPath = cmd.ServerCertPath
-	actorConf.ClientCertPath = cmd.ClientCertPath
-	actorConf.ClientKeyPath = cmd.ClientKeyPath
+	actorConf.Insecure = cmd.Insecure
+	if !cmd.Insecure {
+		actorConf.ServerCertPath = cmd.ServerCertPath
+		actorConf.ClientCertPath = cmd.ClientCertPath
+		actorConf.ClientKeyPath = cmd.ClientKeyPath
+	}
 	actorConf.User = cmd.User
 	actorConf.Password = cmd.Password
 	if actorConf.User == "" {

@@ -48,7 +48,7 @@ func Main() int {
 func doServe(preset string, doNotExit bool) int {
 	server.PreferredPreset = preset
 
-	booter.SetConfiFileSuffix(".conf")
+	booter.SetConfigFileSuffix(".conf")
 	booter.SetFallbackConfig(server.DefaultFallbackConfig)
 	booter.SetFallbackPname(server.DefaultFallbackPname)
 	booter.SetVersionString(mods.VersionString() + " " + mach.LinkInfo())

@@ -162,6 +162,8 @@ func parseShell(cli *NeoCommand) (*NeoCommand, error) {
 		} else if s == "--password" && len(cli.args) >= i+1 && !strings.HasPrefix(cli.args[i+1], "-") {
 			cli.Shell.Password = cli.args[i+1]
 			i++
+		} else if s == "--insecure" {
+			cli.Shell.Insecure = true
 		} else {
 			// other flags and args should be passed to neoshell
 			cli.Shell.Args = append(cli.Shell.Args, s)

@@ -16,10 +16,12 @@ import (
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/util"
 	"golang.org/x/text/language"
+	"google.golang.org/grpc"
 )
 
 type Config struct {
 	ServerAddr     string
+	Insecure       bool
 	ServerCertPath string
 	ClientCertPath string
 	ClientKeyPath  string
@@ -122,14 +124,19 @@ func (act *Actor) checkDatabase() error {
 		return nil
 	}
 
-	machcli, err := machrpc.NewClient(&machrpc.Config{
-		ServerAddr:   act.conf.ServerAddr,
-		QueryTimeout: act.conf.QueryTimeout,
-		Tls: &machrpc.TlsConfig{
+	var tlsConf *machrpc.TlsConfig
+	if !act.conf.Insecure {
+		tlsConf = &machrpc.TlsConfig{
 			ClientKey:  act.conf.ClientKeyPath,
 			ClientCert: act.conf.ClientCertPath,
 			ServerCert: act.conf.ServerCertPath,
-		},
+		}
+	}
+
+	machcli, err := machrpc.NewClient(&machrpc.Config{
+		ServerAddr:   act.conf.ServerAddr,
+		QueryTimeout: act.conf.QueryTimeout,
+		Tls:          tlsConf,
 	})
 	if err != nil {
 		return err
@@ -227,24 +234,48 @@ func (act *Actor) ManagementClient() (mgmt.ManagementClient, error) {
 	act.mgmtClientLock.Lock()
 	defer act.mgmtClientLock.Unlock()
 	if act.mgmtClient == nil {
+		if act.conf.Insecure {
+			conn, err := machrpc.MakeGrpcInsecureConn(act.conf.ServerAddr)
+			if err != nil {
+				return nil, err
+			}
+			act.mgmtClient = mgmt.NewManagementClient(conn)
+		} else {
+			conn, err := machrpc.MakeGrpcTlsConn(act.conf.ServerAddr, act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath)
+			if err != nil {
+				return nil, err
+			}
+			act.mgmtClient = mgmt.NewManagementClient(conn)
+		}
+	}
+	return act.mgmtClient, nil
+}
+
+func (act *Actor) makeConn() (grpc.ClientConnInterface, error) {
+	if act.conf.Insecure {
+		conn, err := machrpc.MakeGrpcInsecureConn(act.conf.ServerAddr)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	} else {
 		conn, err := machrpc.MakeGrpcTlsConn(act.conf.ServerAddr, act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath)
 		if err != nil {
 			return nil, err
 		}
-		act.mgmtClient = mgmt.NewManagementClient(conn)
+		return conn, nil
 	}
-	return act.mgmtClient, nil
 }
 
 func (act *Actor) BridgeManagementClient() (bridge.ManagementClient, error) {
 	act.bridgeClientLock.Lock()
 	defer act.bridgeClientLock.Unlock()
 	if act.bridgeMgmtClient == nil {
-		conn, err := machrpc.MakeGrpcTlsConn(act.conf.ServerAddr, act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath)
-		if err != nil {
+		if conn, err := act.makeConn(); err != nil {
 			return nil, err
+		} else {
+			act.bridgeMgmtClient = bridge.NewManagementClient(conn)
 		}
-		act.bridgeMgmtClient = bridge.NewManagementClient(conn)
 	}
 	return act.bridgeMgmtClient, nil
 }
@@ -253,11 +284,11 @@ func (act *Actor) BridgeRuntimeClient() (bridge.RuntimeClient, error) {
 	act.bridgeClientLock.Lock()
 	defer act.bridgeClientLock.Unlock()
 	if act.bridgeRuntimeClient == nil {
-		conn, err := machrpc.MakeGrpcTlsConn(act.conf.ServerAddr, act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath)
-		if err != nil {
+		if conn, err := act.makeConn(); err != nil {
 			return nil, err
+		} else {
+			act.bridgeRuntimeClient = bridge.NewRuntimeClient(conn)
 		}
-		act.bridgeRuntimeClient = bridge.NewRuntimeClient(conn)
 	}
 	return act.bridgeRuntimeClient, nil
 }
@@ -266,11 +297,11 @@ func (act *Actor) ScheduleManagementClient() (schedule.ManagementClient, error) 
 	act.schedClientLock.Lock()
 	defer act.schedClientLock.Unlock()
 	if act.schedMgmtClient == nil {
-		conn, err := machrpc.MakeGrpcTlsConn(act.conf.ServerAddr, act.conf.ClientKeyPath, act.conf.ClientCertPath, act.conf.ServerCertPath)
-		if err != nil {
-			return nil, err
+		if conn, err := act.makeConn(); err != nil {
+			act.schedMgmtClient = schedule.NewManagementClient(conn)
+		} else {
+			act.schedMgmtClient = schedule.NewManagementClient(conn)
 		}
-		act.schedMgmtClient = schedule.NewManagementClient(conn)
 	}
 	return act.schedMgmtClient, nil
 }

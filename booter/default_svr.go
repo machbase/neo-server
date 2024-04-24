@@ -165,7 +165,7 @@ func SetVariable(name string, value any) error {
 	return defaultBuilder.SetVariable(name, value)
 }
 
-func SetConfiFileSuffix(ext string) {
+func SetConfigFileSuffix(ext string) {
 	defaultBuilder.SetConfiFileSuffix(ext)
 }
 
