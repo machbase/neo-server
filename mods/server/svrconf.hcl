@@ -6,6 +6,7 @@ define DEF {
     HTTP_PORT         = flag("--http-port", "5654")
     GRPC_PORT         = flag("--grpc-port", "5655")
     GRPC_SOCK         = flag("--grpc-sock", "${execDir()}/mach-grpc.sock")
+    GRPC_INSECURE     = flag("--grpc-insecure", false)
     MACH_PORT         = flag("--mach-port", "5656")
 }
 
@@ -88,6 +89,7 @@ module "machbase.com/neo-server" {
             ]
             MaxRecvMsgSize   = 4
             MaxSendMsgSize   = 4
+            Insecure         = DEF_GRPC_INSECURE
         }
         Http = {
             Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]

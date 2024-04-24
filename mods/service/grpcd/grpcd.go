@@ -138,6 +138,12 @@ func OptionServerKillSessionFunc(fn func(id string) error) Option {
 	}
 }
 
+func OptionServerInsecure(ignoreInsecure bool) Option {
+	return func(s *grpcd) {
+		s.ignoreInsecure = ignoreInsecure
+	}
+}
+
 type grpcd struct {
 	machrpc.UnimplementedMachbaseServer
 
@@ -168,7 +174,10 @@ type grpcd struct {
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
 
+	rpcServerInsecure  *grpc.Server
 	mgmtServerInsecure *grpc.Server
+
+	ignoreInsecure bool
 }
 
 type connParole struct {
@@ -192,6 +201,7 @@ func (svr *grpcd) Start() error {
 
 	// create grpc server insecure
 	svr.mgmtServerInsecure = grpc.NewServer(grpcOptions...)
+	svr.rpcServerInsecure = grpc.NewServer(grpcOptions...)
 
 	// creds
 	tlsCreds, err := svr.loadTlsCreds()
@@ -251,16 +261,28 @@ func (svr *grpcd) Start() error {
 
 		if runtime.GOOS == "windows" {
 			// windows require mgmt service to shutdown process from neow
-			go svr.mgmtServer.Serve(lsnr)
+			if svr.ignoreInsecure {
+				go svr.mgmtServerInsecure.Serve(lsnr)
+			} else {
+				go svr.mgmtServer.Serve(lsnr)
+			}
 		} else {
 			if strings.HasPrefix(listen, "unix://") {
 				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
 				go svr.mgmtServerInsecure.Serve(lsnr)
 			} else if strings.HasPrefix(listen, "tcp://127.0.0.1:") {
 				// only gRPC via Unix Socket and loopback is allowed to perform mgmt service
-				go svr.mgmtServer.Serve(lsnr)
+				if svr.ignoreInsecure {
+					go svr.mgmtServerInsecure.Serve(lsnr)
+				} else {
+					go svr.mgmtServer.Serve(lsnr)
+				}
 			} else {
-				go svr.rpcServer.Serve(lsnr)
+				if svr.ignoreInsecure {
+					go svr.rpcServerInsecure.Serve(lsnr)
+				} else {
+					go svr.rpcServer.Serve(lsnr)
+				}
 			}
 		}
 	}

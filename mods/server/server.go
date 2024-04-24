@@ -124,6 +124,7 @@ type GrpcConfig struct {
 	Listeners      []string
 	MaxRecvMsgSize int
 	MaxSendMsgSize int
+	Insecure       bool
 }
 
 type HttpConfig struct {
@@ -546,6 +547,7 @@ func (s *svr) Start() error {
 			grpcd.OptionScheduleServer(s.schedSvc),
 			grpcd.OptionLeakDetector(leakDetector),
 			grpcd.OptionAuthServer(s),
+			grpcd.OptionServerInsecure(s.conf.Grpc.Insecure),
 			grpcd.OptionServicePortsFunc(s.ServicePorts),
 			grpcd.OptionServerInfoFunc(s.ServerInfo),
 			grpcd.OptionServerSessionsFunc(s.ServerSessions),
