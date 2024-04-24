@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 
 	_ "github.com/lib/pq"
@@ -57,14 +58,25 @@ func (c *bridge) SupportLastInsertId() bool      { return false }
 func (c *bridge) ParameterMarker(idx int) string { return "$" + strconv.Itoa(idx+1) }
 
 func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
+	log.Println("reflectType,databaseTypeName:  ", reflectType, databaseTypeName)
 	switch reflectType {
 	case "interface {}":
 		switch databaseTypeName {
 		case "FLOAT4":
 			return new(float32)
 		case "UUID":
-			return new(string)
+			return new(sql.NullString)
 		}
+	case "bool":
+		return new(sql.NullBool)
+	case "int32":
+		return new(sql.NullInt32)
+	case "int64":
+		return new(sql.NullInt64)
+	case "string":
+		return new(sql.NullString)
+	case "time.Time":
+		return new(sql.NullTime)
 	}
 	return c.SqlBridgeBase.NewScanType(reflectType, databaseTypeName)
 }
