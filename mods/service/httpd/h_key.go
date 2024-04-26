@@ -25,7 +25,6 @@ func (svr *httpd) handleListKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	id := ctx.Param("id")
 	mgmtRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -40,17 +39,12 @@ func (svr *httpd) handleListKeys(ctx *gin.Context) {
 
 	infoList := make([]KeyInfo, 0, len(mgmtRsp.Keys))
 	for i, k := range mgmtRsp.Keys {
-		if id != "" && k.Id != id {
-			continue
-		}
-
 		info := KeyInfo{
 			Idx:       i,
 			Id:        k.Id,
 			NotBefore: k.NotBefore,
 			NotAfter:  k.NotAfter,
 		}
-
 		infoList = append(infoList, info)
 	}
 
@@ -114,7 +108,7 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	}
 
 	genRsp, err := svr.mgmtImpl.GenKey(ctx, &mgmt.GenKeyRequest{
-		Id:        req.Name,
+		Id:        name,
 		Type:      "ec",
 		NotBefore: req.NotBefore,
 		NotAfter:  req.NotAfter,

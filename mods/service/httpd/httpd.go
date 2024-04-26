@@ -220,7 +220,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
 			group.POST("/api/shell/:id", svr.handlePostShell)
 			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
-			group.GET("/api/keys/:id", svr.handleListKeys)
+			group.GET("/api/keys", svr.handleListKeys)
 			group.POST("/api/keys", svr.handleGenKey)
 			group.DELETE("/api/keys/:id", svr.handleDeleteKey)
 			group.GET("/api/timers", svr.handleListTimers)
