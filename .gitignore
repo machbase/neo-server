@@ -23,9 +23,7 @@ tmp/
 packages/
 vendor/
 
-mods/service/httpd/web/ui/assets
-mods/service/httpd/web/ui/index.html
-mods/service/httpd/web/ui/vite.svg
+mods/service/httpd/web/ui/*
 
 native/**/*_dummy.o
 

@@ -31,6 +31,7 @@ var Aliases = map[string]any{
 	"package-neoshell":     PackageNeoShell,
 	"cleanpackage":         CleanPackage,
 	"buildversion":         BuildVersion,
+	"install-neo-web":      InstallNeoWeb,
 }
 
 var vLastVersion string
@@ -576,8 +577,14 @@ func InstallNeoWebX(ver string) error {
 		return err
 	}
 
-	err = sh.RunV("unzip", "./tmp/web-ui.zip", "-d", "./mods/service/httpd/web/ui")
-	if err != nil {
+	uiDir := "./mods/service/httpd/web/ui"
+	if err := os.RemoveAll(uiDir); err != nil {
+		return err
+	}
+	if err := os.Mkdir(uiDir, 0755); err != nil {
+		return err
+	}
+	if err := sh.RunV("unzip", "./tmp/web-ui.zip", "-d", uiDir); err != nil {
 		return err
 	}
 	return nil
