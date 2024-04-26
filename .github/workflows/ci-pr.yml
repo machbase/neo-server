@@ -12,17 +12,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Branch name
-        id: branch_name
-        run: |
-          echo "VER=`./scripts/buildversion.sh`" >> $GITHUB_OUTPUT
-          echo "SOURCE_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_BRANCH=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "SOURCE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - name: Setup zig
-        uses: korandoru/setup-zig@v1
+        uses: goto-bus-stop/setup-zig@v2
         with:
-          zig-version: 'master'
+          version: 0.11.0
       - name: Setup go compiler
         uses: actions/setup-go@v5
         with:
@@ -35,6 +28,6 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Build amd64
-        run: go run mage.go machbase-neo package-machbase-neo
+        run: go run mage.go buildx machbase-neo linux amd64 packagex machbase-neo linux amd64
       - name: Build arm32
         run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
