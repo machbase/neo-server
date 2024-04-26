@@ -18,18 +18,7 @@ type schedServerMock struct {
 }
 
 func (mock *schedServerMock) ListSchedule(context.Context, *schedule.ListScheduleRequest) (*schedule.ListScheduleResponse, error) {
-	return &schedule.ListScheduleResponse{
-		Success: true,
-		Schedules: []*schedule.Schedule{
-			{
-				Name:     "eleven",
-				Type:     "TIMER",
-				State:    "STOP",
-				Task:     "timer.tql",
-				Schedule: "0 30 * * * *",
-			},
-		},
-	}, nil
+	return &schedule.ListScheduleResponse{Success: true}, nil
 }
 
 func (mock *schedServerMock) AddSchedule(ctx context.Context, request *schedule.AddScheduleRequest) (*schedule.AddScheduleResponse, error) {
@@ -105,12 +94,14 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, expectStatus, w.Code, listRsp)
 
 	// ========================
-	// POST /api/timers/:name/add
+	// POST /api/timers
 	addReq := struct {
+		Name      string `json:"name"`
 		AutoStart bool   `json:"autoStart"`
 		Spec      string `json:"spec"`
 		TqlPath   string `json:"tqlPath"`
 	}{
+		Name:      "twelve",
 		AutoStart: false,
 		Spec:      "0 30 * * * *",
 		TqlPath:   "timer.tql",
@@ -122,7 +113,7 @@ func TestTimer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/twelve/add", b)
+	req, err = http.NewRequest("POST", "/web/api/timers", b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,11 +139,11 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, expectStatus, w.Code, rsp)
 
 	// ========================
-	// POST /api/timers/:name  START
+	// POST /api/timers/:name/state  START
 	doReq := struct {
-		Action string `json:"action"`
+		State string `json:"state"`
 	}{
-		Action: "start",
+		State: "start",
 	}
 
 	b = &bytes.Buffer{}
@@ -161,7 +152,7 @@ func TestTimer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/eleven", b)
+	req, err = http.NewRequest("POST", "/web/api/timers/eleven/state", b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,11 +178,11 @@ func TestTimer(t *testing.T) {
 	require.Equal(t, expectStatus, w.Code, rsp)
 
 	// ========================
-	// POST /api/timers/:name  Stop
+	// POST /api/timers/:name/state  Stop
 	doReq = struct {
-		Action string `json:"action"`
+		State string `json:"state"`
 	}{
-		Action: "stop",
+		State: "stop",
 	}
 
 	b = &bytes.Buffer{}
@@ -200,7 +191,7 @@ func TestTimer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/eleven", b)
+	req, err = http.NewRequest("POST", "/web/api/timers/eleven/state", b)
 	if err != nil {
 		t.Fatal(err)
 	}
