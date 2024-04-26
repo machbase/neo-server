@@ -33,6 +33,10 @@ func (mock *schedServerMock) StopSchedule(context.Context, *schedule.StopSchedul
 	return &schedule.StopScheduleResponse{Success: true}, nil
 }
 
+func (mock *schedServerMock) UpdateSchedule(context.Context, *schedule.UpdateScheduleRequest) (*schedule.UpdateScheduleResponse, error) {
+	return &schedule.UpdateScheduleResponse{Success: true}, nil
+}
+
 func (mock *schedServerMock) DelSchedule(context.Context, *schedule.DelScheduleRequest) (*schedule.DelScheduleResponse, error) {
 	return &schedule.DelScheduleResponse{Success: true}, nil
 }
@@ -101,7 +105,7 @@ func TestTimer(t *testing.T) {
 		Spec      string `json:"spec"`
 		TqlPath   string `json:"tqlPath"`
 	}{
-		Name:      "twelve",
+		Name:      "cronb",
 		AutoStart: false,
 		Spec:      "0 30 * * * *",
 		TqlPath:   "timer.tql",
@@ -192,6 +196,49 @@ func TestTimer(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req, err = http.NewRequest("POST", "/web/api/timers/eleven/state", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
+	router.ServeHTTP(w, req)
+
+	rsp = struct {
+		Success bool   `json:"success"`
+		Reason  string `json:"reason"`
+		Elapse  string `json:"elapse"`
+	}{}
+
+	payload = w.Body.Bytes()
+	err = json.Unmarshal(payload, &rsp)
+	if err != nil {
+		t.Log("payload: ", string(payload))
+		t.Fatal(err)
+	}
+
+	expectStatus = http.StatusOK
+	require.Equal(t, expectStatus, w.Code, rsp)
+
+	// ========================
+	// PUT /api/timers/:name Update
+	updateReq := struct {
+		AutoStart bool   `json:"autoStart"`
+		Spec      string `json:"spec"`
+		Path      string `json:"path"`
+	}{
+		AutoStart: true,
+		Spec:      "0 30 * * * *",
+		Path:      "example.tql",
+	}
+
+	b = &bytes.Buffer{}
+	if err = json.NewEncoder(b).Encode(updateReq); err != nil {
+		t.Fatal(err)
+	}
+
+	w = httptest.NewRecorder()
+	req, err = http.NewRequest("PUT", "/web/api/timers/cronb", b)
 	if err != nil {
 		t.Fatal(err)
 	}

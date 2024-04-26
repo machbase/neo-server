@@ -226,6 +226,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/timers", svr.handleListTimers)
 			group.POST("/api/timers", svr.handleAddTimer)
 			group.POST("/api/timers/:name/state", svr.handleStateTimer)
+			group.PUT("/api/timers/:name", svr.handleUpdateTimer)
 			group.DELETE("/api/timers/:name", svr.handleDeleteTimer)
 			group.GET("/api/bridges", svr.handleListBridge)
 			group.POST("/api/bridges", svr.handleAddBridge)
