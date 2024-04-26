@@ -567,6 +567,8 @@ func InstallNeoWeb() error {
 }
 
 func InstallNeoWebX(ver string) error {
+	mg.Deps(CheckTmp())
+
 	err := sh.RunV("wget",
 		"-O", "./tmp/web-ui.zip",
 		"-L", fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver))
