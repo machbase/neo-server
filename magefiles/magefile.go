@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -570,22 +571,118 @@ func InstallNeoWeb() error {
 func InstallNeoWebX(ver string) error {
 	mg.Deps(CheckTmp)
 
-	err := sh.RunV("wget",
-		"-O", "./tmp/web-ui.zip",
-		"-L", fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver))
+	url := fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver)
+	dst := "./tmp/web-ui.zip"
+	uiDir := "./mods/service/httpd/web/ui"
+
+	if runtime.GOOS == "windows" {
+		if err := wget(url, dst); err != nil {
+			return err
+		}
+	} else {
+		if err := sh.RunV("wget", "-O", dst, "-L", url); err != nil {
+			return err
+		}
+	}
+
+	// remove web/ui/
+	os.RemoveAll(uiDir)
+	// create web/ui/
+	if err := os.Mkdir(uiDir, 0755); err != nil {
+		return err
+	}
+	if err := unzip(dst, uiDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func wget(url string, dst string) error {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
 
-	uiDir := "./mods/service/httpd/web/ui"
-	if err := os.RemoveAll(uiDir); err != nil {
+	rsp, err := client.Do(req)
+	if err != nil {
 		return err
 	}
-	if err := os.Mkdir(uiDir, 0755); err != nil {
+	defer rsp.Body.Close()
+
+	dlfn := func(in io.Reader) error {
+		out, err := os.Create(dst)
+		if err != nil {
+			return err
+		}
+		if len, err := io.Copy(out, in); err != nil {
+			return err
+		} else {
+			fmt.Println("web-ui download:", len)
+		}
+		return out.Close()
+	}
+
+	if rsp.StatusCode == 302 {
+		req, err = http.NewRequest("GET", rsp.Header.Get("Location"), nil)
+		if err != nil {
+			return err
+		}
+		rsp, err = client.Do(req)
+		if err != nil {
+			return err
+		}
+		if err := dlfn(rsp.Body); err != nil {
+			return err
+		}
+	} else {
+		if err := dlfn(rsp.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func unzip(source, destination string) error {
+	archive, err := zip.OpenReader(source)
+	if err != nil {
 		return err
 	}
-	if err := sh.RunV("unzip", "./tmp/web-ui.zip", "-d", uiDir); err != nil {
-		return err
+	defer archive.Close()
+	for _, file := range archive.Reader.File {
+		reader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		defer reader.Close()
+		path := filepath.Join(destination, file.Name)
+		// Remove file if it already exists; no problem if it doesn't; other cases can error out below
+		_ = os.Remove(path)
+		// Create a directory at path, including parents
+		err = os.MkdirAll(path, os.ModePerm)
+		if err != nil {
+			return err
+		}
+		// If file is _supposed_ to be a directory, we're done
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		// otherwise, remove that directory (_not_ including parents)
+		err = os.Remove(path)
+		if err != nil {
+			return err
+		}
+		// and create the actual file.  This ensures that the parent directories exist!
+		// An archive may have a single file with a nested path, rather than a file for each parent dir
+		writer, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
+		if err != nil {
+			return err
+		}
+		defer writer.Close()
+		_, err = io.Copy(writer, reader)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
