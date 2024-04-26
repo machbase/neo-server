@@ -19,6 +19,8 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: true
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
@@ -39,6 +41,8 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: true
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Codecov
@@ -64,6 +68,8 @@ jobs:
           go-version-file: 'go.mod'
           check-latest: true
           cache: false # !!! do not cache for self-hosted runner, for github hosted runner --> remove this setting
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Upload Artifact
@@ -85,6 +91,8 @@ jobs:
           go-version-file: 'go.mod'
           check-latest: true
           cache: false # !!! do not cache for self-hosted runner, for github hosted runner --> remove this setting
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go test machbase-neo package-machbase-neo
       - name: Codecov
@@ -112,6 +120,8 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
       - name: Upload Artifact
@@ -135,6 +145,8 @@ jobs:
           cache: false # do not cache for self-hosted runner
       - name: Build-Mage
         run: go run mage.go -compile ./tmp/mage_output.exe
+      - name: Install Neo Web
+        run: go run mage.go InstallNeoWeb
       - name: Build
         run: magefiles\tmp\mage_output.exe test machbase-neo neow
         shell: cmd

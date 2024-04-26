@@ -23,6 +23,10 @@ tmp/
 packages/
 vendor/
 
+mods/service/httpd/web/ui/assets
+mods/service/httpd/web/ui/index.html
+mods/service/httpd/web/ui/vite.svg
+
 native/**/*_dummy.o
 
 # mage temp file

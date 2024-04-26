@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -555,5 +556,27 @@ func GetVersion() error {
 		vBuildVersion = fmt.Sprintf("v%d.%d.%d-%s", lastTagSemVer.Major(), lastTagSemVer.Minor(), lastTagSemVer.Patch(), suffix)
 	}
 
+	return nil
+}
+
+//go:embed neo-web-version.txt
+var neo_web_version string
+
+func InstallNeoWeb() error {
+	return InstallNeoWebX(neo_web_version)
+}
+
+func InstallNeoWebX(ver string) error {
+	err := sh.RunV("wget",
+		"-O", "./tmp/web-ui.zip",
+		"-L", fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver))
+	if err != nil {
+		return err
+	}
+
+	err = sh.RunV("unzip", "./tmp/web-ui.zip", "-d", "./mods/service/httpd/web/ui")
+	if err != nil {
+		return err
+	}
 	return nil
 }
