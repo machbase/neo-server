@@ -18,9 +18,6 @@ type mgmtServerMock struct {
 	mgmt.UnimplementedManagementServer
 }
 
-var notBefore_UNIX int64 = 1712027952 //2024-04-02 03:19:12 +0000 UTC
-var notAfter_UNIX int64 = 1712071152  //2024-04-02 03:19:12 +0000 UTC
-
 func (mock *mgmtServerMock) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
 	return &mgmt.ListKeyResponse{Success: true}, nil
 }
@@ -67,7 +64,7 @@ func TestKey(t *testing.T) {
 	// ========================
 	//GET key-list
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/keys/eleven", nil)
+	req, err = http.NewRequest("GET", "/web/api/keys", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +131,7 @@ func TestKey(t *testing.T) {
 	// ========================
 	// DELETE key-delete
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("GET", "/web/api/keys/eleven", nil)
+	req, err = http.NewRequest("DELETE", "/web/api/keys/eleven", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
