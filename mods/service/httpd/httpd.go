@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/logging"
@@ -63,12 +64,14 @@ type httpd struct {
 	serverInfoFunc     func() (*machrpc.ServerInfo, error)
 	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
 
-	httpServer    *http.Server
-	listeners     []net.Listener
-	jwtCache      security.JwtCache
-	authServer    security.AuthServer
-	mgmtImpl      mgmt.ManagementServer
-	schedMgmtImpl schedule.ManagementServer
+	httpServer        *http.Server
+	listeners         []net.Listener
+	jwtCache          security.JwtCache
+	authServer        security.AuthServer
+	mgmtImpl          mgmt.ManagementServer
+	schedMgmtImpl     schedule.ManagementServer
+	bridgeMgmtImpl    bridge.ManagementServer
+	bridgeRuntimeImpl bridge.RuntimeServer
 
 	neoShellAddress string
 	neoShellAccount map[string]string
@@ -217,13 +220,17 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/shell/:id/copy", svr.handleGetShellCopy)
 			group.POST("/api/shell/:id", svr.handlePostShell)
 			group.DELETE("/api/shell/:id", svr.handleDeleteShell)
-			group.GET("/api/keys/:id", svr.handleGetKeys)
+			group.GET("/api/keys/:id", svr.handleListKeys)
 			group.POST("/api/keys", svr.handleGenKey)
 			group.DELETE("/api/keys/:id", svr.handleDeleteKey)
 			group.GET("/api/timers", svr.handleListTimers)
-			group.POST("/api/timers/:name", svr.handleDoTimer)
-			group.POST("/api/timers/:name/add", svr.handleAddTimer)
+			group.POST("/api/timers", svr.handleAddTimer)
+			group.POST("/api/timers/:name/state", svr.handleStateTimer)
 			group.DELETE("/api/timers/:name", svr.handleDeleteTimer)
+			group.GET("/api/bridges", svr.handleListBridge)
+			group.POST("/api/bridges", svr.handleAddBridge)
+			group.POST("/api/bridges/:name/state", svr.handleStateBridge) // exec + query + test => state ( body 안에서  )
+			group.DELETE("/api/bridges/:name", svr.handleDeleteBridge)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)
 			group.GET("/api/tables/:table/tags/:tag/stat", svr.handleTagStat)

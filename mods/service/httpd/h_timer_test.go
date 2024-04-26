@@ -122,7 +122,7 @@ func TestTimer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("POST", "/web/api/timers/eleven/add", b)
+	req, err = http.NewRequest("POST", "/web/api/timers/twelve/add", b)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
@@ -133,5 +134,16 @@ func OptionManagementServer(handler mgmt.ManagementServer) Option {
 func OptionScheduleServer(handler schedule.ManagementServer) Option {
 	return func(s *httpd) {
 		s.schedMgmtImpl = handler
+	}
+}
+
+func OptionBridgeServer(handler any) Option {
+	return func(s *httpd) {
+		if o, ok := handler.(bridge.ManagementServer); ok {
+			s.bridgeMgmtImpl = o
+		}
+		if o, ok := handler.(bridge.RuntimeServer); ok {
+			s.bridgeRuntimeImpl = o
+		}
 	}
 }

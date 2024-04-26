@@ -21,11 +21,11 @@ type KeyInfo struct {
 	NotAfter  int64  `json:"notAfter"`
 }
 
-func (svr *httpd) handleGetKeys(ctx *gin.Context) {
+func (svr *httpd) handleListKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
-	id := ctx.Query("id")
+	id := ctx.Param("id")
 	mgmtRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -217,6 +217,7 @@ func (svr *httpd) handleDeleteKey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
+
 	rsp["success"] = true
 	rsp["reason"] = "success"
 	rsp["elapse"] = time.Since(tick).String()
