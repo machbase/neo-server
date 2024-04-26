@@ -9,6 +9,7 @@ service Management {
     rpc AddSchedule(AddScheduleRequest) returns (AddScheduleResponse) {}
     rpc GetSchedule(GetScheduleRequest) returns (GetScheduleResponse) {}
     rpc DelSchedule(DelScheduleRequest) returns (DelScheduleResponse) {}
+    rpc UpdateSchedule(UpdateScheduleRequest) returns(UpdateScheduleResponse) {}
     rpc StartSchedule(StartScheduleRequest) returns (StartScheduleResponse) {}
     rpc StopSchedule(StopScheduleRequest) returns (StopScheduleResponse) {}
 }
@@ -75,6 +76,24 @@ message DelScheduleResponse {
     bool success = 1;
     string reason = 2;
     string elapse = 3;
+}
+
+message UpdateScheduleRequest {
+    string name      = 1;
+
+    bool   autoStart = 2;
+    string task      = 3;
+    string schedule  = 4;
+
+    string bridge    = 5;
+    string topic     = 6;
+    int32  QoS       = 7;
+}
+
+message UpdateScheduleResponse {
+    bool   success = 1;
+    string reason  = 2;
+    string elapse  = 3;
 }
 
 message StartScheduleRequest {
