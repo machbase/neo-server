@@ -51,4 +51,5 @@ type ScheduleProvider interface {
 	LoadSchedule(name string) (*ScheduleDefinition, error)
 	SaveSchedule(def *ScheduleDefinition) error
 	RemoveSchedule(name string) error
+	UpdateSchedule(def *ScheduleDefinition) error
 }

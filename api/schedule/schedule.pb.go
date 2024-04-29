@@ -634,6 +634,164 @@ func (x *DelScheduleResponse) GetElapse() string {
 	return ""
 }
 
+type UpdateScheduleRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Name      string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	AutoStart bool   `protobuf:"varint,2,opt,name=autoStart,proto3" json:"autoStart,omitempty"`
+	Task      string `protobuf:"bytes,3,opt,name=task,proto3" json:"task,omitempty"`
+	Schedule  string `protobuf:"bytes,4,opt,name=schedule,proto3" json:"schedule,omitempty"`
+	Bridge    string `protobuf:"bytes,5,opt,name=bridge,proto3" json:"bridge,omitempty"`
+	Topic     string `protobuf:"bytes,6,opt,name=topic,proto3" json:"topic,omitempty"`
+	QoS       int32  `protobuf:"varint,7,opt,name=QoS,proto3" json:"QoS,omitempty"`
+}
+
+func (x *UpdateScheduleRequest) Reset() {
+	*x = UpdateScheduleRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_schedule_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UpdateScheduleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateScheduleRequest) ProtoMessage() {}
+
+func (x *UpdateScheduleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_schedule_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateScheduleRequest.ProtoReflect.Descriptor instead.
+func (*UpdateScheduleRequest) Descriptor() ([]byte, []int) {
+	return file_schedule_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *UpdateScheduleRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateScheduleRequest) GetAutoStart() bool {
+	if x != nil {
+		return x.AutoStart
+	}
+	return false
+}
+
+func (x *UpdateScheduleRequest) GetTask() string {
+	if x != nil {
+		return x.Task
+	}
+	return ""
+}
+
+func (x *UpdateScheduleRequest) GetSchedule() string {
+	if x != nil {
+		return x.Schedule
+	}
+	return ""
+}
+
+func (x *UpdateScheduleRequest) GetBridge() string {
+	if x != nil {
+		return x.Bridge
+	}
+	return ""
+}
+
+func (x *UpdateScheduleRequest) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *UpdateScheduleRequest) GetQoS() int32 {
+	if x != nil {
+		return x.QoS
+	}
+	return 0
+}
+
+type UpdateScheduleResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Success bool   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Reason  string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Elapse  string `protobuf:"bytes,3,opt,name=elapse,proto3" json:"elapse,omitempty"`
+}
+
+func (x *UpdateScheduleResponse) Reset() {
+	*x = UpdateScheduleResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_schedule_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UpdateScheduleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateScheduleResponse) ProtoMessage() {}
+
+func (x *UpdateScheduleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_schedule_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateScheduleResponse.ProtoReflect.Descriptor instead.
+func (*UpdateScheduleResponse) Descriptor() ([]byte, []int) {
+	return file_schedule_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateScheduleResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *UpdateScheduleResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *UpdateScheduleResponse) GetElapse() string {
+	if x != nil {
+		return x.Elapse
+	}
+	return ""
+}
+
 type StartScheduleRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -645,7 +803,7 @@ type StartScheduleRequest struct {
 func (x *StartScheduleRequest) Reset() {
 	*x = StartScheduleRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_schedule_proto_msgTypes[9]
+		mi := &file_schedule_proto_msgTypes[11]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -658,7 +816,7 @@ func (x *StartScheduleRequest) String() string {
 func (*StartScheduleRequest) ProtoMessage() {}
 
 func (x *StartScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_schedule_proto_msgTypes[9]
+	mi := &file_schedule_proto_msgTypes[11]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -671,7 +829,7 @@ func (x *StartScheduleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartScheduleRequest.ProtoReflect.Descriptor instead.
 func (*StartScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_schedule_proto_rawDescGZIP(), []int{9}
+	return file_schedule_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StartScheduleRequest) GetName() string {
@@ -694,7 +852,7 @@ type StartScheduleResponse struct {
 func (x *StartScheduleResponse) Reset() {
 	*x = StartScheduleResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_schedule_proto_msgTypes[10]
+		mi := &file_schedule_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -707,7 +865,7 @@ func (x *StartScheduleResponse) String() string {
 func (*StartScheduleResponse) ProtoMessage() {}
 
 func (x *StartScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_schedule_proto_msgTypes[10]
+	mi := &file_schedule_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +878,7 @@ func (x *StartScheduleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartScheduleResponse.ProtoReflect.Descriptor instead.
 func (*StartScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_schedule_proto_rawDescGZIP(), []int{10}
+	return file_schedule_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StartScheduleResponse) GetSuccess() bool {
@@ -755,7 +913,7 @@ type StopScheduleRequest struct {
 func (x *StopScheduleRequest) Reset() {
 	*x = StopScheduleRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_schedule_proto_msgTypes[11]
+		mi := &file_schedule_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -768,7 +926,7 @@ func (x *StopScheduleRequest) String() string {
 func (*StopScheduleRequest) ProtoMessage() {}
 
 func (x *StopScheduleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_schedule_proto_msgTypes[11]
+	mi := &file_schedule_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -781,7 +939,7 @@ func (x *StopScheduleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopScheduleRequest.ProtoReflect.Descriptor instead.
 func (*StopScheduleRequest) Descriptor() ([]byte, []int) {
-	return file_schedule_proto_rawDescGZIP(), []int{11}
+	return file_schedule_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *StopScheduleRequest) GetName() string {
@@ -804,7 +962,7 @@ type StopScheduleResponse struct {
 func (x *StopScheduleResponse) Reset() {
 	*x = StopScheduleResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_schedule_proto_msgTypes[12]
+		mi := &file_schedule_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -817,7 +975,7 @@ func (x *StopScheduleResponse) String() string {
 func (*StopScheduleResponse) ProtoMessage() {}
 
 func (x *StopScheduleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_schedule_proto_msgTypes[12]
+	mi := &file_schedule_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -830,7 +988,7 @@ func (x *StopScheduleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopScheduleResponse.ProtoReflect.Descriptor instead.
 func (*StopScheduleResponse) Descriptor() ([]byte, []int) {
-	return file_schedule_proto_rawDescGZIP(), []int{12}
+	return file_schedule_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StopScheduleResponse) GetSuccess() bool {
@@ -922,6 +1080,24 @@ var file_schedule_proto_rawDesc = []byte{
 	0x63, 0x65, 0x73, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x18, 0x02,
 	0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x06,
 	0x65, 0x6c, 0x61, 0x70, 0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x65, 0x6c,
+	0x61, 0x70, 0x73, 0x65, 0x22, 0xb9, 0x01, 0x0a, 0x15, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53,
+	0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12,
+	0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61,
+	0x6d, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x6f, 0x53, 0x74, 0x61, 0x72, 0x74, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x61, 0x75, 0x74, 0x6f, 0x53, 0x74, 0x61, 0x72, 0x74,
+	0x12, 0x12, 0x0a, 0x04, 0x74, 0x61, 0x73, 0x6b, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04,
+	0x74, 0x61, 0x73, 0x6b, 0x12, 0x1a, 0x0a, 0x08, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65,
+	0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65,
+	0x12, 0x16, 0x0a, 0x06, 0x62, 0x72, 0x69, 0x64, 0x67, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x06, 0x62, 0x72, 0x69, 0x64, 0x67, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x74, 0x6f, 0x70, 0x69,
+	0x63, 0x18, 0x06, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x74, 0x6f, 0x70, 0x69, 0x63, 0x12, 0x10,
+	0x0a, 0x03, 0x51, 0x6f, 0x53, 0x18, 0x07, 0x20, 0x01, 0x28, 0x05, 0x52, 0x03, 0x51, 0x6f, 0x53,
+	0x22, 0x62, 0x0a, 0x16, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75,
+	0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x73, 0x75,
+	0x63, 0x63, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x73, 0x75, 0x63,
+	0x63, 0x65, 0x73, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x06,
+	0x65, 0x6c, 0x61, 0x70, 0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x65, 0x6c,
 	0x61, 0x70, 0x73, 0x65, 0x22, 0x2a, 0x0a, 0x14, 0x53, 0x74, 0x61, 0x72, 0x74, 0x53, 0x63, 0x68,
 	0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04,
 	0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65,
@@ -940,7 +1116,7 @@ var file_schedule_proto_rawDesc = []byte{
 	0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
 	0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x06, 0x65, 0x6c, 0x61, 0x70,
 	0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x65, 0x6c, 0x61, 0x70, 0x73, 0x65,
-	0x32, 0xec, 0x03, 0x0a, 0x0a, 0x4d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x12,
+	0x32, 0xc3, 0x04, 0x0a, 0x0a, 0x4d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x12,
 	0x4f, 0x0a, 0x0c, 0x4c, 0x69, 0x73, 0x74, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x12,
 	0x1d, 0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x53,
 	0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e,
@@ -960,20 +1136,26 @@ var file_schedule_proto_rawDesc = []byte{
 	0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x44, 0x65, 0x6c, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75,
 	0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1d, 0x2e, 0x73, 0x63, 0x68, 0x65,
 	0x64, 0x75, 0x6c, 0x65, 0x2e, 0x44, 0x65, 0x6c, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x52, 0x0a, 0x0d, 0x53, 0x74,
-	0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x12, 0x1e, 0x2e, 0x73, 0x63,
-	0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74, 0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65,
-	0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1f, 0x2e, 0x73, 0x63,
-	0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74, 0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65,
-	0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4f,
-	0x0a, 0x0c, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x12, 0x1d,
-	0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x63,
-	0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e, 0x2e,
-	0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x63, 0x68,
-	0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42,
-	0x27, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61,
-	0x63, 0x68, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x6e, 0x65, 0x6f, 0x2d, 0x67, 0x72, 0x70, 0x63, 0x2f,
-	0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x55, 0x0a, 0x0e, 0x55, 0x70,
+	0x64, 0x61, 0x74, 0x65, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x12, 0x1f, 0x2e, 0x73,
+	0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53, 0x63,
+	0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e,
+	0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x53,
+	0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22,
+	0x00, 0x12, 0x52, 0x0a, 0x0d, 0x53, 0x74, 0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75,
+	0x6c, 0x65, 0x12, 0x1e, 0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74,
+	0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x1a, 0x1f, 0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e, 0x53, 0x74,
+	0x61, 0x72, 0x74, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x4f, 0x0a, 0x0c, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x63, 0x68,
+	0x65, 0x64, 0x75, 0x6c, 0x65, 0x12, 0x1d, 0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65,
+	0x2e, 0x53, 0x74, 0x6f, 0x70, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e, 0x2e, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x2e,
+	0x53, 0x74, 0x6f, 0x70, 0x53, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x27, 0x5a, 0x25, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
+	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61, 0x63, 0x68, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x6e, 0x65,
+	0x6f, 0x2d, 0x67, 0x72, 0x70, 0x63, 0x2f, 0x73, 0x63, 0x68, 0x65, 0x64, 0x75, 0x6c, 0x65, 0x62,
+	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -988,21 +1170,23 @@ func file_schedule_proto_rawDescGZIP() []byte {
 	return file_schedule_proto_rawDescData
 }
 
-var file_schedule_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_schedule_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_schedule_proto_goTypes = []interface{}{
-	(*ListScheduleRequest)(nil),   // 0: schedule.ListScheduleRequest
-	(*ListScheduleResponse)(nil),  // 1: schedule.ListScheduleResponse
-	(*Schedule)(nil),              // 2: schedule.Schedule
-	(*AddScheduleRequest)(nil),    // 3: schedule.AddScheduleRequest
-	(*AddScheduleResponse)(nil),   // 4: schedule.AddScheduleResponse
-	(*GetScheduleRequest)(nil),    // 5: schedule.GetScheduleRequest
-	(*GetScheduleResponse)(nil),   // 6: schedule.GetScheduleResponse
-	(*DelScheduleRequest)(nil),    // 7: schedule.DelScheduleRequest
-	(*DelScheduleResponse)(nil),   // 8: schedule.DelScheduleResponse
-	(*StartScheduleRequest)(nil),  // 9: schedule.StartScheduleRequest
-	(*StartScheduleResponse)(nil), // 10: schedule.StartScheduleResponse
-	(*StopScheduleRequest)(nil),   // 11: schedule.StopScheduleRequest
-	(*StopScheduleResponse)(nil),  // 12: schedule.StopScheduleResponse
+	(*ListScheduleRequest)(nil),    // 0: schedule.ListScheduleRequest
+	(*ListScheduleResponse)(nil),   // 1: schedule.ListScheduleResponse
+	(*Schedule)(nil),               // 2: schedule.Schedule
+	(*AddScheduleRequest)(nil),     // 3: schedule.AddScheduleRequest
+	(*AddScheduleResponse)(nil),    // 4: schedule.AddScheduleResponse
+	(*GetScheduleRequest)(nil),     // 5: schedule.GetScheduleRequest
+	(*GetScheduleResponse)(nil),    // 6: schedule.GetScheduleResponse
+	(*DelScheduleRequest)(nil),     // 7: schedule.DelScheduleRequest
+	(*DelScheduleResponse)(nil),    // 8: schedule.DelScheduleResponse
+	(*UpdateScheduleRequest)(nil),  // 9: schedule.UpdateScheduleRequest
+	(*UpdateScheduleResponse)(nil), // 10: schedule.UpdateScheduleResponse
+	(*StartScheduleRequest)(nil),   // 11: schedule.StartScheduleRequest
+	(*StartScheduleResponse)(nil),  // 12: schedule.StartScheduleResponse
+	(*StopScheduleRequest)(nil),    // 13: schedule.StopScheduleRequest
+	(*StopScheduleResponse)(nil),   // 14: schedule.StopScheduleResponse
 }
 var file_schedule_proto_depIdxs = []int32{
 	2,  // 0: schedule.ListScheduleResponse.schedules:type_name -> schedule.Schedule
@@ -1011,16 +1195,18 @@ var file_schedule_proto_depIdxs = []int32{
 	3,  // 3: schedule.Management.AddSchedule:input_type -> schedule.AddScheduleRequest
 	5,  // 4: schedule.Management.GetSchedule:input_type -> schedule.GetScheduleRequest
 	7,  // 5: schedule.Management.DelSchedule:input_type -> schedule.DelScheduleRequest
-	9,  // 6: schedule.Management.StartSchedule:input_type -> schedule.StartScheduleRequest
-	11, // 7: schedule.Management.StopSchedule:input_type -> schedule.StopScheduleRequest
-	1,  // 8: schedule.Management.ListSchedule:output_type -> schedule.ListScheduleResponse
-	4,  // 9: schedule.Management.AddSchedule:output_type -> schedule.AddScheduleResponse
-	6,  // 10: schedule.Management.GetSchedule:output_type -> schedule.GetScheduleResponse
-	8,  // 11: schedule.Management.DelSchedule:output_type -> schedule.DelScheduleResponse
-	10, // 12: schedule.Management.StartSchedule:output_type -> schedule.StartScheduleResponse
-	12, // 13: schedule.Management.StopSchedule:output_type -> schedule.StopScheduleResponse
-	8,  // [8:14] is the sub-list for method output_type
-	2,  // [2:8] is the sub-list for method input_type
+	9,  // 6: schedule.Management.UpdateSchedule:input_type -> schedule.UpdateScheduleRequest
+	11, // 7: schedule.Management.StartSchedule:input_type -> schedule.StartScheduleRequest
+	13, // 8: schedule.Management.StopSchedule:input_type -> schedule.StopScheduleRequest
+	1,  // 9: schedule.Management.ListSchedule:output_type -> schedule.ListScheduleResponse
+	4,  // 10: schedule.Management.AddSchedule:output_type -> schedule.AddScheduleResponse
+	6,  // 11: schedule.Management.GetSchedule:output_type -> schedule.GetScheduleResponse
+	8,  // 12: schedule.Management.DelSchedule:output_type -> schedule.DelScheduleResponse
+	10, // 13: schedule.Management.UpdateSchedule:output_type -> schedule.UpdateScheduleResponse
+	12, // 14: schedule.Management.StartSchedule:output_type -> schedule.StartScheduleResponse
+	14, // 15: schedule.Management.StopSchedule:output_type -> schedule.StopScheduleResponse
+	9,  // [9:16] is the sub-list for method output_type
+	2,  // [2:9] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -1141,7 +1327,7 @@ func file_schedule_proto_init() {
 			}
 		}
 		file_schedule_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*StartScheduleRequest); i {
+			switch v := v.(*UpdateScheduleRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1153,7 +1339,7 @@ func file_schedule_proto_init() {
 			}
 		}
 		file_schedule_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*StartScheduleResponse); i {
+			switch v := v.(*UpdateScheduleResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1165,7 +1351,7 @@ func file_schedule_proto_init() {
 			}
 		}
 		file_schedule_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*StopScheduleRequest); i {
+			switch v := v.(*StartScheduleRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1177,6 +1363,30 @@ func file_schedule_proto_init() {
 			}
 		}
 		file_schedule_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*StartScheduleResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_schedule_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*StopScheduleRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_schedule_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*StopScheduleResponse); i {
 			case 0:
 				return &v.state
@@ -1195,7 +1405,7 @@ func file_schedule_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_schedule_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

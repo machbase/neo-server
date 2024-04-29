@@ -145,6 +145,17 @@ func (s *svr) RemoveSchedule(name string) error {
 	return os.Remove(path)
 }
 
+func (s *svr) UpdateSchedule(def *ScheduleDefinition) error {
+	model, err := s.LoadSchedule(def.Name)
+	if err != nil {
+		return err
+	}
+	model.AutoStart = def.AutoStart
+	model.Task = def.Task
+	model.Schedule = def.Schedule
+	return s.SaveSchedule(model)
+}
+
 func (s *svr) LoadAllBridges() ([]*BridgeDefinition, error) {
 	ret := []*BridgeDefinition{}
 	err := s.iterateBridgeDefs(func(define *BridgeDefinition) bool {
