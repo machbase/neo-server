@@ -76,7 +76,7 @@ func TestKey(t *testing.T) {
 	listRsp := struct {
 		Success bool      `json:"success"`
 		Reason  string    `json:"reason"`
-		List    []KeyInfo `json:"list"`
+		Data    []KeyInfo `json:"data"`
 		Elapse  string    `json:"elapse"`
 	}{}
 

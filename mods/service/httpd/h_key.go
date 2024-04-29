@@ -50,7 +50,7 @@ func (svr *httpd) handleListKeys(ctx *gin.Context) {
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["list"] = infoList
+	rsp["data"] = infoList
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }

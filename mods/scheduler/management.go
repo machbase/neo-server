@@ -7,6 +7,7 @@ import (
 
 	schedrpc "github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/robfig/cron/v3"
 )
 
 func (s *svr) ListSchedule(context.Context, *schedrpc.ListScheduleRequest) (*schedrpc.ListScheduleResponse, error) {
@@ -88,6 +89,11 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		def.Name = req.Name
 	}
 
+	if _, err := parseSchedule(req.Schedule); err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
 	def.AutoStart = req.AutoStart
 	def.Bridge = req.Bridge
 	def.QoS = int(req.QoS)
@@ -164,6 +170,11 @@ func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRe
 		return rsp, nil
 	}
 
+	if _, err := parseSchedule(req.Schedule); err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
 	sd := &model.ScheduleDefinition{
 		Name:      req.Name,
 		Task:      req.Task,
@@ -215,4 +226,13 @@ func (s *svr) StopSchedule(ctx context.Context, req *schedrpc.StopScheduleReques
 		}
 	}
 	return rsp, nil
+}
+
+func parseSchedule(schedule string) (cron.Schedule, error) {
+	scheduleParser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	if s, err := scheduleParser.Parse(schedule); err != nil {
+		return nil, fmt.Errorf("invalid schedule, %s", err.Error())
+	} else {
+		return s, err
+	}
 }

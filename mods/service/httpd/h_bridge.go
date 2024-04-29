@@ -33,7 +33,7 @@ func (svr *httpd) handleListBridge(ctx *gin.Context) {
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["list"] = listRsp.Bridges
+	rsp["data"] = listRsp.Bridges
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }

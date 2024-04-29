@@ -83,7 +83,7 @@ func TestTimer(t *testing.T) {
 	listRsp := struct {
 		Success bool                 `json:"success"`
 		Reason  string               `json:"reason"`
-		List    []*schedule.Schedule `json:"list"`
+		Data    []*schedule.Schedule `json:"data"`
 		Elapse  string               `json:"elapse"`
 	}{}
 
@@ -102,12 +102,12 @@ func TestTimer(t *testing.T) {
 	addReq := struct {
 		Name      string `json:"name"`
 		AutoStart bool   `json:"autoStart"`
-		Spec      string `json:"spec"`
+		Schedule  string `json:"schedule"`
 		TqlPath   string `json:"tqlPath"`
 	}{
 		Name:      "eleven",
 		AutoStart: false,
-		Spec:      "0 30 * * * *",
+		Schedule:  "0 30 * * * *",
 		TqlPath:   "timer.tql",
 	}
 
@@ -224,11 +224,11 @@ func TestTimer(t *testing.T) {
 	// PUT /api/timers/:name Update
 	updateReq := struct {
 		AutoStart bool   `json:"autoStart"`
-		Spec      string `json:"spec"`
+		Schedule  string `json:"schedule"`
 		Path      string `json:"path"`
 	}{
 		AutoStart: true,
-		Spec:      "0 30 * * * *",
+		Schedule:  "0 30 * * * *",
 		Path:      "example.tql",
 	}
 

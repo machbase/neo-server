@@ -76,10 +76,10 @@ func TestBridge(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	listRsp := struct {
-		Success bool   `json:"success"`
-		Reason  string `json:"reason"`
-		List    []*bridgerpc.Bridge
-		Elapse  string `json:"elapse"`
+		Success bool                `json:"success"`
+		Reason  string              `json:"reason"`
+		Data    []*bridgerpc.Bridge `json:"data"`
+		Elapse  string              `json:"elapse"`
 	}{}
 
 	payload := w.Body.Bytes()

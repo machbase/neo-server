@@ -37,7 +37,7 @@ func (svr *httpd) handleListTimers(ctx *gin.Context) {
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["list"] = list
+	rsp["data"] = list
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
@@ -48,7 +48,7 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 	req := struct {
 		Name      string `json:"name"`
 		AutoStart bool   `json:"autoStart"`
-		Spec      string `json:"spec"`
+		Schedule  string `json:"schedule"`
 		Path      string `json:"path"`
 	}{}
 
@@ -58,8 +58,6 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-
-	// validSchedule(req.Spec)
 
 	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
 	if err != nil {
@@ -83,9 +81,9 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 
 	addRsp, err := svr.schedMgmtImpl.AddSchedule(ctx, &schedule.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
-		Type:      "timer",
+		Type:      "TIMER",
 		AutoStart: req.AutoStart,
-		Schedule:  req.Spec,
+		Schedule:  req.Schedule,
 		Task:      req.Path,
 	})
 	if err != nil {
@@ -119,7 +117,6 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 	req := struct {
 		State string `json:"state"`
 	}{}
-
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -173,7 +170,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
 		AutoStart bool   `json:"autoStart"`
-		Spec      string `json:"spec"`
+		Schedule  string `json:"schedule"`
 		Path      string `json:"path"`
 	}{}
 
@@ -231,7 +228,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	updateRsp, err := svr.schedMgmtImpl.UpdateSchedule(ctx, &schedule.UpdateScheduleRequest{
 		Name:      name,
 		AutoStart: req.AutoStart,
-		Schedule:  req.Spec,
+		Schedule:  req.Schedule,
 		Task:      req.Path,
 	})
 	if err != nil {
@@ -291,7 +288,7 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 	}
 
 	for _, c := range listRsp.Schedules {
-		if c.Name == name {
+		if c.Name == strings.ToUpper(name) {
 			state := strings.ToUpper(c.State)
 			if state == "RUNNING" {
 				stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
@@ -307,8 +304,8 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
-				break
 			}
+			break
 		}
 	}
 
