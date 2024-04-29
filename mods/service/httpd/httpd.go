@@ -230,7 +230,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.DELETE("/api/timers/:name", svr.handleDeleteTimer)
 			group.GET("/api/bridges", svr.handleListBridge)
 			group.POST("/api/bridges", svr.handleAddBridge)
-			group.POST("/api/bridges/:name/state", svr.handleStateBridge) // exec + query + test => state ( body 안에서  )
+			group.POST("/api/bridges/:name/state", svr.handleStateBridge)
 			group.DELETE("/api/bridges/:name", svr.handleDeleteBridge)
 			group.GET("/api/tables", svr.handleTables)
 			group.GET("/api/tables/:table/tags", svr.handleTags)

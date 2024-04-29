@@ -26,18 +26,18 @@ func (svr *httpd) handleListTimers(ctx *gin.Context) {
 		return
 	}
 
-	lst := []*schedule.Schedule{}
+	list := []*schedule.Schedule{}
 	for _, c := range listRsp.Schedules {
 		typ := strings.ToUpper(c.Type)
 		if typ != "TIMER" {
 			continue
 		}
-		lst = append(lst, c)
+		list = append(list, c)
 	}
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["list"] = lst
+	rsp["list"] = list
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
@@ -61,7 +61,6 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 
 	// validSchedule(req.Spec)
 
-	// 중복 검사
 	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -128,8 +127,8 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 		return
 	}
 
-	switch strings.ToLower(req.State) {
-	case "start":
+	switch strings.ToUpper(req.State) {
+	case "START":
 		startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
 			Name: name,
 		})
@@ -143,7 +142,7 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
-	case "stop":
+	case "STOP":
 		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
 			Name: name,
 		})
@@ -158,7 +157,7 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 			return
 		}
 	default:
-		rsp["reason"] = "no action specified"
+		rsp["reason"] = fmt.Sprintf("no state specified: '%s'", req.State)
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -192,7 +191,6 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		return
 	}
 
-	// 타이머가 START 상태인지 확인
 	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
@@ -204,10 +202,12 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
+
+	runningFlag := false
 	for _, c := range listRsp.Schedules {
-		if c.Name == name {
+		if c.Name == strings.ToUpper(name) {
 			state := strings.ToUpper(c.State)
-			if state == "START" {
+			if state == "RUNNING" {
 				stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
 					Name: name,
 				})
@@ -221,6 +221,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
+				runningFlag = true
 				break
 			}
 		}
@@ -244,19 +245,20 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		return
 	}
 
-	// 업데이트 된 TIMER 시작
-	startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
-		Name: name,
-	})
-	if err != nil {
-		rsp["reason"] = err.Error()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
-	}
-	if !startRsp.Success {
-		rsp["reason"] = startRsp.Reason
-		ctx.JSON(http.StatusInternalServerError, rsp)
-		return
+	if runningFlag {
+		startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
+			Name: name,
+		})
+		if err != nil {
+			rsp["reason"] = err.Error()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		if !startRsp.Success {
+			rsp["reason"] = startRsp.Reason
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
 	}
 
 	rsp["success"] = true
@@ -291,7 +293,7 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 	for _, c := range listRsp.Schedules {
 		if c.Name == name {
 			state := strings.ToUpper(c.State)
-			if state == "START" {
+			if state == "RUNNING" {
 				stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
 					Name: name,
 				})

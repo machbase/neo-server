@@ -159,11 +159,22 @@ func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRe
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	sd := &model.ScheduleDefinition{}
+	if ent := GetEntry(req.Name); ent == nil {
+		rsp.Reason = fmt.Sprintf("schedule '%s' is not found", req.Name)
+		return rsp, nil
+	}
+
+	sd := &model.ScheduleDefinition{
+		Name:      req.Name,
+		Task:      req.Task,
+		Schedule:  req.Schedule,
+		AutoStart: req.AutoStart,
+	}
 	if err := s.models.UpdateSchedule(sd); err != nil {
 		rsp.Reason = err.Error()
 		return rsp, nil
 	}
+
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
 }

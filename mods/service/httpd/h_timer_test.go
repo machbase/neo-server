@@ -105,7 +105,7 @@ func TestTimer(t *testing.T) {
 		Spec      string `json:"spec"`
 		TqlPath   string `json:"tqlPath"`
 	}{
-		Name:      "cronb",
+		Name:      "eleven",
 		AutoStart: false,
 		Spec:      "0 30 * * * *",
 		TqlPath:   "timer.tql",
@@ -238,7 +238,7 @@ func TestTimer(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req, err = http.NewRequest("PUT", "/web/api/timers/cronb", b)
+	req, err = http.NewRequest("PUT", "/web/api/timers/eleven", b)
 	if err != nil {
 		t.Fatal(err)
 	}
