@@ -52,7 +52,8 @@ https://hub.docker.com/r/machbase/machbase-neo
 - Install Go 1.20 or higher
 - Require C compiler and linker (e.g: gcc) 
 - Checkout machbase/neo-server
-- Execute `go run mage.go machbase-neo`
+- Execute `go run mage.go install-neo-web` to download web-ui package
+- Execute `go run mage.go machbase-neo` to build machbase-neo
 - Find the executable binary from `./tmp/machbase-neo`
 
 ## Web User Interface
