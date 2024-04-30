@@ -3,7 +3,7 @@ package security
 import (
 	"time"
 
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/pkg/errors"
 )

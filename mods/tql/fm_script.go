@@ -9,7 +9,7 @@ import (
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"

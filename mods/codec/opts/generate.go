@@ -145,7 +145,7 @@ func main() {
 		}
 	}
 	if genFx {
-		generatesFx(resultSets, resultImports)
+		generatesFx(resultSets, nil)
 	} else {
 		generatesOpts(resultSets, resultImports)
 	}
@@ -294,11 +294,23 @@ func generatesFx(sets map[string]*SetX, imports map[string]*ImportX) {
 		``,
 		`import(`,
 		`"github.com/machbase/neo-server/mods/codec/opts"`,
+	}
+
+	for path, x := range imports {
+		if len(x.Names) > 0 {
+			for _, n := range x.Names {
+				header = append(header, fmt.Sprintf(`%s "%s"`, n, path))
+			}
+		} else {
+			header = append(header, `"%s"`, path)
+		}
+	}
+	header = append(header, []string{
 		`)`,
 		``,
 		`var CodecOptsDefinitions = []Definition {`,
 		``,
-	}
+	}...)
 
 	footer := []string{
 		`}`,

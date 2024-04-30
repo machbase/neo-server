@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-client/machrpc"
 	"github.com/stretchr/testify/require"
 )

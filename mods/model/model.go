@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/gofrs/uuid"
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"

@@ -3,7 +3,7 @@ module github.com/machbase/neo-server
 go 1.20
 
 require (
-	fyne.io/fyne/v2 v2.4.1
+	fyne.io/fyne/v2 v2.4.5
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/chroma/v2 v2.12.0
@@ -19,7 +19,7 @@ require (
 	github.com/gliderlabs/ssh v0.3.5
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-sql-driver/mysql v1.7.1
-	github.com/gofrs/uuid v4.4.0+incompatible
+	github.com/gofrs/uuid/v5 v5.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/hcl/v2 v2.17.0
@@ -67,7 +67,7 @@ require (
 	cloud.google.com/go/logging v1.9.0 // indirect
 	cloud.google.com/go/longrunning v0.5.4 // indirect
 	dario.cat/mergo v1.0.0 // indirect
-	fyne.io/systray v1.10.1-0.20230722100817-88df1e0ffa9a // indirect
+	fyne.io/systray v1.10.1-0.20231115130155-104f5ef7839e // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230828082145-3c4c8a2d2371 // indirect
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
@@ -97,13 +97,13 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
-	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
+	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240306074159-ea2d69986ecb // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.14.1 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
-	github.com/go-text/render v0.0.0-20230619120952-35bccb6164b8 // indirect
-	github.com/go-text/typesetting v0.0.0-20230616162802-9c17dd34aa4a // indirect
+	github.com/go-text/render v0.1.0 // indirect
+	github.com/go-text/typesetting v0.1.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
