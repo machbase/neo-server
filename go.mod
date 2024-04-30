@@ -27,8 +27,8 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.4.6
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-client v0.0.0-20240424050400-65ee23538b41
-	github.com/machbase/neo-engine v1.3.1-0.20240419080544-0d8666149d7c
+	github.com/machbase/neo-client v1.0.0
+	github.com/machbase/neo-engine v1.3.1
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
