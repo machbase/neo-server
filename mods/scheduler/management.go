@@ -186,6 +186,11 @@ func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRe
 		return rsp, nil
 	}
 
+	if err := Register(s, sd); err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+
 	rsp.Success, rsp.Reason = true, "success"
 	return rsp, nil
 }
