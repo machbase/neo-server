@@ -180,6 +180,7 @@ func (s *svr) UpdateSchedule(ctx context.Context, req *schedrpc.UpdateScheduleRe
 		Task:      req.Task,
 		Schedule:  req.Schedule,
 		AutoStart: req.AutoStart,
+		Type:      model.SCHEDULE_TIMER,
 	}
 	if err := s.models.UpdateSchedule(sd); err != nil {
 		rsp.Reason = err.Error()

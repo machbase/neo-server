@@ -81,7 +81,7 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 
 	addRsp, err := svr.schedMgmtImpl.AddSchedule(ctx, &schedule.AddScheduleRequest{
 		Name:      strings.ToLower(req.Name),
-		Type:      "TIMER",
+		Type:      "timer",
 		AutoStart: req.AutoStart,
 		Schedule:  req.Schedule,
 		Task:      req.Path,
@@ -202,8 +202,8 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		return
 	}
 
-	state := strings.ToUpper(getRsp.Schedule.State)
-	if state == "RUNNING" {
+	runningFlag := false
+	if strings.ToUpper(getRsp.Schedule.State) == "RUNNING" {
 		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
 			Name: name,
 		})
@@ -217,6 +217,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
+		runningFlag = true
 	}
 
 	updateRsp, err := svr.schedMgmtImpl.UpdateSchedule(ctx, &schedule.UpdateScheduleRequest{
@@ -237,18 +238,20 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	}
 
 	if !getRsp.Schedule.AutoStart {
-		startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
-			Name: name,
-		})
-		if err != nil {
-			rsp["reason"] = err.Error()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		if !startRsp.Success {
-			rsp["reason"] = startRsp.Reason
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
+		if runningFlag {
+			startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
+				Name: name,
+			})
+			if err != nil {
+				rsp["reason"] = err.Error()
+				ctx.JSON(http.StatusInternalServerError, rsp)
+				return
+			}
+			if !startRsp.Success {
+				rsp["reason"] = startRsp.Reason
+				ctx.JSON(http.StatusInternalServerError, rsp)
+				return
+			}
 		}
 	}
 
