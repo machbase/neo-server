@@ -17,6 +17,10 @@ type schedServerMock struct {
 	schedule.ManagementServer
 }
 
+func (mock *schedServerMock) GetSchedule(context.Context, *schedule.GetScheduleRequest) (*schedule.GetScheduleResponse, error) {
+	return &schedule.GetScheduleResponse{Success: true, Schedule: &schedule.Schedule{Name: "eleven"}}, nil
+}
+
 func (mock *schedServerMock) ListSchedule(context.Context, *schedule.ListScheduleRequest) (*schedule.ListScheduleResponse, error) {
 	return &schedule.ListScheduleResponse{Success: true}, nil
 }
