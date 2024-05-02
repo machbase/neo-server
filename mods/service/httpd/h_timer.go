@@ -17,11 +17,13 @@ func (svr *httpd) handleListTimers(ctx *gin.Context) {
 	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !listRsp.Success {
 		rsp["reason"] = listRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -55,28 +57,23 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
 
-	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{Name: req.Name})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !listRsp.Success {
-		rsp["reason"] = listRsp.Reason
-		ctx.JSON(http.StatusInternalServerError, rsp)
+	if getRsp.Success {
+		rsp["reason"] = fmt.Sprintf("'%s' is duplicate name.", req.Name)
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
 		return
-	}
-
-	for _, c := range listRsp.Schedules {
-		if c.Name == req.Name {
-			rsp["reason"] = fmt.Sprintf("'%s' is duplicate name.", req.Name)
-			ctx.JSON(http.StatusBadRequest, rsp)
-			return
-		}
 	}
 
 	addRsp, err := svr.schedMgmtImpl.AddSchedule(ctx, &schedule.AddScheduleRequest{
@@ -88,11 +85,13 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !addRsp.Success {
 		rsp["reason"] = addRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -110,6 +109,7 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 	name := ctx.Param("name")
 	if name == "" {
 		rsp["reason"] = "no name specified"
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -120,6 +120,7 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -131,11 +132,13 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 		})
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		if !startRsp.Success {
 			rsp["reason"] = startRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -145,16 +148,19 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 		})
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		if !stopRsp.Success {
 			rsp["reason"] = stopRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 	default:
 		rsp["reason"] = fmt.Sprintf("no state specified: '%s'", req.State)
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -177,6 +183,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	name := ctx.Param("name")
 	if name == "" {
 		rsp["reason"] = "no name specified"
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -184,6 +191,7 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -193,11 +201,13 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !getRsp.Success {
 		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -209,11 +219,13 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		})
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		if !stopRsp.Success {
 			rsp["reason"] = stopRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -228,11 +240,13 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !updateRsp.Success {
 		rsp["reason"] = updateRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -244,11 +258,13 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 			})
 			if err != nil {
 				rsp["reason"] = err.Error()
+				rsp["elapse"] = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
 			if !startRsp.Success {
 				rsp["reason"] = startRsp.Reason
+				rsp["elapse"] = time.Since(tick).String()
 				ctx.JSON(http.StatusInternalServerError, rsp)
 				return
 			}
@@ -268,6 +284,7 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 	name := ctx.Param("name")
 	if name == "" {
 		rsp["reason"] = "no name specified"
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -275,11 +292,13 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !listRsp.Success {
 		rsp["reason"] = listRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -293,11 +312,13 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 				})
 				if err != nil {
 					rsp["reason"] = err.Error()
+					rsp["elapse"] = time.Since(tick).String()
 					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
 				if !stopRsp.Success {
 					rsp["reason"] = stopRsp.Reason
+					rsp["elapse"] = time.Since(tick).String()
 					ctx.JSON(http.StatusInternalServerError, rsp)
 					return
 				}
@@ -311,11 +332,13 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !deleteRsp.Success {
 		rsp["reason"] = deleteRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
