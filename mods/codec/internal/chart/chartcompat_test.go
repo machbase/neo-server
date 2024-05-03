@@ -201,7 +201,7 @@ func TestLine3DCompat(t *testing.T) {
 		opts.DataZoom("slider", 0, 100),
 		opts.SeriesLabels("test-data"),
 		opts.Title("Title"),
-		opts.Subtitle("substitle"),
+		opts.Subtitle("subtitle"),
 		opts.Theme("westerose"),
 		opts.Size("600px", "600px"),
 	}
