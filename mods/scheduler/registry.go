@@ -99,22 +99,17 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	name := strings.ToUpper(ent.Name())
 	registry[name] = ent
 
-	// prevState := ent.Status()
-	// if _, ok := ent.(*BaseEntry); ok {
-	// 	s.log.Error("baseEntry ok: ", ok)
-	// } else {
-	// 	s.log.Error("baseEntry ok: ", ok)
-	// }
-	// if _, err := s.tqlLoader.Load(def.Task); err != nil {
-	// 	if be, ok := ent.(*BaseEntry); ok {
-	// 		be.state = FAILED
-	// 	}
-	// 	return err
-	// }
+	prevState := ent.Status()
+	if _, err := s.tqlLoader.Load(def.Task); err != nil {
+		if be, ok := ent.(*TimerEntry); ok {
+			be.state = FAILED
+		}
+		return err
+	}
 
-	// if be, ok := ent.(*BaseEntry); ok {
-	// 	be.state = prevState
-	// }
+	if be, ok := ent.(*TimerEntry); ok {
+		be.state = prevState
+	}
 
 	if ent.AutoStart() {
 		if err := ent.Start(); err != nil {
