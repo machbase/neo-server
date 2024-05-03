@@ -334,6 +334,13 @@ func (w *ChartW) Close3D() {
 	lines := []string{}
 	lines = append(lines, xAxis, yAxis, zAxis)
 	lines = append(lines, grid3D)
+	if w.title != "" {
+		if w.subtitle != "" {
+			lines = append(lines, fmt.Sprintf(`"title":{"text":%q, "subtext":%q},`, w.title, w.subtitle))
+		} else {
+			lines = append(lines, fmt.Sprintf(`"title":{"text":%q},`, w.title))
+		}
+	}
 	if w.visualMap != "" {
 		lines = append(lines, w.visualMap+",")
 	}

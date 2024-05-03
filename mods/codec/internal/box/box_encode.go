@@ -2,7 +2,6 @@ package box
 
 import (
 	"fmt"
-	"math"
 	"net"
 	"strconv"
 	"time"
@@ -140,8 +139,6 @@ func (ex *Exporter) Flush(heading bool) {
 		ex.writer.ResetHeaders()
 	}
 }
-
-var ten13 = math.Pow10(13)
 
 func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]any, len(values))
