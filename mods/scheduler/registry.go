@@ -96,9 +96,20 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	if err != nil {
 		return err
 	}
-
 	name := strings.ToUpper(ent.Name())
 	registry[name] = ent
+
+	prevState := ent.Status()
+	if _, err := s.tqlLoader.Load(def.Task); err != nil {
+		if be, ok := ent.(*TimerEntry); ok {
+			be.state = FAILED
+		}
+		return err
+	}
+
+	if be, ok := ent.(*TimerEntry); ok {
+		be.state = prevState
+	}
 
 	if ent.AutoStart() {
 		if err := ent.Start(); err != nil {
