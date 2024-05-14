@@ -29,12 +29,9 @@ func (mock bridgeServerMock) DelBridge(ctx context.Context, req *bridgerpc.DelBr
 func (mock bridgeServerMock) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) (*bridgerpc.TestBridgeResponse, error) {
 	return &bridgerpc.TestBridgeResponse{Success: true}, nil
 }
-
-// func (mock bridgeServerMock) ListBridge(ctx context.Context, req *bridgerpc.ListBridgeRequest) (*bridgerpc.ListBridgeResponse, error) {
-// return &bridgerpc.ListBridgeResponse{Success: true}, nil
-// }
-
-// GetBridge(context.Context, *GetBridgeRequest) (*GetBridgeResponse, error)
+func (mock bridgeServerMock) GetBridge(ctx context.Context, req *bridgerpc.GetBridgeRequest) (*bridgerpc.GetBridgeResponse, error) {
+	return &bridgerpc.GetBridgeResponse{Success: true}, nil
+}
 
 func TestBridge(t *testing.T) {
 	webService, err := New(&DatabaseMock{},
