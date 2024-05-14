@@ -20,11 +20,13 @@ func (svr *httpd) handleListBridge(ctx *gin.Context) {
 	listRsp, err := svr.bridgeMgmtImpl.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !listRsp.Success {
 		rsp["reason"] = listRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -50,29 +52,25 @@ func (svr *httpd) handleAddBridge(ctx *gin.Context) {
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
 
-	// dupl name
-	listRsp, err := svr.bridgeMgmtImpl.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
+	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+		Name: req.Name,
+	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !listRsp.Success {
-		rsp["reason"] = listRsp.Reason
-		ctx.JSON(http.StatusInternalServerError, rsp)
+	if getRsp.Success {
+		rsp["reason"] = fmt.Sprintf("'%s' is duplicate bridge name.", req.Name)
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
 		return
-	}
-
-	for _, b := range listRsp.Bridges {
-		if b.Name == req.Name {
-			rsp["reason"] = fmt.Sprintf("'%s' is duplicate bridge name.", req.Name)
-			ctx.JSON(http.StatusBadRequest, rsp)
-			return
-		}
 	}
 
 	addRsp, err := svr.bridgeMgmtImpl.AddBridge(ctx, &bridgerpc.AddBridgeRequest{
@@ -80,11 +78,13 @@ func (svr *httpd) handleAddBridge(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !addRsp.Success {
 		rsp["reason"] = addRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -112,11 +112,13 @@ func (svr *httpd) handleDeleteBridge(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !delRsp.Success {
 		rsp["reason"] = delRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -149,6 +151,7 @@ func (svr *httpd) handleStateBridge(ctx *gin.Context) {
 	err := ctx.ShouldBind(req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -173,27 +176,25 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	// bridge type find
-	listRsp, err := svr.bridgeMgmtImpl.ListBridge(ctx, &bridgerpc.ListBridgeRequest{})
+	getRsp, err := svr.bridgeMgmtImpl.GetBridge(ctx, &bridgerpc.GetBridgeRequest{
+		Name: req.Name,
+	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !listRsp.Success {
-		rsp["reason"] = listRsp.Reason
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 
-	brType := ""
-	for _, c := range listRsp.Bridges {
-		if strings.EqualFold(c.Name, req.Name) {
-			brType = c.Type
-			break
-		}
-	}
+	brType := getRsp.Bridge.Type
 	if brType == "" {
-		rsp["reason"] = "request bridge name is not found."
+		rsp["reason"] = "bridge type is empty"
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
@@ -213,11 +214,13 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		}
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		if !execRsp.Success {
 			rsp["reason"] = execRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -227,17 +230,20 @@ func execBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 		execRsp, err := svr.bridgeRuntimeImpl.Exec(ctx, &bridgerpc.ExecRequest{Name: req.Name, Command: cmd})
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		if !execRsp.Success {
 			rsp["reason"] = execRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		result := execRsp.GetSqlExecResult()
 		if result == nil {
-			rsp["reason"] = "????"
+			rsp["reason"] = "exec result is empty"
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -266,11 +272,13 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	execRsp, err := svr.bridgeRuntimeImpl.Exec(ctx, &bridgerpc.ExecRequest{Name: req.Name, Command: cmd})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !execRsp.Success {
 		rsp["reason"] = execRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -316,6 +324,7 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -337,11 +346,13 @@ func testBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !testRsp.Success {
 		rsp["reason"] = testRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}

@@ -2281,7 +2281,7 @@ func (doer *HttpDoer) Do(node *Node) error {
 	defer resp.Body.Close()
 
 	replyLength := int(resp.ContentLength)
-	if replyLength > 500 {
+	if replyLength > 500 || replyLength < 0 {
 		replyLength = 500
 	}
 	replyBuff := make([]byte, replyLength)

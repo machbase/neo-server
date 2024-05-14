@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strconv"
 
 	_ "github.com/lib/pq"
@@ -58,7 +57,6 @@ func (c *bridge) SupportLastInsertId() bool      { return false }
 func (c *bridge) ParameterMarker(idx int) string { return "$" + strconv.Itoa(idx+1) }
 
 func (c *bridge) NewScanType(reflectType string, databaseTypeName string) any {
-	log.Println("reflectType,databaseTypeName:  ", reflectType, databaseTypeName)
 	switch reflectType {
 	case "interface {}":
 		switch databaseTypeName {
