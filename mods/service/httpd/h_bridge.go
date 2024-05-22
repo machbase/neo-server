@@ -331,8 +331,10 @@ func queryBridge(svr *httpd, ctx *gin.Context, req *stateRequest) {
 
 	rsp["success"] = true
 	rsp["reason"] = "success"
-	rsp["column"] = column
-	rsp["rows"] = rows
+	rsp["data"] = map[string]interface{}{
+		"column": column,
+		"rows":   rows,
+	}
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
