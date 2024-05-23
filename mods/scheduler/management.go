@@ -89,11 +89,6 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		def.Name = req.Name
 	}
 
-	if _, err := parseSchedule(req.Schedule); err != nil {
-		rsp.Reason = err.Error()
-		return rsp, nil
-	}
-
 	def.AutoStart = req.AutoStart
 	def.Bridge = req.Bridge
 	def.QoS = int(req.QoS)
@@ -113,6 +108,10 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		}
 		if def.Task == "" {
 			rsp.Reason = "destination task (tql path) is not specified"
+			return rsp, nil
+		}
+		if _, err := parseSchedule(req.Schedule); err != nil {
+			rsp.Reason = err.Error()
 			return rsp, nil
 		}
 	case model.SCHEDULE_SUBSCRIBER:

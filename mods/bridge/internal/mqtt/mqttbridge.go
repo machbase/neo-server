@@ -47,7 +47,7 @@ func New(name string, path string) *bridge {
 		log:     logging.GetLog("mqtt-bridge"),
 		name:    name,
 		path:    path,
-		stopSig: make(chan bool),
+		stopSig: make(chan bool, 1),
 
 		keepAlive:    30 * time.Second,
 		cleanSession: true,
@@ -203,7 +203,6 @@ func (c *bridge) run() {
 				}
 			}
 		case <-c.stopSig:
-			c.log.Tracef("bridge [%s] stop", c.name)
 			c.alive = false
 		}
 	}
