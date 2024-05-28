@@ -47,7 +47,7 @@ func New(name string, path string) *bridge {
 		log:     logging.GetLog("mqtt-bridge"),
 		name:    name,
 		path:    path,
-		stopSig: make(chan bool, 1),
+		stopSig: make(chan bool),
 
 		keepAlive:    30 * time.Second,
 		cleanSession: true,
