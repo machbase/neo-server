@@ -152,7 +152,9 @@ func (c *bridge) BeforeRegister() error {
 }
 
 func (c *bridge) AfterUnregister() error {
-	c.stopSig <- true
+	if c.alive {
+		c.stopSig <- true
+	}
 	return nil
 }
 
