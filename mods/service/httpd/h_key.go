@@ -3,7 +3,6 @@ package httpd
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -142,10 +141,10 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	var files = []struct {
 		Name, Body string
 	}{
-		{"server.pem", base64.StdEncoding.EncodeToString([]byte(serverRsp.Certificate))},
-		{req.Name + "_cert.pem", base64.StdEncoding.EncodeToString([]byte(genRsp.Certificate))},
-		{req.Name + "_key.pem", base64.StdEncoding.EncodeToString([]byte(genRsp.Key))},
-		{req.Name + "_token.txt", base64.StdEncoding.EncodeToString([]byte(genRsp.Token))},
+		{"server.pem", serverRsp.Certificate},
+		{req.Name + "_cert.pem", genRsp.Certificate},
+		{req.Name + "_key.pem", genRsp.Key},
+		{req.Name + "_token.txt", genRsp.Token},
 	}
 
 	for _, file := range files {
