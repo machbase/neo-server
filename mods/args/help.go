@@ -21,6 +21,10 @@ func doHelp(command string, subcommand string) error {
 	case "shell":
 		fmt.Println(os.Args[0] + " shell [flags] <sub-command> [args...]")
 		showServeHelp = false
+	case "restore":
+		fmt.Println(os.Args[0] + " restore --data <machbase_home_dir> <backup_dir>")
+		showShellHelp = false
+		showServeHelp = false
 	case "timeformat":
 		fmt.Println("  timeformats:")
 		fmt.Printf("%s\n", util.HelpTimeformats())
@@ -53,6 +57,7 @@ Commands:
   serve <falgs>               start machbase-neo server process
   shell <flags> <sub-command> run neoshell client
   gen-config                  show config template
+  restore                     restore database from backup
   version                     show version`
 
 const helpServeText = `
