@@ -185,9 +185,12 @@ func NewNode(task *Task) *Node {
 		// maps.csv
 		"col":                  x.gen_col,
 		"field":                x.gen_field,
-		"datetimeType":         x.gen_datetimeType,
 		"stringType":           x.gen_stringType,
+		"datetimeType":         x.gen_datetimeType,
 		"doubleType":           x.gen_doubleType,
+		"timeType":             x.gen_timeType,
+		"floatType":            x.gen_floatType,
+		"boolType":             x.gen_boolType,
 		"simplex":              x.gen_simplex,
 		"random":               x.gen_random,
 		"parseFloat":           x.gen_parseFloat,
@@ -2629,21 +2632,6 @@ func (x *Node) gen_field(args ...any) (any, error) {
 	return x.fmField(p0...)
 }
 
-// gen_datetimeType
-//
-// syntax: datetimeType(...interface {})
-func (x *Node) gen_datetimeType(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "datetimeType", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	return x.fmDatetimeType(p0...)
-}
-
 // gen_stringType
 //
 // syntax: stringType(...interface {})
@@ -2659,6 +2647,21 @@ func (x *Node) gen_stringType(args ...any) (any, error) {
 	return x.fmStringType(p0...)
 }
 
+// gen_datetimeType
+//
+// syntax: datetimeType(...interface {})
+func (x *Node) gen_datetimeType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "datetimeType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDatetimeType(p0...)
+}
+
 // gen_doubleType
 //
 // syntax: doubleType(...interface {})
@@ -2672,6 +2675,51 @@ func (x *Node) gen_doubleType(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmDoubleType(p0...)
+}
+
+// gen_timeType
+//
+// syntax: timeType(...interface {})
+func (x *Node) gen_timeType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "timeType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDatetimeType(p0...)
+}
+
+// gen_floatType
+//
+// syntax: floatType(...interface {})
+func (x *Node) gen_floatType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "floatType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmDoubleType(p0...)
+}
+
+// gen_boolType
+//
+// syntax: boolType(...interface {})
+func (x *Node) gen_boolType(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "boolType", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmBoolType(p0...)
 }
 
 // gen_simplex

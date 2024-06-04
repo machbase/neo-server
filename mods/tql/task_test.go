@@ -2234,6 +2234,35 @@ func TestGroup(t *testing.T) {
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
 
+func TestCSVTypes(t *testing.T) {
+	var codeLines, payload, resultLines []string
+
+	// time
+	payload = []string{
+		"1700256261,dry,1,true",
+		"1700256262,dry,2,false",
+		"1700256262,wet,2,TRUE",
+		"1700256263,dry,3,False",
+		"1700256264,dry,4,1",
+		"1700256264,wet,5,0",
+	}
+
+	codeLines = []string{
+		`CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"), field(3, boolType(),"flag") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"time,column1,value,flag",
+		"1700256261,dry,1.00,true",
+		"1700256262,dry,2.00,false",
+		"1700256262,wet,2.00,true",
+		"1700256263,dry,3.00,false",
+		"1700256264,dry,4.00,true",
+		"1700256264,wet,5.00,false",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+}
+
 func TestGroupWhere(t *testing.T) {
 	var codeLines, payload, resultLines []string
 
@@ -2262,6 +2291,25 @@ func TestGroupWhere(t *testing.T) {
 	}
 	codeLines = []string{
 		`CSV(payload(), field(0, datetimeType("s"), "time"), field(2, doubleType(), "value"))`,
+		`GROUP(`,
+		`  by( roundTime(value(0), "2s")),`,
+		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,
+		`  last(value(2), where(value(1) == "wet"), "WET") )`,
+		`CSV(timeformat("s"), heading(true), precision(2))`,
+	}
+	resultLines = []string{
+		"GROUP,DRY,WET",
+		"1700256260,1.00,NULL",
+		"1700256262,2.50,2.00",
+		"1700256264,4.50,5.00",
+		"1700256266,6.50,NULL",
+		"1700256268,8.50,NULL",
+		"1700256276,10.00,NULL",
+	}
+	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
+
+	codeLines = []string{
+		`CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"))`,
 		`GROUP(`,
 		`  by( roundTime(value(0), "2s")),`,
 		`  avg(value(2), where(value(1) == "dry"), "DRY"),`,

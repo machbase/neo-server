@@ -196,9 +196,12 @@ var FxDefinitions = []Definition{
 	{"// maps.csv", nil},
 	{"col", defTask.fmCol},
 	{"field", defTask.fmField},
-	{"datetimeType", defTask.fmDatetimeType},
 	{"stringType", defTask.fmStringType},
-	{"doubleType", defTask.fmDoubleType},
+	{"datetimeType", defTask.fmDatetimeType}, // deprecated by timeType
+	{"doubleType", defTask.fmDoubleType},     // deprecated by floatType
+	{"timeType", defTask.fmDatetimeType},     // since v8.0.20
+	{"floatType", defTask.fmDoubleType},      // since v8.0.20
+	{"boolType", defTask.fmBoolType},         // since v8.0.20
 	// maps.fake
 	{"simplex", defTask.fmSimplex},
 	{"random", defTask.fmRandom},

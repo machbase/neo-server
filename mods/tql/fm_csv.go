@@ -175,6 +175,8 @@ func (src *csvSource) gen(node *Node) {
 				}
 			case *stringOpt:
 				values[i] = fields[i]
+			case *boolOpt:
+				values[i], err = strconv.ParseBool(fields[i])
 			case *doubleOpt:
 				values[i], err = strconv.ParseFloat(fields[i], 64)
 			case *epochtimeOpt:
@@ -329,6 +331,14 @@ func (o *doubleOpt) spiType() string { return "double" }
 
 func (x *Node) fmDoubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
+}
+
+type boolOpt struct{}
+
+func (o *boolOpt) spiType() string { return "bool" }
+
+func (x *Node) fmBoolType(args ...any) (any, error) {
+	return &boolOpt{}, nil
 }
 
 type epochtimeOpt struct {
