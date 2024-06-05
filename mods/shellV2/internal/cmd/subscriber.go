@@ -26,7 +26,7 @@ const helpSubscriber = `  subscriber command [options]
     del <name>                      remove subscriber
 	start <name>                    start the subscriber if it is not in RUNNING state
 	stop <name>                     stop the subscriber if it is in RUNNING state
-	add [options] <name> <bridge> <topic> <tql-path>
+	add [options] <name> <bridge> <topic> <destination>
 							        add a subscriber to the topic via pre-defined bridge,
 									then executes the given tql script whenever it receives messages.
 		options:
@@ -35,10 +35,12 @@ const helpSubscriber = `  subscriber command [options]
 		args:
 			name                    name of the subscriber
 			bridge                  name of the bridge
-			topic                   topic to subscribe (listening to)
-			tql-path                the relative path of tql script
+			topic                   topic to subscribe
+			destination             the path of tql script or writing path descriptor
 		ex)
 			subscriber add --auto-start --qos=1 my_lsnr my_mqtt outer/events /my_event.tql
+			subscriber add my_append nats_bridge stream.in append/EXAMPLE:json
+			subscriber add my_writer nats_bridge topic.in  write/EXAMPLE:csv:gzip
 `
 
 type SubscriberCmd struct {
@@ -60,7 +62,7 @@ type SubscriberAddCmd struct {
 	Name      string `arg:"" name:"name" help:"schedule name"`
 	Bridge    string `arg:"" name:"bridge" help:"name of bridge"`
 	Topic     string `arg:"" name:"topic" help:"topic to subscribe"`
-	TqlPath   string `arg:"" name:"tql-path" help:"relative path to tql script"`
+	TqlPath   string `arg:"" name:"destination" help:"the path of tql script or writing path descriptor"`
 	AutoStart bool   `name:"autostart"`
 	QoS       int    `name:"qos" help:"(mqtt bridge only) QoS to subscribe"`
 }
@@ -104,7 +106,7 @@ func doSubscriber(ctx *action.ActionContext) {
 		doSubscriberStart(ctx, cmd.Start.Name)
 	case "stop <name>":
 		doSubscriberStop(ctx, cmd.Stop.Name)
-	case "add <name> <bridge> <topic> <tql-path>":
+	case "add <name> <bridge> <topic> <destination>":
 		doSubscriberAdd(ctx, &cmd.Add)
 	default:
 		ctx.Println("ERR", fmt.Sprintf("unhandled command %s", parseCtx.Command()))
@@ -136,7 +138,7 @@ func doSubscriberList(ctx *action.ActionContext) {
 		lst = append(lst, c)
 	}
 	box := ctx.NewBox([]string{
-		"NAME", "BRIDGE", "TOPIC", "TQL", "AUTOSTART", "STATE",
+		"NAME", "BRIDGE", "TOPIC", "DESTINATION", "AUTOSTART", "STATE",
 	})
 	if len(lst) > 0 {
 		sort.Slice(lst, func(i, j int) bool { return lst[i].Name < lst[j].Name })
