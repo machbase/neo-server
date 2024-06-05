@@ -46,6 +46,8 @@ const helpBridge = `  bridge command [options]
 		ex) bridge add -t mysql my_sql root:passwd@tcp(127.0.0.1:3306)/testdb?parseTime=true
 	mqtt          MQTT (v3.1.1)     https://mqtt.org
 		ex) bridge add -t mqtt my_mqtt broker=127.0.0.1:1883 id=client-id
+	nats          NATS              https://nats.io
+	    ex) bridge add -t nats my_nats server=nats://127.0.0.1:3000 name=client-name
 `
 
 // mssql         MSSQL
@@ -62,7 +64,7 @@ type BridgeCmd struct {
 	Add struct {
 		Name string   `arg:"" name:"name" help:"bridge name"`
 		Path []string `arg:"" name:"conn" passthrough:"" help:"connection string"`
-		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mssql,mqtt,python" help:"bridge type"`
+		Type string   `name:"type" short:"t" required:"" enum:"sqlite,postgres,mysql,mssql,mqtt,nats,python" help:"bridge type"`
 	} `cmd:"" name:"add"`
 	Test struct {
 		Name string `arg:"" name:"name"`
@@ -87,6 +89,7 @@ func pcBridge() action.PrefixCompleterInterface {
 				action.PcItem("poastgres"),
 				action.PcItem("mysql"),
 				action.PcItem("mqtt"),
+				action.PcItem("nats"),
 				action.PcItem("python"),
 			)),
 		action.PcItem("del"),

@@ -35,6 +35,12 @@ type MqttBridge interface {
 	IsConnected() bool
 }
 
+type NatsBridge interface {
+	Bridge
+	Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (bool, error)
+	Unsubscribe(topic string) (bool, error)
+}
+
 type PythonBridge interface {
 	Bridge
 	Invoke(ctx context.Context, args []string, stdin []byte) (exitCode int, stdout []byte, stderr []byte, err error)
