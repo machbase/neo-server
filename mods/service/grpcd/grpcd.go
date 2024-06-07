@@ -219,6 +219,7 @@ func (svr *grpcd) Start() error {
 
 	// rpcServer is serving the db service
 	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
+	machrpc.RegisterMachbaseServer(svr.rpcServerInsecure, svr)
 
 	// mgmtServer is serving general db service + mgmt service
 	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
@@ -292,6 +293,9 @@ func (svr *grpcd) Start() error {
 func (svr *grpcd) Stop() {
 	if svr.rpcServer != nil {
 		svr.rpcServer.Stop()
+	}
+	if svr.rpcServerInsecure != nil {
+		svr.rpcServerInsecure.Stop()
 	}
 	if svr.mgmtServer != nil {
 		svr.mgmtServer.Stop()
