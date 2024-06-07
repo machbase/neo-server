@@ -76,14 +76,14 @@ func (ent *SubscriberEntry) Start() error {
 	} else {
 		if !strings.HasSuffix(ent.TaskTql, ".tql") {
 			var taskPath string
-			if strings.HasPrefix(ent.TaskTql, "append/") {
-				taskPath = strings.TrimPrefix(ent.TaskTql, "append/")
+			if strings.HasPrefix(ent.TaskTql, "db/append/") {
+				taskPath = strings.TrimPrefix(ent.TaskTql, "db/append/")
 				ent.mode = "append"
-			} else if strings.HasPrefix(ent.TaskTql, "write/") {
-				taskPath = strings.TrimPrefix(ent.TaskTql, "write/")
+			} else if strings.HasPrefix(ent.TaskTql, "db/write/") {
+				taskPath = strings.TrimPrefix(ent.TaskTql, "db/write/")
 				ent.mode = "insert"
 			} else {
-				return fmt.Errorf("unsupported task '%s'", ent.TaskTql)
+				return fmt.Errorf("unsupported destination '%s'", ent.TaskTql)
 			}
 			wp, err := util.ParseWritePath(taskPath)
 			if err != nil {
