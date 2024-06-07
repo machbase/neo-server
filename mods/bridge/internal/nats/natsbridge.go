@@ -178,7 +178,7 @@ type SubscriptionToken struct {
 	msgChan      chan *natsio.Msg
 }
 
-func (c *bridge) Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (bool, error) {
+func (c *bridge) Subscribe(topic string, pendingMsgLimit int, pendingBytesLimit int, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (bool, error) {
 	if !c.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
 	}
@@ -193,6 +193,15 @@ func (c *bridge) Subscribe(topic string, cb func(topic string, data []byte, head
 	if subscription, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
 		return false, err
 	} else {
+		if pendingMsgLimit == 0 {
+			pendingMsgLimit = natsio.DefaultSubPendingMsgsLimit
+		}
+		if pendingBytesLimit == 0 {
+			pendingBytesLimit = natsio.DefaultSubPendingBytesLimit
+		}
+		if err := subscription.SetPendingLimits(pendingMsgLimit, pendingBytesLimit); err != nil {
+			return false, fmt.Errorf("nats invalid pending limits, %s", err.Error())
+		}
 		st := &SubscriptionToken{
 			subscription: subscription,
 			subject:      topic,

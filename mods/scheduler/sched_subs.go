@@ -133,7 +133,7 @@ func (ent *SubscriberEntry) startNats(br bridge.NatsBridge) error {
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
 		return ent.err
 	}
-	if ok, err := br.Subscribe(ent.Topic, ent.doNatsTask); err != nil {
+	if ok, err := br.Subscribe(ent.Topic, ent.wd.PendingMsgLimit, ent.wd.PendingBytesLimit, ent.doNatsTask); err != nil {
 		ent.state = FAILED
 		ent.err = err
 	} else {
@@ -271,14 +271,14 @@ func (ent *SubscriberEntry) doNatsTask(topic string, payload []byte, header map[
 			ent.Stop()
 			return
 		}
-		params := map[string][]string{}
-		for k, v := range header {
-			params[k] = v
-		}
 		task := tql.NewTaskContext(context.TODO())
 		task.SetDatabase(ent.s.db)
 		task.SetInputReader(bytes.NewBuffer(payload))
 		task.SetOutputWriterJson(io.Discard, true)
+		params := map[string][]string{}
+		for k, v := range header {
+			params[k] = v
+		}
 		task.SetParams(params)
 		if err := task.CompileScript(sc); err != nil {
 			ent.err = err

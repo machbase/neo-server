@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,6 +22,9 @@ type WriteDescriptor struct {
 	TimeLocation *time.Location
 	Delimiter    string
 	Heading      bool
+	// NATS only parameters
+	PendingMsgLimit   int
+	PendingBytesLimit int
 }
 
 func (wd *WriteDescriptor) IsTqlDestination() bool {
@@ -42,17 +46,33 @@ func NewWriteDescriptor(path string) (*WriteDescriptor, error) {
 		if vals, err := url.ParseQuery(toks[1]); err != nil {
 			return nil, fmt.Errorf("invalid parameters %s, %s", toks[1], err.Error())
 		} else {
-			if vals.Has("timeformat") {
-				wd.Timeformat = vals.Get("timeformat")
-			}
-			if vals.Has("tz") {
-				wd.TimeLocation = ParseTimeLocation(vals.Get("tz"), time.UTC)
-			}
-			if vals.Has("delimiter") {
-				wd.Delimiter = vals.Get("delimiter")
-			}
-			if vals.Has("heading") {
-				wd.Heading = strings.ToLower(vals.Get("heading")) == "true"
+			for k, vs := range vals {
+				v := ""
+				if len(vs) > 0 {
+					v = vs[0]
+				}
+				switch strings.ToLower(k) {
+				case "timeformat":
+					wd.Timeformat = v
+				case "tz":
+					wd.TimeLocation = ParseTimeLocation(v, time.UTC)
+				case "delimiter":
+					wd.Delimiter = v
+				case "heading":
+					wd.Heading = strings.ToLower(v) == "true"
+				case "pendingmsglimit":
+					if k, err := strconv.ParseInt(v, 10, 32); err == nil {
+						wd.PendingMsgLimit = int(k)
+					} else {
+						return nil, fmt.Errorf("invalid pendingMsgLimit %s", err.Error())
+					}
+				case "pendingbyteslimit":
+					if k, err := strconv.ParseInt(v, 10, 32); err == nil {
+						wd.PendingBytesLimit = int(k)
+					} else {
+						return nil, fmt.Errorf("invalid pendingBytesLimit %s", err.Error())
+					}
+				}
 			}
 		}
 	} else {
