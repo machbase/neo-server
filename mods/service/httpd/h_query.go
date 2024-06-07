@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 // Execute machbase SQL query
@@ -85,7 +86,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		return
 	}
 
-	var timeLocation = strTimeLocation(req.TimeLocation, time.UTC)
+	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
 
 	var output spec.OutputStream
 	switch req.Compress {

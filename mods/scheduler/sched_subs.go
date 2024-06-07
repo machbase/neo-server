@@ -36,12 +36,12 @@ type SubscriberEntry struct {
 
 	didOnConnectSubscriber bool
 	shouldSubscribe        bool
-	wp                     *util.WritePath
-	mode                   string
 	ctx                    context.Context
 	ctxCancel              context.CancelFunc
 	conn                   api.Conn
 	appender               api.Appender
+
+	wd *util.WriteDescriptor
 }
 
 var _ Entry = &SubscriberEntry{}
@@ -74,42 +74,11 @@ func (ent *SubscriberEntry) Start() error {
 		ent.err = err
 		return err
 	} else {
-		if !strings.HasSuffix(ent.TaskTql, ".tql") {
-			var taskPath string
-			if strings.HasPrefix(ent.TaskTql, "db/append/") {
-				taskPath = strings.TrimPrefix(ent.TaskTql, "db/append/")
-				ent.mode = "append"
-			} else if strings.HasPrefix(ent.TaskTql, "db/write/") {
-				taskPath = strings.TrimPrefix(ent.TaskTql, "db/write/")
-				ent.mode = "insert"
-			} else {
-				return fmt.Errorf("unsupported destination '%s'", ent.TaskTql)
-			}
-			wp, err := util.ParseWritePath(taskPath)
-			if err != nil {
-				ent.state = FAILED
-				ent.err = err
-				return err
-			}
-			if wp.Format == "" {
-				wp.Format = "json"
-			}
-			switch wp.Format {
-			case "json":
-			case "csv":
-			default:
-				return fmt.Errorf("unsupported format '%s'", wp.Format)
-			}
-			switch wp.Compress {
-			case "": // no compression
-			case "-": // no compression
-			case "gzip": // gzip compression
-			default: // others
-				return fmt.Errorf("unsupproted compression '%s", wp.Compress)
-			}
-			ent.wp = wp
+		if wd, err := util.NewWriteDescriptor(ent.TaskTql); err != nil {
+			return err
+		} else {
+			ent.wd = wd
 		}
-
 		switch br := br0.(type) {
 		case bridge.MqttBridge:
 			return ent.startMqtt(br)
@@ -239,7 +208,7 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 			ent.log.Trace(ent.name, ent.TaskTql, ent.state.String(), time.Since(tick).String())
 		}
 	}()
-	if ent.wp == nil {
+	if ent.wd.IsTqlDestination() {
 		sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 		if err != nil {
 			ent.err = err
@@ -269,7 +238,7 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 			ent.Stop()
 		}
 	} else {
-		if ent.mode == "append" {
+		if ent.wd.Method == "append" {
 			ent.doAppend(payload, rsp)
 		} else {
 			ent.doInsert(payload, rsp)
@@ -294,7 +263,7 @@ func (ent *SubscriberEntry) doNatsTask(topic string, payload []byte, header map[
 			replier(buff)
 		}
 	}()
-	if ent.wp == nil {
+	if ent.wd.IsTqlDestination() {
 		sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 		if err != nil {
 			ent.err = err
@@ -325,7 +294,7 @@ func (ent *SubscriberEntry) doNatsTask(topic string, payload []byte, header map[
 			rsp.Success, rsp.Reason = true, "success"
 		}
 	} else {
-		if ent.mode == "append" {
+		if ent.wd.Method == "append" {
 			ent.doAppend(payload, rsp)
 		} else {
 			ent.doInsert(payload, rsp)
@@ -344,20 +313,20 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		}
 	}
 
-	exists, err := do.ExistsTable(ent.ctx, ent.conn, ent.wp.Table)
+	exists, err := do.ExistsTable(ent.ctx, ent.conn, ent.wd.Table)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 		ent.log.Warn(ent.TaskTql, err.Error())
 		return
 	}
 	if !exists {
-		rsp.Reason = fmt.Sprintf("%s %s table %q does not exist", ent.name, ent.TaskTql, ent.wp.Table)
-		ent.log.Warnf("%s Table %q does not exist", ent.TaskTql, ent.wp.Table)
+		rsp.Reason = fmt.Sprintf("%s %s table %q does not exist", ent.name, ent.TaskTql, ent.wd.Table)
+		ent.log.Warnf("%s Table %q does not exist", ent.TaskTql, ent.wd.Table)
 		return
 	}
 
 	var desc *do.TableDescription
-	if desc0, err := do.Describe(ent.ctx, ent.conn, ent.wp.Table, false); err != nil {
+	if desc0, err := do.Describe(ent.ctx, ent.conn, ent.wd.Table, false); err != nil {
 		rsp.Reason = fmt.Sprintf("%s %s", ent.TaskTql, err.Error())
 		ent.log.Warnf(ent.TaskTql, err.Error())
 		return
@@ -366,7 +335,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	var instream spec.InputStream
-	if ent.wp.Compress == "gzip" {
+	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
 			if gr != nil {
@@ -388,11 +357,11 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 
 	codecOpts := []opts.Option{
 		opts.InputStream(instream),
-		opts.Timeformat("ns"),
-		opts.TimeLocation(time.UTC),
-		opts.TableName(ent.wp.Table),
-		opts.Delimiter(","),
-		opts.Heading(false),
+		opts.Timeformat(ent.wd.Timeformat),
+		opts.TimeLocation(ent.wd.TimeLocation),
+		opts.TableName(ent.wd.Table),
+		opts.Delimiter(ent.wd.Delimiter),
+		opts.Heading(ent.wd.Heading),
 	}
 
 	var recno int
@@ -400,7 +369,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	var columnNames []string
 	var columnTypes []string
 
-	if ent.wp.Format == "json" {
+	if ent.wd.Format == "json" {
 		bs, err := io.ReadAll(instream)
 		if err != nil {
 			rsp.Reason = err.Error()
@@ -431,14 +400,14 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 					}
 				}
 				if _type == "" {
-					rsp.Reason = fmt.Sprintf("%s column %q not found in the table %q", ent.name, colName, ent.wp.Table)
-					ent.log.Warnf("column %q not found in the table %q", colName, ent.wp.Table)
+					rsp.Reason = fmt.Sprintf("%s column %q not found in the table %q", ent.name, colName, ent.wd.Table)
+					ent.log.Warnf("column %q not found in the table %q", colName, ent.wd.Table)
 					return
 				}
 				columnTypes = append(columnTypes, _type)
 			}
 			valueHolder := strings.Join(_hold, ",")
-			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wp.Table, strings.Join(columnNames, ","), valueHolder)
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wd.Table, strings.Join(columnNames, ","), valueHolder)
 		}
 		instream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
 	}
@@ -464,14 +433,14 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 			_hold = append(_hold, desc.Columns[i].Name)
 		}
 		columnsHolder := strings.Join(_hold, ",")
-		insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wp.Table, columnsHolder, valueHolder)
+		insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wd.Table, columnsHolder, valueHolder)
 	}
 
-	decoder := codec.NewDecoder(ent.wp.Format, codecOpts...)
+	decoder := codec.NewDecoder(ent.wd.Format, codecOpts...)
 
 	if decoder == nil {
-		rsp.Reason = fmt.Sprintf("%s codec %q not found", ent.name, ent.wp.Format)
-		ent.log.Errorf("codec %q not found", ent.wp.Format)
+		rsp.Reason = fmt.Sprintf("%s codec %q not found", ent.name, ent.wd.Format)
+		ent.log.Errorf("codec %q not found", ent.wd.Format)
 		return
 	}
 
@@ -511,7 +480,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	if ent.appender == nil {
-		if appd, err := ent.conn.Appender(ent.ctx, ent.wp.Table); err != nil {
+		if appd, err := ent.conn.Appender(ent.ctx, ent.wd.Table); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s fail to create appender, %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 		} else {
@@ -520,7 +489,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	var instream spec.InputStream
-	if ent.wp.Compress == "gzip" {
+	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
 			if gr != nil {
@@ -543,20 +512,20 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 	cols, _ := api.AppenderColumns(ent.appender)
 	codecOpts := []opts.Option{
 		opts.InputStream(instream),
-		opts.Timeformat("ns"),
-		opts.TimeLocation(time.UTC),
-		opts.TableName(ent.wp.Table),
+		opts.Timeformat(ent.wd.Timeformat),
+		opts.TimeLocation(ent.wd.TimeLocation),
+		opts.TableName(ent.wd.Table),
 		opts.Columns(cols.Names()...),
 		opts.ColumnTypes(cols.Types()...),
-		opts.Delimiter(","),
-		opts.Heading(false),
+		opts.Delimiter(ent.wd.Delimiter),
+		opts.Heading(ent.wd.Heading),
 	}
 
-	decoder := codec.NewDecoder(ent.wp.Format, codecOpts...)
+	decoder := codec.NewDecoder(ent.wd.Format, codecOpts...)
 
 	if decoder == nil {
-		rsp.Reason = fmt.Sprintf("%s codec %q not found", ent.name, ent.wp.Format)
-		ent.log.Errorf("codec %q not found", ent.wp.Format)
+		rsp.Reason = fmt.Sprintf("%s codec %q not found", ent.name, ent.wd.Format)
+		ent.log.Errorf("codec %q not found", ent.wd.Format)
 		return
 	}
 
@@ -565,16 +534,16 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		vals, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
-				rsp.Reason = fmt.Sprintf("append %s, %s", ent.wp.Format, err.Error())
-				ent.log.Warn("append %s, %s", ent.wp.Format, err.Error())
+				rsp.Reason = fmt.Sprintf("append %s, %s", ent.wd.Format, err.Error())
+				ent.log.Warn("append %s, %s", ent.wd.Format, err.Error())
 				return
 			}
 			break
 		}
 		err = ent.appender.Append(vals...)
 		if err != nil {
-			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wp.Format, err.Error(), recno+1)
-			ent.log.Warn("append %s, %s on the %d'th record", ent.wp.Format, err.Error(), recno+1)
+			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
+			ent.log.Warn("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
 			break
 		}
 		recno++

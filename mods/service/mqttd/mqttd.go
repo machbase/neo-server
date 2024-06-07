@@ -3,7 +3,6 @@ package mqttd
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/machbase/neo-server/api"
@@ -27,10 +26,6 @@ func New(db api.Database, options ...Option) (Service, error) {
 		log:       logging.GetLog("mqttd"),
 		db:        db,
 		appenders: cmap.New(),
-		handlers: []*HandlerConfig{
-			{Prefix: "db", Handler: "machbase"},
-			{Prefix: "metrics", Handler: "influx"},
-		},
 	}
 	for _, opt := range options {
 		opt(svr)
@@ -98,11 +93,6 @@ const (
 	HandlerVoid     = HandlerType("-")
 )
 
-type HandlerConfig struct {
-	Prefix  string
-	Handler HandlerType
-}
-
 type mqttd struct {
 	mqttd      mqtt.Server
 	db         api.Database
@@ -112,7 +102,6 @@ type mqttd struct {
 	tqlLoader  tql.Loader
 
 	listenAddresses     []string
-	handlers            []*HandlerConfig
 	Passwords           map[string]string
 	maxMessageSizeLimit int
 	serverCertPath      string
@@ -124,12 +113,6 @@ type mqttd struct {
 func (svr *mqttd) Start() error {
 	if svr.db == nil {
 		return errors.New("no database instance")
-	}
-
-	for i, h := range svr.handlers {
-		if len(h.Prefix) > 0 {
-			svr.handlers[i].Prefix = strings.TrimSuffix(h.Prefix, "/")
-		}
 	}
 
 	mqttdConf := &mqtt.MqttConfig{
@@ -236,11 +219,13 @@ func (svr *mqttd) OnConnect(evt *mqtt.EvtConnect) (mqtt.AuthCode, *mqtt.ConnectR
 		}
 	}
 
-	pubTopic := []string{}
-	for _, h := range svr.handlers {
-		pubTopic = append(pubTopic, h.Prefix)
-		pubTopic = append(pubTopic, fmt.Sprintf("%s/*", h.Prefix))
+	pubTopic := []string{
+		"db",
+		"db/*",
+		"metrics",
+		"metrics/*",
 	}
+
 	result := &mqtt.ConnectResult{
 		AllowedPublishTopicPatterns:   pubTopic,
 		AllowedSubscribeTopicPatterns: []string{"*"},
@@ -264,22 +249,11 @@ func (svr *mqttd) OnDisconnect(evt *mqtt.EvtDisconnect) {
 }
 
 func (svr *mqttd) OnMessage(evt *mqtt.EvtMessage) error {
-	handler := HandlerType("machbase")
-	prefix := ""
-	for _, h := range svr.handlers {
-		if strings.HasPrefix(evt.Topic, h.Prefix) {
-			prefix = h.Prefix
-			handler = h.Handler
-			break
-		}
-	}
-
-	switch handler {
-	case HandlerInflux:
-		svr.onLineprotocol(evt, prefix)
-	case HandlerMachbase:
-		return svr.onMachbase(evt, prefix)
-	default:
+	if strings.HasPrefix(evt.Topic, "db/") {
+		return svr.onMachbase(evt)
+	} else if strings.HasPrefix(evt.Topic, "metrics/") {
+		svr.onLineprotocol(evt)
+	} else {
 		svr.log.Warnf("unhandled message topic:'%s'", evt.Topic)
 	}
 	return nil

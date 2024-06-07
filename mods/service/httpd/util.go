@@ -3,9 +3,6 @@ package httpd
 import (
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/machbase/neo-server/mods/util"
 )
 
 func strBool(str string, def bool) bool {
@@ -31,27 +28,4 @@ func strString(str string, def string) string {
 		return def
 	}
 	return str
-}
-
-func strTimeLocation(str string, def *time.Location) *time.Location {
-	if str == "" {
-		return def
-	}
-
-	tz := strings.ToLower(str)
-	if tz == "local" {
-		return time.Local
-	} else if tz == "utc" {
-		return time.UTC
-	} else {
-		if loc, err := util.GetTimeLocation(str); err != nil {
-			loc, err := time.LoadLocation(str)
-			if err != nil {
-				return def
-			}
-			return loc
-		} else {
-			return loc
-		}
-	}
 }

@@ -49,29 +49,71 @@ func (c *bridge) BeforeRegister() error {
 		key := strings.TrimSpace(kv[0])
 		val := strings.TrimSpace(kv[1])
 		switch strings.ToLower(key) {
-		case "broker", "host", "server":
+		case "server":
 			c.natsOpts.Servers = append(c.natsOpts.Servers, val)
+		case "norandomize", "no-randomize":
+			if k, err := strconv.ParseBool(val); err == nil {
+				c.natsOpts.NoRandomize = k
+			}
+		case "noecho", "no-echo":
+			if k, err := strconv.ParseBool(val); err == nil {
+				c.natsOpts.NoEcho = k
+			}
 		case "name":
 			c.natsOpts.Name = val
-		case "pinginterval", "ping-interval":
-			if k, err := time.ParseDuration(val); err == nil {
-				c.natsOpts.PingInterval = k
-			}
-		case "skiphostlookup", "skip-host-lookup":
+		case "verbose":
 			if k, err := strconv.ParseBool(val); err == nil {
-				c.natsOpts.SkipHostLookup = k
+				c.natsOpts.Verbose = k
 			}
-		case "retryonfailedconnect", "retry-on-failed-connect":
+		case "pedantic":
 			if k, err := strconv.ParseBool(val); err == nil {
-				c.natsOpts.RetryOnFailedConnect = k
+				c.natsOpts.Pedantic = k
+			}
+		case "allowreconnect", "allow-reconnect":
+			if k, err := strconv.ParseBool(val); err == nil {
+				c.natsOpts.AllowReconnect = k
+			}
+		case "maxreconnect", "max-reconnect":
+			if k, err := strconv.ParseInt(val, 10, 32); err == nil {
+				c.natsOpts.MaxReconnect = int(k)
 			}
 		case "reconnectwait", "reconnect-wait":
 			if k, err := time.ParseDuration(val); err == nil {
 				c.natsOpts.ReconnectWait = k
 			}
-		case "maxreconnect", "max-reconnect":
+		case "timeout":
+			if k, err := time.ParseDuration(val); err == nil {
+				c.natsOpts.Timeout = k
+			}
+		case "draintimeout", "drain-timeout":
+			if k, err := time.ParseDuration(val); err == nil {
+				c.natsOpts.DrainTimeout = k
+			}
+		case "flushertimeout", "flusher-timeout":
+			if k, err := time.ParseDuration(val); err == nil {
+				c.natsOpts.FlusherTimeout = k
+			}
+		case "pinginterval", "ping-interval":
+			if k, err := time.ParseDuration(val); err == nil {
+				c.natsOpts.PingInterval = k
+			}
+		case "maxpingsout", "max-pings-out":
 			if k, err := strconv.ParseInt(val, 10, 32); err == nil {
-				c.natsOpts.MaxReconnect = int(k)
+				c.natsOpts.MaxPingsOut = int(k)
+			}
+		case "user":
+			c.natsOpts.User = val
+		case "password":
+			c.natsOpts.Password = val
+		case "token":
+			c.natsOpts.Token = val
+		case "retryonfailedconnect", "retry-on-failed-connect":
+			if k, err := strconv.ParseBool(val); err == nil {
+				c.natsOpts.RetryOnFailedConnect = k
+			}
+		case "skiphostlookup", "skip-host-lookup":
+			if k, err := strconv.ParseBool(val); err == nil {
+				c.natsOpts.SkipHostLookup = k
 			}
 		default:
 			c.log.Infof("unknown option, %s=%s", key, val)
@@ -199,10 +241,19 @@ func (c *bridge) Unsubscribe(topic string) (bool, error) {
 	}
 }
 
-func (c *bridge) Publish(topic string, payload []byte) (bool, error) {
+func (c *bridge) Publish(topic string, payload any) (bool, error) {
 	if !c.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
 	}
-	err := c.natsConn.Publish(topic, payload)
+	var data []byte
+	switch raw := payload.(type) {
+	case []byte:
+		data = raw
+	case string:
+		data = []byte(raw)
+	default:
+		return false, fmt.Errorf("nats bridge can not publish %T", raw)
+	}
+	err := c.natsConn.Publish(topic, data)
 	return err == nil, err
 }

@@ -97,6 +97,12 @@ func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) 
 				name:      cname,
 				publisher: mqttC,
 			}, nil
+		} else if natsC, ok := br.(bridge.NatsBridge); ok {
+			return &pubBridge{
+				node:      node,
+				name:      cname,
+				publisher: natsC,
+			}, nil
 		}
 		return nil, nil
 	}

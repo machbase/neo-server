@@ -23,16 +23,16 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 )
 
-func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage, prefix string) error {
+func (svr *mqttd) onMachbase(evt *mqtt.EvtMessage) error {
 	topic := evt.Topic
-	topic = strings.TrimPrefix(topic, prefix+"/")
+	topic = strings.TrimPrefix(topic, "db/")
 	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
 	if !ok {
 		peer = nil
 	}
 
 	if topic == "query" {
-		return svr.handleQuery(peer, evt.Raw, prefix+"/reply", 1)
+		return svr.handleQuery(peer, evt.Raw, "db/reply", 1)
 	} else if strings.HasPrefix(topic, "write/") {
 		return svr.handleWrite(peer, topic, evt.Raw)
 	} else if strings.HasPrefix(topic, "append/") {

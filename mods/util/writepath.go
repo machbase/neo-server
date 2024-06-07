@@ -2,8 +2,102 @@ package util
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"strings"
+	"time"
 )
+
+type WriteDescriptor struct {
+	// tql destination
+	TqlPath string
+	// table destination
+	Method   string
+	Table    string
+	Format   string
+	Compress string
+	// common parameters
+	Timeformat   string
+	TimeLocation *time.Location
+	Delimiter    string
+	Heading      bool
+}
+
+func (wd *WriteDescriptor) IsTqlDestination() bool {
+	return wd.TqlPath != ""
+}
+
+func NewWriteDescriptor(path string) (*WriteDescriptor, error) {
+	wd := &WriteDescriptor{
+		Timeformat:   "ns",
+		TimeLocation: time.UTC,
+		Delimiter:    ",",
+		Heading:      false,
+	}
+
+	var taskPath string
+	if strings.Contains(path, "?") {
+		toks := strings.SplitN(path, "?", 2)
+		taskPath = toks[0]
+		if vals, err := url.ParseQuery(toks[1]); err != nil {
+			return nil, fmt.Errorf("invalid parameters %s, %s", toks[1], err.Error())
+		} else {
+			if vals.Has("timeformat") {
+				wd.Timeformat = vals.Get("timeformat")
+			}
+			if vals.Has("tz") {
+				wd.TimeLocation = ParseTimeLocation(vals.Get("tz"), time.UTC)
+			}
+			if vals.Has("delimiter") {
+				wd.Delimiter = vals.Get("delimiter")
+			}
+			if vals.Has("heading") {
+				wd.Heading = strings.ToLower(vals.Get("heading")) == "true"
+			}
+		}
+	} else {
+		taskPath = path
+	}
+
+	if strings.HasSuffix(taskPath, ".tql") {
+		wd.TqlPath = taskPath
+	} else {
+		if strings.HasPrefix(taskPath, "db/append/") {
+			taskPath = strings.TrimPrefix(taskPath, "db/append/")
+			wd.Method = "append"
+		} else if strings.HasPrefix(taskPath, "db/write/") {
+			taskPath = strings.TrimPrefix(taskPath, "db/write/")
+			wd.Method = "insert"
+		} else {
+			return nil, fmt.Errorf("unsupported destination '%s'", taskPath)
+		}
+		wp, err := ParseWritePath(taskPath)
+		if err != nil {
+			return nil, err
+		}
+		if wp.Format == "" {
+			wp.Format = "json"
+		}
+		switch wp.Format {
+		case "json":
+		case "csv":
+		default:
+			return nil, fmt.Errorf("unsupported format '%s'", wp.Format)
+		}
+		switch wp.Compress {
+		case "": // no compression
+		case "-": // no compression
+		case "gzip": // gzip compression
+		default: // others
+			return nil, fmt.Errorf("unsupproted compression '%s", wp.Compress)
+		}
+		wd.Table = wp.Table
+		wd.Format = wp.Format
+		wd.Compress = wp.Compress
+	}
+
+	return wd, nil
+}
 
 type WritePath struct {
 	Table    string

@@ -10,6 +10,7 @@ import (
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
 )
 
@@ -170,7 +171,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	table := strings.ToUpper(ctx.Param("table"))
 	tag := ctx.Param("tag")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
-	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
+	timeLocation := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
 
 	conn, err := svr.getUserConnection(ctx)
 	if err != nil {

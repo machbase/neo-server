@@ -19,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 func (svr *httpd) handleWrite(ctx *gin.Context) {
@@ -39,7 +40,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 
 	tableName := ctx.Param("table")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
-	timeLocation := strTimeLocation(ctx.Query("tz"), time.UTC)
+	timeLocation := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
 	method := strString(ctx.Query("method"), "insert")
 	format = strString(ctx.Query("format"), format)
 	compress = strString(ctx.Query("compress"), compress)

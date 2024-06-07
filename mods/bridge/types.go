@@ -39,6 +39,7 @@ type NatsBridge interface {
 	Bridge
 	Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (bool, error)
 	Unsubscribe(topic string) (bool, error)
+	Publish(topic string, payload any) (bool, error)
 }
 
 type PythonBridge interface {

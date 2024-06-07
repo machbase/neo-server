@@ -2,8 +2,25 @@ package util
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
+
+func ParseTimeLocation(str string, def *time.Location) *time.Location {
+	if str == "" {
+		return def
+	}
+	tz := strings.ToLower(str)
+	if tz == "local" {
+		return time.Local
+	} else if tz == "utc" {
+		return time.UTC
+	} else if loc, err := GetTimeLocation(str); err == nil {
+		return loc
+	} else {
+		return def
+	}
+}
 
 func GetTimeLocation(tzName string) (*time.Location, error) {
 	var err error

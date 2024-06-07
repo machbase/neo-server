@@ -139,7 +139,6 @@ type HttpConfig struct {
 
 type MqttConfig struct {
 	Listeners []string
-	Handlers  []mqttd.HandlerConfig // deprecated, TODO: remove
 
 	EnableTokenAuth bool
 	EnableTls       bool
@@ -216,10 +215,7 @@ func NewConfig() *Config {
 			},
 		},
 		Mqtt: MqttConfig{
-			Listeners: []string{},
-			Handlers: []mqttd.HandlerConfig{
-				{Prefix: "db", Handler: "machbase"},
-			},
+			Listeners:           []string{},
 			MaxMessageSizeLimit: 1024 * 1024,
 		},
 		Shell: ShellConfig{

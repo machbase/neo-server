@@ -11,7 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 )
 
-func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
+func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage) {
 	peer, ok := svr.mqttd.GetPeer(evt.PeerId)
 	if !ok {
 		peer = nil
@@ -29,7 +29,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage, prefix string) {
 	}
 	defer conn.Close()
 
-	dbName := strings.TrimPrefix(evt.Topic, prefix+"/")
+	dbName := strings.TrimPrefix(evt.Topic, "metrics/")
 
 	var desc *do.TableDescription
 	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
