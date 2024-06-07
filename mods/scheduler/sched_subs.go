@@ -535,7 +535,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = fmt.Sprintf("append %s, %s", ent.wd.Format, err.Error())
-				ent.log.Warn("append %s, %s", ent.wd.Format, err.Error())
+				ent.log.Warnf("append %s, %s", ent.wd.Format, err.Error())
 				return
 			}
 			break
@@ -543,7 +543,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		err = ent.appender.Append(vals...)
 		if err != nil {
 			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
-			ent.log.Warn("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
+			ent.log.Warnf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
 			break
 		}
 		recno++
