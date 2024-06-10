@@ -171,12 +171,15 @@ func (ent *SubscriberEntry) Stop() error {
 	defer func() {
 		if ent.appender != nil {
 			ent.appender.Close()
+			ent.appender = nil
 		}
 		if ent.conn != nil {
 			ent.conn.Close()
+			ent.conn = nil
 		}
 		if ent.ctxCancel != nil {
 			ent.ctxCancel()
+			ent.ctxCancel = nil
 		}
 	}()
 

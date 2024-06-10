@@ -165,8 +165,11 @@ func (c *bridge) run() {
 		}
 	}
 	for st := range c.subscribers {
-		st.sigChan <- true
+		if st.subscription != nil {
+			st.sigChan <- true
+		}
 	}
+
 	c.subscriberWait.Wait()
 	c.natsConn.Close()
 }
@@ -187,6 +190,8 @@ func (c *bridge) QueueSubscribe(topic string, queue string,
 	return c.subscribe0(topic, queue, cb)
 }
 
+const DefaultPendingMessageLimit = 1_000_000
+
 func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("nats connection is unavailable")
@@ -194,17 +199,15 @@ func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, da
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
 
-	msgChan := make(chan *natsio.Msg, 1024)
+	msgChan := make(chan *natsio.Msg, DefaultPendingMessageLimit)
 	var subscription *natsio.Subscription
 	if queue == "" {
-		fmt.Println("Subscribe:", topic)
 		if s, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
 			return nil, err
 		} else {
 			subscription = s
 		}
 	} else {
-		fmt.Println("Subscribe:", topic, "Queue Group:", queue)
 		if s, err := c.natsConn.ChanQueueSubscribe(topic, queue, msgChan); err != nil {
 			return nil, err
 		} else {
@@ -241,6 +244,7 @@ func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, da
 			}
 		}
 		st.subscription.Unsubscribe()
+		st.subscription = nil
 		c.subscriberWait.Done()
 	}(st)
 	return st, nil
@@ -257,7 +261,7 @@ func (c *bridge) Unsubscribe(token any) (bool, error) {
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
 
-	if c.alive {
+	if st.subscription != nil {
 		st.sigChan <- true
 	}
 	delete(c.subscribers, st)

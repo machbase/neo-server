@@ -37,15 +37,8 @@ type MqttBridge interface {
 
 type NatsBridge interface {
 	Bridge
-	Subscribe(
-		topic string,
-		cb func(topic string, data []byte, header map[string][]string, respond func([]byte)),
-	) (any, error)
-	QueueSubscribe(
-		topic string,
-		queue string,
-		cb func(topic string, data []byte, header map[string][]string, respond func([]byte)),
-	) (any, error)
+	Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error)
+	QueueSubscribe(topic string, queue string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error)
 	Unsubscribe(subjectionToken any) (bool, error)
 	Publish(topic string, payload any) (bool, error)
 }
