@@ -47,8 +47,9 @@ message AddScheduleRequest {
     string schedule = 5;
 
     string bridge = 6;
-    string topic = 7;
-    int32 QoS = 8;
+    string topic  = 7;
+    int32  QoS    = 8;
+    string queue  = 9;
 }
 
 message AddScheduleResponse {

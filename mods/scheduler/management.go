@@ -92,6 +92,7 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 	def.AutoStart = req.AutoStart
 	def.Bridge = req.Bridge
 	def.QoS = int(req.QoS)
+	def.Queue = req.Queue
 	def.Schedule = req.Schedule
 	def.Task = req.Task
 	def.Topic = req.Topic

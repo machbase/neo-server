@@ -23,7 +23,7 @@ type bridge struct {
 	natsConn   *natsio.Conn
 
 	subscriberWait sync.WaitGroup
-	subscribers    map[string]*SubscriptionToken
+	subscribers    map[*SubscriptionToken]bool
 	subscriberLock sync.Mutex
 }
 
@@ -33,7 +33,7 @@ func New(name string, path string) *bridge {
 		name:        name,
 		path:        path,
 		stopSig:     make(chan bool),
-		subscribers: map[string]*SubscriptionToken{},
+		subscribers: map[*SubscriptionToken]bool{},
 	}
 }
 
@@ -164,7 +164,7 @@ func (c *bridge) run() {
 			c.alive = false
 		}
 	}
-	for _, st := range c.subscribers {
+	for st := range c.subscribers {
 		st.sigChan <- true
 	}
 	c.subscriberWait.Wait()
@@ -178,76 +178,90 @@ type SubscriptionToken struct {
 	msgChan      chan *natsio.Msg
 }
 
-func (c *bridge) Subscribe(topic string, pendingMsgLimit int, pendingBytesLimit int, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (bool, error) {
+func (c *bridge) Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
+	return c.subscribe0(topic, "", cb)
+}
+
+func (c *bridge) QueueSubscribe(topic string, queue string,
+	cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
+	return c.subscribe0(topic, queue, cb)
+}
+
+func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
 	if !c.IsConnected() {
-		return false, fmt.Errorf("nats connection is unavailable")
+		return nil, fmt.Errorf("nats connection is unavailable")
 	}
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
 
-	if _, ok := c.subscribers[topic]; ok {
-		return false, fmt.Errorf("nats duplicated subscription %q", topic)
+	msgChan := make(chan *natsio.Msg, 1024)
+	var subscription *natsio.Subscription
+	if queue == "" {
+		fmt.Println("Subscribe:", topic)
+		if s, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
+			return nil, err
+		} else {
+			subscription = s
+		}
+	} else {
+		fmt.Println("Subscribe:", topic, "Queue Group:", queue)
+		if s, err := c.natsConn.ChanQueueSubscribe(topic, queue, msgChan); err != nil {
+			return nil, err
+		} else {
+			subscription = s
+		}
 	}
 
-	msgChan := make(chan *natsio.Msg, 1024)
-	if subscription, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
-		return false, err
-	} else {
-		if pendingMsgLimit == 0 {
-			pendingMsgLimit = natsio.DefaultSubPendingMsgsLimit
-		}
-		if pendingBytesLimit == 0 {
-			pendingBytesLimit = natsio.DefaultSubPendingBytesLimit
-		}
-		if err := subscription.SetPendingLimits(pendingMsgLimit, pendingBytesLimit); err != nil {
-			return false, fmt.Errorf("nats invalid pending limits, %s", err.Error())
-		}
-		st := &SubscriptionToken{
-			subscription: subscription,
-			subject:      topic,
-			sigChan:      make(chan bool),
-			msgChan:      msgChan,
-		}
-		c.subscribers[topic] = st
+	st := &SubscriptionToken{
+		subscription: subscription,
+		subject:      topic,
+		sigChan:      make(chan bool),
+		msgChan:      msgChan,
+	}
+	c.subscribers[st] = true
 
-		c.subscriberWait.Add(1)
-		go func(st *SubscriptionToken) {
-		loop:
-			for c.alive {
-				select {
-				case <-st.sigChan:
-					break loop
-				case msg := <-st.msgChan:
-					var respond func([]byte)
-					if msg.Reply != "" {
-						respond = func(rdata []byte) {
-							msg.Respond(rdata)
-						}
+	c.subscriberWait.Add(1)
+	go func(st *SubscriptionToken) {
+	loop:
+		for c.alive {
+			select {
+			case <-st.sigChan:
+				break loop
+			case msg := <-st.msgChan:
+				var respond func([]byte)
+				if msg.Reply != "" {
+					respond = func(rdata []byte) {
+						msg.Respond(rdata)
 					}
-					cb(msg.Subject, msg.Data, msg.Header, respond)
+				}
+				cb(msg.Subject, msg.Data, msg.Header, respond)
+				if respond == nil {
 					msg.Ack()
 				}
 			}
-			st.subscription.Unsubscribe()
-			c.subscriberWait.Done()
-		}(st)
-		return true, nil
-	}
+		}
+		st.subscription.Unsubscribe()
+		c.subscriberWait.Done()
+	}(st)
+	return st, nil
 }
 
-func (c *bridge) Unsubscribe(topic string) (bool, error) {
+func (c *bridge) Unsubscribe(token any) (bool, error) {
+	st, ok := token.(*SubscriptionToken)
+	if !ok {
+		return false, fmt.Errorf("nats subscription token is not vaild %T", token)
+	}
 	if !c.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
 	}
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
-	if st, ok := c.subscribers[topic]; !ok {
-		return false, nil
-	} else {
+
+	if c.alive {
 		st.sigChan <- true
-		delete(c.subscribers, topic)
-		return true, nil
 	}
+	delete(c.subscribers, st)
+	return true, nil
 }
 
 func (c *bridge) Publish(topic string, payload any) (bool, error) {

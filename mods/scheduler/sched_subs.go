@@ -30,6 +30,7 @@ type SubscriberEntry struct {
 	Bridge  string
 	Topic   string
 	QoS     int
+	Queue   string
 
 	s   *svr
 	log logging.Log
@@ -40,6 +41,7 @@ type SubscriberEntry struct {
 	ctxCancel              context.CancelFunc
 	conn                   api.Conn
 	appender               api.Appender
+	subscriptionToken      any
 
 	wd *util.WriteDescriptor
 }
@@ -53,6 +55,7 @@ func NewSubscriberEntry(s *svr, def *model.ScheduleDefinition) (*SubscriberEntry
 		Bridge:    def.Bridge,
 		Topic:     def.Topic,
 		QoS:       def.QoS,
+		Queue:     def.Queue,
 		s:         s,
 		log:       logging.GetLog(fmt.Sprintf("subscriber-%s", strings.ToLower(def.Name))),
 	}
@@ -133,16 +136,30 @@ func (ent *SubscriberEntry) startNats(br bridge.NatsBridge) error {
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
 		return ent.err
 	}
-	if ok, err := br.Subscribe(ent.Topic, ent.wd.PendingMsgLimit, ent.wd.PendingBytesLimit, ent.doNatsTask); err != nil {
-		ent.state = FAILED
-		ent.err = err
+	var token any
+	if ent.Queue == "" {
+		if t, err := br.Subscribe(ent.Topic, ent.doNatsTask); err != nil {
+			ent.state = FAILED
+			ent.err = err
+		} else {
+			token = t
+		}
 	} else {
-		if !ok {
+		if t, err := br.QueueSubscribe(ent.Topic, ent.Queue, ent.doNatsTask); err != nil {
+			ent.state = FAILED
+			ent.err = err
+		} else {
+			token = t
+		}
+	}
+	if token == nil {
+		if ent.err == nil {
 			ent.state = FAILED
 			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
-		} else {
-			ent.state = RUNNING
 		}
+	} else {
+		ent.subscriptionToken = token
+		ent.state = RUNNING
 	}
 	return nil
 }
@@ -174,7 +191,7 @@ func (ent *SubscriberEntry) Stop() error {
 		case bridge.MqttBridge:
 			ok, err = br.Unsubscribe(ent.Topic)
 		case bridge.NatsBridge:
-			ok, err = br.Unsubscribe(ent.Topic)
+			ok, err = br.Unsubscribe(ent.subscriptionToken)
 		default:
 			ent.state = FAILED
 			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())

@@ -32,6 +32,7 @@ const helpSubscriber = `  subscriber command [options]
 		options:
 			--autostart             enable auto start
 			--qos                   (mqtt bridge only) specify QoS to subscribe (default: 0)
+			--queue                 (nats bridge only) specify Queue Group
 		args:
 			name                    name of the subscriber
 			bridge                  name of the bridge
@@ -39,8 +40,8 @@ const helpSubscriber = `  subscriber command [options]
 			destination             the path of tql script or writing path descriptor
 		ex)
 			subscriber add --auto-start --qos=1 my_lsnr my_mqtt outer/events /my_event.tql
-			subscriber add my_append nats_bridge stream.in append/EXAMPLE:json
-			subscriber add my_writer nats_bridge topic.in  write/EXAMPLE:csv:gzip
+			subscriber add my_append nats_bridge stream.in db/append/EXAMPLE:json
+			subscriber add my_writer nats_bridge topic.in  db/write/EXAMPLE:csv:gzip
 `
 
 type SubscriberCmd struct {
@@ -65,6 +66,7 @@ type SubscriberAddCmd struct {
 	TqlPath   string `arg:"" name:"destination" help:"the path of tql script or writing path descriptor"`
 	AutoStart bool   `name:"autostart"`
 	QoS       int    `name:"qos" help:"(mqtt bridge only) QoS to subscribe"`
+	Queue     string `name:"queue" help:"(nats bridge only) Queue Group"`
 }
 
 func pcSubscriber() action.PrefixCompleterInterface {
@@ -222,6 +224,7 @@ func doSubscriberAdd(ctx *action.ActionContext, cmd *SubscriberAddCmd) {
 		Bridge:    cmd.Bridge,
 		Topic:     cmd.Topic,
 		QoS:       int32(cmd.QoS),
+		Queue:     cmd.Queue,
 		Task:      cmd.TqlPath,
 	})
 	if err != nil {

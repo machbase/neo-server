@@ -43,7 +43,10 @@ type ScheduleDefinition struct {
 	// subscriber task
 	Bridge string `json:"bridge,omitempty"`
 	Topic  string `json:"topic,omitempty"`
-	QoS    int    `json:"qos,omitempty"`
+	// mqtt subscriber only
+	QoS int `json:"qos,omitempty"`
+	// nats subscriber only
+	Queue string `json:"queue,omitempty"`
 }
 
 type ScheduleProvider interface {

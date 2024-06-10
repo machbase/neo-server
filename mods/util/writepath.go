@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -22,9 +21,6 @@ type WriteDescriptor struct {
 	TimeLocation *time.Location
 	Delimiter    string
 	Heading      bool
-	// NATS only parameters
-	PendingMsgLimit   int
-	PendingBytesLimit int
 }
 
 func (wd *WriteDescriptor) IsTqlDestination() bool {
@@ -60,18 +56,6 @@ func NewWriteDescriptor(path string) (*WriteDescriptor, error) {
 					wd.Delimiter = v
 				case "heading":
 					wd.Heading = strings.ToLower(v) == "true"
-				case "pendingmsglimit":
-					if k, err := strconv.ParseInt(v, 10, 32); err == nil {
-						wd.PendingMsgLimit = int(k)
-					} else {
-						return nil, fmt.Errorf("invalid pendingMsgLimit %s", err.Error())
-					}
-				case "pendingbyteslimit":
-					if k, err := strconv.ParseInt(v, 10, 32); err == nil {
-						wd.PendingBytesLimit = int(k)
-					} else {
-						return nil, fmt.Errorf("invalid pendingBytesLimit %s", err.Error())
-					}
 				}
 			}
 		}
