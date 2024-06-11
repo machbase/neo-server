@@ -91,13 +91,13 @@ func tengof_bridge(node *Node) func(args ...tengo.Object) (tengo.Object, error) 
 			}
 			node.AddCloser(conn)
 			return &scSqlBridge{node: node, conn: conn, name: cname}, nil
-		} else if mqttC, ok := br.(bridge.MqttBridge); ok {
+		} else if mqttC, ok := br.(*bridge.MqttBridge); ok {
 			return &pubBridge{
 				node:      node,
 				name:      cname,
 				publisher: mqttC,
 			}, nil
-		} else if natsC, ok := br.(bridge.NatsBridge); ok {
+		} else if natsC, ok := br.(*bridge.NatsBridge); ok {
 			return &pubBridge{
 				node:      node,
 				name:      cname,

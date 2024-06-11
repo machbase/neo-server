@@ -22,6 +22,7 @@ import (
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
+	"github.com/nats-io/nats.go"
 )
 
 type SubscriberEntry struct {
@@ -83,9 +84,9 @@ func (ent *SubscriberEntry) Start() error {
 			ent.wd = wd
 		}
 		switch br := br0.(type) {
-		case bridge.MqttBridge:
+		case *bridge.MqttBridge:
 			return ent.startMqtt(br)
-		case bridge.NatsBridge:
+		case *bridge.NatsBridge:
 			return ent.startNats(br)
 		default:
 			ent.state = FAILED
@@ -95,7 +96,7 @@ func (ent *SubscriberEntry) Start() error {
 	}
 }
 
-func (ent *SubscriberEntry) startMqtt(br bridge.MqttBridge) error {
+func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 	if ent.Topic == "" {
 		ent.state = FAILED
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
@@ -130,7 +131,7 @@ func (ent *SubscriberEntry) startMqtt(br bridge.MqttBridge) error {
 	return nil
 }
 
-func (ent *SubscriberEntry) startNats(br bridge.NatsBridge) error {
+func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 	if ent.Topic == "" {
 		ent.state = FAILED
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
@@ -191,9 +192,9 @@ func (ent *SubscriberEntry) Stop() error {
 		var ok bool
 		var err error
 		switch br := br0.(type) {
-		case bridge.MqttBridge:
+		case *bridge.MqttBridge:
 			ok, err = br.Unsubscribe(ent.Topic)
-		case bridge.NatsBridge:
+		case *bridge.NatsBridge:
 			ok, err = br.Unsubscribe(ent.subscriptionToken)
 		default:
 			ent.state = FAILED
@@ -220,7 +221,7 @@ func (ent *SubscriberEntry) Stop() error {
 func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, dup bool, retain bool) {
 	tick := time.Now()
 	rsp := &msg.WriteResponse{Reason: "not specified"}
-	ent.log.Trace(ent.name, ent.TaskTql, "topic =", topic, "msgid =", msgId, "dup =", dup, "retain =", retain)
+
 	defer func() {
 		if ent.err != nil {
 			ent.log.Warn(ent.name, ent.TaskTql, ent.state.String(), ent.err.Error(), time.Since(tick).String())
@@ -229,34 +230,12 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 		}
 	}()
 	if ent.wd.IsTqlDestination() {
-		sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
-		if err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-			return
-		}
 		params := map[string][]string{}
 		params["TOPIC"] = []string{topic}
 		params["MSGID"] = []string{fmt.Sprintf("%d", msgId)}
 		params["DUP"] = []string{fmt.Sprintf("%t", dup)}
 		params["RETAIN"] = []string{fmt.Sprintf("%t", retain)}
-		task := tql.NewTaskContext(context.TODO())
-		task.SetDatabase(ent.s.db)
-		task.SetInputReader(bytes.NewBuffer(payload))
-		task.SetOutputWriterJson(io.Discard, true)
-		task.SetParams(params)
-		if err := task.CompileScript(sc); err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-			return
-		}
-		if result := task.Execute(); result == nil || result.Err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-		}
+		ent.doTql(payload, params, rsp)
 	} else {
 		if ent.wd.Method == "append" {
 			ent.doAppend(payload, rsp)
@@ -266,7 +245,7 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 	}
 }
 
-func (ent *SubscriberEntry) doNatsTask(topic string, payload []byte, header map[string][]string, replier func([]byte)) {
+func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 	tick := time.Now()
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 
@@ -278,47 +257,53 @@ func (ent *SubscriberEntry) doNatsTask(topic string, payload []byte, header map[
 		} else {
 			ent.log.Trace(ent.name, ent.TaskTql, ent.state.String(), rsp.Reason, rsp.Elapse)
 		}
-		if replier != nil {
+		if natsMsg.Reply != "" {
 			buff, _ := json.Marshal(rsp)
-			replier(buff)
+			natsMsg.Respond(buff)
+		} else {
+			natsMsg.Ack()
 		}
 	}()
 	if ent.wd.IsTqlDestination() {
-		sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
-		if err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-			return
-		}
-		task := tql.NewTaskContext(context.TODO())
-		task.SetDatabase(ent.s.db)
-		task.SetInputReader(bytes.NewBuffer(payload))
-		task.SetOutputWriterJson(io.Discard, true)
-		params := map[string][]string{}
-		for k, v := range header {
-			params[k] = v
-		}
-		task.SetParams(params)
-		if err := task.CompileScript(sc); err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-			return
-		}
-		if result := task.Execute(); result == nil || result.Err != nil {
-			ent.err = err
-			ent.state = FAILED
-			ent.Stop()
-		} else {
-			rsp.Success, rsp.Reason = true, "success"
-		}
+		ent.doTql(natsMsg.Data, natsMsg.Header, rsp)
 	} else {
 		if ent.wd.Method == "append" {
-			ent.doAppend(payload, rsp)
+			ent.doAppend(natsMsg.Data, rsp)
 		} else {
-			ent.doInsert(payload, rsp)
+			ent.doInsert(natsMsg.Data, rsp)
 		}
+	}
+}
+
+func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *msg.WriteResponse) {
+	sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
+	if err != nil {
+		ent.err = err
+		ent.state = FAILED
+		ent.Stop()
+		return
+	}
+	task := tql.NewTaskContext(context.TODO())
+	task.SetDatabase(ent.s.db)
+	task.SetInputReader(bytes.NewBuffer(payload))
+	task.SetOutputWriterJson(io.Discard, true)
+	params := map[string][]string{}
+	for k, v := range header {
+		params[k] = v
+	}
+	task.SetParams(params)
+	if err := task.CompileScript(sc); err != nil {
+		ent.err = err
+		ent.state = FAILED
+		ent.Stop()
+		return
+	}
+	if result := task.Execute(); result == nil || result.Err != nil {
+		ent.err = err
+		ent.state = FAILED
+		ent.Stop()
+	} else {
+		rsp.Success, rsp.Reason = true, "success"
 	}
 }
 

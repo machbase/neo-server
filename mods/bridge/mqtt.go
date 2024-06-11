@@ -1,4 +1,4 @@
-package mqtt
+package bridge
 
 import (
 	"crypto/tls"
@@ -13,7 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 )
 
-type bridge struct {
+type MqttBridge struct {
 	log  logging.Log
 	name string
 	path string
@@ -42,8 +42,8 @@ type bridge struct {
 	publishTimeout     time.Duration
 }
 
-func New(name string, path string) *bridge {
-	return &bridge{
+func NewMqttBridge(name string, path string) *MqttBridge {
+	return &MqttBridge{
 		log:     logging.GetLog("mqtt-bridge"),
 		name:    name,
 		path:    path,
@@ -60,7 +60,7 @@ func New(name string, path string) *bridge {
 	}
 }
 
-func (c *bridge) BeforeRegister() error {
+func (c *MqttBridge) BeforeRegister() error {
 	cfg := paho.NewClientOptions()
 	cfg.SetCleanSession(true)
 	cfg.SetProtocolVersion(4)
@@ -151,29 +151,29 @@ func (c *bridge) BeforeRegister() error {
 	return nil
 }
 
-func (c *bridge) AfterUnregister() error {
+func (c *MqttBridge) AfterUnregister() error {
 	if c.alive {
 		c.stopSig <- true
 	}
 	return nil
 }
 
-func (c *bridge) String() string {
+func (c *MqttBridge) String() string {
 	return fmt.Sprintf("bridge '%s' (mqtt)", c.name)
 }
 
-func (c *bridge) Name() string {
+func (c *MqttBridge) Name() string {
 	return c.name
 }
 
-func (c *bridge) IsConnected() bool {
+func (c *MqttBridge) IsConnected() bool {
 	if !c.alive || c.client == nil || !c.client.IsConnected() {
 		return false
 	}
 	return true
 }
 
-func (c *bridge) run() {
+func (c *MqttBridge) run() {
 	var fallbackWait = 1 * time.Second
 	ticker := time.NewTicker(1 * time.Second)
 	c.alive = true
@@ -214,19 +214,19 @@ func (c *bridge) run() {
 	}
 }
 
-func (c *bridge) notifyConnectListeners() {
+func (c *MqttBridge) notifyConnectListeners() {
 	for _, cb := range c.connectListeners {
 		cb(c)
 	}
 }
 
-func (c *bridge) notifyDisconnectListeners() {
+func (c *MqttBridge) notifyDisconnectListeners() {
 	for _, cb := range c.disconnectListeners {
 		cb(c)
 	}
 }
 
-func (c *bridge) OnConnect(cb func(br any)) {
+func (c *MqttBridge) OnConnect(cb func(br any)) {
 	if cb == nil {
 		return
 	}
@@ -236,7 +236,7 @@ func (c *bridge) OnConnect(cb func(br any)) {
 	}
 }
 
-func (c *bridge) OnDisconnect(cb func(br any)) {
+func (c *MqttBridge) OnDisconnect(cb func(br any)) {
 	if cb == nil {
 		return
 	}
@@ -246,7 +246,7 @@ func (c *bridge) OnDisconnect(cb func(br any)) {
 	}
 }
 
-func (c *bridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {
+func (c *MqttBridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {
 	if c.client == nil || !c.client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}
@@ -257,7 +257,7 @@ func (c *bridge) Subscribe(topic string, qos byte, cb func(topic string, payload
 	return success, nil
 }
 
-func (c *bridge) Unsubscribe(topics ...string) (bool, error) {
+func (c *MqttBridge) Unsubscribe(topics ...string) (bool, error) {
 	if c.client == nil || !c.client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}
@@ -266,7 +266,7 @@ func (c *bridge) Unsubscribe(topics ...string) (bool, error) {
 	return success, nil
 }
 
-func (c *bridge) Publish(topic string, payload any) (bool, error) {
+func (c *MqttBridge) Publish(topic string, payload any) (bool, error) {
 	if c.client == nil || !c.client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}

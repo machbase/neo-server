@@ -25,24 +25,6 @@ type SqlBridge interface {
 	SupportLastInsertId() bool
 }
 
-type MqttBridge interface {
-	Bridge
-	OnConnect(cb func(bridge any))
-	OnDisconnect(cb func(bridge any))
-	Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error)
-	Unsubscribe(topics ...string) (bool, error)
-	Publish(topic string, payload any) (bool, error)
-	IsConnected() bool
-}
-
-type NatsBridge interface {
-	Bridge
-	Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error)
-	QueueSubscribe(topic string, queue string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error)
-	Unsubscribe(subjectionToken any) (bool, error)
-	Publish(topic string, payload any) (bool, error)
-}
-
 type PythonBridge interface {
 	Bridge
 	Invoke(ctx context.Context, args []string, stdin []byte) (exitCode int, stdout []byte, stderr []byte, err error)

@@ -155,7 +155,15 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 		}
 		rsp.Success, rsp.Reason = true, fmt.Sprintf("%s success", ver)
 		return rsp, nil
-	case MqttBridge:
+	case *MqttBridge:
+		connected := con.IsConnected()
+		if !connected {
+			rsp.Reason = "not connected"
+			return rsp, nil
+		}
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
+	case *NatsBridge:
 		connected := con.IsConnected()
 		if !connected {
 			rsp.Reason = "not connected"

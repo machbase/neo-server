@@ -1,4 +1,4 @@
-package nats
+package bridge
 
 import (
 	"fmt"
@@ -8,37 +8,37 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/logging"
-	natsio "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go"
 )
 
-type bridge struct {
+type NatsBridge struct {
 	log  logging.Log
 	name string
 	path string
 
 	alive      bool
 	stopSig    chan bool
-	natsOpts   natsio.Options
-	natsStatus natsio.Status
-	natsConn   *natsio.Conn
+	natsOpts   nats.Options
+	natsStatus nats.Status
+	natsConn   *nats.Conn
 
 	subscriberWait sync.WaitGroup
-	subscribers    map[*SubscriptionToken]bool
+	subscribers    map[*NatsSubscription]bool
 	subscriberLock sync.Mutex
 }
 
-func New(name string, path string) *bridge {
-	return &bridge{
+func NewNatsBridge(name string, path string) *NatsBridge {
+	return &NatsBridge{
 		log:         logging.GetLog("nats-bridge"),
 		name:        name,
 		path:        path,
 		stopSig:     make(chan bool),
-		subscribers: map[*SubscriptionToken]bool{},
+		subscribers: map[*NatsSubscription]bool{},
 	}
 }
 
-func (c *bridge) BeforeRegister() error {
-	c.natsOpts = natsio.GetDefaultOptions()
+func (c *NatsBridge) BeforeRegister() error {
+	c.natsOpts = nats.GetDefaultOptions()
 
 	fields := strings.Fields(c.path)
 	for _, field := range fields {
@@ -126,7 +126,7 @@ func (c *bridge) BeforeRegister() error {
 			c.log.Info(c.name + " connected")
 			c.alive = true
 			c.natsConn = conn
-			c.natsStatus = natsio.CONNECTED
+			c.natsStatus = nats.CONNECTED
 			go c.run()
 		}
 	}
@@ -134,26 +134,26 @@ func (c *bridge) BeforeRegister() error {
 	return nil
 }
 
-func (c *bridge) AfterUnregister() error {
+func (c *NatsBridge) AfterUnregister() error {
 	if c.alive {
 		c.stopSig <- true
 	}
 	return nil
 }
 
-func (c *bridge) String() string {
+func (c *NatsBridge) String() string {
 	return fmt.Sprintf("bridge '%s' (nats)", c.name)
 }
 
-func (c *bridge) Name() string {
+func (c *NatsBridge) Name() string {
 	return c.name
 }
 
-func (c *bridge) IsConnected() bool {
-	return c.natsStatus == natsio.CONNECTED
+func (c *NatsBridge) IsConnected() bool {
+	return c.natsStatus == nats.CONNECTED
 }
 
-func (c *bridge) run() {
+func (c *NatsBridge) run() {
 	stsChan := c.natsConn.StatusChanged()
 	for c.alive {
 		select {
@@ -174,33 +174,34 @@ func (c *bridge) run() {
 	c.natsConn.Close()
 }
 
-type SubscriptionToken struct {
-	subscription *natsio.Subscription
+type NatsSubscription struct {
+	subscription *nats.Subscription
 	subject      string
 	sigChan      chan bool
-	msgChan      chan *natsio.Msg
+	msgChan      chan *nats.Msg
 }
 
-func (c *bridge) Subscribe(topic string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
+type NatsMsgHandler func(*nats.Msg)
+
+func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler) (any, error) {
 	return c.subscribe0(topic, "", cb)
 }
 
-func (c *bridge) QueueSubscribe(topic string, queue string,
-	cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
+func (c *NatsBridge) QueueSubscribe(topic string, queue string, cb NatsMsgHandler) (any, error) {
 	return c.subscribe0(topic, queue, cb)
 }
 
-const DefaultPendingMessageLimit = 1_000_000
+const NatsDefaultPendingMessageLimit = 1_000_000
 
-func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, data []byte, header map[string][]string, respond func([]byte))) (any, error) {
+func (c *NatsBridge) subscribe0(topic string, queue string, cb NatsMsgHandler) (any, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("nats connection is unavailable")
 	}
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
 
-	msgChan := make(chan *natsio.Msg, DefaultPendingMessageLimit)
-	var subscription *natsio.Subscription
+	msgChan := make(chan *nats.Msg, NatsDefaultPendingMessageLimit)
+	var subscription *nats.Subscription
 	if queue == "" {
 		if s, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
 			return nil, err
@@ -215,7 +216,7 @@ func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, da
 		}
 	}
 
-	st := &SubscriptionToken{
+	st := &NatsSubscription{
 		subscription: subscription,
 		subject:      topic,
 		sigChan:      make(chan bool),
@@ -224,23 +225,14 @@ func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, da
 	c.subscribers[st] = true
 
 	c.subscriberWait.Add(1)
-	go func(st *SubscriptionToken) {
+	go func(st *NatsSubscription) {
 	loop:
 		for c.alive {
 			select {
 			case <-st.sigChan:
 				break loop
 			case msg := <-st.msgChan:
-				var respond func([]byte)
-				if msg.Reply != "" {
-					respond = func(rdata []byte) {
-						msg.Respond(rdata)
-					}
-				}
-				cb(msg.Subject, msg.Data, msg.Header, respond)
-				if respond == nil {
-					msg.Ack()
-				}
+				cb(msg)
 			}
 		}
 		st.subscription.Unsubscribe()
@@ -250,8 +242,8 @@ func (c *bridge) subscribe0(topic string, queue string, cb func(topic string, da
 	return st, nil
 }
 
-func (c *bridge) Unsubscribe(token any) (bool, error) {
-	st, ok := token.(*SubscriptionToken)
+func (c *NatsBridge) Unsubscribe(token any) (bool, error) {
+	st, ok := token.(*NatsSubscription)
 	if !ok {
 		return false, fmt.Errorf("nats subscription token is not vaild %T", token)
 	}
@@ -268,7 +260,7 @@ func (c *bridge) Unsubscribe(token any) (bool, error) {
 	return true, nil
 }
 
-func (c *bridge) Publish(topic string, payload any) (bool, error) {
+func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 	if !c.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
 	}
