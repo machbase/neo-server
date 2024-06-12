@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	bridgerpc "github.com/machbase/neo-server/api/bridge"
 	schedrpc "github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
@@ -33,6 +34,7 @@ const helpSubscriber = `  subscriber command [options]
 			--autostart             enable auto start
 			--qos                   (mqtt bridge only) specify QoS to subscribe (default: 0)
 			--queue                 (nats bridge only) specify Queue Group
+			--stream                (nats bridge only) specify JetStream name and using it
 		args:
 			name                    name of the subscriber
 			bridge                  name of the bridge
@@ -60,13 +62,14 @@ type SubscriberCmd struct {
 }
 
 type SubscriberAddCmd struct {
-	Name      string `arg:"" name:"name" help:"schedule name"`
-	Bridge    string `arg:"" name:"bridge" help:"name of bridge"`
-	Topic     string `arg:"" name:"topic" help:"topic to subscribe"`
-	TqlPath   string `arg:"" name:"destination" help:"the path of tql script or writing path descriptor"`
-	AutoStart bool   `name:"autostart"`
-	QoS       int    `name:"qos" help:"(mqtt bridge only) QoS to subscribe"`
-	Queue     string `name:"queue" help:"(nats bridge only) Queue Group"`
+	Name        string `arg:"" name:"name" help:"schedule name"`
+	Bridge      string `arg:"" name:"bridge" help:"name of bridge"`
+	Topic       string `arg:"" name:"topic" help:"topic to subscribe"`
+	Destination string `arg:"" name:"destination" help:"the path of tql script or writing path descriptor"`
+	AutoStart   bool   `name:"autostart"`
+	QoS         int    `name:"qos" help:"(mqtt bridge only) QoS to subscribe"`
+	Queue       string `name:"queue" help:"(nats bridge only) Queue Group"`
+	Stream      string `name:"stream" help:"(nats bridge only) Stream name for using JetStream"`
 }
 
 func pcSubscriber() action.PrefixCompleterInterface {
@@ -217,16 +220,47 @@ func doSubscriberAdd(ctx *action.ActionContext, cmd *SubscriberAddCmd) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	rsp, err := mgmtCli.AddSchedule(ctx.Ctx, &schedrpc.AddScheduleRequest{
+	var bridgeType string
+	if bridgeCli, err := ctx.Actor.BridgeManagementClient(); err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	} else {
+		br, err := bridgeCli.GetBridge(ctx.Ctx, &bridgerpc.GetBridgeRequest{Name: cmd.Bridge})
+		if err != nil {
+			ctx.Println("ERR", err.Error())
+			return
+		}
+		bridgeType = br.Bridge.Type
+	}
+
+	addSchedReq := &schedrpc.AddScheduleRequest{
 		Name:      strings.ToLower(cmd.Name),
 		Type:      "subscriber",
 		AutoStart: cmd.AutoStart,
 		Bridge:    cmd.Bridge,
-		Topic:     cmd.Topic,
-		QoS:       int32(cmd.QoS),
-		Queue:     cmd.Queue,
-		Task:      cmd.TqlPath,
-	})
+		Task:      cmd.Destination,
+	}
+	switch bridgeType {
+	case "mqtt":
+		addSchedReq.Opt = &schedrpc.AddScheduleRequest_Mqtt{
+			Mqtt: &schedrpc.MqttOption{
+				Topic: cmd.Topic,
+				QoS:   int32(cmd.QoS),
+			},
+		}
+	case "nats":
+		addSchedReq.Opt = &schedrpc.AddScheduleRequest_Nats{
+			Nats: &schedrpc.NatsOption{
+				Subject:    cmd.Topic,
+				QueueName:  cmd.Queue,
+				StreamName: cmd.Stream,
+			},
+		}
+	default:
+		ctx.Printfln("ERR unknown bridge type %q", bridgeType)
+		return
+	}
+	rsp, err := mgmtCli.AddSchedule(ctx.Ctx, addSchedReq)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return

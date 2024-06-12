@@ -156,23 +156,56 @@ func (s *svr) TestBridge(ctx context.Context, req *bridgerpc.TestBridgeRequest) 
 		rsp.Success, rsp.Reason = true, fmt.Sprintf("%s success", ver)
 		return rsp, nil
 	case *MqttBridge:
-		connected := con.IsConnected()
-		if !connected {
-			rsp.Reason = "not connected"
-			return rsp, nil
-		}
-		rsp.Success, rsp.Reason = true, "success"
+		rsp.Success, rsp.Reason = con.TestConnection()
 		return rsp, nil
 	case *NatsBridge:
-		connected := con.IsConnected()
-		if !connected {
-			rsp.Reason = "not connected"
-			return rsp, nil
-		}
-		rsp.Success, rsp.Reason = true, "success"
+		rsp.Success, rsp.Reason = con.TestConnection()
 		return rsp, nil
 	default:
 		rsp.Reason = fmt.Sprintf("bridge '%s' does not support testing", br.Name())
+		return rsp, nil
+	}
+}
+
+func (s *svr) StatsBridge(ctx context.Context, req *bridgerpc.StatsBridgeRequest) (*bridgerpc.StatsBridgeResponse, error) {
+	tick := time.Now()
+	rsp := &bridgerpc.StatsBridgeResponse{Reason: "unspecified"}
+
+	defer func() {
+		if o := recover(); o != nil {
+			fmt.Printf("panic %s\n%s", o, debug.Stack())
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	br, err := GetBridge(req.Name)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
+	switch con := br.(type) {
+	case *MqttBridge:
+		s := con.Stats()
+		rsp.InMsgs = s.InMsgs
+		rsp.InBytes = s.InBytes
+		rsp.OutMsgs = s.OutMsgs
+		rsp.OutBytes = s.OutBytes
+		rsp.Appended = s.Appended
+		rsp.Inserted = s.Inserted
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
+	case *NatsBridge:
+		s := con.Stats()
+		rsp.InMsgs = s.InMsgs
+		rsp.InBytes = s.InBytes
+		rsp.OutMsgs = s.OutMsgs
+		rsp.OutBytes = s.OutBytes
+		rsp.Appended = s.Appended
+		rsp.Inserted = s.Inserted
+		rsp.Success, rsp.Reason = true, "success"
+		return rsp, nil
+	default:
+		rsp.Reason = fmt.Sprintf("bridge '%s' does not support stats", br.Name())
 		return rsp, nil
 	}
 }

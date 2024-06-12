@@ -30,8 +30,10 @@ type SubscriberEntry struct {
 	TaskTql string
 	Bridge  string
 	Topic   string
-	QoS     int
-	Queue   string
+
+	QoS        int    // mqtt only
+	QueueName  string // nats only, Queue Group
+	StreamName string // nats only, JetStream
 
 	s   *svr
 	log logging.Log
@@ -42,7 +44,7 @@ type SubscriberEntry struct {
 	ctxCancel              context.CancelFunc
 	conn                   api.Conn
 	appender               api.Appender
-	subscriptionToken      any
+	subscription           bridge.Subscription
 
 	wd *util.WriteDescriptor
 }
@@ -51,16 +53,16 @@ var _ Entry = &SubscriberEntry{}
 
 func NewSubscriberEntry(s *svr, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
 	ret := &SubscriberEntry{
-		BaseEntry: BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
-		TaskTql:   def.Task,
-		Bridge:    def.Bridge,
-		Topic:     def.Topic,
-		QoS:       def.QoS,
-		Queue:     def.Queue,
-		s:         s,
-		log:       logging.GetLog(fmt.Sprintf("subscriber-%s", strings.ToLower(def.Name))),
+		BaseEntry:  BaseEntry{name: def.Name, state: STOP, autoStart: def.AutoStart},
+		TaskTql:    def.Task,
+		Bridge:     def.Bridge,
+		Topic:      def.Topic,
+		QoS:        def.QoS,
+		QueueName:  def.QueueName,
+		StreamName: def.StreamName,
+		s:          s,
+		log:        logging.GetLog(fmt.Sprintf("subscriber-%s", strings.ToLower(def.Name))),
 	}
-
 	return ret, nil
 }
 
@@ -108,14 +110,15 @@ func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 		if !ent.shouldSubscribe {
 			return
 		}
-		if ok, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
+		if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
 			ent.state = FAILED
 			ent.err = err
 		} else {
-			if !ok {
+			if subscription == nil {
 				ent.state = FAILED
 				ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
 			} else {
+				ent.subscription = subscription
 				ent.state = RUNNING
 			}
 		}
@@ -137,30 +140,24 @@ func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
 		return ent.err
 	}
-	var token any
-	if ent.Queue == "" {
-		if t, err := br.Subscribe(ent.Topic, ent.doNatsTask); err != nil {
-			ent.state = FAILED
-			ent.err = err
-		} else {
-			token = t
-		}
-	} else {
-		if t, err := br.QueueSubscribe(ent.Topic, ent.Queue, ent.doNatsTask); err != nil {
-			ent.state = FAILED
-			ent.err = err
-		} else {
-			token = t
-		}
+	subscribeOptions := []bridge.NatsSubscribeOption{}
+	if ent.QueueName != "" {
+		subscribeOptions = append(subscribeOptions, bridge.NatsQueueGroup(ent.QueueName))
 	}
-	if token == nil {
-		if ent.err == nil {
+	if ent.StreamName != "" {
+		subscribeOptions = append(subscribeOptions, bridge.NatsStreamName(ent.StreamName))
+	}
+	if sub, err := br.Subscribe(ent.Topic, ent.doNatsTask, subscribeOptions...); err != nil {
+		ent.state = FAILED
+		ent.err = err
+	} else {
+		if sub == nil {
 			ent.state = FAILED
 			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+		} else {
+			ent.subscription = sub
+			ent.state = RUNNING
 		}
-	} else {
-		ent.subscriptionToken = token
-		ent.state = RUNNING
 	}
 	return nil
 }
@@ -184,18 +181,22 @@ func (ent *SubscriberEntry) Stop() error {
 		}
 	}()
 
+	if ent.subscription == nil {
+		ent.state = STOP
+		return nil
+	}
+
 	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
 		ent.state = FAILED
 		ent.err = err
 		return err
 	} else {
-		var ok bool
 		var err error
-		switch br := br0.(type) {
+		switch br0.(type) {
 		case *bridge.MqttBridge:
-			ok, err = br.Unsubscribe(ent.Topic)
+			err = ent.subscription.Unsubscribe()
 		case *bridge.NatsBridge:
-			ok, err = br.Unsubscribe(ent.subscriptionToken)
+			err = ent.subscription.Unsubscribe()
 		default:
 			ent.state = FAILED
 			ent.err = fmt.Errorf("%s is not a bridge of subscriber type", br0.String())
@@ -206,14 +207,8 @@ func (ent *SubscriberEntry) Stop() error {
 			ent.err = err
 			return err
 		} else {
-			if !ok {
-				ent.state = FAILED
-				ent.err = fmt.Errorf("fail to unsubscribe %s %s", br0.String(), ent.Topic)
-				return ent.err
-			} else {
-				ent.state = STOP
-				return nil
-			}
+			ent.state = STOP
+			return nil
 		}
 	}
 }
@@ -369,7 +364,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		opts.Heading(ent.wd.Heading),
 	}
 
-	var recno int
+	var recno uint64
 	var insertQuery string
 	var columnNames []string
 	var columnTypes []string
@@ -466,11 +461,12 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 			return
 		}
 	}
+	ent.subscription.AddInserted(recno)
 	records := "record"
 	if recno > 1 {
 		records = "records"
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("%d %s inserted", recno, records)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s inserted", util.HumanizeNumber(recno), records)
 }
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
@@ -534,7 +530,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		return
 	}
 
-	recno := 0
+	recno := uint64(0)
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
@@ -553,9 +549,10 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		}
 		recno++
 	}
+	ent.subscription.AddAppended(recno)
 	records := "record"
 	if recno > 1 {
 		records = "records"
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("%d %s appended", recno, records)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s appended", util.HumanizeNumber(recno), records)
 }

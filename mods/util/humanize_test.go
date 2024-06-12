@@ -8,6 +8,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestHumanizeNumber(t *testing.T) {
+	tests := []struct {
+		in     int64
+		expect string
+	}{
+		{1234, "1,234"},
+		{123456789, "123,456,789"},
+		{-123456789, "-123,456,789"},
+	}
+	for _, tt := range tests {
+		actual := util.HumanizeNumber(tt.in)
+		require.Equal(t, tt.expect, actual)
+	}
+}
+
 func TestHumanizeByteCount(t *testing.T) {
 	ret := util.HumanizeByteCount(512)
 	require.Equal(t, "512 B", ret)

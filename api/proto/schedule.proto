@@ -39,17 +39,27 @@ message Schedule {
 }
 
 message AddScheduleRequest {
-    string name = 1;
-    string type = 2;
-    bool autoStart = 3;
-    string task = 4;
+    string name        = 1;
+    string type        = 2;
+    bool   autoStart   = 3;
+    string task        = 4;
+    string schedule    = 5;
+    string bridge      = 6;
+    oneof opt {
+        MqttOption mqtt = 7;
+        NatsOption nats = 8;
+    }
+}
 
-    string schedule = 5;
+message MqttOption {
+    string Topic  = 1;
+    int32  QoS    = 2;
+}
 
-    string bridge = 6;
-    string topic  = 7;
-    int32  QoS    = 8;
-    string queue  = 9;
+message NatsOption {
+    string Subject     = 1;
+    string QueueName   = 2;
+    string StreamName  = 3;
 }
 
 message AddScheduleResponse {

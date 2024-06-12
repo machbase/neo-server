@@ -30,3 +30,14 @@ type PythonBridge interface {
 	Invoke(ctx context.Context, args []string, stdin []byte) (exitCode int, stdout []byte, stderr []byte, err error)
 	Version(ctx context.Context) (string, error)
 }
+
+type WriteStats struct {
+	Appended uint64
+	Inserted uint64
+}
+
+type Subscription interface {
+	Unsubscribe() error
+	AddAppended(delta uint64)
+	AddInserted(delta uint64)
+}

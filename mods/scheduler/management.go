@@ -91,12 +91,17 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 
 	def.AutoStart = req.AutoStart
 	def.Bridge = req.Bridge
-	def.QoS = int(req.QoS)
-	def.Queue = req.Queue
 	def.Schedule = req.Schedule
 	def.Task = req.Task
-	def.Topic = req.Topic
 	def.Type = model.ParseScheduleType(req.Type)
+	if opt, ok := req.Opt.(*schedrpc.AddScheduleRequest_Mqtt); ok {
+		def.Topic = opt.Mqtt.Topic
+		def.QoS = int(opt.Mqtt.QoS)
+	} else if opt, ok := req.Opt.(*schedrpc.AddScheduleRequest_Nats); ok {
+		def.Topic = opt.Nats.Subject
+		def.QueueName = opt.Nats.QueueName
+		def.StreamName = opt.Nats.StreamName
+	}
 
 	switch def.Type {
 	case model.SCHEDULE_UNDEFINED:

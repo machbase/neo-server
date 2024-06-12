@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
@@ -40,6 +41,12 @@ type MqttBridge struct {
 	subscribeTimeout   time.Duration
 	unsubscribeTimeout time.Duration
 	publishTimeout     time.Duration
+
+	inMsgs   uint64
+	outMsgs  uint64
+	inBytes  uint64
+	outBytes uint64
+	WriteStats
 }
 
 func NewMqttBridge(name string, path string) *MqttBridge {
@@ -166,6 +173,29 @@ func (c *MqttBridge) Name() string {
 	return c.name
 }
 
+type MqttStats struct {
+	InMsgs   uint64
+	OutMsgs  uint64
+	InBytes  uint64
+	OutBytes uint64
+	Appended uint64
+	Inserted uint64
+}
+
+func (c *MqttBridge) Stats() MqttStats {
+	ret := MqttStats{}
+	if c.client == nil {
+		return ret
+	}
+	ret.InBytes = atomic.LoadUint64(&c.inBytes)
+	ret.InMsgs = atomic.LoadUint64(&c.inMsgs)
+	ret.OutBytes = atomic.LoadUint64(&c.outBytes)
+	ret.OutMsgs = atomic.LoadUint64(&c.outMsgs)
+	ret.Appended = atomic.LoadUint64(&c.Appended)
+	ret.Inserted = atomic.LoadUint64(&c.Inserted)
+	return ret
+}
+
 func (c *MqttBridge) IsConnected() bool {
 	if !c.alive || c.client == nil || !c.client.IsConnected() {
 		return false
@@ -246,32 +276,79 @@ func (c *MqttBridge) OnDisconnect(cb func(br any)) {
 	}
 }
 
-func (c *MqttBridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (bool, error) {
+type MqttSubscription struct {
+	bridge     *MqttBridge
+	topic      string
+	writeStats *WriteStats
+}
+
+func (ns *MqttSubscription) Unsubscribe() error {
+	if ns.bridge == nil || ns.bridge.client == nil || !ns.bridge.client.IsConnected() {
+		return fmt.Errorf("mqtt connection is unavailable")
+	}
+	token := ns.bridge.client.Unsubscribe(ns.topic)
+	success := token.WaitTimeout(ns.bridge.unsubscribeTimeout)
+	if !success {
+		return fmt.Errorf("mqtt unsubscribe timeout")
+	}
+	return nil
+}
+
+func (ns *MqttSubscription) AddAppended(delta uint64) {
+	atomic.AddUint64(&ns.writeStats.Appended, delta)
+}
+
+func (ns *MqttSubscription) AddInserted(delta uint64) {
+	atomic.AddUint64(&ns.writeStats.Inserted, delta)
+}
+
+func (c *MqttBridge) Subscribe(topic string, qos byte, cb func(topic string, payload []byte, msgId int, dup bool, retained bool)) (*MqttSubscription, error) {
 	if c.client == nil || !c.client.IsConnected() {
-		return false, fmt.Errorf("mqtt connection is unavailable")
+		return nil, fmt.Errorf("mqtt connection is unavailable")
 	}
 	token := c.client.Subscribe(topic, qos, func(_ paho.Client, msg paho.Message) {
+		atomic.AddUint64(&c.inMsgs, 1)
+		atomic.AddUint64(&c.inBytes, uint64(len(msg.Payload())))
 		cb(msg.Topic(), msg.Payload(), int(msg.MessageID()), msg.Duplicate(), msg.Retained())
 	})
 	success := token.WaitTimeout(c.subscribeTimeout)
-	return success, nil
-}
-
-func (c *MqttBridge) Unsubscribe(topics ...string) (bool, error) {
-	if c.client == nil || !c.client.IsConnected() {
-		return false, fmt.Errorf("mqtt connection is unavailable")
+	if !success {
+		return nil, fmt.Errorf("mqtt subscribe timeout")
 	}
-	token := c.client.Unsubscribe(topics...)
-	success := token.WaitTimeout(c.unsubscribeTimeout)
-	return success, nil
+	ret := &MqttSubscription{
+		bridge:     c,
+		topic:      topic,
+		writeStats: &c.WriteStats,
+	}
+	return ret, nil
 }
 
 func (c *MqttBridge) Publish(topic string, payload any) (bool, error) {
 	if c.client == nil || !c.client.IsConnected() {
 		return false, fmt.Errorf("mqtt connection is unavailable")
 	}
+	var data []byte
+	switch raw := payload.(type) {
+	case []byte:
+		data = raw
+	case string:
+		data = []byte(raw)
+	default:
+		return false, fmt.Errorf("mqtt bridge can not publish %T", raw)
+	}
+	atomic.AddUint64(&c.outMsgs, 1)
+	atomic.AddUint64(&c.outBytes, uint64(len(data)))
 	var qos byte = 1
-	token := c.client.Publish(topic, qos, false, payload)
+	token := c.client.Publish(topic, qos, false, data)
 	success := token.WaitTimeout(c.publishTimeout)
 	return success, nil
+}
+
+func (c *MqttBridge) TestConnection() (bool, string) {
+	connected := c.IsConnected()
+	if !connected {
+		return false, "not connected"
+	}
+
+	return true, "success"
 }

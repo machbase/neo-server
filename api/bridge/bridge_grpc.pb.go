@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Management_ListBridge_FullMethodName = "/bridge.Management/ListBridge"
-	Management_AddBridge_FullMethodName  = "/bridge.Management/AddBridge"
-	Management_GetBridge_FullMethodName  = "/bridge.Management/GetBridge"
-	Management_DelBridge_FullMethodName  = "/bridge.Management/DelBridge"
-	Management_TestBridge_FullMethodName = "/bridge.Management/TestBridge"
+	Management_ListBridge_FullMethodName  = "/bridge.Management/ListBridge"
+	Management_AddBridge_FullMethodName   = "/bridge.Management/AddBridge"
+	Management_GetBridge_FullMethodName   = "/bridge.Management/GetBridge"
+	Management_DelBridge_FullMethodName   = "/bridge.Management/DelBridge"
+	Management_TestBridge_FullMethodName  = "/bridge.Management/TestBridge"
+	Management_StatsBridge_FullMethodName = "/bridge.Management/StatsBridge"
 )
 
 // ManagementClient is the client API for Management service.
@@ -35,6 +36,7 @@ type ManagementClient interface {
 	GetBridge(ctx context.Context, in *GetBridgeRequest, opts ...grpc.CallOption) (*GetBridgeResponse, error)
 	DelBridge(ctx context.Context, in *DelBridgeRequest, opts ...grpc.CallOption) (*DelBridgeResponse, error)
 	TestBridge(ctx context.Context, in *TestBridgeRequest, opts ...grpc.CallOption) (*TestBridgeResponse, error)
+	StatsBridge(ctx context.Context, in *StatsBridgeRequest, opts ...grpc.CallOption) (*StatsBridgeResponse, error)
 }
 
 type managementClient struct {
@@ -90,6 +92,15 @@ func (c *managementClient) TestBridge(ctx context.Context, in *TestBridgeRequest
 	return out, nil
 }
 
+func (c *managementClient) StatsBridge(ctx context.Context, in *StatsBridgeRequest, opts ...grpc.CallOption) (*StatsBridgeResponse, error) {
+	out := new(StatsBridgeResponse)
+	err := c.cc.Invoke(ctx, Management_StatsBridge_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ManagementServer is the server API for Management service.
 // All implementations must embed UnimplementedManagementServer
 // for forward compatibility
@@ -99,6 +110,7 @@ type ManagementServer interface {
 	GetBridge(context.Context, *GetBridgeRequest) (*GetBridgeResponse, error)
 	DelBridge(context.Context, *DelBridgeRequest) (*DelBridgeResponse, error)
 	TestBridge(context.Context, *TestBridgeRequest) (*TestBridgeResponse, error)
+	StatsBridge(context.Context, *StatsBridgeRequest) (*StatsBridgeResponse, error)
 	mustEmbedUnimplementedManagementServer()
 }
 
@@ -120,6 +132,9 @@ func (UnimplementedManagementServer) DelBridge(context.Context, *DelBridgeReques
 }
 func (UnimplementedManagementServer) TestBridge(context.Context, *TestBridgeRequest) (*TestBridgeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TestBridge not implemented")
+}
+func (UnimplementedManagementServer) StatsBridge(context.Context, *StatsBridgeRequest) (*StatsBridgeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StatsBridge not implemented")
 }
 func (UnimplementedManagementServer) mustEmbedUnimplementedManagementServer() {}
 
@@ -224,6 +239,24 @@ func _Management_TestBridge_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Management_StatsBridge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatsBridgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServer).StatsBridge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Management_StatsBridge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServer).StatsBridge(ctx, req.(*StatsBridgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Management_ServiceDesc is the grpc.ServiceDesc for Management service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -250,6 +283,10 @@ var Management_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestBridge",
 			Handler:    _Management_TestBridge_Handler,
+		},
+		{
+			MethodName: "StatsBridge",
+			Handler:    _Management_StatsBridge_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

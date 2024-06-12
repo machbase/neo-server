@@ -33,6 +33,7 @@ const helpBridge = `  bridge command [options]
             conn                   connection string
     del     <name>                 remove bridge
     test    <name>                 test connectivity of the bridge
+	stats   <name>                 bridge statistics
     exec    <name> <command>       execute command on the bridge
     query   <name> <command>       query the bridge with command
 
@@ -69,6 +70,9 @@ type BridgeCmd struct {
 	Test struct {
 		Name string `arg:"" name:"name"`
 	} `cmd:"" name:"test"`
+	Stats struct {
+		Name string `arg:"" name:"name"`
+	} `cmd:"" name:"stats"`
 	Exec struct {
 		Name  string   `arg:"" name:"name"`
 		Query []string `arg:"" name:"command" passthrough:""`
@@ -94,6 +98,7 @@ func pcBridge() action.PrefixCompleterInterface {
 			)),
 		action.PcItem("del"),
 		action.PcItem("test"),
+		action.PcItem("stats"),
 		action.PcItem("exec"),
 		action.PcItem("query"),
 	)
@@ -128,6 +133,8 @@ func doBridge(ctx *action.ActionContext) {
 		doBridgeDel(ctx, cmd.Del.Name)
 	case "test <name>":
 		doBridgeTest(ctx, cmd.Test.Name)
+	case "stats <name>":
+		doBridgeStats(ctx, cmd.Stats.Name)
 	case "exec <name> <command>":
 		sqlText := util.StripQuote(strings.Join(cmd.Exec.Query, " "))
 		doBridgeExec(ctx, cmd.Exec.Name, sqlText)
@@ -240,6 +247,32 @@ func doBridgeTest(ctx *action.ActionContext, name string) {
 	}
 
 	ctx.Println("Test bridge", name, "connectivity...", rsp.Reason, rsp.Elapse)
+}
+
+func doBridgeStats(ctx *action.ActionContext, name string) {
+	mgmtCli, err := ctx.Actor.BridgeManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	rsp, err := mgmtCli.StatsBridge(ctx.Ctx, &bridgerpc.StatsBridgeRequest{Name: name})
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	if !rsp.Success {
+		ctx.Println("ERR", rsp.Reason)
+		return
+	}
+
+	box := ctx.NewBox([]string{"ROWNUM", "NAME", "VALUE"})
+	box.AppendRow("1", "InMsgs", util.HumanizeNumber(rsp.InMsgs))
+	box.AppendRow("2", "InBytes", util.HumanizeByteCountUint64(rsp.InBytes))
+	box.AppendRow("3", "OutMsgs", util.HumanizeNumber(rsp.OutMsgs))
+	box.AppendRow("4", "OutBytes", util.HumanizeByteCountUint64(rsp.OutBytes))
+	box.AppendRow("5", "Insert", util.HumanizeNumber(rsp.Inserted))
+	box.AppendRow("6", "Append", util.HumanizeNumber(rsp.Appended))
+	box.Render()
 }
 
 func doBridgeExec(ctx *action.ActionContext, name string, command string) {

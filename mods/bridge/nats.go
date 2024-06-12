@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-server/mods/logging"
@@ -25,6 +26,8 @@ type NatsBridge struct {
 	subscriberWait sync.WaitGroup
 	subscribers    map[*NatsSubscription]bool
 	subscriberLock sync.Mutex
+
+	WriteStats
 }
 
 func NewNatsBridge(name string, path string) *NatsBridge {
@@ -153,6 +156,23 @@ func (c *NatsBridge) IsConnected() bool {
 	return c.natsStatus == nats.CONNECTED
 }
 
+type NatsStats struct {
+	nats.Statistics
+	Appended uint64
+	Inserted uint64
+}
+
+func (c *NatsBridge) Stats() NatsStats {
+	if c.natsConn == nil {
+		return NatsStats{}
+	}
+	return NatsStats{
+		Statistics: c.natsConn.Stats(),
+		Appended:   atomic.LoadUint64(&c.Appended),
+		Inserted:   atomic.LoadUint64(&c.Inserted),
+	}
+}
+
 func (c *NatsBridge) run() {
 	stsChan := c.natsConn.StatusChanged()
 	for c.alive {
@@ -175,53 +195,143 @@ func (c *NatsBridge) run() {
 }
 
 type NatsSubscription struct {
+	bridge       *NatsBridge
 	subscription *nats.Subscription
 	subject      string
+	queueName    string
+	streamName   string
 	sigChan      chan bool
 	msgChan      chan *nats.Msg
+	msgChanSize  int
+	writeStats   *WriteStats
+}
+
+func (ns *NatsSubscription) AddAppended(delta uint64) {
+	atomic.AddUint64(&ns.writeStats.Appended, delta)
+}
+
+func (ns *NatsSubscription) AddInserted(delta uint64) {
+	atomic.AddUint64(&ns.writeStats.Inserted, delta)
+}
+
+func (ns *NatsSubscription) Unsubscribe() error {
+	if ns.bridge == nil || !ns.bridge.IsConnected() {
+		return fmt.Errorf("nats connection is unavailable")
+	}
+	ns.bridge.subscriberLock.Lock()
+	defer ns.bridge.subscriberLock.Unlock()
+
+	if ns.subscription != nil {
+		ns.sigChan <- true
+	}
+	delete(ns.bridge.subscribers, ns)
+	return nil
 }
 
 type NatsMsgHandler func(*nats.Msg)
 
-func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler) (any, error) {
-	return c.subscribe0(topic, "", cb)
-}
-
-func (c *NatsBridge) QueueSubscribe(topic string, queue string, cb NatsMsgHandler) (any, error) {
-	return c.subscribe0(topic, queue, cb)
-}
+type NatsSubscribeOption func(ns *NatsSubscription)
 
 const NatsDefaultPendingMessageLimit = 1_000_000
 
-func (c *NatsBridge) subscribe0(topic string, queue string, cb NatsMsgHandler) (any, error) {
+func NatsPendingMessageLimit(size int) NatsSubscribeOption {
+	return func(s *NatsSubscription) {
+		s.msgChanSize = size
+	}
+}
+
+func NatsQueueGroup(queueName string) NatsSubscribeOption {
+	return func(s *NatsSubscription) {
+		s.queueName = queueName
+	}
+}
+
+func NatsStreamName(streamName string) NatsSubscribeOption {
+	return func(s *NatsSubscription) {
+		s.streamName = streamName
+	}
+}
+
+func (c *NatsBridge) Subscribe(topic string, cb NatsMsgHandler, opts ...NatsSubscribeOption) (*NatsSubscription, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("nats connection is unavailable")
 	}
+
+	st := &NatsSubscription{
+		bridge:     c,
+		subject:    topic,
+		sigChan:    make(chan bool),
+		writeStats: &c.WriteStats,
+	}
+
+	for _, o := range opts {
+		o(st)
+	}
+
+	if st.msgChanSize <= 0 {
+		st.msgChanSize = NatsDefaultPendingMessageLimit
+	}
+
 	c.subscriberLock.Lock()
 	defer c.subscriberLock.Unlock()
 
-	msgChan := make(chan *nats.Msg, NatsDefaultPendingMessageLimit)
-	var subscription *nats.Subscription
-	if queue == "" {
-		if s, err := c.natsConn.ChanSubscribe(topic, msgChan); err != nil {
+	st.msgChan = make(chan *nats.Msg, st.msgChanSize)
+
+	if st.streamName != "" {
+		var js nats.JetStreamContext
+		if stream, err := c.natsConn.JetStream(); err != nil {
 			return nil, err
 		} else {
-			subscription = s
+			js = stream
+		}
+		consumerName := "neo_sub"
+		consumerConfig := &nats.ConsumerConfig{
+			Name:          consumerName,
+			DeliverPolicy: nats.DeliverNewPolicy,
+		}
+
+		if _, err := js.AddConsumer(st.streamName, consumerConfig); err != nil {
+			if jserr, ok := err.(nats.JetStreamError); ok && jserr.APIError().Is(nats.ErrConsumerNameAlreadyInUse) {
+				if err2 := js.DeleteConsumer(st.streamName, consumerName); err2 != nil {
+					return nil, err2
+				}
+				if _, err := js.AddConsumer(st.streamName, consumerConfig); err != nil {
+					return nil, err
+				}
+			} else {
+				return nil, err
+			}
+		}
+		subOpts := []nats.SubOpt{nats.Bind(st.streamName, consumerName)}
+		if st.queueName == "" {
+			if s, err := js.ChanSubscribe(st.subject, st.msgChan, subOpts...); err != nil {
+				return nil, err
+			} else {
+				st.subscription = s
+			}
+		} else {
+			if s, err := js.ChanQueueSubscribe(st.subject, st.queueName, st.msgChan, subOpts...); err != nil {
+				return nil, err
+			} else {
+				st.subscription = s
+			}
 		}
 	} else {
-		if s, err := c.natsConn.ChanQueueSubscribe(topic, queue, msgChan); err != nil {
-			return nil, err
+		if st.queueName == "" {
+			if s, err := c.natsConn.ChanSubscribe(st.subject, st.msgChan); err != nil {
+				return nil, err
+			} else {
+				st.subscription = s
+			}
 		} else {
-			subscription = s
+			if s, err := c.natsConn.ChanQueueSubscribe(st.subject, st.queueName, st.msgChan); err != nil {
+				return nil, err
+			} else {
+				st.subscription = s
+			}
 		}
 	}
 
-	st := &NatsSubscription{
-		subscription: subscription,
-		subject:      topic,
-		sigChan:      make(chan bool),
-		msgChan:      msgChan,
-	}
 	c.subscribers[st] = true
 
 	c.subscriberWait.Add(1)
@@ -242,24 +352,6 @@ func (c *NatsBridge) subscribe0(topic string, queue string, cb NatsMsgHandler) (
 	return st, nil
 }
 
-func (c *NatsBridge) Unsubscribe(token any) (bool, error) {
-	st, ok := token.(*NatsSubscription)
-	if !ok {
-		return false, fmt.Errorf("nats subscription token is not vaild %T", token)
-	}
-	if !c.IsConnected() {
-		return false, fmt.Errorf("nats connection is unavailable")
-	}
-	c.subscriberLock.Lock()
-	defer c.subscriberLock.Unlock()
-
-	if st.subscription != nil {
-		st.sigChan <- true
-	}
-	delete(c.subscribers, st)
-	return true, nil
-}
-
 func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 	if !c.IsConnected() {
 		return false, fmt.Errorf("nats connection is unavailable")
@@ -275,4 +367,12 @@ func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 	}
 	err := c.natsConn.Publish(topic, data)
 	return err == nil, err
+}
+
+func (c *NatsBridge) TestConnection() (bool, string) {
+	connected := c.IsConnected()
+	if !connected {
+		return false, "not connected"
+	}
+	return true, "success"
 }

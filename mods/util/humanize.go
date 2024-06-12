@@ -4,9 +4,22 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"golang.org/x/exp/constraints"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
-func HumanizeByteCount(b int64) string {
+func HumanizeNumber[T constraints.Integer](b T) string {
+	p := message.NewPrinter(language.English)
+	return p.Sprint(b)
+}
+
+func HumanizeByteCount[T constraints.Integer](b T) string {
+	return HumanizeByteCountUint64(uint64(b))
+}
+
+func HumanizeByteCountUint64(b uint64) string {
 	const unit = 1000
 	if b < unit {
 		return fmt.Sprintf("%d B", b)

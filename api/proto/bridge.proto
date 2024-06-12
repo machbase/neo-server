@@ -10,6 +10,7 @@ service Management {
     rpc GetBridge(GetBridgeRequest) returns (GetBridgeResponse) {}
     rpc DelBridge(DelBridgeRequest) returns (DelBridgeResponse) {}
     rpc TestBridge(TestBridgeRequest) returns (TestBridgeResponse) {}
+    rpc StatsBridge(StatsBridgeRequest) returns (StatsBridgeResponse) {}
 }
 
 service Runtime {
@@ -75,6 +76,22 @@ message TestBridgeResponse{
     bool success = 1;
     string reason = 2;
     string elapse = 3;
+}
+
+message StatsBridgeRequest {
+    string name = 1;
+}
+
+message StatsBridgeResponse {
+    bool success    = 1;
+    string reason   = 2;
+    string elapse   = 3;
+    uint64 inMsgs   = 4;
+    uint64 inBytes  = 5;
+    uint64 outMsgs  = 6;
+    uint64 outBytes = 7;
+    uint64 inserted = 8;
+    uint64 appended = 9;
 }
 
 message ExecRequest {

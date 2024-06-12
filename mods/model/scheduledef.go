@@ -46,7 +46,8 @@ type ScheduleDefinition struct {
 	// mqtt subscriber only
 	QoS int `json:"qos,omitempty"`
 	// nats subscriber only
-	Queue string `json:"queue,omitempty"`
+	QueueName  string `json:"queue,omitempty"`
+	StreamName string `json:"stream,omitempty"`
 }
 
 type ScheduleProvider interface {
