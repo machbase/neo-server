@@ -511,13 +511,19 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	cols, _ := api.AppenderColumns(ent.appender)
+	colNames := cols.Names()
+	colTypes := cols.Types()
+	if api.AppenderTableType(ent.appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+		colNames = colNames[1:]
+		colTypes = colTypes[1:]
+	}
 	codecOpts := []opts.Option{
 		opts.InputStream(instream),
 		opts.Timeformat(ent.wd.Timeformat),
 		opts.TimeLocation(ent.wd.TimeLocation),
 		opts.TableName(ent.wd.Table),
-		opts.Columns(cols.Names()...),
-		opts.ColumnTypes(cols.Types()...),
+		opts.Columns(colNames...),
+		opts.ColumnTypes(colTypes...),
 		opts.Delimiter(ent.wd.Delimiter),
 		opts.Heading(ent.wd.Heading),
 	}
@@ -532,17 +538,18 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 
 	recno := uint64(0)
 	for {
-		vals, err := decoder.NextRow()
-		if err != nil {
+		var values []any
+		if vals, err := decoder.NextRow(); err != nil {
 			if err != io.EOF {
 				rsp.Reason = fmt.Sprintf("append %s, %s", ent.wd.Format, err.Error())
 				ent.log.Warnf("append %s, %s", ent.wd.Format, err.Error())
 				return
 			}
 			break
+		} else {
+			values = vals
 		}
-		err = ent.appender.Append(vals...)
-		if err != nil {
+		if err := ent.appender.Append(values...); err != nil {
 			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
 			ent.log.Warnf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
 			break

@@ -107,10 +107,26 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	var insertQuery string
 
 	if method == "append" {
+		appender, err = conn.Appender(ctx, tableName)
+		if err != nil {
+			rsp.Reason = err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		defer appender.Close()
+		cols := desc.Columns.Columns()
+		colNames := cols.Names()
+		colTypes := cols.Types()
+		if api.AppenderTableType(appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+			colNames = colNames[1:]
+			colTypes = colTypes[1:]
+		}
+
 		codecOpts = append(codecOpts,
 			opts.InputStream(in),
-			opts.Columns(desc.Columns.Columns().Names()...),
-			opts.ColumnTypes(desc.Columns.Columns().Types()...),
+			opts.Columns(colNames...),
+			opts.ColumnTypes(colTypes...),
 		)
 	} else { // insert
 		var columnNames []string
@@ -206,16 +222,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				return
 			}
 		} else { // append
-			if appender == nil {
-				appender, err = conn.Appender(ctx, tableName)
-				if err != nil {
-					rsp.Reason = err.Error()
-					rsp.Elapse = time.Since(tick).String()
-					ctx.JSON(http.StatusInternalServerError, rsp)
-					return
-				}
-				defer appender.Close()
-			}
 			err = appender.Append(vals...)
 			if err != nil {
 				rsp.Reason = err.Error()

@@ -454,13 +454,19 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	}
 
 	cols, _ := api.AppenderColumns(appender)
+	colNames := cols.Names()
+	colTypes := cols.Types()
+	if api.AppenderTableType(appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+		colNames = colNames[1:]
+		colTypes = colTypes[1:]
+	}
 	codecOpts := []opts.Option{
 		opts.InputStream(instream),
 		opts.Timeformat("ns"),
 		opts.TimeLocation(time.UTC),
 		opts.TableName(wp.Table),
-		opts.Columns(cols.Names()...),
-		opts.ColumnTypes(cols.Types()...),
+		opts.Columns(colNames...),
+		opts.ColumnTypes(colTypes...),
 		opts.Delimiter(","),
 		opts.Heading(false),
 	}
