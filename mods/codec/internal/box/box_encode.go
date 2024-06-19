@@ -23,8 +23,8 @@ type Exporter struct {
 	heading         bool
 	precision       int
 	timeformatter   *util.TimeFormatter
-
-	colNames []string
+	binaryFormatter *util.BinaryFormatter
+	colNames        []string
 }
 
 func NewEncoder() *Exporter {
@@ -34,6 +34,7 @@ func NewEncoder() *Exporter {
 		drawBorder:      true,
 		precision:       -1,
 		timeformatter:   util.NewTimeFormatter(),
+		binaryFormatter: util.NewBinaryFormatter(),
 	}
 }
 
@@ -153,6 +154,10 @@ func (ex *Exporter) AddRow(values []any) error {
 			cols[i] = *v
 		case string:
 			cols[i] = v
+		case *[]byte:
+			cols[i] = ex.binaryFormatter.Format(*v)
+		case []byte:
+			cols[i] = ex.binaryFormatter.Format(v)
 		case *time.Time:
 			cols[i] = ex.timeformatter.Format(*v)
 		case time.Time:

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"sort"
@@ -13,6 +14,55 @@ import (
 
 func ErrIncompatible(dstType string, src any) error {
 	return fmt.Errorf("incompatible conv '%v' (%T) to %s", src, src, dstType)
+}
+
+type BinaryFormatter struct {
+	hexMode bool
+	maxLen  int
+	prefix  string
+	suffix  string
+}
+
+func NewBinaryFormatter() *BinaryFormatter {
+	return &BinaryFormatter{
+		hexMode: true,
+		maxLen:  10,
+		prefix:  "0x",
+		suffix:  "..",
+	}
+}
+
+func (bf *BinaryFormatter) Format(val []byte) string {
+	if val == nil {
+		return "NULL"
+	}
+	suffix := bf.suffix
+	maxLen := bf.maxLen
+	maxLen -= len(suffix)
+	if bf.hexMode {
+		maxLen = maxLen / 2 // a byte becomes two digits
+	}
+	if maxLen > len(val) {
+		maxLen = len(val)
+		suffix = ""
+	}
+	var encoded string
+	if bf.hexMode {
+		encoded = hex.EncodeToString(val[0:maxLen])
+	} else {
+		chars := make([]byte, maxLen)
+		for i, b := range val[0:maxLen] {
+			if b < 32 || b > 126 {
+				chars[i] = '.'
+			} else {
+				chars[i] = b
+			}
+		}
+		encoded = string(chars)
+	}
+
+	ret := bf.prefix + encoded + suffix
+	return ret
 }
 
 var StandardTimeNow func() time.Time = time.Now
