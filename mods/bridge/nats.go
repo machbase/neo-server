@@ -23,6 +23,8 @@ type NatsBridge struct {
 	natsStatus nats.Status
 	natsConn   *nats.Conn
 
+	natsConnMutex sync.Mutex
+
 	subscriberWait sync.WaitGroup
 	subscribers    map[*NatsSubscription]bool
 	subscriberLock sync.Mutex
@@ -42,7 +44,7 @@ func NewNatsBridge(name string, path string) *NatsBridge {
 
 func (c *NatsBridge) BeforeRegister() error {
 	c.natsOpts = nats.GetDefaultOptions()
-
+	c.natsOpts.MaxReconnect = -1
 	fields := strings.Fields(c.path)
 	for _, field := range fields {
 		kv := strings.SplitN(field, "=", 2)
@@ -123,17 +125,25 @@ func (c *NatsBridge) BeforeRegister() error {
 		}
 	}
 	if len(c.natsOpts.Servers) > 0 {
-		if conn, err := c.natsOpts.Connect(); err != nil {
-			return err
-		} else {
-			c.log.Info(c.name + " connected")
-			c.alive = true
-			c.natsConn = conn
-			c.natsStatus = nats.CONNECTED
-			go c.run()
-		}
+		c.tryConnect()
 	}
 
+	return nil
+}
+
+func (c *NatsBridge) tryConnect() error {
+	if c.IsConnected() {
+		return nil
+	}
+	if conn, err := c.natsOpts.Connect(); err != nil {
+		return err
+	} else {
+		c.log.Info(c.name + " connected")
+		c.alive = true
+		c.natsConn = conn
+		c.natsStatus = nats.CONNECTED
+		go c.run()
+	}
 	return nil
 }
 
@@ -153,7 +163,10 @@ func (c *NatsBridge) Name() string {
 }
 
 func (c *NatsBridge) IsConnected() bool {
-	return c.natsStatus == nats.CONNECTED
+	if c.natsConn != nil && c.natsConn.IsConnected() {
+		return true
+	}
+	return false
 }
 
 type NatsStats struct {
@@ -370,9 +383,23 @@ func (c *NatsBridge) Publish(topic string, payload any) (bool, error) {
 }
 
 func (c *NatsBridge) TestConnection() (bool, string) {
+	c.natsConnMutex.Lock()
+	defer c.natsConnMutex.Unlock()
+
 	connected := c.IsConnected()
 	if !connected {
-		return false, "not connected"
+		if err := c.tryConnect(); err != nil {
+			c.log.Error("failed to connect", err)
+		}
+		if connected := c.IsConnected(); !connected {
+			return false, "not connected"
+		}
 	}
+
+	if err := c.natsConn.FlushTimeout(10 * time.Second); err != nil {
+		c.log.Error("error to connect", err.Error())
+		return false, "error to connect"
+	}
+
 	return true, "success"
 }

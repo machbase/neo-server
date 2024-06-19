@@ -110,12 +110,12 @@ func (s *svr) LoadSchedule(name string) (*ScheduleDefinition, error) {
 	path := filepath.Join(s.schedDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
+		s.log.Warn("bridge def file", err.Error())
 		return nil, err
 	}
 	def := &ScheduleDefinition{}
 	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warnf("bridge def format", err.Error())
+		s.log.Warn("bridge def format", err.Error())
 		return nil, err
 	}
 	def.Name = name
@@ -125,7 +125,7 @@ func (s *svr) LoadSchedule(name string) (*ScheduleDefinition, error) {
 func (s *svr) SaveSchedule(def *ScheduleDefinition) error {
 	buf, err := json.MarshalIndent(def, "", "\t")
 	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
+		s.log.Warn("bridge def file", err.Error())
 		return err
 	}
 	name := strings.ToUpper(def.Name)
@@ -169,12 +169,12 @@ func (s *svr) LoadBridge(name string) (*BridgeDefinition, error) {
 	path := filepath.Join(s.bridgeDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
+		s.log.Warn("bridge def file", err.Error())
 		return nil, err
 	}
 	def := &BridgeDefinition{}
 	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warnf("bridge def format", err.Error())
+		s.log.Warn("bridge def format", err.Error())
 		return nil, err
 	}
 	return def, nil
@@ -183,7 +183,7 @@ func (s *svr) LoadBridge(name string) (*BridgeDefinition, error) {
 func (s *svr) SaveBridge(def *BridgeDefinition) error {
 	buf, err := json.MarshalIndent(def, "", "\t")
 	if err != nil {
-		s.log.Warnf("bridge def file", err.Error())
+		s.log.Warn("bridge def file", err.Error())
 		return err
 	}
 
@@ -258,13 +258,13 @@ func (s *svr) CopyShell(id string) (*ShellDefinition, error) {
 	}
 	uid, err := uuid.DefaultGenerator.NewV4()
 	if err != nil {
-		s.log.Warnf("shell def new id, %s", err.Error())
+		s.log.Warn("shell def new id,", err.Error())
 		return nil, err
 	}
 	ret.Id = uid.String()
 	ret.Label = "CUSTOM SHELL"
 	if err := s.SaveShell(ret); err != nil {
-		s.log.Warnf("shell def not saved", err.Error())
+		s.log.Warn("shell def not saved,", err.Error())
 		return nil, err
 	}
 	return ret, nil
@@ -354,12 +354,12 @@ func (s *svr) iterateShellDefs(cb func(*ShellDefinition) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.shellDir, entry.Name()))
 		if err != nil {
-			s.log.Errorf("ERR file access, %s", err.Error())
+			s.log.Error("ERR file access,", err.Error())
 			continue
 		}
 		def := &ShellDefinition{}
 		if err := json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("ERR invalid shell conf, %s", err.Error())
+			s.log.Warn("ERR invalid shell conf,", err.Error())
 			continue
 		}
 		def.Id = strings.ToUpper(strings.TrimSuffix(entry.Name(), ".json"))
@@ -405,12 +405,12 @@ func (s *svr) iterateBridgeDefs(cb func(*BridgeDefinition) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.bridgeDir, entry.Name()))
 		if err != nil {
-			s.log.Warnf("bridge def file", err.Error())
+			s.log.Warn(" %s", err.Error())
 			continue
 		}
 		def := &BridgeDefinition{}
 		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("bridge def format", err.Error())
+			s.log.Warn("bridge def format", err.Error())
 			continue
 		}
 		flag := cb(def)
@@ -435,12 +435,12 @@ func (s *svr) iterateScheduleDefs(cb func(*ScheduleDefinition) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.schedDir, entry.Name()))
 		if err != nil {
-			s.log.Warnf("schedule def file", err.Error())
+			s.log.Warn("schedule def file", err.Error())
 			continue
 		}
 		def := &ScheduleDefinition{}
 		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warnf("schedule def format", err.Error())
+			s.log.Warn("schedule def format", err.Error())
 			continue
 		}
 		def.Name = strings.TrimSuffix(entry.Name(), ".json")
