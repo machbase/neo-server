@@ -13,7 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 )
 
-func (svr *httpd) handleListBridge(ctx *gin.Context) {
+func (svr *httpd) handleBridges(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -40,7 +40,7 @@ func (svr *httpd) handleListBridge(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleAddBridge(ctx *gin.Context) {
+func (svr *httpd) handleBridgesAdd(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
@@ -95,7 +95,7 @@ func (svr *httpd) handleAddBridge(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleDeleteBridge(ctx *gin.Context) {
+func (svr *httpd) handleBridgesDel(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -135,7 +135,7 @@ type stateRequest struct {
 	Name    string
 }
 
-func (svr *httpd) handleStateBridge(ctx *gin.Context) {
+func (svr *httpd) handleBridgeState(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 

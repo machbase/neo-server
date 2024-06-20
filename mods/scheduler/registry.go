@@ -83,10 +83,23 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
+	var forceAutoStart bool = false
+	var canAutoStart bool = true
 	var ent Entry
 	var err error
 	switch def.Type {
 	case model.SCHEDULE_TIMER:
+		if ent, ok := registry[strings.ToUpper(def.Name)]; ok {
+			status := ent.Status()
+			if status == RUNNING {
+				if err := ent.Stop(); err != nil {
+					return err
+				}
+				forceAutoStart = true
+			} else {
+				canAutoStart = false
+			}
+		}
 		ent, err = NewTimerEntry(s, def)
 	case model.SCHEDULE_SUBSCRIBER:
 		ent, err = NewSubscriberEntry(s, def)
@@ -110,7 +123,7 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 		be.state = prevState
 	}
 
-	if ent.AutoStart() {
+	if ent.AutoStart() && canAutoStart || forceAutoStart {
 		if err := ent.Start(); err != nil {
 			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
 		}

@@ -10,7 +10,35 @@ import (
 	"github.com/machbase/neo-server/api/schedule"
 )
 
-func (svr *httpd) handleListTimers(ctx *gin.Context) {
+func (svr *httpd) handleTimer(ctx *gin.Context) {
+	tick := time.Now()
+	rsp := gin.H{"success": false, "reason": "not specified"}
+
+	name := ctx.Param("name")
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{
+		Name: name,
+	})
+	if err != nil {
+		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+
+	rsp["success"] = true
+	rsp["reason"] = "success"
+	rsp["data"] = getRsp.Schedule
+	rsp["elapse"] = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) handleTimers(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -44,7 +72,7 @@ func (svr *httpd) handleListTimers(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleAddTimer(ctx *gin.Context) {
+func (svr *httpd) handleTimersAdd(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
@@ -102,7 +130,7 @@ func (svr *httpd) handleAddTimer(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleStateTimer(ctx *gin.Context) {
+func (svr *httpd) handleTimersState(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -171,7 +199,7 @@ func (svr *httpd) handleStateTimer(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
+func (svr *httpd) handleTimersUpdate(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
@@ -212,26 +240,6 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		return
 	}
 
-	runningFlag := false
-	if strings.ToUpper(getRsp.Schedule.State) == "RUNNING" {
-		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
-			Name: name,
-		})
-		if err != nil {
-			rsp["reason"] = err.Error()
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		if !stopRsp.Success {
-			rsp["reason"] = stopRsp.Reason
-			rsp["elapse"] = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-			return
-		}
-		runningFlag = true
-	}
-
 	updateRsp, err := svr.schedMgmtImpl.UpdateSchedule(ctx, &schedule.UpdateScheduleRequest{
 		Name:      name,
 		AutoStart: req.AutoStart,
@@ -251,33 +259,13 @@ func (svr *httpd) handleUpdateTimer(ctx *gin.Context) {
 		return
 	}
 
-	if !getRsp.Schedule.AutoStart {
-		if runningFlag {
-			startRsp, err := svr.schedMgmtImpl.StartSchedule(ctx, &schedule.StartScheduleRequest{
-				Name: name,
-			})
-			if err != nil {
-				rsp["reason"] = err.Error()
-				rsp["elapse"] = time.Since(tick).String()
-				ctx.JSON(http.StatusInternalServerError, rsp)
-				return
-			}
-			if !startRsp.Success {
-				rsp["reason"] = startRsp.Reason
-				rsp["elapse"] = time.Since(tick).String()
-				ctx.JSON(http.StatusInternalServerError, rsp)
-				return
-			}
-		}
-	}
-
 	rsp["success"] = true
 	rsp["reason"] = "success"
 	rsp["elapse"] = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
+func (svr *httpd) handleTimersDel(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -289,41 +277,36 @@ func (svr *httpd) handleDeleteTimer(ctx *gin.Context) {
 		return
 	}
 
-	listRsp, err := svr.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
+	getRsp, err := svr.schedMgmtImpl.GetSchedule(ctx, &schedule.GetScheduleRequest{
+		Name: name,
+	})
 	if err != nil {
 		rsp["reason"] = err.Error()
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if !listRsp.Success {
-		rsp["reason"] = listRsp.Reason
+	if !getRsp.Success {
+		rsp["reason"] = getRsp.Reason
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-
-	for _, c := range listRsp.Schedules {
-		if c.Name == strings.ToUpper(name) {
-			state := strings.ToUpper(c.State)
-			if state == "RUNNING" {
-				stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
-					Name: name,
-				})
-				if err != nil {
-					rsp["reason"] = err.Error()
-					rsp["elapse"] = time.Since(tick).String()
-					ctx.JSON(http.StatusInternalServerError, rsp)
-					return
-				}
-				if !stopRsp.Success {
-					rsp["reason"] = stopRsp.Reason
-					rsp["elapse"] = time.Since(tick).String()
-					ctx.JSON(http.StatusInternalServerError, rsp)
-					return
-				}
-			}
-			break
+	if getRsp.Schedule.State == "RUNNING" {
+		stopRsp, err := svr.schedMgmtImpl.StopSchedule(ctx, &schedule.StopScheduleRequest{
+			Name: name,
+		})
+		if err != nil {
+			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
+		}
+		if !stopRsp.Success {
+			rsp["reason"] = stopRsp.Reason
+			rsp["elapse"] = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+			return
 		}
 	}
 

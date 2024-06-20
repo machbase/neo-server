@@ -20,18 +20,20 @@ type KeyInfo struct {
 	NotAfter  int64  `json:"notAfter"`
 }
 
-func (svr *httpd) handleListKeys(ctx *gin.Context) {
+func (svr *httpd) handleKeys(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
 	mgmtRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !mgmtRsp.Success {
 		rsp["reason"] = mgmtRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -54,7 +56,7 @@ func (svr *httpd) handleListKeys(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleGenKey(ctx *gin.Context) {
+func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	req := struct {
@@ -66,6 +68,7 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	err := ctx.ShouldBind(&req)
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -74,17 +77,20 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	listRsp, err := svr.mgmtImpl.ListKey(ctx, &mgmt.ListKeyRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !listRsp.Success {
 		rsp["reason"] = listRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	for _, key := range listRsp.Keys {
 		if key.Id == req.Name {
 			rsp["reason"] = fmt.Sprintf("'%s' is duplicate id.", req.Name)
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
@@ -94,6 +100,7 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	pass, _ := regexp.MatchString("[a-z][a-z0-9_.@-]+", name)
 	if !pass {
 		rsp["reason"] = "id contains invalid letter, use only alphnum and _.@-"
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
@@ -114,11 +121,13 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !genRsp.Success {
 		rsp["reason"] = genRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -126,11 +135,13 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	serverRsp, err := svr.mgmtImpl.ServerKey(ctx, &mgmt.ServerKeyRequest{})
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 	if !serverRsp.Success {
 		rsp["reason"] = genRsp.Reason
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -154,12 +165,14 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 		})
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
 		_, err = f.Write([]byte(file.Body))
 		if err != nil {
 			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		}
@@ -168,6 +181,7 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	err = zipWriter.Close()
 	if err != nil {
 		rsp["reason"] = err.Error()
+		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -184,7 +198,7 @@ func (svr *httpd) handleGenKey(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (svr *httpd) handleDeleteKey(ctx *gin.Context) {
+func (svr *httpd) handleKeysDel(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 	keyId := ctx.Param("id")
