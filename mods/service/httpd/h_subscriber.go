@@ -107,7 +107,7 @@ func (svr *httpd) handleSubscribersAdd(ctx *gin.Context) {
 		return
 	}
 	if getRsp.Success {
-		rsp["reason"] = "duplicate subscriber name"
+		rsp["reason"] = "duplicate name"
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return

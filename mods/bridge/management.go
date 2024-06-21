@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	bridgerpc "github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
 )
 
@@ -101,6 +103,24 @@ func (s *svr) DelBridge(ctx context.Context, req *bridgerpc.DelBridgeRequest) (*
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
 	}()
+
+	listRsp, err := s.schedMgmtImpl.ListSchedule(ctx, &schedule.ListScheduleRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	subscribers := make([]string, 0)
+	for _, schedule := range listRsp.Schedules {
+		if strings.EqualFold(schedule.Bridge, req.Name) {
+			subscribers = append(subscribers, schedule.Name)
+		}
+	}
+
+	if len(subscribers) == 1 {
+		return rsp, fmt.Errorf("bridge %q has a subscriber, %s", req.Name, subscribers[0])
+	} else if len(subscribers) > 1 {
+		return rsp, fmt.Errorf("bridge %q has subscribers, %s", req.Name, strings.Join(subscribers, ","))
+	}
 
 	if err := s.models.RemoveBridge(req.Name); err != nil {
 		rsp.Reason = err.Error()

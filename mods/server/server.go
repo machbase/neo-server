@@ -508,15 +508,16 @@ func (s *svr) Start() error {
 
 	tqlLoader := tql.NewLoader(s.conf.FileDirs)
 
-	s.bridgeSvc = bridge.NewService(
-		bridge.WithProvider(s.models.BridgeProvider()),
-	)
-
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tqlLoader),
 		scheduler.WithDatabase(api.NewDatabase(s.db)),
+	)
+
+	s.bridgeSvc = bridge.NewService(
+		bridge.WithProvider(s.models.BridgeProvider()),
+		bridge.WithScheduleServer(s.schedSvc),
 	)
 
 	// start bridge service
