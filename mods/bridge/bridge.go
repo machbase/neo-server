@@ -2,6 +2,7 @@ package bridge
 
 import (
 	bridgerpc "github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	cmap "github.com/orcaman/concurrent-map"
@@ -34,13 +35,20 @@ func WithProvider(provider model.BridgeProvider) Option {
 	}
 }
 
+func WithScheduleServer(handler schedule.ManagementServer) Option {
+	return func(s *svr) {
+		s.schedMgmtImpl = handler
+	}
+}
+
 type svr struct {
 	Service
 
 	log    logging.Log
 	ctxMap cmap.ConcurrentMap
 
-	models model.BridgeProvider
+	schedMgmtImpl schedule.ManagementServer
+	models        model.BridgeProvider
 }
 
 func (s *svr) Start() error {
