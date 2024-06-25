@@ -2,10 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"image/color"
 	"io"
 	"math"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +51,10 @@ type neoAgent struct {
 	mainWindow     fyne.Window
 	mainTextScroll *container.Scroll
 	mainTextGrid   *widget.TextGrid
+
+	navelcordDisable bool
+	navelcordLsnr    *net.TCPListener
+	navelcord        net.Conn
 }
 
 type NeoState string
@@ -215,6 +224,7 @@ func (na *neoAgent) Start() {
 	na.mainWindow.Resize(fyne.NewSize(800, 400))
 	na.mainWindow.Show()
 
+	na.runNavelCordServer()
 	a.Run()
 	na.Stop()
 }
@@ -225,6 +235,39 @@ func (na *neoAgent) Stop() {
 
 func (na *neoAgent) log(line string) {
 	na.appendOutput([]byte(strings.TrimSpace(line)))
+}
+
+func (na *neoAgent) runNavelCordServer() {
+	if lsnr, err := net.Listen("tcp", "127.0.0.1:0"); err == nil {
+		na.navelcordLsnr = lsnr.(*net.TCPListener)
+	}
+	go func() {
+		for {
+			if conn, err := na.navelcordLsnr.Accept(); err != nil {
+				// when launcher is shutdown
+				break
+			} else {
+				na.navelcord = conn
+			}
+			for {
+				hb := Heartbeat{}
+				if err := hb.Unmarshal(na.navelcord); err != nil {
+					break
+				}
+
+				hb.Ack = time.Now().UnixNano()
+				if pkt, err := hb.Marshal(); err != nil {
+					break
+				} else {
+					na.navelcord.Write(pkt)
+				}
+			}
+			if na.navelcord != nil {
+				na.navelcord.Close()
+				na.navelcord = nil
+			}
+		}
+	}()
 }
 
 func (na *neoAgent) appendOutput(line []byte) {
@@ -373,6 +416,9 @@ func (na *neoAgent) doStartDatabase() {
 		pargs = append(pargs, na.exeArgs...)
 	}
 	cmd := exec.Command(pname, pargs...)
+	cmd.Env = os.Environ()
+	navelPort := strings.TrimPrefix(na.navelcordLsnr.Addr().String(), "127.0.0.1:")
+	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", NAVEL_ENV, navelPort))
 	sysProcAttr(cmd)
 	stdout, _ := cmd.StdoutPipe()
 	go copyReader(stdout, na.appendOutput)
@@ -405,26 +451,34 @@ func (na *neoAgent) doStartDatabase() {
 func (na *neoAgent) doStopDatabase() {
 	if na.process != nil {
 		na.stateC <- NeoStopping
-		if runtime.GOOS == "windows" {
-			// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
-			// it will return an error instead of sending a signal.
-			// so, this will not work => na.process.Signal(syscall.SIGINT)
-			cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "--server", bestGuess.grpcAddr, "shutdown")
-			sysProcAttr(cmd)
-			stdout, _ := cmd.StdoutPipe()
-			go copyReader(stdout, na.appendOutput)
+	}
+	if !na.navelcordDisable && na.navelcord != nil {
+		na.navelcord.Close()
+	}
+	if na.process != nil {
+		na.stateC <- NeoStopping
+		if na.navelcordDisable {
+			if runtime.GOOS == "windows" {
+				// On Windows, sending os.Interrupt to a process with os.Process.Signal is not implemented;
+				// it will return an error instead of sending a signal.
+				// so, this will not work => na.process.Signal(syscall.SIGINT)
+				cmd := exec.Command("cmd.exe", "/c", na.exePath, "shell", "--server", bestGuess.grpcAddr, "shutdown")
+				sysProcAttr(cmd)
+				stdout, _ := cmd.StdoutPipe()
+				go copyReader(stdout, na.appendOutput)
 
-			stderr, _ := cmd.StderrPipe()
-			go copyReader(stderr, na.appendOutput)
+				stderr, _ := cmd.StderrPipe()
+				go copyReader(stderr, na.appendOutput)
 
-			if err := cmd.Start(); err != nil {
-				panic(err)
-			}
-			cmd.Wait()
-		} else {
-			err := na.process.Signal(os.Interrupt)
-			if err != nil {
-				na.log(err.Error())
+				if err := cmd.Start(); err != nil {
+					panic(err)
+				}
+				cmd.Wait()
+			} else {
+				err := na.process.Signal(os.Interrupt)
+				if err != nil {
+					na.log(err.Error())
+				}
 			}
 		}
 		na.processWg.Wait()
@@ -560,4 +614,51 @@ func ansiColor(code string, def color.Color) color.Color {
 		return color.RGBA{R: 255, G: 255, B: 255, A: 255}
 	}
 	return def
+}
+
+const NAVEL_ENV = "NEOSHELL_NAVELCORD"
+const NAVEL_STX = 0x4E
+const NAVEL_HEARTBEAT = 1
+
+type Heartbeat struct {
+	Timestamp int64 `json:"ts"`
+	Ack       int64 `json:"ack,omitempty"`
+}
+
+func (hb *Heartbeat) Marshal() ([]byte, error) {
+	body, err := json.Marshal(hb)
+	if err != nil {
+		return nil, err
+	}
+	buf := &bytes.Buffer{}
+	buf.Write([]byte{NAVEL_STX, NAVEL_HEARTBEAT})
+	hdr := make([]byte, 4)
+	binary.BigEndian.PutUint32(hdr, uint32(len(body)))
+	buf.Write(hdr)
+	buf.Write(body)
+	return buf.Bytes(), nil
+}
+
+func (hb *Heartbeat) Unmarshal(r io.Reader) error {
+	hdr := make([]byte, 2)
+	bodyLen := make([]byte, 4)
+
+	n, err := r.Read(hdr)
+	if err != nil || n != 2 || hdr[0] != NAVEL_STX || hdr[1] != NAVEL_HEARTBEAT {
+		return errors.New("invalid header stx")
+	}
+	n, err = r.Read(bodyLen)
+	if err != nil || n != 4 {
+		return errors.New("invalid body length")
+	}
+	l := binary.BigEndian.Uint32(bodyLen)
+	body := make([]byte, l)
+	n, err = r.Read(body)
+	if err != nil || uint32(n) != l {
+		return errors.New("invalid body")
+	}
+	if err := json.Unmarshal(body, hb); err != nil {
+		return fmt.Errorf("invalid format %s", err.Error())
+	}
+	return nil
 }
