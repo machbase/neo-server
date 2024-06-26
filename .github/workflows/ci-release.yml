@@ -21,7 +21,7 @@ jobs:
           - name: Install Neo Web
             run: go run mage.go InstallNeoWeb
           - name: Build
-            run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
+            run: go run mage.go test machbase-neo package-machbase-neo # neow package-neow
           - name: Release files
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
@@ -48,7 +48,7 @@ jobs:
           - name: Install Neo Web
             run: go run mage.go InstallNeoWeb
           - name: Build
-            run: go run mage.go test machbase-neo package-machbase-neo neow package-neow
+            run: go run mage.go test machbase-neo package-machbase-neo # neow package-neow
           - name: Release files
             uses: svenstaro/upload-release-action@v2
             if: startsWith(github.ref, 'refs/tags/v')
@@ -162,7 +162,7 @@ jobs:
           - name: Build-Mage
             run: go run mage.go -compile ./tmp/mage_output.exe
           - name: Build
-            run: magefiles\tmp\mage_output.exe InstallNeoWeb test machbase-neo neow
+            run: magefiles\tmp\mage_output.exe InstallNeoWeb test machbase-neo InstallNeoLauncher # neow : replaced by neo-launcher
             shell: cmd
           - name: Codesign
             uses: dlemstra/code-sign-action@v1
@@ -173,7 +173,6 @@ jobs:
               recursive: false
               files: |
                 machbase-neo.exe
-                neow.exe
           - name: Package
             run: magefiles\tmp\mage_output.exe package-machbase-neo
             shell: cmd
