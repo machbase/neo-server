@@ -157,7 +157,6 @@ jobs:
           recursive: false
           files: |
             machbase-neo.exe
-           # neow.exe : neo-launcher has been code signed
       - name: Archive
         run: magefiles\tmp\mage_output.exe package-machbase-neo
         shell: cmd

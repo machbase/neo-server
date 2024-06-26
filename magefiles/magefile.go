@@ -571,7 +571,8 @@ func InstallNeoLauncher() error {
 func InstallNeoLauncherX(version string) error {
 	mg.Deps(CheckTmp)
 
-	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-v0.0.1-windows-amd64.exe", version)
+	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-windows-amd64.exe",
+		version, version)
 	dst := "./tmp/neow.exe"
 	if runtime.GOOS == "windows" {
 		if err := wget(url, dst); err != nil {
