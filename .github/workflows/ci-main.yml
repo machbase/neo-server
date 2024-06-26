@@ -146,7 +146,7 @@ jobs:
       - name: Build-Mage
         run: go run mage.go -compile ./tmp/mage_output.exe
       - name: Build
-        run: magefiles\tmp\mage_output.exe InstallNeoWeb test machbase-neo neow
+        run: magefiles\tmp\mage_output.exe InstallNeoWeb test machbase-neo InstallNeoLauncher # neow : replaced by neo-launcher
         shell: cmd
       - name: Codesign
         uses: dlemstra/code-sign-action@v1
@@ -157,7 +157,7 @@ jobs:
           recursive: false
           files: |
             machbase-neo.exe
-            neow.exe
+           # neow.exe : neo-launcher has been code signed
       - name: Archive
         run: magefiles\tmp\mage_output.exe package-machbase-neo
         shell: cmd

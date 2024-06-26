@@ -561,6 +561,30 @@ func GetVersion() error {
 	return nil
 }
 
+//go:embed neo-launcher-version.txt
+var neo_launcher_version string
+
+func InstallNeoLauncher() error {
+	return InstallNeoLauncherX(neo_launcher_version)
+}
+
+func InstallNeoLauncherX(version string) error {
+	mg.Deps(CheckTmp)
+
+	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-v0.0.1-windows-amd64.exe", version)
+	dst := "./tmp/neow.exe"
+	if runtime.GOOS == "windows" {
+		if err := wget(url, dst); err != nil {
+			return err
+		}
+	} else {
+		if err := sh.RunV("wget", "-O", dst, "-L", url); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 //go:embed neo-web-version.txt
 var neo_web_version string
 
