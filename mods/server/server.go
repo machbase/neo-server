@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,13 @@ func init() {
 			return NewConfig()
 		},
 		func(conf *Config) (booter.Boot, error) {
+			if navelcord := os.Getenv(NAVEL_ENV); navelcord != "" {
+				if port, err := strconv.ParseInt(navelcord, 10, 64); err == nil {
+					conf.NavelCord = &NavelCordConfig{
+						Port: int(port),
+					}
+				}
+			}
 			return NewServer(conf)
 		},
 	)
@@ -102,6 +110,7 @@ type Config struct {
 	Http           HttpConfig
 	Mqtt           MqttConfig
 	Jwt            security.JwtConfig
+	NavelCord      *NavelCordConfig
 
 	CreateDBQueries     []string // sql sentences
 	CreateDBScriptFiles []string // file path
@@ -154,6 +163,10 @@ type ShellConfig struct {
 	ServerKeyPath string
 }
 
+type NavelCordConfig struct {
+	Port int
+}
+
 type Server interface {
 	booter.Boot
 }
@@ -161,9 +174,10 @@ type Server interface {
 type svr struct {
 	mgmt.UnimplementedManagementServer
 
-	conf *Config
-	log  logging.Log
-	db   *mach.Database
+	conf  *Config
+	log   logging.Log
+	db    *mach.Database
+	navel *net.TCPConn
 
 	mqttd mqttd.Service
 	grpcd grpcd.Service
@@ -682,10 +696,17 @@ func (s *svr) Start() error {
 		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(s.startupTime).Round(time.Millisecond).String())
 	}
 
+	// navelcord
+	if s.conf.NavelCord != nil {
+		s.StartNavelCord()
+	}
 	return nil
 }
 
 func (s *svr) Stop() {
+	if s.navel != nil {
+		s.StopNavelCord()
+	}
 	if s.sshd != nil {
 		s.sshd.Stop()
 	}
