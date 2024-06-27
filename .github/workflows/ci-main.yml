@@ -7,8 +7,11 @@ on:
       - 'dev-*'
 
 jobs:
-  darwin-arm64:
-    runs-on: [macos-14] # macos-14 is M1 in beta. instead of [ self-hosted, ARM64, macOS ]
+  darwin:
+    strategy:
+      matrix:
+        platform: [macos-14, macos-13] # macos-14 is M1
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,33 +26,15 @@ jobs:
         run: go run mage.go InstallNeoWeb InstallNeoLauncher
       - name: Build
         run: go run mage.go test machbase-neo package
-      - name: Upload Artifact
+      - name: Upload Artifact arm64
+        if: matrix.platform == 'macos-14'
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-darwin-arm64
           path: packages/machbase-neo-v*.zip
           retention-days: 5
-  darwin-amd64:
-    runs-on: [ macos-13 ]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup go compiler
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          check-latest: true
-      - name: Install Neo Web
-        run: go run mage.go InstallNeoWeb InstallNeoLauncher
-      - name: Build
-        run: go run mage.go test machbase-neo package
-      - name: Codecov
-        uses: codecov/codecov-action@v4
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Upload Artifact
+      - name: Upload Artifact amd64
+        if: matrix.platform == 'macos-13'
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-darwin-x64
@@ -123,7 +108,7 @@ jobs:
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Build
-        run: go run mage.go buildx machbase-neo linux arm packagex machbase-neo linux arm
+        run: go run mage.go buildx machbase-neo linux arm packagex linux arm
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
