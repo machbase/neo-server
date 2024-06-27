@@ -24,15 +24,11 @@ import (
 var Default = Build
 
 var Aliases = map[string]any{
-	"machbase-neo":         Build,
-	"neow":                 BuildNeow,
-	"neoshell":             BuildNeoShell,
-	"package-machbase-neo": Package,
-	"package-neow":         PackageNeow,
-	"package-neoshell":     PackageNeoShell,
-	"cleanpackage":         CleanPackage,
-	"buildversion":         BuildVersion,
-	"install-neo-web":      InstallNeoWeb,
+	"machbase-neo":    Build,
+	"neoshell":        BuildNeoShell,
+	"cleanpackage":    CleanPackage,
+	"buildversion":    BuildVersion,
+	"install-neo-web": InstallNeoWeb,
 }
 
 var vLastVersion string
@@ -48,11 +44,6 @@ func BuildVersion() {
 func Build() error {
 	mg.Deps(CheckTmp, GetVersion)
 	return build("machbase-neo")
-}
-
-func BuildNeow() error {
-	mg.Deps(GetVersion, CheckTmp, CheckFyne)
-	return buildNeoW()
 }
 
 func BuildNeoShell() error {
@@ -78,16 +69,15 @@ func build(target string) error {
 	}
 
 	args := []string{"build"}
-	if target != "neow" {
-		ldflags := strings.Join([]string{
-			"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
-			"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
-			"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
-			"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
-			"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
-		}, " ")
-		args = append(args, "-ldflags", ldflags)
-	}
+	ldflags := strings.Join([]string{
+		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
+		"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
+		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
+		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
+		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+	}, " ")
+	args = append(args, "-ldflags", ldflags)
+
 	// executable file
 	if runtime.GOOS == "windows" {
 		args = append(args, "-tags=timetzdata")
@@ -105,48 +95,6 @@ func build(target string) error {
 	err := sh.RunWithV(env, "go", args...)
 	if err != nil {
 		return err
-	}
-	fmt.Println("Build done.")
-	return nil
-}
-
-func buildNeoW() error {
-	fmt.Println("Build", "neow", vBuildVersion, "...")
-	env := map[string]string{
-		"GO111MODULE": "on",
-		"CGO_ENABLED": "0",
-	}
-	appIcon, err := filepath.Abs(filepath.Join(".", "main", "neow", "res", "appicon.png"))
-	if err != nil {
-		return err
-	}
-	args := []string{
-		"package",
-		"--os", runtime.GOOS,
-		"--src", filepath.Join(".", "main", "neow"),
-		"--icon", appIcon,
-		"--id", "com.machbase.neow",
-	}
-	if err := sh.RunWithV(env, "fyne", args...); err != nil {
-		return err
-	}
-	if runtime.GOOS == "windows" {
-		os.Rename("./main/neow/neow.exe", "./tmp/neow.exe")
-	} else if runtime.GOOS == "darwin" {
-		os.RemoveAll("./tmp/neow.app")
-		if err := os.Rename("neow.app", "./tmp/neow.app"); err != nil {
-			return err
-		}
-		if err := build("machbase-neo"); err != nil {
-			return err
-		}
-		if err := os.Rename("./tmp/machbase-neo", "./tmp/neow.app/Contents/MacOS/machbase-neo"); err != nil {
-			return err
-		}
-	} else {
-		if err := os.Rename("./main/neow/neow", "./tmp/neow"); err != nil {
-			return err
-		}
 	}
 	fmt.Println("Build done.")
 	return nil
@@ -220,16 +168,15 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	}
 
 	args := []string{"build"}
-	if target != "neow" {
-		ldflags := strings.Join([]string{
-			"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
-			"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
-			"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
-			"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
-			"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
-		}, " ")
-		args = append(args, "-ldflags", ldflags)
-	}
+	ldflags := strings.Join([]string{
+		"-X", fmt.Sprintf("%s/mods.goVersionString=%s", mod, goVersion),
+		"-X", fmt.Sprintf("%s/mods.versionString=%s", mod, vBuildVersion),
+		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
+		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
+		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+	}, " ")
+	args = append(args, "-ldflags", ldflags)
+
 	// executable file
 	if targetOS == "windows" {
 		args = append(args, "-tags=timetzdata")
@@ -294,35 +241,6 @@ func CheckTmp() error {
 	return err
 }
 
-func CheckFyne() error {
-	const fyneVersion = "v2.3.5"
-	const fyneRepo = "fyne.io/fyne/v2/cmd/fyne@latest"
-	if verout, err := sh.Output("fyne", "--version"); err != nil {
-		err = sh.RunV("go", "install", fyneRepo)
-		if err != nil {
-			return err
-		}
-	} else {
-		// fyne version v2.3.5
-		tok := strings.Fields(verout)
-		if len(tok) != 3 {
-			return fmt.Errorf("invalid fyne verison: %s", verout)
-		}
-		ver, err := semver.NewVersion(tok[2])
-		if err != nil {
-			return err
-		}
-		expectedFyneVer, _ := semver.NewVersion(fyneVersion)
-		if ver.Compare(expectedFyneVer) < 0 {
-			err = sh.RunV("go", "install", fyneRepo)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func CheckMoq() error {
 	const moqRepo = "github.com/matryer/moq@latest"
 	if _, err := sh.Output("moq", "-version"); err != nil {
@@ -359,26 +277,14 @@ func Protoc() error {
 }
 
 func Package() error {
-	return package0("machbase-neo")
+	return PackageX(runtime.GOOS, runtime.GOARCH)
 }
 
-func PackageNeow() error {
-	return package0("neow")
-}
-
-func PackageNeoShell() error {
-	return package0("neoshell")
-}
-
-func package0(target string) error {
-	return PackageX(target, runtime.GOOS, runtime.GOARCH)
-}
-
-func PackageX(target string, targetOS string, targetArch string) error {
+func PackageX(targetOS string, targetArch string) error {
 	mg.Deps(CleanPackage, GetVersion, CheckTmp)
-	bdir := fmt.Sprintf("%s-%s-%s-%s", target, vBuildVersion, targetOS, targetArch)
+	bdir := fmt.Sprintf("machbase-neo-%s-%s-%s", vBuildVersion, targetOS, targetArch)
 	if targetArch == "arm" {
-		bdir = fmt.Sprintf("%s-%s-%s-arm32", target, vBuildVersion, targetOS)
+		bdir = fmt.Sprintf("machbase-neo-%s-%s-arm32", vBuildVersion, targetOS)
 	}
 	_, err := os.Stat("packages")
 	if err != os.ErrNotExist {
@@ -393,9 +299,11 @@ func PackageX(target string, targetOS string, targetArch string) error {
 		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
 			return err
 		}
-	} else if targetOS == "darwin" && target == "neow" {
-		err := os.Rename("./tmp/neow.app", filepath.Join("./packages", bdir, "neow.app"))
-		if err != nil {
+	} else if targetOS == "darwin" {
+		if err := os.Rename(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
+			return err
+		}
+		if err := os.Rename(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
 			return err
 		}
 	} else {
@@ -571,9 +479,9 @@ func InstallNeoLauncher() error {
 func InstallNeoLauncherX(version string) error {
 	mg.Deps(CheckTmp)
 
-	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-windows-amd64.exe",
-		version, version)
-	dst := "./tmp/neow.exe"
+	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-%s-amd64.zip",
+		version, version, runtime.GOOS)
+	dst := "./tmp/neow.zip"
 	if runtime.GOOS == "windows" {
 		if err := wget(url, dst); err != nil {
 			return err
@@ -582,6 +490,14 @@ func InstallNeoLauncherX(version string) error {
 		if err := sh.RunV("wget", "-O", dst, "-L", url); err != nil {
 			return err
 		}
+	}
+	if err := unzip(dst, "./tmp"); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		os.Rename("./tmp/neo-launcher.exe", "./tmp/neow.exe")
+	} else if runtime.GOOS == "darwin" {
+		os.Rename("./tmp/neo-launcher.app", "./tmp/neow.app")
 	}
 	return nil
 }
