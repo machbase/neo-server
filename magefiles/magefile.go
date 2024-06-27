@@ -559,7 +559,7 @@ func wget(url string, dst string) error {
 		if len, err := io.Copy(out, in); err != nil {
 			return err
 		} else {
-			fmt.Println("web-ui download:", len)
+			fmt.Println("download:", len)
 		}
 		return out.Close()
 	}
