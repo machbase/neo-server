@@ -214,12 +214,18 @@ func Test() error {
 		return err
 	}
 
-	if err := sh.RunWithV(env, "go", "test", "-cover", "-coverprofile", "./tmp/cover.out",
+	testArgs := []string{
+		"test", "-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
 		"./mods/...",
 		"./api/...",
-		"./test/...",
-	); err != nil {
+	}
+
+	if runtime.GOOS != "windows" {
+		testArgs = append(testArgs, "./test/...")
+	}
+
+	if err := sh.RunWithV(env, "go", testArgs...); err != nil {
 		return err
 	}
 	if output, err := sh.Output("go", "tool", "cover", "-func=./tmp/cover.out"); err != nil {
