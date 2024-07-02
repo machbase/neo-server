@@ -32,7 +32,8 @@ type SessionCmd struct {
 		ShowAll bool `name:"all" short:"a"`
 	} `cmd:"" name:"list"`
 	Kill struct {
-		Id string `arg:"" name:"id"`
+		Id    string `arg:"" name:"id"`
+		Force bool   `name:"force" short:"f"`
 	} `cmd:"" name:"kill"`
 	Stat struct {
 	} `cmd:"" name:"stat"`
@@ -62,7 +63,7 @@ func doSession(ctx *action.ActionContext) {
 	case "list":
 		doSessionList(ctx, cmd.List.ShowAll)
 	case "kill <id>":
-		doSessionKill(ctx, cmd.Kill.Id)
+		doSessionKill(ctx, cmd.Kill.Id, cmd.Kill.Force)
 	case "stat":
 		doSessionStat(ctx)
 	}
@@ -143,8 +144,8 @@ func doSessionStat(ctx *action.ActionContext) {
 		box.Render()
 	}
 }
-func doSessionKill(ctx *action.ActionContext, id string) {
-	success, err := ctx.Actor.Database().ServerKillSession(id)
+func doSessionKill(ctx *action.ActionContext, id string, force bool) {
+	success, err := ctx.Actor.Database().ServerKillSession(id, force)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}

@@ -218,6 +218,7 @@ func Test() error {
 		"./booter/...",
 		"./mods/...",
 		"./api/...",
+		"./test/...",
 	); err != nil {
 		return err
 	}
@@ -261,7 +262,7 @@ func Protoc() error {
 	args := []string{}
 	if len(args) == 0 {
 		args = []string{
-			"machrpc", "mgmt", "bridge", "schedule",
+			"mgmt", "bridge", "schedule",
 		}
 	}
 

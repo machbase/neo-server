@@ -570,7 +570,7 @@ func (s *grpcd) KillSession(pctx context.Context, req *machrpc.KillSessionReques
 		return nil, fmt.Errorf("session kill is unavailable")
 	}
 
-	if err := s.serverKillSessionFunc(req.Id); err != nil {
+	if err := s.serverKillSessionFunc(req.Id, req.Force); err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		rsp.Success = true

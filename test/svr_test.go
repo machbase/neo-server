@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/booter"
@@ -52,19 +53,12 @@ module "machbase.com/neo-server" {
         }
         Http = {
             Listeners        = [ "tcp://127.0.0.1:5654" ]
-            Handlers         = [
-                { Prefix: "/db",       Handler: "machbase" },
-                { Prefix: "/metrics",  Handler: "influx" },
-				{ Prefix: "/logvault", Handler: "logvault"},
-            ]
         }
         Mqtt = {
             Listeners        = [ "tcp://127.0.0.1:5653"]
-            Handlers         = [
-                { Prefix: "db",      Handler: "machbase" },
-                { Prefix: "metrics", Handler: "influx" },
-            ]
         }
+		MachbaseInitOption       = 2
+		EnableMachbaseSigHandler = false
     }
 }
 `)
@@ -80,6 +74,14 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 var benchmarkTableName = strings.ToUpper("samplebench")
 
 func TestMain(m *testing.M) {
+	defer func() {
+		e := recover()
+		if e == nil {
+			return
+		}
+		fmt.Println(e)
+	}()
+
 	builder := booter.NewBuilder()
 	b, err := builder.BuildWithContent(serverConf)
 	if err != nil {
@@ -129,12 +131,10 @@ func TestMain(m *testing.M) {
 		panic(result.Err())
 	}
 
-	//TODO remove comment when tag index is ready, MACH-ERR 2334 Tag Index is not yet supported.
-	// result = db.Exec(fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
-	// if result.Err() != nil {
-	// 	panic(result.Err())
-	// }
-	//
+	result = conn.Exec(context.TODO(), fmt.Sprintf("CREATE INDEX %s_id_idx ON %s (id)", benchmarkTableName, benchmarkTableName))
+	if result.Err() != nil {
+		panic(result.Err())
+	}
 
 	row = conn.QueryRow(context.TODO(), "select count(*) from "+benchmarkTableName)
 	err = row.Scan(&count)
@@ -144,7 +144,25 @@ func TestMain(m *testing.M) {
 	/// end of preparing benchmark table
 
 	m.Run()
+
+	// cancel Conn test
+	rows, err := conn.Query(context.TODO(), "select * from "+benchmarkTableName+" order by time ")
+	if err != nil {
+		panic(err)
+	}
+	if !conn.Connected() {
+		panic("connection is not connected")
+	}
+	listNeoSession(db)
+	if err := conn.Cancel(); err != nil {
+		panic(err)
+	}
+	rows.Close()
+	listNeoSession(db)
+
+	// shutdown
 	b.Shutdown()
+	time.Sleep(3 * time.Second)
 }
 
 func SqlTidy(sqlText string) string {
@@ -153,4 +171,30 @@ func SqlTidy(sqlText string) string {
 		lines[i] = strings.TrimSpace(ln)
 	}
 	return strings.TrimSpace(strings.Join(lines, " "))
+}
+
+func listNeoSession(db *mach.Database) {
+	ctx := context.TODO()
+	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+	// ID     │ USER_ID │ USER_NAME │ STMT_COUNT │
+	rows, err := conn.Query(ctx, "select id, user_name from V$NEO_SESSION")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("---------- V$NEO_SESSION ----------")
+	for rows.Next() {
+		var id, user string
+		if err := rows.Scan(&id, &user); err != nil {
+			panic(err)
+		}
+		if cw, ok := db.GetWatcher(id); ok {
+			fmt.Printf("ID: %s, USER: %s %s\n", id, user, cw.LatestSql)
+		} else {
+			fmt.Printf("ID: %s, USER: %s -- watcher not found\n", id, user)
+		}
+	}
 }

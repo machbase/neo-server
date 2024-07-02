@@ -112,6 +112,6 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, 
 	return
 }
 
-func (s *svr) ServerKillSession(id string) error {
-	return s.db.KillConnection(id)
+func (s *svr) ServerKillSession(id string, force bool) error {
+	return s.db.KillConnection(id, force)
 }

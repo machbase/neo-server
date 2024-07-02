@@ -132,7 +132,7 @@ func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*m
 	}
 }
 
-func OptionServerKillSessionFunc(fn func(id string) error) Option {
+func OptionServerKillSessionFunc(fn func(id string, force bool) error) Option {
 	return func(s *grpcd) {
 		s.serverKillSessionFunc = fn
 	}
@@ -169,7 +169,7 @@ type grpcd struct {
 	servicePortsFunc      func(svc string) ([]*model.ServicePort, error)
 	serverInfoFunc        func() (*machrpc.ServerInfo, error)
 	serverSessionsFunc    func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
-	serverKillSessionFunc func(id string) error
+	serverKillSessionFunc func(id string, force bool) error
 
 	rpcServer  *grpc.Server
 	mgmtServer *grpc.Server
