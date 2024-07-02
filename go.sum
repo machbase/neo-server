@@ -274,8 +274,8 @@ github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/machbase/neo-client v1.0.1 h1:FVT8BHbvY9/preIPnjNePozm3dcSMV0pDIK357EwWsc=
 github.com/machbase/neo-client v1.0.1/go.mod h1:DACH4z3RC6as7EwEQ/OfZL32b7n1nMwzvfUmnTaql14=
-github.com/machbase/neo-engine v1.3.4-0.20240627065228-cb1e88e88c47 h1:izu+Qb6iWywvoHia9Y0s2cMssjrNS2S41JntHU9C1Vs=
-github.com/machbase/neo-engine v1.3.4-0.20240627065228-cb1e88e88c47/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
+github.com/machbase/neo-engine v1.3.4-0.20240702000946-f2594e092f4e h1:YVopvLsKQcg8LL3OCWYaOwH35r61ybF9XX2psd0GA/A=
+github.com/machbase/neo-engine v1.3.4-0.20240702000946-f2594e092f4e/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
