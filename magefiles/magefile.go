@@ -21,11 +21,12 @@ import (
 	"github.com/magefile/mage/sh"
 )
 
-var Default = Build
+var Default = BuildNeoServer
 
 var Aliases = map[string]any{
-	"machbase-neo":    Build,
+	"machbase-neo":    BuildNeoServer,
 	"neoshell":        BuildNeoShell,
+	"neocat":          BuildNeoCat,
 	"cleanpackage":    CleanPackage,
 	"buildversion":    BuildVersion,
 	"install-neo-web": InstallNeoWeb,
@@ -41,17 +42,21 @@ func BuildVersion() {
 	fmt.Println(vBuildVersion)
 }
 
-func Build() error {
-	mg.Deps(CheckTmp, GetVersion)
-	return build("machbase-neo")
+func BuildNeoServer() error {
+	return Build("machbase-neo")
 }
 
 func BuildNeoShell() error {
-	mg.Deps(CheckTmp, GetVersion)
-	return build("neoshell")
+	return Build("neoshell")
 }
 
-func build(target string) error {
+func BuildNeoCat() error {
+	return Build("neocat")
+}
+
+func Build(target string) error {
+	mg.Deps(CheckTmp, GetVersion)
+
 	fmt.Println("Build", target, vBuildVersion, "...")
 
 	mod := "github.com/machbase/neo-server"
@@ -65,6 +70,7 @@ func build(target string) error {
 		// FIXME: neoshell should not link to engine
 		env["CGO_ENABLED"] = "1"
 	} else {
+		// machbase-neo, neocat requires cgo
 		env["CGO_ENABLED"] = "1"
 	}
 
@@ -303,6 +309,9 @@ func PackageX(targetOS string, targetArch string) error {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
+		if err := os.Rename(filepath.Join("tmp", "neocat.exe"), filepath.Join("packages", bdir, "neocat.exe")); err != nil {
+			return err
+		}
 		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
 			return err
 		}
@@ -310,14 +319,18 @@ func PackageX(targetOS string, targetArch string) error {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
+		if err := os.Rename(filepath.Join("tmp", "neocat"), filepath.Join("packages", bdir, "neocat")); err != nil {
+			return err
+		}
 		if err := os.Rename(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
 			return err
 		}
 	} else {
-		err := os.Rename("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo"))
-		if err != nil {
+		if err := os.Rename("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
+		// ignore error
+		os.Rename("./tmp/neocat", filepath.Join("./packages", bdir, "neocat"))
 	}
 
 	err = archivePackage(fmt.Sprintf("./packages/%s.zip", bdir), filepath.Join("./packages", bdir))

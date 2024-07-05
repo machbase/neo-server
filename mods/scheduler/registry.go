@@ -83,7 +83,6 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
-	var forceAutoStart bool = false
 	var canAutoStart bool = true
 	var ent Entry
 	var err error
@@ -95,7 +94,6 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 				if err := ent.Stop(); err != nil {
 					return err
 				}
-				forceAutoStart = true
 			} else {
 				canAutoStart = false
 			}
@@ -123,7 +121,13 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 		be.state = prevState
 	}
 
-	if ent.AutoStart() && canAutoStart || forceAutoStart {
+	if ent.AutoStart() && canAutoStart {
+		if err := ent.Start(); err != nil {
+			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
+		}
+		return nil
+	}
+	if !ent.AutoStart() && canAutoStart {
 		if err := ent.Start(); err != nil {
 			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
 		}
