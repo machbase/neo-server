@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -75,6 +76,14 @@ func main() {
 		util.InitLogger(*optLogFilename, *optLogLevel, *optLogMaxSize, *optLogMaxAge, *optLogMaxBackups, *optLogCompress)
 	}
 
+	// NavelCord
+	var navelcord *Navelcord
+	if port := os.Getenv(NAVEL_ENV); port != "" {
+		if port, err := strconv.ParseInt(port, 10, 64); err == nil {
+			navelcord = &Navelcord{port: int(port)}
+		}
+	}
+
 	// PID file
 	if optPid != nil {
 		pfile, _ := os.OpenFile(*optPid, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
@@ -116,6 +125,13 @@ func main() {
 		}
 	}
 
+	// NavelCord
+	if navelcord != nil {
+		if err := navelcord.StartNavelCord(); err != nil {
+			os.Exit(1)
+		}
+	}
+
 	go process.Run()
 
 	// wait Ctrl+C
@@ -124,5 +140,8 @@ func main() {
 	fmt.Println("started, press ctrl+c to stop...")
 	<-done
 
+	if navelcord != nil {
+		navelcord.StopNavelCord()
+	}
 	process.Stop()
 }
