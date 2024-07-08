@@ -170,6 +170,8 @@ jobs:
               file_glob: true
     docker-arm64:
       runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
+      env:
+        ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
       needs: [ linux-amd64, linux-arm64 ]
       steps:
         - name: Checkout
@@ -190,6 +192,8 @@ jobs:
             scp tmp/machbase-neo ${{ secrets.DOCKER_HOST }}:/home/ubuntu/docker-build/arm64/
     docker-amd64:
       runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+      env:
+        ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
       needs: [ docker-arm64 ]
       steps:
         - name: Checkout
