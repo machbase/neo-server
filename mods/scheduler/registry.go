@@ -83,7 +83,8 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 
-	var canAutoStart bool = true
+	var initRegister bool = false
+	var stateRunning bool = false
 	var ent Entry
 	var err error
 	switch def.Type {
@@ -94,9 +95,10 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 				if err := ent.Stop(); err != nil {
 					return err
 				}
-			} else {
-				canAutoStart = false
+				stateRunning = true
 			}
+		} else {
+			initRegister = true
 		}
 		ent, err = NewTimerEntry(s, def)
 	case model.SCHEDULE_SUBSCRIBER:
@@ -121,13 +123,17 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 		be.state = prevState
 	}
 
-	if ent.AutoStart() && canAutoStart {
+	if initRegister {
+		if !ent.AutoStart() {
+			return nil
+		}
 		if err := ent.Start(); err != nil {
 			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
 		}
 		return nil
 	}
-	if !ent.AutoStart() && canAutoStart {
+
+	if stateRunning {
 		if err := ent.Start(); err != nil {
 			s.log.Warnf("schedule '%s' autostart failed, %s", ent.Name(), err.Error())
 		}
