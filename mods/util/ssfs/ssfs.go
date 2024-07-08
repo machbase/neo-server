@@ -62,6 +62,7 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 		"node_modules":  true,
 		".pnp":          true,
 		".DS_Store":     true,
+		"neow.app":      true, // it can be shown as as a directory on macOS
 	}
 	return ret, nil
 }
