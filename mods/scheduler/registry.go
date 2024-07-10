@@ -102,6 +102,9 @@ func Register(s *svr, def *model.ScheduleDefinition) error {
 		}
 		ent, err = NewTimerEntry(s, def)
 	case model.SCHEDULE_SUBSCRIBER:
+		if _, ok := registry[strings.ToUpper(def.Name)]; !ok {
+			initRegister = true
+		}
 		ent, err = NewSubscriberEntry(s, def)
 	default:
 		err = errors.New("undefined schedule type")
