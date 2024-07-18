@@ -10,6 +10,7 @@ var sqlCommands = []string{
 	"select", "insert", "update", "delete", "alter",
 	"create", "drop", "truncate", "exec",
 	"mount", "umount", "backup",
+	"grant", "revoke",
 }
 
 var globalCommands = make(map[string]*Cmd)
