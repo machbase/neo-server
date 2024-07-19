@@ -8,6 +8,11 @@ import (
 	"github.com/machbase/neo-server/api"
 )
 
+// returns dbName, userName, tableName
+func TokenizeFullTableName(name string) (string, string, string) {
+	return tokenizeFullTableName(name)
+}
+
 func tokenizeFullTableName(name string) (string, string, string) {
 	tableName := strings.ToUpper(name)
 	userName := "SYS"

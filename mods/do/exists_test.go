@@ -18,11 +18,11 @@ func TestExists(t *testing.T) {
 			conn.CloseFunc = func() error { return nil }
 			conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
 				switch sqlText {
-				case "select count(*) from M$SYS_TABLES where name = ?":
+				case "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?":
 					return &RowMock{
 						ScanFunc: func(cols ...any) error {
-							if len(params) == 1 {
-								if params[0] == "EXAMPLE" {
+							if len(params) == 2 {
+								if params[1] == "EXAMPLE" {
 									*(cols[0].(*int)) = 1
 								} else {
 									*(cols[0].(*int)) = 0
