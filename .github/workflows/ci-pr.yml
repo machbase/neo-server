@@ -32,6 +32,6 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Build amd64
-        run: go run mage.go achbase-neo neocat package
+        run: go run mage.go machbase-neo neocat package
       - name: Build arm32
         run: go run mage.go buildx machbase-neo linux arm buildx neocat linux arm packagex linux arm
