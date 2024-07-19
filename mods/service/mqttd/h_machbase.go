@@ -102,7 +102,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := svr.getTrustConnection(ctx, "sys")
 	if err != nil {
 		rsp.Reason = err.Error()
 		return nil
@@ -200,7 +200,8 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := svr.getTrustConnection(ctx)
+	_, dbUser, tableName := do.TokenizeFullTableName(wp.Table)
+	conn, err := svr.getTrustConnection(ctx, dbUser)
 	if err != nil {
 		rsp.Reason = err.Error()
 		peerLog.Warn(topic, rsp.Reason)
@@ -211,7 +212,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	exists, err := do.ExistsTable(ctx, conn, wp.Table)
 	if err != nil {
 		rsp.Reason = err.Error()
-		peerLog.Warnf(topic, rsp.Reason)
+		peerLog.Warn(topic, rsp.Reason)
 		return nil
 	}
 	if !exists {
@@ -222,7 +223,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	var desc *do.TableDescription
 	if desc0, err := do.Describe(ctx, conn, wp.Table, false); err != nil {
 		rsp.Reason = err.Error()
-		peerLog.Warnf(topic, rsp.Reason)
+		peerLog.Warn(topic, rsp.Reason)
 		return nil
 	} else {
 		desc = desc0.(*do.TableDescription)
@@ -302,7 +303,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 				columnTypes = append(columnTypes, _type)
 			}
 			valueHolder := strings.Join(_hold, ",")
-			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", wp.Table, strings.Join(columnNames, ","), valueHolder)
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
 		}
 		instream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
 	}
@@ -408,7 +409,16 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 	if appender == nil {
 		ctx, ctxCancel := context.WithCancel(context.Background())
-		if conn, err := svr.db.Connect(ctx, api.WithTrustUser("sys")); err != nil {
+		tableNameFields := strings.SplitN(wp.Table, ".", 2)
+		tableUser := "SYS"
+		if len(tableNameFields) == 2 {
+			tableUser = strings.ToUpper(tableNameFields[0])
+			wp.Table = strings.ToUpper(tableNameFields[1])
+		} else {
+			wp.Table = strings.ToUpper(wp.Table)
+		}
+
+		if conn, err := svr.getTrustConnection(ctx, tableUser); err != nil {
 			ctxCancel()
 			return err
 		} else {

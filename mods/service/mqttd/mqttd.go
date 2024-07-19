@@ -176,8 +176,8 @@ func (svr *mqttd) Stop() {
 	}
 }
 
-func (svr *mqttd) getTrustConnection(ctx context.Context) (api.Conn, error) {
-	return svr.db.Connect(ctx, api.WithTrustUser("sys"))
+func (svr *mqttd) getTrustConnection(ctx context.Context, user string) (api.Conn, error) {
+	return svr.db.Connect(ctx, api.WithTrustUser(user))
 }
 
 func (svr *mqttd) SetAuthServer(authServer security.AuthServer) {
