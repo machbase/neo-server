@@ -9,8 +9,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-func ExistsTable(ctx context.Context, conn api.Conn, tableName string) (bool, error) {
-	r := conn.QueryRow(ctx, "select count(*) from M$SYS_TABLES where name = ?", strings.ToUpper(tableName))
+func ExistsTable(ctx context.Context, conn api.Conn, fullTableName string) (bool, error) {
+	_, userName, tableName := tokenizeFullTableName(fullTableName)
+	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	var count = 0
 	if err := r.Scan(&count); err != nil {
 		return false, err

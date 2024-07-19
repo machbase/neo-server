@@ -22,7 +22,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := svr.getTrustConnection(ctx)
+	conn, err := svr.getTrustConnection(ctx, "sys")
 	if err != nil {
 		peerLog.Warn(topic, err.Error())
 		return

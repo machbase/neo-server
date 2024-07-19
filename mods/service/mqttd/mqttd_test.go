@@ -181,7 +181,7 @@ func TestWrite(t *testing.T) {
 			return rt
 		},
 		QueryRowFunc: func(ctx context.Context, sqlText string, params ...any) api.Row {
-			if sqlText == "select count(*) from M$SYS_TABLES where name = ?" && params[0] == "EXAMPLE" {
+			if sqlText == "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?" && params[1] == "EXAMPLE" {
 				return &RowMock{
 					ErrFunc: func() error { return nil },
 					ScanFunc: func(cols ...any) error {
