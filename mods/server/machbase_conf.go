@@ -197,7 +197,7 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		STREAM_THREAD_COUNT:            4,
 		TAG_TABLE_META_MAX_SIZE:        104857600, // 100MB
 		DISK_BUFFER_COUNT:              16,
-		TAG_CACHE_ENABLE:               1,
+		TAG_CACHE_ENABLE:               31, // 0b11111
 	}
 	switch preset {
 	case PresetFog:
@@ -211,6 +211,7 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 		c.DEFAULT_LSM_MAX_LEVEL = 2
 		c.MAX_QPX_MEM = 1073741824 // 1GB
 		c.ROLLUP_FETCH_COUNT_LIMIT = 3000000
+		c.TAG_CACHE_ENABLE = 31
 		c.TAG_PARTITION_COUNT = 4
 		c.TAG_DATA_PART_SIZE = 16777216
 	case PresetEdge:
