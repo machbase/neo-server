@@ -198,7 +198,6 @@ func (svr *httpd) Router() *gin.Engine {
 			}
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
-			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
 			if svr.tqlLoader != nil {
 				svr.memoryFs = &MemoryFS{Prefix: "/web/api/tql-assets/"}
@@ -207,6 +206,7 @@ func (svr *httpd) Router() *gin.Engine {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
 			}
 			group.Use(svr.handleJwtToken)
+			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/tql/*path", svr.handleTagQL)
 			group.POST("/api/tql/*path", svr.handleTagQL)
 			group.POST("/api/tql", svr.handlePostTagQL)
