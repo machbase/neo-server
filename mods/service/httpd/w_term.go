@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/machbase/neo-server/mods/service/security"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
@@ -197,7 +198,14 @@ type setTerminalSizeRequest struct {
 
 func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 	termId := ctx.Param("term_id")
-	termLoginName := "sys"
+
+	claimAny, claimExists := ctx.Get("jwt-claim")
+	if !claimExists {
+		ctx.String(http.StatusUnauthorized, "unauthorized access")
+		return
+	}
+	claim := claimAny.(security.Claim)
+	termLoginName := claim.Subject
 
 	req := &setTerminalSizeRequest{}
 	if err := ctx.Bind(req); err != nil {
