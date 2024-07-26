@@ -182,7 +182,7 @@ jobs:
           uses: actions/setup-go@v4
           with:
             go-version-file: 'go.mod'
-            check-latest: flase
+            check-latest: false
             cache: false # do not cache for self-hosted runner
         - name: Install Neo Web
           run: go run mage.go InstallNeoWeb
@@ -204,7 +204,7 @@ jobs:
           uses: actions/setup-go@v4
           with:
             go-version-file: 'go.mod'
-            check-latest: flase
+            check-latest: false
             cache: false # do not cache for self-hosted runner
         - name: Install Neo Web
           run: go run mage.go InstallNeoWeb
