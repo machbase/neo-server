@@ -81,6 +81,7 @@ func Build(target string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
+		// "-s", // this may reduce binary size about (110M -> 86M)
 	}, " ")
 	args = append(args, "-ldflags", ldflags)
 

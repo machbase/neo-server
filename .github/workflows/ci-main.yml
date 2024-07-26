@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          check-latest: true
+          check-latest: false
       - name: Install Neo Web and Launcher
         run: go run mage.go InstallNeoWeb InstallNeoLauncher
       - name: Build
@@ -53,7 +53,7 @@ jobs:
         uses: actions/setup-go@v4 # setup-go@v5 requires GLIBC_2.28
         with:
           go-version-file: 'go.mod'
-          check-latest: true
+          check-latest: false
           cache: false # !!! do not cache for self-hosted runner, for github hosted runner --> remove this setting
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
@@ -78,7 +78,7 @@ jobs:
         uses: actions/setup-go@v4 #for ubuntu-20.04 --> actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          check-latest: true
+          check-latest: false
           cache: false # !!! do not cache for self-hosted runner, for github hosted runner --> remove this setting
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
@@ -105,7 +105,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          check-latest: true
+          check-latest: false
       - uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
@@ -130,7 +130,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          check-latest: true
+          check-latest: false
           cache: false # do not cache for self-hosted runner
       - name: Build-Mage
         run: go run mage.go -compile ./tmp/mage_output.exe
