@@ -5,7 +5,7 @@
 
 # neo-server
 
-Machbase is the fastest time-series database for [IoT in the world](https://www.tpc.org/tpcx-iot/results/tpcxiot_perf_results5.asp?version=2) implemented in C++. 
+Machbase is the fastest time-series database for [IoT in the world](https://www.tpc.org/tpcx-iot/results/tpcxiot_perf_results5.asp?version=2) implemented in C. 
 `machbase-neo` is an IoT Database Server that embedding the Machbase engine and provides essential and convenient features to build IoT platforms such as MQTT and HTTP API. It can be installed on machines ranging from Raspberry PI to high-performance servers.
 
 API and Interfaces
