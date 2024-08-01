@@ -13,6 +13,7 @@ type AuthServer interface {
 	ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error)
 	ValidateUserPassword(user string, password string) (bool, string, error)
 	ValidateUserOtp(user string, otp string) (bool, error)
+	GenerateOtp(user string) (string, error)
 	GenerateSnowflake() string
 }
 

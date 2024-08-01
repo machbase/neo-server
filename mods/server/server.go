@@ -1266,6 +1266,10 @@ func (s *svr) ValidateUserOtp(user string, otp string) (bool, error) {
 	return false, nil
 }
 
+func (s *svr) GenerateOtp(user string) (string, error) {
+	return s.snowflakes[rand.Intn(len(s.snowflakes))], nil
+}
+
 func (s *svr) GenerateSnowflake() string {
 	return s.genSnowflake.Generate().Base64()
 }

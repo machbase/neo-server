@@ -60,6 +60,7 @@ var FxDefinitions = []Definition{
 	{"linspace50", defTask.fmLinspace50},
 	{"meshgrid", defTask.fmMeshgrid},
 	{"arrange", defTask.fmArrange},
+	{"once", defTask.fmOnce},
 	// geo
 	{"latlon", nums.NewLatLon},
 	{"geoPoint", nums.NewGeoPoint},
@@ -134,6 +135,7 @@ var FxDefinitions = []Definition{
 	{"fixed", defTask.fmFixed},
 	{"TIMEWINDOW", defTask.fmTimeWindow},
 	{"SCRIPT", defTask.fmScript},
+	{"SHELL", defTask.fmShell},
 	{"list", defTask.fmList},
 	{"dict", defTask.fmDictionary},
 	{"lazy", defTask.fmLazy},

@@ -60,6 +60,7 @@ func NewNode(task *Task) *Node {
 		"linspace50":      x.gen_linspace50,
 		"meshgrid":        x.gen_meshgrid,
 		"arrange":         x.gen_arrange,
+		"once":            x.gen_once,
 		"latlon":          x.gen_latlon,
 		"geoPoint":        x.gen_geoPoint,
 		"geoCircle":       x.gen_geoCircle,
@@ -130,6 +131,7 @@ func NewNode(task *Task) *Node {
 		"fixed":            x.gen_fixed,
 		"TIMEWINDOW":       x.gen_TIMEWINDOW,
 		"SCRIPT":           x.gen_SCRIPT,
+		"SHELL":            x.gen_SHELL,
 		"list":             x.gen_list,
 		"dict":             x.gen_dict,
 		"lazy":             x.gen_lazy,
@@ -527,6 +529,20 @@ func (x *Node) gen_arrange(args ...any) (any, error) {
 		return nil, err
 	}
 	return x.fmArrange(p0, p1, p2)
+}
+
+// gen_once
+//
+// syntax: once(float64)
+func (x *Node) gen_once(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("once", 1, len(args))
+	}
+	p0, err := convFloat64(args, 0, "once", "float64")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmOnce(p0)
 }
 
 // gen_latlon
@@ -1837,6 +1853,29 @@ func (x *Node) gen_SCRIPT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmScript(p0...)
+}
+
+// gen_SHELL
+//
+// syntax: SHELL(string, ...string)
+func (x *Node) gen_SHELL(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("SHELL", 1, len(args))
+	}
+	p0, err := convString(args, 0, "SHELL", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []string{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convString(args, n, "SHELL", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	x.fmShell(p0, p1...)
+	return nil, nil
 }
 
 // gen_list
