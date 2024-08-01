@@ -2337,7 +2337,7 @@ func (sr *SubRoutine) Do(node *Node) error {
 	subTask := NewTask()
 	subTask.SetParams(node.task.params)
 	subTask.SetConsoleLogLevel(node.task.consoleLogLevel)
-	subTask.SetConsole(node.task.consoleUser, node.task.consoleId)
+	subTask.SetConsole(node.task.consoleUser, node.task.consoleId, node.task.consoleOtp)
 	subTask.SetLogWriter(sr)
 	//	subTask.SetInputReader(r io.Reader)
 	subTask.SetOutputWriterJson(io.Discard, true)

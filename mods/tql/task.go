@@ -35,6 +35,7 @@ type Task struct {
 	consoleUser  string
 	consoleId    string
 	consoleTopic string
+	consoleOtp   string
 
 	logLevel        Level
 	consoleLogLevel Level
@@ -138,12 +139,13 @@ func (x *Task) SetLogWriter(w io.Writer) {
 	x.logWriter = w
 }
 
-func (x *Task) SetConsole(user string, id string) {
+func (x *Task) SetConsole(user string, id string, otp string) {
 	x.consoleUser = user
 	x.consoleId = id
 	if user != "" && id != "" {
 		x.consoleTopic = fmt.Sprintf("console:%s:%s", user, id)
 	}
+	x.consoleOtp = otp
 }
 
 func (x *Task) SetConsoleLogLevel(level Level) {

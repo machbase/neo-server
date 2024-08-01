@@ -31,6 +31,8 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genMeshgrid(node, gen)
 	case *arrange:
 		genArrange(node, gen)
+	case *doOnce:
+		genOnce(node, gen)
 	case *sphere:
 		genSphere(node, gen)
 	case *oscillator:
@@ -144,6 +146,22 @@ func genJsonData(node *Node, jd *jsondata) {
 		rec := NewRecord(i+1, v)
 		rec.Tell(node.next)
 	}
+}
+
+func (node *Node) fmOnce(v float64) (*doOnce, error) {
+	return &doOnce{value: v}, nil
+}
+
+type doOnce struct {
+	value float64
+}
+
+func genOnce(node *Node, gen *doOnce) {
+	node.task.SetResultColumns([]*api.Column{
+		{Name: "ROWNUM", Type: "int"},
+		{Name: "x", Type: "double"},
+	})
+	NewRecord(1, []any{gen.value}).Tell(node.next)
 }
 
 func (node *Node) fmArrange(start float64, stop float64, step float64) (*arrange, error) {
