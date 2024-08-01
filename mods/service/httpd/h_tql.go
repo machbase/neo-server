@@ -90,8 +90,12 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	task.SetLogLevel(consoleInfo.logLevel)
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
 	if claim != nil && consoleInfo.consoleId != "" {
-		otp, _ := svr.authServer.GenerateOtp(claim.Subject)
-		task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+		if svr.authServer == nil {
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
+		} else {
+			otp, _ := svr.authServer.GenerateOtp(claim.Subject)
+			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+		}
 	}
 	task.SetOutputWriterJson(ctx.Writer, true)
 	task.SetDatabase(svr.db)

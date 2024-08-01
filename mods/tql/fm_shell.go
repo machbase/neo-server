@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/machbase/neo-server/api"
 )
 
 func (x *Node) fmShell(subCmd string, args ...string) {
@@ -18,6 +20,15 @@ func (x *Node) fmShell(subCmd string, args ...string) {
 
 	cmd.Env = append(os.Environ(), "NEOSHELL_USER="+x.task.consoleUser)
 	cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+x.task.consoleOtp)
+
+	if _, ok := x.GetValue("shell"); !ok {
+		x.SetValue("shell", subCmd)
+		cols := []*api.Column{
+			{Name: "ROWNUM", Type: "int"},
+			{Name: "RESULT", Type: "string"},
+		}
+		x.task.SetResultColumns(cols)
+	}
 	if output, err := cmd.Output(); err != nil {
 		x.task.LogError(err.Error())
 		ErrorRecord(err).Tell(x.next)
