@@ -34,8 +34,33 @@ func (pm *PkgManager) Sync() error {
 	return pm.roster.Sync()
 }
 
+// if name is empty, it will return all featured packages
 func (pm *PkgManager) Search(name string, possible int) (*PackageSearchResult, error) {
-	return pm.roster.SearchPackage(name, possible)
+	if name == "" {
+		prj, err := pm.roster.RootMeta()
+		if err != nil {
+			return nil, err
+		}
+		ret := &PackageSearchResult{}
+		for _, pkg := range prj.Featured {
+			if meta, err := pm.roster.LoadPackageMeta(pkg); err != nil {
+				pm.log.Error("failed to load package meta", pkg, err)
+			} else {
+				cache, err := pm.roster.LoadPackageCache(pkg, meta, false)
+				if err != nil {
+					pm.log.Error("failed to load package cache", pkg, err)
+				} else {
+					ret.Possibles = append(ret.Possibles, cache)
+				}
+			}
+			if possible > 0 && len(ret.Possibles) >= possible {
+				break
+			}
+		}
+		return ret, nil
+	} else {
+		return pm.roster.SearchPackage(name, possible)
+	}
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*PackageCache, error) {
@@ -102,15 +127,18 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 		// allow only SYS user
 		obj, ok := ctx.Get("jwt-claim")
 		if !ok {
-			ctx.JSON(401, gin.H{"error": "unauthorized"})
+			ctx.JSON(401, gin.H{"success": false, "reason": "unauthorized"})
+			ctx.Abort()
 			return
 		}
 		if token, ok := obj.(*jwt.RegisteredClaims); !ok {
-			ctx.JSON(401, gin.H{"error": "unauthorized"})
+			ctx.JSON(401, gin.H{"success": false, "reason": "unauthorized"})
+			ctx.Abort()
 			return
 		} else {
 			if strings.ToLower(token.Subject) != "sys" {
-				ctx.JSON(401, gin.H{"error": "unauthorized"})
+				ctx.JSON(401, gin.H{"success": false, "reason": "unauthorized"})
+				ctx.Abort()
 				return
 			}
 		}
@@ -131,14 +159,6 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 func (pm *PkgManager) doSearch(c *gin.Context) {
 	ts := time.Now()
 	name := c.Query("name")
-	if name == "" {
-		c.JSON(400, gin.H{
-			"success": false,
-			"reason":  "name is required",
-			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-		})
-		return
-	}
 	possibles := c.Query("possibles")
 	nposs, _ := strconv.ParseInt(possibles, 10, 32)
 	result, err := pm.Search(name, int(nposs))

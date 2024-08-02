@@ -16,6 +16,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"gopkg.in/yaml.v3"
 )
 
 type RosterName string
@@ -86,6 +87,24 @@ func (r *Roster) WalkPackages(cb func(name string) bool) error {
 	return nil
 }
 
+type RootMeta struct {
+	Featured []string
+}
+
+func (r *Roster) RootMeta() (*RootMeta, error) {
+	path := filepath.Join(r.MetaDir(ROSTER_CENTRAL), "projects.yml")
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	ret := &RootMeta{}
+	if err := yaml.Unmarshal(content, ret); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (r *Roster) Sync() error {
 	for rosterName, rosterRepoUrl := range ROSTER_REPOS {
 		if err := r.SyncRoster(rosterName, rosterRepoUrl); err != nil {
@@ -96,22 +115,25 @@ func (r *Roster) Sync() error {
 }
 
 func (r *Roster) SyncRoster(rosterName RosterName, rosterRepoUrl string) error {
-	repo, err := git.PlainClone(r.MetaDir(rosterName), false, &git.CloneOptions{
-		URL:           rosterRepoUrl,
-		RemoteName:    string(git.DefaultRemoteName),
-		ReferenceName: plumbing.ReferenceName("refs/heads/main"),
-		SingleBranch:  true,
-	})
-	if err != nil {
-		if err == git.ErrRepositoryAlreadyExists {
-			repo, err = git.PlainOpen(r.MetaDir(rosterName))
-			if err != nil {
-				return err
-			}
-		} else {
+	var repo *git.Repository
+	if _, err := os.Stat(r.MetaDir(rosterName)); err != nil {
+		repo, err = git.PlainClone(r.MetaDir(rosterName), true, &git.CloneOptions{
+			URL:           rosterRepoUrl,
+			RemoteName:    string(git.DefaultRemoteName),
+			ReferenceName: plumbing.ReferenceName("refs/heads/main"),
+			SingleBranch:  true,
+			Depth:         1,
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		repo, err = git.PlainOpen(r.MetaDir(rosterName))
+		if err != nil {
 			return err
 		}
 	}
+
 	w, err := repo.Worktree()
 	if err != nil {
 		return err
@@ -122,12 +144,15 @@ func (r *Roster) SyncRoster(rosterName RosterName, rosterRepoUrl string) error {
 	}
 
 	err = w.Pull(&git.PullOptions{
+		RemoteURL:     rosterRepoUrl,
 		RemoteName:    string(git.DefaultRemoteName),
 		ReferenceName: plumbing.ReferenceName("refs/heads/main"),
 		Depth:         1,
 		Force:         true,
+		SingleBranch:  true,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
+		fmt.Println(">>>", err.Error())
 		return err
 	}
 	r.WalkPackages(func(name string) bool {
