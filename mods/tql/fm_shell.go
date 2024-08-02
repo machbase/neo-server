@@ -3,11 +3,28 @@ package tql
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/util"
 )
+
+var _grpcServer string
+
+func SetGrpcAddresses(addrs []string) {
+	for _, addr := range addrs {
+		if strings.HasPrefix(addr, "unix://") && runtime.GOOS != "windows" {
+			_grpcServer = addr
+			break
+		}
+		if strings.HasPrefix(addr, "tcp://127.0.0.1:") {
+			_grpcServer = addr
+		} else {
+			_grpcServer = addr
+		}
+	}
+}
 
 func (node *Node) fmShell(cmd0 string, args0 ...string) {
 	stripQuote := false
@@ -52,7 +69,7 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			ErrorRecord(err).Tell(node.next)
 			return
 		} else {
-			cmd = exec.Command(ex, append([]string{"shell", subCmd}, args...)...)
+			cmd = exec.Command(ex, append([]string{"shell", "--server", _grpcServer, subCmd}, args...)...)
 		}
 		node.task.LogInfo("machbase-neo shell", subCmd, strings.Join(args, " "))
 

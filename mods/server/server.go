@@ -533,6 +533,7 @@ func (s *svr) Start() error {
 	ssfs.SetDefault(serverFs)
 
 	tqlLoader := tql.NewLoader(s.conf.FileDirs)
+	tql.SetGrpcAddresses(s.conf.Grpc.Listeners)
 
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
