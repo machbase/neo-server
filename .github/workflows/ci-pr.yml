@@ -27,6 +27,8 @@ jobs:
         run: sudo apt-get install -y libjemalloc-dev
       - name: Test
         run: go run mage.go test
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Codecov
         uses: codecov/codecov-action@v4
         env:
