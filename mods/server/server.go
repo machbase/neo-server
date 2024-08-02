@@ -38,6 +38,7 @@ import (
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/pkgs"
 	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
@@ -194,6 +195,8 @@ type svr struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
+	pkgMgr *pkgs.PkgManager
+
 	models model.Service
 
 	cachedServerPrivateKey crypto.PrivateKey
@@ -330,6 +333,15 @@ func (s *svr) Start() error {
 
 	if s.conf.Jwt.AtDuration > 0 && s.conf.Jwt.RtDuration > 0 {
 		security.JwtConfigure(&s.conf.Jwt)
+	}
+
+	if s.pkgMgr == nil {
+		pkgsdir := filepath.Join(prefpath, "pkgs")
+		if mgr, err := pkgs.NewPkgManager(filepath.Join(pkgsdir, "meta"), filepath.Join(pkgsdir, "dist")); err != nil {
+			return errors.Wrap(err, "pkg manager")
+		} else {
+			s.pkgMgr = mgr
+		}
 	}
 
 	s.models = model.NewService(
@@ -590,6 +602,7 @@ func (s *svr) Start() error {
 			httpd.OptionServerInfoFunc(s.ServerInfo),
 			httpd.OptionServerSessionsFunc(s.ServerSessions),
 			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
+			httpd.OptionPackageManager(s.pkgMgr),
 		}
 		shellPorts, _ := s.ServicePorts("shell")
 		shellAddrs := []string{}

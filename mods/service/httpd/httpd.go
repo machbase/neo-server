@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/mods/pkgs"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
@@ -72,6 +73,7 @@ type httpd struct {
 	schedMgmtImpl     schedule.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
 	bridgeRuntimeImpl bridge.RuntimeServer
+	pkgMgr            *pkgs.PkgManager
 
 	neoShellAddress string
 	neoShellAccount map[string]string
@@ -204,6 +206,10 @@ func (svr *httpd) Router() *gin.Engine {
 				go svr.memoryFs.Start()
 				svr.tqlLoader.SetVolatileAssetsProvider(svr.memoryFs)
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
+			}
+			if svr.pkgMgr != nil {
+				svr.pkgMgr.HttpAppRouter(group)
+				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
 			}
 			group.Use(svr.handleJwtToken)
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
