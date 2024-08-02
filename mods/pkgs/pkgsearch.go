@@ -18,7 +18,8 @@ type PackageSearchResult struct {
 // Search package info by name, if it finds the package, return the package info.
 // if not found it will return similar package names.
 // if there is no similar package names, it will return empty string slice.
-func (r *Roster) SearchPackage(name string, exactOnly bool) (*PackageSearchResult, error) {
+// if possibles is 0, it will only return exact match.
+func (r *Roster) SearchPackage(name string, possibles int) (*PackageSearchResult, error) {
 	nfo, err := r.LoadPackageMeta(name)
 	if err != nil {
 		return nil, err
@@ -31,7 +32,7 @@ func (r *Roster) SearchPackage(name string, exactOnly bool) (*PackageSearchResul
 		}
 		ret.ExactMatch = cache
 	}
-	if exactOnly {
+	if possibles == 0 {
 		return ret, nil
 	}
 	// search similar package names
@@ -52,8 +53,8 @@ func (r *Roster) SearchPackage(name string, exactOnly bool) (*PackageSearchResul
 		}
 		return 0
 	})
-	if len(candidates) > 5 {
-		candidates = candidates[:5]
+	if len(candidates) > possibles {
+		candidates = candidates[:possibles]
 	}
 	for _, c := range candidates {
 		cache, err := r.cacheManagers[ROSTER_CENTRAL].ReadCache(c.Name)

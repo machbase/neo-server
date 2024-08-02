@@ -86,7 +86,7 @@ func doSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	name := args[0]
-	result, err := mgr.Search(name, false)
+	result, err := mgr.Search(name, 10)
 	if err != nil {
 		return err
 	}

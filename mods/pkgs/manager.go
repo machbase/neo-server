@@ -34,8 +34,8 @@ func (pm *PkgManager) Sync() error {
 	return pm.roster.Sync()
 }
 
-func (pm *PkgManager) Search(name string, exactOnly bool) (*PackageSearchResult, error) {
-	return pm.roster.SearchPackage(name, exactOnly)
+func (pm *PkgManager) Search(name string, possible int) (*PackageSearchResult, error) {
+	return pm.roster.SearchPackage(name, possible)
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*PackageCache, error) {
@@ -98,10 +98,6 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter) {
 
 func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 	r.GET("/search", pm.doSearch)
-	// TODO move this to after auth middleware
-	r.GET("/sync", pm.doSync)
-	r.GET("/install/:name", pm.doInstall)
-	r.GET("/uninstall/:name", pm.doUninstall)
 	r.Use(func(ctx *gin.Context) {
 		// allow only SYS user
 		obj, ok := ctx.Get("jwt-claim")
@@ -119,6 +115,9 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 			}
 		}
 	})
+	r.GET("/sync", pm.doSync)
+	r.GET("/install/:name", pm.doInstall)
+	r.GET("/uninstall/:name", pm.doUninstall)
 }
 
 // doSearch is a handler for /search
@@ -127,8 +126,8 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 // if the name is not found, it will return 404
 // if the name is found, it will return 200
 // if there is an error, it will return 500
-// if the exact query parameter is true, it will return only exact match
-// if the exact query parameter is false, it will return similar package names
+// if the possibles query parameter is 0, it will return only exact match
+// if the possibles query parameter is > 0, it will return similar package names
 func (pm *PkgManager) doSearch(c *gin.Context) {
 	ts := time.Now()
 	name := c.Query("name")
@@ -140,9 +139,9 @@ func (pm *PkgManager) doSearch(c *gin.Context) {
 		})
 		return
 	}
-	pExact := c.Query("exact")
-	exactOnly, _ := strconv.ParseBool(pExact)
-	result, err := pm.Search(name, exactOnly)
+	possibles := c.Query("possibles")
+	nposs, _ := strconv.ParseInt(possibles, 10, 32)
+	result, err := pm.Search(name, int(nposs))
 	if err != nil {
 		c.JSON(500, gin.H{
 			"success": false,
