@@ -4,23 +4,23 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/machbase/neo-pkgdev/pkgs"
 	"github.com/machbase/neo-server/mods/logging"
 )
 
 type PkgManager struct {
 	log    logging.Log
-	roster *Roster
+	roster *pkgs.Roster
 }
 
-func NewPkgManager(metaDir, distDir string) (*PkgManager, error) {
-	roster, err := NewRoster(metaDir, distDir)
+func NewPkgManager(pkgsDir string) (*PkgManager, error) {
+	roster, err := pkgs.NewRoster(pkgsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -35,13 +35,13 @@ func (pm *PkgManager) Sync() error {
 }
 
 // if name is empty, it will return all featured packages
-func (pm *PkgManager) Search(name string, possible int) (*PackageSearchResult, error) {
+func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResult, error) {
 	if name == "" {
 		prj, err := pm.roster.RootMeta()
 		if err != nil {
 			return nil, err
 		}
-		ret := &PackageSearchResult{}
+		ret := &pkgs.PackageSearchResult{}
 		for _, pkg := range prj.Featured {
 			if meta, err := pm.roster.LoadPackageMeta(pkg); err != nil {
 				pm.log.Error("failed to load package meta", pkg, err)
@@ -63,12 +63,12 @@ func (pm *PkgManager) Search(name string, possible int) (*PackageSearchResult, e
 	}
 }
 
-func (pm *PkgManager) Install(name string, output io.Writer) (*PackageCache, error) {
+func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.PackageCache, error) {
 	err := pm.roster.Install(name, output)
 	if err != nil {
 		return nil, err
 	}
-	cache, err := pm.roster.cacheManagers[ROSTER_CENTRAL].ReadCache(name)
+	cache, err := pm.roster.ReadCache(name)
 	if err != nil {
 		return nil, err
 	}
@@ -77,12 +77,12 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*PackageCache, err
 	return cache, nil
 }
 
-func (pm *PkgManager) Uninstall(name string, output io.Writer) (*PackageCache, error) {
+func (pm *PkgManager) Uninstall(name string, output io.Writer) (*pkgs.PackageCache, error) {
 	err := pm.roster.Uninstall(name, output)
 	if err != nil {
 		return nil, err
 	}
-	cache, err := pm.roster.cacheManagers[ROSTER_CENTRAL].ReadCache(name)
+	cache, err := pm.roster.ReadCache(name)
 	if err != nil {
 		return nil, err
 	}
@@ -90,33 +90,12 @@ func (pm *PkgManager) Uninstall(name string, output io.Writer) (*PackageCache, e
 	return cache, nil
 }
 
-func (pm *PkgManager) Build(name string, version string) error {
-	meta, err := pm.roster.LoadPackageMeta(name)
-	if err != nil {
-		return nil
-	}
-	builder, err := NewBuilder(
-		meta, version,
-		WithWorkDir(pm.roster.buildDir),
-		WithDistDir(pm.roster.distDir),
-	)
-	if err != nil {
-		return err
-	}
-
-	err = builder.Build(version)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (pm *PkgManager) HttpAppRouter(r gin.IRouter) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
 		path := ctx.Param("path")
 		ctx.Request.URL.Path = path
-		fs := http.FileServer(http.Dir(filepath.Join(pm.roster.distDir, name, "current")))
+		fs := http.FileServer(http.Dir(pm.roster.InstallDir(name)))
 		fs.ServeHTTP(ctx.Writer, ctx.Request)
 	})
 }

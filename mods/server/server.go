@@ -336,8 +336,8 @@ func (s *svr) Start() error {
 	}
 
 	if s.pkgMgr == nil {
-		pkgsdir := filepath.Join(prefpath, "pkgs")
-		if mgr, err := pkgs.NewPkgManager(filepath.Join(pkgsdir, "meta"), filepath.Join(pkgsdir, "dist")); err != nil {
+		pkgsDir := filepath.Join(prefpath, "pkgs")
+		if mgr, err := pkgs.NewPkgManager(pkgsDir); err != nil {
 			return errors.Wrap(err, "pkg manager")
 		} else {
 			s.pkgMgr = mgr
