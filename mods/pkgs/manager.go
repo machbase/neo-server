@@ -30,8 +30,12 @@ func NewPkgManager(pkgsDir string) (*PkgManager, error) {
 	}, nil
 }
 
-func (pm *PkgManager) Sync() error {
-	return pm.roster.Sync()
+func (pm *PkgManager) Update() (*pkgs.Updates, error) {
+	return pm.roster.Update()
+}
+
+func (pm *PkgManager) Upgrade(pkgName []string) error {
+	return pm.roster.Upgrade(pkgName)
 }
 
 // if name is empty, it will return all featured packages
@@ -122,16 +126,14 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 			}
 		}
 	})
-	r.GET("/sync", pm.doSync)
+	r.GET("/update", pm.doUpdate)
+	r.GET("/upgrade/:name", pm.doUpgrade)
 	r.GET("/install/:name", pm.doInstall)
 	r.GET("/uninstall/:name", pm.doUninstall)
 }
 
 // doSearch is a handler for /search
-// it requires a query parameter "name"
-// if the name is empty, it will return 400
-// if the name is not found, it will return 404
-// if the name is found, it will return 200
+// if the name is empty, it will featured packages in possibles
 // if there is an error, it will return 500
 // if the possibles query parameter is 0, it will return only exact match
 // if the possibles query parameter is > 0, it will return similar package names
@@ -157,9 +159,29 @@ func (pm *PkgManager) doSearch(c *gin.Context) {
 	})
 }
 
-func (pm *PkgManager) doSync(c *gin.Context) {
+func (pm *PkgManager) doUpdate(c *gin.Context) {
 	ts := time.Now()
-	err := pm.Sync()
+	stat, err := pm.Update()
+	if err != nil {
+		c.JSON(500, gin.H{
+			"success": false,
+			"reason":  err.Error(),
+			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
+		})
+		return
+	}
+	c.JSON(200, gin.H{
+		"success": true,
+		"reason":  "success",
+		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
+		"data":    stat,
+	})
+}
+
+func (pm *PkgManager) doUpgrade(c *gin.Context) {
+	ts := time.Now()
+	name := c.Param("name")
+	err := pm.Upgrade([]string{name})
 	if err != nil {
 		c.JSON(500, gin.H{
 			"success": false,
