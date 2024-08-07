@@ -9,6 +9,7 @@ import (
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/pkgs"
+	"github.com/machbase/neo-server/mods/service/backupd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
@@ -146,6 +147,12 @@ func OptionBridgeServer(handler any) Option {
 		if o, ok := handler.(bridge.RuntimeServer); ok {
 			s.bridgeRuntimeImpl = o
 		}
+	}
+}
+
+func OptionBackupService(handler backupd.Service) Option {
+	return func(s *httpd) {
+		s.backupService = handler
 	}
 }
 
