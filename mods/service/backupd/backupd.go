@@ -155,9 +155,6 @@ func (s *service) handleArchive(ctx *gin.Context) {
 		return
 	}
 
-	s.log.Info("before path: ", copyArchive.Path)
-	s.log.Info("before duration.path: ", copyArchive.Duration.After)
-
 	if !filepath.IsAbs(copyArchive.Path) {
 		copyArchive.Path = filepath.Join(s.baseDir, copyArchive.Path)
 	}
@@ -167,14 +164,14 @@ func (s *service) handleArchive(ctx *gin.Context) {
 		copyArchive.Path = strings.ReplaceAll(copyArchive.Path, "\\", "\\\\")
 	}
 
-	s.log.Info("path: ", copyArchive.Path)
-	s.log.Info("duration.path: ", copyArchive.Duration.After)
-
-	if _, err := os.Stat(copyArchive.Path); !os.IsNotExist(err) {
-		rsp["reason"] = fmt.Sprintf("backup exist %q", copyArchive.Path)
-		rsp["elapse"] = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
-		return
+	backupDir := filepath.Dir(copyArchive.Path)
+	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
+		if err = os.MkdirAll(backupDir, 0755); err != nil {
+			rsp["reason"] = err.Error()
+			rsp["elapse"] = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
+		}
 	}
 
 	var backupTarget string
@@ -231,8 +228,6 @@ func (s *service) handleArchive(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-
-	s.log.Info("sqlText: ", sqlText)
 
 	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
