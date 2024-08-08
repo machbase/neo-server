@@ -161,7 +161,6 @@ func (s *service) handleArchive(ctx *gin.Context) {
 
 	if runtime.GOOS == "windows" {
 		copyArchive.Path = strings.ReplaceAll(copyArchive.Path, "/", "\\")
-		copyArchive.Path = strings.ReplaceAll(copyArchive.Path, "\\", "\\\\")
 	}
 
 	backupDir := filepath.Dir(copyArchive.Path)
@@ -191,6 +190,10 @@ func (s *service) handleArchive(ctx *gin.Context) {
 		rsp["elapse"] = time.Since(tick).String()
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
+	}
+
+	if runtime.GOOS == "windows" {
+		copyArchive.Path = strings.ReplaceAll(copyArchive.Path, "\\", "\\\\")
 	}
 
 	var sqlText string
