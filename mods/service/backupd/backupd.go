@@ -151,7 +151,7 @@ func (s *service) handleArchive(ctx *gin.Context) {
 	if s.backup.IsRunning {
 		rsp["reason"] = "backup is running."
 		rsp["elapse"] = time.Since(tick).String()
-		ctx.JSON(http.StatusOK, rsp)
+		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
 
