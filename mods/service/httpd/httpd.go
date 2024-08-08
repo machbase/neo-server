@@ -19,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/pkgs"
+	"github.com/machbase/neo-server/mods/service/backupd"
 	"github.com/machbase/neo-server/mods/service/internal/ginutil"
 	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
@@ -69,6 +70,7 @@ type httpd struct {
 	listeners         []net.Listener
 	jwtCache          security.JwtCache
 	authServer        security.AuthServer
+	backupService     backupd.Service
 	mgmtImpl          mgmt.ManagementServer
 	schedMgmtImpl     schedule.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
@@ -254,6 +256,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/refs/*path", svr.handleRefs)
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
+			if svr.backupService != nil {
+				backupdGroup := group.Group("/api/backup")
+				svr.backupService.HttpRouter(backupdGroup)
+			}
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
 			group.GET("/tags", svr.handleLakeGetTagList)
