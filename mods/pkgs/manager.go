@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ import (
 type PkgManager struct {
 	log    logging.Log
 	roster *pkgs.Roster
+	envs   []string
 }
 
 func NewPkgManager(pkgsDir string) (*PkgManager, error) {
@@ -24,10 +27,21 @@ func NewPkgManager(pkgsDir string) (*PkgManager, error) {
 	if err != nil {
 		return nil, err
 	}
+	envs := []string{}
+	if b, err := os.Executable(); err == nil {
+		b, _ = filepath.Abs(b)
+		envs = append(envs, fmt.Sprintf("MACHBASE_NEO=%s", b))
+	}
 	return &PkgManager{
 		log:    logging.GetLog("pkgmgr"),
 		roster: roster,
+		envs:   envs,
 	}, nil
+}
+
+// add environment variable which will be used while“ installing/uninstalling packages
+func (pm *PkgManager) AddEnv(key, value string) {
+	pm.envs = append(pm.envs, fmt.Sprintf("%s=%s", key, value))
 }
 
 // if name is empty, it will return all featured packages
@@ -60,7 +74,7 @@ func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResu
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.PackageCache, error) {
-	err := pm.roster.Install(name, output)
+	err := pm.roster.Install(name, output, pm.envs)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +88,7 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.PackageCache
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) (*pkgs.PackageCache, error) {
-	err := pm.roster.Uninstall(name, output)
+	err := pm.roster.Uninstall(name, output, pm.envs)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +187,7 @@ func (pm *PkgManager) doUpdate(c *gin.Context) {
 func (pm *PkgManager) doUpgrade(c *gin.Context) {
 	ts := time.Now()
 	name := c.Param("name")
-	installed := pm.roster.Upgrade([]string{name})
+	installed := pm.roster.Upgrade([]string{name}, pm.envs)
 	if len(installed) != 1 {
 		c.JSON(500, gin.H{
 			"success": false,
