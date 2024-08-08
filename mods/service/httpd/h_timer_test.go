@@ -109,7 +109,6 @@ func TestTimer(t *testing.T) {
 	payload := w.Body.Bytes()
 	err = json.Unmarshal(payload, &listRsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -154,7 +153,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -199,7 +197,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -238,7 +235,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -277,7 +273,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -320,7 +315,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 
@@ -348,7 +342,6 @@ func TestTimer(t *testing.T) {
 	payload = w.Body.Bytes()
 	err = json.Unmarshal(payload, &rsp)
 	if err != nil {
-		t.Log("payload: ", string(payload))
 		t.Fatal(err)
 	}
 

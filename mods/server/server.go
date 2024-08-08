@@ -40,6 +40,7 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/pkgs"
 	"github.com/machbase/neo-server/mods/scheduler"
+	"github.com/machbase/neo-server/mods/service/backupd"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqttd"
@@ -102,6 +103,7 @@ func init() {
 type Config struct {
 	DataDir        string
 	PrefDir        string
+	BackupDir      string
 	FileDirs       []string
 	MachbasePreset MachbasePreset
 	Machbase       MachbaseConfig
@@ -187,6 +189,7 @@ type svr struct {
 
 	bridgeSvc bridge.Service
 	schedSvc  scheduler.Service
+	backupSvc backupd.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -218,8 +221,9 @@ func NewConfig() *Config {
 		homeDir = "."
 	}
 	conf := Config{
-		DataDir: ".",
-		PrefDir: filepath.Join(homeDir, ".config", "machbase"),
+		DataDir:   ".",
+		PrefDir:   filepath.Join(homeDir, ".config", "machbase"),
+		BackupDir: ".",
 		Grpc: GrpcConfig{
 			Listeners:      []string{"unix://./mach-grpc.sock"},
 			MaxRecvMsgSize: 4,
@@ -525,6 +529,22 @@ func (s *svr) Start() error {
 		}
 	}
 
+	if s.conf.BackupDir != "" {
+		if backupDirAbs, err := filepath.Abs(s.conf.BackupDir); err != nil {
+			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
+		} else {
+			s.backupSvc = backupd.NewService(
+				backupd.WithBaseDir(backupDirAbs),
+				backupd.WithDatabase(api.NewDatabase(s.db)),
+			)
+		}
+	}
+	if s.backupSvc != nil {
+		if err := s.backupSvc.Start(); err != nil {
+			return err
+		}
+	}
+
 	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
 	if err != nil {
 		s.log.Warnf("Server filesystem, %s", err.Error())
@@ -597,6 +617,7 @@ func (s *svr) Start() error {
 			httpd.OptionScheduleServer(s.schedSvc), // add, timer
 			httpd.OptionBridgeServer(s.bridgeSvc),
 			httpd.OptionServerSideFileSystem(serverFs),
+			httpd.OptionBackupService(s.backupSvc),
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
@@ -738,6 +759,9 @@ func (s *svr) Stop() {
 	}
 	if s.bridgeSvc != nil {
 		s.bridgeSvc.Stop()
+	}
+	if s.backupSvc != nil {
+		s.backupSvc.Stop()
 	}
 	if s.models != nil {
 		s.models.Stop()

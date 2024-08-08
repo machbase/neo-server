@@ -14,6 +14,7 @@ define VARS {
     PREF_DIR          = flag("--pref", prefDir("machbase"))
     DATA_DIR          = flag("--data", "${execDir()}/machbase_home")
     FILE_DIR          = flag("--file", "${execDir()}")
+    BACKUP_DIR        = flag("--backup-dir", "${execDir()}/backups")
     UI_DIR            = flag("--ui", "")
     MACH_LISTEN_HOST  = flag("--mach-listen-host", DEF_LISTEN_HOST)
     MACH_LISTEN_PORT  = flag("--mach-listen-port", DEF_MACH_PORT)
@@ -71,6 +72,7 @@ module "machbase.com/neo-server" {
         PrefDir          = VARS_PREF_DIR
         DataDir          = VARS_DATA_DIR
         FileDirs         = [ VARS_FILE_DIR ]
+        BackupDir        = VARS_BACKUP_DIR
         ExperimentMode   = VARS_EXPERIMENT_MODE
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
         Machbase         = {
