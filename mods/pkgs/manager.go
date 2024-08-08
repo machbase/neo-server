@@ -30,14 +30,6 @@ func NewPkgManager(pkgsDir string) (*PkgManager, error) {
 	}, nil
 }
 
-func (pm *PkgManager) Update() (*pkgs.Updates, error) {
-	return pm.roster.Update()
-}
-
-func (pm *PkgManager) Upgrade(pkgName []string) error {
-	return pm.roster.Upgrade(pkgName)
-}
-
 // if name is empty, it will return all featured packages
 func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResult, error) {
 	if name == "" {
@@ -161,7 +153,7 @@ func (pm *PkgManager) doSearch(c *gin.Context) {
 
 func (pm *PkgManager) doUpdate(c *gin.Context) {
 	ts := time.Now()
-	stat, err := pm.Update()
+	stat, err := pm.roster.Update()
 	if err != nil {
 		c.JSON(500, gin.H{
 			"success": false,
@@ -181,20 +173,35 @@ func (pm *PkgManager) doUpdate(c *gin.Context) {
 func (pm *PkgManager) doUpgrade(c *gin.Context) {
 	ts := time.Now()
 	name := c.Param("name")
-	err := pm.Upgrade([]string{name})
-	if err != nil {
+	installed := pm.roster.Upgrade([]string{name})
+	if len(installed) != 1 {
 		c.JSON(500, gin.H{
 			"success": false,
-			"reason":  err.Error(),
+			"reason":  fmt.Sprintf("invalid upgrade result %d", len(installed)),
 			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
 		})
 		return
 	}
-	c.JSON(200, gin.H{
-		"success": true,
+	r := installed[0]
+	rsp := gin.H{
+		"success": r.Success,
 		"reason":  "success",
 		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-	})
+	}
+	if !r.Success {
+		if r.Err != nil {
+			rsp["reason"] = r.Err.Error()
+		} else {
+			rsp["reason"] = "unknown error"
+		}
+	}
+	if r.Cache != nil {
+		rsp["data"] = map[string]any{
+			"info": r.Cache,
+			"log":  r.Output,
+		}
+	}
+	c.JSON(200, rsp)
 }
 
 func (pm *PkgManager) doInstall(c *gin.Context) {
@@ -207,7 +214,7 @@ func (pm *PkgManager) doInstall(c *gin.Context) {
 			"success": false,
 			"reason":  err.Error(),
 			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-			"log":     output.String(),
+			"data":    map[string]any{"log": output.String()},
 		})
 		return
 	}
@@ -215,8 +222,10 @@ func (pm *PkgManager) doInstall(c *gin.Context) {
 		"success": true,
 		"reason":  "success",
 		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-		"data":    cache,
-		"log":     output.String(),
+		"data": map[string]any{
+			"info": cache,
+			"log":  output.String(),
+		},
 	})
 }
 
@@ -231,7 +240,9 @@ func (pm *PkgManager) doUninstall(c *gin.Context) {
 			"success": false,
 			"reason":  err.Error(),
 			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-			"log":     output.String(),
+			"data": map[string]any{
+				"log": output.String(),
+			},
 		})
 		return
 	}
@@ -239,7 +250,9 @@ func (pm *PkgManager) doUninstall(c *gin.Context) {
 		"success": true,
 		"reason":  "success",
 		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-		"data":    cache,
-		"log":     output.String(),
+		"data": map[string]any{
+			"info": cache,
+			"log":  output.String(),
+		},
 	})
 }
