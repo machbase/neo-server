@@ -394,10 +394,10 @@ func (s *service) handleMount(ctx *gin.Context) {
 
 	var sqlText string
 	if filepath.IsAbs(mount.Path) {
-		sqlText = fmt.Sprintf("MOUNT DATABASE '%s' TO %s", mount.Path, name)
+		sqlText = fmt.Sprintf("MOUNT DATABASE '%s' TO '%s'", mount.Path, name)
 	} else {
 		baseMountPath := filepath.Join(s.baseDir, mount.Path)
-		sqlText = fmt.Sprintf("MOUNT DATABASE '%s' TO %s", baseMountPath, name)
+		sqlText = fmt.Sprintf("MOUNT DATABASE '%s' TO '%s'", baseMountPath, name)
 	}
 
 	if runtime.GOOS == "windows" { // windows
@@ -448,7 +448,7 @@ func (s *service) handleUnmount(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	sqlText := fmt.Sprintf("UNMOUNT DATABASE %s", name)
+	sqlText := fmt.Sprintf("UNMOUNT DATABASE '%s'", name)
 	result := conn.Exec(ctx, sqlText)
 	if result.Err() != nil {
 		rsp["reason"] = result.Message()
