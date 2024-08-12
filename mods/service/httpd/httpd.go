@@ -211,9 +211,11 @@ func (svr *httpd) Router() *gin.Engine {
 			}
 			if svr.pkgMgr != nil {
 				svr.pkgMgr.HttpAppRouter(group)
-				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
 			}
 			group.Use(svr.handleJwtToken)
+			if svr.pkgMgr != nil {
+				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
+			}
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
 			group.GET("/api/tql/*path", svr.handleTagQL)
 			group.POST("/api/tql/*path", svr.handleTagQL)
