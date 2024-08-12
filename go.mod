@@ -28,7 +28,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.0.2
 	github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40
-	github.com/machbase/neo-pkgdev v0.0.0-20240809042157-1f2006852c01
+	github.com/machbase/neo-pkgdev v0.0.0-20240809074626-a8aac61c95e9
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
@@ -77,7 +77,6 @@ require (
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/apparentlymart/go-textseg/v13 v13.0.0 // indirect
-	github.com/aws/aws-sdk-go v1.55.5 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
@@ -106,7 +105,6 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect

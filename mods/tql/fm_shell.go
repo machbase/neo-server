@@ -1,6 +1,7 @@
 package tql
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -61,23 +62,36 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		subArgs = append(subArgs, args0)
 	}
 
+	tmpFile, err := os.CreateTemp("", "sample")
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	defer os.Remove(tmpFile.Name())
 	rowNum := 1
 	for i, subCmd := range subCmdList {
 		args := subArgs[i]
-		var cmd *exec.Cmd
-		if ex, err := os.Executable(); err != nil {
-			ErrorRecord(err).Tell(node.next)
-			return
-		} else {
-			cmd = exec.Command(ex, append([]string{"shell", "--server", _grpcServer, subCmd}, args...)...)
-		}
-		node.task.LogInfo("machbase-neo shell", subCmd, strings.Join(args, " "))
 
+		switch strings.ToLower(subCmd) {
+		case "exit", "quit", "set", "help", "clear", "shutdown":
+			ErrorRecord(fmt.Errorf("command %q is not supported", subCmd)).Tell(node.next)
+			continue
+		default:
+			line := strings.Join(append([]string{subCmd}, args...), " ")
+			fmt.Fprintln(tmpFile, line+";")
+		}
+	}
+
+	var cmd *exec.Cmd
+	if ex, err := os.Executable(); err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	} else {
+		cmd = exec.Command(ex, "shell", "--server", _grpcServer, "run", tmpFile.Name())
 		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.task.consoleUser)
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
 
 		if _, ok := node.GetValue("shell"); !ok {
-			node.SetValue("shell", subCmd)
 			cols := []*api.Column{
 				{Name: "ROWNUM", Type: "int"},
 				{Name: "RESULT", Type: "string"},
@@ -88,8 +102,6 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			node.task.LogError(err.Error())
 			ErrorRecord(err).Tell(node.next)
 		} else {
-			NewRecord(rowNum, strings.Join(append([]string{subCmd}, args...), " ")).Tell(node.next)
-			rowNum++
 			for _, ln := range strings.Split(string(output), "\n") {
 				NewRecord(rowNum, ln).Tell(node.next)
 				rowNum++
