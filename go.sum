@@ -278,8 +278,8 @@ github.com/machbase/neo-client v1.0.2 h1:ccsv3nIa+NE0nmTm9gZf/LYQV8nU1wpnxoc7bNM
 github.com/machbase/neo-client v1.0.2/go.mod h1:xnD8J5WjFRLIUIVx/oyk1/7bObvA+fawot/t/Xfs67Q=
 github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40 h1:jBzdHpXs4tHuYr79ee3y7BnsPnX7grEw3LZL6tzXZ4w=
 github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
-github.com/machbase/neo-pkgdev v0.0.0-20240813072757-fe3822f176b6 h1:fVXgn13TyS7RMUWtCqto/XWa2BogA5pcB9YBOBWj4NQ=
-github.com/machbase/neo-pkgdev v0.0.0-20240813072757-fe3822f176b6/go.mod h1:R/b0vaIjKNvd0Ktgb93G722WXimbQgXMiEbCoYfIxAA=
+github.com/machbase/neo-pkgdev v0.0.0-20240813081807-3683b3f92faf h1:WSPsg66kNTeWVGBNCPJNTDwBk94BdLLSfFzy2Pjh3rw=
+github.com/machbase/neo-pkgdev v0.0.0-20240813081807-3683b3f92faf/go.mod h1:R/b0vaIjKNvd0Ktgb93G722WXimbQgXMiEbCoYfIxAA=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
