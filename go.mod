@@ -28,7 +28,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.0.2
 	github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40
-	github.com/machbase/neo-pkgdev v0.0.0-20240813023406-eb232e130991
+	github.com/machbase/neo-pkgdev v0.0.0-20240813025117-e1862a014782
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
