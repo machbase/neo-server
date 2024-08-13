@@ -68,7 +68,7 @@ func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResu
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatus, error) {
 	ret := pm.roster.Install([]string{name}, pm.envs)
-	if len(ret) == 0 {
+	if len(ret) == 0 || ret[0].Installed == nil {
 		return nil, fmt.Errorf("failed to install %s", name)
 	}
 
