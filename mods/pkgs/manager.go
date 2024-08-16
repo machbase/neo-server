@@ -22,18 +22,22 @@ type PkgManager struct {
 	envs   []string
 }
 
-func NewPkgManager(pkgsDir string) (*PkgManager, error) {
-	roster, err := pkgs.NewRoster(pkgsDir)
+func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error) {
+	log := logging.GetLog("pkgmgr")
+	roster, err := pkgs.NewRoster(pkgsDir, pkgs.WithLogger(log))
 	if err != nil {
 		return nil, err
 	}
 	envs := []string{}
+	for k, v := range envMap {
+		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+	}
 	if b, err := os.Executable(); err == nil {
 		b, _ = filepath.Abs(b)
 		envs = append(envs, fmt.Sprintf("MACHBASE_NEO=%s", b))
 	}
 	return &PkgManager{
-		log:    logging.GetLog("pkgmgr"),
+		log:    log,
 		roster: roster,
 		envs:   envs,
 	}, nil
@@ -46,24 +50,7 @@ func (pm *PkgManager) AddEnv(key, value string) {
 
 // if name is empty, it will return all featured packages
 func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResult, error) {
-	if name == "" {
-		prj, err := pm.roster.FeaturedPackages()
-		if err != nil {
-			return nil, err
-		}
-		ret := &pkgs.PackageSearchResult{}
-		for _, pkg := range prj.Featured {
-			cache, err := pm.roster.LoadPackageCache(pkg)
-			if err != nil {
-				pm.log.Error("failed to load package cache", pkg, err)
-			} else {
-				ret.Possibles = append(ret.Possibles, cache)
-			}
-		}
-		return ret, nil
-	} else {
-		return pm.roster.SearchPackage(name, possible)
-	}
+	return pm.roster.Search(name, possible)
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatus, error) {

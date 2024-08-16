@@ -339,15 +339,6 @@ func (s *svr) Start() error {
 		security.JwtConfigure(&s.conf.Jwt)
 	}
 
-	if s.pkgMgr == nil {
-		pkgsDir := filepath.Join(prefpath, "pkgs")
-		if mgr, err := pkgs.NewPkgManager(pkgsDir); err != nil {
-			return errors.Wrap(err, "pkg manager")
-		} else {
-			s.pkgMgr = mgr
-		}
-	}
-
 	s.models = model.NewService(
 		model.WithConfigDirPath(prefpath),
 		model.WithExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
@@ -603,6 +594,26 @@ func (s *svr) Start() error {
 		err := s.grpcd.Start()
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
+		}
+	}
+
+	if s.pkgMgr == nil {
+		pkgsDir := filepath.Join(prefpath, "pkgs")
+		envs := map[string]string{}
+		if b, err := os.Executable(); err == nil {
+			b, _ = filepath.Abs(b)
+			envs["MACHBASE_NEO"] = b
+			envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
+			envs["MACHBASE_HOME"] = homepath
+		}
+		if len(s.conf.FileDirs) > 0 {
+			envs["MACHBASE_NEO_FILE_PATH"] = strings.Join(s.conf.FileDirs, ";")
+			envs["MACHBASE_NEO_FILE"] = s.conf.FileDirs[0]
+		}
+		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs); err != nil {
+			return errors.Wrap(err, "pkg manager")
+		} else {
+			s.pkgMgr = mgr
 		}
 	}
 
