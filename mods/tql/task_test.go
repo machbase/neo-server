@@ -868,7 +868,7 @@ func TestString(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines)
 
-	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
 
 	codeLines = []string{
@@ -909,7 +909,7 @@ func TestBytes(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines)
 
-	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
 	ssfs.SetDefault(f)
 
 	codeLines = []string{
@@ -3133,7 +3133,7 @@ func TestSourceCSV(t *testing.T) {
 }
 
 func TestSourceCSVFile(t *testing.T) {
-	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
 	codeLines := []string{
 		`CSV(file('/iris.data'))`,
@@ -3169,7 +3169,7 @@ func TestSourceCSVFile(t *testing.T) {
 }
 
 func TestSinkMarkdown(t *testing.T) {
-	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
 	codeLines := []string{
 		"STRING(file('/lines.txt'), separator('\\n'))",
@@ -3750,7 +3750,11 @@ func TestRecordFields(t *testing.T) {
 }
 
 func TestLoader(t *testing.T) {
-	loader := tql.NewLoader([]string{"./test"})
+	fileDirs := []string{"/=./test"}
+	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
+	ssfs.SetDefault(serverFs)
+
+	loader := tql.NewLoader()
 	var task *tql.Task
 	var sc *tql.Script
 	var expect string
@@ -3784,7 +3788,7 @@ func TestLoader(t *testing.T) {
 		{"transpose_nohdr"},
 	}
 
-	f, _ := ssfs.NewServerSideFileSystem([]string{"test"})
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
 	ssfs.SetDefault(f)
 
 	for _, tt := range tests {

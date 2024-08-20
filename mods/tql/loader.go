@@ -3,10 +3,10 @@ package tql
 import (
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
 type VolatileAssetsProvider interface {
@@ -20,45 +20,24 @@ type Loader interface {
 }
 
 type loader struct {
-	dirs []string
-	vap  VolatileAssetsProvider
+	vap VolatileAssetsProvider
 }
 
-func NewLoader(dirs []string) Loader {
-	abs := []string{}
-	for _, d := range dirs {
-		ap, err := filepath.Abs(d)
-		if err != nil {
-			continue
-		}
-		abs = append(abs, ap)
-	}
-	return &loader{
-		dirs: abs,
-	}
+func NewLoader() Loader {
+	return &loader{}
 }
 
 func (ld *loader) Load(path string) (*Script, error) {
 	var ret *Script
-	for _, d := range ld.dirs {
-		joined := filepath.Join(d, path)
-		stat, err := os.Stat(joined)
-		if err != nil || stat.IsDir() {
-			continue
-		}
-		if !strings.HasPrefix(joined, d) {
-			// check relative path leak
-			continue
-		}
-
-		ret = &Script{
-			path: joined,
-			vap:  ld.vap,
-		}
-		break
-	}
-	if ret == nil {
+	fsmgr := ssfs.Default()
+	ent, err := fsmgr.Get("/" + strings.TrimPrefix(path, "/"))
+	if err != nil || ent.IsDir {
 		return nil, fmt.Errorf("not found '%s'", path)
+	}
+	ret = &Script{
+		path0:   path,
+		content: ent.Content,
+		vap:     ld.vap,
 	}
 	return ret, nil
 }
@@ -68,10 +47,11 @@ func (ld *loader) SetVolatileAssetsProvider(p VolatileAssetsProvider) {
 }
 
 type Script struct {
-	path string
-	vap  VolatileAssetsProvider
+	path0   string
+	content []byte
+	vap     VolatileAssetsProvider
 }
 
 func (sc *Script) String() string {
-	return fmt.Sprintf("path: %s", sc.path)
+	return fmt.Sprintf("path: %s", sc.path0)
 }

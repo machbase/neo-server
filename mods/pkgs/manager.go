@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-pkgdev/pkgs"
 	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/mods/util/ssfs"
 )
 
 type PkgManager struct {
@@ -27,6 +29,19 @@ func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error
 	roster, err := pkgs.NewRoster(pkgsDir, pkgs.WithLogger(log))
 	if err != nil {
 		return nil, err
+	}
+	fsmgr := ssfs.Default()
+	entries, _ := os.ReadDir(filepath.Join(pkgsDir, "dist"))
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		current := filepath.Join(pkgsDir, "dist", ent.Name(), "current")
+		if _, err := os.Stat(current); err == nil {
+			if _, err := os.Readlink(current); err == nil {
+				fsmgr.Mount(fmt.Sprintf("/apps/%s", ent.Name()), filepath.Join(pkgsDir, "dist", ent.Name(), "current"), true)
+			}
+		}
 	}
 	envs := []string{}
 	for k, v := range envMap {
@@ -59,6 +74,18 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 		return nil, fmt.Errorf("failed to install %s", name)
 	}
 
+	fsmgr := ssfs.Default()
+	mntPoint := fmt.Sprintf("/apps/%s", name)
+	lst := fsmgr.ListMounts()
+	if !slices.Contains(lst, mntPoint) {
+		err := fsmgr.Mount(mntPoint, ret[0].Installed.CurrentPath, true)
+		if err != nil {
+			pm.log.Warnf("%s is not mounted, %w", name, err)
+		} else {
+			pm.log.Info("mounted", name, ret[0].Installed.CurrentPath)
+		}
+	}
+
 	pm.log.Info("installed", name, ret[0].Installed.Version, ret[0].Installed.Path)
 	output.Write([]byte(ret[0].Output))
 	return ret[0], nil
@@ -69,22 +96,39 @@ func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	fsmgr := ssfs.Default()
+	err = fsmgr.Unmount(fmt.Sprintf("/apps/%s", name))
+	if err != nil {
+		pm.log.Warnf("%s is not unmounted, %w", name, err)
+	} else {
+		pm.log.Info("unmounted", name)
+	}
 	pm.log.Info("uninstalled", name)
 	return nil
 }
 
-func (pm *PkgManager) HttpAppRouter(r gin.IRouter) {
+func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
 		path := ctx.Param("path")
-		ctx.Request.URL.Path = path
-		inst, err := pm.roster.InstalledVersion(name)
-		if err != nil {
-			ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
-			return
+		if strings.HasSuffix(path, ".tql") {
+			path = fmt.Sprintf("/apps/%s/%s", name, path)
+			for i := range ctx.Params {
+				if ctx.Params[i].Key == "path" {
+					ctx.Params[i].Value = path
+				}
+			}
+			tqlHandler(ctx)
+		} else {
+			ctx.Request.URL.Path = path
+			inst, err := pm.roster.InstalledVersion(name)
+			if err != nil {
+				ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
+				return
+			}
+			fs := http.FileServer(http.Dir(inst.CurrentPath))
+			fs.ServeHTTP(ctx.Writer, ctx.Request)
 		}
-		fs := http.FileServer(http.Dir(inst.CurrentPath))
-		fs.ServeHTTP(ctx.Writer, ctx.Request)
 	})
 }
 

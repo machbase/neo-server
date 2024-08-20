@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -184,13 +183,13 @@ func (x *Task) GetVariable(name string) (any, error) {
 }
 
 func (x *Task) CompileScript(sc *Script) error {
-	file, err := os.Open(sc.path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+	// file, err := os.Open(sc.path)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer file.Close()
 	x.volatileAssetsProvider = sc.vap
-	return x.Compile(file)
+	return x.Compile(bytes.NewBuffer(sc.content))
 }
 
 func (x *Task) CompileString(code string) error {

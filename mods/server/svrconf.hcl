@@ -71,7 +71,7 @@ module "machbase.com/neo-server" {
     config {
         PrefDir          = VARS_PREF_DIR
         DataDir          = VARS_DATA_DIR
-        FileDirs         = [ VARS_FILE_DIR ]
+        FileDirs         = [ "/=${VARS_FILE_DIR}" ]
         BackupDir        = VARS_BACKUP_DIR
         ExperimentMode   = VARS_EXPERIMENT_MODE
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]

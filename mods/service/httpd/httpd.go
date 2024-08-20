@@ -210,7 +210,7 @@ func (svr *httpd) Router() *gin.Engine {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
 			}
 			if svr.pkgMgr != nil {
-				svr.pkgMgr.HttpAppRouter(group)
+				svr.pkgMgr.HttpAppRouter(group, svr.handleTagQL)
 			}
 			group.Use(svr.handleJwtToken)
 			if svr.pkgMgr != nil {

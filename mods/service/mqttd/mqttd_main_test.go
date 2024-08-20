@@ -41,11 +41,11 @@ var databaseLock sync.Mutex
 var mqttServer *mqttd
 
 func TestMain(m *testing.M) {
-	fileDirs := []string{"./test"}
+	fileDirs := []string{"/=./test"}
 	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
 	ssfs.SetDefault(serverFs)
 
-	tqlLoader := tql.NewLoader(fileDirs)
+	tqlLoader := tql.NewLoader()
 
 	opts := []Option{
 		OptionListenAddress("tcp://127.0.0.1:0"),

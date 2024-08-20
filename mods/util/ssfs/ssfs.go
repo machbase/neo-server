@@ -5,9 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/machbase/neo-server/mods/util/glob"
@@ -15,9 +16,10 @@ import (
 
 // Server Side File System
 type SSFS struct {
-	bases []BaseDir
-
-	ignores map[string]bool
+	bases       []*BaseDir
+	mountLock   sync.RWMutex
+	ignores     map[string]bool
+	virtualDirs map[string][]string
 }
 
 var defaultFs *SSFS
@@ -31,30 +33,32 @@ func Default() *SSFS {
 }
 
 type BaseDir struct {
-	name    string
-	abspath string
+	//	name       string
+	abspath    string
+	mountPoint string
+	readOnly   bool
+}
+
+func (bd *BaseDir) ReadOnly() bool {
+	return bd.readOnly
+}
+
+func (bd *BaseDir) RealPath(path string) string {
+	path = filepath.Join(bd.abspath, strings.TrimPrefix(path, bd.mountPoint))
+	return filepath.FromSlash(path)
+}
+
+func (bd *BaseDir) NormalizePath(path string) string {
+	return filepath.Join(bd.mountPoint, strings.TrimPrefix(path, bd.mountPoint))
+}
+
+func normalizeMountPoint(mntPoint string) string {
+	return "/" + strings.TrimPrefix(strings.TrimSuffix(mntPoint, "/"), "/")
 }
 
 func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
-	ret := &SSFS{}
-	for i, dir := range baseDirs {
-		abspath, err := filepath.Abs(dir)
-		if err != nil {
-			return nil, err
-		}
-		var name string
-		if runtime.GOOS == "windows" {
-			name = "\\"
-			if i > 0 {
-				name = "\\" + filepath.Base(abspath)
-			}
-		} else {
-			name = "/"
-			if i > 0 {
-				name = "/" + filepath.Base(abspath)
-			}
-		}
-		ret.bases = append(ret.bases, BaseDir{name: name, abspath: abspath})
+	ret := &SSFS{
+		virtualDirs: map[string][]string{},
 	}
 	ret.ignores = map[string]bool{
 		".git":          true,
@@ -64,45 +68,174 @@ func NewServerSideFileSystem(baseDirs []string) (*SSFS, error) {
 		".DS_Store":     true,
 		"neow.app":      true, // it can be shown as as a directory on macOS
 	}
+	for _, dir := range baseDirs {
+		mntPoint := ""
+		if strings.Contains(dir, "=") {
+			parts := strings.SplitN(dir, "=", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid base dir: %s", dir)
+			}
+			mntPoint = parts[0]
+			dir = parts[1]
+		} else {
+			mntPoint = filepath.Base(dir)
+		}
+		mntPoint = normalizeMountPoint(mntPoint)
+
+		abspath, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, err
+		}
+		bd := &BaseDir{
+			abspath:    abspath,
+			mountPoint: mntPoint,
+			readOnly:   false,
+		}
+		if err := ret.mountBaseDir(bd); err != nil {
+			return nil, err
+		}
+	}
 	return ret, nil
 }
 
-// find longest path matched 'BaseDir'
-//
-// returns index of baseDirs, name, abstract-path
-//
-// returns index of baseDirs and absolute path of the give path
-//
-// returns -1 if it doesn't match any dir
-func (ssfs *SSFS) findDir(path string) (int, string, string) {
-	separatorString := "/"
-	separatorChar := byte('/')
-	if runtime.GOOS == "windows" {
-		separatorString = "\\"
-		separatorChar = '\\'
+func (ssfs *SSFS) ListMounts() []string {
+	ssfs.mountLock.RLock()
+	defer ssfs.mountLock.RUnlock()
+
+	ret := []string{}
+	for _, bd := range ssfs.bases {
+		ret = append(ret, bd.mountPoint)
 	}
-	path = filepath.Join(path)
-	for i := len(ssfs.bases) - 1; i >= 0; i-- {
-		bd := ssfs.bases[i]
-		if strings.HasPrefix(path, bd.name) && (len(path) == len(bd.name) || bd.name == separatorString || path[len(bd.name)] == separatorChar) {
-			remain := strings.TrimPrefix(path, bd.name)
-			if len(remain) == 0 {
-				return i, bd.name, bd.abspath
-			}
-			abspath := filepath.Join(bd.abspath, remain)
-			if strings.HasPrefix(abspath, bd.abspath) {
-				return i, filepath.Base(abspath), abspath
+	slices.Sort(ret)
+	return ret
+}
+
+func (ssfs *SSFS) Mount(mntPoint, path string, readOnly bool) error {
+	ssfs.mountLock.Lock()
+	defer ssfs.mountLock.Unlock()
+
+	mntPoint = normalizeMountPoint(mntPoint)
+	for _, bd := range ssfs.bases {
+		if bd.mountPoint == path {
+			return fmt.Errorf("moount point %q is already mounted", mntPoint)
+		}
+	}
+	abspath, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	bd := &BaseDir{abspath: abspath, mountPoint: mntPoint, readOnly: readOnly}
+	return ssfs.mountBaseDir(bd)
+}
+
+func (ssfs *SSFS) mountBaseDir(bd *BaseDir) error {
+	if bd.mountPoint == "/" {
+		ssfs.bases = append(ssfs.bases, bd)
+		return nil
+	}
+	ssfs.bases = append(ssfs.bases, bd)
+	ssfs.restrutVirtualDirs()
+	return nil
+}
+
+func (ssfs *SSFS) restrutVirtualDirs() {
+	ssfs.virtualDirs = map[string][]string{}
+	for _, bd := range ssfs.bases {
+		path := bd.mountPoint
+		if path == "/" {
+			continue
+		}
+		components := strings.Split(path, "/")
+		vpath := "/"
+		for i := 1; i < len(components); i++ {
+			if children, ok := ssfs.virtualDirs[vpath]; ok {
+				if !slices.Contains(children, components[i]) {
+					ssfs.virtualDirs[vpath] = append(children, components[i])
+					slices.Sort(ssfs.virtualDirs[vpath])
+				}
 			} else {
-				return -1, "", ""
+				ssfs.virtualDirs[vpath] = []string{components[i]}
+			}
+			if vpath == "/" {
+				vpath = ""
+			}
+			vpath = strings.Join([]string{vpath, components[i]}, "/")
+		}
+	}
+}
+
+func (ssfs *SSFS) Unmount(mntPoint string) error {
+	ssfs.mountLock.Lock()
+	defer ssfs.mountLock.Unlock()
+
+	mntPoint = normalizeMountPoint(mntPoint)
+	if mntPoint == "/" {
+		return fmt.Errorf("unable to unmount root directory")
+	}
+	for i, bd := range ssfs.bases {
+		if bd.mountPoint == mntPoint {
+			ssfs.bases = slices.Delete(ssfs.bases, i, i+1)
+		}
+	}
+	ssfs.restrutVirtualDirs()
+	return nil
+}
+
+func (ssfs *SSFS) FindBaseDir(path string) *BaseDir {
+	ssfs.mountLock.RLock()
+	defer ssfs.mountLock.RUnlock()
+
+	mntList := []string{}
+	for _, bd := range ssfs.bases {
+		mntList = append(mntList, bd.mountPoint)
+	}
+	slices.SortFunc(mntList, func(a, b string) int {
+		if len(a) != len(b) {
+			return len(b) - len(a)
+		}
+		return strings.Compare(b, a)
+	})
+	for _, mnt := range mntList {
+		if strings.HasPrefix(path, mnt) {
+			for _, bd := range ssfs.bases {
+				if bd.mountPoint == mnt {
+					return bd
+				}
 			}
 		}
 	}
-	return -1, "", ""
+	return nil
+}
+
+// returns BaseDir and real path of the given path
+func (ssfs *SSFS) FindRealPath(path string) (*RealPath, error) {
+	bd := ssfs.FindBaseDir(path)
+	if bd == nil {
+		return nil, os.ErrNotExist
+	}
+	relPath := strings.TrimSuffix(strings.TrimPrefix(path, bd.mountPoint), "/")
+	path = filepath.FromSlash(filepath.Join(bd.abspath, relPath))
+	readOnly := bd.readOnly && relPath == ""
+
+	return &RealPath{
+		BaseDir:      bd,
+		RelativePath: relPath,
+		AbsPath:      path,
+		ReadOnly:     readOnly,
+	}, nil
+}
+
+type RealPath struct {
+	BaseDir      *BaseDir
+	RelativePath string
+	AbsPath      string
+	ReadOnly     bool
 }
 
 type Entry struct {
 	IsDir    bool        `json:"isDir"`
 	Name     string      `json:"name"`
+	ReadOnly bool        `json:"readOnly,omitempty"`
 	Content  []byte      `json:"content,omitempty"`  // file content, if the entry is FILE
 	Children []*SubEntry `json:"children,omitempty"` // entry of sub files and dirs, if the entry is DIR
 	abspath  string      `json:"-"`
@@ -113,6 +246,7 @@ type Entry struct {
 type SubEntry struct {
 	IsDir              bool   `json:"isDir"`
 	Name               string `json:"name"`
+	ReadOnly           bool   `json:"readOnly,omitempty"`
 	Type               string `json:"type"`
 	Size               int64  `json:"size,omitempty"`
 	LastModifiedMillis int64  `json:"lastModifiedUnixMillis"`
@@ -129,6 +263,7 @@ func (ssfs *SSFS) Get(path string) (*Entry, error) {
 }
 
 func (ssfs *SSFS) GetGlob(path string, pattern string) (*Entry, error) {
+	path = filepath.Clean(path)
 	return ssfs.GetFilter(path, func(ent *SubEntry) bool {
 		if ent.IsDir {
 			return true
@@ -154,6 +289,7 @@ func (ssfs *SSFS) RealPath(path string) (string, error) {
 }
 
 func (ssfs *SSFS) isGitClone(path string) (string, bool) {
+	path = filepath.Clean(path)
 	if stat, err := os.Stat(filepath.Join(path, ".git")); err == nil && stat.IsDir() {
 		if repo, err := git.PlainOpen(path); err == nil {
 			if remotes, err := repo.Remotes(); err == nil && len(remotes) > 0 {
@@ -169,33 +305,59 @@ func (ssfs *SSFS) isGitClone(path string) (string, bool) {
 }
 
 func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool) (*Entry, error) {
-	idx, name, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return nil, os.ErrNotExist
-	}
-	stat, err := os.Stat(abspath)
+	path = filepath.ToSlash(filepath.Clean(path))
+	rp, err := ssfs.FindRealPath(path)
 	if err != nil {
 		return nil, err
 	}
+	filename := filepath.Base(path)
+	if path == "/" || path == "" {
+		filename = "/"
+	}
 
-	if stat.IsDir() {
-		ret := &Entry{
-			IsDir:   true,
-			Name:    name,
-			abspath: abspath,
+	_, isVirtualDir := ssfs.virtualDirs[path]
+	if isVirtualDir && path != "/" {
+		filename = filepath.Base(path)
+	}
+
+	isDir := true
+	stat, err := os.Stat(rp.AbsPath)
+	if err != nil {
+		if !isVirtualDir {
+			return nil, err
 		}
-		if url, isGitClone := ssfs.isGitClone(abspath); isGitClone {
+	} else {
+		isVirtualDir = false
+		isDir = stat.IsDir()
+	}
+
+	if isDir {
+		ret := &Entry{
+			IsDir:    true,
+			Name:     filename,
+			ReadOnly: isVirtualDir,
+			abspath:  rp.AbsPath,
+		}
+		if url, isGitClone := ssfs.isGitClone(rp.AbsPath); isGitClone {
 			ret.GitClone = true
 			ret.GitUrl = url
 		}
-		if idx == 0 && len(ssfs.bases) > 1 { // root dir and has sub dirs
-			for _, sub := range ssfs.bases[1:] {
-				ret.Children = append(ret.Children, &SubEntry{
-					IsDir: true, Name: sub.name, Type: "dir",
-				})
+		if children, ok := ssfs.virtualDirs[path]; ok {
+			for _, sub := range children {
+				ret.Children = append(ret.Children,
+					&SubEntry{
+						IsDir:    true,
+						Name:     sub,
+						ReadOnly: isVirtualDir,
+						Type:     "dir",
+						Virtual:  false,
+					})
 			}
 		}
-		entries, err := os.ReadDir(abspath)
+		if isVirtualDir {
+			return ret, nil
+		}
+		entries, err := os.ReadDir(rp.AbsPath)
 		if err != nil {
 			return nil, err
 		}
@@ -211,6 +373,7 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 			subEnt := &SubEntry{
 				IsDir:              nfo.IsDir(),
 				Name:               ent.Name(),
+				ReadOnly:           false,
 				Type:               entType,
 				Size:               nfo.Size(),
 				LastModifiedMillis: nfo.ModTime().UnixMilli(),
@@ -224,7 +387,7 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 				}
 			}
 			if nfo.IsDir() {
-				if url, isGitClone := ssfs.isGitClone(filepath.Join(abspath, subEnt.Name)); isGitClone {
+				if url, isGitClone := ssfs.isGitClone(filepath.Join(rp.AbsPath, subEnt.Name)); isGitClone {
 					subEnt.GitClone = true
 					subEnt.GitUrl = url
 				}
@@ -247,12 +410,13 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 		return ret, nil
 	} else {
 		ret := &Entry{
-			IsDir:   false,
-			Name:    name,
-			abspath: abspath,
+			IsDir:    false,
+			Name:     filename,
+			ReadOnly: false,
+			abspath:  rp.AbsPath,
 		}
 		if loadContent {
-			if content, err := os.ReadFile(abspath); err == nil {
+			if content, err := os.ReadFile(rp.AbsPath); err == nil {
 				ret.Content = content
 				return ret, nil
 			} else {
@@ -265,83 +429,96 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 }
 
 func (ssfs *SSFS) MkDir(path string) (*Entry, error) {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return nil, os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return nil, err
 	}
-
-	if err := os.Mkdir(abspath, 0755); err != nil {
+	if rp.ReadOnly {
+		return nil, fmt.Errorf("unable to create directory, %s is read-only", path)
+	}
+	if err := os.Mkdir(rp.AbsPath, 0755); err != nil {
 		return nil, err
 	}
 	return ssfs.Get(path)
 }
 
 func (ssfs *SSFS) Remove(path string) error {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return err
 	}
-	return os.Remove(abspath)
+	if rp.ReadOnly {
+		return fmt.Errorf("unable to remove, %s is read-only", path)
+	}
+	return os.Remove(rp.AbsPath)
 }
 
 func (ssfs *SSFS) RemoveRecursive(path string) error {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return err
 	}
-	return os.RemoveAll(abspath)
+	if rp.ReadOnly {
+		return fmt.Errorf("unable to remove, %s is read-only", path)
+	}
+	return os.RemoveAll(rp.AbsPath)
 }
 
 func (ssfs *SSFS) Rename(path string, dest string) error {
-	idx, _, absDstPath := ssfs.findDir(dest)
-	if idx == -1 {
-		return os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return err
 	}
-	_, err := os.Stat(absDstPath)
+	if rp.ReadOnly {
+		return fmt.Errorf("unable to rename, %s is read-only", path)
+	}
+	rp2, err := ssfs.FindRealPath(dest)
+	if err != nil {
+		return err
+	}
+	if rp2.ReadOnly {
+		return fmt.Errorf("unable to rename, %s is read-only", dest)
+	}
+	_, err = os.Stat(rp.AbsPath)
+	if err != nil {
+		return fmt.Errorf("unable to access %s, %s", path, err.Error())
+	}
+	_, err = os.Stat(rp2.AbsPath)
 	if err == nil {
 		return fmt.Errorf("%q already exists", dest)
 	}
 
-	idx, _, absSrcPath := ssfs.findDir(path)
-	if idx == -1 {
-		return os.ErrNotExist
-	}
-	_, err = os.Stat(absSrcPath)
-	if err != nil {
-		return fmt.Errorf("unable to access %s, %s", path, err.Error())
-	}
-
-	return os.Rename(absSrcPath, absDstPath)
+	return os.Rename(rp.AbsPath, rp2.AbsPath)
 }
 
 func (ssfs *SSFS) Set(path string, content []byte) error {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return err
 	}
-
-	stat, err := os.Stat(abspath)
+	stat, err := os.Stat(rp.AbsPath)
 	if err == nil && stat.IsDir() {
 		return fmt.Errorf("unable to write, %s is directory", path)
 	}
-
-	return os.WriteFile(abspath, content, 0644)
+	return os.WriteFile(rp.AbsPath, content, 0644)
 }
 
 const defaultGitRemoteName = "origin"
 
 // git clone int the given path, it discards all local changes.
 func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Entry, error) {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return nil, os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return nil, err
 	}
-
+	if rp.ReadOnly {
+		return nil, fmt.Errorf("unable to clone, %s is read-only", path)
+	}
 	if progress == nil {
 		progress = os.Stdout
 	}
 	progress.Write([]byte(fmt.Sprintf("Cloning into '%s'...", path)))
-	repo, err := git.PlainClone(abspath, false, &git.CloneOptions{
+	repo, err := git.PlainClone(rp.AbsPath, false, &git.CloneOptions{
 		URL:          gitUrl,
 		SingleBranch: true,
 		RemoteName:   defaultGitRemoteName,
@@ -350,7 +527,7 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 	})
 	if err != nil {
 		if err == git.ErrRepositoryAlreadyExists {
-			repo, err = git.PlainOpen(abspath)
+			repo, err = git.PlainOpen(rp.AbsPath)
 		}
 		if err != nil {
 			progress.Write([]byte(err.Error()))
@@ -383,16 +560,19 @@ func (ssfs *SSFS) GitClone(path string, gitUrl string, progress io.Writer) (*Ent
 
 // git clone int the given path, it discards all local changes.
 func (ssfs *SSFS) GitPull(path string, gitUrl string, progress io.Writer) (*Entry, error) {
-	idx, _, abspath := ssfs.findDir(path)
-	if idx == -1 {
-		return nil, os.ErrNotExist
+	rp, err := ssfs.FindRealPath(path)
+	if err != nil {
+		return nil, err
+	}
+	if rp.ReadOnly {
+		return nil, fmt.Errorf("unable to pull, %s is read-only", path)
 	}
 
 	if progress == nil {
 		progress = os.Stdout
 	}
 	progress.Write([]byte(fmt.Sprintf("Updating '%s'...", path)))
-	repo, err := git.PlainOpen(abspath)
+	repo, err := git.PlainOpen(rp.AbsPath)
 	if err != nil {
 		progress.Write([]byte(err.Error()))
 		return nil, err

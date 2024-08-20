@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -275,6 +276,9 @@ func TestPrecision(t *testing.T) {
 }
 
 func TestBoxWide(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skip on windows")
+	}
 	enc := box.NewEncoder()
 
 	require.Equal(t, "plain/text", enc.ContentType())

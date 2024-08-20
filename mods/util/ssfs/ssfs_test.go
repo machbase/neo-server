@@ -1,8 +1,6 @@
 package ssfs
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,7 +8,7 @@ import (
 )
 
 func TestFsGET(t *testing.T) {
-	ssfs, err := NewServerSideFileSystem([]string{"./test/root"})
+	ssfs, err := NewServerSideFileSystem([]string{"/=./test/root"})
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 
@@ -18,7 +16,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, string(os.PathSeparator), ret.Name)
+	require.Equal(t, "/", ret.Name)
 	if enableGitSample {
 		require.Equal(t, 3, len(ret.Children))
 	} else {
@@ -35,7 +33,7 @@ func TestFsGET(t *testing.T) {
 		require.True(t, ret.Children[2].Virtual)
 	}
 
-	ssfs, err = NewServerSideFileSystem([]string{"./test/root", "./test/data1"})
+	ssfs, err = NewServerSideFileSystem([]string{"/=./test/root", "/data1=./test/data1"})
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 
@@ -43,13 +41,13 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, string(os.PathSeparator), ret.Name)
+	require.Equal(t, "/", ret.Name)
 	if enableGitSample {
 		require.Equal(t, 5, len(ret.Children))
 	} else {
 		require.Equal(t, 4, len(ret.Children))
 	}
-	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Children[0].Name)
+	require.Equal(t, "data1", ret.Children[0].Name)
 	require.Equal(t, "dir", ret.Children[0].Type)
 	require.Equal(t, true, ret.Children[0].IsDir)
 	require.Equal(t, "example.tql", ret.Children[1].Name)
@@ -87,7 +85,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
+	require.Equal(t, "data1", ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
@@ -97,7 +95,7 @@ func TestFsGET(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ssfs)
 	require.Equal(t, true, ret.IsDir)
-	require.Equal(t, fmt.Sprintf("%sdata1", string(os.PathSeparator)), ret.Name)
+	require.Equal(t, "data1", ret.Name)
 	require.Equal(t, 1, len(ret.Children))
 	require.Equal(t, "simple.tql", ret.Children[0].Name)
 	require.Equal(t, false, ret.Children[0].IsDir)
@@ -177,4 +175,89 @@ func TestFsGit(t *testing.T) {
 
 	err = ssfs.RemoveRecursive(dest)
 	require.Nil(t, err)
+}
+
+func TestMounts(t *testing.T) {
+	ssfs, err := NewServerSideFileSystem([]string{"/=./test/root", "data1=./test/data1", "apps/neo-docs/=./test/apps/neo-docs"})
+	require.Nil(t, err)
+	require.NotNil(t, ssfs)
+
+	ssfs.Unmount("/apps/neo-docs")
+	mnts := ssfs.ListMounts()
+	require.Equal(t, []string{"/", "/data1"}, mnts)
+
+	err = ssfs.Unmount("/")
+	require.Error(t, err)
+	err = ssfs.Unmount("")
+	require.Error(t, err)
+
+	err = ssfs.Mount("data1/apps/neo-docs", "./test/apps/neo-docs", true)
+	require.NoError(t, err)
+
+	mnts = ssfs.ListMounts()
+	require.Equal(t, []string{"/", "/data1", "/data1/apps/neo-docs"}, mnts)
+
+	bd := ssfs.FindBaseDir("/data1/simple.tql")
+	require.NotNil(t, bd)
+	require.Equal(t, "/data1", bd.mountPoint)
+
+	neo_docs_bd := ssfs.FindBaseDir("/data1/apps/neo-docs/simple.tql")
+	require.NotNil(t, bd)
+	require.Equal(t, "/data1/apps/neo-docs", neo_docs_bd.mountPoint)
+	require.False(t, bd.ReadOnly())
+
+	rp, err := ssfs.FindRealPath("/data1/apps/neo-docs")
+	require.Nil(t, err)
+	require.Equal(t, neo_docs_bd.abspath, rp.AbsPath)
+	require.True(t, rp.ReadOnly)
+
+	rp, err = ssfs.FindRealPath("/data1/apps/neo-docs/simple.tql")
+	require.Nil(t, err)
+	require.Equal(t, filepath.Join(neo_docs_bd.abspath, "simple.tql"), rp.AbsPath)
+	require.False(t, bd.ReadOnly())
+}
+
+func TestMountsMultiDepth(t *testing.T) {
+	ssfs, err := NewServerSideFileSystem(nil)
+	require.Nil(t, err)
+	require.NotNil(t, ssfs)
+
+	ssfs.Mount("/", "./test/root", false)
+	ssfs.Mount("apps/myapp1", "./test/apps/myapp1", true)
+	ssfs.Mount("apps/myapp2", "./test/apps/myapp2", true)
+	ssfs.Mount("apps/central/myapp4", "./test/apps/central/myapp4", true)
+	ssfs.Mount("apps/central/myapp3", "./test/apps/central/myapp3", true)
+
+	mnts := ssfs.ListMounts()
+	require.Equal(t, []string{"/", "/apps/central/myapp3", "/apps/central/myapp4", "/apps/myapp1", "/apps/myapp2"}, mnts)
+
+	entry, err := ssfs.Get("/")
+	require.Nil(t, err)
+	require.NotNil(t, entry)
+	childrenNames := []string{}
+	for _, ent := range entry.Children {
+		childrenNames = append(childrenNames, ent.Name)
+	}
+	require.Equal(t, []string{"apps", "example.tql", "hello.sql", "select.sql"}, childrenNames)
+	require.False(t, entry.ReadOnly)
+
+	entry, err = ssfs.Get("/apps")
+	require.Nil(t, err)
+	require.NotNil(t, entry)
+	childrenNames = []string{}
+	for _, ent := range entry.Children {
+		childrenNames = append(childrenNames, ent.Name)
+	}
+	require.Equal(t, []string{"central", "myapp1", "myapp2"}, childrenNames)
+	require.True(t, entry.ReadOnly)
+
+	entry, err = ssfs.Get("/apps/central")
+	require.Nil(t, err)
+	require.NotNil(t, entry)
+	childrenNames = []string{}
+	for _, ent := range entry.Children {
+		childrenNames = append(childrenNames, ent.Name)
+	}
+	require.Equal(t, []string{"myapp3", "myapp4"}, childrenNames)
+	require.True(t, entry.ReadOnly)
 }
