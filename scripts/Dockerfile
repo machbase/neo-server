@@ -13,16 +13,17 @@ FROM ubuntu:22.04 AS runtime-stage
 
 LABEL MAINTAINER="machbase.com <support@machbase.com>"
 
-RUN mkdir -p /file
+RUN mkdir -p /file /data /backups
 
 COPY --from=build-stage /opt/machbase-neo /opt/machbase-neo
 
 EXPOSE 5652-5656
 
-VOLUME ["/data", "/file"]
+VOLUME ["/data", "/file", "/backups"]
 
 ENTRYPOINT /opt/machbase-neo serve \
            --host 0.0.0.0 \
            --data /data \
-           --file /file
+           --file /file \
+           --backup-dir /backups
 
