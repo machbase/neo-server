@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/md5"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -43,6 +44,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/backupd"
 	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
+	"github.com/machbase/neo-server/mods/service/mqtt2"
 	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
@@ -158,6 +160,7 @@ type MqttConfig struct {
 	ServerKeyPath   string
 
 	MaxMessageSizeLimit int
+	EnableV2            bool
 }
 
 type ShellConfig struct {
@@ -183,6 +186,7 @@ type svr struct {
 	navel *net.TCPConn
 
 	mqttd mqttd.Service
+	mqtt2 mqtt2.Service
 	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
@@ -597,6 +601,60 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// mqtt v2 server
+	if s.conf.Mqtt.EnableV2 && len(s.conf.Mqtt.Listeners) > 0 {
+		var tlsConf *tls.Config
+		if s.conf.Mqtt.EnableTls {
+			serverCert := s.conf.Mqtt.ServerCertPath
+			if len(serverCert) == 0 {
+				serverCert = s.ServerCertificatePath()
+			}
+			serverKey := s.conf.Mqtt.ServerKeyPath
+			if len(serverKey) == 0 {
+				serverKey = s.ServerPrivateKeyPath()
+			}
+			if cfg, err := mqtt2.LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
+				return errors.Wrap(err, "mqtt-v2 server")
+			} else {
+				tlsConf = cfg
+			}
+		}
+		opts := []mqtt2.Option{
+			mqtt2.WithAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+			mqtt2.WithMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			mqtt2.WithTqlLoader(tqlLoader),
+		}
+		if len(s.conf.Http.Listeners) > 0 {
+			tok := strings.SplitN(s.conf.Http.Listeners[0], "://", 2)
+			var addr = ""
+			if len(tok) == 2 {
+				addr = fmt.Sprintf("%s/web/api/mqtt", tok[1])
+			} else {
+				addr = fmt.Sprintf("%s/web/api/mqtt", tok[0])
+			}
+			opts = append(opts, mqtt2.WithWsHandleListener(addr))
+		}
+		for _, addr := range s.conf.Mqtt.Listeners {
+			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
+				addr = strings.TrimPrefix(addr, "ws://")
+				addr = strings.TrimPrefix(addr, "wss://")
+				opts = append(opts, mqtt2.WithWebsocketListener(addr, tlsConf))
+			} else {
+				addr = strings.TrimPrefix(addr, "tcp://")
+				addr = strings.TrimPrefix(addr, "tls://")
+				opts = append(opts, mqtt2.WithTcpListener(addr, tlsConf))
+			}
+		}
+		s.mqtt2, err = mqtt2.New(api.NewDatabase(s.db), opts...)
+		if err != nil {
+			return errors.Wrap(err, "mqtt-v2 server")
+		}
+		err = s.mqtt2.Start()
+		if err != nil {
+			return errors.Wrap(err, "mqtt-v2 server")
+		}
+	}
+
 	if s.pkgMgr == nil {
 		pkgsDir := filepath.Join(prefpath, "pkgs")
 		envs := map[string]string{}
@@ -633,9 +691,15 @@ func (s *svr) Start() error {
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
 			httpd.OptionServerInfoFunc(s.ServerInfo),
+			httpd.OptionMqttInfoFunc(s.MqttInfo),
 			httpd.OptionServerSessionsFunc(s.ServerSessions),
 			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
 			httpd.OptionPackageManager(s.pkgMgr),
+		}
+		if s.mqtt2 != nil {
+			if h := s.mqtt2.WsHandlerFunc(); h != nil {
+				opts = append(opts, httpd.OptionMqttWsHandlerFunc(h))
+			}
 		}
 		shellPorts, _ := s.ServicePorts("shell")
 		shellAddrs := []string{}
@@ -664,7 +728,7 @@ func (s *svr) Start() error {
 	}
 
 	// mqtt server
-	if len(s.conf.Mqtt.Listeners) > 0 {
+	if !s.conf.Mqtt.EnableV2 && len(s.conf.Mqtt.Listeners) > 0 {
 		opts := []mqttd.Option{
 			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
 			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
@@ -758,6 +822,9 @@ func (s *svr) Stop() {
 	}
 	if s.mqttd != nil {
 		s.mqttd.Stop()
+	}
+	if s.mqtt2 != nil {
+		s.mqtt2.Stop()
 	}
 	if s.httpd != nil {
 		s.httpd.Stop()

@@ -1,8 +1,10 @@
 package httpd
 
 import (
+	"net/http"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/api/mgmt"
@@ -118,6 +120,18 @@ func OptionStatzAllow(remotes ...string) Option {
 func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
 	return func(s *httpd) {
 		s.serverInfoFunc = fn
+	}
+}
+
+func OptionMqttInfoFunc(fn func() map[string]any) Option {
+	return func(s *httpd) {
+		s.mqttInfoFunc = fn
+	}
+}
+
+func OptionMqttWsHandlerFunc(fn http.HandlerFunc) Option {
+	return func(s *httpd) {
+		s.mqttWsHandler = gin.WrapF(fn)
 	}
 }
 

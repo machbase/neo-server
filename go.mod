@@ -20,7 +20,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid/v5 v5.1.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/hcl/v2 v2.17.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
 	github.com/jchenry/goldmark-pikchr v0.1.0
@@ -34,6 +34,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/microsoft/go-mssqldb v1.5.0
+	github.com/mochi-mqtt/server/v2 v2.6.5
 	github.com/nats-io/nats.go v1.36.0
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.0.1
@@ -51,7 +52,7 @@ require (
 	github.com/zclconf/go-cty v1.13.2
 	go.abhg.dev/goldmark/mermaid v0.5.0
 	golang.org/x/crypto v0.24.0
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	golang.org/x/net v0.26.0
 	golang.org/x/sys v0.21.0
 	golang.org/x/term v0.21.0
@@ -129,6 +130,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
+	github.com/rs/xid v1.5.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/shirou/gopsutil/v4 v4.24.6 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect

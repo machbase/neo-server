@@ -56,6 +56,7 @@ module "machbase.com/neo-server" {
         }
         Mqtt = {
             Listeners        = [ "tcp://127.0.0.1:5653"]
+			EnableV2         = true
         }
 		MachbaseInitOption       = 2
 		EnableMachbaseSigHandler = false
