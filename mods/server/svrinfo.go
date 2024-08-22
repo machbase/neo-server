@@ -115,3 +115,10 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, 
 func (s *svr) ServerKillSession(id string, force bool) error {
 	return s.db.KillConnection(id, force)
 }
+
+func (s *svr) MqttInfo() map[string]any {
+	if s.mqtt2 == nil {
+		return nil
+	}
+	return s.mqtt2.Statz()
+}

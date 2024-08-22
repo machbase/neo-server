@@ -65,6 +65,8 @@ type httpd struct {
 
 	serverInfoFunc     func() (*machrpc.ServerInfo, error)
 	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
+	mqttInfoFunc       func() map[string]any
+	mqttWsHandler      func(*gin.Context)
 
 	httpServer        *http.Server
 	listeners         []net.Listener
@@ -203,6 +205,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
+			if svr.mqttWsHandler != nil {
+				group.GET("/api/mqtt", svr.mqttWsHandler)
+				svr.log.Infof("MQTT websocket handler enabled")
+			}
 			if svr.tqlLoader != nil {
 				svr.memoryFs = &MemoryFS{Prefix: "/web/api/tql-assets/"}
 				go svr.memoryFs.Start()
@@ -457,6 +463,11 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 			"appenders":      statz.AppendersInUse,
 			"appenders_used": statz.Appenders,
 			"raw_conns":      statz.RawConns,
+		}
+	}
+	if svr.mqttInfoFunc != nil {
+		if statz := svr.mqttInfoFunc(); statz != nil {
+			ret["mqtt"] = statz
 		}
 	}
 

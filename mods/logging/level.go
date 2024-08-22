@@ -3,6 +3,7 @@ package logging
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -124,6 +125,8 @@ type levelLogger struct {
 	underlying   []*logWriter
 	prefixWidth  int
 	enableSrcLoc bool
+	// slog compat
+	attrs []slog.Attr
 }
 
 func (l *levelLogger) SetLevel(level Level) { l.level = level }
