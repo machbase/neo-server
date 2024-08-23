@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -126,7 +127,8 @@ type levelLogger struct {
 	prefixWidth  int
 	enableSrcLoc bool
 	// slog compat
-	attrs []slog.Attr
+	attrs  []slog.Attr
+	filter func(name string, ctx context.Context, r slog.Record) bool
 }
 
 func (l *levelLogger) SetLevel(level Level) { l.level = level }

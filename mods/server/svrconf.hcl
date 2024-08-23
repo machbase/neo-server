@@ -28,6 +28,7 @@ define VARS {
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
     MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
+    MQTT_PERSISTENCE  = flag("--mqtt-persistence", false)
 
     HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
@@ -106,6 +107,7 @@ module "machbase.com/neo-server" {
             EnableTokenAuth     = VARS_MQTT_ENABLE_TOKENAUTH
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
+            EnablePersistence   = VARS_MQTT_PERSISTENCE
             EnableV2            = !VARS_MQTT_DISABLE_V2
         }
         Jwt = {

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 )
 
-func Wrap(l Log) *slog.Logger {
+func Wrap(l Log, filter func(string, context.Context, slog.Record) bool) *slog.Logger {
 	if h := l.(*levelLogger); h != nil {
+		h.filter = filter
 		return slog.New(h)
 	} else {
 		return slog.Default()
@@ -67,19 +67,32 @@ func (ll *levelLogger) Handle(ctx context.Context, r slog.Record) error {
 	default:
 		lvl = LevelError
 	}
-	if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
+	if ll.filter != nil && !ll.filter(ll.name, ctx, r) {
 		return nil
 	}
+	// if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
+	// 	return nil
+	// }
 	args := []any{r.Message}
+	// skip := false
 	r.Attrs(func(a slog.Attr) bool {
-		if err, ok := a.Value.Any().(error); ok {
-			if strings.Contains(err.Error(), "use of closed network") {
-				lvl = LevelTrace
-			}
-		}
+		// if ll.name == "mqtt-v2" {
+		// 	if err, ok := a.Value.Any().(error); ok {
+		// 		msg := err.Error()
+		// 		if strings.Contains(msg, "use of closed network") {
+		// 			lvl = LevelDebug
+		// 		} else if strings.Contains(msg, "i/o timeout") {
+		// 			lvl = LevelDebug
+		// 		} else if err == io.EOF {
+		// 			skip = true
+		// 		}
+		// 	}
+		// }
 		args = append(args, fmt.Sprintf("%v=%v", a.Key, a.Value))
 		return true
 	})
+	// if !skip {
+	// }
 	ll._log(lvl, 0, args)
 	return nil
 }

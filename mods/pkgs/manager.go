@@ -3,6 +3,7 @@ package pkgs
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,10 +27,11 @@ type PkgManager struct {
 
 func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error) {
 	log := logging.GetLog("pkgmgr")
-	roster, err := pkgs.NewRoster(pkgsDir, pkgs.WithLogger(log))
+	roster, err := pkgs.NewRoster(pkgsDir, pkgs.WithLogger(log), pkgs.WithSyncWhenInitialized(true))
 	if err != nil {
 		return nil, err
 	}
+	// expose installed packages to the server side filesystem
 	fsmgr := ssfs.Default()
 	entries, _ := os.ReadDir(filepath.Join(pkgsDir, "dist"))
 	for _, ent := range entries {
@@ -107,6 +109,16 @@ func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
 	return nil
 }
 
+type DirFS http.Dir
+
+func (df DirFS) Open(name string) (http.File, error) {
+	// prevent reading hidden files
+	if strings.HasPrefix(filepath.Base(name), ".") {
+		return nil, fs.ErrNotExist
+	}
+	return http.Dir(df).Open(name)
+}
+
 func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
@@ -126,7 +138,7 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 				ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
 				return
 			}
-			fs := http.FileServer(http.Dir(inst.CurrentPath))
+			fs := http.FileServer(DirFS(http.Dir(inst.CurrentPath)))
 			fs.ServeHTTP(ctx.Writer, ctx.Request)
 		}
 	})

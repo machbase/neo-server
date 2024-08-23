@@ -2,22 +2,29 @@ package mqtt2
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util"
 	mqtt "github.com/mochi-mqtt/server/v2"
+	"github.com/mochi-mqtt/server/v2/hooks/storage/badger"
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"github.com/mochi-mqtt/server/v2/packets"
 	cmap "github.com/orcaman/concurrent-map"
@@ -42,7 +49,7 @@ func New(db api.Database, opts ...Option) (Service, error) {
 		db:        db,
 		appenders: cmap.New(),
 		broker: mqtt.New(&mqtt.Options{
-			Logger:                 logging.Wrap(log),
+			Logger:                 logging.Wrap(log, logFilter),
 			InlineClient:           true,
 			SysTopicResendInterval: 5,
 			Capabilities:           caps,
@@ -57,6 +64,7 @@ func New(db api.Database, opts ...Option) (Service, error) {
 	if err := svr.broker.AddHook(&AuthHook{svr: svr}, nil); err != nil {
 		return nil, err
 	}
+	svr.broker.Info.Version = strings.TrimPrefix(mods.DisplayVersion(), "v")
 	return svr, nil
 }
 
@@ -130,9 +138,9 @@ func WithWsHandleListener(addr string) Option {
 func WithTcpListener(addr string, tlsConfig *tls.Config) Option {
 	return func(s *mqtt2) error {
 		qty := s.broker.Listeners.Len()
-		id := fmt.Sprintf("tcp-%d", qty)
+		id := fmt.Sprintf("mqtt2-tcp-%d", qty)
 		if tlsConfig != nil {
-			id = fmt.Sprintf("tls-%d", qty)
+			id = fmt.Sprintf("mqtt2-tls-%d", qty)
 		}
 		tcp := listeners.NewTCP(listeners.Config{
 			ID:        id,
@@ -148,14 +156,10 @@ func WithTcpListener(addr string, tlsConfig *tls.Config) Option {
 func WithWebsocketListener(addr string, tlsConfig *tls.Config) Option {
 	return func(s *mqtt2) error {
 		qty := s.broker.Listeners.Len()
-		id := fmt.Sprintf("ws-%d", qty)
+		id := fmt.Sprintf("mqtt2-ws-%d", qty)
 		if tlsConfig != nil {
-			id = fmt.Sprintf("wss-%d", qty)
+			id = fmt.Sprintf("mqtt2-wss-%d", qty)
 		}
-		if tlsConfig != nil {
-			s.log.Info("MQTT TLS enabled")
-		}
-
 		ws := listeners.NewWebsocket(listeners.Config{
 			ID:        id,
 			Address:   addr,
@@ -175,6 +179,31 @@ func WithAuthServer(authSvc security.AuthServer, enableTokenAuth bool) Option {
 			s.log.Infof("MQTT token authentication disabled")
 		}
 		return nil
+	}
+}
+
+func WithBadgerPersistent(badgerPath string) Option {
+	return func(s *mqtt2) error {
+		badgerOpts := badgerdb.DefaultOptions(badgerPath) // BadgerDB options. Adjust according to your actual scenario.
+		badgerOpts.ValueLogFileSize = 100 * (1 << 20)     // Set the default size of the log file to 100 MB.
+		// AddHook adds a BadgerDB hook to the server with the specified options.
+		// Refer to https://dgraph.io/docs/badger/get-started/#garbage-collection for more information.
+		hook := &badger.Hook{}
+		err := s.broker.AddHook(hook, &badger.Options{
+			Path: badgerPath,
+			// GcInterval specifies the interval at which BadgerDB garbage collection process runs.
+			GcInterval: 5 * 60,
+			// GcDiscardRatio specifies the ratio of log discard compared to the maximum possible log discard.
+			// Setting it to a higher value would result in fewer space reclaims, while setting it to a lower value
+			// would result in more space reclaims at the cost of increased activity on the LSM tree.
+			// discardRatio must be in the range (0.0, 1.0), both endpoints excluded, otherwise, it will be set to the default value of 0.5.
+			GcDiscardRatio: 0.5,
+			Options:        &badgerOpts,
+		})
+		if err == nil {
+			hook.Log = logging.Wrap(logging.GetLog("mqtt-v2-persist"), logFilter)
+		}
+		return err
 	}
 }
 
@@ -278,8 +307,16 @@ func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
 	}
 }
 
+func (s *mqtt2) onConnect(cl *mqtt.Client, pk packets.Packet) error {
+	s.log.Debugf("%s connected listener=%s v=%d", cl.Net.Remote, cl.Net.Listener, pk.ProtocolVersion)
+	if conn, ok := cl.Net.Conn.(*net.TCPConn); ok {
+		configureTcpConn(conn)
+	}
+	return nil
+}
+
 func (s *mqtt2) onDisconnect(cl *mqtt.Client, err error, expire bool) {
-	s.log.Debugf("%s disconnected, err=%v, expired=%t", cl.Net.Remote, err, expire)
+	s.log.Debugf("%s disconnected listener=%s expired=%t err=%v", cl.Net.Remote, cl.Net.Listener, expire, err)
 	peerId := cl.Net.Remote
 	s.appenders.RemoveCb(peerId, func(key string, v interface{}, exists bool) bool {
 		if !exists {
@@ -288,7 +325,7 @@ func (s *mqtt2) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 		appenders := v.([]*AppenderWrapper)
 		for _, aw := range appenders {
 			succ, fail, err := aw.appender.Close()
-			s.log.Debugf("%s close appender %s, succ=%d, fail=%d, err=%v", peerId, aw.appender.TableName(), succ, fail, err)
+			s.log.Debugf("%s close appender %s succ=%d fail=%d err=%v", peerId, aw.appender.TableName(), succ, fail, err)
 			aw.conn.Close()
 			aw.ctxCancel()
 		}
@@ -355,10 +392,7 @@ func (h *AuthHook) OnACLCheck(cl *mqtt.Client, topic string, write bool) bool {
 }
 
 func (h *AuthHook) OnConnect(cl *mqtt.Client, pk packets.Packet) error {
-	if conn, ok := cl.Net.Conn.(*net.TCPConn); ok {
-		configureTcpConn(conn)
-	}
-	return nil
+	return h.svr.onConnect(cl, pk)
 }
 
 func (h *AuthHook) OnPublished(cl *mqtt.Client, pk packets.Packet) {
@@ -389,4 +423,33 @@ func parseTimeLocation(str string, def *time.Location) *time.Location {
 			return loc
 		}
 	}
+}
+
+func logFilter(name string, ctx context.Context, r slog.Record) bool {
+	if !slices.Contains([]string{"mqtt-v2", "mqtt-v2-persist"}, name) {
+		return true
+	}
+	if name == "mqtt-v2" {
+		if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
+			return false
+		}
+		r.Attrs(func(a slog.Attr) bool {
+			if err, ok := a.Value.Any().(error); ok {
+				msg := err.Error()
+				if strings.Contains(msg, "use of closed network") {
+					r.Level = slog.LevelDebug
+				} else if strings.Contains(msg, "i/o timeout") {
+					r.Level = slog.LevelDebug
+				} else if err == io.EOF {
+					return false
+				}
+			}
+			return true
+		})
+	} else if name == "mqtt-v2-persist" {
+		if r.Level < slog.LevelInfo {
+			return false
+		}
+	}
+	return true
 }
