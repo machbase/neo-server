@@ -161,6 +161,7 @@ type MqttConfig struct {
 
 	MaxMessageSizeLimit int
 	EnableV2            bool
+	EnablePersistence   bool
 }
 
 type ShellConfig struct {
@@ -624,6 +625,10 @@ func (s *svr) Start() error {
 			mqtt2.WithMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
 			mqtt2.WithTqlLoader(tqlLoader),
 		}
+		if s.conf.Mqtt.EnablePersistence {
+			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
+			opts = append(opts, mqtt2.WithBadgerPersistent(mqtt_dir))
+		}
 		if len(s.conf.Http.Listeners) > 0 {
 			tok := strings.SplitN(s.conf.Http.Listeners[0], "://", 2)
 			var addr = ""
@@ -656,17 +661,13 @@ func (s *svr) Start() error {
 	}
 
 	if s.pkgMgr == nil {
-		pkgsDir := filepath.Join(prefpath, "pkgs")
+		pkgsDir := filepath.Join(homepath, "pkgs")
 		envs := map[string]string{}
 		if b, err := os.Executable(); err == nil {
 			b, _ = filepath.Abs(b)
 			envs["MACHBASE_NEO"] = b
 			envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
 			envs["MACHBASE_HOME"] = homepath
-		}
-		if len(s.conf.FileDirs) > 0 {
-			envs["MACHBASE_NEO_FILE_PATH"] = strings.Join(s.conf.FileDirs, ";")
-			envs["MACHBASE_NEO_FILE"] = s.conf.FileDirs[0]
 		}
 		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs); err != nil {
 			return errors.Wrap(err, "pkg manager")
