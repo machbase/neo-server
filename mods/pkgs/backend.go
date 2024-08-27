@@ -24,6 +24,7 @@ type PkgBackend struct {
 	StderrLog    string            `yaml:"stderr_log,omitempty"`
 	Env          []string          `yaml:"env,omitempty"`
 	EnvFile      string            `yaml:"env_file,omitempty"`
+	HttpProxy    *HttpProxy        `yaml:"http_proxy,omitempty"`
 
 	mergedEnv   []string
 	dir         string
