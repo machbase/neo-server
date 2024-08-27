@@ -17,18 +17,40 @@ import (
 type PkgBackend struct {
 	sync.RWMutex
 	log          logging.Log
-	StartCommand string   `yaml:"start"`
-	StopCommand  string   `yaml:"stop"`
-	AutoStart    bool     `yaml:"auto_start,omitempty"`
-	StdoutLog    string   `yaml:"stdout_log,omitempty"`
-	StderrLog    string   `yaml:"stderr_log,omitempty"`
-	Env          []string `yaml:"env,omitempty"`
-	EnvFile      string   `yaml:"env_file,omitempty"`
+	StartScripts PkgBackendScripts `yaml:"start"`
+	StopScripts  PkgBackendScripts `yaml:"stop"`
+	AutoStart    bool              `yaml:"auto_start,omitempty"`
+	StdoutLog    string            `yaml:"stdout_log,omitempty"`
+	StderrLog    string            `yaml:"stderr_log,omitempty"`
+	Env          []string          `yaml:"env,omitempty"`
+	EnvFile      string            `yaml:"env_file,omitempty"`
 
 	dir         string
 	cmd         *exec.Cmd
 	stdoutLevel logging.Level
 	stderrLevel logging.Level
+}
+
+type PkgBackendScripts []PkgScript
+
+func (pss PkgBackendScripts) Find() PkgScript {
+	var ret PkgScript
+	for _, ps := range pss {
+		if ps.Platform == "" {
+			ret = ps
+			continue
+		}
+		if runtime.GOOS == ps.Platform {
+			ret = ps
+			break
+		}
+	}
+	return ret
+}
+
+type PkgScript struct {
+	Run      string `yaml:"run"`
+	Platform string `yaml:"on,omitempty"`
 }
 
 type PkgStatus string
@@ -133,7 +155,16 @@ func (ps *PkgBackend) Status() PkgStatus {
 }
 
 func (ps *PkgBackend) start0() {
-	ps.cmd = makeCmd(ps.StartCommand)
+	if ps.cmd != nil {
+		ps.log.Errorf("already running")
+		return
+	}
+	sc := ps.StartScripts.Find()
+	if sc.Run == "" {
+		ps.log.Errorf("start script not found")
+		return
+	}
+	ps.cmd = makeCmd(sc.Run)
 	ps.cmd.Dir = ps.dir
 	ps.cmd.Env = append(os.Environ(), ps.Env...)
 	ps.cmd.Stdout = &LevelWriter{log: ps.log, level: ps.stdoutLevel}
@@ -144,7 +175,7 @@ func (ps *PkgBackend) start0() {
 		err := cmd.Start()
 		if err != nil {
 			ps.cmd = nil
-			ps.log.Errorf("fail to start: cmd:%q error:%v", ps.StartCommand, err)
+			ps.log.Errorf("fail to start: cmd:%q error:%v", sc.Run, err)
 			startWg.Done()
 			return
 		} else {
@@ -165,16 +196,22 @@ func (ps *PkgBackend) start0() {
 
 func (ps *PkgBackend) stop0() {
 	if ps.cmd == nil || ps.cmd.Process == nil {
+		ps.log.Errorf("not running")
 		return
 	}
-	cmd := makeCmd(ps.StopCommand)
+	sc := ps.StopScripts.Find()
+	if sc.Run == "" {
+		ps.log.Errorf("stop script not found")
+		return
+	}
+	cmd := makeCmd(sc.Run)
 	cmd.Dir = ps.dir
 	cmd.Env = append(os.Environ(), ps.Env...)
 	cmd.Stdout = &LevelWriter{log: ps.log, level: ps.stdoutLevel}
 	cmd.Stderr = &LevelWriter{log: ps.log, level: ps.stderrLevel}
 	err := cmd.Start()
 	if err != nil {
-		ps.log.Errorf("fail to stop: cmd:%q error:%v", ps.StopCommand, err)
+		ps.log.Errorf("fail to stop: cmd:%q error:%v", sc.Run, err)
 		return
 	}
 	err = cmd.Wait()
@@ -206,9 +243,14 @@ func (ps *PkgBackend) stop0() {
 func makeCmd(script string) *exec.Cmd {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", script)
+		lines := strings.Split(script, "\n")
+		for i, line := range lines {
+			lines[i] = strings.TrimSuffix(strings.TrimSpace(line), "^")
+		}
+		cmdLine := strings.Join(lines, " ")
+		cmd = exec.Command("cmd", "/c", cmdLine)
 	} else {
-		lines := strings.Split(script, "\\\n")
+		lines := strings.Split(script, "\n")
 		for i, line := range lines {
 			lines[i] = strings.TrimSpace(strings.TrimSuffix(line, "\\"))
 		}
