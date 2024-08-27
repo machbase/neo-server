@@ -25,6 +25,7 @@ type PkgBackend struct {
 	Env          []string          `yaml:"env,omitempty"`
 	EnvFile      string            `yaml:"env_file,omitempty"`
 
+	mergedEnv   []string
 	dir         string
 	cmd         *exec.Cmd
 	stdoutLevel logging.Level
@@ -89,27 +90,34 @@ func LoadPkgBackend(pkgsDir string, pkgName string, installEnv []string) (*PkgBa
 	if err := yaml.Unmarshal(backendContent, backend); err != nil {
 		return nil, err
 	}
-	if backend.EnvFile != "" {
-		envFile := filepath.Join(path, backend.EnvFile)
-		envContent, err := os.ReadFile(envFile)
-		if err != nil {
-			// ignore external env file error
-			backend.log.Debugf("failed to read env file %s: %v", envFile, err)
-		} else {
-			envLines := []string{}
-			for _, line := range strings.Split(string(envContent), "\n") {
-				line = strings.TrimSpace(line)
-				if len(line) > 0 && line[0] != '#' {
-					envLines = append(envLines, line)
-				}
-			}
-			backend.Env = append(backend.Env, envLines...)
-		}
-	}
 	if len(installEnv) > 0 {
 		backend.Env = append(installEnv, backend.Env...)
 	}
+	backend.reloadEnvFile()
 	return backend, nil
+}
+
+func (ps *PkgBackend) reloadEnvFile() {
+	ps.mergedEnv = append([]string{}, ps.Env...)
+	if ps.EnvFile == "" {
+		return
+	}
+
+	envFile := filepath.Join(ps.dir, ps.EnvFile)
+	envContent, err := os.ReadFile(envFile)
+	if err != nil {
+		// ignore external env file error
+		ps.log.Debugf("failed to read env file %v", err)
+	} else {
+		envLines := []string{}
+		for _, line := range strings.Split(string(envContent), "\n") {
+			line = strings.TrimSpace(line)
+			if len(line) > 0 && line[0] != '#' {
+				envLines = append(envLines, line)
+			}
+		}
+		ps.mergedEnv = append(ps.Env, envLines...)
+	}
 }
 
 func (ps *PkgBackend) Start() {
@@ -156,17 +164,18 @@ func (ps *PkgBackend) Status() PkgStatus {
 
 func (ps *PkgBackend) start0() {
 	if ps.cmd != nil {
-		ps.log.Errorf("already running")
 		return
 	}
 	sc := ps.StartScripts.Find()
 	if sc.Run == "" {
-		ps.log.Errorf("start script not found")
+		ps.log.Error("start script not found")
 		return
 	}
+	ps.reloadEnvFile()
+
 	ps.cmd = makeCmd(sc.Run)
 	ps.cmd.Dir = ps.dir
-	ps.cmd.Env = append(os.Environ(), ps.Env...)
+	ps.cmd.Env = append(os.Environ(), ps.mergedEnv...)
 	ps.cmd.Stdout = &LevelWriter{log: ps.log, level: ps.stdoutLevel}
 	ps.cmd.Stderr = &LevelWriter{log: ps.log, level: ps.stderrLevel}
 	startWg := sync.WaitGroup{}
@@ -196,17 +205,16 @@ func (ps *PkgBackend) start0() {
 
 func (ps *PkgBackend) stop0() {
 	if ps.cmd == nil || ps.cmd.Process == nil {
-		ps.log.Errorf("not running")
 		return
 	}
 	sc := ps.StopScripts.Find()
 	if sc.Run == "" {
-		ps.log.Errorf("stop script not found")
+		ps.log.Error("stop script not found")
 		return
 	}
 	cmd := makeCmd(sc.Run)
 	cmd.Dir = ps.dir
-	cmd.Env = append(os.Environ(), ps.Env...)
+	cmd.Env = append(os.Environ(), ps.mergedEnv...)
 	cmd.Stdout = &LevelWriter{log: ps.log, level: ps.stdoutLevel}
 	cmd.Stderr = &LevelWriter{log: ps.log, level: ps.stderrLevel}
 	err := cmd.Start()
