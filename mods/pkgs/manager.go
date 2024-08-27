@@ -179,8 +179,14 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 				}
 			}
 			tqlHandler(ctx)
-		} else if strings.HasPrefix(path, "/.storage/") && ctx.Request.Method == http.MethodGet {
-			pm.doReadStorage(ctx)
+		} else if strings.HasPrefix(path, "/.storage/") {
+			if ctx.Request.Method == http.MethodGet {
+				pm.doReadStoragePublic(ctx)
+			} else if ctx.Request.Method == http.MethodPost {
+				pm.doWriteStoragePublic(ctx)
+			} else {
+				ctx.JSON(405, gin.H{"success": false, "reason": "method not allowed"})
+			}
 		} else {
 			ctx.Request.URL.Path = path
 			inst, err := pm.roster.InstalledVersion(name)
@@ -220,11 +226,27 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 	r.GET("/install/:name", pm.doInstall)
 	r.GET("/uninstall/:name", pm.doUninstall)
 	r.GET("/process/:name/:action", pm.doProcess)
-	r.POST("/storage/:name/*path", pm.doWriteStorage)
-	r.GET("/storage/:name/*path", pm.doReadStorage)
+	r.POST("/storage/:name/*path", pm.doWriteStorageSys)
+	r.GET("/storage/:name/*path", pm.doReadStorageSys)
 }
 
-func (pm *PkgManager) doWriteStorage(ctx *gin.Context) {
+func (pm *PkgManager) doWriteStorageSys(ctx *gin.Context) {
+	pm.writeStorage(ctx, true)
+}
+
+func (pm *PkgManager) doWriteStoragePublic(ctx *gin.Context) {
+	pm.writeStorage(ctx, false)
+}
+
+func (pm *PkgManager) doReadStorageSys(ctx *gin.Context) {
+	pm.readStorage(ctx, true)
+}
+
+func (pm *PkgManager) doReadStoragePublic(ctx *gin.Context) {
+	pm.readStorage(ctx, false)
+}
+
+func (pm *PkgManager) writeStorage(ctx *gin.Context, isSysUser bool) {
 	name := ctx.Param("name")
 	path := ctx.Param("path")
 	if ctx.Request.Method != http.MethodPost {
@@ -232,6 +254,15 @@ func (pm *PkgManager) doWriteStorage(ctx *gin.Context) {
 		return
 	}
 	path = strings.TrimPrefix(path, "/.storage/")
+	if !isSysUser {
+		// if client is not sys user, prevent writing hidden files
+		for _, comp := range strings.Split(path, "/") {
+			if strings.HasPrefix(comp, ".") {
+				ctx.JSON(404, gin.H{"success": false, "reason": "not found"})
+				return
+			}
+		}
+	}
 	inst, err := pm.roster.InstalledVersion(name)
 	if err != nil || inst.Path == "" {
 		ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
@@ -259,7 +290,7 @@ func (pm *PkgManager) doWriteStorage(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{"success": true, "reason": "success"})
 }
 
-func (pm *PkgManager) doReadStorage(ctx *gin.Context) {
+func (pm *PkgManager) readStorage(ctx *gin.Context, isSysUser bool) {
 	name := ctx.Param("name")
 	path := ctx.Param("path")
 
@@ -269,6 +300,15 @@ func (pm *PkgManager) doReadStorage(ctx *gin.Context) {
 	}
 
 	path = strings.TrimPrefix(path, "/.storage/")
+	if !isSysUser {
+		// if client is not sys user, prevent reading hidden files
+		for _, comp := range strings.Split(path, "/") {
+			if strings.HasPrefix(comp, ".") {
+				ctx.JSON(404, gin.H{"success": false, "reason": "not found"})
+				return
+			}
+		}
+	}
 	inst, err := pm.roster.InstalledVersion(name)
 	if err != nil || inst.Path == "" {
 		ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
