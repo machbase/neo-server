@@ -807,6 +807,9 @@ func (s *svr) Start() error {
 		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(s.startupTime).Round(time.Millisecond).String())
 	}
 
+	// pkgs
+	s.pkgMgr.Start()
+
 	// navelcord
 	if s.conf.NavelCord != nil {
 		s.StartNavelCord()
@@ -815,6 +818,9 @@ func (s *svr) Start() error {
 }
 
 func (s *svr) Stop() {
+	if s.pkgMgr != nil {
+		s.pkgMgr.Stop()
+	}
 	if s.navel != nil {
 		s.StopNavelCord()
 	}

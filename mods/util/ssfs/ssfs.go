@@ -370,6 +370,9 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 			if !nfo.IsDir() {
 				entType = filepath.Ext(ent.Name())
 			}
+			if strings.HasPrefix(ent.Name(), ".") {
+				continue
+			}
 			subEnt := &SubEntry{
 				IsDir:              nfo.IsDir(),
 				Name:               ent.Name(),

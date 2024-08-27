@@ -28,8 +28,8 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.0.2
-	github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40
-	github.com/machbase/neo-pkgdev v0.0.0-20240823002154-3982d9f01cb5
+	github.com/machbase/neo-engine v1.3.7-0.20240826082056-b0efa0b5c022
+	github.com/machbase/neo-pkgdev v0.0.0-20240827004800-d4d98e7f0694
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
@@ -62,6 +62,7 @@ require (
 	google.golang.org/grpc v1.64.1
 	google.golang.org/protobuf v1.34.1
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+	gopkg.in/yaml.v3 v3.0.1
 	oss.terrastruct.com/d2 v0.5.1
 	software.sslmate.com/src/go-pkcs12 v0.2.0
 )
@@ -165,6 +166,5 @@ require (
 	google.golang.org/genproto v0.0.0-20231016165738-49dd2c1f3d0b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240604185151-ef581f913117 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20230604222829-11c3c60fec14 // indirect
 )

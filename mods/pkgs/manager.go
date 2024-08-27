@@ -20,9 +20,11 @@ import (
 )
 
 type PkgManager struct {
-	log    logging.Log
-	roster *pkgs.Roster
-	envs   []string
+	log         logging.Log
+	pkgsDir     string
+	roster      *pkgs.Roster
+	installEnvs []string
+	pkgBackends map[string]*PkgBackend
 }
 
 func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error) {
@@ -31,20 +33,7 @@ func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error
 	if err != nil {
 		return nil, err
 	}
-	// expose installed packages to the server side filesystem
-	fsmgr := ssfs.Default()
-	entries, _ := os.ReadDir(filepath.Join(pkgsDir, "dist"))
-	for _, ent := range entries {
-		if !ent.IsDir() {
-			continue
-		}
-		current := filepath.Join(pkgsDir, "dist", ent.Name(), "current")
-		if _, err := os.Stat(current); err == nil {
-			if _, err := os.Readlink(current); err == nil {
-				fsmgr.Mount(fmt.Sprintf("/apps/%s", ent.Name()), filepath.Join(pkgsDir, "dist", ent.Name(), "current"), true)
-			}
-		}
-	}
+	// envs
 	envs := []string{}
 	for k, v := range envMap {
 		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
@@ -53,16 +42,60 @@ func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error
 		b, _ = filepath.Abs(b)
 		envs = append(envs, fmt.Sprintf("MACHBASE_NEO=%s", b))
 	}
+
+	// expose installed packages to the server side filesystem
+	fsmgr := ssfs.Default()
+	pkgBackend := make(map[string]*PkgBackend)
+	entries, _ := os.ReadDir(filepath.Join(pkgsDir, "dist"))
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+		current := filepath.Join(pkgsDir, "dist", ent.Name(), "current")
+		if _, err := os.Stat(current); err == nil {
+			path, err := pkgs.Readlink(current)
+			if err != nil {
+				continue
+			}
+			pkgName := ent.Name()
+			baseName := filepath.Base(path)
+			fsmgr.Mount(fmt.Sprintf("/apps/%s", pkgName), filepath.Join(pkgsDir, "dist", pkgName, baseName), true)
+
+			settings, err := LoadPkgBackend(pkgsDir, pkgName, envs)
+			if err != nil {
+				log.Warnf("failed to load backend settings for %s, %v", pkgName, err)
+			}
+			if settings != nil {
+				pkgBackend[pkgName] = settings
+			}
+		}
+	}
 	return &PkgManager{
-		log:    log,
-		roster: roster,
-		envs:   envs,
+		log:         log,
+		pkgsDir:     pkgsDir,
+		roster:      roster,
+		installEnvs: envs,
+		pkgBackends: pkgBackend,
 	}, nil
+}
+
+func (pm *PkgManager) Start() {
+	for _, ps := range pm.pkgBackends {
+		if ps.AutoStart {
+			ps.Start()
+		}
+	}
+}
+
+func (pm *PkgManager) Stop() {
+	for _, ps := range pm.pkgBackends {
+		ps.Stop()
+	}
 }
 
 // add environment variable which will be used while“ installing/uninstalling packages
 func (pm *PkgManager) AddEnv(key, value string) {
-	pm.envs = append(pm.envs, fmt.Sprintf("%s=%s", key, value))
+	pm.installEnvs = append(pm.installEnvs, fmt.Sprintf("%s=%s", key, value))
 }
 
 // if name is empty, it will return all featured packages
@@ -71,7 +104,7 @@ func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResu
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatus, error) {
-	ret := pm.roster.Install([]string{name}, pm.envs)
+	ret := pm.roster.Install([]string{name}, pm.installEnvs)
 	if len(ret) == 0 || ret[0].Installed == nil {
 		return nil, fmt.Errorf("failed to install %s", name)
 	}
@@ -80,21 +113,24 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 	mntPoint := fmt.Sprintf("/apps/%s", name)
 	lst := fsmgr.ListMounts()
 	if !slices.Contains(lst, mntPoint) {
-		err := fsmgr.Mount(mntPoint, ret[0].Installed.CurrentPath, true)
+		err := fsmgr.Mount(mntPoint, ret[0].Installed.Path, true)
 		if err != nil {
 			pm.log.Warnf("%s is not mounted, %w", name, err)
 		} else {
-			pm.log.Info("mounted", name, ret[0].Installed.CurrentPath)
+			pm.log.Info("mounted", name, ret[0].Installed.Path)
 		}
 	}
 
 	pm.log.Info("installed", name, ret[0].Installed.Version, ret[0].Installed.Path)
 	output.Write([]byte(ret[0].Output))
+	if backend, _ := LoadPkgBackend(pm.pkgsDir, name, pm.installEnvs); backend != nil {
+		pm.pkgBackends[name] = backend
+	}
 	return ret[0], nil
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
-	err := pm.roster.Uninstall(name, output, pm.envs)
+	err := pm.roster.Uninstall(name, output, pm.installEnvs)
 	if err != nil {
 		return err
 	}
@@ -105,6 +141,7 @@ func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
 	} else {
 		pm.log.Info("unmounted", name)
 	}
+	delete(pm.pkgBackends, name)
 	pm.log.Info("uninstalled", name)
 	return nil
 }
@@ -115,6 +152,17 @@ func (df DirFS) Open(name string) (http.File, error) {
 	// prevent reading hidden files
 	if strings.HasPrefix(filepath.Base(name), ".") {
 		return nil, fs.ErrNotExist
+	}
+	path := name
+	for {
+		dir, file := filepath.Split(path)
+		if !strings.HasPrefix(dir, "/.") && file == "" {
+			break
+		}
+		if strings.HasPrefix(dir, "/.") || strings.HasPrefix(file, ".") {
+			return nil, fs.ErrNotExist
+		}
+		path = dir
 	}
 	return http.Dir(df).Open(name)
 }
@@ -131,6 +179,8 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 				}
 			}
 			tqlHandler(ctx)
+		} else if strings.HasPrefix(path, "/.storage/") && ctx.Request.Method == http.MethodGet {
+			pm.doReadStorage(ctx)
 		} else {
 			ctx.Request.URL.Path = path
 			inst, err := pm.roster.InstalledVersion(name)
@@ -169,6 +219,90 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 	r.GET("/update", pm.doUpdate)
 	r.GET("/install/:name", pm.doInstall)
 	r.GET("/uninstall/:name", pm.doUninstall)
+	r.GET("/process/:name/:action", pm.doProcess)
+	r.POST("/storage/:name/*path", pm.doWriteStorage)
+	r.GET("/storage/:name/*path", pm.doReadStorage)
+}
+
+func (pm *PkgManager) doWriteStorage(ctx *gin.Context) {
+	name := ctx.Param("name")
+	path := ctx.Param("path")
+	if ctx.Request.Method != http.MethodPost {
+		ctx.JSON(405, gin.H{"success": false, "reason": "method not allowed"})
+		return
+	}
+	path = strings.TrimPrefix(path, "/.storage/")
+	inst, err := pm.roster.InstalledVersion(name)
+	if err != nil || inst.Path == "" {
+		ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
+		return
+	}
+	realPath := filepath.Join(pm.pkgsDir, "dist", name, "storage", filepath.Clean(path))
+	dir := filepath.Dir(realPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			ctx.JSON(500, gin.H{"success": false, "reason": err.Error()})
+			return
+		}
+	}
+	f, err := os.OpenFile(realPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		ctx.JSON(500, gin.H{"success": false, "reason": err.Error()})
+		return
+	}
+	defer f.Close()
+	_, err = io.Copy(f, ctx.Request.Body)
+	if err != nil {
+		ctx.JSON(500, gin.H{"success": false, "reason": err.Error()})
+		return
+	}
+	ctx.JSON(200, gin.H{"success": true, "reason": "success"})
+}
+
+func (pm *PkgManager) doReadStorage(ctx *gin.Context) {
+	name := ctx.Param("name")
+	path := ctx.Param("path")
+
+	if ctx.Request.Method != http.MethodGet {
+		ctx.JSON(405, gin.H{"success": false, "reason": "method not allowed"})
+		return
+	}
+
+	path = strings.TrimPrefix(path, "/.storage/")
+	inst, err := pm.roster.InstalledVersion(name)
+	if err != nil || inst.Path == "" {
+		ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
+		return
+	}
+	realPath := filepath.Join(pm.pkgsDir, "dist", name, "storage", filepath.Clean(path))
+	ctx.File(realPath)
+}
+
+func (pm *PkgManager) doProcess(c *gin.Context) {
+	ts := time.Now()
+	name := c.Param("name")
+	action := c.Param("action")
+	if proc, ok := pm.pkgBackends[name]; ok && proc != nil {
+		switch action {
+		case "start":
+			proc.Start()
+		case "stop":
+			proc.Stop()
+		}
+		status := proc.Status()
+		c.JSON(200, gin.H{
+			"success": true,
+			"reason":  "success",
+			"elapse":  time.Since(ts),
+			"data":    map[string]any{"status": status},
+		})
+	} else {
+		c.JSON(404, gin.H{
+			"success": false,
+			"reason":  "package not found",
+			"elapse":  time.Since(ts),
+		})
+	}
 }
 
 // doSearch is a handler for /search

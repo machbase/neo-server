@@ -301,10 +301,10 @@ github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 h1:6E+4a0GO5zZEnZ
 github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0/go.mod h1:zJYVVT2jmtg6P3p1VtQj7WsuWi/y4VnjVBn7F8KPB3I=
 github.com/machbase/neo-client v1.0.2 h1:ccsv3nIa+NE0nmTm9gZf/LYQV8nU1wpnxoc7bNM1zeA=
 github.com/machbase/neo-client v1.0.2/go.mod h1:xnD8J5WjFRLIUIVx/oyk1/7bObvA+fawot/t/Xfs67Q=
-github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40 h1:jBzdHpXs4tHuYr79ee3y7BnsPnX7grEw3LZL6tzXZ4w=
-github.com/machbase/neo-engine v1.3.7-0.20240808093017-915915fd3e40/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
-github.com/machbase/neo-pkgdev v0.0.0-20240823002154-3982d9f01cb5 h1:a4K6AA4uncag8YdM4biUeOrX4/H08OegWi88F4CwOEA=
-github.com/machbase/neo-pkgdev v0.0.0-20240823002154-3982d9f01cb5/go.mod h1:R/b0vaIjKNvd0Ktgb93G722WXimbQgXMiEbCoYfIxAA=
+github.com/machbase/neo-engine v1.3.7-0.20240826082056-b0efa0b5c022 h1:yTGgXeRcmc9zFIT2l2aNmeM0kr5geAfiVwSK46LpXfM=
+github.com/machbase/neo-engine v1.3.7-0.20240826082056-b0efa0b5c022/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
+github.com/machbase/neo-pkgdev v0.0.0-20240827004800-d4d98e7f0694 h1:RFHh6XEyvL4f0IKccT1AXy5L2xX0Z5aAnqlYjf157HY=
+github.com/machbase/neo-pkgdev v0.0.0-20240827004800-d4d98e7f0694/go.mod h1:R/b0vaIjKNvd0Ktgb93G722WXimbQgXMiEbCoYfIxAA=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
 github.com/magefile/mage v1.15.0/go.mod h1:z5UZb/iS3GoOSn0JgWuiw7dxlurVYTu+/jHXqQg881A=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
