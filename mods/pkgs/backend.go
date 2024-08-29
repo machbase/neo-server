@@ -23,7 +23,6 @@ type PkgBackend struct {
 	StdoutLog    string            `yaml:"stdout_log,omitempty"`
 	StderrLog    string            `yaml:"stderr_log,omitempty"`
 	Env          []string          `yaml:"env,omitempty"`
-	EnvFile      string            `yaml:"env_file,omitempty"`
 	HttpProxy    *HttpProxy        `yaml:"http_proxy,omitempty"`
 
 	mergedEnv   []string
@@ -94,31 +93,107 @@ func LoadPkgBackend(pkgsDir string, pkgName string, installEnv []string) (*PkgBa
 	if len(installEnv) > 0 {
 		backend.Env = append(installEnv, backend.Env...)
 	}
+
+	backend.rewriteEnvFile()
 	backend.reloadEnvFile()
 	return backend, nil
 }
 
-func (ps *PkgBackend) reloadEnvFile() {
-	ps.mergedEnv = append([]string{}, ps.Env...)
-	if ps.EnvFile == "" {
-		return
+func envMap(env []string) map[string]string {
+	ret := map[string]string{}
+	for _, line := range env {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			ret[parts[0]] = parts[1]
+		} else if len(parts) == 1 {
+			ret[parts[0]] = ""
+		}
 	}
+	return ret
+}
 
-	envFile := filepath.Join(ps.dir, ps.EnvFile)
-	envContent, err := os.ReadFile(envFile)
-	if err != nil {
-		// ignore external env file error
-		ps.log.Debugf("failed to read env file %v", err)
+func mapEnv(envMap map[string]string) []string {
+	ret := []string{}
+	for key, val := range envMap {
+		ret = append(ret, key+"="+val)
+	}
+	return ret
+}
+
+const envRelativePath = "../storage/.env"
+
+func (ps *PkgBackend) rewriteEnvFile() error {
+	ps.Lock()
+	defer ps.Unlock()
+
+	if len(ps.Env) == 0 {
+		return nil
+	}
+	envFile := filepath.Join(ps.dir, envRelativePath)
+	if _, err := os.Stat(filepath.Dir(envFile)); err != nil {
+		if err := os.MkdirAll(filepath.Dir(envFile), 0755); err != nil {
+			return err
+		}
+	}
+	var writingEnv []string
+	if _, err := os.Stat(envFile); err != nil {
+		writingEnv = ps.Env
 	} else {
-		envLines := []string{}
+		envContent, err := os.ReadFile(envFile)
+		if err != nil {
+			return err
+		}
+		oldEnv := []string{}
 		for _, line := range strings.Split(string(envContent), "\n") {
 			line = strings.TrimSpace(line)
 			if len(line) > 0 && line[0] != '#' {
-				envLines = append(envLines, line)
+				oldEnv = append(oldEnv, line)
 			}
 		}
-		ps.mergedEnv = append(ps.Env, envLines...)
+		oldMap := envMap(oldEnv)
+		newMap := envMap(ps.Env)
+
+		for key, val := range newMap {
+			if _, found := oldMap[key]; !found {
+				oldMap[key] = val
+			}
+		}
+
+		for oldKey := range oldMap {
+			if _, found := newMap[oldKey]; !found {
+				delete(oldMap, oldKey)
+			}
+		}
+		writingEnv = mapEnv(oldMap)
 	}
+
+	if len(writingEnv) > 0 {
+		if err := os.WriteFile(envFile, []byte(strings.Join(writingEnv, "\n")), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ps *PkgBackend) reloadEnvFile() error {
+	ps.mergedEnv = append([]string{}, ps.Env...)
+
+	envFile := filepath.Join(ps.dir, envRelativePath)
+	if _, err := os.Stat(envFile); err != nil {
+		return nil
+	}
+	envContent, err := os.ReadFile(envFile)
+	if err != nil {
+		return err
+	} else {
+		for _, line := range strings.Split(string(envContent), "\n") {
+			line = strings.TrimSpace(line)
+			if len(line) > 0 && line[0] != '#' {
+				ps.mergedEnv = append(ps.mergedEnv, line)
+			}
+		}
+	}
+	return nil
 }
 
 func (ps *PkgBackend) Start() {

@@ -130,6 +130,9 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
+	if pb, ok := pm.pkgBackends[name]; ok && pb != nil {
+		pb.Stop()
+	}
 	err := pm.roster.Uninstall(name, output, pm.installEnvs)
 	if err != nil {
 		return err
@@ -167,6 +170,8 @@ func (df DirFS) Open(name string) (http.File, error) {
 	return http.Dir(df).Open(name)
 }
 
+const stroagePrefix = "/_storage/"
+
 func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
@@ -183,7 +188,7 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 				}
 			}
 			tqlHandler(ctx)
-		} else if strings.HasPrefix(path, "/.storage/") {
+		} else if strings.HasPrefix(path, stroagePrefix) {
 			if ctx.Request.Method == http.MethodGet {
 				pm.doReadStoragePublic(ctx)
 			} else if ctx.Request.Method == http.MethodPost {
@@ -257,7 +262,7 @@ func (pm *PkgManager) writeStorage(ctx *gin.Context, isSysUser bool) {
 		ctx.JSON(405, gin.H{"success": false, "reason": "method not allowed"})
 		return
 	}
-	path = strings.TrimPrefix(path, "/.storage/")
+	path = strings.TrimPrefix(path, stroagePrefix)
 	if !isSysUser {
 		// if client is not sys user, prevent writing hidden files
 		for _, comp := range strings.Split(path, "/") {
@@ -303,7 +308,7 @@ func (pm *PkgManager) readStorage(ctx *gin.Context, isSysUser bool) {
 		return
 	}
 
-	path = strings.TrimPrefix(path, "/.storage/")
+	path = strings.TrimPrefix(path, stroagePrefix)
 	if !isSysUser {
 		// if client is not sys user, prevent reading hidden files
 		for _, comp := range strings.Split(path, "/") {
