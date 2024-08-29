@@ -25,6 +25,7 @@ type PkgBackend struct {
 	Env          []string          `yaml:"env,omitempty"`
 	HttpProxy    *HttpProxy        `yaml:"http_proxy,omitempty"`
 
+	installEnv  []string
 	mergedEnv   []string
 	dir         string
 	cmd         *exec.Cmd
@@ -90,10 +91,8 @@ func LoadPkgBackend(pkgsDir string, pkgName string, installEnv []string) (*PkgBa
 	if err := yaml.Unmarshal(backendContent, backend); err != nil {
 		return nil, err
 	}
-	if len(installEnv) > 0 {
-		backend.Env = append(installEnv, backend.Env...)
-	}
 
+	backend.installEnv = installEnv
 	backend.rewriteEnvFile()
 	backend.reloadEnvFile()
 	return backend, nil
@@ -176,6 +175,7 @@ func (ps *PkgBackend) rewriteEnvFile() error {
 }
 
 func (ps *PkgBackend) reloadEnvFile() error {
+	ps.mergedEnv = append([]string{}, ps.installEnv...)
 	ps.mergedEnv = append([]string{}, ps.Env...)
 
 	envFile := filepath.Join(ps.dir, envRelativePath)
