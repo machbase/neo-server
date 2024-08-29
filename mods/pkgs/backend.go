@@ -309,7 +309,9 @@ func (ps *PkgBackend) stop0() {
 		defer wg.Done()
 		count := 0
 		dur := 100 * time.Millisecond
-		tick := time.NewTimer(dur)
+		tick := time.NewTicker(dur)
+		defer tick.Stop()
+
 		for range tick.C {
 			if ps.cmd == nil {
 				break
