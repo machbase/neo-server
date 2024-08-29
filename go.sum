@@ -301,8 +301,8 @@ github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 h1:6E+4a0GO5zZEnZ
 github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0/go.mod h1:zJYVVT2jmtg6P3p1VtQj7WsuWi/y4VnjVBn7F8KPB3I=
 github.com/machbase/neo-client v1.0.2 h1:ccsv3nIa+NE0nmTm9gZf/LYQV8nU1wpnxoc7bNM1zeA=
 github.com/machbase/neo-client v1.0.2/go.mod h1:xnD8J5WjFRLIUIVx/oyk1/7bObvA+fawot/t/Xfs67Q=
-github.com/machbase/neo-engine v1.3.7-0.20240826082056-b0efa0b5c022 h1:yTGgXeRcmc9zFIT2l2aNmeM0kr5geAfiVwSK46LpXfM=
-github.com/machbase/neo-engine v1.3.7-0.20240826082056-b0efa0b5c022/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
+github.com/machbase/neo-engine v1.3.7 h1:xm3AHZMPzep3nOsKHyiM1VIfuD0vInB+j/D0W/YK7rU=
+github.com/machbase/neo-engine v1.3.7/go.mod h1:iUbDLGl2WqWPnurAGlXNVGwrke1U8nCHA9Wl2Ad/ldc=
 github.com/machbase/neo-pkgdev v0.0.0-20240827071622-8efaf5231c11 h1:kA5vIBs57AvFAqghA+R/xWMrA6dT8/H9AAwzX56VGWY=
 github.com/machbase/neo-pkgdev v0.0.0-20240827071622-8efaf5231c11/go.mod h1:R/b0vaIjKNvd0Ktgb93G722WXimbQgXMiEbCoYfIxAA=
 github.com/magefile/mage v1.15.0 h1:BvGheCMAsG3bWUDbZ8AyXXpCNwU9u5CB6sM+HNb9HYg=
