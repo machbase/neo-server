@@ -130,6 +130,9 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
+	if pb, ok := pm.pkgBackends[name]; ok && pb != nil {
+		pb.Stop()
+	}
 	err := pm.roster.Uninstall(name, output, pm.installEnvs)
 	if err != nil {
 		return err
