@@ -112,13 +112,15 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 	fsmgr := ssfs.Default()
 	mntPoint := fmt.Sprintf("/apps/%s", name)
 	lst := fsmgr.ListMounts()
-	if !slices.Contains(lst, mntPoint) {
-		err := fsmgr.Mount(mntPoint, ret[0].Installed.Path, true)
-		if err != nil {
-			pm.log.Warnf("%s is not mounted, %w", name, err)
-		} else {
-			pm.log.Info("mounted", name, ret[0].Installed.Path)
-		}
+	if slices.Contains(lst, mntPoint) {
+		// upgrade case, unmount first
+		fsmgr.Unmount(mntPoint)
+	}
+	err := fsmgr.Mount(mntPoint, ret[0].Installed.Path, true)
+	if err != nil {
+		pm.log.Warnf("%s is not mounted, %w", name, err)
+	} else {
+		pm.log.Info("mounted", name, ret[0].Installed.Path)
 	}
 
 	pm.log.Info("installed", name, ret[0].Installed.Version, ret[0].Installed.Path)
