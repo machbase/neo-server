@@ -26,11 +26,16 @@ type PkgManager struct {
 	roster      *pkgs.Roster
 	installEnvs []string
 	pkgBackends map[string]*PkgBackend
+	experiment  bool
 }
 
-func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error) {
+func NewPkgManager(pkgsDir string, envMap map[string]string, experiment bool) (*PkgManager, error) {
 	log := logging.GetLog("pkgmgr")
-	roster, err := pkgs.NewRoster(pkgsDir, pkgs.WithLogger(log), pkgs.WithSyncWhenInitialized(true))
+	roster, err := pkgs.NewRoster(pkgsDir,
+		pkgs.WithLogger(log),
+		pkgs.WithSyncWhenInitialized(true),
+		pkgs.WithExperimental(experiment),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +91,7 @@ func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error
 		roster:      roster,
 		installEnvs: envs,
 		pkgBackends: pkgBackend,
+		experiment:  experiment,
 	}, nil
 }
 

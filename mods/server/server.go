@@ -670,7 +670,7 @@ func (s *svr) Start() error {
 			envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
 			envs["MACHBASE_HOME"] = homepath
 		}
-		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs); err != nil {
+		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.conf.ExperimentMode); err != nil {
 			return errors.Wrap(err, "pkg manager")
 		} else {
 			s.pkgMgr = mgr
