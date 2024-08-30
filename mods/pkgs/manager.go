@@ -120,6 +120,7 @@ func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResu
 }
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatus, error) {
+	pm.log.Info("installing...", name)
 	ret := pm.roster.Install([]string{name}, pm.installEnvs)
 	if len(ret) == 0 || ret[0].Installed == nil {
 		return nil, fmt.Errorf("failed to install %s", name)
@@ -148,22 +149,24 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
+	pm.log.Info("uninstalling...", name)
 	if pb, ok := pm.pkgBackends[name]; ok && pb != nil {
 		pb.Stop()
 	}
-	err := pm.roster.Uninstall(name, output, pm.installEnvs)
-	if err != nil {
-		return err
-	}
 	fsmgr := ssfs.Default()
-	err = fsmgr.Unmount(fmt.Sprintf("/apps/%s", name))
+	err := fsmgr.Unmount(fmt.Sprintf("/apps/%s", name))
 	if err != nil {
 		pm.log.Warnf("%s is not unmounted, %w", name, err)
 	} else {
 		pm.log.Info("unmounted", name)
 	}
+	err = pm.roster.Uninstall(name, output, pm.installEnvs)
+	if err != nil {
+		return err
+	} else {
+		pm.log.Info("uninstalled", name)
+	}
 	delete(pm.pkgBackends, name)
-	pm.log.Info("uninstalled", name)
 	return nil
 }
 

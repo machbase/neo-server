@@ -176,7 +176,7 @@ func (ps *PkgBackend) rewriteEnvFile() error {
 
 func (ps *PkgBackend) reloadEnvFile() error {
 	ps.mergedEnv = append([]string{}, ps.installEnv...)
-	ps.mergedEnv = append([]string{}, ps.Env...)
+	ps.mergedEnv = append(ps.mergedEnv, ps.Env...)
 
 	envFile := filepath.Join(ps.dir, envRelativePath)
 	if _, err := os.Stat(envFile); err != nil {
@@ -188,7 +188,7 @@ func (ps *PkgBackend) reloadEnvFile() error {
 	} else {
 		for _, line := range strings.Split(string(envContent), "\n") {
 			line = strings.TrimSpace(line)
-			if len(line) > 0 && line[0] != '#' {
+			if len(line) > 0 && line[0] != '#' && strings.Contains(line, "=") {
 				ps.mergedEnv = append(ps.mergedEnv, line)
 			}
 		}
