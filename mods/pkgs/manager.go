@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,6 +36,15 @@ func NewPkgManager(pkgsDir string, envMap map[string]string) (*PkgManager, error
 	}
 	// envs
 	envs := []string{}
+	preEnv := []string{"USER", "HOME", "LANG", "LC_NUMERIC", "LC_TIME", "TZ"}
+	if runtime.GOOS == "windows" {
+		preEnv = append(preEnv, "SystemRoot", "SystemDrive", "USERPROFILE")
+	}
+	for _, key := range preEnv {
+		if v := os.Getenv(key); v != "" {
+			envs = append(envs, fmt.Sprintf("%s=%s", key, v))
+		}
+	}
 	for k, v := range envMap {
 		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
 	}

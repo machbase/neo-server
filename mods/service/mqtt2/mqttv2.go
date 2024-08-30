@@ -233,6 +233,7 @@ type mqtt2 struct {
 	tqlLoader         tql.Loader
 	defaultReplyTopic string
 	wsListener        *WsListener
+	restrictTopics    bool
 }
 
 func (s *mqtt2) Start() error {
@@ -265,22 +266,25 @@ func (s *mqtt2) WsHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *mqtt2) onACLCheck(_ *mqtt.Client, topic string, write bool) bool {
-	if topic == "db/query" && !write {
-		// can not subscribe 'db/query'
-		return false
-	} else if (topic == "db/reply" || strings.HasPrefix(topic, "db/reply/")) && write {
-		// can not publish 'db/reply/#'
-		return false
-	} else if (topic == "db/tql" || strings.HasPrefix(topic, "db/tql/")) && !write {
-		// can not subscribe 'db/tql/#'
-		return false
-	} else if topic == "db" {
-		// can not subscribe & publish 'db'
-		return false
-	} else if strings.HasPrefix(topic, "db/#") && !write {
-		// can not subscribe 'db/#'
-		return false
-	} else if strings.HasPrefix(topic, "$SYS") && write {
+	if s.restrictTopics {
+		if topic == "db/query" && !write {
+			// can not subscribe 'db/query'
+			return false
+		} else if (topic == "db/reply" || strings.HasPrefix(topic, "db/reply/")) && write {
+			// can not publish 'db/reply/#'
+			return false
+		} else if (topic == "db/tql" || strings.HasPrefix(topic, "db/tql/")) && !write {
+			// can not subscribe 'db/tql/#'
+			return false
+		} else if topic == "db" {
+			// can not subscribe & publish 'db'
+			return false
+		} else if strings.HasPrefix(topic, "db/#") && !write {
+			// can not subscribe 'db/#'
+			return false
+		}
+	}
+	if strings.HasPrefix(topic, "$SYS") && write {
 		// can not publish '$SYS/#'
 		return false
 	}

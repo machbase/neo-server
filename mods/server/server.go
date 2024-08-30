@@ -667,6 +667,7 @@ func (s *svr) Start() error {
 			b, _ = filepath.Abs(b)
 			envs["MACHBASE_NEO"] = b
 			envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
+			envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
 			envs["MACHBASE_HOME"] = homepath
 		}
 		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs); err != nil {
