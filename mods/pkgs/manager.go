@@ -121,9 +121,12 @@ func (pm *PkgManager) Search(name string, possible int) (*pkgs.PackageSearchResu
 
 func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatus, error) {
 	pm.log.Info("installing...", name)
-	ret := pm.roster.Install([]string{name}, pm.installEnvs)
-	if len(ret) == 0 || ret[0].Installed == nil {
+	ret := pm.roster.Install(name, output, pm.installEnvs)
+	if ret == nil {
 		return nil, fmt.Errorf("failed to install %s", name)
+	}
+	if ret.Err != nil {
+		return nil, ret.Err
 	}
 
 	fsmgr := ssfs.Default()
@@ -133,19 +136,18 @@ func (pm *PkgManager) Install(name string, output io.Writer) (*pkgs.InstallStatu
 		// upgrade case, unmount first
 		fsmgr.Unmount(mntPoint)
 	}
-	err := fsmgr.Mount(mntPoint, ret[0].Installed.Path, true)
+	err := fsmgr.Mount(mntPoint, ret.Installed.Path, true)
 	if err != nil {
 		pm.log.Warnf("%s is not mounted, %w", name, err)
 	} else {
-		pm.log.Info("mounted", name, ret[0].Installed.Path)
+		pm.log.Info("mounted", name, ret.Installed.Path)
 	}
 
-	pm.log.Info("installed", name, ret[0].Installed.Version, ret[0].Installed.Path)
-	output.Write([]byte(ret[0].Output))
+	pm.log.Info("installed", name, ret.Installed.Version, ret.Installed.Path)
 	if backend, _ := LoadPkgBackend(pm.pkgsDir, name, pm.installEnvs); backend != nil {
 		pm.pkgBackends[name] = backend
 	}
-	return ret[0], nil
+	return ret, nil
 }
 
 func (pm *PkgManager) Uninstall(name string, output io.Writer) error {
@@ -430,24 +432,27 @@ func (pm *PkgManager) doInstall(c *gin.Context) {
 	name := c.Param("name")
 	output := &strings.Builder{}
 	cache, err := pm.Install(name, output)
+
+	result := map[string]any{}
+	status := 200
 	if err != nil {
-		c.JSON(500, gin.H{
-			"success": false,
-			"reason":  err.Error(),
-			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-			"data":    map[string]any{"log": output.String()},
-		})
-		return
-	}
-	c.JSON(200, gin.H{
-		"success": true,
-		"reason":  "success",
-		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-		"data": map[string]any{
+		status = 500
+		result["success"] = false
+		result["reason"] = err.Error()
+		result["elapse"] = fmt.Sprintf("%v", time.Since(ts))
+		result["data"] = gin.H{
+			"log": output.String(),
+		}
+	} else {
+		result["success"] = true
+		result["reason"] = "success"
+		result["elapse"] = fmt.Sprintf("%v", time.Since(ts))
+		result["data"] = gin.H{
 			"info": cache,
 			"log":  output.String(),
-		},
-	})
+		}
+	}
+	c.JSON(status, result)
 }
 
 func (pm *PkgManager) doUninstall(c *gin.Context) {
@@ -456,23 +461,25 @@ func (pm *PkgManager) doUninstall(c *gin.Context) {
 
 	output := &strings.Builder{}
 	err := pm.Uninstall(name, output)
+
+	result := map[string]any{}
+	status := 200
+
 	if err != nil {
-		c.JSON(500, gin.H{
-			"success": false,
-			"reason":  err.Error(),
-			"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-			"data": map[string]any{
-				"log": output.String(),
-			},
-		})
-		return
-	}
-	c.JSON(200, gin.H{
-		"success": true,
-		"reason":  "success",
-		"elapse":  fmt.Sprintf("%v", time.Since(ts)),
-		"data": map[string]any{
+		status = 500
+		result["success"] = false
+		result["reason"] = err.Error()
+		result["elapse"] = fmt.Sprintf("%v", time.Since(ts))
+		result["data"] = gin.H{
 			"log": output.String(),
-		},
-	})
+		}
+	} else {
+		result["success"] = true
+		result["reason"] = "success"
+		result["elapse"] = fmt.Sprintf("%v", time.Since(ts))
+		result["data"] = gin.H{
+			"log": output.String(),
+		}
+	}
+	c.JSON(status, result)
 }
