@@ -224,8 +224,12 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 				ctx.JSON(404, gin.H{"success": false, "reason": err.Error()})
 				return
 			}
-			fs := http.FileServer(DirFS(http.Dir(inst.CurrentPath)))
-			fs.ServeHTTP(ctx.Writer, ctx.Request)
+			if inst.HasFrontend {
+				fs := http.FileServer(DirFS(http.Dir(inst.Path)))
+				fs.ServeHTTP(ctx.Writer, ctx.Request)
+			} else {
+				ctx.JSON(404, gin.H{"success": false, "reason": fmt.Sprintf("pkg %q not found", name)})
+			}
 		}
 	})
 }
