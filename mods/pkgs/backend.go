@@ -91,7 +91,10 @@ func LoadPkgBackend(pkgsDir string, pkgName string, installEnv []string) (*PkgBa
 	if err := yaml.Unmarshal(backendContent, backend); err != nil {
 		return nil, err
 	}
-
+	if backend.HttpProxy != nil {
+		backend.HttpProxy.log = backend.log
+		backend.HttpProxy.baseDir = backend.dir
+	}
 	backend.installEnv = installEnv
 	backend.rewriteEnvFile()
 	backend.reloadEnvFile()

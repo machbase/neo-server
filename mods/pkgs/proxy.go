@@ -3,21 +3,23 @@ package pkgs
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/mods/logging"
 )
 
 type HttpProxy struct {
 	Prefix      string `yaml:"prefix"`
-	DestPort    int    `yaml:"port"`
-	DestHost    string `yaml:"host,omitempty"`
+	Address     string `yaml:"address"`
 	StripPrefix string `yaml:"strip_prefix,omitempty"`
+	log         logging.Log
+	baseDir     string
 	proxy       *httputil.ReverseProxy
 }
 
@@ -28,24 +30,49 @@ func (hp *HttpProxy) Match(path string) bool {
 func (hp *HttpProxy) Handle(ctx *gin.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
+			hp.log.Warn("Recovered in proxy", r)
 		}
 	}()
 
 	if hp.proxy == nil {
-		host := fmt.Sprintf("127.0.0.1:%d", hp.DestPort)
-		if hp.DestHost != "" {
-			host = fmt.Sprintf("%s:%d", hp.DestHost, hp.DestPort)
+		if hp.Address == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination address"})
+			return
 		}
-		target := &url.URL{
-			Scheme: "http",
-			Host:   host,
+		addr, err := url.Parse(hp.Address)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-		hp.proxy = httputil.NewSingleHostReverseProxy(target)
-		if target.Scheme == "https" {
+		if strings.HasPrefix(hp.Address, "http://") {
+			hp.proxy = httputil.NewSingleHostReverseProxy(addr)
+		} else if strings.HasPrefix(hp.Address, "https://") {
+			hp.proxy = httputil.NewSingleHostReverseProxy(addr)
 			hp.proxy.Transport = &http.Transport{
 				DialTLSContext:  dialTLS,
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			}
+		} else if strings.HasPrefix(hp.Address, "unix://") {
+			target := &url.URL{Scheme: "http", Host: "127.0.0.1"}
+			hp.proxy = httputil.NewSingleHostReverseProxy(target)
+			path := strings.TrimPrefix(hp.Address, "unix://")
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(hp.baseDir, path)
+			}
+			path = filepath.Clean(path)
+			if len(path) >= 100 {
+				hp.log.Error("Unix socket path is too long", path, "len:", len(path))
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination address is too long"})
+				return
+			}
+			hp.proxy.Transport = &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					ret, err := net.Dial("unix", path)
+					if err != nil {
+						hp.log.Error("Failed to dial", err)
+					}
+					return ret, err
+				},
 			}
 		}
 	}
