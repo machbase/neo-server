@@ -364,6 +364,8 @@ func (pm *PkgManager) doProcess(c *gin.Context) {
 			proc.Start()
 		case "stop":
 			proc.Stop()
+		case "set-backend":
+			fmt.Println(">>", c.Request.RemoteAddr, ">>", c.Request.URL.Path)
 		}
 		status := proc.Status()
 		c.JSON(200, gin.H{

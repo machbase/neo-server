@@ -660,16 +660,28 @@ func (s *svr) Start() error {
 		}
 	}
 
+	// http server listener for unix socket
+	if runtime.GOOS == "windows" {
+		tmpdir := os.Getenv("TEMP")
+		if tmpdir == "" {
+			tmpdir = "."
+		}
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix://%s", filepath.Join(tmpdir, "machchbase-neo-unix.sock"))
+	} else {
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machchbase-neo-unix.sock")
+	}
+
 	if s.pkgMgr == nil {
-		pkgsDir := filepath.Join(homepath, "pkgs")
 		envs := map[string]string{}
 		if b, err := os.Executable(); err == nil {
 			b, _ = filepath.Abs(b)
 			envs["MACHBASE_NEO"] = b
-			envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
-			envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
-			envs["MACHBASE_HOME"] = homepath
 		}
+		envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
+		envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
+		envs["MACHBASE_NEO_HTTP"] = strings.Join(s.conf.Http.Listeners, ",")
+		envs["MACHBASE_HOME"] = homepath
+		pkgsDir := filepath.Join(homepath, "pkgs")
 		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.conf.ExperimentMode); err != nil {
 			return errors.Wrap(err, "pkg manager")
 		} else {
