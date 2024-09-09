@@ -666,9 +666,9 @@ func (s *svr) Start() error {
 		if tmpdir == "" {
 			tmpdir = "."
 		}
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix://%s", filepath.Join(tmpdir, "machchbase-neo-unix.sock"))
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, fmt.Sprintf("unix://%s", filepath.Join(tmpdir, "machbase-neo-unix.sock")))
 	} else {
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machchbase-neo-unix.sock")
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machbase-neo-unix.sock")
 	}
 
 	if s.pkgMgr == nil {
