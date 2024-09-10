@@ -662,15 +662,17 @@ func (s *svr) Start() error {
 
 	// http server listener for unix socket
 	if runtime.GOOS == "windows" {
-		tmpdir := os.Getenv("TEMP")
-		if tmpdir == "" {
-			tmpdir = "."
+		tempDir := os.Getenv("TEMP")
+		if tempDir == "" {
+			tempDir = "C:\\"
 		}
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, fmt.Sprintf("unix://%s", filepath.Join(tmpdir, "machbase-neo-unix.sock")))
+		path := filepath.Join(tempDir, "machbase-neo.sock")
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, fmt.Sprintf("unix://%s", path))
 	} else {
 		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machbase-neo-unix.sock")
 	}
 
+	// package manager
 	if s.pkgMgr == nil {
 		envs := map[string]string{}
 		if b, err := os.Executable(); err == nil {
