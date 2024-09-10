@@ -13,6 +13,7 @@ FROM ubuntu:22.04 AS runtime-stage
 
 LABEL MAINTAINER="machbase.com <support@machbase.com>"
 
+RUN apt-get update && apt-get install -y ca-certificates
 RUN mkdir -p /file /data /backups
 
 COPY --from=build-stage /opt/machbase-neo /opt/machbase-neo
