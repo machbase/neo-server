@@ -425,7 +425,7 @@ func (svr *httpd) corsHandler() gin.HandlerFunc {
 }
 
 func (svr *httpd) allowStatz(remote string) bool {
-	if remote == "127.0.0.1" {
+	if remote == "" || remote == "127.0.0.1" {
 		return true
 	}
 	for _, p := range svr.statzAllowed {
