@@ -15,6 +15,12 @@ func GetTimeformat(f string) string {
 var _timeformats = map[string]string{
 	"-":           "2006-01-02 15:04:05.999",
 	"DEFAULT":     "2006-01-02 15:04:05.999",
+	"DEFAULT_MS":  "2006-01-02 15:04:05.999",
+	"DEFAULT_US":  "2006-01-02 15:04:05.999999",
+	"DEFAULT_NS":  "2006-01-02 15:04:05.999999999",
+	"DEFAULT.MS":  "2006-01-02 15:04:05.000",
+	"DEFAULT.US":  "2006-01-02 15:04:05.000000",
+	"DEFAULT.NS":  "2006-01-02 15:04:05.000000000",
 	"NUMERIC":     "01/02 03:04:05PM '06 -0700", // The reference time, in numerical order.
 	"ANSIC":       "Mon Jan _2 15:04:05 2006",
 	"UNIX":        "Mon Jan _2 15:04:05 MST 2006",
