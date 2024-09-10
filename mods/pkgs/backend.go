@@ -91,10 +91,6 @@ func LoadPkgBackend(pkgsDir string, pkgName string, installEnv []string) (*PkgBa
 	if err := yaml.Unmarshal(backendContent, backend); err != nil {
 		return nil, err
 	}
-	if backend.HttpProxy != nil {
-		backend.HttpProxy.log = backend.log
-		backend.HttpProxy.baseDir = backend.dir
-	}
 	backend.installEnv = installEnv
 	backend.rewriteEnvFile()
 	backend.reloadEnvFile()
@@ -230,6 +226,25 @@ func (ps *PkgBackend) Stop() {
 	}()
 	ps.log.Infof("stop")
 	ps.stop0()
+}
+
+type SetBackendRequest struct {
+	HttpProxy *HttpProxy `json:"http_proxy,omitempty"`
+}
+
+func (ps *PkgBackend) SetBackend(req *SetBackendRequest) {
+	ps.Lock()
+	defer ps.Unlock()
+	if req.HttpProxy != nil {
+		if ps.HttpProxy == nil {
+			ps.HttpProxy = &HttpProxy{}
+		}
+		ps.HttpProxy.Prefix = req.HttpProxy.Prefix
+		ps.HttpProxy.Address = req.HttpProxy.Address
+		ps.HttpProxy.StripPrefix = req.HttpProxy.StripPrefix
+		ps.HttpProxy.proxy = nil
+		ps.log.Debugf("set backend %+v", ps.HttpProxy)
+	}
 }
 
 func (ps *PkgBackend) Status() PkgStatus {

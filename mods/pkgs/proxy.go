@@ -11,76 +11,75 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/logging"
 )
 
 type HttpProxy struct {
-	Prefix      string `yaml:"prefix"`
-	Address     string `yaml:"address"`
-	StripPrefix string `yaml:"strip_prefix,omitempty"`
-	log         logging.Log
-	baseDir     string
+	Prefix      string `yaml:"prefix" json:"prefix"`
+	Address     string `yaml:"address" json:"address"`
+	StripPrefix string `yaml:"strip_prefix,omitempty" json:"strip_prefix,omitempty"`
 	proxy       *httputil.ReverseProxy
 }
 
-func (hp *HttpProxy) Match(path string) bool {
-	return hp != nil && hp.Prefix != "" && strings.HasPrefix(path, hp.Prefix)
+func (pb *PkgBackend) Match(path string) bool {
+	return pb.HttpProxy != nil && pb.HttpProxy.Prefix != "" && strings.HasPrefix(path, pb.HttpProxy.Prefix)
 }
 
-func (hp *HttpProxy) Handle(ctx *gin.Context) {
+func (pb *PkgBackend) Handle(ctx *gin.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			hp.log.Warn("Recovered in proxy", r)
+			pb.log.Warn("Recovered in proxy", r)
 		}
 	}()
+	pb.RLock()
+	defer pb.RUnlock()
 
-	if hp.proxy == nil {
-		if hp.Address == "" {
+	if pb.HttpProxy.proxy == nil {
+		if pb.HttpProxy.Address == "" {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination address"})
 			return
 		}
-		addr, err := url.Parse(hp.Address)
+		addr, err := url.Parse(pb.HttpProxy.Address)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if strings.HasPrefix(hp.Address, "http://") {
-			hp.proxy = httputil.NewSingleHostReverseProxy(addr)
-		} else if strings.HasPrefix(hp.Address, "https://") {
-			hp.proxy = httputil.NewSingleHostReverseProxy(addr)
-			hp.proxy.Transport = &http.Transport{
+		if strings.HasPrefix(pb.HttpProxy.Address, "http://") {
+			pb.HttpProxy.proxy = httputil.NewSingleHostReverseProxy(addr)
+		} else if strings.HasPrefix(pb.HttpProxy.Address, "https://") {
+			pb.HttpProxy.proxy = httputil.NewSingleHostReverseProxy(addr)
+			pb.HttpProxy.proxy.Transport = &http.Transport{
 				DialTLSContext:  dialTLS,
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}
-		} else if strings.HasPrefix(hp.Address, "unix://") {
+		} else if strings.HasPrefix(pb.HttpProxy.Address, "unix://") {
 			target := &url.URL{Scheme: "http", Host: "127.0.0.1"}
-			hp.proxy = httputil.NewSingleHostReverseProxy(target)
-			path := strings.TrimPrefix(hp.Address, "unix://")
+			pb.HttpProxy.proxy = httputil.NewSingleHostReverseProxy(target)
+			path := strings.TrimPrefix(pb.HttpProxy.Address, "unix://")
 			if !filepath.IsAbs(path) {
-				path = filepath.Join(hp.baseDir, path)
+				path = filepath.Join(pb.dir, path)
 			}
 			path = filepath.Clean(path)
 			if len(path) >= 100 {
-				hp.log.Error("Unix socket path is too long", path, "len:", len(path))
+				pb.log.Error("Unix socket path is too long", path, "len:", len(path))
 				ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid destination address is too long"})
 				return
 			}
-			hp.proxy.Transport = &http.Transport{
+			pb.HttpProxy.proxy.Transport = &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					ret, err := net.Dial("unix", path)
 					if err != nil {
-						hp.log.Error("Failed to dial", err)
+						pb.log.Error("Failed to dial", err)
 					}
 					return ret, err
 				},
 			}
 		}
 	}
-	if hp.StripPrefix != "" {
-		ctx.Request.URL.Path = strings.TrimPrefix(ctx.Request.URL.Path, hp.StripPrefix)
+	if pb.HttpProxy.StripPrefix != "" {
+		ctx.Request.URL.Path = strings.TrimPrefix(ctx.Request.URL.Path, pb.HttpProxy.StripPrefix)
 		ctx.Request.URL.Path = "/" + strings.TrimPrefix(ctx.Request.URL.Path, "/")
 	}
-	hp.proxy.ServeHTTP(ctx.Writer, ctx.Request)
+	pb.HttpProxy.proxy.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {

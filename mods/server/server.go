@@ -669,7 +669,7 @@ func (s *svr) Start() error {
 		path := filepath.Join(tempDir, "machbase-neo.sock")
 		s.conf.Http.Listeners = append(s.conf.Http.Listeners, fmt.Sprintf("unix://%s", path))
 	} else {
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machbase-neo-unix.sock")
+		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machbase-neo.sock")
 	}
 
 	// package manager

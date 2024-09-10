@@ -199,8 +199,8 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 	r.Any("/apps/:name/*path", func(ctx *gin.Context) {
 		name := ctx.Param("name")
 		path := ctx.Param("path")
-		if bp := pm.pkgBackends[name]; bp != nil && bp.HttpProxy != nil && bp.HttpProxy.Match(path) {
-			bp.HttpProxy.Handle(ctx)
+		if bp := pm.pkgBackends[name]; bp != nil && bp.HttpProxy != nil && bp.Match(path) {
+			bp.Handle(ctx)
 			return
 		}
 		if strings.HasSuffix(path, ".tql") {
@@ -239,6 +239,11 @@ func (pm *PkgManager) HttpAppRouter(r gin.IRouter, tqlHandler gin.HandlerFunc) {
 func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 	r.GET("/search", pm.doSearch)
 	r.Use(func(ctx *gin.Context) {
+		if ctx.Request.RemoteAddr == "" {
+			// this request is from localhost via unix socket
+			// allow this request
+			return
+		}
 		// allow only SYS user
 		obj, ok := ctx.Get("jwt-claim")
 		if !ok {
@@ -262,6 +267,7 @@ func (pm *PkgManager) HttpPkgRouter(r gin.IRouter) {
 	r.GET("/install/:name", pm.doInstall)
 	r.GET("/uninstall/:name", pm.doUninstall)
 	r.GET("/process/:name/:action", pm.doProcess)
+	r.POST("/process/:name", pm.doSetProcess)
 	r.POST("/storage/:name/*path", pm.doWriteStorageSys)
 	r.GET("/storage/:name/*path", pm.doReadStorageSys)
 }
@@ -354,6 +360,30 @@ func (pm *PkgManager) readStorage(ctx *gin.Context, isSysUser bool) {
 	ctx.File(realPath)
 }
 
+func (pm *PkgManager) doSetProcess(c *gin.Context) {
+	ts := time.Now()
+	name := c.Param("name")
+	if proc, ok := pm.pkgBackends[name]; ok && proc == nil {
+		c.JSON(404, gin.H{
+			"success": false,
+			"reason":  fmt.Sprintf("package %q not found", name),
+			"elapse":  time.Since(ts),
+		})
+		return
+	} else {
+		req := &SetBackendRequest{}
+		if err := c.BindJSON(req); err != nil {
+			c.JSON(400, gin.H{
+				"success": false,
+				"reason":  err.Error(),
+				"elapse":  time.Since(ts),
+			})
+			return
+		}
+		proc.SetBackend(req)
+	}
+}
+
 func (pm *PkgManager) doProcess(c *gin.Context) {
 	ts := time.Now()
 	name := c.Param("name")
@@ -364,8 +394,6 @@ func (pm *PkgManager) doProcess(c *gin.Context) {
 			proc.Start()
 		case "stop":
 			proc.Stop()
-		case "set-backend":
-			fmt.Println(">>", c.Request.RemoteAddr, ">>", c.Request.URL.Path)
 		}
 		status := proc.Status()
 		c.JSON(200, gin.H{

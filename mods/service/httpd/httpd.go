@@ -315,6 +315,11 @@ func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 	auth, exist := ctx.Request.Header["Authorization"]
 	if !exist {
+		if ctx.Request.RemoteAddr == "" {
+			// this request from localhost via unix socket.
+			// allow it without jwt token
+			return
+		}
 		ctx.AsciiJSON(http.StatusUnauthorized, map[string]any{"success": false, "reason": "missing authorization header"})
 		ctx.Abort()
 		return
