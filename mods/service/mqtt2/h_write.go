@@ -256,5 +256,5 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) inserted", recno)
-	s.log.Debug(cl.Net.Remote, rsp.Reason)
+	s.log.Trace(cl.Net.Remote, rsp.Reason)
 }

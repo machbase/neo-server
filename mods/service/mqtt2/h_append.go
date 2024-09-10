@@ -161,5 +161,5 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		}
 		recno++
 	}
-	s.log.Debug(cl.Net.Remote, "appended", recno, "record(s),", wp.Table)
+	s.log.Trace(cl.Net.Remote, "appended", recno, "record(s),", wp.Table)
 }
