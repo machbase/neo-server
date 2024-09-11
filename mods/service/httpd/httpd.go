@@ -308,13 +308,17 @@ func (svr *httpd) getUserConnection(ctx *gin.Context) (api.Conn, error) {
 	if claim != nil {
 		return svr.db.Connect(ctx, api.WithTrustUser(claim.Subject))
 	} else {
-		return nil, errors.New("unathorized db request")
+		return nil, errors.New("unauthorized db request")
 	}
 }
 
 func (svr *httpd) handleJwtToken(ctx *gin.Context) {
 	auth, exist := ctx.Request.Header["Authorization"]
 	if !exist {
+		if ctx.Request.RemoteAddr == "@" {
+			// MEMO: why the remoteAddr is "@" on Windows?
+			ctx.Request.RemoteAddr = ""
+		}
 		if ctx.Request.RemoteAddr == "" {
 			// this request from localhost via unix socket.
 			// allow it without jwt token
