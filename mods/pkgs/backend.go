@@ -318,7 +318,12 @@ func (ps *PkgBackend) stop0() {
 	}
 	err = cmd.Wait()
 	if err != nil {
-		ps.log.Errorf("fail to run: %v", err)
+		errMsg := err.Error()
+		if strings.HasPrefix(errMsg, "exit status ") {
+			ps.log.Info(errMsg)
+		} else {
+			ps.log.Errorf("fail to run: %v", err)
+		}
 	}
 
 	wg := sync.WaitGroup{}
