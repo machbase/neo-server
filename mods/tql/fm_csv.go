@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+ 	"compress/gzip"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -77,7 +78,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		if stat.IsDir() {
 			node.task.LogErrorf("Fail to read %q, it is a directory", src.srcFile)
-			ErrorRecord(errors.New("Faile to read directory as CSV")).Tell(node.next)
+			ErrorRecord(errors.New("Failed to read directory as CSV")).Tell(node.next)
 			return
 		}
 		content, err := os.Open(src.srcFile)
@@ -87,10 +88,23 @@ func (src *csvSource) gen(node *Node) {
 			return
 		}
 		defer content.Close()
+
+        var inputReader io.Reader = content
+		if strings.HasSuffix(src.srcFile, ".gz") {
+			gzReader, err := gzip.NewReader(content)
+			if err != nil {
+				node.task.LogErrorf("Fail to create gzip reader for %q, %s", src.srcFile, err.Error())
+				ErrorRecord(err).Tell(node.next)
+				return
+			}
+			defer gzReader.Close()
+			inputReader = gzReader
+		}
+
 		if src.srcEncoding != nil {
-			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(content))
+			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(inputReader))
 		} else {
-			reader = csv.NewReader(content)
+			reader = csv.NewReader(inputReader)
 		}
 	} else if src.srcHttp != "" {
 		req, err := http.NewRequestWithContext(node.task.ctx, "GET", src.srcHttp, nil)
@@ -107,10 +121,21 @@ func (src *csvSource) gen(node *Node) {
 			return
 		}
 		defer resp.Body.Close()
+        var inputReader io.Reader = resp.Body
+		if strings.HasSuffix(src.srcHttp, ".gz") || resp.Header.Get("Content-Encoding") == "gzip" {
+			gzReader, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				node.task.LogErrorf("Fail to create gzip reader for %q, %s", src.srcHttp, err.Error())
+				ErrorRecord(err).Tell(node.next)
+				return
+			}
+			defer gzReader.Close()
+			inputReader = gzReader
+		}
 		if src.srcEncoding != nil {
-			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(resp.Body))
+			reader = csv.NewReader(src.srcEncoding.NewDecoder().Reader(inputReader))
 		} else {
-			reader = csv.NewReader(resp.Body)
+			reader = csv.NewReader(inputReader)
 		}
 	}
 	if reader == nil {
