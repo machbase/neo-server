@@ -2,6 +2,7 @@ package sshd
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/gliderlabs/ssh"
@@ -24,9 +25,15 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *Shell) {
 	var shell *Shell
 	var shellId string
 
-	toks := strings.SplitN(user, ":", 2)
-	user = toks[0]
-	if len(toks) == 2 {
+	if strings.HasPrefix(strings.ToLower(user), "sys+") && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+		toks := strings.SplitN(user, "+", 2)
+		return toks[0], &Shell{
+			Cmd:  toks[1],
+			Args: []string{},
+		}
+	} else if strings.Contains(user, ":") {
+		toks := strings.SplitN(user, ":", 2)
+		user = toks[0]
 		shellId = toks[1]
 	} else {
 		shellId = model.SHELLID_SHELL

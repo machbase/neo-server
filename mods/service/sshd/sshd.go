@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,9 @@ func New(db *mach.Database, options ...Option) (Service, error) {
 		log:             logging.GetLog("sshd"),
 		db:              db,
 		neoShellAccount: map[string]string{},
+
+		enablePortForward:        (runtime.GOOS == "linux" || runtime.GOOS == "darwin"),
+		enableReversePortForward: (runtime.GOOS == "linux" || runtime.GOOS == "darwin"),
 	}
 	for _, opt := range options {
 		opt(s)

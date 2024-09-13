@@ -26,13 +26,10 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	cmd := exec.Command(shell.Cmd, shell.Args...)
 	ptyReq, winCh, isPty := ss.Pty()
-	if !isPty {
-		io.WriteString(ss, "No PTY requested.\n")
-		ss.Exit(1)
-		return
+	if isPty {
+		io.WriteString(ss, svr.motdProvider(user))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", ptyReq.Term))
 	}
-	io.WriteString(ss, svr.motdProvider(user))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", ptyReq.Term))
 	for k, v := range shell.Envs {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -48,11 +45,13 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		fn.Close()
 	}()
 
-	go func() {
-		for win := range winCh {
-			setWinsize(fn, win.Width, win.Height)
-		}
-	}()
+	if isPty {
+		go func() {
+			for win := range winCh {
+				setWinsize(fn, win.Width, win.Height)
+			}
+		}()
+	}
 	go func() {
 		var w io.Writer
 		if svr.dumpInput {
