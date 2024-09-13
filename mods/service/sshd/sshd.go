@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/pkg/errors"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 type Service interface {
@@ -135,6 +136,10 @@ func (svr *sshd) Start() error {
 		svr.sshServer.ChannelHandlers = map[string]ssh.ChannelHandler{
 			"direct-tcpip": ssh.DirectTCPIPHandler,
 			"session":      ssh.DefaultSessionHandler,
+			"default": func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx ssh.Context) {
+				svr.log.Warnf("unknown channel type %s", newChan.ChannelType())
+				newChan.Reject(gossh.UnknownChannelType, "unknown channel type")
+			},
 		}
 	}
 
@@ -144,6 +149,10 @@ func (svr *sshd) Start() error {
 		svr.sshServer.RequestHandlers = map[string]ssh.RequestHandler{
 			"tcpip-forward":        forwardHandler.HandleSSHRequest,
 			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
+			"default": func(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (bool, []byte) {
+				svr.log.Warnf("unknown request type %s", req.Type)
+				return false, nil
+			},
 		}
 	}
 
