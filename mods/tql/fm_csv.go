@@ -222,12 +222,37 @@ func (src *csvSource) gen(node *Node) {
 		rownum++
 		if err == nil {
 			NewRecord(rownum, values).Tell(node.next)
+			if (rownum  % 500000) == 0 {
+				node.task.LogInfof("Loading %s records", formatNumberWithCommas(rownum))
+			}    
 		} else {
 			err = nil
 		}
 	}
 }
 
+
+// 정수를 입력받아 3자리마다 쉼표를 넣은 문자열을 반환하는 함수
+func formatNumberWithCommas(n int) string {
+    s := strconv.Itoa(n) // 정수를 문자열로 변환
+    length := len(s)
+
+    if length <= 3 {
+        return s
+    }
+
+    remainder := length % 3
+    if remainder == 0 {
+        remainder = 3
+    }
+
+    result := s[:remainder]
+    for i := remainder; i < length; i += 3 {
+        result += "," + s[i:i+3]
+    }
+
+    return result
+}
 // implments codec.opts.CanSetHeading
 func (src *csvSource) SetHeading(has bool) {
 	src.hasHeader = has
