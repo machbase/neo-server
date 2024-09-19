@@ -204,6 +204,7 @@ var FxDefinitions = []Definition{
 	{"timeType", defTask.fmDatetimeType},     // since v8.0.20
 	{"floatType", defTask.fmDoubleType},      // since v8.0.20
 	{"boolType", defTask.fmBoolType},         // since v8.0.20
+	{"logProgress", defTask.fmLogProgress},   // since v8.0.29
 	// maps.fake
 	{"simplex", defTask.fmSimplex},
 	{"random", defTask.fmRandom},

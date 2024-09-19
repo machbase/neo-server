@@ -193,6 +193,7 @@ func NewNode(task *Task) *Node {
 		"timeType":             x.gen_timeType,
 		"floatType":            x.gen_floatType,
 		"boolType":             x.gen_boolType,
+		"logProgress":          x.gen_logProgress,
 		"simplex":              x.gen_simplex,
 		"random":               x.gen_random,
 		"parseFloat":           x.gen_parseFloat,
@@ -2759,6 +2760,21 @@ func (x *Node) gen_boolType(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmBoolType(p0...)
+}
+
+// gen_logProgress
+//
+// syntax: logProgress(...interface {})
+func (x *Node) gen_logProgress(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "logProgress", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmLogProgress(p0...)
 }
 
 // gen_simplex
