@@ -15,7 +15,7 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shell := svr.findShell(ss)
+	user, shell, _ := svr.findShell(ss)
 	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
 
 	if shell == nil {
@@ -39,9 +39,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	defer cpty.Close()
 
-	if _, ok := shell.Envs["TERM"]; !ok {
-		shell.Envs["TERM"] = ptyReq.Term
-	}
+	shell.Envs = append(shell.Envs, fmt.Sprintf("TERM=%s", ptyReq.Term))
 
 	go func() {
 		for win := range winCh {
@@ -106,11 +104,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	path := shell.Cmd
 	argv := []string{filepath.Base(path)}
 	argv = append(argv, shell.Args...)
-	env := []string{}
-	for k, v := range shell.Envs {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: env})
+	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: shell.Envs})
 	if err != nil {
 		svr.log.Errorf("ConPty spawn: %s", err.Error())
 		ss.Exit(1)

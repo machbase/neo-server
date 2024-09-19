@@ -69,22 +69,21 @@ func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
 		shell.Args = parsed[1:]
 	}
 
-	shell.Envs = map[string]string{}
-	envs := os.Environ()
-	for _, line := range envs {
-		toks := strings.SplitN(line, "=", 2)
-		if len(toks) != 2 {
-			continue
-		}
-		shell.Envs[toks[0]] = toks[1]
-	}
+	shell.Envs = append([]string{}, os.Environ()...)
 	if runtime.GOOS == "windows" {
-		if _, ok := shell.Envs["USERPROFILE"]; !ok {
+		has := false
+		for _, env := range shell.Envs {
+			if strings.HasPrefix(env, "USERPROFILE=") {
+				has = true
+				break
+			}
+		}
+		if !has {
 			userHomeDir, err := os.UserHomeDir()
 			if err != nil {
 				userHomeDir = "."
 			}
-			shell.Envs["USERPROFILE"] = userHomeDir
+			shell.Envs = append(shell.Envs, "USERPROFILE="+userHomeDir)
 		}
 	}
 	return shell
