@@ -5,7 +5,7 @@ on:
     types: [ opened, synchronize, reopened ]
 
 jobs:
-  builds:
+  build:
     strategy:
       matrix:
         platform:
@@ -28,6 +28,7 @@ jobs:
           msystem: mingw64
           install: >-
             mingw-w64-x86_64-gcc
+            mingw-w64-jemalloc
       - name: Setup go compiler
         uses: actions/setup-go@v5
         with:
@@ -41,8 +42,9 @@ jobs:
           version: 0.11.0
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
-      # - name: Install Dependencies
-      #   run: sudo apt-get install -y libjemalloc-dev
+      - name: Install Dependencies
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: sudo apt-get install -y libjemalloc-dev
       - name: Test
         run: go run mage.go test
       - name: Codecov
