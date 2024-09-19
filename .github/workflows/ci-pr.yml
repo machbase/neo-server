@@ -5,33 +5,54 @@ on:
     types: [ opened, synchronize, reopened ]
 
 jobs:
-  builds:
-    runs-on: [ ubuntu-20.04 ]
+  build:
+    strategy:
+      matrix:
+        platform:
+          - macos-14
+          - macos-13
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - windows-2019
+    runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Setup MingW64
+        if: startsWith(matrix.platform, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            mingw-w64-x86_64-gcc
       - name: Setup go compiler
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          check-latest: false
+          check-latest: true
+          cache: false
       - name: Setup zig
+        if: matrix.platform == 'ubuntu-20.04'
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.11.0
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
-      - name: Install Dependencies
-        run: sudo apt-get install -y libjemalloc-dev
+      - name: Install Neo Launcher
+        if: (!startsWith(matrix.platform, 'ubuntu'))
+        run: go run mage.go InstallNeoLauncher
       - name: Test
         run: go run mage.go test
       - name: Codecov
+        if: matrix.platform == 'ubuntu-20.04'
         uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      - name: Build amd64
+      - name: Build
         run: go run mage.go machbase-neo neocat package
       - name: Build arm32
+        if: matrix.platform == 'ubuntu-20.04'
         run: go run mage.go buildx machbase-neo linux arm buildx neocat linux arm packagex linux arm
