@@ -120,12 +120,18 @@ jobs:
           path: packages/machbase-neo-v*.zip
           retention-days: 5
   windows-amd64:
-    runs-on: [ self-hosted, Windows, X64 ]
+    runs-on: [ windows-2019 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Setup MinGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            mingw-w64-x86_64-gcc
       - name: Setup go compiler
         uses: actions/setup-go@v5
         with:
@@ -150,10 +156,6 @@ jobs:
       - name: Archive
         run: magefiles\tmp\mage_output.exe package
         shell: cmd
-      - name: Codecov
-        uses: codecov/codecov-action@v4
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
