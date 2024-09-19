@@ -28,7 +28,6 @@ jobs:
           msystem: mingw64
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-jemalloc
       - name: Setup go compiler
         uses: actions/setup-go@v5
         with:
