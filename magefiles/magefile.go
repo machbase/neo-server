@@ -215,7 +215,7 @@ func Test() error {
 	}
 
 	if runtime.GOOS == "linux" {
-		env["CGO_LDFLAGS"] = "-lpthread -ljemalloc"
+		env["CGO_LDFLAGS"] = "-lpthread"
 	}
 	if err := sh.RunWithV(env, "go", "mod", "tidy"); err != nil {
 		return err
