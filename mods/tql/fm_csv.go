@@ -308,7 +308,7 @@ type PrintProgressCount int64
 
 func (x *Node) fmLogProgress(args ...any) (any, error) {
 	if len(args) != 1 {
-		return 0, ErrInvalidNumOfArgs("printProgressCount", 1, len(args))
+		return PrintProgressCount(500_000), nil // default 500K
 	}
 	if v, ok := args[0].(float64); ok {
 		return PrintProgressCount(v), nil
