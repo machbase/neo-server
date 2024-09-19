@@ -1051,6 +1051,23 @@ func TestCsvToCsv(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestCsvToCsvWithLogProgress(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`CSV("1,line1\n2,line2\n3,\n4,line4", logProgress(2))`,
+		"CSV( heading(true) )",
+	}
+	resultLines = []string{
+		"column0,column1",
+		"1,line1",
+		"2,line2",
+		"3,",
+		"4,line4",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestJsonToCsv(t *testing.T) {
 
 	var codeLines, resultLines []string

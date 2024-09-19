@@ -2,7 +2,7 @@ package tql
 
 import (
 	"bytes"
- 	"compress/gzip"
+	"compress/gzip"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -17,6 +17,9 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
+	"golang.org/x/text/number"
 )
 
 func (x *Node) fmCsv(args ...any) (any, error) {
@@ -59,6 +62,9 @@ type csvSource struct {
 	srcFile     string
 	srcHttp     string
 	srcEncoding encoding.Encoding
+
+	printer            *message.Printer
+	printProgressCount int64
 }
 
 func (src *csvSource) gen(node *Node) {
@@ -89,7 +95,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		defer content.Close()
 
-        var inputReader io.Reader = content
+		var inputReader io.Reader = content
 		if strings.HasSuffix(src.srcFile, ".gz") {
 			gzReader, err := gzip.NewReader(content)
 			if err != nil {
@@ -121,7 +127,7 @@ func (src *csvSource) gen(node *Node) {
 			return
 		}
 		defer resp.Body.Close()
-        var inputReader io.Reader = resp.Body
+		var inputReader io.Reader = resp.Body
 		if strings.HasSuffix(src.srcHttp, ".gz") || resp.Header.Get("Content-Encoding") == "gzip" {
 			gzReader, err := gzip.NewReader(resp.Body)
 			if err != nil {
@@ -222,6 +228,12 @@ func (src *csvSource) gen(node *Node) {
 		rownum++
 		if err == nil {
 			NewRecord(rownum, values).Tell(node.next)
+			if src.printProgressCount > 0 && int64(rownum)%src.printProgressCount == 0 {
+				if src.printer == nil {
+					src.printer = message.NewPrinter(language.English)
+				}
+				node.task.LogInfof(src.printer.Sprintf("Loading %v records", number.Decimal(rownum)))
+			}
 		} else {
 			err = nil
 		}
@@ -280,6 +292,8 @@ func newCsvSource(args ...any) (*csvSource, error) {
 			ret.srcReader = v
 		case string:
 			ret.srcString = v
+		case PrintProgressCount:
+			ret.printProgressCount = int64(v)
 		case []byte:
 			ret.srcBytes = v
 		default:
@@ -288,6 +302,18 @@ func newCsvSource(args ...any) (*csvSource, error) {
 	}
 
 	return ret, nil
+}
+
+type PrintProgressCount int64
+
+func (x *Node) fmLogProgress(args ...any) (any, error) {
+	if len(args) != 1 {
+		return PrintProgressCount(500_000), nil // default 500K
+	}
+	if v, ok := args[0].(float64); ok {
+		return PrintProgressCount(v), nil
+	}
+	return 0, errors.New("f(printProgressCount) argument should be int")
 }
 
 type columnOpt struct {
