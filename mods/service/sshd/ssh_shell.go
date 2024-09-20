@@ -2,7 +2,6 @@ package sshd
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/gliderlabs/ssh"
@@ -12,7 +11,7 @@ import (
 type Shell struct {
 	Cmd  string
 	Args []string
-	Envs map[string]string
+	Envs []string
 }
 
 func (svr *sshd) motdProvider(user string) string {
@@ -20,32 +19,39 @@ func (svr *sshd) motdProvider(user string) string {
 		strings.ToUpper(user), svr.motdMessage)
 }
 
-func (svr *sshd) findShell(ss ssh.Session) (string, *Shell) {
+// splitUserAndShell splits USER and SHELL_ID and CMD from the user string.
+func (svr *sshd) splitUserAndShell(user string) (string, string, string) {
+	if strings.HasPrefix(strings.ToLower(user), "sys+") {
+		// only sys user can use this feature
+		toks := strings.SplitN(user, "+", 2)
+		return toks[0], "", toks[1]
+	} else if strings.Contains(user, ":") {
+		toks := strings.SplitN(user, ":", 2)
+		return toks[0], toks[1], ""
+	} else {
+		return user, model.SHELLID_SHELL, ""
+	}
+}
+
+func (svr *sshd) findShell(ss ssh.Session) (string, *Shell, string) {
 	user := ss.User()
 	var shell *Shell
 	var shellId string
+	var command string
 
-	if strings.HasPrefix(strings.ToLower(user), "sys+") && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
-		toks := strings.SplitN(user, "+", 2)
-		return toks[0], &Shell{
-			Cmd:  toks[1],
-			Args: []string{},
+	user, shellId, command = svr.splitUserAndShell(user)
+	if command != "" {
+		shell = &Shell{
+			Cmd:  command,
+			Envs: make([]string, 0),
 		}
-	} else if strings.Contains(user, ":") {
-		toks := strings.SplitN(user, ":", 2)
-		user = toks[0]
-		shellId = toks[1]
-	} else {
-		shellId = model.SHELLID_SHELL
+		return user, shell, ""
 	}
+
 	shell = svr.shell(user, shellId)
 	if shell == nil {
-		return user, nil
-	}
-	if shellId == model.SHELLID_SHELL {
-		shell.Envs["NEOSHELL_USER"] = strings.ToLower(user)
-		shell.Envs["NEOSHELL_PASSWORD"] = svr.neoShellAccount[strings.ToLower(user)]
+		return user, nil, shellId
 	}
 
-	return user, shell
+	return user, shell, shellId
 }

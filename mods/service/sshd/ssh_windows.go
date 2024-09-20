@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -15,7 +17,7 @@ import (
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shell := svr.findShell(ss)
+	user, shell, _ := svr.findShell(ss)
 	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
 
 	if shell == nil {
@@ -26,10 +28,16 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 
 	ptyReq, winCh, isPty := ss.Pty()
 	if !isPty {
-		io.WriteString(ss, "No PTY requested.\n")
-		ss.Exit(1)
+		// If the user is sys and the pty is not requested, use the system shell.
+		if strings.ToLower(user) != "sys" {
+			io.WriteString(ss, "PTY is required.\n")
+			ss.Exit(1)
+			return
+		}
+		svr.shellHandlerNoPty(ss, user)
 		return
 	}
+
 	io.WriteString(ss, svr.motdProvider(user))
 	cpty, err := conpty.New(int16(ptyReq.Window.Width), int16(ptyReq.Window.Height))
 	if err != nil {
@@ -39,9 +47,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 	defer cpty.Close()
 
-	if _, ok := shell.Envs["TERM"]; !ok {
-		shell.Envs["TERM"] = ptyReq.Term
-	}
+	shell.Envs = append(shell.Envs, fmt.Sprintf("TERM=%s", ptyReq.Term))
 
 	go func() {
 		for win := range winCh {
@@ -70,13 +76,13 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		if err != nil {
 			svr.log.Warnf("session push %s", err.Error())
 		}
-		// At the time the session closed by exceeding Idletimeout,
+		// At the time the session closed by exceeding IdleTimeout,
 		// First, this go-routine's io.Copy() returned.
 		// Then the shell process should be killed by force
-		// so that io.Copy() below can be returned and relase go-routine and resources.
+		// so that io.Copy() below can be returned and release go-routine and resources.
 		//
 		// If we do not EXPLICITLY kill the process here, the go-routine below's io.Copy(ss,fn) keep remaining
-		// and cmd.Wait() is blocked, which leads shell processes will be cummulated on the OS.
+		// and cmd.Wait() is blocked, which leads shell processes will be cumulated on the OS.
 		if process != nil {
 			process.Kill()
 		}
@@ -106,11 +112,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	path := shell.Cmd
 	argv := []string{filepath.Base(path)}
 	argv = append(argv, shell.Args...)
-	env := []string{}
-	for k, v := range shell.Envs {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: env})
+	pid, _, err := cpty.Spawn(path, argv, &syscall.ProcAttr{Env: shell.Envs})
 	if err != nil {
 		svr.log.Errorf("ConPty spawn: %s", err.Error())
 		ss.Exit(1)
@@ -134,6 +136,45 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 		svr.log.Infof("session terminated %s from %s %s", user, ss.RemoteAddr(), err.Error())
 		return
 	}
-
 	svr.log.Debugf("session close %s from %s '%v' ", user, ss.RemoteAddr(), ps)
+}
+
+func (svr *sshd) shellHandlerNoPty(ss ssh.Session, user string) {
+	cmd := exec.Command("cmd.exe")
+	cmd.Env = append(cmd.Env, os.Environ()...)
+	cmd.Stdin = ss
+	cmd.Stdout = ss
+	cmd.Stderr = ss
+	wg := sync.WaitGroup{}
+
+	if err := cmd.Start(); err != nil {
+		svr.log.Warnf("shell error, %s", err.Error())
+		ss.Exit(-1)
+		return
+	}
+
+	svr.addChild(cmd.Process)
+	wg.Add(1)
+	go func() {
+		svr.log.Tracef("shell cmd waiting pid %d", cmd.Process.Pid)
+		cmd.Wait()
+		svr.log.Tracef("shell cmd waiting done.")
+		svr.removeChild(cmd.Process)
+		ss.Exit(0)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	go func() {
+		svr.log.Tracef("shell session ctx waiting")
+		<-ss.Context().Done()
+		ss.Close()
+		svr.log.Tracef("shell session ctx closed")
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	svr.log.Debugf("shell close %s from %s '%v'", user, ss.RemoteAddr(), cmd.ProcessState)
 }

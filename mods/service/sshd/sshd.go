@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -30,9 +29,7 @@ func New(db *mach.Database, options ...Option) (Service, error) {
 		log:             logging.GetLog("sshd"),
 		db:              db,
 		neoShellAccount: map[string]string{},
-
-		enablePortForward:        (runtime.GOOS == "linux" || runtime.GOOS == "darwin"),
-		enableReversePortForward: (runtime.GOOS == "linux" || runtime.GOOS == "darwin"),
+		forwardHandler:  &ssh.ForwardedTCPHandler{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -95,14 +92,12 @@ type sshd struct {
 	motdMessage     string
 	authServer      security.AuthServer
 
-	enablePortForward        bool
-	enableReversePortForward bool
-
 	sshServer *ssh.Server
 	listeners []net.Listener
 
-	childrenLock sync.Mutex
-	children     map[int]*os.Process
+	forwardHandler *ssh.ForwardedTCPHandler
+	childrenLock   sync.Mutex
+	children       map[int]*os.Process
 
 	shellProvider func(user string, shellId string) *Shell
 
@@ -130,30 +125,42 @@ func (svr *sshd) Start() error {
 	svr.sshServer.Handler = svr.defaultHandler
 	svr.sshServer.PasswordHandler = svr.passwordHandler
 	svr.sshServer.PublicKeyHandler = svr.publicKeyHandler
-
-	if svr.enablePortForward {
-		svr.sshServer.LocalPortForwardingCallback = ssh.LocalPortForwardingCallback(svr.portForwardingCallback)
-		svr.sshServer.ChannelHandlers = map[string]ssh.ChannelHandler{
-			"direct-tcpip": ssh.DirectTCPIPHandler,
-			"session":      ssh.DefaultSessionHandler,
-			"default": func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx ssh.Context) {
-				svr.log.Warnf("unknown channel type %s", newChan.ChannelType())
-				newChan.Reject(gossh.UnknownChannelType, "unknown channel type")
-			},
-		}
+	svr.sshServer.SubsystemHandlers = map[string]ssh.SubsystemHandler{
+		"sftp": svr.SftpHandler,
 	}
-
-	if svr.enableReversePortForward {
-		svr.sshServer.ReversePortForwardingCallback = ssh.ReversePortForwardingCallback(svr.reversePortForwardingCallback)
-		forwardHandler := &ssh.ForwardedTCPHandler{}
-		svr.sshServer.RequestHandlers = map[string]ssh.RequestHandler{
-			"tcpip-forward":        forwardHandler.HandleSSHRequest,
-			"cancel-tcpip-forward": forwardHandler.HandleSSHRequest,
-			"default": func(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (bool, []byte) {
-				svr.log.Warnf("unknown request type %s", req.Type)
-				return false, nil
-			},
+	svr.sshServer.LocalPortForwardingCallback = func(ctx ssh.Context, destinationHost string, destinationPort uint32) bool {
+		if ctx.User() != "sys" {
+			return false
 		}
+		svr.log.Debugf("port forwarding %s, dest-> %s:%d", ctx.RemoteAddr(), destinationHost, destinationPort)
+		return true
+	}
+	svr.sshServer.ReversePortForwardingCallback = func(ctx ssh.Context, bindHost string, bindPort uint32) bool {
+		if ctx.User() != "sys" {
+			return false
+		}
+		svr.log.Debugf("reverse port forwarding bindHost:%s bindPort:%d", bindHost, bindPort)
+		return true
+	}
+	svr.sshServer.ChannelHandlers = map[string]ssh.ChannelHandler{
+		"direct-tcpip": ssh.DirectTCPIPHandler,
+		"session":      ssh.DefaultSessionHandler,
+		"default": func(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx ssh.Context) {
+			svr.log.Debugf("unknown channel type %s", newChan.ChannelType())
+			newChan.Reject(gossh.UnknownChannelType, "unknown channel type")
+		},
+	}
+	svr.sshServer.RequestHandlers = map[string]ssh.RequestHandler{
+		"tcpip-forward":        svr.forwardHandler.HandleSSHRequest,
+		"cancel-tcpip-forward": svr.forwardHandler.HandleSSHRequest,
+		"keepalive@openssh.com": func(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (ok bool, payload []byte) {
+			svr.log.Trace("keepalive@openssh.com")
+			return true, nil
+		},
+		"default": func(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (bool, []byte) {
+			svr.log.Debugf("unknown request type %s", req.Type)
+			return false, nil
+		},
 	}
 
 	for _, listen := range svr.listenAddresses {
@@ -203,11 +210,13 @@ func (svr *sshd) Stop() {
 }
 
 func (svr *sshd) defaultHandler(ss ssh.Session) {
+	svr.log.Debug("session open", ss.RemoteAddr())
 	if len(ss.Command()) > 0 {
 		svr.commandHandler(ss)
 	} else {
 		svr.shellHandler(ss)
 	}
+	svr.log.Debug("session close", ss.RemoteAddr())
 }
 
 func (svr *sshd) addChild(child *os.Process) {
