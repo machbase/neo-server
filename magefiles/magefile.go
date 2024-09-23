@@ -26,7 +26,6 @@ var Default = BuildNeoServer
 var Aliases = map[string]any{
 	"machbase-neo":    BuildNeoServer,
 	"neoshell":        BuildNeoShell,
-	"neocat":          BuildNeoCat,
 	"cleanpackage":    CleanPackage,
 	"buildversion":    BuildVersion,
 	"install-neo-web": InstallNeoWeb,
@@ -50,10 +49,6 @@ func BuildNeoShell() error {
 	return Build("neoshell")
 }
 
-func BuildNeoCat() error {
-	return Build("neocat")
-}
-
 func Build(target string) error {
 	mg.Deps(CheckTmp, GetVersion)
 
@@ -68,9 +63,6 @@ func Build(target string) error {
 	env := map[string]string{"GO111MODULE": "on"}
 	if target == "neoshell" {
 		// FIXME: neoshell should not link to engine
-		env["CGO_ENABLED"] = "1"
-	} else {
-		// machbase-neo, neocat requires cgo
 		env["CGO_ENABLED"] = "1"
 	}
 
@@ -149,7 +141,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 			env["CC"] = "zig cc -target x86-linux-gnu"
 			env["CXX"] = "zig c++ -target x86-linux-gnu"
 		default:
-			return fmt.Errorf("error: unsupproted linux/%s", targetArch)
+			return fmt.Errorf("error: unsupported linux/%s", targetArch)
 		}
 	case "darwin":
 		sysroot, err := sh.Output("xcrun", "--sdk", "macosx", "--show-sdk-path")
@@ -165,13 +157,13 @@ func BuildX(target string, targetOS string, targetArch string) error {
 			env["CC"] = "zig cc -target x86_64-macos.13-none " + sysflags
 			env["CXX"] = "zig c++ -target x86_64-macos.13-none " + sysflags
 		default:
-			return fmt.Errorf("error: unsupproted darwin/%s", targetArch)
+			return fmt.Errorf("error: unsupported darwin/%s", targetArch)
 		}
 	case "windows":
 		env["CC"] = "zig cc -target x86_64-windows-none"
 		env["CXX"] = "zig c++ -target x86_64-windows-none"
 	default:
-		return fmt.Errorf("error: unsupproted os %s", targetOS)
+		return fmt.Errorf("error: unsupported os %s", targetOS)
 	}
 
 	args := []string{"build"}
@@ -310,17 +302,11 @@ func PackageX(targetOS string, targetArch string) error {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
-		if err := os.Rename(filepath.Join("tmp", "neocat.exe"), filepath.Join("packages", bdir, "neocat.exe")); err != nil {
-			return err
-		}
 		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
 			return err
 		}
 	} else if targetOS == "darwin" {
 		if err := os.Rename(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
-			return err
-		}
-		if err := os.Rename(filepath.Join("tmp", "neocat"), filepath.Join("packages", bdir, "neocat")); err != nil {
 			return err
 		}
 		if err := os.Rename(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
@@ -330,8 +316,6 @@ func PackageX(targetOS string, targetArch string) error {
 		if err := os.Rename("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
-		// ignore error
-		os.Rename("./tmp/neocat", filepath.Join("./packages", bdir, "neocat"))
 	}
 
 	err = archivePackage(fmt.Sprintf("./packages/%s.zip", bdir), filepath.Join("./packages", bdir))
