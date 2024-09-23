@@ -10,7 +10,9 @@ jobs:
   darwin:
     strategy:
       matrix:
-        platform: [macos-14, macos-13] # macos-14 is M1
+        include:
+          - { platform: macos-14, arch: arm64 }
+          - { platform: macos-13, arch: x64 }
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -39,18 +41,8 @@ jobs:
       #       ./tmp/neow.app/Contents/MacOS/neo-launcher
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
-        if: matrix.platform == 'macos-14'
         with:
-          name: machbase-neo-snapshot-darwin-arm64
-          retention-days: 5
-          path: |
-            ./tmp/machbase-neo
-            ./tmp/neow.app
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        if: matrix.platform == 'macos-13'
-        with:
-          name: machbase-neo-snapshot-darwin-x64
+          name: machbase-neo-snapshot-darwin-${{ matrix.arch }}
           retention-days: 5
           path: |
             ./tmp/machbase-neo
@@ -72,7 +64,7 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: false
-          cache: false # !!! do not cache for self-hosted runner, for github hosted runner --> remove this setting
+          cache: false # !!! do not cache for self-hosted runner
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Build
@@ -106,13 +98,13 @@ jobs:
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Build
-        run: go run mage.go buildx machbase-neo linux arm packagex linux arm
+        run: go run mage.go buildx machbase-neo linux arm
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-linux-arm32
-          path: packages/machbase-neo-v*.zip
           retention-days: 5
+          path: ./tmp/machbase-neo
   windows-amd64:
     runs-on: [ windows-2019 ]
     steps:
@@ -131,7 +123,7 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: false
-          cache: false # do not cache for self-hosted runner
+          cache: false
       - name: Build-Mage
         run: go run mage.go -compile ./tmp/mage_output.exe
       - name: Build
