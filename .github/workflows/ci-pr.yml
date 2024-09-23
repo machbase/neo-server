@@ -52,7 +52,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Build
-        run: go run mage.go machbase-neo neocat package
+        run: go run mage.go machbase-neo package
       - name: Build arm32
         if: matrix.platform == 'ubuntu-20.04'
-        run: go run mage.go buildx machbase-neo linux arm buildx neocat linux arm packagex linux arm
+        run: go run mage.go buildx machbase-neo linux arm packagex linux arm
