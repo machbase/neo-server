@@ -639,11 +639,18 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, mqtt2.WithWsHandleListener(addr))
 		}
+		// mqtt server listener for unix socket
+		s.conf.Mqtt.Listeners = append(s.conf.Mqtt.Listeners, util.MakeUnixDomainSocketPath("machbase-neo-mqtt.sock"))
+
+		// mqtt server listeners
 		for _, addr := range s.conf.Mqtt.Listeners {
 			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
 				addr = strings.TrimPrefix(addr, "ws://")
 				addr = strings.TrimPrefix(addr, "wss://")
 				opts = append(opts, mqtt2.WithWebsocketListener(addr, tlsConf))
+			} else if strings.HasPrefix(addr, "unix://") {
+				addr = strings.TrimPrefix(addr, "unix://")
+				opts = append(opts, mqtt2.WithUnixSockListener(addr))
 			} else {
 				addr = strings.TrimPrefix(addr, "tcp://")
 				addr = strings.TrimPrefix(addr, "tls://")
@@ -661,16 +668,7 @@ func (s *svr) Start() error {
 	}
 
 	// http server listener for unix socket
-	if runtime.GOOS == "windows" {
-		tempDir := os.Getenv("TEMP")
-		if tempDir == "" {
-			tempDir = "C:\\"
-		}
-		path := filepath.Join(tempDir, "machbase-neo.sock")
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, fmt.Sprintf("unix://%s", path))
-	} else {
-		s.conf.Http.Listeners = append(s.conf.Http.Listeners, "unix:///tmp/machbase-neo.sock")
-	}
+	s.conf.Http.Listeners = append(s.conf.Http.Listeners, util.MakeUnixDomainSocketPath("machbase-neo.sock"))
 
 	// package manager
 	if s.pkgMgr == nil {
@@ -682,6 +680,7 @@ func (s *svr) Start() error {
 		envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
 		envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
 		envs["MACHBASE_NEO_HTTP"] = strings.Join(s.conf.Http.Listeners, ",")
+		envs["MACHBASE_NEO_MQTT"] = strings.Join(s.conf.Mqtt.Listeners, ",")
 		envs["MACHBASE_HOME"] = homepath
 		pkgsDir := filepath.Join(homepath, "pkgs")
 		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.conf.ExperimentMode); err != nil {

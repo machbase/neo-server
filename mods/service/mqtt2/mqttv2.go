@@ -151,6 +151,18 @@ func WithTcpListener(addr string, tlsConfig *tls.Config) Option {
 	}
 }
 
+func WithUnixSockListener(addr string) Option {
+	return func(s *mqtt2) error {
+		qty := s.broker.Listeners.Len()
+		id := fmt.Sprintf("mqtt2-unix-%d", qty)
+		lsnr := listeners.NewUnixSock(listeners.Config{
+			ID:      id,
+			Address: addr,
+		})
+		return s.broker.AddListener(lsnr)
+	}
+}
+
 // WithWebsocketListener creates a new Websocket listener with the given address and TLS configuration.
 // If tlsConfig is nil, the listener will not use TLS.
 func WithWebsocketListener(addr string, tlsConfig *tls.Config) Option {
