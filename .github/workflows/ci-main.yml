@@ -28,25 +28,24 @@ jobs:
         run: go run mage.go InstallNeoWeb InstallNeoLauncher
       - name: Build
         run: go run mage.go test machbase-neo
-      # - name: Sign and notarize the release build
-      #   uses: toitlang/action-macos-sign-notarize@v1.2.0
-      #   with:
-      #     certificate: ${{ secrets.CODESIGN_DARWIN_CERTIFICATE }}
-      #     certificate-password: ${{ secrets.CODESIGN_DARWIN_PASS }}
-      #     username: ${{ secrets.CODESIGN_DARWIN_APPLE_ID_USERNAME }}
-      #     password: ${{ secrets.CODESIGN_DARWIN_APPLE_ID_PASS }}
-      #     apple-team-id: E6535B7BUR
-      #     app-path: |
-      #       ./tmp/machbase-neo
-      #       ./tmp/neow.app/Contents/MacOS/neo-launcher
+      - name: Sign and notarize the release build
+        uses: toitlang/action-macos-sign-notarize@v1.2.0
+        with:
+          certificate: ${{ secrets.CODESIGN_DARWIN_CERTIFICATE }}
+          certificate-password: ${{ secrets.CODESIGN_DARWIN_PASS }}
+          username: ${{ secrets.CODESIGN_DARWIN_APPLE_ID_USERNAME }}
+          password: ${{ secrets.CODESIGN_DARWIN_APPLE_ID_PASS }}
+          apple-team-id: ${{ secrets.CODESIGN_DARWIN_APPLE_TEAM_ID }}
+          app-path: |-
+            ./tmp/machbase-neo
+      - name: Package
+        run: go run mage.go package
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-darwin-${{ matrix.arch }}
           retention-days: 5
-          path: |
-            ./tmp/machbase-neo
-            ./tmp/neow.app
+          path: packages/machbase-neo-v*.zip
   linux:
     strategy:
       matrix:
@@ -74,12 +73,14 @@ jobs:
         uses: codecov/codecov-action@v3 #codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Package
+        run: go run mage.go package
       - name: Upload Artifact
         uses: actions/upload-artifact@v3 # upload-artifact@v4 requires GLIBC_2.28
         with:
           name: machbase-neo-snapshot-linux-${{ matrix.arch }}
           retention-days: 5
-          path: ./tmp/machbase-neo
+          path: packages/machbase-neo-v*.zip
   linux-arm32:
     runs-on: [ ubuntu-20.04 ]
     steps:
@@ -98,13 +99,13 @@ jobs:
       - name: Install Neo Web
         run: go run mage.go InstallNeoWeb
       - name: Build
-        run: go run mage.go buildx machbase-neo linux arm
+        run: go run mage.go buildx machbase-neo linux arm packagex linux arm
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-linux-arm32
           retention-days: 5
-          path: ./tmp/machbase-neo
+          path: packages/machbase-neo-v*.zip
   windows-amd64:
     runs-on: [ windows-2019 ]
     steps:
@@ -138,13 +139,13 @@ jobs:
           recursive: false
           files: |
             machbase-neo.exe
+      - name: Package
+        run: go run mage.go package
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-windows-x64
           retention-days: 5
-          path: |
-            ./tmp/machbase-neo.exe
-            ./tmp/neow.exe
-        
+          path: packages/machbase-neo-v*.zip
+            
 

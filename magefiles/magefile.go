@@ -484,8 +484,15 @@ func InstallNeoLauncher() error {
 func InstallNeoLauncherX(version string) error {
 	mg.Deps(CheckTmp)
 
-	url := fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-%s-amd64.zip",
-		version, version, runtime.GOOS)
+	var url string
+	if runtime.GOOS == "darwin" {
+		// universal binary
+		url = fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-darwin.zip",
+			version, version)
+	} else {
+		url = fmt.Sprintf("https://github.com/machbase/neo-launcher/releases/download/%s/neo-launcher-%s-%s-%s.zip",
+			version, version, runtime.GOOS, runtime.GOARCH)
+	}
 	dst := "./tmp/neow.zip"
 	if runtime.GOOS == "windows" {
 		if err := wget(url, dst); err != nil {
