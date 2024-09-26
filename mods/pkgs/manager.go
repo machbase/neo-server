@@ -363,7 +363,7 @@ func (pm *PkgManager) readStorage(ctx *gin.Context, isSysUser bool) {
 func (pm *PkgManager) doSetProcess(c *gin.Context) {
 	ts := time.Now()
 	name := c.Param("name")
-	if proc, ok := pm.pkgBackends[name]; ok && proc == nil {
+	if proc, ok := pm.pkgBackends[name]; !ok || proc == nil {
 		c.JSON(404, gin.H{
 			"success": false,
 			"reason":  fmt.Sprintf("package %q not found", name),
