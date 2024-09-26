@@ -18,8 +18,8 @@ import (
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -254,7 +254,7 @@ func (svr *grpcd) Start() error {
 			// s.log.Debugf("gRPC unable %s on Windows", listen)
 			continue
 		}
-		lsnr, err := netutil.MakeListener(listen)
+		lsnr, err := util.MakeListener(listen)
 		if err != nil {
 			return errors.Wrap(err, "cannot start with failed listener")
 		}

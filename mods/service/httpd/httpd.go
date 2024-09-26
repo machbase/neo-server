@@ -20,10 +20,9 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/pkgs"
 	"github.com/machbase/neo-server/mods/service/backupd"
-	"github.com/machbase/neo-server/mods/service/internal/ginutil"
-	"github.com/machbase/neo-server/mods/service/internal/netutil"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/ssfs"
 	"github.com/pkg/errors"
 )
@@ -128,7 +127,7 @@ func (svr *httpd) Start() error {
 	svr.httpServer.Handler = svr.Router()
 
 	for _, listen := range svr.listenAddresses {
-		lsnr, err := netutil.MakeListener(listen)
+		lsnr, err := util.MakeListener(listen)
 		if err != nil {
 			return errors.Wrap(err, "cannot start with failed listener")
 		}
@@ -154,9 +153,9 @@ func (svr *httpd) Stop() {
 
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
-	r.Use(ginutil.RecoveryWithLogging(svr.log))
+	r.Use(RecoveryWithLogging(svr.log))
 	if svr.debugMode {
-		r.Use(ginutil.HttpLogger("http-log"))
+		r.Use(HttpLogger("http-log"))
 	}
 	r.Use(svr.corsHandler())
 
