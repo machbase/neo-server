@@ -1,21 +1,31 @@
 package sshd
 
 import (
+	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-server/mods/model"
 	"github.com/pkg/errors"
 )
 
 func (svr *sshd) commandHandler(ss ssh.Session) {
-	shell := svr.shell(ss.User(), "SHELL")
+	user, shell, shellId := svr.findShell(ss)
+	svr.log.Debugf("shell open %s from %s", user, ss.RemoteAddr())
+
 	if shell == nil {
 		io.WriteString(ss, "No shell found\n")
 		ss.Exit(1)
 		return
 	}
+	if shellId == model.SHELLID_SHELL {
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_USER=%s", user))
+		shell.Envs = append(shell.Envs, fmt.Sprintf("NEOSHELL_PASSWORD=%s", svr.neoShellAccount[strings.ToLower(user)]))
+	}
+
 	cmdArr := []string{shell.Cmd}
 	cmdArr = append(cmdArr, shell.Args...)
 	cmdArr = append(cmdArr, ss.Command()...)
@@ -34,6 +44,7 @@ func (svr *sshd) commandHandler(ss ssh.Session) {
 	} else {
 		cmd = exec.Command(cmdArr[0])
 	}
+	cmd.Env = append(cmd.Env, shell.Envs...)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
