@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,78 @@ func strString(str string, def string) string {
 		return def
 	}
 	return str
+}
+
+var metricRequestTotal = uint64(0)
+var metricLatencyUnder1ms = uint64(0)
+var metricLatencyUnder100ms = uint64(0)
+var metricLatencyUnder1s = uint64(0)
+var metricLatencyUnder5s = uint64(0)
+var metricLatencyOver5s = uint64(0)
+var metricRecvContentBytes = uint64(0)
+var metricSendContentBytes = uint64(0)
+var metricStatus1xx = uint64(0)
+var metricStatus2xx = uint64(0)
+var metricStatus3xx = uint64(0)
+var metricStatus4xx = uint64(0)
+var metricStatus5xx = uint64(0)
+
+func MetricsInterceptor() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		latencyMillis := time.Since(start).Milliseconds()
+
+		atomic.AddUint64(&metricRequestTotal, 1)
+		if latencyMillis <= 1 { // under 1ms
+			atomic.AddUint64(&metricLatencyUnder100ms, 1)
+		} else if latencyMillis <= 100 { // under 100ms
+			atomic.AddUint64(&metricLatencyUnder100ms, 1)
+		} else if latencyMillis <= 1000 { // under 1s
+			atomic.AddUint64(&metricLatencyUnder1s, 1)
+		} else if latencyMillis <= 5000 { // under 5s
+			atomic.AddUint64(&metricLatencyUnder5s, 1)
+		} else { // over 1s
+			atomic.AddUint64(&metricLatencyOver5s, 1)
+		}
+		if s := c.Request.ContentLength; s > 0 {
+			atomic.AddUint64(&metricRecvContentBytes, uint64(s))
+		}
+		if s := c.Writer.Size(); s > 0 {
+			atomic.AddUint64(&metricSendContentBytes, uint64(s))
+		}
+
+		status := c.Writer.Status()
+		if status < 200 {
+			atomic.AddUint64(&metricStatus1xx, 1)
+		} else if status < 300 {
+			atomic.AddUint64(&metricStatus2xx, 1)
+		} else if status < 400 {
+			atomic.AddUint64(&metricStatus3xx, 1)
+		} else if status < 500 {
+			atomic.AddUint64(&metricStatus4xx, 1)
+		} else {
+			atomic.AddUint64(&metricStatus5xx, 1)
+		}
+	}
+}
+
+func Metrics() map[string]any {
+	ret := make(map[string]any)
+	ret["request_total"] = atomic.LoadUint64(&metricRequestTotal)
+	ret["latency_1ms"] = atomic.LoadUint64(&metricLatencyUnder1ms)
+	ret["latency_100ms"] = atomic.LoadUint64(&metricLatencyUnder100ms)
+	ret["latency_1s"] = atomic.LoadUint64(&metricLatencyUnder1s)
+	ret["latency_5s"] = atomic.LoadUint64(&metricLatencyUnder5s)
+	ret["latency_over_5s"] = atomic.LoadUint64(&metricLatencyOver5s)
+	ret["bytes_recv"] = atomic.LoadUint64(&metricRecvContentBytes)
+	ret["bytes_send"] = atomic.LoadUint64(&metricSendContentBytes)
+	ret["status_1xx"] = atomic.LoadUint64(&metricStatus1xx)
+	ret["status_2xx"] = atomic.LoadUint64(&metricStatus2xx)
+	ret["status_3xx"] = atomic.LoadUint64(&metricStatus3xx)
+	ret["status_4xx"] = atomic.LoadUint64(&metricStatus4xx)
+	ret["status_5xx"] = atomic.LoadUint64(&metricStatus5xx)
+	return ret
 }
 
 func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.HandlerFunc {

@@ -158,6 +158,7 @@ func (svr *httpd) Router() *gin.Engine {
 		r.Use(HttpLogger("http-log"))
 	}
 	r.Use(svr.corsHandler())
+	r.Use(MetricsInterceptor())
 
 	// redirect '/' -> '/web/'
 	for _, h := range svr.handlers {
@@ -226,7 +227,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/api/tql/*path", svr.handleTagQL)
 			group.POST("/api/tql", svr.handlePostTagQL)
 			group.POST("/api/md", svr.handleMarkdown)
-			group.Any("/machbase", svr.handleQuery) // TODO depcreated, use /web/api/query
+			group.Any("/machbase", func(c *gin.Context) {
+				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
+				svr.handleQuery(c)
+			})
 			group.Any("/api/query", svr.handleQuery)
 			group.GET("/api/check", svr.handleCheck)
 			group.POST("/api/relogin", svr.handleReLogin)
@@ -478,6 +482,7 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 			ret["mqtt"] = statz
 		}
 	}
+	ret["http"] = Metrics()
 
 	ctx.JSON(http.StatusOK, ret)
 }
