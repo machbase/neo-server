@@ -48,10 +48,16 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
+	if format == "" {
+		return
+	}
 	ex.timeformatter.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
+	if tz == nil {
+		return
+	}
 	ex.timeformatter.Set(util.TimeLocation(tz))
 }
 

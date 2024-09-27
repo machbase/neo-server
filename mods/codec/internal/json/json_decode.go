@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
 
@@ -76,34 +77,40 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				return nil, fmt.Errorf("#[%d] column[%d] is not a string", dec.nrow, i)
 			}
 		case "datetime":
-			var strexp string
-			switch v := field.(type) {
-			case float64: // json has only float type, no int
-				strexp = strconv.FormatInt(int64(v), 10)
-			case string:
-				strexp = v
-			case gojson.Number:
-				if n, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertable", dec.nrow, i)
-				} else {
-					strexp = strconv.FormatInt(n, 10)
+			if v, ok := field.(string); ok && dec.timeformat != "" {
+				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
+					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertable, %s", dec.nrow, i, err.Error())
 				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not datetime convertable", dec.nrow, i)
-			}
-			var ts int64
-			if ts, err = strconv.ParseInt(strexp, 10, 64); err != nil {
-				return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertable", dec.nrow, i)
-			}
-			switch dec.timeformat {
-			case "s":
-				values[i] = time.Unix(ts, 0)
-			case "ms":
-				values[i] = time.Unix(0, ts*int64(time.Millisecond))
-			case "us":
-				values[i] = time.Unix(0, ts*int64(time.Microsecond))
-			default: // "ns"
-				values[i] = time.Unix(0, ts)
+			} else {
+				var strexp string
+				switch v := field.(type) {
+				case float64: // json has only float type, no int
+					strexp = strconv.FormatInt(int64(v), 10)
+				case string:
+					strexp = v
+				case gojson.Number:
+					if n, err := v.Int64(); err != nil {
+						return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertable", dec.nrow, i)
+					} else {
+						strexp = strconv.FormatInt(n, 10)
+					}
+				default:
+					return nil, fmt.Errorf("#[%d] column[%d] is not datetime convertable", dec.nrow, i)
+				}
+				var ts int64
+				if ts, err = strconv.ParseInt(strexp, 10, 64); err != nil {
+					return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertable", dec.nrow, i)
+				}
+				switch dec.timeformat {
+				case "s":
+					values[i] = time.Unix(ts, 0)
+				case "ms":
+					values[i] = time.Unix(0, ts*int64(time.Millisecond))
+				case "us":
+					values[i] = time.Unix(0, ts*int64(time.Microsecond))
+				default: // "ns"
+					values[i] = time.Unix(0, ts)
+				}
 			}
 		case "float":
 			switch v := field.(type) {
