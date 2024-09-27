@@ -2,7 +2,9 @@ package csv_test
 
 import (
 	"bytes"
+	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +22,7 @@ func TestCsvDecoder(t *testing.T) {
 	dec.SetInputStream(input)
 	dec.SetDelimiter(",")
 	dec.SetTimeformat("ns")
-	dec.SetHeading(false)
+	dec.SetHeader(false)
 	dec.SetColumnTypes(
 		"string", "datetime", "double", "float", "string",
 		"int", "int16", "int32", "string", "int64", "string",
@@ -43,6 +45,83 @@ func TestCsvDecoder(t *testing.T) {
 	require.Equal(t, int64(1), fields[9])
 	require.Equal(t, "{\"name\":1234}", fields[10])
 	require.Equal(t, "192.168.1.100", fields[11].(net.IP).String())
+}
+
+func TestCsvDecoderTimeformat(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      []string
+		expects    [][]interface{}
+		timeformat string
+		tz         *time.Location
+	}{
+		{
+			name: "nanosecond",
+			input: []string{
+				`my-car,1670380342000000000,1.0001`,
+				`my-car,1670380343000000000,2.0002`,
+			},
+			expects: [][]interface{}{
+				{"my-car", time.Unix(0, 1670380342000000000), 1.0001},
+				{"my-car", time.Unix(0, 1670380343000000000), 2.0002},
+			},
+		},
+		{
+			name: "second timeformat",
+			input: []string{
+				`my-car,1670380342,1.0001`,
+				`my-car,1670380343,2.0002`,
+			},
+			expects: [][]interface{}{
+				{"my-car", time.Unix(0, 1670380342000000000), 1.0001},
+				{"my-car", time.Unix(0, 1670380343000000000), 2.0002},
+			},
+			timeformat: "s",
+			tz:         time.UTC,
+		},
+		{
+			name: "Default timeformat",
+			input: []string{
+				`my-car,2024-09-27 10:00:01.000,1.0001`,
+				`my-car,2024-09-27 10:00:02.000,2.0002`,
+			},
+			expects: [][]interface{}{
+				{"my-car", time.Unix(0, 1727431201000000000).In(time.UTC), 1.0001},
+				{"my-car", time.Unix(0, 1727431202000000000).In(time.UTC), 2.0002},
+			},
+			timeformat: "Default",
+			tz:         time.UTC,
+		},
+		{
+			name: "yy/mm/dd timeformat",
+			input: []string{
+				`my-car,2024/09/27 10:00:01,1.0001`,
+				`my-car,2024/09/27 10:00:02,2.0002`,
+			},
+			expects: [][]interface{}{
+				{"my-car", time.Unix(0, 1727431201000000000).In(time.UTC), 1.0001},
+				{"my-car", time.Unix(0, 1727431202000000000).In(time.UTC), 2.0002},
+			},
+			timeformat: "2006/01/02 15:04:05",
+			tz:         time.UTC,
+		},
+	}
+
+	for _, tt := range tests {
+		dec := csv.NewDecoder()
+		input := &stream.ReaderInputStream{Reader: (bytes.NewBuffer([]byte(strings.Join(tt.input, "\n"))))}
+		dec.SetInputStream(input)
+		dec.SetTimeformat(tt.timeformat)
+		dec.SetTimeLocation(tt.tz)
+		dec.SetHeader(false)
+		dec.SetColumnTypes("string", "datetime", "double")
+		dec.Open()
+		for _, expect := range tt.expects {
+			fields, err := dec.NextRow()
+			require.Nil(t, err)
+			require.Equal(t, expect, fields, fmt.Sprintf("Test case: %s", tt.name))
+		}
+	}
 }
 
 func TestCsvDecoderCharset(t *testing.T) {

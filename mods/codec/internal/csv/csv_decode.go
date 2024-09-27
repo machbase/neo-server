@@ -79,7 +79,15 @@ func (dec *Decoder) Open() {
 	} else {
 		dec.reader = csv.NewReader(dec.charset.NewDecoder().Reader(dec.input))
 	}
-	dec.reader.Comma = dec.comma
+	if dec.comma != 0 {
+		dec.reader.Comma = dec.comma
+	}
+	if dec.timeformat == "" {
+		dec.timeformat = "ns"
+	}
+	if dec.timeLocation == nil {
+		dec.timeLocation = time.UTC
+	}
 
 	if dec.heading { // skip first line
 		dec.reader.Read()
