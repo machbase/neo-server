@@ -41,3 +41,22 @@ func TestConvInt(t *testing.T) {
 	require.Equal(t, 123, runTest(123.4456))
 	require.Equal(t, 123, runTest("123"))
 }
+
+func TestConvTimeLocation(t *testing.T) {
+	runTest := func(input any) string {
+		ret, err := convTimeLocation([]any{input}, 0, "test", "TestConvTimeLocation")
+		if err != nil {
+			t.Logf("Fail TestConvTimeLocation, %s", err.Error())
+			t.Fail()
+		}
+		return ret.String()
+	}
+	require.Equal(t, "UTC", runTest("UTC"))
+	require.Equal(t, "Africa/Abidjan", runTest("GMT"))
+	require.Equal(t, "Europe/London", runTest("Europe/London"))
+	require.Equal(t, "ETC/GMT", runTest("ETC/GMT"))
+	require.Equal(t, "Asia/Seoul", runTest("KST"))
+	require.Equal(t, "Asia/Seoul", runTest("Asia/Seoul"))
+	require.Equal(t, "Africa/Cairo", runTest("EEST"))
+	require.Equal(t, "Africa/Cairo", runTest("Africa/Cairo"))
+}

@@ -3,7 +3,6 @@ package tql
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/facility"
@@ -110,14 +109,8 @@ func convTimeLocation(args []any, idx int, fname string, expect string) (*time.L
 	case *time.Location:
 		return v, nil
 	case string:
-		switch strings.ToUpper(v) {
-		case "LOCAL":
-			v = "Local"
-		case "UTC":
-			v = "UTC"
-		}
-		if timeLocation, err := time.LoadLocation(v); err != nil {
-			return util.GetTimeLocation(v)
+		if timeLocation := util.ParseTimeLocation(v, nil); timeLocation == nil {
+			return nil, fmt.Errorf("f(%s) arg(%d) invalid time location: %s", fname, idx+1, v)
 		} else {
 			return timeLocation, nil
 		}
