@@ -13,7 +13,6 @@ const (
 	BRIDGE_MSSQL    BridgeType = "mssql"
 	BRIDGE_MQTT     BridgeType = "mqtt"
 	BRIDGE_NATS     BridgeType = "nats"
-	BRIDGE_PYTHON   BridgeType = "python"
 )
 
 func ParseBridgeType(typ string) (BridgeType, error) {
@@ -30,8 +29,6 @@ func ParseBridgeType(typ string) (BridgeType, error) {
 		return BRIDGE_MQTT, nil
 	case "nats":
 		return BRIDGE_NATS, nil
-	case "python":
-		return BRIDGE_PYTHON, nil
 	default:
 		return "", fmt.Errorf("unsupported bridge type: %s", typ)
 	}
