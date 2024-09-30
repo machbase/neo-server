@@ -22,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/util"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/storage/badger"
 	"github.com/mochi-mqtt/server/v2/listeners"
@@ -417,28 +416,6 @@ func (h *AuthHook) OnPublished(cl *mqtt.Client, pk packets.Packet) {
 
 func (h *AuthHook) OnDisconnect(cl *mqtt.Client, err error, expire bool) {
 	h.svr.onDisconnect(cl, err, expire)
-}
-
-func parseTimeLocation(str string, def *time.Location) *time.Location {
-	if str == "" {
-		return def
-	}
-	tz := strings.ToLower(str)
-	if tz == "local" {
-		return time.Local
-	} else if tz == "utc" {
-		return time.UTC
-	} else {
-		if loc, err := util.GetTimeLocation(str); err != nil {
-			loc, err := time.LoadLocation(str)
-			if err != nil {
-				return def
-			}
-			return loc
-		} else {
-			return loc
-		}
-	}
 }
 
 func logFilter(name string, ctx context.Context, r slog.Record) bool {

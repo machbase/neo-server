@@ -71,7 +71,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	if req.ReplyTo != "" {
 		replyTopic = req.ReplyTo
 	}
-	var timeLocation = parseTimeLocation(req.TimeLocation, time.UTC)
+	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
 
 	var buffer = &bytes.Buffer{}
 	var output spec.OutputStream
@@ -555,27 +555,4 @@ func (svr *mqttd) handleTql(peer mqtt.Peer, topic string, payload []byte) error 
 		svr.log.Error("tql execute fail", path, result.Err.Error())
 	}
 	return nil
-}
-
-func parseTimeLocation(str string, def *time.Location) *time.Location {
-	if str == "" {
-		return def
-	}
-
-	tz := strings.ToLower(str)
-	if tz == "local" {
-		return time.Local
-	} else if tz == "utc" {
-		return time.UTC
-	} else {
-		if loc, err := util.GetTimeLocation(str); err != nil {
-			loc, err := time.LoadLocation(str)
-			if err != nil {
-				return def
-			}
-			return loc
-		} else {
-			return loc
-		}
-	}
 }

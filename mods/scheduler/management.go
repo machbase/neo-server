@@ -109,7 +109,7 @@ func (s *svr) AddSchedule(ctx context.Context, req *schedrpc.AddScheduleRequest)
 		return rsp, nil
 	case model.SCHEDULE_TIMER:
 		if def.Schedule == "" {
-			rsp.Reason = "schedule of timer type should be spcified with timer spec"
+			rsp.Reason = "schedule of timer type should be specified with timer spec"
 			return rsp, nil
 		}
 		if def.Task == "" {

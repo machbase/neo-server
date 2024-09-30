@@ -202,7 +202,7 @@ type Conn interface {
 	// like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
 	Exec(ctx context.Context, sqlText string, params ...any) Result
 
-	// Query executes SQL statements that are expected multipe rows as result.
+	// Query executes SQL statements that are expected multiple rows as result.
 	// Commonly used to execute 'SELECT * FROM <TABLE>'
 	//
 	// Rows returned by Query() must be closed to prevent server-side-resource leaks.
@@ -228,12 +228,12 @@ type Conn interface {
 	QueryRow(ctx context.Context, sqlText string, params ...any) Row
 
 	// Appender creates a new Appender for the given table.
-	// Appender should be closed as soon as finshing work, otherwise it may cause server side resource leak.
+	// Appender should be closed as soon as finishing work, otherwise it may cause server side resource leak.
 	//
 	//	ctx, cancelFunc := context.WithTimeout(5*time.Second)
 	//	defer cancelFunc()
 	//
-	//	app, _ := conn.Appender(ctx, "MYTABLE")
+	//	app, _ := conn.Appender(ctx, "MY_TABLE")
 	//	defer app.Close()
 	//	app.Append("name", time.Now(), 3.14)
 	Appender(ctx context.Context, tableName string, opts ...AppenderOption) (Appender, error)
@@ -246,7 +246,7 @@ type Result interface {
 }
 
 type Rows interface {
-	// Next returns true if there are at least one more fetchable record remained.
+	// Next returns true if there are at least one more fetch-able record remained.
 	//
 	//  rows, _ := db.Query("select name, value from my_table")
 	//	for rows.Next(){

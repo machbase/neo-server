@@ -289,6 +289,6 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 	case *ecdsa.PublicKey:
 		return ecdsa.VerifyASN1(key, hashsum, signature), nil
 	default:
-		return false, fmt.Errorf("unsupproted algorithm '%T'", key)
+		return false, fmt.Errorf("unsupported algorithm '%T'", key)
 	}
 }

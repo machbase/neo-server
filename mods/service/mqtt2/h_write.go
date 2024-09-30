@@ -82,7 +82,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		rsp.Reason = fmt.Sprintf("%s unsupproted compress %q", pk.TopicName, wp.Compress)
+		rsp.Reason = fmt.Sprintf("%s unsupported compress %q", pk.TopicName, wp.Compress)
 		s.log.Warn(cl.Net.Remote, rsp.Reason)
 		return
 	}
@@ -125,7 +125,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		desc = desc0.(*do.TableDescription)
 	}
 
-	var instream spec.InputStream
+	var inputStream spec.InputStream
 	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(pk.Payload))
 		defer func() {
@@ -142,13 +142,13 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warn(cl.Net.Remote, rsp.Reason)
 			return
 		}
-		instream = &stream.ReaderInputStream{Reader: gr}
+		inputStream = &stream.ReaderInputStream{Reader: gr}
 	} else {
-		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(pk.Payload)}
+		inputStream = &stream.ReaderInputStream{Reader: bytes.NewReader(pk.Payload)}
 	}
 
 	codecOpts := []opts.Option{
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Timeformat("ns"),
 		opts.TimeLocation(time.UTC),
 		opts.TableName(wp.Table),
@@ -156,13 +156,13 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		opts.Heading(false),
 	}
 
-	var recno int
+	var recNo int
 	var insertQuery string
 	var columnNames []string
 	var columnTypes []string
 
 	if wp.Format == "json" {
-		bs, err := io.ReadAll(instream)
+		bs, err := io.ReadAll(inputStream)
 		if err != nil {
 			rsp.Reason = err.Error()
 			s.log.Warn(cl.Net.Remote, rsp.Reason)
@@ -201,7 +201,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 			valueHolder := strings.Join(_hold, ",")
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
 		}
-		instream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
+		inputStream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
 	}
 
 	if len(columnNames) == 0 {
@@ -210,7 +210,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 
 	codecOpts = append(codecOpts,
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Columns(columnNames...),
 		opts.ColumnTypes(columnTypes...),
 	)
@@ -246,7 +246,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 			}
 			break
 		}
-		recno++
+		recNo++
 
 		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 			rsp.Reason = result.Err().Error()
@@ -255,6 +255,6 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		}
 	}
 
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) inserted", recno)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) inserted", recNo)
 	s.log.Trace(cl.Net.Remote, rsp.Reason)
 }

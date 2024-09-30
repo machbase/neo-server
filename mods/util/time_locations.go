@@ -15,10 +15,14 @@ func ParseTimeLocation(str string, def *time.Location) *time.Location {
 		return time.Local
 	} else if tz == "utc" {
 		return time.UTC
-	} else if loc, err := GetTimeLocation(str); err == nil {
+	} else if loc, err := GetTimeLocation(str); err != nil {
+		loc, err := time.LoadLocation(str)
+		if err != nil {
+			return def
+		}
 		return loc
 	} else {
-		return def
+		return loc
 	}
 }
 

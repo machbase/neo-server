@@ -49,7 +49,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		s.log.Warn(cl.Net.Remote, "unsupproted compression:", wp.Compress)
+		s.log.Warn(cl.Net.Remote, "unsupported compression:", wp.Compress)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		}
 	}
 
-	var instream spec.InputStream
+	var inputStream spec.InputStream
 
 	if wp.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(pk.Payload))
@@ -119,9 +119,9 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warn(cl.Net.Remote, "fail to gunzip,", err.Error())
 			return
 		}
-		instream = &stream.ReaderInputStream{Reader: gr}
+		inputStream = &stream.ReaderInputStream{Reader: gr}
 	} else {
-		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(pk.Payload)}
+		inputStream = &stream.ReaderInputStream{Reader: bytes.NewReader(pk.Payload)}
 	}
 
 	cols, _ := api.AppenderColumns(appender)
@@ -132,7 +132,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		colTypes = colTypes[1:]
 	}
 	codecOpts := []opts.Option{
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Timeformat("ns"),
 		opts.TimeLocation(time.UTC),
 		opts.TableName(wp.Table),
@@ -144,7 +144,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
-	recno := 0
+	recNo := 0
 	for {
 		vals, err := decoder.NextRow()
 		if err != nil {
@@ -159,7 +159,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warn(cl.Net.Remote, "append", wp.Format, err.Error())
 			break
 		}
-		recno++
+		recNo++
 	}
-	s.log.Trace(cl.Net.Remote, "appended", recno, "record(s),", wp.Table)
+	s.log.Trace(cl.Net.Remote, "appended", recNo, "record(s),", wp.Table)
 }

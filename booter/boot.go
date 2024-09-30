@@ -63,7 +63,7 @@ func (bt *boot) Startup() error {
 		config := fact.NewConfig()
 		objName := fmt.Sprintf("%T", config)
 		objName = strings.TrimPrefix(objName, "*")
-		// evalute config values
+		// evaluate config values
 		err := EvalObject(objName, config, def.Config)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("config %s", objName))

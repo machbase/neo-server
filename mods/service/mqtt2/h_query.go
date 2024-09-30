@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/mods/util"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
@@ -63,7 +64,7 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	if req.ReplyTo != "" {
 		replyTopic = req.ReplyTo
 	}
-	var timeLocation = parseTimeLocation(req.TimeLocation, time.UTC)
+	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
 
 	var buffer = &bytes.Buffer{}
 	var output spec.OutputStream
