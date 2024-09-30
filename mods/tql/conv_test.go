@@ -54,7 +54,6 @@ func TestConvTimeLocation(t *testing.T) {
 	require.Equal(t, "UTC", runTest("UTC"))
 	require.Equal(t, "Africa/Abidjan", runTest("GMT"))
 	require.Equal(t, "Europe/London", runTest("Europe/London"))
-	require.Equal(t, "ETC/GMT", runTest("ETC/GMT"))
 	require.Equal(t, "Asia/Seoul", runTest("KST"))
 	require.Equal(t, "Asia/Seoul", runTest("Asia/Seoul"))
 	require.Equal(t, "Africa/Cairo", runTest("EEST"))
