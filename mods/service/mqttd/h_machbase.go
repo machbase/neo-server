@@ -71,7 +71,11 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	if req.ReplyTo != "" {
 		replyTopic = req.ReplyTo
 	}
-	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	timeLocation, err := util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return nil
+	}
 
 	var buffer = &bytes.Buffer{}
 	var output spec.OutputStream

@@ -109,7 +109,7 @@ func convTimeLocation(args []any, idx int, fname string, expect string) (*time.L
 	case *time.Location:
 		return v, nil
 	case string:
-		if timeLocation := util.ParseTimeLocation(v, nil); timeLocation == nil {
+		if timeLocation, _ := util.ParseTimeLocation(v, nil); timeLocation == nil {
 			return nil, fmt.Errorf("f(%s) arg(%d) invalid time location: %s", fname, idx+1, v)
 		} else {
 			return timeLocation, nil

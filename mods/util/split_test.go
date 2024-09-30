@@ -97,7 +97,7 @@ func TestStringFields(t *testing.T) {
 		require.Equal(t, expect, vals[i])
 	}
 
-	tz, _ := util.GetTimeLocation("EST")
+	tz, _ := util.ParseTimeLocation("EST", nil)
 	vals = util.StringFields([]any{&ival, &sval, &ts, &fval, nil}, util.GetTimeformat("KITCHEN"), tz, 4)
 	expects = []string{"9", "123", "7:29:34PM", "456.7890", "NULL"}
 	for i, expect := range expects {

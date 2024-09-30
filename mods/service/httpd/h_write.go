@@ -40,7 +40,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 
 	tableName := ctx.Param("table")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
-	timeLocation := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
+	timeLocation, err := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 	method := strString(ctx.Query("method"), "insert")
 	format = strString(ctx.Query("format"), format)
 	compress = strString(ctx.Query("compress"), compress)

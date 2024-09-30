@@ -171,7 +171,11 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	table := strings.ToUpper(ctx.Param("table"))
 	tag := ctx.Param("tag")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
-	timeLocation := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
+	timeLocation, err := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	conn, err := svr.getUserConnection(ctx)
 	if err != nil {

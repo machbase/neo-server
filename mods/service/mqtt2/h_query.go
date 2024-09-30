@@ -64,7 +64,11 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	if req.ReplyTo != "" {
 		replyTopic = req.ReplyTo
 	}
-	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	timeLocation, err := util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	if err != nil {
+		rsp.Reason = err.Error()
+		return
+	}
 
 	var buffer = &bytes.Buffer{}
 	var output spec.OutputStream

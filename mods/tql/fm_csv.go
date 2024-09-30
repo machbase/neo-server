@@ -430,22 +430,10 @@ func (x *Node) fmDatetimeType(args ...any) (any, error) {
 		if tz, err = convString(args, 1, "datetime", "string"); err != nil {
 			return ret, err
 		} else {
-			switch strings.ToUpper(tz) {
-			case "UTC":
-				tz = "UTC"
-			case "LOCAL":
-				tz = "Local"
-			case "GMT":
-				tz = "GMT"
-			}
-			loc, err := time.LoadLocation(tz)
-			if err == nil {
-				ret.timeLocation = loc
+			if timeLocation, err := util.ParseTimeLocation(tz, nil); err == nil {
+				ret.timeLocation = timeLocation
 			} else {
-				ret.timeLocation, err = util.GetTimeLocation(tz)
-				if err != nil {
-					return nil, err
-				}
+				return nil, err
 			}
 		}
 	}

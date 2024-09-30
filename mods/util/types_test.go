@@ -453,13 +453,10 @@ func TestConvDuration(t *testing.T) {
 }
 
 func TestTimeZone(t *testing.T) {
-	// for k, v := range util.Timezones {
-	// 	fmt.Printf("%-8s: \"%s\",\n", `"`+k+`"`, v[0])
-	// }
 	for tz, expect := range timezoneTests {
-		loc, err := util.GetTimeLocation(tz)
+		loc, err := util.ParseTimeLocation(tz, nil)
 		require.Nil(t, err)
-		require.Equal(t, expect, loc.String())
+		require.Equal(t, expect, loc.String(), "TEST Input: %s", tz)
 	}
 }
 
@@ -614,7 +611,7 @@ var timezoneTests = map[string]string{
 	"BOT":       "America/La_Paz",
 	"BDST":      "Asia/Dacca",
 	"ULAT":      "Asia/Ulaanbaatar",
-	"UTC":       "Etc/UCT",
+	"UTC":       "UTC",
 	"GMT+1":     "Etc/GMT-1",
 	"AST":       "America/Anguilla",
 	"AQTST":     "Asia/Aqtobe",

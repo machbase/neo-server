@@ -136,11 +136,8 @@ func TimeLocation(tz *time.Location) TimeFormatterOption {
 }
 
 func TimeZoneFallback(tz string, fallback *time.Location) TimeFormatterOption {
-	if loc, err := GetTimeLocation(tz); err == nil {
-		return TimeLocation(loc)
-	} else {
-		return TimeLocation(fallback)
-	}
+	loc, _ := ParseTimeLocation(tz, fallback)
+	return TimeLocation(loc)
 }
 
 func (tf *TimeFormatter) Set(opt TimeFormatterOption) {

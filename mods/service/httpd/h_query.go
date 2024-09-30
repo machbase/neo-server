@@ -86,7 +86,13 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		return
 	}
 
-	var timeLocation = util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	timeLocation, err := util.ParseTimeLocation(req.TimeLocation, time.UTC)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
+	}
 
 	var output spec.OutputStream
 	switch req.Compress {

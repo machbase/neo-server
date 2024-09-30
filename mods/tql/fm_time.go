@@ -393,17 +393,7 @@ func (x *Node) fmParseTime(expr string, format any, args ...any) (time.Time, err
 }
 
 func (x *Node) fmTZ(timezone string) (*time.Location, error) {
-	switch strings.ToUpper(timezone) {
-	case "LOCAL":
-		timezone = "Local"
-	case "UTC":
-		timezone = "UTC"
-	}
-	if timeLocation, err := time.LoadLocation(timezone); err != nil {
-		return util.GetTimeLocation(timezone)
-	} else {
-		return timeLocation, nil
-	}
+	return util.ParseTimeLocation(timezone, nil)
 }
 
 func (x *Node) fmSqlTimeformat(format string) opts.Option {

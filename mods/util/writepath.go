@@ -51,7 +51,11 @@ func NewWriteDescriptor(path string) (*WriteDescriptor, error) {
 				case "timeformat":
 					wd.Timeformat = v
 				case "tz":
-					wd.TimeLocation = ParseTimeLocation(v, time.UTC)
+					if tz, err := ParseTimeLocation(v, time.UTC); err == nil {
+						wd.TimeLocation = tz
+					} else {
+						return nil, err
+					}
 				case "delimiter":
 					wd.Delimiter = v
 				case "heading":

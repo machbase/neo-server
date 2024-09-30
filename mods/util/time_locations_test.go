@@ -1,28 +1,43 @@
 package util
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func ExampleParseTimeLocation() {
-	tz := ParseTimeLocation("Asia/Seoul", nil)
+	tz, _ := ParseTimeLocation("Asia/Seoul", nil)
 	if tz == nil {
 		panic("invalid timezone")
 	}
 	fmt.Println("Asia/Seoul =", tz.String())
 
-	tz = ParseTimeLocation("KST", nil)
+	tz, _ = ParseTimeLocation("KST", nil)
 	if tz == nil {
 		panic("invalid timezone")
 	}
 	fmt.Println("KST =", tz.String())
 
-	tz = ParseTimeLocation("UTC", nil)
+	tz, _ = ParseTimeLocation("UTC", nil)
 	if tz == nil {
 		panic("invalid timezone")
 	}
 	fmt.Println("UTC =", tz.String())
 
+	fallback, err := ParseTimeLocation("America/Invalid", time.UTC)
+	fmt.Println("Error =", err)
+	fmt.Println("Fallback =", fallback.String())
+
+	fallback, err = ParseTimeLocation("Invalid", time.UTC)
+	fmt.Println("Error =", err)
+	fmt.Println("Fallback =", fallback.String())
+
 	// Output:
 	// Asia/Seoul = Asia/Seoul
 	// KST = Asia/Seoul
 	// UTC = UTC
+	// Error = unknown time zone America/Invalid
+	// Fallback = UTC
+	// Error = unknown time zone Invalid
+	// Fallback = UTC
 }

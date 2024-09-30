@@ -507,7 +507,7 @@ func TestParseTime(t *testing.T) {
 	}.run(t)
 	FunctionTestCase{f: node.Function("tz"),
 		args:      []any{"wrong/place"},
-		expectErr: "unknown timezone 'wrong/place'",
+		expectErr: "unknown time zone wrong/place",
 	}.run(t)
 	FunctionTestCase{f: node.Function("parseTime"),
 		args:   []any{"2023-03-01 14:01:02", "DEFAULT", time.Local},

@@ -6,27 +6,27 @@ import (
 	"time"
 )
 
-func ParseTimeLocation(str string, def *time.Location) *time.Location {
+func ParseTimeLocation(str string, fallback *time.Location) (*time.Location, error) {
 	if str == "" {
-		return def
+		return fallback, nil
 	}
 	tz := strings.ToLower(str)
 	if tz == "local" {
-		return time.Local
+		return time.Local, nil
 	} else if tz == "utc" {
-		return time.UTC
-	} else if loc, err := GetTimeLocation(str); err != nil {
-		loc, err := time.LoadLocation(str)
-		if err != nil {
-			return def
-		}
-		return loc
+		return time.UTC, nil
+	} else if loc, err := getTimeLocationAlias(str); err == nil {
+		return loc, nil
+	}
+
+	if loc, err := time.LoadLocation(str); err == nil {
+		return loc, nil
 	} else {
-		return loc
+		return fallback, err
 	}
 }
 
-func GetTimeLocation(tzName string) (*time.Location, error) {
+func getTimeLocationAlias(tzName string) (*time.Location, error) {
 	var err error
 	var tz *time.Location
 
@@ -39,7 +39,7 @@ func GetTimeLocation(tzName string) (*time.Location, error) {
 			}
 		}
 	}
-	return nil, fmt.Errorf("unknown timezone '%s'", tzName)
+	return nil, fmt.Errorf("unknown time zone %s", tzName)
 }
 
 func HelpTimeZones() string {
