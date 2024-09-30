@@ -79,7 +79,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		case "datetime":
 			if v, ok := field.(string); ok && dec.timeformat != "" {
 				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertable, %s", dec.nrow, i, err.Error())
+					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
 				}
 			} else {
 				var strexp string
@@ -90,16 +90,16 @@ func (dec *Decoder) NextRow() ([]any, error) {
 					strexp = v
 				case gojson.Number:
 					if n, err := v.Int64(); err != nil {
-						return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertable", dec.nrow, i)
+						return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertible", dec.nrow, i)
 					} else {
 						strexp = strconv.FormatInt(n, 10)
 					}
 				default:
-					return nil, fmt.Errorf("#[%d] column[%d] is not datetime convertable", dec.nrow, i)
+					return nil, fmt.Errorf("#[%d] column[%d] is not datetime convertible", dec.nrow, i)
 				}
 				var ts int64
 				if ts, err = strconv.ParseInt(strexp, 10, 64); err != nil {
-					return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertable", dec.nrow, i)
+					return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertible", dec.nrow, i)
 				}
 				switch dec.timeformat {
 				case "s":
