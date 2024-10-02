@@ -73,7 +73,8 @@ func Build(target string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
-		// "-s", // this may reduce binary size about (110M -> 86M)
+		"-s", // this may reduce binary size about (110M -> 86M)
+		"-w",
 	}, " ")
 	args = append(args, "-ldflags", ldflags)
 
@@ -87,7 +88,7 @@ func Build(target string) error {
 	// source directory
 	args = append(args, fmt.Sprintf("./main/%s", target))
 
-	if err := sh.RunV("go", "mod", "tidy"); err != nil {
+	if err := sh.RunV("go", "mod", "download"); err != nil {
 		return err
 	}
 
@@ -186,7 +187,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	// source directory
 	args = append(args, fmt.Sprintf("./main/%s", target))
 
-	if err := sh.RunV("go", "mod", "tidy"); err != nil {
+	if err := sh.RunV("go", "mod", "download"); err != nil {
 		return err
 	}
 
@@ -209,7 +210,7 @@ func Test() error {
 	if runtime.GOOS == "linux" {
 		env["CGO_LDFLAGS"] = "-pthread"
 	}
-	if err := sh.RunWithV(env, "go", "mod", "tidy"); err != nil {
+	if err := sh.RunWithV(env, "go", "mod", "download"); err != nil {
 		return err
 	}
 
