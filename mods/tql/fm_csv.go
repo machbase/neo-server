@@ -210,7 +210,7 @@ func (src *csvSource) gen(node *Node) {
 				values[i], err = strconv.ParseBool(fields[i])
 			case *doubleOpt:
 				values[i], err = strconv.ParseFloat(fields[i], 64)
-			case *epochtimeOpt:
+			case *epochTimeOpt:
 				var parsed int64
 				parsed, err = strconv.ParseInt(fields[i], 10, 64)
 				if err == nil {
@@ -240,12 +240,12 @@ func (src *csvSource) gen(node *Node) {
 	}
 }
 
-// implments codec.opts.CanSetHeading
+// implements codec.opts.CanSetHeading
 func (src *csvSource) SetHeading(has bool) {
 	src.hasHeader = has
 }
 
-// implments codec.opts.CanSetHeader
+// implements codec.opts.CanSetHeader
 func (src *csvSource) SetHeader(has bool) {
 	src.hasHeader = has
 }
@@ -392,11 +392,11 @@ func (x *Node) fmBoolType(args ...any) (any, error) {
 	return &boolOpt{}, nil
 }
 
-type epochtimeOpt struct {
+type epochTimeOpt struct {
 	unit int64
 }
 
-func (o *epochtimeOpt) spiType() string { return "datetime" }
+func (o *epochTimeOpt) spiType() string { return "datetime" }
 
 type datetimeOpt struct {
 	timeformat   string
@@ -416,13 +416,13 @@ func (x *Node) fmDatetimeType(args ...any) (any, error) {
 	}
 	switch ret.timeformat {
 	case "ns":
-		return &epochtimeOpt{unit: 1}, nil
+		return &epochTimeOpt{unit: 1}, nil
 	case "us":
-		return &epochtimeOpt{unit: 1000}, nil
+		return &epochTimeOpt{unit: 1000}, nil
 	case "ms":
-		return &epochtimeOpt{unit: 1000000}, nil
+		return &epochTimeOpt{unit: 1000000}, nil
 	case "s":
-		return &epochtimeOpt{unit: 1000000000}, nil
+		return &epochTimeOpt{unit: 1000000000}, nil
 	}
 
 	if len(args) == 2 {
