@@ -94,7 +94,7 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db, err := mach.NewDatabaseNamed(mach.FactoryName)
+	db, err := mach.NewDatabase()
 	if err != nil {
 		panic(err)
 	}

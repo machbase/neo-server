@@ -28,12 +28,11 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-client v1.0.2
-	github.com/machbase/neo-engine v1.3.9
+	github.com/machbase/neo-engine v1.3.10-0.20241002014613-69b7e5ab5653
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
-	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
 	github.com/microsoft/go-mssqldb v1.5.0
 	github.com/mochi-mqtt/server/v2 v2.6.5
 	github.com/nats-io/nats.go v1.36.0

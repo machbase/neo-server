@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -29,7 +30,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-engine/native"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/booter"
@@ -52,7 +52,6 @@ import (
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 	"github.com/machbase/neo-server/mods/util/ssfs"
-	"github.com/mbndr/figlet4go"
 	"github.com/pkg/errors"
 )
 
@@ -63,13 +62,6 @@ func init() {
 			return NewConfig()
 		},
 		func(conf *Config) (booter.Boot, error) {
-			if navelcord := os.Getenv(NAVEL_ENV); navelcord != "" {
-				if port, err := strconv.ParseInt(navelcord, 10, 64); err == nil {
-					conf.NavelCord = &NavelCordConfig{
-						Port: int(port),
-					}
-				}
-			}
 			return NewServer(conf)
 		},
 	)
@@ -126,8 +118,6 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption mach.InitOption
-	// deprecated, use mach.InitOption instead
-	EnableMachbaseSigHandler bool
 }
 
 type AuthHandlerConfig struct {
@@ -143,7 +133,6 @@ type GrpcConfig struct {
 
 type HttpConfig struct {
 	Listeners []string
-	Handlers  []httpd.HandlerConfig // deprecated, TODO: remove
 	WebDir    string
 
 	EnableWebUI     bool
@@ -236,9 +225,6 @@ func NewConfig() *Config {
 		},
 		Http: HttpConfig{
 			Listeners: []string{},
-			Handlers: []httpd.HandlerConfig{
-				{Prefix: "/db", Handler: "machbase"},
-			},
 		},
 		Mqtt: MqttConfig{
 			Listeners:           []string{},
@@ -275,6 +261,13 @@ func NewConfig() *Config {
 }
 
 func NewServer(conf *Config) (Server, error) {
+	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
+		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
+			conf.NavelCord = &NavelCordConfig{
+				Port: int(port),
+			}
+		}
+	}
 	return &svr{
 		conf:         conf,
 		servicePorts: make(map[string][]*model.ServicePort),
@@ -282,7 +275,7 @@ func NewServer(conf *Config) (Server, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
-	if err := mach.Initialize(dataDir, 0); err != nil {
+	if err := mach.Initialize(dataDir, 0, mach.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
 	if err := mach.RestoreDatabase(backupDir); err != nil {
@@ -312,17 +305,17 @@ func (s *svr) Start() error {
 		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
 	}
 
-	prefpath, err := filepath.Abs(s.conf.PrefDir)
+	prefdirPath, err := filepath.Abs(s.conf.PrefDir)
 	if err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
-	if err := util.MkDirIfNotExists(filepath.Dir(prefpath)); err != nil {
+	if err := util.MkDirIfNotExists(filepath.Dir(prefdirPath)); err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
-	if err := mkDirIfNotExists(prefpath); err != nil {
+	if err := mkDirIfNotExists(prefdirPath); err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
-	s.certdir = filepath.Join(prefpath, "cert")
+	s.certdir = filepath.Join(prefdirPath, "cert")
 	if err := mkDirIfNotExistsMode(s.certdir, 0700); err != nil {
 		return errors.Wrap(err, "prefdir cert")
 	}
@@ -335,7 +328,7 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "authorized keys")
 	}
 
-	s.licenseFilePath = filepath.Join(prefpath, "license.dat")
+	s.licenseFilePath = filepath.Join(prefdirPath, "license.dat")
 	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
 		s.licenseFileTime = stat.ModTime()
 	}
@@ -345,7 +338,7 @@ func (s *svr) Start() error {
 	}
 
 	s.models = model.NewService(
-		model.WithConfigDirPath(prefpath),
+		model.WithConfigDirPath(prefdirPath),
 		model.WithExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 	)
 	if err := s.models.Start(); err != nil {
@@ -432,13 +425,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	// default is mach.OPT_SIGHANDLER_SIGINT_OFF, it is required to shutdown by SIGINT
-	if s.conf.EnableMachbaseSigHandler {
-		// internal use only, for debuging call stack raised inside the engine
-		s.conf.MachbaseInitOption = mach.OPT_SIGHANDLER_ON
-	}
 	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
-	if err := mach.InitializeOption(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
+	if err := mach.Initialize(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !mach.ExistsDatabase() {
@@ -454,7 +442,7 @@ func (s *svr) Start() error {
 	// mach.DefaultDetective = leakDetector
 
 	// create database instance
-	s.db, err = mach.NewDatabaseNamed(mach.FactoryName)
+	s.db, err = mach.NewDatabase()
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
 	}
@@ -466,8 +454,7 @@ func (s *svr) Start() error {
 	}
 
 	if !s.conf.NoBanner {
-		// print banner if banner module is not configured
-		s.log.Infof("\n%s", GenBanner())
+		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
 	if shouldInstallLicense {
@@ -824,7 +811,7 @@ func (s *svr) Start() error {
 	// pkgs
 	s.pkgMgr.Start()
 
-	// navelcord
+	// navel cord
 	if s.conf.NavelCord != nil {
 		s.StartNavelCord()
 	}
@@ -927,36 +914,6 @@ func (s *svr) ServicePorts(svc string) ([]*model.ServicePort, error) {
 		return ports[i].Service < ports[j].Service
 	})
 	return ports, nil
-}
-
-func GenBanner() string {
-	options := figlet4go.NewRenderOptions()
-	supportColor := true
-	windowsVersion := ""
-	if runtime.GOOS == "windows" {
-		major, minor, build := util.GetWindowsVersion()
-		windowsVersion = fmt.Sprintf("Windows %d.%d %d", major, minor, build)
-		if major <= 10 && build < 14931 {
-			supportColor = false
-		}
-	}
-	if supportColor {
-		options.FontColor = []figlet4go.Color{
-			figlet4go.ColorMagenta,
-			figlet4go.ColorYellow,
-			figlet4go.ColorCyan,
-			figlet4go.ColorBlue,
-		}
-	}
-	fig := figlet4go.NewAsciiRender()
-	machbase, _ := fig.Render("Machbase")
-	logo, _ := fig.RenderOpts("neo", options)
-
-	lines := strings.Split(logo, "\n")
-	lines[2] = lines[2] + fmt.Sprintf("  %s", mods.VersionString())
-	lines[3] = lines[3] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
-	lines[4] = lines[4] + fmt.Sprintf("  %s %s", mach.LinkInfo(), windowsVersion)
-	return strings.TrimRight(strings.TrimRight(machbase, "\n")+strings.Join(lines, "\n"), "\n")
 }
 
 func (s *svr) ServerPrivateKeyPath() string {
@@ -1324,12 +1281,12 @@ func makeListener(addr string) (net.Listener, error) {
 	} else if strings.HasPrefix(addr, "tcp://") {
 		return net.Listen("tcp", addr[len("tcp://"):])
 	} else {
-		return nil, fmt.Errorf("unuspported listen scheme %s", addr)
+		return nil, fmt.Errorf("unsupported listen scheme %s", addr)
 	}
 }
 
 // ////////////////////////////////
-// implements neo-server/mods/service/httpsvr/AuthServer interface
+// implements AuthServer interface
 
 var _ security.AuthServer = &svr{}
 
@@ -1484,20 +1441,20 @@ func loadSqlScriptFile(in io.Reader) ([]string, error) {
 		if isPrefix {
 			continue
 		}
-		subline := string(buff)
+		subLine := string(buff)
 		buff = buff[:0]
 
-		if strings.HasPrefix(subline, "#") || strings.HasPrefix(subline, "--") {
+		if strings.HasPrefix(subLine, "#") || strings.HasPrefix(subLine, "--") {
 			continue
 		}
-		subline = strings.TrimSpace(subline)
-		if len(subline) == 0 {
+		subLine = strings.TrimSpace(subLine)
+		if len(subLine) == 0 {
 			// skip empty line
 			continue
 		}
 
-		lineBuff = append(lineBuff, subline)
-		if !strings.HasSuffix(subline, ";") {
+		lineBuff = append(lineBuff, subLine)
+		if !strings.HasSuffix(subLine, ";") {
 			continue
 		}
 

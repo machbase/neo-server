@@ -29,7 +29,7 @@ func Main() int {
 	case "gen-config":
 		fmt.Println(string(server.DefaultFallbackConfig))
 	case "version":
-		fmt.Println(server.GenBanner())
+		fmt.Println(mods.GenBanner())
 	case "help":
 		doHelp(cli.Help.Command, cli.Help.SubCommand)
 	case "serve":

@@ -39,11 +39,8 @@ define VARS {
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
 
     EXPERIMENT_MODE       = flag("--experiment", false)
-
-    MACHBASE_ENABLE_SIGHANDLER = flag("--machbase-enable-sighandler", false)
-    MACHBASE_INIT_OPTION       = flag("--machbase-init-option", 2)
-
-    CREATEDB_SCRIPT_FILES  = flag("--createdb-script-files", "")
+    MACHBASE_INIT_OPTION  = flag("--machbase-init-option", 2)
+    CREATEDB_SCRIPT_FILES = flag("--createdb-script-files", "")
 }
 
 module "machbase.com/neo-logging" {
@@ -76,6 +73,7 @@ module "machbase.com/neo-server" {
         FileDirs         = [ "/=${VARS_FILE_DIR}" ]
         BackupDir        = VARS_BACKUP_DIR
         ExperimentMode   = VARS_EXPERIMENT_MODE
+        MachbaseInitOption  = VARS_MACHBASE_INIT_OPTION
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
         Machbase         = {
             HANDLE_LIMIT     = 2048
@@ -114,7 +112,5 @@ module "machbase.com/neo-server" {
             AtDuration = flag("--jwt-at-expire", "5m")
             RtDuration = flag("--jwt-rt-expire", "60m")
         }
-        MachbaseInitOption       = VARS_MACHBASE_INIT_OPTION
-        EnableMachbaseSigHandler = VARS_MACHBASE_ENABLE_SIGHANDLER
     }
 }
