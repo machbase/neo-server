@@ -66,7 +66,7 @@ func HelpShortcutsLegacy() string {
 		{"Ctrl + S", "Search forwards in history"},
 		{"Ctrl + R", "Search backwards in history"},
 		{"Ctrl + C / Ctrl + G", "Exit Search Mode and revert the history"},
-		{"Backspace", "Delete previous charactor"},
+		{"Backspace", "Delete previous character"},
 		{"Other", "Exit Search Mode"},
 	}
 	completeMode := [][2]string{

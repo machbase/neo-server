@@ -10,7 +10,7 @@ import (
 )
 
 // /////////////////
-// utilites
+// utilities
 func SplitFields(line string, stripQuote bool) []string {
 	lastQuote := rune(0)
 	f := func(c rune) bool {

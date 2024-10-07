@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func GetWindowsVersion() (majorVersion, miorVersion, buildNumber uint32) {
+func GetWindowsVersion() (majorVersion, minorVersion, buildNumber uint32) {
 	return windows.RtlGetNtVersionNumbers()
 }
 

@@ -31,6 +31,6 @@ func MakeListener(addr string) (net.Listener, error) {
 	} else if strings.HasPrefix(addr, "tcp://") {
 		return net.Listen("tcp", addr[len("tcp://"):])
 	} else {
-		return nil, fmt.Errorf("unuspported listen scheme %s", addr)
+		return nil, fmt.Errorf("unsupported listen scheme %s", addr)
 	}
 }

@@ -190,7 +190,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		rsp.Reason = fmt.Sprintf("%s unsupproted compress %q", topic, wp.Compress)
+		rsp.Reason = fmt.Sprintf("%s unsupported compress %q", topic, wp.Compress)
 		peerLog.Warnf(rsp.Reason)
 		return nil
 	}
@@ -393,7 +393,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 	case "-": // no compression
 	case "gzip": // gzip compression
 	default: // others
-		peerLog.Warnf("---- unsupproted compression '%s", wp.Compress)
+		peerLog.Warnf("---- unsupported compression '%s", wp.Compress)
 		return nil
 	}
 

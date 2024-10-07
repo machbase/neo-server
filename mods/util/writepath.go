@@ -97,7 +97,7 @@ func NewWriteDescriptor(path string) (*WriteDescriptor, error) {
 		case "-": // no compression
 		case "gzip": // gzip compression
 		default: // others
-			return nil, fmt.Errorf("unsupproted compression '%s", wp.Compress)
+			return nil, fmt.Errorf("unsupported compression '%s", wp.Compress)
 		}
 		wd.Table = wp.Table
 		wd.Format = wp.Format

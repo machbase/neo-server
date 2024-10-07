@@ -228,13 +228,13 @@ func ToTime(one any) (time.Time, error) {
 	}
 }
 
-func ParseTime(strval string, format string, location *time.Location) (time.Time, error) {
+func ParseTime(strVal string, format string, location *time.Location) (time.Time, error) {
 	var baseTime time.Time
-	strval = strings.TrimSpace(strval)
-	if strings.HasPrefix(strval, "now") {
+	strVal = strings.TrimSpace(strVal)
+	if strings.HasPrefix(strVal, "now") {
 		baseTime = StandardTimeNow()
 		sig := time.Duration(1)
-		remain := strings.TrimSpace(strval[3:])
+		remain := strings.TrimSpace(strVal[3:])
 		if len(remain) == 0 {
 			return baseTime, nil
 		}
@@ -244,17 +244,17 @@ func ParseTime(strval string, format string, location *time.Location) (time.Time
 			sig = time.Duration(-1)
 			remain = strings.TrimSpace(remain[1:])
 		} else {
-			return baseTime, ErrIncompatible("time.Time", strval)
+			return baseTime, ErrIncompatible("time.Time", strVal)
 		}
 		dur, err := ToDuration(remain)
 		if err != nil {
-			return baseTime, fmt.Errorf("incompatible conv '%s', %s", strval, err.Error())
+			return baseTime, fmt.Errorf("incompatible conv '%s', %s", strVal, err.Error())
 		}
 		baseTime = baseTime.Add(dur * sig)
 		return baseTime, nil
 	}
 	if format == "" {
-		return baseTime, ErrIncompatible("time.Time", strval)
+		return baseTime, ErrIncompatible("time.Time", strVal)
 	}
 
 	timeLayout := GetTimeformat(format)
@@ -262,29 +262,29 @@ func ParseTime(strval string, format string, location *time.Location) (time.Time
 	var err error
 	switch timeLayout {
 	case "s":
-		if ts, err = ToInt64(strval); err != nil {
+		if ts, err = ToInt64(strVal); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(ts, 0), nil
 	case "ms":
-		if ts, err = ToInt64(strval); err != nil {
+		if ts, err = ToInt64(strVal); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts*int64(time.Millisecond)), nil
 	case "us":
-		if ts, err = ToInt64(strval); err != nil {
+		if ts, err = ToInt64(strVal); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts*int64(time.Microsecond)), nil
 	case "ns":
-		if ts, err = ToInt64(strval); err != nil {
+		if ts, err = ToInt64(strVal); err != nil {
 			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
 		}
 		return time.Unix(0, ts), nil
 	default:
-		baseTime, err = time.ParseInLocation(timeLayout, strval, location)
+		baseTime, err = time.ParseInLocation(timeLayout, strVal, location)
 		if err != nil {
-			return baseTime, errors.Wrap(err, ErrIncompatible("time.Time", strval).Error())
+			return baseTime, errors.Wrap(err, ErrIncompatible("time.Time", strVal).Error())
 		}
 	}
 	return baseTime, nil
