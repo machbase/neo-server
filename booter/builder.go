@@ -24,7 +24,7 @@ type Builder interface {
 	AddShutdownHook(hooks ...func())
 	SetFunction(name string, f function.Function)
 	SetVariable(name string, value any) error
-	SetConfiFileSuffix(ext string)
+	SetConfigFileSuffix(ext string)
 }
 
 type builder struct {
@@ -142,6 +142,6 @@ func (bld *builder) SetVariable(name string, value any) (err error) {
 	return
 }
 
-func (bld *builder) SetConfiFileSuffix(ext string) {
+func (bld *builder) SetConfigFileSuffix(ext string) {
 	bld.fileSuffix = ext
 }

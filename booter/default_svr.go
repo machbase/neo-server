@@ -166,7 +166,7 @@ func SetVariable(name string, value any) error {
 }
 
 func SetConfigFileSuffix(ext string) {
-	defaultBuilder.SetConfiFileSuffix(ext)
+	defaultBuilder.SetConfigFileSuffix(ext)
 }
 
 func GetDefinition(id string) *Definition {
@@ -222,10 +222,10 @@ func SetFallbackPname(pname string) {
 	fallbackPname = pname
 }
 
-func SetFlag(flagType BootFlagType, longflag, shortflag, defaultValue string) {
+func SetFlag(flagType BootFlagType, longFlag, shortFlag, defaultValue string) {
 	if flag, ok := conf.flags[flagType]; ok {
-		flag.Long = longflag
-		flag.Short = shortflag
+		flag.Long = longFlag
+		flag.Short = shortFlag
 		flag.Default = defaultValue
 		conf.flags[flagType] = flag
 	} else {
