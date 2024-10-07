@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -410,6 +411,12 @@ func ToInt64(one any) (int64, error) {
 		return int64(val), nil
 	case *int8:
 		return int64(*val), nil
+	case json.Number:
+		if v, err := val.Int64(); err != nil {
+			return 0, fmt.Errorf("incompatible conv '%v' (%T) to int64, %s", val, val, err.Error())
+		} else {
+			return v, nil
+		}
 	default:
 		return 0, ErrIncompatible("int64", val)
 	}
@@ -433,6 +440,12 @@ func ToFloat32(one any) (float32, error) {
 		return float32(val), nil
 	case *int:
 		return float32(*val), nil
+	case json.Number:
+		if v, err := val.Float64(); err != nil {
+			return 0, fmt.Errorf("incompatible conv '%v' (%T) to float32, %s", val, val, err.Error())
+		} else {
+			return float32(v), nil
+		}
 	default:
 		return 0, ErrIncompatible("float32", val)
 	}
@@ -464,6 +477,12 @@ func ToFloat64(one any) (float64, error) {
 		return float64(val), nil
 	case *int:
 		return float64(*val), nil
+	case json.Number:
+		if v, err := val.Float64(); err != nil {
+			return 0, fmt.Errorf("incompatible conv '%v' (%T) to float64, %s", val, val, err.Error())
+		} else {
+			return v, nil
+		}
 	default:
 		return 0, ErrIncompatible("float64", val)
 	}

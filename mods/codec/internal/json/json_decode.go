@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"time"
 
 	mach "github.com/machbase/neo-engine"
@@ -61,7 +60,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 	dec.nrow++
 
 	if len(fields) != len(dec.columnTypes) {
-		return nil, fmt.Errorf("#[%d] number of columns not matched (%d); table '%s' has %d columns",
+		return nil, fmt.Errorf("rows[%d] number of columns not matched (%d); table '%s' has %d columns",
 			dec.nrow, len(fields), dec.tableName, len(dec.columnTypes))
 	}
 
@@ -77,32 +76,17 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			case string:
 				values[i] = v
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
+				return nil, fmt.Errorf("rows[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
 			}
 		case mach.DB_COLUMN_TYPE_DATETIME:
 			if v, ok := field.(string); ok && dec.timeformat != "" {
 				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
+					return nil, fmt.Errorf("rows[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
 				}
 			} else {
-				var strexp string
-				switch v := field.(type) {
-				case float64: // json has only float type, no int
-					strexp = strconv.FormatInt(int64(v), 10)
-				case string:
-					strexp = v
-				case gojson.Number:
-					if n, err := v.Int64(); err != nil {
-						return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertible", dec.nrow, i)
-					} else {
-						strexp = strconv.FormatInt(n, 10)
-					}
-				default:
-					return nil, fmt.Errorf("#[%d] column[%d] is not datetime convertible", dec.nrow, i)
-				}
-				var ts int64
-				if ts, err = strconv.ParseInt(strexp, 10, 64); err != nil {
-					return nil, errors.Wrapf(err, "#[%d] column[%d] is not datetime convertible", dec.nrow, i)
+				ts, err := util.ToInt64(field)
+				if err != nil {
+					return nil, fmt.Errorf("rows[%d] column[%d] is not datetime convertible, %s", dec.nrow, i, err.Error())
 				}
 				switch dec.timeformat {
 				case "s":
@@ -116,119 +100,55 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				}
 			}
 		case mach.DB_COLUMN_TYPE_FLOAT:
-			switch v := field.(type) {
-			case float64:
-				values[i] = float32(v)
-			case gojson.Number:
-				values[i], err = v.Float64()
-				if err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with float", dec.nrow, i)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with float", dec.nrow, i)
+			values[i], err = util.ToFloat32(field)
+			if err != nil {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_DOUBLE:
-			switch v := field.(type) {
-			case float64:
-				values[i] = v
-			case gojson.Number:
-				values[i], err = v.Float64()
-				if err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+			values[i], err = util.ToFloat64(field)
+			if err != nil {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_LONG, "int64":
-			switch v := field.(type) {
-			case float64:
-				values[i] = int64(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
-				} else {
-					values[i] = int64(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
+			values[i], err = util.ToInt64(field)
+			if err != nil {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_ULONG:
-			switch v := field.(type) {
-			case float64:
+			if v, err := util.ToInt64(field); err == nil {
 				values[i] = uint64(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with ulong", dec.nrow, i)
-				} else {
-					values[i] = uint64(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with ulong", dec.nrow, i)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_SHORT, "int16":
-			switch v := field.(type) {
-			case float64:
+			if v, err := util.ToInt64(field); err == nil {
 				values[i] = int16(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int16", dec.nrow, i)
-				} else {
-					values[i] = int16(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int16", dec.nrow, i)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_USHORT:
-			switch v := field.(type) {
-			case float64:
-				values[i] = int16(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
-				} else {
-					values[i] = uint16(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+			if v, err := util.ToInt64(field); err == nil {
+				values[i] = uint16(v)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
-		case "int":
-			switch v := field.(type) {
-			case float64:
-				values[i] = int32(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with integer", dec.nrow, i)
-				} else {
-					values[i] = int(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with integer", dec.nrow, i)
+		case mach.DB_COLUMN_TYPE_INTEGER, "int":
+			if v, err := util.ToInt64(field); err == nil {
+				values[i] = int(v)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
-		case mach.DB_COLUMN_TYPE_INTEGER, "int32":
-			switch v := field.(type) {
-			case float64:
+		case "int32":
+			if v, err := util.ToInt64(field); err == nil {
 				values[i] = int32(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
-				} else {
-					values[i] = int32(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_UINTEGER:
-			switch v := field.(type) {
-			case float64:
-				values[i] = int32(v)
-			case gojson.Number:
-				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with uint32", dec.nrow, i)
-				} else {
-					values[i] = uint32(ival)
-				}
-			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with uint32", dec.nrow, i)
+			if v, err := util.ToInt64(field); err == nil {
+				values[i] = uint(v)
+			} else {
+				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
 			switch v := field.(type) {
@@ -236,10 +156,10 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				addr := net.ParseIP(v)
 				values[i] = addr
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
+				return nil, fmt.Errorf("rows[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
 			}
 		default:
-			return nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
+			return nil, fmt.Errorf("rows[%d] column[%d] unsupported column type; %s", dec.nrow, i, dec.columnTypes[i])
 		}
 	}
 	return values, nil
