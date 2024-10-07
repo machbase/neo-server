@@ -5,6 +5,11 @@ on:
     branches:
       - 'main'
       - 'dev-*'
+    paths:
+      - ./**/*.go
+      - .github/workflows/ci-main.yml
+      - ./magefiles/*.txt
+  
 
 jobs:
   darwin:
