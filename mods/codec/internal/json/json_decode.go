@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
@@ -66,17 +67,19 @@ func (dec *Decoder) NextRow() ([]any, error) {
 
 	values := make([]any, len(dec.columnTypes))
 	for i, field := range fields {
+		if field == nil {
+			values[i] = nil
+			continue
+		}
 		switch dec.columnTypes[i] {
-		case "varchar":
-			fallthrough
-		case "string":
+		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
 			switch v := field.(type) {
 			case string:
 				values[i] = v
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not a string", dec.nrow, i)
+				return nil, fmt.Errorf("#[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
 			}
-		case "datetime":
+		case mach.DB_COLUMN_TYPE_DATETIME:
 			if v, ok := field.(string); ok && dec.timeformat != "" {
 				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
 					return nil, fmt.Errorf("#[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
@@ -112,19 +115,19 @@ func (dec *Decoder) NextRow() ([]any, error) {
 					values[i] = time.Unix(0, ts)
 				}
 			}
-		case "float":
+		case mach.DB_COLUMN_TYPE_FLOAT:
 			switch v := field.(type) {
 			case float64:
 				values[i] = float32(v)
 			case gojson.Number:
 				values[i], err = v.Float64()
 				if err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with float", dec.nrow, i)
 				}
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with float", dec.nrow, i)
 			}
-		case "double":
+		case mach.DB_COLUMN_TYPE_DOUBLE:
 			switch v := field.(type) {
 			case float64:
 				values[i] = v
@@ -136,20 +139,46 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
 			}
-		case "int":
+		case mach.DB_COLUMN_TYPE_LONG, "int64":
 			switch v := field.(type) {
 			case float64:
-				values[i] = int(v)
+				values[i] = int64(v)
 			case gojson.Number:
 				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
 				} else {
-					values[i] = int(ival)
+					values[i] = int64(ival)
 				}
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int", dec.nrow, i)
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
 			}
-		case "int16":
+		case mach.DB_COLUMN_TYPE_ULONG:
+			switch v := field.(type) {
+			case float64:
+				values[i] = uint64(v)
+			case gojson.Number:
+				if ival, err := v.Int64(); err != nil {
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with ulong", dec.nrow, i)
+				} else {
+					values[i] = uint64(ival)
+				}
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with ulong", dec.nrow, i)
+			}
+		case mach.DB_COLUMN_TYPE_SHORT, "int16":
+			switch v := field.(type) {
+			case float64:
+				values[i] = int16(v)
+			case gojson.Number:
+				if ival, err := v.Int64(); err != nil {
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int16", dec.nrow, i)
+				} else {
+					values[i] = int16(ival)
+				}
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int16", dec.nrow, i)
+			}
+		case mach.DB_COLUMN_TYPE_USHORT:
 			switch v := field.(type) {
 			case float64:
 				values[i] = int16(v)
@@ -157,39 +186,51 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				if ival, err := v.Int64(); err != nil {
 					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
 				} else {
-					values[i] = int16(ival)
+					values[i] = uint16(ival)
 				}
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
 			}
-		case "int32":
+		case "int":
 			switch v := field.(type) {
 			case float64:
 				values[i] = int32(v)
 			case gojson.Number:
 				if ival, err := v.Int64(); err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with integer", dec.nrow, i)
+				} else {
+					values[i] = int(ival)
+				}
+			default:
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with integer", dec.nrow, i)
+			}
+		case mach.DB_COLUMN_TYPE_INTEGER, "int32":
+			switch v := field.(type) {
+			case float64:
+				values[i] = int32(v)
+			case gojson.Number:
+				if ival, err := v.Int64(); err != nil {
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
 				} else {
 					values[i] = int32(ival)
 				}
 			default:
 				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int32", dec.nrow, i)
 			}
-		case "int64":
+		case mach.DB_COLUMN_TYPE_UINTEGER:
 			switch v := field.(type) {
 			case float64:
-				values[i] = int64(v)
+				values[i] = int32(v)
 			case gojson.Number:
-				values[i], err = v.Int64()
-				if err != nil {
-					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with double", dec.nrow, i)
+				if ival, err := v.Int64(); err != nil {
+					return nil, fmt.Errorf("#[%d] column[%d] is not compatible with uint32", dec.nrow, i)
+				} else {
+					values[i] = uint32(ival)
 				}
 			default:
-				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with int64", dec.nrow, i)
+				return nil, fmt.Errorf("#[%d] column[%d] is not compatible with uint32", dec.nrow, i)
 			}
-		case "ipv4":
-			fallthrough
-		case "ipv6":
+		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
 			switch v := field.(type) {
 			case string:
 				addr := net.ParseIP(v)

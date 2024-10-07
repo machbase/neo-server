@@ -109,7 +109,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	var appender api.Appender
-	var recno int
+	var recNo int
 	var insertQuery string
 
 	if method == "append" {
@@ -189,7 +189,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				columnTypes = append(columnTypes, c.TypeString())
 			}
 			valueHolder := strings.Join(_hold, ",")
-			insertQuery = fmt.Sprintf("INsERT INTO %s VALUES(%s)", tableName, valueHolder)
+			insertQuery = fmt.Sprintf("INSERT INTO %s VALUES(%s)", tableName, valueHolder)
 		}
 		codecOpts = append(codecOpts,
 			opts.InputStream(in),
@@ -218,7 +218,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 			break
 		}
-		recno++
+		recNo++
 
 		if method == "insert" {
 			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
@@ -237,7 +237,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 		}
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", recno, method)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", recNo, method)
 	rsp.Elapse = time.Since(tick).String()
 	ctx.JSON(http.StatusOK, rsp)
 }

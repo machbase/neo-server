@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	"golang.org/x/text/encoding"
@@ -56,9 +57,9 @@ func (dec *Decoder) SetHeader(skipHeader bool) {
 	dec.heading = skipHeader
 }
 
-func (dec *Decoder) SetDelimiter(delimiter string) {
-	delmiter, _ := utf8.DecodeRuneInString(delimiter)
-	dec.comma = delmiter
+func (dec *Decoder) SetDelimiter(newDelimiter string) {
+	delimiter, _ := utf8.DecodeRuneInString(newDelimiter)
+	dec.comma = delimiter
 }
 
 func (dec *Decoder) SetTableName(tableName string) {
@@ -120,32 +121,50 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			field = strings.TrimSpace(field)
 		}
 		switch dec.columnTypes[i] {
-		case "varchar":
+		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
 			values[i] = field
-		case "string":
-			values[i] = field
-		case "datetime":
+		case mach.DB_COLUMN_TYPE_DATETIME:
 			values[i], err = util.ParseTime(field, dec.timeformat, dec.timeLocation)
 			if err != nil {
 				errs = append(errs, err)
 			}
-		case "float":
+		case mach.DB_COLUMN_TYPE_FLOAT:
 			values[i], err = util.ParseFloat32(field)
 			if err != nil {
 				errs = append(errs, err)
 			}
-		case "double":
+		case mach.DB_COLUMN_TYPE_DOUBLE:
 			values[i], err = util.ParseFloat64(field)
 			if err != nil {
 				errs = append(errs, err)
 			}
-		case "int":
+		case mach.DB_COLUMN_TYPE_LONG, "int64":
+			values[i], err = util.ParseInt64(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		case mach.DB_COLUMN_TYPE_ULONG:
+			values[i], err = util.ParseUint64(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		case mach.DB_COLUMN_TYPE_INTEGER, "int":
 			values[i], err = util.ParseInt(field)
 			if err != nil {
 				errs = append(errs, err)
 			}
-		case "int16":
+		case mach.DB_COLUMN_TYPE_UINTEGER:
+			values[i], err = util.ParseUint(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		case mach.DB_COLUMN_TYPE_SHORT, "int16":
 			values[i], err = util.ParseInt16(field)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		case mach.DB_COLUMN_TYPE_USHORT:
+			values[i], err = util.ParseUint16(field)
 			if err != nil {
 				errs = append(errs, err)
 			}
@@ -154,17 +173,7 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			if err != nil {
 				errs = append(errs, err)
 			}
-		case "int64":
-			values[i], err = util.ParseInt64(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case "ipv4":
-			values[i], err = util.ParseIP(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case "ipv6":
+		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
 			values[i], err = util.ParseIP(field)
 			if err != nil {
 				errs = append(errs, err)

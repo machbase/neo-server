@@ -482,6 +482,11 @@ func ParseInt(val string) (int, error) {
 	return int(d), err
 }
 
+func ParseUint(val string) (uint, error) {
+	d, err := strconv.ParseInt(val, 10, 32)
+	return uint(d), err
+}
+
 func ParseInt8(val string) (int8, error) {
 	d, err := strconv.ParseInt(val, 10, 8)
 	return int8(d), err
@@ -492,6 +497,11 @@ func ParseInt16(val string) (int16, error) {
 	return int16(d), err
 }
 
+func ParseUint16(val string) (uint16, error) {
+	d, err := strconv.ParseInt(val, 10, 16)
+	return uint16(d), err
+}
+
 func ParseInt32(val string) (int32, error) {
 	d, err := strconv.ParseInt(val, 10, 32)
 	return int32(d), err
@@ -499,6 +509,10 @@ func ParseInt32(val string) (int32, error) {
 
 func ParseInt64(val string) (int64, error) {
 	return strconv.ParseInt(val, 10, 64)
+}
+
+func ParseUint64(val string) (uint64, error) {
+	return strconv.ParseUint(val, 10, 64)
 }
 
 func ParseIP(val string) (net.IP, error) {

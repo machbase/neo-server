@@ -59,7 +59,6 @@ module "machbase.com/neo-server" {
 			EnableV2         = true
         }
 		MachbaseInitOption       = 2
-		EnableMachbaseSigHandler = false
     }
 }
 `)
