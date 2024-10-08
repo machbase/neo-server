@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util/charset"
@@ -24,12 +25,12 @@ func TestCsvDecoder(t *testing.T) {
 	dec.SetTimeformat("ns")
 	dec.SetHeader(false)
 	dec.SetColumnTypes(
-		"string", "datetime", "double", "float", "string",
-		"int", "int16", "int32", "string", "int64", "string",
-		"ipv4")
+		mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_DATETIME, mach.DB_COLUMN_TYPE_DOUBLE, mach.DB_COLUMN_TYPE_FLOAT, mach.DB_COLUMN_TYPE_VARCHAR,
+		mach.DB_COLUMN_TYPE_INTEGER, mach.DB_COLUMN_TYPE_SHORT, mach.DB_COLUMN_TYPE_INTEGER, mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_LONG, mach.DB_COLUMN_TYPE_VARCHAR,
+		mach.DB_COLUMN_TYPE_IPV4)
 	dec.Open()
 
-	fields, err := dec.NextRow()
+	fields, _, err := dec.NextRow()
 	require.Nil(t, err)
 
 	ts := time.Unix(0, 1678147077000000000)
@@ -40,7 +41,7 @@ func TestCsvDecoder(t *testing.T) {
 	require.Equal(t, "typeval", fields[4])
 	require.Equal(t, int(1234), fields[5])
 	require.Equal(t, int16(2345), fields[6])
-	require.Equal(t, int32(1111), fields[7])
+	require.Equal(t, int(1111), fields[7])
 	require.Equal(t, "pnameval", fields[8])
 	require.Equal(t, int64(1), fields[9])
 	require.Equal(t, "{\"name\":1234}", fields[10])
@@ -49,15 +50,18 @@ func TestCsvDecoder(t *testing.T) {
 
 func TestCsvDecoderTimeformat(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      []string
-		expects    [][]interface{}
-		timeformat string
-		tz         *time.Location
+		name        string
+		input       []string
+		expects     [][]interface{}
+		expectNames []string
+		timeformat  string
+		tz          *time.Location
+		header      bool
 	}{
 		{
 			name: "nanosecond",
 			input: []string{
+				`NAME,TIME,VALUE`,
 				`my-car,1670380342000000000,1.0001`,
 				`my-car,1670380343000000000,2.0002`,
 			},
@@ -65,6 +69,22 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 				{"my-car", time.Unix(0, 1670380342000000000), 1.0001},
 				{"my-car", time.Unix(0, 1670380343000000000), 2.0002},
 			},
+			expectNames: []string{"NAME", "TIME", "VALUE"},
+			header:      true,
+		},
+		{
+			name: "specific column order",
+			input: []string{
+				`TIME,VALUE`,
+				`1670380342000000000,1.0001`,
+				`1670380343000000000,2.0002`,
+			},
+			expects: [][]interface{}{
+				{time.Unix(0, 1670380342000000000), 1.0001},
+				{time.Unix(0, 1670380343000000000), 2.0002},
+			},
+			expectNames: []string{"TIME", "VALUE"},
+			header:      true,
 		},
 		{
 			name: "second timeformat",
@@ -95,6 +115,7 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 		{
 			name: "yy/mm/dd timeformat",
 			input: []string{
+				`NAME,TIME,VALUE`,
 				`my-car,2024/09/27 10:00:01,1.0001`,
 				`my-car,2024/09/27 10:00:02,2.0002`,
 			},
@@ -102,8 +123,10 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 				{"my-car", time.Unix(0, 1727431201000000000).In(time.UTC), 1.0001},
 				{"my-car", time.Unix(0, 1727431202000000000).In(time.UTC), 2.0002},
 			},
-			timeformat: "2006/01/02 15:04:05",
-			tz:         time.UTC,
+			expectNames: []string{"NAME", "TIME", "VALUE"},
+			timeformat:  "2006/01/02 15:04:05",
+			tz:          time.UTC,
+			header:      true,
 		},
 	}
 
@@ -113,13 +136,17 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 		dec.SetInputStream(input)
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)
-		dec.SetHeader(false)
-		dec.SetColumnTypes("string", "datetime", "double")
+		dec.SetHeader(tt.header)
+		dec.SetColumnTypes(mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_DATETIME, mach.DB_COLUMN_TYPE_DOUBLE)
+		dec.SetColumns("NAME", "TIME", "VALUE")
 		dec.Open()
 		for _, expect := range tt.expects {
-			fields, err := dec.NextRow()
+			fields, names, err := dec.NextRow()
 			require.Nil(t, err)
 			require.Equal(t, expect, fields, fmt.Sprintf("Test case: %s", tt.name))
+			if tt.header && len(tt.expectNames) > 0 {
+				require.Equal(t, tt.expectNames, names)
+			}
 		}
 	}
 }
@@ -149,10 +176,9 @@ func TestCsvDecoderCharset(t *testing.T) {
 	dec.SetCharsetEncoding(eucjp)
 	dec.SetDelimiter(",")
 	dec.SetHeading(false)
-	dec.SetColumnTypes(
-		"string", "string", "string")
+	dec.SetColumnTypes(mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_VARCHAR)
 	dec.Open()
-	fields, err := dec.NextRow()
+	fields, _, err := dec.NextRow()
 
 	require.Nil(t, err)
 	require.Equal(t, "利用されてきた文字コー", fields[0])

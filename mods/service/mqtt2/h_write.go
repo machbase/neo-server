@@ -237,7 +237,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	}
 
 	for {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()

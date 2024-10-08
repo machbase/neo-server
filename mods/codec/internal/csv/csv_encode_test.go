@@ -25,7 +25,7 @@ func TestCsvEncoder(t *testing.T) {
 	enc.SetPrecision(3)
 	enc.SetRownum(true)
 	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
-	enc.SetHeading(true)
+	enc.SetHeader(true)
 	err := enc.Open()
 	require.Nil(t, err)
 
@@ -74,7 +74,7 @@ func TestCsvEncoderNullValue(t *testing.T) {
 	enc.SetPrecision(2)
 	enc.SetRownum(true)
 	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
-	enc.SetHeading(true)
+	enc.SetHeader(true)
 	enc.SetSubstituteNull(1.234567)
 	err := enc.Open()
 	require.Nil(t, err)
@@ -163,7 +163,7 @@ func runTimeformat(t *testing.T, format string) string {
 	enc.SetPrecision(0)
 	enc.SetRownum(false)
 	enc.SetColumns("col1", "col2", "col3", "col4", "col5", "col6")
-	enc.SetHeading(true)
+	enc.SetHeader(true)
 	err := enc.Open()
 	require.Nil(t, err)
 
