@@ -29,7 +29,7 @@ func TestTQL_CSV(t *testing.T) {
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
 	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
-	require.Equal(t, strings.Join([]string{"0", "1", ""}, "\n"), w.Body.String())
+	require.Equal(t, strings.Join([]string{"0", "1", "\n"}, "\n"), w.Body.String())
 }
 
 func TestTQL_JSON(t *testing.T) {
@@ -99,5 +99,5 @@ func TestTQLParam_CSV(t *testing.T) {
 	engine.HandleContext(ctx)
 	require.Equal(t, 200, w.Result().StatusCode)
 	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
-	require.Equal(t, strings.Join([]string{"a,1", "b,2", ""}, "\n"), w.Body.String())
+	require.Equal(t, strings.Join([]string{"a,1", "b,2", "\n"}, "\n"), w.Body.String())
 }

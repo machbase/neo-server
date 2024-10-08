@@ -112,6 +112,7 @@ func (ex *Exporter) Open() error {
 func (ex *Exporter) Close() {
 	ex.closeOnce.Do(func() {
 		ex.writer.Flush()
+		ex.output.Write([]byte("\n"))
 		ex.output.Close()
 	})
 }

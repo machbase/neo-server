@@ -121,7 +121,7 @@ func TestQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example", "format": "csv", "reply":"db/reply/123" }`),
 			Subscribe: "db/reply/123",
-			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n",
+			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n\n",
 		},
 		{
 			Name:      "db/query simple, format=csv",
@@ -129,7 +129,7 @@ func TestQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example", "format": "csv" }`),
 			Subscribe: "db/reply",
-			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n",
+			Expect:    "name,time,value\ntemp,1705291859000000000,3.14\n\n",
 		},
 		{
 			Name:      "db/query simple, format=csv, compress",
@@ -137,7 +137,7 @@ func TestQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example", "format": "csv", "compress":"gzip" }`),
 			Subscribe: "db/reply",
-			Expect:    compress([]byte("name,time,value\ntemp,1705291859000000000,3.14\n")),
+			Expect:    compress([]byte("name,time,value\ntemp,1705291859000000000,3.14\n\n")),
 		},
 		{
 			Name:      "db/query simple, format=csv, timeformat",
@@ -145,7 +145,7 @@ func TestQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example", "format": "csv", "tz": "UTC", "timeformat": "DEFAULT" }`),
 			Subscribe: "db/reply",
-			Expect:    "name,time,value\ntemp,2024-01-15 04:10:59,3.14\n",
+			Expect:    "name,time,value\ntemp,2024-01-15 04:10:59,3.14\n\n",
 		},
 	}
 
