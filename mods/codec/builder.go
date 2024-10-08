@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/mods/codec/internal/html"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 	"github.com/machbase/neo-server/mods/codec/internal/markdown"
+	"github.com/machbase/neo-server/mods/codec/internal/ndjson"
 	"github.com/machbase/neo-server/mods/codec/opts"
 )
 
@@ -18,6 +19,7 @@ const DISCARD = "discard"
 const BOX = "box"
 const CSV = "csv"
 const JSON = "json"
+const NDJSON = "ndjson"
 const MARKDOWN = "markdown"
 const HTML = "html"
 const ECHART = "echart"
@@ -45,6 +47,7 @@ var (
 	_ RowsEncoder = &markdown.Exporter{}
 	_ RowsEncoder = &html.Exporter{}
 	_ RowsEncoder = &geomap.GeoMap{}
+	_ RowsEncoder = &ndjson.Exporter{}
 )
 
 type RowsDecoder interface {
@@ -83,6 +86,8 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 		ret = &DiscardSink{}
 	case GEOMAP:
 		ret = geomap.New()
+	case NDJSON:
+		ret = ndjson.NewEncoder()
 	default: // "json"
 		ret = json.NewEncoder()
 	}
