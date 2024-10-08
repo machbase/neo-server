@@ -16,12 +16,12 @@ import (
 	"strings"
 )
 
-// const pkgName = "github.com/machbase/neo-server/mods/codec/internal/echart"
 var scanDirs = []string{
 	"../internal/chart",
 	"../internal/box",
 	"../internal/csv",
 	"../internal/json",
+	"../internal/ndjson",
 	"../internal/markdown",
 	"../internal/geomap",
 }

@@ -1051,6 +1051,39 @@ func TestDiscardSink(t *testing.T) {
 	runTest(t, codeLines, resultLines, resultLog)
 }
 
+func TestCsvToNDJson(t *testing.T) {
+	var codeLines, resultLines []string
+
+	codeLines = []string{
+		`CSV("1,line1\n2,line2\n3,\n4,line4")`,
+		"NDJSON( rownum(true) )",
+	}
+	resultLines = []string{
+		`{"ROWNUM":1,"column0":"1","column1":"line1"}`,
+		`{"ROWNUM":2,"column0":"2","column1":"line2"}`,
+		`{"ROWNUM":3,"column0":"3","column1":""}`,
+		`{"ROWNUM":4,"column0":"4","column1":"line4"}`,
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL("select time, value from example where name = 'tag1'")`,
+		"NDJSON( timeformat('default'), tz('UTC') )",
+	}
+	resultLines = []string{
+		`{"time":"2023-08-22 06:45:07.38","value":0.1}`,
+		`{"time":"2023-08-22 06:45:08.38","value":0.2}`,
+		"",
+	}
+	mockDbCursor = 0
+	mockDbResult = [][]any{
+		{time.Unix(0, 1692686707380411000), 0.1},
+		{time.Unix(0, 1692686708380411000), 0.2},
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestCsvToCsv(t *testing.T) {
 	var codeLines, resultLines []string
 

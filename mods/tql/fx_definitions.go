@@ -174,6 +174,7 @@ var FxDefinitions = []Definition{
 	{"// maps.encoder", nil},
 	{"CSV", defTask.fmCsv},
 	{"JSON", defTask.fmJson},
+	{"NDJSON", defTask.fmNDJson},
 	{"MARKDOWN", defTask.fmMarkdown},
 	{"HTML", defTask.fmHtml},
 	{"DISCARD", defTask.fmDiscard},

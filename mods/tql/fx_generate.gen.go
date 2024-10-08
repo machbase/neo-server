@@ -165,6 +165,7 @@ func NewNode(task *Task) *Node {
 		// maps.encoder
 		"CSV":             x.gen_CSV,
 		"JSON":            x.gen_JSON,
+		"NDJSON":          x.gen_NDJSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
 		"DISCARD":         x.gen_DISCARD,
@@ -2358,6 +2359,21 @@ func (x *Node) gen_JSON(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmJson(p0...)
+}
+
+// gen_NDJSON
+//
+// syntax: NDJSON(...interface {})
+func (x *Node) gen_NDJSON(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "NDJSON", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmNDJson(p0...)
 }
 
 // gen_MARKDOWN
