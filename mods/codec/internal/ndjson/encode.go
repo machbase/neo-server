@@ -8,7 +8,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -17,25 +16,20 @@ type Exporter struct {
 	tick time.Time
 	nrow int
 
-	output        spec.OutputStream
-	Rownum        bool
-	Heading       bool
-	precision     int
-	timeformatter *util.TimeFormatter
+	output     spec.OutputStream
+	Rownum     bool
+	Heading    bool
+	precision  int
+	timeformat *util.TimeFormatter
 
 	colNames []string
 	colTypes []string
-
-	transpose   bool
-	rowsFlatten bool
-	rowsArray   bool
-	series      [][]any
 }
 
 func NewEncoder() *Exporter {
 	return &Exporter{
-		tick:          time.Now(),
-		timeformatter: util.NewTimeFormatter(),
+		tick:       time.Now(),
+		timeformat: util.NewTimeFormatter(),
 	}
 }
 
@@ -51,14 +45,14 @@ func (ex *Exporter) SetTimeformat(format string) {
 	if format == "" {
 		return
 	}
-	ex.timeformatter.Set(util.Timeformat(format))
+	ex.timeformat.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
 	if tz == nil {
 		return
 	}
-	ex.timeformatter.Set(util.TimeLocation(tz))
+	ex.timeformat.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -85,61 +79,12 @@ func (ex *Exporter) SetColumnTypes(types ...string) {
 	ex.colTypes = types
 }
 
-func (ex *Exporter) SetTranspose(flag bool) {
-	ex.transpose = flag
-}
-
-func (ex *Exporter) SetRowsFlatten(flag bool) {
-	ex.rowsFlatten = flag
-}
-
-func (ex *Exporter) SetRowsArray(flag bool) {
-	ex.rowsArray = flag
-}
-
 func (ex *Exporter) Open() error {
-	var names []string
-	var types []string
-	if ex.Rownum && !ex.transpose { // rownum does not effective in transpose mode
-		names = append([]string{"ROWNUM"}, ex.colNames...)
-		types = append([]string{api.ColumnBufferTypeInt64}, ex.colTypes...)
-	} else {
-		names = ex.colNames
-		types = ex.colTypes
-	}
-
-	columnsJson, _ := json.Marshal(names)
-	typesJson, _ := json.Marshal(types)
-
-	if ex.transpose && !ex.rowsArray {
-		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"cols":[`,
-			string(columnsJson), string(typesJson))
-		ex.output.Write([]byte(header))
-	} else {
-		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"rows":[`,
-			string(columnsJson), string(typesJson))
-		ex.output.Write([]byte(header))
-	}
-
 	return nil
 }
 
 func (ex *Exporter) Close() {
-	if ex.transpose && !ex.rowsArray {
-		for n, ser := range ex.series {
-			recJson, err := json.Marshal(ser)
-			if err != nil {
-				// TODO how to report error?
-				break
-			}
-			if n > 0 {
-				ex.output.Write([]byte(","))
-			}
-			ex.output.Write(recJson)
-		}
-	}
-	footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
-	ex.output.Write([]byte(footer))
+	ex.output.Write([]byte("\n"))
 	ex.output.Close()
 }
 
@@ -165,9 +110,9 @@ func (ex *Exporter) AddRow(source []any) error {
 	for i, field := range source {
 		switch v := field.(type) {
 		case *time.Time:
-			values[i] = ex.timeformatter.FormatEpoch(*v)
+			values[i] = ex.timeformat.FormatEpoch(*v)
 		case time.Time:
-			values[i] = ex.timeformatter.FormatEpoch(v)
+			values[i] = ex.timeformat.FormatEpoch(v)
 		case *float64:
 			values[i] = ex.encodeFloat64(*v)
 		case float64:
@@ -210,79 +155,35 @@ func (ex *Exporter) AddRow(source []any) error {
 			}
 		case *sql.NullTime:
 			if v.Valid {
-				values[i] = ex.timeformatter.Format(v.Time)
+				values[i] = ex.timeformat.Format(v.Time)
 			}
 		default:
 			values[i] = field
 		}
 	}
 
-	if ex.rowsArray {
-		var vs = map[string]any{}
-		if ex.Rownum {
-			vs["ROWNUM"] = ex.nrow
-		}
-		for i, v := range values {
-			if i >= len(ex.colNames) {
-				break
-			}
-			vs[ex.colNames[i]] = v
-		}
-		recJson, err := json.Marshal(vs)
-		if err != nil {
-			return err
-		}
-		if ex.nrow > 1 {
-			ex.output.Write([]byte(","))
-		}
-		ex.output.Write(recJson)
-	} else if ex.transpose {
-		if ex.series == nil {
-			ex.series = make([][]any, len(values)-1)
-		}
-		if len(ex.series) < len(values) {
-			for i := 0; i < len(values)-len(ex.series); i++ {
-				ex.series = append(ex.series, []any{})
-			}
-		}
-		for n, v := range values {
-			ex.series[n] = append(ex.series[n], v)
-		}
-	} else if ex.rowsFlatten {
-		var recJson []byte
-		var err error
-		vs := values
-		if ex.Rownum {
-			vs = append([]any{ex.nrow}, values...)
-		}
-		for i, v := range vs {
-			recJson, err = json.Marshal(v)
-			if err != nil {
-				return err
-			}
-			if ex.nrow > 1 || i > 0 {
-				ex.output.Write([]byte(","))
-			}
-			ex.output.Write(recJson)
-		}
-	} else {
-		var recJson []byte
-		var err error
-		if ex.Rownum {
-			vs := append([]any{ex.nrow}, values...)
-			recJson, err = json.Marshal(vs)
-		} else {
-			recJson, err = json.Marshal(values)
-		}
-		if err != nil {
-			return err
-		}
-
-		if ex.nrow > 1 {
-			ex.output.Write([]byte(","))
-		}
-		ex.output.Write(recJson)
+	if len(values) != len(ex.colNames) {
+		return fmt.Errorf("rows[%d] number of columns not matched (%d); table '%s' has %d columns",
+			ex.nrow, len(values), ex.colNames, len(ex.colNames))
 	}
+	var recJson []byte
+	var err error
+	var vs = map[string]any{}
+	if ex.Rownum {
+		vs["ROWNUM"] = ex.nrow
+	}
+	for i, v := range values {
+		if i >= len(ex.colNames) {
+			break
+		}
+		vs[ex.colNames[i]] = v
+	}
+	recJson, err = json.Marshal(vs)
+	if err != nil {
+		return err
+	}
+	ex.output.Write(recJson)
+	ex.output.Write([]byte("\n"))
 
 	return nil
 }
