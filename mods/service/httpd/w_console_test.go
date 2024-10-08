@@ -97,7 +97,7 @@ func TestConsoleWs(t *testing.T) {
 		ctx.Request.Header.Set("X-Console-Id", "1234 console-log-level=INFO log-level=ERROR")
 		engine.HandleContext(ctx)
 		require.Equal(t, 200, w.Result().StatusCode)
-		require.Equal(t, strings.Join([]string{"1,0.00", "2,0.25", "3,0.50", "4,0.75", "5,1.00", ""}, "\n"), w.Body.String())
+		require.Equal(t, strings.Join([]string{"1,0.00", "2,0.25", "3,0.50", "4,0.75", "5,1.00", "\n"}, "\n"), w.Body.String())
 		wg.Done()
 	}()
 	wg.Wait()

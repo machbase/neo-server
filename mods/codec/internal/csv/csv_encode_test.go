@@ -56,7 +56,7 @@ func TestCsvEncoder(t *testing.T) {
 		"ROWNUM,col1,col2,col3,col4,col5,col6",
 		"1,1,3.142,text some,12:29:34AM,98765,16",
 		"2,1,3.142,text some,12:29:34AM,98765,NULL",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), w.String())
 	fmt.Println()
@@ -106,7 +106,7 @@ func TestCsvEncoderNullValue(t *testing.T) {
 		"ROWNUM,col1,col2,col3,col4,col5,col6",
 		"1,1,3.14,text some,12:29:34AM,98765,16",
 		"2,1,3.14,text some,12:29:34AM,98765,1.23",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), w.String())
 	fmt.Println()
@@ -118,7 +118,7 @@ func TestCsvTimeformat(t *testing.T) {
 		"col1,col2,col3,col4,col5,col6",
 		"3,3,1,1691800174123456789,127.0.0.1,16",
 		"1,3,text some,1691800174123456789,127.0.0.1,3",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), result)
 
@@ -127,7 +127,7 @@ func TestCsvTimeformat(t *testing.T) {
 		"col1,col2,col3,col4,col5,col6",
 		"3,3,1,1691800174123456,127.0.0.1,16",
 		"1,3,text some,1691800174123456,127.0.0.1,3",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), result)
 
@@ -136,7 +136,7 @@ func TestCsvTimeformat(t *testing.T) {
 		"col1,col2,col3,col4,col5,col6",
 		"3,3,1,1691800174123,127.0.0.1,16",
 		"1,3,text some,1691800174123,127.0.0.1,3",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), result)
 
@@ -145,7 +145,7 @@ func TestCsvTimeformat(t *testing.T) {
 		"col1,col2,col3,col4,col5,col6",
 		"3,3,1,1691800174,127.0.0.1,16",
 		"1,3,text some,1691800174,127.0.0.1,3",
-		"",
+		"\n",
 	}
 	require.Equal(t, strings.Join(expects, "\n"), result)
 }

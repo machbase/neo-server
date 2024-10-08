@@ -167,7 +167,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		require.Nil(t, err)
 		result := w.String()
 		if matchPrefix {
-			strexpect := strings.Join(expect, "\n")
+			strexpect := strings.Join(expect, "\n") + "\n"
 			trimResult := strings.TrimSpace(result)
 			strresult := "<N/A>"
 			if len(trimResult) >= len(strexpect) {
@@ -290,6 +290,7 @@ func TestDBSql(t *testing.T) {
 		"time,value",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -309,6 +310,7 @@ func TestDBSqlRownum(t *testing.T) {
 		"ROWNUM,time,value",
 		"1,1692686707380411000,0.100",
 		"2,1692686708380411000,0.200",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -327,6 +329,7 @@ func TestDBQuery(t *testing.T) {
 		"time,value",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -398,6 +401,7 @@ func TestStrLib(t *testing.T) {
 	}
 	resultLines := []string{
 		"123,hello",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -421,6 +425,7 @@ func TestHistogram(t *testing.T) {
 		"140,160,8",
 		"160,180,4",
 		"180,200,0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -437,6 +442,7 @@ func TestHistogram(t *testing.T) {
 		"93,106,19",
 		"106,119,14",
 		"119,+Inf,20",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -456,6 +462,7 @@ func TestHistogram(t *testing.T) {
 		"120,140,8",
 		"140,160,8",
 		"160,180,4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -478,6 +485,7 @@ func TestHistogram(t *testing.T) {
 		"140,160,5,3",
 		"160,180,1,3",
 		"180,200,0,0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -509,6 +517,7 @@ func TestBoxplot(t *testing.T) {
 		"UPPER,1175,1010,940,1000,975",
 		"MAX,1070,920,970,960,950",
 		"IQR,130,100,40,80,70",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -536,6 +545,7 @@ func TestBoxplot(t *testing.T) {
 		"C,[]interface {},[]interface {}",
 		"B,[]interface {},[]interface {}",
 		"E,[]interface {},[]interface {}",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -551,6 +561,7 @@ func TestMapAvg(t *testing.T) {
 		"10,10",
 		"20,15",
 		"30,20",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -563,7 +574,7 @@ func TestMapMovAvg(t *testing.T) {
 		`MAP_MOVAVG(1, value(0), 10)`,
 		`CSV( precision(4) )`,
 	}
-	resultLines = loadLines("./test/movavg_result.txt")
+	resultLines = loadLines("./test/movavg_result.csv")
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -571,7 +582,7 @@ func TestMapMovAvg(t *testing.T) {
 		`MAP_MOVAVG(1, value(0), 10, noWait(true))`,
 		`CSV( precision(4) )`,
 	}
-	resultLines = loadLines("./test/movavg_result_nowait.txt")
+	resultLines = loadLines("./test/movavg_result_nowait.csv")
 	runTest(t, codeLines, resultLines)
 
 }
@@ -595,6 +606,7 @@ func TestMapLowPass(t *testing.T) {
 		`8.00,10.31,6.49`,
 		`9.00,8.36,7.05`,
 		`10.00,8.56,7.50`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -611,6 +623,7 @@ func TestMapKalman(t *testing.T) {
 		`10.2,5.7`,
 		`5.0,5.4`,
 		`3.4,4.4`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -622,7 +635,7 @@ func TestMapDiff(t *testing.T) {
 		`MAP_DIFF(0, value(0))`,
 		`CSV()`,
 	}
-	resultLines = []string{"NULL", "2", "-1", "5"}
+	resultLines = []string{"NULL", "2", "-1", "5", ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -630,7 +643,7 @@ func TestMapDiff(t *testing.T) {
 		`MAP_NONEGDIFF(0, value(0))`,
 		`CSV()`,
 	}
-	resultLines = []string{"NULL", "2", "0", "5"}
+	resultLines = []string{"NULL", "2", "0", "5", ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -638,7 +651,7 @@ func TestMapDiff(t *testing.T) {
 		`MAP_ABSDIFF(0, value(0))`,
 		`CSV()`,
 	}
-	resultLines = []string{"NULL", "2", "1", "5"}
+	resultLines = []string{"NULL", "2", "1", "5", ""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -657,6 +670,7 @@ func TestMapChanged(t *testing.T) {
 	resultLines = []string{
 		"A,1",
 		"B,3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -674,6 +688,7 @@ func TestMapChanged(t *testing.T) {
 		"A,true,1",
 		"A,false,2",
 		"B,true,4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -700,6 +715,7 @@ func TestMapChanged(t *testing.T) {
 		"A,1692329338,1",
 		"B,1692329342,5",
 		"D,1692329349,9.3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -728,6 +744,7 @@ func TestMapChanged(t *testing.T) {
 		"C,7",
 		"D,8",
 		"D,9",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -741,6 +758,7 @@ func TestMapChanged(t *testing.T) {
 		"B,3",
 		"C,6",
 		"D,8",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -754,6 +772,7 @@ func TestMapChanged(t *testing.T) {
 		"B,3",
 		"C,6",
 		"D,8",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -782,6 +801,7 @@ func TestMapChanged(t *testing.T) {
 		"A,1692329338,1",
 		"B,1692329340,3",
 		"D,1692329347,9.1",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -798,6 +818,7 @@ func TestMapChanged(t *testing.T) {
 		"B,1692329345,8",
 		"D,1692329347,9.1",
 		"D,1692329349,9.3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -816,6 +837,7 @@ func TestMapChanged(t *testing.T) {
 		"C,1692329346,9",
 		"D,1692329347,9.1",
 		"D,1692329349,9.3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -849,6 +871,7 @@ func TestMapChanged(t *testing.T) {
 		`B,1692329345,1`,
 		`C,1692329340,1`,
 		`C,1692329346,1`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -865,6 +888,7 @@ func TestString(t *testing.T) {
 		"2,line2",
 		"3,",
 		"4,line4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -893,6 +917,7 @@ func TestBytes(t *testing.T) {
 		`2,\x6C\x69\x6E\x65\x32`,
 		`3,`,
 		`4,\x6C\x69\x6E\x65\x34`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -906,6 +931,7 @@ func TestBytes(t *testing.T) {
 		`\x6C\x69\x6E\x65\x32`,
 		``,
 		`\x6C\x69\x6E\x65\x34`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -951,6 +977,7 @@ func TestHttpFile(t *testing.T) {
 	}
 	resultLines = []string{
 		`ok.`,
+		"",
 	}
 	runTest(t, codeLines, resultLines, httpClient)
 
@@ -960,6 +987,7 @@ func TestHttpFile(t *testing.T) {
 	}
 	resultLines = []string{
 		`\x6F\x6B\x2E`,
+		"",
 	}
 	runTest(t, codeLines, resultLines, httpClient)
 
@@ -969,6 +997,7 @@ func TestHttpFile(t *testing.T) {
 	}
 	resultLines = []string{
 		`1,3.141592,true,"escaped, string",123456`,
+		"",
 	}
 	runTest(t, codeLines, resultLines, httpClient)
 }
@@ -1035,6 +1064,7 @@ func TestCsvToCsv(t *testing.T) {
 		"2,line2",
 		"3,",
 		"4,line4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1047,6 +1077,7 @@ func TestCsvToCsv(t *testing.T) {
 		"line1",
 		"line2",
 		"line4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1064,6 +1095,7 @@ func TestCsvToCsvWithLogProgress(t *testing.T) {
 		"2,line2",
 		"3,",
 		"4,line4",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1080,6 +1112,7 @@ func TestJsonToCsv(t *testing.T) {
 		"A,123",
 		"B,<NULL>",
 		"C,234",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1097,6 +1130,7 @@ func TestJsonToCsv(t *testing.T) {
 		"A,123",
 		"B,false",
 		"C,234",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1108,6 +1142,7 @@ func TestJsonToCsv(t *testing.T) {
 		"A,123",
 		"B,3.14",
 		"C,234",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1119,6 +1154,7 @@ func TestJsonToCsv(t *testing.T) {
 		"A,123.0",
 		"B,3.1",
 		"C,234.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1137,6 +1173,7 @@ func TestMath(t *testing.T) {
 		"0.000000,0.000000",
 		"0.785398,0.707107",
 		"1.570796,1.000000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1153,6 +1190,7 @@ func TestMath(t *testing.T) {
 		"0.000000,1.000000",
 		"0.785398,0.707107",
 		"1.570796,0.000000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1169,6 +1207,7 @@ func TestMath(t *testing.T) {
 		"0.000000,0.000000",
 		"0.785398,1.000000",
 		"1.570796,3060023.306953",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1187,6 +1226,7 @@ func TestMath(t *testing.T) {
 		"0.000000,1.000000",
 		"1.000000,2.718282",
 		"2.000000,7.389056",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1205,6 +1245,7 @@ func TestMath(t *testing.T) {
 		"0.000000,1.000000",
 		"1.000000,2.000000",
 		"2.000000,4.000000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1223,6 +1264,7 @@ func TestMath(t *testing.T) {
 		"0.000000,-Inf",
 		"1.000000,0.000000",
 		"2.000000,0.693147",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1241,6 +1283,7 @@ func TestMath(t *testing.T) {
 		"0.000000,-Inf",
 		"1.000000,0.000000",
 		"2.000000,0.301030",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1248,7 +1291,7 @@ func TestMath(t *testing.T) {
 		"FAKE( linspace(1000, 100, -1) )",
 		"CSV(precision(5), header(true))",
 	}
-	resultLines = []string{"x"}
+	resultLines = []string{"x", ""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -1266,6 +1309,7 @@ func TestSetVariables(t *testing.T) {
 		`0,1`,
 		`0.5,6`,
 		`1,11`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1281,6 +1325,7 @@ func TestSetVariables(t *testing.T) {
 		`1,true`,
 		`2,false`,
 		`3,true`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1293,6 +1338,7 @@ func TestSetVariables(t *testing.T) {
 	}
 	resultLines = []string{
 		`1.234,11`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1347,6 +1393,7 @@ func TestArrange(t *testing.T) {
 		"0.0",
 		"1.0",
 		"2.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1359,6 +1406,7 @@ func TestArrange(t *testing.T) {
 		"2.0",
 		"1.0",
 		"0.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1373,6 +1421,7 @@ func TestLinspace(t *testing.T) {
 		"0.0",
 		"1.0",
 		"2.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1393,6 +1442,7 @@ func TestMeshgrid(t *testing.T) {
 		"2.000000,0.000000",
 		"2.000000,1.000000",
 		"2.000000,2.000000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1426,7 +1476,7 @@ func TestScriptSource(t *testing.T) {
 		"CSV()",
 	}
 	resultLines := []string{
-		"0,0", "1,10", "2,20", "3,30", "4,40", "5,50", "6,60", "7,70", "8,80", "9,90",
+		"0,0", "1,10", "2,20", "3,30", "4,40", "5,50", "6,60", "7,70", "8,80", "9,90", "",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1442,6 +1492,7 @@ func TestPushKey(t *testing.T) {
 		"key,ROWNUM,x",
 		"sample,1,0",
 		"sample,2,1",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1457,6 +1508,7 @@ func TestPushAndPopMonad(t *testing.T) {
 		"0.0",
 		"0.5",
 		"1.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1475,6 +1527,7 @@ func TestPushAndPopMonad(t *testing.T) {
 		"0.785,0.707",
 		"1.178,0.924",
 		"1.571,1.000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1493,6 +1546,7 @@ func TestGroupByKey(t *testing.T) {
 		"sample,1,0.000000",
 		"sample,2,1.000000",
 		"sample,3,2.000000",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1510,6 +1564,7 @@ func TestMapKey(t *testing.T) {
 		"0,0",
 		"2,1",
 		"4,2",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1523,6 +1578,7 @@ func TestMapKey(t *testing.T) {
 		"1,0",
 		"2,1",
 		"3,2",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1536,6 +1592,7 @@ func TestMapKey(t *testing.T) {
 		"101.0,0.0",
 		"102.0,1.0",
 		"103.0,2.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1554,6 +1611,7 @@ func TestPushValue(t *testing.T) {
 			"1,0.0,0.0",
 			"2,1.5,1.0",
 			"3,3.0,2.0",
+			"",
 		}
 		runTest(t, codeLines, resultLines)
 	}
@@ -1569,6 +1627,7 @@ func TestPushValue(t *testing.T) {
 			"0.0,0.0",
 			"1.0,1.5",
 			"2.0,3.0",
+			"",
 		}
 		runTest(t, codeLines, resultLines)
 	}
@@ -1584,6 +1643,7 @@ func TestPushValue(t *testing.T) {
 			"0.0,0.0",
 			"1.0,1.5",
 			"2.0,3.0",
+			"",
 		}
 		runTest(t, codeLines, resultLines)
 	}
@@ -1599,6 +1659,7 @@ func TestPushValue(t *testing.T) {
 		"0.0,0.0,10.0",
 		"1.0,1.5,11.5",
 		"2.0,3.0,13.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1613,6 +1674,7 @@ func TestPushValue(t *testing.T) {
 		"0.0,0.0,10.0",
 		"1.0,1.5,NULL",
 		"2.0,3.0,13.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1632,6 +1694,7 @@ func TestPushPopValue(t *testing.T) {
 		"1,10.5",
 		"2,12.0",
 		"3,13.5",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1648,6 +1711,7 @@ func TestMapValue(t *testing.T) {
 		"0.0,0.0",
 		"1.5,1.0",
 		"3.0,2.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1661,6 +1725,7 @@ func TestMapValue(t *testing.T) {
 		"0.0,0.0",
 		"1.0,1.5",
 		"2.0,3.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1674,6 +1739,7 @@ func TestMapValue(t *testing.T) {
 		"0.0",
 		"1.5",
 		"3.0",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1684,7 +1750,7 @@ func TestMapValue(t *testing.T) {
 		"CSV()",
 	}
 	resultLines = []string{
-		"world,3.141592,\"hello world, 3.14\"",
+		"world,3.141592,\"hello world, 3.14\"", "",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1697,6 +1763,7 @@ func TestMapValue(t *testing.T) {
 	}
 	resultLines = []string{
 		"1,100,3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1709,6 +1776,7 @@ func TestMapValue(t *testing.T) {
 		"1",
 		"2",
 		"3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -1722,6 +1790,7 @@ func TestMapValue(t *testing.T) {
 		"1",
 		"20",
 		"3",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1734,7 +1803,7 @@ func TestThrottle(t *testing.T) {
 		"CSV()",
 	}
 	resultLines = []string{
-		"1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+		"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "",
 	}
 	t1 := time.Now()
 	runTest(t, codeLines, resultLines)
@@ -1909,6 +1978,7 @@ func TestArgs(t *testing.T) {
 	resultLines = []string{
 		`name,value`,
 		`tag-1,123.4`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -1920,6 +1990,7 @@ func TestGroup(t *testing.T) {
 		"A,1",
 		"B,3",
 		"C,6",
+		"",
 	}
 
 	codeLines = []string{
@@ -1954,6 +2025,7 @@ func TestGroup(t *testing.T) {
 		"C,7",
 		"C,8",
 		"C,9",
+		"",
 	}
 	// first, last, avg, sum
 	codeLines = []string{
@@ -1966,6 +2038,7 @@ func TestGroup(t *testing.T) {
 		"A,1.00,2.00,1.50,3.00,2.00",
 		"B,3.00,5.00,4.00,12.00,3.00",
 		"C,6.00,9.00,7.50,30.00,4.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1980,6 +2053,7 @@ func TestGroup(t *testing.T) {
 		"A,1.00,2.00,2.24,1.58",
 		"B,3.00,5.00,7.07,4.08",
 		"C,6.00,9.00,15.17,7.58",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -1994,6 +2068,7 @@ func TestGroup(t *testing.T) {
 		"A,1.50,1.00,0.71,0.50,-1.39",
 		"B,4.00,4.00,1.00,0.58,-16.89",
 		"C,7.50,7.00,1.29,0.65,-60.78",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2008,6 +2083,7 @@ func TestGroup(t *testing.T) {
 		"A,1.50,1.67,0.50",
 		"B,4.00,4.17,1.00",
 		"C,7.50,7.67,1.67",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2022,6 +2098,7 @@ func TestGroup(t *testing.T) {
 		"A,0.71,0.58",
 		"B,1.00,0.83",
 		"C,1.29,1.12",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2036,6 +2113,7 @@ func TestGroup(t *testing.T) {
 		"A,0.50,0.41",
 		"B,0.58,0.48",
 		"C,0.65,0.56",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2050,6 +2128,7 @@ func TestGroup(t *testing.T) {
 		"A,2.00,1.00,1.00",
 		"B,5.00,4.00,4.00",
 		"C,9.00,7.00,7.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2064,6 +2143,7 @@ func TestGroup(t *testing.T) {
 		"A,2.00,1.00,1.00",
 		"B,5.00,4.00,4.00",
 		"C,9.00,7.00,7.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2078,6 +2158,7 @@ func TestGroup(t *testing.T) {
 		"C,3.2",
 		"C,3.3",
 		"C,3.3",
+		"",
 	}
 	// mode
 	codeLines = []string{
@@ -2090,6 +2171,7 @@ func TestGroup(t *testing.T) {
 		"A,1.10,1.10",
 		"B,2.10,2.10",
 		"C,3.30,3.30",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2104,6 +2186,7 @@ func TestGroup(t *testing.T) {
 		"A,1.10,1.10",
 		"B,2.20,2.10",
 		"C,3.30,3.20",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2118,6 +2201,7 @@ func TestGroup(t *testing.T) {
 		"A,1.00",
 		"B,1.00",
 		"C,0.25",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2133,6 +2217,7 @@ func TestGroup(t *testing.T) {
 		"C,2,100",
 		"C,3,200",
 		"C,4,300",
+		"",
 	}
 
 	// lrs - linear regression slope
@@ -2146,6 +2231,7 @@ func TestGroup(t *testing.T) {
 		"A,1.00",
 		"B,NULL",
 		"C,97.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2163,6 +2249,7 @@ func TestGroup(t *testing.T) {
 		"A,0.00,1.00,2.00",
 		"B,1.00,1.00,1.00",
 		"C,10.00,100.00,200.00,300.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2180,6 +2267,7 @@ func TestGroup(t *testing.T) {
 		"A,0.00,1.00,2.00",
 		"B,1.00,1.00,1.00",
 		"C,10.00,100.00,200.00,300.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2200,6 +2288,7 @@ func TestGroup(t *testing.T) {
 	resultLines = []string{
 		"CORR",
 		"0.59915",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2224,6 +2313,7 @@ func TestGroup(t *testing.T) {
 	resultLines = []string{
 		"N1,N2,N3",
 		"30.16,2.00,0.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2247,6 +2337,7 @@ func TestGroup(t *testing.T) {
 	resultLines = []string{
 		"VARIANCE,VARIANCE-WEIGHTED",
 		"77.5000,111.7941",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -2276,6 +2367,7 @@ func TestCSVTypes(t *testing.T) {
 		"1700256263,dry,3.00,false",
 		"1700256264,dry,4.00,true",
 		"1700256264,wet,5.00,false",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -2322,6 +2414,7 @@ func TestGroupWhere(t *testing.T) {
 		"1700256266,6.50,NULL",
 		"1700256268,8.50,NULL",
 		"1700256276,10.00,NULL",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2341,6 +2434,7 @@ func TestGroupWhere(t *testing.T) {
 		"1700256266,6.50,NULL",
 		"1700256268,8.50,NULL",
 		"1700256276,10.00,NULL",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2360,6 +2454,7 @@ func TestGroupWhere(t *testing.T) {
 		"1700256266,6.50,1",
 		"1700256268,8.50,1",
 		"1700256276,10.00,1",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -2413,6 +2508,7 @@ func TestGroupByTimeWindow(t *testing.T) {
 		"1700256276,9.00,9.00,9.00,9.00",
 		"1700256278,NULL,0.00,11.17,9.00",
 		"1700256280,NULL,0.00,12.17,9.00",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2437,6 +2533,7 @@ func TestGroupByTimeWindow(t *testing.T) {
 		"1700256272,NULL,NULL,NULL",  //
 		"1700256276,9.00,9.00,9.00",  // 9
 		"1700256280,NULL,NULL,NULL",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2458,6 +2555,7 @@ func TestGroupByTimeWindow(t *testing.T) {
 		"1700256264,5.00,15.00,6.00",
 		"1700256268,7.50,15.00,8.00",
 		"1700256272,NULL,NULL,NULL",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2516,6 +2614,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,0.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "stderr":
 			resultLines = []string{
@@ -2527,6 +2626,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,0.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "entropy":
 			resultLines = []string{
@@ -2538,6 +2638,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,-23.03",
 				"1700256280,0.00",
+				"",
 			}
 		case "avg":
 			resultLines = []string{
@@ -2549,6 +2650,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "mean":
 			resultLines = []string{
@@ -2560,6 +2662,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "median":
 			resultLines = []string{
@@ -2571,6 +2674,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "median-interpolated":
 			resultLines = []string{
@@ -2582,6 +2686,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "sum":
 			resultLines = []string{
@@ -2593,6 +2698,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "first", "min":
 			resultLines = []string{
@@ -2604,6 +2710,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "last", "max":
 			resultLines = []string{
@@ -2615,6 +2722,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "rss":
 			resultLines = []string{
@@ -2626,6 +2734,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		case "rss:LinearRegression":
 			resultLines = []string{
@@ -2637,6 +2746,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,11.06",
 				"1700256275,10.00",
 				"1700256280,12.79",
+				"",
 			}
 		case "rss:PiecewiseConstant":
 			resultLines = []string{
@@ -2648,6 +2758,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,10.00",
 				"1700256275,10.00",
 				"1700256280,10.00",
+				"",
 			}
 		case "rss:PiecewiseLinear":
 			resultLines = []string{
@@ -2659,6 +2770,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,12.98",
 				"1700256275,10.00",
 				"1700256280,10.00",
+				"",
 			}
 		case "rms":
 			resultLines = []string{
@@ -2670,6 +2782,7 @@ func TestTimeWindow(t *testing.T) {
 				"1700256270,0.00",
 				"1700256275,10.00",
 				"1700256280,0.00",
+				"",
 			}
 		}
 		runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
@@ -2718,6 +2831,7 @@ func TestTimeWindowMs(t *testing.T) {
 		"1700256270000,NULL",
 		"1700256275000,10",
 		"1700256280000,NULL",
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 }
@@ -2753,6 +2867,7 @@ func TestTimeWindowHighDef(t *testing.T) {
 		"1692329346000000000,0.1046838",
 		"1692329347000000000,0.1046770",
 		"1692329348000000000,0.1046702",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -2769,6 +2884,7 @@ func TestDropTake(t *testing.T) {
 		"51,1.010101",
 		"52,1.030303",
 		"53,1.050505",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -2782,6 +2898,7 @@ func TestDropTake(t *testing.T) {
 	resultLines = []string{
 		"1,0.000000",
 		"2,0.020202",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -2792,7 +2909,7 @@ func TestDropTake(t *testing.T) {
 		"PUSHKEY('test')",
 		"CSV(precision(6))",
 	}
-	resultLines = []string{}
+	resultLines = []string{""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -2806,6 +2923,7 @@ func TestDropTake(t *testing.T) {
 		"51,1.010101",
 		"52,1.030303",
 		"53,1.050505",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -2928,7 +3046,7 @@ func TestFFT2D(t *testing.T) {
 		"FFT(minHz(0), maxHz(60))",
 		"CSV(precision(6))",
 	}
-	resultLines := loadLines("./test/fft2d.txt")
+	resultLines := loadLines("./test/fft2d.csv")
 	runTest(t, codeLines, resultLines)
 
 	// less than 16 samples
@@ -2937,7 +3055,7 @@ func TestFFT2D(t *testing.T) {
 		"FFT()",
 		"CSV()",
 	}
-	runTest(t, codeLines, []string{})
+	runTest(t, codeLines, []string{""})
 
 	codeLines = []string{
 		"FAKE( meshgrid(linspace(0, 10, 100), linspace(0, 10, 1000)) )",
@@ -2959,7 +3077,7 @@ func TestFFT3D(t *testing.T) {
 		"PUSHKEY('fft3d')",
 		"CSV(precision(6))",
 	}
-	resultLines := loadLines("./test/fft3d.txt")
+	resultLines := loadLines("./test/fft3d.csv")
 	runTest(t, codeLines, resultLines)
 }
 
@@ -2981,6 +3099,7 @@ func TestSourceCSV(t *testing.T) {
 	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -2999,6 +3118,7 @@ func TestSourceCSV(t *testing.T) {
 	resultLines = []string{
 		`name,time,value,active`,
 		`temp.name,1691662156,123.456789,true`,
+		"",
 	}
 	runTest(t, codeLines, resultLines, Payload(strings.Join(payload, "\n")))
 
@@ -3161,6 +3281,7 @@ func TestSourceCSVFile(t *testing.T) {
 	resultLines := []string{
 		`5.4,3.7,1.5,0.2,Iris-setosa`,
 		`4.8,3.4,1.6,0.2,Iris-setosa`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -3181,6 +3302,7 @@ func TestSourceCSVFile(t *testing.T) {
 	}
 	resultLines = []string{
 		`利用されてきた文字コー,1701913182,3.141592`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -3233,6 +3355,7 @@ func TestBridgeQuerySqlite(t *testing.T) {
 		"id,name,age,address",
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
+		"",
 	}
 	expectErr := ExpectErr("no such table: example")
 	expectLog := ExpectLog(`no such table: example`)
@@ -3277,6 +3400,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"id,name,age,address",
 		"100,alpha,10,street-100",
 		"200,bravo,20,street-200",
+		"",
 	}
 	expectErr := ExpectErr("no such table: example_sql")
 	expectLog := ExpectLog("no such table: example_sql")
@@ -3316,6 +3440,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"id,name,age,address,weight,memo",
 		"100,alpha,10,street-100,<NULL>,",
 		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -3324,7 +3449,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{}
+	resultLines = []string{""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -3335,6 +3460,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"id,name,age,address,weight,memo",
 		"100,alpha,10,street-100,45.67,",
 		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -3353,7 +3479,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{"1"}
+	resultLines = []string{"1", ""}
 	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	// delete
@@ -3361,7 +3487,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'delete from example_sql where id = ?', param('id'))`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{}
+	resultLines = []string{""}
 	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	// after delete
@@ -3369,7 +3495,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{"0"}
+	resultLines = []string{"0", ""}
 	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	codeLines = []string{
@@ -3379,6 +3505,7 @@ func TestBridgeSqlite(t *testing.T) {
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
 		`200,bravo,20,street-200,56.789,\x00\x01\xFF`,
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -3388,6 +3515,7 @@ func TestBridgeSqlite(t *testing.T) {
 	}
 	resultLines = []string{
 		"id,name,age,address,weight,memo",
+		"",
 	}
 	runTest(t, codeLines, resultLines)
 
@@ -3395,7 +3523,7 @@ func TestBridgeSqlite(t *testing.T) {
 		"SQL(bridge('sqlite'), `select * from example_sql where id = -1`)",
 		"CSV(heading(false))",
 	}
-	resultLines = []string{}
+	resultLines = []string{""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -3411,7 +3539,7 @@ func TestQuerySql(t *testing.T) {
 		AND time BETWEEN 
 				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
 			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
-		LIMIT 0, 1000000`)}
+		LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// basic
@@ -3419,70 +3547,70 @@ func TestQuerySql(t *testing.T) {
 		`QUERY('value', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('val', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('val1', 'val2' , from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`)}
+	resultLines = []string{normalize(`SELECT time, (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`)}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// between()
@@ -3490,28 +3618,28 @@ func TestQuerySql(t *testing.T) {
 		`QUERY( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY( 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000000)*1000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000000)*1000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// GroupBy time
@@ -3519,21 +3647,21 @@ func TestQuerySql(t *testing.T) {
 		`QUERY('STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`QUERY('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`), ""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -3549,7 +3677,7 @@ func TestSqlSelect(t *testing.T) {
 		AND time BETWEEN 
 				(SELECT MAX_TIME-10000000000 FROM V$TABLE_STAT WHERE name = 'tag') 
 			AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag')
-		LIMIT 0, 1000000`)}
+		LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// basic
@@ -3557,70 +3685,70 @@ func TestSqlSelect(t *testing.T) {
 		`SQL_SELECT('time', 'value', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('val', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT val FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('value', from('table', 'tag'), between('last -1.0s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('time', 'value', from('table', 'tag'), between('last-12.0s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT time, value FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-12000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('val1', 'val2' , from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT val1, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('(val * 0.01) altVal', 'val2', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT (val * 0.01) altVal, val2 FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('(val + val2/2)', from('table', 'tag'), between('last-2.34s', 'last'), limit(10, 2000), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`)}
+	resultLines = []string{normalize(`SELECT (val + val2/2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 10, 2000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('time', 'val', from('table', 'tag'), between('now -2.34s', 'now'), limit(5, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`)}
+	resultLines = []string{normalize(`SELECT time, val FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now LIMIT 5, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('value', from('table', 'tag'), between(123456789000-2.34*1000000000, 123456789000), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT value FROM TABLE WHERE name = 'tag' AND time BETWEEN 121116789000 AND 123456789000 LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('AVG(val1+val2)', from('table', 'tag'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT AVG(val1+val2) FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-1000000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// between()
@@ -3628,28 +3756,28 @@ func TestSqlSelect(t *testing.T) {
 		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-3600000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT( 'value', from('example', 'barn'), between('last -1h23m45s', 'last'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT value FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT( 'time', 'STDDEV(value)', from('example', 'barn'), between('last -1h23m45s', 'last', '10m'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/600000000000)*600000000000) time, STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN (SELECT MAX_TIME-5025000000000 FROM V$EXAMPLE_STAT WHERE name = 'barn') AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT( 'STDDEV(value)', from('example', 'barn'), between(1677646906*1000000000, 'last', '1s'), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`)}
+	resultLines = []string{normalize(`SELECT STDDEV(value) FROM EXAMPLE WHERE name = 'barn' AND time BETWEEN 1677646906000000000 AND (SELECT MAX_TIME FROM V$EXAMPLE_STAT WHERE name = 'barn') GROUP BY time ORDER BY time LIMIT 0, 1000000`), ""}
 	runTest(t, codeLines, resultLines)
 
 	// GroupBy time
@@ -3657,21 +3785,21 @@ func TestSqlSelect(t *testing.T) {
 		`SQL_SELECT('time', 'STDDEV(val)', from('table', 'tag'), between(123456789000 - 3.45*1000000000, 123456789000, '1ms'), limit(1, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/1000000)*1000000) time, STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN 120006789000 AND 123456789000 GROUP BY time ORDER BY time LIMIT 1, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('time', 'STDDEV(val)', 'zval', from('table', 'tag'), between('last-2.34s', 'last', '0.5ms'), limit(2, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`)}
+	resultLines = []string{normalize(`SELECT from_timestamp(round(to_timestamp(time)/500000)*500000) time, STDDEV(val), zval FROM TABLE WHERE name = 'tag' AND time BETWEEN (SELECT MAX_TIME-2340000000 FROM V$TABLE_STAT WHERE name = 'tag') AND (SELECT MAX_TIME FROM V$TABLE_STAT WHERE name = 'tag') GROUP BY time ORDER BY time LIMIT 2, 100`), ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
 		`SQL_SELECT('STDDEV(val)', from('table', 'tag'), between('now-2.34s', 'now', '0.5ms'), limit(3, 100), dump(true))`,
 		"CSV()",
 	}
-	resultLines = []string{normalize(`SELECT STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`)}
+	resultLines = []string{normalize(`SELECT STDDEV(val) FROM TABLE WHERE name = 'tag' AND time BETWEEN (now-2340000000) AND now GROUP BY time ORDER BY time LIMIT 3, 100`), ""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -3693,7 +3821,7 @@ func TestTengoScript(t *testing.T) {
 		`})`,
 		`CSV()`,
 	}
-	resultLines = []string{"22,2,3,4"}
+	resultLines = []string{"22,2,3,4", ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -3708,7 +3836,7 @@ func TestTengoScript(t *testing.T) {
 		`MAPVALUE(2, value(2), "parameter")`,
 		`CSV(header(true))`,
 	}
-	resultLines = []string{`key,value,parameter`, `hello,1,0`, `hello,2,0`}
+	resultLines = []string{`key,value,parameter`, `hello,1,0`, `hello,2,0`, ""}
 	runTest(t, codeLines, resultLines)
 }
 
@@ -3740,6 +3868,9 @@ func loadLines(file string) []string {
 			break
 		}
 		lines = append(lines, string(line))
+	}
+	if strings.HasSuffix(file, ".csv") {
+		lines = append(lines, "")
 	}
 	return lines
 }
@@ -3819,7 +3950,7 @@ func TestLoader(t *testing.T) {
 		} else {
 			expect = string(b)
 			// for windows
-			expect = strings.ReplaceAll(expect, "\r\n", "\n")
+			expect = strings.ReplaceAll(expect, "\r", "") + "\n"
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
