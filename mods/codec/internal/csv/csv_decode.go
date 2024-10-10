@@ -17,16 +17,17 @@ import (
 )
 
 type Decoder struct {
-	reader       *csv.Reader
-	columnTypes  []string
-	columnNames  []string
-	comma        rune
-	heading      bool
-	input        spec.InputStream
-	timeformat   string
-	timeLocation *time.Location
-	tableName    string
-	charset      encoding.Encoding
+	reader        *csv.Reader
+	columnTypes   []string
+	columnNames   []string
+	comma         rune
+	heading       bool
+	headerColumns bool
+	input         spec.InputStream
+	timeformat    string
+	timeLocation  *time.Location
+	tableName     string
+	charset       encoding.Encoding
 
 	headerNames []string
 	headerTypes []string
@@ -60,6 +61,10 @@ func (dec *Decoder) SetHeading(skipHeading bool) {
 
 func (dec *Decoder) SetHeader(skipHeader bool) {
 	dec.heading = skipHeader
+}
+
+func (dec *Decoder) SetHeaderColumns(headerColumns bool) {
+	dec.headerColumns = headerColumns
 }
 
 func (dec *Decoder) SetDelimiter(newDelimiter string) {
@@ -96,18 +101,25 @@ func (dec *Decoder) Open() {
 	}
 
 	if dec.heading { // if the first row is a header
-		dec.headerNames, _ = dec.reader.Read()
+		if header, _ := dec.reader.Read(); dec.headerColumns {
+			dec.headerNames = header
+		}
 	}
 
 	if len(dec.headerNames) <= len(dec.columnNames) {
-		for _, colName := range dec.headerNames {
-			colName = strings.ToUpper(colName)
-			if colIdx := slices.Index(dec.columnNames, colName); colIdx >= 0 {
-				dec.headerTypes = append(dec.headerTypes, dec.columnTypes[colIdx])
-			} else {
-				dec.headerErr = fmt.Errorf("CSV header '%s' not found in columns of table %q", colName, dec.tableName)
-				break
+		if dec.heading && dec.headerColumns {
+			for _, colName := range dec.headerNames {
+				colName = strings.ToUpper(colName)
+				if colIdx := slices.Index(dec.columnNames, colName); colIdx >= 0 {
+					dec.headerTypes = append(dec.headerTypes, dec.columnTypes[colIdx])
+				} else {
+					dec.headerErr = fmt.Errorf("CSV header '%s' not found in columns of table %q", colName, dec.tableName)
+					break
+				}
 			}
+		} else {
+			dec.headerNames = dec.columnNames
+			dec.headerTypes = dec.columnTypes
 		}
 	}
 }

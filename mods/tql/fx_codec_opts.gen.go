@@ -31,6 +31,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "globalOptions", Func: opts.GlobalOptions},
 	{Name: "gridSize", Func: opts.GridSize},
 	{Name: "header", Func: opts.Header},
+	{Name: "headerColumns", Func: opts.HeaderColumns},
 	{Name: "heading", Func: opts.Heading},
 	{Name: "html", Func: opts.Html},
 	{Name: "icon", Func: opts.Icon},

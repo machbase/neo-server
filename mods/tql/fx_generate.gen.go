@@ -282,6 +282,7 @@ func NewNode(task *Task) *Node {
 		"globalOptions":       x.gen_globalOptions,
 		"gridSize":            x.gen_gridSize,
 		"header":              x.gen_header,
+		"headerColumns":       x.gen_headerColumns,
 		"heading":             x.gen_heading,
 		"html":                x.gen_html,
 		"icon":                x.gen_icon,
@@ -4314,6 +4315,21 @@ func (x *Node) gen_header(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.Header(p0)
+	return ret, nil
+}
+
+// gen_headerColumns
+//
+// syntax: headerColumns(bool)
+func (x *Node) gen_headerColumns(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("headerColumns", 1, len(args))
+	}
+	p0, err := convBool(args, 0, "headerColumns", "bool")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.HeaderColumns(p0)
 	return ret, nil
 }
 

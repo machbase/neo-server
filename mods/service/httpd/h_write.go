@@ -55,6 +55,11 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	compress = strString(ctx.Query("compress"), compress)
 	delimiter := strString(ctx.Query("delimiter"), ",")
 	heading := strBool(ctx.Query("heading"), false)
+	headerSkip := strBool(ctx.Query("headerSkip"), heading)
+	headerColumns := strBool(ctx.Query("headerColumns"), false)
+	if headerColumns {
+		headerSkip = true
+	}
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
@@ -108,7 +113,8 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.Timeformat(timeformat),
 		opts.TimeLocation(timeLocation),
 		opts.Delimiter(delimiter),
-		opts.Header(heading),
+		opts.Header(headerSkip),
+		opts.HeaderColumns(headerColumns),
 	}
 
 	var appender api.Appender

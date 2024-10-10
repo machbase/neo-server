@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,12 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		}
 	}()
 
+	headerSkip := false
+	headerColumns := false
+	delimiter := ","
+	timeformat := "ns"
+	tz := time.UTC
+
 	writePath := strings.ToUpper(strings.TrimPrefix(pk.TopicName, "db/write/"))
 	wp, err := util.ParseWritePath(writePath)
 	if err != nil {
@@ -66,14 +73,39 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
 		return
 	}
-	if wp.Format == "" && pk.ProtocolVersion == 5 && pk.Properties.ContentType != "" {
-		switch pk.Properties.ContentType {
-		case "text/csv":
-			wp.Format = "csv"
-		case "application/x-ndjson":
-			wp.Format = "ndjson"
-		case "application/json":
-			wp.Format = "json"
+	if pk.ProtocolVersion == 5 {
+		if wp.Format == "" && pk.Properties.ContentType == "application/json" {
+			switch pk.Properties.ContentType {
+			case "text/csv":
+				wp.Format = "csv"
+			case "application/x-ndjson":
+				wp.Format = "ndjson"
+			case "application/json":
+				wp.Format = "json"
+			}
+		}
+		for _, p := range pk.Properties.User {
+			switch p.Key {
+			case "format":
+				wp.Format = p.Val
+			case "compress":
+				wp.Compress = p.Val
+			case "delimiter":
+				delimiter = p.Val
+			case "timeformat":
+				timeformat = p.Val
+			case "tz":
+				tz, _ = util.ParseTimeLocation(p.Val, time.UTC)
+			case "heading":
+				headerSkip, _ = strconv.ParseBool(p.Val)
+			case "headerSkip":
+				headerSkip, _ = strconv.ParseBool(p.Val)
+			case "headerColumns":
+				headerColumns, _ = strconv.ParseBool(p.Val)
+				if headerColumns {
+					headerSkip = true
+				}
+			}
 		}
 	}
 	if wp.Format == "" {
@@ -161,11 +193,12 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 
 	codecOpts := []opts.Option{
 		opts.InputStream(inputStream),
-		opts.Timeformat("ns"),
-		opts.TimeLocation(time.UTC),
+		opts.Timeformat(timeformat),
+		opts.TimeLocation(tz),
 		opts.TableName(wp.Table),
-		opts.Delimiter(","),
-		opts.Heading(false),
+		opts.Delimiter(delimiter),
+		opts.Header(headerSkip),
+		opts.HeaderColumns(headerColumns),
 	}
 
 	var recNo int

@@ -50,13 +50,14 @@ func TestCsvDecoder(t *testing.T) {
 
 func TestCsvDecoderTimeformat(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       []string
-		expects     [][]interface{}
-		expectNames []string
-		timeformat  string
-		tz          *time.Location
-		header      bool
+		name          string
+		input         []string
+		expects       [][]interface{}
+		expectNames   []string
+		timeformat    string
+		tz            *time.Location
+		header        bool
+		headerColumns bool
 	}{
 		{
 			name: "nanosecond",
@@ -83,8 +84,9 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 				{time.Unix(0, 1670380342000000000), 1.0001},
 				{time.Unix(0, 1670380343000000000), 2.0002},
 			},
-			expectNames: []string{"TIME", "VALUE"},
-			header:      true,
+			expectNames:   []string{"TIME", "VALUE"},
+			header:        true,
+			headerColumns: true,
 		},
 		{
 			name: "second timeformat",
@@ -137,12 +139,13 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)
 		dec.SetHeader(tt.header)
+		dec.SetHeaderColumns(tt.headerColumns)
 		dec.SetColumnTypes(mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_DATETIME, mach.DB_COLUMN_TYPE_DOUBLE)
 		dec.SetColumns("NAME", "TIME", "VALUE")
 		dec.Open()
 		for _, expect := range tt.expects {
 			fields, names, err := dec.NextRow()
-			require.Nil(t, err)
+			require.Nil(t, err, fmt.Sprintf("Test case: %s", tt.name))
 			require.Equal(t, expect, fields, fmt.Sprintf("Test case: %s", tt.name))
 			if tt.header && len(tt.expectNames) > 0 {
 				require.Equal(t, tt.expectNames, names)
