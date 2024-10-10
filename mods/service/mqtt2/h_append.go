@@ -26,7 +26,8 @@ type AppenderWrapper struct {
 }
 
 func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
-	writePath := strings.ToUpper(strings.TrimPrefix(pk.TopicName, "db/append/"))
+	writePath := strings.TrimPrefix(strings.TrimPrefix(pk.TopicName, "db/append/"), "db/write/")
+	writePath = strings.ToUpper(writePath)
 	wp, err := util.ParseWritePath(writePath)
 	if err != nil {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, err.Error())
