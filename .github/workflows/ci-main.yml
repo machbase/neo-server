@@ -9,6 +9,8 @@ on:
       - ./**/*.go
       - .github/workflows/ci-main.yml
       - ./magefiles/*.txt
+  pull_request:
+    types: [ closed ]
   
 
 jobs:
