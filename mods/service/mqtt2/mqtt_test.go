@@ -149,9 +149,12 @@ func TestQuery(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		expectRows = 1
-		runTest(t, &tt)
+	for _, ver := range []uint{4, 5} {
+		for _, tt := range tests {
+			expectRows = 1
+			tt.Ver = ver
+			runTest(t, &tt)
+		}
 	}
 }
 
@@ -166,6 +169,16 @@ func TestWrite(t *testing.T) {
 			switch sqlText {
 			case "INSERT INTO EXAMPLE(NAME,TIME,VALUE) VALUES(?,?,?)":
 				if len(params) == 3 && strings.HasPrefix(params[0].(string), "mycar") && params[2] == values[count] {
+					rt.ErrFunc = func() error { return nil }
+					rt.RowsAffectedFunc = func() int64 { return 1 }
+					rt.MessageFunc = func() string { return "a row inserted" }
+					count++
+				} else {
+					t.Log("ExecFunc => unexpected insert params:", params)
+					t.Fatal(sqlText)
+				}
+			case "INSERT INTO EXAMPLE(TIME,VALUE) VALUES(?,?)":
+				if len(params) == 2 && params[1] == values[count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
 					rt.MessageFunc = func() string { return "a row inserted" }
@@ -244,51 +257,93 @@ func TestWrite(t *testing.T) {
 		},
 	}
 
-	jsonData := []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)
-	csvData := []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")
-	ilpData := []byte("mycar speed=1.2345 167038034500000\nmycar speed=2.3456 167038034500000\n")
-	jsonGzipData := compress(jsonData)
-	csvGzipData := compress(csvData)
-
-	tests := []TestCase{
+	tests := []struct {
+		Vers        []uint
+		TC          TestCase
+		ExpectCount int
+	}{
 		{
-			Name:     "db/write/example json",
-			ConnMock: connMock,
-			Topic:    "db/write/example",
-			Payload:  jsonData,
+			TC: TestCase{
+				Name:     "db/write/example json",
+				ConnMock: connMock,
+				Topic:    "db/write/example",
+				Payload:  []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`),
+			},
+			ExpectCount: 2,
 		},
 		{
-			Name:     "db/write/example csv",
-			ConnMock: connMock,
-			Topic:    "db/write/example:csv",
-			Payload:  csvData,
+			TC: TestCase{
+				Name:     "db/write/example csv",
+				ConnMock: connMock,
+				Topic:    "db/write/example:csv",
+				Payload:  []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456"),
+			},
+			ExpectCount: 2,
 		},
 		{
-			Name:     "db/write/example json gzip",
-			ConnMock: connMock,
-			Topic:    "db/write/example:json:gzip",
-			Payload:  jsonGzipData,
+			TC: TestCase{
+				Name:       "db/write/example csv v5",
+				ConnMock:   connMock,
+				Topic:      "db/write/example",
+				Properties: map[string]string{"format": "csv", "timeformat": "s"},
+				Payload:    []byte("mycar,1705291859,1.2345\nmycar,170529186,2.3456"),
+			},
+			ExpectCount: 2,
+			Vers:        []uint{5},
 		},
 		{
-			Name:     "db/write/example csv gzip",
-			ConnMock: connMock,
-			Topic:    "db/write/example:csv:gzip",
-			Payload:  csvGzipData,
+			TC: TestCase{
+				Name:       "db/write/example csv v5-time-value",
+				ConnMock:   connMock,
+				Topic:      "db/write/example",
+				Properties: map[string]string{"format": "csv", "timeformat": "s", "header": "columns"},
+				Payload:    []byte("TIME,VALUE\n1705291859,1.2345\n170529186,2.3456"),
+			},
+			ExpectCount: 2,
+			Vers:        []uint{5},
 		},
 		{
-			Name:     "db/metrics/example ILP",
-			ConnMock: connMock,
-			Topic:    "db/metrics/example",
-			Payload:  ilpData,
+			TC: TestCase{
+				Name:     "db/write/example json gzip",
+				ConnMock: connMock,
+				Topic:    "db/write/example:json:gzip",
+				Payload:  compress([]byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:     "db/write/example csv gzip",
+				ConnMock: connMock,
+				Topic:    "db/write/example:csv:gzip",
+				Payload:  compress([]byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:     "db/metrics/example ILP",
+				ConnMock: connMock,
+				Topic:    "db/metrics/example",
+				Payload:  []byte("mycar speed=1.2345 167038034500000\nmycar speed=2.3456 167038034500000\n"),
+			},
+			ExpectCount: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		count = 0
-		runTest(t, &tt)
-		if count != 2 {
-			t.Logf("Test %q count should be 2, got %d", tt.Name, count)
-			t.Fail()
+		vers := tt.Vers
+		if len(vers) == 0 {
+			vers = []uint{4, 5}
+		}
+		for _, ver := range vers {
+			tt.TC.Ver = ver
+			runTest(t, &tt.TC)
+			if count != tt.ExpectCount {
+				t.Logf("Test %q count should be %d, got %d", tt.TC.Name, tt.ExpectCount, count)
+				t.Fail()
+			}
 		}
 	}
 }
@@ -416,12 +471,15 @@ func TestAppend(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		count = 0
-		runTest(t, &tt)
-		if count != 2 {
-			t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
-			t.Fail()
+	for _, ver := range []uint{4, 5} {
+		for _, tt := range tests {
+			count = 0
+			tt.Ver = ver
+			runTest(t, &tt)
+			if count != 2 {
+				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
+				t.Fail()
+			}
 		}
 	}
 }
@@ -482,12 +540,15 @@ func TestTql(t *testing.T) {
 			Payload:  csvData,
 		},
 	}
-	for _, tt := range tests {
-		count = 0
-		runTest(t, &tt)
-		if count != 2 {
-			t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
-			t.Fail()
+	for _, ver := range []uint{4, 5} {
+		for _, tt := range tests {
+			count = 0
+			tt.Ver = ver
+			runTest(t, &tt)
+			if count != 2 {
+				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
+				t.Fail()
+			}
 		}
 	}
 }

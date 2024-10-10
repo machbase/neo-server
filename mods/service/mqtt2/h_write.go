@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -74,16 +73,6 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 	if pk.ProtocolVersion == 5 {
-		if wp.Format == "" && pk.Properties.ContentType == "application/json" {
-			switch pk.Properties.ContentType {
-			case "text/csv":
-				wp.Format = "csv"
-			case "application/x-ndjson":
-				wp.Format = "ndjson"
-			case "application/json":
-				wp.Format = "json"
-			}
-		}
 		for _, p := range pk.Properties.User {
 			switch p.Key {
 			case "format":
@@ -96,14 +85,14 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 				timeformat = p.Val
 			case "tz":
 				tz, _ = util.ParseTimeLocation(p.Val, time.UTC)
-			case "heading":
-				headerSkip, _ = strconv.ParseBool(p.Val)
-			case "headerSkip":
-				headerSkip, _ = strconv.ParseBool(p.Val)
-			case "headerColumns":
-				headerColumns, _ = strconv.ParseBool(p.Val)
-				if headerColumns {
+			case "header":
+				switch strings.ToLower(p.Val) {
+				case "skip":
 					headerSkip = true
+				case "column", "columns":
+					headerColumns = true
+					headerSkip = true
+				default:
 				}
 			}
 		}
@@ -297,10 +286,10 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		}
 		recNo++
 
-		if len(cols) > 0 && !slices.Equal(prevCols, cols) {
+		if len(cols) != len(prevCols) && !slices.Equal(prevCols, cols) {
 			prevCols = cols
 			_hold := make([]string, len(cols))
-			for i := range desc.Columns {
+			for i := range _hold {
 				_hold[i] = "?"
 			}
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))

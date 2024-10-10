@@ -54,11 +54,17 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	format = strString(ctx.Query("format"), format)
 	compress = strString(ctx.Query("compress"), compress)
 	delimiter := strString(ctx.Query("delimiter"), ",")
-	heading := strBool(ctx.Query("heading"), false)
-	headerSkip := strBool(ctx.Query("headerSkip"), heading)
-	headerColumns := strBool(ctx.Query("headerColumns"), false)
-	if headerColumns {
+
+	// check `heading` for backward compatibility
+	headerSkip := strBool(ctx.Query("heading"), false)
+	headerColumns := false
+	switch strings.ToLower(ctx.Query("header")) {
+	case "skip":
 		headerSkip = true
+	case "column", "columns":
+		headerColumns = true
+		headerSkip = true
+	default:
 	}
 
 	conn, err := svr.getTrustConnection(ctx)
