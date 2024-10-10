@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +66,16 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
 		return
 	}
+	if wp.Format == "" && pk.ProtocolVersion == 5 && pk.Properties.ContentType != "" {
+		switch pk.Properties.ContentType {
+		case "text/csv":
+			wp.Format = "csv"
+		case "application/x-ndjson":
+			wp.Format = "ndjson"
+		case "application/json":
+			wp.Format = "json"
+		}
+	}
 	if wp.Format == "" {
 		wp.Format = "json"
 	}
@@ -72,6 +83,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	switch wp.Format {
 	case "json":
 	case "csv":
+	case "ndjson":
 	default:
 		rsp.Reason = fmt.Sprintf("%s unsupported format %q", pk.TopicName, wp.Format)
 		s.log.Warnf(cl.Net.Remote, rsp.Reason)
@@ -177,6 +189,9 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		// ignore json decoder error, the payload json can be non-full-document json.
 		dec.Decode(&wr)
 		replyTopic = wr.ReplyTo
+		if pk.ProtocolVersion == 5 && pk.Properties.ResponseTopic != "" {
+			replyTopic = pk.Properties.ResponseTopic
+		}
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
@@ -236,8 +251,9 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 
+	var prevCols []string
 	for {
-		vals, _, err := decoder.NextRow()
+		vals, cols, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()
@@ -248,6 +264,14 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		}
 		recNo++
 
+		if len(cols) > 0 && !slices.Equal(prevCols, cols) {
+			prevCols = cols
+			_hold := make([]string, len(cols))
+			for i := range desc.Columns {
+				_hold[i] = "?"
+			}
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
+		}
 		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 			rsp.Reason = result.Err().Error()
 			s.log.Warn(cl.Net.Remote, pk.TopicName, rsp.Reason)
