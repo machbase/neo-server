@@ -33,6 +33,38 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 
+	headerSkip := false
+	headerColumns := false
+	delimiter := ","
+	timeformat := "ns"
+	tz := time.UTC
+
+	if pk.ProtocolVersion == 5 {
+		for _, p := range pk.Properties.User {
+			switch p.Key {
+			case "format":
+				wp.Format = p.Val
+			case "compress":
+				wp.Compress = p.Val
+			case "delimiter":
+				delimiter = p.Val
+			case "timeformat":
+				timeformat = p.Val
+			case "tz":
+				tz, _ = util.ParseTimeLocation(p.Val, time.UTC)
+			case "header":
+				switch strings.ToLower(p.Val) {
+				case "skip":
+					headerSkip = true
+				case "column", "columns":
+					s.log.Warn(cl.Net.Remote, "header=columns is not allowed in append method")
+					headerSkip = true
+				default:
+				}
+			}
+		}
+	}
+
 	if wp.Format == "" {
 		wp.Format = "json"
 	}
@@ -133,13 +165,14 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	}
 	codecOpts := []opts.Option{
 		opts.InputStream(inputStream),
-		opts.Timeformat("ns"),
-		opts.TimeLocation(time.UTC),
+		opts.Timeformat(timeformat),
+		opts.TimeLocation(tz),
 		opts.TableName(wp.Table),
 		opts.Columns(colNames...),
 		opts.ColumnTypes(colTypes...),
-		opts.Delimiter(","),
-		opts.Heading(false),
+		opts.Delimiter(delimiter),
+		opts.Header(headerSkip),
+		opts.HeaderColumns(headerColumns),
 	}
 
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)

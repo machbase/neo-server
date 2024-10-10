@@ -444,42 +444,103 @@ func TestAppend(t *testing.T) {
 			ConnMock: connMock,
 			Topic:    "db/append/example",
 			Payload:  jsonData,
+			Ver:      uint(4),
+		},
+		{
+			Name:     "db/append/example",
+			ConnMock: connMock,
+			Topic:    "db/append/example",
+			Payload:  jsonData,
+			Ver:      uint(5),
+		},
+		{
+			Name:       "db/write/example?method=append",
+			ConnMock:   connMock,
+			Topic:      "db/write/example",
+			Payload:    jsonData,
+			Ver:        uint(5),
+			Properties: map[string]string{"method": "append"},
 		},
 		{
 			Name:     "db/append/example json",
 			ConnMock: connMock,
 			Topic:    "db/append/example:json",
 			Payload:  jsonData,
+			Ver:      uint(4),
+		},
+		{
+			Name:     "db/append/example json",
+			ConnMock: connMock,
+			Topic:    "db/append/example:json",
+			Payload:  jsonData,
+			Ver:      uint(5),
 		},
 		{
 			Name:     "db/append/example json gzip",
 			ConnMock: connMock,
 			Topic:    "db/append/example:json:gzip",
 			Payload:  jsonGzipData,
+			Ver:      uint(4),
+		},
+		{
+			Name:     "db/append/example json gzip",
+			ConnMock: connMock,
+			Topic:    "db/append/example:json:gzip",
+			Payload:  jsonGzipData,
+			Ver:      uint(5),
+		},
+		{
+			Name:       "db/write/example?method=append&format=json&compress=gzip",
+			ConnMock:   connMock,
+			Topic:      "db/write/example",
+			Payload:    jsonGzipData,
+			Ver:        uint(5),
+			Properties: map[string]string{"method": "append", "format": "json", "compress": "gzip"},
 		},
 		{
 			Name:     "db/append/example csv",
 			ConnMock: connMock,
 			Topic:    "db/append/example:csv",
 			Payload:  csvData,
+			Ver:      uint(4),
+		},
+		{
+			Name:     "db/append/example csv",
+			ConnMock: connMock,
+			Topic:    "db/append/example:csv",
+			Payload:  csvData,
+			Ver:      uint(5),
 		},
 		{
 			Name:     "db/append/example csv gzip",
 			ConnMock: connMock,
 			Topic:    "db/append/example:csv: gzip",
 			Payload:  csvGzipData,
+			Ver:      uint(4),
+		},
+		{
+			Name:       "db/write/example?format=csv&method=append",
+			ConnMock:   connMock,
+			Topic:      "db/write/example",
+			Payload:    csvData,
+			Ver:        uint(5),
+			Properties: map[string]string{"method": "append", "format": "csv"},
+		},
+		{
+			Name:     "db/append/example csv gzip",
+			ConnMock: connMock,
+			Topic:    "db/append/example:csv: gzip",
+			Payload:  csvGzipData,
+			Ver:      uint(5),
 		},
 	}
 
-	for _, ver := range []uint{4, 5} {
-		for _, tt := range tests {
-			count = 0
-			tt.Ver = ver
-			runTest(t, &tt)
-			if count != 2 {
-				t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
-				t.Fail()
-			}
+	for _, tt := range tests {
+		count = 0
+		runTest(t, &tt)
+		if count != 2 {
+			t.Logf("Test %q expect 2 rows, got %d", tt.Name, count)
+			t.Fail()
 		}
 	}
 }

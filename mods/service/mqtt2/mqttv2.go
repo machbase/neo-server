@@ -312,7 +312,20 @@ func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
 	if pk.TopicName == "db/query" {
 		s.handleQuery(cl, pk)
 	} else if strings.HasPrefix(pk.TopicName, "db/write/") {
-		s.handleWrite(cl, pk)
+		useAppend := false
+		if pk.ProtocolVersion == 5 {
+			for _, p := range pk.Properties.User {
+				if p.Key == "method" && p.Val == "append" {
+					useAppend = true
+					break
+				}
+			}
+		}
+		if useAppend {
+			s.handleAppend(cl, pk)
+		} else {
+			s.handleWrite(cl, pk)
+		}
 	} else if strings.HasPrefix(pk.TopicName, "db/append/") {
 		s.handleAppend(cl, pk)
 	} else if strings.HasPrefix(pk.TopicName, "db/metrics/") {
