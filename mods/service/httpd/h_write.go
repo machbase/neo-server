@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,8 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	format := "json"
 	if ctx.ContentType() == "text/csv" {
 		format = "csv"
+	} else if ctx.ContentType() == "application/x-ndjson" {
+		format = "ndjson"
 	}
 	compress := "-"
 	switch ctx.Request.Header.Get("Content-Encoding") {
@@ -105,7 +108,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.Timeformat(timeformat),
 		opts.TimeLocation(timeLocation),
 		opts.Delimiter(delimiter),
-		opts.Heading(heading),
+		opts.Header(heading),
 	}
 
 	var appender api.Appender
@@ -207,8 +210,10 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		return
 	}
 
+	var prevCols []string
+
 	for {
-		vals, err := decoder.NextRow()
+		vals, cols, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()
@@ -221,6 +226,14 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		recNo++
 
 		if method == "insert" {
+			if len(cols) > 0 && !slices.Equal(prevCols, cols) {
+				prevCols = cols
+				_hold := make([]string, len(cols))
+				for i := range desc.Columns {
+					_hold[i] = "?" // for prepared statement
+				}
+				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
+			}
 			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
 				rsp.Reason = result.Err().Error()
 				rsp.Elapse = time.Since(tick).String()

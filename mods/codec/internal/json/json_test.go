@@ -33,7 +33,7 @@ func TestDecoder(t *testing.T) {
 	dec.SetColumnTypes("string", "datetime", "double", "int", "int16", "int32", "int64")
 	dec.Open()
 
-	rec, err := dec.NextRow()
+	rec, _, err := dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name1", rec[0])
 	require.Equal(t, time.Unix(1676528839, 0), rec[1])
@@ -43,7 +43,7 @@ func TestDecoder(t *testing.T) {
 	require.Equal(t, int32(12340), rec[5])
 	require.Equal(t, int64(123456), rec[6])
 
-	rec, err = dec.NextRow()
+	rec, _, err = dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name2", rec[0])
 	require.Equal(t, time.Unix(1676528840, 0), rec[1])
@@ -53,7 +53,7 @@ func TestDecoder(t *testing.T) {
 	require.Equal(t, int32(23450), rec[5])
 	require.Equal(t, int64(234567), rec[6])
 
-	_, err = dec.NextRow()
+	_, _, err = dec.NextRow()
 	require.Equal(t, io.EOF, err)
 }
 
@@ -77,19 +77,19 @@ func TestDecoderNano(t *testing.T) {
 	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
-	rec, err := dec.NextRow()
+	rec, _, err := dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name1", rec[0])
 	require.Equal(t, time.Unix(0, 1676432363333444555), rec[1])
 	require.Equal(t, 0.1234, rec[2])
 
-	rec, err = dec.NextRow()
+	rec, _, err = dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name2", rec[0])
 	require.Equal(t, time.Unix(0, 1676432364666777888), rec[1])
 	require.Equal(t, 0.2345, rec[2])
 
-	_, err = dec.NextRow()
+	_, _, err = dec.NextRow()
 	require.Equal(t, io.EOF, err)
 }
 
@@ -106,19 +106,19 @@ func TestRowsOnlyDecoder(t *testing.T) {
 	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
-	rec, err := dec.NextRow()
+	rec, _, err := dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name1", rec[0])
 	require.Equal(t, time.Unix(1676528839, 0), rec[1])
 	require.Equal(t, 0.1234, rec[2])
 
-	rec, err = dec.NextRow()
+	rec, _, err = dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name2", rec[0])
 	require.Equal(t, time.Unix(1676528840, 0), rec[1])
 	require.Equal(t, 0.2345, rec[2])
 
-	_, err = dec.NextRow()
+	_, _, err = dec.NextRow()
 	require.Equal(t, io.EOF, err)
 }
 
@@ -132,13 +132,13 @@ func TestSingleRowDecoder(t *testing.T) {
 	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
 	dec.Open()
 
-	rec, err := dec.NextRow()
+	rec, _, err := dec.NextRow()
 	require.Nil(t, err)
 	require.Equal(t, "name1", rec[0])
 	require.Equal(t, time.Unix(1676528839, 0), rec[1])
 	require.Equal(t, 0.1234, rec[2])
 
-	_, err = dec.NextRow()
+	_, _, err = dec.NextRow()
 	require.Equal(t, io.EOF, err)
 }
 

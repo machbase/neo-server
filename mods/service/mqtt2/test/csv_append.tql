@@ -1,0 +1,2 @@
+CSV(payload())
+APPEND( table("example") )

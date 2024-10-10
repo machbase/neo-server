@@ -190,7 +190,7 @@ func doImport(ctx *action.ActionContext) {
 	hold := []string{}
 	tick := time.Now()
 	for ctx.Ctx.Err() == nil {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				ctx.Println("ERR", err.Error())

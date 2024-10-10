@@ -51,16 +51,16 @@ func (dec *Decoder) SetColumnTypes(types ...string) {
 func (dec *Decoder) Open() {
 }
 
-func (dec *Decoder) NextRow() ([]any, error) {
+func (dec *Decoder) NextRow() ([]any, []string, error) {
 	fields, err := dec.nextRow0()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dec.nrow++
 
 	if len(fields) != len(dec.columnTypes) {
-		return nil, fmt.Errorf("rows[%d] number of columns not matched (%d); table '%s' has %d columns",
+		return nil, nil, fmt.Errorf("rows[%d] number of columns not matched (%d); table '%s' has %d columns",
 			dec.nrow, len(fields), dec.tableName, len(dec.columnTypes))
 	}
 
@@ -76,17 +76,17 @@ func (dec *Decoder) NextRow() ([]any, error) {
 			case string:
 				values[i] = v
 			default:
-				return nil, fmt.Errorf("rows[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
+				return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
 			}
 		case mach.DB_COLUMN_TYPE_DATETIME:
 			if v, ok := field.(string); ok && dec.timeformat != "" {
 				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
-					return nil, fmt.Errorf("rows[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
+					return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
 				}
 			} else {
 				ts, err := util.ToInt64(field)
 				if err != nil {
-					return nil, fmt.Errorf("rows[%d] column[%d] is not datetime convertible, %s", dec.nrow, i, err.Error())
+					return nil, nil, fmt.Errorf("rows[%d] column[%d] is not datetime convertible, %s", dec.nrow, i, err.Error())
 				}
 				switch dec.timeformat {
 				case "s":
@@ -102,53 +102,53 @@ func (dec *Decoder) NextRow() ([]any, error) {
 		case mach.DB_COLUMN_TYPE_FLOAT:
 			values[i], err = util.ToFloat32(field)
 			if err != nil {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_DOUBLE:
 			values[i], err = util.ToFloat64(field)
 			if err != nil {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_LONG, "int64":
 			values[i], err = util.ToInt64(field)
 			if err != nil {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_ULONG:
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = uint64(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_SHORT, "int16":
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = int16(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_USHORT:
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = uint16(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_INTEGER, "int":
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = int(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case "int32":
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = int32(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_UINTEGER:
 			if v, err := util.ToInt64(field); err == nil {
 				values[i] = uint(v)
 			} else {
-				return nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
+				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
 			}
 		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
 			switch v := field.(type) {
@@ -156,13 +156,13 @@ func (dec *Decoder) NextRow() ([]any, error) {
 				addr := net.ParseIP(v)
 				values[i] = addr
 			default:
-				return nil, fmt.Errorf("rows[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
+				return nil, nil, fmt.Errorf("rows[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
 			}
 		default:
-			return nil, fmt.Errorf("rows[%d] column[%d] unsupported column type; %s", dec.nrow, i, dec.columnTypes[i])
+			return nil, nil, fmt.Errorf("rows[%d] column[%d] unsupported column type; %s", dec.nrow, i, dec.columnTypes[i])
 		}
 	}
-	return values, nil
+	return values, nil, nil
 }
 
 func (dec *Decoder) nextRow0() ([]any, error) {

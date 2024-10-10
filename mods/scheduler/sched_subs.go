@@ -445,7 +445,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	for {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = fmt.Sprintf("%s %s", ent.TaskTql, err.Error())
@@ -539,7 +539,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 	recno := uint64(0)
 	for {
 		var values []any
-		if vals, err := decoder.NextRow(); err != nil {
+		if vals, _, err := decoder.NextRow(); err != nil {
 			if err != io.EOF {
 				rsp.Reason = fmt.Sprintf("append %s, %s", ent.wd.Format, err.Error())
 				ent.log.Warnf("append %s, %s", ent.wd.Format, err.Error())

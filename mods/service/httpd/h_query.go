@@ -108,7 +108,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		opts.Timeformat(req.Timeformat),
 		opts.Precision(req.Precision),
 		opts.Rownum(req.Rownum),
-		opts.Heading(req.Heading),
+		opts.Header(req.Heading),
 		opts.TimeLocation(timeLocation),
 		opts.Delimiter(","),
 		opts.BoxStyle("default"),

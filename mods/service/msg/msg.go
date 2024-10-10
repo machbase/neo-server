@@ -5,7 +5,7 @@ type QueryRequest struct {
 	ReplyTo      string `json:"reply,omitempty"`       // for mqtt query only
 	RowsFlatten  bool   `json:"rowsFlatten,omitempty"` // json output only for http, mqtt
 	RowsArray    bool   `json:"rowsArray,omitempty"`   // json output only for http, mqtt
-	Transpose    bool   `json:"transpose,omitempty"`   // json ouput only for http, mqtt
+	Transpose    bool   `json:"transpose,omitempty"`   // json output only for http, mqtt
 	Timeformat   string `json:"timeformat,omitempty"`
 	TimeLocation string `json:"tz,omitempty"`
 	Format       string `json:"format,omitempty"`

@@ -104,7 +104,7 @@ func BriefCount(count int) Option {
 
 // SetCharsetEncoding
 //
-//	mods/codec/internal/csv/csv_decode.go:39:1
+//	mods/codec/internal/csv/csv_decode.go:44:1
 type CanSetCharsetEncoding interface {
 	SetCharsetEncoding(charset encoding.Encoding)
 }
@@ -224,9 +224,10 @@ func ChartOption(opt string) Option {
 
 // SetColumnTypes
 //
-//	mods/codec/internal/csv/csv_decode.go:73:1
+//	mods/codec/internal/csv/csv_decode.go:78:1
 //	mods/codec/internal/json/json_decode.go:47:1
 //	mods/codec/internal/json/json_encode.go:84:1
+//	mods/codec/internal/ndjson/decode.go:49:1
 //	mods/codec/internal/ndjson/encode.go:78:1
 type CanSetColumnTypes interface {
 	SetColumnTypes(types ...string)
@@ -243,10 +244,11 @@ func ColumnTypes(types ...string) Option {
 // SetColumns
 //
 //	mods/codec/internal/box/box_encode.go:85:1
-//	mods/codec/internal/csv/csv_decode.go:69:1
+//	mods/codec/internal/csv/csv_decode.go:74:1
 //	mods/codec/internal/csv/csv_encode.go:85:1
 //	mods/codec/internal/json/json_encode.go:80:1
 //	mods/codec/internal/markdown/md_encode.go:60:1
+//	mods/codec/internal/ndjson/decode.go:45:1
 //	mods/codec/internal/ndjson/encode.go:74:1
 type CanSetColumns interface {
 	SetColumns(names ...string)
@@ -277,16 +279,16 @@ func DataZoom(typ string, minPercentage float32, maxPercentage float32) Option {
 
 // SetDelimiter
 //
-//	mods/codec/internal/csv/csv_decode.go:60:1
+//	mods/codec/internal/csv/csv_decode.go:65:1
 //	mods/codec/internal/csv/csv_encode.go:80:1
 type CanSetDelimiter interface {
-	SetDelimiter(delimiter string)
+	SetDelimiter(newDelimiter string)
 }
 
-func Delimiter(delimiter string) Option {
+func Delimiter(newDelimiter string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetDelimiter); ok {
-			_o.SetDelimiter(delimiter)
+			_o.SetDelimiter(newDelimiter)
 		}
 	}
 }
@@ -339,7 +341,7 @@ func GridSize(args ...float64) Option {
 // SetHeader
 //
 //	mods/codec/internal/box/box_encode.go:65:1
-//	mods/codec/internal/csv/csv_decode.go:56:1
+//	mods/codec/internal/csv/csv_decode.go:61:1
 //	mods/codec/internal/csv/csv_encode.go:76:1
 //	mods/codec/internal/json/json_encode.go:72:1
 //	mods/codec/internal/ndjson/encode.go:66:1
@@ -358,7 +360,7 @@ func Header(show bool) Option {
 // SetHeading
 //
 //	mods/codec/internal/box/box_encode.go:69:1
-//	mods/codec/internal/csv/csv_decode.go:52:1
+//	mods/codec/internal/csv/csv_decode.go:57:1
 //	mods/codec/internal/csv/csv_encode.go:72:1
 //	mods/codec/internal/json/json_encode.go:76:1
 //	mods/codec/internal/ndjson/encode.go:70:1
@@ -421,8 +423,9 @@ func InitialLocation(latlon *nums.LatLon, zoomLevel int) Option {
 
 // SetInputStream
 //
-//	mods/codec/internal/csv/csv_decode.go:35:1
+//	mods/codec/internal/csv/csv_decode.go:40:1
 //	mods/codec/internal/json/json_decode.go:31:1
+//	mods/codec/internal/ndjson/decode.go:29:1
 type CanSetInputStream interface {
 	SetInputStream(in spec.InputStream)
 }
@@ -754,8 +757,9 @@ func Subtitle(str string) Option {
 
 // SetTableName
 //
-//	mods/codec/internal/csv/csv_decode.go:65:1
+//	mods/codec/internal/csv/csv_decode.go:70:1
 //	mods/codec/internal/json/json_decode.go:43:1
+//	mods/codec/internal/ndjson/decode.go:41:1
 type CanSetTableName interface {
 	SetTableName(tableName string)
 }
@@ -831,11 +835,12 @@ func TileTemplate(url string) Option {
 // SetTimeLocation
 //
 //	mods/codec/internal/box/box_encode.go:53:1
-//	mods/codec/internal/csv/csv_decode.go:47:1
+//	mods/codec/internal/csv/csv_decode.go:52:1
 //	mods/codec/internal/csv/csv_encode.go:59:1
 //	mods/codec/internal/json/json_decode.go:39:1
 //	mods/codec/internal/json/json_encode.go:57:1
 //	mods/codec/internal/markdown/md_encode.go:68:1
+//	mods/codec/internal/ndjson/decode.go:37:1
 //	mods/codec/internal/ndjson/encode.go:51:1
 type CanSetTimeLocation interface {
 	SetTimeLocation(tz *time.Location)
@@ -853,11 +858,12 @@ func TimeLocation(tz *time.Location) Option {
 //
 //	mods/codec/internal/box/box_encode.go:49:1
 //	mods/codec/internal/chart/chartcompat.go:285:1
-//	mods/codec/internal/csv/csv_decode.go:43:1
+//	mods/codec/internal/csv/csv_decode.go:48:1
 //	mods/codec/internal/csv/csv_encode.go:55:1
 //	mods/codec/internal/json/json_decode.go:35:1
 //	mods/codec/internal/json/json_encode.go:50:1
 //	mods/codec/internal/markdown/md_encode.go:64:1
+//	mods/codec/internal/ndjson/decode.go:33:1
 //	mods/codec/internal/ndjson/encode.go:44:1
 type CanSetTimeformat interface {
 	SetTimeformat(f string)

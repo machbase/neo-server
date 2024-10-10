@@ -78,7 +78,7 @@ func TestJsonDecoder(t *testing.T) {
 		dec.SetColumnTypes("string", "datetime", "double")
 		dec.Open()
 		for _, expect := range tt.expects {
-			fields, err := dec.NextRow()
+			fields, _, err := dec.NextRow()
 			require.Nil(t, err)
 			require.Equal(t, expect, fields)
 		}

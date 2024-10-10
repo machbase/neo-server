@@ -345,7 +345,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	}
 
 	for {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				rsp.Reason = err.Error()
@@ -489,7 +489,7 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 	recno := 0
 	for {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				peerLog.Warnf("---- append %s, %s", wp.Format, err.Error())

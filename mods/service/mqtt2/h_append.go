@@ -146,7 +146,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 
 	recNo := 0
 	for {
-		vals, err := decoder.NextRow()
+		vals, _, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				s.log.Warn(cl.Net.Remote, "append", wp.Format, err.Error())

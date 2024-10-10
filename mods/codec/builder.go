@@ -41,19 +41,26 @@ type RowsEncoder interface {
 }
 
 var (
-	_ RowsEncoder = &chart.Chart{}
-	_ RowsEncoder = &box.Exporter{}
-	_ RowsEncoder = &csv.Exporter{}
-	_ RowsEncoder = &markdown.Exporter{}
-	_ RowsEncoder = &html.Exporter{}
-	_ RowsEncoder = &geomap.GeoMap{}
-	_ RowsEncoder = &ndjson.Exporter{}
+	_ RowsEncoder = (*chart.Chart)(nil)
+	_ RowsEncoder = (*box.Exporter)(nil)
+	_ RowsEncoder = (*csv.Exporter)(nil)
+	_ RowsEncoder = (*markdown.Exporter)(nil)
+	_ RowsEncoder = (*html.Exporter)(nil)
+	_ RowsEncoder = (*geomap.GeoMap)(nil)
+	_ RowsEncoder = (*ndjson.Exporter)(nil)
 )
 
 type RowsDecoder interface {
 	Open()
-	NextRow() ([]any, error)
+	// NextRows returns the current row's values and column names.
+	NextRow() ([]any, []string, error)
 }
+
+var (
+	_ RowsDecoder = (*json.Decoder)(nil)
+	_ RowsDecoder = (*csv.Decoder)(nil)
+	_ RowsDecoder = (*ndjson.Decoder)(nil)
+)
 
 func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	var ret RowsEncoder
@@ -102,6 +109,8 @@ func NewDecoder(decoderType string, opts ...opts.Option) RowsDecoder {
 	switch decoderType {
 	case CSV:
 		ret = csv.NewDecoder()
+	case NDJSON:
+		ret = ndjson.NewDecoder()
 	default: // "json"
 		ret = json.NewDecoder()
 	}
