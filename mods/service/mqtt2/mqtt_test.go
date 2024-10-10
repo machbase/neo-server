@@ -273,6 +273,17 @@ func TestWrite(t *testing.T) {
 		},
 		{
 			TC: TestCase{
+				Name:     "db/write/example ndjson",
+				ConnMock: connMock,
+				Topic:    "db/write/example",
+				Payload: []byte(`{"NAME":"mycar", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
+					`{"NAME":"mycar", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
+				Properties: map[string]string{"format": "ndjson", "timeformat": "s"},
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
 				Name:     "db/write/example csv",
 				ConnMock: connMock,
 				Topic:    "db/write/example:csv",
@@ -420,7 +431,7 @@ func TestAppend(t *testing.T) {
 			}
 			app.ColumnsFunc = func() ([]string, []string, error) {
 				return []string{
-						"name", "time", "value",
+						"NAME", "TIME", "VALUE",
 					}, []string{
 						api.ColumnTypeString(api.VarcharColumnType),
 						api.ColumnTypeString(api.DatetimeColumnType),
@@ -532,6 +543,16 @@ func TestAppend(t *testing.T) {
 			Topic:    "db/append/example:csv: gzip",
 			Payload:  csvGzipData,
 			Ver:      uint(5),
+		},
+		{
+			Name:     "db/write/example?format=ndjson&method=append",
+			ConnMock: connMock,
+			Topic:    "db/write/example",
+			Payload: []byte(
+				`{"NAME":"mycar", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
+					`{"NAME":"mycar", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
+			Ver:        uint(5),
+			Properties: map[string]string{"method": "append", "format": "ndjson", "timeformat": "s"},
 		},
 	}
 

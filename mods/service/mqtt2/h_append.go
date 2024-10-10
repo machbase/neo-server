@@ -72,6 +72,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	switch wp.Format {
 	case "json":
 	case "csv":
+	case "ndjson":
 	default:
 		s.log.Warn(cl.Net.Remote, "unsupported format:", wp.Format)
 		return

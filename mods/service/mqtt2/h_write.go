@@ -243,7 +243,10 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 
 	if len(columnNames) == 0 {
 		columnNames = desc.Columns.Columns().Names()
-		columnTypes = desc.Columns.Columns().Types()
+		columnTypes = make([]string, 0, len(desc.Columns))
+		for _, c := range desc.Columns {
+			columnTypes = append(columnTypes, c.TypeString())
+		}
 	}
 
 	codecOpts = append(codecOpts,
