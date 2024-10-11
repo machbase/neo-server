@@ -308,7 +308,6 @@ func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warn("panic", "error", r)
 		}
 	}()
-	// s.log.Tracef("%s published %s", cl.Net.Remote, pk.TopicName)
 	if pk.TopicName == "db/query" {
 		s.handleQuery(cl, pk)
 	} else if strings.HasPrefix(pk.TopicName, "db/write/") {

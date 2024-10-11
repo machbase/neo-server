@@ -82,7 +82,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			continue
 		}
 		switch dec.columnTypes[idx] {
-		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT:
+		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
 			switch v := field.(type) {
 			case string:
 				value = v
@@ -120,7 +120,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			if err != nil {
 				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
 			}
-		case mach.DB_COLUMN_TYPE_LONG:
+		case mach.DB_COLUMN_TYPE_LONG, "int64":
 			value, err = util.ToInt64(field)
 			if err != nil {
 				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
@@ -131,7 +131,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			} else {
 				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
 			}
-		case mach.DB_COLUMN_TYPE_SHORT:
+		case mach.DB_COLUMN_TYPE_SHORT, "int16":
 			if v, err := util.ToInt64(field); err == nil {
 				value = int16(v)
 			} else {
@@ -143,9 +143,15 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			} else {
 				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
 			}
-		case mach.DB_COLUMN_TYPE_INTEGER:
+		case mach.DB_COLUMN_TYPE_INTEGER, "int":
 			if v, err := util.ToInt64(field); err == nil {
 				value = int(v)
+			} else {
+				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
+			}
+		case "int32":
+			if v, err := util.ToInt64(field); err == nil {
+				value = int32(v)
 			} else {
 				return nil, nil, fmt.Errorf("rows[%d] field[%s], %s", dec.nrow, colName, err.Error())
 			}
