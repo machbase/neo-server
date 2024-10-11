@@ -4,14 +4,7 @@ on:
   push:
     branches:
       - 'main'
-      - 'dev-*'
-    paths:
-      - ./**/*.go
-      - .github/workflows/ci-main.yml
-      - ./magefiles/*.txt
-  pull_request:
-    types: [ closed ]
-  
+      - 'dev-*'  
 
 jobs:
   darwin:
