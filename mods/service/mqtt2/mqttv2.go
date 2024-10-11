@@ -305,7 +305,7 @@ func (s *mqtt2) onACLCheck(_ *mqtt.Client, topic string, write bool) bool {
 func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.log.Warn("panic", "error", r)
+			s.log.Warn("panic", "onPublished", r)
 		}
 	}()
 	if pk.TopicName == "db/query" {

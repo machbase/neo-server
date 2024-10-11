@@ -73,12 +73,17 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 	if pk.ProtocolVersion == 5 {
+		if pk.Properties.ResponseTopic != "" {
+			replyTopic = pk.Properties.ResponseTopic
+		}
 		for _, p := range pk.Properties.User {
 			switch p.Key {
 			case "format":
 				wp.Format = p.Val
 			case "compress":
 				wp.Compress = p.Val
+			case "reply":
+				replyTopic = p.Val
 			case "delimiter":
 				delimiter = p.Val
 			case "timeformat":
@@ -211,9 +216,6 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		// ignore json decoder error, the payload json can be non-full-document json.
 		dec.Decode(&wr)
 		replyTopic = wr.ReplyTo
-		if pk.ProtocolVersion == 5 && pk.Properties.ResponseTopic != "" {
-			replyTopic = pk.Properties.ResponseTopic
-		}
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns

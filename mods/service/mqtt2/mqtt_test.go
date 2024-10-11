@@ -5,12 +5,18 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"net/url"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/service/msg"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQuery(t *testing.T) {
@@ -158,38 +164,236 @@ func TestQuery(t *testing.T) {
 	}
 }
 
-func TestWrite(t *testing.T) {
-	var count int
-	var values = []float64{1.2345, 2.3456}
+func TestWriteResponse(t *testing.T) {
+	tm := &TestMock{t: t}
+	mqttServer.db = tm.NewDB()
 
-	connMock := &ConnMock{
+	brokerUrl, err := url.Parse("tcp://" + brokerAddr)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	cfg := autopaho.ClientConfig{
+		ServerUrls:                    []*url.URL{brokerUrl},
+		KeepAlive:                     20,
+		CleanStartOnInitialConnection: true,
+	}
+
+	readyWg := sync.WaitGroup{}
+
+	cfg.OnConnectionUp = func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
+		defer readyWg.Done()
+
+		t.Log("CONN", connAck.ReasonCode)
+		if connAck.ReasonCode != 0 {
+			t.Fail()
+			return
+		}
+		subAck, err := cm.Subscribe(ctx, &paho.Subscribe{
+			Subscriptions: []paho.SubscribeOptions{
+				{Topic: "db/reply/#", QoS: 1},
+			},
+		})
+		if err != nil {
+			t.Log("ERROR", "SUB", err.Error())
+			t.Fail()
+		}
+		t.Log("SUB:", subAck.Reasons)
+	}
+	cfg.OnConnectError = func(err error) {
+		t.Log("ERROR", "OnConnect", err.Error())
+	}
+	cfg.ClientConfig.ClientID = "mqtt2-test"
+	cfg.ClientConfig.OnPublishReceived = append(cfg.ClientConfig.OnPublishReceived,
+		func(r paho.PublishReceived) (bool, error) {
+			t.Log("PUB:", r.Packet.Topic, string(r.Packet.Payload))
+			readyWg.Done()
+			return true, nil
+		})
+	cfg.ClientConfig.OnClientError = func(err error) {
+		t.Log("ERROR", "OnClient", err.Error())
+	}
+	cfg.ClientConfig.OnServerDisconnect = func(d *paho.Disconnect) {
+		t.Log("ServerDisconnect", d.ReasonCode)
+	}
+
+	readyWg.Add(1)
+	c, err := autopaho.NewConnection(ctx, cfg)
+	require.NoError(t, err)
+	defer c.Disconnect(ctx)
+	readyWg.Wait()
+
+	readyWg.Add(1)
+	props := &paho.PublishProperties{}
+	// props.ResponseTopic = "db/reply/123"
+	props.User.Add("method", "insert")
+	props.User.Add("format", "csv")
+	props.User.Add("reply", "db/reply/123")
+	c.Publish(ctx, &paho.Publish{
+		Topic:      "db/write/example",
+		Payload:    []byte(`mycar,1705291859000000000,1.2345`),
+		QoS:        2,
+		Properties: props,
+	})
+	readyWg.Wait()
+}
+
+func TestWrite(t *testing.T) {
+	tm := &TestMock{t: t, values: []float64{1.2345, 2.3456}}
+	mqttServer.db = tm.NewDB()
+
+	tests := []struct {
+		Vers        []uint
+		TC          TestCase
+		ExpectCount int
+	}{
+		{
+			TC: TestCase{
+				Name:    "db/write/example json",
+				Topic:   "db/write/example",
+				Payload: []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:    "db/write/example json columns",
+				Topic:   "db/write/example",
+				Payload: []byte(`{"data":{"columns":["NAME","TIME","VALUE"],"rows":[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]}}}`),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:  "db/write/example ndjson",
+				Topic: "db/write/example",
+				Payload: []byte(`{"NAME":"mycar", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
+					`{"NAME":"mycar", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
+				Properties: map[string]string{"format": "ndjson", "timeformat": "s"},
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:    "db/write/example csv",
+				Topic:   "db/write/example:csv",
+				Payload: []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456"),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:       "db/write/example csv v5",
+				Topic:      "db/write/example",
+				Properties: map[string]string{"format": "csv", "timeformat": "s"},
+				Payload:    []byte("mycar,1705291859,1.2345\nmycar,170529186,2.3456"),
+			},
+			ExpectCount: 2,
+			Vers:        []uint{5},
+		},
+		{
+			TC: TestCase{
+				Name:       "db/write/example csv v5-time-value",
+				Topic:      "db/write/example",
+				Properties: map[string]string{"format": "csv", "timeformat": "s", "header": "columns"},
+				Payload:    []byte("TIME,VALUE\n1705291859,1.2345\n170529186,2.3456"),
+			},
+			ExpectCount: 2,
+			Vers:        []uint{5},
+		},
+		{
+			TC: TestCase{
+				Name:    "db/write/example json gzip",
+				Topic:   "db/write/example:json:gzip",
+				Payload: compress([]byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:    "db/write/example csv gzip",
+				Topic:   "db/write/example:csv:gzip",
+				Payload: compress([]byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")),
+			},
+			ExpectCount: 2,
+		},
+		{
+			TC: TestCase{
+				Name:    "db/metrics/example ILP",
+				Topic:   "db/metrics/example",
+				Payload: []byte("mycar speed=1.2345 167038034500000\nmycar speed=2.3456 167038034500000\n"),
+			},
+			ExpectCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		vers := tt.Vers
+		if len(vers) == 0 {
+			vers = []uint{4, 5}
+		}
+		for _, ver := range vers {
+			tm.count = 0
+			tt.TC.Ver = ver
+			runTest(t, &tt.TC)
+			if tm.count != tt.ExpectCount {
+				t.Logf("Test %q count should be %d, got %d", tt.TC.Name, tt.ExpectCount, tm.count)
+				t.Fail()
+			}
+		}
+	}
+}
+
+type TestMock struct {
+	values []float64
+	count  int
+	t      *testing.T
+}
+
+func (tm *TestMock) NewDB() *dbMock {
+	tm.t.Helper()
+	return &dbMock{conn: &ConnMock{
 		CloseFunc: func() error { return nil },
 		ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
-			rt := &ResultMock{}
+			defer func() {
+				if r := recover(); r != nil {
+					tm.t.Log("panic", "onPublished", r)
+					debug.PrintStack()
+				}
+			}()
+			rt := &ResultMock{
+				ErrFunc: func() error { return nil },
+			}
 			switch sqlText {
 			case "INSERT INTO EXAMPLE(NAME,TIME,VALUE) VALUES(?,?,?)":
-				if len(params) == 3 && strings.HasPrefix(params[0].(string), "mycar") && params[2] == values[count] {
+				if len(tm.values) == 0 {
+					return rt
+				}
+				if len(params) == 3 && strings.HasPrefix(params[0].(string), "mycar") && params[2] == tm.values[tm.count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
 					rt.MessageFunc = func() string { return "a row inserted" }
-					count++
+					tm.count++
 				} else {
-					t.Log("ExecFunc => unexpected insert params:", params)
-					t.Fatal(sqlText)
+					tm.t.Log("ExecFunc => unexpected insert params:", params)
+					tm.t.Fatal(sqlText)
 				}
 			case "INSERT INTO EXAMPLE(TIME,VALUE) VALUES(?,?)":
-				if len(params) == 2 && params[1] == values[count] {
+				if len(tm.values) == 0 {
+					return rt
+				}
+				if len(params) == 2 && params[1] == tm.values[tm.count] {
 					rt.ErrFunc = func() error { return nil }
 					rt.RowsAffectedFunc = func() int64 { return 1 }
 					rt.MessageFunc = func() string { return "a row inserted" }
-					count++
+					tm.count++
 				} else {
-					t.Log("ExecFunc => unexpected insert params:", params)
-					t.Fatal(sqlText)
+					tm.t.Log("ExecFunc => unexpected insert params:", params)
+					tm.t.Fatal(sqlText)
 				}
 			default:
-				t.Log("ExecFunc => unknown mock db SQL:", sqlText)
-				t.Fail()
+				tm.t.Log("ExecFunc => unknown mock db SQL:", sqlText)
+				tm.t.Fail()
 			}
 			return rt
 		},
@@ -214,7 +418,7 @@ func TestWrite(t *testing.T) {
 				}
 			} else {
 				fmt.Println("QueryRowFunc ->", sqlText, params)
-				t.Fail()
+				tm.t.Fail()
 			}
 			return nil
 		},
@@ -251,111 +455,11 @@ func TestWrite(t *testing.T) {
 				), nil
 			} else {
 				fmt.Println("QueryFunc ->", sqlText)
-				t.Fail()
+				tm.t.Fail()
 			}
 			return nil, nil
 		},
-	}
-
-	tests := []struct {
-		Vers        []uint
-		TC          TestCase
-		ExpectCount int
-	}{
-		{
-			TC: TestCase{
-				Name:     "db/write/example json",
-				ConnMock: connMock,
-				Topic:    "db/write/example",
-				Payload:  []byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`),
-			},
-			ExpectCount: 2,
-		},
-		{
-			TC: TestCase{
-				Name:     "db/write/example ndjson",
-				ConnMock: connMock,
-				Topic:    "db/write/example",
-				Payload: []byte(`{"NAME":"mycar", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
-					`{"NAME":"mycar", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
-				Properties: map[string]string{"format": "ndjson", "timeformat": "s"},
-			},
-			ExpectCount: 2,
-		},
-		{
-			TC: TestCase{
-				Name:     "db/write/example csv",
-				ConnMock: connMock,
-				Topic:    "db/write/example:csv",
-				Payload:  []byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456"),
-			},
-			ExpectCount: 2,
-		},
-		{
-			TC: TestCase{
-				Name:       "db/write/example csv v5",
-				ConnMock:   connMock,
-				Topic:      "db/write/example",
-				Properties: map[string]string{"format": "csv", "timeformat": "s"},
-				Payload:    []byte("mycar,1705291859,1.2345\nmycar,170529186,2.3456"),
-			},
-			ExpectCount: 2,
-			Vers:        []uint{5},
-		},
-		{
-			TC: TestCase{
-				Name:       "db/write/example csv v5-time-value",
-				ConnMock:   connMock,
-				Topic:      "db/write/example",
-				Properties: map[string]string{"format": "csv", "timeformat": "s", "header": "columns"},
-				Payload:    []byte("TIME,VALUE\n1705291859,1.2345\n170529186,2.3456"),
-			},
-			ExpectCount: 2,
-			Vers:        []uint{5},
-		},
-		{
-			TC: TestCase{
-				Name:     "db/write/example json gzip",
-				ConnMock: connMock,
-				Topic:    "db/write/example:json:gzip",
-				Payload:  compress([]byte(`[["mycar", 1705291859000000000, 1.2345], ["mycar", 1705291860000000000, 2.3456]]`)),
-			},
-			ExpectCount: 2,
-		},
-		{
-			TC: TestCase{
-				Name:     "db/write/example csv gzip",
-				ConnMock: connMock,
-				Topic:    "db/write/example:csv:gzip",
-				Payload:  compress([]byte("mycar,1705291859000000000,1.2345\nmycar,1705291860000000000,2.3456")),
-			},
-			ExpectCount: 2,
-		},
-		{
-			TC: TestCase{
-				Name:     "db/metrics/example ILP",
-				ConnMock: connMock,
-				Topic:    "db/metrics/example",
-				Payload:  []byte("mycar speed=1.2345 167038034500000\nmycar speed=2.3456 167038034500000\n"),
-			},
-			ExpectCount: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		count = 0
-		vers := tt.Vers
-		if len(vers) == 0 {
-			vers = []uint{4, 5}
-		}
-		for _, ver := range vers {
-			tt.TC.Ver = ver
-			runTest(t, &tt.TC)
-			if count != tt.ExpectCount {
-				t.Logf("Test %q count should be %d, got %d", tt.TC.Name, tt.ExpectCount, count)
-				t.Fail()
-			}
-		}
+	},
 	}
 }
 

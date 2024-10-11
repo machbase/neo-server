@@ -18,6 +18,7 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
@@ -47,6 +48,15 @@ var databaseLock sync.Mutex
 var mqttServer *mqtt2
 
 func TestMain(m *testing.M) {
+	logging.Configure(&logging.Config{
+		Console:                     true,
+		Filename:                    "-",
+		Append:                      false,
+		DefaultPrefixWidth:          10,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+	})
+
 	fileDirs := []string{"/=./test"}
 	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
 	ssfs.SetDefault(serverFs)
@@ -70,7 +80,7 @@ func TestMain(m *testing.M) {
 	if addr, ok := mqttServer.broker.Listeners.Get("mqtt2-tcp-0"); !ok {
 		panic("Listener not found")
 	} else {
-		brokerAddr = strings.TrimPrefix(addr.Address(), "tpc://")
+		brokerAddr = strings.TrimPrefix(addr.Address(), "tcp://")
 	}
 	m.Run()
 
@@ -90,106 +100,14 @@ type TestCase struct {
 	Expect    any
 }
 
-/*
-func runTestV4(t *testing.T, tc *TestCase) {
-	databaseLock.Lock()
-	mqttServer.db = &dbMock{conn: tc.ConnMock}
-	defer databaseLock.Unlock()
-
-	cfg := paho.NewClientOptions()
-	cfg.SetCleanSession(true)
-	cfg.SetConnectRetry(false)
-	cfg.SetAutoReconnect(false)
-	cfg.SetProtocolVersion(4)
-	cfg.SetClientID("machbase-test-cli")
-	cfg.AddBroker(brokerAddr)
-	cfg.SetKeepAlive(3 * time.Second)
-
-	//// connect mqtt server
-	cli := paho.NewClient(cfg)
-	require.NotNil(t, cli)
-
-	var Wait sync.WaitGroup
-	var recvPayload []byte
-	var recvTopic string
-	var timeout = 2 * time.Second
-
-	conAck := cli.Connect()
-	if !conAck.WaitTimeout(timeout) {
-		t.Logf("Test %q failed, connect timed out", tc.Name)
-		t.Fail()
-	}
-	defer cli.Disconnect(0)
-
-	if tc.Subscribe != "" {
-		Wait.Add(1)
-		subAck := cli.Subscribe(tc.Subscribe, 1, func(c paho.Client, m paho.Message) {
-			// received
-			recvPayload = m.Payload()
-			recvTopic = m.Topic()
-			if recvTopic != tc.Subscribe {
-				t.Logf("Expect recv topic %q, got %q", tc.Subscribe, recvTopic)
-				t.Fail()
-			}
-			Wait.Done()
-		})
-		if !subAck.WaitTimeout(timeout) {
-			t.Logf("Test %q failed, subscribe timed out", tc.Name)
-			t.Fail()
-		}
-	}
-
-	Wait.Add(1)
-	pubAck := cli.Publish(tc.Topic, 2, false, tc.Payload)
-	if pubAck.WaitTimeout(timeout) {
-		Wait.Done()
-	} else {
-		t.Logf("Test %q failed, publish timed out", tc.Name)
-		t.Fail()
-	}
-
-	Wait.Wait()
-	if tc.Expect == nil {
-		return
-	}
-	switch expect := tc.Expect.(type) {
-	case *msg.QueryResponse:
-		actual := msg.QueryResponse{}
-		if err := json.Unmarshal(recvPayload, &actual); err != nil {
-			t.Logf("Test %q response malformed; %s", tc.Name, err.Error())
-			t.Fail()
-		}
-		require.Equal(t, expect.Success, actual.Success)
-		require.Equal(t, expect.Reason, actual.Reason)
-		expectJson, _ := json.Marshal(expect.Data)
-		actualJson, _ := json.Marshal(actual.Data)
-		require.JSONEq(t, string(expectJson), string(actualJson), string(recvPayload))
-	case string:
-		actual := string(recvPayload)
-		if strings.HasPrefix(expect, "/r/") {
-			reg := regexp.MustCompile("^" + strings.TrimPrefix(expect, "/r/"))
-			if !reg.MatchString(actual) {
-				t.Logf("Test  : %s", tc.Name)
-				t.Logf("Expect: %s", expect)
-				t.Logf("Actual: %s", actual)
-				t.Fail()
-			}
-		} else {
-			require.Equal(t, expect, actual)
-		}
-	case []byte:
-		actual := recvPayload
-		require.Equal(t, hex.Dump(expect), hex.Dump(actual))
-	}
-}
-*/
-
 func runTest(t *testing.T, tc *TestCase) {
 	t.Helper()
 
-	databaseLock.Lock()
-	mqttServer.db = &dbMock{conn: tc.ConnMock}
-	defer databaseLock.Unlock()
+	if tc.ConnMock != nil {
+		databaseLock.Lock()
+		mqttServer.db = &dbMock{conn: tc.ConnMock}
+		defer databaseLock.Unlock()
+	}
 
 	brokerUrl, err := url.Parse("tcp://" + brokerAddr)
 	require.NoError(t, err)
