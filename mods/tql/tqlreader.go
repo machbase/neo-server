@@ -55,22 +55,23 @@ func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//+") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[3:]), line: lineNo, isComment: true, isPragma: true})
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[3:], line: lineNo, isComment: true, isPragma: true})
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[2:]), line: lineNo, isComment: true})
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[2:], line: lineNo, isComment: true})
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText[1:]), line: lineNo, isComment: true})
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[1:], line: lineNo, isComment: true})
 			continue
 		}
 
-		aStmt := strings.Join(append(stmt, lineText), " ")
+		aStmt := strings.Join(append(stmt, lineText), "\n")
 		_, pos, err := expression.ParseTokens(aStmt, functions)
-		if utf8.RuneCountInString(aStmt) > pos && utf8.RuneCountInString(lineText) > pos {
-			lineText = string([]rune(lineText)[0:pos])
+		if utf8.RuneCountInString(aStmt) > pos /* && utf8.RuneCountInString(lineText) > pos */ {
+			// lineText = string([]rune(lineText)[0:pos])
+			lineText = strings.TrimPrefix(string([]rune(aStmt)[0:pos]), strings.Join(stmt, "\n")+"\n")
 		}
 		if err != nil && err.Error() == "unbalanced parenthesis" {
 			if lineFrom == 0 {

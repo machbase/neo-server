@@ -242,6 +242,9 @@ func (x *Task) compile(codeReader io.Reader) error {
 	}
 	if tailExpr == nil {
 		x.compileErr = errors.New("no sink exists")
+		for no, line := range lines {
+			fmt.Println(no, line.text, line.isComment)
+		}
 		return x.compileErr
 	}
 
