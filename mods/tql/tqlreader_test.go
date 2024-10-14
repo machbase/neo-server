@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func runTestReadLine(t *testing.T, code string, expect []Line) {
@@ -52,6 +54,7 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 	for i := 0; i < len(expect); i++ {
 		e := expect[i]
 		l := lines[i]
+		require.Equal(t, e.text, l.text)
 		if e.text != l.text || e.isComment != l.isComment || e.isPragma != l.isPragma {
 			t.Logf("Expect[%d] %v", i, e)
 			t.Logf("Actual[%d] %v", i, *l)
@@ -66,12 +69,32 @@ func TestReadLine(t *testing.T) {
 		expect []Line
 	}{
 		{
-			`FAKE('안녕') // comment`,
+			`FAKE('안녕') // comment
+			|CSV()
+			`,
 			[]Line{
 				{text: "FAKE('안녕')"},
+				{text: "CSV()"},
 			},
 		},
-
+		{
+			`//comment1
+			|FAKE('hello') // comment2
+			| MAPVALUE(2,
+			|  value(1) * 10, // inline comment
+			|  true
+			| ) // end of MAPVALUE
+			|// comment3 // and
+			|CSV()
+			`,
+			[]Line{
+				{text: "comment1", isComment: true},
+				{text: "FAKE('hello')"},
+				{text: " MAPVALUE(2,\n  value(1) * 10,\n  true\n )", line: 3},
+				{text: " comment3 // and", isComment: true},
+				{text: "CSV()"},
+			},
+		},
 		{
 			`FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))
 			|MAPVALUE(2,
@@ -99,7 +122,7 @@ func TestReadLine(t *testing.T) {
 		{
 			`FAKE(meshgrid(linspace(-4,4,100 // comment
 			|),
-			|linspace(-4,4, 100))) 
+			|linspace(-4,4, 100)))
 			|MAPVALUE()
 			`,
 			[]Line{
@@ -108,14 +131,14 @@ func TestReadLine(t *testing.T) {
 			},
 		},
 		{
-			`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100))) 
+			`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))
 			|//+ stateful
 			|WHEN( cond, doHttp())
 			|MAPVALUE()
 			`,
 			[]Line{
 				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))"},
-				{text: "stateful", isComment: true, isPragma: true},
+				{text: " stateful", isComment: true, isPragma: true},
 				{text: "WHEN( cond, doHttp())"},
 				{text: "MAPVALUE()"},
 			},

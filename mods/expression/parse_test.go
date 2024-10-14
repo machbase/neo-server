@@ -305,6 +305,40 @@ func TestConstantParsing(test *testing.T) {
 	runTokenParsingTest(tokenParsingTests, test)
 }
 
+func TestInlineComment(test *testing.T) {
+	ParseStringToTime = true
+	commentTests := []TokenParsingTest{
+		{
+			Name: "Function with modifier afterwards and comparator",
+			Input: `(
+				foo(
+					"bar", // comment
+					noop()
+				)
+				-1
+			) > 3`,
+			Functions: map[string]Function{"foo": argNoop, "noop": noop},
+			Expected: []Token{
+				{Kind: CLAUSE},
+				{Kind: FUNCTION, Value: argNoop},
+				{Kind: CLAUSE},
+				{Kind: STRING, Value: "bar"},
+				{Kind: SEPARATOR},
+				{Kind: FUNCTION, Value: noop},
+				{Kind: CLAUSE},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: MODIFIER, Value: "-"},
+				{Kind: NUMERIC, Value: 1.0},
+				{Kind: CLAUSE_CLOSE},
+				{Kind: COMPARATOR, Value: ">"},
+				{Kind: NUMERIC, Value: 3.0},
+			},
+		},
+	}
+	runTokenParsingTest(commentTests, test)
+}
+
 func TestScriptBlock(test *testing.T) {
 	tokenParsingTests := []TokenParsingTest{
 		{
@@ -1223,5 +1257,9 @@ func runTokenParsingTest(tokenParsingTests []TokenParsingTest, test *testing.T) 
 }
 
 func noop(arguments ...interface{}) (interface{}, error) {
+	return nil, nil
+}
+
+func argNoop(arguments ...interface{}) (interface{}, error) {
 	return nil, nil
 }
