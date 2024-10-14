@@ -91,6 +91,7 @@ func GenBanner() string {
 		logo = bannerPlain
 	}
 
+	logo = strings.ReplaceAll(logo, "\r\n", "\n")
 	lines := strings.Split(logo, "\n")
 	lines[6] = lines[6] + fmt.Sprintf("  %s", VersionString())
 	lines[7] = lines[7] + fmt.Sprintf("  engine v%s (%s)", native.Version, native.GitHash)
