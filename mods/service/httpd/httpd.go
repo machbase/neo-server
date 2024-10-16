@@ -145,6 +145,7 @@ func (svr *httpd) Stop() {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
 	svr.httpServer.Shutdown(ctx)
 	cancelFunc()
+	svr.httpServer.Close()
 
 	if svr.memoryFs != nil {
 		svr.memoryFs.Stop()
@@ -288,6 +289,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
 			group.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
+			group.GET("/watch/:table", svr.handleWatchQuery)
 			group.GET("/tql/*path", svr.handleTagQL)
 			group.POST("/tql/*path", svr.handleTagQL)
 			group.POST("/tql", svr.handlePostTagQL)
