@@ -46,12 +46,8 @@ func TestImageFileUpload(t *testing.T) {
 
 	fd, _ := os.Open("test/image.png")
 
-	req, err := buildMultipartFormDataRequest("http://localhost:8080/db/write/EXAMPLE", map[string]any{
-		"NAME":    "test",
-		"TIME":    time.Now(),
-		"VALUE":   3.14,
-		"EXTDATA": fd,
-	})
+	req, err := buildMultipartFormDataRequest("http://localhost:8080/db/write/EXAMPLE",
+		[]string{"NAME", "TIME", "VALUE", "EXTDATA"}, []any{"test", time.Now(), 3.14, fd})
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -64,11 +60,13 @@ func TestImageFileUpload(t *testing.T) {
 	t.Log("result>>", rspBody)
 }
 
-func buildMultipartFormDataRequest(url string, values map[string]any) (*http.Request, error) {
+func buildMultipartFormDataRequest(url string, names []string, values []any) (*http.Request, error) {
 	var ret *http.Request
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
-	for key, r := range values {
+	for i := range names {
+		key := names[i]
+		r := values[i]
 		switch val := r.(type) {
 		case *os.File:
 			defer val.Close()
