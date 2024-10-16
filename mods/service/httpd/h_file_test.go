@@ -164,7 +164,8 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 
 func (db *TestImageDBMock) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	sqlText = makeSingleLine(sqlText)
-	if sqlText == `INSERT INTO EXAMPLE(NAME,TIME,VALUE,EXTDATA) VALUES(?,?,?,?)` {
+	// becuase NAME, TIME, VALUE, EXTDATA columns can come in any order
+	if strings.HasPrefix(sqlText, `INSERT INTO EXAMPLE`) && strings.HasSuffix(sqlText, `VALUES(?,?,?,?)`) {
 		fmt.Println("MOCK-Exec", params)
 		return &ResultMock{
 			ErrFunc:          func() error { return nil },
