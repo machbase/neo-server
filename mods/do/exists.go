@@ -45,7 +45,7 @@ func ExistsTableOrCreate(ctx context.Context, conn api.Conn, tableName string, c
 
 	// TRUNCATE TABLE
 	if truncate {
-		tableType, err0 := TableType(ctx, conn, tableName)
+		tableType, err0 := tableType(ctx, conn, tableName)
 		if err0 != nil {
 			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", tableName))
 			return
