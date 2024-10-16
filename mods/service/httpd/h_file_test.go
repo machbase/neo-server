@@ -3,18 +3,23 @@ package httpd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/stretchr/testify/require"
@@ -52,12 +57,35 @@ func TestImageFileUpload(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-	req.Header.Set("X-Store-Dir", "/tmp/store")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	rspBody := w.Body.String()
 	require.Equal(t, http.StatusOK, w.Code, rspBody)
-	t.Log("result>>", rspBody)
+	result := map[string]any{}
+	if err := json.Unmarshal([]byte(rspBody), &result); err != nil {
+		t.Fatal(err)
+	}
+	require.True(t, result["success"].(bool), rspBody)
+	require.Equal(t, "image.png", result["data"].(map[string]any)["files"].(map[string]any)["EXTDATA"].(map[string]any)["FN"].(string), rspBody)
+	require.Equal(t, "image/png", result["data"].(map[string]any)["files"].(map[string]any)["EXTDATA"].(map[string]any)["CT"].(string), rspBody)
+	require.Equal(t, "/tmp/store", result["data"].(map[string]any)["files"].(map[string]any)["EXTDATA"].(map[string]any)["SD"].(string), rspBody)
+	require.Greater(t, result["data"].(map[string]any)["files"].(map[string]any)["EXTDATA"].(map[string]any)["SZ"].(float64), 0.0, rspBody)
+	var id uuid.UUID
+	err = id.Parse(result["data"].(map[string]any)["files"].(map[string]any)["EXTDATA"].(map[string]any)["ID"].(string))
+	require.NoError(t, err, rspBody)
+	require.Equal(t, uint8(6), id.Version(), rspBody)
+	timestamp, err := uuid.TimestampFromV6(id)
+	require.NoError(t, err, rspBody)
+	ts, err := timestamp.Time()
+	require.NoError(t, err, rspBody)
+	require.LessOrEqual(t, ts.UnixNano(), time.Now().UnixNano(), rspBody)
+	require.GreaterOrEqual(t, ts.UnixNano(), time.Now().Add(-5*time.Second).UnixNano(), rspBody)
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
 }
 
 func buildMultipartFormDataRequest(url string, names []string, values []any) (*http.Request, error) {
@@ -67,42 +95,42 @@ func buildMultipartFormDataRequest(url string, names []string, values []any) (*h
 	for i := range names {
 		key := names[i]
 		r := values[i]
-		switch val := r.(type) {
-		case *os.File:
-			defer val.Close()
-			if fw, err := w.CreateFormFile(key, val.Name()); err != nil {
-				return nil, err
+		h := make(textproto.MIMEHeader)
+		var src io.Reader
+
+		if fd, ok := r.(*os.File); ok {
+			filename := filepath.Base(fd.Name())
+			h.Set("Content-Disposition",
+				fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+					escapeQuotes(key), escapeQuotes(filename)))
+			h.Set("X-Store-Dir", "/tmp/store")
+			if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
+				h.Set("Content-Type", contentType)
 			} else {
-				if _, err := io.Copy(fw, val); err != nil {
-					return nil, err
-				}
+				h.Set("Content-Type", "application/octet-stream")
 			}
-		case string:
-			if fw, err := w.CreateFormField(key); err != nil {
+			defer fd.Close()
+			src = fd
+		} else {
+			h.Set("Content-Disposition",
+				fmt.Sprintf(`form-data; name="%s"`, escapeQuotes(key)))
+			switch val := r.(type) {
+			case string:
+				src = bytes.NewBuffer([]byte(val))
+			case time.Time:
+				src = bytes.NewBuffer([]byte(fmt.Sprintf("%d", val.UnixNano())))
+			case float64:
+				src = bytes.NewBuffer([]byte(fmt.Sprintf("%f", val)))
+			default:
+				return nil, fmt.Errorf("unsupported type %T", val)
+			}
+		}
+		if dst, err := w.CreatePart(h); err != nil {
+			return nil, err
+		} else {
+			if _, err := io.Copy(dst, src); err != nil {
 				return nil, err
-			} else {
-				if _, err := fw.Write([]byte(val)); err != nil {
-					return nil, err
-				}
 			}
-		case float64:
-			if fw, err := w.CreateFormField(key); err != nil {
-				return nil, err
-			} else {
-				if _, err := fw.Write([]byte(fmt.Sprintf("%f", val))); err != nil {
-					return nil, err
-				}
-			}
-		case time.Time:
-			if fw, err := w.CreateFormField(key); err != nil {
-				return nil, err
-			} else {
-				if _, err := fw.Write([]byte(fmt.Sprintf("%d", val.UnixNano()))); err != nil {
-					return nil, err
-				}
-			}
-		default:
-			return nil, fmt.Errorf("unsupported type %T", val)
 		}
 	}
 	// Don't forget to close the multipart writer.
