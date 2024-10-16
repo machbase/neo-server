@@ -298,6 +298,22 @@ func (cd *ColumnDescription) Size() int {
 	return cd.Length
 }
 
+func (cd *ColumnDescription) IsBaseTime() bool {
+	return cd.Flag&api.ColumnFlagBasetime > 0
+}
+
+func (cd *ColumnDescription) IsTagName() bool {
+	return cd.Flag&api.ColumnFlagTagName > 0
+}
+
+func (cd *ColumnDescription) IsSummarized() bool {
+	return cd.Flag&api.ColumnFlagSummarized > 0
+}
+
+func (cd *ColumnDescription) IsMetaColumn() bool {
+	return cd.Flag&api.ColumnFlagMetaColumn > 0
+}
+
 type IndexDescription struct {
 	Id   uint64        `json:"id"`
 	Name string        `json:"name"`

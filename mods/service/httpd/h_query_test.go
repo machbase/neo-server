@@ -42,6 +42,7 @@ func TestQuery(t *testing.T) {
 						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
+				rows.MessageFunc = func() string { return "success" }
 				rows.NextFunc = func() bool {
 					expectRows--
 					return expectRows >= 0

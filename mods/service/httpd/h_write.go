@@ -27,6 +27,10 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	rsp := &msg.WriteResponse{Reason: "not specified"}
 	tick := time.Now()
 
+	if ctx.ContentType() == "multipart/form-data" {
+		svr.handleFileWrite(ctx)
+		return
+	}
 	format := "json"
 	if ctx.ContentType() == "text/csv" {
 		format = "csv"

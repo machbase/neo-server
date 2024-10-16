@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	mach "github.com/machbase/neo-engine"
 	"github.com/pkg/errors"
 )
 
@@ -289,6 +290,43 @@ func ParseTime(strVal string, format string, location *time.Location) (time.Time
 		}
 	}
 	return baseTime, nil
+}
+
+func ParseDatabaseValue(value string, columnType string, timeformat string, tz *time.Location) (any, error) {
+	if timeformat == "" {
+		timeformat = "ns"
+	}
+	if tz == nil {
+		tz = time.UTC
+	}
+	switch columnType {
+	case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
+		return value, nil
+	case mach.DB_COLUMN_TYPE_DATETIME:
+		return ParseTime(value, timeformat, tz)
+	case mach.DB_COLUMN_TYPE_FLOAT:
+		return ParseFloat32(value)
+	case mach.DB_COLUMN_TYPE_DOUBLE:
+		return ParseFloat64(value)
+	case mach.DB_COLUMN_TYPE_LONG, "int64":
+		return ParseInt64(value)
+	case mach.DB_COLUMN_TYPE_ULONG:
+		return ParseUint64(value)
+	case mach.DB_COLUMN_TYPE_INTEGER, "int":
+		return ParseInt(value)
+	case mach.DB_COLUMN_TYPE_UINTEGER:
+		return ParseUint(value)
+	case mach.DB_COLUMN_TYPE_SHORT, "int16":
+		return ParseInt16(value)
+	case mach.DB_COLUMN_TYPE_USHORT:
+		return ParseUint16(value)
+	case "int32":
+		return ParseInt32(value)
+	case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
+		return ParseIP(value)
+	default:
+		return nil, fmt.Errorf("unsupported column type; %s", columnType)
+	}
 }
 
 func ToDuration(one any) (time.Duration, error) {
