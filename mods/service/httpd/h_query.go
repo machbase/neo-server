@@ -55,6 +55,9 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Compress = ctx.PostForm("compress")
 			req.Rownum = strBool(ctx.PostForm("rownum"), false)
 			req.Heading = strBool(ctx.PostForm("heading"), true)
+			if h := ctx.Query("header"); h == "skip" {
+				req.Heading = false
+			}
 			req.Precision = strInt(ctx.PostForm("precision"), -1)
 			req.Transpose = strBool(ctx.PostForm("transpose"), false)
 			req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), false)
@@ -73,6 +76,9 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		req.Compress = ctx.Query("compress")
 		req.Rownum = strBool(ctx.Query("rownum"), false)
 		req.Heading = strBool(ctx.Query("heading"), true)
+		if h := ctx.Query("header"); h == "skip" {
+			req.Heading = false
+		}
 		req.Precision = strInt(ctx.Query("precision"), -1)
 		req.Transpose = strBool(ctx.Query("transpose"), false)
 		req.RowsFlatten = strBool(ctx.Query("rowsFlatten"), false)

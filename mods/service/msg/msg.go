@@ -51,5 +51,14 @@ type WriteResponse struct {
 }
 
 type WriteResponseData struct {
-	AffectedRows uint64 `json:"affectedRows"`
+	AffectedRows uint64                   `json:"affectedRows,omitempty"`
+	Files        map[string]*UserFileData `json:"files,omitempty"`
+}
+
+type UserFileData struct {
+	Id          string `json:"ID,omitempty"` // file id
+	Filename    string `json:"FN,omitempty"` // file name
+	Size        int64  `json:"SZ,omitempty"` // file size
+	ContentType string `json:"CT,omitempty"` // content type
+	StoreDir    string `json:"SD,omitempty"` // stored dir
 }

@@ -287,6 +287,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/query", svr.handleQuery)
 			group.POST("/write", svr.handleWrite)
 			group.POST("/write/:table", svr.handleWrite)
+			group.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
 			group.GET("/tql/*path", svr.handleTagQL)
 			group.POST("/tql/*path", svr.handleTagQL)
 			group.POST("/tql", svr.handlePostTagQL)
