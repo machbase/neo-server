@@ -71,7 +71,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 	defer keepAliveTick.Stop()
 
 	lastWriteTime := time.Now()
-	svr.log.Infof("%s start period %v, keep-alive: %v", watch.String(), period, keepAlive)
+	svr.log.Infof("%s start period %v, keep-alive %v", watch.String(), period, keepAlive)
 	watch.Execute()
 	for {
 		select {

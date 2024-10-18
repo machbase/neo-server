@@ -90,7 +90,7 @@ func WithMaxRowNum(n int) WatchOption {
 }
 
 func (w *Watcher) String() string {
-	return fmt.Sprintf("Watcher {table:%s, tags:%v}", w.tableName, w.tagNames)
+	return fmt.Sprintf("Watcher {table:%s, tags:%v, parallelism:%d}", w.tableName, w.tagNames, w.parallelism)
 }
 
 func (w *Watcher) handleData(obj WatchData) {
