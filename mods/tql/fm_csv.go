@@ -268,7 +268,7 @@ func (fs *csvSource) header() types.Columns {
 	ret := make([]*types.Column, max+2)
 	ret[0] = types.MakeColumnRownum()
 	for i, c := range fs.columns {
-		ret[i+1] = &types.Column{Name: c.label, DataType: types.ParseDataType(c.dataType.spiType())}
+		ret[i+1] = &types.Column{Name: c.label, DataType: c.dataType.dataType()}
 	}
 	return ret
 }
@@ -359,18 +359,18 @@ func (x *Node) fmField(args ...any) (any, error) {
 }
 
 type colOpt interface {
-	spiType() string
+	dataType() types.DataType
 }
 
 type anyOpt struct {
 	typeName string
 }
 
-func (o *anyOpt) spiType() string { return o.typeName }
+func (o *anyOpt) dataType() types.DataType { return types.DataTypeAny }
 
 type stringOpt struct{}
 
-func (o *stringOpt) spiType() string { return "string" }
+func (o *stringOpt) dataType() types.DataType { return types.DataTypeString }
 
 func (x *Node) fmStringType(args ...any) (any, error) {
 	return &stringOpt{}, nil
@@ -378,7 +378,7 @@ func (x *Node) fmStringType(args ...any) (any, error) {
 
 type doubleOpt struct{}
 
-func (o *doubleOpt) spiType() string { return "double" }
+func (o *doubleOpt) dataType() types.DataType { return types.DataTypeFloat64 }
 
 func (x *Node) fmDoubleType(args ...any) (any, error) {
 	return &doubleOpt{}, nil
@@ -386,7 +386,7 @@ func (x *Node) fmDoubleType(args ...any) (any, error) {
 
 type boolOpt struct{}
 
-func (o *boolOpt) spiType() string { return "bool" }
+func (o *boolOpt) dataType() types.DataType { return types.DataTypeBoolean }
 
 func (x *Node) fmBoolType(args ...any) (any, error) {
 	return &boolOpt{}, nil
@@ -396,14 +396,14 @@ type epochTimeOpt struct {
 	unit int64
 }
 
-func (o *epochTimeOpt) spiType() string { return "datetime" }
+func (o *epochTimeOpt) dataType() types.DataType { return types.DataTypeDatetime }
 
 type datetimeOpt struct {
 	timeformat   string
 	timeLocation *time.Location
 }
 
-func (o *datetimeOpt) spiType() string { return "datetime" }
+func (o *datetimeOpt) dataType() types.DataType { return types.DataTypeDatetime }
 
 func (x *Node) fmDatetimeType(args ...any) (any, error) {
 	if len(args) != 1 && len(args) != 2 {

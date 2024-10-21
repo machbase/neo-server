@@ -196,23 +196,23 @@ func (typ DataType) ColumnType() ColumnType {
 
 func ParseDataType(typ string) DataType {
 	switch strings.ToLower(typ) {
-	case "int16", "sql.NullInt16":
+	case "int16":
 		return DataTypeInt16
-	case "int32", "sql.NullInt32":
+	case "int32":
 		return DataTypeInt32
-	case "int64", "sql.NullInt64":
+	case "int64":
 		return DataTypeInt64
-	case "datetime", "time.Time", "sql.NullTime":
+	case "datetime":
 		return DataTypeDatetime
-	case "float", "sql.NullFloat32":
+	case "float":
 		return DataTypeFloat32
-	case "double", "sql.NullFloat64":
+	case "double":
 		return DataTypeFloat64
 	case "ipv4":
 		return DataTypeIPv4
 	case "ipv6":
 		return DataTypeIPv6
-	case "string", "sql.NullString":
+	case "string":
 		return DataTypeString
 	case "binary":
 		return DataTypeBinary
@@ -221,7 +221,28 @@ func ParseDataType(typ string) DataType {
 	case "int8":
 		return DataTypeByte
 	default:
-		return DataType(fmt.Sprintf("Unsupported DataType: %s", typ))
+		switch typ {
+		default:
+			return DataType(fmt.Sprintf("Unsupported DataType: %s", typ))
+		case "sql.NullString":
+			return DataTypeString
+		case "time.Time", "sql.NullTime":
+			return DataTypeDatetime
+		case "sql.NullInt16":
+			return DataTypeInt16
+		case "sql.NullInt32":
+			return DataTypeInt32
+		case "sql.NullInt64":
+			return DataTypeInt64
+		case "sql.NullByte":
+			return DataTypeByte
+		case "sql.NullFloat32":
+			return DataTypeFloat32
+		case "sql.NullFloat64":
+			return DataTypeFloat64
+		case "sql.NullBool":
+			return DataTypeBoolean
+		}
 	}
 }
 
