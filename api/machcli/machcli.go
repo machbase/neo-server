@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -14,30 +13,14 @@ import (
 )
 
 type CliEnv struct {
-	handle     unsafe.Pointer
-	tz         *time.Location
-	timeformat string
-	host       string
-	port       int
-	user       string
-	password   string
+	handle   unsafe.Pointer
+	host     string
+	port     int
+	user     string
+	password string
 }
 
 type CliOption func(*CliEnv)
-
-func WithTimeLocation(loc *time.Location) CliOption {
-	return func(c *CliEnv) {
-		c.tz = loc
-	}
-}
-
-// WithTimeformat sets the time format for the time.Time type.
-// The default format is "2006-01-02 15:04:05".
-func WithTimeformat(fmt string) CliOption {
-	return func(c *CliEnv) {
-		c.timeformat = fmt
-	}
-}
 
 func WithHost(host string, port int) CliOption {
 	return func(c *CliEnv) {
@@ -97,13 +80,11 @@ func NewCliEnv(opts ...CliOption) (*CliEnv, error) {
 		return nil, err
 	}
 	ret := &CliEnv{
-		handle:     h,
-		tz:         time.Local,
-		timeformat: "2006-01-02 15:04:05",
-		host:       "127.0.0.1",
-		port:       5656,
-		user:       "sys",
-		password:   "manager",
+		handle:   h,
+		host:     "127.0.0.1",
+		port:     5656,
+		user:     "sys",
+		password: "manager",
 	}
 	for _, opt := range opts {
 		opt(ret)
@@ -126,14 +107,6 @@ func (c *CliEnv) Error() error {
 func (c *CliEnv) ConnectionString() string {
 	return fmt.Sprintf("SERVER=%s;UID=%s;PWD=%s;CONNTYPE=1;PORT_NO=%d",
 		c.host, strings.ToUpper(c.user), strings.ToUpper(c.password), c.port)
-}
-
-func (c *CliEnv) SetTimeformat(format string) {
-	c.timeformat = format
-}
-
-func (c *CliEnv) SetTimeLocation(loc *time.Location) {
-	c.tz = loc
 }
 
 func (c *CliEnv) Connect(ctx context.Context) (*CliConn, error) {
@@ -202,7 +175,7 @@ func (c *CliConn) ExecContext(ctx context.Context, query string, args ...any) (*
 }
 
 func (c *CliConn) QueryRowContext(ctx context.Context, query string, args ...any) *CliRow {
-	ret := &CliRow{env: c.env}
+	ret := &CliRow{}
 
 	stmt, err := c.NewStmt()
 	if err != nil {
@@ -644,7 +617,6 @@ func (stmt *CliStmt) fetch() ([]any, bool, error) {
 }
 
 type CliRow struct {
-	env    *CliEnv
 	err    error
 	values []any
 }
@@ -661,7 +633,7 @@ func (r *CliRow) Scan(dest ...any) error {
 		if d == nil {
 			continue
 		}
-		if err := scanConvert(r.values[i], d, r.env); err != nil {
+		if err := scanConvert(r.values[i], d); err != nil {
 			return err
 		}
 	}
@@ -711,126 +683,37 @@ func (r *CliRows) Scan(dest ...any) error {
 		if d == nil {
 			continue
 		}
-		if err := scanConvert(r.row[i], d, r.stmt.conn.env); err != nil {
+		if err := scanConvert(r.row[i], d); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func scanConvert(src, dst any, env *CliEnv) error {
+func scanConvert(src, dst any) error {
 	if src == nil {
 		dst = nil
 		return nil
 	}
 	switch sv := src.(type) {
 	case int16:
-		switch dv := dst.(type) {
-		case *int16:
-			*dv = sv
-			return nil
-		case *int32:
-			*dv = int32(sv)
-			return nil
-		case *int64:
-			*dv = int64(sv)
-			return nil
-		case *int:
-			*dv = int(sv)
-			return nil
-		}
+		return types.ScanInt16(sv, dst)
 	case int32:
-		switch dv := dst.(type) {
-		case *int16:
-			*dv = int16(sv)
-			return nil
-		case *int32:
-			*dv = sv
-			return nil
-		case *int64:
-			*dv = int64(sv)
-			return nil
-		case *int:
-			*dv = int(sv)
-			return nil
-		}
+		return types.ScanInt32(sv, dst)
 	case int64:
-		switch dv := dst.(type) {
-		case *int16:
-			*dv = int16(sv)
-			return nil
-		case *int32:
-			*dv = int32(sv)
-			return nil
-		case *int64:
-			*dv = sv
-			return nil
-		case *int:
-			*dv = int(sv)
-			return nil
-		}
+		return types.ScanInt64(sv, dst)
 	case float64:
-		switch dv := dst.(type) {
-		case *float32:
-			*dv = float32(sv)
-			return nil
-		case *float64:
-			*dv = sv
-			return nil
-		}
+		return types.ScanFloat64(sv, dst)
 	case float32:
-		switch dv := dst.(type) {
-		case *float32:
-			*dv = sv
-			return nil
-		case *float64:
-			*dv = float64(sv)
-			return nil
-		}
+		return types.ScanFloat32(sv, dst)
 	case string:
-		switch dv := dst.(type) {
-		case *string:
-			*dv = src.(string)
-			return nil
-		}
+		return types.ScanString(sv, dst)
 	case time.Time:
-		switch dv := dst.(type) {
-		case *time.Time:
-			*dv = sv
-			return nil
-		case *int64:
-			switch env.timeformat {
-			case "us":
-				*dv = sv.UnixNano() / 1000
-			case "ms":
-				*dv = sv.UnixNano() / 1000_000
-			case "s":
-				*dv = sv.Unix()
-			default:
-				*dv = sv.UnixNano()
-			}
-			return nil
-		case *string:
-			switch env.timeformat {
-			case "ns":
-				*dv = strconv.FormatInt(sv.UnixNano(), 10)
-			case "us":
-				*dv = strconv.FormatInt(sv.UnixNano()/1000, 10)
-			case "ms":
-				*dv = strconv.FormatInt(sv.UnixNano()/1000_000, 10)
-			case "s":
-				*dv = strconv.FormatInt(sv.Unix(), 10)
-			default:
-				*dv = sv.In(env.tz).Format(env.timeformat)
-			}
-			return nil
-		}
+		return types.ScanDatetime(sv, dst)
 	case []byte:
-		switch dv := dst.(type) {
-		case *[]byte:
-			*dv = src.([]byte)
-			return nil
-		}
+		return types.ScanBytes(sv, dst)
+	case net.IP:
+		return types.ScanIP(sv, dst)
 	}
 	return types.ErrCannotConvertValue(src, dst)
 }

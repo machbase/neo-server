@@ -172,7 +172,7 @@ func (row *Row) Scan(cols ...any) error {
 		case *int64:
 			row.err = types.ScanInt64(*src, cols[i])
 		case *time.Time:
-			row.err = types.ScanDateTime(*src, cols[i])
+			row.err = types.ScanDatetime(*src, cols[i])
 		case *float32:
 			row.err = types.ScanFloat32(*src, cols[i])
 		case *float64:
@@ -435,7 +435,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 			return types.ErrDatabaseScanTypeName("datetime", err)
 		}
 		if nonNull {
-			return types.ScanDateTime(v, dst)
+			return types.ScanDatetime(v, dst)
 		}
 	case ColumnRawTypeFloat32:
 		v, nonNull, err := mach.EngColumnDataFloat32(stmt, idx)

@@ -86,14 +86,14 @@ func ScanInt64(src int64, pDst any) error {
 	return nil
 }
 
-func ScanDateTime(src time.Time, pDst any) error {
+func ScanDatetime(src time.Time, pDst any) error {
 	switch dst := pDst.(type) {
 	case *int64:
 		*dst = src.UnixNano()
 	case *time.Time:
 		*dst = src
 	case *string:
-		*dst = src.String()
+		*dst = src.In(time.UTC).Format(time.RFC3339)
 	default:
 		return ErrDatabaseScanType("DATETIME", pDst)
 	}
