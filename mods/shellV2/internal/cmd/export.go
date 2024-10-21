@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -133,7 +134,7 @@ func doExport(ctx *action.ActionContext) {
 	queryCtx := &do.QueryContext{
 		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},

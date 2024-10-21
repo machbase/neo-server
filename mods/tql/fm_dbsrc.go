@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/do"
 )
 
@@ -258,8 +258,8 @@ func (dc *databaseSource) gen(node *Node) {
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
-			cols = append([]*api.Column{{Name: "ROWNUM", Type: api.ColumnTypeString(api.Int64ColumnType)}}, cols...)
+		OnFetchStart: func(cols types.Columns) {
+			cols = append([]*types.Column{types.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
@@ -280,9 +280,9 @@ func (dc *databaseSource) gen(node *Node) {
 	} else {
 		dc.resultMsg = msg
 		if dc.executed {
-			dc.task.SetResultColumns(api.Columns{
-				{Name: "ROWNUM", Type: "int"},
-				{Name: "MESSAGE", Type: "string"},
+			dc.task.SetResultColumns(types.Columns{
+				types.MakeColumnRownum(),
+				types.MakeColumnString("MESSAGE"),
 			})
 			NewRecord(1, msg).Tell(node.next)
 		}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
@@ -77,8 +78,8 @@ func doDescribe(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
+		colType := col.Type.String()
+		box.AppendRow(nrow, col.Name, colType, col.Size(), types.ColumnFlagString(col.Flag))
 	}
 	box.Render()
 
@@ -88,7 +89,7 @@ func doDescribe(ctx *action.ActionContext) {
 		box = ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "COLUMN"})
 		for _, idx := range desc.Indexes {
 			nrow++
-			idxType := api.IndexTypeString(idx.Type)
+			idxType := idx.Type.String()
 			box.AppendRow(nrow, idx.Name, idxType, strings.Join(idx.Cols, ", "))
 		}
 		box.Render()

@@ -6,6 +6,7 @@ package httpd
 import (
 	"context"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"sync"
 	"time"
 )
@@ -511,7 +512,7 @@ var _ api.Rows = &RowsMock{}
 //			CloseFunc: func() error {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() ([]string, []string, error) {
+//			ColumnsFunc: func() ([]string, []types.DataType, error) {
 //				panic("mock out the Columns method")
 //			},
 //			IsFetchableFunc: func() bool {
@@ -540,7 +541,7 @@ type RowsMock struct {
 	CloseFunc func() error
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() ([]string, []string, error)
+	ColumnsFunc func() ([]string, []types.DataType, error)
 
 	// IsFetchableFunc mocks the IsFetchable method.
 	IsFetchableFunc func() bool
@@ -620,7 +621,7 @@ func (mock *RowsMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *RowsMock) Columns() ([]string, []string, error) {
+func (mock *RowsMock) Columns() ([]string, []types.DataType, error) {
 	if mock.ColumnsFunc == nil {
 		panic("RowsMock.ColumnsFunc: method is nil but Rows.Columns was just called")
 	}
@@ -1056,7 +1057,7 @@ var _ api.Appender = &AppenderMock{}
 //			CloseFunc: func() (int64, int64, error) {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() ([]string, []string, error) {
+//			ColumnsFunc: func() ([]string, []types.DataType, error) {
 //				panic("mock out the Columns method")
 //			},
 //			TableNameFunc: func() string {
@@ -1079,7 +1080,7 @@ type AppenderMock struct {
 	CloseFunc func() (int64, int64, error)
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() ([]string, []string, error)
+	ColumnsFunc func() ([]string, []types.DataType, error)
 
 	// TableNameFunc mocks the TableName method.
 	TableNameFunc func() string
@@ -1211,7 +1212,7 @@ func (mock *AppenderMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *AppenderMock) Columns() ([]string, []string, error) {
+func (mock *AppenderMock) Columns() ([]string, []types.DataType, error) {
 	if mock.ColumnsFunc == nil {
 		panic("AppenderMock.ColumnsFunc: method is nil but Appender.Columns was just called")
 	}

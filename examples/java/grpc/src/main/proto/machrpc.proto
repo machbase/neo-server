@@ -1,0 +1,307 @@
+syntax = "proto3";
+
+package machrpc;
+
+option go_package = "github.com/machbase/neo-grpc/machrpc";
+option java_package = "com.machbase.neo.rpc";
+
+import "google/protobuf/any.proto";
+
+service Machbase {
+    rpc Conn(ConnRequest) returns(ConnResponse) {}
+    rpc ConnClose(ConnCloseRequest) returns (ConnCloseResponse) {}
+    rpc Ping(PingRequest) returns(PingResponse) {}
+    rpc Exec(ExecRequest) returns(ExecResponse) {}
+    rpc QueryRow(QueryRowRequest) returns(QueryRowResponse) {}
+    rpc Query(QueryRequest) returns(QueryResponse) {}
+    rpc Columns(RowsHandle) returns (ColumnsResponse) {}
+    rpc RowsFetch(RowsHandle) returns(RowsFetchResponse) {}
+    rpc RowsClose(RowsHandle) returns (RowsCloseResponse) {}
+    rpc Appender(AppenderRequest) returns (AppenderResponse){}
+    rpc Append(stream AppendData) returns(AppendDone) {}
+    rpc Explain(ExplainRequest) returns(ExplainResponse) {}
+    rpc UserAuth(UserAuthRequest) returns(UserAuthResponse) {}
+    rpc GetServerInfo(ServerInfoRequest) returns (ServerInfo) {}
+    rpc GetServicePorts(ServicePortsRequest) returns (ServicePorts) {}
+    rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
+    rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
+}
+
+message ConnHandle {
+    string handle = 1;
+}
+
+message ConnRequest{
+    string user = 1;
+    string password = 2;
+}
+
+message ConnResponse{
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    ConnHandle conn = 4;
+}
+
+message ConnCloseRequest{
+    ConnHandle conn = 1;
+}
+
+message ConnCloseResponse{
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message PingRequest {
+    ConnHandle conn = 1;
+    int64 token = 2;
+}
+
+message PingResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    int64 token = 4;
+}
+
+message AppenderRequest {
+    ConnHandle conn = 1;
+    string tableName = 2;
+    string timeformat = 3;
+}
+
+message AppenderResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    AppenderHandle handle = 4;
+    string tableName = 5;
+    int32 tableType = 6;
+}
+
+message AppenderHandle {
+    string handle = 1;
+    ConnHandle conn = 2;
+}
+
+message AppendData {
+    AppenderHandle handle = 1;
+    repeated AppendRecord records = 2;
+}
+
+message AppendRecord {
+    repeated AppendDatum tuple = 1;
+}
+
+message AppendDatum {
+    oneof value {
+        int32   v_int32   = 1;
+        uint32  v_uint32  = 11;
+        int64   v_int64   = 2;
+        uint64  v_uint64  = 12;
+        float   v_float   = 3;
+        double  v_double  = 4;
+        string  v_string  = 5;
+        bool    v_bool    = 6;
+        bytes   v_bytes   = 7;
+        string  v_ip      = 8;
+        int64   v_time    = 9;
+        bool    v_null    = 10;
+    }
+}
+
+message AppendDone {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    int64 successCount = 4;
+    int64 failCount = 5;
+}
+
+message ExplainRequest {
+    ConnHandle conn = 1;
+    string sql = 2;
+    bool full = 3;
+}
+
+message ExplainResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    string plan = 4;
+}
+
+message ExecRequest {
+    ConnHandle conn = 1;
+    string sql = 2;
+    repeated google.protobuf.Any params = 3;
+}
+
+message ExecResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    int64 rowsAffected = 4;
+    string message = 5;
+}
+
+message QueryRowRequest {
+    ConnHandle conn = 1;
+    string sql = 2;
+    repeated google.protobuf.Any params = 3;
+}
+
+message QueryRowResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    repeated google.protobuf.Any values = 4;
+    int64 rowsAffected = 5;
+    string message = 6;
+}
+
+message QueryRequest {
+    ConnHandle conn = 1;
+    string sql = 2;
+    repeated google.protobuf.Any params = 3;
+}
+
+message QueryResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    RowsHandle rowsHandle = 4; // only available if stmt is fetchable
+    int64 rowsAffected = 5;
+}
+
+message ColumnsResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    repeated Column columns = 4;
+}
+
+message Column {
+    string name = 1;
+    string type = 2;
+    int32 size = 3;
+    int32 length = 4;
+}
+
+message RowsHandle {
+    string handle = 1;
+    ConnHandle conn = 2;
+}
+
+message RowsFetchResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    bool hasNoRows = 4;
+    repeated google.protobuf.Any values = 5;
+}
+
+message RowsCloseResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message UserAuthRequest {
+    string loginName = 1;
+    string password = 2;
+}
+
+message UserAuthResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+}
+
+message ServerInfoRequest {
+}
+
+message ServerInfo {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    Version version = 4;
+    Runtime runtime = 5;
+}
+
+message Version {
+    int32 major = 1;
+    int32 minor = 2;
+    int32 patch = 3;
+    string gitSHA = 4;
+    string buildTimestamp = 5;
+    string buildCompiler = 6;
+    string engine = 7;
+}
+
+message Runtime {
+    string OS             = 1;
+    string arch           = 2;
+    int32  pid            = 3;
+    int64  uptimeInSecond = 4;
+    int32  processes      = 5;
+    int32  goroutines     = 6;
+    map<string, uint64> mem = 7;
+}
+
+message ServicePortsRequest {
+    string service = 1;
+}
+
+message ServicePorts {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    repeated Port ports = 4;
+}
+
+message Port {
+    string service = 1;
+    string address = 2;
+}
+
+message SessionsRequest {
+    bool statz = 1;
+    bool sessions = 2;
+}
+
+message SessionsResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    Statz statz = 4;
+    repeated Session Sessions = 5;
+}
+
+message Statz {
+    int64 conns          = 1;
+    int64 stmts          = 2;
+    int64 appenders      = 3;
+    int32 connsInUse     = 4;
+    int32 stmtsInUse     = 5;
+    int32 appendersInUse = 6;
+    int32 rawConns       = 7;
+}
+
+message Session {
+    string id            = 1;
+    int64  creTime       = 2;
+    int64  latestSqlTime = 3;
+    string latestSql     = 4;
+}
+
+message KillSessionRequest {
+    string id       = 1;
+}
+
+message KillSessionResponse {
+    bool   success  = 1;
+    string reason   = 2;
+    string elapse   = 3;
+}

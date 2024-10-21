@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 )
 
 // returns dbName, userName, tableName
@@ -80,7 +81,7 @@ func describe(ctx context.Context, conn api.Conn, name string, includeHiddenColu
 	if err := r.Scan(&d.Id, &tableType, &d.Flag, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = api.TableType(tableType)
+	d.Type = types.TableType(tableType)
 	d.Database = dbName
 	d.User = userName
 	d.Name = tableName
@@ -100,7 +101,7 @@ func describe(ctx context.Context, conn api.Conn, name string, includeHiddenColu
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
-		col.Type = api.ColumnType(colType)
+		col.Type = types.ColumnType(colType)
 		d.Columns = append(d.Columns, col)
 	}
 	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
@@ -125,7 +126,7 @@ func describe_idx(ctx context.Context, conn api.Conn, tableId int, dbId int) ([]
 		if err = rows.Scan(&d.Name, &indexType, &d.Id); err != nil {
 			return nil, err
 		}
-		d.Type = api.IndexType(indexType)
+		d.Type = types.IndexType(indexType)
 		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
 		if err != nil {
 			return nil, err
@@ -164,7 +165,7 @@ func describe_mv(ctx context.Context, conn api.Conn, name string, includeHiddenC
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = api.TableType(tableType)
+	d.Type = types.TableType(tableType)
 
 	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {
@@ -181,7 +182,7 @@ func describe_mv(ctx context.Context, conn api.Conn, name string, includeHiddenC
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
-		col.Type = api.ColumnType(colType)
+		col.Type = types.ColumnType(colType)
 		d.Columns = append(d.Columns, col)
 	}
 	return d, nil
@@ -200,7 +201,7 @@ type TableDescription struct {
 	Database string              `json:"database"`
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
-	Type     api.TableType       `json:"type"`
+	Type     types.TableType     `json:"type"`
 	Flag     int                 `json:"flag"`
 	Id       int                 `json:"id"`
 	Columns  ColumnDescriptions  `json:"columns"`
@@ -213,20 +214,20 @@ func (td *TableDescription) TypeString() string {
 }
 
 // TableTypeDescription converts the given TableType and flag into string representation.
-func TableTypeDescription(typ api.TableType, flag int) string {
+func TableTypeDescription(typ types.TableType, flag int) string {
 	desc := "undef"
 	switch typ {
-	case api.LogTableType:
+	case types.TableTypeLog:
 		desc = "Log Table"
-	case api.FixedTableType:
+	case types.TableTypeFixed:
 		desc = "Fixed Table"
-	case api.VolatileTableType:
+	case types.TableTypeVolatile:
 		desc = "Volatile Table"
-	case api.LookupTableType:
+	case types.TableTypeLookup:
 		desc = "Lookup Table"
-	case api.KeyValueTableType:
+	case types.TableTypeKeyValue:
 		desc = "KeyValue Table"
-	case api.TagTableType:
+	case types.TableTypeTag:
 		desc = "Tag Table"
 	}
 	switch flag {
@@ -244,12 +245,13 @@ func TableTypeDescription(typ api.TableType, flag int) string {
 
 type ColumnDescriptions []*ColumnDescription
 
-func (cds ColumnDescriptions) Columns() api.Columns {
-	cols := make([]*api.Column, len(cds))
+func (cds ColumnDescriptions) Columns() types.Columns {
+	cols := make([]*types.Column, len(cds))
 	for i, cd := range cds {
-		col := &api.Column{
-			Name: cd.Name,
-			Type: api.ColumnBufferType(cd.Type),
+		col := &types.Column{
+			Name:     cd.Name,
+			DataType: cd.Type.DataType(),
+			Length:   cd.Length,
 		}
 		cols[i] = col
 	}
@@ -258,65 +260,60 @@ func (cds ColumnDescriptions) Columns() api.Columns {
 
 // columnDescription represents information of a column info.
 type ColumnDescription struct {
-	Id     uint64         `json:"id"`
-	Name   string         `json:"name"`
-	Type   api.ColumnType `json:"type"`
-	Length int            `json:"length"`
-	Flag   int            `json:"flag"`
-}
-
-// TypeString returns string representation of column type.
-func (cd *ColumnDescription) TypeString() string {
-	return api.ColumnTypeStringNative(cd.Type)
+	Id     uint64           `json:"id"`
+	Name   string           `json:"name"`
+	Type   types.ColumnType `json:"type"`
+	Length int              `json:"length"`
+	Flag   int              `json:"flag"`
 }
 
 func (cd *ColumnDescription) Size() int {
 	switch cd.Type {
-	case api.Int16ColumnType:
+	case types.ColumnTypeShort:
 		return 6
-	case api.Uint16ColumnType:
+	case types.ColumnTypeUshort:
 		return 5
-	case api.Int32ColumnType:
+	case types.ColumnTypeInteger:
 		return 11
-	case api.Uint32ColumnType:
+	case types.ColumnTypeUinteger:
 		return 10
-	case api.Int64ColumnType:
+	case types.ColumnTypeLong:
 		return 20
-	case api.Uint64ColumnType:
+	case types.ColumnTypeUlong:
 		return 20
-	case api.Float32ColumnType:
+	case types.ColumnTypeFloat:
 		return 17
-	case api.Float64ColumnType:
+	case types.ColumnTypeDouble:
 		return 17
-	case api.IpV4ColumnType:
+	case types.ColumnTypeIPv4:
 		return 15
-	case api.IpV6ColumnType:
+	case types.ColumnTypeIPv6:
 		return 45
-	case api.DatetimeColumnType:
+	case types.ColumnTypeDatetime:
 		return 31
 	}
 	return cd.Length
 }
 
 func (cd *ColumnDescription) IsBaseTime() bool {
-	return cd.Flag&api.ColumnFlagBasetime > 0
+	return cd.Flag&types.ColumnFlagBasetime > 0
 }
 
 func (cd *ColumnDescription) IsTagName() bool {
-	return cd.Flag&api.ColumnFlagTagName > 0
+	return cd.Flag&types.ColumnFlagTagName > 0
 }
 
 func (cd *ColumnDescription) IsSummarized() bool {
-	return cd.Flag&api.ColumnFlagSummarized > 0
+	return cd.Flag&types.ColumnFlagSummarized > 0
 }
 
 func (cd *ColumnDescription) IsMetaColumn() bool {
-	return cd.Flag&api.ColumnFlagMetaColumn > 0
+	return cd.Flag&types.ColumnFlagMetaColumn > 0
 }
 
 type IndexDescription struct {
-	Id   uint64        `json:"id"`
-	Name string        `json:"name"`
-	Type api.IndexType `json:"type"`
-	Cols []string      `json:"cols"`
+	Id   uint64          `json:"id"`
+	Name string          `json:"name"`
+	Type types.IndexType `json:"type"`
+	Cols []string        `json:"cols"`
 }

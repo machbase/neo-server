@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machsvr"
+	"github.com/machbase/neo-server/api/types"
 )
 
 var (
@@ -21,15 +22,15 @@ var (
 var (
 	_ Database = &machDatabase{}
 	_ Conn     = &machConn{}
-	_ Result   = &mach.Result{}
-	_ Rows     = &mach.Rows{}
-	_ Row      = &mach.Row{}
-	_ Appender = &mach.Appender{}
+	_ Result   = &machsvr.Result{}
+	_ Rows     = &machsvr.Rows{}
+	_ Row      = &machsvr.Row{}
+	_ Appender = &machsvr.Appender{}
 )
 
 func NewDatabase(underlying any) Database {
 	switch raw := underlying.(type) {
-	case *mach.Database:
+	case *machsvr.Database:
 		return &machDatabase{raw: raw}
 	case *machrpc.Client:
 		return &machrpcClient{raw: raw}
@@ -47,7 +48,7 @@ type AuthServer interface {
 }
 
 type machDatabase struct {
-	raw *mach.Database
+	raw *machsvr.Database
 }
 
 type machrpcClient struct {
@@ -57,10 +58,10 @@ type machrpcClient struct {
 type ConnectOption func(db any) any
 
 func (db *machDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
-	opts := make([]mach.ConnectOption, len(options))
+	opts := make([]machsvr.ConnectOption, len(options))
 	for i, o := range options {
 		if f := o(db); f != nil {
-			opts[i] = f.(mach.ConnectOption)
+			opts[i] = f.(machsvr.ConnectOption)
 		}
 	}
 	c, err := db.raw.Connect(ctx, opts...)
@@ -93,10 +94,10 @@ func (db *machrpcClient) Connect(ctx context.Context, options ...ConnectOption) 
 func WithTrustUser(username string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
-		case *mach.Database:
-			return mach.WithTrustUser(username)
+		case *machsvr.Database:
+			return machsvr.WithTrustUser(username)
 		case *machDatabase:
-			return mach.WithTrustUser(username)
+			return machsvr.WithTrustUser(username)
 		default:
 			return nil
 		}
@@ -107,7 +108,7 @@ func WithPassword(username, password string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
 		case *machConn:
-			return mach.WithPassword(username, password)
+			return machsvr.WithPassword(username, password)
 		case *machrpc.Client:
 			return machrpc.WithPassword(username, password)
 		default:
@@ -117,10 +118,10 @@ func WithPassword(username, password string) ConnectOption {
 }
 
 type machConn struct {
-	raw *mach.Conn
+	raw *machsvr.Conn
 }
 
-func ConnMach(raw *mach.Conn) Conn {
+func ConnMach(raw *machsvr.Conn) Conn {
 	return &machConn{raw: raw}
 }
 
@@ -148,9 +149,9 @@ func (c *machConn) QueryRow(ctx context.Context, sqlText string, params ...any) 
 }
 
 func (c *machConn) Appender(ctx context.Context, tableName string, options ...AppenderOption) (Appender, error) {
-	opts := make([]mach.AppenderOption, len(options))
+	opts := make([]machsvr.AppenderOption, len(options))
 	for i, o := range options {
-		opts[i] = func(a *mach.Appender) {
+		opts[i] = func(a *machsvr.Appender) {
 			o(a)
 		}
 	}
@@ -275,7 +276,7 @@ type Rows interface {
 	Message() string
 
 	// Columns returns list of column info that consists of result of query statement.
-	Columns() ([]string, []string, error)
+	Columns() ([]string, []types.DataType, error)
 }
 
 type Row interface {
@@ -292,88 +293,53 @@ type Appender interface {
 	Append(values ...any) error
 	AppendWithTimestamp(ts time.Time, values ...any) error
 	Close() (int64, int64, error)
-	Columns() ([]string, []string, error)
+	Columns() ([]string, []types.DataType, error)
 }
 
 type AppenderOption func(Appender)
 
-func AppenderTableType(app Appender) TableType {
+func AppenderTableType(app Appender) types.TableType {
 	switch a := app.(type) {
-	case *mach.Appender:
-		return TableType(a.TableType())
+	case *machsvr.Appender:
+		return types.TableType(a.TableType())
 	case *machrpc.Appender:
-		return TableType(a.TableType())
+		return types.TableType(a.TableType())
 	}
-	return TableType(-1)
-}
-
-type Columns []*Column
-
-type Column struct {
-	Name string
-	Type string
-}
-
-func (cols Columns) Names() []string {
-	names := make([]string, len(cols))
-	for i := range cols {
-		names[i] = cols[i].Name
-	}
-	return names
-}
-
-func (cols Columns) NamesWithTimeLocation(tz *time.Location) []string {
-	names := make([]string, len(cols))
-	for i := range cols {
-		if cols[i].Type == "datetime" {
-			names[i] = fmt.Sprintf("%s(%s)", cols[i].Name, tz.String())
-		} else {
-			names[i] = cols[i].Name
-		}
-	}
-	return names
-}
-
-func (cols Columns) Types() []string {
-	types := make([]string, len(cols))
-	for i := range cols {
-		types[i] = cols[i].Type
-	}
-	return types
+	return types.TableType(-1)
 }
 
 // RowsColumns returns list of column info that consists of result of query statement.
-func RowsColumns(rows Rows) (Columns, error) {
-	names, types, err := rows.Columns()
+func RowsColumns(rows Rows) (types.Columns, error) {
+	columnNames, columnTypes, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
-	if len(names) != len(types) {
-		return nil, fmt.Errorf("internal error names %d types %d", len(names), len(types))
+	if len(columnNames) != len(columnTypes) {
+		return nil, fmt.Errorf("internal error names %d types %d", len(columnNames), len(columnTypes))
 	}
-	ret := make([]*Column, len(names))
-	for i := range names {
-		ret[i] = &Column{
-			Name: names[i],
-			Type: types[i],
+	ret := make([]*types.Column, len(columnNames))
+	for i := range columnNames {
+		ret[i] = &types.Column{
+			Name:     columnNames[i],
+			DataType: columnTypes[i],
 		}
 	}
 	return ret, nil
 }
 
-func AppenderColumns(rows Appender) (Columns, error) {
-	names, types, err := rows.Columns()
+func AppenderColumns(rows Appender) (types.Columns, error) {
+	columnNames, columnTypes, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
-	if len(names) != len(types) {
-		return nil, fmt.Errorf("internal error names %d types %d", len(names), len(types))
+	if len(columnNames) != len(columnTypes) {
+		return nil, fmt.Errorf("internal error names %d types %d", len(columnNames), len(columnTypes))
 	}
-	ret := make([]*Column, len(names))
-	for i := range names {
-		ret[i] = &Column{
-			Name: names[i],
-			Type: types[i],
+	ret := make([]*types.Column, len(columnNames))
+	for i := range columnNames {
+		ret[i] = &types.Column{
+			Name:     columnNames[i],
+			DataType: columnTypes[i],
 		}
 	}
 	return ret, nil

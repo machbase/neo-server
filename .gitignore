@@ -23,6 +23,7 @@ examples/**/target
 tmp/
 packages/
 vendor/
+examples/**/target
 
 mods/service/httpd/web/ui/*
 

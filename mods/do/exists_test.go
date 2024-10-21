@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/do"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,7 @@ func TestExists(t *testing.T) {
 				case "select type from M$SYS_TABLES where name = ?":
 					return &RowMock{
 						ScanFunc: func(cols ...any) error {
-							*(cols[0].(*int)) = int(api.TagTableType)
+							*(cols[0].(*int)) = int(types.TableTypeTag)
 							return nil
 						},
 					}

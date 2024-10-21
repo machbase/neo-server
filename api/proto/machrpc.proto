@@ -23,6 +23,7 @@ service Machbase {
     rpc GetServerInfo(ServerInfoRequest) returns (ServerInfo) {}
     rpc GetServicePorts(ServicePortsRequest) returns (ServicePorts) {}
     rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
+    rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
 }
 
 message ConnHandle {
@@ -66,7 +67,6 @@ message PingResponse {
 message AppenderRequest {
     ConnHandle conn = 1;
     string tableName = 2;
-    string timeformat = 3;
 }
 
 message AppenderResponse {
@@ -288,8 +288,19 @@ message Statz {
 }
 
 message Session {
-    string key           = 1;
+    string id            = 1;
     int64  creTime       = 2;
     int64  latestSqlTime = 3;
     string latestSql     = 4;
+}
+
+message KillSessionRequest {
+    string id       = 1;
+    bool   force    = 2;
+}
+
+message KillSessionResponse {
+    bool   success  = 1;
+    string reason   = 2;
+    string elapse   = 3;
 }

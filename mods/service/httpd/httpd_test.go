@@ -14,8 +14,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/stretchr/testify/require"
@@ -85,15 +86,15 @@ func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...api
 	ret.AppendFunc = func(values ...any) error { return nil }
 	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
 	ret.TableNameFunc = func() string { return tableName }
-	ret.ColumnsFunc = func() ([]string, []string, error) {
+	ret.ColumnsFunc = func() ([]string, []types.DataType, error) {
 		return []string{
 				"TIME",
 				"TIME",
 				"VALUE",
-			}, []string{
-				"string",
-				"datetime",
-				"double",
+			}, []types.DataType{
+				types.DataTypeString,
+				types.DataTypeDatetime,
+				types.DataTypeFloat64,
 			}, nil
 	}
 	return ret, nil

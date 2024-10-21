@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 )
 
 /* Interpreting Influx lineprotocol
@@ -29,12 +30,12 @@ func WriteLineProtocol(ctx context.Context, conn api.Conn, dbName string, descCo
 		=> HOST append / DC, NAME, SYSTEM not append
 	*/
 	compareNames := descColumns.Columns().Names()
-	compareTypes := descColumns.Columns().Types()
+	compareTypes := descColumns.Columns().DataTypes()
 	compareNames = compareNames[3:]
 	compareTypes = compareTypes[3:]
 	for idx, val := range compareNames {
 		if _, ok := tags[val]; ok {
-			if compareTypes[idx] == api.ColumnBufferTypeString {
+			if compareTypes[idx] == types.DataTypeString {
 				columns = append(columns, val)
 			}
 		}

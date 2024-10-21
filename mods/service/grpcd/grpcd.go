@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/leak"
@@ -31,7 +31,7 @@ type Service interface {
 }
 
 // Factory
-func New(db *mach.Database, options ...Option) (Service, error) {
+func New(db *machsvr.Database, options ...Option) (Service, error) {
 	s := &grpcd{
 		log:            logging.GetLog("grpcd"),
 		db:             db,
@@ -151,7 +151,7 @@ type grpcd struct {
 
 	authServer security.AuthServer
 
-	db           *mach.Database
+	db           *machsvr.Database
 	sessions     map[string]*connParole
 	sessionsLock sync.Mutex
 
@@ -181,7 +181,7 @@ type grpcd struct {
 }
 
 type connParole struct {
-	rawConn *mach.Conn
+	rawConn *machsvr.Conn
 	handle  string
 	cretime time.Time
 }

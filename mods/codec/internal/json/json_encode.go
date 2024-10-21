@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -24,7 +24,7 @@ type Exporter struct {
 	timeformatter *util.TimeFormatter
 
 	colNames []string
-	colTypes []string
+	colTypes []types.DataType
 
 	transpose   bool
 	rowsFlatten bool
@@ -81,8 +81,8 @@ func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
-func (ex *Exporter) SetColumnTypes(types ...string) {
-	ex.colTypes = types
+func (ex *Exporter) SetColumnTypes(columnTypes ...types.DataType) {
+	ex.colTypes = columnTypes
 }
 
 func (ex *Exporter) SetTranspose(flag bool) {
@@ -98,18 +98,18 @@ func (ex *Exporter) SetRowsArray(flag bool) {
 }
 
 func (ex *Exporter) Open() error {
-	var names []string
-	var types []string
+	var columnNames []string
+	var columnTypes []types.DataType
 	if ex.Rownum && !ex.transpose { // rownum does not effective in transpose mode
-		names = append([]string{"ROWNUM"}, ex.colNames...)
-		types = append([]string{api.ColumnBufferTypeInt64}, ex.colTypes...)
+		columnNames = append([]string{"ROWNUM"}, ex.colNames...)
+		columnTypes = append([]types.DataType{types.DataTypeInt64}, ex.colTypes...)
 	} else {
-		names = ex.colNames
-		types = ex.colTypes
+		columnNames = ex.colNames
+		columnTypes = ex.colTypes
 	}
 
-	columnsJson, _ := gojson.Marshal(names)
-	typesJson, _ := gojson.Marshal(types)
+	columnsJson, _ := gojson.Marshal(columnNames)
+	typesJson, _ := gojson.Marshal(columnTypes)
 
 	if ex.transpose && !ex.rowsArray {
 		header := fmt.Sprintf(`{"data":{"columns":%s,"types":%s,"cols":[`,

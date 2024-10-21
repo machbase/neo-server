@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/booter"
 	_ "github.com/machbase/neo-server/mods/logging"
 	_ "github.com/machbase/neo-server/mods/server"
@@ -93,14 +93,14 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db, err := mach.NewDatabase()
+	db, err := machsvr.NewDatabase()
 	if err != nil {
 		panic(err)
 	}
 	var count int
 
 	checkTableSql := fmt.Sprintf("select count(*) from M$SYS_TABLES where name = '%s'", benchmarkTableName)
-	conn, err := db.Connect(context.TODO(), mach.WithTrustUser("sys"))
+	conn, err := db.Connect(context.TODO(), machsvr.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}
@@ -173,9 +173,9 @@ func SqlTidy(sqlText string) string {
 	return strings.TrimSpace(strings.Join(lines, " "))
 }
 
-func listNeoSession(db *mach.Database) {
+func listNeoSession(db *machsvr.Database) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}

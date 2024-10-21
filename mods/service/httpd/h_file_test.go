@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -166,7 +167,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 		if len(params) == 2 && params[0] == "SYS" && params[1] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = api.TagTableType
+					*(cols[0].(*int)) = int(types.TableTypeTag)
 					return nil
 				},
 			}
@@ -175,10 +176,10 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 		if len(params) == 3 && params[0] == "SYS" && params[1] == -1 && params[2] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = 4907             // table id
-					*(cols[1].(*int)) = api.TagTableType // table type
-					*(cols[2].(*int)) = 0                // table flag
-					*(cols[3].(*int)) = 4                // column count
+					*(cols[0].(*int)) = 4907                    // table id
+					*(cols[1].(*int)) = int(types.TableTypeTag) // table type
+					*(cols[2].(*int)) = 0                       // table flag
+					*(cols[3].(*int)) = 4                       // column count
 					return nil
 				},
 				ErrFunc: func() error { return nil },
@@ -241,11 +242,11 @@ func newColumnsMock() *columnsMock {
 	ret := &columnsMock{
 		cursor: 0,
 		rows: []columnInfo{
-			{"NAME", api.VarcharColumnType, 200, 1, 0},
-			{"TIME", api.DatetimeColumnType, 8, 2, 1},
-			{"VALUE", api.Float64ColumnType, 8, 3, 2},
-			{"EXTDATA", api.JsonColumnType, 32767, 4, 3},
-			{"_RID", api.Int64ColumnType, 8, 5, 65534},
+			{"NAME", int(types.ColumnTypeVarchar), 200, 1, 0},
+			{"TIME", int(types.ColumnTypeDatetime), 8, 2, 1},
+			{"VALUE", int(types.ColumnTypeDouble), 8, 3, 2},
+			{"EXTDATA", int(types.ColumnTypeJson), 32767, 4, 3},
+			{"_RID", int(types.ColumnTypeLong), 8, 5, 65534},
 		},
 	}
 	ret.NextFunc = func() bool {

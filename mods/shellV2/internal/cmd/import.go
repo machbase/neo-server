@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -175,7 +175,7 @@ func doImport(ctx *action.ActionContext) {
 		opts.TimeLocation(cmd.TimeLocation),
 		opts.TableName(cmd.Table),
 		opts.Columns(cols.Names()...),
-		opts.ColumnTypes(cols.Types()...),
+		opts.ColumnTypes(cols.DataTypes()...),
 		opts.Delimiter(cmd.Delimiter),
 		opts.Heading(cmd.HasHeader),
 	}

@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 )
 
 type QueryContext struct {
 	Conn         api.Conn
 	Ctx          context.Context
-	OnFetchStart func(api.Columns)
+	OnFetchStart func(types.Columns)
 	OnFetch      func(rownum int64, values []any) bool
 	OnFetchEnd   func()
 	OnExecuted   func(userMessage string, rowsAffected int64) // callback if query is not a fetchable (e.g: create/drop table)
@@ -43,7 +44,10 @@ func Query(ctx *QueryContext, sqlText string, args ...any) (string, error) {
 
 	var nrow int64
 	for rows.Next() {
-		rec := api.MakeBuffer(cols)
+		rec, err := cols.MakeBuffer()
+		if err != nil {
+			return "", err
+		}
 		err = rows.Scan(rec...)
 		if err != nil {
 			return "", err

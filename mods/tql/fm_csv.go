@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	codecOpts "github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
@@ -255,9 +255,9 @@ func (src *csvSource) SetCharsetEncoding(enc encoding.Encoding) {
 	src.srcEncoding = enc
 }
 
-func (fs *csvSource) header() api.Columns {
+func (fs *csvSource) header() types.Columns {
 	if len(fs.columns) == 0 {
-		return []*api.Column{{Name: "ROWNUM", Type: "int"}}
+		return []*types.Column{types.MakeColumnRownum()}
 	}
 	max := 0
 	for i := range fs.columns {
@@ -265,10 +265,10 @@ func (fs *csvSource) header() api.Columns {
 			max = i
 		}
 	}
-	ret := make([]*api.Column, max+2)
-	ret[0] = &api.Column{Name: "ROWNUM", Type: "int"}
+	ret := make([]*types.Column, max+2)
+	ret[0] = types.MakeColumnRownum()
 	for i, c := range fs.columns {
-		ret[i+1] = &api.Column{Name: c.label, Type: c.dataType.spiType()}
+		ret[i+1] = &types.Column{Name: c.label, DataType: types.ParseDataType(c.dataType.spiType())}
 	}
 	return ret
 }

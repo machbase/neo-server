@@ -273,12 +273,16 @@ func (svr *httpd) getExec(ctx context.Context, conn api.Conn, sqlText string) (*
 
 		for idx, col := range cols {
 			colsList[idx].Name = col.Name
-			colsList[idx].Type = ColumnTypeConvert(col.Type)
+			colsList[idx].Type = int(col.DataType.ColumnType())
 		}
 	}()
 
 	for rows.Next() {
-		buffer := api.MakeBuffer(cols)
+		buffer, err := cols.MakeBuffer()
+		if err != nil {
+			svr.log.Warn("make buffer error : ", err.Error())
+			return result, err
+		}
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())

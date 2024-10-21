@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -407,7 +408,7 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 	queryCtx := &do.QueryContext{
 		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
@@ -450,8 +451,8 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
+		colType := col.Type.String()
+		box.AppendRow(nrow, col.Name, colType, col.Size(), types.ColumnFlagString(col.Flag))
 	}
 
 	box.Render()
@@ -472,7 +473,7 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 			return true
 		}
 		nrow++
-		desc := do.TableTypeDescription(api.TableType(ti.Type), ti.Flag)
+		desc := do.TableTypeDescription(types.TableType(ti.Type), ti.Flag)
 		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
 		return true
 	})
@@ -502,7 +503,7 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 		}
 		nrow++
 
-		desc := do.TableTypeDescription(api.TableType(typ), flg)
+		desc := do.TableTypeDescription(types.TableType(typ), flg)
 		t.AppendRow(nrow, id, name, desc)
 	}
 	t.Render()

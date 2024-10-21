@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -135,7 +135,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
 			if len(req.Compress) > 0 {
 				ctx.Writer.Header().Set("Content-Encoding", req.Compress)

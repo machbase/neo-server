@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/oscillator"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"

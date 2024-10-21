@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -109,7 +110,7 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()

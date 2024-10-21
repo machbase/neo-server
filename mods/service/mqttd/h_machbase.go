@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/do"
@@ -116,7 +117,7 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	queryCtx := &do.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
@@ -267,7 +268,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 	var recno int
 	var insertQuery string
 	var columnNames []string
-	var columnTypes []string
+	var columnTypes []types.DataType
 
 	if wp.Format == "json" {
 		bs, err := io.ReadAll(instream)
@@ -288,14 +289,14 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
-			columnTypes = make([]string, 0, len(columnNames))
+			columnTypes = make([]types.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
 				_hold = append(_hold, "?")
-				_type := ""
+				var _type types.DataType
 				for _, d := range desc.Columns {
 					if d.Name == strings.ToUpper(colName) {
-						_type = d.TypeString()
+						_type = d.Type.DataType()
 						break
 					}
 				}
@@ -314,7 +315,7 @@ func (svr *mqttd) handleWrite(peer mqtt.Peer, topic string, payload []byte) erro
 
 	if len(columnNames) == 0 {
 		columnNames = desc.Columns.Columns().Names()
-		columnTypes = desc.Columns.Columns().Types()
+		columnTypes = desc.Columns.Columns().DataTypes()
 	}
 
 	codecOpts = append(codecOpts,
@@ -469,8 +470,8 @@ func (svr *mqttd) handleAppend(peer mqtt.Peer, topic string, payload []byte) err
 
 	cols, _ := api.AppenderColumns(appender)
 	colNames := cols.Names()
-	colTypes := cols.Types()
-	if api.AppenderTableType(appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+	colTypes := cols.DataTypes()
+	if api.AppenderTableType(appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

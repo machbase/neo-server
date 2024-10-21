@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"

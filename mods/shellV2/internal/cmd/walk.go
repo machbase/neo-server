@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/rivo/tview"
@@ -116,7 +117,7 @@ type Walker struct {
 	ctx        context.Context
 	mutex      sync.Mutex
 	rows       *machrpc.Rows
-	cols       api.Columns
+	cols       types.Columns
 	values     [][]string
 	eof        bool
 	fetchSize  int
@@ -172,7 +173,7 @@ func (w *Walker) Reload() error {
 	values[0] = make([]string, len(cols)+1)
 	values[0][0] = "ROWNUM"
 	for i := range cols {
-		if cols[i].Type == "datetime" {
+		if cols[i].DataType == "datetime" {
 			values[0][i+1] = fmt.Sprintf("%s(%s)", cols[i].Name, w.tz.String())
 		} else {
 			values[0][i+1] = cols[i].Name
@@ -214,7 +215,11 @@ func (w *Walker) fetchMore() {
 		return
 	}
 
-	buffer := api.MakeBuffer(w.cols)
+	buffer, err := w.cols.MakeBuffer()
+	if err != nil {
+		w.eof = true
+		return
+	}
 
 	count := 0
 	nrows := len(w.values)

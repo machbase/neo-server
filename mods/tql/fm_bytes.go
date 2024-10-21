@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/util/charset"
 	"github.com/machbase/neo-server/mods/util/ssfs"
@@ -179,9 +179,9 @@ func (src *bytesSource) gen(node *Node) {
 	} else {
 		label = "BYTES"
 	}
-	node.task.SetResultColumns([]*api.Column{
-		{Name: "ROWNUM", Type: "int"},
-		{Name: label, Type: api.ColumnBufferTypeString},
+	node.task.SetResultColumns([]*types.Column{
+		types.MakeColumnRownum(),
+		types.MakeColumnString(label),
 	})
 
 	num := 1

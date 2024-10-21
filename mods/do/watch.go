@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/util"
 )
 
@@ -27,7 +28,7 @@ type Watcher struct {
 	isTagTable  bool
 	tableName   string
 	columnNames []string
-	columnTypes []api.ColumnType
+	columnTypes []types.ColumnType
 	timeformat  *util.TimeFormatter
 	// tag table
 	nameColumn      string
@@ -128,10 +129,10 @@ func (w *Watcher) init(ctx context.Context) error {
 	}
 	if tableType, err := TableType(ctx, conn, w.tableName); err != nil {
 		return err
-	} else if tableType != api.TagTableType && tableType != api.LogTableType {
+	} else if tableType != types.TableTypeTag && tableType != types.TableTypeLog {
 		return fmt.Errorf("not supported table type")
 	} else {
-		w.isTagTable = tableType == api.TagTableType
+		w.isTagTable = tableType == types.TableTypeTag
 	}
 
 	if w.isTagTable {
@@ -253,7 +254,7 @@ func (w *Watcher) executeTag(tag string) {
 	for i := range w.columnNames {
 		name := w.columnNames[i]
 		typ := w.columnTypes[i]
-		if typ == api.DatetimeColumnType {
+		if typ == types.ColumnTypeDatetime {
 			if v, ok := values[i].(*time.Time); ok {
 				obj[name] = w.timeformat.FormatEpoch(*v)
 				continue
@@ -326,33 +327,33 @@ func (w *Watcher) makeBuffer() []any {
 	ret := make([]any, len(w.columnTypes))
 	for i, t := range w.columnTypes {
 		switch t {
-		case api.Int16ColumnType:
+		case types.ColumnTypeShort:
 			ret[i] = new(int16)
-		case api.Uint16ColumnType:
+		case types.ColumnTypeUshort:
 			ret[i] = new(uint16)
-		case api.Int32ColumnType:
+		case types.ColumnTypeInteger:
 			ret[i] = new(int32)
-		case api.Uint32ColumnType:
+		case types.ColumnTypeUinteger:
 			ret[i] = new(uint32)
-		case api.Int64ColumnType:
+		case types.ColumnTypeLong:
 			ret[i] = new(int64)
-		case api.Uint64ColumnType:
+		case types.ColumnTypeUlong:
 			ret[i] = new(uint64)
-		case api.Float32ColumnType:
+		case types.ColumnTypeFloat:
 			ret[i] = new(float32)
-		case api.Float64ColumnType:
+		case types.ColumnTypeDouble:
 			ret[i] = new(float64)
-		case api.VarcharColumnType:
+		case types.ColumnTypeVarchar:
 			ret[i] = new(string)
-		case api.TextColumnType:
+		case types.ColumnTypeText:
 			ret[i] = new(string)
-		case api.IpV4ColumnType:
+		case types.ColumnTypeIPv4:
 			ret[i] = new(net.IP)
-		case api.IpV6ColumnType:
+		case types.ColumnTypeIPv6:
 			ret[i] = new(net.IP)
-		case api.DatetimeColumnType:
+		case types.ColumnTypeDatetime:
 			ret[i] = new(time.Time)
-		case api.BinaryColumnType:
+		case types.ColumnTypeBinary:
 			ret[i] = new([]byte)
 		}
 	}

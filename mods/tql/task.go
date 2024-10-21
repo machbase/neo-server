@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
@@ -52,7 +53,7 @@ type Task struct {
 	nodes      []*Node
 
 	_shouldStop    bool
-	_resultColumns api.Columns
+	_resultColumns types.Columns
 	_stateLock     sync.RWMutex
 	_created       time.Time
 }
@@ -440,38 +441,38 @@ func (x *Task) shouldStop() bool {
 	return ret
 }
 
-func (x *Task) SetResultColumns(cols api.Columns) {
+func (x *Task) SetResultColumns(cols types.Columns) {
 	x._stateLock.Lock()
-	types := make([]*api.Column, len(cols))
+	ts := make([]*types.Column, len(cols))
 	for i, c := range cols {
 		x := *c
-		switch x.Type {
+		switch x.DataType {
 		case "sql.RawBytes":
-			x.Type = api.ColumnBufferTypeBinary
+			x.DataType = types.DataTypeBinary
 		case "sql.NullBool":
-			x.Type = api.ColumnBufferTypeBoolean
+			x.DataType = types.DataTypeBoolean
 		case "sql.NullByte":
-			x.Type = api.ColumnBufferTypeByte
+			x.DataType = types.DataTypeByte
 		case "sql.NullFloat64":
-			x.Type = api.ColumnBufferTypeDouble
+			x.DataType = types.DataTypeFloat64
 		case "sql.NullInt16":
-			x.Type = api.ColumnBufferTypeInt16
+			x.DataType = types.DataTypeInt16
 		case "sql.NullInt32":
-			x.Type = api.ColumnBufferTypeInt32
+			x.DataType = types.DataTypeInt32
 		case "sql.NullInt64":
-			x.Type = api.ColumnBufferTypeInt64
+			x.DataType = types.DataTypeInt64
 		case "sql.NullString":
-			x.Type = api.ColumnBufferTypeString
+			x.DataType = types.DataTypeString
 		case "sql.NullTime":
-			x.Type = api.ColumnBufferTypeDatetime
+			x.DataType = types.DataTypeDatetime
 		}
-		types[i] = &x
+		ts[i] = &x
 	}
-	x._resultColumns = types
+	x._resultColumns = ts
 	x._stateLock.Unlock()
 }
 
-func (x *Task) ResultColumns() api.Columns {
+func (x *Task) ResultColumns() types.Columns {
 	x._stateLock.RLock()
 	ret := x._resultColumns
 	x._stateLock.RUnlock()

@@ -4,8 +4,8 @@ import (
 	context "context"
 	"fmt"
 
-	"github.com/machbase/neo-server/api"
 	bridgerpc "github.com/machbase/neo-server/api/bridge"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/bridge"
 )
 
@@ -58,12 +58,12 @@ func (cli *BridgeClient) Query(ctx context.Context, name string, command string,
 	return ret, nil
 }
 
-func (rs *ConnectorResult) Columns(ctx context.Context) (api.Columns, error) {
-	ret := []*api.Column{}
+func (rs *ConnectorResult) Columns(ctx context.Context) (types.Columns, error) {
+	ret := []*types.Column{}
 	for _, c := range rs.sqlQueryResult.Fields {
-		ret = append(ret, &api.Column{
-			Name: c.Name,
-			Type: c.Type,
+		ret = append(ret, &types.Column{
+			Name:     c.Name,
+			DataType: types.DataType(c.Type),
 		})
 	}
 	return ret, nil

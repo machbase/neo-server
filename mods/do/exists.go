@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/pkg/errors"
 )
 
@@ -50,7 +51,7 @@ func ExistsTableOrCreate(ctx context.Context, conn api.Conn, tableName string, c
 			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", tableName))
 			return
 		}
-		if tableType == api.LogTableType {
+		if tableType == types.TableTypeLog {
 			result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", tableName))
 			if result.Err() != nil {
 				err = result.Err()
