@@ -14,9 +14,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -80,7 +80,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	exists, err := do.ExistsTable(ctx, conn, tableName)
+	exists, err := api.ExistsTable(ctx, conn, tableName)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -94,14 +94,14 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		return
 	}
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, conn, tableName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 
 	var in spec.InputStream
@@ -140,10 +140,9 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			return
 		}
 		defer appender.Close()
-		cols := desc.Columns.Columns()
-		colNames := cols.Names()
-		colTypes := cols.Types()
-		if api.AppenderTableType(appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+		colNames := desc.Columns.Names()
+		colTypes := desc.Columns.DataTypes()
+		if api.AppenderTableType(appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 			colNames = colNames[1:]
 			colTypes = colTypes[1:]
 		}
@@ -155,7 +154,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		)
 	} else { // insert
 		var columnNames []string
-		var columnTypes []string
+		var columnTypes []types.DataType
 		if format == "json" {
 			bs, err := io.ReadAll(in)
 			if err != nil {
@@ -175,24 +174,24 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 			if wr.Data != nil && len(wr.Data.Columns) > 0 {
 				columnNames = wr.Data.Columns
-				columnTypes = make([]string, 0, len(columnNames))
+				columnTypes = make([]types.DataType, 0, len(columnNames))
 				_hold := make([]string, 0, len(columnNames))
 				for _, colName := range columnNames {
 					_hold = append(_hold, "?")
-					_type := ""
+					_type := types.ColumnTypeUnknown
 					for _, d := range desc.Columns {
 						if d.Name == strings.ToUpper(colName) {
-							_type = d.TypeString()
+							_type = d.Type
 							break
 						}
 					}
-					if _type == "" {
+					if _type == types.ColumnTypeUnknown {
 						rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, tableName)
 						rsp.Elapse = time.Since(tick).String()
 						ctx.JSON(http.StatusBadRequest, rsp)
 						return
 					}
-					columnTypes = append(columnTypes, _type)
+					columnTypes = append(columnTypes, _type.DataType())
 				}
 				valueHolder := strings.Join(_hold, ",")
 				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
@@ -200,12 +199,12 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			in = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
 		}
 		if len(columnNames) == 0 {
-			columnNames = desc.Columns.Columns().Names()
-			columnTypes = make([]string, 0, len(desc.Columns))
+			columnNames = desc.Columns.Names()
+			columnTypes = make([]types.DataType, 0, len(desc.Columns))
 			_hold := make([]string, 0, len(desc.Columns))
 			for _, c := range desc.Columns {
 				_hold = append(_hold, "?")
-				columnTypes = append(columnTypes, c.TypeString())
+				columnTypes = append(columnTypes, c.Type.DataType())
 			}
 			valueHolder := strings.Join(_hold, ",")
 			insertQuery = fmt.Sprintf("INSERT INTO %s VALUES(%s)", tableName, valueHolder)

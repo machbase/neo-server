@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	//paho "github.com/eclipse/paho.golang"
-	// paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 

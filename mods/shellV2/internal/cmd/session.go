@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 )

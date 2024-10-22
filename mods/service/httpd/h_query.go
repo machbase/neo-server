@@ -8,9 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -132,10 +132,10 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
 			if len(req.Compress) > 0 {
 				ctx.Writer.Header().Set("Content-Encoding", req.Compress)
@@ -161,7 +161,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			ctx.JSON(http.StatusOK, rsp)
 		},
 	}
-	if _, err := do.Query(queryCtx, req.SqlText); err != nil {
+	if _, err := api.Query(queryCtx, req.SqlText); err != nil {
 		svr.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

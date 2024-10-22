@@ -1,5 +1,7 @@
 package msg
 
+import "github.com/machbase/neo-server/api/types"
+
 type QueryRequest struct {
 	SqlText      string `json:"q"`
 	ReplyTo      string `json:"reply,omitempty"`       // for mqtt query only
@@ -27,9 +29,9 @@ type QueryResponse struct {
 }
 
 type QueryData struct {
-	Columns []string `json:"columns"`
-	Types   []string `json:"types"`
-	Rows    [][]any  `json:"rows"`
+	Columns []string         `json:"columns"`
+	Types   []types.DataType `json:"types"`
+	Rows    [][]any          `json:"rows"`
 }
 
 type WriteRequest struct {

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/util"
 )
 
@@ -92,9 +92,9 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
 
 		if _, ok := node.GetValue("shell"); !ok {
-			cols := []*api.Column{
-				{Name: "ROWNUM", Type: "int"},
-				{Name: "RESULT", Type: "string"},
+			cols := []*types.Column{
+				types.MakeColumnRownum(),
+				types.MakeColumnString("RESULT"),
 			}
 			node.task.SetResultColumns(cols)
 		}

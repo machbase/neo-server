@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
-	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/pkg/errors"
@@ -145,9 +144,9 @@ func (out *output) start() {
 						arr := rec.Flatten()
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
-								&api.Column{
-									Name: fmt.Sprintf("column%d", i-1),
-									Type: out.columnTypeName(v),
+								&types.Column{
+									Name:     fmt.Sprintf("column%d", i-1),
+									DataType: types.DataTypeOf(v),
 								})
 						}
 					}
@@ -214,7 +213,7 @@ func (out *output) stop() {
 	out.closeWg.Wait()
 }
 
-func (out *output) setHeader(cols api.Columns) {
+func (out *output) setHeader(cols types.Columns) {
 	if out.encoder != nil {
 		codec.SetEncoderColumns(out.encoder, cols)
 	}
@@ -308,25 +307,4 @@ func (out *output) addRow(rec *Record) error {
 		}
 	}
 	return nil
-}
-
-func (out *output) columnTypeName(v any) string {
-	switch v.(type) {
-	default:
-		return fmt.Sprintf("%T", v)
-	case string:
-		return "string"
-	case *time.Time:
-		return "datetime"
-	case time.Time:
-		return "datetime"
-	case *float32:
-		return "float"
-	case float32:
-		return "float"
-	case *float64:
-		return "double"
-	case float64:
-		return "double"
-	}
 }

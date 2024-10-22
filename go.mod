@@ -28,8 +28,7 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-client v1.0.2
-	github.com/machbase/neo-engine v1.3.11
+	github.com/machbase/neo-engine v1.3.12-0.20241022024846-7c7f8001edba
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
@@ -40,12 +39,14 @@ require (
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.0.1
 	github.com/orcaman/concurrent-map v1.0.0
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.6
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/rivo/tview v0.0.0-20230621164836-6cc0565babaf
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sevlyar/go-daemon v0.1.6
+	github.com/sony/sonyflake v1.2.0
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/gjson v1.14.4
 	github.com/wroge/wgs84 v1.1.7
@@ -133,7 +134,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -141,7 +141,6 @@ require (
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/skeema/knownhosts v1.2.2 // indirect
-	github.com/sony/sonyflake v1.2.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

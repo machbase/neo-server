@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api"
 )
 
 type LicenseResponse struct {
-	Success bool            `json:"success"`
-	Reason  string          `json:"reason"`
-	Elapse  string          `json:"elapse"`
-	Data    *do.LicenseInfo `json:"data,omitempty"`
+	Success bool             `json:"success"`
+	Reason  string           `json:"reason"`
+	Elapse  string           `json:"elapse"`
+	Data    *api.LicenseInfo `json:"data,omitempty"`
 }
 
 func (svr *httpd) handleGetLicense(ctx *gin.Context) {
@@ -29,7 +29,7 @@ func (svr *httpd) handleGetLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := do.GetLicenseInfo(ctx, conn)
+	nfo, err := api.GetLicenseInfo(ctx, conn)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -78,7 +78,7 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := do.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
+	nfo, err := api.InstallLicenseData(ctx, conn, svr.licenseFilePath, content)
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		rsp.Reason = err.Error()

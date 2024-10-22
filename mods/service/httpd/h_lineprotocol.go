@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api"
 )
 
 // Configure telegraf.conf
@@ -41,14 +41,14 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 	defer conn.Close()
 
 	dbName := ctx.Query("db")
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, dbName, false); err != nil {
 		ctx.JSON(
 			http.StatusBadRequest,
 			gin.H{"error": fmt.Sprintf("column error: %s", err.Error())})
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 
 	precision := lineprotocol.Nanosecond
@@ -127,7 +127,7 @@ func (svr *httpd) handleLineWrite(ctx *gin.Context) {
 			return
 		}
 
-		result := do.WriteLineProtocol(ctx, conn, dbName, desc.Columns, measurement, fields, tags, ts)
+		result := api.WriteLineProtocol(ctx, conn, dbName, desc.Columns, measurement, fields, tags, ts)
 		if err := result.Err(); err != nil {
 			svr.log.Warnf("lineprotocol fail: %s", err.Error())
 			ctx.JSON(

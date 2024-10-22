@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -130,10 +130,10 @@ func doExport(ctx *action.ActionContext) {
 	var lineno int = 0
 
 	tick := time.Now()
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
@@ -155,7 +155,7 @@ func doExport(ctx *action.ActionContext) {
 		},
 	}
 
-	if _, err := do.Query(queryCtx, "select * from "+cmd.Table); err != nil {
+	if _, err := api.Query(queryCtx, "select * from "+cmd.Table); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 	if printProgress {

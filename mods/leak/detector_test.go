@@ -8,13 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-/*
-Require moq:
-
-- Run
-
-	moq -out ./mods/leak/mock_test.go -pkg leak_test ./spi Rows Appender
-*/
+//go:generate moq -out ./mock_test.go -pkg leak_test ../../api Rows Appender
 
 func TestDetector(t *testing.T) {
 	det := leak.NewDetector(leak.Timer(100 * time.Millisecond))
@@ -26,7 +20,7 @@ func TestDetector(t *testing.T) {
 		CloseFunc: func() error { return nil },
 	}
 	rowsWrap := det.DetainRows(rows, "select * from example")
-	det.EnlistDetective(rows, "select * from exmaple limit 10")
+	det.EnlistDetective(rows, "select * from example limit 10")
 	det.UpdateDetective(rows)
 
 	appender := &AppenderMock{

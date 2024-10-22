@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,13 +21,13 @@ func TestAppendTag(t *testing.T) {
 		fmt.Println(e)
 	}()
 
-	db, err := mach.NewDatabase()
+	db, err := machsvr.NewDatabase()
 	require.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
 	if err != nil {
 		t.Error(err.Error())
 	}
@@ -70,13 +70,13 @@ func TestAppendTag(t *testing.T) {
 }
 
 func TestAppendTagNotExist(t *testing.T) {
-	db, err := mach.NewDatabase()
+	db, err := machsvr.NewDatabase()
 	require.Nil(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := db.Connect(ctx, mach.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
 	if err != nil {
 		t.Error(err.Error())
 	}

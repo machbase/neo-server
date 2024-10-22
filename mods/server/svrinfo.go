@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/mods"
 )
 
@@ -27,7 +27,7 @@ func (s *svr) ServerInfo() (*machrpc.ServerInfo, error) {
 
 	rsp := &machrpc.ServerInfo{
 		Version: &machrpc.Version{
-			Engine:         mach.LinkInfo(),
+			Engine:         machsvr.LinkInfo(),
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
 			Patch:          int32(ver.Patch),
@@ -78,14 +78,14 @@ func (s *svr) ServerInfo() (*machrpc.ServerInfo, error) {
 }
 
 type SessionWatcher interface {
-	ListWatcher(cb func(*mach.ConnState) bool)
+	ListWatcher(cb func(*machsvr.ConnState) bool)
 }
 
-var _ SessionWatcher = &mach.Database{}
+var _ SessionWatcher = &machsvr.Database{}
 
 func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, sessions []*machrpc.Session, err error) {
 	if reqStatz {
-		if st := mach.StatzSnapshot(); st != nil {
+		if st := machsvr.StatzSnapshot(); st != nil {
 			statz = &machrpc.Statz{
 				Conns:          st.Conns,
 				ConnsInUse:     st.ConnsInUse,
@@ -99,7 +99,7 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, 
 	}
 	if reqSessions {
 		sessions = []*machrpc.Session{}
-		s.db.ListWatcher(func(st *mach.ConnState) bool {
+		s.db.ListWatcher(func(st *machsvr.ConnState) bool {
 			sessions = append(sessions, &machrpc.Session{
 				Id:            st.Id,
 				CreTime:       st.CreatedTime.UnixNano(),

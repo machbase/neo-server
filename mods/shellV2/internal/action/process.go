@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/util"
 )
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/stream"
@@ -160,8 +161,8 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 
 	cols, _ := api.AppenderColumns(appender)
 	colNames := cols.Names()
-	colTypes := cols.Types()
-	if api.AppenderTableType(appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+	colTypes := cols.DataTypes()
+	if api.AppenderTableType(appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

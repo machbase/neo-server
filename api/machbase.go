@@ -5,34 +5,48 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machcli"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machsvr"
+	"github.com/machbase/neo-server/api/types"
 )
 
 var (
-	_ Database = &machrpcClient{}
-	_ Conn     = &machrpcConn{}
-	_ Result   = &machrpc.Result{}
-	_ Rows     = &machrpc.Rows{}
-	_ Row      = &machrpc.Row{}
-	_ Appender = &machrpc.Appender{}
+	_ Database = (*machrpcDatabase)(nil)
+	_ Conn     = (*machrpcConn)(nil)
+	_ Result   = (*machrpc.Result)(nil)
+	_ Rows     = (*machrpc.Rows)(nil)
+	_ Row      = (*machrpc.Row)(nil)
+	_ Appender = (*machrpc.Appender)(nil)
 )
 
 var (
-	_ Database = &machDatabase{}
-	_ Conn     = &machConn{}
-	_ Result   = &mach.Result{}
-	_ Rows     = &mach.Rows{}
-	_ Row      = &mach.Row{}
-	_ Appender = &mach.Appender{}
+	_ Database = (*machsvrDatabase)(nil)
+	_ Conn     = (*machsvrConn)(nil)
+	_ Result   = (*machsvr.Result)(nil)
+	_ Rows     = (*machsvr.Rows)(nil)
+	_ Row      = (*machsvr.Row)(nil)
+	_ Appender = (*machsvr.Appender)(nil)
 )
 
-func NewDatabase(underlying any) Database {
-	switch raw := underlying.(type) {
-	case *mach.Database:
-		return &machDatabase{raw: raw}
+var (
+	_ Database = (*machcliDatabase)(nil)
+	_ Conn     = (*machcliConn)(nil)
+	_ Result   = (*machcli.Result)(nil)
+	_ Rows     = (*machcli.Rows)(nil)
+	_ Row      = (*machcli.Row)(nil)
+	_ Appender = (*machcli.Appender)(nil)
+)
+
+func NewDatabase[T *machsvr.Database | *machrpc.Client | *machcli.Env](underlying T) Database {
+	database := any(underlying)
+	switch raw := database.(type) {
+	case *machsvr.Database:
+		return &machsvrDatabase{raw: raw}
 	case *machrpc.Client:
-		return &machrpcClient{raw: raw}
+		return &machrpcDatabase{raw: raw}
+	case *machcli.Env:
+		return &machcliDatabase{raw: raw}
 	default:
 		panic(fmt.Errorf("invalid underlying db %T", underlying))
 	}
@@ -46,41 +60,49 @@ type AuthServer interface {
 	UserAuth(string, string) (bool, error)
 }
 
-type machDatabase struct {
-	raw *mach.Database
+type machsvrDatabase struct {
+	raw *machsvr.Database
 }
 
-type machrpcClient struct {
+type machrpcDatabase struct {
 	raw *machrpc.Client
+}
+
+type machcliDatabase struct {
+	raw *machcli.Env
 }
 
 type ConnectOption func(db any) any
 
-func (db *machDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
-	opts := make([]mach.ConnectOption, len(options))
-	for i, o := range options {
-		if f := o(db); f != nil {
-			opts[i] = f.(mach.ConnectOption)
+func (db *machsvrDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
+	opts := make([]machsvr.ConnectOption, 0, len(options))
+	for _, opt := range options {
+		o := opt(db)
+		if o == nil {
+			continue
+		} else if connOpt, ok := o.(machsvr.ConnectOption); ok {
+			opts = append(opts, connOpt)
 		}
 	}
 	c, err := db.raw.Connect(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return &machConn{raw: c}, nil
+	return &machsvrConn{raw: c}, nil
 }
 
-func (db *machDatabase) UserAuth(username string, password string) (bool, error) {
+func (db *machsvrDatabase) UserAuth(username string, password string) (bool, error) {
 	return db.raw.UserAuth(username, password)
 }
 
-func (db *machrpcClient) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
-	opts := make([]machrpc.ConnectOption, len(options))
-	for i, o := range options {
-		opts[i] = func(c *machrpc.Conn) {
-			if f := o(db); f != nil {
-				opts[i] = f.(machrpc.ConnectOption)
-			}
+func (db *machrpcDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
+	opts := make([]machrpc.ConnectOption, 0, len(options))
+	for _, opt := range options {
+		o := opt(db)
+		if o == nil {
+			continue
+		} else if connOpt, ok := o.(machrpc.ConnectOption); ok {
+			opts = append(opts, connOpt)
 		}
 	}
 	c, err := db.raw.Connect(ctx, opts...)
@@ -90,13 +112,30 @@ func (db *machrpcClient) Connect(ctx context.Context, options ...ConnectOption) 
 	return &machrpcConn{raw: c}, nil
 }
 
+func (db *machcliDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
+	opts := make([]machcli.ConnectOption, 0, len(options))
+	for _, opt := range options {
+		o := opt(db)
+		if o == nil {
+			continue
+		} else if connOpt, ok := o.(machcli.ConnectOption); ok {
+			opts = append(opts, connOpt)
+		}
+	}
+	c, err := db.raw.Connect(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &machcliConn{raw: c}, nil
+}
+
 func WithTrustUser(username string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
-		case *mach.Database:
-			return mach.WithTrustUser(username)
-		case *machDatabase:
-			return mach.WithTrustUser(username)
+		case *machsvr.Database:
+			return machsvr.WithTrustUser(username)
+		case *machsvrDatabase:
+			return machsvr.WithTrustUser(username)
 		default:
 			return nil
 		}
@@ -106,51 +145,53 @@ func WithTrustUser(username string) ConnectOption {
 func WithPassword(username, password string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
-		case *machConn:
-			return mach.WithPassword(username, password)
+		case *machsvrConn:
+			return machsvr.WithPassword(username, password)
 		case *machrpc.Client:
 			return machrpc.WithPassword(username, password)
+		case *machcliDatabase:
+			return machcli.WithPassword(username, password)
 		default:
 			return nil
 		}
 	}
 }
 
-type machConn struct {
-	raw *mach.Conn
+type machsvrConn struct {
+	raw *machsvr.Conn
 }
 
-func ConnMach(raw *mach.Conn) Conn {
-	return &machConn{raw: raw}
+func ConnMach(raw *machsvr.Conn) Conn {
+	return &machsvrConn{raw: raw}
 }
 
 func ConnRpc(raw *machrpc.Conn) Conn {
 	return &machrpcConn{raw: raw}
 }
 
-func (c *machConn) Close() error {
+func (c *machsvrConn) Close() error {
 	return c.raw.Close()
 }
 
-func (c *machConn) Exec(ctx context.Context, sqlText string, params ...any) Result {
+func (c *machsvrConn) Exec(ctx context.Context, sqlText string, params ...any) Result {
 	ret := c.raw.Exec(ctx, sqlText, params...)
 	return ret
 }
 
-func (c *machConn) Query(ctx context.Context, sqlText string, params ...any) (Rows, error) {
+func (c *machsvrConn) Query(ctx context.Context, sqlText string, params ...any) (Rows, error) {
 	ret, err := c.raw.Query(ctx, sqlText, params...)
 	return ret, err
 }
 
-func (c *machConn) QueryRow(ctx context.Context, sqlText string, params ...any) Row {
+func (c *machsvrConn) QueryRow(ctx context.Context, sqlText string, params ...any) Row {
 	ret := c.raw.QueryRow(ctx, sqlText, params...)
 	return ret
 }
 
-func (c *machConn) Appender(ctx context.Context, tableName string, options ...AppenderOption) (Appender, error) {
-	opts := make([]mach.AppenderOption, len(options))
+func (c *machsvrConn) Appender(ctx context.Context, tableName string, options ...AppenderOption) (Appender, error) {
+	opts := make([]machsvr.AppenderOption, len(options))
 	for i, o := range options {
-		opts[i] = func(a *mach.Appender) {
+		opts[i] = func(a *machsvr.Appender) {
 			o(a)
 		}
 	}
@@ -192,6 +233,33 @@ func (c *machrpcConn) Appender(ctx context.Context, tableName string, options ..
 		return nil, err
 	}
 	return ap, nil
+}
+
+type machcliConn struct {
+	raw *machcli.Conn
+}
+
+func (c *machcliConn) Close() error {
+	return c.raw.Close()
+}
+
+func (c *machcliConn) Exec(ctx context.Context, sqlText string, params ...any) Result {
+	if len(params) > 0 {
+		return c.raw.ExecDirectContext(ctx, sqlText)
+	}
+	return c.raw.ExecContext(ctx, sqlText, params...)
+}
+
+func (c *machcliConn) Query(ctx context.Context, sqlText string, params ...any) (Rows, error) {
+	return nil, nil
+}
+
+func (c *machcliConn) QueryRow(ctx context.Context, sqlText string, params ...any) Row {
+	return c.raw.QueryRowContext(ctx, sqlText, params...)
+}
+
+func (c *machcliConn) Appender(ctx context.Context, tableName string, options ...AppenderOption) (Appender, error) {
+	return nil, nil
 }
 
 type Conn interface {
@@ -275,7 +343,7 @@ type Rows interface {
 	Message() string
 
 	// Columns returns list of column info that consists of result of query statement.
-	Columns() ([]string, []string, error)
+	Columns() ([]string, []types.DataType, error)
 }
 
 type Row interface {
@@ -292,88 +360,53 @@ type Appender interface {
 	Append(values ...any) error
 	AppendWithTimestamp(ts time.Time, values ...any) error
 	Close() (int64, int64, error)
-	Columns() ([]string, []string, error)
+	Columns() ([]string, []types.DataType, error)
 }
 
 type AppenderOption func(Appender)
 
-func AppenderTableType(app Appender) TableType {
+func AppenderTableType(app Appender) types.TableType {
 	switch a := app.(type) {
-	case *mach.Appender:
-		return TableType(a.TableType())
+	case *machsvr.Appender:
+		return types.TableType(a.TableType())
 	case *machrpc.Appender:
-		return TableType(a.TableType())
+		return types.TableType(a.TableType())
 	}
-	return TableType(-1)
-}
-
-type Columns []*Column
-
-type Column struct {
-	Name string
-	Type string
-}
-
-func (cols Columns) Names() []string {
-	names := make([]string, len(cols))
-	for i := range cols {
-		names[i] = cols[i].Name
-	}
-	return names
-}
-
-func (cols Columns) NamesWithTimeLocation(tz *time.Location) []string {
-	names := make([]string, len(cols))
-	for i := range cols {
-		if cols[i].Type == "datetime" {
-			names[i] = fmt.Sprintf("%s(%s)", cols[i].Name, tz.String())
-		} else {
-			names[i] = cols[i].Name
-		}
-	}
-	return names
-}
-
-func (cols Columns) Types() []string {
-	types := make([]string, len(cols))
-	for i := range cols {
-		types[i] = cols[i].Type
-	}
-	return types
+	return types.TableType(-1)
 }
 
 // RowsColumns returns list of column info that consists of result of query statement.
-func RowsColumns(rows Rows) (Columns, error) {
-	names, types, err := rows.Columns()
+func RowsColumns(rows Rows) (types.Columns, error) {
+	columnNames, columnTypes, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
-	if len(names) != len(types) {
-		return nil, fmt.Errorf("internal error names %d types %d", len(names), len(types))
+	if len(columnNames) != len(columnTypes) {
+		return nil, fmt.Errorf("internal error names %d types %d", len(columnNames), len(columnTypes))
 	}
-	ret := make([]*Column, len(names))
-	for i := range names {
-		ret[i] = &Column{
-			Name: names[i],
-			Type: types[i],
+	ret := make([]*types.Column, len(columnNames))
+	for i := range columnNames {
+		ret[i] = &types.Column{
+			Name:     columnNames[i],
+			DataType: columnTypes[i],
 		}
 	}
 	return ret, nil
 }
 
-func AppenderColumns(rows Appender) (Columns, error) {
-	names, types, err := rows.Columns()
+func AppenderColumns(rows Appender) (types.Columns, error) {
+	columnNames, columnTypes, err := rows.Columns()
 	if err != nil {
 		return nil, err
 	}
-	if len(names) != len(types) {
-		return nil, fmt.Errorf("internal error names %d types %d", len(names), len(types))
+	if len(columnNames) != len(columnTypes) {
+		return nil, fmt.Errorf("internal error names %d types %d", len(columnNames), len(columnTypes))
 	}
-	ret := make([]*Column, len(names))
-	for i := range names {
-		ret[i] = &Column{
-			Name: names[i],
-			Type: types[i],
+	ret := make([]*types.Column, len(columnNames))
+	for i := range columnNames {
+		ret[i] = &types.Column{
+			Name:     columnNames[i],
+			DataType: columnTypes[i],
 		}
 	}
 	return ret, nil

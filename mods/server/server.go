@@ -29,13 +29,12 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/bridge"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
@@ -117,7 +116,7 @@ type Config struct {
 	NoBanner       bool
 	ExperimentMode bool
 
-	MachbaseInitOption mach.InitOption
+	MachbaseInitOption machsvr.InitOption
 }
 
 type AuthHandlerConfig struct {
@@ -172,7 +171,7 @@ type svr struct {
 
 	conf  *Config
 	log   logging.Log
-	db    *mach.Database
+	db    *machsvr.Database
 	navel *net.TCPConn
 
 	mqttd mqttd.Service
@@ -275,10 +274,10 @@ func NewServer(conf *Config) (Server, error) {
 }
 
 func Restore(dataDir string, backupDir string) error {
-	if err := mach.Initialize(dataDir, 0, mach.OPT_SIGHANDLER_OFF); err != nil {
+	if err := machsvr.Initialize(dataDir, 0, machsvr.OPT_SIGHANDLER_OFF); err != nil {
 		return err
 	}
-	if err := mach.RestoreDatabase(backupDir); err != nil {
+	if err := machsvr.RestoreDatabase(backupDir); err != nil {
 		return err
 	}
 	return nil
@@ -293,8 +292,8 @@ type DatabaseAuthServer interface {
 	UserAuth(user string, password string) (bool, error)
 }
 
-var _ DatabaseServer = &mach.Database{}
-var _ DatabaseAuthServer = &mach.Database{}
+var _ DatabaseServer = &machsvr.Database{}
+var _ DatabaseAuthServer = &machsvr.Database{}
 
 func (s *svr) Start() error {
 	s.startupTime = time.Now()
@@ -426,12 +425,12 @@ func (s *svr) Start() error {
 	}
 
 	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
-	if err := mach.Initialize(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
+	if err := machsvr.Initialize(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
-	if !mach.ExistsDatabase() {
+	if !machsvr.ExistsDatabase() {
 		s.log.Info("create database")
-		if err := mach.CreateDatabase(); err != nil {
+		if err := machsvr.CreateDatabase(); err != nil {
 			return errors.Wrap(err, "create database failed")
 		}
 		s.databaseCreated = true
@@ -442,7 +441,7 @@ func (s *svr) Start() error {
 	// mach.DefaultDetective = leakDetector
 
 	// create database instance
-	s.db, err = mach.NewDatabase()
+	s.db, err = machsvr.NewDatabase()
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
 	}
@@ -465,7 +464,7 @@ func (s *svr) Start() error {
 			s.log.Error("ERR", err.Error())
 			return err
 		}
-		if _, err = do.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
+		if _, err = api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
 			s.log.Warn("set license fail,", err.Error())
 		} else {
 			s.log.Info("set license success")
@@ -855,7 +854,7 @@ func (s *svr) Stop() {
 	if err := s.db.Shutdown(); err != nil {
 		s.log.Warnf("db shutdown; %s", err.Error())
 	}
-	mach.Finalize()
+	machsvr.Finalize()
 	s.log.Infof("shutdown.")
 }
 
@@ -1403,7 +1402,7 @@ func (s *svr) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := s.db.Connect(ctx, mach.WithTrustUser("sys"))
+	conn, err := s.db.Connect(ctx, machsvr.WithTrustUser("sys"))
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err

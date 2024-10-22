@@ -10,15 +10,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util"
 	"golang.org/x/text/encoding"
 )
 
 type Decoder struct {
 	reader        *csv.Reader
-	columnTypes   []string
+	columnTypes   []types.DataType
 	columnNames   []string
 	comma         rune
 	heading       bool
@@ -30,7 +29,7 @@ type Decoder struct {
 	charset       encoding.Encoding
 
 	headerNames []string
-	headerTypes []string
+	headerTypes []types.DataType
 	headerErr   error
 }
 
@@ -80,7 +79,7 @@ func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
 }
 
-func (dec *Decoder) SetColumnTypes(types ...string) {
+func (dec *Decoder) SetColumnTypes(types ...types.DataType) {
 	dec.columnTypes = types
 }
 
@@ -161,73 +160,15 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 		}
 
 		var value any
-		var columnType string
+		var columnType types.DataType
 		if len(dec.headerTypes) > 0 {
 			columnType = dec.headerTypes[i]
 		} else {
 			columnType = dec.columnTypes[i]
 		}
 
-		switch columnType {
-		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
-			value = field
-		case mach.DB_COLUMN_TYPE_DATETIME:
-			value, err = util.ParseTime(field, dec.timeformat, dec.timeLocation)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_FLOAT:
-			value, err = util.ParseFloat32(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_DOUBLE:
-			value, err = util.ParseFloat64(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_LONG, "int64":
-			value, err = util.ParseInt64(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_ULONG:
-			value, err = util.ParseUint64(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_INTEGER, "int":
-			value, err = util.ParseInt(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_UINTEGER:
-			value, err = util.ParseUint(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_SHORT, "int16":
-			value, err = util.ParseInt16(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_USHORT:
-			value, err = util.ParseUint16(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case "int32":
-			value, err = util.ParseInt32(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
-			value, err = util.ParseIP(field)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		default:
-			return nil, nil, fmt.Errorf("unsupported column type; %s", dec.columnTypes[i])
+		if value, err = columnType.Apply(field, dec.timeformat, dec.timeLocation); err != nil {
+			errs = append(errs, err)
 		}
 		values = append(values, value)
 	}

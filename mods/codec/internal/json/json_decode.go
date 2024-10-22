@@ -4,17 +4,15 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 )
 
 type Decoder struct {
-	columnTypes  []string
+	columnTypes  []types.DataType
 	reader       *gojson.Decoder
 	dataDepth    int
 	nrow         int64
@@ -44,7 +42,7 @@ func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
 }
 
-func (dec *Decoder) SetColumnTypes(types ...string) {
+func (dec *Decoder) SetColumnTypes(types ...types.DataType) {
 	dec.columnTypes = types
 }
 
@@ -70,96 +68,9 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			values[i] = nil
 			continue
 		}
-		switch dec.columnTypes[i] {
-		case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
-			switch v := field.(type) {
-			case string:
-				values[i] = v
-			default:
-				return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a string, but %T", dec.nrow, i, v)
-			}
-		case mach.DB_COLUMN_TYPE_DATETIME:
-			if v, ok := field.(string); ok && dec.timeformat != "" {
-				if values[i], err = util.ParseTime(v, dec.timeformat, dec.timeLocation); err != nil {
-					return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a datetime convertible, %s", dec.nrow, i, err.Error())
-				}
-			} else {
-				ts, err := util.ToInt64(field)
-				if err != nil {
-					return nil, nil, fmt.Errorf("rows[%d] column[%d] is not datetime convertible, %s", dec.nrow, i, err.Error())
-				}
-				switch dec.timeformat {
-				case "s":
-					values[i] = time.Unix(ts, 0)
-				case "ms":
-					values[i] = time.Unix(0, ts*int64(time.Millisecond))
-				case "us":
-					values[i] = time.Unix(0, ts*int64(time.Microsecond))
-				default: // "ns"
-					values[i] = time.Unix(0, ts)
-				}
-			}
-		case mach.DB_COLUMN_TYPE_FLOAT:
-			values[i], err = util.ToFloat32(field)
-			if err != nil {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_DOUBLE:
-			values[i], err = util.ToFloat64(field)
-			if err != nil {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_LONG, "int64":
-			values[i], err = util.ToInt64(field)
-			if err != nil {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_ULONG:
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = uint64(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_SHORT, "int16":
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = int16(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_USHORT:
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = uint16(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_INTEGER, "int":
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = int(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case "int32":
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = int32(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_UINTEGER:
-			if v, err := util.ToInt64(field); err == nil {
-				values[i] = uint(v)
-			} else {
-				return nil, nil, fmt.Errorf("rows[%d] column[%d], %s", dec.nrow, i, err.Error())
-			}
-		case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
-			switch v := field.(type) {
-			case string:
-				addr := net.ParseIP(v)
-				values[i] = addr
-			default:
-				return nil, nil, fmt.Errorf("rows[%d] column[%d] is not compatible with %s", dec.nrow, i, dec.columnTypes[i])
-			}
-		default:
-			return nil, nil, fmt.Errorf("rows[%d] column[%d] unsupported column type; %s", dec.nrow, i, dec.columnTypes[i])
+		values[i], err = dec.columnTypes[i].Apply(field, dec.timeformat, dec.timeLocation)
+		if err != nil {
+			return nil, nil, fmt.Errorf("rows[%d] column[%d] is not a %s, but %T", dec.nrow, i, dec.columnTypes[i], field)
 		}
 	}
 	return values, nil, nil
@@ -259,51 +170,3 @@ func (dec *Decoder) nextRow0() ([]any, error) {
 	}
 	return tuple, nil
 }
-
-/*
-	if format == "json" {
-		result := gjson.ParseBytes(payload)
-		head := result.Get("0")
-		if head.IsArray() {
-			// if payload contains multiple tuples
-			cols, err := appender.Columns()
-			if err != nil {
-				peerLog.Errorf("fail to get appender columns, %s", err.Error())
-				return nil
-			}
-			result.ForEach(func(key, value gjson.Result) bool {
-				fields := value.Array()
-				vals, err := convAppendColumns(fields, cols, appender.TableType())
-				if err != nil {
-					return false
-				}
-				err = appender.Append(vals...)
-				if err != nil {
-					peerLog.Warnf("append fail %s %d %s [%+v]", table, appender.TableType(), err.Error(), vals)
-					return false
-				}
-				return true
-			})
-			return err
-		} else {
-			// a single tuple
-			fields := result.Array()
-			cols, err := appender.Columns()
-			if err != nil {
-				peerLog.Errorf("fail to get appender columns, %s", err.Error())
-				return nil
-			}
-			vals, err := convAppendColumns(fields, cols, appender.TableType())
-			if err != nil {
-				return err
-			}
-			err = appender.Append(vals...)
-			if err != nil {
-				peerLog.Warnf("append fail %s %d %s [%+v]", table, appender.TableType(), err.Error(), vals)
-				return err
-			}
-			return nil
-		}
-	} else if format == "csv" {
-	}
-*/

@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -60,26 +60,26 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 
 	var sqlText string
 	var sqlParams []any
-	if tableType, err := do.TableType(ctx, conn, tableName); err != nil {
+	if tableType, err := api.TableType(ctx, conn, tableName); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
-	} else if tableType == api.LogTableType {
+	} else if tableType == types.TableTypeLog {
 		sqlText = fmt.Sprintf("SELECT %s FROM %s WHERE _ARRIVAL_TIME BETWEEN ? and ? and %s->'$.ID' = ?",
 			columnName, tableName, columnName)
 		sqlParams = append(sqlParams, ts.Add(-2*time.Second).UnixNano())
 		sqlParams = append(sqlParams, ts.Add(3*time.Second).UnixNano())
 		sqlParams = append(sqlParams, fileID)
-	} else if tableType == api.TagTableType {
-		var desc *do.TableDescription
-		if desc0, err := do.Describe(ctx, conn, tableName, false); err != nil {
+	} else if tableType == types.TableTypeTag {
+		var desc *api.TableDescription
+		if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 			rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusInternalServerError, rsp)
 			return
 		} else {
-			desc = desc0.(*do.TableDescription)
+			desc = desc0
 		}
 		basetimeColumn := "TIME"
 		nameColumn := "NAME"
@@ -177,31 +177,31 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	tableType, err := do.TableType(ctx, conn, tableName)
+	tableType, err := api.TableType(ctx, conn, tableName)
 	if err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
-	if tableType != api.LogTableType && tableType != api.TagTableType {
+	if tableType != types.TableTypeLog && tableType != types.TableTypeTag {
 		rsp.Reason = fmt.Sprintf("Table '%s' is does not supported for files", tableName)
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return
 	}
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, conn, tableName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 
-	findColumn := func(name string) *do.ColumnDescription {
+	findColumn := func(name string) *types.Column {
 		for _, c := range desc.Columns {
 			if strings.EqualFold(c.Name, name) {
 				return c
@@ -224,14 +224,14 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 	for k, v := range form.Value {
 		if c := findColumn(k); c != nil {
 			columns = append(columns, c.Name)
-			val, err := util.ParseDatabaseValue(v[0], c.TypeString(), timeformat, timeLocation)
+			val, err := c.Type.DataType().Apply(v[0], timeformat, timeLocation)
 			if err != nil {
 				rsp.Reason = err.Error()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
-			if tableType == api.TagTableType && c.IsBaseTime() {
+			if tableType == types.TableTypeTag && c.IsBaseTime() {
 				ts = val.(time.Time)
 			}
 			values = append(values, val)
