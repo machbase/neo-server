@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api/types"
 )
 
 // Deprecated: no more required
@@ -255,11 +255,11 @@ func (dc *databaseSource) gen(node *Node) {
 	}
 	defer conn.Close()
 
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
-			cols = append([]*api.Column{{Name: "ROWNUM", Type: api.ColumnTypeString(api.Int64ColumnType)}}, cols...)
+		OnFetchStart: func(cols types.Columns) {
+			cols = append([]*types.Column{types.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		OnFetch: func(nrow int64, values []any) bool {
@@ -274,15 +274,15 @@ func (dc *databaseSource) gen(node *Node) {
 			dc.executed = true
 		},
 	}
-	if msg, err := do.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+	if msg, err := api.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
 		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
 	} else {
 		dc.resultMsg = msg
 		if dc.executed {
-			dc.task.SetResultColumns(api.Columns{
-				{Name: "ROWNUM", Type: "int"},
-				{Name: "MESSAGE", Type: "string"},
+			dc.task.SetResultColumns(types.Columns{
+				types.MakeColumnRownum(),
+				types.MakeColumnString("MESSAGE"),
 			})
 			NewRecord(1, msg).Tell(node.next)
 		}

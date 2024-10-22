@@ -60,10 +60,9 @@ type ResSet struct {
 }
 
 type MachbaseColumn struct {
-	Name string `json:"name"`
-	// Type   string `json:"type"` // 기존은 int 형,
-	Type   int `json:"type"` // 기존은 int 형,
-	Length int `json:"length"`
+	Name   string `json:"name"`
+	Type   int    `json:"type"`
+	Length int    `json:"length"`
 }
 
 type SelectReturn struct {
@@ -962,14 +961,18 @@ func (svr *httpd) selectData(ctx context.Context, conn api.Conn, sqlText string,
 
 		for i, col := range columns {
 			columnsList[i].Name = col.Name
-			columnsList[i].Type = ColumnTypeConvert(col.Type)
+			columnsList[i].Type = int(col.DataType.ColumnType())
 		}
 	}()
 
 	dataList := []map[string]interface{}{}
 	for rows.Next() {
 		data := map[string]interface{}{}
-		buffer := api.MakeBuffer(columns)
+		buffer, err := columns.MakeBuffer()
+		if err != nil {
+			svr.log.Error("make buffer error: ", err.Error())
+			return nil, err
+		}
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Error("scan error: ", err.Error())
@@ -1459,49 +1462,6 @@ func (svr *httpd) GetPivotData(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func ColumnTypeConvert(colType string) int {
-	result := 0
-
-	switch colType {
-	case "SHORT": // short
-		result = 4
-	case "int": // integer
-		result = 8
-	case "int64": // long
-		result = 12
-	case "float": // float
-		result = 16
-	case "double": // double
-		result = 20
-	case "varchar": // varchar
-		result = 5
-	case "ipv4": // ipv4
-		result = 32
-	case "ipv6": // ipv6
-		result = 36
-	case "datetime": // datetime
-		result = 6
-	case "text": // text
-		result = 49
-	case "CLOB": // CLOB
-		result = 53
-	case "BLOB": // BLOB
-		result = 57
-	case "binary": // binary
-		result = 97
-	case "unsigned short": // unsigned short
-		result = 104
-	case "unsigned integer": // unsigned integer
-		result = 108
-	case "unsigned long": // unsigned long
-		result = 112
-	default: // SQL_UNKNOWN_TYPE
-		result = 0
-	}
-
-	return result
-}
-
 func MakeReturnFormat(dbData *MachbaseResult, mode, format, dataType string, tagList []string) *SelectReturn {
 	resultData := &SelectReturn{}
 
@@ -1860,11 +1820,15 @@ func (svr *httpd) getData(ctx context.Context, conn api.Conn, sqlText string /*s
 
 	for idx, col := range cols {
 		colsList[idx].Name = col.Name
-		colsList[idx].Type = ColumnTypeConvert(col.Type)
+		colsList[idx].Type = int(col.DataType.ColumnType())
 	}
 
 	for rows.Next() { // scale 적용을 어떻게 할 건가, 컬럼 여러개일때 value 컬럼을 찾아서 처리가 가능한가? ( rows.columns 으로 순서 확인 가능? )
-		buffer := api.MakeBuffer(cols)
+		buffer, err := cols.MakeBuffer()
+		if err != nil {
+			svr.log.Warn("make buffer error : ", err.Error())
+			return result, err
+		}
 		err = rows.Scan(buffer...)
 		if err != nil {
 			svr.log.Warn("scan error : ", err.Error())

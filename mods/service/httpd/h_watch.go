@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -45,14 +44,17 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 		tz, _ = util.ParseTimeLocation(timezone, time.UTC)
 	}
 
-	watch, err := do.NewWatcher(ctx, func() (api.Conn, error) { return svr.getTrustConnection(ctx) },
-		do.WithTableName(ctx.Param("table")),
-		do.WithTagNames(ctx.QueryArray("tag")...),
-		do.WithTimeformat(timeformat, tz),
-		do.WithParallelism(parallelism),
-		do.WithChanSize(100),
-		do.WithMaxRowNum(maxRowNum),
-	)
+	watch, err := api.NewWatcher(ctx,
+		api.WatcherConfig{
+			ConnProvider: func() (api.Conn, error) { return svr.getTrustConnection(ctx) },
+			TableName:    ctx.Param("table"),
+			TagNames:     ctx.QueryArray("tag"),
+			Timeformat:   timeformat,
+			Timezone:     tz,
+			Parallelism:  parallelism,
+			ChanSize:     100,
+			MaxRowNum:    maxRowNum,
+		})
 	if err != nil {
 		svr.log.Debug("Watcher error", err.Error())
 		rsp := msg.QueryResponse{Reason: err.Error(), Elapse: time.Since(tick).String()}
@@ -86,7 +88,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 			watch.Execute()
 		case data := <-watch.C:
 			switch v := data.(type) {
-			case do.WatchData:
+			case api.WatchData:
 				b, _ := json.Marshal(v)
 				ctx.Writer.Write([]byte("data: "))
 				ctx.Writer.Write(b)

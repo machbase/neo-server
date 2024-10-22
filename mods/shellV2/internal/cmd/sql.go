@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -161,10 +161,10 @@ func doSql(ctx *action.ActionContext) {
 	}
 	nextPauseRow := int64(pageHeight)
 
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
 		},
@@ -191,7 +191,7 @@ func doSql(ctx *action.ActionContext) {
 	}
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	msg, err := do.Query(queryCtx, sqlText)
+	msg, err := api.Query(queryCtx, sqlText)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	} else {

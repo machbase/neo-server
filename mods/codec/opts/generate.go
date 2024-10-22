@@ -169,10 +169,35 @@ func (s *SetX) String() string {
 	return s.Signature
 }
 
+func findImport(name string, imports map[string]*ImportX) *ImportX {
+	for _, x := range imports {
+		if len(x.Names) == 1 && x.Names[0] == "" {
+			if filepath.Base(x.Path) == name {
+				x.RefCount++
+				return x
+			}
+		} else {
+			for _, n := range x.Names {
+				if n == name {
+					x.RefCount++
+					return x
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func strTypeExpr(field ast.Expr, imports map[string]*ImportX) string {
 	switch ptype := field.(type) {
 	case *ast.Ellipsis:
-		return fmt.Sprintf("...%v", ptype.Elt)
+		if sel, ok := ptype.Elt.(*ast.SelectorExpr); ok {
+			name := fmt.Sprintf("%v", sel.X)
+			findImport(name, imports)
+			return fmt.Sprintf("...%v.%s", sel.X, sel.Sel.Name)
+		} else {
+			return fmt.Sprintf("...%v", ptype.Elt)
+		}
 	case *ast.ArrayType:
 		return fmt.Sprintf("[]%s", ptype.Elt)
 	case *ast.Ident:
@@ -242,7 +267,7 @@ func generatesOpts(sets map[string]*SetX, imports map[string]*ImportX) {
 	}
 	content, err := format.Source(w.Bytes())
 	if err != nil {
-		fmt.Println(string(w.Bytes()))
+		//fmt.Println(string(w.Bytes()))
 		panic(err)
 	}
 	file, err := os.Create("generate.gen.go")

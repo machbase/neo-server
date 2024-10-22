@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
@@ -167,15 +168,15 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		require.Nil(t, err)
 		result := w.String()
 		if matchPrefix {
-			strexpect := strings.Join(expect, "\n") + "\n"
+			strExpect := strings.Join(expect, "\n") + "\n"
 			trimResult := strings.TrimSpace(result)
-			strresult := "<N/A>"
-			if len(trimResult) >= len(strexpect) {
-				strresult = trimResult[0:len(strexpect)]
+			strResult := "<N/A>"
+			if len(trimResult) >= len(strExpect) {
+				strResult = trimResult[0:len(strExpect)]
 			} else {
-				strresult = trimResult
+				strResult = trimResult
 			}
-			require.Equal(t, strexpect, strresult)
+			require.Equal(t, strExpect, strResult)
 		} else {
 			resultLines := strings.Split(result, "\n")
 			if len(resultLines) > 0 && resultLines[len(resultLines)-1] == "" {
@@ -224,8 +225,10 @@ var mockDb = DatabaseMock{
 						IsFetchableFunc: func() bool { return true },
 						NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
 						CloseFunc:       func() error { return nil },
-						ColumnsFunc: func() ([]string, []string, error) {
-							return []string{"time", "value"}, []string{"datetime", "double"}, nil
+						ColumnsFunc: func() ([]string, []types.DataType, error) {
+							return []string{"time", "value"},
+								[]types.DataType{types.DataTypeDatetime, types.DataTypeFloat64},
+								nil
 						},
 						MessageFunc: func() string { return "no rows selected." },
 						ScanFunc: func(cols ...any) error {
@@ -254,14 +257,14 @@ var mockDb = DatabaseMock{
 			ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
 				switch sqlText {
 				case `INSERT INTO example(name,a) VALUES(?,?)`:
-					fmt.Println("task_test, mockdb: ", sqlText, params)
+					fmt.Println("task_test, mock_db: ", sqlText, params)
 					return &ResultMock{
 						ErrFunc:          func() error { return nil },
 						MessageFunc:      func() string { return "a row inserted." },
 						RowsAffectedFunc: func() int64 { return 1 },
 					}
 				default:
-					fmt.Println("task_test, mockdb: ", sqlText)
+					fmt.Println("task_test, mock_db: ", sqlText)
 				}
 				return nil
 			},
@@ -374,7 +377,7 @@ func TestDBInsert(t *testing.T) {
 func TestDBAppend(t *testing.T) {
 	codeLines := []string{
 		`FAKE( linspace(0, 1, 3) )`,
-		`MAPVALUE(-1, 'singal')`,
+		`MAPVALUE(-1, 'signal')`,
 		`APPEND( table('example') )`,
 	}
 	resultLines := []string{
@@ -383,7 +386,7 @@ func TestDBAppend(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
-func TestDBddl(t *testing.T) {
+func TestDB_ddl(t *testing.T) {
 	var codeLines, resultLines []string
 
 	codeLines = []string{
@@ -2992,7 +2995,7 @@ func TestDict(t *testing.T) {
 		"JSON(precision(0))",
 	}
 	resultLines = []string{}
-	runTest(t, codeLines, resultLines, ExpectErr("dict() name \"value\" doen't match with any value"))
+	runTest(t, codeLines, resultLines, ExpectErr("dict() name \"value\" doesn't match with any value"))
 
 	codeLines = []string{
 		"FAKE( arrange(0, 1, 1) )",
@@ -3021,7 +3024,7 @@ func TestSrcError(t *testing.T) {
 	runTest(t, codeLines, resultLines, CompileErr("\"MAPVALUE()\" is not applicable for SRC, line 1"))
 }
 
-func TestOcillator(t *testing.T) {
+func TestOscillator(t *testing.T) {
 	tick := time.Unix(0, 1692329338315327000)
 	util.StandardTimeNow = func() time.Time { return tick }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 )
 
 func TestQuery(t *testing.T) {
@@ -32,13 +33,13 @@ func TestQuery(t *testing.T) {
 					}
 					return nil
 				}
-				rows.ColumnsFunc = func() ([]string, []string, error) {
+				rows.ColumnsFunc = func() ([]string, []types.DataType, error) {
 					return []string{
 							"min(min_time)",
 							"max(max_time)",
-						}, []string{
-							api.ColumnTypeString(api.DatetimeColumnType),
-							api.ColumnTypeString(api.DatetimeColumnType),
+						}, []types.DataType{
+							types.ColumnTypeDatetime.DataType(),
+							types.ColumnTypeDatetime.DataType(),
 						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
@@ -56,14 +57,16 @@ func TestQuery(t *testing.T) {
 					}
 					return nil
 				}
-				rows.ColumnsFunc = func() ([]string, []string, error) {
+				rows.ColumnsFunc = func() ([]string, []types.DataType, error) {
 					return []string{
 							"TIME", "VALUE",
-						}, []string{
-							api.ColumnTypeString(api.DatetimeColumnType), api.ColumnTypeString(api.Float64ColumnType),
+						}, []types.DataType{
+							types.ColumnTypeDatetime.DataType(),
+							types.ColumnTypeDouble.DataType(),
 						}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
+				rows.MessageFunc = func() string { return "success" }
 				rows.NextFunc = func() bool {
 					expectRows--
 					return expectRows >= 0

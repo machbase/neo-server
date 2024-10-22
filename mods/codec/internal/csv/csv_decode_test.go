@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util/charset"
@@ -25,9 +25,9 @@ func TestCsvDecoder(t *testing.T) {
 	dec.SetTimeformat("ns")
 	dec.SetHeader(false)
 	dec.SetColumnTypes(
-		mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_DATETIME, mach.DB_COLUMN_TYPE_DOUBLE, mach.DB_COLUMN_TYPE_FLOAT, mach.DB_COLUMN_TYPE_VARCHAR,
-		mach.DB_COLUMN_TYPE_INTEGER, mach.DB_COLUMN_TYPE_SHORT, mach.DB_COLUMN_TYPE_INTEGER, mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_LONG, mach.DB_COLUMN_TYPE_VARCHAR,
-		mach.DB_COLUMN_TYPE_IPV4)
+		types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_DATETIME, types.COLUMN_TYPE_DOUBLE, types.COLUMN_TYPE_FLOAT, types.COLUMN_TYPE_VARCHAR,
+		types.COLUMN_TYPE_INTEGER, types.COLUMN_TYPE_SHORT, types.COLUMN_TYPE_INTEGER, types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_LONG, types.COLUMN_TYPE_VARCHAR,
+		types.COLUMN_TYPE_IPV4)
 	dec.Open()
 
 	fields, _, err := dec.NextRow()
@@ -39,9 +39,9 @@ func TestCsvDecoder(t *testing.T) {
 	require.Equal(t, 1.234, fields[2])
 	require.Equal(t, float32(2.345), fields[3])
 	require.Equal(t, "typeval", fields[4])
-	require.Equal(t, int(1234), fields[5])
+	require.Equal(t, int32(1234), fields[5])
 	require.Equal(t, int16(2345), fields[6])
-	require.Equal(t, int(1111), fields[7])
+	require.Equal(t, int32(1111), fields[7])
 	require.Equal(t, "pnameval", fields[8])
 	require.Equal(t, int64(1), fields[9])
 	require.Equal(t, "{\"name\":1234}", fields[10])
@@ -140,7 +140,7 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 		dec.SetTimeLocation(tt.tz)
 		dec.SetHeader(tt.header)
 		dec.SetHeaderColumns(tt.headerColumns)
-		dec.SetColumnTypes(mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_DATETIME, mach.DB_COLUMN_TYPE_DOUBLE)
+		dec.SetColumnTypes(types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_DATETIME, types.COLUMN_TYPE_DOUBLE)
 		dec.SetColumns("NAME", "TIME", "VALUE")
 		dec.Open()
 		for _, expect := range tt.expects {
@@ -179,7 +179,7 @@ func TestCsvDecoderCharset(t *testing.T) {
 	dec.SetCharsetEncoding(eucjp)
 	dec.SetDelimiter(",")
 	dec.SetHeading(false)
-	dec.SetColumnTypes(mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_VARCHAR)
+	dec.SetColumnTypes(types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_VARCHAR)
 	dec.Open()
 	fields, _, err := dec.NextRow()
 

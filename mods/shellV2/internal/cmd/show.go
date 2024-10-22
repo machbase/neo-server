@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -181,7 +181,7 @@ func doShowUsers(ctx *action.ActionContext) {
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
-	list, err := do.Indexes(ctx.Ctx, api.ConnRpc(ctx.Conn))
+	list, err := api.Indexes(ctx.Ctx, api.ConnRpc(ctx.Conn))
 	if err != nil {
 		ctx.Println("unable to find indexes; ERR", err.Error())
 		return
@@ -336,7 +336,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 
 	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
 	nrow := 0
-	do.Tags(ctx.Ctx, api.ConnRpc(ctx.Conn), strings.ToUpper(args[0]), func(name string, err error) bool {
+	api.Tags(ctx.Ctx, api.ConnRpc(ctx.Conn), strings.ToUpper(args[0]), func(name string, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -356,7 +356,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 	}
 
 	t := ctx.NewBox([]string{"NAME", "VALUE"})
-	stat, err := do.TagStat(ctx.Ctx, api.ConnRpc(ctx.Conn), args[0], args[1])
+	stat, err := api.TagStat(ctx.Ctx, api.ConnRpc(ctx.Conn), args[0], args[1])
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -404,10 +404,10 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 		opts.BoxStyle(ctx.Pref().BoxStyle().Value()),
 	)
 
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: api.ConnRpc(ctx.Conn),
 		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
@@ -422,7 +422,7 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 			encoder.Close()
 		},
 	}
-	msg, err := do.Query(queryCtx, sqlText)
+	msg, err := api.Query(queryCtx, sqlText)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	} else {
@@ -439,19 +439,18 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 
 	table := args[0]
 
-	_desc, err := do.Describe(ctx.Ctx, api.ConnRpc(ctx.Conn), table, showAll)
+	desc, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), table, showAll)
 	if err != nil {
 		ctx.Println("unable to describe", table, "; ERR", err.Error())
 		return
 	}
-	desc := _desc.(*do.TableDescription)
 
 	nrow := 0
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
+		colType := col.Type.String()
+		box.AppendRow(nrow, col.Name, colType, col.Width(), col.Flag.String())
 	}
 
 	box.Render()
@@ -460,7 +459,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
 	nrow := 0
-	do.Tables(ctx.Ctx, api.ConnRpc(ctx.Conn), func(ti *do.TableInfo, err error) bool {
+	api.Tables(ctx.Ctx, api.ConnRpc(ctx.Conn), func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -472,7 +471,7 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 			return true
 		}
 		nrow++
-		desc := do.TableTypeDescription(api.TableType(ti.Type), ti.Flag)
+		desc := api.TableTypeDescription(types.TableType(ti.Type), ti.Flag)
 		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
 		return true
 	})
@@ -502,7 +501,7 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 		}
 		nrow++
 
-		desc := do.TableTypeDescription(api.TableType(typ), flg)
+		desc := api.TableTypeDescription(types.TableType(typ), flg)
 		t.AppendRow(nrow, id, name, desc)
 	}
 	t.Render()

@@ -8,7 +8,6 @@ import (
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )
@@ -26,12 +25,12 @@ func (s *mqtt2) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 
 	dbName := strings.TrimPrefix(pk.TopicName, "db/metrics/")
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, dbName, false); err != nil {
 		s.log.Warn(cl.Net.Remote, "column error:", err.Error())
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 	tableName := strings.ToUpper(dbName)
 	precision := lineprotocol.Nanosecond
@@ -85,7 +84,7 @@ func (s *mqtt2) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 			return
 		}
 
-		result := do.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
+		result := api.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			s.log.Warnf(cl.Net.Remote, "lineprotocol fail:", result.Err().Error())
 		}

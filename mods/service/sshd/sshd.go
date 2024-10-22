@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	mach "github.com/machbase/neo-engine"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/pkg/errors"
@@ -24,7 +24,7 @@ type Service interface {
 type Option func(s *sshd)
 
 // Factory
-func New(db *mach.Database, options ...Option) (Service, error) {
+func New(db *machsvr.Database, options ...Option) (Service, error) {
 	s := &sshd{
 		log:             logging.GetLog("sshd"),
 		db:              db,
@@ -80,7 +80,7 @@ func OptionShellProvider(provider func(user string, shellId string) *Shell) Opti
 
 type sshd struct {
 	log   logging.Log
-	db    *mach.Database
+	db    *machsvr.Database
 	alive bool
 
 	dumpInput  bool

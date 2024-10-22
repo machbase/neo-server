@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	mach "github.com/machbase/neo-engine"
 	"github.com/pkg/errors"
 )
 
@@ -292,43 +291,6 @@ func ParseTime(strVal string, format string, location *time.Location) (time.Time
 	return baseTime, nil
 }
 
-func ParseDatabaseValue(value string, columnType string, timeformat string, tz *time.Location) (any, error) {
-	if timeformat == "" {
-		timeformat = "ns"
-	}
-	if tz == nil {
-		tz = time.UTC
-	}
-	switch columnType {
-	case mach.DB_COLUMN_TYPE_VARCHAR, mach.DB_COLUMN_TYPE_JSON, mach.DB_COLUMN_TYPE_TEXT, "string":
-		return value, nil
-	case mach.DB_COLUMN_TYPE_DATETIME:
-		return ParseTime(value, timeformat, tz)
-	case mach.DB_COLUMN_TYPE_FLOAT:
-		return ParseFloat32(value)
-	case mach.DB_COLUMN_TYPE_DOUBLE:
-		return ParseFloat64(value)
-	case mach.DB_COLUMN_TYPE_LONG, "int64":
-		return ParseInt64(value)
-	case mach.DB_COLUMN_TYPE_ULONG:
-		return ParseUint64(value)
-	case mach.DB_COLUMN_TYPE_INTEGER, "int":
-		return ParseInt(value)
-	case mach.DB_COLUMN_TYPE_UINTEGER:
-		return ParseUint(value)
-	case mach.DB_COLUMN_TYPE_SHORT, "int16":
-		return ParseInt16(value)
-	case mach.DB_COLUMN_TYPE_USHORT:
-		return ParseUint16(value)
-	case "int32":
-		return ParseInt32(value)
-	case mach.DB_COLUMN_TYPE_IPV4, mach.DB_COLUMN_TYPE_IPV6:
-		return ParseIP(value)
-	default:
-		return nil, fmt.Errorf("unsupported column type; %s", columnType)
-	}
-}
-
 func ToDuration(one any) (time.Duration, error) {
 	switch val := one.(type) {
 	case time.Duration:
@@ -399,6 +361,46 @@ func ParseDuration(val string) (time.Duration, error) {
 	}
 }
 
+func ToInt8(one any) (int8, error) {
+	v, err := ToInt64(one)
+	if err != nil {
+		return 0, err
+	}
+	return int8(v), nil
+}
+
+func ToInt16(one any) (int16, error) {
+	v, err := ToInt64(one)
+	if err != nil {
+		return 0, err
+	}
+	return int16(v), nil
+}
+
+func ToUint16(one any) (uint16, error) {
+	v, err := ToInt64(one)
+	if err != nil {
+		return 0, err
+	}
+	return uint16(v), nil
+}
+
+func ToInt32(one any) (int32, error) {
+	v, err := ToInt64(one)
+	if err != nil {
+		return 0, err
+	}
+	return int32(v), nil
+}
+
+func ToUint32(one any) (uint32, error) {
+	v, err := ToInt64(one)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(v), nil
+}
+
 func ToInt64(one any) (int64, error) {
 	switch val := one.(type) {
 	case string:
@@ -454,6 +456,67 @@ func ToInt64(one any) (int64, error) {
 			return 0, fmt.Errorf("incompatible conv '%v' (%T) to int64, %s", val, val, err.Error())
 		} else {
 			return v, nil
+		}
+	default:
+		return 0, ErrIncompatible("int64", val)
+	}
+}
+
+func ToUint64(one any) (uint64, error) {
+	switch val := one.(type) {
+	case string:
+		if v, err := strconv.ParseUint(val, 10, 64); err != nil {
+			if f, err := ToFloat64(val); err != nil {
+				return 0, ErrIncompatible("int64", val)
+			} else {
+				return uint64(f), nil
+			}
+		} else {
+			return v, nil
+		}
+	case *string:
+		if v, err := strconv.ParseUint(*val, 10, 64); err != nil {
+			if f, err := ToFloat64(*val); err != nil {
+				return 0, ErrIncompatible("int64", val)
+			} else {
+				return uint64(f), nil
+			}
+		} else {
+			return v, nil
+		}
+	case float32:
+		return uint64(val), nil
+	case *float32:
+		return uint64(*val), nil
+	case float64:
+		return uint64(val), nil
+	case *float64:
+		return uint64(*val), nil
+	case int64:
+		return uint64(val), nil
+	case *int64:
+		return uint64(*val), nil
+	case int:
+		return uint64(val), nil
+	case *int:
+		return uint64(*val), nil
+	case int32:
+		return uint64(val), nil
+	case *int32:
+		return uint64(*val), nil
+	case int16:
+		return uint64(val), nil
+	case *int16:
+		return uint64(*val), nil
+	case int8:
+		return uint64(val), nil
+	case *int8:
+		return uint64(*val), nil
+	case json.Number:
+		if v, err := val.Int64(); err != nil {
+			return 0, fmt.Errorf("incompatible conv '%v' (%T) to int64, %s", val, val, err.Error())
+		} else {
+			return uint64(v), nil
 		}
 	default:
 		return 0, ErrIncompatible("int64", val)
@@ -564,6 +627,11 @@ func ParseInt32(val string) (int32, error) {
 	return int32(d), err
 }
 
+func ParseUint32(val string) (uint32, error) {
+	d, err := strconv.ParseUint(val, 10, 32)
+	return uint32(d), err
+}
+
 func ParseInt64(val string) (int64, error) {
 	return strconv.ParseInt(val, 10, 64)
 }
@@ -578,6 +646,10 @@ func ParseIP(val string) (net.IP, error) {
 		return nil, fmt.Errorf("incompatible conv '%v' (%T) to IP", val, val)
 	}
 	return addr, nil
+}
+
+func ParseBoolean(val string) (bool, error) {
+	return strconv.ParseBool(val)
 }
 
 func SortAny(list []any) []any {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/pkg/errors"
 )
@@ -104,7 +104,7 @@ func (node *Node) fmArgs() (any, error) {
 func (node *Node) fmArgsParam(args ...any) (any, error) {
 	argValues := node.task.argValues
 	if len(argValues) == 0 {
-		cols := []*api.Column{{Name: "ROWNUM", Type: "int"}}
+		cols := []*types.Column{types.MakeColumnRownum()}
 		node.task.SetResultColumns(cols)
 		return []any{}, nil
 	}

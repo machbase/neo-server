@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
+	"github.com/machbase/neo-server/api/machrpc"
 	"golang.org/x/net/context"
 	"golang.org/x/text/language"
 )

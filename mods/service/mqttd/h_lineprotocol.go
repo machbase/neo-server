@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/service/mqttd/mqtt"
 )
 
@@ -31,12 +31,12 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage) {
 
 	dbName := strings.TrimPrefix(evt.Topic, "metrics/")
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx, conn, dbName, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx, conn, dbName, false); err != nil {
 		svr.log.Warnf("column error: %s", err.Error())
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 	tableName := strings.ToUpper(dbName)
 	precision := lineprotocol.Nanosecond
@@ -90,7 +90,7 @@ func (svr *mqttd) onLineprotocol(evt *mqtt.EvtMessage) {
 			return
 		}
 
-		result := do.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
+		result := api.WriteLineProtocol(ctx, conn, tableName, desc.Columns, measurement, fields, tags, ts)
 		if result.Err() != nil {
 			svr.log.Warnf("lineprotocol fail: %s", result.Err().Error())
 		}

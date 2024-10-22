@@ -12,6 +12,7 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/tql"
 	"github.com/machbase/neo-server/mods/util/ssfs"
@@ -41,6 +42,15 @@ var databaseLock sync.Mutex
 var mqttServer *mqttd
 
 func TestMain(m *testing.M) {
+	logging.Configure(&logging.Config{
+		Console:                     true,
+		Filename:                    "-",
+		Append:                      false,
+		DefaultPrefixWidth:          10,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+	})
+
 	fileDirs := []string{"/=./test"}
 	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
 	ssfs.SetDefault(serverFs)

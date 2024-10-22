@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/mods/leak"
 )
 
@@ -48,10 +48,10 @@ func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.C
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	connOpts := []mach.ConnectOption{}
+	connOpts := []machsvr.ConnectOption{}
 	if strings.HasPrefix(req.Password, "$otp$:") {
 		if passed, err := s.authServer.ValidateUserOtp(req.User, strings.TrimPrefix(req.Password, "$otp$:")); passed {
-			connOpts = append(connOpts, mach.WithTrustUser(req.User))
+			connOpts = append(connOpts, machsvr.WithTrustUser(req.User))
 		} else if err != nil {
 			rsp.Reason = err.Error()
 			return rsp, nil
@@ -60,7 +60,7 @@ func (s *grpcd) Conn(pctx context.Context, req *machrpc.ConnRequest) (*machrpc.C
 			return rsp, nil
 		}
 	} else {
-		connOpts = append(connOpts, mach.WithPassword(req.User, req.Password))
+		connOpts = append(connOpts, machsvr.WithPassword(req.User, req.Password))
 	}
 	if conn, err := s.db.Connect(pctx, connOpts...); err != nil {
 		rsp.Reason = err.Error()
@@ -266,7 +266,7 @@ func (s *grpcd) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*machrpc
 	for i, c := range cols {
 		rsp.Columns[i] = &machrpc.Column{
 			Name: c.Name,
-			Type: c.Type,
+			Type: string(c.DataType),
 		}
 	}
 	rsp.Success = true
@@ -304,7 +304,12 @@ func (s *grpcd) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*machr
 		return rsp, nil
 	}
 
-	values := api.MakeBuffer(columns)
+	values, err := columns.MakeBuffer()
+	if err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+		return rsp, nil
+	}
 	err = rowsWrap.Rows.Scan(values...)
 	if err != nil {
 		rsp.Success = false
@@ -359,10 +364,7 @@ func (s *grpcd) Appender(ctx context.Context, req *machrpc.AppenderRequest) (*ma
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		opts := []mach.AppenderOption{}
-		if len(req.Timeformat) > 0 {
-			opts = append(opts, mach.AppenderTimeformat(req.Timeformat))
-		}
+		opts := []machsvr.AppenderOption{}
 		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
 		if err != nil {
 			rsp.Reason = err.Error()

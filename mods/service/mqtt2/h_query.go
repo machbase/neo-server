@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -106,10 +106,10 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	}
 	defer conn.Close()
 
-	queryCtx := &do.QueryContext{
+	queryCtx := &api.QueryContext{
 		Conn: conn,
 		Ctx:  ctx,
-		OnFetchStart: func(cols api.Columns) {
+		OnFetchStart: func(cols types.Columns) {
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
@@ -134,7 +134,7 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 		},
 	}
 
-	if _, err := do.Query(queryCtx, req.SqlText); err != nil {
+	if _, err := api.Query(queryCtx, req.SqlText); err != nil {
 		s.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

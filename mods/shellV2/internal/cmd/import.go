@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-client/machrpc"
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util"
@@ -114,7 +113,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, created, truncated, err := do.ExistsTableOrCreate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.CreateTable, cmd.TruncateTable)
+	exists, created, truncated, err := api.ExistsTableOrCreate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.CreateTable, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -130,17 +129,17 @@ func doImport(ctx *action.ActionContext) {
 		ctx.Printfln("Table '%s' truncated", cmd.Table)
 	}
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, false); err != nil {
 		ctx.Printfln("ERR fail to get table info '%s', %s", cmd.Table, err.Error())
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 
 	if ctx.IsUserShellInteractiveMode() && cmd.Input == "-" {
 		ctx.Printfln("# Enter %s⏎ to quit", cmd.EofMark)
-		colNames := desc.Columns.Columns().Names()
+		colNames := desc.Columns.Names()
 		ctx.Println("#", strings.Join(colNames, cmd.Delimiter))
 
 		buff := []byte{}
@@ -168,14 +167,13 @@ func doImport(ctx *action.ActionContext) {
 		}
 	}
 
-	cols := desc.Columns.Columns()
 	decOpts := []opts.Option{
 		opts.InputStream(in),
 		opts.Timeformat(cmd.Timeformat),
 		opts.TimeLocation(cmd.TimeLocation),
 		opts.TableName(cmd.Table),
-		opts.Columns(cols.Names()...),
-		opts.ColumnTypes(cols.Types()...),
+		opts.Columns(desc.Columns.Names()...),
+		opts.ColumnTypes(desc.Columns.DataTypes()...),
 		opts.Delimiter(cmd.Delimiter),
 		opts.Heading(cmd.HasHeader),
 	}

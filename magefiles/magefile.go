@@ -268,7 +268,7 @@ func Protoc() error {
 	args := []string{}
 	if len(args) == 0 {
 		args = []string{
-			"mgmt", "bridge", "schedule",
+			"mgmt", "bridge", "schedule", "machrpc",
 		}
 	}
 
@@ -637,6 +637,53 @@ func unzip(source, destination string) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func Examples() error {
+	return Example("")
+}
+
+func Example(name string) error {
+	excludes := map[string]bool{
+		"grpc_wave":       true,
+		"http_wave":       true,
+		"mqtt_subscriber": true,
+	}
+	examplesGoPath := `examples/go`
+	if name == "" {
+		entries, err := os.ReadDir(examplesGoPath)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if _, ok := excludes[name]; ok {
+				continue
+			}
+			path := filepath.Join(examplesGoPath, name, name+".go")
+			if err := runGoExample(path); err != nil {
+				fmt.Println("ERROR", path)
+				fmt.Println(err.Error())
+			}
+		}
+	} else {
+		path := filepath.Join(examplesGoPath, name, name+".go")
+		if err := runGoExample(path); err != nil {
+			fmt.Println("ERROR", path)
+			fmt.Println(err.Error())
+		}
+	}
+	return nil
+}
+
+func runGoExample(path string) error {
+	fmt.Println("--------")
+	fmt.Println("EXAMPLE:", path)
+	env := map[string]string{}
+	if err := sh.RunWith(env, "go", "run", path); err != nil {
+		return err
 	}
 	return nil
 }

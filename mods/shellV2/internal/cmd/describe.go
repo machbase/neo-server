@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -63,12 +62,11 @@ func doDescribe(ctx *action.ActionContext) {
 		tableName = fmt.Sprintf("%s.%s.%s", toks[0], toks[1], toks[2])
 	}
 
-	_desc, err := do.Describe(ctx.Ctx, api.ConnRpc(ctx.Conn), tableName, cmd.ShowAll)
+	desc, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), tableName, cmd.ShowAll)
 	if err != nil {
 		ctx.Println("unable to describe", cmd.Table, "; ERR", err.Error())
 		return
 	}
-	desc := _desc.(*do.TableDescription)
 
 	if len(desc.Indexes) > 0 {
 		ctx.Println("[ COLUMN ]")
@@ -77,8 +75,8 @@ func doDescribe(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
 	for _, col := range desc.Columns {
 		nrow++
-		colType := api.ColumnTypeStringNative(col.Type)
-		box.AppendRow(nrow, col.Name, colType, col.Size(), api.ColumnFlagString(col.Flag))
+		colType := col.Type.String()
+		box.AppendRow(nrow, col.Name, colType, col.Width(), col.Flag.String())
 	}
 	box.Render()
 
@@ -88,7 +86,7 @@ func doDescribe(ctx *action.ActionContext) {
 		box = ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "COLUMN"})
 		for _, idx := range desc.Indexes {
 			nrow++
-			idxType := api.IndexTypeString(idx.Type)
+			idxType := idx.Type.String()
 			box.AppendRow(nrow, idx.Name, idxType, strings.Join(idx.Cols, ", "))
 		}
 		box.Render()

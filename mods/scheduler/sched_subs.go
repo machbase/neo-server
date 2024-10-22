@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/do"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/service/msg"
@@ -313,7 +313,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		}
 	}
 
-	exists, err := do.ExistsTable(ent.ctx, ent.conn, ent.wd.Table)
+	exists, err := api.ExistsTable(ent.ctx, ent.conn, ent.wd.Table)
 	if err != nil {
 		rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
 		ent.log.Warn(ent.TaskTql, err.Error())
@@ -325,13 +325,13 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		return
 	}
 
-	var desc *do.TableDescription
-	if desc0, err := do.Describe(ent.ctx, ent.conn, ent.wd.Table, false); err != nil {
+	var desc *api.TableDescription
+	if desc0, err := api.DescribeTable(ent.ctx, ent.conn, ent.wd.Table, false); err != nil {
 		rsp.Reason = fmt.Sprintf("%s %s", ent.TaskTql, err.Error())
 		ent.log.Warnf(ent.TaskTql, err.Error())
 		return
 	} else {
-		desc = desc0.(*do.TableDescription)
+		desc = desc0
 	}
 
 	var instream spec.InputStream
@@ -367,7 +367,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	var recno uint64
 	var insertQuery string
 	var columnNames []string
-	var columnTypes []string
+	var columnTypes []types.DataType
 
 	if ent.wd.Format == "json" {
 		bs, err := io.ReadAll(instream)
@@ -388,23 +388,23 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
-			columnTypes = make([]string, 0, len(columnNames))
+			columnTypes = make([]types.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
 				_hold = append(_hold, "?")
-				_type := ""
+				_type := types.ColumnTypeUnknown
 				for _, d := range desc.Columns {
 					if d.Name == strings.ToUpper(colName) {
-						_type = d.TypeString()
+						_type = d.Type
 						break
 					}
 				}
-				if _type == "" {
+				if _type == types.ColumnTypeUnknown {
 					rsp.Reason = fmt.Sprintf("%s column %q not found in the table %q", ent.name, colName, ent.wd.Table)
 					ent.log.Warnf("column %q not found in the table %q", colName, ent.wd.Table)
 					return
 				}
-				columnTypes = append(columnTypes, _type)
+				columnTypes = append(columnTypes, _type.DataType())
 			}
 			valueHolder := strings.Join(_hold, ",")
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wd.Table, strings.Join(columnNames, ","), valueHolder)
@@ -413,8 +413,8 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	}
 
 	if len(columnNames) == 0 {
-		columnNames = desc.Columns.Columns().Names()
-		columnTypes = desc.Columns.Columns().Types()
+		columnNames = desc.Columns.Names()
+		columnTypes = desc.Columns.DataTypes()
 	}
 
 	codecOpts = append(codecOpts,
@@ -512,8 +512,8 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 
 	cols, _ := api.AppenderColumns(ent.appender)
 	colNames := cols.Names()
-	colTypes := cols.Types()
-	if api.AppenderTableType(ent.appender) == api.LogTableType && colNames[0] == "_ARRIVAL_TIME" {
+	colTypes := cols.DataTypes()
+	if api.AppenderTableType(ent.appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

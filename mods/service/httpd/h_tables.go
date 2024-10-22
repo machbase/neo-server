@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/do"
+	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
@@ -36,12 +35,12 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
-		Types: []string{
-			mach.ColumnBufferTypeInt32,  // rownum
-			mach.ColumnBufferTypeString, // db
-			mach.ColumnBufferTypeString, // user
-			mach.ColumnBufferTypeString, // name
-			mach.ColumnBufferTypeString, // type
+		Types: []types.DataType{
+			types.DataTypeInt32,  // rownum
+			types.DataTypeString, // db
+			types.DataTypeString, // user
+			types.DataTypeString, // name
+			types.DataTypeString, // type
 		},
 	}
 
@@ -53,7 +52,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	do.Tables(ctx, conn, func(ti *do.TableInfo, err error) bool {
+	api.Tables(ctx, conn, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
@@ -83,7 +82,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 			ti.Database,
 			ti.User,
 			ti.Name,
-			do.TableTypeDescription(api.TableType(ti.Type), ti.Flag),
+			api.TableTypeDescription(types.TableType(ti.Type), ti.Flag),
 		})
 		return true
 	})
@@ -114,9 +113,9 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "NAME"},
-		Types: []string{
-			mach.ColumnBufferTypeInt32,  // rownum
-			mach.ColumnBufferTypeString, // name
+		Types: []types.DataType{
+			types.DataTypeInt32,  // rownum
+			types.DataTypeString, // name
 		},
 		Rows: [][]any{},
 	}
@@ -129,7 +128,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	do.Tags(ctx, conn, table, func(name string, err error) bool {
+	api.Tags(ctx, conn, table, func(name string, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
@@ -184,7 +183,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	nfo, err := do.TagStat(ctx, conn, table, tag)
+	nfo, err := api.TagStat(ctx, conn, table, tag)
 	if err != nil {
 		rsp.Success, rsp.Reason = false, err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -196,17 +195,17 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		Columns: []string{
 			"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
 			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
-		Types: []string{
-			mach.ColumnBufferTypeInt32,    // rownum
-			mach.ColumnBufferTypeString,   // name
-			mach.ColumnBufferTypeInt64,    // row_count
-			mach.ColumnBufferTypeDatetime, // min_time
-			mach.ColumnBufferTypeDatetime, // max_time
-			mach.ColumnBufferTypeDouble,   // min_value
-			mach.ColumnBufferTypeDatetime, // min_value_time
-			mach.ColumnBufferTypeDouble,   // max_value
-			mach.ColumnBufferTypeDatetime, // max_value_time
-			mach.ColumnBufferTypeDatetime, // recent_row_time
+		Types: []types.DataType{
+			types.DataTypeInt32,    // rownum
+			types.DataTypeString,   // name
+			types.DataTypeInt64,    // row_count
+			types.DataTypeDatetime, // min_time
+			types.DataTypeDatetime, // max_time
+			types.DataTypeFloat64,  // min_value
+			types.DataTypeDatetime, // min_value_time
+			types.DataTypeFloat64,  // max_value
+			types.DataTypeDatetime, // max_value_time
+			types.DataTypeDatetime, // recent_row_time
 		},
 		Rows: [][]any{},
 	}
