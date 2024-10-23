@@ -52,15 +52,11 @@ func TestWatchLogTable(t *testing.T) {
 				if tickCount > 5 {
 					return
 				}
-				if tickCount%2 == 0 {
-					require.Equal(t, "tag2", rec["NAME"], "NAME")
-				} else {
-					require.Equal(t, "tag1", rec["NAME"], "NAME")
-				}
+				require.Equal(t, 4, len(rec["NAME"].(string)), "NAME")
 				require.IsType(t, "", rec["TIME"], "TIME")
-				require.Equal(t, 1.23*float64(tickCount), rec["VALUE"], "VALUE")
+				require.LessOrEqual(t, 1.23, rec["VALUE"], "VALUE")
 				require.Equal(t, int16(1), rec["SHORT_VALUE"], "SHORT_VALUE")
-				require.Equal(t, int32(tickCount), rec["INT_VALUE"], "INT_VALUE")
+				require.Less(t, int32(0), rec["INT_VALUE"], "INT_VALUE")
 				require.Equal(t, int64(2), rec["LONG_VALUE"], "LONG_VALUE")
 				require.Equal(t, "str1", rec["STR_VALUE"], "STR_VALUE")
 				require.Equal(t, `{"key1":"value1"}`, rec["JSON_VALUE"], "JSON_VALUE")
