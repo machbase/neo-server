@@ -82,7 +82,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 			ti.Database,
 			ti.User,
 			ti.Name,
-			api.TableTypeDescription(types.TableType(ti.Type), ti.Flag),
+			api.TableTypeDescription(ti.Type, ti.Flag),
 		})
 		return true
 	})

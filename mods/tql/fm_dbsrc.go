@@ -239,9 +239,6 @@ type databaseSource struct {
 	sqlText string
 	params  []any
 
-	fetched  int
-	executed bool
-
 	resultMsg string
 }
 
@@ -255,37 +252,32 @@ func (dc *databaseSource) gen(node *Node) {
 	}
 	defer conn.Close()
 
-	queryCtx := &api.QueryContext{
-		Conn: conn,
-		Ctx:  ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			cols = append([]*types.Column{types.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			if !dc.task.shouldStop() && len(values) > 0 {
-				dc.fetched++
 				NewRecord(nrow, values).Tell(node.next)
 			}
 			return !dc.task.shouldStop()
 		},
-		OnFetchEnd: func() {},
-		OnExecuted: func(usermsg string, rowsAffected int64) {
-			dc.executed = true
+		End: func(q *api.Query, userMessage string, rowsAffected int64) {
+			dc.resultMsg = userMessage
+			if !q.IsFetch() {
+				dc.task.SetResultColumns(types.Columns{
+					types.MakeColumnRownum(),
+					types.MakeColumnString("MESSAGE"),
+				})
+				NewRecord(1, userMessage).Tell(node.next)
+			}
 		},
 	}
-	if msg, err := api.Query(queryCtx, dc.sqlText, dc.params...); err != nil {
+	if err := query.Execute(ctx, conn, dc.sqlText, dc.params...); err != nil {
 		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
-	} else {
-		dc.resultMsg = msg
-		if dc.executed {
-			dc.task.SetResultColumns(types.Columns{
-				types.MakeColumnRownum(),
-				types.MakeColumnString("MESSAGE"),
-			})
-			NewRecord(1, msg).Tell(node.next)
-		}
 	}
 }
 

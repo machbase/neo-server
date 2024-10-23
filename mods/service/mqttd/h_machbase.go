@@ -113,15 +113,14 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 	}
 	defer conn.Close()
 
-	queryCtx := &api.QueryContext{
-		Conn: conn,
-		Ctx:  ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
 			if err != nil {
 				// report error to client?
@@ -130,18 +129,19 @@ func (svr *mqttd) handleQuery(peer mqtt.Peer, payload []byte, defaultReplyTopic 
 			}
 			return true
 		},
-		OnFetchEnd: func() {
-			encoder.Close()
-			rsp.Success, rsp.Reason = true, "success"
-			rsp.Content = buffer.Bytes()
-		},
-		OnExecuted: func(userMessage string, rowsAffected int64) {
-			rsp.Success, rsp.Reason = true, userMessage
-			rsp.Elapse = time.Since(tick).String()
+		End: func(q *api.Query, userMessage string, numRows int64) {
+			if q.IsFetch() {
+				encoder.Close()
+				rsp.Success, rsp.Reason = true, "success"
+				rsp.Content = buffer.Bytes()
+			} else {
+				rsp.Success, rsp.Reason = true, userMessage
+				rsp.Elapse = time.Since(tick).String()
+			}
 		},
 	}
 
-	if _, err := api.Query(queryCtx, req.SqlText); err != nil {
+	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
 		svr.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

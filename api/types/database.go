@@ -36,6 +36,41 @@ func (typ TableType) String() string {
 	}
 }
 
+func (typ TableType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, typ.String())), nil
+}
+
+type TableFlag int
+
+const (
+	TableFlagNone   TableFlag = 0
+	TableFlagData   TableFlag = 1
+	TableFlagRollup TableFlag = 2
+	TableFlagMeta   TableFlag = 4
+	TableFlagStat   TableFlag = 8
+)
+
+func (flag TableFlag) String() string {
+	switch flag {
+	case TableFlagNone:
+		return ""
+	case TableFlagData:
+		return "Data"
+	case TableFlagRollup:
+		return "Rollup"
+	case TableFlagMeta:
+		return "Meta"
+	case TableFlagStat:
+		return "Stat"
+	default:
+		return fmt.Sprintf("UndefinedTableFlag-%d", flag)
+	}
+}
+
+func (flag TableFlag) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, flag.String())), nil
+}
+
 type IndexType int
 
 const (

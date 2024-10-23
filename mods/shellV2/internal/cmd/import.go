@@ -41,7 +41,6 @@ const helpImport = `  import [options] <table>
 	   --charset          set character encoding, if input is not UTF-8
        --header           first line is header, skip it
        --method           write method [insert|append] (default:'insert')
-       --create-table     create table if it doesn't exist (default:false)
        --truncate-table   truncate table ahead importing new data (default:false)
     -d,--delimiter        csv delimiter (default:',')
        --tz               timezone for handling datetime
@@ -58,7 +57,6 @@ type ImportCmd struct {
 	EofMark       string         `name:"eof" default:"."`
 	InputFormat   string         `name:"format" short:"f" default:"csv" enum:"csv"`
 	Method        string         `name:"method" default:"insert" enum:"insert,append"`
-	CreateTable   bool           `name:"create-table" default:"false"`
 	TruncateTable bool           `name:"truncate-table" default:"false"`
 	Delimiter     string         `name:"delimiter" short:"d" default:","`
 	Timeformat    string         `name:"timeformat" short:"t" default:"ns"`
@@ -113,7 +111,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, created, truncated, err := api.ExistsTableOrCreate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.CreateTable, cmd.TruncateTable)
+	exists, truncated, err := api.ExistsTableTruncate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -121,9 +119,6 @@ func doImport(ctx *action.ActionContext) {
 	if !exists {
 		ctx.Printfln("Table '%s' does not exist", cmd.Table)
 		return
-	}
-	if created {
-		ctx.Printfln("Table '%s' created", cmd.Table)
 	}
 	if truncated {
 		ctx.Printfln("Table '%s' truncated", cmd.Table)

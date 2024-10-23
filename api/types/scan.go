@@ -110,6 +110,10 @@ func scanInt32(src int32, pDst any) error {
 		*dst = strconv.FormatInt(int64(src), 10)
 	case *driver.Value:
 		*dst = driver.Value(src)
+	case *TableType:
+		*dst = TableType(src)
+	case *TableFlag:
+		*dst = TableFlag(src)
 	case *ColumnType:
 		*dst = ColumnType(src)
 	case *ColumnFlag:

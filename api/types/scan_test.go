@@ -99,51 +99,14 @@ func TestScan(t *testing.T) {
 		if err := types.Scan(tt.src, tt.dst); err != nil {
 			t.Errorf("%s: Scan(%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result := unbox(tt.dst)
+		result := types.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
 
 		if err := types.Scan(box(tt.src), tt.dst); err != nil {
 			t.Errorf("%s: Scan(*%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result = unbox(tt.dst)
+		result = types.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(*%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
-	}
-}
-
-func unbox(val any) any {
-	switch v := val.(type) {
-	case *int:
-		return *v
-	case *uint:
-		return *v
-	case *int16:
-		return *v
-	case *uint16:
-		return *v
-	case *int32:
-		return *v
-	case *uint32:
-		return *v
-	case *int64:
-		return *v
-	case *uint64:
-		return *v
-	case *float64:
-		return *v
-	case *float32:
-		return *v
-	case *string:
-		return *v
-	case *time.Time:
-		return *v
-	case *[]byte:
-		return *v
-	case *net.IP:
-		return *v
-	case *driver.Value:
-		return *v
-	default:
-		return val
 	}
 }
 

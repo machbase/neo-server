@@ -94,14 +94,12 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		return
 	}
 
-	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+	desc, err := api.DescribeTable(ctx, conn, tableName, false)
+	if err != nil {
 		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
-	} else {
-		desc = desc0
 	}
 
 	var in spec.InputStream

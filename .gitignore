@@ -24,8 +24,10 @@ tmp/
 packages/
 vendor/
 examples/**/target
+machbase_test_tmp/
 
 mods/service/httpd/web/ui/*
+mach-grpc.sock
 
 native/**/*_dummy.o
 

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/api/machcli"
@@ -410,4 +411,13 @@ func AppenderColumns(rows Appender) (types.Columns, error) {
 		}
 	}
 	return ret, nil
+}
+
+func SqlTidy(sqlTextLines ...string) string {
+	sqlText := strings.Join(sqlTextLines, "\n")
+	lines := strings.Split(sqlText, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimSpace(ln)
+	}
+	return strings.Join(lines, " ")
 }

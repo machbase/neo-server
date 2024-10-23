@@ -3,9 +3,9 @@ package tql_test
 import (
 	"testing"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/expression"
 	. "github.com/machbase/neo-server/mods/tql"
+	"github.com/stretchr/testify/require"
 )
 
 type CaseTagPath struct {

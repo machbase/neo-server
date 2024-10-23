@@ -10,10 +10,6 @@ import (
 
 // returns dbName, userName, tableName
 func TokenizeFullTableName(name string) (string, string, string) {
-	return tokenizeFullTableName(name)
-}
-
-func tokenizeFullTableName(name string) (string, string, string) {
 	tableName := strings.ToUpper(name)
 	userName := "SYS"
 	dbName := "MACHBASEDB"
@@ -34,7 +30,7 @@ func tokenizeFullTableName(name string) (string, string, string) {
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
 func DescribeTable(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
-	_, _, tableName := tokenizeFullTableName(name)
+	_, _, tableName := TokenizeFullTableName(name)
 	if strings.HasPrefix(tableName, "V$") {
 		return describe_mv(ctx, conn, name, includeHiddenColumns)
 	} else if strings.HasPrefix(tableName, "M$") {
@@ -44,12 +40,26 @@ func DescribeTable(ctx context.Context, conn Conn, name string, includeHiddenCol
 	}
 }
 
+var describeSqlText = SqlTidy(
+	`SELECT
+		j.ID as TABLE_ID,
+		j.TYPE as TABLE_TYPE,
+		j.FLAG as TABLE_FLAG,
+		j.COLCOUNT as TABLE_COLCOUNT
+	from
+		M$SYS_USERS u,
+		M$SYS_TABLES j
+	where
+		u.NAME = ?
+	and j.USER_ID = u.USER_ID
+	and j.DATABASE_ID = ?
+	and j.NAME = ?`)
+
 func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
-	var tableType int
 	var colCount int
 
-	dbName, userName, tableName := tokenizeFullTableName(name)
+	dbName, userName, tableName := TokenizeFullTableName(name)
 	dbId := -1
 
 	if dbName != "" && dbName != "MACHBASEDB" {
@@ -58,28 +68,14 @@ func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns 
 			return nil, err
 		}
 	}
-	sqlText := `SELECT
-			j.ID as TABLE_ID,
-			j.TYPE as TABLE_TYPE,
-			j.FLAG as TABLE_FLAG,
-			j.COLCOUNT as TABLE_COLCOUNT
-		from
-			M$SYS_USERS u,
-			M$SYS_TABLES j
-		where
-			u.NAME = ?
-		and j.USER_ID = u.USER_ID
-		and j.DATABASE_ID = ?
-		and j.NAME = ?`
 
-	r := conn.QueryRow(ctx, sqlText, userName, dbId, tableName)
+	r := conn.QueryRow(ctx, describeSqlText, userName, dbId, tableName)
 	if r.Err() != nil {
 		return nil, r.Err()
 	}
-	if err := r.Scan(&d.Id, &tableType, &d.Flag, &colCount); err != nil {
+	if err := r.Scan(&d.Id, &d.Type, &d.Flag, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = types.TableType(tableType)
 	d.Database = dbName
 	d.User = userName
 	d.Name = tableName
@@ -99,6 +95,7 @@ func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns 
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
+		col.DataType = col.Type.DataType()
 		d.Columns = append(d.Columns, col)
 	}
 	if indexes, err := describe_idx(ctx, conn, d.Id, dbId); err != nil {
@@ -147,7 +144,7 @@ func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColum
 	var tableType int
 	var colCount int
 
-	d.Database, d.User, d.Name = tokenizeFullTableName(name)
+	d.Database, d.User, d.Name = TokenizeFullTableName(name)
 	tablesTable := "M$SYS_TABLES"
 	columnsTable := "M$SYS_COLUMNS"
 	if strings.HasPrefix(d.Name, "V$") {
@@ -178,6 +175,7 @@ func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColum
 		if !includeHiddenColumns && strings.HasPrefix(col.Name, "_") {
 			continue
 		}
+		col.DataType = col.Type.DataType()
 		d.Columns = append(d.Columns, col)
 	}
 	return d, nil
@@ -189,7 +187,7 @@ type TableDescription struct {
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
 	Type     types.TableType     `json:"type"`
-	Flag     int                 `json:"flag"`
+	Flag     types.TableFlag     `json:"flag,omitempty"`
 	Id       int                 `json:"id"`
 	Columns  types.Columns       `json:"columns"`
 	Indexes  []*IndexDescription `json:"indexes"`
@@ -201,7 +199,7 @@ func (td *TableDescription) String() string {
 }
 
 // TableTypeDescription converts the given TableType and flag into string representation.
-func TableTypeDescription(typ types.TableType, flag int) string {
+func TableTypeDescription(typ types.TableType, flag types.TableFlag) string {
 	desc := "undef"
 	switch typ {
 	case types.TableTypeLog:
@@ -218,13 +216,13 @@ func TableTypeDescription(typ types.TableType, flag int) string {
 		desc = "Tag Table"
 	}
 	switch flag {
-	case 1:
+	case types.TableFlagData:
 		desc += " (data)"
-	case 2:
+	case types.TableFlagRollup:
 		desc += " (rollup)"
-	case 4:
+	case types.TableFlagMeta:
 		desc += " (meta)"
-	case 8:
+	case types.TableFlagStat:
 		desc += " (stat)"
 	}
 	return desc

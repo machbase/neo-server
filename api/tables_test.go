@@ -1,113 +1,44 @@
 package api_test
 
-//go:generate moq -out ./tables_mock_test.go -pkg api_test . Database Conn Row Result
-
 import (
 	"context"
 	"testing"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExists(t *testing.T) {
-	mockdb := &DatabaseMock{
-		ConnectFunc: func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-			conn := &ConnMock{}
-			conn.CloseFunc = func() error { return nil }
-			conn.QueryRowFunc = func(ctx context.Context, sqlText string, params ...any) api.Row {
-				switch sqlText {
-				case "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?":
-					return &RowMock{
-						ScanFunc: func(cols ...any) error {
-							if len(params) == 2 {
-								if params[1] == "EXAMPLE" {
-									*(cols[0].(*int)) = 1
-								} else {
-									*(cols[0].(*int)) = 0
-								}
-							}
-							return nil
-						},
-					}
-				case "select type from M$SYS_TABLES where name = ?":
-					return &RowMock{
-						ScanFunc: func(cols ...any) error {
-							*(cols[0].(*int)) = int(types.TableTypeTag)
-							return nil
-						},
-					}
-				default:
-					t.Logf("QueryRow sqlText: %s, params:%v", sqlText, params)
-					return &RowMock{}
-				}
-			}
-			conn.ExecFunc = func(ctx context.Context, sqlText string, params ...any) api.Result {
-				switch sqlText {
-				case "delete from example":
-					return &ResultMock{
-						ErrFunc:          func() error { return nil },
-						MessageFunc:      func() string { return "mocking delete all" },
-						RowsAffectedFunc: func() int64 { return 1 },
-					}
-				case "create tag table example_x (name varchar(100) primary key, time datetime basetime, value double)":
-					return &ResultMock{
-						ErrFunc:          func() error { return nil },
-						MessageFunc:      func() string { return "mocking create table" },
-						RowsAffectedFunc: func() int64 { return 0 },
-					}
-				default:
-					t.Logf("Exec sqlText: %s, params:%v", sqlText, params)
-				}
-				return &ResultMock{}
-			}
-			return conn, nil
-		},
+	var db api.Database
+
+	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
+		t.Log("Error", err.Error())
+		t.Fail()
+	} else {
+		db = api.NewDatabase(machsvr_db)
 	}
 
 	ctx := context.TODO()
-	conn, err := mockdb.Connect(ctx)
-	if err != nil {
-		t.Error(err.Error())
-	}
-	{ // case: exists true
-		exists, err := api.ExistsTable(ctx, conn, "example")
-		if err != nil {
-			t.Errorf("ExistsTable %s", err)
-		}
-		require.True(t, exists)
-	}
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
 
-	{ // case: exists true
-		exists, err := api.ExistsTable(ctx, conn, "example-x")
-		if err != nil {
-			t.Errorf("ExistsTable %s", err)
-		}
-		require.False(t, exists)
-	}
+	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
+		// table exists
+		exists, err := api.ExistsTable(ctx, conn, table_name)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
 
-	{ // case: ExistsTableOrCreate for existing table
-		exists, created, truncated, err := api.ExistsTableOrCreate(ctx, conn, "example", true, true)
-		require.True(t, exists)
-		require.False(t, created)
-		require.True(t, truncated)
-		require.Nil(t, err)
-	}
+		// table not exists
+		exists, err = api.ExistsTable(ctx, conn, table_name+"_not_exists")
+		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
+		require.False(t, exists, "table %q_not_exists exists", table_name)
 
-	{ // case: ExistsTableOrCreate for non-existing table with 'create=false'
-		exists, created, truncated, err := api.ExistsTableOrCreate(ctx, conn, "example_x", false, true)
-		require.False(t, exists)
-		require.False(t, created)
-		require.False(t, truncated)
-		require.Nil(t, err)
-	}
-
-	{ // case: ExistsTableOrCreate for non-existing table with 'create=true'
-		exists, created, truncated, err := api.ExistsTableOrCreate(ctx, conn, "example_x", true, true)
-		require.False(t, exists)
-		require.True(t, created)
-		require.False(t, truncated)
-		require.Nil(t, err)
+		// table exists and truncate
+		exists, truncated, err := api.ExistsTableTruncate(ctx, conn, table_name, true)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+		require.True(t, truncated, "table %q not truncated", table_name)
 	}
 }
