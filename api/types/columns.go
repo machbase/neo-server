@@ -32,10 +32,12 @@ func (col *Column) IsMetaColumn() bool {
 }
 
 func (col *Column) makeBuffer() (any, error) {
-	if col.DataType == "" {
-		return col.Type.DataType().makeBuffer()
-	} else {
+	if col.Type != 0 {
+		return col.Type.makeBuffer()
+	} else if col.DataType != "" {
 		return col.DataType.makeBuffer()
+	} else {
+		return nil, fmt.Errorf("Column type is not defined")
 	}
 }
 
@@ -197,6 +199,47 @@ func (typ ColumnType) String() string {
 	default:
 		return fmt.Sprintf("UndefinedColumnType-%d", typ)
 	}
+}
+
+func (typ ColumnType) makeBuffer() (any, error) {
+	switch typ {
+	case ColumnTypeShort:
+		return new(int16), nil
+	case ColumnTypeUshort:
+		return new(uint16), nil
+	case ColumnTypeInteger:
+		return new(int32), nil
+	case ColumnTypeUinteger:
+		return new(uint32), nil
+	case ColumnTypeLong:
+		return new(int64), nil
+	case ColumnTypeUlong:
+		return new(uint64), nil
+	case ColumnTypeFloat:
+		return new(float32), nil
+	case ColumnTypeDouble:
+		return new(float64), nil
+	case ColumnTypeVarchar:
+		return new(string), nil
+	case ColumnTypeText:
+		return new(string), nil
+	case ColumnTypeIPv4:
+		return new(net.IP), nil
+	case ColumnTypeIPv6:
+		return new(net.IP), nil
+	case ColumnTypeJson:
+		return new(string), nil
+	case ColumnTypeDatetime:
+		return new(time.Time), nil
+	case ColumnTypeBinary:
+		return new([]byte), nil
+	default:
+		return nil, fmt.Errorf("unsupported column type: %d", typ)
+	}
+}
+
+func (typ ColumnType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, typ.String())), nil
 }
 
 func (typ ColumnType) DataType() DataType {

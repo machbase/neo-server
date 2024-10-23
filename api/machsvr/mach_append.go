@@ -143,10 +143,10 @@ func (ap *Appender) TableType() types.TableType {
 
 func (ap *Appender) Append(values ...any) error {
 	if ap.tableType == types.TableTypeTag {
-		return ap.append(values)
+		return ap.append(values...)
 	} else if ap.tableType == types.TableTypeLog {
 		colsWithTime := append([]any{time.Time{}}, values...)
-		return ap.append(colsWithTime)
+		return ap.append(colsWithTime...)
 	} else {
 		return fmt.Errorf("%s can not be appended", ap.tableName)
 	}
@@ -155,16 +155,13 @@ func (ap *Appender) Append(values ...any) error {
 func (ap *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
 	if ap.tableType == types.TableTypeLog {
 		colsWithTime := append([]any{ts}, cols...)
-		return ap.append(colsWithTime)
-	} else if ap.tableType == types.TableTypeTag {
-		colsWithTime := append([]any{cols[0], ts}, cols[1:]...)
-		return ap.append(colsWithTime)
+		return ap.append(colsWithTime...)
 	} else {
 		return fmt.Errorf("%s is not a log table, use Append() instead", ap.tableName)
 	}
 }
 
-func (ap *Appender) append(values []any) error {
+func (ap *Appender) append(values ...any) error {
 	if len(ap.columnTypes) == 0 {
 		return types.ErrDatabaseNoColumns(ap.tableName)
 	}

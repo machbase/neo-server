@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/service/eventbus"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEventBus(t *testing.T) {

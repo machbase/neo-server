@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
@@ -130,14 +129,13 @@ func doExport(ctx *action.ActionContext) {
 	var lineno int = 0
 
 	tick := time.Now()
-	queryCtx := &api.QueryContext{
-		Conn: api.ConnRpc(ctx.Conn),
-		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
 			if err != nil {
 				ctx.Println("ERR", err.Error())
@@ -150,12 +148,12 @@ func doExport(ctx *action.ActionContext) {
 			}
 			return ctx.Ctx.Err() == nil
 		},
-		OnFetchEnd: func() {
+		End: func(q *api.Query, userMessage string, rowsFetched int64) {
 			encoder.Close()
 		},
 	}
 
-	if _, err := api.Query(queryCtx, "select * from "+cmd.Table); err != nil {
+	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), "select * from "+cmd.Table); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 	if printProgress {

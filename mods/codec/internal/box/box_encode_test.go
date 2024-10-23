@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/codec/internal/box"
 	"github.com/machbase/neo-server/mods/stream"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBox1(t *testing.T) {

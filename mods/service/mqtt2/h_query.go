@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/service/msg"
@@ -106,15 +105,14 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	}
 	defer conn.Close()
 
-	queryCtx := &api.QueryContext{
-		Conn: conn,
-		Ctx:  ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
 			if err != nil {
 				// report error to client?
@@ -123,18 +121,19 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			}
 			return true
 		},
-		OnFetchEnd: func() {
-			encoder.Close()
-			rsp.Success, rsp.Reason = true, "success"
-			rsp.Content = buffer.Bytes()
-		},
-		OnExecuted: func(userMessage string, rowsAffected int64) {
-			rsp.Success, rsp.Reason = true, userMessage
-			rsp.Elapse = time.Since(tick).String()
+		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+			if q.IsFetch() {
+				encoder.Close()
+				rsp.Success, rsp.Reason = true, "success"
+				rsp.Content = buffer.Bytes()
+			} else {
+				rsp.Success, rsp.Reason = true, userMessage
+				rsp.Elapse = time.Since(tick).String()
+			}
 		},
 	}
 
-	if _, err := api.Query(queryCtx, req.SqlText); err != nil {
+	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
 		s.log.Error("query fail", err.Error())
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()

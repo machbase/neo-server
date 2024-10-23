@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
-	"time"
 
 	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/opts"
@@ -28,7 +27,7 @@ func (node *Node) GetRecordKey() any {
 	if inflight == nil {
 		return nil
 	}
-	return unboxValue(inflight.key)
+	return types.Unbox(inflight.key)
 }
 
 // tql function: value()
@@ -62,10 +61,10 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		if idx >= len(val) {
 			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d) in %s", idx, len(val), node.Name()))
 		}
-		return unboxValue(val[idx]), nil
+		return types.Unbox(val[idx]), nil
 	case any:
 		if idx == 0 {
-			return unboxValue(val), nil
+			return types.Unbox(val), nil
 		} else {
 			return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
 		}
@@ -133,7 +132,7 @@ func (node *Node) fmArgsParam(args ...any) (any, error) {
 		if idx >= len(argValues) {
 			return nil, ErrArgs("arg", 0, fmt.Sprintf("%d is out of range of the arg(len:%d)", idx, len(argValues)))
 		}
-		ret = unboxValue(argValues[idx])
+		ret = types.Unbox(argValues[idx])
 	}
 
 	if node.Name() == "FAKE()" {
@@ -164,31 +163,4 @@ func (node *Node) fmOption(args ...any) (any, error) {
 		}
 	}
 	return nil, errors.New("invalid use of option()")
-}
-
-func unboxValue(val any) any {
-	switch v := val.(type) {
-	case *int:
-		return *v
-	case *int8:
-		return *v
-	case *int16:
-		return *v
-	case *int32:
-		return *v
-	case *int64:
-		return *v
-	case *float32:
-		return *v
-	case *float64:
-		return *v
-	case *string:
-		return *v
-	case *time.Time:
-		return *v
-	case *bool:
-		return *v
-	default:
-		return val
-	}
 }

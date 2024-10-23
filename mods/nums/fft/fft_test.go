@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/nums/fft"
 	"github.com/machbase/neo-server/mods/nums/oscillator"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFFT(t *testing.T) {

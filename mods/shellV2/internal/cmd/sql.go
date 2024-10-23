@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/shellV2/internal/action"
@@ -161,14 +160,13 @@ func doSql(ctx *action.ActionContext) {
 	}
 	nextPauseRow := int64(pageHeight)
 
-	queryCtx := &api.QueryContext{
-		Conn: api.ConnRpc(ctx.Conn),
-		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
 			if err != nil {
 				ctx.Println("ERR", err.Error())
@@ -185,21 +183,19 @@ func doSql(ctx *action.ActionContext) {
 			}
 			return true
 		},
-		OnFetchEnd: func() {
+		End: func(q *api.Query, userMessage string, numRows int64) {
 			encoder.Close()
+			if cmd.Footer {
+				ctx.Println(userMessage)
+			} else {
+				ctx.Println()
+			}
 		},
 	}
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	msg, err := api.Query(queryCtx, sqlText)
-	if err != nil {
+	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
-	} else {
-		if cmd.Footer {
-			ctx.Println(msg)
-		} else {
-			ctx.Println()
-		}
 	}
 }
 

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +20,8 @@ type WatcherConfig struct {
 	Parallelism  int
 	ChanSize     int
 	TableName    string
-	TagNames     []string // tag table
-	MaxRowNum    int      // log table
+	TagNames     []string // required in watching tag table
+	MaxRowNum    int      // affects on watching log table
 }
 
 type Watcher struct {
@@ -35,7 +34,7 @@ type Watcher struct {
 	// table info
 	isTagTable  bool
 	columnNames []string
-	columnTypes []types.ColumnType
+	columns     types.Columns
 	timeformat  *util.TimeFormatter
 	// tag table
 	nameColumn      string
@@ -69,6 +68,10 @@ func (w *Watcher) handleError(err error) {
 
 func (w *Watcher) Close() {
 	if w.parallelCh != nil {
+		// drain the channel, waiting for all goroutines to finish
+		for i := 0; i < w.Parallelism; i++ {
+			<-w.parallelCh
+		}
 		close(w.parallelCh)
 	}
 	if w.out != nil {
@@ -138,8 +141,8 @@ func (w *Watcher) init(ctx context.Context) error {
 				w.nameColumn = c.Name
 			}
 		}
+		w.columns = append(w.columns, c)
 		w.columnNames = append(w.columnNames, c.Name)
-		w.columnTypes = append(w.columnTypes, c.Type)
 	}
 	if w.isTagTable {
 		if len(w.nameColumn) == 0 {
@@ -169,7 +172,9 @@ func (w *Watcher) Execute() {
 
 func (w *Watcher) executeTag(tag string) {
 	if w.parallelCh != nil {
-		<-w.parallelCh
+		if _, isOpen := <-w.parallelCh; !isOpen {
+			return
+		}
 		defer func() {
 			w.parallelCh <- true
 		}()
@@ -210,22 +215,26 @@ func (w *Watcher) executeTag(tag string) {
 	if len(row.Values()) == 0 {
 		return
 	}
-	var values = w.makeBuffer()
+	values, err := w.columns.MakeBuffer()
+	if err != nil {
+		w.handleError(err)
+		return
+	}
 	if err := row.Scan(values...); err != nil {
 		w.handleError(err)
 		return
 	}
 	obj := WatchData{}
-	for i := range w.columnNames {
-		name := w.columnNames[i]
-		typ := w.columnTypes[i]
+	for i, col := range w.columns {
+		name := col.Name
+		typ := col.Type
 		if typ == types.ColumnTypeDatetime {
 			if v, ok := values[i].(*time.Time); ok {
 				obj[name] = w.timeformat.FormatEpoch(*v)
 				continue
 			}
 		}
-		obj[name] = values[i]
+		obj[name] = types.Unbox(values[i])
 	}
 	w.handleData(obj)
 }
@@ -271,7 +280,11 @@ func (w *Watcher) executeLog() {
 			w.lastArrivalTime = time.Time{}
 			return
 		}
-		var values = w.makeBuffer()
+		values, err := w.columns.MakeBuffer()
+		if err != nil {
+			w.handleError(err)
+			return
+		}
 		values = append([]any{new(time.Time)}, values...) // for _ARRIVAL_TIME
 		if err := rows.Scan(values...); err != nil {
 			w.handleError(err)
@@ -281,46 +294,9 @@ func (w *Watcher) executeLog() {
 		values = values[1:]
 		obj := WatchData{}
 		for i, n := range w.columnNames {
-			obj[n] = values[i]
+			obj[n] = types.Unbox(values[i])
 		}
 		w.handleData(obj)
 		w.lastArrivalTime = *arrivalTime
 	}
-}
-
-func (w *Watcher) makeBuffer() []any {
-	ret := make([]any, len(w.columnTypes))
-	for i, t := range w.columnTypes {
-		switch t {
-		case types.ColumnTypeShort:
-			ret[i] = new(int16)
-		case types.ColumnTypeUshort:
-			ret[i] = new(uint16)
-		case types.ColumnTypeInteger:
-			ret[i] = new(int32)
-		case types.ColumnTypeUinteger:
-			ret[i] = new(uint32)
-		case types.ColumnTypeLong:
-			ret[i] = new(int64)
-		case types.ColumnTypeUlong:
-			ret[i] = new(uint64)
-		case types.ColumnTypeFloat:
-			ret[i] = new(float32)
-		case types.ColumnTypeDouble:
-			ret[i] = new(float64)
-		case types.ColumnTypeVarchar:
-			ret[i] = new(string)
-		case types.ColumnTypeText:
-			ret[i] = new(string)
-		case types.ColumnTypeIPv4:
-			ret[i] = new(net.IP)
-		case types.ColumnTypeIPv6:
-			ret[i] = new(net.IP)
-		case types.ColumnTypeDatetime:
-			ret[i] = new(time.Time)
-		case types.ColumnTypeBinary:
-			ret[i] = new([]byte)
-		}
-	}
-	return ret
 }

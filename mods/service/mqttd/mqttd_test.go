@@ -194,9 +194,9 @@ func TestWrite(t *testing.T) {
 				return &RowMock{
 					ErrFunc: func() error { return nil },
 					ScanFunc: func(cols ...any) error {
-						*(cols[0].(*int)) = 0                       // TABLE_ID
-						*(cols[1].(*int)) = int(types.TableTypeTag) // TABLE_TYPE
-						*(cols[3].(*int)) = 3                       // TABLE_COLCOUNT
+						*(cols[0].(*int)) = 0                              // TABLE_ID
+						*(cols[1].(*types.TableType)) = types.TableTypeTag // TABLE_TYPE
+						*(cols[3].(*int)) = 3                              // TABLE_COLCOUNT
 						return nil
 					},
 				}

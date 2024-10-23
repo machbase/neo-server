@@ -86,28 +86,28 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	columnsPhrase := strings.Join(columns, ",")
 
 	sqlText := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, columnsPhrase, valuesPlaces)
-	var nrows int
+	var numRows int
 	for _, rec := range rows {
 		result := conn.Exec(ctx, sqlText, rec...)
 		if result.Err() != nil {
 			return &InsertResult{
 				err:          result.Err(),
-				rowsAffected: nrows,
+				rowsAffected: numRows,
 				message:      "batch inserts aborted - " + sqlText,
 			}
 		}
-		nrows++
+		numRows++
 	}
 
 	ret := &InsertResult{
-		rowsAffected: nrows,
+		rowsAffected: numRows,
 	}
-	if nrows == 0 {
+	if numRows == 0 {
 		ret.message = "no row inserted"
-	} else if nrows == 1 {
+	} else if numRows == 1 {
 		ret.message = "a row inserted"
 	} else {
-		ret.message = fmt.Sprintf("%d rows inserted", nrows)
+		ret.message = fmt.Sprintf("%d rows inserted", numRows)
 	}
 	return ret
 }

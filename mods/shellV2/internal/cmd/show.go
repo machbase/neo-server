@@ -404,29 +404,26 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 		opts.BoxStyle(ctx.Pref().BoxStyle().Value()),
 	)
 
-	queryCtx := &api.QueryContext{
-		Conn: api.ConnRpc(ctx.Conn),
-		Ctx:  ctx.Ctx,
-		OnFetchStart: func(cols types.Columns) {
+	query := &api.Query{
+		Begin: func(q *api.Query) {
+			cols := q.Columns()
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		OnFetch: func(nrow int64, values []any) bool {
+		Next: func(q *api.Query, nrow int64, values []any) bool {
 			err := encoder.AddRow(values)
 			if err != nil {
 				ctx.Println("ERR", err.Error())
 			}
 			return true
 		},
-		OnFetchEnd: func() {
+		End: func(q *api.Query, userMessage string, numRows int64) {
 			encoder.Close()
+			ctx.Println(userMessage)
 		},
 	}
-	msg, err := api.Query(queryCtx, sqlText)
-	if err != nil {
+	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
-	} else {
-		ctx.Println(msg)
 	}
 }
 
@@ -471,7 +468,7 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 			return true
 		}
 		nrow++
-		desc := api.TableTypeDescription(types.TableType(ti.Type), ti.Flag)
+		desc := api.TableTypeDescription(ti.Type, ti.Flag)
 		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
 		return true
 	})
@@ -491,8 +488,8 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 	nrow := 0
 	for rows.Next() {
 		var name string
-		var typ int
-		var flg int
+		var typ types.TableType
+		var flg types.TableFlag
 		var id int
 		err := rows.Scan(&name, &typ, &flg, &id)
 		if err != nil {

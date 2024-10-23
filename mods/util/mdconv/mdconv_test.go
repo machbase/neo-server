@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/d5/tengo/v2/require"
 	"github.com/machbase/neo-server/mods/util/mdconv"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMdCon(t *testing.T) {

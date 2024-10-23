@@ -217,8 +217,8 @@ func Test() error {
 	testArgs := []string{
 		"test", "-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
-		"./mods/...",
 		"./api/...",
+		"./mods/...",
 	}
 
 	if runtime.GOOS != "windows" {

@@ -167,7 +167,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 		if len(params) == 2 && params[0] == "SYS" && params[1] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = int(types.TableTypeTag)
+					*(cols[0].(*types.TableType)) = types.TableTypeTag
 					return nil
 				},
 			}
@@ -176,10 +176,10 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 		if len(params) == 3 && params[0] == "SYS" && params[1] == -1 && params[2] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = 4907                    // table id
-					*(cols[1].(*int)) = int(types.TableTypeTag) // table type
-					*(cols[2].(*int)) = 0                       // table flag
-					*(cols[3].(*int)) = 4                       // column count
+					*(cols[0].(*int)) = 4907                           // table id
+					*(cols[1].(*types.TableType)) = types.TableTypeTag // table type
+					*(cols[2].(*types.TableFlag)) = 0                  // table flag
+					*(cols[3].(*int)) = 4                              // column count
 					return nil
 				},
 				ErrFunc: func() error { return nil },
