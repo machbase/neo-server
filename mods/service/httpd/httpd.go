@@ -62,7 +62,7 @@ type httpd struct {
 	handlers        []*HandlerConfig
 	disableWeb      bool
 
-	serverInfoFunc     func() (*machrpc.ServerInfo, error)
+	serverInfoFunc     func() (*mgmt.ServerInfoResponse, error)
 	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
 	mqttInfoFunc       func() map[string]any
 	mqttWsHandler      func(*gin.Context)

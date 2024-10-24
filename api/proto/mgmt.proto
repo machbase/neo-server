@@ -16,6 +16,8 @@ service Management {
     rpc ListShell(ListShellRequest) returns (ListShellResponse) {}
     rpc AddShell(AddShellRequest) returns (AddShellResponse) {}
     rpc DelShell(DelShellRequest) returns (DelShellResponse) {}
+    rpc ServicePorts(ServicePortsRequest) returns (ServicePortsResponse) {}
+    rpc ServerInfo(ServerInfoRequest) returns (ServerInfoResponse) {}
 }
 
 message ListShellRequest{
@@ -155,10 +157,26 @@ message ShutdownResponse {
     string elapse = 3;
 }
 
+message ServicePortsRequest {
+    string service = 1;
+}
+
+message ServicePortsResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    repeated Port ports = 4;
+}
+
+message Port {
+    string service = 1;
+    string address = 2;
+}
+
 message ServerInfoRequest {
 }
 
-message ServerInfo {
+message ServerInfoResponse {
     bool success = 1;
     string reason = 2;
     string elapse = 3;
@@ -183,11 +201,5 @@ message Runtime {
     int64  uptimeInSecond = 4;
     int32  processes      = 5;
     int32  goroutines     = 6;
-    uint64  memSys        = 7;
-    uint64  memHeapSys    = 8;
-    uint64  memHeapAlloc  = 9;
-    uint64  memHeapInUse  = 10;
-    uint64  memStackSys   = 11;
-    uint64  memStackInUse = 12;
+    map<string, uint64> mem = 7;
 }
-

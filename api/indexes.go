@@ -5,6 +5,16 @@ import (
 	"fmt"
 )
 
+type IndexInfo struct {
+	Database   string
+	User       string
+	Name       string
+	Type       string
+	Table      string
+	Column     string
+	DatabaseId int
+}
+
 func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 	ret := []*IndexInfo{}
 
@@ -41,7 +51,7 @@ func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 
 	for rows.Next() {
 		nfo := &IndexInfo{}
-		err = rows.Scan(&nfo.UserName, &nfo.DatabaseId, &nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType)
+		err = rows.Scan(&nfo.User, &nfo.DatabaseId, &nfo.Table, &nfo.Column, &nfo.Name, &nfo.Type)
 		if err != nil {
 			rows.Close()
 			return nil, err
@@ -54,26 +64,16 @@ func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 	for _, r := range ret {
 		name, ok := dbs[r.DatabaseId]
 		if ok {
-			r.DatabaseName = name
+			r.Database = name
 		} else {
 			row := conn.QueryRow(ctx, "select MOUNTDB from V$STORAGE_MOUNT_DATABASES where BACKUP_TBSID = ?", r.DatabaseId)
 			if err := row.Scan(&name); err != nil {
-				r.DatabaseName = fmt.Sprintf("[%d]", r.DatabaseId)
+				r.Database = fmt.Sprintf("[%d]", r.DatabaseId)
 			} else {
 				dbs[r.DatabaseId] = name
-				r.DatabaseName = name
+				r.Database = name
 			}
 		}
 	}
 	return ret, nil
-}
-
-type IndexInfo struct {
-	UserName     string
-	DatabaseId   int
-	DatabaseName string
-	TableName    string
-	ColumnName   string
-	IndexName    string
-	IndexType    string
 }

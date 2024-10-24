@@ -77,11 +77,11 @@ type ConnectOption func(db any) any
 
 func (db *machsvrDatabase) Connect(ctx context.Context, options ...ConnectOption) (Conn, error) {
 	opts := make([]machsvr.ConnectOption, 0, len(options))
-	for _, opt := range options {
-		o := opt(db)
-		if o == nil {
-			continue
-		} else if connOpt, ok := o.(machsvr.ConnectOption); ok {
+	for _, optFactory := range options {
+		opt := optFactory(db)
+		if err, ok := opt.(error); ok {
+			return nil, err
+		} else if connOpt, ok := opt.(machsvr.ConnectOption); ok {
 			opts = append(opts, connOpt)
 		}
 	}
@@ -133,12 +133,10 @@ func (db *machcliDatabase) Connect(ctx context.Context, options ...ConnectOption
 func WithTrustUser(username string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
-		case *machsvr.Database:
-			return machsvr.WithTrustUser(username)
 		case *machsvrDatabase:
 			return machsvr.WithTrustUser(username)
 		default:
-			return nil
+			return fmt.Errorf("trust user not supported with %T", db)
 		}
 	}
 }
@@ -146,14 +144,14 @@ func WithTrustUser(username string) ConnectOption {
 func WithPassword(username, password string) ConnectOption {
 	return func(db any) any {
 		switch db.(type) {
-		case *machsvrConn:
+		case *machsvrDatabase:
 			return machsvr.WithPassword(username, password)
-		case *machrpc.Client:
+		case *machrpcDatabase:
 			return machrpc.WithPassword(username, password)
 		case *machcliDatabase:
 			return machcli.WithPassword(username, password)
 		default:
-			return nil
+			return fmt.Errorf("unsupported database %T", db)
 		}
 	}
 }

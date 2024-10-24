@@ -14,7 +14,7 @@ import (
 func TestColumns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	conn, err := db.Connect(ctx, machsvr.WithPassword("sys", "manager"))
+	conn, err := database.Connect(ctx, machsvr.WithPassword("sys", "manager"))
 	if err != nil {
 		panic(err)
 	}
@@ -73,7 +73,7 @@ func TestColumns(t *testing.T) {
 
 func TestExec(t *testing.T) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}

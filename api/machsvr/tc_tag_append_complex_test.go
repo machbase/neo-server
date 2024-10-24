@@ -11,7 +11,7 @@ import (
 
 func createTagTable() {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}
@@ -38,7 +38,7 @@ func TestAppendTagComplex(t *testing.T) {
 	t.Logf("---- append complex_tag [%d]", goid())
 
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}

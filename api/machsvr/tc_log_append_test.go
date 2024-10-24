@@ -12,7 +12,7 @@ import (
 
 func createLogTable() {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}
@@ -36,7 +36,7 @@ func createLogTable() {
 
 func TestAppendLog(t *testing.T) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}

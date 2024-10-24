@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
@@ -190,7 +191,7 @@ func doShowIndexes(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "USER_NAME", "DB", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE"})
 	for _, nfo := range list {
 		nrow++
-		box.AppendRow(nrow, nfo.UserName, nfo.DatabaseName, nfo.TableName, nfo.ColumnName, nfo.IndexName, nfo.IndexType)
+		box.AppendRow(nrow, nfo.User, nfo.Database, nfo.Table, nfo.Column, nfo.Name, nfo.Type)
 	}
 	box.Render()
 }
@@ -505,7 +506,13 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 }
 
 func doShowInfo(ctx *action.ActionContext) {
-	nfo, err := ctx.Actor.Database().GetServerInfo()
+	mgmtClient, err := ctx.Actor.ManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	nfo, err := mgmtClient.ServerInfo(ctx.Ctx, &mgmt.ServerInfoRequest{})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -540,14 +547,20 @@ func doShowInfo(ctx *action.ActionContext) {
 }
 
 func doShowPorts(ctx *action.ActionContext) {
-	ports, err := ctx.Actor.Database().GetServicePorts("")
+	client, err := ctx.Actor.ManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	rsp, err := client.ServicePorts(ctx.Ctx, &mgmt.ServicePortsRequest{Service: ""})
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
 
 	box := ctx.NewBox([]string{"SERVICE", "PORT"})
-	for _, p := range ports {
+	for _, p := range rsp.Ports {
 		box.AppendRow(p.Service, p.Address)
 	}
 	box.Render()

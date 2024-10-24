@@ -20,8 +20,6 @@ service Machbase {
     rpc Append(stream AppendData) returns(AppendDone) {}
     rpc Explain(ExplainRequest) returns(ExplainResponse) {}
     rpc UserAuth(UserAuthRequest) returns(UserAuthResponse) {}
-    rpc GetServerInfo(ServerInfoRequest) returns (ServerInfo) {}
-    rpc GetServicePorts(ServicePortsRequest) returns (ServicePorts) {}
     rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
     rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
 }
@@ -215,53 +213,6 @@ message UserAuthResponse {
     bool success = 1;
     string reason = 2;
     string elapse = 3;
-}
-
-message ServerInfoRequest {
-}
-
-message ServerInfo {
-    bool success = 1;
-    string reason = 2;
-    string elapse = 3;
-    Version version = 4;
-    Runtime runtime = 5;
-}
-
-message Version {
-    int32 major = 1;
-    int32 minor = 2;
-    int32 patch = 3;
-    string gitSHA = 4;
-    string buildTimestamp = 5;
-    string buildCompiler = 6;
-    string engine = 7;
-}
-
-message Runtime {
-    string OS             = 1;
-    string arch           = 2;
-    int32  pid            = 3;
-    int64  uptimeInSecond = 4;
-    int32  processes      = 5;
-    int32  goroutines     = 6;
-    map<string, uint64> mem = 7;
-}
-
-message ServicePortsRequest {
-    string service = 1;
-}
-
-message ServicePorts {
-    bool success = 1;
-    string reason = 2;
-    string elapse = 3;
-    repeated Port ports = 4;
-}
-
-message Port {
-    string service = 1;
-    string address = 2;
 }
 
 message SessionsRequest {

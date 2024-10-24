@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
@@ -111,12 +111,12 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 		neoShellAccount: map[string]string{},
 		jwtCache:        security.NewJwtCache(),
 		memoryFs:        &MemoryFS{},
-		serverInfoFunc: func() (*machrpc.ServerInfo, error) {
-			return &machrpc.ServerInfo{
+		serverInfoFunc: func() (*mgmt.ServerInfoResponse, error) {
+			return &mgmt.ServerInfoResponse{
 				Success: true,
 				Reason:  "success",
-				Version: &machrpc.Version{},
-				Runtime: &machrpc.Runtime{},
+				Version: &mgmt.Version{},
+				Runtime: &mgmt.Runtime{},
 			}, nil
 		},
 	}

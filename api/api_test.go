@@ -81,10 +81,32 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	result = conn.Exec(ctx, api.SqlTidy(`
+		create table log_data(
+			short_value  short,
+			int_value    integer,
+			long_value   long,
+			double_value double,
+			float_value  float,
+			str_value 	 varchar(400),
+			json_value 	 json,
+			ipv4_value   ipv4,
+			ipv6_value   ipv6
+		)
+	`))
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
 	// run tests
 	code := m.Run()
 
 	result = conn.Exec(ctx, `drop table tag_data`)
+	if err := result.Err(); err != nil {
+		panic(err)
+	}
+
+	result = conn.Exec(ctx, `drop table log_data`)
 	if err := result.Err(); err != nil {
 		panic(err)
 	}

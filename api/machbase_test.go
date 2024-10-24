@@ -15,7 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInsert(t *testing.T) {
+type ConnectFunc func(t *testing.T, ctx context.Context, opts ...api.ConnectOption) api.Conn
+
+func connect_machsvr(t *testing.T, ctx context.Context, opts ...api.ConnectOption) api.Conn {
+	t.Helper()
 	var db api.Database
 	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
 		t.Log("Error", err.Error())
@@ -24,9 +27,20 @@ func TestInsert(t *testing.T) {
 		db = api.NewDatabase(machsvr_db)
 	}
 
+	if len(opts) == 0 {
+		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+		require.NoError(t, err, "connect fail")
+		return conn
+	} else {
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		require.NoError(t, err, "connect fail")
+		return conn
+	}
+}
+
+func TestInsert(t *testing.T) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
-	require.NoError(t, err, "connect fail")
+	conn := connect_machsvr(t, ctx)
 
 	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.Local)
 	// insert
@@ -35,8 +49,7 @@ func TestInsert(t *testing.T) {
 	conn.Close()
 
 	time.Sleep(1 * time.Second)
-	conn, err = db.Connect(ctx, api.WithTrustUser("sys"))
-	require.NoError(t, err, "connect fail")
+	conn = connect_machsvr(t, ctx, api.WithPassword("sys", "manager"))
 	defer conn.Close()
 
 	// select
@@ -68,7 +81,7 @@ func TestInsert(t *testing.T) {
 	}
 	require.Equal(t, 1, numRows)
 
-	// query
+	// query - select
 	queryCtx := &api.Query{
 		Begin: func(q *api.Query) {
 			cols := q.Columns()
@@ -102,6 +115,16 @@ func TestInsert(t *testing.T) {
 	}
 	err = queryCtx.Execute(ctx, conn, `select * from tag_data where name = ?`, "insert-once")
 	require.NoError(t, err, "query fail")
+
+	// query - insert
+	queryCtx = &api.Query{
+		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+			require.False(t, q.IsFetch())
+			require.Equal(t, "a row inserted.", userMessage)
+		},
+	}
+	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', 1.23, 1, 2, 3, 'str1', '{"key1": "value1"}')`)
+	require.NoError(t, err, "query-insert fail")
 
 	// tags
 	tags := map[string]string{}
@@ -168,6 +191,87 @@ func TestTables(t *testing.T) {
 	require.Equal(t, types.TableTypeLookup, ti.Type)
 	require.Equal(t, types.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
+}
+
+func TestExistsTable(t *testing.T) {
+	var db api.Database
+
+	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
+		t.Log("Error", err.Error())
+		t.Fail()
+	} else {
+		db = api.NewDatabase(machsvr_db)
+	}
+
+	ctx := context.TODO()
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	for _, table_name := range []string{"tag_data", "sys.tag_data", "machbasedb.sys.tag_data"} {
+		// table exists
+		exists, err := api.ExistsTable(ctx, conn, table_name)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+
+		// table not exists
+		exists, err = api.ExistsTable(ctx, conn, table_name+"_not_exists")
+		require.NoError(t, err, "exists table %q_not_exists fail", table_name)
+		require.False(t, exists, "table %q_not_exists exists", table_name)
+
+		// table exists and truncate
+		exists, truncated, err := api.ExistsTableTruncate(ctx, conn, table_name, true)
+		require.NoError(t, err, "exists table %q fail", table_name)
+		require.True(t, exists, "table %q not exists", table_name)
+		require.True(t, truncated, "table %q not truncated", table_name)
+	}
+}
+
+func TestIndexes(t *testing.T) {
+	var db api.Database
+
+	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
+		t.Log("Error", err.Error())
+		t.Fail()
+	} else {
+		db = api.NewDatabase(machsvr_db)
+	}
+
+	ctx := context.TODO()
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	ret, err := api.Indexes(ctx, conn)
+	require.NoError(t, err, "indexes fail")
+	require.NotEmpty(t, ret, "indexes empty")
+	for _, r := range ret {
+		switch r.Name {
+		case "_TAG_DATA_META_NAME":
+			require.Equal(t, "MACHBASEDB", r.Database)
+			require.Equal(t, "_TAG_DATA_META", r.Table)
+			require.Equal(t, "NAME", r.Column)
+			require.Equal(t, "REDBLACK", r.Type)
+		case "__PK_IDX__TAG_DATA_META_1":
+			require.Equal(t, "MACHBASEDB", r.Database)
+			require.Equal(t, "_TAG_DATA_META", r.Table)
+			require.Equal(t, "_ID", r.Column)
+			require.Equal(t, "REDBLACK", r.Type)
+		case "_TAG_SIMPLE_META_NAME":
+			require.Equal(t, "MACHBASEDB", r.Database)
+			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
+			require.Equal(t, "NAME", r.Column)
+			require.Equal(t, "REDBLACK", r.Type)
+		case "__PK_IDX__TAG_SIMPLE_META_1":
+			require.Equal(t, "MACHBASEDB", r.Database)
+			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
+			require.Equal(t, "_ID", r.Column)
+			require.Equal(t, "REDBLACK", r.Type)
+		default:
+			t.Logf("Unknown index: %+v", r)
+			t.Fail()
+		}
+	}
 }
 
 func unbox(val any) any {

@@ -17,6 +17,8 @@ import (
 	"github.com/machbase/neo-server/mods/model"
 )
 
+const useAlternativeNoPtyShell = false
+
 func (svr *sshd) shellHandler(ss ssh.Session) {
 	user, shell, shellId := svr.findShell(ss)
 	svr.log.Debugf("shell open %s from %s", user, ss.RemoteAddr())
@@ -30,6 +32,11 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	ptyReq, winCh, isPty := ss.Pty()
 
 	if !isPty && strings.ToLower(user) == "sys" {
+		if !useAlternativeNoPtyShell {
+			io.WriteString(ss, "No PTY configured.\n")
+			ss.Exit(1)
+			return
+		}
 		// If the user is sys and the pty is not requested, use the system shell.
 		if osShell := os.Getenv("SHELL"); osShell != "" {
 			shell.Cmd = osShell

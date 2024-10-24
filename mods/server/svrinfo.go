@@ -7,6 +7,7 @@ import (
 
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/machsvr"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods"
 )
 
@@ -14,7 +15,7 @@ var maxProcessors int32
 var pid int32
 var ver *mods.Version
 
-func (s *svr) ServerInfo() (*machrpc.ServerInfo, error) {
+func (s *svr) getServerInfo() (*mgmt.ServerInfoResponse, error) {
 	if maxProcessors == 0 {
 		maxProcessors = int32(runtime.GOMAXPROCS(-1))
 	}
@@ -25,8 +26,8 @@ func (s *svr) ServerInfo() (*machrpc.ServerInfo, error) {
 		pid = int32(os.Getpid())
 	}
 
-	rsp := &machrpc.ServerInfo{
-		Version: &machrpc.Version{
+	rsp := &mgmt.ServerInfoResponse{
+		Version: &mgmt.Version{
 			Engine:         machsvr.LinkInfo(),
 			Major:          int32(ver.Major),
 			Minor:          int32(ver.Minor),
@@ -35,7 +36,7 @@ func (s *svr) ServerInfo() (*machrpc.ServerInfo, error) {
 			BuildTimestamp: mods.BuildTimestamp(),
 			BuildCompiler:  mods.BuildCompiler(),
 		},
-		Runtime: &machrpc.Runtime{
+		Runtime: &mgmt.Runtime{
 			OS:             runtime.GOOS,
 			Arch:           runtime.GOARCH,
 			Pid:            pid,
@@ -110,10 +111,6 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, 
 		})
 	}
 	return
-}
-
-func (s *svr) ServerKillSession(id string, force bool) error {
-	return s.db.KillConnection(id, force)
 }
 
 func (s *svr) MqttInfo() map[string]any {

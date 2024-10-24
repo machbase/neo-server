@@ -19,23 +19,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Machbase_Conn_FullMethodName            = "/machrpc.Machbase/Conn"
-	Machbase_ConnClose_FullMethodName       = "/machrpc.Machbase/ConnClose"
-	Machbase_Ping_FullMethodName            = "/machrpc.Machbase/Ping"
-	Machbase_Exec_FullMethodName            = "/machrpc.Machbase/Exec"
-	Machbase_QueryRow_FullMethodName        = "/machrpc.Machbase/QueryRow"
-	Machbase_Query_FullMethodName           = "/machrpc.Machbase/Query"
-	Machbase_Columns_FullMethodName         = "/machrpc.Machbase/Columns"
-	Machbase_RowsFetch_FullMethodName       = "/machrpc.Machbase/RowsFetch"
-	Machbase_RowsClose_FullMethodName       = "/machrpc.Machbase/RowsClose"
-	Machbase_Appender_FullMethodName        = "/machrpc.Machbase/Appender"
-	Machbase_Append_FullMethodName          = "/machrpc.Machbase/Append"
-	Machbase_Explain_FullMethodName         = "/machrpc.Machbase/Explain"
-	Machbase_UserAuth_FullMethodName        = "/machrpc.Machbase/UserAuth"
-	Machbase_GetServerInfo_FullMethodName   = "/machrpc.Machbase/GetServerInfo"
-	Machbase_GetServicePorts_FullMethodName = "/machrpc.Machbase/GetServicePorts"
-	Machbase_Sessions_FullMethodName        = "/machrpc.Machbase/Sessions"
-	Machbase_KillSession_FullMethodName     = "/machrpc.Machbase/KillSession"
+	Machbase_Conn_FullMethodName        = "/machrpc.Machbase/Conn"
+	Machbase_ConnClose_FullMethodName   = "/machrpc.Machbase/ConnClose"
+	Machbase_Ping_FullMethodName        = "/machrpc.Machbase/Ping"
+	Machbase_Exec_FullMethodName        = "/machrpc.Machbase/Exec"
+	Machbase_QueryRow_FullMethodName    = "/machrpc.Machbase/QueryRow"
+	Machbase_Query_FullMethodName       = "/machrpc.Machbase/Query"
+	Machbase_Columns_FullMethodName     = "/machrpc.Machbase/Columns"
+	Machbase_RowsFetch_FullMethodName   = "/machrpc.Machbase/RowsFetch"
+	Machbase_RowsClose_FullMethodName   = "/machrpc.Machbase/RowsClose"
+	Machbase_Appender_FullMethodName    = "/machrpc.Machbase/Appender"
+	Machbase_Append_FullMethodName      = "/machrpc.Machbase/Append"
+	Machbase_Explain_FullMethodName     = "/machrpc.Machbase/Explain"
+	Machbase_UserAuth_FullMethodName    = "/machrpc.Machbase/UserAuth"
+	Machbase_Sessions_FullMethodName    = "/machrpc.Machbase/Sessions"
+	Machbase_KillSession_FullMethodName = "/machrpc.Machbase/KillSession"
 )
 
 // MachbaseClient is the client API for Machbase service.
@@ -55,8 +53,6 @@ type MachbaseClient interface {
 	Append(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[AppendData, AppendDone], error)
 	Explain(ctx context.Context, in *ExplainRequest, opts ...grpc.CallOption) (*ExplainResponse, error)
 	UserAuth(ctx context.Context, in *UserAuthRequest, opts ...grpc.CallOption) (*UserAuthResponse, error)
-	GetServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfo, error)
-	GetServicePorts(ctx context.Context, in *ServicePortsRequest, opts ...grpc.CallOption) (*ServicePorts, error)
 	Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error)
 	KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error)
 }
@@ -202,26 +198,6 @@ func (c *machbaseClient) UserAuth(ctx context.Context, in *UserAuthRequest, opts
 	return out, nil
 }
 
-func (c *machbaseClient) GetServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfo, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ServerInfo)
-	err := c.cc.Invoke(ctx, Machbase_GetServerInfo_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *machbaseClient) GetServicePorts(ctx context.Context, in *ServicePortsRequest, opts ...grpc.CallOption) (*ServicePorts, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ServicePorts)
-	err := c.cc.Invoke(ctx, Machbase_GetServicePorts_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *machbaseClient) Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SessionsResponse)
@@ -259,8 +235,6 @@ type MachbaseServer interface {
 	Append(grpc.ClientStreamingServer[AppendData, AppendDone]) error
 	Explain(context.Context, *ExplainRequest) (*ExplainResponse, error)
 	UserAuth(context.Context, *UserAuthRequest) (*UserAuthResponse, error)
-	GetServerInfo(context.Context, *ServerInfoRequest) (*ServerInfo, error)
-	GetServicePorts(context.Context, *ServicePortsRequest) (*ServicePorts, error)
 	Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error)
 	KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error)
 	mustEmbedUnimplementedMachbaseServer()
@@ -311,12 +285,6 @@ func (UnimplementedMachbaseServer) Explain(context.Context, *ExplainRequest) (*E
 }
 func (UnimplementedMachbaseServer) UserAuth(context.Context, *UserAuthRequest) (*UserAuthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UserAuth not implemented")
-}
-func (UnimplementedMachbaseServer) GetServerInfo(context.Context, *ServerInfoRequest) (*ServerInfo, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetServerInfo not implemented")
-}
-func (UnimplementedMachbaseServer) GetServicePorts(context.Context, *ServicePortsRequest) (*ServicePorts, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetServicePorts not implemented")
 }
 func (UnimplementedMachbaseServer) Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Sessions not implemented")
@@ -568,42 +536,6 @@ func _Machbase_UserAuth_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Machbase_GetServerInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ServerInfoRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MachbaseServer).GetServerInfo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Machbase_GetServerInfo_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MachbaseServer).GetServerInfo(ctx, req.(*ServerInfoRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Machbase_GetServicePorts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ServicePortsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MachbaseServer).GetServicePorts(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Machbase_GetServicePorts_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MachbaseServer).GetServicePorts(ctx, req.(*ServicePortsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Machbase_Sessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SessionsRequest)
 	if err := dec(in); err != nil {
@@ -694,14 +626,6 @@ var Machbase_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UserAuth",
 			Handler:    _Machbase_UserAuth_Handler,
-		},
-		{
-			MethodName: "GetServerInfo",
-			Handler:    _Machbase_GetServerInfo_Handler,
-		},
-		{
-			MethodName: "GetServicePorts",
-			Handler:    _Machbase_GetServicePorts_Handler,
 		},
 		{
 			MethodName: "Sessions",

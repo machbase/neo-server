@@ -1,48 +1,41 @@
-package grpcd
+package server
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
-	"sync"
-	"time"
+	"sync/atomic"
 
 	"github.com/machbase/neo-server/api/bridge"
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/stats"
 )
 
-type Service interface {
-	Start() error
-	Stop()
-}
-
 // Factory
-func New(db *machsvr.Database, options ...Option) (Service, error) {
+func NewGrpcd(db *machsvr.RPCServer, options ...Option) (*grpcd, error) {
 	s := &grpcd{
 		log:            logging.GetLog("grpcd"),
-		db:             db,
+		machImpl:       db,
 		maxRecvMsgSize: 4 * 1024 * 1024,
 		maxSendMsgSize: 4 * 1024 * 1024,
 	}
-
 	for _, opt := range options {
 		opt(s)
 	}
-
 	return s, nil
 }
 
@@ -102,42 +95,6 @@ func OptionScheduleServer(handler schedule.ManagementServer) Option {
 	}
 }
 
-func OptionLeakDetector(detector *leak.Detector) Option {
-	return func(s *grpcd) {
-		s.leakDetector = detector
-	}
-}
-
-func OptionAuthServer(authServer security.AuthServer) Option {
-	return func(s *grpcd) {
-		s.authServer = authServer
-	}
-}
-
-func OptionServicePortsFunc(portz func(svc string) ([]*model.ServicePort, error)) Option {
-	return func(s *grpcd) {
-		s.servicePortsFunc = portz
-	}
-}
-
-func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
-	return func(s *grpcd) {
-		s.serverInfoFunc = fn
-	}
-}
-
-func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)) Option {
-	return func(s *grpcd) {
-		s.serverSessionsFunc = fn
-	}
-}
-
-func OptionServerKillSessionFunc(fn func(id string, force bool) error) Option {
-	return func(s *grpcd) {
-		s.serverKillSessionFunc = fn
-	}
-}
-
 func OptionServerInsecure(ignoreInsecure bool) Option {
 	return func(s *grpcd) {
 		s.ignoreInsecure = ignoreInsecure
@@ -145,45 +102,25 @@ func OptionServerInsecure(ignoreInsecure bool) Option {
 }
 
 type grpcd struct {
-	machrpc.UnimplementedMachbaseServer
-
 	log logging.Log
-
-	authServer security.AuthServer
-
-	db           *machsvr.Database
-	sessions     map[string]*connParole
-	sessionsLock sync.Mutex
 
 	listenAddresses []string
 	maxRecvMsgSize  int
 	maxSendMsgSize  int
 	keyPath         string
 	certPath        string
+	ignoreInsecure  bool
 
-	leakDetector          *leak.Detector
-	mgmtImpl              mgmt.ManagementServer
-	bridgeMgmtImpl        bridge.ManagementServer
-	bridgeRuntimeImpl     bridge.RuntimeServer
-	schedMgmtImpl         schedule.ManagementServer
-	servicePortsFunc      func(svc string) ([]*model.ServicePort, error)
-	serverInfoFunc        func() (*machrpc.ServerInfo, error)
-	serverSessionsFunc    func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
-	serverKillSessionFunc func(id string, force bool) error
+	machImpl          *machsvr.RPCServer
+	mgmtImpl          mgmt.ManagementServer
+	bridgeMgmtImpl    bridge.ManagementServer
+	bridgeRuntimeImpl bridge.RuntimeServer
+	schedMgmtImpl     schedule.ManagementServer
 
-	rpcServer  *grpc.Server
-	mgmtServer *grpc.Server
-
+	rpcServer          *grpc.Server
 	rpcServerInsecure  *grpc.Server
+	mgmtServer         *grpc.Server
 	mgmtServerInsecure *grpc.Server
-
-	ignoreInsecure bool
-}
-
-type connParole struct {
-	rawConn *machsvr.Conn
-	handle  string
-	cretime time.Time
 }
 
 func (svr *grpcd) Start() error {
@@ -193,11 +130,9 @@ func (svr *grpcd) Start() error {
 		grpc.StatsHandler(svr),
 	}
 
-	if svr.db == nil {
+	if svr.machImpl == nil {
 		return errors.New("no database instance")
 	}
-
-	svr.sessions = map[string]*connParole{}
 
 	// create grpc server insecure
 	svr.mgmtServerInsecure = grpc.NewServer(grpcOptions...)
@@ -218,12 +153,12 @@ func (svr *grpcd) Start() error {
 	svr.mgmtServer = grpc.NewServer(grpcOptions...)
 
 	// rpcServer is serving the db service
-	machrpc.RegisterMachbaseServer(svr.rpcServer, svr)
-	machrpc.RegisterMachbaseServer(svr.rpcServerInsecure, svr)
+	machrpc.RegisterMachbaseServer(svr.rpcServer, svr.machImpl)
+	machrpc.RegisterMachbaseServer(svr.rpcServerInsecure, svr.machImpl)
 
 	// mgmtServer is serving general db service + mgmt service
-	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr)
-	machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr)
+	machrpc.RegisterMachbaseServer(svr.mgmtServer, svr.machImpl)
+	machrpc.RegisterMachbaseServer(svr.mgmtServerInsecure, svr.machImpl)
 	if svr.mgmtImpl != nil {
 		mgmt.RegisterManagementServer(svr.mgmtServer, svr.mgmtImpl)
 		mgmt.RegisterManagementServer(svr.mgmtServerInsecure, svr.mgmtImpl)
@@ -337,21 +272,65 @@ func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
 	return credentials.NewTLS(tlsConfig), nil
 }
 
-func (svr *grpcd) getSession(handle string) (*connParole, bool) {
-	svr.sessionsLock.Lock()
-	ret, ok := svr.sessions[handle]
-	svr.sessionsLock.Unlock()
-	return ret, ok
+type sessionCtx struct {
+	context.Context
+	Id     string
+	values map[any]any
 }
 
-func (svr *grpcd) setSession(handle string, conn *connParole) {
-	svr.sessionsLock.Lock()
-	svr.sessions[handle] = conn
-	svr.sessionsLock.Unlock()
+type stringer interface {
+	String() string
 }
 
-func (svr *grpcd) removeSession(handle string) {
-	svr.sessionsLock.Lock()
-	delete(svr.sessions, handle)
-	svr.sessionsLock.Unlock()
+func contextName(c context.Context) string {
+	if s, ok := c.(stringer); ok {
+		return s.String()
+	}
+	return reflect.TypeOf(c).String()
+}
+
+func (c *sessionCtx) String() string {
+	return contextName(c.Context) + "(" + c.Id + ")"
+}
+
+func (c *sessionCtx) Value(key any) any {
+	if key == contextCtxKey {
+		return c
+	}
+	if v, ok := c.values[key]; ok {
+		return v
+	}
+	return c.Context.Value(key)
+}
+
+const contextCtxKey = "machrpc-client-context"
+
+var contextIdSerial int64
+
+//// grpc stat handler
+
+var _ stats.Handler = &grpcd{}
+
+func (s *grpcd) TagRPC(ctx context.Context, nfo *stats.RPCTagInfo) context.Context {
+	return ctx
+}
+
+func (s *grpcd) HandleRPC(ctx context.Context, stat stats.RPCStats) {
+}
+
+func (s *grpcd) TagConn(ctx context.Context, nfo *stats.ConnTagInfo) context.Context {
+	id := strconv.FormatInt(atomic.AddInt64(&contextIdSerial, 1), 10)
+	ctx = &sessionCtx{Context: ctx, Id: id}
+	return ctx
+}
+
+func (s *grpcd) HandleConn(ctx context.Context, stat stats.ConnStats) {
+	if _ /*sessCtx*/, ok := ctx.(*sessionCtx); ok {
+		switch stat.(type) {
+		case *stats.ConnBegin:
+			// fmt.Printf("get connBegin: %v\n", sessCtx.Id)
+		case *stats.ConnEnd:
+			// fmt.Printf("get connEnd: %v\n", sessCtx.Id)
+		}
+	}
 }
