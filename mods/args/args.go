@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
-	shell "github.com/machbase/neo-server/mods/shellV2"
+	"github.com/machbase/neo-server/mods/shell"
 )
 
 type NeoCommand struct {

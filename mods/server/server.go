@@ -41,7 +41,7 @@ import (
 	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/backupd"
 	"github.com/machbase/neo-server/mods/service/httpd"
-	"github.com/machbase/neo-server/mods/service/mqtt2"
+	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/tql"
@@ -171,7 +171,7 @@ type svr struct {
 	navel *net.TCPConn
 	grpcd *grpcd
 
-	mqtt2 mqtt2.Service
+	mqtt2 mqttd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
 
@@ -589,20 +589,20 @@ func (s *svr) Start() error {
 			if len(serverKey) == 0 {
 				serverKey = s.ServerPrivateKeyPath()
 			}
-			if cfg, err := mqtt2.LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
+			if cfg, err := mqttd.LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
 				return errors.Wrap(err, "mqtt-v2 server")
 			} else {
 				tlsConf = cfg
 			}
 		}
-		opts := []mqtt2.Option{
-			mqtt2.WithAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
-			mqtt2.WithMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
-			mqtt2.WithTqlLoader(tqlLoader),
+		opts := []mqttd.Option{
+			mqttd.WithAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+			mqttd.WithMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			mqttd.WithTqlLoader(tqlLoader),
 		}
 		if s.conf.Mqtt.EnablePersistence {
 			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
-			opts = append(opts, mqtt2.WithBadgerPersistent(mqtt_dir))
+			opts = append(opts, mqttd.WithBadgerPersistent(mqtt_dir))
 		}
 		if len(s.conf.Http.Listeners) > 0 {
 			tok := strings.SplitN(s.conf.Http.Listeners[0], "://", 2)
@@ -612,7 +612,7 @@ func (s *svr) Start() error {
 			} else {
 				addr = fmt.Sprintf("%s/web/api/mqtt", tok[0])
 			}
-			opts = append(opts, mqtt2.WithWsHandleListener(addr))
+			opts = append(opts, mqttd.WithWsHandleListener(addr))
 		}
 		// mqtt server listener for unix socket
 		s.conf.Mqtt.Listeners = append(s.conf.Mqtt.Listeners, util.MakeUnixDomainSocketPath("machbase-neo-mqtt.sock"))
@@ -622,17 +622,17 @@ func (s *svr) Start() error {
 			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
 				addr = strings.TrimPrefix(addr, "ws://")
 				addr = strings.TrimPrefix(addr, "wss://")
-				opts = append(opts, mqtt2.WithWebsocketListener(addr, tlsConf))
+				opts = append(opts, mqttd.WithWebsocketListener(addr, tlsConf))
 			} else if strings.HasPrefix(addr, "unix://") {
 				addr = strings.TrimPrefix(addr, "unix://")
-				opts = append(opts, mqtt2.WithUnixSockListener(addr))
+				opts = append(opts, mqttd.WithUnixSockListener(addr))
 			} else {
 				addr = strings.TrimPrefix(addr, "tcp://")
 				addr = strings.TrimPrefix(addr, "tls://")
-				opts = append(opts, mqtt2.WithTcpListener(addr, tlsConf))
+				opts = append(opts, mqttd.WithTcpListener(addr, tlsConf))
 			}
 		}
-		s.mqtt2, err = mqtt2.New(api.NewDatabase(s.db), opts...)
+		s.mqtt2, err = mqttd.New(api.NewDatabase(s.db), opts...)
 		if err != nil {
 			return errors.Wrap(err, "mqtt-v2 server")
 		}

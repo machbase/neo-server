@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	shell "github.com/machbase/neo-server/mods/shellV2"
+	"github.com/machbase/neo-server/mods/shell"
 	"github.com/machbase/neo-server/mods/util"
 )
 
