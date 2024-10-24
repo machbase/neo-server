@@ -52,3 +52,46 @@ func (s *svr) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.Sh
 	rsp.Elapse = time.Since(tick).String()
 	return rsp, nil
 }
+
+func (s *svr) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest) (*mgmt.ServicePortsResponse, error) {
+	tick := time.Now()
+	rsp := &mgmt.ServicePortsResponse{}
+
+	ret := []*mgmt.Port{}
+	ports, err := s.getServicePorts(req.Service)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range ports {
+		ret = append(ret, &mgmt.Port{
+			Service: p.Service,
+			Address: p.Address,
+		})
+	}
+
+	rsp.Ports = ret
+	rsp.Elapse = time.Since(tick).String()
+	return rsp, nil
+}
+
+func (s *svr) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgmt.ServerInfoResponse, error) {
+	tick := time.Now()
+	rsp := &mgmt.ServerInfoResponse{}
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("GetServerInfo panic recover", panic)
+		}
+		if rsp != nil {
+			rsp.Elapse = time.Since(tick).String()
+		}
+	}()
+	if r, err := s.getServerInfo(); err != nil {
+		return nil, err
+	} else {
+		rsp = r
+	}
+
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}

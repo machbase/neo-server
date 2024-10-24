@@ -11,7 +11,7 @@ import (
 
 func createSimpleTagTable() {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}
@@ -30,7 +30,7 @@ func createSimpleTagTable() {
 func TestAppendTagSimple(t *testing.T) {
 	t.Logf("---- append simple_tag [%d]", goid())
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}

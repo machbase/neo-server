@@ -33,7 +33,6 @@ define VARS {
     HTTP_ENABLE_TOKENAUTH = flag("--http-enable-token-auth", false)
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
-    MQTT_DISABLE_V2       = flag("--mqtt-disable-v2", false)
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
@@ -106,7 +105,6 @@ module "machbase.com/neo-server" {
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
             EnablePersistence   = VARS_MQTT_PERSISTENCE
-            EnableV2            = !VARS_MQTT_DISABLE_V2
         }
         Jwt = {
             AtDuration = flag("--jwt-at-expire", "5m")

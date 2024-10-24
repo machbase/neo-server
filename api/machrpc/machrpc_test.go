@@ -86,25 +86,6 @@ func TestNewClient(t *testing.T) {
 	conn.Close()
 }
 
-func TestGetServerInfo(t *testing.T) {
-	aux := newClient(t)
-	nfo, err := aux.GetServerInfo()
-	if err != nil {
-		t.Fatalf("GetPostflights error: %s", err.Error())
-	}
-	require.Nil(t, err)
-	require.NotNil(t, nfo)
-}
-
-func TestGetServicePorts(t *testing.T) {
-	aux := newClient(t)
-	ports, err := aux.GetServicePorts("grpc")
-	if err != nil {
-		t.Fatalf("GetServicePorts error: %s", err.Error())
-	}
-	require.Equal(t, 0, len(ports))
-}
-
 type Pinger interface {
 	Ping() (time.Duration, error)
 }

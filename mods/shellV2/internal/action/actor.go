@@ -150,12 +150,22 @@ func (act *Actor) checkDatabase() error {
 	}
 
 	// check connectivity to server
-	serverInfo, err := machcli.GetServerInfo()
+	mgmtClient, err := act.ManagementClient()
+	if err != nil {
+		return err
+	}
+	serverInfo, err := mgmtClient.ServerInfo(act.ctx, &mgmt.ServerInfoRequest{})
 	if err != nil {
 		return err
 	}
 
 	act.remoteSession = true
+
+	// do not allow "unix://" as 'remoteSession = false'
+	// --> web terminal connects to server via unix domain socket
+	//
+	// the official shutdown command is `machbase-neo shell shutdown`
+	//
 	if strings.HasPrefix(act.conf.ServerAddr, "tcp://127.0.0.1:") {
 		act.remoteSession = false
 	} else if !strings.HasPrefix(act.conf.ServerAddr, "tcp://") {

@@ -35,16 +35,13 @@ import (
 	"github.com/machbase/neo-server/booter"
 	"github.com/machbase/neo-server/mods"
 	"github.com/machbase/neo-server/mods/bridge"
-	"github.com/machbase/neo-server/mods/leak"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/pkgs"
 	"github.com/machbase/neo-server/mods/scheduler"
 	"github.com/machbase/neo-server/mods/service/backupd"
-	"github.com/machbase/neo-server/mods/service/grpcd"
 	"github.com/machbase/neo-server/mods/service/httpd"
 	"github.com/machbase/neo-server/mods/service/mqtt2"
-	"github.com/machbase/neo-server/mods/service/mqttd"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/machbase/neo-server/mods/service/sshd"
 	"github.com/machbase/neo-server/mods/tql"
@@ -148,7 +145,6 @@ type MqttConfig struct {
 	ServerKeyPath   string
 
 	MaxMessageSizeLimit int
-	EnableV2            bool
 	EnablePersistence   bool
 }
 
@@ -173,10 +169,9 @@ type svr struct {
 	log   logging.Log
 	db    *machsvr.Database
 	navel *net.TCPConn
+	grpcd *grpcd
 
-	mqttd mqttd.Service
 	mqtt2 mqtt2.Service
-	grpcd grpcd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
 
@@ -436,10 +431,6 @@ func (s *svr) Start() error {
 		s.databaseCreated = true
 	}
 
-	// leak detector
-	leakDetector := leak.NewDetector(leak.Timer(10 * time.Second))
-	// mach.DefaultDetective = leakDetector
-
 	// create database instance
 	s.db, err = machsvr.NewDatabase()
 	if err != nil {
@@ -563,21 +554,19 @@ func (s *svr) Start() error {
 
 	// grpc server
 	if len(s.conf.Grpc.Listeners) > 0 {
-		s.grpcd, err = grpcd.New(s.db,
-			grpcd.OptionListenAddress(s.conf.Grpc.Listeners...),
-			grpcd.OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
-			grpcd.OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
-			grpcd.OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-			grpcd.OptionManagementServer(s),
-			grpcd.OptionBridgeServer(s.bridgeSvc),
-			grpcd.OptionScheduleServer(s.schedSvc),
-			grpcd.OptionLeakDetector(leakDetector),
-			grpcd.OptionAuthServer(s),
-			grpcd.OptionServerInsecure(s.conf.Grpc.Insecure),
-			grpcd.OptionServicePortsFunc(s.ServicePorts),
-			grpcd.OptionServerInfoFunc(s.ServerInfo),
-			grpcd.OptionServerSessionsFunc(s.ServerSessions),
-			grpcd.OptionServerKillSessionFunc(s.ServerKillSession),
+		machRpcSvr := machsvr.NewRPCServer(s.db,
+			machsvr.WithLogger(logging.Wrap(s.log, nil)),
+			machsvr.WithAuthProvider(s),
+		)
+		s.grpcd, err = NewGrpcd(machRpcSvr,
+			OptionListenAddress(s.conf.Grpc.Listeners...),
+			OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
+			OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
+			OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
+			OptionManagementServer(s),
+			OptionBridgeServer(s.bridgeSvc),
+			OptionScheduleServer(s.schedSvc),
+			OptionServerInsecure(s.conf.Grpc.Insecure),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -588,8 +577,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	// mqtt v2 server
-	if s.conf.Mqtt.EnableV2 && len(s.conf.Mqtt.Listeners) > 0 {
+	// mqtt server
+	if len(s.conf.Mqtt.Listeners) > 0 {
 		var tlsConf *tls.Config
 		if s.conf.Mqtt.EnableTls {
 			serverCert := s.conf.Mqtt.ServerCertPath
@@ -691,7 +680,7 @@ func (s *svr) Start() error {
 			httpd.OptionDebugMode(s.conf.Http.DebugMode),
 			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
 			httpd.OptionWebShellProvider(s.models.ShellProvider()),
-			httpd.OptionServerInfoFunc(s.ServerInfo),
+			httpd.OptionServerInfoFunc(s.getServerInfo),
 			httpd.OptionMqttInfoFunc(s.MqttInfo),
 			httpd.OptionServerSessionsFunc(s.ServerSessions),
 			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
@@ -702,7 +691,7 @@ func (s *svr) Start() error {
 				opts = append(opts, httpd.OptionMqttWsHandlerFunc(h))
 			}
 		}
-		shellPorts, _ := s.ServicePorts("shell")
+		shellPorts, _ := s.getServicePorts("shell")
 		shellAddrs := []string{}
 		for _, sp := range shellPorts {
 			shellAddrs = append(shellAddrs, sp.Address)
@@ -725,35 +714,6 @@ func (s *svr) Start() error {
 		err = s.httpd.Start()
 		if err != nil {
 			return errors.Wrap(err, "http server")
-		}
-	}
-
-	// mqtt server
-	if !s.conf.Mqtt.EnableV2 && len(s.conf.Mqtt.Listeners) > 0 {
-		opts := []mqttd.Option{
-			mqttd.OptionListenAddress(s.conf.Mqtt.Listeners...),
-			mqttd.OptionMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
-			mqttd.OptionAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
-			mqttd.OptionTqlLoader(tqlLoader),
-		}
-		if s.conf.Mqtt.EnableTls {
-			serverCert := s.conf.Mqtt.ServerCertPath
-			if len(serverCert) == 0 {
-				serverCert = s.ServerCertificatePath()
-			}
-			serverKey := s.conf.Mqtt.ServerKeyPath
-			if len(serverKey) == 0 {
-				serverKey = s.ServerPrivateKeyPath()
-			}
-			opts = append(opts, mqttd.OptionTls(serverCert, serverKey))
-		}
-		s.mqttd, err = mqttd.New(api.NewDatabase(s.db), opts...)
-		if err != nil {
-			return errors.Wrap(err, "mqtt server")
-		}
-		err = s.mqttd.Start()
-		if err != nil {
-			return errors.Wrap(err, "mqtt server")
 		}
 	}
 
@@ -780,7 +740,7 @@ func (s *svr) Start() error {
 	}
 
 	if s.conf.Http.EnableWebUI {
-		svcPorts, err := s.ServicePorts("http")
+		svcPorts, err := s.getServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
 		}
@@ -826,9 +786,6 @@ func (s *svr) Stop() {
 	}
 	if s.sshd != nil {
 		s.sshd.Stop()
-	}
-	if s.mqttd != nil {
-		s.mqttd.Stop()
 	}
 	if s.mqtt2 != nil {
 		s.mqtt2.Stop()
@@ -893,7 +850,7 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 	return nil
 }
 
-func (s *svr) ServicePorts(svc string) ([]*model.ServicePort, error) {
+func (s *svr) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
 

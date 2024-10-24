@@ -117,7 +117,7 @@ func OptionStatzAllow(remotes ...string) Option {
 	}
 }
 
-func OptionServerInfoFunc(fn func() (*machrpc.ServerInfo, error)) Option {
+func OptionServerInfoFunc(fn func() (*mgmt.ServerInfoResponse, error)) Option {
 	return func(s *httpd) {
 		s.serverInfoFunc = fn
 	}

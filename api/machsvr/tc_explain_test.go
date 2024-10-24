@@ -15,7 +15,7 @@ type Explainer interface {
 
 func TestExplain(t *testing.T) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}
@@ -30,7 +30,7 @@ func TestExplain(t *testing.T) {
 
 func TestExplainFull(t *testing.T) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, connectOpts...)
 	if err != nil {
 		panic(err)
 	}

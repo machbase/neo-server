@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -453,17 +454,17 @@ func stmtColumns(stmt unsafe.Pointer) (types.Columns, error) {
 	ret := make(types.Columns, columnCount)
 	for i := 0; i < columnCount; i++ {
 		var columnName string
-		var columnType, columnSize, columnLength int
-		err = mach.EngColumnInfo(stmt, i, &columnName, &columnType, &columnSize, &columnLength)
+		var columnRawType, columnSize, columnLength int
+		err = mach.EngColumnInfo(stmt, i, &columnName, &columnRawType, &columnSize, &columnLength)
 		if err != nil {
 			return nil, err
 		}
-		typ, err := columnRawTypeToDataType(columnType)
+		typ, err := columnRawTypeToDataType(columnRawType)
 		if err != nil {
 			return nil, mach.ErrDatabaseWrap("Invalid column type", err)
 		}
 		col := &types.Column{
-			Name:     columnName,
+			Name:     strings.ToUpper(columnName),
 			DataType: typ,
 			Length:   columnLength,
 		}

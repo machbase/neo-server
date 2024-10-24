@@ -107,31 +107,19 @@ func (client *Client) UserAuth(user string, password string) (bool, error) {
 	return true, nil
 }
 
-// GetServerInfo invoke gRPC call to get ServerInfo
-func (client *Client) GetServerInfo() (*ServerInfo, error) {
+func (client *Client) Ping() (time.Duration, error) {
 	ctx, cancelFunc := client.queryContext()
 	defer cancelFunc()
-	req := &ServerInfoRequest{}
-	rsp, err := client.cli.GetServerInfo(ctx, req)
+	sent := time.Now().UnixNano()
+	req := &PingRequest{Token: sent}
+	rsp, err := client.cli.Ping(ctx, req)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if !rsp.Success {
-		return nil, errors.New(rsp.Reason)
+	if sent != rsp.Token {
+		return 0, fmt.Errorf("invalid token %d != %d", sent, rsp.Token)
 	}
-	return rsp, nil
-}
-
-func (client *Client) GetServicePorts(svc string) ([]*Port, error) {
-	ctx, cancelFunc := client.queryContext()
-	defer cancelFunc()
-	req := &ServicePortsRequest{Service: svc}
-	rsp, err := client.cli.GetServicePorts(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return rsp.Ports, nil
+	return time.Duration(time.Now().UnixNano() - sent), nil
 }
 
 func (client *Client) ServerSessions(reqStatz, reqSessions bool) (*Statz, []*Session, error) {

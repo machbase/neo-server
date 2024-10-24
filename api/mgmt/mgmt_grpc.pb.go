@@ -19,17 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Management_ListKey_FullMethodName    = "/mgmt.Management/ListKey"
-	Management_GenKey_FullMethodName     = "/mgmt.Management/GenKey"
-	Management_DelKey_FullMethodName     = "/mgmt.Management/DelKey"
-	Management_ServerKey_FullMethodName  = "/mgmt.Management/ServerKey"
-	Management_ListSshKey_FullMethodName = "/mgmt.Management/ListSshKey"
-	Management_AddSshKey_FullMethodName  = "/mgmt.Management/AddSshKey"
-	Management_DelSshKey_FullMethodName  = "/mgmt.Management/DelSshKey"
-	Management_Shutdown_FullMethodName   = "/mgmt.Management/Shutdown"
-	Management_ListShell_FullMethodName  = "/mgmt.Management/ListShell"
-	Management_AddShell_FullMethodName   = "/mgmt.Management/AddShell"
-	Management_DelShell_FullMethodName   = "/mgmt.Management/DelShell"
+	Management_ListKey_FullMethodName      = "/mgmt.Management/ListKey"
+	Management_GenKey_FullMethodName       = "/mgmt.Management/GenKey"
+	Management_DelKey_FullMethodName       = "/mgmt.Management/DelKey"
+	Management_ServerKey_FullMethodName    = "/mgmt.Management/ServerKey"
+	Management_ListSshKey_FullMethodName   = "/mgmt.Management/ListSshKey"
+	Management_AddSshKey_FullMethodName    = "/mgmt.Management/AddSshKey"
+	Management_DelSshKey_FullMethodName    = "/mgmt.Management/DelSshKey"
+	Management_Shutdown_FullMethodName     = "/mgmt.Management/Shutdown"
+	Management_ListShell_FullMethodName    = "/mgmt.Management/ListShell"
+	Management_AddShell_FullMethodName     = "/mgmt.Management/AddShell"
+	Management_DelShell_FullMethodName     = "/mgmt.Management/DelShell"
+	Management_ServicePorts_FullMethodName = "/mgmt.Management/ServicePorts"
+	Management_ServerInfo_FullMethodName   = "/mgmt.Management/ServerInfo"
 )
 
 // ManagementClient is the client API for Management service.
@@ -47,6 +49,8 @@ type ManagementClient interface {
 	ListShell(ctx context.Context, in *ListShellRequest, opts ...grpc.CallOption) (*ListShellResponse, error)
 	AddShell(ctx context.Context, in *AddShellRequest, opts ...grpc.CallOption) (*AddShellResponse, error)
 	DelShell(ctx context.Context, in *DelShellRequest, opts ...grpc.CallOption) (*DelShellResponse, error)
+	ServicePorts(ctx context.Context, in *ServicePortsRequest, opts ...grpc.CallOption) (*ServicePortsResponse, error)
+	ServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfoResponse, error)
 }
 
 type managementClient struct {
@@ -167,6 +171,26 @@ func (c *managementClient) DelShell(ctx context.Context, in *DelShellRequest, op
 	return out, nil
 }
 
+func (c *managementClient) ServicePorts(ctx context.Context, in *ServicePortsRequest, opts ...grpc.CallOption) (*ServicePortsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServicePortsResponse)
+	err := c.cc.Invoke(ctx, Management_ServicePorts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *managementClient) ServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServerInfoResponse)
+	err := c.cc.Invoke(ctx, Management_ServerInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ManagementServer is the server API for Management service.
 // All implementations must embed UnimplementedManagementServer
 // for forward compatibility.
@@ -182,6 +206,8 @@ type ManagementServer interface {
 	ListShell(context.Context, *ListShellRequest) (*ListShellResponse, error)
 	AddShell(context.Context, *AddShellRequest) (*AddShellResponse, error)
 	DelShell(context.Context, *DelShellRequest) (*DelShellResponse, error)
+	ServicePorts(context.Context, *ServicePortsRequest) (*ServicePortsResponse, error)
+	ServerInfo(context.Context, *ServerInfoRequest) (*ServerInfoResponse, error)
 	mustEmbedUnimplementedManagementServer()
 }
 
@@ -224,6 +250,12 @@ func (UnimplementedManagementServer) AddShell(context.Context, *AddShellRequest)
 }
 func (UnimplementedManagementServer) DelShell(context.Context, *DelShellRequest) (*DelShellResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DelShell not implemented")
+}
+func (UnimplementedManagementServer) ServicePorts(context.Context, *ServicePortsRequest) (*ServicePortsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ServicePorts not implemented")
+}
+func (UnimplementedManagementServer) ServerInfo(context.Context, *ServerInfoRequest) (*ServerInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ServerInfo not implemented")
 }
 func (UnimplementedManagementServer) mustEmbedUnimplementedManagementServer() {}
 func (UnimplementedManagementServer) testEmbeddedByValue()                    {}
@@ -444,6 +476,42 @@ func _Management_DelShell_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Management_ServicePorts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServicePortsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServer).ServicePorts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Management_ServicePorts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServer).ServicePorts(ctx, req.(*ServicePortsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Management_ServerInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServer).ServerInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Management_ServerInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServer).ServerInfo(ctx, req.(*ServerInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Management_ServiceDesc is the grpc.ServiceDesc for Management service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -494,6 +562,14 @@ var Management_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DelShell",
 			Handler:    _Management_DelShell_Handler,
+		},
+		{
+			MethodName: "ServicePorts",
+			Handler:    _Management_ServicePorts_Handler,
+		},
+		{
+			MethodName: "ServerInfo",
+			Handler:    _Management_ServerInfo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -128,25 +128,6 @@ func (ms *MockServer) Ping(ctx context.Context, req *machrpc.PingRequest) (*mach
 	}, nil
 }
 
-func (ms *MockServer) GetServerInfo(ctx context.Context, req *machrpc.ServerInfoRequest) (*machrpc.ServerInfo, error) {
-	return &machrpc.ServerInfo{
-		Success: true,
-		Reason:  "success",
-		Elapse:  "1ms.",
-		Version: &machrpc.Version{},
-		Runtime: &machrpc.Runtime{},
-	}, nil
-}
-
-func (ms *MockServer) GetServicePorts(ctx context.Context, req *machrpc.ServicePortsRequest) (*machrpc.ServicePorts, error) {
-	return &machrpc.ServicePorts{
-		Success: true,
-		Reason:  "success",
-		Elapse:  "1ms.",
-		Ports:   []*machrpc.Port{},
-	}, nil
-}
-
 func (ms *MockServer) Explain(ctx context.Context, req *machrpc.ExplainRequest) (*machrpc.ExplainResponse, error) {
 	ret := &machrpc.ExplainResponse{Success: true, Reason: "success", Elapse: "1ms."}
 	_, ok := ms.conns[req.Conn.Handle]
