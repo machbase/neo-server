@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/pkg/errors"
@@ -24,10 +23,9 @@ type Service interface {
 type Option func(s *sshd)
 
 // Factory
-func New(db *machsvr.Database, options ...Option) (Service, error) {
+func New(options ...Option) (Service, error) {
 	s := &sshd{
 		log:             logging.GetLog("sshd"),
-		db:              db,
 		neoShellAccount: map[string]string{},
 		forwardHandler:  &ssh.ForwardedTCPHandler{},
 	}
@@ -80,7 +78,6 @@ func OptionShellProvider(provider func(user string, shellId string) *Shell) Opti
 
 type sshd struct {
 	log   logging.Log
-	db    *machsvr.Database
 	alive bool
 
 	dumpInput  bool
@@ -105,10 +102,6 @@ type sshd struct {
 }
 
 func (svr *sshd) Start() error {
-	if svr.db == nil {
-		return errors.New("no database instance")
-	}
-
 	svr.alive = true
 
 	signers := []ssh.Signer{}

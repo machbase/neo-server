@@ -722,7 +722,7 @@ func (s *svr) Start() error {
 
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
-		s.sshd, err = sshd.New(s.db,
+		s.sshd, err = sshd.New(
 			sshd.OptionListenAddress(s.conf.Shell.Listeners...),
 			sshd.OptionServerKeyPath(s.ServerPrivateKeyPath()),
 			sshd.OptionIdleTimeout(s.conf.Shell.IdleTimeout),
