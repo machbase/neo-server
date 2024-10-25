@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/pkg/errors"
@@ -25,7 +26,7 @@ import (
 )
 
 var database *machsvr.Database
-var connectOpts []machsvr.ConnectOption
+var connectOpts []api.ConnectOption
 var rpcClient machrpc.MachbaseClient
 
 type Server interface {
@@ -107,11 +108,7 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
-	connectOpts = []machsvr.ConnectOption{
-		machsvr.WithTrustUser("sys"),
-	}
-
-	conn, err := database.Connect(ctx, connectOpts...)
+	conn, err := database.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}

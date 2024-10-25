@@ -7,23 +7,14 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDescribeTable(t *testing.T) {
-	var db api.Database
-
-	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
-		t.Log("Error", err.Error())
-		t.Fail()
-	} else {
-		db = api.NewDatabase(machsvr_db)
-	}
+	db := machsvrDatabase(t)
 
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
@@ -35,7 +26,7 @@ func TestDescribeTable(t *testing.T) {
 		require.Equal(t, "SYS", desc.User)
 		require.Equal(t, "MACHBASEDB", desc.Database)
 		require.Equal(t, "Tag Table", desc.String())
-		require.Equal(t, types.TableTypeTag, desc.Type)
+		require.Equal(t, api.TableTypeTag, desc.Type)
 		require.Equal(t, 9, len(desc.Columns))
 		require.Equal(t, "NAME", desc.Columns[0].Name)
 		require.Equal(t, "TIME", desc.Columns[1].Name)
@@ -46,24 +37,24 @@ func TestDescribeTable(t *testing.T) {
 		require.Equal(t, "STR_VALUE", desc.Columns[6].Name)
 		require.Equal(t, "JSON_VALUE", desc.Columns[7].Name)
 		require.Equal(t, "_RID", desc.Columns[8].Name)
-		require.Equal(t, types.ColumnTypeVarchar, desc.Columns[0].Type)    // NAME
-		require.Equal(t, types.ColumnTypeDatetime, desc.Columns[1].Type)   // TIME
-		require.Equal(t, types.ColumnTypeDouble, desc.Columns[2].Type)     // VALUE
-		require.Equal(t, types.ColumnTypeShort, desc.Columns[3].Type)      // SHORT_VALUE
-		require.Equal(t, types.ColumnTypeInteger, desc.Columns[4].Type)    // INT_VALUE
-		require.Equal(t, types.ColumnTypeLong, desc.Columns[5].Type)       // LONG_VALUE
-		require.Equal(t, types.ColumnTypeVarchar, desc.Columns[6].Type)    // STR_VALUE
-		require.Equal(t, types.ColumnTypeJson, desc.Columns[7].Type)       // JSON_VALUE
-		require.Equal(t, types.ColumnTypeLong, desc.Columns[8].Type)       // _RID
-		require.Equal(t, types.DataTypeString, desc.Columns[0].DataType)   // NAME
-		require.Equal(t, types.DataTypeDatetime, desc.Columns[1].DataType) // TIME
-		require.Equal(t, types.DataTypeFloat64, desc.Columns[2].DataType)  // VALUE
-		require.Equal(t, types.DataTypeInt16, desc.Columns[3].DataType)    // SHORT_VALUE
-		require.Equal(t, types.DataTypeInt32, desc.Columns[4].DataType)    // INT_VALUE
-		require.Equal(t, types.DataTypeInt64, desc.Columns[5].DataType)    // LONG_VALUE
-		require.Equal(t, types.DataTypeString, desc.Columns[6].DataType)   // STR_VALUE
-		require.Equal(t, types.DataTypeString, desc.Columns[7].DataType)   // JSON_VALUE
-		require.Equal(t, types.DataTypeInt64, desc.Columns[8].DataType)    // _RID
+		require.Equal(t, api.ColumnTypeVarchar, desc.Columns[0].Type)    // NAME
+		require.Equal(t, api.ColumnTypeDatetime, desc.Columns[1].Type)   // TIME
+		require.Equal(t, api.ColumnTypeDouble, desc.Columns[2].Type)     // VALUE
+		require.Equal(t, api.ColumnTypeShort, desc.Columns[3].Type)      // SHORT_VALUE
+		require.Equal(t, api.ColumnTypeInteger, desc.Columns[4].Type)    // INT_VALUE
+		require.Equal(t, api.ColumnTypeLong, desc.Columns[5].Type)       // LONG_VALUE
+		require.Equal(t, api.ColumnTypeVarchar, desc.Columns[6].Type)    // STR_VALUE
+		require.Equal(t, api.ColumnTypeJson, desc.Columns[7].Type)       // JSON_VALUE
+		require.Equal(t, api.ColumnTypeLong, desc.Columns[8].Type)       // _RID
+		require.Equal(t, api.DataTypeString, desc.Columns[0].DataType)   // NAME
+		require.Equal(t, api.DataTypeDatetime, desc.Columns[1].DataType) // TIME
+		require.Equal(t, api.DataTypeFloat64, desc.Columns[2].DataType)  // VALUE
+		require.Equal(t, api.DataTypeInt16, desc.Columns[3].DataType)    // SHORT_VALUE
+		require.Equal(t, api.DataTypeInt32, desc.Columns[4].DataType)    // INT_VALUE
+		require.Equal(t, api.DataTypeInt64, desc.Columns[5].DataType)    // LONG_VALUE
+		require.Equal(t, api.DataTypeString, desc.Columns[6].DataType)   // STR_VALUE
+		require.Equal(t, api.DataTypeString, desc.Columns[7].DataType)   // JSON_VALUE
+		require.Equal(t, api.DataTypeInt64, desc.Columns[8].DataType)    // _RID
 
 		if table_name != "tag_data" {
 			continue

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
 	cmap "github.com/orcaman/concurrent-map"
 	"golang.org/x/exp/rand"
@@ -68,28 +69,20 @@ func WithAuthProvider(auth AuthProvider) RPCServerOption {
 }
 
 func (s *RPCServer) Ping(ctx context.Context, req *machrpc.PingRequest) (*machrpc.PingResponse, error) {
-	rsp := &machrpc.PingResponse{}
 	tick := time.Now()
+	rsp := &machrpc.PingResponse{Token: req.Token}
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("Explain panic recover", "error", panic)
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	if req.Conn == nil {
-		rsp.Reason = "invalid connection request"
-	} else if conn, ok := s.getSession(req.Conn.Handle); !ok {
-		rsp.Reason = "invalid connection handle"
-	} else if conn.rawConn == nil {
-		rsp.Reason = "invalid connection"
+
+	if _, err := s.db.Ping(ctx); err != nil {
+		rsp.Reason = err.Error()
 	} else {
-		if _, err := conn.rawConn.Ping(); err != nil {
-			rsp.Reason = err.Error()
-		} else {
-			rsp.Success, rsp.Reason = true, "success"
-		}
+		rsp.Success, rsp.Reason = true, "success"
 	}
-	rsp.Token = req.Token
 	return rsp, nil
 }
 
@@ -102,10 +95,10 @@ func (s *RPCServer) Conn(ctx context.Context, req *machrpc.ConnRequest) (*machrp
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	connOpts := []ConnectOption{}
+	connOpts := []api.ConnectOption{}
 	if strings.HasPrefix(req.Password, "$otp$:") {
 		if passed, err := s.authProvider.ValidateUserOtp(req.User, strings.TrimPrefix(req.Password, "$otp$:")); passed {
-			connOpts = append(connOpts, WithTrustUser(req.User))
+			connOpts = append(connOpts, api.WithTrustUser(req.User))
 		} else if err != nil {
 			rsp.Reason = err.Error()
 			return rsp, nil
@@ -114,14 +107,14 @@ func (s *RPCServer) Conn(ctx context.Context, req *machrpc.ConnRequest) (*machrp
 			return rsp, nil
 		}
 	} else {
-		connOpts = append(connOpts, WithPassword(req.User, req.Password))
+		connOpts = append(connOpts, api.WithPassword(req.User, req.Password))
 	}
 	if conn, err := s.db.Connect(ctx, connOpts...); err != nil {
 		rsp.Reason = err.Error()
 	} else {
 		h := s.authProvider.GenerateSnowflake()
 		parole := &ConnParole{
-			rawConn: conn,
+			rawConn: conn.((*Conn)),
 			handle:  h,
 			creTime: tick,
 		}
@@ -244,10 +237,23 @@ func (s *RPCServer) QueryRow(ctx context.Context, req *machrpc.QueryRowRequest) 
 
 	var err error
 	rsp.Success = true
-	rsp.Reason = "success"
-	rsp.Values, err = machrpc.ConvertAnyToPb(row.Values())
+	rsp.Reason = row.Message()
+	rsp.Values, err = machrpc.ConvertAnyToPb(row.(*Row).values)
 	rsp.RowsAffected = row.RowsAffected()
-	rsp.Message = row.Message()
+	if columns, err := row.Columns(); err != nil {
+		rsp.Success = false
+		rsp.Reason = err.Error()
+	} else {
+		for _, c := range columns {
+			rsp.Columns = append(rsp.Columns, &machrpc.Column{
+				Name:     c.Name,
+				DataType: string(c.DataType),
+				Length:   int32(c.Length),
+				Type:     int32(c.Type),
+				Flag:     int32(c.Flag),
+			})
+		}
+	}
 	if err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
@@ -281,7 +287,7 @@ func (s *RPCServer) Query(ctx context.Context, req *machrpc.QueryRequest) (*mach
 	}
 
 	if realRows.IsFetchable() {
-		rows := s.detainRows(realRows, req.Sql)
+		rows := s.detainRows(realRows.(*Rows), req.Sql)
 		rsp.RowsHandle = &machrpc.RowsHandle{
 			Handle: rows.Id(),
 		}
@@ -313,8 +319,11 @@ func (s *RPCServer) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*mac
 	rsp.Columns = make([]*machrpc.Column, len(rowsWrap.Rows.columns))
 	for i, c := range rowsWrap.Rows.columns {
 		rsp.Columns[i] = &machrpc.Column{
-			Name: c.Name,
-			Type: string(c.DataType),
+			Name:     c.Name,
+			DataType: string(c.DataType),
+			Length:   int32(c.Length),
+			Type:     int32(c.Type),
+			Flag:     int32(c.Flag),
 		}
 	}
 	rsp.Success = true
@@ -406,15 +415,32 @@ func (s *RPCServer) Appender(ctx context.Context, req *machrpc.AppenderRequest) 
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
 	} else {
-		opts := []AppenderOption{}
+		opts := []api.AppenderOption{}
 		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
 		if err != nil {
 			rsp.Reason = err.Error()
 			return rsp, nil
 		}
-		tableType := realAppender.TableType()
+		tableType := realAppender.(*Appender).TableType()
 		tableName := realAppender.TableName()
-		appender := s.detainAppender(realAppender, tableName)
+
+		if columns, err := realAppender.Columns(); err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		} else {
+			rsp.Columns = make([]*machrpc.Column, len(columns))
+			for i, c := range columns {
+				rsp.Columns[i] = &machrpc.Column{
+					Name:     c.Name,
+					DataType: string(c.DataType),
+					Length:   int32(c.Length),
+					Type:     int32(c.Type),
+					Flag:     int32(c.Flag),
+				}
+			}
+		}
+
+		appender := s.detainAppender(realAppender.(*Appender), tableName)
 
 		rsp.Success = true
 		rsp.Reason = "success"
@@ -507,7 +533,7 @@ func (s *RPCServer) UserAuth(ctx context.Context, req *machrpc.UserAuthRequest) 
 	if strings.HasPrefix(req.Password, "$otp$:") {
 		passed, err = s.authProvider.ValidateUserOtp(req.LoginName, strings.TrimPrefix(req.Password, "$otp$:"))
 	} else {
-		passed, err = s.db.UserAuth(req.LoginName, req.Password)
+		passed, err = s.db.UserAuth(ctx, req.LoginName, req.Password)
 	}
 
 	if err != nil {
@@ -516,65 +542,6 @@ func (s *RPCServer) UserAuth(ctx context.Context, req *machrpc.UserAuthRequest) 
 		rsp.Reason = "invalid username or password"
 	} else {
 		rsp.Success = passed
-		rsp.Reason = "success"
-	}
-	return rsp, nil
-}
-
-func (s *RPCServer) Sessions(ctx context.Context, req *machrpc.SessionsRequest) (*machrpc.SessionsResponse, error) {
-	rsp := &machrpc.SessionsResponse{}
-	tick := time.Now()
-	defer func() {
-		if panic := recover(); panic != nil {
-			s.log.Error("Sessions panic recover", panic)
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	if req.Statz {
-		if statz := StatzSnapshot(); statz != nil {
-			rsp.Statz = &machrpc.Statz{
-				Conns:          statz.Conns,
-				ConnsInUse:     statz.ConnsInUse,
-				Stmts:          statz.Stmts,
-				StmtsInUse:     statz.StmtsInUse,
-				Appenders:      statz.Appenders,
-				AppendersInUse: statz.AppendersInUse,
-				RawConns:       statz.RawConns,
-			}
-		}
-	}
-	if req.Sessions {
-		sessions := []*machrpc.Session{}
-		s.db.ListWatcher(func(st *ConnState) bool {
-			sessions = append(sessions, &machrpc.Session{
-				Id:            st.Id,
-				CreTime:       st.CreatedTime.UnixNano(),
-				LatestSqlTime: st.LatestTime.UnixNano(),
-				LatestSql:     st.LatestSql,
-			})
-			return true
-		})
-	}
-	rsp.Success = true
-	rsp.Reason = "success"
-	return rsp, nil
-}
-
-func (s *RPCServer) KillSession(ctx context.Context, req *machrpc.KillSessionRequest) (*machrpc.KillSessionResponse, error) {
-	rsp := &machrpc.KillSessionResponse{}
-	tick := time.Now()
-	defer func() {
-		if panic := recover(); panic != nil {
-			s.log.Error("Sessions kill panic recover", panic)
-		}
-		rsp.Elapse = time.Since(tick).String()
-	}()
-
-	if err := s.db.KillConnection(req.Id, req.Force); err != nil {
-		rsp.Reason = err.Error()
-	} else {
-		rsp.Success = true
 		rsp.Reason = "success"
 	}
 	return rsp, nil

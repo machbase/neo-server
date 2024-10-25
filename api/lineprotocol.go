@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/api/types"
 )
 
 /* Interpreting Influx lineprotocol
@@ -19,7 +17,7 @@ import (
    | value               | value of the field (if it is not a number type, will be ignored and not inserted) |
 */
 
-func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumns types.Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) Result {
+func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumns Columns, measurement string, fields map[string]any, tags map[string]string, ts time.Time) Result {
 	columns := descColumns.Names()
 	columns = columns[:3]
 
@@ -34,7 +32,7 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	compareTypes = compareTypes[3:]
 	for idx, val := range compareNames {
 		if _, ok := tags[val]; ok {
-			if compareTypes[idx] == types.DataTypeString {
+			if compareTypes[idx] == DataTypeString {
 				columns = append(columns, val)
 			}
 		}
@@ -73,7 +71,7 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	if len(rows) == 0 {
 		return &InsertResult{
 			rowsAffected: 0,
-			message:      "no row inserted",
+			message:      "no rows inserted",
 		}
 	}
 
@@ -103,7 +101,7 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 		rowsAffected: numRows,
 	}
 	if numRows == 0 {
-		ret.message = "no row inserted"
+		ret.message = "no rows inserted"
 	} else if numRows == 1 {
 		ret.message = "a row inserted"
 	} else {

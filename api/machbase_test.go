@@ -11,7 +11,6 @@ import (
 
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +18,7 @@ type ConnectFunc func(t *testing.T, ctx context.Context, opts ...api.ConnectOpti
 
 func connect_machsvr(t *testing.T, ctx context.Context, opts ...api.ConnectOption) api.Conn {
 	t.Helper()
-	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
-		t.Log("Error", err.Error())
-		t.Fail()
-	} else {
-		db = api.NewDatabase(machsvr_db)
-	}
+	db := machsvrDatabase(t)
 
 	if len(opts) == 0 {
 		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
@@ -86,15 +79,15 @@ func TestInsert(t *testing.T) {
 		Begin: func(q *api.Query) {
 			cols := q.Columns()
 			require.Equal(t, []string{"NAME", "TIME", "VALUE", "SHORT_VALUE", "INT_VALUE", "LONG_VALUE", "STR_VALUE", "JSON_VALUE"}, cols.Names())
-			require.Equal(t, []types.DataType{
-				types.DataTypeString,
-				types.DataTypeDatetime,
-				types.DataTypeFloat64,
-				types.DataTypeInt16,
-				types.DataTypeInt32,
-				types.DataTypeInt64,
-				types.DataTypeString,
-				types.DataTypeString,
+			require.Equal(t, []api.DataType{
+				api.DataTypeString,
+				api.DataTypeDatetime,
+				api.DataTypeFloat64,
+				api.DataTypeInt16,
+				api.DataTypeInt32,
+				api.DataTypeInt64,
+				api.DataTypeString,
+				api.DataTypeString,
 			}, cols.DataTypes())
 		},
 		Next: func(q *api.Query, rownum int64, values []interface{}) bool {
@@ -148,7 +141,7 @@ func TestTables(t *testing.T) {
 		t.Log("Error", err.Error())
 		t.Fail()
 	} else {
-		db = api.NewDatabase(machsvr_db)
+		db = machsvr_db
 	}
 
 	ctx := context.TODO()
@@ -164,32 +157,32 @@ func TestTables(t *testing.T) {
 	})
 	ti := result["MACHBASEDB.SYS.TAG_DATA"]
 	require.NotNil(t, ti, "table not found")
-	require.Equal(t, types.TableTypeTag, ti.Type)
-	require.Equal(t, types.TableFlagNone, ti.Flag)
+	require.Equal(t, api.TableTypeTag, ti.Type)
+	require.Equal(t, api.TableFlagNone, ti.Flag)
 	require.Equal(t, "Tag Table", ti.Kind())
 
 	ti = result["MACHBASEDB.SYS._TAG_DATA_META"]
 	require.NotNil(t, ti, "table not found")
-	require.Equal(t, types.TableTypeLookup, ti.Type)
-	require.Equal(t, types.TableFlagMeta, ti.Flag)
+	require.Equal(t, api.TableTypeLookup, ti.Type)
+	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
 	ti = result["MACHBASEDB.SYS._TAG_DATA_DATA_0"]
 	require.NotNil(t, ti, "table not found")
-	require.Equal(t, types.TableTypeKeyValue, ti.Type)
-	require.Equal(t, types.TableFlagData, ti.Flag)
+	require.Equal(t, api.TableTypeKeyValue, ti.Type)
+	require.Equal(t, api.TableFlagData, ti.Flag)
 	require.Equal(t, "KeyValue Table (data)", ti.Kind())
 
 	ti = result["MACHBASEDB.SYS.TAG_SIMPLE"]
 	require.NotNil(t, ti, "table not found")
-	require.Equal(t, types.TableTypeTag, ti.Type)
-	require.Equal(t, types.TableFlagNone, ti.Flag)
+	require.Equal(t, api.TableTypeTag, ti.Type)
+	require.Equal(t, api.TableFlagNone, ti.Flag)
 	require.Equal(t, "Tag Table", ti.Kind())
 
 	ti = result["MACHBASEDB.SYS._TAG_SIMPLE_META"]
 	require.NotNil(t, ti, "table not found")
-	require.Equal(t, types.TableTypeLookup, ti.Type)
-	require.Equal(t, types.TableFlagMeta, ti.Flag)
+	require.Equal(t, api.TableTypeLookup, ti.Type)
+	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 }
 
@@ -200,7 +193,7 @@ func TestExistsTable(t *testing.T) {
 		t.Log("Error", err.Error())
 		t.Fail()
 	} else {
-		db = api.NewDatabase(machsvr_db)
+		db = machsvr_db
 	}
 
 	ctx := context.TODO()
@@ -234,7 +227,7 @@ func TestIndexes(t *testing.T) {
 		t.Log("Error", err.Error())
 		t.Fail()
 	} else {
-		db = api.NewDatabase(machsvr_db)
+		db = machsvr_db
 	}
 
 	ctx := context.TODO()

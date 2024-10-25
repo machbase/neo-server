@@ -1,8 +1,9 @@
-package types
+package api
 
 import (
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -274,6 +275,7 @@ func (typ DataType) makeBuffer() (any, error) {
 	case DataTypeAny:
 		return new(string), nil
 	default:
+		debug.PrintStack()
 		return nil, ErrDatabaseUnsupportedTypeName("makeBuffer", string(typ))
 	}
 }

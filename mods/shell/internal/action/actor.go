@@ -143,7 +143,7 @@ func (act *Actor) checkDatabase() error {
 	}
 
 	// user authentication
-	if result, err := machcli.UserAuth(act.conf.User, act.conf.Password); err != nil {
+	if result, err := machcli.UserAuth(act.ctx, act.conf.User, act.conf.Password); err != nil {
 		return err
 	} else if !result {
 		return errors.New("invalid username or password")
@@ -199,7 +199,7 @@ func makePrompt(username string) string {
 }
 
 func (act *Actor) Reconnect(username string, password string) (bool, error) {
-	ok, err := act.db.UserAuth(username, password)
+	ok, err := act.db.UserAuth(act.ctx, username, password)
 	if err == nil && ok {
 		act.conf.User = strings.ToLower(username)
 		act.conf.Password = password

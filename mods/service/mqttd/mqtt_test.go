@@ -15,7 +15,6 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/stretchr/testify/require"
 )
@@ -35,14 +34,12 @@ func TestQuery(t *testing.T) {
 					*(cols[2].(*float64)) = 3.14
 					return nil
 				}
-				rows.ColumnsFunc = func() ([]string, []types.DataType, error) {
-					return []string{
-							"name", "time", "value",
-						}, []types.DataType{
-							types.ColumnTypeVarchar.DataType(),
-							types.ColumnTypeDatetime.DataType(),
-							types.ColumnTypeDouble.DataType(),
-						}, nil
+				rows.ColumnsFunc = func() (api.Columns, error) {
+					return api.Columns{
+						{Name: "name", DataType: api.ColumnTypeVarchar.DataType()},
+						{Name: "time", DataType: api.ColumnTypeDatetime.DataType()},
+						{Name: "value", DataType: api.ColumnTypeDouble.DataType()},
+					}, nil
 				}
 				rows.IsFetchableFunc = func() bool { return true }
 				rows.NextFunc = func() bool {
@@ -73,7 +70,7 @@ func TestQuery(t *testing.T) {
 				Reason:  "success",
 				Data: &msg.QueryData{
 					Columns: []string{"name", "time", "value"},
-					Types:   []types.DataType{types.DataTypeString, types.DataTypeDatetime, types.DataTypeFloat64},
+					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{
 						{"temp", testTimeTick.UnixNano(), 3.14},
 					},
@@ -91,7 +88,7 @@ func TestQuery(t *testing.T) {
 				Reason:  "success",
 				Data: &msg.QueryData{
 					Columns: []string{"name", "time", "value"},
-					Types:   []types.DataType{types.DataTypeString, types.DataTypeDatetime, types.DataTypeFloat64},
+					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{
 						{"temp", "2024-01-15 04:10:59", 3.14},
 					},
@@ -411,9 +408,9 @@ func (tm *TestMock) NewDB() *dbMock {
 				return &RowMock{
 					ErrFunc: func() error { return nil },
 					ScanFunc: func(cols ...any) error {
-						*(cols[0].(*int)) = 0                              // TABLE_ID
-						*(cols[1].(*types.TableType)) = types.TableTypeTag // TABLE_TYPE
-						*(cols[3].(*int)) = 3                              // TABLE_COLCOUNT
+						*(cols[0].(*int)) = 0                          // TABLE_ID
+						*(cols[1].(*api.TableType)) = api.TableTypeTag // TABLE_TYPE
+						*(cols[3].(*int)) = 3                          // TABLE_COLCOUNT
 						return nil
 					},
 				}
@@ -425,7 +422,7 @@ func (tm *TestMock) NewDB() *dbMock {
 		},
 		QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 			if sqlText == "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id" {
-				return NewRowsWrap([]*types.Column{
+				return NewRowsWrap([]*api.Column{
 					{Name: "NAME", DataType: "string"},
 					{Name: "TYPE", DataType: "int"},
 					{Name: "LENGTH", DataType: "int"},
@@ -433,13 +430,13 @@ func (tm *TestMock) NewDB() *dbMock {
 					{Name: "FLAG", DataType: "int"},
 				},
 					[][]any{
-						{"NAME", int(types.ColumnTypeVarchar), 0, 0, 0},
-						{"TIME", int(types.ColumnTypeDatetime), 0, 1, 0},
-						{"VALUE", int(types.ColumnTypeDouble), 0, 2, 0},
+						{"NAME", int(api.ColumnTypeVarchar), 0, 0, 0},
+						{"TIME", int(api.ColumnTypeDatetime), 0, 1, 0},
+						{"VALUE", int(api.ColumnTypeDouble), 0, 2, 0},
 					}), nil
 			} else if sqlText == "select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?" {
 				return NewRowsWrap(
-					[]*types.Column{
+					[]*api.Column{
 						{Name: "NAME", DataType: "string"},
 						{Name: "TYPE", DataType: "int"},
 						{Name: "ID", DataType: "int"},
@@ -451,7 +448,7 @@ func (tm *TestMock) NewDB() *dbMock {
 					}), nil
 			} else if sqlText == "select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id" {
 				return NewRowsWrap(
-					[]*types.Column{{Name: "NAME", DataType: "string"}},
+					[]*api.Column{{Name: "NAME", DataType: "string"}},
 					[][]any{},
 				), nil
 			} else {
@@ -464,7 +461,7 @@ func (tm *TestMock) NewDB() *dbMock {
 	}
 }
 
-func NewRowsWrap(columns types.Columns, values [][]any) *RowsMockWrap {
+func NewRowsWrap(columns api.Columns, values [][]any) *RowsMockWrap {
 	ret := &RowsMockWrap{columns: columns, values: values}
 	rows := &RowsMock{}
 	rows.NextFunc = ret.Next
@@ -478,7 +475,7 @@ func NewRowsWrap(columns types.Columns, values [][]any) *RowsMockWrap {
 
 type RowsMockWrap struct {
 	*RowsMock
-	columns types.Columns
+	columns api.Columns
 	values  [][]any
 	cursor  int
 }
@@ -487,14 +484,8 @@ func (rw *RowsMockWrap) Close() error {
 	return nil
 }
 
-func (rw *RowsMockWrap) Columns() ([]string, []types.DataType, error) {
-	columnNames := make([]string, len(rw.columns))
-	columnTypes := make([]types.DataType, len(rw.columns))
-	for i, c := range rw.columns {
-		columnNames[i] = c.Name
-		columnTypes[i] = c.DataType
-	}
-	return columnNames, columnTypes, nil
+func (rw *RowsMockWrap) Columns() (api.Columns, error) {
+	return rw.columns, nil
 }
 
 func (rw *RowsMockWrap) Next() bool {
@@ -505,7 +496,7 @@ func (rw *RowsMockWrap) Next() bool {
 func (rw *RowsMockWrap) Scan(cols ...any) error {
 	for i := range cols {
 		val := rw.values[rw.cursor][i]
-		if err := types.Scan(val, cols[i]); err != nil {
+		if err := api.Scan(val, cols[i]); err != nil {
 			return fmt.Errorf("ERR RowsMockWrap.Scan() %T %s", cols[i], err.Error())
 		}
 	}
@@ -528,17 +519,18 @@ func TestAppend(t *testing.T) {
 				}
 				return nil
 			}
-			app.ColumnsFunc = func() ([]string, []types.DataType, error) {
-				return []string{
-						"NAME", "TIME", "VALUE",
-					}, []types.DataType{
-						types.ColumnTypeVarchar.DataType(),
-						types.ColumnTypeDatetime.DataType(),
-						types.ColumnTypeDouble.DataType(),
-					}, nil
+			app.ColumnsFunc = func() (api.Columns, error) {
+				return api.Columns{
+					{Name: "NAME", DataType: api.ColumnTypeVarchar.DataType()},
+					{Name: "TIME", DataType: api.ColumnTypeDatetime.DataType()},
+					{Name: "VALUE", DataType: api.ColumnTypeDouble.DataType()},
+				}, nil
 			}
 			app.TableNameFunc = func() string {
 				return "example"
+			}
+			app.TableTypeFunc = func() api.TableType {
+				return api.TableTypeTag
 			}
 			return app, nil
 		},
@@ -695,14 +687,12 @@ func TestTql(t *testing.T) {
 				}
 				return nil
 			}
-			app.ColumnsFunc = func() ([]string, []types.DataType, error) {
-				return []string{
-						"name", "time", "value",
-					}, []types.DataType{
-						types.ColumnTypeVarchar.DataType(),
-						types.ColumnTypeDatetime.DataType(),
-						types.ColumnTypeDouble.DataType(),
-					}, nil
+			app.ColumnsFunc = func() (api.Columns, error) {
+				return api.Columns{
+					{Name: "name", DataType: api.ColumnTypeVarchar.DataType()},
+					{Name: "time", DataType: api.ColumnTypeDatetime.DataType()},
+					{Name: "value", DataType: api.ColumnTypeDouble.DataType()},
+				}, nil
 			}
 			app.TableNameFunc = func() string {
 				return "example"

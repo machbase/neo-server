@@ -284,7 +284,7 @@ type DatabaseServer interface {
 }
 
 type DatabaseAuthServer interface {
-	UserAuth(user string, password string) (bool, error)
+	UserAuth(ctx context.Context, user string, password string) (bool, error)
 }
 
 var _ DatabaseServer = &machsvr.Database{}
@@ -450,7 +450,7 @@ func (s *svr) Start() error {
 	if shouldInstallLicense {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		conn, err := api.NewDatabase(s.db).Connect(ctx, api.WithTrustUser("sys"))
+		conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
 		if err != nil {
 			s.log.Error("ERR", err.Error())
 			return err
@@ -508,7 +508,7 @@ func (s *svr) Start() error {
 		} else {
 			s.backupSvc = backupd.NewService(
 				backupd.WithBaseDir(backupDirAbs),
-				backupd.WithDatabase(api.NewDatabase(s.db)),
+				backupd.WithDatabase(s.db),
 			)
 		}
 	}
@@ -532,7 +532,7 @@ func (s *svr) Start() error {
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
 		scheduler.WithTqlLoader(tqlLoader),
-		scheduler.WithDatabase(api.NewDatabase(s.db)),
+		scheduler.WithDatabase(s.db),
 	)
 
 	s.bridgeSvc = bridge.NewService(
@@ -632,7 +632,7 @@ func (s *svr) Start() error {
 				opts = append(opts, mqttd.WithTcpListener(addr, tlsConf))
 			}
 		}
-		s.mqtt2, err = mqttd.New(api.NewDatabase(s.db), opts...)
+		s.mqtt2, err = mqttd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "mqtt-v2 server")
 		}
@@ -707,7 +707,7 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
 		}
-		s.httpd, err = httpd.New(api.NewDatabase(s.db), opts...)
+		s.httpd, err = httpd.New(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
 		}
@@ -1294,7 +1294,10 @@ func (s *svr) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool,
 }
 
 func (s *svr) ValidateUserPassword(user string, password string) (bool, string, error) {
-	passed, err := s.db.UserAuth(user, password)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	passed, err := s.db.UserAuth(ctx, user, password)
 	if err != nil {
 		return false, "", err
 	} else if !passed {
@@ -1359,7 +1362,7 @@ func (s *svr) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := s.db.Connect(ctx, machsvr.WithTrustUser("sys"))
+	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err

@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/model"
@@ -135,7 +134,7 @@ func OptionMqttWsHandlerFunc(fn http.HandlerFunc) Option {
 	}
 }
 
-func OptionServerSessionsFunc(fn func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)) Option {
+func OptionServerSessionsFunc(fn func(statz, session bool) (*mgmt.Statz, []*mgmt.Session, error)) Option {
 	return func(s *httpd) {
 		s.serverSessionsFunc = fn
 	}

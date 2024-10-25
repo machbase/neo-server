@@ -1902,6 +1902,412 @@ func (x *Runtime) GetMem() map[string]uint64 {
 	return nil
 }
 
+type SessionsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Statz    bool `protobuf:"varint,1,opt,name=statz,proto3" json:"statz,omitempty"`
+	Sessions bool `protobuf:"varint,2,opt,name=sessions,proto3" json:"sessions,omitempty"`
+}
+
+func (x *SessionsRequest) Reset() {
+	*x = SessionsRequest{}
+	mi := &file_mgmt_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionsRequest) ProtoMessage() {}
+
+func (x *SessionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionsRequest.ProtoReflect.Descriptor instead.
+func (*SessionsRequest) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *SessionsRequest) GetStatz() bool {
+	if x != nil {
+		return x.Statz
+	}
+	return false
+}
+
+func (x *SessionsRequest) GetSessions() bool {
+	if x != nil {
+		return x.Sessions
+	}
+	return false
+}
+
+type SessionsResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Success  bool       `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Reason   string     `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Elapse   string     `protobuf:"bytes,3,opt,name=elapse,proto3" json:"elapse,omitempty"`
+	Statz    *Statz     `protobuf:"bytes,4,opt,name=statz,proto3" json:"statz,omitempty"`
+	Sessions []*Session `protobuf:"bytes,5,rep,name=Sessions,proto3" json:"Sessions,omitempty"`
+}
+
+func (x *SessionsResponse) Reset() {
+	*x = SessionsResponse{}
+	mi := &file_mgmt_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionsResponse) ProtoMessage() {}
+
+func (x *SessionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionsResponse.ProtoReflect.Descriptor instead.
+func (*SessionsResponse) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SessionsResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SessionsResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SessionsResponse) GetElapse() string {
+	if x != nil {
+		return x.Elapse
+	}
+	return ""
+}
+
+func (x *SessionsResponse) GetStatz() *Statz {
+	if x != nil {
+		return x.Statz
+	}
+	return nil
+}
+
+func (x *SessionsResponse) GetSessions() []*Session {
+	if x != nil {
+		return x.Sessions
+	}
+	return nil
+}
+
+type Statz struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Conns          int64 `protobuf:"varint,1,opt,name=conns,proto3" json:"conns,omitempty"`
+	Stmts          int64 `protobuf:"varint,2,opt,name=stmts,proto3" json:"stmts,omitempty"`
+	Appenders      int64 `protobuf:"varint,3,opt,name=appenders,proto3" json:"appenders,omitempty"`
+	ConnsInUse     int32 `protobuf:"varint,4,opt,name=connsInUse,proto3" json:"connsInUse,omitempty"`
+	StmtsInUse     int32 `protobuf:"varint,5,opt,name=stmtsInUse,proto3" json:"stmtsInUse,omitempty"`
+	AppendersInUse int32 `protobuf:"varint,6,opt,name=appendersInUse,proto3" json:"appendersInUse,omitempty"`
+	RawConns       int32 `protobuf:"varint,7,opt,name=rawConns,proto3" json:"rawConns,omitempty"`
+}
+
+func (x *Statz) Reset() {
+	*x = Statz{}
+	mi := &file_mgmt_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Statz) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Statz) ProtoMessage() {}
+
+func (x *Statz) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Statz.ProtoReflect.Descriptor instead.
+func (*Statz) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *Statz) GetConns() int64 {
+	if x != nil {
+		return x.Conns
+	}
+	return 0
+}
+
+func (x *Statz) GetStmts() int64 {
+	if x != nil {
+		return x.Stmts
+	}
+	return 0
+}
+
+func (x *Statz) GetAppenders() int64 {
+	if x != nil {
+		return x.Appenders
+	}
+	return 0
+}
+
+func (x *Statz) GetConnsInUse() int32 {
+	if x != nil {
+		return x.ConnsInUse
+	}
+	return 0
+}
+
+func (x *Statz) GetStmtsInUse() int32 {
+	if x != nil {
+		return x.StmtsInUse
+	}
+	return 0
+}
+
+func (x *Statz) GetAppendersInUse() int32 {
+	if x != nil {
+		return x.AppendersInUse
+	}
+	return 0
+}
+
+func (x *Statz) GetRawConns() int32 {
+	if x != nil {
+		return x.RawConns
+	}
+	return 0
+}
+
+type Session struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CreTime       int64  `protobuf:"varint,2,opt,name=creTime,proto3" json:"creTime,omitempty"`
+	LatestSqlTime int64  `protobuf:"varint,3,opt,name=latestSqlTime,proto3" json:"latestSqlTime,omitempty"`
+	LatestSql     string `protobuf:"bytes,4,opt,name=latestSql,proto3" json:"latestSql,omitempty"`
+}
+
+func (x *Session) Reset() {
+	*x = Session{}
+	mi := &file_mgmt_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Session) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Session) ProtoMessage() {}
+
+func (x *Session) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Session.ProtoReflect.Descriptor instead.
+func (*Session) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *Session) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Session) GetCreTime() int64 {
+	if x != nil {
+		return x.CreTime
+	}
+	return 0
+}
+
+func (x *Session) GetLatestSqlTime() int64 {
+	if x != nil {
+		return x.LatestSqlTime
+	}
+	return 0
+}
+
+func (x *Session) GetLatestSql() string {
+	if x != nil {
+		return x.LatestSql
+	}
+	return ""
+}
+
+type KillSessionRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id    string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Force bool   `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
+}
+
+func (x *KillSessionRequest) Reset() {
+	*x = KillSessionRequest{}
+	mi := &file_mgmt_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KillSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KillSessionRequest) ProtoMessage() {}
+
+func (x *KillSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KillSessionRequest.ProtoReflect.Descriptor instead.
+func (*KillSessionRequest) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *KillSessionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *KillSessionRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
+}
+
+type KillSessionResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Success bool   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Reason  string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Elapse  string `protobuf:"bytes,3,opt,name=elapse,proto3" json:"elapse,omitempty"`
+}
+
+func (x *KillSessionResponse) Reset() {
+	*x = KillSessionResponse{}
+	mi := &file_mgmt_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KillSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KillSessionResponse) ProtoMessage() {}
+
+func (x *KillSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_mgmt_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KillSessionResponse.ProtoReflect.Descriptor instead.
+func (*KillSessionResponse) Descriptor() ([]byte, []int) {
+	return file_mgmt_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *KillSessionResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *KillSessionResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *KillSessionResponse) GetElapse() string {
+	if x != nil {
+		return x.Elapse
+	}
+	return ""
+}
+
 var File_mgmt_proto protoreflect.FileDescriptor
 
 var file_mgmt_proto_rawDesc = []byte{
@@ -2090,7 +2496,53 @@ var file_mgmt_proto_rawDesc = []byte{
 	0x6d, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20,
 	0x01, 0x28, 0x09, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75,
 	0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02,
-	0x38, 0x01, 0x32, 0xba, 0x06, 0x0a, 0x0a, 0x4d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x6d, 0x65, 0x6e,
+	0x38, 0x01, 0x22, 0x43, 0x0a, 0x0f, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x14, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x7a, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74, 0x7a, 0x12, 0x1a, 0x0a, 0x08, 0x73,
+	0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x73,
+	0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x22, 0xaa, 0x01, 0x0a, 0x10, 0x53, 0x65, 0x73, 0x73,
+	0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x18, 0x0a, 0x07,
+	0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x73,
+	0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x16,
+	0x0a, 0x06, 0x65, 0x6c, 0x61, 0x70, 0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06,
+	0x65, 0x6c, 0x61, 0x70, 0x73, 0x65, 0x12, 0x21, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x7a, 0x18,
+	0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0b, 0x2e, 0x6d, 0x67, 0x6d, 0x74, 0x2e, 0x53, 0x74, 0x61,
+	0x74, 0x7a, 0x52, 0x05, 0x73, 0x74, 0x61, 0x74, 0x7a, 0x12, 0x29, 0x0a, 0x08, 0x53, 0x65, 0x73,
+	0x73, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x05, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0d, 0x2e, 0x6d, 0x67,
+	0x6d, 0x74, 0x2e, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x08, 0x53, 0x65, 0x73, 0x73,
+	0x69, 0x6f, 0x6e, 0x73, 0x22, 0xd5, 0x01, 0x0a, 0x05, 0x53, 0x74, 0x61, 0x74, 0x7a, 0x12, 0x14,
+	0x0a, 0x05, 0x63, 0x6f, 0x6e, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x63,
+	0x6f, 0x6e, 0x6e, 0x73, 0x12, 0x14, 0x0a, 0x05, 0x73, 0x74, 0x6d, 0x74, 0x73, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x03, 0x52, 0x05, 0x73, 0x74, 0x6d, 0x74, 0x73, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x70,
+	0x70, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x09, 0x61,
+	0x70, 0x70, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x73, 0x12, 0x1e, 0x0a, 0x0a, 0x63, 0x6f, 0x6e, 0x6e,
+	0x73, 0x49, 0x6e, 0x55, 0x73, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0a, 0x63, 0x6f,
+	0x6e, 0x6e, 0x73, 0x49, 0x6e, 0x55, 0x73, 0x65, 0x12, 0x1e, 0x0a, 0x0a, 0x73, 0x74, 0x6d, 0x74,
+	0x73, 0x49, 0x6e, 0x55, 0x73, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0a, 0x73, 0x74,
+	0x6d, 0x74, 0x73, 0x49, 0x6e, 0x55, 0x73, 0x65, 0x12, 0x26, 0x0a, 0x0e, 0x61, 0x70, 0x70, 0x65,
+	0x6e, 0x64, 0x65, 0x72, 0x73, 0x49, 0x6e, 0x55, 0x73, 0x65, 0x18, 0x06, 0x20, 0x01, 0x28, 0x05,
+	0x52, 0x0e, 0x61, 0x70, 0x70, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x73, 0x49, 0x6e, 0x55, 0x73, 0x65,
+	0x12, 0x1a, 0x0a, 0x08, 0x72, 0x61, 0x77, 0x43, 0x6f, 0x6e, 0x6e, 0x73, 0x18, 0x07, 0x20, 0x01,
+	0x28, 0x05, 0x52, 0x08, 0x72, 0x61, 0x77, 0x43, 0x6f, 0x6e, 0x6e, 0x73, 0x22, 0x77, 0x0a, 0x07,
+	0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x72, 0x65, 0x54, 0x69,
+	0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x07, 0x63, 0x72, 0x65, 0x54, 0x69, 0x6d,
+	0x65, 0x12, 0x24, 0x0a, 0x0d, 0x6c, 0x61, 0x74, 0x65, 0x73, 0x74, 0x53, 0x71, 0x6c, 0x54, 0x69,
+	0x6d, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0d, 0x6c, 0x61, 0x74, 0x65, 0x73, 0x74,
+	0x53, 0x71, 0x6c, 0x54, 0x69, 0x6d, 0x65, 0x12, 0x1c, 0x0a, 0x09, 0x6c, 0x61, 0x74, 0x65, 0x73,
+	0x74, 0x53, 0x71, 0x6c, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x6c, 0x61, 0x74, 0x65,
+	0x73, 0x74, 0x53, 0x71, 0x6c, 0x22, 0x3a, 0x0a, 0x12, 0x4b, 0x69, 0x6c, 0x6c, 0x53, 0x65, 0x73,
+	0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69,
+	0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x66,
+	0x6f, 0x72, 0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x05, 0x66, 0x6f, 0x72, 0x63,
+	0x65, 0x22, 0x5f, 0x0a, 0x13, 0x4b, 0x69, 0x6c, 0x6c, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x73, 0x75, 0x63, 0x63,
+	0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x73, 0x75, 0x63, 0x63, 0x65,
+	0x73, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x61, 0x73, 0x6f, 0x6e, 0x12, 0x16, 0x0a, 0x06, 0x65, 0x6c,
+	0x61, 0x70, 0x73, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x65, 0x6c, 0x61, 0x70,
+	0x73, 0x65, 0x32, 0xbd, 0x07, 0x0a, 0x0a, 0x4d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x6d, 0x65, 0x6e,
 	0x74, 0x12, 0x38, 0x0a, 0x07, 0x4c, 0x69, 0x73, 0x74, 0x4b, 0x65, 0x79, 0x12, 0x14, 0x2e, 0x6d,
 	0x67, 0x6d, 0x74, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71, 0x75, 0x65,
 	0x73, 0x74, 0x1a, 0x15, 0x2e, 0x6d, 0x67, 0x6d, 0x74, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4b, 0x65,
@@ -2141,11 +2593,19 @@ var file_mgmt_proto_rawDesc = []byte{
 	0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x17, 0x2e, 0x6d, 0x67, 0x6d,
 	0x74, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x71, 0x75,
 	0x65, 0x73, 0x74, 0x1a, 0x18, 0x2e, 0x6d, 0x67, 0x6d, 0x74, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x65,
-	0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42,
-	0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x61,
-	0x63, 0x68, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x6e, 0x65, 0x6f, 0x2d, 0x73, 0x65, 0x72, 0x76, 0x65,
-	0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6d, 0x67, 0x6d, 0x74, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x33,
+	0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12,
+	0x3b, 0x0a, 0x08, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x15, 0x2e, 0x6d, 0x67,
+	0x6d, 0x74, 0x2e, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x1a, 0x16, 0x2e, 0x6d, 0x67, 0x6d, 0x74, 0x2e, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f,
+	0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x44, 0x0a, 0x0b,
+	0x4b, 0x69, 0x6c, 0x6c, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x18, 0x2e, 0x6d, 0x67,
+	0x6d, 0x74, 0x2e, 0x4b, 0x69, 0x6c, 0x6c, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x19, 0x2e, 0x6d, 0x67, 0x6d, 0x74, 0x2e, 0x4b, 0x69, 0x6c,
+	0x6c, 0x53, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x6d, 0x61, 0x63, 0x68, 0x62, 0x61, 0x73, 0x65, 0x2f, 0x6e, 0x65, 0x6f, 0x2d, 0x73, 0x65,
+	0x72, 0x76, 0x65, 0x72, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x6d, 0x67, 0x6d, 0x74, 0x62, 0x06, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -2160,7 +2620,7 @@ func file_mgmt_proto_rawDescGZIP() []byte {
 	return file_mgmt_proto_rawDescData
 }
 
-var file_mgmt_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_mgmt_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_mgmt_proto_goTypes = []any{
 	(*ListShellRequest)(nil),     // 0: mgmt.ListShellRequest
 	(*ListShellResponse)(nil),    // 1: mgmt.ListShellResponse
@@ -2194,7 +2654,13 @@ var file_mgmt_proto_goTypes = []any{
 	(*ServerInfoResponse)(nil),   // 29: mgmt.ServerInfoResponse
 	(*Version)(nil),              // 30: mgmt.Version
 	(*Runtime)(nil),              // 31: mgmt.Runtime
-	nil,                          // 32: mgmt.Runtime.MemEntry
+	(*SessionsRequest)(nil),      // 32: mgmt.SessionsRequest
+	(*SessionsResponse)(nil),     // 33: mgmt.SessionsResponse
+	(*Statz)(nil),                // 34: mgmt.Statz
+	(*Session)(nil),              // 35: mgmt.Session
+	(*KillSessionRequest)(nil),   // 36: mgmt.KillSessionRequest
+	(*KillSessionResponse)(nil),  // 37: mgmt.KillSessionResponse
+	nil,                          // 38: mgmt.Runtime.MemEntry
 }
 var file_mgmt_proto_depIdxs = []int32{
 	2,  // 0: mgmt.ListShellResponse.shells:type_name -> mgmt.ShellDefinition
@@ -2203,38 +2669,44 @@ var file_mgmt_proto_depIdxs = []int32{
 	27, // 3: mgmt.ServicePortsResponse.ports:type_name -> mgmt.Port
 	30, // 4: mgmt.ServerInfoResponse.version:type_name -> mgmt.Version
 	31, // 5: mgmt.ServerInfoResponse.runtime:type_name -> mgmt.Runtime
-	32, // 6: mgmt.Runtime.mem:type_name -> mgmt.Runtime.MemEntry
-	14, // 7: mgmt.Management.ListKey:input_type -> mgmt.ListKeyRequest
-	16, // 8: mgmt.Management.GenKey:input_type -> mgmt.GenKeyRequest
-	18, // 9: mgmt.Management.DelKey:input_type -> mgmt.DelKeyRequest
-	21, // 10: mgmt.Management.ServerKey:input_type -> mgmt.ServerKeyRequest
-	7,  // 11: mgmt.Management.ListSshKey:input_type -> mgmt.ListSshKeyRequest
-	10, // 12: mgmt.Management.AddSshKey:input_type -> mgmt.AddSshKeyRequest
-	12, // 13: mgmt.Management.DelSshKey:input_type -> mgmt.DelSshKeyRequest
-	23, // 14: mgmt.Management.Shutdown:input_type -> mgmt.ShutdownRequest
-	0,  // 15: mgmt.Management.ListShell:input_type -> mgmt.ListShellRequest
-	3,  // 16: mgmt.Management.AddShell:input_type -> mgmt.AddShellRequest
-	5,  // 17: mgmt.Management.DelShell:input_type -> mgmt.DelShellRequest
-	25, // 18: mgmt.Management.ServicePorts:input_type -> mgmt.ServicePortsRequest
-	28, // 19: mgmt.Management.ServerInfo:input_type -> mgmt.ServerInfoRequest
-	15, // 20: mgmt.Management.ListKey:output_type -> mgmt.ListKeyResponse
-	17, // 21: mgmt.Management.GenKey:output_type -> mgmt.GenKeyResponse
-	19, // 22: mgmt.Management.DelKey:output_type -> mgmt.DelKeyResponse
-	22, // 23: mgmt.Management.ServerKey:output_type -> mgmt.ServerKeyResponse
-	8,  // 24: mgmt.Management.ListSshKey:output_type -> mgmt.ListSshKeyResponse
-	11, // 25: mgmt.Management.AddSshKey:output_type -> mgmt.AddSshKeyResponse
-	13, // 26: mgmt.Management.DelSshKey:output_type -> mgmt.DelSshKeyResponse
-	24, // 27: mgmt.Management.Shutdown:output_type -> mgmt.ShutdownResponse
-	1,  // 28: mgmt.Management.ListShell:output_type -> mgmt.ListShellResponse
-	4,  // 29: mgmt.Management.AddShell:output_type -> mgmt.AddShellResponse
-	6,  // 30: mgmt.Management.DelShell:output_type -> mgmt.DelShellResponse
-	26, // 31: mgmt.Management.ServicePorts:output_type -> mgmt.ServicePortsResponse
-	29, // 32: mgmt.Management.ServerInfo:output_type -> mgmt.ServerInfoResponse
-	20, // [20:33] is the sub-list for method output_type
-	7,  // [7:20] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	38, // 6: mgmt.Runtime.mem:type_name -> mgmt.Runtime.MemEntry
+	34, // 7: mgmt.SessionsResponse.statz:type_name -> mgmt.Statz
+	35, // 8: mgmt.SessionsResponse.Sessions:type_name -> mgmt.Session
+	14, // 9: mgmt.Management.ListKey:input_type -> mgmt.ListKeyRequest
+	16, // 10: mgmt.Management.GenKey:input_type -> mgmt.GenKeyRequest
+	18, // 11: mgmt.Management.DelKey:input_type -> mgmt.DelKeyRequest
+	21, // 12: mgmt.Management.ServerKey:input_type -> mgmt.ServerKeyRequest
+	7,  // 13: mgmt.Management.ListSshKey:input_type -> mgmt.ListSshKeyRequest
+	10, // 14: mgmt.Management.AddSshKey:input_type -> mgmt.AddSshKeyRequest
+	12, // 15: mgmt.Management.DelSshKey:input_type -> mgmt.DelSshKeyRequest
+	23, // 16: mgmt.Management.Shutdown:input_type -> mgmt.ShutdownRequest
+	0,  // 17: mgmt.Management.ListShell:input_type -> mgmt.ListShellRequest
+	3,  // 18: mgmt.Management.AddShell:input_type -> mgmt.AddShellRequest
+	5,  // 19: mgmt.Management.DelShell:input_type -> mgmt.DelShellRequest
+	25, // 20: mgmt.Management.ServicePorts:input_type -> mgmt.ServicePortsRequest
+	28, // 21: mgmt.Management.ServerInfo:input_type -> mgmt.ServerInfoRequest
+	32, // 22: mgmt.Management.Sessions:input_type -> mgmt.SessionsRequest
+	36, // 23: mgmt.Management.KillSession:input_type -> mgmt.KillSessionRequest
+	15, // 24: mgmt.Management.ListKey:output_type -> mgmt.ListKeyResponse
+	17, // 25: mgmt.Management.GenKey:output_type -> mgmt.GenKeyResponse
+	19, // 26: mgmt.Management.DelKey:output_type -> mgmt.DelKeyResponse
+	22, // 27: mgmt.Management.ServerKey:output_type -> mgmt.ServerKeyResponse
+	8,  // 28: mgmt.Management.ListSshKey:output_type -> mgmt.ListSshKeyResponse
+	11, // 29: mgmt.Management.AddSshKey:output_type -> mgmt.AddSshKeyResponse
+	13, // 30: mgmt.Management.DelSshKey:output_type -> mgmt.DelSshKeyResponse
+	24, // 31: mgmt.Management.Shutdown:output_type -> mgmt.ShutdownResponse
+	1,  // 32: mgmt.Management.ListShell:output_type -> mgmt.ListShellResponse
+	4,  // 33: mgmt.Management.AddShell:output_type -> mgmt.AddShellResponse
+	6,  // 34: mgmt.Management.DelShell:output_type -> mgmt.DelShellResponse
+	26, // 35: mgmt.Management.ServicePorts:output_type -> mgmt.ServicePortsResponse
+	29, // 36: mgmt.Management.ServerInfo:output_type -> mgmt.ServerInfoResponse
+	33, // 37: mgmt.Management.Sessions:output_type -> mgmt.SessionsResponse
+	37, // 38: mgmt.Management.KillSession:output_type -> mgmt.KillSessionResponse
+	24, // [24:39] is the sub-list for method output_type
+	9,  // [9:24] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_mgmt_proto_init() }
@@ -2248,7 +2720,7 @@ func file_mgmt_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_mgmt_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   33,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

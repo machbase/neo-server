@@ -1,4 +1,4 @@
-package types
+package api
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ var ErrDatabaseUnsupportedType = func(fn string, typ int) error {
 }
 
 var ErrDatabaseUnsupportedTypeName = func(fn string, typ string) error {
-	return NewErrorf("%s unsupported type %s", fn, typ)
+	return NewErrorf("%s unsupported type %q", fn, typ)
 }
 
 var ErrDatabaseScan = func(err error) error {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/machbase/neo-server/api/types"
 )
 
 // returns dbName, userName, tableName
@@ -87,7 +85,7 @@ func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns 
 	defer rows.Close()
 
 	for rows.Next() {
-		col := &types.Column{}
+		col := &Column{}
 		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag)
 		if err != nil {
 			return nil, err
@@ -120,7 +118,7 @@ func describe_idx(ctx context.Context, conn Conn, tableId int, dbId int) ([]*Ind
 		if err = rows.Scan(&d.Name, &indexType, &d.Id); err != nil {
 			return nil, err
 		}
-		d.Type = types.IndexType(indexType)
+		d.Type = IndexType(indexType)
 		idxCols, err := conn.Query(ctx, `select name from M$SYS_INDEX_COLUMNS where index_id = ? AND database_id = ? order by col_id`, d.Id, dbId)
 		if err != nil {
 			return nil, err
@@ -158,7 +156,7 @@ func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColum
 	if err := r.Scan(&d.Name, &tableType, &d.Flag, &d.Id, &colCount); err != nil {
 		return nil, err
 	}
-	d.Type = types.TableType(tableType)
+	d.Type = TableType(tableType)
 
 	rows, err := conn.Query(ctx, fmt.Sprintf(`select name, type, length, id from %s where table_id = ? order by id`, columnsTable), d.Id)
 	if err != nil {
@@ -167,7 +165,7 @@ func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColum
 	defer rows.Close()
 
 	for rows.Next() {
-		col := &types.Column{}
+		col := &Column{}
 		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id)
 		if err != nil {
 			return nil, err
@@ -186,10 +184,10 @@ type TableDescription struct {
 	Database string              `json:"database"`
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
-	Type     types.TableType     `json:"type"`
-	Flag     types.TableFlag     `json:"flag,omitempty"`
+	Type     TableType           `json:"type"`
+	Flag     TableFlag           `json:"flag,omitempty"`
 	Id       int                 `json:"id"`
-	Columns  types.Columns       `json:"columns"`
+	Columns  Columns             `json:"columns"`
 	Indexes  []*IndexDescription `json:"indexes"`
 }
 
@@ -199,38 +197,38 @@ func (td *TableDescription) String() string {
 }
 
 // TableTypeDescription converts the given TableType and flag into string representation.
-func TableTypeDescription(typ types.TableType, flag types.TableFlag) string {
+func TableTypeDescription(typ TableType, flag TableFlag) string {
 	desc := "undef"
 	switch typ {
-	case types.TableTypeLog:
+	case TableTypeLog:
 		desc = "Log Table"
-	case types.TableTypeFixed:
+	case TableTypeFixed:
 		desc = "Fixed Table"
-	case types.TableTypeVolatile:
+	case TableTypeVolatile:
 		desc = "Volatile Table"
-	case types.TableTypeLookup:
+	case TableTypeLookup:
 		desc = "Lookup Table"
-	case types.TableTypeKeyValue:
+	case TableTypeKeyValue:
 		desc = "KeyValue Table"
-	case types.TableTypeTag:
+	case TableTypeTag:
 		desc = "Tag Table"
 	}
 	switch flag {
-	case types.TableFlagData:
+	case TableFlagData:
 		desc += " (data)"
-	case types.TableFlagRollup:
+	case TableFlagRollup:
 		desc += " (rollup)"
-	case types.TableFlagMeta:
+	case TableFlagMeta:
 		desc += " (meta)"
-	case types.TableFlagStat:
+	case TableFlagStat:
 		desc += " (stat)"
 	}
 	return desc
 }
 
 type IndexDescription struct {
-	Id   uint64          `json:"id"`
-	Name string          `json:"name"`
-	Type types.IndexType `json:"type"`
-	Cols []string        `json:"cols"`
+	Id   uint64    `json:"id"`
+	Name string    `json:"name"`
+	Type IndexType `json:"type"`
+	Cols []string  `json:"cols"`
 }

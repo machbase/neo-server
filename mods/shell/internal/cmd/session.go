@@ -1,10 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods/shell/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -70,12 +71,17 @@ func doSession(ctx *action.ActionContext) {
 }
 
 func doSessionList(ctx *action.ActionContext, showAll bool) {
-	_, sessions, err := ctx.Actor.Database().ServerSessions(false, true)
+	mgmtClient, err := ctx.Actor.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	sess := map[string]*machrpc.Session{}
+	_, sessions, err := serverSessions(mgmtClient, ctx.Ctx, false, true)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	sess := map[string]*mgmt.Session{}
 	for _, s := range sessions {
 		sess[s.Id] = s
 	}
@@ -127,7 +133,12 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 }
 
 func doSessionStat(ctx *action.ActionContext) {
-	statz, _, err := ctx.Actor.Database().ServerSessions(true, false)
+	mgmtClient, err := ctx.Actor.ManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	statz, _, err := serverSessions(mgmtClient, ctx.Ctx, true, false)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -145,7 +156,12 @@ func doSessionStat(ctx *action.ActionContext) {
 	}
 }
 func doSessionKill(ctx *action.ActionContext, id string, force bool) {
-	success, err := ctx.Actor.Database().ServerKillSession(id, force)
+	mgmtClient, err := ctx.Actor.ManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	success, err := serverKillSession(mgmtClient, ctx.Ctx, id, force)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}
@@ -154,4 +170,22 @@ func doSessionKill(ctx *action.ActionContext, id string, force bool) {
 	} else {
 		ctx.Println("session " + id + ", failed cancel")
 	}
+}
+
+func serverSessions(client mgmt.ManagementClient, ctx context.Context, reqStatz, reqSessions bool) (*mgmt.Statz, []*mgmt.Session, error) {
+	req := &mgmt.SessionsRequest{Statz: reqStatz, Sessions: reqSessions}
+	rsp, err := client.Sessions(ctx, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rsp.Statz, rsp.Sessions, nil
+}
+
+func serverKillSession(client mgmt.ManagementClient, ctx context.Context, sessionId string, force bool) (bool, error) {
+	req := &mgmt.KillSessionRequest{Id: sessionId, Force: force}
+	rsp, err := client.KillSession(ctx, req)
+	if err != nil {
+		return false, err
+	}
+	return rsp.Success, nil
 }

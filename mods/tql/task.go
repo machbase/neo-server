@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/service/eventbus"
@@ -53,7 +52,7 @@ type Task struct {
 	nodes      []*Node
 
 	_shouldStop    bool
-	_resultColumns types.Columns
+	_resultColumns api.Columns
 	_stateLock     sync.RWMutex
 	_created       time.Time
 }
@@ -441,30 +440,30 @@ func (x *Task) shouldStop() bool {
 	return ret
 }
 
-func (x *Task) SetResultColumns(cols types.Columns) {
+func (x *Task) SetResultColumns(cols api.Columns) {
 	x._stateLock.Lock()
-	ts := make([]*types.Column, len(cols))
+	ts := make([]*api.Column, len(cols))
 	for i, c := range cols {
 		x := *c
 		switch x.DataType {
 		case "sql.RawBytes":
-			x.DataType = types.DataTypeBinary
+			x.DataType = api.DataTypeBinary
 		case "sql.NullBool":
-			x.DataType = types.DataTypeBoolean
+			x.DataType = api.DataTypeBoolean
 		case "sql.NullByte":
-			x.DataType = types.DataTypeByte
+			x.DataType = api.DataTypeByte
 		case "sql.NullFloat64":
-			x.DataType = types.DataTypeFloat64
+			x.DataType = api.DataTypeFloat64
 		case "sql.NullInt16":
-			x.DataType = types.DataTypeInt16
+			x.DataType = api.DataTypeInt16
 		case "sql.NullInt32":
-			x.DataType = types.DataTypeInt32
+			x.DataType = api.DataTypeInt32
 		case "sql.NullInt64":
-			x.DataType = types.DataTypeInt64
+			x.DataType = api.DataTypeInt64
 		case "sql.NullString":
-			x.DataType = types.DataTypeString
+			x.DataType = api.DataTypeString
 		case "sql.NullTime":
-			x.DataType = types.DataTypeDatetime
+			x.DataType = api.DataTypeDatetime
 		}
 		ts[i] = &x
 	}
@@ -472,7 +471,7 @@ func (x *Task) SetResultColumns(cols types.Columns) {
 	x._stateLock.Unlock()
 }
 
-func (x *Task) ResultColumns() types.Columns {
+func (x *Task) ResultColumns() api.Columns {
 	x._stateLock.RLock()
 	ret := x._resultColumns
 	x._stateLock.RUnlock()

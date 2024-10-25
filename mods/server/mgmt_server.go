@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/booter"
 	"google.golang.org/grpc/peer"
@@ -93,5 +94,64 @@ func (s *svr) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgm
 
 	rsp.Success = true
 	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *svr) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt.SessionsResponse, error) {
+	rsp := &mgmt.SessionsResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Sessions panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if req.Statz {
+		if statz := machsvr.StatzSnapshot(); statz != nil {
+			rsp.Statz = &mgmt.Statz{
+				Conns:          statz.Conns,
+				ConnsInUse:     statz.ConnsInUse,
+				Stmts:          statz.Stmts,
+				StmtsInUse:     statz.StmtsInUse,
+				Appenders:      statz.Appenders,
+				AppendersInUse: statz.AppendersInUse,
+				RawConns:       statz.RawConns,
+			}
+		}
+	}
+	if req.Sessions {
+		sessions := []*mgmt.Session{}
+		s.db.ListWatcher(func(st *machsvr.ConnState) bool {
+			sessions = append(sessions, &mgmt.Session{
+				Id:            st.Id,
+				CreTime:       st.CreatedTime.UnixNano(),
+				LatestSqlTime: st.LatestTime.UnixNano(),
+				LatestSql:     st.LatestSql,
+			})
+			return true
+		})
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
+func (s *svr) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) (*mgmt.KillSessionResponse, error) {
+	rsp := &mgmt.KillSessionResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("Sessions kill panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if err := s.db.KillConnection(req.Id, req.Force); err != nil {
+		rsp.Reason = err.Error()
+	} else {
+		rsp.Success = true
+		rsp.Reason = "success"
+	}
 	return rsp, nil
 }

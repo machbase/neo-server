@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/service/msg"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/glob"
@@ -35,12 +34,12 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
-		Types: []types.DataType{
-			types.DataTypeInt32,  // rownum
-			types.DataTypeString, // db
-			types.DataTypeString, // user
-			types.DataTypeString, // name
-			types.DataTypeString, // type
+		Types: []api.DataType{
+			api.DataTypeInt32,  // rownum
+			api.DataTypeString, // db
+			api.DataTypeString, // user
+			api.DataTypeString, // name
+			api.DataTypeString, // type
 		},
 	}
 
@@ -113,9 +112,9 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
 	data := &msg.QueryData{
 		Columns: []string{"ROWNUM", "NAME"},
-		Types: []types.DataType{
-			types.DataTypeInt32,  // rownum
-			types.DataTypeString, // name
+		Types: []api.DataType{
+			api.DataTypeInt32,  // rownum
+			api.DataTypeString, // name
 		},
 		Rows: [][]any{},
 	}
@@ -195,17 +194,17 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		Columns: []string{
 			"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
 			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
-		Types: []types.DataType{
-			types.DataTypeInt32,    // rownum
-			types.DataTypeString,   // name
-			types.DataTypeInt64,    // row_count
-			types.DataTypeDatetime, // min_time
-			types.DataTypeDatetime, // max_time
-			types.DataTypeFloat64,  // min_value
-			types.DataTypeDatetime, // min_value_time
-			types.DataTypeFloat64,  // max_value
-			types.DataTypeDatetime, // max_value_time
-			types.DataTypeDatetime, // recent_row_time
+		Types: []api.DataType{
+			api.DataTypeInt32,    // rownum
+			api.DataTypeString,   // name
+			api.DataTypeInt64,    // row_count
+			api.DataTypeDatetime, // min_time
+			api.DataTypeDatetime, // max_time
+			api.DataTypeFloat64,  // min_value
+			api.DataTypeDatetime, // min_value_time
+			api.DataTypeFloat64,  // max_value
+			api.DataTypeDatetime, // max_value_time
+			api.DataTypeDatetime, // recent_row_time
 		},
 		Rows: [][]any{},
 	}

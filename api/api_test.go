@@ -13,6 +13,7 @@ import (
 
 //go:embed api_test.conf
 var machbase_conf []byte
+var machbase_port = 15656
 
 func TestMain(m *testing.M) {
 	// prepare
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) {
 	os.MkdirAll(filepath.Join(homePath, "dbs"), 0755)
 	os.WriteFile(confPath, machbase_conf, 0644)
 
-	if err := machsvr.Initialize(homePath, 15656, machsvr.OPT_SIGHANDLER_SIGINT_OFF); err != nil {
+	if err := machsvr.Initialize(homePath, machbase_port, machsvr.OPT_SIGHANDLER_SIGINT_OFF); err != nil {
 		panic(err)
 	}
 
@@ -53,7 +54,7 @@ func TestMain(m *testing.M) {
 	// create test tables
 
 	ctx := context.TODO()
-	conn, _ := db.Connect(ctx, machsvr.WithTrustUser("sys"))
+	conn, _ := db.Connect(ctx, api.WithTrustUser("sys"))
 	result := conn.Exec(ctx, api.SqlTidy(`
 		create tag table tag_data(
 			name            varchar(100) primary key, 
@@ -120,3 +121,35 @@ func TestMain(m *testing.M) {
 	os.RemoveAll(tmpPath)
 	os.Exit(code)
 }
+
+type TestingT interface {
+	Log(args ...any)
+	Fatal(args ...any)
+	Fail()
+	Fatalf(format string, args ...any)
+}
+
+func machsvrDatabase(t TestingT) api.Database {
+	var db api.Database
+	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
+		t.Log("Error", err.Error())
+		t.Fail()
+	} else {
+		db = machsvr_db
+	}
+	return db
+}
+
+// TODO machcli
+//
+// func machcliDatabase(t TestingT) api.Database {
+// 	cli, err := machrpc.NewClient(&machrpc.Config{
+// 		ServerAddr:    fmt.Sprintf("127.0.0.1:%d", machbase_port),
+// 		QueryTimeout:  3 * time.Second,
+// 		AppendTimeout: 3 * time.Second,
+// 	})
+// 	if err != nil {
+// 		t.Fatalf("new client: %s", err.Error())
+// 	}
+// 	return cli
+// }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
@@ -26,12 +27,12 @@ func BenchmarkAppend(b *testing.B) {
 	runtime.ReadMemStats(&memBefore)
 
 	db, err := machsvr.NewDatabase()
-	require.Nil(b, err)
+	require.NoError(b, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		b.Error(err.Error())
 	}
@@ -67,12 +68,12 @@ func BenchmarkAppend(b *testing.B) {
 
 func BenchmarkSelect(b *testing.B) {
 	db, err := machsvr.NewDatabase()
-	require.Nil(b, err)
+	require.NoError(b, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		b.Error(err.Error())
 	}

@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate moq -out ./mqtt_mock_test.go -pkg mqtt2 ../../../api Conn Rows Row Result Appender
+//go:generate moq -out ./mqtt_mock_test.go -pkg mqttd ../../../api Conn Rows Row Result Appender
 
 type dbMock struct {
 	api.Database

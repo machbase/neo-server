@@ -7,7 +7,6 @@ import (
 
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/shell/internal/action"
@@ -182,7 +181,7 @@ func doShowUsers(ctx *action.ActionContext) {
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
-	list, err := api.Indexes(ctx.Ctx, api.ConnRpc(ctx.Conn))
+	list, err := api.Indexes(ctx.Ctx, ctx.Conn)
 	if err != nil {
 		ctx.Println("unable to find indexes; ERR", err.Error())
 		return
@@ -337,7 +336,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 
 	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
 	nrow := 0
-	api.Tags(ctx.Ctx, api.ConnRpc(ctx.Conn), strings.ToUpper(args[0]), func(name string, err error) bool {
+	api.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -357,7 +356,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 	}
 
 	t := ctx.NewBox([]string{"NAME", "VALUE"})
-	stat, err := api.TagStat(ctx.Ctx, api.ConnRpc(ctx.Conn), args[0], args[1])
+	stat, err := api.TagStat(ctx.Ctx, ctx.Conn, args[0], args[1])
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -423,7 +422,7 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 			ctx.Println(userMessage)
 		},
 	}
-	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), sqlText); err != nil {
+	if err := query.Execute(ctx.Ctx, ctx.Conn, sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 }
@@ -437,7 +436,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 
 	table := args[0]
 
-	desc, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), table, showAll)
+	desc, err := api.DescribeTable(ctx.Ctx, ctx.Conn, table, showAll)
 	if err != nil {
 		ctx.Println("unable to describe", table, "; ERR", err.Error())
 		return
@@ -457,7 +456,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
 	nrow := 0
-	api.Tables(ctx.Ctx, api.ConnRpc(ctx.Conn), func(ti *api.TableInfo, err error) bool {
+	api.Tables(ctx.Ctx, ctx.Conn, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
@@ -489,8 +488,8 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 	nrow := 0
 	for rows.Next() {
 		var name string
-		var typ types.TableType
-		var flg types.TableFlag
+		var typ api.TableType
+		var flg api.TableFlag
 		var id int
 		err := rows.Scan(&name, &typ, &flg, &id)
 		if err != nil {
@@ -499,7 +498,7 @@ func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
 		}
 		nrow++
 
-		desc := api.TableTypeDescription(types.TableType(typ), flg)
+		desc := api.TableTypeDescription(api.TableType(typ), flg)
 		t.AppendRow(nrow, id, name, desc)
 	}
 	t.Render()

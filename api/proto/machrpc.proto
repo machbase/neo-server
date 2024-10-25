@@ -20,8 +20,6 @@ service Machbase {
     rpc Append(stream AppendData) returns(AppendDone) {}
     rpc Explain(ExplainRequest) returns(ExplainResponse) {}
     rpc UserAuth(UserAuthRequest) returns(UserAuthResponse) {}
-    rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
-    rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
 }
 
 message ConnHandle {
@@ -51,7 +49,7 @@ message ConnCloseResponse{
 }
 
 message PingRequest {
-    ConnHandle conn = 1;
+    reserved      1;  // ConnHandle conn = 1;
     int64 token = 2;
 }
 
@@ -74,6 +72,7 @@ message AppenderResponse {
     AppenderHandle handle = 4;
     string tableName = 5;
     int32 tableType = 6;
+    repeated Column columns = 7;
 }
 
 message AppenderHandle {
@@ -135,11 +134,11 @@ message ExecRequest {
 }
 
 message ExecResponse {
-    bool success = 1;
-    string reason = 2;
-    string elapse = 3;
-    int64 rowsAffected = 4;
-    string message = 5;
+    bool     success      = 1;
+    string   reason       = 2;
+    string   elapse       = 3;
+    int64    rowsAffected = 4;
+    reserved                5;  // string message = 5;
 }
 
 message QueryRowRequest {
@@ -154,7 +153,8 @@ message QueryRowResponse {
     string elapse = 3;
     repeated google.protobuf.Any values = 4;
     int64 rowsAffected = 5;
-    string message = 6;
+    reserved 6;                        // string message = 6;
+    repeated Column columns = 7;
 }
 
 message QueryRequest {
@@ -179,10 +179,12 @@ message ColumnsResponse {
 }
 
 message Column {
-    string name = 1;
-    string type = 2;
-    int32 size = 3;
-    int32 length = 4;
+    string name     = 1;
+    string dataType = 2;
+    reserved          3; // int32  size = 3;
+    int32  length   = 4;
+    int32  type     = 5;
+    int32  flag     = 6;
 }
 
 message RowsHandle {
@@ -213,45 +215,4 @@ message UserAuthResponse {
     bool success = 1;
     string reason = 2;
     string elapse = 3;
-}
-
-message SessionsRequest {
-    bool statz = 1;
-    bool sessions = 2;
-}
-
-message SessionsResponse {
-    bool success = 1;
-    string reason = 2;
-    string elapse = 3;
-    Statz statz = 4;
-    repeated Session Sessions = 5;
-}
-
-message Statz {
-    int64 conns          = 1;
-    int64 stmts          = 2;
-    int64 appenders      = 3;
-    int32 connsInUse     = 4;
-    int32 stmtsInUse     = 5;
-    int32 appendersInUse = 6;
-    int32 rawConns       = 7;
-}
-
-message Session {
-    string id            = 1;
-    int64  creTime       = 2;
-    int64  latestSqlTime = 3;
-    string latestSql     = 4;
-}
-
-message KillSessionRequest {
-    string id       = 1;
-    bool   force    = 2;
-}
-
-message KillSessionResponse {
-    bool   success  = 1;
-    string reason   = 2;
-    string elapse   = 3;
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 )
 
 // Deprecated: no more required
@@ -255,7 +254,7 @@ func (dc *databaseSource) gen(node *Node) {
 	query := &api.Query{
 		Begin: func(q *api.Query) {
 			cols := q.Columns()
-			cols = append([]*types.Column{types.MakeColumnRownum()}, cols...)
+			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
 		Next: func(q *api.Query, nrow int64, values []any) bool {
@@ -267,9 +266,9 @@ func (dc *databaseSource) gen(node *Node) {
 		End: func(q *api.Query, userMessage string, rowsAffected int64) {
 			dc.resultMsg = userMessage
 			if !q.IsFetch() {
-				dc.task.SetResultColumns(types.Columns{
-					types.MakeColumnRownum(),
-					types.MakeColumnString("MESSAGE"),
+				dc.task.SetResultColumns(api.Columns{
+					api.MakeColumnRownum(),
+					api.MakeColumnString("MESSAGE"),
 				})
 				NewRecord(1, userMessage).Tell(node.next)
 			}

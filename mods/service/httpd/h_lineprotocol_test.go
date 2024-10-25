@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,8 +58,8 @@ func TestLineprotocol(t *testing.T) {
 				rm.ScanFunc = func(cols ...any) error {
 					if len(params) == 3 {
 						*(cols[0].(*int)) = 0
-						*(cols[1].(*types.TableType)) = types.TableTypeTag
-						*(cols[2].(*types.TableFlag)) = 0
+						*(cols[1].(*api.TableType)) = api.TableTypeTag
+						*(cols[2].(*api.TableFlag)) = 0
 						*(cols[3].(*int)) = 0
 					}
 					return nil
@@ -100,27 +99,27 @@ func TestLineprotocol(t *testing.T) {
 					switch cnt - 1 {
 					case 0:
 						*(cols[0].(*string)) = "NAME"
-						*(cols[1].(*types.ColumnType)) = types.ColumnTypeVarchar
+						*(cols[1].(*api.ColumnType)) = api.ColumnTypeVarchar
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 1:
 						*(cols[0].(*string)) = "TYPE"
-						*(cols[1].(*types.ColumnType)) = types.ColumnTypeInteger
+						*(cols[1].(*api.ColumnType)) = api.ColumnTypeInteger
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 2:
 						*(cols[0].(*string)) = "LENGTH"
-						*(cols[1].(*types.ColumnType)) = types.ColumnTypeInteger
+						*(cols[1].(*api.ColumnType)) = api.ColumnTypeInteger
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 3:
 						*(cols[0].(*string)) = "ID"
-						*(cols[1].(*types.ColumnType)) = types.ColumnTypeInteger
+						*(cols[1].(*api.ColumnType)) = api.ColumnTypeInteger
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					case 4:
 						*(cols[0].(*string)) = "FLAG"
-						*(cols[1].(*types.ColumnType)) = types.ColumnTypeInteger
+						*(cols[1].(*api.ColumnType)) = api.ColumnTypeInteger
 						*(cols[2].(*int)) = 0
 						*(cols[3].(*uint64)) = 0
 					}

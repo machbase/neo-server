@@ -38,7 +38,7 @@ func main() {
 		`import(`,
 		`   "math"`,
 		``,
-		`	"github.com/machbase/neo-server/api/types"`,
+		`	"github.com/machbase/neo-server/api"`,
 		`	"github.com/machbase/neo-server/mods/expression"`,
 		`	"github.com/machbase/neo-server/mods/codec/opts"`,
 		`	"github.com/machbase/neo-server/mods/nums"`,
@@ -215,7 +215,7 @@ func getConvFunc(ptype string, pname string, funcName string) string {
 		return "LatLng"
 	case "map[string]interface {}":
 		return "Dictionary"
-	case "types.DataType":
+	case "api.DataType":
 		return "DataType"
 	default:
 		panic(fmt.Sprintf("unhandled param type '%v' %s of %s\n", pname, ptype, funcName))

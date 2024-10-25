@@ -6,13 +6,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/pkg/errors"
 )
 
 type Decoder struct {
-	columnTypes  []types.DataType
+	columnTypes  []api.DataType
 	reader       *gojson.Decoder
 	dataDepth    int
 	nrow         int64
@@ -42,7 +42,7 @@ func (dec *Decoder) SetTableName(tableName string) {
 	dec.tableName = tableName
 }
 
-func (dec *Decoder) SetColumnTypes(types ...types.DataType) {
+func (dec *Decoder) SetColumnTypes(types ...api.DataType) {
 	dec.columnTypes = types
 }
 

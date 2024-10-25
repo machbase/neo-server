@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,7 +59,7 @@ func TestAppendTagComplex(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	t.Logf("---- %v (%v)", appender.TableName(), appender.TableType())
+	t.Logf("---- %v (%v)", appender.TableName(), appender.(*machsvr.Appender).TableType())
 
 	expectCount := 100000
 	ts := time.Now()

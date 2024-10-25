@@ -273,11 +273,11 @@ func TestConvTime(t *testing.T) {
 	fval := float64(ts.UnixNano())
 	ret, err = util.ToTime(fval)
 	require.Nil(t, err)
-	require.Equal(t, ts.UnixMilli(), ret.UnixMilli())
+	require.Equal(t, ts.Unix(), ret.Unix())
 
 	ret, err = util.ToTime(&fval)
 	require.Nil(t, err)
-	require.Equal(t, ts.UnixMilli(), ret.UnixMilli())
+	require.Equal(t, ts.Unix(), ret.Unix())
 
 	ival := ts.UnixNano()
 	ret, err = util.ToTime(ival)

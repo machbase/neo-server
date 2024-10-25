@@ -9,7 +9,7 @@ import (
 	"unsafe"
 
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 )
 
 func errorWithCause(obj any, cause error) error {
@@ -249,7 +249,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 		return errorWithCause(stmt, err)
 	}
 	if len(args) != numParam {
-		return types.ErrParamCount(numParam, len(args))
+		return api.ErrParamCount(numParam, len(args))
 	}
 
 	paramsDesc := make([]mach.CliParamDesc, numParam)
@@ -262,7 +262,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 	}
 
 	if len(args) != numParam {
-		return types.ErrParamCount(numParam, len(args))
+		return api.ErrParamCount(numParam, len(args))
 	}
 
 	for paramNo, pd := range paramsDesc {
@@ -272,7 +272,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 		arg := args[paramNo]
 		switch pd.Type {
 		default:
-			return types.ErrDatabaseBindUnknownType(paramNo, int(pd.Type))
+			return api.ErrDatabaseBindUnknownType(paramNo, int(pd.Type))
 		case mach.MACHCLI_SQL_TYPE_INT16:
 			switch val := arg.(type) {
 			case int16:
@@ -280,7 +280,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&val)
 				valueLen = 2
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), arg)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), arg)
 			}
 		case mach.MACHCLI_SQL_TYPE_INT32:
 			switch val := arg.(type) {
@@ -289,7 +289,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&val)
 				valueLen = 4
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_INT64:
 			switch val := arg.(type) {
@@ -298,7 +298,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&val)
 				valueLen = 8
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_DATETIME:
 			switch val := arg.(type) {
@@ -312,7 +312,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&v)
 				valueLen = 8
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_FLOAT:
 			switch val := arg.(type) {
@@ -326,7 +326,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&v)
 				valueLen = 4
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_DOUBLE:
 			switch val := arg.(type) {
@@ -339,7 +339,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&val)
 				valueLen = 8
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_IPV4:
 			switch val := arg.(type) {
@@ -349,7 +349,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&v[0])
 				valueLen = 4
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_IPV6:
 			switch val := arg.(type) {
@@ -359,7 +359,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = unsafe.Pointer(&v[0])
 				valueLen = 16
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_STRING:
 			switch val := arg.(type) {
@@ -369,7 +369,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = (unsafe.Pointer)(&bStr[0])
 				valueLen = len(bStr)
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		case mach.MACHCLI_SQL_TYPE_BINARY:
 			switch val := arg.(type) {
@@ -378,7 +378,7 @@ func (stmt *Stmt) bindParams(args ...any) error {
 				value = (unsafe.Pointer)(&val[0])
 				valueLen = len(val)
 			default:
-				return types.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
+				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
 		}
 
@@ -404,11 +404,11 @@ func (rs *Result) Err() error {
 }
 
 func (rs *Result) LastInsertId() (int64, error) {
-	return 0, types.ErrNotImplemented("LastInsertId")
+	return 0, api.ErrNotImplemented("LastInsertId")
 }
 
 // func (rs *Result) RowsAffected() (int64, error) {
-// 	return 0, types.ErrNotImplemented("RowsAffected")
+// 	return 0, api.ErrNotImplemented("RowsAffected")
 // 	// return rs.rowsAffected, nil
 // }
 
@@ -648,7 +648,7 @@ func (r *Row) Err() error {
 
 func (r *Row) Scan(dest ...any) error {
 	if len(dest) > len(r.values) {
-		return types.ErrParamCount(len(r.values), len(dest))
+		return api.ErrParamCount(len(r.values), len(dest))
 	}
 	for i, d := range dest {
 		if d == nil {
@@ -657,7 +657,7 @@ func (r *Row) Scan(dest ...any) error {
 		if r.values[i] == nil {
 			continue
 		}
-		if err := types.Scan(r.values[i], d); err != nil {
+		if err := api.Scan(r.values[i], d); err != nil {
 			return err
 		}
 	}
@@ -697,8 +697,8 @@ func (r *Rows) IsFetchable() bool {
 	return false
 }
 
-func (r *Rows) Columns() ([]string, []types.DataType, error) {
-	return nil, nil, types.ErrNotImplemented("Columns")
+func (r *Rows) Columns() ([]string, []api.DataType, error) {
+	return nil, nil, api.ErrNotImplemented("Columns")
 }
 
 func (r *Rows) Message() string {
@@ -734,7 +734,7 @@ func (r *Rows) ColumnDescriptions() []ColumnDesc {
 
 func (r *Rows) Scan(dest ...any) error {
 	if len(dest) > len(r.row) {
-		return types.ErrParamCount(len(r.row), len(dest))
+		return api.ErrParamCount(len(r.row), len(dest))
 	}
 	for i, d := range dest {
 		if d == nil {
@@ -743,7 +743,7 @@ func (r *Rows) Scan(dest ...any) error {
 		if r.row[i] == nil {
 			continue
 		}
-		if err := types.Scan(r.row[i], d); err != nil {
+		if err := api.Scan(r.row[i], d); err != nil {
 			return err
 		}
 	}
@@ -788,7 +788,7 @@ func (c *Conn) Appender(tableName string, opts ...AppenderOption) (*Appender, er
 		stmt.columnDescs[i-1] = d
 		ret.columnTypes = append(ret.columnTypes, mach.SqlType(d.Type))
 		ret.columnNames = append(ret.columnNames, d.Name)
-		ret.columnDataTypes = append(ret.columnDataTypes, types.ParseDataType(d.Type.String()))
+		ret.columnDataTypes = append(ret.columnDataTypes, api.ParseDataType(d.Type.String()))
 	}
 
 	return ret, nil
@@ -800,7 +800,7 @@ type Appender struct {
 	errCheckCount   int
 	columnTypes     []mach.SqlType
 	columnNames     []string
-	columnDataTypes []types.DataType
+	columnDataTypes []api.DataType
 }
 
 type AppenderOption func(*Appender)
@@ -828,7 +828,7 @@ func (a *Appender) TableName() string {
 	return a.tableName
 }
 
-func (a *Appender) Columns() ([]string, []types.DataType, error) {
+func (a *Appender) Columns() ([]string, []api.DataType, error) {
 	return a.columnNames, a.columnDataTypes, nil
 }
 
@@ -848,5 +848,5 @@ func (a *Appender) Append(args ...any) error {
 }
 
 func (a *Appender) AppendWithTimestamp(ts time.Time, values ...any) error {
-	return types.ErrNotImplemented("AppendWithTimestamp")
+	return api.ErrNotImplemented("AppendWithTimestamp")
 }

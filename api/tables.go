@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-server/api/types"
 	"github.com/pkg/errors"
 )
 
 type TableInfo struct {
-	Database string          `json:"database"`
-	User     string          `json:"user"`
-	Name     string          `json:"name"`
-	Type     types.TableType `json:"type"`
-	Flag     types.TableFlag `json:"flag"`
+	Database string    `json:"database"`
+	User     string    `json:"user"`
+	Name     string    `json:"name"`
+	Type     TableType `json:"type"`
+	Flag     TableFlag `json:"flag"`
 }
 
 func (ti *TableInfo) Kind() string {
@@ -67,11 +66,11 @@ func Tables(ctx context.Context, conn Conn, callback func(*TableInfo, error) boo
 	}
 }
 
-func TableType(ctx context.Context, conn Conn, fullTableName string) (types.TableType, error) {
+func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (TableType, error) {
 	_, userName, tableName := TokenizeFullTableName(fullTableName)
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
-	var ret types.TableType
+	var ret TableType
 	if err := r.Scan(&ret); err != nil {
 		return -1, err
 	}
@@ -100,12 +99,12 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 
 	// TRUNCATE TABLE
 	if truncate {
-		tableType, err0 := TableType(ctx, conn, fullTableName)
+		tableType, err0 := QueryTableType(ctx, conn, fullTableName)
 		if err0 != nil {
 			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", fullTableName))
 			return
 		}
-		if tableType == types.TableTypeLog {
+		if tableType == TableTypeLog {
 			result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
 			if result.Err() != nil {
 				err = result.Err()

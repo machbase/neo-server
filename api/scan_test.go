@@ -1,4 +1,4 @@
-package types_test
+package api_test
 
 import (
 	"database/sql/driver"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,16 +96,16 @@ func TestScan(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if err := types.Scan(tt.src, tt.dst); err != nil {
+		if err := api.Scan(tt.src, tt.dst); err != nil {
 			t.Errorf("%s: Scan(%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result := types.Unbox(tt.dst)
+		result := api.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
 
-		if err := types.Scan(box(tt.src), tt.dst); err != nil {
+		if err := api.Scan(box(tt.src), tt.dst); err != nil {
 			t.Errorf("%s: Scan(*%v, %v) got error: %v", tt.name, tt.src, tt.dst, err)
 		}
-		result = types.Unbox(tt.dst)
+		result = api.Unbox(tt.dst)
 		require.EqualValues(t, tt.expect, result, "%s: Scan(*%T, %T) got %v, want %v", tt.name, tt.src, tt.dst, result, tt.expect)
 	}
 }

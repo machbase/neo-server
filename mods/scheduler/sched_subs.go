@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
@@ -367,7 +366,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	var recno uint64
 	var insertQuery string
 	var columnNames []string
-	var columnTypes []types.DataType
+	var columnTypes []api.DataType
 
 	if ent.wd.Format == "json" {
 		bs, err := io.ReadAll(instream)
@@ -388,18 +387,18 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
-			columnTypes = make([]types.DataType, 0, len(columnNames))
+			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
 				_hold = append(_hold, "?")
-				_type := types.ColumnTypeUnknown
+				_type := api.ColumnTypeUnknown
 				for _, d := range desc.Columns {
 					if d.Name == strings.ToUpper(colName) {
 						_type = d.Type
 						break
 					}
 				}
-				if _type == types.ColumnTypeUnknown {
+				if _type == api.ColumnTypeUnknown {
 					rsp.Reason = fmt.Sprintf("%s column %q not found in the table %q", ent.name, colName, ent.wd.Table)
 					ent.log.Warnf("column %q not found in the table %q", colName, ent.wd.Table)
 					return
@@ -510,10 +509,10 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(payload)}
 	}
 
-	cols, _ := api.AppenderColumns(ent.appender)
+	cols, _ := ent.appender.Columns()
 	colNames := cols.Names()
 	colTypes := cols.DataTypes()
-	if api.AppenderTableType(ent.appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+	if ent.appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 		colNames = colNames[1:]
 		colTypes = colTypes[1:]
 	}

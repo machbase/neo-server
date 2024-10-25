@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -24,7 +24,7 @@ type Exporter struct {
 	timeformatter *util.TimeFormatter
 
 	colNames []string
-	colTypes []types.DataType
+	colTypes []api.DataType
 
 	transpose   bool
 	rowsFlatten bool
@@ -81,7 +81,7 @@ func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
-func (ex *Exporter) SetColumnTypes(columnTypes ...types.DataType) {
+func (ex *Exporter) SetColumnTypes(columnTypes ...api.DataType) {
 	ex.colTypes = columnTypes
 }
 
@@ -99,10 +99,10 @@ func (ex *Exporter) SetRowsArray(flag bool) {
 
 func (ex *Exporter) Open() error {
 	var columnNames []string
-	var columnTypes []types.DataType
+	var columnTypes []api.DataType
 	if ex.Rownum && !ex.transpose { // rownum does not effective in transpose mode
 		columnNames = append([]string{"ROWNUM"}, ex.colNames...)
-		columnTypes = append([]types.DataType{types.DataTypeInt64}, ex.colTypes...)
+		columnTypes = append([]api.DataType{api.DataTypeInt64}, ex.colTypes...)
 	} else {
 		columnNames = ex.colNames
 		columnTypes = ex.colTypes

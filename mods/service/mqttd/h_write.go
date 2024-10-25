@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/service/msg"
@@ -198,7 +197,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	var recNo int
 	var insertQuery string
 	var columnNames []string
-	var columnTypes []types.DataType
+	var columnTypes []api.DataType
 
 	if wp.Format == "json" {
 		bs, err := io.ReadAll(inputStream)
@@ -219,18 +218,18 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 
 		if wr.Data != nil && len(wr.Data.Columns) > 0 {
 			columnNames = wr.Data.Columns
-			columnTypes = make([]types.DataType, 0, len(columnNames))
+			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
 				_hold = append(_hold, "?")
-				_type := types.ColumnTypeUnknown
+				_type := api.ColumnTypeUnknown
 				for _, d := range desc.Columns {
 					if d.Name == strings.ToUpper(colName) {
 						_type = d.Type
 						break
 					}
 				}
-				if _type == types.ColumnTypeUnknown {
+				if _type == api.ColumnTypeUnknown {
 					rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, wp.Table)
 					s.log.Warn(cl.Net.Remote, rsp.Reason)
 					return
@@ -245,7 +244,7 @@ func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 
 	if len(columnNames) == 0 {
 		columnNames = desc.Columns.Names()
-		columnTypes = make([]types.DataType, 0, len(desc.Columns))
+		columnTypes = make([]api.DataType, 0, len(desc.Columns))
 		for _, c := range desc.Columns {
 			columnTypes = append(columnTypes, c.Type.DataType())
 		}

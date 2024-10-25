@@ -3,8 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-
-	"github.com/machbase/neo-server/api/types"
 )
 
 type Query struct {
@@ -20,7 +18,7 @@ type Query struct {
 	End func(q *Query, userMessage string, numRows int64)
 
 	isFetch bool
-	columns types.Columns
+	columns Columns
 }
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
@@ -33,7 +31,7 @@ func (qc *Query) IsFetch() bool {
 
 // Columns returns the columns of the query result.
 // If the sqlText was not a select query, it returns nil.
-func (qc *Query) Columns() types.Columns {
+func (qc *Query) Columns() Columns {
 	return qc.columns
 }
 
@@ -61,7 +59,7 @@ func query(query *Query, ctx context.Context, conn Conn, sqlText string, args ..
 		return nil
 	}
 
-	if cols, err := RowsColumns(rows); err != nil {
+	if cols, err := rows.Columns(); err != nil {
 		return err
 	} else {
 		query.columns = cols
@@ -72,7 +70,7 @@ func query(query *Query, ctx context.Context, conn Conn, sqlText string, args ..
 	if query.End != nil {
 		defer func() {
 			if numRows == 0 {
-				userMessage = "no row fetched."
+				userMessage = "no rows fetched."
 			} else if numRows == 1 {
 				userMessage = "a row fetched."
 			} else {

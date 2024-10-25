@@ -6,20 +6,12 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
 func TestWatchLogTable(t *testing.T) {
-	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
-		t.Log("Error", err.Error())
-		t.Fail()
-	} else {
-		db = api.NewDatabase(machsvr_db)
-	}
+	db := machsvrDatabase(t)
 	ctx := context.TODO()
-
 	conf := api.WatcherConfig{
 		ConnProvider: func() (api.Conn, error) {
 			return db.Connect(ctx, api.WithTrustUser("sys"))

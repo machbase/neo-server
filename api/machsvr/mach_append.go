@@ -8,10 +8,8 @@ import (
 	"unsafe"
 
 	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 )
-
-type AppenderOption func(*Appender)
 
 // Appender creates a new Appender for the given table.
 // Appender should be closed as soon as finishing work, otherwise it may cause server side resource leak.
@@ -22,19 +20,19 @@ type AppenderOption func(*Appender)
 //	app, _ := conn.Appender(ctx, "MY_TABLE")
 //	defer app.Close()
 //	app.Append("name", time.Now(), 3.14)
-func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...AppenderOption) (*Appender, error) {
+func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	appender := &Appender{}
 	appender.conn = conn
 	appender.tableName = strings.ToUpper(tableName)
 
-	for _, opt := range opts {
-		opt(appender)
-	}
+	// for _, opt := range opts {
+	// 	opt(appender)
+	// }
 
 	// table type
 	// make a new internal connection to avoid MACH-ERR 2118
 	// MACH-ERR 2118 Lock object was already initialized. (Do not use select and append simultaneously in single session.)
-	if queryCon, err := conn.db.Connect(ctx, WithTrustUser("sys")); err != nil {
+	if queryCon, err := conn.db.Connect(ctx, api.WithTrustUser("sys")); err != nil {
 		return nil, err
 	} else {
 		defer queryCon.Close()
@@ -50,7 +48,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 		if typ < 0 || typ > 6 {
 			return nil, fmt.Errorf("table '%s' not found", tableName)
 		}
-		appender.tableType = types.TableType(typ)
+		appender.tableType = api.TableType(typ)
 	}
 	if err := mach.EngAllocStmt(appender.conn.handle, &appender.stmt); err != nil {
 		return nil, err
@@ -67,9 +65,9 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	appender.columnNames = make([]string, colCount)
-	appender.columnTypes = make([]types.DataType, colCount)
+	appender.columns = make(api.Columns, colCount)
 	columnTypesString := make([]string, colCount)
+	columnNamesString := make([]string, colCount)
 	for i := 0; i < colCount; i++ {
 		var columnName string
 		var columnType, columnSize, columnLength int
@@ -84,28 +82,34 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...Append
 			mach.EngFreeStmt(appender.stmt)
 			return nil, mach.ErrDatabaseWrap("MachColumnInfo %s", err)
 		}
-		appender.columnNames[i] = columnName
-		appender.columnTypes[i] = typ
+		appender.columns[i] = &api.Column{
+			Name:     columnName,
+			Type:     api.ColumnType(columnType),
+			Length:   columnLength,
+			DataType: typ,
+		}
+		columnNamesString[i] = columnName
 		columnTypesString[i] = string(typ)
 	}
-	appender.buffer = mach.EngMakeAppendBuffer(appender.stmt, appender.columnNames, columnTypesString)
+	appender.buffer = mach.EngMakeAppendBuffer(appender.stmt, columnNamesString, columnTypesString)
 	return appender, nil
 }
 
 type Appender struct {
-	conn        *Conn
-	stmt        unsafe.Pointer
-	tableName   string
-	tableType   types.TableType
-	closed      bool
-	columnNames []string
-	columnTypes []types.DataType
+	conn      *Conn
+	stmt      unsafe.Pointer
+	tableName string
+	tableType api.TableType
+	closed    bool
+	columns   api.Columns
 
 	buffer *mach.AppendBuffer
 
 	successCount int64
 	failCount    int64
 }
+
+var _ api.Appender = (*Appender)(nil)
 
 func (ap *Appender) Close() (int64, int64, error) {
 	if ap.closed {
@@ -133,18 +137,18 @@ func (ap *Appender) TableName() string {
 	return ap.tableName
 }
 
-func (ap *Appender) Columns() ([]string, []types.DataType, error) {
-	return ap.columnNames, ap.columnTypes, nil
+func (ap *Appender) Columns() (api.Columns, error) {
+	return ap.columns, nil
 }
 
-func (ap *Appender) TableType() types.TableType {
+func (ap *Appender) TableType() api.TableType {
 	return ap.tableType
 }
 
 func (ap *Appender) Append(values ...any) error {
-	if ap.tableType == types.TableTypeTag {
+	if ap.tableType == api.TableTypeTag {
 		return ap.append(values...)
-	} else if ap.tableType == types.TableTypeLog {
+	} else if ap.tableType == api.TableTypeLog {
 		colsWithTime := append([]any{time.Time{}}, values...)
 		return ap.append(colsWithTime...)
 	} else {
@@ -153,7 +157,7 @@ func (ap *Appender) Append(values ...any) error {
 }
 
 func (ap *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
-	if ap.tableType == types.TableTypeLog {
+	if ap.tableType == api.TableTypeLog {
 		colsWithTime := append([]any{ts}, cols...)
 		return ap.append(colsWithTime...)
 	} else {
@@ -162,17 +166,17 @@ func (ap *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
 }
 
 func (ap *Appender) append(values ...any) error {
-	if len(ap.columnTypes) == 0 {
-		return types.ErrDatabaseNoColumns(ap.tableName)
+	if len(ap.columns) == 0 {
+		return api.ErrDatabaseNoColumns(ap.tableName)
 	}
-	if len(ap.columnNames) != len(values) {
-		return types.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columnNames), len(values))
+	if len(ap.columns) != len(values) {
+		return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
 	}
 	if ap.closed {
-		return types.ErrDatabaseClosedAppender
+		return api.ErrDatabaseClosedAppender
 	}
 	if ap.conn == nil || !ap.conn.Connected() {
-		return types.ErrDatabaseNoConnection
+		return api.ErrDatabaseNoConnection
 	}
 
 	return ap.buffer.Append(values...)

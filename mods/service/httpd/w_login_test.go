@@ -2,6 +2,7 @@ package httpd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,7 @@ type TestServerMock struct {
 	DatabaseMock
 }
 
-func (dbmock *TestServerMock) UserAuth(user, password string) (bool, error) {
+func (dbmock *TestServerMock) UserAuth(ctx context.Context, user string, password string) (bool, error) {
 	return user == "sys" && password == "manager", nil
 }
 

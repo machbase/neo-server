@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/stretchr/testify/require"
 )
@@ -22,10 +23,10 @@ func newClient(t *testing.T) *machrpc.Client {
 	return cli
 }
 
-func newConn(t *testing.T) *machrpc.Conn {
+func newConn(t *testing.T) api.Conn {
 	t.Helper()
 	cli := newClient(t)
-	conn, err := cli.Connect(context.TODO(), machrpc.WithPassword("sys", "manager"))
+	conn, err := cli.Connect(context.TODO(), api.WithPassword("sys", "manager"))
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 	return conn
@@ -36,12 +37,12 @@ func TestAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new client: %s", err.Error())
 	}
-	ok, err := cli.UserAuth("sys", "mm")
+	ok, err := cli.UserAuth(context.TODO(), "sys", "mm")
 	require.NotNil(t, err)
 	require.Equal(t, "invalid username or password", err.Error())
 	require.False(t, ok)
 
-	ok, err = cli.UserAuth("sys", "manager")
+	ok, err = cli.UserAuth(context.TODO(), "sys", "manager")
 	if err != nil {
 		t.Fatalf("UserAuth failed: %s", err.Error())
 	}
@@ -73,28 +74,26 @@ func TestNewClient(t *testing.T) {
 	require.Nil(t, conn)
 
 	// wrong password
-	conn, err = cli.Connect(ctx, machrpc.WithPassword("sys", "mm"))
+	conn, err = cli.Connect(ctx, api.WithPassword("sys", "mm"))
 	require.NotNil(t, err)
 	require.Equal(t, "invalid username or password", err.Error())
 	require.Nil(t, conn)
 
 	// correct username, password
-	conn, err = cli.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	conn, err = cli.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 
 	conn.Close()
 }
 
-type Pinger interface {
-	Ping() (time.Duration, error)
-}
-
 func TestPing(t *testing.T) {
-	pinger := newConn(t)
-	_, err := pinger.Ping()
+	cli, err := machrpc.NewClient(&machrpc.Config{ServerAddr: MockServerAddr})
+	if err != nil {
+		t.Fatalf("new client: %s", err.Error())
+	}
+	_, err = cli.Ping(context.TODO())
 	require.Nil(t, err)
-	pinger.Close()
 }
 
 type Explainer interface {
@@ -127,11 +126,11 @@ func TestQueryRow(t *testing.T) {
 	row := conn.QueryRow(context.TODO(), "select count(*) from example where name = ?", "query1")
 	require.NotNil(t, row)
 
-	require.True(t, row.Success())
 	require.Nil(t, row.Err())
 	require.Equal(t, int64(1), row.RowsAffected())
 	require.Equal(t, "a row selected.", row.Message())
-	require.Equal(t, 1, len(row.Values()))
+	columns, _ := row.Columns()
+	require.Equal(t, 1, len(columns))
 
 	var val int
 	if err := row.Scan(&val); err != nil {
@@ -153,12 +152,11 @@ func TestQuery(t *testing.T) {
 	require.Equal(t, int64(0), rows.RowsAffected())
 	require.Equal(t, "success", rows.Message())
 
-	names, types, err := rows.Columns()
+	columns, err := rows.Columns()
 	if err != nil {
 		t.Fatalf("columns error, %s", err.Error())
 	}
-	require.Equal(t, 3, len(names))
-	require.Equal(t, 3, len(types))
+	require.Equal(t, 3, len(columns))
 
 	var name string
 	var ts time.Time

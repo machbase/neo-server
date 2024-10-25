@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/mods"
@@ -84,10 +83,10 @@ type SessionWatcher interface {
 
 var _ SessionWatcher = &machsvr.Database{}
 
-func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, sessions []*machrpc.Session, err error) {
+func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, sessions []*mgmt.Session, err error) {
 	if reqStatz {
 		if st := machsvr.StatzSnapshot(); st != nil {
-			statz = &machrpc.Statz{
+			statz = &mgmt.Statz{
 				Conns:          st.Conns,
 				ConnsInUse:     st.ConnsInUse,
 				Stmts:          st.Stmts,
@@ -99,9 +98,9 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *machrpc.Statz, 
 		}
 	}
 	if reqSessions {
-		sessions = []*machrpc.Session{}
+		sessions = []*mgmt.Session{}
 		s.db.ListWatcher(func(st *machsvr.ConnState) bool {
-			sessions = append(sessions, &machrpc.Session{
+			sessions = append(sessions, &mgmt.Session{
 				Id:            st.Id,
 				CreTime:       st.CreatedTime.UnixNano(),
 				LatestSqlTime: st.LatestTime.UnixNano(),

@@ -32,6 +32,8 @@ const (
 	Management_DelShell_FullMethodName     = "/mgmt.Management/DelShell"
 	Management_ServicePorts_FullMethodName = "/mgmt.Management/ServicePorts"
 	Management_ServerInfo_FullMethodName   = "/mgmt.Management/ServerInfo"
+	Management_Sessions_FullMethodName     = "/mgmt.Management/Sessions"
+	Management_KillSession_FullMethodName  = "/mgmt.Management/KillSession"
 )
 
 // ManagementClient is the client API for Management service.
@@ -51,6 +53,8 @@ type ManagementClient interface {
 	DelShell(ctx context.Context, in *DelShellRequest, opts ...grpc.CallOption) (*DelShellResponse, error)
 	ServicePorts(ctx context.Context, in *ServicePortsRequest, opts ...grpc.CallOption) (*ServicePortsResponse, error)
 	ServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfoResponse, error)
+	Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error)
+	KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error)
 }
 
 type managementClient struct {
@@ -191,6 +195,26 @@ func (c *managementClient) ServerInfo(ctx context.Context, in *ServerInfoRequest
 	return out, nil
 }
 
+func (c *managementClient) Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SessionsResponse)
+	err := c.cc.Invoke(ctx, Management_Sessions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *managementClient) KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KillSessionResponse)
+	err := c.cc.Invoke(ctx, Management_KillSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ManagementServer is the server API for Management service.
 // All implementations must embed UnimplementedManagementServer
 // for forward compatibility.
@@ -208,6 +232,8 @@ type ManagementServer interface {
 	DelShell(context.Context, *DelShellRequest) (*DelShellResponse, error)
 	ServicePorts(context.Context, *ServicePortsRequest) (*ServicePortsResponse, error)
 	ServerInfo(context.Context, *ServerInfoRequest) (*ServerInfoResponse, error)
+	Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error)
+	KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error)
 	mustEmbedUnimplementedManagementServer()
 }
 
@@ -256,6 +282,12 @@ func (UnimplementedManagementServer) ServicePorts(context.Context, *ServicePorts
 }
 func (UnimplementedManagementServer) ServerInfo(context.Context, *ServerInfoRequest) (*ServerInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ServerInfo not implemented")
+}
+func (UnimplementedManagementServer) Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Sessions not implemented")
+}
+func (UnimplementedManagementServer) KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method KillSession not implemented")
 }
 func (UnimplementedManagementServer) mustEmbedUnimplementedManagementServer() {}
 func (UnimplementedManagementServer) testEmbeddedByValue()                    {}
@@ -512,6 +544,42 @@ func _Management_ServerInfo_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Management_Sessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SessionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServer).Sessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Management_Sessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServer).Sessions(ctx, req.(*SessionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Management_KillSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KillSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManagementServer).KillSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Management_KillSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManagementServer).KillSession(ctx, req.(*KillSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Management_ServiceDesc is the grpc.ServiceDesc for Management service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -570,6 +638,14 @@ var Management_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ServerInfo",
 			Handler:    _Management_ServerInfo_Handler,
+		},
+		{
+			MethodName: "Sessions",
+			Handler:    _Management_Sessions_Handler,
+		},
+		{
+			MethodName: "KillSession",
+			Handler:    _Management_KillSession_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

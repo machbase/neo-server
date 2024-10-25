@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/util"
 )
 
@@ -47,10 +47,10 @@ func (cli *Actor) Process(line string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var conn *machrpc.Conn
+	var conn api.Conn
 	closeOnce := sync.Once{}
 
-	conn, err := cli.db.Connect(ctx, machrpc.WithPassword(cli.conf.User, cli.conf.Password))
+	conn, err := cli.db.Connect(ctx, api.WithPassword(cli.conf.User, cli.conf.Password))
 	if err != nil {
 		fmt.Println("ERR", err.Error())
 		return

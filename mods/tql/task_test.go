@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/model"
 	"github.com/machbase/neo-server/mods/tql"
@@ -225,10 +224,11 @@ var mockDb = DatabaseMock{
 						IsFetchableFunc: func() bool { return true },
 						NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
 						CloseFunc:       func() error { return nil },
-						ColumnsFunc: func() ([]string, []types.DataType, error) {
-							return []string{"time", "value"},
-								[]types.DataType{types.DataTypeDatetime, types.DataTypeFloat64},
-								nil
+						ColumnsFunc: func() (api.Columns, error) {
+							return api.Columns{
+								{Name: "time", DataType: api.ColumnTypeDatetime.DataType()},
+								{Name: "value", DataType: api.ColumnTypeDouble.DataType()},
+							}, nil
 						},
 						MessageFunc: func() string { return "no rows selected." },
 						ScanFunc: func(cols ...any) error {

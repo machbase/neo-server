@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
 )
 
@@ -43,8 +44,8 @@ func main() {
 	defer cli.Close()
 
 	var ctx = context.TODO()
-	var conn *machrpc.Conn
-	if c, err := cli.Connect(ctx, machrpc.WithPassword("sys", "manager")); err != nil {
+	var conn api.Conn
+	if c, err := cli.Connect(ctx, api.WithPassword("sys", "manager")); err != nil {
 		panic(err)
 	} else {
 		conn = c

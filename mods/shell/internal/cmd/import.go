@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/shell/internal/action"
@@ -111,7 +110,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, truncated, err := api.ExistsTableTruncate(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, cmd.TruncateTable)
+	exists, truncated, err := api.ExistsTableTruncate(ctx.Ctx, ctx.Conn, cmd.Table, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -125,7 +124,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), cmd.Table, false); err != nil {
+	if desc0, err := api.DescribeTable(ctx.Ctx, ctx.Conn, cmd.Table, false); err != nil {
 		ctx.Printfln("ERR fail to get table info '%s', %s", cmd.Table, err.Error())
 		return
 	} else {
@@ -177,7 +176,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	decoder := codec.NewDecoder(cmd.InputFormat, decOpts...)
-	var appender *machrpc.Appender
+	var appender api.Appender
 	var lineno int = 0
 
 	hold := []string{}

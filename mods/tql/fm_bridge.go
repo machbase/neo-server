@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/bridge"
 )
 
@@ -70,11 +70,11 @@ func (bn *bridgeNode) genBridgeQuery(node *Node, br bridge.SqlBridge) {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
-	var cols types.Columns = make([]*types.Column, 0)
-	cols = append(cols, types.MakeColumnRownum())
+	var cols api.Columns = make([]*api.Column, 0)
+	cols = append(cols, api.MakeColumnRownum())
 	for _, c := range columns {
 		typ := c.ScanType().String()
-		cols = append(cols, &types.Column{Name: c.Name(), DataType: types.ParseDataType(typ)})
+		cols = append(cols, &api.Column{Name: c.Name(), DataType: api.ParseDataType(typ)})
 	}
 	node.task.SetResultColumns(cols)
 

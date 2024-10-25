@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type Decoder struct {
 	reader       *json.Decoder
-	columnTypes  []types.DataType
+	columnTypes  []api.DataType
 	columnNames  []string
 	nrow         int64
 	input        spec.InputStream
@@ -44,7 +44,7 @@ func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
 }
 
-func (dec *Decoder) SetColumnTypes(types ...types.DataType) {
+func (dec *Decoder) SetColumnTypes(types ...api.DataType) {
 	dec.columnTypes = types
 }
 

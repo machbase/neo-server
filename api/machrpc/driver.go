@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/url"
 	"time"
+
+	"github.com/machbase/neo-server/api"
 )
 
 func init() {
@@ -101,14 +103,14 @@ func (d *NeoDriver) Open(name string) (driver.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	conn, err := client.Connect(ctx, WithPassword(ds.User, ds.Password))
+	conn, err := client.Connect(ctx, api.WithPassword(ds.User, ds.Password))
 	if err != nil {
 		return nil, err
 	}
 
 	ret := &NeoConn{
 		name: name,
-		conn: conn,
+		conn: conn.(*Conn),
 	}
 	return ret, nil
 }
@@ -124,7 +126,10 @@ func (d *NeoDriver) OpenConnector(name string) (driver.Connector, error) {
 		return nil, err
 	}
 
-	ok, err := client.UserAuth(ds.User, ds.Password)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	ok, err := client.UserAuth(ctx, ds.User, ds.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -151,13 +156,13 @@ type NeoConnector struct {
 }
 
 func (cn *NeoConnector) Connect(ctx context.Context) (driver.Conn, error) {
-	conn, err := cn.client.Connect(ctx, WithPassword(cn.user, cn.password))
+	conn, err := cn.client.Connect(ctx, api.WithPassword(cn.user, cn.password))
 	if err != nil {
 		return nil, err
 	}
 	ret := &NeoConn{
 		name: cn.name,
-		conn: conn,
+		conn: conn.(*Conn),
 	}
 	return ret, nil
 }
@@ -203,7 +208,7 @@ func (c *NeoConn) QueryContext(ctx context.Context, query string, args []driver.
 	if err != nil {
 		return nil, err
 	}
-	return &NeoRows{rows: rows}, nil
+	return &NeoRows{rows: rows.(*Rows)}, nil
 }
 
 func (c *NeoConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
@@ -215,7 +220,7 @@ func (c *NeoConn) ExecContext(ctx context.Context, query string, args []driver.N
 	if row.Err() != nil {
 		return nil, row.Err()
 	}
-	return &NeoResult{row: row}, nil
+	return &NeoResult{row: row.(*Row)}, nil
 }
 
 func (c *NeoConn) Prepare(query string) (driver.Stmt, error) {
@@ -274,7 +279,7 @@ func (stmt *NeoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	if row.Err() != nil {
 		return nil, row.Err()
 	}
-	return &NeoResult{row: row}, nil
+	return &NeoResult{row: row.(*Row)}, nil
 }
 
 func (stmt *NeoStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
@@ -286,7 +291,7 @@ func (stmt *NeoStmt) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	if row.Err() != nil {
 		return nil, row.Err()
 	}
-	return &NeoResult{row: row}, nil
+	return &NeoResult{row: row.(*Row)}, nil
 }
 
 func (stmt *NeoStmt) Query(args []driver.Value) (driver.Rows, error) {
@@ -304,7 +309,7 @@ func (stmt *NeoStmt) Query(args []driver.Value) (driver.Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &NeoRows{rows: rows}, nil
+	return &NeoRows{rows: rows.(*Rows)}, nil
 }
 
 func (stmt *NeoStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
@@ -316,7 +321,7 @@ func (stmt *NeoStmt) QueryContext(ctx context.Context, args []driver.NamedValue)
 	if err != nil {
 		return nil, err
 	}
-	return &NeoRows{rows: rows}, nil
+	return &NeoRows{rows: rows.(*Rows)}, nil
 }
 
 type NeoResult struct {
@@ -341,7 +346,9 @@ type NeoRows struct {
 
 func (r *NeoRows) Columns() []string {
 	if r.colNames == nil {
-		r.colNames, _, _ = r.rows.Columns()
+		if cols, err := r.rows.Columns(); err == nil {
+			r.colNames = cols.Names()
+		}
 	}
 	return r.colNames
 }

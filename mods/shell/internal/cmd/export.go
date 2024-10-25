@@ -153,7 +153,7 @@ func doExport(ctx *action.ActionContext) {
 		},
 	}
 
-	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), "select * from "+cmd.Table); err != nil {
+	if err := query.Execute(ctx.Ctx, ctx.Conn, "select * from "+cmd.Table); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 	if printProgress {

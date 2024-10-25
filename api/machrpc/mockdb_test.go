@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
-	"github.com/machbase/neo-server/api/types"
 	"google.golang.org/grpc"
 )
 
@@ -116,10 +116,6 @@ func (ms *MockServer) ConnClose(ctx context.Context, req *machrpc.ConnCloseReque
 }
 
 func (ms *MockServer) Ping(ctx context.Context, req *machrpc.PingRequest) (*machrpc.PingResponse, error) {
-	_, ok := ms.conns[req.Conn.Handle]
-	if !ok {
-		return &machrpc.PingResponse{Success: false, Reason: "invalid connection", Elapse: "1ms."}, nil
-	}
 	return &machrpc.PingResponse{
 		Success: true,
 		Reason:  "success",
@@ -155,7 +151,7 @@ func (ms *MockServer) Exec(ctx context.Context, req *machrpc.ExecRequest) (*mach
 	switch req.Sql {
 	case `insert into example (name, time, value) values(?, ?, ?)`:
 		ret.RowsAffected = 1
-		ret.Message = "a row inserted."
+		ret.Reason = "a row inserted."
 	default:
 		ret.Success, ret.Reason = false, "unknown test case"
 	}
@@ -172,7 +168,7 @@ func (ms *MockServer) QueryRow(ctx context.Context, req *machrpc.QueryRowRequest
 	switch req.Sql {
 	case `select count(*) from example where name = ?`:
 		ret.Values, _ = machrpc.ConvertAnyToPb([]any{int64(123)})
-		ret.Message = "a row selected."
+		ret.Reason = "a row selected."
 		ret.RowsAffected = 1
 	default:
 		ret.Success, ret.Reason = false, "unknown test case"
@@ -212,9 +208,9 @@ func (ms *MockServer) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*m
 	switch rows.Handle {
 	case "query1#1":
 		ret.Columns = []*machrpc.Column{
-			{Name: "name", Type: types.ColumnTypeVarchar.String(), Size: 40, Length: 0},
-			{Name: "time", Type: types.ColumnTypeDatetime.String(), Size: 8, Length: 0},
-			{Name: "value", Type: types.ColumnTypeDouble.String(), Size: 8, Length: 0},
+			{Name: "name", DataType: api.ColumnTypeVarchar.String(), Length: 40},
+			{Name: "time", DataType: api.ColumnTypeDatetime.String(), Length: 8},
+			{Name: "value", DataType: api.ColumnTypeDouble.String(), Length: 8},
 		}
 	default:
 		ret.Success, ret.Reason = false, "unknown test case"

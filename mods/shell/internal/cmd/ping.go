@@ -54,7 +54,7 @@ func doPing(ctx *action.ActionContext) {
 		if i != 0 {
 			time.Sleep(time.Second)
 		}
-		latency, err := ctx.Conn.Ping()
+		latency, err := ctx.Actor.Database().Ping(ctx.Ctx)
 		if err != nil {
 			fmt.Println("ping", err.Error())
 		} else {
