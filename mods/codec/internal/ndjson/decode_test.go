@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/internal/ndjson"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/stretchr/testify/require"
@@ -67,7 +67,7 @@ func TestNDJsonDecoder(t *testing.T) {
 		dec.SetInputStream(input)
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)
-		dec.SetColumnTypes(types.COLUMN_TYPE_DATETIME, types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_DOUBLE)
+		dec.SetColumnTypes(api.COLUMN_TYPE_DATETIME, api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_DOUBLE)
 		dec.SetColumns("TIME", "NAME", "VALUE")
 		dec.Open()
 		for _, expect := range tt.expects {

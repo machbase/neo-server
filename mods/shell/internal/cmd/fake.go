@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/oscillator"
 	"github.com/machbase/neo-server/mods/shell/internal/action"
@@ -105,7 +105,7 @@ func doFake(ctx *action.ActionContext) {
 
 	eval := oscillator.NewCompositeWithNoise(sigs, cmd.Noise).EvalTime
 
-	var appender *machrpc.Appender
+	var appender api.Appender
 	if len(cmd.Table) > 0 {
 		appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table)
 		if err != nil {

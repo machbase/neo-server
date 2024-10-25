@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/facility"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -304,7 +304,7 @@ func convByte(args []any, idx int, fname string, expect string) (byte, error) {
 	}
 }
 
-func convDataType(args []any, idx int, fname string, expect string) (types.DataType, error) {
+func convDataType(args []any, idx int, fname string, expect string) (api.DataType, error) {
 	if idx >= len(args) {
 		return "", ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
@@ -314,12 +314,12 @@ func convDataType(args []any, idx int, fname string, expect string) (types.DataT
 		if len(v) != 1 {
 			return "", ErrArgs(fname, idx, "should be a data type")
 		}
-		return types.DataType(v), nil
+		return api.DataType(v), nil
 	case *string:
 		if len(*v) != 1 {
 			return "", ErrArgs(fname, idx, "should be a data type")
 		}
-		return types.DataType(*v), nil
+		return api.DataType(*v), nil
 	default:
 		return "", ErrWrongTypeOfArgs(fname, idx, expect, raw)
 	}

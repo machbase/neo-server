@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/machsvr"
+	"github.com/machbase/neo-server/api"
 	"github.com/stretchr/testify/require"
 )
 
 func TestColumns(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	conn, err := database.Connect(ctx, machsvr.WithPassword("sys", "manager"))
+	conn, err := database.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		panic(err)
 	}
@@ -35,7 +35,7 @@ func TestColumns(t *testing.T) {
 	}
 	require.NotNil(t, rows, "no rows selected")
 	defer rows.Close()
-	colNames, colTypes, err := rows.Columns()
+	cols, err := rows.Columns()
 	if err != nil {
 		panic(err)
 	}
@@ -66,8 +66,8 @@ func TestColumns(t *testing.T) {
 		{"DATETIME_NOW", "datetime", 8, 0},
 	}
 	for i, cd := range data {
-		require.Equal(t, cd.name, colNames[i], "column[%d] name was %q, want %q", i, colNames[i], cd.name)
-		require.Equal(t, cd.typ, string(colTypes[i]), "column[%d] %q's type was %q, want %q", i, colNames[i], colTypes[i], cd.typ)
+		require.Equal(t, cd.name, cols[i].Name, "column[%d] name was %q, want %q", i, cols[i].Name, cd.name)
+		require.Equal(t, cd.typ, string(cols[i].DataType), "column[%d] %q's type was %q, want %q", i, cols[i].Name, cols[i].DataType, cd.typ)
 	}
 }
 

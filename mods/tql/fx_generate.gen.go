@@ -5,7 +5,7 @@ package tql
 import (
 	"math"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/nums"
@@ -4190,7 +4190,7 @@ func (x *Node) gen_chartOption(args ...any) (any, error) {
 //
 // syntax: columnTypes(...types.DataType)
 func (x *Node) gen_columnTypes(args ...any) (any, error) {
-	p0 := []types.DataType{}
+	p0 := []api.DataType{}
 	for n := 0; n < len(args); n++ {
 		argv, err := convDataType(args, n, "columnTypes", "...types.DataType")
 		if err != nil {

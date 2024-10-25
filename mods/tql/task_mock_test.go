@@ -6,7 +6,6 @@ package tql_test
 import (
 	"context"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"sync"
 	"time"
 )
@@ -24,6 +23,12 @@ var _ api.Database = &DatabaseMock{}
 //			ConnectFunc: func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
 //				panic("mock out the Connect method")
 //			},
+//			PingFunc: func(ctx context.Context) (time.Duration, error) {
+//				panic("mock out the Ping method")
+//			},
+//			UserAuthFunc: func(ctx context.Context, user string, password string) (bool, error) {
+//				panic("mock out the UserAuth method")
+//			},
 //		}
 //
 //		// use mockedDatabase in code that requires api.Database
@@ -34,6 +39,12 @@ type DatabaseMock struct {
 	// ConnectFunc mocks the Connect method.
 	ConnectFunc func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error)
 
+	// PingFunc mocks the Ping method.
+	PingFunc func(ctx context.Context) (time.Duration, error)
+
+	// UserAuthFunc mocks the UserAuth method.
+	UserAuthFunc func(ctx context.Context, user string, password string) (bool, error)
+
 	// calls tracks calls to the methods.
 	calls struct {
 		// Connect holds details about calls to the Connect method.
@@ -43,8 +54,24 @@ type DatabaseMock struct {
 			// Options is the options argument value.
 			Options []api.ConnectOption
 		}
+		// Ping holds details about calls to the Ping method.
+		Ping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// UserAuth holds details about calls to the UserAuth method.
+		UserAuth []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// User is the user argument value.
+			User string
+			// Password is the password argument value.
+			Password string
+		}
 	}
-	lockConnect sync.RWMutex
+	lockConnect  sync.RWMutex
+	lockPing     sync.RWMutex
+	lockUserAuth sync.RWMutex
 }
 
 // Connect calls ConnectFunc.
@@ -83,6 +110,78 @@ func (mock *DatabaseMock) ConnectCalls() []struct {
 	return calls
 }
 
+// Ping calls PingFunc.
+func (mock *DatabaseMock) Ping(ctx context.Context) (time.Duration, error) {
+	if mock.PingFunc == nil {
+		panic("DatabaseMock.PingFunc: method is nil but Database.Ping was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockPing.Lock()
+	mock.calls.Ping = append(mock.calls.Ping, callInfo)
+	mock.lockPing.Unlock()
+	return mock.PingFunc(ctx)
+}
+
+// PingCalls gets all the calls that were made to Ping.
+// Check the length with:
+//
+//	len(mockedDatabase.PingCalls())
+func (mock *DatabaseMock) PingCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockPing.RLock()
+	calls = mock.calls.Ping
+	mock.lockPing.RUnlock()
+	return calls
+}
+
+// UserAuth calls UserAuthFunc.
+func (mock *DatabaseMock) UserAuth(ctx context.Context, user string, password string) (bool, error) {
+	if mock.UserAuthFunc == nil {
+		panic("DatabaseMock.UserAuthFunc: method is nil but Database.UserAuth was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		User     string
+		Password string
+	}{
+		Ctx:      ctx,
+		User:     user,
+		Password: password,
+	}
+	mock.lockUserAuth.Lock()
+	mock.calls.UserAuth = append(mock.calls.UserAuth, callInfo)
+	mock.lockUserAuth.Unlock()
+	return mock.UserAuthFunc(ctx, user, password)
+}
+
+// UserAuthCalls gets all the calls that were made to UserAuth.
+// Check the length with:
+//
+//	len(mockedDatabase.UserAuthCalls())
+func (mock *DatabaseMock) UserAuthCalls() []struct {
+	Ctx      context.Context
+	User     string
+	Password string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		User     string
+		Password string
+	}
+	mock.lockUserAuth.RLock()
+	calls = mock.calls.UserAuth
+	mock.lockUserAuth.RUnlock()
+	return calls
+}
+
 // Ensure, that ConnMock does implement api.Conn.
 // If this is not the case, regenerate this file with moq.
 var _ api.Conn = &ConnMock{}
@@ -101,6 +200,9 @@ var _ api.Conn = &ConnMock{}
 //			},
 //			ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
 //				panic("mock out the Exec method")
+//			},
+//			ExplainFunc: func(ctx context.Context, sqlText string, full bool) (string, error) {
+//				panic("mock out the Explain method")
 //			},
 //			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 //				panic("mock out the Query method")
@@ -123,6 +225,9 @@ type ConnMock struct {
 
 	// ExecFunc mocks the Exec method.
 	ExecFunc func(ctx context.Context, sqlText string, params ...any) api.Result
+
+	// ExplainFunc mocks the Explain method.
+	ExplainFunc func(ctx context.Context, sqlText string, full bool) (string, error)
 
 	// QueryFunc mocks the Query method.
 	QueryFunc func(ctx context.Context, sqlText string, params ...any) (api.Rows, error)
@@ -153,6 +258,15 @@ type ConnMock struct {
 			// Params is the params argument value.
 			Params []any
 		}
+		// Explain holds details about calls to the Explain method.
+		Explain []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// SqlText is the sqlText argument value.
+			SqlText string
+			// Full is the full argument value.
+			Full bool
+		}
 		// Query holds details about calls to the Query method.
 		Query []struct {
 			// Ctx is the ctx argument value.
@@ -175,6 +289,7 @@ type ConnMock struct {
 	lockAppender sync.RWMutex
 	lockClose    sync.RWMutex
 	lockExec     sync.RWMutex
+	lockExplain  sync.RWMutex
 	lockQuery    sync.RWMutex
 	lockQueryRow sync.RWMutex
 }
@@ -286,6 +401,46 @@ func (mock *ConnMock) ExecCalls() []struct {
 	return calls
 }
 
+// Explain calls ExplainFunc.
+func (mock *ConnMock) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
+	if mock.ExplainFunc == nil {
+		panic("ConnMock.ExplainFunc: method is nil but Conn.Explain was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		SqlText string
+		Full    bool
+	}{
+		Ctx:     ctx,
+		SqlText: sqlText,
+		Full:    full,
+	}
+	mock.lockExplain.Lock()
+	mock.calls.Explain = append(mock.calls.Explain, callInfo)
+	mock.lockExplain.Unlock()
+	return mock.ExplainFunc(ctx, sqlText, full)
+}
+
+// ExplainCalls gets all the calls that were made to Explain.
+// Check the length with:
+//
+//	len(mockedConn.ExplainCalls())
+func (mock *ConnMock) ExplainCalls() []struct {
+	Ctx     context.Context
+	SqlText string
+	Full    bool
+} {
+	var calls []struct {
+		Ctx     context.Context
+		SqlText string
+		Full    bool
+	}
+	mock.lockExplain.RLock()
+	calls = mock.calls.Explain
+	mock.lockExplain.RUnlock()
+	return calls
+}
+
 // Query calls QueryFunc.
 func (mock *ConnMock) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	if mock.QueryFunc == nil {
@@ -379,7 +534,7 @@ var _ api.Rows = &RowsMock{}
 //			CloseFunc: func() error {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() ([]string, []types.DataType, error) {
+//			ColumnsFunc: func() (api.Columns, error) {
 //				panic("mock out the Columns method")
 //			},
 //			IsFetchableFunc: func() bool {
@@ -408,7 +563,7 @@ type RowsMock struct {
 	CloseFunc func() error
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() ([]string, []types.DataType, error)
+	ColumnsFunc func() (api.Columns, error)
 
 	// IsFetchableFunc mocks the IsFetchable method.
 	IsFetchableFunc func() bool
@@ -488,7 +643,7 @@ func (mock *RowsMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *RowsMock) Columns() ([]string, []types.DataType, error) {
+func (mock *RowsMock) Columns() (api.Columns, error) {
 	if mock.ColumnsFunc == nil {
 		panic("RowsMock.ColumnsFunc: method is nil but Rows.Columns was just called")
 	}
@@ -806,11 +961,14 @@ var _ api.Appender = &AppenderMock{}
 //			CloseFunc: func() (int64, int64, error) {
 //				panic("mock out the Close method")
 //			},
-//			ColumnsFunc: func() ([]string, []types.DataType, error) {
+//			ColumnsFunc: func() (api.Columns, error) {
 //				panic("mock out the Columns method")
 //			},
 //			TableNameFunc: func() string {
 //				panic("mock out the TableName method")
+//			},
+//			TableTypeFunc: func() api.TableType {
+//				panic("mock out the TableType method")
 //			},
 //		}
 //
@@ -829,10 +987,13 @@ type AppenderMock struct {
 	CloseFunc func() (int64, int64, error)
 
 	// ColumnsFunc mocks the Columns method.
-	ColumnsFunc func() ([]string, []types.DataType, error)
+	ColumnsFunc func() (api.Columns, error)
 
 	// TableNameFunc mocks the TableName method.
 	TableNameFunc func() string
+
+	// TableTypeFunc mocks the TableType method.
+	TableTypeFunc func() api.TableType
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -857,12 +1018,16 @@ type AppenderMock struct {
 		// TableName holds details about calls to the TableName method.
 		TableName []struct {
 		}
+		// TableType holds details about calls to the TableType method.
+		TableType []struct {
+		}
 	}
 	lockAppend              sync.RWMutex
 	lockAppendWithTimestamp sync.RWMutex
 	lockClose               sync.RWMutex
 	lockColumns             sync.RWMutex
 	lockTableName           sync.RWMutex
+	lockTableType           sync.RWMutex
 }
 
 // Append calls AppendFunc.
@@ -961,7 +1126,7 @@ func (mock *AppenderMock) CloseCalls() []struct {
 }
 
 // Columns calls ColumnsFunc.
-func (mock *AppenderMock) Columns() ([]string, []types.DataType, error) {
+func (mock *AppenderMock) Columns() (api.Columns, error) {
 	if mock.ColumnsFunc == nil {
 		panic("AppenderMock.ColumnsFunc: method is nil but Appender.Columns was just called")
 	}
@@ -1011,5 +1176,32 @@ func (mock *AppenderMock) TableNameCalls() []struct {
 	mock.lockTableName.RLock()
 	calls = mock.calls.TableName
 	mock.lockTableName.RUnlock()
+	return calls
+}
+
+// TableType calls TableTypeFunc.
+func (mock *AppenderMock) TableType() api.TableType {
+	if mock.TableTypeFunc == nil {
+		panic("AppenderMock.TableTypeFunc: method is nil but Appender.TableType was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockTableType.Lock()
+	mock.calls.TableType = append(mock.calls.TableType, callInfo)
+	mock.lockTableType.Unlock()
+	return mock.TableTypeFunc()
+}
+
+// TableTypeCalls gets all the calls that were made to TableType.
+// Check the length with:
+//
+//	len(mockedAppender.TableTypeCalls())
+func (mock *AppenderMock) TableTypeCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockTableType.RLock()
+	calls = mock.calls.TableType
+	mock.lockTableType.RUnlock()
 	return calls
 }

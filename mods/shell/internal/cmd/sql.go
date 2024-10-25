@@ -194,7 +194,7 @@ func doSql(ctx *action.ActionContext) {
 	}
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	if err := query.Execute(ctx.Ctx, api.ConnRpc(ctx.Conn), sqlText); err != nil {
+	if err := query.Execute(ctx.Ctx, ctx.Conn, sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 }

@@ -14,7 +14,7 @@ import (
 
 	"encoding/csv"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/kalman"
@@ -140,7 +140,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 		bf = v.(*BufferedFilter)
 	} else {
 		bf = &BufferedFilter{
-			last: types.Unbox(value),
+			last: api.Unbox(value),
 		}
 		if retain != nil {
 			bf.lastTimestamp = retain.timestamp
@@ -157,7 +157,7 @@ func (node *Node) fmFilterChanged(value any, args ...any) any {
 		return inflight
 	}
 
-	val := types.Unbox(value)
+	val := api.Unbox(value)
 	if retain != nil {
 		if inflight.IsEOF() || bf.last != val {
 			var ret *Record
@@ -408,14 +408,14 @@ func (node *Node) fmGroup(args ...any) any {
 				return ErrorRecord(fmt.Errorf("GROUP() has no aggregator"))
 			}
 		} else {
-			cols := make([]*types.Column, len(columns)+1)
-			cols[0] = types.MakeColumnRownum()
+			cols := make([]*api.Column, len(columns)+1)
+			cols[0] = api.MakeColumnRownum()
 			for i, c := range columns {
 				resultType := c.ColumnType()
 				if c.ValueType != "" {
-					resultType = types.ParseDataType(c.ValueType)
+					resultType = api.ParseDataType(c.ValueType)
 				}
-				cols[i+1] = &types.Column{
+				cols[i+1] = &api.Column{
 					Name:     c.Name,
 					DataType: resultType,
 				}
@@ -656,7 +656,7 @@ func (node *Node) fmBy(value any, args ...any) (any, error) {
 		ret.Name = "GROUP"
 	}
 
-	ret.Value = types.Unbox(value)
+	ret.Value = api.Unbox(value)
 	if ret.Type == GroupByTimeWindow {
 		ts, err := util.ToTime(ret.Value)
 		if err != nil {
@@ -766,19 +766,19 @@ func (g *GroupAggregate) newFiller() GroupFiller {
 	}
 }
 
-func (ga *GroupAggregate) ColumnType() types.DataType {
+func (ga *GroupAggregate) ColumnType() api.DataType {
 	switch ga.Type {
 	case GroupBy:
 		if ga.Value == nil {
-			return types.DataTypeString
+			return api.DataTypeString
 		}
-		return types.DataTypeOf(ga.Value)
+		return api.DataTypeOf(ga.Value)
 	case GroupByTimeWindow:
-		return types.DataTypeDatetime
+		return api.DataTypeDatetime
 	case "chunk":
-		return types.DataTypeList
+		return api.DataTypeList
 	}
-	return types.DataTypeFloat64
+	return api.DataTypeFloat64
 }
 
 func (ga *GroupAggregate) NewBuffer() GroupColumn {
@@ -1535,7 +1535,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 			columns := node.task.ResultColumns() // it contains ROWNUM
 			cols := columns
 			if len(columns) > nth+1 {
-				cols = []*types.Column{columns[nth+1]}
+				cols = []*api.Column{columns[nth+1]}
 				cols = append(cols, columns[1:nth+1]...)
 			}
 			if len(columns) >= nth+2 {
@@ -1575,7 +1575,7 @@ func (node *Node) fmPopKey(args ...int) (any, error) {
 func (node *Node) fmPushKey(newKey any) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
-		node.task.SetResultColumns(append([]*types.Column{types.MakeColumnOf("key", newKey)}, node.task.ResultColumns()...))
+		node.task.SetResultColumns(append([]*api.Column{api.MakeColumnOf("key", newKey)}, node.task.ResultColumns()...))
 	}
 	rec := node.Inflight()
 	if rec == nil {
@@ -1599,7 +1599,7 @@ func (node *Node) fmMapKey(newKey any) (any, error) {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns()
 		if len(cols) > 0 {
-			node.task.SetResultColumns(append([]*types.Column{types.MakeColumnOf("key", newKey)}, node.task.ResultColumns()[1:]...))
+			node.task.SetResultColumns(append([]*api.Column{api.MakeColumnOf("key", newKey)}, node.task.ResultColumns()[1:]...))
 		}
 	}
 	rec := node.Inflight()
@@ -1653,14 +1653,14 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		if len(cols) >= idx {
 			head := cols[0 : idx+1]
 			tail := cols[idx+1:]
-			updateCols := []*types.Column{}
+			updateCols := []*api.Column{}
 			updateCols = append(updateCols, head...)
-			updateCols = append(updateCols, types.MakeColumnOf(columnName, newValue))
+			updateCols = append(updateCols, api.MakeColumnOf(columnName, newValue))
 			updateCols = append(updateCols, tail...)
 			node.task.SetResultColumns(updateCols)
 		} else {
 			for i := len(cols); i < idx; i++ {
-				newCol := &types.Column{}
+				newCol := &api.Column{}
 				newCol.Name = fmt.Sprintf("column%d", i)
 				cols = append(cols, newCol)
 			}
@@ -1719,7 +1719,7 @@ func (node *Node) fmPopValue(indexes ...int) (any, error) {
 	if _, ok := node.GetValue("isFirst"); !ok {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
-		updateCols := []*types.Column{cols[0]}
+		updateCols := []*api.Column{cols[0]}
 		for _, idx := range includes {
 			if idx+1 < len(cols) {
 				updateCols = append(updateCols, cols[idx+1])
@@ -1764,10 +1764,10 @@ func (node *Node) fmMapValue(idx int, newValue any, opts ...any) (any, error) {
 					cols := node.task.ResultColumns() // cols contains "ROWNUM"
 					if idx+1 >= len(cols) {
 						for i := len(cols); i <= idx+1; i++ {
-							cols = append(cols, types.MakeColumnAny(fmt.Sprintf("column%d", i)))
+							cols = append(cols, api.MakeColumnAny(fmt.Sprintf("column%d", i)))
 						}
 					}
-					cols[idx+1] = types.MakeColumnOf(newName, newValue)
+					cols[idx+1] = api.MakeColumnOf(newName, newValue)
 					node.task.SetResultColumns(cols)
 				}
 			}
@@ -2450,7 +2450,7 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				}
 			}
 			fixed, _ := tr.fixedAndTransposed(vals)
-			newCols := types.Columns{cols[0]}
+			newCols := api.Columns{cols[0]}
 			for i, n := range fixed {
 				if len(tr.headerNames) > n {
 					cols[n+1].Name = tr.headerNames[n]
@@ -2462,17 +2462,17 @@ func (node *Node) fmTranspose(args ...any) (any, error) {
 				newCols = append(newCols, cols[n+1])
 			}
 			if tr.header {
-				newCols = append(newCols, types.MakeColumnAny("header"))
+				newCols = append(newCols, api.MakeColumnAny("header"))
 			}
-			newCols = append(newCols, types.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
+			newCols = append(newCols, api.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
 			node.task.SetResultColumns(newCols)
 		case any:
-			newCols := types.Columns{cols[0]}
+			newCols := api.Columns{cols[0]}
 			if tr.header {
 				tr.headerNames = []string{fmt.Sprintf("%v", vals)}
-				newCols = append(newCols, types.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
+				newCols = append(newCols, api.MakeColumnAny(fmt.Sprintf("column%d", len(newCols)-1)))
 			}
-			newCols = append(newCols, types.MakeColumnAny("column1"))
+			newCols = append(newCols, api.MakeColumnAny("column1"))
 			node.task.SetResultColumns(newCols)
 		}
 		if tr.header {

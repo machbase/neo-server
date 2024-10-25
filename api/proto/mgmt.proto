@@ -18,6 +18,8 @@ service Management {
     rpc DelShell(DelShellRequest) returns (DelShellResponse) {}
     rpc ServicePorts(ServicePortsRequest) returns (ServicePortsResponse) {}
     rpc ServerInfo(ServerInfoRequest) returns (ServerInfoResponse) {}
+    rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
+    rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
 }
 
 message ListShellRequest{
@@ -202,4 +204,45 @@ message Runtime {
     int32  processes      = 5;
     int32  goroutines     = 6;
     map<string, uint64> mem = 7;
+}
+
+message SessionsRequest {
+    bool statz = 1;
+    bool sessions = 2;
+}
+
+message SessionsResponse {
+    bool success = 1;
+    string reason = 2;
+    string elapse = 3;
+    Statz statz = 4;
+    repeated Session Sessions = 5;
+}
+
+message Statz {
+    int64 conns          = 1;
+    int64 stmts          = 2;
+    int64 appenders      = 3;
+    int32 connsInUse     = 4;
+    int32 stmtsInUse     = 5;
+    int32 appendersInUse = 6;
+    int32 rawConns       = 7;
+}
+
+message Session {
+    string id            = 1;
+    int64  creTime       = 2;
+    int64  latestSqlTime = 3;
+    string latestSql     = 4;
+}
+
+message KillSessionRequest {
+    string id       = 1;
+    bool   force    = 2;
+}
+
+message KillSessionResponse {
+    bool   success  = 1;
+    string reason   = 2;
+    string elapse   = 3;
 }

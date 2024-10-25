@@ -14,7 +14,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/machbase/neo-server/mods/service/msg"
@@ -140,7 +139,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		defer appender.Close()
 		colNames := desc.Columns.Names()
 		colTypes := desc.Columns.DataTypes()
-		if api.AppenderTableType(appender) == types.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+		if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 			colNames = colNames[1:]
 			colTypes = colTypes[1:]
 		}
@@ -152,7 +151,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		)
 	} else { // insert
 		var columnNames []string
-		var columnTypes []types.DataType
+		var columnTypes []api.DataType
 		if format == "json" {
 			bs, err := io.ReadAll(in)
 			if err != nil {
@@ -172,18 +171,18 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			}
 			if wr.Data != nil && len(wr.Data.Columns) > 0 {
 				columnNames = wr.Data.Columns
-				columnTypes = make([]types.DataType, 0, len(columnNames))
+				columnTypes = make([]api.DataType, 0, len(columnNames))
 				_hold := make([]string, 0, len(columnNames))
 				for _, colName := range columnNames {
 					_hold = append(_hold, "?")
-					_type := types.ColumnTypeUnknown
+					_type := api.ColumnTypeUnknown
 					for _, d := range desc.Columns {
 						if d.Name == strings.ToUpper(colName) {
 							_type = d.Type
 							break
 						}
 					}
-					if _type == types.ColumnTypeUnknown {
+					if _type == api.ColumnTypeUnknown {
 						rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, tableName)
 						rsp.Elapse = time.Since(tick).String()
 						ctx.JSON(http.StatusBadRequest, rsp)
@@ -198,7 +197,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		}
 		if len(columnNames) == 0 {
 			columnNames = desc.Columns.Names()
-			columnTypes = make([]types.DataType, 0, len(desc.Columns))
+			columnTypes = make([]api.DataType, 0, len(desc.Columns))
 			_hold := make([]string, 0, len(desc.Columns))
 			for _, c := range desc.Columns {
 				_hold = append(_hold, "?")

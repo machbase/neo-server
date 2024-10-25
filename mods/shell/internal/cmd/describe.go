@@ -62,7 +62,7 @@ func doDescribe(ctx *action.ActionContext) {
 		tableName = fmt.Sprintf("%s.%s.%s", toks[0], toks[1], toks[2])
 	}
 
-	desc, err := api.DescribeTable(ctx.Ctx, api.ConnRpc(ctx.Conn), tableName, cmd.ShowAll)
+	desc, err := api.DescribeTable(ctx.Ctx, ctx.Conn, tableName, cmd.ShowAll)
 	if err != nil {
 		ctx.Println("unable to describe", cmd.Table, "; ERR", err.Error())
 		return

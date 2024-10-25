@@ -16,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/logging"
 	"github.com/machbase/neo-server/mods/service/security"
 	"github.com/stretchr/testify/require"
@@ -34,7 +33,7 @@ type mockServer struct {
 	engine *gin.Engine
 }
 
-func (fda *mockServer) UserAuth(user string, password string) (bool, error) {
+func (fda *mockServer) UserAuth(ctx context.Context, user string, password string) (bool, error) {
 	if user == "sys" && password == "manager" {
 		return true, nil
 	}
@@ -86,16 +85,12 @@ func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...api
 	ret.AppendFunc = func(values ...any) error { return nil }
 	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
 	ret.TableNameFunc = func() string { return tableName }
-	ret.ColumnsFunc = func() ([]string, []types.DataType, error) {
-		return []string{
-				"TIME",
-				"TIME",
-				"VALUE",
-			}, []types.DataType{
-				types.DataTypeString,
-				types.DataTypeDatetime,
-				types.DataTypeFloat64,
-			}, nil
+	ret.ColumnsFunc = func() (api.Columns, error) {
+		return api.Columns{
+			{Name: "NAME", DataType: api.ColumnTypeVarchar.DataType()},
+			{Name: "TIME", DataType: api.ColumnTypeDatetime.DataType()},
+			{Name: "VALUE", DataType: api.ColumnTypeDouble.DataType()},
+		}, nil
 	}
 	return ret, nil
 }

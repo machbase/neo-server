@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
@@ -24,7 +24,7 @@ type Exporter struct {
 	timeformat *util.TimeFormatter
 
 	colNames []string
-	colTypes []types.DataType
+	colTypes []api.DataType
 }
 
 func NewEncoder() *Exporter {
@@ -76,7 +76,7 @@ func (ex *Exporter) SetColumns(labels ...string) {
 	ex.colNames = labels
 }
 
-func (ex *Exporter) SetColumnTypes(types ...types.DataType) {
+func (ex *Exporter) SetColumnTypes(types ...api.DataType) {
 	ex.colTypes = types
 }
 

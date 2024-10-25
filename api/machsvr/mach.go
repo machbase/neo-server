@@ -14,7 +14,7 @@ import (
 
 	mach "github.com/machbase/neo-engine"
 	"github.com/machbase/neo-engine/native"
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sony/sonyflake"
 )
@@ -65,7 +65,7 @@ func DestroyDatabase() error {
 	_env.Lock()
 	defer _env.Unlock()
 	if _env.handle == nil {
-		return types.ErrDatabaseNotInitialized
+		return api.ErrDatabaseNotInitialized
 	}
 	return mach.EngDestroyDatabase(_env.handle)
 }
@@ -74,7 +74,7 @@ func CreateDatabase() error {
 	_env.Lock()
 	defer _env.Unlock()
 	if _env.handle == nil {
-		return types.ErrDatabaseNotInitialized
+		return api.ErrDatabaseNotInitialized
 	}
 	return mach.EngCreateDatabase(_env.handle)
 }
@@ -105,6 +105,8 @@ type Database struct {
 	idGen  *sonyflake.Sonyflake
 	conns  cmap.ConcurrentMap[string, *ConnWatcher]
 }
+
+var _ api.Database = (*Database)(nil)
 
 func NewDatabase() (*Database, error) {
 	_env.Lock()
@@ -139,8 +141,17 @@ func (db *Database) Error() error {
 	return mach.EngError(db.handle)
 }
 
-func (db *Database) UserAuth(username, password string) (bool, error) {
+func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, error) {
 	return mach.EngUserAuth(db.handle, username, password)
+}
+
+func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
+	tick := time.Now()
+	if ExistsDatabase() {
+		return time.Since(tick), nil
+	} else {
+		return 0, api.ErrDatabaseNotInitialized
+	}
 }
 
 func (db *Database) RegisterWatcher(key string, conn *Conn) {
@@ -184,7 +195,7 @@ func (db *Database) ListWatcher(cb func(*ConnState) bool) {
 func (db *Database) KillConnection(id string, force bool) error {
 	if cw, ok := db.conns.Get(id); ok {
 		if cw.conn == nil {
-			return types.ErrDatabaseConnectionInvalid(id)
+			return api.ErrDatabaseConnectionInvalid(id)
 		}
 		if force {
 			return cw.conn.Close()
@@ -192,7 +203,7 @@ func (db *Database) KillConnection(id string, force bool) error {
 			return cw.conn.Cancel()
 		}
 	} else {
-		return types.ErrDatabaseConnectionNotFound(id)
+		return api.ErrDatabaseConnectionNotFound(id)
 	}
 }
 
@@ -236,34 +247,29 @@ type Conn struct {
 	closeCallback func()
 }
 
+var _ api.Conn = (*Conn)(nil)
+
 func (conn *Conn) SetLatestSql(sql string) {
 	conn.latestTime = time.Now()
 	conn.latestSql = sql
 }
 
-type ConnectOption func(*Conn)
-
-func WithPassword(username string, password string) ConnectOption {
-	return func(c *Conn) {
-		c.username = username
-		c.password = password
-	}
-}
-
-func WithTrustUser(username string) ConnectOption {
-	return func(c *Conn) {
-		c.username = username
-		c.isTrustUser = true
-	}
-}
-
-func (db *Database) Connect(ctx context.Context, opts ...ConnectOption) (*Conn, error) {
+func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
 	ret := &Conn{
 		ctx: ctx,
 		db:  db,
 	}
 	for _, o := range opts {
-		o(ret)
+		switch v := o.(type) {
+		case *api.ConnectOptionPassword:
+			ret.username = v.User
+			ret.password = v.Password
+		case *api.ConnectOptionTrustUser:
+			ret.username = v.User
+			ret.isTrustUser = true
+		default:
+			return nil, fmt.Errorf("unknown option type-%T", o)
+		}
 	}
 	var handle unsafe.Pointer
 	if ret.isTrustUser {
@@ -282,7 +288,7 @@ func (db *Database) Connect(ctx context.Context, opts ...ConnectOption) (*Conn, 
 	} else {
 		id, err := db.idGen.NextID()
 		if err != nil {
-			return nil, types.ErrDatabaseConnectID(err.Error())
+			return nil, api.ErrDatabaseConnectID(err.Error())
 		}
 		ret.id = fmt.Sprintf("%X", id)
 	}
@@ -346,13 +352,9 @@ func (conn *Conn) Connected() bool {
 	return true
 }
 
-func (conn *Conn) Ping() (time.Duration, error) {
-	return 0, nil
-}
-
 // ExecContext executes SQL statements that does not return result
 // like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
-func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) *Result {
+func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	conn.SetLatestSql(sqlText)
 	var result = &Result{}
 	var stmt unsafe.Pointer
@@ -407,7 +409,7 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) *Resu
 //		panic(err)
 //	}
 //	defer rows.Close()
-func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (*Rows, error) {
+func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	conn.SetLatestSql(sqlText)
 	rows := &Rows{
 		sqlText: sqlText,
@@ -446,12 +448,12 @@ func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (*Ro
 	return rows, nil
 }
 
-func stmtColumns(stmt unsafe.Pointer) (types.Columns, error) {
+func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
 	columnCount, err := mach.EngColumnCount(stmt)
 	if err != nil {
 		return nil, err
 	}
-	ret := make(types.Columns, columnCount)
+	ret := make(api.Columns, columnCount)
 	for i := 0; i < columnCount; i++ {
 		var columnName string
 		var columnRawType, columnSize, columnLength int
@@ -459,16 +461,15 @@ func stmtColumns(stmt unsafe.Pointer) (types.Columns, error) {
 		if err != nil {
 			return nil, err
 		}
-		typ, err := columnRawTypeToDataType(columnRawType)
+		dataType, err := columnRawTypeToDataType(columnRawType)
 		if err != nil {
 			return nil, mach.ErrDatabaseWrap("Invalid column type", err)
 		}
-		col := &types.Column{
+		ret[i] = &api.Column{
 			Name:     strings.ToUpper(columnName),
-			DataType: typ,
+			DataType: dataType,
 			Length:   columnLength,
 		}
-		ret[i] = col
 	}
 	return ret, nil
 }
@@ -486,57 +487,57 @@ const (
 	ColumnRawTypeBinary       = 9
 )
 
-func columnRawTypeToDataType(rawType int) (types.DataType, error) {
+func columnRawTypeToDataType(rawType int) (api.DataType, error) {
 	switch rawType {
 	case ColumnRawTypeInt16:
-		return types.DataTypeInt16, nil
+		return api.DataTypeInt16, nil
 	case ColumnRawTypeInt32:
-		return types.DataTypeInt32, nil
+		return api.DataTypeInt32, nil
 	case ColumnRawTypeInt64:
-		return types.DataTypeInt64, nil
+		return api.DataTypeInt64, nil
 	case ColumnRawTypeDatetime:
-		return types.DataTypeDatetime, nil
+		return api.DataTypeDatetime, nil
 	case ColumnRawTypeFloat32:
-		return types.DataTypeFloat32, nil
+		return api.DataTypeFloat32, nil
 	case ColumnRawTypeFloat64:
-		return types.DataTypeFloat64, nil
+		return api.DataTypeFloat64, nil
 	case ColumnRawTypeIPv4:
-		return types.DataTypeIPv4, nil
+		return api.DataTypeIPv4, nil
 	case ColumnRawTypeIPv6:
-		return types.DataTypeIPv6, nil
+		return api.DataTypeIPv6, nil
 	case ColumnRawTypeString:
-		return types.DataTypeString, nil
+		return api.DataTypeString, nil
 	case ColumnRawTypeBinary:
-		return types.DataTypeBinary, nil
+		return api.DataTypeBinary, nil
 	default:
-		return "", types.ErrDatabaseUnsupportedType("ColumnType", rawType)
+		return "", api.ErrDatabaseUnsupportedType("ColumnType", rawType)
 	}
 }
 
-func columnDataTypeToRawType(typ types.DataType) (int, error) {
+func columnDataTypeToRawType(typ api.DataType) (int, error) {
 	switch typ {
-	case types.DataTypeInt16:
+	case api.DataTypeInt16:
 		return ColumnRawTypeInt16, nil
-	case types.DataTypeInt32:
+	case api.DataTypeInt32:
 		return ColumnRawTypeInt32, nil
-	case types.DataTypeInt64:
+	case api.DataTypeInt64:
 		return ColumnRawTypeInt64, nil
-	case types.DataTypeDatetime:
+	case api.DataTypeDatetime:
 		return ColumnRawTypeDatetime, nil
-	case types.DataTypeFloat32:
+	case api.DataTypeFloat32:
 		return ColumnRawTypeFloat32, nil
-	case types.DataTypeFloat64:
+	case api.DataTypeFloat64:
 		return ColumnRawTypeFloat64, nil
-	case types.DataTypeIPv4:
+	case api.DataTypeIPv4:
 		return ColumnRawTypeIPv4, nil
-	case types.DataTypeIPv6:
+	case api.DataTypeIPv6:
 		return ColumnRawTypeIPv6, nil
-	case types.DataTypeString:
+	case api.DataTypeString:
 		return ColumnRawTypeString, nil
-	case types.DataTypeBinary:
+	case api.DataTypeBinary:
 		return ColumnRawTypeBinary, nil
 	default:
-		return 0, types.ErrDatabaseUnsupportedTypeName("DataType", string(typ))
+		return 0, api.ErrDatabaseUnsupportedTypeName("DataType", string(typ))
 	}
 }
 
@@ -548,7 +549,7 @@ func columnDataTypeToRawType(typ types.DataType) (int, error) {
 //	var cnt int
 //	row := conn.QueryRow(ctx, "select count(*) from my_table where name = ?", "my_name")
 //	row.Scan(&cnt)
-func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) *Row {
+func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
 	conn.SetLatestSql(sqlText)
 	var row = &Row{}
 	var stmt unsafe.Pointer
@@ -611,6 +612,7 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) *
 		row.err = err
 		return row
 	} else {
+		row.columns = cols
 		row.values, row.err = cols.MakeBuffer()
 		if row.err != nil {
 			return row

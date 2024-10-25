@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/internal/json"
 
 	"github.com/machbase/neo-server/mods/stream"
@@ -76,7 +76,7 @@ func TestJsonDecoder(t *testing.T) {
 		dec.SetInputStream(input)
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)
-		dec.SetColumnTypes(types.DataTypeString, types.DataTypeDatetime, types.DataTypeFloat64)
+		dec.SetColumnTypes(api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64)
 		dec.Open()
 		for _, expect := range tt.expects {
 			fields, _, err := dec.NextRow()

@@ -11,8 +11,6 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machrpc"
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/shell/internal/action"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/rivo/tview"
@@ -113,11 +111,11 @@ func doWalk(ctx *action.ActionContext) {
 type Walker struct {
 	tview.TableContentReadOnly
 	sqlText    string
-	conn       *machrpc.Conn
+	conn       api.Conn
 	ctx        context.Context
 	mutex      sync.Mutex
-	rows       *machrpc.Rows
-	cols       types.Columns
+	rows       api.Rows
+	cols       api.Columns
 	values     [][]string
 	eof        bool
 	fetchSize  int
@@ -126,7 +124,7 @@ type Walker struct {
 	precision  int
 }
 
-func NewWalker(ctx context.Context, conn *machrpc.Conn, sqlText string, timeformat string, tz *time.Location, precision int) (*Walker, error) {
+func NewWalker(ctx context.Context, conn api.Conn, sqlText string, timeformat string, tz *time.Location, precision int) (*Walker, error) {
 	w := &Walker{
 		sqlText:    sqlText,
 		conn:       conn,
@@ -163,7 +161,7 @@ func (w *Walker) Reload() error {
 		return err
 	}
 
-	cols, err := api.RowsColumns(rows)
+	cols, err := rows.Columns()
 	if err != nil {
 		rows.Close()
 		return err

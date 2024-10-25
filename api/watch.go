@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
 	"github.com/machbase/neo-server/mods/util"
 )
 
@@ -34,7 +33,7 @@ type Watcher struct {
 	// table info
 	isTagTable  bool
 	columnNames []string
-	columns     types.Columns
+	columns     Columns
 	timeformat  *util.TimeFormatter
 	// tag table
 	nameColumn      string
@@ -95,12 +94,12 @@ func (w *Watcher) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if tableType, err := TableType(ctx, conn, w.TableName); err != nil {
+	if tableType, err := QueryTableType(ctx, conn, w.TableName); err != nil {
 		return err
-	} else if tableType != types.TableTypeTag && tableType != types.TableTypeLog {
+	} else if tableType != TableTypeTag && tableType != TableTypeLog {
 		return fmt.Errorf("not supported table type")
 	} else {
-		w.isTagTable = tableType == types.TableTypeTag
+		w.isTagTable = tableType == TableTypeTag
 	}
 
 	if w.isTagTable {
@@ -212,9 +211,6 @@ func (w *Watcher) executeTag(tag string) {
 		w.handleError(row.Err())
 		return
 	}
-	if len(row.Values()) == 0 {
-		return
-	}
 	values, err := w.columns.MakeBuffer()
 	if err != nil {
 		w.handleError(err)
@@ -228,13 +224,13 @@ func (w *Watcher) executeTag(tag string) {
 	for i, col := range w.columns {
 		name := col.Name
 		typ := col.Type
-		if typ == types.ColumnTypeDatetime {
+		if typ == ColumnTypeDatetime {
 			if v, ok := values[i].(*time.Time); ok {
 				obj[name] = w.timeformat.FormatEpoch(*v)
 				continue
 			}
 		}
-		obj[name] = types.Unbox(values[i])
+		obj[name] = Unbox(values[i])
 	}
 	w.handleData(obj)
 }
@@ -294,7 +290,7 @@ func (w *Watcher) executeLog() {
 		values = values[1:]
 		obj := WatchData{}
 		for i, n := range w.columnNames {
-			obj[n] = types.Unbox(values[i])
+			obj[n] = Unbox(values[i])
 		}
 		w.handleData(obj)
 		w.lastArrivalTime = *arrivalTime

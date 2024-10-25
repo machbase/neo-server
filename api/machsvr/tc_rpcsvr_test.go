@@ -32,11 +32,7 @@ func disconnectRpc(t *testing.T, ctx context.Context, handle *machrpc.ConnHandle
 
 func TestRpcPing(t *testing.T) {
 	ctx := context.TODO()
-	conn := connectRpc(t, ctx)
-	defer disconnectRpc(t, ctx, conn)
-
 	rsp, err := rpcClient.Ping(ctx, &machrpc.PingRequest{
-		Conn:  conn,
 		Token: 1234567890,
 	})
 	require.NoError(t, err)
@@ -129,14 +125,13 @@ func TestRpcExec(t *testing.T) {
 	require.NotNil(t, queryRowRsp)
 	require.True(t, queryRowRsp.Success, queryRowRsp.Reason)
 	require.NotEmpty(t, queryRowRsp.Reason)
-	require.NotEmpty(t, queryRowRsp.Message)
 	require.Len(t, queryRowRsp.Values, 3, queryRowRsp.Reason)
 	queryRowValues := machrpc.ConvertPbToAny(queryRowRsp.Values)
 	require.Equal(t, "test", queryRowValues[0])
 	require.Equal(t, now, queryRowValues[1])
 	require.Equal(t, 123.456, queryRowValues[2])
-	// FIXME: queryRowRsp.Message should be 'a row selected' instead of 'no row selected'
-	t.Log("QueryRow(select)", queryRowRsp.Message, queryRowRsp.Values)
+	// FIXME: queryRowRsp.Message should be 'a row selected' instead of 'no rows selected'
+	t.Log("QueryRow(select)", queryRowRsp.Reason, queryRowRsp.Values)
 
 	// Append Open
 	appendConn := connectRpc(t, ctx)

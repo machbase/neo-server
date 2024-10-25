@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,7 @@ func TestGrpcTagTable(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := client.Connect(ctx, machrpc.WithPassword("sys", "manager"))
+	conn, err := client.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Error(err.Error())
 	}

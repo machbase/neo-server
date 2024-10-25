@@ -1,6 +1,6 @@
 package msg
 
-import "github.com/machbase/neo-server/api/types"
+import "github.com/machbase/neo-server/api"
 
 type QueryRequest struct {
 	SqlText      string `json:"q"`
@@ -29,9 +29,9 @@ type QueryResponse struct {
 }
 
 type QueryData struct {
-	Columns []string         `json:"columns"`
-	Types   []types.DataType `json:"types"`
-	Rows    [][]any          `json:"rows"`
+	Columns []string       `json:"columns"`
+	Types   []api.DataType `json:"types"`
+	Rows    [][]any        `json:"rows"`
 }
 
 type WriteRequest struct {

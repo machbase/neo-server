@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/pkg/errors"
@@ -144,9 +144,9 @@ func (out *output) start() {
 						arr := rec.Flatten()
 						for i, v := range arr {
 							resultColumns = append(resultColumns,
-								&types.Column{
+								&api.Column{
 									Name:     fmt.Sprintf("column%d", i-1),
-									DataType: types.DataTypeOf(v),
+									DataType: api.DataTypeOf(v),
 								})
 						}
 					}
@@ -213,7 +213,7 @@ func (out *output) stop() {
 	out.closeWg.Wait()
 }
 
-func (out *output) setHeader(cols types.Columns) {
+func (out *output) setHeader(cols api.Columns) {
 	if out.encoder != nil {
 		codec.SetEncoderColumns(out.encoder, cols)
 	}

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/opts"
 	"github.com/pkg/errors"
 )
@@ -27,7 +27,7 @@ func (node *Node) GetRecordKey() any {
 	if inflight == nil {
 		return nil
 	}
-	return types.Unbox(inflight.key)
+	return api.Unbox(inflight.key)
 }
 
 // tql function: value()
@@ -61,10 +61,10 @@ func (node *Node) GetRecordValue(args ...any) (any, error) {
 		if idx >= len(val) {
 			return nil, ErrArgs("value", 0, fmt.Sprintf("%d is out of range of the value(len:%d) in %s", idx, len(val), node.Name()))
 		}
-		return types.Unbox(val[idx]), nil
+		return api.Unbox(val[idx]), nil
 	case any:
 		if idx == 0 {
-			return types.Unbox(val), nil
+			return api.Unbox(val), nil
 		} else {
 			return nil, ErrArgs("value", 0, "out of index value tuple in "+node.Name())
 		}
@@ -103,7 +103,7 @@ func (node *Node) fmArgs() (any, error) {
 func (node *Node) fmArgsParam(args ...any) (any, error) {
 	argValues := node.task.argValues
 	if len(argValues) == 0 {
-		cols := []*types.Column{types.MakeColumnRownum()}
+		cols := []*api.Column{api.MakeColumnRownum()}
 		node.task.SetResultColumns(cols)
 		return []any{}, nil
 	}
@@ -132,7 +132,7 @@ func (node *Node) fmArgsParam(args ...any) (any, error) {
 		if idx >= len(argValues) {
 			return nil, ErrArgs("arg", 0, fmt.Sprintf("%d is out of range of the arg(len:%d)", idx, len(argValues)))
 		}
-		ret = types.Unbox(argValues[idx])
+		ret = api.Unbox(argValues[idx])
 	}
 
 	if node.Name() == "FAKE()" {

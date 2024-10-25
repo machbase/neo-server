@@ -13,7 +13,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/mgmt"
 	"github.com/machbase/neo-server/api/schedule"
 	"github.com/machbase/neo-server/mods/logging"
@@ -63,7 +62,7 @@ type httpd struct {
 	disableWeb      bool
 
 	serverInfoFunc     func() (*mgmt.ServerInfoResponse, error)
-	serverSessionsFunc func(statz, session bool) (*machrpc.Statz, []*machrpc.Session, error)
+	serverSessionsFunc func(statz, session bool) (*mgmt.Statz, []*mgmt.Session, error)
 	mqttInfoFunc       func() map[string]any
 	mqttWsHandler      func(*gin.Context)
 

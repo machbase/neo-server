@@ -10,14 +10,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"golang.org/x/text/encoding"
 )
 
 type Decoder struct {
 	reader        *csv.Reader
-	columnTypes   []types.DataType
+	columnTypes   []api.DataType
 	columnNames   []string
 	comma         rune
 	heading       bool
@@ -29,7 +29,7 @@ type Decoder struct {
 	charset       encoding.Encoding
 
 	headerNames []string
-	headerTypes []types.DataType
+	headerTypes []api.DataType
 	headerErr   error
 }
 
@@ -79,7 +79,7 @@ func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
 }
 
-func (dec *Decoder) SetColumnTypes(types ...types.DataType) {
+func (dec *Decoder) SetColumnTypes(types ...api.DataType) {
 	dec.columnTypes = types
 }
 
@@ -160,7 +160,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 		}
 
 		var value any
-		var columnType types.DataType
+		var columnType api.DataType
 		if len(dec.headerTypes) > 0 {
 			columnType = dec.headerTypes[i]
 		} else {

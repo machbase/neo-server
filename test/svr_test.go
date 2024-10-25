@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/machbase/neo-server/booter"
 	_ "github.com/machbase/neo-server/mods/logging"
@@ -100,7 +101,7 @@ func TestMain(m *testing.M) {
 	var count int
 
 	checkTableSql := fmt.Sprintf("select count(*) from M$SYS_TABLES where name = '%s'", benchmarkTableName)
-	conn, err := db.Connect(context.TODO(), machsvr.WithTrustUser("sys"))
+	conn, err := db.Connect(context.TODO(), api.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}
@@ -150,11 +151,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	if !conn.Connected() {
+	if !conn.(*machsvr.Conn).Connected() {
 		panic("connection is not connected")
 	}
 	listNeoSession(db)
-	if err := conn.Cancel(); err != nil {
+	if err := conn.(*machsvr.Conn).Cancel(); err != nil {
 		panic(err)
 	}
 	rows.Close()
@@ -175,7 +176,7 @@ func SqlTidy(sqlText string) string {
 
 func listNeoSession(db *machsvr.Database) {
 	ctx := context.TODO()
-	conn, err := db.Connect(ctx, machsvr.WithTrustUser("sys"))
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}

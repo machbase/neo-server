@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/codec/internal/csv"
 	"github.com/machbase/neo-server/mods/stream"
 	"github.com/machbase/neo-server/mods/util/charset"
@@ -25,9 +25,9 @@ func TestCsvDecoder(t *testing.T) {
 	dec.SetTimeformat("ns")
 	dec.SetHeader(false)
 	dec.SetColumnTypes(
-		types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_DATETIME, types.COLUMN_TYPE_DOUBLE, types.COLUMN_TYPE_FLOAT, types.COLUMN_TYPE_VARCHAR,
-		types.COLUMN_TYPE_INTEGER, types.COLUMN_TYPE_SHORT, types.COLUMN_TYPE_INTEGER, types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_LONG, types.COLUMN_TYPE_VARCHAR,
-		types.COLUMN_TYPE_IPV4)
+		api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_DATETIME, api.COLUMN_TYPE_DOUBLE, api.COLUMN_TYPE_FLOAT, api.COLUMN_TYPE_VARCHAR,
+		api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_SHORT, api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_LONG, api.COLUMN_TYPE_VARCHAR,
+		api.COLUMN_TYPE_IPV4)
 	dec.Open()
 
 	fields, _, err := dec.NextRow()
@@ -140,7 +140,7 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 		dec.SetTimeLocation(tt.tz)
 		dec.SetHeader(tt.header)
 		dec.SetHeaderColumns(tt.headerColumns)
-		dec.SetColumnTypes(types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_DATETIME, types.COLUMN_TYPE_DOUBLE)
+		dec.SetColumnTypes(api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_DATETIME, api.COLUMN_TYPE_DOUBLE)
 		dec.SetColumns("NAME", "TIME", "VALUE")
 		dec.Open()
 		for _, expect := range tt.expects {
@@ -179,7 +179,7 @@ func TestCsvDecoderCharset(t *testing.T) {
 	dec.SetCharsetEncoding(eucjp)
 	dec.SetDelimiter(",")
 	dec.SetHeading(false)
-	dec.SetColumnTypes(types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_VARCHAR, types.COLUMN_TYPE_VARCHAR)
+	dec.SetColumnTypes(api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_VARCHAR)
 	dec.Open()
 	fields, _, err := dec.NextRow()
 

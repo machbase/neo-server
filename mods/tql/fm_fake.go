@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api/types"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/nums/opensimplex"
 )
@@ -84,10 +84,10 @@ func genCsvData(node *Node, cd *csvdata) {
 			return
 		}
 		if i == 0 {
-			cols := []*types.Column{types.MakeColumnRownum()}
+			cols := []*api.Column{api.MakeColumnRownum()}
 			for i := 0; i < len(values); i++ {
 				cname := fmt.Sprintf("column%d", i)
-				cols = append(cols, types.MakeColumnString(cname))
+				cols = append(cols, api.MakeColumnString(cname))
 			}
 			node.task.SetResultColumns(cols)
 		}
@@ -126,18 +126,18 @@ func genJsonData(node *Node, jd *jsondata) {
 	}
 	if len(jd.Data) > 0 {
 		colCount := len(jd.Data[0])
-		cols := []*types.Column{types.MakeColumnRownum()}
+		cols := []*api.Column{api.MakeColumnRownum()}
 		for i := 0; i < colCount; i++ {
 			cname := fmt.Sprintf("column%d", i)
 			switch jd.Data[0][i].(type) {
 			case string:
-				cols = append(cols, types.MakeColumnString(cname))
+				cols = append(cols, api.MakeColumnString(cname))
 			case float64:
-				cols = append(cols, types.MakeColumnDouble(cname))
+				cols = append(cols, api.MakeColumnDouble(cname))
 			case bool:
-				cols = append(cols, types.MakeColumnBoolean(cname))
+				cols = append(cols, api.MakeColumnBoolean(cname))
 			default:
-				cols = append(cols, types.MakeColumnAny(cname))
+				cols = append(cols, api.MakeColumnAny(cname))
 			}
 		}
 		node.task.SetResultColumns(cols)
@@ -157,9 +157,9 @@ type doOnce struct {
 }
 
 func genOnce(node *Node, gen *doOnce) {
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		types.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDouble("x"),
 	})
 	NewRecord(1, []any{gen.value}).Tell(node.next)
 }
@@ -187,9 +187,9 @@ type arrange struct {
 }
 
 func genArrange(node *Node, ar *arrange) {
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		types.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDouble("x"),
 	})
 	i := 0
 	if ar.start < ar.stop {
@@ -222,9 +222,9 @@ type linspace struct {
 }
 
 func genLinspace(node *Node, ls *linspace) {
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		types.MakeColumnDouble("x"),
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDouble("x"),
 	})
 	vals := nums.Linspace(ls.start, ls.stop, ls.num)
 	for i, v := range vals {
@@ -263,10 +263,10 @@ func genMeshgrid(node *Node, ms *meshgrid) {
 	}
 	vals := nums.Meshgrid(xv, yv)
 
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		types.MakeColumnDouble("x"),
-		types.MakeColumnDouble("y"),
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDouble("x"),
+		api.MakeColumnDouble("y"),
 	})
 	id := 0
 	for x := range vals {
@@ -296,11 +296,11 @@ type sphere struct {
 }
 
 func genSphere(node *Node, sp *sphere) {
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		types.MakeColumnDouble("x"),
-		types.MakeColumnDouble("y"),
-		types.MakeColumnDouble("z"),
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDouble("x"),
+		api.MakeColumnDouble("y"),
+		api.MakeColumnDouble("z"),
 	})
 	var u, v float64
 	var id = 0
@@ -362,10 +362,10 @@ type oscillator struct {
 }
 
 func genOscillator(node *Node, gen *oscillator) {
-	node.task.SetResultColumns([]*types.Column{
-		types.MakeColumnRownum(),
-		{Name: "time", DataType: types.DataTypeDatetime},
-		{Name: "value", DataType: types.DataTypeFloat64},
+	node.task.SetResultColumns([]*api.Column{
+		api.MakeColumnRownum(),
+		{Name: "time", DataType: api.DataTypeDatetime},
+		{Name: "value", DataType: api.DataTypeFloat64},
 	})
 	rownum := 0
 	for x := gen.from; x < gen.to; x += gen.step {

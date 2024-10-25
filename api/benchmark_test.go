@@ -7,18 +7,11 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkTagDataAppend(b *testing.B) {
-	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
-		b.Log("Error", err.Error())
-		b.Fail()
-	} else {
-		db = api.NewDatabase(machsvr_db)
-	}
+	db := machsvrDatabase(b)
 
 	ctx := context.TODO()
 	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
@@ -45,13 +38,7 @@ func BenchmarkTagDataAppend(b *testing.B) {
 }
 
 func BenchmarkTagSimpleAppend(b *testing.B) {
-	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(); err != nil {
-		b.Log("Error", err.Error())
-		b.Fail()
-	} else {
-		db = api.NewDatabase(machsvr_db)
-	}
+	db := machsvrDatabase(b)
 
 	ctx := context.TODO()
 	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))

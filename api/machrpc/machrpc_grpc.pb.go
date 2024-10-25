@@ -19,21 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Machbase_Conn_FullMethodName        = "/machrpc.Machbase/Conn"
-	Machbase_ConnClose_FullMethodName   = "/machrpc.Machbase/ConnClose"
-	Machbase_Ping_FullMethodName        = "/machrpc.Machbase/Ping"
-	Machbase_Exec_FullMethodName        = "/machrpc.Machbase/Exec"
-	Machbase_QueryRow_FullMethodName    = "/machrpc.Machbase/QueryRow"
-	Machbase_Query_FullMethodName       = "/machrpc.Machbase/Query"
-	Machbase_Columns_FullMethodName     = "/machrpc.Machbase/Columns"
-	Machbase_RowsFetch_FullMethodName   = "/machrpc.Machbase/RowsFetch"
-	Machbase_RowsClose_FullMethodName   = "/machrpc.Machbase/RowsClose"
-	Machbase_Appender_FullMethodName    = "/machrpc.Machbase/Appender"
-	Machbase_Append_FullMethodName      = "/machrpc.Machbase/Append"
-	Machbase_Explain_FullMethodName     = "/machrpc.Machbase/Explain"
-	Machbase_UserAuth_FullMethodName    = "/machrpc.Machbase/UserAuth"
-	Machbase_Sessions_FullMethodName    = "/machrpc.Machbase/Sessions"
-	Machbase_KillSession_FullMethodName = "/machrpc.Machbase/KillSession"
+	Machbase_Conn_FullMethodName      = "/machrpc.Machbase/Conn"
+	Machbase_ConnClose_FullMethodName = "/machrpc.Machbase/ConnClose"
+	Machbase_Ping_FullMethodName      = "/machrpc.Machbase/Ping"
+	Machbase_Exec_FullMethodName      = "/machrpc.Machbase/Exec"
+	Machbase_QueryRow_FullMethodName  = "/machrpc.Machbase/QueryRow"
+	Machbase_Query_FullMethodName     = "/machrpc.Machbase/Query"
+	Machbase_Columns_FullMethodName   = "/machrpc.Machbase/Columns"
+	Machbase_RowsFetch_FullMethodName = "/machrpc.Machbase/RowsFetch"
+	Machbase_RowsClose_FullMethodName = "/machrpc.Machbase/RowsClose"
+	Machbase_Appender_FullMethodName  = "/machrpc.Machbase/Appender"
+	Machbase_Append_FullMethodName    = "/machrpc.Machbase/Append"
+	Machbase_Explain_FullMethodName   = "/machrpc.Machbase/Explain"
+	Machbase_UserAuth_FullMethodName  = "/machrpc.Machbase/UserAuth"
 )
 
 // MachbaseClient is the client API for Machbase service.
@@ -53,8 +51,6 @@ type MachbaseClient interface {
 	Append(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[AppendData, AppendDone], error)
 	Explain(ctx context.Context, in *ExplainRequest, opts ...grpc.CallOption) (*ExplainResponse, error)
 	UserAuth(ctx context.Context, in *UserAuthRequest, opts ...grpc.CallOption) (*UserAuthResponse, error)
-	Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error)
-	KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error)
 }
 
 type machbaseClient struct {
@@ -198,26 +194,6 @@ func (c *machbaseClient) UserAuth(ctx context.Context, in *UserAuthRequest, opts
 	return out, nil
 }
 
-func (c *machbaseClient) Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SessionsResponse)
-	err := c.cc.Invoke(ctx, Machbase_Sessions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *machbaseClient) KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(KillSessionResponse)
-	err := c.cc.Invoke(ctx, Machbase_KillSession_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // MachbaseServer is the server API for Machbase service.
 // All implementations must embed UnimplementedMachbaseServer
 // for forward compatibility.
@@ -235,8 +211,6 @@ type MachbaseServer interface {
 	Append(grpc.ClientStreamingServer[AppendData, AppendDone]) error
 	Explain(context.Context, *ExplainRequest) (*ExplainResponse, error)
 	UserAuth(context.Context, *UserAuthRequest) (*UserAuthResponse, error)
-	Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error)
-	KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error)
 	mustEmbedUnimplementedMachbaseServer()
 }
 
@@ -285,12 +259,6 @@ func (UnimplementedMachbaseServer) Explain(context.Context, *ExplainRequest) (*E
 }
 func (UnimplementedMachbaseServer) UserAuth(context.Context, *UserAuthRequest) (*UserAuthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UserAuth not implemented")
-}
-func (UnimplementedMachbaseServer) Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Sessions not implemented")
-}
-func (UnimplementedMachbaseServer) KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method KillSession not implemented")
 }
 func (UnimplementedMachbaseServer) mustEmbedUnimplementedMachbaseServer() {}
 func (UnimplementedMachbaseServer) testEmbeddedByValue()                  {}
@@ -536,42 +504,6 @@ func _Machbase_UserAuth_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Machbase_Sessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SessionsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MachbaseServer).Sessions(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Machbase_Sessions_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MachbaseServer).Sessions(ctx, req.(*SessionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Machbase_KillSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KillSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MachbaseServer).KillSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Machbase_KillSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MachbaseServer).KillSession(ctx, req.(*KillSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // Machbase_ServiceDesc is the grpc.ServiceDesc for Machbase service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -626,14 +558,6 @@ var Machbase_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UserAuth",
 			Handler:    _Machbase_UserAuth_Handler,
-		},
-		{
-			MethodName: "Sessions",
-			Handler:    _Machbase_Sessions_Handler,
-		},
-		{
-			MethodName: "KillSession",
-			Handler:    _Machbase_KillSession_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
