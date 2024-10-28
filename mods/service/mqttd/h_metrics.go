@@ -12,7 +12,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
-func (s *mqtt2) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

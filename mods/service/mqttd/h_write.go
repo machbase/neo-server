@@ -22,7 +22,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
-func (s *mqtt2) handleWrite(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	tick := time.Now()
 	var replyTopic string
 	var rsp = &msg.WriteResponse{Reason: "not specified"}

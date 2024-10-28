@@ -38,21 +38,6 @@ func DescribeTable(ctx context.Context, conn Conn, name string, includeHiddenCol
 	}
 }
 
-var describeSqlText = SqlTidy(
-	`SELECT
-		j.ID as TABLE_ID,
-		j.TYPE as TABLE_TYPE,
-		j.FLAG as TABLE_FLAG,
-		j.COLCOUNT as TABLE_COLCOUNT
-	from
-		M$SYS_USERS u,
-		M$SYS_TABLES j
-	where
-		u.NAME = ?
-	and j.USER_ID = u.USER_ID
-	and j.DATABASE_ID = ?
-	and j.NAME = ?`)
-
 func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
 	var colCount int
@@ -66,6 +51,21 @@ func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns 
 			return nil, err
 		}
 	}
+
+	describeSqlText := SqlTidy(
+		`SELECT
+			j.ID as TABLE_ID,
+			j.TYPE as TABLE_TYPE,
+			j.FLAG as TABLE_FLAG,
+			j.COLCOUNT as TABLE_COLCOUNT
+		from
+			M$SYS_USERS u,
+			M$SYS_TABLES j
+		where
+			u.NAME = ?
+		and j.USER_ID = u.USER_ID
+		and j.DATABASE_ID = ?
+		and j.NAME = ?`)
 
 	r := conn.QueryRow(ctx, describeSqlText, userName, dbId, tableName)
 	if r.Err() != nil {

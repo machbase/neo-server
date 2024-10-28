@@ -43,7 +43,7 @@ var brokerAddr = ""
 var testTimeTick = time.Unix(1705291859, 0)
 var database = &dbMock{}
 var databaseLock sync.Mutex
-var mqttServer *mqtt2
+var mqttServer *mqttd
 
 func TestMain(m *testing.M) {
 	logging.Configure(&logging.Config{
@@ -68,14 +68,14 @@ func TestMain(m *testing.M) {
 	if svr, err := New(database, opts...); err != nil {
 		panic(err)
 	} else {
-		mqttServer = svr.(*mqtt2)
+		mqttServer = svr.(*mqttd)
 	}
 
 	if err := mqttServer.Start(); err != nil {
 		panic(err)
 	}
 
-	if addr, ok := mqttServer.broker.Listeners.Get("mqtt2-tcp-0"); !ok {
+	if addr, ok := mqttServer.broker.Listeners.Get("mqtt-tcp-0"); !ok {
 		panic("Listener not found")
 	} else {
 		brokerAddr = strings.TrimPrefix(addr.Address(), "tcp://")

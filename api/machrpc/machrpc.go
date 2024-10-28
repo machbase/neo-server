@@ -19,6 +19,7 @@ type Config struct {
 	Tls           *TlsConfig
 	QueryTimeout  time.Duration
 	AppendTimeout time.Duration
+	ConnProvider  func() (*grpc.ClientConn, error)
 }
 
 type TlsConfig struct {
@@ -34,8 +35,8 @@ type TlsConfig struct {
 // serverAddr can be tcp://ip_addr:port or unix://path.
 // The path of unix domain socket can be absolute/relative path.
 type Client struct {
-	conn grpc.ClientConnInterface
-	cli  MachbaseClient
+	grpcConn grpc.ClientConnInterface
+	cli      MachbaseClient
 
 	serverAddr    string
 	serverCert    string
@@ -59,51 +60,58 @@ func NewClient(cfg *Config) (*Client, error) {
 		queryTimeout:  cfg.QueryTimeout,
 		appendTimeout: cfg.AppendTimeout,
 	}
-
-	if client.serverAddr == "" {
-		return nil, errors.New("server address is not specified")
-	}
 	if cfg.Tls != nil {
 		client.certPath = cfg.Tls.ClientCert
 		client.keyPath = cfg.Tls.ClientKey
 		client.serverCert = cfg.Tls.ServerCert
 	}
 
-	var conn grpc.ClientConnInterface
+	var conn *grpc.ClientConn
 	var err error
 
-	if client.keyPath != "" && client.certPath != "" && client.serverCert != "" {
-		conn, err = MakeGrpcTlsConn(client.serverAddr, client.keyPath, client.certPath, client.serverCert)
+	if cfg.ConnProvider != nil {
+		conn, err = cfg.ConnProvider()
+	} else if client.serverAddr != "" {
+		if client.keyPath != "" && client.certPath != "" && client.serverCert != "" {
+			conn, err = MakeGrpcTlsConn(client.serverAddr, client.keyPath, client.certPath, client.serverCert)
+		} else {
+			conn, err = MakeGrpcConn(client.serverAddr, nil)
+		}
 	} else {
-		conn, err = MakeGrpcConn(client.serverAddr, nil)
+		return nil, errors.New("server address is not specified")
 	}
-
 	if err != nil {
 		return nil, errors.Wrap(err, "NewClient")
 	}
-	client.conn = conn
+	client.grpcConn = conn
 	client.cli = NewMachbaseClient(conn)
 
 	return client, nil
 }
 
+func NewClientWithRPCClient(cli MachbaseClient) *Client {
+	return &Client{
+		cli: cli,
+	}
+}
+
 func (client *Client) Close() {
 	client.closeOnce.Do(func() {
-		client.conn = nil
+		client.grpcConn = nil
 		client.cli = nil
 	})
 }
 
-func (client *Client) UserAuth(ctx context.Context, user string, password string) (bool, error) {
+func (client *Client) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
 	req := &UserAuthRequest{LoginName: user, Password: password}
 	rsp, err := client.cli.UserAuth(ctx, req)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !rsp.Success {
-		return false, errors.New(rsp.Reason)
+		return false, rsp.Reason, nil
 	}
-	return true, nil
+	return true, "", nil
 }
 
 func (client *Client) Ping(ctx context.Context) (time.Duration, error) {
@@ -597,8 +605,12 @@ func (appender *Appender) Columns() (api.Columns, error) {
 	return appender.columns, nil
 }
 
-func (appender *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
-	return appender.Append(append([]any{ts}, cols...))
+func (appender *Appender) AppendLogTime(ts time.Time, cols ...any) error {
+	if appender.tableType != api.TableTypeLog {
+		return fmt.Errorf("%s is not a log table, use Append() instead", appender.tableName)
+	}
+	colsWithTime := append([]any{ts}, cols...)
+	return appender.Append(colsWithTime...)
 }
 
 // Append appends a new record of the table.

@@ -171,7 +171,7 @@ type svr struct {
 	navel *net.TCPConn
 	grpcd *grpcd
 
-	mqtt2 mqttd.Service
+	mqttd mqttd.Service
 	httpd httpd.Service
 	sshd  sshd.Service
 
@@ -284,7 +284,7 @@ type DatabaseServer interface {
 }
 
 type DatabaseAuthServer interface {
-	UserAuth(ctx context.Context, user string, password string) (bool, error)
+	UserAuth(ctx context.Context, user string, password string) (bool, string, error)
 }
 
 var _ DatabaseServer = &machsvr.Database{}
@@ -590,7 +590,7 @@ func (s *svr) Start() error {
 				serverKey = s.ServerPrivateKeyPath()
 			}
 			if cfg, err := mqttd.LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
-				return errors.Wrap(err, "mqtt-v2 server")
+				return errors.Wrap(err, "mqtt server")
 			} else {
 				tlsConf = cfg
 			}
@@ -632,13 +632,13 @@ func (s *svr) Start() error {
 				opts = append(opts, mqttd.WithTcpListener(addr, tlsConf))
 			}
 		}
-		s.mqtt2, err = mqttd.New(s.db, opts...)
+		s.mqttd, err = mqttd.New(s.db, opts...)
 		if err != nil {
-			return errors.Wrap(err, "mqtt-v2 server")
+			return errors.Wrap(err, "mqtt server")
 		}
-		err = s.mqtt2.Start()
+		err = s.mqttd.Start()
 		if err != nil {
-			return errors.Wrap(err, "mqtt-v2 server")
+			return errors.Wrap(err, "mqtt server")
 		}
 	}
 
@@ -686,8 +686,8 @@ func (s *svr) Start() error {
 			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
 			httpd.OptionPackageManager(s.pkgMgr),
 		}
-		if s.mqtt2 != nil {
-			if h := s.mqtt2.WsHandlerFunc(); h != nil {
+		if s.mqttd != nil {
+			if h := s.mqttd.WsHandlerFunc(); h != nil {
 				opts = append(opts, httpd.OptionMqttWsHandlerFunc(h))
 			}
 		}
@@ -787,8 +787,8 @@ func (s *svr) Stop() {
 	if s.sshd != nil {
 		s.sshd.Stop()
 	}
-	if s.mqtt2 != nil {
-		s.mqtt2.Stop()
+	if s.mqttd != nil {
+		s.mqttd.Stop()
 	}
 	if s.httpd != nil {
 		s.httpd.Stop()
@@ -1297,11 +1297,11 @@ func (s *svr) ValidateUserPassword(user string, password string) (bool, string, 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	passed, err := s.db.UserAuth(ctx, user, password)
+	passed, reason, err := s.db.UserAuth(ctx, user, password)
 	if err != nil {
 		return false, "", err
 	} else if !passed {
-		return false, "", nil
+		return false, reason, nil
 	} else {
 		return true, s.snowflakes[rand.Intn(len(s.snowflakes))], nil
 	}

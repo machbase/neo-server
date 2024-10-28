@@ -215,7 +215,9 @@ func Test() error {
 	}
 
 	testArgs := []string{
-		"test", "-cover", "-coverprofile", "./tmp/cover.out",
+		"test",
+		"-p", "1",
+		"-cover", "-coverprofile", "./tmp/cover.out",
 		"./booter/...",
 		"./api/...",
 		"./mods/...",

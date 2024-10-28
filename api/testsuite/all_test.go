@@ -1,4 +1,4 @@
-package api_test
+package testsuite_test
 
 import (
 	"context"
@@ -114,4 +114,9 @@ func TestTagTableAppend(t *testing.T) {
 func TestWatchLogTable(t *testing.T) {
 	db := testsuite.Database_machsvr(t)
 	testsuite.WatchLogTable(t, db, context.TODO())
+}
+
+func TestDemoUser(t *testing.T) {
+	db := testsuite.Database_machsvr(t)
+	testsuite.DemoUser(t, db, context.TODO())
 }

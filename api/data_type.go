@@ -157,15 +157,15 @@ func (typ DataType) ColumnType() ColumnType {
 		case COLUMN_TYPE_SHORT:
 			return ColumnTypeShort
 		case COLUMN_TYPE_USHORT, "unsigned short":
-			return ColumnTypeUshort
+			return ColumnTypeUShort
 		case COLUMN_TYPE_INTEGER, "int":
 			return ColumnTypeInteger
 		case COLUMN_TYPE_UINTEGER, "unsigned integer":
-			return ColumnTypeUinteger
+			return ColumnTypeUInteger
 		case COLUMN_TYPE_LONG, "int64":
 			return ColumnTypeLong
 		case COLUMN_TYPE_ULONG, "unsigned long":
-			return ColumnTypeUlong
+			return ColumnTypeULong
 		case COLUMN_TYPE_FLOAT:
 			return ColumnTypeFloat
 		case COLUMN_TYPE_DOUBLE:
@@ -187,7 +187,7 @@ func (typ DataType) ColumnType() ColumnType {
 		case COLUMN_TYPE_IPV6:
 			return ColumnTypeIPv6
 		case COLUMN_TYPE_JSON:
-			return ColumnTypeJson
+			return ColumnTypeJSON
 		default:
 			return ColumnTypeVarchar
 		}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -43,6 +42,8 @@ const (
 )
 
 func Initialize(homeDir string, machPort int, opt InitOption) error {
+	_env.Lock()
+	defer _env.Unlock()
 	homeDir = translateCodePage(homeDir)
 	var handle unsafe.Pointer
 	err := mach.EngInitialize(homeDir, machPort, int(opt), &handle)
@@ -94,16 +95,19 @@ func RestoreDatabase(path string) error {
 
 type Env struct {
 	sync.Mutex
-	handle   unsafe.Pointer
-	database *Database
+	handle          unsafe.Pointer
+	database        *Database
+	onceNewDatabase sync.Once
 }
 
 var _env = Env{}
 
 type Database struct {
-	handle unsafe.Pointer
-	idGen  *sonyflake.Sonyflake
-	conns  cmap.ConcurrentMap[string, *ConnWatcher]
+	handle    unsafe.Pointer
+	idGen     *sonyflake.Sonyflake
+	conns     cmap.ConcurrentMap[string, *ConnWatcher]
+	onceStart sync.Once
+	onceStop  sync.Once
 }
 
 var _ api.Database = (*Database)(nil)
@@ -111,38 +115,53 @@ var _ api.Database = (*Database)(nil)
 func NewDatabase() (*Database, error) {
 	_env.Lock()
 	defer _env.Unlock()
-	if _env.database == nil {
+
+	_env.onceNewDatabase.Do(func() {
 		_env.database = &Database{
 			handle: _env.handle,
 			conns:  cmap.New[*ConnWatcher](),
 			idGen:  sonyflake.NewSonyflake(sonyflake.Settings{}),
 		}
-	}
+	})
 	return _env.database, nil
 }
 
-func (db *Database) Startup() error {
-	// machbase change the current dir to $HOME during startup process.
-	// Call chdir() for keeping the working dir of the application.
-	cwd, _ := os.Getwd()
-	defer func() {
-		os.Chdir(cwd)
-	}()
+func (db *Database) Startup() (err error) {
+	_env.Lock()
+	defer _env.Unlock()
 
-	err := mach.EngStartup(db.handle)
-	return err
+	db.onceStart.Do(func() {
+		err = mach.EngStartup(db.handle)
+	})
+	return
 }
 
-func (db *Database) Shutdown() error {
-	return mach.EngShutdown(db.handle)
+func (db *Database) Shutdown() (err error) {
+	_env.Lock()
+	defer _env.Unlock()
+
+	db.onceStop.Do(func() {
+		err = mach.EngShutdown(db.handle)
+		_env.database = nil
+		_env.handle = nil
+	})
+	return
 }
 
 func (db *Database) Error() error {
 	return mach.EngError(db.handle)
 }
 
-func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, error) {
-	return mach.EngUserAuth(db.handle, username, password)
+func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, string, error) {
+	ok, err := mach.EngUserAuth(db.handle, username, password)
+	if err != nil {
+		return false, "", err
+	}
+	if ok {
+		return true, "", nil
+	} else {
+		return false, "invalid username or password", nil
+	}
 }
 
 func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
@@ -468,7 +487,7 @@ func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
 		ret[i] = &api.Column{
 			Name:     strings.ToUpper(columnName),
 			DataType: dataType,
-			Length:   columnLength,
+			Length:   columnSize,
 		}
 	}
 	return ret, nil
@@ -623,13 +642,18 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 				row.err = err
 				return row
 			}
-			row.err = readColumnData(stmt, rawType, i, row.values[i])
+			isNull := false
+			row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull)
 			if row.err != nil {
 				return row
+			}
+			if isNull {
+				row.values[i] = nil
 			}
 		}
 	}
 	if row.err == nil {
+		row.affectedRows = 1
 		row.ok = true
 	}
 	return row

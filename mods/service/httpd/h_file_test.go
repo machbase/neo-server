@@ -244,7 +244,7 @@ func newColumnsMock() *columnsMock {
 			{"NAME", api.ColumnTypeVarchar, 200, 1, 0},
 			{"TIME", api.ColumnTypeDatetime, 8, 2, 1},
 			{"VALUE", api.ColumnTypeDouble, 8, 3, 2},
-			{"EXTDATA", api.ColumnTypeJson, 32767, 4, 3},
+			{"EXTDATA", api.ColumnTypeJSON, 32767, 4, 3},
 			{"_RID", api.ColumnTypeLong, 8, 5, 65534},
 		},
 	}

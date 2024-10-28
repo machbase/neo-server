@@ -18,7 +18,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
-func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	tick := time.Now()
 	req := &msg.QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
 	rsp := &msg.QueryResponse{Reason: "not specified"}

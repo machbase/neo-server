@@ -162,7 +162,7 @@ func scanDatetime(src time.Time, pDst any) error {
 	case *int64:
 		*dst = src.UnixNano()
 	case *time.Time:
-		*dst = src
+		*dst = src.In(time.UTC)
 	case *string:
 		*dst = src.In(time.UTC).Format(time.RFC3339)
 	case *driver.Value:
