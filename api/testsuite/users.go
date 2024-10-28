@@ -32,14 +32,20 @@ func DemoUser(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, result.Err())
 
 	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.UTC)
-	// insert
+	// insert tag_data
 	result = conn.Exec(ctx, `insert into tag_data values('demo-1', ?, 1.23, '{"key1": "value1"}')`, now)
 	require.NoError(t, result.Err(), "insert fail")
-	conn.Exec(ctx, "exec table_flush(tag_data)")
+
+	// insert demo.tag_data
+	result = sysConn.Exec(ctx, `insert into demo.tag_data values('demo-1', ?, 1.23, '{"key1": "value1"}')`, now.Add(1))
+	require.NoError(t, result.Err(), "insert fail")
+
+	result = sysConn.Exec(ctx, "exec table_flush(demo.tag_data)")
+	require.NoError(t, result.Err(), "table_flush fail")
 
 	row := sysConn.QueryRow(ctx, "select count(*) from demo.tag_data where name = ?", "demo-1")
 	require.NoError(t, row.Err())
 	var count int
 	row.Scan(&count)
-	require.Equal(t, 1, count)
+	require.Equal(t, 2, count)
 }
