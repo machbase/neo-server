@@ -68,16 +68,16 @@ func query(query *Query, ctx context.Context, conn Conn, sqlText string, args ..
 		query.Begin(query)
 	}
 	if query.End != nil {
-		defer func() {
-			if numRows == 0 {
+		defer func(num *int64) {
+			if *num == 0 {
 				userMessage = "no rows fetched."
-			} else if numRows == 1 {
+			} else if *num == 1 {
 				userMessage = "a row fetched."
 			} else {
-				userMessage = fmt.Sprintf("%d rows fetched.", numRows)
+				userMessage = fmt.Sprintf("%d rows fetched.", *num)
 			}
 			query.End(query, userMessage, numRows)
-		}()
+		}(&numRows)
 	}
 
 	for rows.Next() {

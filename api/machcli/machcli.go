@@ -2,7 +2,9 @@ package machcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"time"
@@ -16,7 +18,7 @@ func errorWithCause(obj any, cause error) error {
 	var handle unsafe.Pointer
 	var handleType mach.HandleType
 	switch x := obj.(type) {
-	case *Env:
+	case *Database:
 		handle = x.handle
 		handleType = mach.MACHCLI_HANDLE_ENV
 	case *Conn:
@@ -43,89 +45,108 @@ func errorWithCause(obj any, cause error) error {
 			if code == 0 {
 				return nil // no error
 			}
-			return fmt.Errorf("MACHCLI ERR-%d, %s", code, msg)
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
 		} else {
-			return fmt.Errorf("MACHCLI ERR-%d, %s", code, msg)
+			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
 		}
 	}
 }
 
-type Env struct {
+type Config struct {
+	Host string
+	Port int
+}
+
+type Database struct {
+	Config
 	handle unsafe.Pointer
 }
 
-func NewEnv() (*Env, error) {
+var _ api.Database = (*Database)(nil)
+
+func NewDatabase(conf *Config) (*Database, error) {
 	var h unsafe.Pointer
 	if err := mach.CliInitialize(&h); err != nil {
 		return nil, err
 	}
-	return &Env{handle: h}, nil
+	return &Database{Config: *conf, handle: h}, nil
 }
 
-func (env *Env) Close() error {
-	if err := mach.CliFinalize(env.handle); err == nil {
+func (db *Database) Close() error {
+	if err := mach.CliFinalize(db.handle); err == nil {
 		return nil
 	} else {
-		return errorWithCause(env, err)
+		return errorWithCause(db, err)
 	}
 }
 
-func (env *Env) Connect(ctx context.Context, opts ...ConnectOption) (*Conn, error) {
-	conf := &ConnConfig{
-		host:     "127.0.0.1",
-		port:     5656,
-		user:     "sys",
-		password: "manager",
+func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
+	tick := time.Now()
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", db.Host, db.Port))
+	if err != nil {
+		return 0, err
 	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte("PING\n"))
+	if err != nil {
+		return 0, err
+	}
+	buff := make([]byte, 16)
+	_, err = conn.Read(buff)
+	if err != nil && err != io.EOF {
+		return 0, err
+	}
+	return time.Since(tick), nil
+}
+
+func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, string, error) {
+	conn, err := db.Connect(ctx, api.WithPassword(user, password))
+	if err != nil {
+		return false, "invalid username or password", nil
+	}
+	defer conn.Close()
+	return true, "", nil
+}
+
+func (db *Database) connectionString(user string, password string) string {
+	return fmt.Sprintf("SERVER=%s;UID=%s;PWD=%s;CONNTYPE=1;PORT_NO=%d",
+		db.Host, strings.ToUpper(user), strings.ToUpper(password), db.Port)
+}
+
+func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+	var user, password string
 	for _, opt := range opts {
-		opt(conf)
+		switch o := opt.(type) {
+		case *api.ConnectOptionPassword:
+			user = o.User
+			password = o.Password
+		case *api.ConnectOptionTrustUser:
+			return nil, errors.New("trust user option is not supported")
+		default:
+			return nil, fmt.Errorf("unknown option type-%T", o)
+		}
 	}
 	var h unsafe.Pointer
-	if err := mach.CliConnect(env.handle, conf.ConnectionString(), &h); err == nil {
+	if err := mach.CliConnect(db.handle, db.connectionString(user, password), &h); err == nil {
 		ret := &Conn{
 			handle: h,
 			ctx:    ctx,
-			env:    env,
+			db:     db,
 		}
 		return ret, nil
 	} else {
-		return nil, errorWithCause(env, err)
-	}
-}
-
-type ConnConfig struct {
-	host     string
-	port     int
-	user     string
-	password string
-}
-
-func (c *ConnConfig) ConnectionString() string {
-	return fmt.Sprintf("SERVER=%s;UID=%s;PWD=%s;CONNTYPE=1;PORT_NO=%d",
-		c.host, strings.ToUpper(c.user), strings.ToUpper(c.password), c.port)
-}
-
-type ConnectOption func(*ConnConfig)
-
-func WithHost(host string, port int) ConnectOption {
-	return func(c *ConnConfig) {
-		c.host = host
-		c.port = port
-	}
-}
-
-func WithPassword(user string, password string) ConnectOption {
-	return func(conf *ConnConfig) {
-		conf.user = user
-		conf.password = password
+		return nil, errorWithCause(db, err)
 	}
 }
 
 type Conn struct {
 	handle unsafe.Pointer
 	ctx    context.Context
-	env    *Env
+	db     *Database
 }
+
+var _ api.Conn = (*Conn)(nil)
 
 func (c *Conn) Close() error {
 	if err := mach.CliDisconnect(c.handle); err == nil {
@@ -139,24 +160,11 @@ func (c *Conn) Error() error {
 	return errorWithCause(c, nil)
 }
 
-func (c *Conn) ExecDirectContext(ctx context.Context, query string) *Result {
-	ret := &Result{}
-	stmt, err := c.NewStmt()
-	if err != nil {
-		ret.err = err
-		return ret
-	}
-	defer stmt.Close()
-	if err := mach.CliExecDirect(stmt.handle, query); err == nil {
-		// TODO implement rowsAffected
-		return ret
-	} else {
-		ret.err = errorWithCause(c, err)
-		return ret
-	}
+func (c *Conn) Explain(ctx context.Context, query string, full bool) (string, error) {
+	return "", api.ErrNotImplemented("Explain")
 }
 
-func (c *Conn) ExecContext(ctx context.Context, query string, args ...any) *Result {
+func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	ret := &Result{}
 	stmt, err := c.NewStmt()
 	if err != nil {
@@ -165,24 +173,45 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args ...any) *Resu
 	}
 	defer stmt.Close()
 
-	if err := stmt.prepare(query); err != nil {
-		ret.err = err
-		return ret
-	}
-	if err := stmt.bindParams(args...); err != nil {
-		ret.err = err
-		return ret
-	}
-	if err := stmt.execute(); err != nil {
-		ret.err = err
-		return ret
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
+	defer func() {
+		switch stmt.sqlHead {
+		case "INSERT":
+			ret.rowsAffected = 1
+		case "DELETE":
+			// TODO implement rowsAffected
+			ret.rowsAffected = 1
+		default:
+			// TODO implement rowsAffected
+		}
+	}()
+	if len(args) == 0 {
+		if err := mach.CliExecDirect(stmt.handle, query); err == nil {
+			return ret
+		} else {
+			ret.err = errorWithCause(c, err)
+			return ret
+		}
+	} else {
+		if err := stmt.prepare(query); err != nil {
+			ret.err = err
+			return ret
+		}
+		if err := stmt.bindParams(args...); err != nil {
+			ret.err = err
+			return ret
+		}
+		if err := stmt.execute(); err != nil {
+			ret.err = err
+			return ret
+		}
 	}
 
 	// TODO implement rowsAffected
 	return &Result{}
 }
 
-func (c *Conn) QueryRowContext(ctx context.Context, query string, args ...any) *Row {
+func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row {
 	ret := &Row{}
 
 	stmt, err := c.NewStmt()
@@ -204,16 +233,26 @@ func (c *Conn) QueryRowContext(ctx context.Context, query string, args ...any) *
 		ret.err = err
 		return ret
 	}
-	if values, _, err := stmt.fetch(); err != nil {
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
+	if values, err := stmt.fetch(); err != nil {
 		ret.err = err
 		return ret
 	} else {
 		ret.values = values
 	}
+	ret.columns = make(api.Columns, len(stmt.columnDescs))
+	for i, desc := range stmt.columnDescs {
+		ret.columns[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
 	return ret
 }
 
-func (c *Conn) QueryContext(ctx context.Context, query string, args ...any) (*Rows, error) {
+func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, error) {
 	stmt, err := c.NewStmt()
 	if err != nil {
 		return nil, err
@@ -230,8 +269,14 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args ...any) (*Ro
 		stmt.Close()
 		return nil, err
 	}
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	ret := &Rows{
 		stmt: stmt,
+	}
+	if stmt.sqlHead == "INSERT" {
+		ret.rowsAffected = 1
+	} else {
+		// TODO implement rowsAffected
 	}
 	return ret, nil
 }
@@ -252,137 +297,98 @@ func (stmt *Stmt) bindParams(args ...any) error {
 		return api.ErrParamCount(numParam, len(args))
 	}
 
-	paramsDesc := make([]mach.CliParamDesc, numParam)
-	for i := 0; i < numParam; i++ {
-		desc, err := mach.CliDescribeParam(stmt.handle, i)
-		if err != nil {
-			return errorWithCause(stmt, err)
-		}
-		paramsDesc[i] = desc
-	}
-
-	if len(args) != numParam {
-		return api.ErrParamCount(numParam, len(args))
-	}
-
-	for paramNo, pd := range paramsDesc {
+	for idx, arg := range args {
 		var value unsafe.Pointer
 		var valueLen int
 		var cType mach.CType
-		arg := args[paramNo]
-		switch pd.Type {
+		var sqlType mach.SqlType
+		switch val := arg.(type) {
 		default:
-			return api.ErrDatabaseBindUnknownType(paramNo, int(pd.Type))
-		case mach.MACHCLI_SQL_TYPE_INT16:
-			switch val := arg.(type) {
-			case int16:
-				cType = mach.MACHCLI_C_TYPE_INT16
-				value = unsafe.Pointer(&val)
-				valueLen = 2
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), arg)
-			}
-		case mach.MACHCLI_SQL_TYPE_INT32:
-			switch val := arg.(type) {
-			case int32, int:
-				cType = mach.MACHCLI_C_TYPE_INT32
-				value = unsafe.Pointer(&val)
-				valueLen = 4
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_INT64:
-			switch val := arg.(type) {
-			case int64:
-				cType = mach.MACHCLI_C_TYPE_INT64
-				value = unsafe.Pointer(&val)
-				valueLen = 8
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_DATETIME:
-			switch val := arg.(type) {
-			case int64:
-				cType = mach.MACHCLI_C_TYPE_INT64
-				value = unsafe.Pointer(&val)
-				valueLen = 8
-			case time.Time:
-				cType = mach.MACHCLI_C_TYPE_INT64
-				v := val.UnixNano()
-				value = unsafe.Pointer(&v)
-				valueLen = 8
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_FLOAT:
-			switch val := arg.(type) {
-			case float32:
-				cType = mach.MACHCLI_C_TYPE_FLOAT
-				value = unsafe.Pointer(&val)
-				valueLen = 4
-			case float64:
-				cType = mach.MACHCLI_C_TYPE_FLOAT
-				v := float32(val)
-				value = unsafe.Pointer(&v)
-				valueLen = 4
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_DOUBLE:
-			switch val := arg.(type) {
-			case float32:
-				cType = mach.MACHCLI_C_TYPE_FLOAT
-				value = unsafe.Pointer(&val)
-				valueLen = 4
-			case float64:
-				cType = mach.MACHCLI_C_TYPE_DOUBLE
-				value = unsafe.Pointer(&val)
-				valueLen = 8
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_IPV4:
-			switch val := arg.(type) {
-			case net.IP:
+			pd, _ := mach.CliDescribeParam(stmt.handle, idx)
+			if val == nil {
 				cType = mach.MACHCLI_C_TYPE_CHAR
+				sqlType = pd.Type
+				value = nil
+				valueLen = 0
+			} else {
+				return api.ErrDatabaseBindUnknownType(idx, fmt.Sprintf("%T, expect: %d", val, pd.Type))
+			}
+		case int16:
+			cType = mach.MACHCLI_C_TYPE_INT16
+			sqlType = mach.MACHCLI_SQL_TYPE_INT16
+			n := new(int16)
+			*n = val
+			value = unsafe.Pointer(n)
+			valueLen = 2
+		case int32:
+			cType = mach.MACHCLI_C_TYPE_INT32
+			sqlType = mach.MACHCLI_SQL_TYPE_INT32
+			n := new(int32)
+			*n = val
+			value = unsafe.Pointer(n)
+			valueLen = 4
+		case int:
+			cType = mach.MACHCLI_C_TYPE_INT32
+			sqlType = mach.MACHCLI_SQL_TYPE_INT32
+			n := new(int32)
+			*n = int32(val)
+			value = unsafe.Pointer(n)
+			valueLen = 4
+		case int64:
+			cType = mach.MACHCLI_C_TYPE_INT64
+			sqlType = mach.MACHCLI_SQL_TYPE_INT64
+			n := new(int64)
+			*n = val
+			value = unsafe.Pointer(n)
+			valueLen = 8
+		case time.Time:
+			cType = mach.MACHCLI_C_TYPE_INT64
+			sqlType = mach.MACHCLI_SQL_TYPE_DATETIME
+			n := new(int64)
+			*n = val.UnixNano()
+			value = unsafe.Pointer(n)
+			valueLen = 8
+		case float32:
+			cType = mach.MACHCLI_C_TYPE_FLOAT
+			sqlType = mach.MACHCLI_SQL_TYPE_FLOAT
+			n := new(float32)
+			*n = val
+			value = unsafe.Pointer(n)
+			valueLen = 4
+		case float64:
+			cType = mach.MACHCLI_C_TYPE_DOUBLE
+			sqlType = mach.MACHCLI_SQL_TYPE_DOUBLE
+			n := new(float64)
+			*n = val
+			value = unsafe.Pointer(n)
+			valueLen = 8
+		case net.IP:
+			if len(val) == 4 {
+				cType = mach.MACHCLI_C_TYPE_CHAR
+				sqlType = mach.MACHCLI_SQL_TYPE_IPV4
 				v := val.To4()
 				value = unsafe.Pointer(&v[0])
 				valueLen = 4
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_IPV6:
-			switch val := arg.(type) {
-			case net.IP:
+			} else {
 				cType = mach.MACHCLI_C_TYPE_CHAR
+				sqlType = mach.MACHCLI_SQL_TYPE_IPV6
 				v := val.To16()
 				value = unsafe.Pointer(&v[0])
 				valueLen = 16
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
 			}
-		case mach.MACHCLI_SQL_TYPE_STRING:
-			switch val := arg.(type) {
-			case string:
-				cType = mach.MACHCLI_C_TYPE_CHAR
-				bStr := []byte(val)
-				value = (unsafe.Pointer)(&bStr[0])
-				valueLen = len(bStr)
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
-		case mach.MACHCLI_SQL_TYPE_BINARY:
-			switch val := arg.(type) {
-			case []byte:
-				cType = mach.MACHCLI_C_TYPE_CHAR
-				value = (unsafe.Pointer)(&val[0])
-				valueLen = len(val)
-			default:
-				return api.ErrDatabaseBindWrongType(paramNo, int(pd.Type), value)
-			}
+		case string:
+			cType = mach.MACHCLI_C_TYPE_CHAR
+			sqlType = mach.MACHCLI_SQL_TYPE_STRING
+			bStr := []byte(val)
+			value = (unsafe.Pointer)(&bStr[0])
+			valueLen = len(bStr)
+		case []byte:
+			cType = mach.MACHCLI_C_TYPE_CHAR
+			sqlType = mach.MACHCLI_SQL_TYPE_BINARY
+			value = (unsafe.Pointer)(&val[0])
+			valueLen = len(val)
 		}
-
-		if err := mach.CliBindParam(stmt.handle, paramNo, cType, pd.Type, value, valueLen); err != nil {
+		if err := mach.CliBindParam(stmt.handle, idx, cType, sqlType, value, valueLen); err != nil {
 			return errorWithCause(stmt, err)
 		}
 	}
@@ -390,10 +396,12 @@ func (stmt *Stmt) bindParams(args ...any) error {
 }
 
 type Result struct {
-	message string
-	err     error
-	// rowsAffected int64
+	message      string
+	err          error
+	rowsAffected int64
 }
+
+var _ api.Result = (*Result)(nil)
 
 func (rs *Result) Message() string {
 	return rs.message
@@ -407,13 +415,8 @@ func (rs *Result) LastInsertId() (int64, error) {
 	return 0, api.ErrNotImplemented("LastInsertId")
 }
 
-// func (rs *Result) RowsAffected() (int64, error) {
-// 	return 0, api.ErrNotImplemented("RowsAffected")
-// 	// return rs.rowsAffected, nil
-// }
-
 func (rs *Result) RowsAffected() int64 {
-	return 0
+	return rs.rowsAffected
 }
 
 func (c *Conn) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
@@ -479,6 +482,60 @@ func (st SqlType) String() string {
 	}
 }
 
+func (st SqlType) ColumnType() api.ColumnType {
+	switch st {
+	default:
+		return api.ColumnTypeUnknown
+	case MACHCLI_SQL_TYPE_INT16:
+		return api.ColumnTypeShort
+	case MACHCLI_SQL_TYPE_INT32:
+		return api.ColumnTypeInteger
+	case MACHCLI_SQL_TYPE_INT64:
+		return api.ColumnTypeLong
+	case MACHCLI_SQL_TYPE_DATETIME:
+		return api.ColumnTypeDatetime
+	case MACHCLI_SQL_TYPE_FLOAT:
+		return api.ColumnTypeFloat
+	case MACHCLI_SQL_TYPE_DOUBLE:
+		return api.ColumnTypeDouble
+	case MACHCLI_SQL_TYPE_IPV4:
+		return api.ColumnTypeIPv4
+	case MACHCLI_SQL_TYPE_IPV6:
+		return api.ColumnTypeIPv6
+	case MACHCLI_SQL_TYPE_STRING:
+		return api.ColumnTypeVarchar
+	case MACHCLI_SQL_TYPE_BINARY:
+		return api.ColumnTypeBinary
+	}
+}
+
+func (st SqlType) DataType() api.DataType {
+	switch st {
+	default:
+		return api.DataTypeAny
+	case MACHCLI_SQL_TYPE_INT16:
+		return api.DataTypeInt16
+	case MACHCLI_SQL_TYPE_INT32:
+		return api.DataTypeInt32
+	case MACHCLI_SQL_TYPE_INT64:
+		return api.DataTypeInt64
+	case MACHCLI_SQL_TYPE_DATETIME:
+		return api.DataTypeDatetime
+	case MACHCLI_SQL_TYPE_FLOAT:
+		return api.DataTypeFloat32
+	case MACHCLI_SQL_TYPE_DOUBLE:
+		return api.DataTypeFloat64
+	case MACHCLI_SQL_TYPE_IPV4:
+		return api.DataTypeIPv4
+	case MACHCLI_SQL_TYPE_IPV6:
+		return api.DataTypeIPv6
+	case MACHCLI_SQL_TYPE_STRING:
+		return api.DataTypeString
+	case MACHCLI_SQL_TYPE_BINARY:
+		return api.DataTypeBinary
+	}
+}
+
 type ColumnDesc struct {
 	Name     string
 	Type     SqlType
@@ -491,6 +548,8 @@ type Stmt struct {
 	handle      unsafe.Pointer
 	conn        *Conn
 	columnDescs []ColumnDesc
+	endOfFetch  bool
+	sqlHead     string
 }
 
 func (stmt *Stmt) Close() error {
@@ -526,117 +585,124 @@ func (stmt *Stmt) execute() error {
 
 // fetch fetches the next row from the result set.
 // It returns true if it reaches end of the result, otherwise false.
-func (stmt *Stmt) fetch() ([]any, bool, error) {
+func (stmt *Stmt) fetch() ([]any, error) {
+	if stmt.endOfFetch {
+		return nil, api.ErrDatabaseFetch(fmt.Errorf("reached end of the result set"))
+	}
 	end, err := mach.CliFetch(stmt.handle)
 	if err != nil {
-		return nil, end, err
+		return nil, err
 	}
-	if end {
-		return nil, true, nil
+	stmt.endOfFetch = end
+	if stmt.endOfFetch {
+		return nil, io.EOF
 	}
 
-	row := make([]any, len(stmt.columnDescs))
+	values := make([]any, len(stmt.columnDescs))
 	for i, desc := range stmt.columnDescs {
 		switch desc.Type {
 		case MACHCLI_SQL_TYPE_INT16:
 			var v = new(int16)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT16, unsafe.Pointer(v), 2); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = *v
+				values[i] = *v
 			}
 		case MACHCLI_SQL_TYPE_INT32:
 			var v = new(int32)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT32, unsafe.Pointer(v), 4); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = *v
+				values[i] = *v
 			}
 		case MACHCLI_SQL_TYPE_INT64:
 			var v = new(int64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT64, unsafe.Pointer(v), 8); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = *v
+				values[i] = *v
 			}
 		case MACHCLI_SQL_TYPE_DATETIME:
 			var v = new(int64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT64, unsafe.Pointer(v), 8); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = time.Unix(0, *v)
+				values[i] = time.Unix(0, *v)
 			}
 		case MACHCLI_SQL_TYPE_FLOAT:
 			var v = new(float32)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_FLOAT, unsafe.Pointer(v), 4); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = *v
+				values[i] = *v
 			}
 		case MACHCLI_SQL_TYPE_DOUBLE:
 			var v = new(float64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_DOUBLE, unsafe.Pointer(v), 8); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = *v
+				values[i] = *v
 			}
 		case MACHCLI_SQL_TYPE_IPV4:
 			var v = []byte{0, 0, 0, 0}
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), 4); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = net.IP(v)
+				values[i] = net.IP(v)
 			}
 		case MACHCLI_SQL_TYPE_IPV6:
 			var v = make([]byte, 16)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), 16); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = net.IP(v)
+				values[i] = net.IP(v)
 			}
 		case MACHCLI_SQL_TYPE_STRING:
-			var v = make([]byte, desc.Size)
-			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), desc.Size); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+			var v = make([]byte, desc.Size+1)
+			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), len(v)); err != nil {
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = string(v[0:n])
+				values[i] = string(v[0:n])
 			}
 		case MACHCLI_SQL_TYPE_BINARY:
-			var v = make([]byte, desc.Size)
-			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), desc.Size); err != nil {
-				return nil, end, errorWithCause(stmt, err)
-			} else if n == -1 {
-				row[i] = nil
+			var v = make([]byte, desc.Size+1)
+			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), len(v)); err != nil {
+				return nil, errorWithCause(stmt, err)
+			} else if n == 0 {
+				values[i] = nil
 			} else {
-				row[i] = v[0:n]
+				values[i] = v[0:n]
 			}
 		}
 	}
-	return row, end, nil
+	return values, nil
 }
 
 type Row struct {
-	err    error
-	values []any
+	err     error
+	values  []any
+	columns api.Columns
 }
+
+var _ api.Row = (*Row)(nil)
 
 func (r *Row) Success() bool {
 	return r.err == nil
@@ -646,15 +712,17 @@ func (r *Row) Err() error {
 	return r.err
 }
 
+func (r *Row) Columns() (api.Columns, error) {
+	return r.columns, nil
+}
+
 func (r *Row) Scan(dest ...any) error {
 	if len(dest) > len(r.values) {
 		return api.ErrParamCount(len(r.values), len(dest))
 	}
 	for i, d := range dest {
-		if d == nil {
-			continue
-		}
 		if r.values[i] == nil {
+			dest[i] = nil
 			continue
 		}
 		if err := api.Scan(r.values[i], d); err != nil {
@@ -665,9 +733,9 @@ func (r *Row) Scan(dest ...any) error {
 }
 
 func (r *Row) Values() []any {
-	// TODO implement
-	return nil
+	return r.values
 }
+
 func (r *Row) RowsAffected() int64 {
 	// TODO implement
 	return 0
@@ -679,10 +747,13 @@ func (r *Row) Message() string {
 }
 
 type Rows struct {
-	stmt *Stmt
-	err  error
-	row  []any
+	stmt         *Stmt
+	err          error
+	row          []any
+	rowsAffected int64
 }
+
+var _ api.Rows = (*Rows)(nil)
 
 func (r *Rows) Err() error {
 	return r.err
@@ -693,31 +764,68 @@ func (r *Rows) Close() error {
 }
 
 func (r *Rows) IsFetchable() bool {
-	// TODO implement
-	return false
+	return r.stmt.sqlHead == "SELECT"
 }
 
-func (r *Rows) Columns() ([]string, []api.DataType, error) {
-	return nil, nil, api.ErrNotImplemented("Columns")
+func (r *Rows) Columns() (api.Columns, error) {
+	ret := make(api.Columns, len(r.stmt.columnDescs))
+	for i, desc := range r.stmt.columnDescs {
+		ret[i] = &api.Column{
+			Name:     desc.Name,
+			Length:   desc.Size,
+			Type:     desc.Type.ColumnType(),
+			DataType: desc.Type.DataType(),
+		}
+	}
+	return ret, nil
 }
 
 func (r *Rows) Message() string {
-	// TODO implement
-	return ""
+	switch r.stmt.sqlHead {
+	case "SELECT":
+		return "Select successfully."
+	case "INSERT":
+		if r.rowsAffected == 0 {
+			return "no rows inserted."
+		} else if r.rowsAffected == 1 {
+			return "a row inserted."
+		} else {
+			return fmt.Sprintf("%d rows inserted.", r.rowsAffected)
+		}
+	case "DELETE":
+		if r.rowsAffected == 0 {
+			return "no rows deleted."
+		} else if r.rowsAffected == 1 {
+			return "a row deleted."
+		} else {
+			return fmt.Sprintf("%d rows deleted.", r.rowsAffected)
+		}
+	case "CREATE":
+		return "Created successfully."
+	case "DROP":
+		return "Dropped successfully."
+	case "TRUNCATE":
+		return "Truncated successfully."
+	case "ALTER":
+		return "Altered successfully."
+	case "CONNECT":
+		return "Connected successfully."
+	default:
+		return r.stmt.sqlHead + " executed."
+	}
 }
 
 func (r *Rows) RowsAffected() int64 {
-	// TODO implement
-	return 0
+	return r.rowsAffected
 }
 
 func (r *Rows) Next() bool {
-	row, end, err := r.stmt.fetch()
-	if err != nil {
-		r.err = err
+	if r.stmt.endOfFetch {
 		return false
 	}
-	if end {
+	row, err := r.stmt.fetch()
+	if err != nil {
+		r.err = err
 		return false
 	}
 	r.row = row
@@ -741,6 +849,9 @@ func (r *Rows) Scan(dest ...any) error {
 			continue
 		}
 		if r.row[i] == nil {
+			if !api.ScanNull(dest[i]) {
+				dest[i] = nil
+			}
 			continue
 		}
 		if err := api.Scan(r.row[i], d); err != nil {
@@ -750,10 +861,15 @@ func (r *Rows) Scan(dest ...any) error {
 	return nil
 }
 
-func (c *Conn) Appender(tableName string, opts ...AppenderOption) (*Appender, error) {
+func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	ret := &Appender{tableName: strings.ToUpper(tableName)}
 	for _, opt := range opts {
-		opt(ret)
+		switch o := opt.(type) {
+		case *api.AppenderOptionBuffer:
+			ret.errCheckCount = o.Threshold
+		default:
+			return nil, fmt.Errorf("unknown option type-%T", o)
+		}
 	}
 
 	stmt, err := c.NewStmt()
@@ -786,30 +902,30 @@ func (c *Conn) Appender(tableName string, opts ...AppenderOption) (*Appender, er
 			return nil, err
 		}
 		stmt.columnDescs[i-1] = d
-		ret.columnTypes = append(ret.columnTypes, mach.SqlType(d.Type))
+
+		ret.columns = append(ret.columns, &api.Column{
+			Name:     d.Name,
+			Length:   d.Size,
+			DataType: api.ParseDataType(d.Type.String()),
+		})
 		ret.columnNames = append(ret.columnNames, d.Name)
-		ret.columnDataTypes = append(ret.columnDataTypes, api.ParseDataType(d.Type.String()))
+		ret.columnTypes = append(ret.columnTypes, mach.SqlType(d.Type))
 	}
 
 	return ret, nil
 }
 
 type Appender struct {
-	stmt            *Stmt
-	tableName       string
-	errCheckCount   int
-	columnTypes     []mach.SqlType
-	columnNames     []string
-	columnDataTypes []api.DataType
+	stmt          *Stmt
+	tableName     string
+	errCheckCount int
+	columns       api.Columns
+	columnNames   []string
+	columnTypes   []mach.SqlType
 }
 
-type AppenderOption func(*Appender)
-
-func WithErrorCheckCount(count int) AppenderOption {
-	return func(c *Appender) {
-		c.errCheckCount = count
-	}
-}
+var _ api.Appender = (*Appender)(nil)
+var _ api.Flusher = (*Appender)(nil)
 
 // Close returns the number of success and fail rows.
 func (a *Appender) Close() (int64, int64, error) {
@@ -828,8 +944,13 @@ func (a *Appender) TableName() string {
 	return a.tableName
 }
 
-func (a *Appender) Columns() ([]string, []api.DataType, error) {
-	return a.columnNames, a.columnDataTypes, nil
+func (a *Appender) TableType() api.TableType {
+	// TODO implement
+	return api.TableTypeTag
+}
+
+func (a *Appender) Columns() (api.Columns, error) {
+	return a.columns, nil
 }
 
 func (a *Appender) Flush() error {
@@ -847,6 +968,6 @@ func (a *Appender) Append(args ...any) error {
 	return nil
 }
 
-func (a *Appender) AppendWithTimestamp(ts time.Time, values ...any) error {
+func (a *Appender) AppendLogTime(ts time.Time, values ...any) error {
 	return api.ErrNotImplemented("AppendWithTimestamp")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machcli"
 )
 
@@ -18,29 +19,32 @@ const (
 )
 
 func main() {
-	env, err := machcli.NewEnv()
+	db, err := machcli.NewDatabase(&machcli.Config{Host: machHost, Port: machPort})
 	if err != nil {
 		panic(err)
 	}
-	defer env.Close()
+	defer db.Close()
 
 	ctx := context.TODO()
 
-	conn, err := env.Connect(ctx, machcli.WithHost(machHost, machPort), machcli.WithPassword(machUser, machPass))
+	conn, err := db.Connect(ctx, api.WithPassword(machUser, machPass))
 	if err != nil {
 		panic(err)
 	}
 	defer conn.Close()
 
-	rows, err := conn.QueryContext(ctx, `select name, time, value from example where name = ? limit 10`, tagName)
+	rows, err := conn.Query(ctx, `select name, time, value from example where name = ? limit 10`, tagName)
 	if err != nil {
 		panic(err)
 	}
 	defer rows.Close()
 
-	descs := rows.ColumnDescriptions()
-	for _, desc := range descs {
-		fmt.Println(">> column name:", desc.Name, "type:", desc.Type)
+	columns, err := rows.Columns()
+	if err != nil {
+		panic(err)
+	}
+	for _, col := range columns {
+		fmt.Println(">> column name:", col.Name, "type:", col.DataType)
 	}
 	var name string
 	var ts int64 // can use time.Time, string, int64
@@ -50,8 +54,5 @@ func main() {
 			panic(err)
 		}
 		fmt.Println(">> name", fmt.Sprintf("%q", name), ", time:", ts, ", value:", value)
-	}
-	if rows.Err() != nil {
-		panic(rows.Err())
 	}
 }

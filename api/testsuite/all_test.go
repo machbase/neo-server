@@ -24,6 +24,8 @@ func TestUserAuth(t *testing.T) {
 	testsuite.UserAuth(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.UserAuth(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.UserAuth(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestPing(t *testing.T) {
@@ -31,6 +33,8 @@ func TestPing(t *testing.T) {
 	testsuite.Ping(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.Ping(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.Ping(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestLicense(t *testing.T) {
@@ -38,6 +42,8 @@ func TestLicense(t *testing.T) {
 	testsuite.License(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.License(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.License(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestDescribeTable(t *testing.T) {
@@ -45,6 +51,8 @@ func TestDescribeTable(t *testing.T) {
 	testsuite.DescribeTable(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.DescribeTable(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.DescribeTable(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestInsert(t *testing.T) {
@@ -52,6 +60,8 @@ func TestInsert(t *testing.T) {
 	testsuite.InsertAndQuery(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.InsertAndQuery(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.InsertAndQuery(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestTables(t *testing.T) {
@@ -59,6 +69,8 @@ func TestTables(t *testing.T) {
 	testsuite.Tables(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.Tables(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.Tables(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestExistsTable(t *testing.T) {
@@ -66,6 +78,8 @@ func TestExistsTable(t *testing.T) {
 	testsuite.ExistsTable(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.ExistsTable(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.ExistsTable(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestIndexes(t *testing.T) {
@@ -73,6 +87,8 @@ func TestIndexes(t *testing.T) {
 	testsuite.Indexes(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.Indexes(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.Indexes(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestExplain(t *testing.T) {
@@ -94,6 +110,8 @@ func TestColumns(t *testing.T) {
 	testsuite.Columns(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
 	testsuite.Columns(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	testsuite.Columns(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestLogTableExec(t *testing.T) {

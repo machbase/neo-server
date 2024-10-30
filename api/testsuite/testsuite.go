@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/machcli"
 	"github.com/machbase/neo-server/api/machrpc"
 	"github.com/machbase/neo-server/api/machsvr"
 	"google.golang.org/grpc"
@@ -260,4 +261,15 @@ func (s *Server) DatabaseSVR() api.Database {
 func (s *Server) DatabaseRPC() api.Database {
 	rpcClient := machrpc.NewMachbaseClient(s.grpcClientConn)
 	return machrpc.NewClientWithRPCClient(rpcClient)
+}
+
+func (s *Server) DatabaseCLI() api.Database {
+	db, err := machcli.NewDatabase(&machcli.Config{
+		Host: "127.0.0.1",
+		Port: s.machsvrPort,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return db
 }

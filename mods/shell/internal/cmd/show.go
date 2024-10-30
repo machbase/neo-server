@@ -336,7 +336,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 
 	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
 	nrow := 0
-	api.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, err error) bool {
+	api.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, id int64, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false

@@ -127,7 +127,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	api.Tags(ctx, conn, table, func(name string, err error) bool {
+	api.Tags(ctx, conn, table, func(name string, id int64, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false

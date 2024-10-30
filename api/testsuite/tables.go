@@ -135,7 +135,8 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result = conn.Exec(ctx, `EXEC table_flush(tag_data)`)
 	require.NoError(t, result.Err(), "table_flush fail")
 
-	conn.Close()
+	err = conn.Close()
+	require.NoError(t, err, "close fail")
 
 	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
@@ -145,7 +146,6 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	rows, err := conn.Query(ctx, `select name, time, value, short_value, int_value, long_value, str_value, json_value from tag_data where name = ?`,
 		"insert-once")
 	require.NoError(t, err, "select fail")
-	defer rows.Close()
 
 	numRows := 0
 	for rows.Next() {
@@ -170,10 +170,15 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		require.Equal(t, `{"key1": "value1"}`, json_value)
 	}
 	require.Equal(t, 1, numRows)
+	err = rows.Close()
+	require.NoError(t, err, "close fail")
 
+	var beginCalled, endCalled bool
+	var nextCalled int
 	// query - select
 	queryCtx := &api.Query{
 		Begin: func(q *api.Query) {
+			beginCalled = true
 			cols := q.Columns()
 			require.Equal(t, []string{"NAME", "TIME", "VALUE",
 				"SHORT_VALUE", "USHORT_VALUE", "INT_VALUE", "UINT_VALUE", "LONG_VALUE", "ULONG_VALUE",
@@ -195,6 +200,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			}, cols.DataTypes())
 		},
 		Next: func(q *api.Query, rownum int64, values []interface{}) bool {
+			nextCalled++
 			require.Equal(t, "insert-once", unbox(values[0]))
 			require.Equal(t, now, unbox(values[1]))
 			require.Equal(t, 1.23, unbox(values[2]))
@@ -209,16 +215,22 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 			return true
 		},
 		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+			endCalled = true
 			require.True(t, q.IsFetch())
 			require.Equal(t, "a row fetched.", userMessage)
 		},
 	}
 	err = queryCtx.Execute(ctx, conn, `select * from tag_data where name = ?`, "insert-once")
 	require.NoError(t, err, "query fail")
+	require.True(t, beginCalled)
+	require.True(t, endCalled)
+	require.Equal(t, 1, nextCalled)
 
 	// query - insert
+	endCalled = false
 	queryCtx = &api.Query{
 		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+			endCalled = true
 			require.False(t, q.IsFetch())
 			require.Equal(t, "a row inserted.", userMessage)
 		},
@@ -239,21 +251,42 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		nil,                  // ipv6_value
 	)
 	require.NoError(t, err, "query-insert fail")
+	require.True(t, endCalled)
+
+	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
+	require.NoError(t, result.Err(), "table_flush fail")
+
+	// FIXME: when the CLI bug is fixed
+	with_cli_uint_bug := false
 
 	// tags
 	tags := map[string]string{}
-	api.Tags(ctx, conn, "TAG_DATA", func(name string, err error) bool {
+	api.Tags(ctx, conn, "TAG_DATA", func(name string, id int64, err error) bool {
 		require.NoError(t, err, "tags fail")
+		if id == -1 {
+			with_cli_uint_bug = true
+		}
 		tags[name] = name
 		return true
 	})
 	require.Equal(t, "insert-once", tags["insert-once"])
+	require.Equal(t, "insert-twice", tags["insert-twice"])
 
 	// tag stat
 	tagStat, err := api.TagStat(ctx, conn, "TAG_DATA", "insert-once")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-once", tagStat.Name)
-	require.Equal(t, int64(1), tagStat.RowCount)
+	if !with_cli_uint_bug {
+		require.Equal(t, int64(1), tagStat.RowCount)
+	}
+
+	// tag stat
+	tagStat, err = api.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
+	require.NoError(t, err, "tag stat fail")
+	require.Equal(t, "insert-twice", tagStat.Name)
+	if !with_cli_uint_bug {
+		require.Equal(t, int64(1), tagStat.RowCount)
+	}
 
 	// delete test data
 	// TODO: delete test data with BIND variable tag name
