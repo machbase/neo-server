@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 )
 
 func Tags(ctx context.Context, conn Conn, table string, callback func(string, int64, error) bool) {
@@ -36,18 +35,6 @@ func Tags(ctx context.Context, conn Conn, table string, callback func(string, in
 			return
 		}
 	}
-}
-
-type TagStatInfo struct {
-	Name          string    `json:"name"`
-	RowCount      int64     `json:"row_count"`
-	MinTime       time.Time `json:"min_time"`
-	MaxTime       time.Time `json:"max_time"`
-	MinValue      float64   `json:"min_value"`
-	MinValueTime  time.Time `json:"min_value_time"`
-	MaxValue      float64   `json:"max_value"`
-	MaxValueTime  time.Time `json:"max_value_time"`
-	RecentRowTime time.Time `json:"recent_row_time"`
 }
 
 func TagStat(ctx context.Context, conn Conn, table string, tag string) (*TagStatInfo, error) {

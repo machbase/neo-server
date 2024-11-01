@@ -4,7 +4,132 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/pkg/errors"
 )
+
+func TranslateShowTables() string {
+	sqlText := SqlTidy(`
+		SELECT
+			j.DB_NAME as DB,
+			u.NAME as USER_NAME,
+			j.NAME as NAME,
+			j.ID as ID,
+			j.TYPE as TYPE,
+			j.FLAG as FLAG
+		FROM
+			M$SYS_USERS u,
+			(
+				select
+					a.ID as ID,
+					a.NAME as NAME,
+					a.USER_ID as USER_ID,
+					a.TYPE as TYPE,
+					a.FLAG as FLAG,
+					case a.DATABASE_ID
+						when -1 then 'MACHBASEDB'
+						else d.MOUNTDB
+					end as DB_NAME
+				from
+					M$SYS_TABLES a
+				left join
+					V$STORAGE_MOUNT_DATABASES d
+				on
+					a.DATABASE_ID = d.BACKUP_TBSID
+			) as j
+		WHERE
+			u.USER_ID = j.USER_ID
+		ORDER by j.NAME
+		`)
+	return sqlText
+}
+
+func Tables(ctx context.Context, conn Conn, callback func(*TableInfo, error) bool) {
+	sqlText := TranslateShowTables()
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		callback(nil, err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ti := &TableInfo{}
+		err := rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if err != nil {
+			callback(nil, err)
+			return
+		}
+		if !callback(ti, nil) {
+			return
+		}
+	}
+}
+
+func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (TableType, error) {
+	_, userName, tableName := TokenizeFullTableName(fullTableName)
+	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if r.Err() != nil {
+		return -1, r.Err()
+	}
+	var ret TableType
+	if err := r.Scan(&ret); err != nil {
+		return -1, err
+	}
+	return ret, nil
+}
+
+func ExistsTable(ctx context.Context, conn Conn, fullTableName string) (bool, error) {
+	_, userName, tableName := TokenizeFullTableName(fullTableName)
+	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
+	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if err := r.Err(); err != nil {
+		fmt.Println("error", err.Error())
+		return false, err
+	}
+	var count = 0
+	if err := r.Scan(&count); err != nil {
+		return false, err
+	}
+	return (count == 1), nil
+}
+
+func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, truncate bool) (exists bool, truncated bool, err error) {
+	exists, err = ExistsTable(ctx, conn, fullTableName)
+	if err != nil {
+		return
+	}
+	if !exists {
+		return
+	}
+
+	// TRUNCATE TABLE
+	if !truncate {
+		return
+	}
+	tableType, err0 := QueryTableType(ctx, conn, fullTableName)
+	if err0 != nil {
+		err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", fullTableName))
+		return
+	}
+	if tableType == TableTypeLog {
+		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
+			return
+		}
+		truncated = true
+	} else {
+		result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
+			return
+		}
+		truncated = true
+	}
+	return
+}
 
 // returns dbName, userName, tableName
 func TokenizeFullTableName(name string) (string, string, string) {
@@ -28,21 +153,21 @@ func TokenizeFullTableName(name string) (string, string, string) {
 // If includeHiddenColumns is true, the result includes hidden columns those name start with '_'
 // such as "_RID" and "_ARRIVAL_TIME".
 func DescribeTable(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
-	_, _, tableName := TokenizeFullTableName(name)
+	_, _, tableName := TableName(name).Split()
 	if strings.HasPrefix(tableName, "V$") {
-		return describe_mv(ctx, conn, name, includeHiddenColumns)
+		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
 	} else if strings.HasPrefix(tableName, "M$") {
-		return describe_mv(ctx, conn, name, includeHiddenColumns)
+		return describe_mv(ctx, conn, TableName(name), includeHiddenColumns)
 	} else {
-		return describe(ctx, conn, name, includeHiddenColumns)
+		return describe(ctx, conn, TableName(name), includeHiddenColumns)
 	}
 }
 
-func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
+func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
 	var colCount int
 
-	dbName, userName, tableName := TokenizeFullTableName(name)
+	dbName, userName, tableName := name.Split()
 	dbId := -1
 
 	if dbName != "" && dbName != "MACHBASEDB" {
@@ -104,7 +229,7 @@ func describe(ctx context.Context, conn Conn, name string, includeHiddenColumns 
 	return d, nil
 }
 
-func describe_idx(ctx context.Context, conn Conn, tableId int, dbId int) ([]*IndexDescription, error) {
+func describe_idx(ctx context.Context, conn Conn, tableId int64, dbId int) ([]*IndexDescription, error) {
 	rows, err := conn.Query(ctx, `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?`, tableId, dbId)
 	if err != nil {
 		return nil, err
@@ -137,12 +262,12 @@ func describe_idx(ctx context.Context, conn Conn, tableId int, dbId int) ([]*Ind
 	return indexes, nil
 }
 
-func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColumns bool) (*TableDescription, error) {
+func describe_mv(ctx context.Context, conn Conn, name TableName, includeHiddenColumns bool) (*TableDescription, error) {
 	d := &TableDescription{}
 	var tableType int
 	var colCount int
 
-	d.Database, d.User, d.Name = TokenizeFullTableName(name)
+	d.Database, d.User, d.Name = name.Split()
 	tablesTable := "M$SYS_TABLES"
 	columnsTable := "M$SYS_COLUMNS"
 	if strings.HasPrefix(d.Name, "V$") {
@@ -179,23 +304,6 @@ func describe_mv(ctx context.Context, conn Conn, name string, includeHiddenColum
 	return d, nil
 }
 
-// TableDescription is represents data that comes as a result of 'desc <table>'
-type TableDescription struct {
-	Database string              `json:"database"`
-	User     string              `json:"user"`
-	Name     string              `json:"name"`
-	Type     TableType           `json:"type"`
-	Flag     TableFlag           `json:"flag,omitempty"`
-	Id       int                 `json:"id"`
-	Columns  Columns             `json:"columns"`
-	Indexes  []*IndexDescription `json:"indexes"`
-}
-
-// String returns string representation of table type.
-func (td *TableDescription) String() string {
-	return TableTypeDescription(td.Type, td.Flag)
-}
-
 // TableTypeDescription converts the given TableType and flag into string representation.
 func TableTypeDescription(typ TableType, flag TableFlag) string {
 	desc := "undef"
@@ -224,11 +332,4 @@ func TableTypeDescription(typ TableType, flag TableFlag) string {
 		desc += " (stat)"
 	}
 	return desc
-}
-
-type IndexDescription struct {
-	Id   uint64    `json:"id"`
-	Name string    `json:"name"`
-	Type IndexType `json:"type"`
-	Cols []string  `json:"cols"`
 }

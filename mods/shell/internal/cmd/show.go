@@ -462,7 +462,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 }
 
 func doShowTables(ctx *action.ActionContext, showAll bool) {
-	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
+	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
 	nrow := 0
 	api.Tables(ctx.Ctx, ctx.Conn, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
@@ -477,7 +477,7 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 		}
 		nrow++
 		desc := api.TableTypeDescription(ti.Type, ti.Flag)
-		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
+		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, ti.Id, desc)
 		return true
 	})
 	t.Render()

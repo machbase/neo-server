@@ -9,16 +9,6 @@ import (
 	"time"
 )
 
-type LicenseInfo struct {
-	Id          string `json:"id"`
-	Type        string `json:"type"`
-	Customer    string `json:"customer"`
-	Project     string `json:"project"`
-	CountryCode string `json:"countryCode"`
-	InstallDate string `json:"installDate"`
-	IssueDate   string `json:"issueDate"`
-}
-
 func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info")

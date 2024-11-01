@@ -5,16 +5,6 @@ import (
 	"fmt"
 )
 
-type IndexInfo struct {
-	Database   string
-	User       string
-	Name       string
-	Type       string
-	Table      string
-	Column     string
-	DatabaseId int
-}
-
 func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 	ret := []*IndexInfo{}
 
