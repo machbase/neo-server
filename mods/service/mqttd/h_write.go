@@ -133,7 +133,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, dbUser, tableName := api.TokenizeFullTableName(wp.Table)
+	_, dbUser, tableName := api.TableName(wp.Table).Split()
 	conn, err := s.db.Connect(ctx, api.WithTrustUser(dbUser))
 	if err != nil {
 		rsp.Reason = err.Error()

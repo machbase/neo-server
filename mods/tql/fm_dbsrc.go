@@ -301,6 +301,9 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
+		if strings.EqualFold(v, "show tables") {
+			v = api.TranslateShowTables(true, true)
+		}
 		x.task.LogInfof("╭─ %s", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)

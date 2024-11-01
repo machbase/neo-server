@@ -25,7 +25,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 	appender.conn = conn
 	appender.tableName = strings.ToUpper(tableName)
 
-	_, userName, tableName := api.TokenizeFullTableName(tableName)
+	_, userName, tableName := api.TableName(tableName).Split()
 
 	for _, opt := range opts {
 		switch opt.(type) {

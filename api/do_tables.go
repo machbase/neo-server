@@ -8,15 +8,40 @@ import (
 	"github.com/pkg/errors"
 )
 
-func TranslateShowTables() string {
+func ifThenElse(cond bool, a, b string) string {
+	if cond {
+		return a
+	}
+	return b
+}
+
+func TranslateShowTables(showAll bool, descriptive bool) string {
 	sqlText := SqlTidy(`
 		SELECT
 			j.DB_NAME as DB,
 			u.NAME as USER_NAME,
 			j.NAME as NAME,
-			j.ID as ID,
+			j.ID as ID, ` +
+		ifThenElse(descriptive, `
+			case j.TYPE
+				when 0 then 'Log'
+				when 1 then 'Fixed'
+				when 3 then 'Volatile'
+				when 4 then 'Lookup'
+				when 5 then 'KeyValue'
+				when 6 then 'Tag'
+				else '-'
+			end as TYPE,
+			case j.FLAG
+				when 1 then 'Data'
+				when 2 then 'Rollup'
+				when 4 then 'Meta'
+				when 8 then 'Stat'
+				else '-'
+			end as FLAG`, `
 			j.TYPE as TYPE,
 			j.FLAG as FLAG
+		`) + `
 		FROM
 			M$SYS_USERS u,
 			(
@@ -38,14 +63,20 @@ func TranslateShowTables() string {
 					a.DATABASE_ID = d.BACKUP_TBSID
 			) as j
 		WHERE
-			u.USER_ID = j.USER_ID
+			u.USER_ID = j.USER_ID %s
 		ORDER by j.NAME
-		`)
+	`)
+
+	tableNameCond := ""
+	if !showAll {
+		tableNameCond = "AND SUBSTR(j.NAME, 1, 1) <> '_'"
+	}
+	sqlText = fmt.Sprintf(sqlText, tableNameCond)
 	return sqlText
 }
 
 func Tables(ctx context.Context, conn Conn, callback func(*TableInfo, error) bool) {
-	sqlText := TranslateShowTables()
+	sqlText := TranslateShowTables(true, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		callback(nil, err)
@@ -56,18 +87,14 @@ func Tables(ctx context.Context, conn Conn, callback func(*TableInfo, error) boo
 	for rows.Next() {
 		ti := &TableInfo{}
 		err := rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if err != nil {
-			callback(nil, err)
-			return
-		}
-		if !callback(ti, nil) {
+		if !callback(ti, err) {
 			return
 		}
 	}
 }
 
 func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (TableType, error) {
-	_, userName, tableName := TokenizeFullTableName(fullTableName)
+	_, userName, tableName := TableName(fullTableName).Split()
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if r.Err() != nil {
@@ -81,7 +108,7 @@ func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (Table
 }
 
 func ExistsTable(ctx context.Context, conn Conn, fullTableName string) (bool, error) {
-	_, userName, tableName := TokenizeFullTableName(fullTableName)
+	_, userName, tableName := TableName(fullTableName).Split()
 	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
 	if err := r.Err(); err != nil {
@@ -129,23 +156,6 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 		truncated = true
 	}
 	return
-}
-
-// returns dbName, userName, tableName
-func TokenizeFullTableName(name string) (string, string, string) {
-	tableName := strings.ToUpper(name)
-	userName := "SYS"
-	dbName := "MACHBASEDB"
-	toks := strings.Split(tableName, ".")
-	if len(toks) == 2 {
-		userName = toks[0]
-		tableName = toks[1]
-	} else if len(toks) == 3 {
-		dbName = toks[0]
-		userName = toks[1]
-		tableName = toks[2]
-	}
-	return dbName, userName, tableName
 }
 
 // Describe retrieves the result of 'desc table'.

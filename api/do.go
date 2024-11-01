@@ -39,6 +39,11 @@ type TableInfo struct {
 
 func (ti *TableInfo) Kind() string {
 	return TableTypeDescription(ti.Type, ti.Flag)
+	// if ti.Flag != "" {
+	// 	return fmt.Sprintf("%s Table (%s)", ti.Type, strings.ToLower(ti.Flag))
+	// } else {
+	// 	return ti.Type
+	// }
 }
 
 // TableDescription is represents data that comes as a result of 'desc <table>'
