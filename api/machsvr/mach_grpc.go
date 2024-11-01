@@ -528,18 +528,19 @@ func (s *RPCServer) UserAuth(ctx context.Context, req *machrpc.UserAuthRequest) 
 	}()
 
 	var passed bool
+	var reason string
 	var err error
 
 	if strings.HasPrefix(req.Password, "$otp$:") {
 		passed, err = s.authProvider.ValidateUserOtp(req.LoginName, strings.TrimPrefix(req.Password, "$otp$:"))
 	} else {
-		passed, err = s.db.UserAuth(ctx, req.LoginName, req.Password)
+		passed, reason, err = s.db.UserAuth(ctx, req.LoginName, req.Password)
 	}
 
 	if err != nil {
 		rsp.Reason = err.Error()
 	} else if !passed {
-		rsp.Reason = "invalid username or password"
+		rsp.Reason = reason
 	} else {
 		rsp.Success = passed
 		rsp.Reason = "success"

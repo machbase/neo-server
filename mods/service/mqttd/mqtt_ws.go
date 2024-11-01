@@ -14,7 +14,7 @@ import (
 
 type WsListener struct {
 	sync.RWMutex
-	svr       *mqtt2
+	svr       *mqttd
 	id        string
 	addr      string
 	log       *slog.Logger
@@ -70,7 +70,7 @@ func (l *WsListener) WsHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = l.establish(l.id, &wsConn{Conn: c.UnderlyingConn(), c: c})
 	if err != nil {
-		l.log.Warn("mqtt-v2-ws", "error", err)
+		l.log.Warn("mqtt-ws", "error", err)
 	}
 }
 

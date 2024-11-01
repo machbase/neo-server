@@ -1,4 +1,4 @@
-package api_test
+package testsuite
 
 import (
 	"context"
@@ -8,11 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLicense(t *testing.T) {
-	db := machsvrDatabase(t)
-
-	ctx := context.TODO()
-	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+func License(t *testing.T, db api.Database, ctx context.Context) {
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 

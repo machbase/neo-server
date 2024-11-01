@@ -18,7 +18,7 @@ type IndexInfo struct {
 func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 	ret := []*IndexInfo{}
 
-	sqlText := `select 
+	sqlText := SqlTidy(`select 
 			u.name as USER_NAME,
 			a.database_id DBID,
 			a.name as TABLE_NAME,
@@ -42,7 +42,7 @@ func Indexes(ctx context.Context, conn Conn) ([]*IndexInfo, error) {
 			a.id = b.table_id
 		and b.id = c.index_id
 		and a.user_id = u.user_id
-		order by a.database_id, a.name, b.name`
+		order by a.database_id, a.name, b.name`)
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {

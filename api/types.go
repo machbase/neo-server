@@ -7,8 +7,14 @@ import (
 )
 
 type Database interface {
+	// Connect creates a new connection to the database.
 	Connect(ctx context.Context, options ...ConnectOption) (Conn, error)
-	UserAuth(ctx context.Context, user string, password string) (bool, error)
+	// UserAuth checks user authentication.
+	// If user is authenticated, it returns true and no error
+	// If user is not authenticated, it returns false and the reason of failure.
+	// If error occurred, it returns error.
+	UserAuth(ctx context.Context, user string, password string) (bool, string, error)
+	// Ping checks if the database is alive.
 	Ping(ctx context.Context) (time.Duration, error)
 }
 
@@ -110,10 +116,14 @@ type Row interface {
 type Appender interface {
 	TableName() string
 	Append(values ...any) error
-	AppendWithTimestamp(ts time.Time, values ...any) error
+	AppendLogTime(ts time.Time, values ...any) error
 	Close() (int64, int64, error)
 	Columns() (Columns, error)
 	TableType() TableType
+}
+
+type Flusher interface {
+	Flush() error
 }
 
 // 0: Log Table, 1: Fixed Table, 3: Volatile Table,

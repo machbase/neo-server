@@ -25,30 +25,83 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 	appender.conn = conn
 	appender.tableName = strings.ToUpper(tableName)
 
-	// for _, opt := range opts {
-	// 	opt(appender)
-	// }
+	_, userName, tableName := api.TokenizeFullTableName(tableName)
 
-	// table type
+	for _, opt := range opts {
+		switch opt.(type) {
+		case *api.AppenderOptionBuffer:
+			return nil, fmt.Errorf("unsupported option %T", opt)
+		default:
+			return nil, fmt.Errorf("unknown option type-%T", opt)
+		}
+	}
+
 	// make a new internal connection to avoid MACH-ERR 2118
 	// MACH-ERR 2118 Lock object was already initialized. (Do not use select and append simultaneously in single session.)
-	if queryCon, err := conn.db.Connect(ctx, api.WithTrustUser("sys")); err != nil {
+	if queryCon, err := conn.db.Connect(ctx, api.WithTrustUser(userName)); err != nil {
 		return nil, err
 	} else {
 		defer queryCon.Close()
-		row := queryCon.QueryRow(ctx, "select type from M$SYS_TABLES where name = ?", appender.tableName)
-		var typ int32 = -1
-		if err := row.Scan(&typ); err != nil {
+
+		// table type
+		var describeTableSql = api.SqlTidy(
+			`SELECT
+				j.ID as TABLE_ID,
+				j.TYPE as TABLE_TYPE,
+				j.FLAG as TABLE_FLAG,
+				j.COLCOUNT as TABLE_COLCOUNT
+			from
+				M$SYS_USERS u,
+				M$SYS_TABLES j
+			where
+				u.NAME = ?
+			and j.USER_ID = u.USER_ID
+			and j.DATABASE_ID = ?
+			and j.NAME = ?`)
+		row := queryCon.QueryRow(ctx, describeTableSql, userName, -1, tableName)
+		var tableId int32
+		var tableType = api.TableType(-1)
+		var tableFlag int32
+		var colCount int32
+		if err := row.Scan(&tableId, &tableType, &tableFlag, &colCount); err != nil {
 			if err.Error() == "sql: no rows in result set" {
 				return nil, fmt.Errorf("table '%s' not found", appender.tableName)
 			} else {
 				return nil, fmt.Errorf("table '%s' not found, %s", appender.tableName, err.Error())
 			}
 		}
-		if typ < 0 || typ > 6 {
-			return nil, fmt.Errorf("table '%s' not found", tableName)
+		if tableType != api.TableTypeLog && tableType != api.TableTypeTag {
+			return nil, fmt.Errorf("%s '%s' doesn't support append", tableType.String(), appender.tableName)
 		}
-		appender.tableType = api.TableType(typ)
+		appender.tableType = api.TableType(tableType)
+
+		// columns
+		var columnsSql = api.SqlTidy(
+			`SELECT
+				name, type, length, id, flag
+			FROM
+				M$SYS_COLUMNS
+			WHERE
+				table_id = ?
+			AND database_id = ?
+			ORDER BY id`)
+		rows, err := queryCon.Query(ctx, columnsSql, tableId, -1)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			col := &api.Column{}
+			if err := rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag); err != nil {
+				return nil, err
+			}
+			// exclude _RID column
+			if col.Name == "_RID" {
+				continue
+			}
+			col.DataType = col.Type.DataType()
+			appender.columns = append(appender.columns, col)
+		}
 	}
 	if err := mach.EngAllocStmt(appender.conn.handle, &appender.stmt); err != nil {
 		return nil, err
@@ -65,33 +118,34 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	appender.columns = make(api.Columns, colCount)
-	columnTypesString := make([]string, colCount)
-	columnNamesString := make([]string, colCount)
+	if colCount != len(appender.columns) {
+		mach.EngAppendClose(appender.stmt)
+		mach.EngFreeStmt(appender.stmt)
+		return nil, fmt.Errorf("appender for '%s' doesn't match columns %d, %d", appender.tableName, colCount, len(appender.columns))
+	}
+	dataTypesString := make([]string, len(appender.columns))
 	for i := 0; i < colCount; i++ {
 		var columnName string
-		var columnType, columnSize, columnLength int
-		if err := mach.EngColumnInfo(appender.stmt, i, &columnName, &columnType, &columnSize, &columnLength); err != nil {
-			mach.EngAppendClose(appender.stmt)
-			mach.EngFreeStmt(appender.stmt)
-			return nil, err
-		}
-		typ, err := columnRawTypeToDataType(columnType)
-		if err != nil {
+		var columnRawType, columnSize, columnLength int
+		if err := mach.EngColumnInfo(appender.stmt, i, &columnName, &columnRawType, &columnSize, &columnLength); err != nil {
 			mach.EngAppendClose(appender.stmt)
 			mach.EngFreeStmt(appender.stmt)
 			return nil, mach.ErrDatabaseWrap("MachColumnInfo %s", err)
 		}
-		appender.columns[i] = &api.Column{
-			Name:     columnName,
-			Type:     api.ColumnType(columnType),
-			Length:   columnLength,
-			DataType: typ,
+		dataType, err := columnRawTypeToDataType(columnRawType)
+		if err != nil {
+			mach.EngAppendClose(appender.stmt)
+			mach.EngFreeStmt(appender.stmt)
+			return nil, mach.ErrDatabaseWrap("MachColumnInfo data type %s", err)
 		}
-		columnNamesString[i] = columnName
-		columnTypesString[i] = string(typ)
+		if appender.columns[i].DataType != dataType {
+			mach.EngAppendClose(appender.stmt)
+			mach.EngFreeStmt(appender.stmt)
+			return nil, fmt.Errorf("MachColumnInfo data type mismatch %s %d", appender.columns[i].DataType, columnRawType)
+		}
+		dataTypesString[i] = string(dataType)
 	}
-	appender.buffer = mach.EngMakeAppendBuffer(appender.stmt, columnNamesString, columnTypesString)
+	appender.buffer = mach.EngMakeAppendBuffer(appender.stmt, appender.columns.Names(), dataTypesString)
 	return appender, nil
 }
 
@@ -156,13 +210,12 @@ func (ap *Appender) Append(values ...any) error {
 	}
 }
 
-func (ap *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
-	if ap.tableType == api.TableTypeLog {
-		colsWithTime := append([]any{ts}, cols...)
-		return ap.append(colsWithTime...)
-	} else {
+func (ap *Appender) AppendLogTime(ts time.Time, cols ...any) error {
+	if ap.tableType != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", ap.tableName)
 	}
+	colsWithTime := append([]any{ts}, cols...)
+	return ap.append(colsWithTime...)
 }
 
 func (ap *Appender) append(values ...any) error {

@@ -311,8 +311,12 @@ func (rows *Rows) Fetch() ([]any, bool, error) {
 		if err != nil {
 			return values, next, err
 		}
-		if err = readColumnData(rows.stmt, rawType, i, values[i]); err != nil {
+		isNull := false
+		if err = readColumnData(rows.stmt, rawType, i, values[i], &isNull); err != nil {
 			return nil, next, err
+		}
+		if isNull {
+			values[i] = nil
 		}
 	}
 	return values, next, nil
@@ -363,14 +367,18 @@ func (rows *Rows) Scan(cols ...any) error {
 		if err != nil {
 			return err
 		}
-		if err := readColumnData(rows.stmt, rawType, i, cols[i]); err != nil {
+		isNull := false
+		if err := readColumnData(rows.stmt, rawType, i, cols[i], &isNull); err != nil {
 			return err
+		}
+		if isNull {
+			cols[i] = nil
 		}
 	}
 	return nil
 }
 
-func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
+func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any, isNull *bool) error {
 	if dst == nil {
 		return nil
 	}
@@ -380,6 +388,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("int16", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -388,6 +397,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("int32", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -396,6 +406,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("int64", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -404,6 +415,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("datetime", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -412,6 +424,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("float32", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -420,6 +433,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("float64", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -428,6 +442,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("IPv4", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -436,6 +451,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("IPv6", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -444,6 +460,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("string", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}
@@ -452,6 +469,7 @@ func readColumnData(stmt unsafe.Pointer, rawType int, idx int, dst any) error {
 		if err != nil {
 			return api.ErrDatabaseScanTypeName("binary", err)
 		}
+		*isNull = !nonNull
 		if nonNull {
 			return api.Scan(v, dst)
 		}

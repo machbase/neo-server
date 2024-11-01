@@ -12,21 +12,42 @@ type Query struct {
 
 	// Next is called for each row fetched. If Next returns false,
 	// the remains of rows are ignored and fetch loop is stopped.
-	Next func(q *Query, rownum int64, values []any) bool
+	Next func(q *Query, rownum int64) bool
 
 	// End is called after when the query is finished, Or non-query execution is finished.
-	End func(q *Query, userMessage string, numRows int64)
+	End func(q *Query)
 
-	isFetch bool
-	columns Columns
-}
-
-func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
-	return query(qc, ctx, conn, sqlText, args...)
+	isFetch     bool
+	columns     Columns
+	err         error
+	userMessage string
+	rowNum      int64
+	rows        Rows
 }
 
 func (qc *Query) IsFetch() bool {
 	return qc.isFetch
+}
+
+func (qc *Query) Err() error {
+	return qc.err
+}
+
+func (qc *Query) RowNum() int64 {
+	return qc.rowNum
+}
+
+func (qc *Query) UserMessage() string {
+	return qc.userMessage
+}
+
+func (qc *Query) Scan(values ...any) error {
+	err := qc.rows.Scan(values...)
+	if err != nil {
+		qc.err = err
+		return err
+	}
+	return nil
 }
 
 // Columns returns the columns of the query result.
@@ -35,65 +56,59 @@ func (qc *Query) Columns() Columns {
 	return qc.columns
 }
 
-func query(query *Query, ctx context.Context, conn Conn, sqlText string, args ...any) error {
-	rows, err := conn.Query(ctx, sqlText, args...)
-	if err != nil {
+func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
+	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
 		return err
+	} else {
+		qc.rows = r
 	}
-	defer rows.Close()
+	defer qc.rows.Close()
 
-	query.isFetch = rows.IsFetchable()
+	qc.isFetch = qc.rows.IsFetchable()
 
-	var numRows int64
-	var userMessage string
-
-	if !query.isFetch {
-		if query.Begin != nil {
-			query.Begin(query)
+	if !qc.isFetch {
+		if qc.Begin != nil {
+			qc.Begin(qc)
 		}
-		userMessage = rows.Message()
-		numRows = rows.RowsAffected()
-		if query.End != nil {
-			defer query.End(query, userMessage, numRows)
+		qc.userMessage = qc.rows.Message()
+		qc.rowNum = qc.rows.RowsAffected()
+		if qc.End != nil {
+			defer qc.End(qc)
 		}
 		return nil
 	}
 
-	if cols, err := rows.Columns(); err != nil {
+	if cols, err := qc.rows.Columns(); err != nil {
 		return err
 	} else {
-		query.columns = cols
+		qc.columns = cols
 	}
-	if query.Begin != nil {
-		query.Begin(query)
+	if qc.Begin != nil {
+		qc.Begin(qc)
 	}
-	if query.End != nil {
+	if qc.End != nil {
 		defer func() {
-			if numRows == 0 {
-				userMessage = "no rows fetched."
-			} else if numRows == 1 {
-				userMessage = "a row fetched."
+			if qc.err == nil {
+				if qc.rowNum == 0 {
+					qc.userMessage = "no rows fetched."
+				} else if qc.rowNum == 1 {
+					qc.userMessage = "a row fetched."
+				} else {
+					qc.userMessage = fmt.Sprintf("%d rows fetched.", qc.rowNum)
+				}
 			} else {
-				userMessage = fmt.Sprintf("%d rows fetched.", numRows)
+				qc.userMessage = fmt.Sprintf("QUERY %s", qc.err.Error())
 			}
-			query.End(query, userMessage, numRows)
+			qc.End(qc)
 		}()
 	}
 
-	for rows.Next() {
-		rec, err := query.columns.MakeBuffer()
-		if err != nil {
-			return err
-		}
-		err = rows.Scan(rec...)
-		if err != nil {
-			return err
-		}
-		numRows++
-		if query.Next != nil && !query.Next(query, numRows, rec) {
+	for qc.rows.Next() {
+		qc.rowNum++
+		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
 			break
 		}
 	}
 
-	return nil
+	return qc.err
 }

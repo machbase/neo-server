@@ -14,6 +14,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/eclipse/paho.golang v0.21.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/fergusstrange/embedded-postgres v1.29.0
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/gin-contrib/cors v1.6.0
 	github.com/gin-gonic/gin v1.10.0
@@ -146,6 +147,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
+	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect

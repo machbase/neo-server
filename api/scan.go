@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"math"
 	"net"
@@ -52,6 +53,48 @@ func Scan(src any, dst any) error {
 		return scanIP(*sv, dst)
 	}
 	return ErrCannotConvertValue(src, dst)
+}
+
+func ScanNull(dst any) bool {
+	switch d := dst.(type) {
+	case *sql.NullBool:
+		d.Valid = false
+	case *sql.Null[int]:
+		d.Valid = false
+	case *sql.NullInt16:
+		d.Valid = false
+	case *sql.Null[int16]:
+		d.Valid = false
+	case *sql.NullInt32:
+		d.Valid = false
+	case *sql.Null[int32]:
+		d.Valid = false
+	case *sql.NullInt64:
+		d.Valid = false
+	case *sql.Null[int64]:
+		d.Valid = false
+	case *sql.Null[float32]:
+		d.Valid = false
+	case *sql.NullFloat64:
+		d.Valid = false
+	case *sql.Null[float64]:
+		d.Valid = false
+	case *sql.NullString:
+		d.Valid = false
+	case *sql.Null[string]:
+		d.Valid = false
+	case *sql.NullTime:
+		d.Valid = false
+	case *sql.Null[time.Time]:
+		d.Valid = false
+	case *sql.Null[net.IP]:
+		d.Valid = false
+	case *sql.Null[[]byte]:
+		d.Valid = false
+	default:
+		return false
+	}
+	return true
 }
 
 func scanInt16(src int16, pDst any) error {
@@ -162,7 +205,7 @@ func scanDatetime(src time.Time, pDst any) error {
 	case *int64:
 		*dst = src.UnixNano()
 	case *time.Time:
-		*dst = src
+		*dst = src.In(time.UTC)
 	case *string:
 		*dst = src.In(time.UTC).Format(time.RFC3339)
 	case *driver.Value:
@@ -211,6 +254,24 @@ func scanString(src string, pDst any) error {
 		*dst = src
 	case *[]uint8:
 		*dst = []uint8(src)
+	case *int:
+		if i, err := strconv.ParseInt(src, 10, 32); err != nil {
+			return err
+		} else {
+			*dst = int(i)
+		}
+	case *int32:
+		if i, err := strconv.ParseInt(src, 10, 32); err != nil {
+			return err
+		} else {
+			*dst = int32(i)
+		}
+	case *int64:
+		if i, err := strconv.ParseInt(src, 10, 64); err != nil {
+			return err
+		} else {
+			*dst = i
+		}
 	case *net.IP:
 		if src == "" {
 			return ErrDatabaseScanNull("STRING")

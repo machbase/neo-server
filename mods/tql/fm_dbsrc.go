@@ -257,20 +257,32 @@ func (dc *databaseSource) gen(node *Node) {
 			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			if !dc.task.shouldStop() && len(values) > 0 {
+		Next: func(q *api.Query, nrow int64) bool {
+			if dc.task.shouldStop() {
+				return false
+			}
+			values, err := q.Columns().MakeBuffer()
+			if err != nil {
+				ErrorRecord(err).Tell(node.next)
+				return false
+			}
+			if err = q.Scan(values...); err != nil {
+				ErrorRecord(err).Tell(node.next)
+				return false
+			}
+			if len(values) > 0 {
 				NewRecord(nrow, values).Tell(node.next)
 			}
 			return !dc.task.shouldStop()
 		},
-		End: func(q *api.Query, userMessage string, rowsAffected int64) {
-			dc.resultMsg = userMessage
+		End: func(q *api.Query) {
+			dc.resultMsg = q.UserMessage()
 			if !q.IsFetch() {
 				dc.task.SetResultColumns(api.Columns{
 					api.MakeColumnRownum(),
 					api.MakeColumnString("MESSAGE"),
 				})
-				NewRecord(1, userMessage).Tell(node.next)
+				NewRecord(1, q.UserMessage()).Tell(node.next)
 			}
 		},
 	}

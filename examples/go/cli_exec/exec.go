@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machcli"
 )
 
@@ -17,21 +18,21 @@ const (
 )
 
 func main() {
-	env, err := machcli.NewEnv()
+	db, err := machcli.NewDatabase(&machcli.Config{Host: machHost, Port: machPort})
 	if err != nil {
 		panic(err)
 	}
-	defer env.Close()
+	defer db.Close()
 
 	ctx := context.TODO()
 
-	conn, err := env.Connect(ctx, machcli.WithHost(machHost, machPort), machcli.WithPassword(machUser, machPass))
+	conn, err := db.Connect(ctx, api.WithPassword(machUser, machPass))
 	if err != nil {
 		panic(err)
 	}
 	defer conn.Close()
 
-	result := conn.ExecContext(ctx, fmt.Sprintf(`
+	result := conn.Exec(ctx, fmt.Sprintf(`
 		create tag table if not exists %s (
 			name     varchar(200) primary key,
 			time     datetime basetime,

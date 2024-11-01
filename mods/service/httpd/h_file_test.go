@@ -169,6 +169,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 					*(cols[0].(*api.TableType)) = api.TableTypeTag
 					return nil
 				},
+				ErrFunc: func() error { return nil },
 			}
 		}
 	} else if sqlText == `SELECT j.ID as TABLE_ID, j.TYPE as TABLE_TYPE, j.FLAG as TABLE_FLAG, j.COLCOUNT as TABLE_COLCOUNT from M$SYS_USERS u, M$SYS_TABLES j where u.NAME = ? and j.USER_ID = u.USER_ID and j.DATABASE_ID = ? and j.NAME = ?` {
@@ -244,7 +245,7 @@ func newColumnsMock() *columnsMock {
 			{"NAME", api.ColumnTypeVarchar, 200, 1, 0},
 			{"TIME", api.ColumnTypeDatetime, 8, 2, 1},
 			{"VALUE", api.ColumnTypeDouble, 8, 3, 2},
-			{"EXTDATA", api.ColumnTypeJson, 32767, 4, 3},
+			{"EXTDATA", api.ColumnTypeJSON, 32767, 4, 3},
 			{"_RID", api.ColumnTypeLong, 8, 5, 65534},
 		},
 	}

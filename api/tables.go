@@ -70,6 +70,9 @@ func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (Table
 	_, userName, tableName := TokenizeFullTableName(fullTableName)
 	sql := "select type from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if r.Err() != nil {
+		return -1, r.Err()
+	}
 	var ret TableType
 	if err := r.Scan(&ret); err != nil {
 		return -1, err
@@ -81,6 +84,10 @@ func ExistsTable(ctx context.Context, conn Conn, fullTableName string) (bool, er
 	_, userName, tableName := TokenizeFullTableName(fullTableName)
 	sql := "select count(*) from M$SYS_TABLES T, M$SYS_USERS U where U.NAME = ? and U.USER_ID = T.USER_ID AND T.NAME = ?"
 	r := conn.QueryRow(ctx, sql, strings.ToUpper(userName), strings.ToUpper(tableName))
+	if err := r.Err(); err != nil {
+		fmt.Println("error", err.Error())
+		return false, err
+	}
 	var count = 0
 	if err := r.Scan(&count); err != nil {
 		return false, err
@@ -98,27 +105,28 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 	}
 
 	// TRUNCATE TABLE
-	if truncate {
-		tableType, err0 := QueryTableType(ctx, conn, fullTableName)
-		if err0 != nil {
-			err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", fullTableName))
+	if !truncate {
+		return
+	}
+	tableType, err0 := QueryTableType(ctx, conn, fullTableName)
+	if err0 != nil {
+		err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", fullTableName))
+		return
+	}
+	if tableType == TableTypeLog {
+		result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
 			return
 		}
-		if tableType == TableTypeLog {
-			result := conn.Exec(ctx, fmt.Sprintf("truncate table %s", fullTableName))
-			if result.Err() != nil {
-				err = result.Err()
-				return
-			}
-			truncated = true
-		} else {
-			result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
-			if result.Err() != nil {
-				err = result.Err()
-				return
-			}
-			truncated = true
+		truncated = true
+	} else {
+		result := conn.Exec(ctx, fmt.Sprintf("delete from %s", fullTableName))
+		if result.Err() != nil {
+			err = result.Err()
+			return
 		}
+		truncated = true
 	}
 	return
 }

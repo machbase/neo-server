@@ -13,7 +13,7 @@ import (
 func TestScan(t *testing.T) {
 	t.Parallel()
 
-	now := time.Unix(0, 1729578712564320000)
+	now := time.Unix(0, 1729578712564320000).In(time.UTC)
 
 	tests := []struct {
 		name   string
