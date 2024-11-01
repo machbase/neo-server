@@ -203,7 +203,12 @@ func (ap *Appender) Append(values ...any) error {
 	if ap.tableType == api.TableTypeTag {
 		return ap.append(values...)
 	} else if ap.tableType == api.TableTypeLog {
-		colsWithTime := append([]any{time.Time{}}, values...)
+		var colsWithTime []any
+		if len(values) == len(ap.columns) {
+			colsWithTime = values
+		} else if len(values) == len(ap.columns)-1 {
+			colsWithTime = append([]any{time.Time{}}, values...)
+		}
 		return ap.append(colsWithTime...)
 	} else {
 		return fmt.Errorf("%s can not be appended", ap.tableName)

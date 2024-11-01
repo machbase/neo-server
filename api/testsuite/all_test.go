@@ -115,26 +115,38 @@ func TestColumns(t *testing.T) {
 }
 
 func TestLogTableExec(t *testing.T) {
-	db := testsuite.Database_machsvr(t)
-	testsuite.LogTableExec(t, db, context.TODO())
+	// machsvr
+	testsuite.LogTableExec(t, testServer.DatabaseSVR(), context.TODO())
+	// machrpc
+	testsuite.LogTableExec(t, testServer.DatabaseRPC(), context.TODO())
+	// machcli
+	//	testsuite.LogTableExec(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestLogTableAppend(t *testing.T) {
-	db := testsuite.Database_machsvr(t)
-	testsuite.LogTableAppend(t, db, context.TODO())
+	// machsvr
+	testsuite.LogTableAppend(t, testServer.DatabaseSVR(), context.TODO())
+	// machrpc
+	testsuite.LogTableAppend(t, testServer.DatabaseRPC(), context.TODO())
 }
 
 func TestTagTableAppend(t *testing.T) {
-	db := testsuite.Database_machsvr(t)
-	testsuite.TagTableAppend(t, db, context.TODO())
+	// machsvr
+	testsuite.TagTableAppend(t, testServer.DatabaseSVR(), context.TODO())
+	// machrpc
+	testsuite.TagTableAppend(t, testServer.DatabaseRPC(), context.TODO())
 }
 
 func TestWatchLogTable(t *testing.T) {
-	db := testsuite.Database_machsvr(t)
-	testsuite.WatchLogTable(t, db, context.TODO())
+	// machsvr
+	testsuite.WatchLogTable(t, testServer.DatabaseSVR(), context.TODO())
+	// machrpc
+	testsuite.WatchLogTable(t, testServer.DatabaseRPC(), context.TODO())
 }
 
 func TestDemoUser(t *testing.T) {
-	db := testsuite.Database_machsvr(t)
-	testsuite.DemoUser(t, db, context.TODO())
+	// machsvr
+	testsuite.DemoUser(t, testServer.DatabaseSVR(), context.TODO())
+	// machrpc
+	testsuite.DemoUser(t, testServer.DatabaseRPC(), context.TODO())
 }

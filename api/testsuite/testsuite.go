@@ -3,11 +3,13 @@ package testsuite
 import (
 	"context"
 	_ "embed"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machcli"
@@ -49,6 +51,7 @@ func NewServer(dataPath string) *Server {
 }
 
 func (s *Server) checkListenPort() {
+	time.Sleep(time.Millisecond * time.Duration(3000*rand.Float32()))
 	var lsnr net.Listener
 	for {
 		if l, err := net.Listen("tcp", "127.0.0.1:0"); err != nil {
@@ -237,14 +240,21 @@ func (s *Server) stopServer() {
 	if err != nil {
 		panic(err)
 	}
+	conn.Exec(ctx, "EXEC table_flush(tag_data)")
+	conn.Exec(ctx, "EXEC table_flush(tag_simple)")
+	conn.Exec(ctx, "EXEC table_flush(log_data)")
 	result := conn.Exec(ctx, `drop table tag_data`)
 	if err := result.Err(); err != nil {
-		panic(err)
+		if err.Error() != "MACH-ERR 2031 Resource busy (TAG_DATA)." {
+			panic(err)
+		}
 	}
 
 	result = conn.Exec(ctx, `drop table log_data`)
 	if err := result.Err(); err != nil {
-		panic(err)
+		if err.Error() != "MACH-ERR 2031 Resource busy (LOG_DATA)." {
+			panic(err)
+		}
 	}
 	conn.Close()
 

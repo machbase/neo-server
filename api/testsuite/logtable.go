@@ -65,9 +65,7 @@ func LogTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 	defer conn.Close()
 
 	appender, err := conn.Appender(ctx, "log_data")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	expectCols := []*api.Column{
 		{Name: "_ARRIVAL_TIME", Type: api.ColumnTypeDatetime, Length: 8, DataType: api.DataTypeDatetime},
@@ -119,9 +117,7 @@ func LogTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 			fmt.Sprintf("text_append-%d-%s.", i, randomVarchar()),
 			[]byte(fmt.Sprintf("binary_append_%02d", i)),
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	sc, fc, err := appender.Close()
 	require.NoError(t, err)

@@ -63,3 +63,28 @@ func TestColumns(t *testing.T) {
 	// machcli
 	testsuite.Columns(t, testServer.DatabaseCLI(), context.TODO())
 }
+
+// func TestLogTableExec(t *testing.T) {
+// 	// machcli
+// 	testsuite.LogTableExec(t, testServer.DatabaseCLI(), context.TODO())
+// }
+
+// func TestLogTableAppend(t *testing.T) {
+// 	// machcli
+// 	testsuite.LogTableAppend(t, testServer.DatabaseCLI(), context.TODO())
+// }
+
+// func TestTagTableAppend(t *testing.T) {
+// 	// machcli
+// 	testsuite.TagTableAppend(t, testServer.DatabaseCLI(), context.TODO())
+// }
+
+// func TestWatchLogTable(t *testing.T) {
+// 	// machcli
+// 	testsuite.WatchLogTable(t, testServer.DatabaseCLI(), context.TODO())
+// }
+
+// func TestDemoUser(t *testing.T) {
+// 	// machcli
+// 	testsuite.DemoUser(t, testServer.DatabaseCLI(), context.TODO())
+// }

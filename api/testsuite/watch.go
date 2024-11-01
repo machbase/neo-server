@@ -12,7 +12,7 @@ import (
 func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
 	conf := api.WatcherConfig{
 		ConnProvider: func() (api.Conn, error) {
-			return db.Connect(ctx, api.WithTrustUser("sys"))
+			return db.Connect(ctx, api.WithPassword("sys", "manager"))
 		},
 		Timeformat: "2006-01-02 15:04:05.999999",
 		Timezone:   time.UTC,

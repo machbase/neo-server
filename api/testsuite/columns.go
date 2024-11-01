@@ -46,6 +46,7 @@ func Columns(t *testing.T, db api.Database, ctx context.Context) {
 		{"TEXT_VALUE", "string", 67108864, 0},
 		{"BIN_VALUE", "binary", 67108864, 0},
 	}
+	require.Equal(t, len(data), len(cols), "column count was %d, want %d", len(cols), len(data))
 	for i, cd := range data {
 		require.Equal(t, cd.name, cols[i].Name, "column[%d] name was %q, want %q", i, cols[i].Name, cd.name)
 		require.Equal(t, cd.typ, string(cols[i].DataType), "column[%d] %q's type was %q, want %q", i, cols[i].Name, cols[i].DataType, cd.typ)

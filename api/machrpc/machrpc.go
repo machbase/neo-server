@@ -584,7 +584,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 			Name:     c.Name,
 			Type:     api.ColumnType(c.Type),
 			Length:   int(c.Length),
-			DataType: api.DataType(c.Type),
+			DataType: api.DataType(c.DataType),
 			Flag:     api.ColumnFlag(c.Flag),
 		}
 		ap.columns = append(ap.columns, col)

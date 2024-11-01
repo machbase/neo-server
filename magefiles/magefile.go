@@ -200,7 +200,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 }
 
 func Test() error {
-	return TestN(1)
+	return TestN(0)
 }
 
 func TestN(p int) error {

@@ -155,9 +155,9 @@ func (c *Conn) Explain(ctx context.Context, query string, full bool) (string, er
 
 func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	ret := &Result{}
-	stmt, err := c.NewStmt()
-	if err != nil {
-		ret.err = err
+	var stmt *Stmt
+	stmt, ret.err = c.NewStmt()
+	if ret.err != nil {
 		return ret
 	}
 	defer stmt.Close()
@@ -200,6 +200,8 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	}
 	defer stmt.Close()
 
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
+
 	if ret.err = stmt.prepare(query); ret.err != nil {
 		return ret
 	}
@@ -209,7 +211,6 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	if ret.err = stmt.execute(); ret.err != nil {
 		return ret
 	}
-	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	if values, err := stmt.fetch(); err != nil {
 		ret.err = err
 		return ret
@@ -233,6 +234,7 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	if err != nil {
 		return nil, err
 	}
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	if err := stmt.prepare(query); err != nil {
 		stmt.Close()
 		return nil, err
@@ -247,7 +249,6 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 		fmt.Printf("execute error: %s args:%d\n", err.Error(), len(args))
 		return nil, err
 	}
-	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
 	ret := &Rows{
 		stmt: stmt,
 	}
@@ -296,22 +297,49 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			sqlType = mach.MACHCLI_SQL_TYPE_INT16
 			value = unsafe.Pointer(&val)
 			valueLen = 2
+		case *int16:
+			cType = mach.MACHCLI_C_TYPE_INT16
+			sqlType = mach.MACHCLI_SQL_TYPE_INT16
+			value = unsafe.Pointer(val)
+			valueLen = 2
 		case int32:
 			cType = mach.MACHCLI_C_TYPE_INT32
 			sqlType = mach.MACHCLI_SQL_TYPE_INT32
 			value = unsafe.Pointer(&val)
+			valueLen = 4
+		case *int32:
+			cType = mach.MACHCLI_C_TYPE_INT32
+			sqlType = mach.MACHCLI_SQL_TYPE_INT32
+			value = unsafe.Pointer(val)
 			valueLen = 4
 		case int:
 			cType = mach.MACHCLI_C_TYPE_INT32
 			sqlType = mach.MACHCLI_SQL_TYPE_INT32
 			value = unsafe.Pointer(&val)
 			valueLen = 4
+		case *int:
+			cType = mach.MACHCLI_C_TYPE_INT32
+			sqlType = mach.MACHCLI_SQL_TYPE_INT32
+			value = unsafe.Pointer(val)
+			valueLen = 4
 		case int64:
 			cType = mach.MACHCLI_C_TYPE_INT64
 			sqlType = mach.MACHCLI_SQL_TYPE_INT64
 			value = unsafe.Pointer(&val)
 			valueLen = 8
+		case *int64:
+			cType = mach.MACHCLI_C_TYPE_INT64
+			sqlType = mach.MACHCLI_SQL_TYPE_INT64
+			value = unsafe.Pointer(val)
+			valueLen = 8
 		case time.Time:
+			cType = mach.MACHCLI_C_TYPE_INT64
+			sqlType = mach.MACHCLI_SQL_TYPE_DATETIME
+			n := new(int64)
+			*n = val.UnixNano()
+			value = unsafe.Pointer(n)
+			valueLen = 8
+		case *time.Time:
 			cType = mach.MACHCLI_C_TYPE_INT64
 			sqlType = mach.MACHCLI_SQL_TYPE_DATETIME
 			n := new(int64)
@@ -323,10 +351,20 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			sqlType = mach.MACHCLI_SQL_TYPE_FLOAT
 			value = unsafe.Pointer(&val)
 			valueLen = 4
+		case *float32:
+			cType = mach.MACHCLI_C_TYPE_FLOAT
+			sqlType = mach.MACHCLI_SQL_TYPE_FLOAT
+			value = unsafe.Pointer(val)
+			valueLen = 4
 		case float64:
 			cType = mach.MACHCLI_C_TYPE_DOUBLE
 			sqlType = mach.MACHCLI_SQL_TYPE_DOUBLE
 			value = unsafe.Pointer(&val)
+			valueLen = 8
+		case *float64:
+			cType = mach.MACHCLI_C_TYPE_DOUBLE
+			sqlType = mach.MACHCLI_SQL_TYPE_DOUBLE
+			value = unsafe.Pointer(val)
 			valueLen = 8
 		case net.IP:
 			if len(val) == 4 {
@@ -344,6 +382,12 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_STRING
 			bStr := []byte(val)
+			value = (unsafe.Pointer)(&bStr[0])
+			valueLen = len(bStr)
+		case *string:
+			cType = mach.MACHCLI_C_TYPE_CHAR
+			sqlType = mach.MACHCLI_SQL_TYPE_STRING
+			bStr := []byte(*val)
 			value = (unsafe.Pointer)(&bStr[0])
 			valueLen = len(bStr)
 		case []byte:
@@ -520,6 +564,9 @@ func (stmt *Stmt) execute() error {
 	if err := mach.CliExecute(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
 	}
+	if stmt.sqlHead != "SELECT" {
+		return nil
+	}
 	num, err := mach.CliNumResultCol(stmt.handle)
 	if err != nil {
 		return errorWithCause(stmt, err)
@@ -557,7 +604,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(int16)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT16, unsafe.Pointer(v), 2); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = *v
@@ -566,7 +613,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(int32)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT32, unsafe.Pointer(v), 4); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = *v
@@ -575,7 +622,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(int64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT64, unsafe.Pointer(v), 8); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = *v
@@ -584,7 +631,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(int64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_INT64, unsafe.Pointer(v), 8); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = time.Unix(0, *v)
@@ -593,7 +640,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(float32)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_FLOAT, unsafe.Pointer(v), 4); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = *v
@@ -602,7 +649,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = new(float64)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_DOUBLE, unsafe.Pointer(v), 8); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = *v
@@ -611,7 +658,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = []byte{0, 0, 0, 0}
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), 4); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = net.IP(v)
@@ -620,7 +667,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = make([]byte, 16)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), 16); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = net.IP(v)
@@ -629,7 +676,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = make([]byte, desc.Size+1)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), len(v)); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = string(v[0:n])
@@ -638,7 +685,7 @@ func (stmt *Stmt) fetch() ([]any, error) {
 			var v = make([]byte, desc.Size+1)
 			if n, err := mach.CliGetData(stmt.handle, i, mach.MACHCLI_C_TYPE_CHAR, unsafe.Pointer(&v[0]), len(v)); err != nil {
 				return nil, errorWithCause(stmt, err)
-			} else if n == 0 {
+			} else if n == -1 {
 				values[i] = nil
 			} else {
 				values[i] = v[0:n]
