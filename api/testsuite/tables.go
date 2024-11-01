@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,16 +259,11 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")
 
-	// FIXME: when the CLI bug (can not retrieving unsigned integer) is fixed
-	with_cli_uint_bug := false
-	if _, ok := conn.(*machcli.Conn); ok {
-		with_cli_uint_bug = true
-	}
 	// tags
 	tags := map[string]string{}
 	api.Tags(ctx, conn, "TAG_DATA", func(name string, id int64, err error) bool {
 		require.NoError(t, err, "tags fail")
-		// TODO: check id
+		require.Greater(t, id, int64(0))
 		tags[name] = name
 		return true
 	})
@@ -280,17 +274,15 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	tagStat, err := api.TagStat(ctx, conn, "TAG_DATA", "insert-once")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-once", tagStat.Name)
-	if !with_cli_uint_bug {
-		require.Equal(t, int64(1), tagStat.RowCount)
-	}
+	require.Equal(t, int64(1), tagStat.RowCount)
+	require.Equal(t, 1.23, tagStat.MinValue)
+	require.Equal(t, 1.23, tagStat.MaxValue)
 
 	// tag stat
 	tagStat, err = api.TagStat(ctx, conn, "TAG_DATA", "insert-twice")
 	require.NoError(t, err, "tag stat fail")
 	require.Equal(t, "insert-twice", tagStat.Name)
-	if !with_cli_uint_bug {
-		require.Equal(t, int64(1), tagStat.RowCount)
-	}
+	require.Equal(t, int64(1), tagStat.RowCount)
 
 	// delete test data
 	// TODO: delete test data with BIND variable tag name

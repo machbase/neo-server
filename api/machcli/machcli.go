@@ -163,21 +163,12 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	defer stmt.Close()
 
 	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
-	defer func() {
-		switch stmt.sqlHead {
-		case "INSERT":
-			ret.rowsAffected = 1
-		case "DELETE":
-			// TODO implement rowsAffected
-			ret.rowsAffected = 1
-		default:
-			// TODO implement rowsAffected
-		}
-	}()
+
 	if len(args) == 0 {
 		if err := mach.CliExecDirect(stmt.handle, query); err != nil {
 			ret.err = errorWithCause(c, err)
 		}
+		ret.rowCount, ret.err = mach.CliRowCount(stmt.handle)
 		return ret
 	} else {
 		if ret.err = stmt.prepare(query); ret.err != nil {
@@ -187,6 +178,7 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 			return ret
 		}
 		ret.err = stmt.execute()
+		ret.rowCount = stmt.rowCount
 		return ret
 	}
 }
@@ -211,6 +203,7 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	if ret.err = stmt.execute(); ret.err != nil {
 		return ret
 	}
+	ret.rowCount = stmt.rowCount
 	if values, err := stmt.fetch(); err != nil {
 		ret.err = err
 		return ret
@@ -252,11 +245,7 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 	ret := &Rows{
 		stmt: stmt,
 	}
-	if stmt.sqlHead == "INSERT" {
-		ret.rowsAffected = 1
-	} else {
-		// TODO implement rowsAffected
-	}
+	ret.rowsCount = stmt.rowCount
 	return ret, nil
 }
 
@@ -404,9 +393,9 @@ func (stmt *Stmt) bindParams(args ...any) error {
 }
 
 type Result struct {
-	message      string
-	err          error
-	rowsAffected int64
+	message  string
+	err      error
+	rowCount int64
 }
 
 var _ api.Result = (*Result)(nil)
@@ -424,7 +413,7 @@ func (rs *Result) LastInsertId() (int64, error) {
 }
 
 func (rs *Result) RowsAffected() int64 {
-	return rs.rowsAffected
+	return rs.rowCount
 }
 
 func (c *Conn) NewStmt() (*Stmt, error) {
@@ -546,6 +535,7 @@ type Stmt struct {
 	columnDescs []ColumnDesc
 	reachEOF    bool
 	sqlHead     string
+	rowCount    int64
 }
 
 func (stmt *Stmt) Close() error {
@@ -564,6 +554,13 @@ func (stmt *Stmt) execute() error {
 	if err := mach.CliExecute(stmt.handle); err != nil {
 		return errorWithCause(stmt, err)
 	}
+
+	if rowCount, err := mach.CliRowCount(stmt.handle); err != nil {
+		return errorWithCause(stmt, err)
+	} else {
+		stmt.rowCount = rowCount
+	}
+
 	if stmt.sqlHead != "SELECT" {
 		return nil
 	}
@@ -696,9 +693,10 @@ func (stmt *Stmt) fetch() ([]any, error) {
 }
 
 type Row struct {
-	err     error
-	values  []any
-	columns api.Columns
+	err      error
+	values   []any
+	columns  api.Columns
+	rowCount int64
 }
 
 var _ api.Row = (*Row)(nil)
@@ -736,8 +734,7 @@ func (r *Row) Values() []any {
 }
 
 func (r *Row) RowsAffected() int64 {
-	// TODO implement
-	return 0
+	return r.rowCount
 }
 
 func (r *Row) Message() string {
@@ -746,10 +743,10 @@ func (r *Row) Message() string {
 }
 
 type Rows struct {
-	stmt         *Stmt
-	err          error
-	row          []any
-	rowsAffected int64
+	stmt      *Stmt
+	err       error
+	row       []any
+	rowsCount int64
 }
 
 var _ api.Rows = (*Rows)(nil)
@@ -787,20 +784,20 @@ func (r *Rows) Message() string {
 	case "SELECT":
 		return "Select successfully."
 	case "INSERT":
-		if r.rowsAffected == 0 {
+		if r.rowsCount == 0 {
 			return "no rows inserted."
-		} else if r.rowsAffected == 1 {
+		} else if r.rowsCount == 1 {
 			return "a row inserted."
 		} else {
-			return fmt.Sprintf("%d rows inserted.", r.rowsAffected)
+			return fmt.Sprintf("%d rows inserted.", r.rowsCount)
 		}
 	case "DELETE":
-		if r.rowsAffected == 0 {
+		if r.rowsCount == 0 {
 			return "no rows deleted."
-		} else if r.rowsAffected == 1 {
+		} else if r.rowsCount == 1 {
 			return "a row deleted."
 		} else {
-			return fmt.Sprintf("%d rows deleted.", r.rowsAffected)
+			return fmt.Sprintf("%d rows deleted.", r.rowsCount)
 		}
 	case "CREATE":
 		return "Created successfully."
@@ -818,7 +815,7 @@ func (r *Rows) Message() string {
 }
 
 func (r *Rows) RowsAffected() int64 {
-	return r.rowsAffected
+	return r.rowsCount
 }
 
 func (r *Rows) Next() bool {

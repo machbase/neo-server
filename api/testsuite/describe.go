@@ -35,7 +35,7 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 	expectColumns := []map[string]interface{}{
 		{"name": "NAME", "type": "varchar", "data_type": "string", "length": 100, "flag": api.ColumnFlagTagName},
 		{"name": "TIME", "type": "datetime", "data_type": "datetime", "length": 8, "flag": api.ColumnFlagBasetime},
-		{"name": "VALUE", "type": "double", "data_type": "double", "length": 8},
+		{"name": "VALUE", "type": "double", "data_type": "double", "length": 8, "flag": api.ColumnFlagSummarized},
 		{"name": "SHORT_VALUE", "type": "short", "data_type": "int16", "length": 2},
 		{"name": "USHORT_VALUE", "type": "ushort", "data_type": "int16", "length": 2},
 		{"name": "INT_VALUE", "type": "integer", "data_type": "int32", "length": 4},
@@ -72,7 +72,7 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 
 		buf := &bytes.Buffer{}
 		json.NewEncoder(buf).Encode(desc)
-		//t.Log(buf.String())
+
 		m := make(map[string]interface{})
 		json.Unmarshal(buf.Bytes(), &m)
 

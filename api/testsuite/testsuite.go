@@ -119,7 +119,7 @@ func (s *Server) startServer() {
 		create tag table tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
-			value           double,
+			value           double summarized,
 			short_value     short,
 			ushort_value    ushort,
 			int_value       integer,
