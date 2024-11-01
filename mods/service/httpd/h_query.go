@@ -167,3 +167,29 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
+
+type SplitSQLResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+	Data    any    `json:"data,omitempty"`
+}
+
+func (svr *httpd) handleSplitSQL(ctx *gin.Context) {
+	rsp := &SplitSQLResponse{Success: false, Reason: "not specified"}
+	tick := time.Now()
+	stmts, err := util.SplitSqlStatements(ctx.Request.Body)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = map[string]any{
+		"statements": stmts,
+	}
+	rsp.Elapse = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
