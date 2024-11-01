@@ -48,7 +48,9 @@ func parseConsoleId(ctx *gin.Context) *ConsoleInfo {
 const TQL_SCRIPT_PARAM = "$"
 
 // POST "/tql"
-func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
+// POST "/tql?$=...."
+// GET  "/tql?$=...."
+func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
@@ -157,7 +159,7 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 //
 // GET  "/tql/*path"
 // POST "/tql/*path"
-func (svr *httpd) handleTagQL(ctx *gin.Context) {
+func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 

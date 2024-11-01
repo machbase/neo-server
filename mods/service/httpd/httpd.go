@@ -216,16 +216,17 @@ func (svr *httpd) Router() *gin.Engine {
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
 			}
 			if svr.pkgMgr != nil {
-				svr.pkgMgr.HttpAppRouter(group, svr.handleTagQL)
+				svr.pkgMgr.HttpAppRouter(group, svr.handleTqlFile)
 			}
 			group.Use(svr.handleJwtToken)
 			if svr.pkgMgr != nil {
 				svr.pkgMgr.HttpPkgRouter(group.Group("/api/pkgs"))
 			}
 			group.POST("/api/term/:term_id/windowsize", svr.handleTermWindowSize)
-			group.GET("/api/tql/*path", svr.handleTagQL)
-			group.POST("/api/tql/*path", svr.handleTagQL)
-			group.POST("/api/tql", svr.handlePostTagQL)
+			group.GET("/api/tql/*path", svr.handleTqlFile)
+			group.POST("/api/tql/*path", svr.handleTqlFile)
+			group.GET("/api/tql", svr.handleTqlQuery)
+			group.POST("/api/tql", svr.handleTqlQuery)
 			group.POST("/api/md", svr.handleMarkdown)
 			group.Any("/machbase", func(c *gin.Context) {
 				svr.log.Debugf("/web/api/machbase is deprecated, use /web/api/query")
@@ -290,10 +291,10 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/write/:table", svr.handleWrite)
 			group.GET("/query/file/:table/:column/:id", svr.handleFileQuery)
 			group.GET("/watch/:table", svr.handleWatchQuery)
-			group.GET("/tql/*path", svr.handleTagQL)
-			group.POST("/tql/*path", svr.handleTagQL)
-			group.GET("/tql", svr.handlePostTagQL)
-			group.POST("/tql", svr.handlePostTagQL)
+			group.GET("/tql/*path", svr.handleTqlFile)
+			group.POST("/tql/*path", svr.handleTqlFile)
+			group.GET("/tql", svr.handleTqlQuery)
+			group.POST("/tql", svr.handleTqlQuery)
 			group.GET("/statz", svr.handleStatz)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
