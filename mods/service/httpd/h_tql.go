@@ -67,21 +67,38 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	var codeReader io.Reader
 	var input io.Reader
 	var debug = false
-	if script := ctx.Query(TQL_SCRIPT_PARAM); script == "" {
-		if debug {
-			b, _ := io.ReadAll(ctx.Request.Body)
-			fmt.Println("...", string(b), "...")
-			codeReader = bytes.NewBuffer(b)
+	if ctx.Request.Method == http.MethodPost {
+		if script := ctx.Query(TQL_SCRIPT_PARAM); script == "" {
+			if debug {
+				b, _ := io.ReadAll(ctx.Request.Body)
+				fmt.Println("...", string(b), "...")
+				codeReader = bytes.NewBuffer(b)
+			} else {
+				codeReader = ctx.Request.Body
+			}
 		} else {
-			codeReader = ctx.Request.Body
+			codeReader = bytes.NewBufferString(script)
+			if debug {
+				fmt.Println("...", script, "...")
+			}
+			params.Del(TQL_SCRIPT_PARAM)
+			input = ctx.Request.Body
+		}
+	} else if ctx.Request.Method == http.MethodGet {
+		if script := ctx.Query(TQL_SCRIPT_PARAM); script != "" {
+			codeReader = bytes.NewBufferString(script)
+			params.Del(TQL_SCRIPT_PARAM)
+		} else {
+			rsp.Reason = "script not found"
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusBadRequest, rsp)
+			return
 		}
 	} else {
-		codeReader = bytes.NewBufferString(script)
-		if debug {
-			fmt.Println("...", script, "...")
-		}
-		params.Del(TQL_SCRIPT_PARAM)
-		input = ctx.Request.Body
+		rsp.Reason = "unsupported method"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusMethodNotAllowed, rsp)
+		return
 	}
 
 	task := tql.NewTaskContext(ctx)

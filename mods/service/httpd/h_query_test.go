@@ -2,6 +2,7 @@ package httpd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/mods/util"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQuery(t *testing.T) {
@@ -131,4 +134,59 @@ func TestQuery(t *testing.T) {
 	runTestQuery(`SELECT to_timestamp((mTime))/1000000 AS TIME, SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE from (select TIME / (1 * 1 * 1000000000) * (1 * 1 * 1000000000) as mtime, sum(VALUE) as SUMMVAL, count(VALUE) as CNTMVAL from EXAMPLE where NAME in ('wave%3B') and TIME between 1693552595418000000 and 1693552598408000000 group by mTime) Group by TIME order by TIME LIMIT 441`,
 		`/r/{"data":{"columns":\["TIME","VALUE"\],"types":\["datetime","double"\],"rows":\[\[-6795364578871345152,0\]\]},"success":true,"reason":"success","elapse":".+"}`,
 		map[string]string{})
+}
+
+type SplitSqlResult struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+	Data    struct {
+		Statements []*util.SqlStatement `json:"statements"`
+	} `json:"data,omitempty"`
+}
+
+func TestSplitSQL(t *testing.T) {
+	dbMock := &DatabaseMock{}
+	svr, err := New(dbMock,
+		OptionDebugMode(true),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	httpSvr := svr.(*httpd)
+	r := httpSvr.Router()
+
+	runTestSplitSQL := func(sqlText string, expect []*util.SqlStatement) {
+		var w *httptest.ResponseRecorder
+		var req *http.Request
+
+		w = httptest.NewRecorder()
+		req, _ = http.NewRequest("POST", "/web/api/splitter/sql", strings.NewReader(sqlText))
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Log("StatusCode:", w.Result().Status, "Body:", w.Body.String())
+			t.Fail()
+		}
+		result := SplitSqlResult{}
+		response := w.Body.String()
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Log("Error:", err, response)
+			t.Fail()
+		}
+		if !result.Success {
+			t.Log("Error:", result.Reason, response)
+			t.Fail()
+		}
+		require.EqualValues(t, expect, result.Data.Statements, response)
+	}
+	runTestSplitSQL(`select * from first;`,
+		[]*util.SqlStatement{
+			{BeginLine: 1, EndLine: 1, IsComment: false, Text: "select * from first;", Env: &util.SqlStatementEnv{}},
+		})
+
+	runTestSplitSQL("\nselect * from second;  ",
+		[]*util.SqlStatement{
+			{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from second;", Env: &util.SqlStatementEnv{}},
+		})
 }
