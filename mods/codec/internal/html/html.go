@@ -4,10 +4,12 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/stream/spec"
 )
 
 type Exporter struct {
+	internal.RowsEncoderBase
 	imageType string
 	output    spec.OutputStream
 }

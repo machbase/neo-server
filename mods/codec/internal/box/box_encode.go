@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
+	internal.RowsEncoderBase
 	writer table.Writer
 	rownum int64
 

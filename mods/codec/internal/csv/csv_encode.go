@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/expression"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
@@ -18,6 +19,7 @@ import (
 )
 
 type Exporter struct {
+	internal.RowsEncoderBase
 	rownum int64
 
 	writer *csv.Writer

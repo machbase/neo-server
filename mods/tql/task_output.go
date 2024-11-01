@@ -228,6 +228,15 @@ func (out *output) ContentType() string {
 	return "application/octet-stream"
 }
 
+func (out *output) HttpHeaders() map[string][]string {
+	if out.encoder != nil {
+		return out.encoder.HttpHeaders()
+	} else if out.dbSink != nil {
+		return nil
+	}
+	return nil
+}
+
 func (out *output) IsChart() bool {
 	return out.isChart
 }

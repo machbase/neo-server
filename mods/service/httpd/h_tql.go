@@ -112,6 +112,13 @@ func (svr *httpd) handlePostTagQL(ctx *gin.Context) {
 	if chart := task.OutputChartType(); len(chart) > 0 {
 		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
 	}
+	if headers := task.OutputHttpHeaders(); len(headers) > 0 {
+		for k, vs := range headers {
+			for _, v := range vs {
+				ctx.Writer.Header().Set(k, v)
+			}
+		}
+	}
 	result := task.Execute()
 	if result == nil {
 		svr.log.Error("tql execute return nil")
@@ -197,6 +204,13 @@ func (svr *httpd) handleTagQL(ctx *gin.Context) {
 	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
 	if chart := task.OutputChartType(); len(chart) > 0 {
 		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
+	}
+	if headers := task.OutputHttpHeaders(); len(headers) > 0 {
+		for k, vs := range headers {
+			for _, v := range vs {
+				ctx.Writer.Header().Set(k, v)
+			}
+		}
 	}
 	result := task.Execute()
 	if result == nil {

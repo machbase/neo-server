@@ -348,7 +348,9 @@ func generatesFx(sets map[string]*SetX, imports map[string]*ImportX) {
 		orderedNames = append(orderedNames, def.Name)
 	}
 	sort.Slice(orderedNames, func(i, j int) bool { return orderedNames[i] < orderedNames[j] })
-	lines := []string{}
+	lines := []string{
+		`{Name: "httpHeader", Func: opts.HttpHeader},`,
+	}
 	for _, name := range orderedNames {
 		x := sets[name]
 		fname := strings.TrimPrefix(x.Name, "Set")

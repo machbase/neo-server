@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/facility"
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 )
 
 type Chart struct {
+	internal.RowsEncoderBase
 	output       spec.OutputStream
 	toJsonOutput bool
 	option       string

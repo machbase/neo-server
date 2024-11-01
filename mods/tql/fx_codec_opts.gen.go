@@ -9,6 +9,7 @@ import (
 )
 
 var CodecOptsDefinitions = []Definition{
+	{Name: "httpHeader", Func: opts.HttpHeader},
 	{Name: "autoRotate", Func: opts.AutoRotate},
 	{Name: "boxDrawBorder", Func: opts.BoxDrawBorder},
 	{Name: "boxSeparateColumns", Func: opts.BoxSeparateColumns},

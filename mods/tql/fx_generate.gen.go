@@ -259,6 +259,7 @@ func NewNode(task *Task) *Node {
 		"tz":        x.gen_tz,
 		"sep":       x.gen_sep,
 		// codec.opts
+		"httpHeader":          x.gen_httpHeader,
 		"autoRotate":          x.gen_autoRotate,
 		"boxDrawBorder":       x.gen_boxDrawBorder,
 		"boxSeparateColumns":  x.gen_boxSeparateColumns,
@@ -3975,6 +3976,25 @@ func (x *Node) gen_sep(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_httpHeader
+//
+// syntax: httpHeader(string, string)
+func (x *Node) gen_httpHeader(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("httpHeader", 2, len(args))
+	}
+	p0, err := convString(args, 0, "httpHeader", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "httpHeader", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.HttpHeader(p0, p1)
+	return ret, nil
+}
+
 // gen_autoRotate
 //
 // syntax: autoRotate(float64)
@@ -4188,11 +4208,11 @@ func (x *Node) gen_chartOption(args ...any) (any, error) {
 
 // gen_columnTypes
 //
-// syntax: columnTypes(...types.DataType)
+// syntax: columnTypes(...api.DataType)
 func (x *Node) gen_columnTypes(args ...any) (any, error) {
 	p0 := []api.DataType{}
 	for n := 0; n < len(args); n++ {
-		argv, err := convDataType(args, n, "columnTypes", "...types.DataType")
+		argv, err := convDataType(args, n, "columnTypes", "...api.DataType")
 		if err != nil {
 			return nil, err
 		}
