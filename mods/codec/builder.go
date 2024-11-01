@@ -38,6 +38,7 @@ type RowsEncoder interface {
 	AddRow(values []any) error
 	Flush(heading bool)
 	ContentType() string
+	HttpHeaders() map[string][]string
 }
 
 var (
@@ -165,4 +166,8 @@ func (ds *DiscardSink) Flush(heading bool) {
 
 func (ds *DiscardSink) ContentType() string {
 	return "text/plain"
+}
+
+func (ds *DiscardSink) HttpHeaders() map[string][]string {
+	return nil
 }

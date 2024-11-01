@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/facility"
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/machbase/neo-server/mods/util/mdconv"
 )
 
 type Exporter struct {
+	internal.RowsEncoderBase
 	logger     facility.Logger
 	htmlRender bool
 	brief      int64

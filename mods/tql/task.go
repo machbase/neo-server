@@ -495,6 +495,14 @@ func (x *Task) OutputContentEncoding() string {
 	return "identity"
 }
 
+func (x *Task) OutputHttpHeaders() map[string][]string {
+	if x.output != nil {
+
+		return x.output.HttpHeaders()
+	}
+	return nil
+}
+
 func (x *Task) OutputChartType() string {
 	if x.output != nil {
 		if x.output.IsChart() {

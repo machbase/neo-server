@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/mods/codec/facility"
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/nums"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util/snowflake"
 )
 
 type GeoMap struct {
+	internal.RowsEncoderBase
 	output spec.OutputStream
 
 	MapID  string

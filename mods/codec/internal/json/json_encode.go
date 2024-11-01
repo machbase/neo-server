@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/mods/codec/internal"
 	"github.com/machbase/neo-server/mods/stream/spec"
 	"github.com/machbase/neo-server/mods/util"
 )
 
 type Exporter struct {
+	internal.RowsEncoderBase
 	tick time.Time
 	nrow int
 
