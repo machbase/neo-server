@@ -37,7 +37,7 @@ func TestInsert(t *testing.T) {
 
 func TestTables(t *testing.T) {
 	db := testsuite.Database_machsvr(t)
-	testsuite.Tables(t, db, context.TODO())
+	testsuite.ShowTables(t, db, context.TODO())
 }
 
 func TestExistsTable(t *testing.T) {

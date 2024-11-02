@@ -64,13 +64,13 @@ func TestInsert(t *testing.T) {
 	testsuite.InsertAndQuery(t, testServer.DatabaseCLI(), context.TODO())
 }
 
-func TestTables(t *testing.T) {
+func TestShowTables(t *testing.T) {
 	// machsvr
-	testsuite.Tables(t, testServer.DatabaseSVR(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
-	testsuite.Tables(t, testServer.DatabaseRPC(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseRPC(), context.TODO())
 	// machcli
-	testsuite.Tables(t, testServer.DatabaseCLI(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestExistsTable(t *testing.T) {

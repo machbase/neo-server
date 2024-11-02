@@ -56,9 +56,9 @@ func TestInsert(t *testing.T) {
 
 func TestTables(t *testing.T) {
 	// machsvr
-	testsuite.Tables(t, testServer.DatabaseSVR(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseSVR(), context.TODO())
 	// machrpc
-	testsuite.Tables(t, testServer.DatabaseRPC(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseRPC(), context.TODO())
 }
 
 func TestExistsTable(t *testing.T) {

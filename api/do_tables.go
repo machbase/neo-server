@@ -15,8 +15,8 @@ func ifThenElse(cond bool, a, b string) string {
 	return b
 }
 
-func TranslateShowTables(showAll bool, descriptive bool) string {
-	sqlText := SqlTidy(`
+func ShowTablesSql(showAll bool, descriptive bool) string {
+	return SqlTidy(`
 		SELECT
 			j.DB_NAME as DB,
 			u.NAME as USER_NAME,
@@ -38,10 +38,10 @@ func TranslateShowTables(showAll bool, descriptive bool) string {
 				when 4 then 'Meta'
 				when 8 then 'Stat'
 				else '-'
-			end as FLAG`, `
+			end as FLAG`,
+			`
 			j.TYPE as TYPE,
-			j.FLAG as FLAG
-		`) + `
+			j.FLAG as FLAG`) + `
 		FROM
 			M$SYS_USERS u,
 			(
@@ -63,20 +63,34 @@ func TranslateShowTables(showAll bool, descriptive bool) string {
 					a.DATABASE_ID = d.BACKUP_TBSID
 			) as j
 		WHERE
-			u.USER_ID = j.USER_ID %s
+			u.USER_ID = j.USER_ID` +
+		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'") + `
 		ORDER by j.NAME
 	`)
-
-	tableNameCond := ""
-	if !showAll {
-		tableNameCond = "AND SUBSTR(j.NAME, 1, 1) <> '_'"
-	}
-	sqlText = fmt.Sprintf(sqlText, tableNameCond)
-	return sqlText
 }
 
-func Tables(ctx context.Context, conn Conn, callback func(*TableInfo, error) bool) {
-	sqlText := TranslateShowTables(true, false)
+func ShowTables(ctx context.Context, conn Conn, showAll bool) ([]*TableInfo, error) {
+	sqlText := ShowTablesSql(showAll, false)
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := []*TableInfo{}
+	for rows.Next() {
+		ti := &TableInfo{}
+		err := rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, ti)
+	}
+	return ret, nil
+}
+
+func ShowTablesWalk(ctx context.Context, conn Conn, callback func(*TableInfo, error) bool) {
+	sqlText := ShowTablesSql(true, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		callback(nil, err)

@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Tables(t *testing.T, db api.Database, ctx context.Context) {
+func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
 	result := map[string]*api.TableInfo{}
-	api.Tables(ctx, conn, func(ti *api.TableInfo, err error) bool {
+	api.ShowTablesWalk(ctx, conn, func(ti *api.TableInfo, err error) bool {
 		require.NoError(t, err, "tables fail")
 		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
 		return true
@@ -53,6 +53,15 @@ func Tables(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
+	tables, err := api.ShowTables(ctx, conn, true)
+	require.NoError(t, err, "show tables fail")
+	require.Equal(t, len(result), len(tables))
+
+	result2 := map[string]*api.TableInfo{}
+	for _, v := range tables {
+		result2[fmt.Sprintf("%s.%s.%s", v.Database, v.User, v.Name)] = v
+	}
+	require.Equal(t, result, result2)
 }
 
 func ExistsTable(t *testing.T, db api.Database, ctx context.Context) {

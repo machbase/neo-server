@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 		Filename:                    "-",
 		Append:                      false,
 		DefaultPrefixWidth:          10,
-		DefaultEnableSourceLocation: false,
+		DefaultEnableSourceLocation: true,
 		DefaultLevel:                "TRACE",
 	})
 

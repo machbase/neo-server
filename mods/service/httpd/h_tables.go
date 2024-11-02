@@ -51,7 +51,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	api.Tables(ctx, conn, func(ti *api.TableInfo, err error) bool {
+	api.ShowTablesWalk(ctx, conn, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false

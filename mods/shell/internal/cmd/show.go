@@ -464,7 +464,7 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
 	nrow := 0
-	api.Tables(ctx.Ctx, ctx.Conn, func(ti *api.TableInfo, err error) bool {
+	api.ShowTablesWalk(ctx.Ctx, ctx.Conn, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false

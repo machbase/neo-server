@@ -176,7 +176,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 		if len(params) == 3 && params[0] == "SYS" && params[1] == -1 && params[2] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = 4907                       // table id
+					*(cols[0].(*int64)) = int64(4907)              // table id
 					*(cols[1].(*api.TableType)) = api.TableTypeTag // table type
 					*(cols[2].(*api.TableFlag)) = 0                // table flag
 					*(cols[3].(*int)) = 4                          // column count
@@ -193,7 +193,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 
 func (db *TestImageDBMock) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	sqlText = makeSingleLine(sqlText)
-	// becuase NAME, TIME, VALUE, EXTDATA columns can come in any order
+	// because NAME, TIME, VALUE, EXTDATA columns can come in any order
 	if strings.HasPrefix(sqlText, `INSERT INTO EXAMPLE`) && strings.HasSuffix(sqlText, `VALUES(?,?,?,?)`) {
 		fmt.Println("MOCK-Exec", params)
 		return &ResultMock{
@@ -209,11 +209,11 @@ func (db *TestImageDBMock) Exec(ctx context.Context, sqlText string, params ...a
 func (db *TestImageDBMock) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	sqlText = makeSingleLine(sqlText)
 	if sqlText == `select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id` {
-		if len(params) == 2 && params[0] == 4907 && params[1] == -1 {
+		if len(params) == 2 && params[0] == int64(4907) && params[1] == -1 {
 			return newColumnsMock(), nil
 		}
 	} else if sqlText == `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?` {
-		if len(params) == 2 && params[0] == 4907 && params[1] == -1 {
+		if len(params) == 2 && params[0] == int64(4907) && params[1] == -1 {
 			return &RowsMock{
 				NextFunc:  func() bool { return false },
 				CloseFunc: func() error { return nil },

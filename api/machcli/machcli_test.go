@@ -46,7 +46,7 @@ func TestInsert(t *testing.T) {
 
 func TestTables(t *testing.T) {
 	// machcli
-	testsuite.Tables(t, testServer.DatabaseCLI(), context.TODO())
+	testsuite.ShowTables(t, testServer.DatabaseCLI(), context.TODO())
 }
 
 func TestExistsTable(t *testing.T) {
