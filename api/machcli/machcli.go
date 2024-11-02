@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -58,6 +59,7 @@ type Config struct {
 }
 
 type Database struct {
+	sync.Mutex
 	Config
 	handle unsafe.Pointer
 }
@@ -110,6 +112,8 @@ func (db *Database) connectionString(user string, password string) string {
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+	db.Lock()
+	defer db.Unlock()
 	var user, password string
 	for _, opt := range opts {
 		switch o := opt.(type) {
