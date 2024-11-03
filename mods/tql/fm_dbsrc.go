@@ -301,8 +301,8 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
-		if strings.EqualFold(v, "show tables") {
-			v = api.ListTablesSql(true, true)
+		if s, ok := parseSqlCommands(v); ok {
+			v = s
 		}
 		x.task.LogInfof("╭─ %s", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
@@ -323,6 +323,51 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		}
 	}
 	return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
+}
+
+func parseSqlCommands(str string) (string, bool) {
+	fields := strings.Fields(str)
+	if len(fields) < 2 {
+		return str, false
+	}
+	var showAll bool
+	var args []string
+	switch strings.ToLower(fields[0]) {
+	case "show":
+		args = append(args, "show")
+	case "desc":
+		args = append(args, "desc")
+	default:
+		return str, false
+	}
+	for i := 1; i < len(fields); i++ {
+		switch fields[i] {
+		case "-a", "--all":
+			showAll = true
+		default:
+			if strings.HasPrefix(fields[i], "-") {
+				continue
+			}
+			args = append(args, fields[i])
+		}
+	}
+	switch args[0] {
+	case "show":
+		if len(args) == 2 && args[1] == "tables" {
+			return api.ListTablesSql(showAll, true), true
+		}
+		if len(args) == 2 && args[1] == "indexes" {
+			return api.ListIndexesSql(), true
+		}
+		if len(args) == 3 && args[1] == "tags" {
+			return api.ListTagsSql(args[2]), true
+		}
+	case "desc":
+		// if len(args) == 2 {
+		// 	return api.DescTableSql(args[1]), true
+		// }
+	}
+	return str, false
 }
 
 type QueryFrom struct {
