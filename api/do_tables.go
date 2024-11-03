@@ -15,14 +15,14 @@ func ifThenElse(cond bool, a, b string) string {
 	return b
 }
 
-func ShowTablesSql(showAll bool, descriptive bool) string {
-	return SqlTidy(`
-		SELECT
+func ListTablesSql(showAll bool, descriptiveType bool) string {
+	return SqlTidy(
+		`SELECT
 			j.DB_NAME as DB,
 			u.NAME as USER_NAME,
 			j.NAME as NAME,
-			j.ID as ID, ` +
-		ifThenElse(descriptive, `
+			j.ID as ID,`,
+		ifThenElse(descriptiveType, `
 			case j.TYPE
 				when 0 then 'Log'
 				when 1 then 'Fixed'
@@ -41,8 +41,8 @@ func ShowTablesSql(showAll bool, descriptive bool) string {
 			end as FLAG`,
 			`
 			j.TYPE as TYPE,
-			j.FLAG as FLAG`) + `
-		FROM
+			j.FLAG as FLAG`),
+		`FROM
 			M$SYS_USERS u,
 			(
 				select
@@ -63,34 +63,13 @@ func ShowTablesSql(showAll bool, descriptive bool) string {
 					a.DATABASE_ID = d.BACKUP_TBSID
 			) as j
 		WHERE
-			u.USER_ID = j.USER_ID` +
-		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'") + `
-		ORDER by j.NAME
-	`)
+			u.USER_ID = j.USER_ID`,
+		ifThenElse(showAll, "", "AND SUBSTR(j.NAME, 1, 1) <> '_'"),
+		`ORDER by j.NAME`)
 }
 
-func ShowTables(ctx context.Context, conn Conn, showAll bool) ([]*TableInfo, error) {
-	sqlText := ShowTablesSql(showAll, false)
-	rows, err := conn.Query(ctx, sqlText)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ret := []*TableInfo{}
-	for rows.Next() {
-		ti := &TableInfo{}
-		err := rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if err != nil {
-			return nil, err
-		}
-		ret = append(ret, ti)
-	}
-	return ret, nil
-}
-
-func ShowTablesWalk(ctx context.Context, conn Conn, callback func(*TableInfo, error) bool) {
-	sqlText := ShowTablesSql(true, false)
+func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(*TableInfo, error) bool) {
+	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
 		callback(nil, err)
@@ -105,6 +84,17 @@ func ShowTablesWalk(ctx context.Context, conn Conn, callback func(*TableInfo, er
 			return
 		}
 	}
+}
+
+func ListTables(ctx context.Context, conn Conn, showAll bool) (ret []*TableInfo, cause error) {
+	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo, err error) bool {
+		if err == nil && ti != nil {
+			ret = append(ret, ti)
+		}
+		cause = err
+		return err == nil
+	})
+	return
 }
 
 func QueryTableType(ctx context.Context, conn Conn, fullTableName string) (TableType, error) {

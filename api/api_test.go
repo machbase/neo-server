@@ -115,3 +115,7 @@ func TestWatchLogTable(t *testing.T) {
 	db := testsuite.Database_machsvr(t)
 	testsuite.WatchLogTable(t, db, context.TODO())
 }
+
+func TestInsertNewTags(t *testing.T) {
+	testsuite.InsertNewTags(t, testServer.DatabaseCLI(), context.TODO())
+}

@@ -29,21 +29,16 @@ func (tn TableName) Split() (string, string, string) {
 }
 
 type TableInfo struct {
-	Id       int64     `json:"id"`       // M$SYS_TABLES.ID
-	Database string    `json:"database"` // M$SYS_TABLES.DATABASE_ID
-	User     string    `json:"user"`     // M$SYS_USERS.NAME
-	Name     string    `json:"name"`     // M$SYS_TABLES.NAME
-	Type     TableType `json:"type"`     // M$SYS_TABLES.TYPE
-	Flag     TableFlag `json:"flag"`     // M$SYS_TABLES.FLAG
+	Database string    `json:"database"`       // M$SYS_TABLES.DATABASE_ID
+	User     string    `json:"user"`           // M$SYS_USERS.NAME
+	Name     string    `json:"name"`           // M$SYS_TABLES.NAME
+	Id       int64     `json:"id"`             // M$SYS_TABLES.ID
+	Type     TableType `json:"type"`           // M$SYS_TABLES.TYPE
+	Flag     TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
 }
 
 func (ti *TableInfo) Kind() string {
 	return TableTypeDescription(ti.Type, ti.Flag)
-	// if ti.Flag != "" {
-	// 	return fmt.Sprintf("%s Table (%s)", ti.Type, strings.ToLower(ti.Flag))
-	// } else {
-	// 	return ti.Type
-	// }
 }
 
 // TableDescription is represents data that comes as a result of 'desc <table>'
@@ -51,9 +46,9 @@ type TableDescription struct {
 	Database string              `json:"database"`
 	User     string              `json:"user"`
 	Name     string              `json:"name"`
+	Id       int64               `json:"id"`
 	Type     TableType           `json:"type"`
 	Flag     TableFlag           `json:"flag,omitempty"`
-	Id       int64               `json:"id"`
 	Columns  Columns             `json:"columns"`
 	Indexes  []*IndexDescription `json:"indexes"`
 }
@@ -67,17 +62,18 @@ type IndexDescription struct {
 	Id   int64     `json:"id"`
 	Name string    `json:"name"`
 	Type IndexType `json:"type"`
-	Cols []string  `json:"cols"`
+	Cols []string  `json:"columns"`
 }
 
 type IndexInfo struct {
-	Database   string `json:"database"`
-	User       string `json:"user"`
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Table      string `json:"table"`
-	Column     string `json:"column"`
-	DatabaseId int    `json:"database_id"`
+	Id         int64    `json:"id"`
+	Database   string   `json:"database"`
+	User       string   `json:"user"`
+	Name       string   `json:"name"`
+	Type       string   `json:"type"`
+	Table      string   `json:"table"`
+	Cols       []string `json:"columns"`
+	DatabaseId int      `json:"database_id"`
 }
 
 type LicenseInfo struct {
@@ -90,7 +86,18 @@ type LicenseInfo struct {
 	IssueDate   string `json:"issueDate"`
 }
 
+type TagInfo struct {
+	Database string `json:"database"`
+	User     string `json:"user"`
+	Table    string `json:"table"`
+	Name     string `json:"name"`
+	Id       int64  `json:"id"`
+}
+
 type TagStatInfo struct {
+	Database      string    `json:"database"`
+	User          string    `json:"user"`
+	Table         string    `json:"table"`
 	Name          string    `json:"name"`
 	RowCount      int64     `json:"row_count"`
 	MinTime       time.Time `json:"min_time"`

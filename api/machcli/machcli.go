@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -59,7 +58,6 @@ type Config struct {
 }
 
 type Database struct {
-	sync.Mutex
 	Config
 	handle unsafe.Pointer
 }
@@ -85,14 +83,6 @@ func (db *Database) Close() error {
 
 func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
 	tick := time.Now()
-	// conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", db.Host, db.Port))
-	// if err != nil {
-	// 	return 0, err
-	// }
-	// if err := conn.Close(); err != nil {
-	// 	return 0, err
-	// }
-
 	// TODO implement PING
 	return time.Since(tick), nil
 }
@@ -102,8 +92,8 @@ func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, 
 	if err != nil {
 		return false, "invalid username or password", nil
 	}
-	defer conn.Close()
-	return true, "", nil
+	err = conn.Close()
+	return true, "", err
 }
 
 func (db *Database) connectionString(user string, password string) string {
@@ -112,8 +102,6 @@ func (db *Database) connectionString(user string, password string) string {
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
-	db.Lock()
-	defer db.Unlock()
 	var user, password string
 	for _, opt := range opts {
 		switch o := opt.(type) {
@@ -237,13 +225,11 @@ func (c *Conn) Query(ctx context.Context, query string, args ...any) (api.Rows, 
 		return nil, err
 	}
 	if err := stmt.bindParams(args...); err != nil {
-		fmt.Printf("bind error: %s args:%d\n", err.Error(), len(args))
 		stmt.Close()
 		return nil, err
 	}
 	if err := stmt.execute(); err != nil {
 		stmt.Close()
-		fmt.Printf("execute error: %s args:%d\n", err.Error(), len(args))
 		return nil, err
 	}
 	ret := &Rows{

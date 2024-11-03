@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	defer conn.Close()
 
 	result := map[string]*api.TableInfo{}
-	api.ShowTablesWalk(ctx, conn, func(ti *api.TableInfo, err error) bool {
+	api.ListTablesWalk(ctx, conn, true, func(ti *api.TableInfo, err error) bool {
 		require.NoError(t, err, "tables fail")
 		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
 		return true
@@ -53,9 +54,13 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, api.TableFlagMeta, ti.Flag)
 	require.Equal(t, "Lookup Table (meta)", ti.Kind())
 
-	tables, err := api.ShowTables(ctx, conn, true)
+	tables, err := api.ListTables(ctx, conn, true)
 	require.NoError(t, err, "show tables fail")
 	require.Equal(t, len(result), len(tables))
+
+	resultList, err := api.ListTables(ctx, conn, false)
+	require.NoError(t, err, "show tables fail")
+	require.NotEmpty(t, resultList, "tables empty")
 
 	result2 := map[string]*api.TableInfo{}
 	for _, v := range tables {
@@ -93,7 +98,7 @@ func Indexes(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
 
-	ret, err := api.Indexes(ctx, conn)
+	ret, err := api.ListIndexes(ctx, conn)
 	require.NoError(t, err, "indexes fail")
 	require.NotEmpty(t, ret, "indexes empty")
 	for _, r := range ret {
@@ -101,22 +106,22 @@ func Indexes(t *testing.T, db api.Database, ctx context.Context) {
 		case "_TAG_DATA_META_NAME":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_DATA_META", r.Table)
-			require.Equal(t, "NAME", r.Column)
+			require.Equal(t, "NAME", r.Cols[0])
 			require.Equal(t, "REDBLACK", r.Type)
 		case "__PK_IDX__TAG_DATA_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_DATA_META", r.Table)
-			require.Equal(t, "_ID", r.Column)
+			require.Equal(t, "_ID", r.Cols[0])
 			require.Equal(t, "REDBLACK", r.Type)
 		case "_TAG_SIMPLE_META_NAME":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
-			require.Equal(t, "NAME", r.Column)
+			require.Equal(t, "NAME", r.Cols[0])
 			require.Equal(t, "REDBLACK", r.Type)
 		case "__PK_IDX__TAG_SIMPLE_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
 			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
-			require.Equal(t, "_ID", r.Column)
+			require.Equal(t, "_ID", r.Cols[0])
 			require.Equal(t, "REDBLACK", r.Type)
 		default:
 			t.Logf("Unknown index: %+v", r)
@@ -269,15 +274,18 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, result.Err(), "table_flush fail")
 
 	// tags
-	tags := map[string]string{}
-	api.Tags(ctx, conn, "TAG_DATA", func(name string, id int64, err error) bool {
+	tags := []*api.TagInfo{}
+	api.ListTagsWalk(ctx, conn, "TAG_DATA", func(tag *api.TagInfo, err error) bool {
+		// TODO: MACHCLI-ERR-3, Communication link failure
 		require.NoError(t, err, "tags fail")
-		require.Greater(t, id, int64(0))
-		tags[name] = name
+		require.Greater(t, tag.Id, int64(0))
+		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
+		tags = append(tags, tag)
 		return true
 	})
-	require.Equal(t, "insert-once", tags["insert-once"])
-	require.Equal(t, "insert-twice", tags["insert-twice"])
+	tags2, err := api.ListTags(ctx, conn, "TAG_DATA")
+	require.NoError(t, err, "tags fail")
+	require.EqualValues(t, tags, tags2)
 
 	// tag stat
 	tagStat, err := api.TagStat(ctx, conn, "TAG_DATA", "insert-once")
@@ -303,6 +311,63 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result = conn.Exec(ctx, `delete from tag_data where name = 'insert-twice'`)
 	require.NoError(t, result.Err(), "delete fail")
 	require.Equal(t, int64(1), result.RowsAffected())
+}
+
+func InsertNewTags(t *testing.T, db api.Database, ctx context.Context) {
+	expectCount := 1000
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		require.NoError(t, err, "connect fail")
+		defer func() {
+			conn.Close()
+			wg.Done()
+		}()
+		ts := time.Now()
+		for i := 0; i < expectCount; i++ {
+			result := conn.Exec(ctx, `INSERT INTO TAG_SIMPLE (name, time, value) VALUES(?, ?, ?)`,
+				fmt.Sprintf("tag-%d", i),
+				ts.Add(1),
+				1.23*float64(i),
+			)
+			require.NoError(t, result.Err(), "insert fail, count=%d", i)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		require.NoError(t, err, "connect fail")
+		defer func() {
+			conn.Close()
+			wg.Done()
+		}()
+		for i := 0; i < expectCount; i++ {
+			rows, err := conn.Query(ctx, `SELECT _ID, NAME FROM _TAG_SIMPLE_META`)
+			require.NoError(t, err, "list tags fail")
+			count := 0
+			for rows.Next() {
+				count++
+			}
+			rows.Close()
+		}
+	}()
+
+	wg.Wait()
+
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	rows, err := conn.Query(ctx, `SELECT _ID, NAME FROM _TAG_SIMPLE_META`)
+	require.NoError(t, err, "list tags fail")
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	rows.Close()
+	require.Equal(t, expectCount, count)
 }
 
 func unbox(val any) any {
