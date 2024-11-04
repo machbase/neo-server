@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machcli"
 )
 
@@ -18,7 +19,7 @@ const (
 )
 
 func main() {
-	env, err := machcli.NewEnv()
+	env, err := machcli.NewDatabase(&machcli.Config{Host: machHost, Port: machPort})
 	if err != nil {
 		panic(err)
 	}
@@ -26,13 +27,13 @@ func main() {
 
 	ctx := context.TODO()
 
-	conn, err := env.Connect(ctx, machcli.WithHost(machHost, machPort), machcli.WithPassword(machUser, machPass))
+	conn, err := env.Connect(ctx, api.WithPassword(machUser, machPass))
 	if err != nil {
 		panic(err)
 	}
 	defer conn.Close()
 
-	row := conn.QueryRowContext(ctx, `select name, count(*) as c from example group by name having name = ?`, tagName)
+	row := conn.QueryRow(ctx, `select name, count(*) as c from example group by name having name = ?`, tagName)
 	if row.Err() != nil {
 		panic(row.Err())
 	}

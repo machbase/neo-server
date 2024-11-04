@@ -57,7 +57,7 @@ func TestLineprotocol(t *testing.T) {
 			case H_LINE_DESC_QUERYROW_SQL:
 				rm.ScanFunc = func(cols ...any) error {
 					if len(params) == 3 {
-						*(cols[0].(*int)) = 0
+						*(cols[0].(*int64)) = 0
 						*(cols[1].(*api.TableType)) = api.TableTypeTag
 						*(cols[2].(*api.TableFlag)) = 0
 						*(cols[3].(*int)) = 0
@@ -188,7 +188,7 @@ func TestLineprotocol(t *testing.T) {
 	expectStatus = http.StatusNoContent
 	if expectStatus != w.Code {
 		content, _ := io.ReadAll(w.Result().Body)
-		t.Logf("respose code %d expected, got=%d %q\nrequest: %v", expectStatus, w.Code, string(content), LINEPROTOCOLDATA)
+		t.Logf("response code %d expected, got=%d %q\nrequest: %v", expectStatus, w.Code, string(content), LINEPROTOCOLDATA)
 		t.FailNow()
 	}
 

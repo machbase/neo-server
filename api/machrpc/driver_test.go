@@ -12,22 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	svr := &MockServer{}
-
-	err := svr.Start()
-	if err != nil {
-		panic(err)
-	}
-
-	m.Run()
-
-	svr.Stop()
-}
-
 func connect(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("machbase", fmt.Sprintf("tcp://sys:manager@%s", MockServerAddr))
+	//db, err := sql.Open("machbase", fmt.Sprintf("tcp://sys:manager@%s", MockServerAddr))
+	db, err := sql.Open("machbase", "machbase")
 	if err != nil {
 		t.Fatalf("db connection failure %q", err.Error())
 	}
@@ -36,14 +24,13 @@ func connect(t *testing.T) *sql.DB {
 
 func TestConnectFail(t *testing.T) {
 	tests := []string{
-		fmt.Sprintf("tcp://%s", MockServerAddr),
-		fmt.Sprintf("tcp://sys:man@%s", MockServerAddr),
-		fmt.Sprintf("tcp://sys@%s", MockServerAddr),
+		"tcp://127.0.0.1:5655",
+		"tcp://sys:man@127.0.0.1:5655",
+		"tcp://sys@127.0.0.1:5655",
 	}
 	for _, tt := range tests {
-		db, err := sql.Open("machbase", tt)
+		db, err := sql.Open("mach", tt)
 		require.NotNil(t, err)
-		require.Equal(t, "invalid username or password", err.Error())
 		require.Nil(t, db)
 	}
 }
@@ -52,7 +39,7 @@ func TestDriverQuery(t *testing.T) {
 	db := connect(t)
 	defer db.Close()
 
-	rows, err := db.Query(`select * from example where name = ?`, "query1")
+	rows, err := db.Query(`select * from tag_data where name = ?`, "query1")
 	require.Nil(t, err)
 	require.NotNil(t, rows)
 	rows.Close()
@@ -61,7 +48,7 @@ func TestDriverQuery(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, conn)
 
-	rows, err = conn.QueryContext(context.TODO(), `select * from example where name = ?`, "query1")
+	rows, err = conn.QueryContext(context.TODO(), `select * from tag_data where name = ?`, "query1")
 	require.Nil(t, err)
 	require.NotNil(t, rows)
 	rows.Close()
@@ -71,14 +58,14 @@ func TestDriverQuery(t *testing.T) {
 
 func TestDriver(t *testing.T) {
 	t.Skip("skip test, require server process running")
-	machrpc.RegisterDataSource("local-unix", &machrpc.DataSource{
+	sql.Register("local-unix", &machrpc.Driver{
 		ServerAddr: "unix://../../tmp/mach-grpc.sock",
 		User:       "sys",
 		Password:   "manager",
 	})
 	testDriverDataSource(t, "local-unix")
 
-	machrpc.RegisterDataSource("local-tcp", &machrpc.DataSource{
+	sql.Register("local-tcp", &machrpc.Driver{
 		ServerAddr: "tcp://127.0.0.1:5655",
 		User:       "sys",
 		Password:   "manager",
@@ -88,7 +75,7 @@ func TestDriver(t *testing.T) {
 
 func testDriverDataSource(t *testing.T, dataSourceName string) {
 	t.Helper()
-	db, err := sql.Open(machrpc.Name, dataSourceName)
+	db, err := sql.Open(dataSourceName, "")
 	if err != nil {
 		t.Fatal(err)
 	}

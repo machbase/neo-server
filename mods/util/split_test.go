@@ -21,8 +21,8 @@ func TestSplitFields(t *testing.T) {
 		[]string{"--data", `"C:\Users\user\work\neo-download\neo 0.1.2\machbase_home"`})
 }
 
-func testSplitFields(t *testing.T, stripQutes bool, args string, expects []string) {
-	toks := util.SplitFields(args, stripQutes)
+func testSplitFields(t *testing.T, stripQuotes bool, args string, expects []string) {
+	toks := util.SplitFields(args, stripQuotes)
 	require.Equal(t, len(expects), len(toks))
 	for i, tok := range toks {
 		require.Equal(t, expects[i], tok)

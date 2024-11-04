@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/machcli"
 )
 
@@ -15,25 +16,25 @@ const (
 	machPass = "MANAGER"
 
 	tableName = "example"
-	tagName   = "helloworld"
+	tagName   = "hello-world"
 )
 
 func main() {
-	env, err := machcli.NewEnv()
+	db, err := machcli.NewDatabase(&machcli.Config{Host: machHost, Port: machPort})
 	if err != nil {
 		panic(err)
 	}
-	defer env.Close()
+	defer db.Close()
 
 	ctx := context.TODO()
 
-	conn, err := env.Connect(ctx, machcli.WithHost(machHost, machPort), machcli.WithPassword(machUser, machPass))
+	conn, err := db.Connect(ctx, api.WithPassword(machUser, machPass))
 	if err != nil {
 		panic(err)
 	}
 	defer conn.Close()
 
-	appender, err := conn.Appender(tableName, machcli.WithErrorCheckCount(10))
+	appender, err := conn.Appender(ctx, tableName)
 	if err != nil {
 		panic(err)
 	}
@@ -42,8 +43,10 @@ func main() {
 	ts := time.Now().Add(time.Duration(time.Duration(-1*count) * time.Second))
 	for i := 0; i < 10000; i++ {
 		if i%1000 == 0 {
-			if err := appender.Flush(); err != nil {
-				panic(err)
+			if flusher, ok := appender.(api.Flusher); ok {
+				if err := flusher.Flush(); err != nil {
+					panic(err)
+				}
 			}
 		}
 		if err := appender.Append(tagName, ts.Add(time.Duration(i)*time.Second), i); err != nil {

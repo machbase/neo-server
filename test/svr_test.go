@@ -57,7 +57,6 @@ module "machbase.com/neo-server" {
         }
         Mqtt = {
             Listeners        = [ "tcp://127.0.0.1:5653"]
-			EnableV2         = true
         }
 		MachbaseInitOption       = 2
     }
@@ -144,6 +143,16 @@ func TestMain(m *testing.M) {
 	}
 	/// end of preparing benchmark table
 
+	flushTable = func(tableName string) {
+		ctx := context.TODO()
+		conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+		conn.Exec(ctx, fmt.Sprintf("exec table_flush(%s)", tableName))
+	}
+
 	m.Run()
 
 	// cancel Conn test
@@ -199,3 +208,5 @@ func listNeoSession(db *machsvr.Database) {
 		}
 	}
 }
+
+var flushTable func(tableName string)

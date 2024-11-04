@@ -14,7 +14,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
-func (s *mqtt2) handleTql(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleTql(cl *mqtt.Client, pk packets.Packet) {
 	if s.tqlLoader == nil {
 		s.log.Error("tql is not enabled.")
 		return

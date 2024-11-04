@@ -70,29 +70,11 @@ func (ll *levelLogger) Handle(ctx context.Context, r slog.Record) error {
 	if ll.filter != nil && !ll.filter(ll.name, ctx, r) {
 		return nil
 	}
-	// if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
-	// 	return nil
-	// }
 	args := []any{r.Message}
-	// skip := false
 	r.Attrs(func(a slog.Attr) bool {
-		// if ll.name == "mqtt-v2" {
-		// 	if err, ok := a.Value.Any().(error); ok {
-		// 		msg := err.Error()
-		// 		if strings.Contains(msg, "use of closed network") {
-		// 			lvl = LevelDebug
-		// 		} else if strings.Contains(msg, "i/o timeout") {
-		// 			lvl = LevelDebug
-		// 		} else if err == io.EOF {
-		// 			skip = true
-		// 		}
-		// 	}
-		// }
 		args = append(args, fmt.Sprintf("%v=%v", a.Key, a.Value))
 		return true
 	})
-	// if !skip {
-	// }
 	ll._log(lvl, 0, args)
 	return nil
 }

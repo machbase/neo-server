@@ -24,7 +24,7 @@ tmp/
 packages/
 vendor/
 examples/**/target
-machbase_test_tmp/
+testsuite_tmp/
 
 mods/service/httpd/web/ui/*
 mach-grpc.sock

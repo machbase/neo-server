@@ -98,8 +98,8 @@ var ErrDatabaseBind = func(idx int, val any, err error) error {
 	return NewErrorf("bind error idx %d with %T, %s", idx, val, err.Error())
 }
 
-var ErrDatabaseBindUnknownType = func(paramNo int, sqlType int) error {
-	return NewErrorf("bind unknown type at column %d sql_type:%d", paramNo, sqlType)
+var ErrDatabaseBindUnknownType = func(paramIdx int, typ string) error {
+	return NewErrorf("bind unknown type at column %d %s", paramIdx, typ)
 }
 
 var ErrDatabaseBindWrongType = func(paramNo int, sqlType int, value any) error {

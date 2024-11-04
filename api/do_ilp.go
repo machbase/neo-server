@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-/* Interpreting Influx lineprotocol
+/* Interpreting Influx line protocol
 
    | Machbase            | influxdb                                    |
    | ------------------- | ------------------------------------------- |

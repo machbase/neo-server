@@ -169,13 +169,14 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 					*(cols[0].(*api.TableType)) = api.TableTypeTag
 					return nil
 				},
+				ErrFunc: func() error { return nil },
 			}
 		}
 	} else if sqlText == `SELECT j.ID as TABLE_ID, j.TYPE as TABLE_TYPE, j.FLAG as TABLE_FLAG, j.COLCOUNT as TABLE_COLCOUNT from M$SYS_USERS u, M$SYS_TABLES j where u.NAME = ? and j.USER_ID = u.USER_ID and j.DATABASE_ID = ? and j.NAME = ?` {
 		if len(params) == 3 && params[0] == "SYS" && params[1] == -1 && params[2] == "EXAMPLE" {
 			return &RowMock{
 				ScanFunc: func(cols ...any) error {
-					*(cols[0].(*int)) = 4907                       // table id
+					*(cols[0].(*int64)) = int64(4907)              // table id
 					*(cols[1].(*api.TableType)) = api.TableTypeTag // table type
 					*(cols[2].(*api.TableFlag)) = 0                // table flag
 					*(cols[3].(*int)) = 4                          // column count
@@ -192,7 +193,7 @@ func (db *TestImageDBMock) QueryRow(ctx context.Context, sqlText string, params 
 
 func (db *TestImageDBMock) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
 	sqlText = makeSingleLine(sqlText)
-	// becuase NAME, TIME, VALUE, EXTDATA columns can come in any order
+	// because NAME, TIME, VALUE, EXTDATA columns can come in any order
 	if strings.HasPrefix(sqlText, `INSERT INTO EXAMPLE`) && strings.HasSuffix(sqlText, `VALUES(?,?,?,?)`) {
 		fmt.Println("MOCK-Exec", params)
 		return &ResultMock{
@@ -208,11 +209,11 @@ func (db *TestImageDBMock) Exec(ctx context.Context, sqlText string, params ...a
 func (db *TestImageDBMock) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	sqlText = makeSingleLine(sqlText)
 	if sqlText == `select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? AND database_id = ? order by id` {
-		if len(params) == 2 && params[0] == 4907 && params[1] == -1 {
+		if len(params) == 2 && params[0] == int64(4907) && params[1] == -1 {
 			return newColumnsMock(), nil
 		}
 	} else if sqlText == `select name, type, id from M$SYS_INDEXES where table_id = ? AND database_id = ?` {
-		if len(params) == 2 && params[0] == 4907 && params[1] == -1 {
+		if len(params) == 2 && params[0] == int64(4907) && params[1] == -1 {
 			return &RowsMock{
 				NextFunc:  func() bool { return false },
 				CloseFunc: func() error { return nil },
@@ -244,7 +245,7 @@ func newColumnsMock() *columnsMock {
 			{"NAME", api.ColumnTypeVarchar, 200, 1, 0},
 			{"TIME", api.ColumnTypeDatetime, 8, 2, 1},
 			{"VALUE", api.ColumnTypeDouble, 8, 3, 2},
-			{"EXTDATA", api.ColumnTypeJson, 32767, 4, 3},
+			{"EXTDATA", api.ColumnTypeJSON, 32767, 4, 3},
 			{"_RID", api.ColumnTypeLong, 8, 5, 65534},
 		},
 	}

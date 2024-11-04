@@ -181,7 +181,7 @@ func doShowUsers(ctx *action.ActionContext) {
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
-	list, err := api.Indexes(ctx.Ctx, ctx.Conn)
+	list, err := api.ListIndexes(ctx.Ctx, ctx.Conn)
 	if err != nil {
 		ctx.Println("unable to find indexes; ERR", err.Error())
 		return
@@ -190,7 +190,7 @@ func doShowIndexes(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "USER_NAME", "DB", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE"})
 	for _, nfo := range list {
 		nrow++
-		box.AppendRow(nrow, nfo.User, nfo.Database, nfo.Table, nfo.Column, nfo.Name, nfo.Type)
+		box.AppendRow(nrow, nfo.User, nfo.Database, nfo.Table, nfo.Cols[0], nfo.Name, nfo.Type)
 	}
 	box.Render()
 }
@@ -334,15 +334,15 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		return
 	}
 
-	t := ctx.NewBox([]string{"ROWNUM", "NAME"})
+	t := ctx.NewBox([]string{"ROWNUM", "DATABASE", "USER", "NAME", "ID"})
 	nrow := 0
-	api.Tags(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(name string, err error) bool {
+	api.ListTagsWalk(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(tag *api.TagInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
 		}
 		nrow++
-		t.AppendRow(nrow, name)
+		t.AppendRow(nrow, tag.Database, tag.User, tag.Name, tag.Id)
 		return true
 	})
 	t.Render()
@@ -410,16 +410,24 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
+		Next: func(q *api.Query, nrow int64) bool {
+			values, err := q.Columns().MakeBuffer()
 			if err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err := q.Scan(values...); err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err := encoder.AddRow(values); err != nil {
 				ctx.Println("ERR", err.Error())
 			}
 			return true
 		},
-		End: func(q *api.Query, userMessage string, numRows int64) {
+		End: func(q *api.Query) {
 			encoder.Close()
-			ctx.Println(userMessage)
+			ctx.Println(q.UserMessage())
 		},
 	}
 	if err := query.Execute(ctx.Ctx, ctx.Conn, sqlText); err != nil {
@@ -454,22 +462,22 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 }
 
 func doShowTables(ctx *action.ActionContext, showAll bool) {
-	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "TYPE"})
+	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
 	nrow := 0
-	api.Tables(ctx.Ctx, ctx.Conn, func(ti *api.TableInfo, err error) bool {
+	api.ListTablesWalk(ctx.Ctx, ctx.Conn, showAll, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
 		}
-		if !showAll && strings.HasPrefix(ti.Name, "_") {
-			return true
-		}
+		// if !showAll && strings.HasPrefix(ti.Name, "_") {
+		// 	return true
+		// }
 		if ctx.Actor.Username() != "sys" && ti.Database != "MACHBASEDB" {
 			return true
 		}
 		nrow++
 		desc := api.TableTypeDescription(ti.Type, ti.Flag)
-		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, desc)
+		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, ti.Id, desc)
 		return true
 	})
 	t.Render()

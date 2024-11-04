@@ -3,6 +3,7 @@ package ndjson
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/api"
@@ -57,19 +58,24 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 		dec.reader.UseNumber()
 	}
 
-	var obj = map[string]any{}
-	err := dec.reader.Decode(&obj)
+	// decode json into a map
+	var jsonObj = map[string]any{}
+	err := dec.reader.Decode(&jsonObj)
 	if err != nil {
 		return nil, nil, err
 	}
-
+	// make lower cased names
+	var obj = map[string]any{}
+	for k, v := range jsonObj {
+		obj[strings.ToLower(k)] = v
+	}
 	dec.nrow++
 
 	values := make([]any, 0, len(obj))
 	columns := make([]string, 0, len(obj))
 
 	for idx, colName := range dec.columnNames {
-		field, ok := obj[colName]
+		field, ok := obj[strings.ToLower(colName)]
 		if !ok {
 			continue
 		}
