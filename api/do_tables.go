@@ -18,10 +18,10 @@ func ifThenElse(cond bool, a, b string) string {
 func ListTablesSql(showAll bool, descriptiveType bool) string {
 	return SqlTidy(
 		`SELECT
-			j.DB_NAME as DB,
+			j.DB_NAME as DATABASE_NAME,
 			u.NAME as USER_NAME,
-			j.NAME as NAME,
-			j.ID as ID,`,
+			j.NAME as TABLE_NAME,
+			j.ID as TABLE_ID,`,
 		ifThenElse(descriptiveType, `
 			case j.TYPE
 				when 0 then 'Log'
@@ -30,18 +30,18 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 				when 4 then 'Lookup'
 				when 5 then 'KeyValue'
 				when 6 then 'Tag'
-				else '-'
-			end as TYPE,
+				else ''
+			end as TABLE_TYPE,
 			case j.FLAG
 				when 1 then 'Data'
 				when 2 then 'Rollup'
 				when 4 then 'Meta'
 				when 8 then 'Stat'
-				else '-'
-			end as FLAG`,
+				else ''
+			end as TABLE_FLAG`,
 			`
-			j.TYPE as TYPE,
-			j.FLAG as FLAG`),
+			j.TYPE as TABLE_TYPE,
+			j.FLAG as TABLE_FLAG`),
 		`FROM
 			M$SYS_USERS u,
 			(
