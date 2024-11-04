@@ -427,6 +427,10 @@ func (x *Task) execute() *Result {
 	}
 }
 
+func (x *Task) Cancel() {
+	x.fireCircuitBreak(nil)
+}
+
 func (x *Task) fireCircuitBreak(_ *Node) {
 	x._stateLock.Lock()
 	x._shouldStop = true
