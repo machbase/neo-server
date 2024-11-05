@@ -18,8 +18,13 @@ type TestServerMock struct {
 	DatabaseMock
 }
 
-func (dbmock *TestServerMock) UserAuth(ctx context.Context, user string, password string) (bool, error) {
-	return user == "sys" && password == "manager", nil
+func (dbmock *TestServerMock) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
+	ok := user == "sys" && password == "manager"
+	reason := ""
+	if !ok {
+		reason = "invalid username or password"
+	}
+	return ok, reason, nil
 }
 
 func TestLoginRoute(t *testing.T) {

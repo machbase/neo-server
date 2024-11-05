@@ -113,8 +113,8 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, ses
 }
 
 func (s *svr) MqttInfo() map[string]any {
-	if s.mqtt2 == nil {
+	if s.mqttd == nil {
 		return nil
 	}
-	return s.mqtt2.Statz()
+	return s.mqttd.Statz()
 }

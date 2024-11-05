@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
+	"net"
 	"runtime"
 	"strings"
 	"sync"
@@ -43,6 +43,8 @@ const (
 )
 
 func Initialize(homeDir string, machPort int, opt InitOption) error {
+	_env.Lock()
+	defer _env.Unlock()
 	homeDir = translateCodePage(homeDir)
 	var handle unsafe.Pointer
 	err := mach.EngInitialize(homeDir, machPort, int(opt), &handle)
@@ -94,16 +96,19 @@ func RestoreDatabase(path string) error {
 
 type Env struct {
 	sync.Mutex
-	handle   unsafe.Pointer
-	database *Database
+	handle          unsafe.Pointer
+	database        *Database
+	onceNewDatabase sync.Once
 }
 
 var _env = Env{}
 
 type Database struct {
-	handle unsafe.Pointer
-	idGen  *sonyflake.Sonyflake
-	conns  cmap.ConcurrentMap[string, *ConnWatcher]
+	handle    unsafe.Pointer
+	idGen     *sonyflake.Sonyflake
+	conns     cmap.ConcurrentMap[string, *ConnWatcher]
+	onceStart sync.Once
+	onceStop  sync.Once
 }
 
 var _ api.Database = (*Database)(nil)
@@ -111,38 +116,53 @@ var _ api.Database = (*Database)(nil)
 func NewDatabase() (*Database, error) {
 	_env.Lock()
 	defer _env.Unlock()
-	if _env.database == nil {
+
+	_env.onceNewDatabase.Do(func() {
 		_env.database = &Database{
 			handle: _env.handle,
 			conns:  cmap.New[*ConnWatcher](),
 			idGen:  sonyflake.NewSonyflake(sonyflake.Settings{}),
 		}
-	}
+	})
 	return _env.database, nil
 }
 
-func (db *Database) Startup() error {
-	// machbase change the current dir to $HOME during startup process.
-	// Call chdir() for keeping the working dir of the application.
-	cwd, _ := os.Getwd()
-	defer func() {
-		os.Chdir(cwd)
-	}()
+func (db *Database) Startup() (err error) {
+	_env.Lock()
+	defer _env.Unlock()
 
-	err := mach.EngStartup(db.handle)
-	return err
+	db.onceStart.Do(func() {
+		err = mach.EngStartup(db.handle)
+	})
+	return
 }
 
-func (db *Database) Shutdown() error {
-	return mach.EngShutdown(db.handle)
+func (db *Database) Shutdown() (err error) {
+	_env.Lock()
+	defer _env.Unlock()
+
+	db.onceStop.Do(func() {
+		err = mach.EngShutdown(db.handle)
+		_env.database = nil
+		_env.handle = nil
+	})
+	return
 }
 
 func (db *Database) Error() error {
 	return mach.EngError(db.handle)
 }
 
-func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, error) {
-	return mach.EngUserAuth(db.handle, username, password)
+func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, string, error) {
+	ok, err := mach.EngUserAuth(db.handle, username, password)
+	if err != nil {
+		return false, "", err
+	}
+	if ok {
+		return true, "", nil
+	} else {
+		return false, "invalid username or password", nil
+	}
 }
 
 func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
@@ -468,7 +488,7 @@ func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
 		ret[i] = &api.Column{
 			Name:     strings.ToUpper(columnName),
 			DataType: dataType,
-			Length:   columnLength,
+			Length:   columnSize,
 		}
 	}
 	return ret, nil
@@ -623,13 +643,18 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 				row.err = err
 				return row
 			}
-			row.err = readColumnData(stmt, rawType, i, row.values[i])
+			isNull := false
+			row.err = readColumnData(stmt, rawType, i, row.values[i], &isNull)
 			if row.err != nil {
 				return row
+			}
+			if isNull {
+				row.values[i] = nil
 			}
 		}
 	}
 	if row.err == nil {
+		row.affectedRows = 1
 		row.ok = true
 	}
 	return row
@@ -653,6 +678,124 @@ func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (strin
 		}
 	}
 	return mach.EngExplain(stmt, full)
+}
+
+func bind(stmt unsafe.Pointer, idx int, c any) error {
+	if c == nil {
+		if err := mach.EngBindNull(stmt, idx); err != nil {
+			return api.ErrDatabaseBindNull(idx, err)
+		}
+		return nil
+	}
+	switch cv := c.(type) {
+	case int:
+		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *int:
+		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case uint:
+		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *uint:
+		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case int16:
+		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *int16:
+		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case uint16:
+		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *uint16:
+		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case int32:
+		if err := mach.EngBindInt32(stmt, idx, cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *int32:
+		if err := mach.EngBindInt32(stmt, idx, *cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case uint32:
+		if err := mach.EngBindInt32(stmt, idx, int32(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *uint32:
+		if err := mach.EngBindInt32(stmt, idx, int32(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case int64:
+		if err := mach.EngBindInt64(stmt, idx, cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *int64:
+		if err := mach.EngBindInt64(stmt, idx, *cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case uint64:
+		if err := mach.EngBindInt64(stmt, idx, int64(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *uint64:
+		if err := mach.EngBindInt64(stmt, idx, int64(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case float32:
+		if err := mach.EngBindFloat64(stmt, idx, float64(cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *float32:
+		if err := mach.EngBindFloat64(stmt, idx, float64(*cv)); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case float64:
+		if err := mach.EngBindFloat64(stmt, idx, cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *float64:
+		if err := mach.EngBindFloat64(stmt, idx, *cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case string:
+		if err := mach.EngBindString(stmt, idx, cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *string:
+		if err := mach.EngBindString(stmt, idx, *cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case []byte:
+		if err := mach.EngBindBinary(stmt, idx, cv); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case net.IP:
+		if err := mach.EngBindString(stmt, idx, cv.String()); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case time.Time:
+		if err := mach.EngBindInt64(stmt, idx, cv.UnixNano()); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	case *time.Time:
+		if err := mach.EngBindInt64(stmt, idx, cv.UnixNano()); err != nil {
+			return api.ErrDatabaseBind(idx, c, err)
+		}
+	default:
+		return api.ErrDatabaseBindType(idx, c)
+	}
+	return nil
 }
 
 type Statz struct {

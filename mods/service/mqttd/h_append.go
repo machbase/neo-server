@@ -25,7 +25,7 @@ type AppenderWrapper struct {
 	ctxCancel context.CancelFunc
 }
 
-func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	writePath := strings.TrimPrefix(strings.TrimPrefix(pk.TopicName, "db/append/"), "db/write/")
 	writePath = strings.ToUpper(writePath)
 	wp, err := util.ParseWritePath(writePath)
@@ -117,7 +117,7 @@ func (s *mqtt2) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warn(cl.Net.Remote, err.Error())
 			return
 		} else {
-			appender, err = conn.Appender(ctx, wp.Table)
+			appender, err = conn.Appender(ctx, tableUser+"."+wp.Table)
 			if err != nil {
 				ctxCancel()
 				s.log.Warn(cl.Net.Remote, "fail to create appender,", err.Error())

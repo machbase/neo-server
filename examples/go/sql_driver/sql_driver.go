@@ -10,10 +10,14 @@ import (
 	"path/filepath"
 	"time"
 
-	driver "github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/api/machrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
+	useSecure := true
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
@@ -27,17 +31,20 @@ func main() {
 	clientKey := filepath.Join(homeDir, ".config", "machbase", "cert", "machbase_key.pem")
 	clientCert := filepath.Join(homeDir, ".config", "machbase", "cert", "machbase_cert.pem")
 
-	// register machbase-neo data source
-	driver.RegisterDataSource("neo", &driver.DataSource{
-		ServerAddr: serverAddr,
-		ServerCert: serverCert,
-		ClientKey:  clientKey,
-		ClientCert: clientCert,
-		User:       "sys",
-		Password:   "manager",
-	})
-
-	db, err := sql.Open("machbase", "neo")
+	if useSecure {
+		// register machbase-neo data source
+		sql.Register("neo", &machrpc.Driver{})
+	} else {
+		// use insecure transport when server started with `--grpc-insecure=true` (default is false)
+		sql.Register("neo", &machrpc.Driver{
+			ConnProvider: func() (*grpc.ClientConn, error) {
+				return grpc.NewClient("127.0.0.1:5655",
+					grpc.WithTransportCredentials(insecure.NewCredentials()))
+			},
+		})
+	}
+	db, err := sql.Open("neo", fmt.Sprintf("server=%s; user=sys; password=manager; server-cert=%s; client-key=%s; client-cert=%s",
+		serverAddr, serverCert, clientKey, clientCert))
 	if err != nil {
 		panic(err)
 	}

@@ -184,7 +184,7 @@ func (w *Watcher) executeTag(tag string) {
 		return
 	}
 	defer conn.Close()
-	row := conn.QueryRow(w.ctx, fmt.Sprintf("select recent_row_time from V$%s_STAT where name = ?", w.TableName), tag)
+	row := conn.QueryRow(w.ctx, fmt.Sprintf("select recent_row_time from V$%s_STAT where name = ?", strings.ToUpper(w.TableName)), tag)
 	if err := row.Err(); err != nil {
 		// ignore, no such tag
 		return
@@ -205,7 +205,7 @@ func (w *Watcher) executeTag(tag string) {
 
 	row = conn.QueryRow(w.ctx,
 		fmt.Sprintf("select %s from %s where %s = ? and %s = ?",
-			strings.Join(w.columnNames, ","), w.TableName, w.nameColumn, w.basetimeColumn),
+			strings.Join(w.columnNames, ","), strings.ToUpper(w.TableName), w.nameColumn, w.basetimeColumn),
 		tag, recentTime)
 	if err := row.Err(); err != nil {
 		w.handleError(row.Err())

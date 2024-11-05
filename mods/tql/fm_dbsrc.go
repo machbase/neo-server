@@ -257,20 +257,32 @@ func (dc *databaseSource) gen(node *Node) {
 			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
 			dc.task.SetResultColumns(cols)
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			if !dc.task.shouldStop() && len(values) > 0 {
+		Next: func(q *api.Query, nrow int64) bool {
+			if dc.task.shouldStop() {
+				return false
+			}
+			values, err := q.Columns().MakeBuffer()
+			if err != nil {
+				ErrorRecord(err).Tell(node.next)
+				return false
+			}
+			if err = q.Scan(values...); err != nil {
+				ErrorRecord(err).Tell(node.next)
+				return false
+			}
+			if len(values) > 0 {
 				NewRecord(nrow, values).Tell(node.next)
 			}
 			return !dc.task.shouldStop()
 		},
-		End: func(q *api.Query, userMessage string, rowsAffected int64) {
-			dc.resultMsg = userMessage
+		End: func(q *api.Query) {
+			dc.resultMsg = q.UserMessage()
 			if !q.IsFetch() {
 				dc.task.SetResultColumns(api.Columns{
 					api.MakeColumnRownum(),
 					api.MakeColumnString("MESSAGE"),
 				})
-				NewRecord(1, userMessage).Tell(node.next)
+				NewRecord(1, q.UserMessage()).Tell(node.next)
 			}
 		},
 	}
@@ -289,6 +301,9 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
+		if s, ok := parseSqlCommands(v); ok {
+			v = s
+		}
 		x.task.LogInfof("╭─ %s", v)
 		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
 		ds.gen(x)
@@ -308,6 +323,51 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		}
 	}
 	return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
+}
+
+func parseSqlCommands(str string) (string, bool) {
+	fields := strings.Fields(str)
+	if len(fields) < 2 {
+		return str, false
+	}
+	var showAll bool
+	var args []string
+	switch strings.ToLower(fields[0]) {
+	case "show":
+		args = append(args, "show")
+	case "desc":
+		args = append(args, "desc")
+	default:
+		return str, false
+	}
+	for i := 1; i < len(fields); i++ {
+		switch fields[i] {
+		case "-a", "--all":
+			showAll = true
+		default:
+			if strings.HasPrefix(fields[i], "-") {
+				continue
+			}
+			args = append(args, fields[i])
+		}
+	}
+	switch args[0] {
+	case "show":
+		if len(args) == 2 && args[1] == "tables" {
+			return api.ListTablesSql(showAll, true), true
+		}
+		if len(args) == 2 && args[1] == "indexes" {
+			return api.ListIndexesSql(), true
+		}
+		if len(args) == 3 && args[1] == "tags" {
+			return api.ListTagsSql(args[2]), true
+		}
+	case "desc":
+		// if len(args) == 2 {
+		// 	return api.DescTableSql(args[1]), true
+		// }
+	}
+	return str, false
 }
 
 type QueryFrom struct {

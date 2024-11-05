@@ -4,14 +4,21 @@ package machrpc
 
 import (
 	context "context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/api"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Config struct {
@@ -19,6 +26,7 @@ type Config struct {
 	Tls           *TlsConfig
 	QueryTimeout  time.Duration
 	AppendTimeout time.Duration
+	ConnProvider  func() (*grpc.ClientConn, error)
 }
 
 type TlsConfig struct {
@@ -34,8 +42,8 @@ type TlsConfig struct {
 // serverAddr can be tcp://ip_addr:port or unix://path.
 // The path of unix domain socket can be absolute/relative path.
 type Client struct {
-	conn grpc.ClientConnInterface
-	cli  MachbaseClient
+	grpcConn grpc.ClientConnInterface
+	cli      MachbaseClient
 
 	serverAddr    string
 	serverCert    string
@@ -59,51 +67,109 @@ func NewClient(cfg *Config) (*Client, error) {
 		queryTimeout:  cfg.QueryTimeout,
 		appendTimeout: cfg.AppendTimeout,
 	}
-
-	if client.serverAddr == "" {
-		return nil, errors.New("server address is not specified")
-	}
 	if cfg.Tls != nil {
 		client.certPath = cfg.Tls.ClientCert
 		client.keyPath = cfg.Tls.ClientKey
 		client.serverCert = cfg.Tls.ServerCert
 	}
 
-	var conn grpc.ClientConnInterface
+	var conn *grpc.ClientConn
 	var err error
 
-	if client.keyPath != "" && client.certPath != "" && client.serverCert != "" {
-		conn, err = MakeGrpcTlsConn(client.serverAddr, client.keyPath, client.certPath, client.serverCert)
+	if cfg.ConnProvider != nil {
+		conn, err = cfg.ConnProvider()
+	} else if client.serverAddr != "" {
+		if client.keyPath != "" && client.certPath != "" && client.serverCert != "" {
+			conn, err = MakeGrpcTlsConn(client.serverAddr, client.keyPath, client.certPath, client.serverCert)
+		} else {
+			conn, err = MakeGrpcConn(client.serverAddr, nil)
+		}
 	} else {
-		conn, err = MakeGrpcConn(client.serverAddr, nil)
+		return nil, errors.New("server address is not specified")
 	}
-
 	if err != nil {
 		return nil, errors.Wrap(err, "NewClient")
 	}
-	client.conn = conn
+	client.grpcConn = conn
 	client.cli = NewMachbaseClient(conn)
 
 	return client, nil
 }
 
+func NewClientWithRPCClient(cli MachbaseClient) *Client {
+	return &Client{
+		cli: cli,
+	}
+}
+
+func MakeGrpcInsecureConn(addr string) (grpc.ClientConnInterface, error) {
+	return MakeGrpcConn(addr, nil)
+}
+
+func MakeGrpcTlsConn(addr string, keyPath string, certPath string, caCertPath string) (*grpc.ClientConn, error) {
+	cert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(cert) {
+		return nil, fmt.Errorf("fail to load server CA cert")
+	}
+
+	tlsCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig := &tls.Config{
+		RootCAs:            certPool,
+		Certificates:       []tls.Certificate{tlsCert},
+		InsecureSkipVerify: true,
+	}
+
+	return MakeGrpcConn(addr, tlsConfig)
+}
+
+func MakeGrpcConn(addr string, tlsConfig *tls.Config) (*grpc.ClientConn, error) {
+	pwd, _ := os.Getwd()
+	if strings.HasPrefix(addr, "unix://../") {
+		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("unix://../"):]))
+	} else if strings.HasPrefix(addr, "../") {
+		addr = fmt.Sprintf("unix:///%s", filepath.Join(filepath.Dir(pwd), addr[len("../"):]))
+	} else if strings.HasPrefix(addr, "unix://./") {
+		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("unix://./"):]))
+	} else if strings.HasPrefix(addr, "./") {
+		addr = fmt.Sprintf("unix:///%s", filepath.Join(pwd, addr[len("./"):]))
+	} else if strings.HasPrefix(addr, "/") {
+		addr = fmt.Sprintf("unix://%s", addr)
+	} else {
+		addr = strings.TrimPrefix(addr, "http://")
+		addr = strings.TrimPrefix(addr, "tcp://")
+	}
+
+	if tlsConfig == nil || strings.HasPrefix(addr, "unix://") {
+		return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		return grpc.NewClient(addr, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	}
+}
+
 func (client *Client) Close() {
 	client.closeOnce.Do(func() {
-		client.conn = nil
+		client.grpcConn = nil
 		client.cli = nil
 	})
 }
 
-func (client *Client) UserAuth(ctx context.Context, user string, password string) (bool, error) {
+func (client *Client) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
 	req := &UserAuthRequest{LoginName: user, Password: password}
 	rsp, err := client.cli.UserAuth(ctx, req)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !rsp.Success {
-		return false, errors.New(rsp.Reason)
+		return false, rsp.Reason, nil
 	}
-	return true, nil
+	return true, "", nil
 }
 
 func (client *Client) Ping(ctx context.Context) (time.Duration, error) {
@@ -518,7 +584,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 			Name:     c.Name,
 			Type:     api.ColumnType(c.Type),
 			Length:   int(c.Length),
-			DataType: api.DataType(c.Type),
+			DataType: api.DataType(c.DataType),
 			Flag:     api.ColumnFlag(c.Flag),
 		}
 		ap.columns = append(ap.columns, col)
@@ -597,8 +663,12 @@ func (appender *Appender) Columns() (api.Columns, error) {
 	return appender.columns, nil
 }
 
-func (appender *Appender) AppendWithTimestamp(ts time.Time, cols ...any) error {
-	return appender.Append(append([]any{ts}, cols...))
+func (appender *Appender) AppendLogTime(ts time.Time, cols ...any) error {
+	if appender.tableType != api.TableTypeLog {
+		return fmt.Errorf("%s is not a log table, use Append() instead", appender.tableName)
+	}
+	colsWithTime := append([]any{ts}, cols...)
+	return appender.Append(colsWithTime...)
 }
 
 // Append appends a new record of the table.

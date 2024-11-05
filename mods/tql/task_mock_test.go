@@ -26,7 +26,7 @@ var _ api.Database = &DatabaseMock{}
 //			PingFunc: func(ctx context.Context) (time.Duration, error) {
 //				panic("mock out the Ping method")
 //			},
-//			UserAuthFunc: func(ctx context.Context, user string, password string) (bool, error) {
+//			UserAuthFunc: func(ctx context.Context, user string, password string) (bool, string, error) {
 //				panic("mock out the UserAuth method")
 //			},
 //		}
@@ -43,7 +43,7 @@ type DatabaseMock struct {
 	PingFunc func(ctx context.Context) (time.Duration, error)
 
 	// UserAuthFunc mocks the UserAuth method.
-	UserAuthFunc func(ctx context.Context, user string, password string) (bool, error)
+	UserAuthFunc func(ctx context.Context, user string, password string) (bool, string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -143,7 +143,7 @@ func (mock *DatabaseMock) PingCalls() []struct {
 }
 
 // UserAuth calls UserAuthFunc.
-func (mock *DatabaseMock) UserAuth(ctx context.Context, user string, password string) (bool, error) {
+func (mock *DatabaseMock) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
 	if mock.UserAuthFunc == nil {
 		panic("DatabaseMock.UserAuthFunc: method is nil but Database.UserAuth was just called")
 	}
@@ -955,8 +955,8 @@ var _ api.Appender = &AppenderMock{}
 //			AppendFunc: func(values ...any) error {
 //				panic("mock out the Append method")
 //			},
-//			AppendWithTimestampFunc: func(ts time.Time, values ...any) error {
-//				panic("mock out the AppendWithTimestamp method")
+//			AppendLogTimeFunc: func(ts time.Time, values ...any) error {
+//				panic("mock out the AppendLogTime method")
 //			},
 //			CloseFunc: func() (int64, int64, error) {
 //				panic("mock out the Close method")
@@ -980,8 +980,8 @@ type AppenderMock struct {
 	// AppendFunc mocks the Append method.
 	AppendFunc func(values ...any) error
 
-	// AppendWithTimestampFunc mocks the AppendWithTimestamp method.
-	AppendWithTimestampFunc func(ts time.Time, values ...any) error
+	// AppendLogTimeFunc mocks the AppendLogTime method.
+	AppendLogTimeFunc func(ts time.Time, values ...any) error
 
 	// CloseFunc mocks the Close method.
 	CloseFunc func() (int64, int64, error)
@@ -1002,8 +1002,8 @@ type AppenderMock struct {
 			// Values is the values argument value.
 			Values []any
 		}
-		// AppendWithTimestamp holds details about calls to the AppendWithTimestamp method.
-		AppendWithTimestamp []struct {
+		// AppendLogTime holds details about calls to the AppendLogTime method.
+		AppendLogTime []struct {
 			// Ts is the ts argument value.
 			Ts time.Time
 			// Values is the values argument value.
@@ -1022,12 +1022,12 @@ type AppenderMock struct {
 		TableType []struct {
 		}
 	}
-	lockAppend              sync.RWMutex
-	lockAppendWithTimestamp sync.RWMutex
-	lockClose               sync.RWMutex
-	lockColumns             sync.RWMutex
-	lockTableName           sync.RWMutex
-	lockTableType           sync.RWMutex
+	lockAppend        sync.RWMutex
+	lockAppendLogTime sync.RWMutex
+	lockClose         sync.RWMutex
+	lockColumns       sync.RWMutex
+	lockTableName     sync.RWMutex
+	lockTableType     sync.RWMutex
 }
 
 // Append calls AppendFunc.
@@ -1062,10 +1062,10 @@ func (mock *AppenderMock) AppendCalls() []struct {
 	return calls
 }
 
-// AppendWithTimestamp calls AppendWithTimestampFunc.
-func (mock *AppenderMock) AppendWithTimestamp(ts time.Time, values ...any) error {
-	if mock.AppendWithTimestampFunc == nil {
-		panic("AppenderMock.AppendWithTimestampFunc: method is nil but Appender.AppendWithTimestamp was just called")
+// AppendLogTime calls AppendLogTimeFunc.
+func (mock *AppenderMock) AppendLogTime(ts time.Time, values ...any) error {
+	if mock.AppendLogTimeFunc == nil {
+		panic("AppenderMock.AppendLogTimeFunc: method is nil but Appender.AppendLogTime was just called")
 	}
 	callInfo := struct {
 		Ts     time.Time
@@ -1074,17 +1074,17 @@ func (mock *AppenderMock) AppendWithTimestamp(ts time.Time, values ...any) error
 		Ts:     ts,
 		Values: values,
 	}
-	mock.lockAppendWithTimestamp.Lock()
-	mock.calls.AppendWithTimestamp = append(mock.calls.AppendWithTimestamp, callInfo)
-	mock.lockAppendWithTimestamp.Unlock()
-	return mock.AppendWithTimestampFunc(ts, values...)
+	mock.lockAppendLogTime.Lock()
+	mock.calls.AppendLogTime = append(mock.calls.AppendLogTime, callInfo)
+	mock.lockAppendLogTime.Unlock()
+	return mock.AppendLogTimeFunc(ts, values...)
 }
 
-// AppendWithTimestampCalls gets all the calls that were made to AppendWithTimestamp.
+// AppendLogTimeCalls gets all the calls that were made to AppendLogTime.
 // Check the length with:
 //
-//	len(mockedAppender.AppendWithTimestampCalls())
-func (mock *AppenderMock) AppendWithTimestampCalls() []struct {
+//	len(mockedAppender.AppendLogTimeCalls())
+func (mock *AppenderMock) AppendLogTimeCalls() []struct {
 	Ts     time.Time
 	Values []any
 } {
@@ -1092,9 +1092,9 @@ func (mock *AppenderMock) AppendWithTimestampCalls() []struct {
 		Ts     time.Time
 		Values []any
 	}
-	mock.lockAppendWithTimestamp.RLock()
-	calls = mock.calls.AppendWithTimestamp
-	mock.lockAppendWithTimestamp.RUnlock()
+	mock.lockAppendLogTime.RLock()
+	calls = mock.calls.AppendLogTime
+	mock.lockAppendLogTime.RUnlock()
 	return calls
 }
 

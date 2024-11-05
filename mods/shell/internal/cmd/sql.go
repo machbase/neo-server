@@ -166,9 +166,17 @@ func doSql(ctx *action.ActionContext) {
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
+		Next: func(q *api.Query, nrow int64) bool {
+			values, err := q.Columns().MakeBuffer()
 			if err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err = q.Scan(values...); err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err := encoder.AddRow(values); err != nil {
 				ctx.Println("ERR", err.Error())
 			}
 			if nextPauseRow > 0 && nextPauseRow == nrow {
@@ -183,10 +191,10 @@ func doSql(ctx *action.ActionContext) {
 			}
 			return true
 		},
-		End: func(q *api.Query, userMessage string, numRows int64) {
+		End: func(q *api.Query) {
 			encoder.Close()
 			if cmd.Footer {
-				ctx.Println(userMessage)
+				ctx.Println(q.UserMessage())
 			} else {
 				ctx.Println()
 			}

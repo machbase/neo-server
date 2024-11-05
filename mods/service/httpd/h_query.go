@@ -141,20 +141,28 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
+		Next: func(q *api.Query, nrow int64) bool {
+			values, err := q.Columns().MakeBuffer()
 			if err != nil {
+				svr.log.Error("buffer", err.Error())
+				return false
+			}
+			if err := q.Scan(values...); err != nil {
+				svr.log.Error("scan", err.Error())
+				return false
+			}
+			if err := encoder.AddRow(values); err != nil {
 				// report error to client?
 				svr.log.Error("render", err.Error())
 				return false
 			}
 			return true
 		},
-		End: func(q *api.Query, userMessage string, numRows int64) {
+		End: func(q *api.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 			} else {
-				rsp.Success, rsp.Reason = true, userMessage
+				rsp.Success, rsp.Reason = true, q.UserMessage()
 				rsp.Elapse = time.Since(tick).String()
 				ctx.JSON(http.StatusOK, rsp)
 			}
