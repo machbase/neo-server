@@ -85,7 +85,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		}
 	}()
 
-	oneceCloseMessage := sync.Once{}
+	onceCloseMessage := sync.Once{}
 
 	go func() {
 		defer func() {
@@ -102,7 +102,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 					conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
 				} else {
-					oneceCloseMessage.Do(func() {
+					onceCloseMessage.Do(func() {
 						conn.WriteMessage(websocket.TextMessage, []byte("\r\nclosed.\r\n"))
 						conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					})
@@ -131,7 +131,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 					conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					svr.log.Errorf("term %s error %s", termKey, err.Error())
 				} else {
-					oneceCloseMessage.Do(func() {
+					onceCloseMessage.Do(func() {
 						conn.WriteMessage(websocket.TextMessage|websocket.CloseMessage, []byte("\r\nclosed.\r\n"))
 						conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
 					})
