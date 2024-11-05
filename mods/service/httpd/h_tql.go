@@ -46,6 +46,19 @@ func parseConsoleId(ctx *gin.Context) *ConsoleInfo {
 }
 
 const TQL_SCRIPT_PARAM = "$"
+const TQL_TOKEN_PARAM = "$token"
+
+// POST "/tql/tql-exec" accepts the access token in the query parameter
+func (svr *httpd) handleTqlQueryExec(ctx *gin.Context) {
+	if token := ctx.Query(TQL_TOKEN_PARAM); token != "" {
+		ctx.Request.Header.Set("Authorization", "Bearer "+token)
+	}
+	svr.handleJwtToken(ctx)
+	if ctx.IsAborted() {
+		return
+	}
+	svr.handleTqlQuery(ctx)
+}
 
 // POST "/tql"
 // POST "/tql?$=...."
@@ -84,12 +97,14 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 				fmt.Println("...", script, "...")
 			}
 			params.Del(TQL_SCRIPT_PARAM)
+			params.Del(TQL_TOKEN_PARAM)
 			input = ctx.Request.Body
 		}
 	} else if ctx.Request.Method == http.MethodGet {
 		if script := ctx.Query(TQL_SCRIPT_PARAM); script != "" {
 			codeReader = bytes.NewBufferString(script)
 			params.Del(TQL_SCRIPT_PARAM)
+			params.Del(TQL_TOKEN_PARAM)
 		} else {
 			rsp.Reason = "script not found"
 			rsp.Elapse = time.Since(tick).String()
