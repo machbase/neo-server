@@ -47,15 +47,15 @@ func (col *Column) Width() int {
 	switch col.Type {
 	case ColumnTypeShort:
 		return 6
-	case ColumnTypeUshort:
+	case ColumnTypeUShort:
 		return 5
 	case ColumnTypeInteger:
 		return 11
-	case ColumnTypeUinteger:
+	case ColumnTypeUInteger:
 		return 10
 	case ColumnTypeLong:
 		return 20
-	case ColumnTypeUlong:
+	case ColumnTypeULong:
 		return 20
 	case ColumnTypeFloat:
 		return 17
@@ -121,11 +121,11 @@ type ColumnType int
 
 const (
 	ColumnTypeShort    ColumnType = iota + 4
-	ColumnTypeUshort   ColumnType = 104
+	ColumnTypeUShort   ColumnType = 104
 	ColumnTypeInteger  ColumnType = 8
-	ColumnTypeUinteger ColumnType = 108
+	ColumnTypeUInteger ColumnType = 108
 	ColumnTypeLong     ColumnType = 12
-	ColumnTypeUlong    ColumnType = 112
+	ColumnTypeULong    ColumnType = 112
 	ColumnTypeFloat    ColumnType = 16
 	ColumnTypeDouble   ColumnType = 20
 	ColumnTypeVarchar  ColumnType = 5
@@ -136,7 +136,7 @@ const (
 	ColumnTypeDatetime ColumnType = 6
 	ColumnTypeIPv4     ColumnType = 32
 	ColumnTypeIPv6     ColumnType = 36
-	ColumnTypeJson     ColumnType = 61
+	ColumnTypeJSON     ColumnType = 61
 	ColumnTypeUnknown  ColumnType = 0
 )
 
@@ -164,15 +164,15 @@ func (typ ColumnType) String() string {
 	switch typ {
 	case ColumnTypeShort:
 		return COLUMN_TYPE_SHORT
-	case ColumnTypeUshort:
+	case ColumnTypeUShort:
 		return COLUMN_TYPE_USHORT
 	case ColumnTypeInteger:
 		return COLUMN_TYPE_INTEGER
-	case ColumnTypeUinteger:
+	case ColumnTypeUInteger:
 		return COLUMN_TYPE_UINTEGER
 	case ColumnTypeLong:
 		return COLUMN_TYPE_LONG
-	case ColumnTypeUlong:
+	case ColumnTypeULong:
 		return COLUMN_TYPE_ULONG
 	case ColumnTypeFloat:
 		return COLUMN_TYPE_FLOAT
@@ -194,7 +194,7 @@ func (typ ColumnType) String() string {
 		return COLUMN_TYPE_IPV4
 	case ColumnTypeIPv6:
 		return COLUMN_TYPE_IPV6
-	case ColumnTypeJson:
+	case ColumnTypeJSON:
 		return COLUMN_TYPE_JSON
 	default:
 		return fmt.Sprintf("UndefinedColumnType-%d", typ)
@@ -205,15 +205,15 @@ func (typ ColumnType) makeBuffer() (any, error) {
 	switch typ {
 	case ColumnTypeShort:
 		return new(int16), nil
-	case ColumnTypeUshort:
+	case ColumnTypeUShort:
 		return new(uint16), nil
 	case ColumnTypeInteger:
 		return new(int32), nil
-	case ColumnTypeUinteger:
+	case ColumnTypeUInteger:
 		return new(uint32), nil
 	case ColumnTypeLong:
 		return new(int64), nil
-	case ColumnTypeUlong:
+	case ColumnTypeULong:
 		return new(uint64), nil
 	case ColumnTypeFloat:
 		return new(float32), nil
@@ -227,7 +227,7 @@ func (typ ColumnType) makeBuffer() (any, error) {
 		return new(net.IP), nil
 	case ColumnTypeIPv6:
 		return new(net.IP), nil
-	case ColumnTypeJson:
+	case ColumnTypeJSON:
 		return new(string), nil
 	case ColumnTypeDatetime:
 		return new(time.Time), nil
@@ -246,15 +246,15 @@ func (typ ColumnType) DataType() DataType {
 	switch typ {
 	case ColumnTypeShort:
 		return DataTypeInt16
-	case ColumnTypeUshort:
+	case ColumnTypeUShort:
 		return DataTypeInt16
 	case ColumnTypeInteger:
 		return DataTypeInt32
-	case ColumnTypeUinteger:
+	case ColumnTypeUInteger:
 		return DataTypeInt32
 	case ColumnTypeLong:
 		return DataTypeInt64
-	case ColumnTypeUlong:
+	case ColumnTypeULong:
 		return DataTypeInt64
 	case ColumnTypeFloat:
 		return DataTypeFloat32
@@ -276,7 +276,7 @@ func (typ ColumnType) DataType() DataType {
 		return DataTypeIPv4
 	case ColumnTypeIPv6:
 		return DataTypeIPv6
-	case ColumnTypeJson:
+	case ColumnTypeJSON:
 		return DataTypeString
 	default:
 		return DataType(fmt.Sprintf("UndefinedColumnType-%d", typ))

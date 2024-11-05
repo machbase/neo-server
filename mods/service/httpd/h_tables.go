@@ -51,7 +51,7 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	api.Tables(ctx, conn, func(ti *api.TableInfo, err error) bool {
+	api.ListTablesWalk(ctx, conn, showAll, func(ti *api.TableInfo, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
@@ -70,18 +70,13 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 				return true
 			}
 		}
-		if !showAll {
-			if strings.HasPrefix(ti.Name, "_") {
-				return true
-			}
-		}
 		rownum++
 		data.Rows = append(data.Rows, []any{
 			rownum,
 			ti.Database,
 			ti.User,
 			ti.Name,
-			api.TableTypeDescription(ti.Type, ti.Flag),
+			ti.Kind(),
 		})
 		return true
 	})
@@ -127,18 +122,18 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	api.Tags(ctx, conn, table, func(name string, err error) bool {
+	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo, err error) bool {
 		if err != nil {
 			rsp.Success, rsp.Reason = false, err.Error()
 			return false
 		}
-		if nameFilter != "" && !strings.HasPrefix(name, nameFilter) {
+		if nameFilter != "" && !strings.HasPrefix(tag.Name, nameFilter) {
 			return true
 		}
 		rownum++
 		data.Rows = append(data.Rows, []any{
 			rownum,
-			name,
+			tag.Name,
 		})
 		return true
 	})

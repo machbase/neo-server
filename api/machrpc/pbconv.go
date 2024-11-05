@@ -161,22 +161,42 @@ func ConvertAnyToPbTuple(params []any) ([]*AppendDatum, error) {
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(*v)}}
 		case int:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(v)}}
+		case *uint:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(*v)}}
+		case uint:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(v)}}
 		case *int8:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(*v)}}
 		case int8:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(v)}}
+		case *uint8:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(*v)}}
+		case uint8:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(v)}}
 		case *int16:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(*v)}}
 		case int16:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: int32(v)}}
+		case *uint16:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(*v)}}
+		case uint16:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: uint32(v)}}
 		case *int32:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: *v}}
 		case int32:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt32{VInt32: v}}
+		case *uint32:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: *v}}
+		case uint32:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint32{VUint32: v}}
 		case *int64:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt64{VInt64: *v}}
 		case int64:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VInt64{VInt64: v}}
+		case *uint64:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint64{VUint64: *v}}
+		case uint64:
+			tuple[i] = &AppendDatum{Value: &AppendDatum_VUint64{VUint64: v}}
 		case *float32:
 			tuple[i] = &AppendDatum{Value: &AppendDatum_VFloat{VFloat: *v}}
 		case float32:

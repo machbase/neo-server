@@ -18,7 +18,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 )
 
-func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	tick := time.Now()
 	req := &msg.QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
 	rsp := &msg.QueryResponse{Reason: "not specified"}
@@ -112,22 +112,30 @@ func (s *mqtt2) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
+		Next: func(q *api.Query, nrow int64) bool {
+			values, err := q.Columns().MakeBuffer()
 			if err != nil {
+				s.log.Error("buffer", err.Error())
+				return false
+			}
+			if err = q.Scan(values...); err != nil {
+				s.log.Error("scan", err.Error())
+				return false
+			}
+			if err = encoder.AddRow(values); err != nil {
 				// report error to client?
 				s.log.Error("render", err.Error())
 				return false
 			}
 			return true
 		},
-		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+		End: func(q *api.Query) {
 			if q.IsFetch() {
 				encoder.Close()
 				rsp.Success, rsp.Reason = true, "success"
 				rsp.Content = buffer.Bytes()
 			} else {
-				rsp.Success, rsp.Reason = true, userMessage
+				rsp.Success, rsp.Reason = true, q.UserMessage()
 				rsp.Elapse = time.Since(tick).String()
 			}
 		},

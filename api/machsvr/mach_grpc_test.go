@@ -69,7 +69,7 @@ func TestRpcExplain(t *testing.T) {
 
 	rsp, err := rpcClient.Explain(ctx, &machrpc.ExplainRequest{
 		Conn: conn,
-		Sql:  "select * from complex_tag order by time desc",
+		Sql:  "select * from tag_data order by time desc",
 		Full: false,
 	})
 	require.NoError(t, err)
@@ -81,7 +81,6 @@ func TestRpcExplain(t *testing.T) {
 func TestRpcExec(t *testing.T) {
 	ctx := context.TODO()
 	conn := connectRpc(t, ctx)
-	defer disconnectRpc(t, ctx, conn)
 
 	execRsp, err := rpcClient.Exec(ctx, &machrpc.ExecRequest{
 		Conn: conn,
@@ -107,10 +106,18 @@ func TestRpcExec(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, execRsp)
 	require.True(t, execRsp.Success, execRsp.Reason)
-	t.Log("Exec(insert)", execRsp.Reason, execRsp.RowsAffected)
+	require.Equal(t, int64(1), execRsp.RowsAffected)
+
+	execReq = &machrpc.ExecRequest{
+		Conn: conn,
+		Sql:  "exec table_flush(test_tag)",
+	}
+	execRsp, err = rpcClient.Exec(ctx, execReq)
+	require.NoError(t, err)
+	require.NotNil(t, execRsp)
+	require.True(t, execRsp.Success, execRsp.Reason)
 
 	// QueryRow("select")
-	time.Sleep(100 * time.Millisecond)
 	queryRowReq := &machrpc.QueryRowRequest{
 		Conn: conn,
 		Sql:  "select name, time, value from test_tag where name = ?",
@@ -130,8 +137,20 @@ func TestRpcExec(t *testing.T) {
 	require.Equal(t, "test", queryRowValues[0])
 	require.Equal(t, now, queryRowValues[1])
 	require.Equal(t, 123.456, queryRowValues[2])
-	// FIXME: queryRowRsp.Message should be 'a row selected' instead of 'no rows selected'
-	t.Log("QueryRow(select)", queryRowRsp.Reason, queryRowRsp.Values)
+	expectColumns := []*machrpc.Column{
+		{Name: "NAME", DataType: "string", Length: 100},
+		{Name: "TIME", DataType: "datetime", Length: 8},
+		{Name: "VALUE", DataType: "double", Length: 8},
+	}
+	require.Equal(t, "a row selected.", queryRowRsp.Reason)
+	require.Equal(t, len(expectColumns), len(queryRowRsp.Columns))
+	for i, col := range queryRowRsp.Columns {
+		require.Equal(t, expectColumns[i].Name, col.Name)
+		require.Equal(t, expectColumns[i].DataType, col.DataType, "diff column: "+col.Name)
+		require.Equal(t, expectColumns[i].Length, col.Length, "diff column: "+col.Name)
+		require.Equal(t, expectColumns[i].Flag, col.Flag, "diff column: "+col.Name)
+		require.Equal(t, expectColumns[i].Type, col.Type, "diff column: "+col.Name)
+	}
 
 	// Append Open
 	appendConn := connectRpc(t, ctx)
@@ -180,16 +199,25 @@ func TestRpcExec(t *testing.T) {
 	require.True(t, queryRsp.Success, queryRsp.Reason)
 	require.NotEmpty(t, queryRsp.Reason)
 
+	// Columns
 	colsRsp, err := rpcClient.Columns(ctx, queryRsp.RowsHandle)
 	require.NoError(t, err)
 	require.NotNil(t, colsRsp)
-	require.Equal(t, 3, len(colsRsp.Columns))
-	require.Equal(t, "NAME", colsRsp.Columns[0].Name)
-	require.Equal(t, "string", colsRsp.Columns[0].Type)
-	require.Equal(t, "TIME", colsRsp.Columns[1].Name)
-	require.Equal(t, "datetime", colsRsp.Columns[1].Type)
-	require.Equal(t, "VALUE", colsRsp.Columns[2].Name)
-	require.Equal(t, "double", colsRsp.Columns[2].Type)
+
+	expectColumns = []*machrpc.Column{
+		{Name: "NAME", DataType: "string", Length: 0},
+		{Name: "TIME", DataType: "datetime", Length: 0},
+		{Name: "VALUE", DataType: "double", Length: 0},
+	}
+	require.Equal(t, len(expectColumns), len(colsRsp.Columns))
+
+	for i, col := range colsRsp.Columns {
+		require.Equal(t, col.Name, colsRsp.Columns[i].Name)
+		require.Equal(t, col.DataType, colsRsp.Columns[i].DataType)
+		require.Equal(t, col.Length, colsRsp.Columns[i].Length)
+		require.Equal(t, col.Flag, colsRsp.Columns[i].Flag)
+		require.Equal(t, col.Type, colsRsp.Columns[i].Type)
+	}
 
 	// RowsFetch
 	for {
@@ -198,13 +226,11 @@ func TestRpcExec(t *testing.T) {
 		require.NotNil(t, fetchRsp)
 		require.True(t, fetchRsp.Success, fetchRsp.Reason)
 		require.NotEmpty(t, fetchRsp.Reason)
-		t.Log("RowsFetch", fetchRsp.Reason)
 
 		values := machrpc.ConvertPbToAny(queryRowRsp.Values)
 		require.Equal(t, "test", values[0])
 		require.Equal(t, now, values[1])
 		require.Equal(t, 123.456, values[2])
-		t.Log("RowsFetch Values", values)
 
 		if fetchRsp.HasNoRows {
 			break
@@ -216,9 +242,16 @@ func TestRpcExec(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, closeRsp)
 	require.True(t, closeRsp.Success, closeRsp.Reason)
-	t.Log("RowsClose", closeRsp.Reason)
 
-	time.Sleep(100 * time.Millisecond)
+	execReq = &machrpc.ExecRequest{
+		Conn: conn,
+		Sql:  "exec table_flush(test_tag)",
+	}
+	execRsp, err = rpcClient.Exec(ctx, execReq)
+	require.NoError(t, err)
+	require.NotNil(t, execRsp)
+	require.True(t, execRsp.Success, execRsp.Reason)
+
 	execRsp, err = rpcClient.Exec(ctx, &machrpc.ExecRequest{
 		Conn: conn,
 		Sql:  "drop table test_tag",

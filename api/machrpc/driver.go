@@ -8,94 +8,56 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/api"
+	"google.golang.org/grpc"
 )
 
+const DefaultDriverName = "machbase-neo"
+
 func init() {
-	sql.Register(Name, &NeoDriver{})
+	sql.Register(DefaultDriverName, &Driver{})
 }
 
-const Name = "machbase"
+var _ driver.Driver = (*Driver)(nil)
+var _ driver.DriverContext = (*Driver)(nil)
 
-var configRegistry = map[string]*DataSource{}
-
-func RegisterDataSource(name string, conf *DataSource) {
-	configRegistry[name] = conf
-}
-
-type DataSource struct {
-	ServerAddr string
-	ServerCert string
-	ClientKey  string
-	ClientCert string
-	User       string
-	Password   string
-}
-
-func (conf *DataSource) newClient() (*Client, error) {
-	return NewClient(&Config{
-		ServerAddr: conf.ServerAddr,
-		Tls: &TlsConfig{
-			ClientCert: conf.ClientCert,
-			ClientKey:  conf.ClientKey,
-			ServerCert: conf.ServerCert,
-		},
-	})
-}
-
-type NeoDriver struct {
-}
-
-var _ driver.Driver = &NeoDriver{}
-var _ driver.DriverContext = &NeoDriver{}
-
-func parseDataSourceName(name string) (*DataSource, error) {
-	u, err := url.Parse(name)
-	if err != nil {
-		return nil, err
-	}
-	addr := fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-	var user, password string
-	if u.User != nil {
-		user = u.User.Username()
-		password, _ = u.User.Password()
-	}
-	vals := u.Query()
-	var serverCert string
-	if serverCerts, ok := vals["server-cert"]; ok && len(serverCerts) > 0 {
-		serverCert = serverCerts[0]
-	}
-	return &DataSource{
-		ServerAddr: addr,
-		ServerCert: serverCert,
-		User:       user,
-		Password:   password,
-	}, nil
-}
-
-func makeClientConfig(dsn string) (*DataSource, error) {
-	var conf *DataSource
-	if c, ok := configRegistry[dsn]; ok {
-		conf = c
-	} else {
-		parsedConf, err := parseDataSourceName(dsn)
-		if err != nil {
-			return nil, err
-		}
-		conf = parsedConf
-	}
-	return conf, nil
+type Driver struct {
+	ConnProvider func() (*grpc.ClientConn, error)
+	ServerAddr   string
+	ServerCert   string
+	ClientKey    string
+	ClientCert   string
+	User         string
+	Password     string
 }
 
 // implements sql.Driver
-func (d *NeoDriver) Open(name string) (driver.Conn, error) {
-	ds, err := makeClientConfig(name)
-	if err != nil {
-		return nil, err
+func (drv *Driver) Open(dsn string) (driver.Conn, error) {
+	user := drv.User
+	password := drv.Password
+	var client *Client
+	var err error
+	if drv.ConnProvider != nil {
+		conf := &Config{
+			ConnProvider: drv.ConnProvider,
+		}
+		parseConnectionString(conf, dsn, &user, &password)
+		client, err = NewClient(conf)
+	} else {
+		conf := &Config{
+			ServerAddr: drv.ServerAddr,
+			Tls: &TlsConfig{
+				ClientCert: drv.ClientCert,
+				ClientKey:  drv.ClientKey,
+				ServerCert: drv.ServerCert,
+			},
+		}
+		parseConnectionString(conf, dsn, &user, &password)
+		client, err = NewClient(conf)
 	}
-	client, err := ds.newClient()
 	if err != nil {
 		return nil, err
 	}
@@ -103,25 +65,42 @@ func (d *NeoDriver) Open(name string) (driver.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	conn, err := client.Connect(ctx, api.WithPassword(ds.User, ds.Password))
+	conn, err := client.Connect(ctx, api.WithPassword(user, password))
 	if err != nil {
 		return nil, err
 	}
 
 	ret := &NeoConn{
-		name: name,
 		conn: conn.(*Conn),
 	}
 	return ret, nil
 }
 
 // implements sql.DriverContext
-func (d *NeoDriver) OpenConnector(name string) (driver.Connector, error) {
-	ds, err := makeClientConfig(name)
-	if err != nil {
-		return nil, err
+func (drv *Driver) OpenConnector(dsn string) (driver.Connector, error) {
+	user := drv.User
+	password := drv.Password
+
+	var client *Client
+	var err error
+	if drv.ConnProvider != nil {
+		conf := &Config{
+			ConnProvider: drv.ConnProvider,
+		}
+		parseConnectionString(conf, dsn, &user, &password)
+		client, err = NewClient(conf)
+	} else {
+		conf := &Config{
+			ServerAddr: drv.ServerAddr,
+			Tls: &TlsConfig{
+				ClientCert: drv.ClientCert,
+				ClientKey:  drv.ClientKey,
+				ServerCert: drv.ServerCert,
+			},
+		}
+		parseConnectionString(conf, dsn, &user, &password)
+		client, err = NewClient(conf)
 	}
-	client, err := ds.newClient()
 	if err != nil {
 		return nil, err
 	}
@@ -129,31 +108,73 @@ func (d *NeoDriver) OpenConnector(name string) (driver.Connector, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	ok, err := client.UserAuth(ctx, ds.User, ds.Password)
+	ok, reason, err := client.UserAuth(ctx, user, password)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("invalid username or password")
+		return nil, errors.New(reason)
 	}
 	conn := &NeoConnector{
-		name:     name,
-		driver:   d,
+		driver:   drv,
 		client:   client,
-		user:     ds.User,
-		password: ds.Password,
+		user:     user,
+		password: password,
 	}
 	return conn, nil
 }
 
+func parseConnectionString(conf *Config, str string, user *string, password *string) error {
+	lines := strings.Split(str, ";")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		toks := strings.SplitN(line, "=", 2)
+		if len(toks) != 2 {
+			return fmt.Errorf("invalid connection string %q", line)
+		}
+		switch strings.ToLower(toks[0]) {
+		case "server":
+			u, err := url.Parse(toks[1])
+			if err != nil {
+				return fmt.Errorf("invalid connection server %q", toks[1])
+			}
+			conf.ServerAddr = fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
+			if u.User != nil {
+				*user = u.User.Username()
+				*password, _ = u.User.Password()
+			}
+		case "user":
+			*user = toks[1]
+		case "password":
+			*password = toks[1]
+		case "server-cert":
+			if conf.Tls == nil {
+				conf.Tls = &TlsConfig{}
+			}
+			conf.Tls.ServerCert = toks[1]
+		case "client-key":
+			if conf.Tls == nil {
+				conf.Tls = &TlsConfig{}
+			}
+			conf.Tls.ClientKey = toks[1]
+		case "client-cert":
+			if conf.Tls == nil {
+				conf.Tls = &TlsConfig{}
+			}
+			conf.Tls.ClientCert = toks[1]
+		}
+	}
+	return nil
+}
+
 type NeoConnector struct {
-	driver.Connector
-	name     string
-	driver   *NeoDriver
+	driver   driver.Driver
 	client   *Client
 	user     string
 	password string
 }
+
+var _ driver.Connector = &NeoConnector{}
 
 func (cn *NeoConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := cn.client.Connect(ctx, api.WithPassword(cn.user, cn.password))
@@ -161,7 +182,6 @@ func (cn *NeoConnector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	ret := &NeoConn{
-		name: cn.name,
 		conn: conn.(*Conn),
 	}
 	return ret, nil
@@ -179,7 +199,6 @@ type NeoConn struct {
 	driver.ExecerContext
 	driver.ConnPrepareContext
 
-	name string
 	conn *Conn
 }
 

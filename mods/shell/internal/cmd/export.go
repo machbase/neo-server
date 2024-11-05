@@ -135,9 +135,17 @@ func doExport(ctx *action.ActionContext) {
 			codec.SetEncoderColumns(encoder, cols)
 			encoder.Open()
 		},
-		Next: func(q *api.Query, nrow int64, values []any) bool {
-			err := encoder.AddRow(values)
+		Next: func(q *api.Query, nrow int64) bool {
+			values, err := q.Columns().MakeBuffer()
 			if err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err = q.Scan(values...); err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			if err := encoder.AddRow(values); err != nil {
 				ctx.Println("ERR", err.Error())
 			}
 			lineno++
@@ -148,7 +156,7 @@ func doExport(ctx *action.ActionContext) {
 			}
 			return ctx.Ctx.Err() == nil
 		},
-		End: func(q *api.Query, userMessage string, rowsFetched int64) {
+		End: func(q *api.Query) {
 			encoder.Close()
 		},
 	}

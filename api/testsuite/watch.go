@@ -1,4 +1,4 @@
-package api_test
+package testsuite
 
 import (
 	"context"
@@ -9,12 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWatchLogTable(t *testing.T) {
-	db := machsvrDatabase(t)
-	ctx := context.TODO()
+func WatchLogTable(t *testing.T, db api.Database, ctx context.Context) {
 	conf := api.WatcherConfig{
 		ConnProvider: func() (api.Conn, error) {
-			return db.Connect(ctx, api.WithTrustUser("sys"))
+			return db.Connect(ctx, api.WithPassword("sys", "manager"))
 		},
 		Timeformat: "2006-01-02 15:04:05.999999",
 		Timezone:   time.UTC,
@@ -62,7 +60,7 @@ func TestWatchLogTable(t *testing.T) {
 				name = "tag2"
 			}
 			values := []any{name, time.Now(), 1.23 * float64(tickCount), 1, tickCount, 2, "str1", `{"key1":"value1"}`}
-			result := conn.Exec(ctx, `insert into tag_data values(?, ?, ?, ?, ?, ?, ?, ?)`, values...)
+			result := conn.Exec(ctx, `insert into tag_data (name, time, value, short_value, int_value, long_value, str_value, json_value) values(?, ?, ?, ?, ?, ?, ?, ?)`, values...)
 			conn.Close()
 			require.NoError(t, result.Err(), "insert fail")
 			time.Sleep(100 * time.Millisecond)

@@ -37,13 +37,13 @@ type Service interface {
 	WsHandlerFunc() func(w http.ResponseWriter, r *http.Request)
 }
 
-type Option func(s *mqtt2) error
+type Option func(s *mqttd) error
 
 func New(db api.Database, opts ...Option) (Service, error) {
-	log := logging.GetLog("mqtt-v2")
+	log := logging.GetLog("mqttd")
 
 	caps := mqtt.NewDefaultServerCapabilities()
-	svr := &mqtt2{
+	svr := &mqttd{
 		log:       log,
 		db:        db,
 		appenders: cmap.New(),
@@ -126,7 +126,7 @@ func configureTcpConn(conn *net.TCPConn) {
 }
 
 func WithWsHandleListener(addr string) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		s.wsListener = &WsListener{svr: s, id: "mqtt2-ws", addr: addr}
 		return s.broker.AddListener(s.wsListener)
 	}
@@ -135,11 +135,11 @@ func WithWsHandleListener(addr string) Option {
 // WithTcpListener creates a new TCP listener with the given address and TLS configuration.
 // If tlsConfig is nil, the listener will not use TLS.
 func WithTcpListener(addr string, tlsConfig *tls.Config) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		qty := s.broker.Listeners.Len()
-		id := fmt.Sprintf("mqtt2-tcp-%d", qty)
+		id := fmt.Sprintf("mqtt-tcp-%d", qty)
 		if tlsConfig != nil {
-			id = fmt.Sprintf("mqtt2-tls-%d", qty)
+			id = fmt.Sprintf("mqtt-tls-%d", qty)
 		}
 		tcp := listeners.NewTCP(listeners.Config{
 			ID:        id,
@@ -151,9 +151,9 @@ func WithTcpListener(addr string, tlsConfig *tls.Config) Option {
 }
 
 func WithUnixSockListener(addr string) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		qty := s.broker.Listeners.Len()
-		id := fmt.Sprintf("mqtt2-unix-%d", qty)
+		id := fmt.Sprintf("mqtt-unix-%d", qty)
 		lsnr := listeners.NewUnixSock(listeners.Config{
 			ID:      id,
 			Address: addr,
@@ -165,11 +165,11 @@ func WithUnixSockListener(addr string) Option {
 // WithWebsocketListener creates a new Websocket listener with the given address and TLS configuration.
 // If tlsConfig is nil, the listener will not use TLS.
 func WithWebsocketListener(addr string, tlsConfig *tls.Config) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		qty := s.broker.Listeners.Len()
-		id := fmt.Sprintf("mqtt2-ws-%d", qty)
+		id := fmt.Sprintf("mqtt-ws-%d", qty)
 		if tlsConfig != nil {
-			id = fmt.Sprintf("mqtt2-wss-%d", qty)
+			id = fmt.Sprintf("mqtt-wss-%d", qty)
 		}
 		ws := listeners.NewWebsocket(listeners.Config{
 			ID:        id,
@@ -181,7 +181,7 @@ func WithWebsocketListener(addr string, tlsConfig *tls.Config) Option {
 }
 
 func WithAuthServer(authSvc security.AuthServer, enableTokenAuth bool) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		s.authServer = authSvc
 		s.enableTokenAuth = enableTokenAuth
 		if s.enableTokenAuth {
@@ -194,7 +194,7 @@ func WithAuthServer(authSvc security.AuthServer, enableTokenAuth bool) Option {
 }
 
 func WithBadgerPersistent(badgerPath string) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		badgerOpts := badgerdb.DefaultOptions(badgerPath) // BadgerDB options. Adjust according to your actual scenario.
 		badgerOpts.ValueLogFileSize = 100 * (1 << 20)     // Set the default size of the log file to 100 MB.
 		// AddHook adds a BadgerDB hook to the server with the specified options.
@@ -212,14 +212,14 @@ func WithBadgerPersistent(badgerPath string) Option {
 			Options:        &badgerOpts,
 		})
 		if err == nil {
-			hook.Log = logging.Wrap(logging.GetLog("mqtt-v2-persist"), logFilter)
+			hook.Log = logging.Wrap(logging.GetLog("mqttd-persist"), logFilter)
 		}
 		return err
 	}
 }
 
 func WithTqlLoader(loader tql.Loader) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		s.tqlLoader = loader
 		return nil
 	}
@@ -228,13 +228,13 @@ func WithTqlLoader(loader tql.Loader) Option {
 // WithMaxMessageSizeLimit sets the maximum message size allowed for incoming messages.
 // If zero, no limit is enforced.
 func WithMaxMessageSizeLimit(limit int) Option {
-	return func(s *mqtt2) error {
+	return func(s *mqttd) error {
 		s.broker.Options.Capabilities.MaximumPacketSize = uint32(limit)
 		return nil
 	}
 }
 
-type mqtt2 struct {
+type mqttd struct {
 	log               logging.Log
 	db                api.Database
 	broker            *mqtt.Server
@@ -247,18 +247,18 @@ type mqtt2 struct {
 	restrictTopics    bool
 }
 
-func (s *mqtt2) Start() error {
+func (s *mqttd) Start() error {
 	go s.broker.Serve()
 	return nil
 }
 
-func (s *mqtt2) Stop() {
+func (s *mqttd) Stop() {
 	if s.broker != nil {
 		s.broker.Close()
 	}
 }
 
-func (s *mqtt2) Statz() map[string]any {
+func (s *mqttd) Statz() map[string]any {
 	nfo := s.broker.Info
 	buf, _ := json.Marshal(nfo)
 	ret := map[string]any{}
@@ -272,11 +272,11 @@ func (s *mqtt2) Statz() map[string]any {
 	return ret
 }
 
-func (s *mqtt2) WsHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
+func (s *mqttd) WsHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return s.wsListener.WsHandler
 }
 
-func (s *mqtt2) onACLCheck(_ *mqtt.Client, topic string, write bool) bool {
+func (s *mqttd) onACLCheck(_ *mqtt.Client, topic string, write bool) bool {
 	if s.restrictTopics {
 		if topic == "db/query" && !write {
 			// can not subscribe 'db/query'
@@ -302,7 +302,7 @@ func (s *mqtt2) onACLCheck(_ *mqtt.Client, topic string, write bool) bool {
 	return true
 }
 
-func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
+func (s *mqttd) onPublished(cl *mqtt.Client, pk packets.Packet) {
 	defer func() {
 		if r := recover(); r != nil {
 			s.log.Warn("panic", "onPublished", r)
@@ -334,7 +334,7 @@ func (s *mqtt2) onPublished(cl *mqtt.Client, pk packets.Packet) {
 	}
 }
 
-func (s *mqtt2) onConnect(cl *mqtt.Client, pk packets.Packet) error {
+func (s *mqttd) onConnect(cl *mqtt.Client, pk packets.Packet) error {
 	s.log.Debugf("%s connected listener=%s v=%d", cl.Net.Remote, cl.Net.Listener, pk.ProtocolVersion)
 	if conn, ok := cl.Net.Conn.(*net.TCPConn); ok {
 		configureTcpConn(conn)
@@ -342,7 +342,7 @@ func (s *mqtt2) onConnect(cl *mqtt.Client, pk packets.Packet) error {
 	return nil
 }
 
-func (s *mqtt2) onDisconnect(cl *mqtt.Client, err error, expire bool) {
+func (s *mqttd) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 	s.log.Debugf("%s disconnected listener=%s expired=%t err=%v", cl.Net.Remote, cl.Net.Listener, expire, err)
 	peerId := cl.Net.Remote
 	s.appenders.RemoveCb(peerId, func(key string, v interface{}, exists bool) bool {
@@ -362,7 +362,7 @@ func (s *mqtt2) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 
 type AuthHook struct {
 	mqtt.HookBase
-	svr *mqtt2
+	svr *mqttd
 }
 
 // ID returns the ID of the hook.
@@ -431,10 +431,10 @@ func (h *AuthHook) OnDisconnect(cl *mqtt.Client, err error, expire bool) {
 }
 
 func logFilter(name string, ctx context.Context, r slog.Record) bool {
-	if !slices.Contains([]string{"mqtt-v2", "mqtt-v2-persist"}, name) {
+	if !slices.Contains([]string{"mqttd", "mqttd-persist"}, name) {
 		return true
 	}
-	if name == "mqtt-v2" {
+	if name == "mqttd" {
 		if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
 			return false
 		}
@@ -451,7 +451,7 @@ func logFilter(name string, ctx context.Context, r slog.Record) bool {
 			}
 			return true
 		})
-	} else if name == "mqtt-v2-persist" {
+	} else if name == "mqttd-persist" {
 		if r.Level < slog.LevelInfo {
 			return false
 		}

@@ -53,9 +53,12 @@ func doConnect(ctx *action.ActionContext) {
 		return
 	}
 
-	ok, err := ctx.Actor.Reconnect(username, password)
-	if err != nil || !ok {
+	ok, reason, err := ctx.Actor.Reconnect(username, password)
+	if err != nil {
 		ctx.Println("ERR", err.Error())
+		return
+	} else if !ok {
+		ctx.Println("ERR", reason)
 		return
 	}
 	ctx.Println("Connected successfully.")

@@ -143,10 +143,10 @@ func (act *Actor) checkDatabase() error {
 	}
 
 	// user authentication
-	if result, err := machcli.UserAuth(act.ctx, act.conf.User, act.conf.Password); err != nil {
+	if result, reason, err := machcli.UserAuth(act.ctx, act.conf.User, act.conf.Password); err != nil {
 		return err
 	} else if !result {
-		return errors.New("invalid username or password")
+		return errors.New(reason)
 	}
 
 	// check connectivity to server
@@ -198,14 +198,14 @@ func makePrompt(username string) string {
 	return fmt.Sprintf("\033[33m%s \033[31mmachbase-neo»\033[0m ", username)
 }
 
-func (act *Actor) Reconnect(username string, password string) (bool, error) {
-	ok, err := act.db.UserAuth(act.ctx, username, password)
+func (act *Actor) Reconnect(username string, password string) (bool, string, error) {
+	ok, reason, err := act.db.UserAuth(act.ctx, username, password)
 	if err == nil && ok {
 		act.conf.User = strings.ToLower(username)
 		act.conf.Password = password
 		act.conf.Prompt = makePrompt(act.conf.User)
 	}
-	return ok, err
+	return ok, reason, err
 }
 
 func (act *Actor) ShutdownServer() error {

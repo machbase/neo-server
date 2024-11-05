@@ -33,11 +33,11 @@ type mockServer struct {
 	engine *gin.Engine
 }
 
-func (fda *mockServer) UserAuth(ctx context.Context, user string, password string) (bool, error) {
+func (fda *mockServer) UserAuth(ctx context.Context, user string, password string) (bool, string, error) {
 	if user == "sys" && password == "manager" {
-		return true, nil
+		return true, "", nil
 	}
-	return false, nil
+	return false, "invalid username or password", nil
 }
 
 func (fda *mockServer) Login(user string, password string) error {

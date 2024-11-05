@@ -113,7 +113,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 		return
 	}
 
-	passed, err := svr.db.UserAuth(ctx, req.LoginName, req.Password)
+	passed, reason, err := svr.db.UserAuth(ctx, req.LoginName, req.Password)
 	if err != nil {
 		svr.log.Warnf("database auth failed %s", err.Error())
 		rsp.Reason = "database error for user authentication"
@@ -124,7 +124,7 @@ func (svr *httpd) handleLogin(ctx *gin.Context) {
 
 	if !passed {
 		svr.log.Tracef("'%s' login fail password mis-matched", req.LoginName)
-		rsp.Reason = "user not found or invalid password"
+		rsp.Reason = reason
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusNotFound, rsp)
 		return

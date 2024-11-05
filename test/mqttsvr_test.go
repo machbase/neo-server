@@ -21,7 +21,7 @@ func newMqttClient(t *testing.T) paho.Client {
 	cfg.SetProtocolVersion(4)
 	cfg.SetClientID("machbase-test-cli")
 	cfg.AddBroker("127.0.0.1:5653")
-	cfg.SetKeepAlive(3 * time.Second)
+	cfg.SetKeepAlive(6 * time.Second)
 	cfg.SetUsername("user")
 	cfg.SetPassword("pass")
 
@@ -280,7 +280,8 @@ func TestMqttWithDemoUser(t *testing.T) {
 
 	//// wait until receive all replied messages from server
 	client.Disconnect(100)
-	time.Sleep(time.Second * 1)
+
+	flushTable("DEMO.sample")
 
 	// reconnect
 	client = newMqttClient(t)

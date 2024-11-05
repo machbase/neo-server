@@ -13,12 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//
 // go test -benchmem -run=^$ -bench ^BenchmarkAppend$ github.com/machbase/neo-server/test -benchtime=1m
 //
 // 2022.12.13 mac-mini(m1) utm-ubuntu (4 core, 4G mem)
 // BenchmarkAppend-4         424443            167131 ns/op             560 B/op          9 allocs/op
-
+//
+// 2024.10.28 mac-mini(m1) native
+// BenchmarkAppend-8       27475498              2860 ns/op             252 B/op         10 allocs/op
 func BenchmarkAppend(b *testing.B) {
 	var memBefore runtime.MemStats
 	var memAfter runtime.MemStats
@@ -61,10 +62,13 @@ func BenchmarkAppend(b *testing.B) {
 	b.Log("")
 }
 
-// go test -benchmem -run=^$ -bench ^BenchmarkSelect$ github.com/machbase/neo-engine/test -benchtime=1m
+// go test -benchmem -run=^$ -bench ^BenchmarkSelect$ github.com/machbase/neo-server/test -benchtime=1m
 //
 // 2022.12.13 mac-mini(m1) utm-ubuntu (4 core, 4G mem)
 // BenchmarkSelect-4          17163           4625124 ns/op           40540 B/op       2711 allocs/op
+//
+// 2024.10.28 mac-mini(m1) native
+// BenchmarkSelect-8           6807          14686285 ns/op            2045 B/op         48 allocs/op
 
 func BenchmarkSelect(b *testing.B) {
 	db, err := machsvr.NewDatabase()
