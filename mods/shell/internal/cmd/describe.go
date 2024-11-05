@@ -72,23 +72,20 @@ func doDescribe(ctx *action.ActionContext) {
 		ctx.Println("[ COLUMN ]")
 	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "DESC"})
+	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "FLAG", "INDEX"})
 	for _, col := range desc.Columns {
 		nrow++
 		colType := col.Type.String()
-		box.AppendRow(nrow, col.Name, colType, col.Width(), col.Flag.String())
+		indexes := []string{}
+		for _, idxDesc := range desc.Indexes {
+			for _, colName := range idxDesc.Cols {
+				if colName == col.Name {
+					indexes = append(indexes, idxDesc.Name)
+					break
+				}
+			}
+		}
+		box.AppendRow(nrow, col.Name, colType, col.Width(), col.Flag.String(), strings.Join(indexes, ","))
 	}
 	box.Render()
-
-	if len(desc.Indexes) > 0 {
-		ctx.Println("[ INDEX ]")
-		nrow = 0
-		box = ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "COLUMN"})
-		for _, idx := range desc.Indexes {
-			nrow++
-			idxType := idx.Type.String()
-			box.AppendRow(nrow, idx.Name, idxType, strings.Join(idx.Cols, ", "))
-		}
-		box.Render()
-	}
 }

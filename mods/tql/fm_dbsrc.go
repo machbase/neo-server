@@ -1,13 +1,10 @@
 package tql
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/machbase/neo-server/api"
 )
 
 // Deprecated: no more required
@@ -233,65 +230,6 @@ func (si *querySource) toSqlGroup() string {
 	return ret
 }
 
-type databaseSource struct {
-	task    *Task
-	sqlText string
-	params  []any
-
-	resultMsg string
-}
-
-func (dc *databaseSource) gen(node *Node) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	conn, err := dc.task.ConnDatabase(ctx)
-	if err != nil {
-		ErrorRecord(err).Tell(node.next)
-		return
-	}
-	defer conn.Close()
-
-	query := &api.Query{
-		Begin: func(q *api.Query) {
-			cols := q.Columns()
-			cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
-			dc.task.SetResultColumns(cols)
-		},
-		Next: func(q *api.Query, nrow int64) bool {
-			if dc.task.shouldStop() {
-				return false
-			}
-			values, err := q.Columns().MakeBuffer()
-			if err != nil {
-				ErrorRecord(err).Tell(node.next)
-				return false
-			}
-			if err = q.Scan(values...); err != nil {
-				ErrorRecord(err).Tell(node.next)
-				return false
-			}
-			if len(values) > 0 {
-				NewRecord(nrow, values).Tell(node.next)
-			}
-			return !dc.task.shouldStop()
-		},
-		End: func(q *api.Query) {
-			dc.resultMsg = q.UserMessage()
-			if !q.IsFetch() {
-				dc.task.SetResultColumns(api.Columns{
-					api.MakeColumnRownum(),
-					api.MakeColumnString("MESSAGE"),
-				})
-				NewRecord(1, q.UserMessage()).Tell(node.next)
-			}
-		},
-	}
-	if err := query.Execute(ctx, conn, dc.sqlText, dc.params...); err != nil {
-		dc.resultMsg = err.Error()
-		ErrorRecord(err).Tell(node.next)
-	}
-}
-
 // SQL('select ....', arg1, arg2)
 // SQL(bridge('sqlite'), 'SELECT * ...', arg1, arg2)
 func (x *Node) fmSql(args ...any) (any, error) {
@@ -301,13 +239,16 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
-		if s, ok := parseSqlCommands(v); ok {
-			v = s
+		if dg, ok := parseDataGenCommands(v, x, args[1:]); ok {
+			x.task.LogInfof("╭─ %s", v)
+			dg.gen(x)
+			x.task.LogInfof("╰─➤ %s", time.Since(tick).String())
+		} else {
+			ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
+			x.task.LogInfof("╭─ %s", v)
+			ds.gen(x)
+			x.task.LogInfof("╰─➤ %s %s", ds.resultMsg, time.Since(tick).String())
 		}
-		x.task.LogInfof("╭─ %s", v)
-		ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
-		ds.gen(x)
-		x.task.LogInfof("╰─➤ %s %s", ds.resultMsg, time.Since(tick).String())
 		return nil, nil
 	case *bridgeName:
 		if len(args) == 0 {
@@ -323,51 +264,6 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		}
 	}
 	return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
-}
-
-func parseSqlCommands(str string) (string, bool) {
-	fields := strings.Fields(str)
-	if len(fields) < 2 {
-		return str, false
-	}
-	var showAll bool
-	var args []string
-	switch strings.ToLower(fields[0]) {
-	case "show":
-		args = append(args, "show")
-	case "desc":
-		args = append(args, "desc")
-	default:
-		return str, false
-	}
-	for i := 1; i < len(fields); i++ {
-		switch fields[i] {
-		case "-a", "--all":
-			showAll = true
-		default:
-			if strings.HasPrefix(fields[i], "-") {
-				continue
-			}
-			args = append(args, fields[i])
-		}
-	}
-	switch args[0] {
-	case "show":
-		if len(args) == 2 && args[1] == "tables" {
-			return api.ListTablesSql(showAll, true), true
-		}
-		if len(args) == 2 && args[1] == "indexes" {
-			return api.ListIndexesSql(), true
-		}
-		if len(args) == 3 && args[1] == "tags" {
-			return api.ListTagsSql(args[2]), true
-		}
-	case "desc":
-		// if len(args) == 2 {
-		// 	return api.DescTableSql(args[1]), true
-		// }
-	}
-	return str, false
 }
 
 type QueryFrom struct {
