@@ -1,8 +1,12 @@
 package util_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -141,61 +145,43 @@ func TestSplitSqlStatementsSingleLine(t *testing.T) {
 }
 
 func TestSplitSqlStatements(t *testing.T) {
-	input := `SELECT 1; SELECT 2 FROM T WHERE name = '--abc';
--- comment
-
-SELECT *  -- start of statement
-FROM
-	table 
-WHERE
-	name = 'a;b--c'; -- end of statement
-
--- env: bridge_bad=sqlite
-SELECT 4;
--- env: reset
-
--- env: bridge=postgres
-SELECT 5 FROM T WHERE id = 1;
--- env: bridge=mysql
-SELECT 6 FROM T WHERE id = 2;
--- env: reset
-
--- env: bridge=ms-sql
-SELECT 7
-FROM T WHERE id = 3;
--- env: reset
-
-wrong statement
-`
-	expect := []*util.SqlStatement{
-		{BeginLine: 1, EndLine: 1, IsComment: false, Text: "SELECT 1;", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 1, EndLine: 1, IsComment: false, Text: "SELECT 2 FROM T WHERE name = '--abc';", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 2, EndLine: 2, IsComment: true, Text: "-- comment", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 4, EndLine: 4, IsComment: true, Text: "-- start of statement", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 4, EndLine: 8, IsComment: false, Text: "SELECT *  FROM\n\ttable \nWHERE\n\tname = 'a;b--c';", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 8, EndLine: 8, IsComment: true, Text: "-- end of statement", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 10, EndLine: 10, IsComment: true, Text: "-- env: bridge_bad=sqlite", Env: &util.SqlStatementEnv{Error: "unknown env: bridge_bad"}},
-		{BeginLine: 11, EndLine: 11, IsComment: false, Text: "SELECT 4;", Env: &util.SqlStatementEnv{Error: "unknown env: bridge_bad"}},
-		{BeginLine: 12, EndLine: 12, IsComment: true, Text: "-- env: reset", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 14, EndLine: 14, IsComment: true, Text: "-- env: bridge=postgres", Env: &util.SqlStatementEnv{Bridge: "postgres"}},
-		{BeginLine: 15, EndLine: 15, IsComment: false, Text: "SELECT 5 FROM T WHERE id = 1;", Env: &util.SqlStatementEnv{Bridge: "postgres"}},
-		{BeginLine: 16, EndLine: 16, IsComment: true, Text: "-- env: bridge=mysql", Env: &util.SqlStatementEnv{Bridge: "mysql"}},
-		{BeginLine: 17, EndLine: 17, IsComment: false, Text: "SELECT 6 FROM T WHERE id = 2;", Env: &util.SqlStatementEnv{Bridge: "mysql"}},
-		{BeginLine: 18, EndLine: 18, IsComment: true, Text: "-- env: reset", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 20, EndLine: 20, IsComment: true, Text: "-- env: bridge=ms-sql", Env: &util.SqlStatementEnv{Bridge: "ms-sql"}},
-		{BeginLine: 21, EndLine: 22, IsComment: false, Text: "SELECT 7\nFROM T WHERE id = 3;", Env: &util.SqlStatementEnv{Bridge: "ms-sql"}},
-		{BeginLine: 23, EndLine: 23, IsComment: true, Text: "-- env: reset", Env: &util.SqlStatementEnv{}},
-		{BeginLine: 25, EndLine: 26, IsComment: false, Text: "wrong statement\n", Env: &util.SqlStatementEnv{}},
+	tests := []struct {
+		inputFile  string
+		expectFile string
+	}{
+		{"splitter_sql_1.sql", "splitter_sql_1.json"},
+		{"splitter_sql_2.sql", "splitter_sql_2.json"},
 	}
-	statements, err := util.SplitSqlStatements(strings.NewReader(input))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for n, stmt := range statements {
-		require.EqualValues(t, expect[n], stmt, stmt.Text)
+	for _, tc := range tests {
+		b, err := os.ReadFile(filepath.Join("testdata", tc.inputFile))
+		if err != nil {
+			t.Fatal(err, tc.inputFile)
+		}
+		stmts, err := util.SplitSqlStatements(bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err, tc.inputFile)
+		}
+		result := []map[string]any{}
+		output, err := json.Marshal(stmts)
+		if err != nil {
+			t.Fatal(err, tc.inputFile)
+		} else {
+			if err := json.Unmarshal(output, &result); err != nil {
+				t.Fatal(err, tc.inputFile)
+			}
+		}
+		expect := []map[string]any{}
+		if expectContent, err := os.ReadFile(filepath.Join("testdata", tc.expectFile)); err != nil {
+			t.Fatal(err, tc.inputFile)
+		} else {
+			if err := json.Unmarshal(expectContent, &expect); err != nil {
+				t.Fatal(err, tc.inputFile, string(output))
+			}
+		}
+		require.Equal(t, expect, result, string(output))
 	}
 }
+
 func ExampleSplitSqlStatements() {
 	input := `SELECT 1; SELECT 2 FROM T WHERE name = '--abc';
 	-- comment

@@ -1,0 +1,30 @@
+[
+    {
+        "text": "CREATE TABLE abs_table (c1 INTEGER, c2 DOUBLE, c3 VARCHAR(10));",
+        "beginLine": 1,
+        "endLine": 1,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "INSERT INTO abs_table VALUES(1, 1.0, '');",
+        "beginLine": 3,
+        "endLine": 3,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "INSERT INTO abs_table VALUES(2, 2.0, 'sqltest');",
+        "beginLine": 5,
+        "endLine": 5,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "INSERT INTO abs_table VALUES(3, 3.0, 'sqltest');",
+        "beginLine": 7,
+        "endLine": 7,
+        "isComment": false,
+        "env": {}
+    }
+]

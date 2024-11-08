@@ -1,0 +1,144 @@
+[
+    {
+        "text": "SELECT 1;",
+        "beginLine": 1,
+        "endLine": 1,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "SELECT 2 FROM T WHERE name = '--abc';",
+        "beginLine": 1,
+        "endLine": 1,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "-- comment",
+        "beginLine": 2,
+        "endLine": 2,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "-- start of statement",
+        "beginLine": 4,
+        "endLine": 4,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "SELECT *  FROM\n\ttable \nWHERE\n\tname = 'a;b--c';",
+        "beginLine": 4,
+        "endLine": 8,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "-- end of statement",
+        "beginLine": 8,
+        "endLine": 8,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "-- env: bridge_bad=sqlite",
+        "beginLine": 10,
+        "endLine": 10,
+        "isComment": true,
+        "env": {
+            "error": "unknown env: bridge_bad"
+        }
+    },
+    {
+        "text": "SELECT 4;",
+        "beginLine": 11,
+        "endLine": 11,
+        "isComment": false,
+        "env": {
+            "error": "unknown env: bridge_bad"
+        }
+    },
+    {
+        "text": "-- env: reset",
+        "beginLine": 12,
+        "endLine": 12,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "-- env: bridge=postgres",
+        "beginLine": 14,
+        "endLine": 14,
+        "isComment": true,
+        "env": {
+            "bridge": "postgres"
+        }
+    },
+    {
+        "text": "SELECT 5 FROM T WHERE id = 1;",
+        "beginLine": 15,
+        "endLine": 15,
+        "isComment": false,
+        "env": {
+            "bridge": "postgres"
+        }
+    },
+    {
+        "text": "-- env: bridge=mysql",
+        "beginLine": 16,
+        "endLine": 16,
+        "isComment": true,
+        "env": {
+            "bridge": "mysql"
+        }
+    },
+    {
+        "text": "SELECT 6 FROM T WHERE id = 2;",
+        "beginLine": 17,
+        "endLine": 17,
+        "isComment": false,
+        "env": {
+            "bridge": "mysql"
+        }
+    },
+    {
+        "text": "-- env: reset",
+        "beginLine": 18,
+        "endLine": 18,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "-- env: bridge=ms-sql",
+        "beginLine": 20,
+        "endLine": 20,
+        "isComment": true,
+        "env": {
+            "bridge": "ms-sql"
+        }
+    },
+    {
+        "text": "SELECT 7\nFROM T WHERE id = 3;",
+        "beginLine": 21,
+        "endLine": 22,
+        "isComment": false,
+        "env": {
+            "bridge": "ms-sql"
+        }
+    },
+    {
+        "text": "-- env: reset",
+        "beginLine": 23,
+        "endLine": 23,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "wrong statement\n",
+        "beginLine": 25,
+        "endLine": 26,
+        "isComment": false,
+        "env": {}
+    }
+]
