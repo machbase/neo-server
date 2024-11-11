@@ -334,7 +334,36 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		return
 	}
 
-	t := ctx.NewBox([]string{"ROWNUM", "DATABASE", "USER", "NAME", "ID"})
+	tableName := args[0]
+	tableType, err := api.QueryTableType(ctx.Ctx, ctx.Conn, tableName)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	if tableType != api.TableTypeTag {
+		ctx.Println("ERR", fmt.Sprintf("'%s' is not a tag table", tableName))
+		return
+	}
+
+	desc, err := api.DescribeTable(ctx.Ctx, ctx.Conn, tableName, false)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	summarized := false
+	for _, c := range desc.Columns {
+		if c.Flag&api.ColumnFlagSummarized > 0 {
+			summarized = true
+			break
+		}
+	}
+	var t action.Box
+	if summarized {
+		t = ctx.NewBox([]string{"ROWNUM", "_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME", "MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME"})
+	} else {
+		t = ctx.NewBox([]string{"ROWNUM", "_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"})
+	}
 	nrow := 0
 	api.ListTagsWalk(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(tag *api.TagInfo, err error) bool {
 		if err != nil {
@@ -342,7 +371,25 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 			return false
 		}
 		nrow++
-		t.AppendRow(nrow, tag.Database, tag.User, tag.Name, tag.Id)
+		if summarized {
+			stat, err := api.TagStat(ctx.Ctx, ctx.Conn, tableName, tag.Name)
+			if err != nil {
+				ctx.Println("ERR", err.Error())
+				return false
+			}
+			t.AppendRow(nrow, tag.Id, tag.Name, stat.RowCount,
+				stat.MinTime, stat.MaxTime, stat.RecentRowTime,
+				stat.MinValue, stat.MinValueTime,
+				stat.MaxValue, stat.MaxValueTime)
+		} else {
+			stat, err := api.TagStat(ctx.Ctx, ctx.Conn, tableName, tag.Name)
+			if err != nil {
+				// tag exists in _table_meta, but not found in v$table_stat
+				t.AppendRow(nrow, tag.Id, tag.Name, "", "", "", "")
+			} else {
+				t.AppendRow(nrow, tag.Id, tag.Name, stat.RowCount, stat.MinTime, stat.MaxTime, stat.RecentRowTime)
+			}
+		}
 		return true
 	})
 	t.Render()

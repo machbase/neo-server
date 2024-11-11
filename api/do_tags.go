@@ -77,9 +77,5 @@ func TagStat(ctx context.Context, conn Conn, table string, tag string) (*TagStat
 		&nfo.MinTime, &nfo.MaxTime,
 		&nfo.MinValue, &nfo.MinValueTime, &nfo.MaxValue, &nfo.MaxValueTime,
 		&nfo.RecentRowTime)
-	if err != nil {
-		return nil, err
-	}
-
-	return nfo, nil
+	return nfo, err
 }
