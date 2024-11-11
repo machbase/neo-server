@@ -119,6 +119,7 @@ func (dt *DataGenDescTable) gen(node *Node) {
 }
 
 func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
+	str = strings.TrimSuffix(strings.TrimSpace(str), ";")
 	fields := strings.Fields(str)
 	if len(fields) < 2 {
 		return nil, false
