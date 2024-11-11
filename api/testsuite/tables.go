@@ -266,7 +266,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 		},
 	}
 	err = queryCtx.Execute(ctx, conn, `insert into tag_data values('insert-twice', '2021-01-01 00:00:00', ?,`+ // name, time, value
-		`1, ?, ?, ?,`+ // short_value, int_value, uint_value
+		`1, ?, ?, ?,`+ // short_value, ushort_value, int_value, uint_value
 		`?, ?, `+ // long_value, ulong_value
 		`?, ?, ?, ? )`, // str_value, json_value, ipv4_value, ipv6_value
 		1.23,                 // value

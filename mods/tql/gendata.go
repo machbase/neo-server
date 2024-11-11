@@ -2,6 +2,7 @@ package tql
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/machbase/neo-server/api"
@@ -13,6 +14,7 @@ type DataGen interface {
 
 var _ DataGen = (*databaseSource)(nil)
 var _ DataGen = (*DataGenDescTable)(nil)
+var _ DataGen = (*DataGenShowTags)(nil)
 
 type databaseSource struct {
 	task    *Task
@@ -118,6 +120,103 @@ func (dt *DataGenDescTable) gen(node *Node) {
 	}
 }
 
+type DataGenShowTags struct {
+	table string
+}
+
+func (dt *DataGenShowTags) gen(node *Node) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := node.task.ConnDatabase(ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	defer conn.Close()
+
+	tableType, err := api.QueryTableType(ctx, conn, dt.table)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	if tableType != api.TableTypeTag {
+		ErrorRecord(fmt.Errorf("'%s' is not a tag table", dt.table)).Tell(node.next)
+		return
+	}
+
+	desc, err := api.DescribeTable(ctx, conn, dt.table, false)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	summarized := false
+	for _, c := range desc.Columns {
+		if c.Flag&api.ColumnFlagSummarized > 0 {
+			summarized = true
+			break
+		}
+	}
+
+	if summarized {
+		node.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			{Name: "_ID", DataType: api.DataTypeInt64},
+			{Name: "NAME", DataType: api.DataTypeString},
+			{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
+			{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
+			{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
+			{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
+			{Name: "MIN_VALUE", DataType: api.DataTypeFloat64},
+			{Name: "MIN_VALUE_TIME", DataType: api.DataTypeDatetime},
+			{Name: "MAX_VALUE", DataType: api.DataTypeFloat64},
+			{Name: "MAX_VALUE_TIME", DataType: api.DataTypeDatetime},
+		})
+	} else {
+		node.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			{Name: "_ID", DataType: api.DataTypeInt64},
+			{Name: "NAME", DataType: api.DataTypeString},
+			{Name: "ROW_COUNT", DataType: api.DataTypeInt64},
+			{Name: "MIN_TIME", DataType: api.DataTypeDatetime},
+			{Name: "MAX_TIME", DataType: api.DataTypeDatetime},
+			{Name: "RECENT_ROW_TIME", DataType: api.DataTypeDatetime},
+		})
+	}
+
+	rownum := 0
+	api.ListTagsWalk(ctx, conn, dt.table, func(tag *api.TagInfo, err error) bool {
+		if err != nil {
+			ErrorRecord(err).Tell(node.next)
+			return false
+		}
+		rownum++
+		var values []any
+		if summarized {
+			stat, err := api.TagStat(ctx, conn, dt.table, tag.Name)
+			if err != nil {
+				ErrorRecord(err).Tell(node.next)
+				return false
+			}
+			values = []any{tag.Id, tag.Name, stat.RowCount,
+				stat.MinTime, stat.MaxTime, stat.RecentRowTime,
+				stat.MinValue, stat.MinValueTime,
+				stat.MaxValue, stat.MaxValueTime}
+		} else {
+			stat, err := api.TagStat(ctx, conn, dt.table, tag.Name)
+			if err != nil {
+				// tag exists in _table_meta, but not found in v$table_stat
+				values = []any{tag.Id, tag.Name, nil, nil, nil, nil}
+			} else {
+				values = []any{tag.Id, tag.Name, stat.RowCount,
+					stat.MinTime, stat.MaxTime, stat.RecentRowTime}
+			}
+		}
+		NewRecord(rownum, values).Tell(node.next)
+		return true
+	})
+}
+
 func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 	str = strings.TrimSuffix(strings.TrimSpace(str), ";")
 	fields := strings.Fields(str)
@@ -154,7 +253,7 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 			return &databaseSource{task: x.task, sqlText: api.ListIndexesSql(), params: params}, true
 		}
 		if len(args) == 3 && args[1] == "tags" {
-			return &databaseSource{task: x.task, sqlText: api.ListTagsSql(args[2]), params: params}, true
+			return &DataGenShowTags{table: args[2]}, true
 		}
 	case "desc":
 		if len(args) == 2 {

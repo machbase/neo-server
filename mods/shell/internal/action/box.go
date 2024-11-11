@@ -3,8 +3,10 @@ package action
 import (
 	"io"
 	"os"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/machbase/neo-server/mods/util"
 )
 
 type Boxer interface {
@@ -29,10 +31,13 @@ func (ctx *ActionContext) NewBox(header []string) Box {
 
 func (ctx *ActionContext) newBox(header []string, compact bool, heading bool, format string, mirror io.Writer) Box {
 	b := &boxEnc{
-		w:      table.NewWriter(),
-		format: format,
+		w:          table.NewWriter(),
+		format:     format,
+		timeformat: util.NewTimeFormatter(),
 	}
 	b.w.SetOutputMirror(mirror)
+	b.timeformat.Set(util.Timeformat(ctx.PrefTimeformat()))
+	b.timeformat.Set(util.TimeLocation(ctx.PrefTimeLocation()))
 
 	style := table.StyleDefault
 	switch ctx.Pref().BoxStyle().Value() {
@@ -65,11 +70,17 @@ func (ctx *ActionContext) newBox(header []string, compact bool, heading bool, fo
 }
 
 type boxEnc struct {
-	w      table.Writer
-	format string
+	w          table.Writer
+	format     string
+	timeformat *util.TimeFormatter
 }
 
 func (b *boxEnc) AppendRow(row ...any) {
+	for i, v := range row {
+		if t, ok := v.(time.Time); ok {
+			row[i] = b.timeformat.Format(t)
+		}
+	}
 	b.w.AppendRow(row)
 }
 

@@ -42,6 +42,14 @@ func (ctx *ActionContext) Pref() *Pref {
 	return ctx.Actor.pref
 }
 
+func (ctx *ActionContext) PrefTimeformat() string {
+	return ctx.Pref().Timeformat().Value()
+}
+
+func (ctx *ActionContext) PrefTimeLocation() *time.Location {
+	return ctx.Pref().TimeZone().TimezoneValue()
+}
+
 // ShutdownServerFunc returns callable function to shutdown server if this instance has ability of shutdown server
 // otherwise return nil
 func (ctx *ActionContext) ShutdownServerFunc() ShutdownServerFunc {

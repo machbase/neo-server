@@ -120,6 +120,15 @@ func scanInt16(src int16, pDst any) error {
 		*dst = uint64(src)
 	case *string:
 		*dst = strconv.Itoa(int(src))
+	case *sql.NullInt16:
+		dst.Valid = true
+		dst.Int16 = src
+	case *sql.NullInt32:
+		dst.Valid = true
+		dst.Int32 = int32(src)
+	case *sql.NullInt64:
+		dst.Valid = true
+		dst.Int64 = int64(src)
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
@@ -151,8 +160,6 @@ func scanInt32(src int32, pDst any) error {
 		*dst = uint64(src)
 	case *string:
 		*dst = strconv.FormatInt(int64(src), 10)
-	case *driver.Value:
-		*dst = driver.Value(src)
 	case *TableType:
 		*dst = TableType(src)
 	case *TableFlag:
@@ -161,6 +168,14 @@ func scanInt32(src int32, pDst any) error {
 		*dst = ColumnType(src)
 	case *ColumnFlag:
 		*dst = ColumnFlag(src)
+	case *sql.NullInt32:
+		dst.Valid = true
+		dst.Int32 = src
+	case *sql.NullInt64:
+		dst.Valid = true
+		dst.Int64 = int64(src)
+	case *driver.Value:
+		*dst = driver.Value(src)
 	default:
 		return ErrDatabaseScanType("INT32", pDst)
 	}
@@ -192,6 +207,9 @@ func scanInt64(src int64, pDst any) error {
 		*dst = strconv.FormatInt(src, 10)
 	case *time.Time:
 		*dst = time.Unix(0, src)
+	case *sql.NullInt64:
+		dst.Valid = true
+		dst.Int64 = src
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
@@ -208,6 +226,9 @@ func scanDatetime(src time.Time, pDst any) error {
 		*dst = src.In(time.UTC)
 	case *string:
 		*dst = src.In(time.UTC).Format(time.RFC3339)
+	case *sql.NullTime:
+		dst.Valid = true
+		dst.Time = src
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
@@ -224,6 +245,9 @@ func scanFloat32(src float32, pDst any) error {
 		*dst = float64(src)
 	case *string:
 		*dst = strconv.FormatFloat(float64(src), 'f', -1, 32)
+	case *sql.NullFloat64:
+		dst.Valid = true
+		dst.Float64 = float64(src)
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
@@ -240,6 +264,9 @@ func scanFloat64(src float64, pDst any) error {
 		*dst = src
 	case *string:
 		*dst = strconv.FormatFloat(src, 'f', -1, 64)
+	case *sql.NullFloat64:
+		dst.Valid = true
+		dst.Float64 = src
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
@@ -277,6 +304,9 @@ func scanString(src string, pDst any) error {
 			return ErrDatabaseScanNull("STRING")
 		}
 		*dst = net.ParseIP(src)
+	case *sql.NullString:
+		dst.Valid = true
+		dst.String = src
 	case *driver.Value:
 		*dst = driver.Value(src)
 	default:
