@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,11 @@ func TestSplitSqlStatements(t *testing.T) {
 		} else {
 			if err := json.Unmarshal(output, &result); err != nil {
 				t.Fatal(err, tc.inputFile)
+			}
+			if runtime.GOOS == "windows" {
+				for _, stmt := range stmts {
+					stmt.Text = strings.ReplaceAll(stmt.Text, "\r\n", "\n")
+				}
 			}
 		}
 		expect := []map[string]any{}
