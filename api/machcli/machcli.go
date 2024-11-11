@@ -38,13 +38,19 @@ func errorWithCause(obj any, cause error) error {
 		} else {
 			return fmt.Errorf("MACHCLI Fail to get error code of %s, %s", cause.Error(), reErr.Error())
 		}
-	} else if msg == "" || code == 0 {
-		return cause
-	} else {
+	} else if code == 0 && msg == "" && cause == nil {
+		// no error
+		return nil
+	} else if code == 0 && msg != "" {
+		// code == 0 means client-side error
 		if cause == nil {
-			if code == 0 {
-				return nil // no error
-			}
+			return fmt.Errorf("MACHCLI %s", msg)
+		} else {
+			return fmt.Errorf("MACHCLI %s, %s", msg, cause.Error())
+		}
+	} else {
+		// code > 0 means server-side error
+		if cause == nil {
 			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)
 		} else {
 			return fmt.Errorf("MACHCLI-ERR-%d, %s", code, msg)

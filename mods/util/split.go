@@ -43,6 +43,7 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 	inString := false
 	inSingleLineComment := false
 	inSingleDash := false
+	inSingleSlash := false
 	lineNumber := 1
 	statementStartLine := 1
 
@@ -89,6 +90,16 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 				inSingleDash = !inSingleDash
 				continue
 			}
+		case "/":
+			if !inString {
+				if inSingleSlash {
+					commentBuffer.Reset()
+					inSingleLineComment = true
+					commentBuffer.WriteString("//")
+				}
+				inSingleSlash = !inSingleSlash
+				continue
+			}
 		case ";":
 			if !inString {
 				statements = append(statements, &SqlStatement{
@@ -113,6 +124,10 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 			if inSingleDash {
 				buffer.WriteString("-")
 				inSingleDash = false
+			}
+			if inSingleSlash {
+				buffer.WriteString("/")
+				inSingleSlash = false
 			}
 			buffer.WriteString(char)
 		}
