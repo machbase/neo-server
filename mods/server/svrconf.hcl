@@ -3,7 +3,9 @@ define DEF {
     LISTEN_HOST       = flag("--host", "127.0.0.1")
     SHELL_PORT        = flag("--shell-port", "5652")
     MQTT_PORT         = flag("--mqtt-port", "5653")
+    MQTT_SOCK         = flag("--mqtt-sock", "${tempDir()}/machbase-neo-mqtt.sock")
     HTTP_PORT         = flag("--http-port", "5654")
+    HTTP_SOCK         = flag("--http-sock", "${tempDir()}/machbase-neo.sock")
     GRPC_PORT         = flag("--grpc-port", "5655")
     GRPC_SOCK         = flag("--grpc-sock", "${execDir()}/mach-grpc.sock")
     GRPC_INSECURE     = flag("--grpc-insecure", false)
@@ -25,8 +27,10 @@ define VARS {
     GRPC_LISTEN_SOCK  = flag("--grpc-listen-sock", DEF_GRPC_SOCK)
     HTTP_LISTEN_HOST  = flag("--http-listen-host", DEF_LISTEN_HOST)
     HTTP_LISTEN_PORT  = flag("--http-listen-port", DEF_HTTP_PORT)
+    HTTP_LISTEN_SOCK  = flag("--http-listen-sock", DEF_HTTP_SOCK)
     MQTT_LISTEN_HOST  = flag("--mqtt-listen-host", DEF_LISTEN_HOST)
     MQTT_LISTEN_PORT  = flag("--mqtt-listen-port", DEF_MQTT_PORT)
+    MQTT_LISTEN_SOCK  = flag("--mqtt-listen-sock", DEF_MQTT_SOCK)
     MQTT_MAXMESSAGE   = flag("--mqtt-max-message", 1048576) // 1MB
     MQTT_PERSISTENCE  = flag("--mqtt-persistence", false)
 
@@ -93,14 +97,20 @@ module "machbase.com/neo-server" {
             Insecure         = DEF_GRPC_INSECURE
         }
         Http = {
-            Listeners        = [ "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}" ]
+            Listeners        = [
+                "unix://${VARS_HTTP_LISTEN_SOCK}",
+                "tcp://${VARS_HTTP_LISTEN_HOST}:${VARS_HTTP_LISTEN_PORT}",
+            ]
             WebDir           = VARS_UI_DIR
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
             EnableWebUI      = VARS_HTTP_ENABLE_WEBUI
         }
         Mqtt = {
-            Listeners           = [ "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}" ]
+            Listeners           = [
+                "unix://${VARS_MQTT_LISTEN_SOCK}",
+                "tcp://${VARS_MQTT_LISTEN_HOST}:${VARS_MQTT_LISTEN_PORT}",
+            ]
             EnableTokenAuth     = VARS_MQTT_ENABLE_TOKENAUTH
             EnableTls           = VARS_MQTT_ENABLE_TLS
             MaxMessageSizeLimit = VARS_MQTT_MAXMESSAGE
