@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
+	"github.com/machbase/neo-server/mods/util"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
@@ -24,6 +26,7 @@ var DefaultFunctions = map[string]function.Function{
 	"version":     GetVersionFunc,
 	"execFile":    GetExecutableFileFunc,
 	"execDir":     GetExecutableDirFunc,
+	"tempDir":     GetTempDirFunc,
 	"userDir":     GetUserHomeDirFunc,
 	"userConfDir": GetUserConfigDirFunc,
 	"prefDir":     GetPrefDirFunc,
@@ -48,6 +51,26 @@ var GetVersionFunc = function.New(&function.Spec{
 	Type:   function.StaticReturnType(cty.String),
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 		return cty.StringVal(VersionString()), nil
+	},
+})
+
+var GetTempDirFunc = function.New(&function.Spec{
+	Params: []function.Parameter{},
+	Type:   function.StaticReturnType(cty.String),
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		dirPath := "/tmp"
+		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+			dirPath = "/tmp"
+		} else if runtime.GOOS == "windows" {
+			dirPath = util.GetTempDirPath()
+		} else {
+			if d, err := filepath.Abs(os.TempDir()); err != nil {
+				return cty.NilVal, err
+			} else {
+				dirPath = d
+			}
+		}
+		return cty.StringVal(dirPath), nil
 	},
 })
 
