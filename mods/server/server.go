@@ -614,8 +614,6 @@ func (s *svr) Start() error {
 			}
 			opts = append(opts, mqttd.WithWsHandleListener(addr))
 		}
-		// mqtt server listener for unix socket
-		s.conf.Mqtt.Listeners = append(s.conf.Mqtt.Listeners, util.MakeUnixDomainSocketPath("machbase-neo-mqtt.sock"))
 
 		// mqtt server listeners
 		for _, addr := range s.conf.Mqtt.Listeners {
@@ -641,9 +639,6 @@ func (s *svr) Start() error {
 			return errors.Wrap(err, "mqtt server")
 		}
 	}
-
-	// http server listener for unix socket
-	s.conf.Http.Listeners = append(s.conf.Http.Listeners, util.MakeUnixDomainSocketPath("machbase-neo.sock"))
 
 	// package manager
 	if s.pkgMgr == nil {
