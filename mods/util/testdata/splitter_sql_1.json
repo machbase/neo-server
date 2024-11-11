@@ -35,9 +35,58 @@
         "env": {}
     },
     {
-        "text": "SELECT count(*) -2 FROM example ",
+        "text": "SELECT count(*) -2 FROM example;",
         "beginLine": 10,
         "endLine": 10,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "-- comment",
+        "beginLine": 10,
+        "endLine": 10,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "SELECT count(*) / 3 FROM example;",
+        "beginLine": 11,
+        "endLine": 11,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "// double slash comment",
+        "beginLine": 12,
+        "endLine": 12,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "SELECT count(*) / 4 FROM example;",
+        "beginLine": 13,
+        "endLine": 13,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "// comment 2",
+        "beginLine": 13,
+        "endLine": 13,
+        "isComment": true,
+        "env": {}
+    },
+    {
+        "text": "SELECT * FROM example where name = 'contains // slash';",
+        "beginLine": 14,
+        "endLine": 14,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "SELECT * FROM example where name = 'contains -- dash';",
+        "beginLine": 15,
+        "endLine": 15,
         "isComment": false,
         "env": {}
     }
