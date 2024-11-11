@@ -110,6 +110,10 @@ func SplitSqlStatements(reader io.Reader) ([]*SqlStatement, error) {
 		if strings.TrimSpace(buffer.String()) == "" && strings.ContainsAny(char, " \t\r\n") {
 			statementStartLine = lineNumber
 		} else {
+			if inSingleDash {
+				buffer.WriteString("-")
+				inSingleDash = false
+			}
 			buffer.WriteString(char)
 		}
 	}

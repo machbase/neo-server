@@ -26,5 +26,19 @@
         "endLine": 7,
         "isComment": false,
         "env": {}
+    },
+    {
+        "text": "SELECT count(*) - 1 FROM example;",
+        "beginLine": 9,
+        "endLine": 9,
+        "isComment": false,
+        "env": {}
+    },
+    {
+        "text": "SELECT count(*) -2 FROM example ",
+        "beginLine": 10,
+        "endLine": 10,
+        "isComment": false,
+        "env": {}
     }
 ]
