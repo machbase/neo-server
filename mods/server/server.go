@@ -741,13 +741,7 @@ func (s *svr) Start() error {
 		}
 		readyMsg := []string{}
 		for _, p := range svcPorts {
-			addr := strings.Replace(p.Address, "tcp://", "http://", 1)
-			if strings.HasPrefix(addr, "http://127.0.0.1:") {
-				addr = fmt.Sprintf("  > Local:   %s", addr)
-			} else {
-				addr = fmt.Sprintf("  > Network: %s", addr)
-			}
-			readyMsg = append(readyMsg, addr)
+			readyMsg = append(readyMsg, representativePort(p.Address))
 		}
 		dbInitInfo := ""
 		if s.databaseCreated {
@@ -770,6 +764,18 @@ func (s *svr) Start() error {
 		s.StartNavelCord()
 	}
 	return nil
+}
+
+func representativePort(addr string) string {
+	addr = strings.Replace(addr, "tcp://", "http://", 1)
+	if strings.HasPrefix(addr, "http://127.0.0.1:") {
+		addr = fmt.Sprintf("  > Local:   %s", addr)
+	} else if strings.HasPrefix(addr, "unix://") {
+		addr = fmt.Sprintf("  > Unix:    %s", strings.TrimPrefix(addr, "unix://"))
+	} else {
+		addr = fmt.Sprintf("  > Network: %s", addr)
+	}
+	return addr
 }
 
 func (s *svr) Stop() {
