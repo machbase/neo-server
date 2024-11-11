@@ -170,11 +170,6 @@ func TestSplitSqlStatements(t *testing.T) {
 			if err := json.Unmarshal(output, &result); err != nil {
 				t.Fatal(err, tc.inputFile)
 			}
-			if runtime.GOOS == "windows" {
-				for _, stmt := range stmts {
-					stmt.Text = strings.ReplaceAll(stmt.Text, "\r\n", "\n")
-				}
-			}
 		}
 		expect := []map[string]any{}
 		if expectContent, err := os.ReadFile(filepath.Join("testdata", tc.expectFile)); err != nil {
@@ -183,12 +178,17 @@ func TestSplitSqlStatements(t *testing.T) {
 			if err := json.Unmarshal(expectContent, &expect); err != nil {
 				t.Fatal(err, tc.inputFile, string(output))
 			}
-			if runtime.GOOS == "windows" {
-				for i, stmt := range expect {
-					txt := stmt["text"].(string)
-					txt = strings.ReplaceAll(txt, "\r\n", "\n")
-					expect[i]["text"] = txt
-				}
+		}
+		if runtime.GOOS == "windows" {
+			for i, stmt := range expect {
+				txt := stmt["text"].(string)
+				txt = strings.ReplaceAll(txt, "\r\n", "\n")
+				expect[i]["text"] = txt
+			}
+			for i, stmt := range result {
+				txt := stmt["text"].(string)
+				txt = strings.ReplaceAll(txt, "\r\n", "\n")
+				result[i]["text"] = txt
 			}
 		}
 		require.Equal(t, expect, result, string(output))
