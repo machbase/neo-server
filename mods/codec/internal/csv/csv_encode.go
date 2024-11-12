@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"net"
@@ -29,7 +30,7 @@ type Exporter struct {
 	showRownum      bool
 	precision       int
 	nullAlternative any
-	timeformatter   *util.TimeFormatter
+	timeformat      *util.TimeFormatter
 
 	heading  bool
 	colNames []string
@@ -41,7 +42,7 @@ func NewEncoder() *Exporter {
 	rr := &Exporter{
 		precision:       -1,
 		nullAlternative: "NULL",
-		timeformatter:   util.NewTimeFormatter(),
+		timeformat:      util.NewTimeFormatter(),
 	}
 	return rr
 }
@@ -55,11 +56,11 @@ func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
 }
 
 func (ex *Exporter) SetTimeformat(format string) {
-	ex.timeformatter.Set(util.Timeformat(format))
+	ex.timeformat.Set(util.Timeformat(format))
 }
 
 func (ex *Exporter) SetTimeLocation(tz *time.Location) {
-	ex.timeformatter.Set(util.TimeLocation(tz))
+	ex.timeformat.Set(util.TimeLocation(tz))
 }
 
 func (ex *Exporter) SetPrecision(precision int) {
@@ -139,15 +140,77 @@ func (ex *Exporter) AddRow(values []any) error {
 		if r == nil || r == expression.NullValue {
 			r = ex.nullAlternative
 		}
+		switch sqlVal := r.(type) {
+		case *sql.NullBool:
+			if sqlVal.Valid {
+				r = sqlVal.Bool
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullByte:
+			if sqlVal.Valid {
+				r = sqlVal.Byte
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullFloat64:
+			if sqlVal.Valid {
+				r = sqlVal.Float64
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullInt16:
+			if sqlVal.Valid {
+				r = sqlVal.Int16
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullInt32:
+			if sqlVal.Valid {
+				r = sqlVal.Int32
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullInt64:
+			if sqlVal.Valid {
+				r = sqlVal.Int64
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullString:
+			if sqlVal.Valid {
+				r = sqlVal.String
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.NullTime:
+			if sqlVal.Valid {
+				r = ex.timeformat.Format(sqlVal.Time)
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.Null[float32]:
+			if sqlVal.Valid {
+				r = sqlVal.V
+			} else {
+				r = ex.nullAlternative
+			}
+		case *sql.Null[net.IP]:
+			if sqlVal.Valid {
+				r = sqlVal.V.String()
+			} else {
+				r = ex.nullAlternative
+			}
+		}
 		switch v := r.(type) {
 		case *string:
 			cols[i] = *v
 		case string:
 			cols[i] = v
 		case *time.Time:
-			cols[i] = ex.timeformatter.Format(*v)
+			cols[i] = ex.timeformat.Format(*v)
 		case time.Time:
-			cols[i] = ex.timeformatter.Format(v)
+			cols[i] = ex.timeformat.Format(v)
 		case *float64:
 			cols[i] = strconv.FormatFloat(*v, 'f', ex.precision, 64)
 		case float64:

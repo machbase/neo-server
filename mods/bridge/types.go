@@ -18,6 +18,8 @@ type Bridge interface {
 
 type SqlBridge interface {
 	Bridge
+	Type() string
+	DB() *sql.DB
 	Connect(ctx context.Context) (*sql.Conn, error)
 	NewScanType(reflectType string, databaseTypeName string) any
 	NormalizeType(value []any) []any

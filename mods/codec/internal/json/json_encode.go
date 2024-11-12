@@ -202,6 +202,10 @@ func (ex *Exporter) AddRow(source []any) error {
 			if v.Valid {
 				values[i] = v.Int32
 			}
+		case *sql.Null[float32]:
+			if v.Valid {
+				values[i] = v.V
+			}
 		case *sql.NullInt64:
 			if v.Valid {
 				values[i] = v.Int64
@@ -213,6 +217,10 @@ func (ex *Exporter) AddRow(source []any) error {
 		case *sql.NullTime:
 			if v.Valid {
 				values[i] = ex.timeformatter.Format(v.Time)
+			}
+		case *sql.Null[net.IP]:
+			if v.Valid {
+				values[i] = v.V.String()
 			}
 		default:
 			values[i] = field

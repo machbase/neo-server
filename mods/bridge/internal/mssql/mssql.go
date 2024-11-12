@@ -17,6 +17,7 @@ type bridge struct {
 	name string
 	path string
 	db   *sql.DB
+	u    *url.URL
 }
 
 func New(name string, path string) *bridge {
@@ -65,12 +66,12 @@ func (c *bridge) BeforeRegister() error {
 	if !q.Has("app name") {
 		q.Add("app name", "neo-bridge")
 	}
-	u := &url.URL{
+	c.u = &url.URL{
 		Scheme:   "sqlserver",
 		Host:     server,
 		RawQuery: q.Encode(),
 	}
-	db, err := sql.Open("sqlserver", u.String())
+	db, err := sql.Open("sqlserver", c.u.String())
 	if err != nil {
 		return err
 	}
@@ -91,6 +92,14 @@ func (c *bridge) String() string {
 
 func (c *bridge) Name() string {
 	return c.name
+}
+
+func (c *bridge) Type() string {
+	return "mssql"
+}
+
+func (c *bridge) DB() *sql.DB {
+	return c.db
 }
 
 func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {

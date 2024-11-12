@@ -184,7 +184,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			}
 			if len(expect) != len(resultLines) {
 				t.Logf("Expect result %d lines, got %d", len(expect), len(resultLines))
-				t.Logf("\n%s", strings.Join(resultLines, "\n"))
+				t.Logf("Expect:\n%s", strings.Join(expect, "\n"))
+				t.Logf("Actual:\n%s", strings.Join(resultLines, "\n"))
 				t.Fail()
 				return
 			}
@@ -3485,7 +3486,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{""}
+	resultLines = []string{"a row updated.", ""}
 	runTest(t, codeLines, resultLines)
 
 	codeLines = []string{
@@ -3523,7 +3524,7 @@ func TestBridgeSqlite(t *testing.T) {
 		`SQL(bridge('sqlite'), 'delete from example_sql where id = ?', param('id'))`,
 		"CSV(heading(false))",
 	}
-	resultLines = []string{""}
+	resultLines = []string{"a row deleted.", ""}
 	runTest(t, codeLines, resultLines, Param{name: "id", value: "100"})
 
 	// after delete
