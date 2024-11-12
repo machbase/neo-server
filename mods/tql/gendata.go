@@ -16,6 +16,8 @@ var _ DataGen = (*databaseSource)(nil)
 var _ DataGen = (*DataGenDescTable)(nil)
 var _ DataGen = (*DataGenShowTags)(nil)
 
+var _ DataGen = (*DataGenExplain)(nil)
+
 type databaseSource struct {
 	task    *Task
 	sqlText string
@@ -117,6 +119,34 @@ func (dt *DataGenDescTable) gen(node *Node) {
 			col.Name, col.Type.String(), col.Width(), col.Flag.String(), strings.Join(indexes, ","),
 		}
 		NewRecord(i+1, values).Tell(node.next)
+	}
+}
+
+type DataGenExplain struct {
+	sqlText string
+	full    bool
+}
+
+func (dt *DataGenExplain) gen(node *Node) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	conn, err := node.task.ConnDatabase(ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+
+	plan, err := conn.Explain(ctx, dt.sqlText, dt.full)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnString("PLAN"),
+	})
+	for _, line := range strings.Split(plan, "\n") {
+		NewRecord(1, []any{line}).Tell(node.next)
 	}
 }
 
@@ -225,24 +255,29 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 	}
 	var showAll bool
 	var args []string
+	var sqlText string
+	var explainFull bool
 	switch strings.ToLower(fields[0]) {
 	case "show":
 		args = append(args, "show")
+		if len(fields) > 2 && (fields[1] == "-a" || fields[1] == "--all") {
+			showAll = true
+		}
 	case "desc":
 		args = append(args, "desc")
+		if len(fields) > 2 && (fields[1] == "-a" || fields[1] == "--all") {
+			showAll = true
+		}
+	case "explain":
+		args = append(args, "explain")
+		if len(fields) > 2 && (fields[1] == "-f" || fields[1] == "--full") {
+			explainFull = true
+			sqlText = strings.Join(fields[2:], " ")
+		} else if len(fields) > 1 {
+			sqlText = strings.Join(fields[1:], " ")
+		}
 	default:
 		return nil, false
-	}
-	for i := 1; i < len(fields); i++ {
-		switch fields[i] {
-		case "-a", "--all":
-			showAll = true
-		default:
-			if strings.HasPrefix(fields[i], "-") {
-				continue
-			}
-			args = append(args, fields[i])
-		}
 	}
 	switch args[0] {
 	case "show":
@@ -258,6 +293,10 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 	case "desc":
 		if len(args) == 2 {
 			return &DataGenDescTable{table: args[1], showAll: showAll}, true
+		}
+	case "explain":
+		if len(sqlText) > 0 {
+			return &DataGenExplain{sqlText: sqlText, full: explainFull}, true
 		}
 	}
 	return nil, false
