@@ -35,8 +35,6 @@ type Server struct {
 	grpcServer      *grpc.Server
 	grpcListener    *bufconn.Listener
 	grpcClientConn  *grpc.ClientConn
-	onceStart       sync.Once
-	onceStop        sync.Once
 }
 
 func NewServer(dataPath string) *Server {
@@ -66,12 +64,6 @@ func (s *Server) checkListenPort() {
 }
 
 func (s *Server) StartServer(m *testing.M) {
-	s.onceStart.Do(func() {
-		s.startServer()
-	})
-}
-
-func (s *Server) startServer() {
 	// prepare
 	homePath, err := filepath.Abs(filepath.Join(s.machsvrDataDir, "machbase"))
 	if err != nil {
@@ -217,12 +209,6 @@ func (s *Server) startServer() {
 }
 
 func (s *Server) StopServer(m *testing.M) {
-	s.onceStop.Do(func() {
-		s.stopServer()
-	})
-}
-
-func (s *Server) stopServer() {
 	ctx := context.TODO()
 
 	if err := s.machcliDatabase.Close(); err != nil {

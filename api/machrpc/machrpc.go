@@ -606,6 +606,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		for range ap.bufferTicker.C {
 			ap.flush(nil)
 		}
+		ap.bufferTickerDone.Done()
 	}()
 
 	return ap, nil
@@ -620,9 +621,10 @@ type Appender struct {
 	columns      api.Columns
 	handle       *AppenderHandle
 
-	buffer       []*AppendRecord
-	bufferLock   sync.Mutex
-	bufferTicker *time.Ticker
+	buffer           []*AppendRecord
+	bufferLock       sync.Mutex
+	bufferTicker     *time.Ticker
+	bufferTickerDone sync.WaitGroup
 
 	bufferThreshold int
 }
@@ -637,6 +639,7 @@ func (appender *Appender) Close() (int64, int64, error) {
 
 	if appender.bufferTicker != nil {
 		appender.bufferTicker.Stop()
+		appender.bufferTickerDone.Wait()
 	}
 	appender.flush(nil)
 
