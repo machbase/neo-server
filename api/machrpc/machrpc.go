@@ -602,11 +602,19 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 	ap.handle = openRsp.Handle
 
 	ap.bufferTicker = time.NewTicker(time.Second)
+	ap.bufferTickerDone.Add(1)
+	ap.stopC = make(chan struct{})
 	go func() {
-		for range ap.bufferTicker.C {
-			ap.flush(nil)
+		for {
+			select {
+			case <-ap.bufferTicker.C:
+				ap.flush(nil)
+			case <-ap.stopC:
+				ap.flush(nil)
+				ap.bufferTickerDone.Done()
+				return
+			}
 		}
-		ap.bufferTickerDone.Done()
 	}()
 
 	return ap, nil
@@ -625,8 +633,8 @@ type Appender struct {
 	bufferLock       sync.Mutex
 	bufferTicker     *time.Ticker
 	bufferTickerDone sync.WaitGroup
-
-	bufferThreshold int
+	bufferThreshold  int
+	stopC            chan struct{}
 }
 
 var _ api.Appender = (*Appender)(nil)
@@ -637,11 +645,9 @@ func (appender *Appender) Close() (int64, int64, error) {
 		return 0, 0, nil
 	}
 
-	if appender.bufferTicker != nil {
-		appender.bufferTicker.Stop()
-		appender.bufferTickerDone.Wait()
-	}
-	appender.flush(nil)
+	appender.bufferTicker.Stop()
+	close(appender.stopC)
+	appender.bufferTickerDone.Wait()
 
 	client := appender.appendClient
 	appender.appendClient = nil
