@@ -19,30 +19,58 @@ func Scan(src any, dst any) error {
 		return scanInt16(sv, dst)
 	case *int16:
 		return scanInt16(*sv, dst)
+	case *sql.NullInt16:
+		if sv.Valid {
+			return scanInt16(sv.Int16, dst)
+		}
 	case int32:
 		return scanInt32(sv, dst)
 	case *int32:
 		return scanInt32(*sv, dst)
+	case *sql.NullInt32:
+		if sv.Valid {
+			return scanInt32(sv.Int32, dst)
+		}
 	case int64:
 		return scanInt64(sv, dst)
 	case *int64:
 		return scanInt64(*sv, dst)
+	case *sql.NullInt64:
+		if sv.Valid {
+			return scanInt64(sv.Int64, dst)
+		}
 	case float64:
 		return scanFloat64(sv, dst)
 	case *float64:
 		return scanFloat64(*sv, dst)
+	case *sql.NullFloat64:
+		if sv.Valid {
+			return scanFloat64(sv.Float64, dst)
+		}
 	case float32:
 		return scanFloat32(sv, dst)
 	case *float32:
 		return scanFloat32(*sv, dst)
+	case *sql.Null[float32]:
+		if sv.Valid {
+			return scanFloat32(sv.V, dst)
+		}
 	case string:
 		return scanString(sv, dst)
 	case *string:
 		return scanString(*sv, dst)
+	case *sql.NullString:
+		if sv.Valid {
+			return scanString(sv.String, dst)
+		}
 	case time.Time:
 		return scanDatetime(sv, dst)
 	case *time.Time:
 		return scanDatetime(*sv, dst)
+	case *sql.NullTime:
+		if sv.Valid {
+			return scanDatetime(sv.Time, dst)
+		}
 	case []byte:
 		return scanBytes(sv, dst)
 	case *[]byte:
@@ -51,6 +79,10 @@ func Scan(src any, dst any) error {
 		return scanIP(sv, dst)
 	case *net.IP:
 		return scanIP(*sv, dst)
+	case *sql.Null[net.IP]:
+		if sv.Valid {
+			return scanIP(sv.V, dst)
+		}
 	}
 	return ErrCannotConvertValue(src, dst)
 }
