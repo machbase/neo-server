@@ -4,6 +4,8 @@ import (
 	"github.com/machbase/neo-server/mods/nums"
 )
 
+//go:generate go run fx_generate.go
+
 type Definition struct {
 	Name string
 	Func any
@@ -262,11 +264,6 @@ var FxDefinitions = []Definition{
 	{"rss", defTask.fmRSS},
 	{"rms", defTask.fmRMS},
 	{"lrs", defTask.fmLRS},
-	// input, output
-	{"// maps.input", nil},
-	{"INPUT", defTask.fmINPUT},
-	{"// maps.output", nil},
-	{"OUTPUT", defTask.fmOUTPUT},
 	// aliases
 	{"// aliases", nil},
 	{"markArea", "x.fmMarkArea"},

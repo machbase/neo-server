@@ -1,24 +1,31 @@
 package tql
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/api/connector/mssql"
+	"github.com/machbase/neo-server/api/connector/mysql"
+	"github.com/machbase/neo-server/api/connector/postgres"
+	"github.com/machbase/neo-server/api/connector/sqlite"
+	"github.com/machbase/neo-server/mods/bridge"
 )
 
 type DataGen interface {
 	gen(*Node)
 }
 
-var _ DataGen = (*databaseSource)(nil)
+var _ DataGen = (*DataGenMachbase)(nil)
 var _ DataGen = (*DataGenDescTable)(nil)
 var _ DataGen = (*DataGenShowTags)(nil)
-
 var _ DataGen = (*DataGenExplain)(nil)
+var _ DataGen = (*DataGenBridge)(nil)
 
-type databaseSource struct {
+type DataGenMachbase struct {
 	task    *Task
 	sqlText string
 	params  []any
@@ -26,7 +33,7 @@ type databaseSource struct {
 	resultMsg string
 }
 
-func (dc *databaseSource) gen(node *Node) {
+func (dc *DataGenMachbase) gen(node *Node) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, err := dc.task.ConnDatabase(ctx)
@@ -282,10 +289,10 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 	switch args[0] {
 	case "show":
 		if len(args) == 2 && args[1] == "tables" {
-			return &databaseSource{task: x.task, sqlText: api.ListTablesSql(showAll, true), params: params}, true
+			return &DataGenMachbase{task: x.task, sqlText: api.ListTablesSql(showAll, true), params: params}, true
 		}
 		if len(args) == 2 && args[1] == "indexes" {
-			return &databaseSource{task: x.task, sqlText: api.ListIndexesSql(), params: params}, true
+			return &DataGenMachbase{task: x.task, sqlText: api.ListIndexesSql(), params: params}, true
 		}
 		if len(args) == 3 && args[1] == "tags" {
 			return &DataGenShowTags{table: args[2]}, true
@@ -300,4 +307,107 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 		}
 	}
 	return nil, false
+}
+
+type DataGenBridge struct {
+	task      *Task
+	name      string
+	sqlText   string
+	params    []any
+	resultMsg string
+}
+
+func (dc *DataGenBridge) gen(node *Node) {
+	defer func() {
+		if r := recover(); r != nil {
+			w := &bytes.Buffer{}
+			w.Write(debug.Stack())
+			node.task.LogErrorf("panic bridge '%s' %v\n%s", dc.name, r, w.String())
+		}
+	}()
+	br, err := bridge.GetBridge(dc.name)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	sqlBridge, ok := br.(bridge.SqlBridge)
+	if !ok {
+		ErrorRecord(fmt.Errorf("bridge '%s' is not a sql type", dc.name)).Tell(node.next)
+		return
+	}
+	var db api.Database
+	switch sqlBridge.Type() {
+	case "sqlite":
+		db = sqlite.New(sqlBridge.DB())
+	case "mssql":
+		db = mssql.New(sqlBridge.DB())
+	case "postgres":
+		db = postgres.New(sqlBridge.DB())
+	case "mysql":
+		db = mysql.New(sqlBridge.DB())
+	default:
+		ErrorRecord(fmt.Errorf("bridge '%s' is not supported", sqlBridge.Type())).Tell(node.next)
+		return
+	}
+	conn, err := db.Connect(node.task.ctx)
+	if err != nil {
+		ErrorRecord(err).Tell(node.next)
+		return
+	}
+	defer conn.Close()
+
+	if api.DetectSQLStatementType(dc.sqlText) == api.SQLStatementTypeSelect {
+		query := &api.Query{
+			Begin: func(q *api.Query) {
+				cols := q.Columns()
+				cols = append([]*api.Column{api.MakeColumnRownum()}, cols...)
+				dc.task.SetResultColumns(cols)
+			},
+			Next: func(q *api.Query, nrow int64) bool {
+				if dc.task.shouldStop() {
+					return false
+				}
+				values, err := q.Columns().MakeBuffer()
+				if err != nil {
+					ErrorRecord(err).Tell(node.next)
+					return false
+				}
+				if err = q.Scan(values...); err != nil {
+					ErrorRecord(err).Tell(node.next)
+					return false
+				}
+				if len(values) > 0 {
+					NewRecord(nrow, values).Tell(node.next)
+				}
+				return !dc.task.shouldStop()
+			},
+			End: func(q *api.Query) {
+				dc.resultMsg = q.UserMessage()
+				if !q.IsFetch() {
+					dc.task.SetResultColumns(api.Columns{
+						api.MakeColumnRownum(),
+						api.MakeColumnString("MESSAGE"),
+					})
+					NewRecord(1, q.UserMessage()).Tell(node.next)
+				}
+			},
+		}
+		if err := query.Execute(node.task.ctx, conn, dc.sqlText, dc.params...); err != nil {
+			dc.resultMsg = err.Error()
+			ErrorRecord(err).Tell(node.next)
+		}
+	} else {
+		result := conn.Exec(node.task.ctx, dc.sqlText, dc.params...)
+		if err := result.Err(); err != nil {
+			dc.resultMsg = err.Error()
+			ErrorRecord(err).Tell(node.next)
+			return
+		}
+		dc.resultMsg = result.Message()
+		dc.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			api.MakeColumnString("MESSAGE"),
+		})
+		NewRecord(1, dc.resultMsg).Tell(node.next)
+	}
 }

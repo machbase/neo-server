@@ -15,6 +15,15 @@ import (
 	"github.com/pkg/errors"
 )
 
+type bridgeName struct {
+	name string
+}
+
+// bridge('name')
+func (x *Node) fmBridge(name string) *bridgeName {
+	return &bridgeName{name: name}
+}
+
 func (node *Node) fmScript(args ...any) (any, error) {
 	if len(args) == 2 {
 		name, ok := args[0].(*bridgeName)

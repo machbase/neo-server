@@ -7,16 +7,6 @@ import (
 	"time"
 )
 
-// Deprecated: no more required
-func (node *Node) fmINPUT(args ...any) (any, error) {
-	node.task.LogWarnf("INPUT() is deprecated.")
-	if len(args) == 0 {
-		return nil, nil
-	} else {
-		return args[0], nil
-	}
-}
-
 func (node *Node) fmSqlSelect(args ...any) (any, error) {
 	ret, err := node.sqlbuilder("SQL_SELECT", args...)
 	if err != nil {
@@ -25,7 +15,7 @@ func (node *Node) fmSqlSelect(args ...any) (any, error) {
 	ret.version = 1
 
 	tick := time.Now()
-	var ds *databaseSource
+	var ds *DataGenMachbase
 	var sqlText string
 	defer func() {
 		if ds != nil {
@@ -37,7 +27,7 @@ func (node *Node) fmSqlSelect(args ...any) (any, error) {
 
 	if ret.dump == nil || !ret.dump.Flag {
 		node.task.LogTrace("╭─", ret.ToSQL())
-		ds = &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		ds = &DataGenMachbase{task: node.task, sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
 		if ret.between != nil {
@@ -63,7 +53,7 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 		return nil, err
 	}
 	tick := time.Now()
-	var ds *databaseSource
+	var ds *DataGenMachbase
 	var sqlText string
 	defer func() {
 		if ds != nil {
@@ -75,7 +65,7 @@ func (node *Node) fmQuery(args ...any) (any, error) {
 
 	if ret.dump == nil || !ret.dump.Flag {
 		node.task.LogTrace("╭─", ret.ToSQL())
-		ds = &databaseSource{task: node.task, sqlText: ret.ToSQL()}
+		ds = &DataGenMachbase{task: node.task, sqlText: ret.ToSQL()}
 		ds.gen(node)
 	} else {
 		if ret.between != nil {
@@ -244,7 +234,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			dg.gen(x)
 			x.task.LogInfof("╰─➤ %s", time.Since(tick).String())
 		} else {
-			ds := &databaseSource{task: x.task, sqlText: v, params: args[1:]}
+			ds := &DataGenMachbase{task: x.task, sqlText: v, params: args[1:]}
 			x.task.LogInfof("╭─ %s", v)
 			ds.gen(x)
 			x.task.LogInfof("╰─➤ %s %s", ds.resultMsg, time.Since(tick).String())
@@ -254,12 +244,11 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		if len(args) == 0 {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
-		if text, ok := args[1].(string); ok {
-			x.task.LogInfof("╭─ SQL(%s): %s", v.name, text)
-			ret := &bridgeNode{name: v.name, command: text, params: args[2:]}
-			ret.execType = "query"
-			ret.gen(x)
-			x.task.LogInfof("╰─➤ Elapsed %s", time.Since(tick).String())
+		if sqlText, ok := args[1].(string); ok {
+			x.task.LogInfof("╭─ SQL(%s): %s", v.name, sqlText)
+			ds := &DataGenBridge{task: x.task, name: v.name, sqlText: sqlText, params: args[2:]}
+			ds.gen(x)
+			x.task.LogInfof("╰─➤ Elapsed %s %s", ds.resultMsg, time.Since(tick).String())
 			return nil, nil
 		}
 	}

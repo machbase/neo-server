@@ -53,6 +53,14 @@ func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	return c.db.Conn(ctx)
 }
 
+func (c *bridge) Type() string {
+	return "postgres"
+}
+
+func (c *bridge) DB() *sql.DB {
+	return c.db
+}
+
 func (c *bridge) SupportLastInsertId() bool      { return false }
 func (c *bridge) ParameterMarker(idx int) string { return "$" + strconv.Itoa(idx+1) }
 

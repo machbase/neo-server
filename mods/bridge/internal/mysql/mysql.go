@@ -48,6 +48,14 @@ func (c *bridge) Name() string {
 	return c.name
 }
 
+func (c *bridge) Type() string {
+	return "mysql"
+}
+
+func (c *bridge) DB() *sql.DB {
+	return c.db
+}
+
 func (c *bridge) Connect(ctx context.Context) (*sql.Conn, error) {
 	if c.db == nil {
 		return nil, fmt.Errorf("bridge '%s' is not initialized", c.name)
