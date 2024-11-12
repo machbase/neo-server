@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"runtime/debug"
@@ -246,29 +247,59 @@ func ParseDataType(typ string) DataType {
 	}
 }
 
-func (typ DataType) makeBuffer() (any, error) {
+func (typ DataType) makeBuffer(nullable bool) (any, error) {
 	switch typ {
 	case DataTypeInt16:
+		if nullable {
+			return new(sql.NullInt16), nil
+		}
 		return new(int16), nil
 	case DataTypeInt32:
+		if nullable {
+			return new(sql.NullInt32), nil
+		}
 		return new(int32), nil
 	case DataTypeInt64:
+		if nullable {
+			return new(sql.NullInt64), nil
+		}
 		return new(int64), nil
 	case DataTypeDatetime:
+		if nullable {
+			return new(sql.NullTime), nil
+		}
 		return new(time.Time), nil
 	case DataTypeFloat32:
+		if nullable {
+			return new(sql.Null[float32]), nil
+		}
 		return new(float32), nil
 	case DataTypeFloat64:
+		if nullable {
+			return new(sql.NullFloat64), nil
+		}
 		return new(float64), nil
 	case DataTypeIPv4:
+		if nullable {
+			return new(sql.Null[net.IP]), nil
+		}
 		return new(net.IP), nil
 	case DataTypeIPv6:
+		if nullable {
+			return new(sql.Null[net.IP]), nil
+		}
 		return new(net.IP), nil
 	case DataTypeString:
+		if nullable {
+			return new(sql.NullString), nil
+		}
 		return new(string), nil
 	case DataTypeBinary:
 		return new([]byte), nil
 	case DataTypeBoolean:
+		if nullable {
+			return new(sql.NullBool), nil
+		}
 		return new(bool), nil
 	case DataTypeByte:
 		return new(byte), nil

@@ -7,12 +7,13 @@ import (
 )
 
 type Column struct {
-	Id       uint64     `json:"id,omitempty"`     // if the column came from database table
-	Name     string     `json:"name"`             //
-	Type     ColumnType `json:"type"`             //
-	Length   int        `json:"length,omitempty"` //
-	DataType DataType   `json:"data_type"`        //
-	Flag     ColumnFlag `json:"flag,omitempty"`   // database column flag
+	Id       uint64     `json:"id,omitempty"`       // if the column came from database table
+	Name     string     `json:"name"`               //
+	Type     ColumnType `json:"type"`               //
+	Length   int        `json:"length,omitempty"`   //
+	DataType DataType   `json:"data_type"`          //
+	Flag     ColumnFlag `json:"flag,omitempty"`     // database column flag
+	Nullable bool       `json:"nullable,omitempty"` // is column nullable
 }
 
 func (col *Column) IsBaseTime() bool {
@@ -35,7 +36,7 @@ func (col *Column) makeBuffer() (any, error) {
 	if col.Type != 0 {
 		return col.Type.makeBuffer()
 	} else if col.DataType != "" {
-		return col.DataType.makeBuffer()
+		return col.DataType.makeBuffer(col.Nullable)
 	} else {
 		return nil, fmt.Errorf("Column type is not defined")
 	}
