@@ -248,10 +248,6 @@ func NewNode(task *Task) *Node {
 		"rss":                  x.gen_rss,
 		"rms":                  x.gen_rms,
 		"lrs":                  x.gen_lrs,
-		// maps.input
-		"INPUT": x.gen_INPUT,
-		// maps.output
-		"OUTPUT": x.gen_OUTPUT,
 		// aliases
 		"markArea":  x.fmMarkArea,
 		"markXAxis": x.gen_markLineXAxisCoord,
@@ -3915,36 +3911,6 @@ func (x *Node) gen_lrs(args ...any) (any, error) {
 	}
 	ret := x.fmLRS(p0, p1, p2...)
 	return ret, nil
-}
-
-// gen_INPUT
-//
-// syntax: INPUT(...interface {})
-func (x *Node) gen_INPUT(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "INPUT", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	return x.fmINPUT(p0...)
-}
-
-// gen_OUTPUT
-//
-// syntax: OUTPUT(...interface {})
-func (x *Node) gen_OUTPUT(args ...any) (any, error) {
-	p0 := []interface{}{}
-	for n := 0; n < len(args); n++ {
-		argv, err := convAny(args, n, "OUTPUT", "...interface {}")
-		if err != nil {
-			return nil, err
-		}
-		p0 = append(p0, argv)
-	}
-	return x.fmOUTPUT(p0...)
 }
 
 // gen_tz

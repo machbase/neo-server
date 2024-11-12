@@ -10,15 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Deprecated: no more required
-func (node *Node) fmOUTPUT(args ...any) (any, error) {
-	node.task.LogWarnf("OUTPUT() is deprecated.")
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("OUTPUT", 1, len(args))
-	}
-	return args[0], nil
-}
-
 type Table struct {
 	Name string
 }

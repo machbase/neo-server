@@ -7,16 +7,6 @@ import (
 	"time"
 )
 
-// Deprecated: no more required
-func (node *Node) fmINPUT(args ...any) (any, error) {
-	node.task.LogWarnf("INPUT() is deprecated.")
-	if len(args) == 0 {
-		return nil, nil
-	} else {
-		return args[0], nil
-	}
-}
-
 func (node *Node) fmSqlSelect(args ...any) (any, error) {
 	ret, err := node.sqlbuilder("SQL_SELECT", args...)
 	if err != nil {

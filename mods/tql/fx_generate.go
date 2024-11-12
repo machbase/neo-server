@@ -17,8 +17,6 @@ import (
 	"github.com/machbase/neo-server/mods/tql"
 )
 
-//go:generate go run fx_generate.go
-
 var EOL = "\n"
 
 func main() {
