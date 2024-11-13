@@ -7,6 +7,7 @@ import (
 
 	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/api/connector"
+	"github.com/machbase/neo-server/mods/util"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -16,8 +17,31 @@ type Database struct {
 
 var _ api.Database = (*Database)(nil)
 
+var databases = map[string]*sql.DB{}
+
+func init() {
+	util.AddShutdownHook(func() {
+		for _, d := range databases {
+			d.Close()
+		}
+	})
+}
+
 func New(db *sql.DB) *Database {
 	return &Database{db: db}
+}
+
+func NewWithDSN(dsn string) (*Database, error) {
+	db := databases[dsn]
+	if db == nil {
+		if d, err := sql.Open("sqlite3", dsn); err != nil {
+			return nil, err
+		} else {
+			databases[dsn] = d
+			return New(d), nil
+		}
+	}
+	return New(db), nil
 }
 
 func (d *Database) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {

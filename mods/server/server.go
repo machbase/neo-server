@@ -779,6 +779,7 @@ func representativePort(addr string) string {
 }
 
 func (s *svr) Stop() {
+	util.RunShutdownHooks()
 	if s.pkgMgr != nil {
 		s.pkgMgr.Stop()
 	}

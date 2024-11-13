@@ -325,28 +325,9 @@ func (dc *DataGenBridge) gen(node *Node) {
 			node.task.LogErrorf("panic bridge '%s' %v\n%s", dc.name, r, w.String())
 		}
 	}()
-	br, err := bridge.GetBridge(dc.name)
+	db, err := NewConnector(dc.name)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
-		return
-	}
-	sqlBridge, ok := br.(bridge.SqlBridge)
-	if !ok {
-		ErrorRecord(fmt.Errorf("bridge '%s' is not a sql type", dc.name)).Tell(node.next)
-		return
-	}
-	var db api.Database
-	switch sqlBridge.Type() {
-	case "sqlite":
-		db = sqlite.New(sqlBridge.DB())
-	case "mssql":
-		db = mssql.New(sqlBridge.DB())
-	case "postgres":
-		db = postgres.New(sqlBridge.DB())
-	case "mysql":
-		db = mysql.New(sqlBridge.DB())
-	default:
-		ErrorRecord(fmt.Errorf("bridge '%s' is not supported", sqlBridge.Type())).Tell(node.next)
 		return
 	}
 	conn, err := db.Connect(node.task.ctx)
@@ -410,4 +391,74 @@ func (dc *DataGenBridge) gen(node *Node) {
 		})
 		NewRecord(1, dc.resultMsg).Tell(node.next)
 	}
+}
+
+func NewConnector(name string) (api.Database, error) {
+	var db api.Database
+	var bridgeName string
+	var bridgeType string
+	var path string
+	if toks := strings.SplitN(name, ",", 2); len(toks) == 2 {
+		bridgeType = toks[0]
+		path = toks[1]
+	} else {
+		bridgeName = name
+	}
+
+	if bridgeName != "" {
+		br, err := bridge.GetBridge(bridgeName)
+		if err != nil {
+			return nil, err
+		}
+		sqlBridge, ok := br.(bridge.SqlBridge)
+		if !ok {
+			return nil, fmt.Errorf("bridge '%s' is not a sql type", bridgeName)
+		}
+		switch sqlBridge.Type() {
+		case "sqlite":
+			db = sqlite.New(sqlBridge.DB())
+			bridgeType = "sqlite"
+		case "mssql":
+			db = mssql.New(sqlBridge.DB())
+			bridgeType = "mssql"
+		case "postgres":
+			db = postgres.New(sqlBridge.DB())
+			bridgeType = "postgres"
+		case "mysql":
+			db = mysql.New(sqlBridge.DB())
+			bridgeType = "mysql"
+		default:
+			return nil, fmt.Errorf("bridge '%s' is not supported", sqlBridge.Type())
+		}
+	} else {
+		switch bridgeType {
+		case "sqlite", "sqlite3":
+			if d, err := sqlite.NewWithDSN(path); err != nil {
+				return nil, fmt.Errorf("fail to create sqlite, %w", err)
+			} else {
+				db = d
+			}
+		case "mssql":
+			if d, err := mssql.NewWithDSN(path); err != nil {
+				return nil, fmt.Errorf("fail to create mssql, %w", err)
+			} else {
+				db = d
+			}
+		case "postgres", "pgsql", "postgresql":
+			if d, err := postgres.NewWithDSN(path); err != nil {
+				return nil, fmt.Errorf("fail to create postgres, %w", err)
+			} else {
+				db = d
+			}
+		case "mysql":
+			if d, err := mysql.NewWithDSN(path); err != nil {
+				return nil, fmt.Errorf("fail to create mysql, %w", err)
+			} else {
+				db = d
+			}
+		default:
+			return nil, fmt.Errorf("unsupported bridge type '%s'", bridgeType)
+		}
+	}
+	return db, nil
 }

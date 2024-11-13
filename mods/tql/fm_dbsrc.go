@@ -245,7 +245,11 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			return nil, ErrWrongTypeOfArgs("SQL", 1, "sql text", args[1])
 		}
 		if sqlText, ok := args[1].(string); ok {
-			x.task.LogInfof("╭─ SQL(%s): %s", v.name, sqlText)
+			displayName := v.name
+			if strings.ContainsRune(v.name, ',') {
+				displayName = strings.Split(v.name, ",")[0]
+			}
+			x.task.LogInfof("╭─ SQL(%s): %s", displayName, sqlText)
 			ds := &DataGenBridge{task: x.task, name: v.name, sqlText: sqlText, params: args[2:]}
 			ds.gen(x)
 			x.task.LogInfof("╰─➤ Elapsed %s %s", ds.resultMsg, time.Since(tick).String())
