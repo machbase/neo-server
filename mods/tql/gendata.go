@@ -356,7 +356,7 @@ func (dc *DataGenBridge) gen(node *Node) {
 	}
 	defer conn.Close()
 
-	if api.DetectSQLStatementType(dc.sqlText) == api.SQLStatementTypeSelect {
+	if api.DetectSQLStatementType(dc.sqlText).IsFetch() {
 		query := &api.Query{
 			Begin: func(q *api.Query) {
 				cols := q.Columns()

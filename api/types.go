@@ -315,6 +315,7 @@ const (
 	SQLStatementTypeCreate
 	SQLStatementTypeDrop
 	SQLStatementTypeAlter
+	SQLStatementTypeDescribe
 )
 
 func DetectSQLStatementType(sqlText string) SQLStatementType {
@@ -338,7 +339,13 @@ func DetectSQLStatementType(sqlText string) SQLStatementType {
 		return SQLStatementTypeDrop
 	case "ALTER":
 		return SQLStatementTypeAlter
+	case "DESCRIBE":
+		return SQLStatementTypeDescribe
 	default:
 		return SQLStatementTypeOther
 	}
+}
+
+func (st SQLStatementType) IsFetch() bool {
+	return st == SQLStatementTypeSelect || st == SQLStatementTypeDescribe
 }
