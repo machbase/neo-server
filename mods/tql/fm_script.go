@@ -13,6 +13,7 @@ import (
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
+	"github.com/robertkrimen/otto"
 )
 
 type bridgeName struct {
@@ -26,23 +27,29 @@ func (x *Node) fmBridge(name string) *bridgeName {
 
 func (node *Node) fmScript(args ...any) (any, error) {
 	if len(args) == 2 {
-		name, ok := args[0].(*bridgeName)
-		if !ok {
-			goto syntaxerr
-		}
 		text, ok := args[1].(string)
 		if !ok {
-			goto syntaxerr
+			goto syntaxErr
 		}
-		return node.fmScriptBridge(name, text)
+		switch name := args[0].(type) {
+		case *bridgeName:
+			return node.fmScriptBridge(name, text)
+		case string:
+			if name != "js" {
+				goto syntaxErr
+			}
+			return node.fmScriptOtto(text)
+		default:
+			goto syntaxErr
+		}
 	} else if len(args) == 1 {
 		text, ok := args[0].(string)
 		if !ok {
-			goto syntaxerr
+			goto syntaxErr
 		}
 		return node.fmScriptTengo(text)
 	}
-syntaxerr:
+syntaxErr:
 	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [bridge("name"),] script_text )`)
 }
 
@@ -316,19 +323,19 @@ func tengof_drop(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 
 func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
-		vargs := make([]any, len(args))
+		v_args := make([]any, len(args))
 		for i, v := range args {
-			vargs[i] = tengo.ToInterface(v)
+			v_args[i] = tengo.ToInterface(v)
 		}
-		if len(vargs) == 0 {
+		if len(v_args) == 0 {
 			return nil, nil // yield no changes
 		}
 		if obj, ok := node.GetValue(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				if len(vargs) == 1 { // change key only
-					slet.yields = append(slet.yields, NewRecord(vargs[0], slet.param.value))
+				if len(v_args) == 1 { // change key only
+					slet.yields = append(slet.yields, NewRecord(v_args[0], slet.param.value))
 				} else { // change key and values
-					slet.yields = append(slet.yields, NewRecord(vargs[0], vargs[1:]))
+					slet.yields = append(slet.yields, NewRecord(v_args[0], v_args[1:]))
 				}
 			}
 		}
@@ -338,13 +345,13 @@ func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error
 
 func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
 	return func(args ...tengo.Object) (tengo.Object, error) {
-		vargs := make([]any, len(args))
+		v_args := make([]any, len(args))
 		for i, v := range args {
-			vargs[i] = tengo.ToInterface(v)
+			v_args[i] = tengo.ToInterface(v)
 		}
 		if obj, ok := node.GetValue(tengo_script_key); ok {
 			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				slet.yields = append(slet.yields, NewRecord(slet.param.key, vargs))
+				slet.yields = append(slet.yields, NewRecord(slet.param.key, v_args))
 			}
 		}
 		return nil, nil
@@ -490,4 +497,24 @@ func anyToTengoObject(av any) tengo.Object {
 		return arr
 	}
 	return nil
+}
+
+func (node *Node) fmScriptOtto(content string) (any, error) {
+	vm := otto.New(otto.WithStdoutWriter(node.task))
+	if inflight := node.Inflight(); inflight != nil {
+		vm.Set("$key", inflight.key)
+		vm.Set("$value", inflight.value)
+	}
+
+	result, err := vm.Run(content)
+	if err != nil {
+		return nil, err
+	}
+	ret := []*Record{}
+	obj, err := result.Export()
+	if err != nil {
+		return nil, err
+	}
+	ret = append(ret, NewRecord(ret, obj))
+	return ret, nil
 }

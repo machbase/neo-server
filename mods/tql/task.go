@@ -603,6 +603,13 @@ func (x *Task) _logf(level Level, format string, args ...any) {
 	}
 }
 
+var _ io.Writer = (*Task)(nil)
+
+func (x *Task) Write(p []byte) (n int, err error) {
+	x._log(INFO, string(p))
+	return len(p), nil
+}
+
 var Levels = []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
 
 type Level int
