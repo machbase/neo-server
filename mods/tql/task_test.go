@@ -3877,6 +3877,30 @@ func TestTengoScript(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestOttoScript(t *testing.T) {
+	tests := []struct {
+		name        string
+		codeLines   []string
+		expectLines []string
+	}{
+		{
+			name: "otto_script",
+			codeLines: []string{
+				`FAKE( linspace(1,2,2))`,
+				`SCRIPT("js", {`,
+				` function square(x) { return x * x };`,
+				`  square($value[0]);`,
+				`})`,
+				`CSV(header(false))`,
+			},
+			expectLines: []string{"1", "4", ""},
+		},
+	}
+	for _, tt := range tests {
+		runTest(t, tt.codeLines, tt.expectLines)
+	}
+}
+
 func normalize(ret string) string {
 	csvQuote := true
 	lines := []string{}
