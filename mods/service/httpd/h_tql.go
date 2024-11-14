@@ -251,6 +251,11 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			}
 		}
 	}
+	go func() {
+		<-ctx.Request.Context().Done()
+		task.Cancel()
+	}()
+
 	result := task.Execute()
 	if result == nil {
 		svr.log.Error("tql execute return nil")

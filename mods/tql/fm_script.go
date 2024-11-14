@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/d5/tengo/v2"
@@ -499,14 +500,64 @@ func anyToTengoObject(av any) tengo.Object {
 	return nil
 }
 
+const js_vm_key = "$js_otto_vm$"
+const js_sc_key = "$js_otto_script$"
+
 func (node *Node) fmScriptOtto(content string) (any, error) {
-	vm := otto.New(otto.WithStdoutWriter(node.task))
+	var vm *otto.Otto
+	var sc *otto.Script
+
+	if obj, ok := node.GetValue(js_vm_key); ok {
+		if o, ok := obj.(*otto.Otto); ok {
+			vm = o
+		}
+	}
+	if vm == nil {
+		vm = otto.New(otto.WithStdoutWriter(node.task))
+		node.SetValue(js_vm_key, vm)
+	}
+	if obj, ok := node.GetValue(js_sc_key); ok {
+		if o, ok := obj.(*otto.Script); ok {
+			sc = o
+		}
+	}
+	if sc == nil {
+		// add blank lines to the beginning of the script
+		// so that the compiler error message can show the correct line number
+		if node.tqlLine != nil && node.tqlLine.line > 1 {
+			content = strings.Repeat("\n", node.tqlLine.line-1) + content
+		}
+		if s, err := vm.Compile("", content); err != nil {
+			return nil, err
+		} else {
+			sc = s
+			node.SetValue(js_sc_key, sc)
+		}
+	}
+
 	if inflight := node.Inflight(); inflight != nil {
 		vm.Set("$key", inflight.key)
 		vm.Set("$value", inflight.value)
 	}
 
-	result, err := vm.Run(content)
+	done := make(chan bool)
+	ticker := time.NewTicker(1 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if node.task.shouldStop() {
+					vm.Interrupt <- func() {
+						node.task.LogWarn("script execution is interrupted")
+					}
+				}
+			}
+		}
+	}()
+	result, err := vm.Run(sc)
+	done <- true
 	if err != nil {
 		return nil, err
 	}
