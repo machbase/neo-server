@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/d5/tengo/v2"
@@ -36,10 +38,14 @@ func (node *Node) fmScript(args ...any) (any, error) {
 		case *bridgeName:
 			return node.fmScriptBridge(name, text)
 		case string:
-			if name != "js" {
+			switch name {
+			case "js", "javascript":
+				return node.fmScriptOtto(text)
+			case "tengo":
+				return node.fmScriptTengo(text)
+			default:
 				goto syntaxErr
 			}
-			return node.fmScriptOtto(text)
 		default:
 			goto syntaxErr
 		}
@@ -500,46 +506,42 @@ func anyToTengoObject(av any) tengo.Object {
 	return nil
 }
 
-const js_vm_key = "$js_otto_vm$"
-const js_sc_key = "$js_otto_script$"
+const js_ctx_key = "$js_otto_ctx$"
 
 func (node *Node) fmScriptOtto(content string) (any, error) {
-	var vm *otto.Otto
-	var sc *otto.Script
+	var ctx *OttoContext
+	var err error
 
-	if obj, ok := node.GetValue(js_vm_key); ok {
-		if o, ok := obj.(*otto.Otto); ok {
-			vm = o
+	if obj, ok := node.GetValue(js_ctx_key); ok {
+		if o, ok := obj.(*OttoContext); ok {
+			ctx = o
 		}
 	}
-	if vm == nil {
-		vm = otto.New(otto.WithStdoutWriter(node.task))
-		node.SetValue(js_vm_key, vm)
-	}
-	if obj, ok := node.GetValue(js_sc_key); ok {
-		if o, ok := obj.(*otto.Script); ok {
-			sc = o
-		}
-	}
-	if sc == nil {
-		// add blank lines to the beginning of the script
-		// so that the compiler error message can show the correct line number
-		if node.tqlLine != nil && node.tqlLine.line > 1 {
-			content = strings.Repeat("\n", node.tqlLine.line-1) + content
-		}
-		if s, err := vm.Compile("", content); err != nil {
+	if ctx == nil {
+		ctx, err = newOttoContext(node, content)
+		if err != nil {
 			return nil, err
-		} else {
-			sc = s
-			node.SetValue(js_sc_key, sc)
 		}
+		node.SetValue(js_ctx_key, ctx)
 	}
-
 	if inflight := node.Inflight(); inflight != nil {
-		vm.Set("$key", inflight.key)
-		vm.Set("$value", inflight.value)
+		ctx.obj.Set("key", inflight.key)
+		ctx.obj.Set("values", inflight.value)
 	}
+	_, err = ctx.Run()
+	return nil, err
+}
 
+type OttoContext struct {
+	vm           *otto.Otto
+	sc           *otto.Script
+	node         *Node
+	obj          *otto.Object
+	yieldCount   int64
+	onceFinalize sync.Once
+}
+
+func (ctx *OttoContext) Run() (any, error) {
 	done := make(chan bool)
 	ticker := time.NewTicker(1 * time.Second)
 	go func() {
@@ -548,24 +550,113 @@ func (node *Node) fmScriptOtto(content string) (any, error) {
 			case <-done:
 				return
 			case <-ticker.C:
-				if node.task.shouldStop() {
-					vm.Interrupt <- func() {
-						node.task.LogWarn("script execution is interrupted")
+				if ctx.node.task.shouldStop() {
+					ctx.vm.Interrupt <- func() {
+						ctx.node.task.LogWarn("script execution is interrupted")
 					}
 				}
 			}
 		}
 	}()
-	result, err := vm.Run(sc)
+	v, err := ctx.vm.Run(ctx.sc)
 	done <- true
 	if err != nil {
 		return nil, err
 	}
-	ret := []*Record{}
-	obj, err := result.Export()
-	if err != nil {
-		return nil, err
+	return v.Export()
+}
+
+func newOttoContext(node *Node, code string) (*OttoContext, error) {
+	ctx := &OttoContext{
+		node: node,
+		vm:   otto.New(),
 	}
-	ret = append(ret, NewRecord(ret, obj))
-	return ret, nil
+
+	// add blank lines to the beginning of the script
+	// so that the compiler error message can show the correct line number
+	if node.tqlLine != nil && node.tqlLine.line > 1 {
+		code = strings.Repeat("\n", node.tqlLine.line-1) + code
+	}
+	if s, err := ctx.vm.Compile("", code); err != nil {
+		return nil, err
+	} else {
+		ctx.sc = s
+	}
+	node.SetEOF(func(*Node) {
+		ctx.onceFinalize.Do(func() {
+			ctx.vm.Call("finalize", nil)
+		})
+	})
+	consoleLog := func(level Level) func(call otto.FunctionCall) otto.Value {
+		return func(call otto.FunctionCall) otto.Value {
+			params := []any{}
+			for _, v := range call.ArgumentList {
+				params = append(params, v.String())
+			}
+			node.task._log(level, params...)
+			return otto.UndefinedValue()
+		}
+	}
+	con, _ := ctx.vm.Get("console")
+	con.Object().Set("log", consoleLog(INFO))
+	con.Object().Set("warn", consoleLog(WARN))
+	con.Object().Set("error", consoleLog(ERROR))
+
+	// define $
+	ctx.obj, _ = ctx.vm.Object(`($ = {})`)
+
+	// set $.payload
+	var payload = otto.UndefinedValue()
+	if node.task.inputReader != nil {
+		if b, err := io.ReadAll(node.task.inputReader); err == nil {
+			if v, err := otto.ToValue(string(b)); err == nil {
+				payload = v
+			}
+		}
+	}
+	ctx.obj.Set("payload", payload)
+
+	// set $.params[]
+	var param = otto.UndefinedValue()
+	if node.task.params != nil {
+		param, _ = ctx.vm.ToValue(node.task.params)
+	}
+	ctx.obj.Set("params", param)
+
+	var err error
+	yield := func(key any, args []otto.Value) otto.Value {
+		var values = make([]any, len(args))
+		for i, v := range args {
+			values[i], err = v.Export()
+			if err != nil {
+				values[i] = v.String()
+			}
+		}
+		NewRecord(key, values).Tell(node.next)
+		ctx.yieldCount++
+		return otto.TrueValue()
+	}
+	// function $.yield(...)
+	ctx.obj.Set("yield", func(call otto.FunctionCall) otto.Value {
+		var v_key any
+		if inflight := node.Inflight(); inflight != nil {
+			v_key = inflight.key
+		}
+		if v_key == nil {
+			v_key = ctx.yieldCount
+		}
+		return yield(v_key, call.ArgumentList)
+	})
+	// function $.yieldKey(key, ...)
+	ctx.obj.Set("yieldKey", func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) < 2 {
+			return otto.FalseValue()
+		}
+		v_key, _ := call.ArgumentList[0].Export()
+		if v_key == nil {
+			v_key = ctx.yieldCount
+		}
+		return yield(v_key, call.ArgumentList[1:])
+	})
+	return ctx, nil
 }

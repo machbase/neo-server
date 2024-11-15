@@ -3864,7 +3864,7 @@ func TestTengoScript(t *testing.T) {
 	codeLines = []string{
 		`FAKE( linspace(1,2,2))`,
 		`MAPKEY("hello")`,
-		`SCRIPT({`,
+		`SCRIPT("tengo", {`,
 		`    ctx := import("context")`,
 		`    ctx.yield(ctx.key(), ctx.value(0), ctx.param("temp", 0))`,
 		`})`,
@@ -3886,14 +3886,15 @@ func TestOttoScript(t *testing.T) {
 		{
 			name: "otto_script",
 			codeLines: []string{
-				`FAKE( linspace(1,2,2))`,
+				`FAKE( linspace(1,3,3))`,
 				`SCRIPT("js", {`,
+				` function finalize(){ $.yieldKey("last", 1.234); }`,
 				` function square(x) { return x * x };`,
-				`  square($value[0]);`,
+				`  $.yield(square($.values[0]));`,
 				`})`,
 				`CSV(header(false))`,
 			},
-			expectLines: []string{"1", "4", ""},
+			expectLines: []string{"1", "4", "9", "1.234", ""},
 		},
 	}
 	for _, tt := range tests {

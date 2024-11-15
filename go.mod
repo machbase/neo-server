@@ -71,8 +71,6 @@ require (
 	software.sslmate.com/src/go-pkcs12 v0.2.0
 )
 
-replace github.com/robertkrimen/otto v0.5.1 => github.com/OutOfBedlam/otto v0.0.0-20241114015914-5f8b55d1dc70
-
 require (
 	cdr.dev/slog v1.4.2-0.20221206192828-e4803b10ae17 // indirect
 	cloud.google.com/go/logging v1.9.0 // indirect
