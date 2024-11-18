@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/service/eventbus"
-	"github.com/machbase/neo-server/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/mods/service/eventbus"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type SsfsResponse struct {

@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/fft"
 )
 
 type maxHzOption float64

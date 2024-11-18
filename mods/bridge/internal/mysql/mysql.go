@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/machbase/neo-server/mods/bridge/internal"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal"
 )
 
 type bridge struct {

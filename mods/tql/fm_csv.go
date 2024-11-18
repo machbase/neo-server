@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	codecOpts "github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	codecOpts "github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/language"

@@ -4,9 +4,9 @@ import (
 	context "context"
 	"fmt"
 
-	"github.com/machbase/neo-server/api"
-	bridgerpc "github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/v8/api"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 )
 
 type BridgeClient struct {

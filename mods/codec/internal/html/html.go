@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/machbase/neo-server/mods/codec/internal"
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/codec/internal"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 type Exporter struct {

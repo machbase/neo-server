@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/v8/api"
 )
 
 func TestRead(t *testing.T) {

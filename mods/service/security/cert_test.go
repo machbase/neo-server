@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/v8/mods/service/security"
 
 	"github.com/stretchr/testify/assert"
 )

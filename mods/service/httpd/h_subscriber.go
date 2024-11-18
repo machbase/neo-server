@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/schedule"
+	"github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/api/schedule"
 )
 
 func (svr *httpd) handleSubscriber(ctx *gin.Context) {

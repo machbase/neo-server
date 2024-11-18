@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 func NewIODebugger(log logging.Log, prefix string) io.Writer {

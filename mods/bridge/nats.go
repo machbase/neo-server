@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/nats-io/nats.go"
 )
 

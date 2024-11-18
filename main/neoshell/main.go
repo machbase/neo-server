@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	shell "github.com/machbase/neo-server/mods/shell"
+	shell "github.com/machbase/neo-server/v8/mods/shell"
 )
 
 func main() {

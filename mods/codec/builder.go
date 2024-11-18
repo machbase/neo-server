@@ -3,16 +3,16 @@ package codec
 import (
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/codec/internal/box"
-	"github.com/machbase/neo-server/mods/codec/internal/chart"
-	"github.com/machbase/neo-server/mods/codec/internal/csv"
-	"github.com/machbase/neo-server/mods/codec/internal/geomap"
-	"github.com/machbase/neo-server/mods/codec/internal/html"
-	"github.com/machbase/neo-server/mods/codec/internal/json"
-	"github.com/machbase/neo-server/mods/codec/internal/markdown"
-	"github.com/machbase/neo-server/mods/codec/internal/ndjson"
-	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/box"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/chart"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/csv"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/geomap"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/html"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/markdown"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/ndjson"
+	"github.com/machbase/neo-server/v8/mods/codec/opts"
 )
 
 const DISCARD = "discard"

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type VolatileAssetsProvider interface {

@@ -1,7 +1,7 @@
 package tql
 
 import (
-	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/nums"
 )
 
 //go:generate go run fx_generate.go

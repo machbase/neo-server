@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/machbase/neo-server/mods/shell"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/shell"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func doHelp(command string, subcommand string) error {

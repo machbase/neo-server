@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	bridgerpc "github.com/machbase/neo-server/api/bridge"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 )
 
 type bridgeServerMock struct {

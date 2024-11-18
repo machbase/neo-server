@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	schedrpc "github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/model"
+	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/robfig/cron/v3"
 )
 

@@ -3,7 +3,7 @@ package charset_test
 import (
 	"testing"
 
-	"github.com/machbase/neo-server/mods/util/charset"
+	"github.com/machbase/neo-server/v8/mods/util/charset"
 )
 
 func TestEncoding(t *testing.T) {

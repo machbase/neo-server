@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/bridge/internal/mssql"
-	"github.com/machbase/neo-server/mods/bridge/internal/mysql"
-	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
-	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
-	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/mssql"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/mysql"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/sqlite3"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 var registry = map[string]Bridge{}

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type pout struct {

@@ -3,7 +3,7 @@ package util_test
 import (
 	"testing"
 
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/text/language"
 )

@@ -18,7 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 
-	"github.com/machbase/neo-server/api/mgmt"
+	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/pkg/errors"
 )
 

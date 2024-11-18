@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/expression"
 	"github.com/pkg/errors"
 )
 

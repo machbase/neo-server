@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/v8/mods/service/security"
 )
 
 func TestOtpForMqtt(t *testing.T) {

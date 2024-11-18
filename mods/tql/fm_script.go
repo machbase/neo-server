@@ -13,9 +13,9 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/bridge"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/pkg/errors"
 	"github.com/robertkrimen/otto"
 )

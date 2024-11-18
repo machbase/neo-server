@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/stretchr/testify/require"
 )
 

@@ -6,12 +6,12 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/connector/mssql"
-	"github.com/machbase/neo-server/api/connector/mysql"
-	"github.com/machbase/neo-server/api/connector/postgres"
-	"github.com/machbase/neo-server/api/connector/sqlite"
-	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/connector/mssql"
+	"github.com/machbase/neo-server/v8/api/connector/mysql"
+	"github.com/machbase/neo-server/v8/api/connector/postgres"
+	"github.com/machbase/neo-server/v8/api/connector/sqlite"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 )
 
 type DataGen interface {

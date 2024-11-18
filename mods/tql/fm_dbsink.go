@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/pkg/errors"
 )
 

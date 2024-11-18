@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 )
 

@@ -13,7 +13,7 @@ import (
 	"syscall"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/mods/util/conpty"
+	"github.com/machbase/neo-server/v8/mods/util/conpty"
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {

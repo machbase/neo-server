@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/service/msg"
-	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/glob"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/service/msg"
+	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/glob"
 )
 
 // Get a list of existing tables

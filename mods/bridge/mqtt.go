@@ -11,7 +11,7 @@ import (
 	"time"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 type MqttBridge struct {

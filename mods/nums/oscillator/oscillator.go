@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums/opensimplex"
+	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 )
 
 type Generator struct {

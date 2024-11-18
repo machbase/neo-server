@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/stretchr/testify/require"
 )
 

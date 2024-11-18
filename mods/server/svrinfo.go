@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/mods"
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods"
 )
 
 var maxProcessors int32

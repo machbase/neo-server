@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/expression"
 )
 
 type Line struct {

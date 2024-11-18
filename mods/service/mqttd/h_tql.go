@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/service/msg"
-	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/service/msg"
+	"github.com/machbase/neo-server/v8/mods/tql"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
 )

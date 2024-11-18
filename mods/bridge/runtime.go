@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-server/api/bridge"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
 )
 
 type rowsWrap struct {

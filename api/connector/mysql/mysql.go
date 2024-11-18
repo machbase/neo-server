@@ -6,9 +6,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/connector"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/connector"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Database struct {

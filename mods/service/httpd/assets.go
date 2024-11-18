@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/tql"
 )
 
 //go:embed assets/*

@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
-	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	_ "github.com/machbase/neo-server/mods/shell/internal/cmd"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	_ "github.com/machbase/neo-server/v8/mods/shell/internal/cmd"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func Main() int {

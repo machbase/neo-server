@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums/fft"
-	"github.com/machbase/neo-server/mods/nums/oscillator"
+	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/oscillator"
 	"github.com/stretchr/testify/require"
 )
 

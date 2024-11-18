@@ -14,10 +14,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/service/security"
 	"github.com/stretchr/testify/require"
 )
 

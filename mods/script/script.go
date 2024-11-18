@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/machbase/neo-server/mods/script/internal/bridge_tengo"
+	"github.com/machbase/neo-server/v8/mods/script/internal/bridge_tengo"
 )
 
 type Script interface {

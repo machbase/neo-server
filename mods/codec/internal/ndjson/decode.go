@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 type Decoder struct {

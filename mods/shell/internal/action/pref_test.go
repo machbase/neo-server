@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/shell/internal/action"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
 	"github.com/stretchr/testify/require"
 )
 

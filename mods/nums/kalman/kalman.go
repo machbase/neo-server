@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums/kalman/models"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"gonum.org/v1/gonum/mat"
 )
 

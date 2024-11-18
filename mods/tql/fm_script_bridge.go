@@ -5,7 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/d5/tengo/v2"
-	"github.com/machbase/neo-server/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/pkg/errors"
 )
 

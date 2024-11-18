@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/machrpc"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"golang.org/x/text/language"
 	"google.golang.org/grpc"
 )

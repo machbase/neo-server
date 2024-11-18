@@ -6,9 +6,9 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/connector"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/connector"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Database struct {

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/rivo/tview"
 )
 

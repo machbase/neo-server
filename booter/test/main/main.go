@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/machbase/neo-server/booter"
+	"github.com/machbase/neo-server/v8/booter"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )

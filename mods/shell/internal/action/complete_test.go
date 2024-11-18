@@ -3,8 +3,8 @@ package action_test
 import (
 	"testing"
 
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	_ "github.com/machbase/neo-server/mods/shell/internal/cmd"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	_ "github.com/machbase/neo-server/v8/mods/shell/internal/cmd"
 )
 
 func TestPrefixComplete(t *testing.T) {

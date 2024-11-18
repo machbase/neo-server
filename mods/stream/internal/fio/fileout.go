@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 type fout struct {

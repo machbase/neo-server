@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/facility"
-	"github.com/machbase/neo-server/mods/codec/internal"
-	"github.com/machbase/neo-server/mods/nums"
-	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util/snowflake"
+	"github.com/machbase/neo-server/v8/mods/codec/facility"
+	"github.com/machbase/neo-server/v8/mods/codec/internal"
+	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 )
 
 type GeoMap struct {

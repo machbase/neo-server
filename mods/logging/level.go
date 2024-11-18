@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/glob"
+	"github.com/machbase/neo-server/v8/mods/util/glob"
 	gometrics "github.com/rcrowley/go-metrics"
 )
 

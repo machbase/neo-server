@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machsvr"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/stretchr/testify/require"
 )
 

@@ -16,8 +16,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/machbase/neo-pkgdev/pkgs"
-	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type PkgManager struct {

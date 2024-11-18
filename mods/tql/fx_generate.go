@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/tql"
 )
 
 var EOL = "\n"
@@ -36,10 +36,10 @@ func main() {
 		`import(`,
 		`   "math"`,
 		``,
-		`	"github.com/machbase/neo-server/api"`,
-		`	"github.com/machbase/neo-server/mods/expression"`,
-		`	"github.com/machbase/neo-server/mods/codec/opts"`,
-		`	"github.com/machbase/neo-server/mods/nums"`,
+		`	"github.com/machbase/neo-server/v8/api"`,
+		`	"github.com/machbase/neo-server/v8/mods/expression"`,
+		`	"github.com/machbase/neo-server/v8/mods/codec/opts"`,
+		`	"github.com/machbase/neo-server/v8/mods/nums"`,
 		`)`,
 		``,
 		`func NewNode(task *Task) *Node {`,

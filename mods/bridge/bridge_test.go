@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/bridge"
-	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/stretchr/testify/require"
 )
 

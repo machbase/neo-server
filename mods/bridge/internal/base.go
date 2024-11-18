@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/v8/api"
 )
 
 func NewConn(sqlConn *sql.Conn) api.Conn {

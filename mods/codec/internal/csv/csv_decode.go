@@ -10,8 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"golang.org/x/text/encoding"
 )
 

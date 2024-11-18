@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 )
 

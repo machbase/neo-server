@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/codec/facility"
-	"github.com/machbase/neo-server/mods/expression"
-	"github.com/machbase/neo-server/mods/service/eventbus"
-	"github.com/machbase/neo-server/mods/stream"
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/codec/facility"
+	"github.com/machbase/neo-server/v8/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/service/eventbus"
+	"github.com/machbase/neo-server/v8/mods/stream"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/pkg/errors"
 )
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 // POST "/md"

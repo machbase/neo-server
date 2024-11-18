@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/codec"
-	"github.com/machbase/neo-server/mods/codec/opts"
-	"github.com/machbase/neo-server/mods/service/msg"
-	"github.com/machbase/neo-server/mods/stream"
-	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/codec"
+	"github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/service/msg"
+	"github.com/machbase/neo-server/v8/mods/stream"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 // Execute machbase SQL query

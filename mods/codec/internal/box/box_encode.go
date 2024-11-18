@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/machbase/neo-server/mods/codec/internal"
-	"github.com/machbase/neo-server/mods/stream/spec"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/codec/internal"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Exporter struct {

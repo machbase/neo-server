@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/v8/api"
 )
 
 type LicenseResponse struct {

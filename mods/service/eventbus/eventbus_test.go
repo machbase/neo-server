@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/service/eventbus"
+	"github.com/machbase/neo-server/v8/mods/service/eventbus"
 	"github.com/stretchr/testify/require"
 )
 

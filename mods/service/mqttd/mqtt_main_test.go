@@ -15,11 +15,11 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/logging"
-	"github.com/machbase/neo-server/mods/service/msg"
-	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/service/msg"
+	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
 )
 

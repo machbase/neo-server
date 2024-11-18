@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/bridge/internal"
-	"github.com/machbase/neo-server/mods/bridge/internal/sqlite3"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/sqlite3"
 	"github.com/stretchr/testify/require"
 )
 

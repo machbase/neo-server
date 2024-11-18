@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/machbase/neo-server/api/testsuite"
+	"github.com/machbase/neo-server/v8/api/testsuite"
 )
 
 var testServer *testsuite.Server

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/booter"
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/booter"
 	"google.golang.org/grpc/peer"
 )
 

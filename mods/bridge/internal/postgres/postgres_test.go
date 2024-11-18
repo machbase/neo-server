@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	embedded_postgres "github.com/fergusstrange/embedded-postgres"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/bridge/internal"
-	"github.com/machbase/neo-server/mods/bridge/internal/postgres"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
 	"github.com/stretchr/testify/require"
 )
 

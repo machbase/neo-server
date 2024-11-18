@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 var (

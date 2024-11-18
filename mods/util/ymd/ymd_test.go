@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util/ymd"
+	"github.com/machbase/neo-server/v8/mods/util/ymd"
 )
 
 func TestParser(t *testing.T) {

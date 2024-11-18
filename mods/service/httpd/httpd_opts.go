@@ -5,15 +5,15 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/pkgs"
-	"github.com/machbase/neo-server/mods/service/backupd"
-	"github.com/machbase/neo-server/mods/service/security"
-	"github.com/machbase/neo-server/mods/tql"
-	"github.com/machbase/neo-server/mods/util/ssfs"
+	"github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/pkgs"
+	"github.com/machbase/neo-server/v8/mods/service/backupd"
+	"github.com/machbase/neo-server/v8/mods/service/security"
+	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type Option func(s *httpd)

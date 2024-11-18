@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-pkgdev/pkgs"
-	"github.com/machbase/neo-server/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"gopkg.in/yaml.v3"
 )
 

@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/model"
-	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/model"
+	"github.com/machbase/neo-server/v8/mods/service/security"
 	"github.com/pkg/errors"
 )
 

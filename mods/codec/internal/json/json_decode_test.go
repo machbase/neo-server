@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/codec/internal/json"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
 
-	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 

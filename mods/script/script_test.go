@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/machbase/neo-server/mods/script"
+	"github.com/machbase/neo-server/v8/mods/script"
 	"github.com/stretchr/testify/require"
 )
 

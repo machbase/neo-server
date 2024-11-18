@@ -14,7 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
-	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 const useAlternativeNoPtyShell = false

@@ -12,9 +12,9 @@ import (
 	"time"
 	"unsafe"
 
-	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-engine/native"
-	"github.com/machbase/neo-server/api"
+	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-engine/v8/native"
+	"github.com/machbase/neo-server/v8/api"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sony/sonyflake"
 )

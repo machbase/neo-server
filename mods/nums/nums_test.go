@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/stretchr/testify/require"
 	"gonum.org/v1/gonum/interp"
 )

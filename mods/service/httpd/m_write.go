@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/util/ymd"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/util/ymd"
 )
 
 type lakeReq interface {

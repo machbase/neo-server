@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machcli"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 

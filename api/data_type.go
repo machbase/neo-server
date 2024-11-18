@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type DataType string

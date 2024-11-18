@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {

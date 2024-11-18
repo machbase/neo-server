@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/nums/kalman/models"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/stretchr/testify/require"
 )
 

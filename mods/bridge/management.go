@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	bridgerpc "github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/model"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 func (s *svr) ListBridge(context.Context, *bridgerpc.ListBridgeRequest) (*bridgerpc.ListBridgeResponse, error) {

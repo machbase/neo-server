@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/machbase/neo-server/mods/util/glob"
+	. "github.com/machbase/neo-server/v8/mods/util/glob"
 )
 
 func test(t *testing.T, pattern string, desc bool, limitsExpect []string, isGlobExpect bool) {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/machbase/neo-server/mods/service/security"
+	"github.com/machbase/neo-server/v8/mods/service/security"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"

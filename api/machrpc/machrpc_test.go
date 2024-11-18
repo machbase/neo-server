@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/machbase/neo-server/api/machrpc"
-	"github.com/machbase/neo-server/api/testsuite"
+	"github.com/machbase/neo-server/v8/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/testsuite"
 	"google.golang.org/grpc"
 )
 

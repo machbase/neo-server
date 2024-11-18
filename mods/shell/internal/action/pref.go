@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/mods/util"
-	"github.com/machbase/neo-server/mods/util/ini"
+	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/ini"
 )
 
 type Pref struct {

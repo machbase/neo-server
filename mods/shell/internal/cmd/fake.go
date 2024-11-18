@@ -4,11 +4,11 @@ import (
 	"math"
 	"strings"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/nums"
-	"github.com/machbase/neo-server/mods/nums/oscillator"
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/nums/oscillator"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func init() {

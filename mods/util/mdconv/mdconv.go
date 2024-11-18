@@ -5,7 +5,7 @@ import (
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	pikchr "github.com/jchenry/goldmark-pikchr"
-	"github.com/machbase/neo-server/mods/util/mdconv/d2ext"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv/d2ext"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"

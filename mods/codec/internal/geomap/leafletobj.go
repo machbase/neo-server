@@ -1,6 +1,6 @@
 package geomap
 
-import "github.com/machbase/neo-server/mods/nums"
+import "github.com/machbase/neo-server/v8/mods/nums"
 
 type Icon struct {
 	Name         string    `json:"name"`

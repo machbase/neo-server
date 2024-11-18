@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/facility"
-	"github.com/machbase/neo-server/mods/codec/internal/geomap"
-	"github.com/machbase/neo-server/mods/nums"
-	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/v8/mods/codec/facility"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/geomap"
+	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 

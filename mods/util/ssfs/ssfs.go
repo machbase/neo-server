@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	git "github.com/go-git/go-git/v5"
-	"github.com/machbase/neo-server/mods/util/glob"
+	"github.com/machbase/neo-server/v8/mods/util/glob"
 )
 
 // Server Side File System

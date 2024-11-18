@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/service/sshd"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/service/sshd"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func (s *svr) initShellProvider() {

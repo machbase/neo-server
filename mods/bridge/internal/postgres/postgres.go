@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq"
-	"github.com/machbase/neo-server/mods/bridge/internal"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal"
 )
 
 type bridge struct {

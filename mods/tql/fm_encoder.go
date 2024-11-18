@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/codec/opts"
 )
 
 func newEncoder(format string, args ...any) (*Encoder, error) {

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/booter"
-	_ "github.com/machbase/neo-server/mods/logging"
-	_ "github.com/machbase/neo-server/mods/server"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/booter"
+	_ "github.com/machbase/neo-server/v8/mods/logging"
+	_ "github.com/machbase/neo-server/v8/mods/server"
 )
 
 var serverConf = []byte(`

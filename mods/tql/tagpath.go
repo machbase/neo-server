@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/expression"
 )
 
 type TagPath struct {

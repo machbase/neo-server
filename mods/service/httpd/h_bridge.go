@@ -9,8 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	bridgerpc "github.com/machbase/neo-server/api/bridge"
-	"github.com/machbase/neo-server/mods/bridge"
+	bridgerpc "github.com/machbase/neo-server/v8/api/bridge"
+	"github.com/machbase/neo-server/v8/mods/bridge"
 )
 
 func (svr *httpd) handleBridges(ctx *gin.Context) {

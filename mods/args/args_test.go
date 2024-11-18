@@ -3,7 +3,7 @@ package args_test
 import (
 	"testing"
 
-	. "github.com/machbase/neo-server/mods/args"
+	. "github.com/machbase/neo-server/v8/mods/args"
 	"github.com/stretchr/testify/require"
 )
 

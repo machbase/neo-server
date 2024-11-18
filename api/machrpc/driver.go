@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/api"
+	"github.com/machbase/neo-server/v8/api"
 	"google.golang.org/grpc"
 )
 

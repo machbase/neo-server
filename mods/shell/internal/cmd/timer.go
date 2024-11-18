@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	schedrpc "github.com/machbase/neo-server/api/schedule"
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	"github.com/machbase/neo-server/mods/util"
+	schedrpc "github.com/machbase/neo-server/v8/api/schedule"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func init() {

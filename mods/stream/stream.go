@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/stream/internal/fio"
-	"github.com/machbase/neo-server/mods/stream/internal/pio"
-	"github.com/machbase/neo-server/mods/stream/spec"
+	"github.com/machbase/neo-server/v8/mods/stream/internal/fio"
+	"github.com/machbase/neo-server/v8/mods/stream/internal/pio"
+	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 func NewOutputStream(output string) (out spec.OutputStream, err error) {

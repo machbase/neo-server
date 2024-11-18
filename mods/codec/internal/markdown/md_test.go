@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/mods/codec/internal/markdown"
-	"github.com/machbase/neo-server/mods/stream"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/markdown"
+	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 

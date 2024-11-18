@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/api/mgmt"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func (svr *httpd) handleSshKeys(ctx *gin.Context) {

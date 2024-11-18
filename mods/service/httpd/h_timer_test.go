@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/machbase/neo-server/api/schedule"
+	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/testify/require"
 )

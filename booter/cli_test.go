@@ -3,7 +3,7 @@ package booter_test
 import (
 	"testing"
 
-	"github.com/machbase/neo-server/booter"
+	"github.com/machbase/neo-server/v8/booter"
 	"github.com/stretchr/testify/require"
 )
 

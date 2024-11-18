@@ -7,8 +7,8 @@ import (
 	"time"
 	"unsafe"
 
-	mach "github.com/machbase/neo-engine"
-	"github.com/machbase/neo-server/api"
+	mach "github.com/machbase/neo-engine/v8"
+	"github.com/machbase/neo-server/v8/api"
 )
 
 // Appender creates a new Appender for the given table.

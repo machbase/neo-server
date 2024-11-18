@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machrpc"
 	cmap "github.com/orcaman/concurrent-map"
 	"golang.org/x/exp/rand"
 )

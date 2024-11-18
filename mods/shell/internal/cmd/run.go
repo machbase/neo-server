@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/machbase/neo-server/mods/shell/internal/action"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func init() {

@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/connector"
-	"github.com/machbase/neo-server/mods/util"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/connector"
+	"github.com/machbase/neo-server/v8/mods/util"
 	_ "github.com/mattn/go-sqlite3"
 )
 

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/machbase/neo-server/api/machsvr"
-	"github.com/machbase/neo-server/booter"
-	"github.com/machbase/neo-server/mods"
-	"github.com/machbase/neo-server/mods/server"
-	"github.com/machbase/neo-server/mods/shell"
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/server"
+	"github.com/machbase/neo-server/v8/mods/shell"
 )
 
 func Main() int {

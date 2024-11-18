@@ -14,8 +14,8 @@ import (
 
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/mods/service/msg"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/service/msg"
 	"github.com/stretchr/testify/require"
 )
 

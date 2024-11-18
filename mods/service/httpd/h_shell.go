@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/machbase/neo-server/mods/model"
+	"github.com/machbase/neo-server/v8/mods/model"
 )
 
 // GET /api/shell/:id  - get the id

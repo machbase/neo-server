@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/machbase/neo-server/mods/server"
+	. "github.com/machbase/neo-server/v8/mods/server"
 	"github.com/stretchr/testify/require"
 )
 

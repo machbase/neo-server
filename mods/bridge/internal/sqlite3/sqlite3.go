@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/machbase/neo-server/mods/bridge/internal"
+	"github.com/machbase/neo-server/v8/mods/bridge/internal"
 	_ "github.com/mattn/go-sqlite3"
 )
 
