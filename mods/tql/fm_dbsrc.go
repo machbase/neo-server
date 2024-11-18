@@ -229,7 +229,7 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	tick := time.Now()
 	switch v := args[0].(type) {
 	case string:
-		if dg, ok := parseDataGenCommands(v, x, args[1:]); ok {
+		if dg, ok := parseDataGenCommands(x, v, args[1:]); ok {
 			x.task.LogInfof("╭─ %s", v)
 			dg.gen(x)
 			x.task.LogInfof("╰─➤ %s", time.Since(tick).String())

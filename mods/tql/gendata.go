@@ -254,7 +254,7 @@ func (dt *DataGenShowTags) gen(node *Node) {
 	})
 }
 
-func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
+func parseDataGenCommands(x *Node, str string, params []any) (DataGen, bool) {
 	str = strings.TrimSuffix(strings.TrimSpace(str), ";")
 	fields := strings.Fields(str)
 	if len(fields) < 2 {
@@ -269,11 +269,17 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 		args = append(args, "show")
 		if len(fields) > 2 && (fields[1] == "-a" || fields[1] == "--all") {
 			showAll = true
+			args = append(args, fields[2:]...)
+		} else {
+			args = append(args, fields[1:]...)
 		}
 	case "desc":
 		args = append(args, "desc")
 		if len(fields) > 2 && (fields[1] == "-a" || fields[1] == "--all") {
 			showAll = true
+			args = append(args, fields[2:]...)
+		} else {
+			args = append(args, fields[1:]...)
 		}
 	case "explain":
 		args = append(args, "explain")
@@ -288,13 +294,13 @@ func parseDataGenCommands(str string, x *Node, params []any) (DataGen, bool) {
 	}
 	switch args[0] {
 	case "show":
-		if len(args) == 2 && args[1] == "tables" {
+		if len(args) == 2 && strings.ToLower(args[1]) == "tables" {
 			return &DataGenMachbase{task: x.task, sqlText: api.ListTablesSql(showAll, true), params: params}, true
 		}
-		if len(args) == 2 && args[1] == "indexes" {
+		if len(args) == 2 && strings.ToLower(args[1]) == "indexes" {
 			return &DataGenMachbase{task: x.task, sqlText: api.ListIndexesSql(), params: params}, true
 		}
-		if len(args) == 3 && args[1] == "tags" {
+		if len(args) == 3 && strings.ToLower(args[1]) == "tags" {
 			return &DataGenShowTags{table: args[2]}, true
 		}
 	case "desc":
