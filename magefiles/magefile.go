@@ -512,7 +512,7 @@ func InstallNeoLauncherX(version string) error {
 			return err
 		}
 	} else {
-		if err := sh.RunV("wget", "-O", dst, "-L", url); err != nil {
+		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
 			return err
 		}
 	}
@@ -546,7 +546,7 @@ func InstallNeoWebX(ver string) error {
 			return err
 		}
 	} else {
-		if err := sh.RunV("wget", "-O", dst, "-L", url); err != nil {
+		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
 			return err
 		}
 	}

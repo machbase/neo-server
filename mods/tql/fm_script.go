@@ -13,6 +13,7 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/api"
 	"github.com/machbase/neo-server/mods/bridge"
 	"github.com/machbase/neo-server/mods/util"
 	"github.com/pkg/errors"
@@ -29,35 +30,60 @@ func (x *Node) fmBridge(name string) *bridgeName {
 }
 
 func (node *Node) fmScript(args ...any) (any, error) {
-	if len(args) == 2 {
-		text, ok := args[1].(string)
+	if len(args) == 1 {
+		text, ok := args[0].(string)
 		if !ok {
 			goto syntaxErr
 		}
+		return node.fmScriptTengo(text)
+	} else if len(args) >= 2 {
 		switch name := args[0].(type) {
 		case *bridgeName:
-			return node.fmScriptBridge(name, text)
+			if text, ok := args[1].(string); !ok {
+				goto syntaxErr
+			} else {
+				return node.fmScriptBridge(name, text)
+			}
 		case string:
 			switch name {
 			case "js", "javascript":
-				return node.fmScriptOtto(text)
+				initCode, mainCode := "", ""
+				if len(args) == 2 { // SCRIPT("js", "main")
+					if str, ok := args[1].(string); !ok {
+						goto syntaxErr
+					} else {
+						mainCode = str
+					}
+				} else if len(args) == 3 { // SCRIPT("js", "init", "main")
+					if str, ok := args[1].(string); !ok {
+						goto syntaxErr
+					} else {
+						initCode = str
+					}
+					if str, ok := args[2].(string); !ok {
+						goto syntaxErr
+					} else {
+						mainCode = str
+					}
+				} else {
+					goto syntaxErr
+				}
+				return node.fmScriptOtto(initCode, mainCode)
 			case "tengo":
-				return node.fmScriptTengo(text)
+				if text, ok := args[1].(string); !ok {
+					goto syntaxErr
+				} else {
+					return node.fmScriptTengo(text)
+				}
 			default:
 				goto syntaxErr
 			}
 		default:
 			goto syntaxErr
 		}
-	} else if len(args) == 1 {
-		text, ok := args[0].(string)
-		if !ok {
-			goto syntaxErr
-		}
-		return node.fmScriptTengo(text)
 	}
 syntaxErr:
-	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [bridge("name"),] script_text )`)
+	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [script_name,] [init_script], script_text )`)
 }
 
 func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) {
@@ -508,7 +534,65 @@ func anyToTengoObject(av any) tengo.Object {
 
 const js_ctx_key = "$js_otto_ctx$"
 
-func (node *Node) fmScriptOtto(content string) (any, error) {
+type ScriptOttoResultOption struct {
+	Key struct {
+		Name string `json:"name,omitempty"`
+		Type string `json:"type,omitempty"`
+	} `json:"key,omitempty"`
+	Columns []string `json:"columns"`
+	Types   []string `json:"types,omitempty"`
+}
+
+func (so *ScriptOttoResultOption) Load(obj otto.Value) error {
+	key, _ := obj.Object().Get("key")
+	if key.IsDefined() {
+		if name, _ := key.Object().Get("name"); name.IsDefined() {
+			so.Key.Name, _ = name.ToString()
+		}
+
+		if typ, _ := key.Object().Get("type"); typ.IsDefined() {
+			so.Key.Type, _ = typ.ToString()
+		}
+	}
+	cols, _ := obj.Object().Get("columns")
+	if cols.IsDefined() {
+		colsArr, _ := cols.Export()
+		if colsArr != nil {
+			so.Columns = append(so.Columns, colsArr.([]string)...)
+		}
+	}
+	types, _ := obj.Object().Get("types")
+	if types.IsDefined() {
+		typesArr, _ := types.Export()
+		if typesArr != nil {
+			so.Types = append(so.Types, typesArr.([]string)...)
+		}
+	}
+	return nil
+}
+
+func (so *ScriptOttoResultOption) ResultColumns() []*api.Column {
+	if len(so.Columns) == 0 {
+		return nil
+	}
+	cols := make([]*api.Column, len(so.Columns)+1)
+	cols[0] = &api.Column{Name: "key", DataType: api.DataTypeAny}
+	if so.Key.Name != "" {
+		cols[0].Name = so.Key.Name
+	}
+	if so.Key.Type != "" {
+		cols[0].DataType = api.ParseDataType(so.Key.Type)
+	}
+	for i, name := range so.Columns {
+		cols[i+1] = &api.Column{Name: name, DataType: api.DataTypeAny}
+		if len(so.Types) > i {
+			cols[i+1].DataType = api.ParseDataType(so.Types[i])
+		}
+	}
+	return cols
+}
+
+func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 	var ctx *OttoContext
 	var err error
 
@@ -518,7 +602,7 @@ func (node *Node) fmScriptOtto(content string) (any, error) {
 		}
 	}
 	if ctx == nil {
-		ctx, err = newOttoContext(node, content)
+		ctx, err = newOttoContext(node, initCode, mainCode)
 		if err != nil {
 			return nil, err
 		}
@@ -566,7 +650,7 @@ func (ctx *OttoContext) Run() (any, error) {
 	return v.Export()
 }
 
-func newOttoContext(node *Node, code string) (*OttoContext, error) {
+func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
 	ctx := &OttoContext{
 		node: node,
 		vm:   otto.New(),
@@ -575,16 +659,20 @@ func newOttoContext(node *Node, code string) (*OttoContext, error) {
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
 	if node.tqlLine != nil && node.tqlLine.line > 1 {
-		code = strings.Repeat("\n", node.tqlLine.line-1) + code
+		initCodeLine := strings.Count(initCode, "\n")
+		mainCode = strings.Repeat("\n", initCodeLine+node.tqlLine.line-1) + mainCode
 	}
-	if s, err := ctx.vm.Compile("", code); err != nil {
+	if s, err := ctx.vm.Compile("", mainCode); err != nil {
 		return nil, err
 	} else {
 		ctx.sc = s
 	}
 	node.SetEOF(func(*Node) {
 		ctx.onceFinalize.Do(func() {
-			ctx.vm.Call("finalize", nil)
+			f, _ := ctx.vm.Get("finalize")
+			if f.IsDefined() && f.IsFunction() {
+				ctx.vm.Call("finalize", nil)
+			}
 		})
 	})
 	consoleLog := func(level Level) func(call otto.FunctionCall) otto.Value {
@@ -658,5 +746,149 @@ func newOttoContext(node *Node, code string) (*OttoContext, error) {
 		}
 		return yield(v_key, call.ArgumentList[1:])
 	})
+	// $.db
+	db, _ := ctx.vm.Object(`({})`)
+	ctx.obj.Set("db", db)
+	// $.db.query(sql, params...).next(function(row) {...})
+	db.Set("query", func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) == 0 {
+			return otto.UndefinedValue()
+		}
+		sqlText := call.ArgumentList[0]
+		if !sqlText.IsString() {
+			return otto.UndefinedValue()
+		}
+		var params []any
+		if len(call.ArgumentList) > 1 {
+			params = make([]any, len(call.ArgumentList)-1)
+			for i, v := range call.ArgumentList[1:] {
+				params[i], _ = v.Export()
+			}
+		}
+		ret, _ := ctx.vm.Object(`({})`)
+		ret.Set("fetch", func(handler otto.FunctionCall) otto.Value {
+			var conn api.Conn
+			var rows api.Rows
+			var err error
+			var callback otto.Value
+			if len(handler.ArgumentList) != 1 {
+				err = fmt.Errorf("db.query().fetch() requires a callback function")
+				goto done
+			}
+			if !handler.ArgumentList[0].IsFunction() {
+				err = fmt.Errorf("db.query().fetch() requires a callback function, but got %s", callback.Class())
+				goto done
+			}
+			callback = handler.ArgumentList[0]
+			conn, err = node.task.ConnDatabase(node.task.ctx)
+			if err != nil {
+				node.task.Cancel()
+				err = fmt.Errorf("db.query().fetch(), %s", err.Error())
+				goto done
+			}
+			defer conn.Close()
+
+			rows, err = conn.Query(node.task.ctx, sqlText.String(), params...)
+			if err != nil {
+				goto done
+			}
+			for rows.Next() {
+				cols, _ := rows.Columns()
+				values, _ := cols.MakeBuffer()
+				rows.Scan(values...)
+				if flag, e := callback.Call(otto.UndefinedValue(), values); e != nil {
+					err = e
+					goto done
+				} else {
+					if flag.IsUndefined() {
+						// if the callback does not return anything (undefined), continue
+						continue
+					}
+					if !flag.IsBoolean() {
+						// if the callback returns a non-boolean value, break
+						break
+					}
+					if b, _ := flag.ToBoolean(); !b {
+						// if the callback returns false, break
+						break
+					}
+				}
+			}
+		done:
+			if err != nil {
+				node.task.LogError("SCRIPT", err.Error())
+			}
+			return otto.UndefinedValue()
+		})
+		retValue, _ := otto.ToValue(ret)
+		return retValue
+	})
+
+	db.Set("exec", func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) == 0 {
+			return otto.UndefinedValue()
+		}
+		sqlText := call.ArgumentList[0]
+		if !sqlText.IsString() {
+			return otto.UndefinedValue()
+		}
+		var params []any
+		if len(call.ArgumentList) > 1 {
+			params = make([]any, len(call.ArgumentList)-1)
+			for i, v := range call.ArgumentList[1:] {
+				params[i], _ = v.Export()
+			}
+		}
+		var conn api.Conn
+		var result api.Result
+		var err error
+		var ret int64
+		conn, err = node.task.ConnDatabase(node.task.ctx)
+		if err != nil {
+			node.task.Cancel()
+			err = fmt.Errorf("db.exec(), %s", err.Error())
+			goto done
+		}
+		defer conn.Close()
+
+		result = conn.Exec(node.task.ctx, sqlText.String(), params...)
+		if err = result.Err(); err != nil {
+			goto done
+		}
+		ret = result.RowsAffected()
+	done:
+		if err != nil {
+			node.task.LogError("SCRIPT", err.Error())
+			return otto.UndefinedValue()
+		}
+		retValue, _ := otto.ToValue(ret)
+		return retValue
+	})
+
+	// init code
+	if initCode != "" {
+		if node.tqlLine != nil && node.tqlLine.line > 1 {
+			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
+		}
+		_, err := ctx.vm.Run(initCode)
+		if err != nil {
+			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+		}
+		resultObj, err := ctx.obj.Get("result")
+		if err != nil {
+			return nil, fmt.Errorf("SCRIPT result, %s", err.Error())
+		}
+		if resultObj.IsDefined() {
+			var opts ScriptOttoResultOption
+			if err := opts.Load(resultObj); err != nil {
+				msg := strings.TrimPrefix(err.Error(), "json: ")
+				return nil, fmt.Errorf("line %d, SCRIPT option, %s", node.tqlLine.line, msg)
+			}
+			if cols := opts.ResultColumns(); cols != nil {
+				node.task.SetResultColumns(cols)
+			}
+		}
+	}
+
 	return ctx, nil
 }
