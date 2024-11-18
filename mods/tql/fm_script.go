@@ -697,7 +697,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	var payload = otto.UndefinedValue()
 	if node.task.inputReader != nil {
 		if b, err := io.ReadAll(node.task.inputReader); err == nil {
-			if v, err := otto.ToValue(string(b)); err == nil {
+			if v, err := otto.ToValue(string(b)); err == nil && len(b) > 0 {
 				payload = v
 			}
 		}
@@ -707,7 +707,15 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	// set $.params[]
 	var param = otto.UndefinedValue()
 	if node.task.params != nil {
-		param, _ = ctx.vm.ToValue(node.task.params)
+		values := map[string]any{}
+		for k, v := range node.task.params {
+			if len(v) == 1 {
+				values[k] = v[0]
+			} else {
+				values[k] = v
+			}
+		}
+		param, _ = ctx.vm.ToValue(values)
 	}
 	ctx.obj.Set("params", param)
 
