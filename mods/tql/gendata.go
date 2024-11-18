@@ -2,7 +2,6 @@ package tql
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -34,9 +33,7 @@ type DataGenMachbase struct {
 }
 
 func (dc *DataGenMachbase) gen(node *Node) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	conn, err := dc.task.ConnDatabase(ctx)
+	conn, err := dc.task.ConnDatabase(node.task.ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -78,7 +75,7 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			}
 		},
 	}
-	if err := query.Execute(ctx, conn, dc.sqlText, dc.params...); err != nil {
+	if err := query.Execute(node.task.ctx, conn, dc.sqlText, dc.params...); err != nil {
 		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
 	}
@@ -90,16 +87,13 @@ type DataGenDescTable struct {
 }
 
 func (dt *DataGenDescTable) gen(node *Node) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	conn, err := node.task.ConnDatabase(ctx)
+	conn, err := node.task.ConnDatabase(node.task.ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer conn.Close()
-	desc, err := api.DescribeTable(ctx, conn, dt.table, dt.showAll)
+	desc, err := api.DescribeTable(node.task.ctx, conn, dt.table, dt.showAll)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -135,16 +129,13 @@ type DataGenExplain struct {
 }
 
 func (dt *DataGenExplain) gen(node *Node) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	conn, err := node.task.ConnDatabase(ctx)
+	conn, err := node.task.ConnDatabase(node.task.ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
 
-	plan, err := conn.Explain(ctx, dt.sqlText, dt.full)
+	plan, err := conn.Explain(node.task.ctx, dt.sqlText, dt.full)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -162,17 +153,14 @@ type DataGenShowTags struct {
 }
 
 func (dt *DataGenShowTags) gen(node *Node) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	conn, err := node.task.ConnDatabase(ctx)
+	conn, err := node.task.ConnDatabase(node.task.ctx)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer conn.Close()
 
-	tableType, err := api.QueryTableType(ctx, conn, dt.table)
+	tableType, err := api.QueryTableType(node.task.ctx, conn, dt.table)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -182,7 +170,7 @@ func (dt *DataGenShowTags) gen(node *Node) {
 		return
 	}
 
-	desc, err := api.DescribeTable(ctx, conn, dt.table, false)
+	desc, err := api.DescribeTable(node.task.ctx, conn, dt.table, false)
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
@@ -222,7 +210,7 @@ func (dt *DataGenShowTags) gen(node *Node) {
 	}
 
 	rownum := 0
-	api.ListTagsWalk(ctx, conn, dt.table, func(tag *api.TagInfo, err error) bool {
+	api.ListTagsWalk(node.task.ctx, conn, dt.table, func(tag *api.TagInfo, err error) bool {
 		if err != nil {
 			ErrorRecord(err).Tell(node.next)
 			return false
@@ -230,7 +218,7 @@ func (dt *DataGenShowTags) gen(node *Node) {
 		rownum++
 		var values []any
 		if summarized {
-			stat, err := api.TagStat(ctx, conn, dt.table, tag.Name)
+			stat, err := api.TagStat(node.task.ctx, conn, dt.table, tag.Name)
 			if err != nil {
 				ErrorRecord(err).Tell(node.next)
 				return false
@@ -240,7 +228,7 @@ func (dt *DataGenShowTags) gen(node *Node) {
 				stat.MinValue, stat.MinValueTime,
 				stat.MaxValue, stat.MaxValueTime}
 		} else {
-			stat, err := api.TagStat(ctx, conn, dt.table, tag.Name)
+			stat, err := api.TagStat(node.task.ctx, conn, dt.table, tag.Name)
 			if err != nil {
 				// tag exists in _table_meta, but not found in v$table_stat
 				values = []any{tag.Id, tag.Name, nil, nil, nil, nil}
