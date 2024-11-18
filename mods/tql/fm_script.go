@@ -752,11 +752,11 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	// $.db.query(sql, params...).next(function(row) {...})
 	db.Set("query", func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
-			return otto.UndefinedValue()
+			return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
 		}
 		sqlText := call.ArgumentList[0]
 		if !sqlText.IsString() {
-			return otto.UndefinedValue()
+			return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
 		}
 		var params []any
 		if len(call.ArgumentList) > 1 {
@@ -765,40 +765,34 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 				params[i], _ = v.Export()
 			}
 		}
-		ret, _ := ctx.vm.Object(`({})`)
-		ret.Set("fetch", func(handler otto.FunctionCall) otto.Value {
-			var conn api.Conn
-			var rows api.Rows
-			var err error
-			var callback otto.Value
+		queryObj, _ := ctx.vm.Object(`({})`)
+		queryObj.Set("forEach", func(handler otto.FunctionCall) otto.Value {
 			if len(handler.ArgumentList) != 1 {
-				err = fmt.Errorf("db.query().fetch() requires a callback function")
-				goto done
+				return ctx.vm.MakeCustomError("DBError", "forEach() requires a callback function")
 			}
 			if !handler.ArgumentList[0].IsFunction() {
-				err = fmt.Errorf("db.query().fetch() requires a callback function, but got %s", callback.Class())
-				goto done
+				return ctx.vm.MakeCustomError("DBError",
+					fmt.Sprintf("forEach() requires a callback function, but got %s", handler.ArgumentList[0].Class()))
 			}
-			callback = handler.ArgumentList[0]
-			conn, err = node.task.ConnDatabase(node.task.ctx)
+			callback := handler.ArgumentList[0]
+			conn, err := node.task.ConnDatabase(node.task.ctx)
 			if err != nil {
 				node.task.Cancel()
-				err = fmt.Errorf("db.query().fetch(), %s", err.Error())
-				goto done
+				return ctx.vm.MakeCustomError("DBError", err.Error())
 			}
 			defer conn.Close()
 
-			rows, err = conn.Query(node.task.ctx, sqlText.String(), params...)
+			rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
 			if err != nil {
-				goto done
+				node.task.Cancel()
+				return ctx.vm.MakeCustomError("DBError", err.Error())
 			}
 			for rows.Next() {
 				cols, _ := rows.Columns()
 				values, _ := cols.MakeBuffer()
 				rows.Scan(values...)
 				if flag, e := callback.Call(otto.UndefinedValue(), values); e != nil {
-					err = e
-					goto done
+					return ctx.vm.MakeCustomError("DBError", e.Error())
 				} else {
 					if flag.IsUndefined() {
 						// if the callback does not return anything (undefined), continue
@@ -814,23 +808,19 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 					}
 				}
 			}
-		done:
-			if err != nil {
-				node.task.LogError("SCRIPT", err.Error())
-			}
 			return otto.UndefinedValue()
 		})
-		retValue, _ := otto.ToValue(ret)
+		retValue, _ := otto.ToValue(queryObj)
 		return retValue
 	})
 
 	db.Set("exec", func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
-			return otto.UndefinedValue()
+			return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
 		}
 		sqlText := call.ArgumentList[0]
 		if !sqlText.IsString() {
-			return otto.UndefinedValue()
+			return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
 		}
 		var params []any
 		if len(call.ArgumentList) > 1 {
@@ -839,28 +829,18 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 				params[i], _ = v.Export()
 			}
 		}
-		var conn api.Conn
-		var result api.Result
-		var err error
-		var ret int64
-		conn, err = node.task.ConnDatabase(node.task.ctx)
+		conn, err := node.task.ConnDatabase(node.task.ctx)
 		if err != nil {
 			node.task.Cancel()
-			err = fmt.Errorf("db.exec(), %s", err.Error())
-			goto done
+			return ctx.vm.MakeCustomError("DBError", err.Error())
 		}
 		defer conn.Close()
 
-		result = conn.Exec(node.task.ctx, sqlText.String(), params...)
+		result := conn.Exec(node.task.ctx, sqlText.String(), params...)
 		if err = result.Err(); err != nil {
-			goto done
+			return ctx.vm.MakeCustomError("DBError", err.Error())
 		}
-		ret = result.RowsAffected()
-	done:
-		if err != nil {
-			node.task.LogError("SCRIPT", err.Error())
-			return otto.UndefinedValue()
-		}
+		ret := result.RowsAffected()
 		retValue, _ := otto.ToValue(ret)
 		return retValue
 	})
