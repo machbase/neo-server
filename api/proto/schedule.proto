@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package schedule;
 
-option go_package = "github.com/machbase/neo-server/api/schedule";
+option go_package = "github.com/machbase/neo-server/v8/api/schedule";
 
 service Management {
     rpc ListSchedule(ListScheduleRequest) returns (ListScheduleResponse) {}

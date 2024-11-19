@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package mgmt;
 
-option go_package = "github.com/machbase/neo-server/api/mgmt";
+option go_package = "github.com/machbase/neo-server/v8/api/mgmt";
 
 service Management {
     rpc ListKey(ListKeyRequest) returns (ListKeyResponse) {}

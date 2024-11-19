@@ -31,7 +31,6 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/machbase/neo-engine/v8 v8.0.34
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
-	github.com/machbase/neo-server v1.7.1
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
@@ -151,6 +150,7 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect

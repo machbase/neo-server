@@ -54,7 +54,7 @@ func Build(target string) error {
 
 	fmt.Println("Build", target, vBuildVersion, "...")
 
-	mod := "github.com/machbase/neo-server"
+	mod := "github.com/machbase/neo-server/v8"
 	edition := "standard"
 	timestamp := time.Now().Format("2006-01-02T15:04:05")
 	gitSHA := vLastCommit[0:8]
@@ -112,7 +112,7 @@ func BuildX(target string, targetOS string, targetArch string) error {
 	}
 	fmt.Println("zig", zigVer)
 
-	mod := "github.com/machbase/neo-server"
+	mod := "github.com/machbase/neo-server/v8"
 	edition := "standard"
 	timestamp := time.Now().Format("2006-01-02T15:04:05")
 	gitSHA := vLastCommit[0:8]

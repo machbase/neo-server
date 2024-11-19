@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/machbase/neo-server/booter"
+	"github.com/machbase/neo-server/v8/booter"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"

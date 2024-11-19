@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/machbase/neo-server/api"
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machrpc"
 )
 
 func main() {

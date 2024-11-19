@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package bridge;
 
-option go_package = "github.com/machbase/neo-server/api/bridge";
+option go_package = "github.com/machbase/neo-server/v8/api/bridge";
 
 service Management {
     rpc ListBridge(ListBridgeRequest) returns (ListBridgeResponse) {}
