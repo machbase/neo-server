@@ -125,7 +125,7 @@ func TestScript(t *testing.T) {
 			Name: "create-table",
 			Script: `
 				SCRIPT("js", {
-					var ret = $.db.exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
+					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
 					if (ret instanceof Error) {
 						console.error(ret.message);
 					}
@@ -139,7 +139,7 @@ func TestScript(t *testing.T) {
 					var tick = 1731900710328594958;
 					for (i = 0; i < 10; i++) {
 						tick += 1000000000; // add 1 second
-						var ret = $.db.exec("insert into js_tag values('test-script', ?, ?)", tick, 1.23 * i);
+						var ret = $.db().exec("insert into js_tag values('test-script', ?, ?)", tick, 1.23 * i);
 						if (ret instanceof Error) {
 							console.error(ret.message);
 						}
@@ -152,7 +152,7 @@ func TestScript(t *testing.T) {
 						types: ["varchar", "datetime", "double"],
 					}
 				},{
-					$.db.query("select * from js_tag").forEach(function(row) {
+					$.db().query("select * from js_tag").forEach(function(row) {
 						$.yield(row[0], row[1], row[2]);
 					});
 				})
@@ -178,7 +178,7 @@ func TestScript(t *testing.T) {
 			Name: "drop-table",
 			Script: `
 				SCRIPT("js", {
-					var ret = $.db.exec("drop table js_tag");
+					var ret = $.db().exec("drop table js_tag");
 					if (ret instanceof Error) {
 						console.error(ret.message);
 					}
