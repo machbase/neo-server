@@ -3,8 +3,11 @@ package tql
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -754,104 +757,9 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		}
 		return yield(v_key, call.ArgumentList[1:])
 	})
-	// $.db
-	db, _ := ctx.vm.Object(`({})`)
-	ctx.obj.Set("db", db)
-	// $.db.query(sql, params...).next(function(row) {...})
-	db.Set("query", func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) == 0 {
-			return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
-		}
-		sqlText := call.ArgumentList[0]
-		if !sqlText.IsString() {
-			return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
-		}
-		var params []any
-		if len(call.ArgumentList) > 1 {
-			params = make([]any, len(call.ArgumentList)-1)
-			for i, v := range call.ArgumentList[1:] {
-				params[i], _ = v.Export()
-			}
-		}
-		queryObj, _ := ctx.vm.Object(`({})`)
-		queryObj.Set("forEach", func(handler otto.FunctionCall) otto.Value {
-			if len(handler.ArgumentList) != 1 {
-				return ctx.vm.MakeCustomError("DBError", "forEach() requires a callback function")
-			}
-			if !handler.ArgumentList[0].IsFunction() {
-				return ctx.vm.MakeCustomError("DBError",
-					fmt.Sprintf("forEach() requires a callback function, but got %s", handler.ArgumentList[0].Class()))
-			}
-			callback := handler.ArgumentList[0]
-			conn, err := node.task.ConnDatabase(node.task.ctx)
-			if err != nil {
-				node.task.Cancel()
-				return ctx.vm.MakeCustomError("DBError", err.Error())
-			}
-			defer conn.Close()
-
-			rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
-			if err != nil {
-				node.task.Cancel()
-				return ctx.vm.MakeCustomError("DBError", err.Error())
-			}
-			for rows.Next() {
-				cols, _ := rows.Columns()
-				values, _ := cols.MakeBuffer()
-				rows.Scan(values...)
-				if flag, e := callback.Call(otto.UndefinedValue(), values); e != nil {
-					return ctx.vm.MakeCustomError("DBError", e.Error())
-				} else {
-					if flag.IsUndefined() {
-						// if the callback does not return anything (undefined), continue
-						continue
-					}
-					if !flag.IsBoolean() {
-						// if the callback returns a non-boolean value, break
-						break
-					}
-					if b, _ := flag.ToBoolean(); !b {
-						// if the callback returns false, break
-						break
-					}
-				}
-			}
-			return otto.UndefinedValue()
-		})
-		retValue, _ := otto.ToValue(queryObj)
-		return retValue
-	})
-
-	db.Set("exec", func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) == 0 {
-			return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
-		}
-		sqlText := call.ArgumentList[0]
-		if !sqlText.IsString() {
-			return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
-		}
-		var params []any
-		if len(call.ArgumentList) > 1 {
-			params = make([]any, len(call.ArgumentList)-1)
-			for i, v := range call.ArgumentList[1:] {
-				params[i], _ = v.Export()
-			}
-		}
-		conn, err := node.task.ConnDatabase(node.task.ctx)
-		if err != nil {
-			node.task.Cancel()
-			return ctx.vm.MakeCustomError("DBError", err.Error())
-		}
-		defer conn.Close()
-
-		result := conn.Exec(node.task.ctx, sqlText.String(), params...)
-		if err = result.Err(); err != nil {
-			return ctx.vm.MakeCustomError("DBError", err.Error())
-		}
-		ret := result.RowsAffected()
-		retValue, _ := otto.ToValue(ret)
-		return retValue
-	})
+	// $.db()
+	ctx.obj.Set("db", ottoFuncDB(ctx, node))
+	ctx.obj.Set("fetch", ottoFuncFetch(ctx, node))
 
 	// init code
 	if initCode != "" {
@@ -879,4 +787,334 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	}
 
 	return ctx, nil
+}
+
+func ottoFuncFetch(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
+	// $.fetch(url, option).then(function(response) {...})
+	return func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) == 0 {
+			return ctx.vm.MakeCustomError("HTTPError", "missing a URL")
+		}
+		option := struct {
+			Url     string            `json:"url"`
+			Method  string            `json:"method"` // GET, POST, PUT, DELETE
+			Body    string            `json:"body"`   // be-aware the type of body should be co-response to "Content-Type"
+			Headers map[string]string `json:"headers"`
+			// mode: "cors", // no-cors, *cors, same-origin
+			// cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+			// credentials: "same-origin", // include, *same-origin, omit
+			// redirect: "follow", // manual, *follow, error
+			// referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+		}{
+			Method:  "GET",
+			Headers: map[string]string{},
+		}
+
+		if url := call.ArgumentList[0]; !url.IsString() {
+			return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a URL, but got %q", url.Class()))
+		} else {
+			option.Url = url.String()
+		}
+
+		if len(call.ArgumentList) > 1 {
+			for _, key := range call.ArgumentList[1].Object().Keys() {
+				if v, err := call.ArgumentList[1].Object().Get(key); err == nil {
+					switch key {
+					case "method":
+						if !v.IsString() {
+							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a method, but got %q", v.Class()))
+						}
+						option.Method, _ = v.ToString()
+					case "headers":
+						if !v.IsObject() {
+							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a headers object, but got %q", v.Class()))
+						}
+						for _, k := range v.Object().Keys() {
+							if h, err := v.Object().Get(k); err == nil {
+								option.Headers[k], _ = h.ToString()
+							}
+						}
+					case "body":
+						if !v.IsString() {
+							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a body, but got %q", v.Class()))
+						}
+						option.Body, _ = v.ToString()
+					}
+				}
+			}
+		}
+		if !slices.Contains([]string{"GET", "POST", "PUT", "DELETE"}, strings.ToUpper(option.Method)) {
+			return ctx.vm.MakeCustomError("InvalidOption", fmt.Sprintf("unsupported method %q", option.Method))
+		}
+
+		fetchObj, _ := ctx.vm.Object(`({})`)
+		fetchObj.Set("then", func(call otto.FunctionCall) otto.Value {
+			if len(call.ArgumentList) != 1 {
+				return ctx.vm.MakeCustomError("HTTPError", "then() requires a callback function")
+			}
+			if !call.ArgumentList[0].IsFunction() {
+				return ctx.vm.MakeCustomError("HTTPError",
+					fmt.Sprintf("then() requires a callback function, but got %s", call.ArgumentList[0].Class()))
+			}
+			callback := call.ArgumentList[0]
+			responseObj, _ := ctx.vm.Object(`({})`)
+
+			httpClient := node.task.NewHttpClient()
+			httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
+			var httpResponse *http.Response
+			if httpErr == nil {
+				for k, v := range option.Headers {
+					httpRequest.Header.Set(k, v)
+				}
+				if option.Method == "POST" || option.Method == "PUT" {
+					httpRequest.Body = io.NopCloser(strings.NewReader(option.Body))
+				}
+				if rsp, err := httpClient.Do(httpRequest); err != nil {
+					httpErr = err
+				} else {
+					defer rsp.Body.Close()
+					httpResponse = rsp
+					responseObj.Set("status", rsp.StatusCode)
+					responseObj.Set("statusText", rsp.Status)
+					hdr := map[string]any{}
+					for k, v := range rsp.Header {
+						if len(v) == 1 {
+							hdr[k] = v[0]
+						} else {
+							hdr[k] = v
+						}
+					}
+					// TODO: implement get(), forEach(), has(), keys()
+					responseObj.Set("headers", hdr)
+				}
+			}
+			responseObj.Set("url", option.Url)
+			responseObj.Set("ok", httpResponse != nil && httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300)
+			responseObj.Set("error", func(call otto.FunctionCall) otto.Value {
+				if httpErr == nil {
+					return otto.UndefinedValue()
+				}
+				return ctx.vm.MakeCustomError("HTTPError", httpErr.Error())
+			})
+			bodyFunc := func(typ string) func(call otto.FunctionCall) otto.Value {
+				return func(call otto.FunctionCall) otto.Value {
+					if httpErr != nil {
+						return ctx.vm.MakeCustomError("HTTPError", httpErr.Error())
+					}
+					if httpResponse == nil {
+						return otto.UndefinedValue()
+					}
+					if !slices.Contains([]string{"csv", "json", "text", "blob"}, typ) {
+						return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("%s() unknown function", typ))
+					}
+					if len(call.ArgumentList) == 0 || !call.ArgumentList[0].IsFunction() {
+						return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("%s() requires a callback function", typ))
+					}
+					cb := call.ArgumentList[0]
+
+					switch typ {
+					case "csv":
+						dec := csv.NewReader(httpResponse.Body)
+						dec.FieldsPerRecord = -1
+						dec.TrimLeadingSpace = true
+						dec.ReuseRecord = true
+						for {
+							row, err := dec.Read()
+							if err == io.EOF {
+								break
+							} else if err != nil {
+								return ctx.vm.MakeCustomError("HTTPError", err.Error())
+							}
+							s := make([]any, len(row))
+							for i, v := range row {
+								s[i] = v
+							}
+							if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
+								return ctx.vm.MakeCustomError("HTTPError", e.Error())
+							}
+						}
+					case "json":
+						dec := json.NewDecoder(httpResponse.Body)
+						for {
+							data := new(any)
+							err := dec.Decode(data)
+							if err == io.EOF {
+								break
+							} else if err != nil {
+								return ctx.vm.MakeCustomError("HTTPError", err.Error())
+							}
+							var value otto.Value
+							value, err = ottoValue(ctx, data)
+							if err != nil {
+								return ctx.vm.MakeCustomError("HTTPError", err.Error())
+							}
+							if _, e := cb.Call(otto.UndefinedValue(), value); e != nil {
+								return ctx.vm.MakeCustomError("HTTPError", e.Error())
+							}
+						}
+					case "text":
+						if b, err := io.ReadAll(httpResponse.Body); err == nil {
+							if s, err := otto.ToValue(string(b)); err == nil {
+								if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
+									return ctx.vm.MakeCustomError("HTTPError", e.Error())
+								}
+							} else {
+								return ctx.vm.MakeCustomError("HTTPError", err.Error())
+							}
+						}
+					case "blob":
+						if b, err := io.ReadAll(httpResponse.Body); err == nil {
+							if s, err := otto.ToValue(b); err == nil {
+								if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
+									return ctx.vm.MakeCustomError("HTTPError", e.Error())
+								}
+							} else {
+								return ctx.vm.MakeCustomError("HTTPError", err.Error())
+							}
+						}
+					}
+					return otto.UndefinedValue()
+				}
+			}
+			responseObj.Set("text", bodyFunc("text"))
+			responseObj.Set("blob", bodyFunc("blob"))
+			responseObj.Set("json", bodyFunc("json"))
+			responseObj.Set("csv", bodyFunc("csv"))
+
+			if _, e := callback.Call(otto.UndefinedValue(), responseObj.Value()); e != nil {
+				return ctx.vm.MakeCustomError("HTTPError", e.Error())
+			}
+			return otto.UndefinedValue()
+		})
+		return fetchObj.Value()
+	}
+}
+
+func ottoValue(ctx *OttoContext, value any) (otto.Value, error) {
+	switch v := value.(type) {
+	// case []any:
+	// 	arr := make([]otto.Value, len(v))
+	// 	for i, n := range v {
+	// 		if val, err := ottoValue(ctx, n); err == nil {
+	// 			arr[i] = val
+	// 		} else {
+	// 			return otto.UndefinedValue(), err
+	// 		}
+	// 	}
+	// 	return otto.ToValue(arr)
+	case map[string]any:
+		obj, _ := ctx.vm.Object(`({})`)
+		for k, n := range v {
+			if val, err := ottoValue(ctx, n); err == nil {
+				obj.Set(k, val)
+			} else {
+				return otto.UndefinedValue(), err
+			}
+		}
+		return obj.Value(), nil
+	default:
+		return otto.ToValue(v)
+	}
+}
+
+func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
+		db, _ := ctx.vm.Object(`({})`)
+		// $.db().query(sql, params...).next(function(row) {...})
+		db.Set("query", func(call otto.FunctionCall) otto.Value {
+			if len(call.ArgumentList) == 0 {
+				return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
+			}
+			sqlText := call.ArgumentList[0]
+			if !sqlText.IsString() {
+				return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
+			}
+			var params []any
+			if len(call.ArgumentList) > 1 {
+				params = make([]any, len(call.ArgumentList)-1)
+				for i, v := range call.ArgumentList[1:] {
+					params[i], _ = v.Export()
+				}
+			}
+			queryObj, _ := ctx.vm.Object(`({})`)
+			queryObj.Set("forEach", func(handler otto.FunctionCall) otto.Value {
+				if len(handler.ArgumentList) != 1 {
+					return ctx.vm.MakeCustomError("DBError", "forEach() requires a callback function")
+				}
+				if !handler.ArgumentList[0].IsFunction() {
+					return ctx.vm.MakeCustomError("DBError",
+						fmt.Sprintf("forEach() requires a callback function, but got %s", handler.ArgumentList[0].Class()))
+				}
+				callback := handler.ArgumentList[0]
+				conn, err := node.task.ConnDatabase(node.task.ctx)
+				if err != nil {
+					node.task.Cancel()
+					return ctx.vm.MakeCustomError("DBError", err.Error())
+				}
+				defer conn.Close()
+
+				rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
+				if err != nil {
+					node.task.Cancel()
+					return ctx.vm.MakeCustomError("DBError", err.Error())
+				}
+				for rows.Next() {
+					cols, _ := rows.Columns()
+					values, _ := cols.MakeBuffer()
+					rows.Scan(values...)
+					if flag, e := callback.Call(otto.UndefinedValue(), values); e != nil {
+						return ctx.vm.MakeCustomError("DBError", e.Error())
+					} else {
+						if flag.IsUndefined() {
+							// if the callback does not return anything (undefined), continue
+							continue
+						}
+						if !flag.IsBoolean() {
+							// if the callback returns a non-boolean value, break
+							break
+						}
+						if b, _ := flag.ToBoolean(); !b {
+							// if the callback returns false, break
+							break
+						}
+					}
+				}
+				return otto.UndefinedValue()
+			})
+			return queryObj.Value()
+		})
+
+		// $.db().exec(sql, params...)
+		db.Set("exec", func(call otto.FunctionCall) otto.Value {
+			if len(call.ArgumentList) == 0 {
+				return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
+			}
+			sqlText := call.ArgumentList[0]
+			if !sqlText.IsString() {
+				return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
+			}
+			var params []any
+			if len(call.ArgumentList) > 1 {
+				params = make([]any, len(call.ArgumentList)-1)
+				for i, v := range call.ArgumentList[1:] {
+					params[i], _ = v.Export()
+				}
+			}
+			conn, err := node.task.ConnDatabase(node.task.ctx)
+			if err != nil {
+				node.task.Cancel()
+				return ctx.vm.MakeCustomError("DBError", err.Error())
+			}
+			defer conn.Close()
+
+			result := conn.Exec(node.task.ctx, sqlText.String(), params...)
+			if err = result.Err(); err != nil {
+				return ctx.vm.MakeCustomError("DBError", err.Error())
+			}
+			ret := result.RowsAffected()
+			retValue, _ := otto.ToValue(ret)
+			return retValue
+		})
+		return db.Value()
+	}
 }
