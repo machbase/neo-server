@@ -12,7 +12,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/geomap"
 	"github.com/machbase/neo-server/v8/mods/nums"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,7 +55,7 @@ func TestGeoMap(t *testing.T) {
 
 		c := geomap.New()
 		c.SetLogger(facility.TestLogger(t))
-		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetOutputStream(buffer)
 		c.SetVolatileFileWriter(fsmock)
 		c.SetMapId("WejMYXCGcYNL")
 		c.SetGeoMapJson(output == "json")

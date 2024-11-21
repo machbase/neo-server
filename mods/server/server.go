@@ -34,16 +34,12 @@ import (
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
+	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
 	"github.com/machbase/neo-server/v8/mods/scheduler"
-	"github.com/machbase/neo-server/v8/mods/service/backupd"
-	"github.com/machbase/neo-server/v8/mods/service/httpd"
-	"github.com/machbase/neo-server/v8/mods/service/mqttd"
-	"github.com/machbase/neo-server/v8/mods/service/security"
-	"github.com/machbase/neo-server/v8/mods/service/sshd"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
@@ -102,7 +98,7 @@ type Config struct {
 	Grpc           GrpcConfig
 	Http           HttpConfig
 	Mqtt           MqttConfig
-	Jwt            security.JwtConfig
+	Jwt            JwtConfig
 	NavelCord      *NavelCordConfig
 
 	CreateDBQueries     []string // sql sentences
@@ -171,13 +167,13 @@ type svr struct {
 	navel *net.TCPConn
 	grpcd *grpcd
 
-	mqttd mqttd.Service
-	httpd httpd.Service
-	sshd  sshd.Service
+	mqttd *mqttd
+	httpd *httpd
+	sshd  *sshd
 
 	bridgeSvc bridge.Service
 	schedSvc  scheduler.Service
-	backupSvc backupd.Service
+	backupSvc backup.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -228,7 +224,7 @@ func NewConfig() *Config {
 			Listeners:   []string{},
 			IdleTimeout: 2 * time.Minute,
 		},
-		Jwt: security.JwtConfig{
+		Jwt: JwtConfig{
 			AtDuration: 5 * time.Minute,
 			RtDuration: 60 * time.Minute,
 			Secret:     "__secret__",
@@ -328,7 +324,7 @@ func (s *svr) Start() error {
 	}
 
 	if s.conf.Jwt.AtDuration > 0 && s.conf.Jwt.RtDuration > 0 {
-		security.JwtConfigure(&s.conf.Jwt)
+		JwtConfigure(&s.conf.Jwt)
 	}
 
 	s.models = model.NewService(
@@ -506,9 +502,9 @@ func (s *svr) Start() error {
 		if backupDirAbs, err := filepath.Abs(s.conf.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
-			s.backupSvc = backupd.NewService(
-				backupd.WithBaseDir(backupDirAbs),
-				backupd.WithDatabase(s.db),
+			s.backupSvc = backup.NewBackupService(
+				backup.WithBackupServiceBaseDir(backupDirAbs),
+				backup.WithBackupServiceDatabase(s.db),
 			)
 		}
 	}
@@ -589,20 +585,20 @@ func (s *svr) Start() error {
 			if len(serverKey) == 0 {
 				serverKey = s.ServerPrivateKeyPath()
 			}
-			if cfg, err := mqttd.LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
+			if cfg, err := LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
 				return errors.Wrap(err, "mqtt server")
 			} else {
 				tlsConf = cfg
 			}
 		}
-		opts := []mqttd.Option{
-			mqttd.WithAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
-			mqttd.WithMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
-			mqttd.WithTqlLoader(tqlLoader),
+		opts := []MqttOption{
+			WithMqttAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
+			WithMqttMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			WithMqttTqlLoader(tqlLoader),
 		}
 		if s.conf.Mqtt.EnablePersistence {
 			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
-			opts = append(opts, mqttd.WithBadgerPersistent(mqtt_dir))
+			opts = append(opts, WithMqttBadgerPersistent(mqtt_dir))
 		}
 		if len(s.conf.Http.Listeners) > 0 {
 			tok := strings.SplitN(s.conf.Http.Listeners[0], "://", 2)
@@ -612,7 +608,7 @@ func (s *svr) Start() error {
 			} else {
 				addr = fmt.Sprintf("%s/web/api/mqtt", tok[0])
 			}
-			opts = append(opts, mqttd.WithWsHandleListener(addr))
+			opts = append(opts, WithMqttWsHandleListener(addr))
 		}
 
 		// mqtt server listeners
@@ -620,17 +616,17 @@ func (s *svr) Start() error {
 			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
 				addr = strings.TrimPrefix(addr, "ws://")
 				addr = strings.TrimPrefix(addr, "wss://")
-				opts = append(opts, mqttd.WithWebsocketListener(addr, tlsConf))
+				opts = append(opts, WithMqttWebsocketListener(addr, tlsConf))
 			} else if strings.HasPrefix(addr, "unix://") {
 				addr = strings.TrimPrefix(addr, "unix://")
-				opts = append(opts, mqttd.WithUnixSockListener(addr))
+				opts = append(opts, WithMqttUnixSockListener(addr))
 			} else {
 				addr = strings.TrimPrefix(addr, "tcp://")
 				addr = strings.TrimPrefix(addr, "tls://")
-				opts = append(opts, mqttd.WithTcpListener(addr, tlsConf))
+				opts = append(opts, WithMqttTcpListener(addr, tlsConf))
 			}
 		}
-		s.mqttd, err = mqttd.New(s.db, opts...)
+		s.mqttd, err = NewMqtt(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "mqtt server")
 		}
@@ -662,28 +658,28 @@ func (s *svr) Start() error {
 
 	// http server
 	if len(s.conf.Http.Listeners) > 0 {
-		opts := []httpd.Option{
-			httpd.OptionLicenseFilePath(s.licenseFilePath),
-			httpd.OptionListenAddress(s.conf.Http.Listeners...),
-			httpd.OptionAuthServer(s, s.conf.Http.EnableTokenAuth),
-			httpd.OptionTqlLoader(tqlLoader),
-			httpd.OptionManagementServer(s),        // add, key
-			httpd.OptionScheduleServer(s.schedSvc), // add, timer
-			httpd.OptionBridgeServer(s.bridgeSvc),
-			httpd.OptionServerSideFileSystem(serverFs),
-			httpd.OptionBackupService(s.backupSvc),
-			httpd.OptionDebugMode(s.conf.Http.DebugMode),
-			httpd.OptionExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
-			httpd.OptionWebShellProvider(s.models.ShellProvider()),
-			httpd.OptionServerInfoFunc(s.getServerInfo),
-			httpd.OptionMqttInfoFunc(s.MqttInfo),
-			httpd.OptionServerSessionsFunc(s.ServerSessions),
-			httpd.OptionEnableWeb(s.conf.Http.EnableWebUI),
-			httpd.OptionPackageManager(s.pkgMgr),
+		opts := []HttpOption{
+			WithHttpLicenseFilePath(s.licenseFilePath),
+			WithHttpListenAddress(s.conf.Http.Listeners...),
+			WithHttpAuthServer(s, s.conf.Http.EnableTokenAuth),
+			WithHttpTqlLoader(tqlLoader),
+			WithHttpManagementServer(s),        // add, key
+			WithHttpScheduleServer(s.schedSvc), // add, timer
+			WithHttpBridgeServer(s.bridgeSvc),
+			WithHttpServerSideFileSystem(serverFs),
+			WithHttpBackupService(s.backupSvc),
+			WithHttpDebugMode(s.conf.Http.DebugMode),
+			WithHttpExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+			WithHttpWebShellProvider(s.models.ShellProvider()),
+			WithHttpServerInfoFunc(s.getServerInfo),
+			WithHttpMqttInfoFunc(s.MqttInfo),
+			WithHttpServerSessionsFunc(s.ServerSessions),
+			WithHttpEnableWeb(s.conf.Http.EnableWebUI),
+			WithHttpPackageManager(s.pkgMgr),
 		}
 		if s.mqttd != nil {
 			if h := s.mqttd.WsHandlerFunc(); h != nil {
-				opts = append(opts, httpd.OptionMqttWsHandlerFunc(h))
+				opts = append(opts, WithHttpMqttWsHandlerFunc(h))
 			}
 		}
 		shellPorts, _ := s.getServicePorts("shell")
@@ -691,7 +687,7 @@ func (s *svr) Start() error {
 		for _, sp := range shellPorts {
 			shellAddrs = append(shellAddrs, sp.Address)
 		}
-		opts = append(opts, httpd.OptionNeoShellAddress(shellAddrs...))
+		opts = append(opts, WithHttpNeoShellAddress(shellAddrs...))
 		if s.conf.Http.WebDir != "" {
 			stat, err := os.Stat(s.conf.Http.WebDir)
 			if err != nil {
@@ -700,9 +696,9 @@ func (s *svr) Start() error {
 			if !stat.IsDir() {
 				return fmt.Errorf("web ui path is not a directory")
 			}
-			opts = append(opts, httpd.OptionWebDir(s.conf.Http.WebDir))
+			opts = append(opts, WithHttpWebDir(s.conf.Http.WebDir))
 		}
-		s.httpd, err = httpd.New(s.db, opts...)
+		s.httpd, err = NewHttp(s.db, opts...)
 		if err != nil {
 			return errors.Wrap(err, "http server")
 		}
@@ -717,13 +713,13 @@ func (s *svr) Start() error {
 
 	// ssh shell server
 	if len(s.conf.Shell.Listeners) > 0 {
-		s.sshd, err = sshd.New(
-			sshd.OptionListenAddress(s.conf.Shell.Listeners...),
-			sshd.OptionServerKeyPath(s.ServerPrivateKeyPath()),
-			sshd.OptionIdleTimeout(s.conf.Shell.IdleTimeout),
-			sshd.OptionAuthServer(s),
-			sshd.OptionMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
-			sshd.OptionShellProvider(s.provideShellForSsh),
+		s.sshd, err = NewSsh(
+			WithSshListenAddress(s.conf.Shell.Listeners...),
+			WithSshServerKeyPath(s.ServerPrivateKeyPath()),
+			WithSshIdleTimeout(s.conf.Shell.IdleTimeout),
+			WithSshAuthServer(s),
+			WithSshMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+			WithSshShellProvider(s.provideShellForSsh),
 		)
 		if err != nil {
 			return errors.Wrap(err, "shell server")
@@ -1246,7 +1242,7 @@ func makeListener(addr string) (net.Listener, error) {
 // ////////////////////////////////
 // implements AuthServer interface
 
-var _ security.AuthServer = &svr{}
+var _ AuthServer = (*svr)(nil)
 
 func (s *svr) ValidateClientToken(token string) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
@@ -1270,7 +1266,7 @@ func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool,
 		}
 	}
 
-	hash, err := security.HashCertificate(cert)
+	hash, err := HashCertificate(cert)
 	if err != nil {
 		return false, err
 	}

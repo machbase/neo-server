@@ -4388,12 +4388,12 @@ func (x *Node) gen_initialLocation(args ...any) (any, error) {
 
 // gen_inputStream
 //
-// syntax: inputStream(InputStream)
+// syntax: inputStream(Reader)
 func (x *Node) gen_inputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("inputStream", 1, len(args))
 	}
-	p0, err := convInputStream(args, 0, "inputStream", "spec.InputStream")
+	p0, err := convInputStream(args, 0, "inputStream", "io.Reader")
 	if err != nil {
 		return nil, err
 	}
@@ -4563,12 +4563,12 @@ func (x *Node) gen_opacity(args ...any) (any, error) {
 
 // gen_outputStream
 //
-// syntax: outputStream(OutputStream)
+// syntax: outputStream(Writer)
 func (x *Node) gen_outputStream(args ...any) (any, error) {
 	if len(args) != 1 {
 		return nil, ErrInvalidNumOfArgs("outputStream", 1, len(args))
 	}
-	p0, err := convOutputStream(args, 0, "outputStream", "spec.OutputStream")
+	p0, err := convOutputStream(args, 0, "outputStream", "io.Writer")
 	if err != nil {
 		return nil, err
 	}

@@ -241,9 +241,9 @@ func getConvStatement(ptype string, idx int, pname string, funcName string) stri
 		convFunc = "Any"
 	case "*time.Location":
 		convFunc = "TimeLocation"
-	case "spec.OutputStream":
+	case "io.Writer":
 		convFunc = "OutputStream"
-	case "spec.InputStream":
+	case "io.Reader":
 		convFunc = "InputStream"
 	case "transcoder.Transcoder":
 		convFunc = "Transcoder"

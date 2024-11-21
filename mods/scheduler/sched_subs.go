@@ -11,14 +11,12 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/machbase/neo-server/v8/mods/service/msg"
-	"github.com/machbase/neo-server/v8/mods/stream"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/nats-io/nats.go"
@@ -333,7 +331,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		desc = desc0
 	}
 
-	var instream spec.InputStream
+	var instream io.Reader
 	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
@@ -349,9 +347,9 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 			ent.log.Warn("fail to decompress,", err.Error())
 			return
 		}
-		instream = &stream.ReaderInputStream{Reader: gr}
+		instream = gr
 	} else {
-		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(payload)}
+		instream = bytes.NewReader(payload)
 	}
 
 	codecOpts := []opts.Option{
@@ -408,7 +406,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 			valueHolder := strings.Join(_hold, ",")
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wd.Table, strings.Join(columnNames, ","), valueHolder)
 		}
-		instream = &stream.ReaderInputStream{Reader: bytes.NewBuffer(bs)}
+		instream = bytes.NewBuffer(bs)
 	}
 
 	if len(columnNames) == 0 {
@@ -488,7 +486,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 		}
 	}
 
-	var instream spec.InputStream
+	var instream io.Reader
 	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
@@ -504,9 +502,9 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
 			ent.log.Warn("fail to decompress,", err.Error())
 			return
 		}
-		instream = &stream.ReaderInputStream{Reader: gr}
+		instream = gr
 	} else {
-		instream = &stream.ReaderInputStream{Reader: bytes.NewReader(payload)}
+		instream = bytes.NewReader(payload)
 	}
 
 	cols, _ := ent.appender.Columns()

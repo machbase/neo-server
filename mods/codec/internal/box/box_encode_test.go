@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/box"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +20,7 @@ func TestBox1(t *testing.T) {
 	require.Equal(t, "plain/text", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetTimeformat("KITCHEN")
 	enc.SetPrecision(3)
 	enc.SetRownum(true)
@@ -126,9 +123,7 @@ func TestBoxFloat(t *testing.T) {
 	require.Equal(t, "plain/text", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetRownum(true)
 	enc.SetBoxStyle("double")
 	enc.SetBoxSeparateColumns(true)
@@ -165,9 +160,7 @@ func TestBoxFloat2(t *testing.T) {
 	require.Equal(t, "plain/text", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetRownum(true)
 	enc.SetPrecision(2)
 	enc.SetBoxStyle("bold")
@@ -214,9 +207,7 @@ func runTimeformat(t *testing.T, format string) string {
 	require.Equal(t, "plain/text", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetTimeformat(format)
 	enc.SetPrecision(0)
 	enc.SetRownum(false)
@@ -284,9 +275,7 @@ func TestBoxWide(t *testing.T) {
 	require.Equal(t, "plain/text", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetRownum(true)
 	enc.SetBoxStyle("round")
 	enc.SetBoxSeparateColumns(true)

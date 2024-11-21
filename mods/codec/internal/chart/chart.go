@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"reflect"
 	"regexp"
 	"strings"
@@ -12,13 +13,12 @@ import (
 
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 )
 
 type Chart struct {
 	internal.RowsEncoderBase
-	output       spec.OutputStream
+	output       io.Writer
 	toJsonOutput bool
 	option       string
 	data         [][]any
@@ -72,7 +72,7 @@ func (c *Chart) SetVolatileFileWriter(w facility.VolatileFileWriter) {
 	c.volatileFileWriter = w
 }
 
-func (c *Chart) SetOutputStream(o spec.OutputStream) {
+func (c *Chart) SetOutputStream(o io.Writer) {
 	c.output = o
 }
 

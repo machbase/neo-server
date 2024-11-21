@@ -10,7 +10,6 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/csv"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/machbase/neo-server/v8/mods/util/charset"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +18,7 @@ func TestCsvDecoder(t *testing.T) {
 	data := []byte("json.data,1678147077000000000,1.234,2.3450,typeval,1234,2345,1111,pnameval,1,\"{\"\"name\"\":1234}\",192.168.1.100")
 
 	dec := csv.NewDecoder()
-	input := &stream.ReaderInputStream{Reader: (bytes.NewBuffer(data))}
+	input := bytes.NewBuffer(data)
 	dec.SetInputStream(input)
 	dec.SetDelimiter(",")
 	dec.SetTimeformat("ns")
@@ -134,7 +133,7 @@ func TestCsvDecoderTimeformat(t *testing.T) {
 
 	for _, tt := range tests {
 		dec := csv.NewDecoder()
-		input := &stream.ReaderInputStream{Reader: (bytes.NewBuffer([]byte(strings.Join(tt.input, "\n"))))}
+		input := bytes.NewBuffer([]byte(strings.Join(tt.input, "\n")))
 		dec.SetInputStream(input)
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)
@@ -171,7 +170,7 @@ func TestCsvDecoderCharset(t *testing.T) {
 		}
 	}
 
-	input := &stream.ReaderInputStream{Reader: bytes.NewBuffer(data)}
+	input := bytes.NewBuffer(data)
 
 	dec := csv.NewDecoder()
 	dec.SetInputStream(input)

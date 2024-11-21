@@ -3,11 +3,11 @@ package ndjson
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 type Decoder struct {
@@ -15,7 +15,7 @@ type Decoder struct {
 	columnTypes  []api.DataType
 	columnNames  []string
 	nrow         int64
-	input        spec.InputStream
+	input        io.Reader
 	timeformat   string
 	timeLocation *time.Location
 	tableName    string
@@ -25,7 +25,7 @@ func NewDecoder() *Decoder {
 	return &Decoder{}
 }
 
-func (dec *Decoder) SetInputStream(in spec.InputStream) {
+func (dec *Decoder) SetInputStream(in io.Reader) {
 	dec.input = in
 }
 

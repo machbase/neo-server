@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/markdown"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -87,7 +86,7 @@ func TestMarkdown(t *testing.T) {
 		buffer := &bytes.Buffer{}
 
 		md := markdown.NewEncoder()
-		md.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		md.SetOutputStream(buffer)
 		tt.opts(md)
 
 		tick := time.Unix(0, 1692670838086467000)

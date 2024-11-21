@@ -1,5 +1,7 @@
 package opts
 
+//go:generate go run generate.go
+
 type Option func(enc any)
 
 type CanSetHttpHeader interface {

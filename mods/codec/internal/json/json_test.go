@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,7 @@ func TestDecoder(t *testing.T) {
 	dec := &json.Decoder{}
 	dec.SetTableName("test")
 	dec.SetTimeformat("s")
-	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
+	dec.SetInputStream(input)
 	dec.SetColumnTypes("string", "datetime", "double", "int", "int16", "int32", "int64")
 	dec.Open()
 
@@ -73,7 +72,7 @@ func TestDecoderNano(t *testing.T) {
 	dec := &json.Decoder{}
 	dec.SetTableName("test")
 	dec.SetTimeformat("ns")
-	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
+	dec.SetInputStream(input)
 	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
@@ -102,7 +101,7 @@ func TestRowsOnlyDecoder(t *testing.T) {
 	dec := &json.Decoder{}
 	dec.SetTableName("test")
 	dec.SetTimeformat("s")
-	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
+	dec.SetInputStream(input)
 	dec.SetColumnTypes("string", "datetime", "double")
 	dec.Open()
 
@@ -129,7 +128,7 @@ func TestSingleRowDecoder(t *testing.T) {
 	dec.SetTableName("test")
 	dec.SetColumnTypes("string", "datetime", "double")
 	dec.SetTimeformat("s")
-	dec.SetInputStream(&stream.ReaderInputStream{Reader: input})
+	dec.SetInputStream(input)
 	dec.Open()
 
 	rec, _, err := dec.NextRow()
@@ -147,7 +146,7 @@ func TestEncoder(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	require.Equal(t, enc.ContentType(), "application/json")
@@ -169,7 +168,7 @@ func TestEncoderWithRownum(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRownum(true)
@@ -192,7 +191,7 @@ func TestEncoderTranspose(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRowsFlatten(true)
@@ -215,7 +214,7 @@ func TestEncoderTransposeWithRownum(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRowsFlatten(true)
@@ -239,7 +238,7 @@ func TestEncoderRowsFlatten(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRowsFlatten(true)
@@ -261,7 +260,7 @@ func TestEncoderRowsFlattenWithRownum(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRowsFlatten(true)
@@ -284,7 +283,7 @@ func TestEncoderRowsArray(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRowsFlatten(true)
@@ -311,7 +310,7 @@ func TestEncoderRowsArrayWithRownum(t *testing.T) {
 
 	enc := json.NewEncoder()
 	enc.SetTimeformat("ns")
-	enc.SetOutputStream(stream.NewOutputStreamWriter(w))
+	enc.SetOutputStream(w)
 	enc.SetColumnTypes("string", "datetime", "double", "string")
 	enc.SetColumns("name", "time", "value", "place")
 	enc.SetRownum(true)

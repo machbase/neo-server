@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -12,13 +13,12 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/nums"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 )
 
 type GeoMap struct {
 	internal.RowsEncoderBase
-	output spec.OutputStream
+	output io.Writer
 
 	MapID  string
 	Width  string
@@ -76,7 +76,7 @@ func (gm *GeoMap) SetVolatileFileWriter(w facility.VolatileFileWriter) {
 	gm.volatileFileWriter = w
 }
 
-func (gm *GeoMap) SetOutputStream(o spec.OutputStream) {
+func (gm *GeoMap) SetOutputStream(o io.Writer) {
 	gm.output = o
 }
 

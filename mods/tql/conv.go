@@ -2,13 +2,13 @@ package tql
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/nums"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"golang.org/x/text/encoding"
 )
@@ -25,21 +25,21 @@ func ErrArgs(name string, idx int, msg string) error {
 	return fmt.Errorf("f(%s) arg(%d) %s", name, idx, msg)
 }
 
-func convInputStream(args []any, idx int, fname string, expect string) (spec.InputStream, error) {
+func convInputStream(args []any, idx int, fname string, expect string) (io.Reader, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
-	if o, ok := args[idx].(spec.InputStream); ok {
+	if o, ok := args[idx].(io.Reader); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convOutputStream(args []any, idx int, fname string, expect string) (spec.OutputStream, error) {
+func convOutputStream(args []any, idx int, fname string, expect string) (io.Writer, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
 	}
-	if o, ok := args[idx].(spec.OutputStream); ok {
+	if o, ok := args[idx].(io.Writer); ok {
 		return o, nil
 	}
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])

@@ -31,8 +31,6 @@ var ignores = []string{
 	// "SetXYZ",
 }
 
-//go:generate go run generate.go
-
 func main() {
 	genFx := false
 	if len(os.Args) == 2 && os.Args[1] == "fx" {

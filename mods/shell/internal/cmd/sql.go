@@ -3,6 +3,7 @@ package cmd
 import (
 	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"syscall"
@@ -12,8 +13,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
-	"github.com/machbase/neo-server/v8/mods/stream"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"golang.org/x/term"
 )
@@ -96,12 +95,13 @@ func doSql(ctx *action.ActionContext) {
 		cmd.BoxStyle = ctx.Pref().BoxStyle().Value()
 	}
 	var outputPath = util.StripQuote(cmd.Output)
-	var output spec.OutputStream
-	output, err = stream.NewOutputStream(outputPath)
+	output, err := util.NewOutputStream(outputPath)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}
-	defer output.Close()
+	if closer, ok := output.(io.Closer); ok {
+		defer closer.Close()
+	}
 
 	if cmd.Compress == "gzip" {
 		gw := gzip.NewWriter(output)
@@ -113,7 +113,7 @@ func doSql(ctx *action.ActionContext) {
 				}
 			}
 		}()
-		output = &stream.WriterOutputStream{Writer: gw}
+		output = gw
 		cmd.Interactive = false
 	} else {
 		if outputPath == "-" {

@@ -8,7 +8,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
 
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +71,7 @@ func TestJsonDecoder(t *testing.T) {
 
 	for _, tt := range tests {
 		dec := json.NewDecoder()
-		input := &stream.ReaderInputStream{Reader: (bytes.NewBuffer([]byte(tt.input)))}
+		input := bytes.NewBuffer([]byte(tt.input))
 		dec.SetInputStream(input)
 		dec.SetTimeformat(tt.timeformat)
 		dec.SetTimeLocation(tt.tz)

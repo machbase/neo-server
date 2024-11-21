@@ -539,7 +539,7 @@ func InstallNeoWebX(ver string) error {
 
 	url := fmt.Sprintf("https://github.com/machbase/neo-web/releases/download/%s/web-ui.zip", ver)
 	dst := "./tmp/web-ui.zip"
-	uiDir := "./mods/service/httpd/web/ui"
+	uiDir := "./mods/server/web/ui"
 
 	if runtime.GOOS == "windows" {
 		if err := wget(url, dst); err != nil {

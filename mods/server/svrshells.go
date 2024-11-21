@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/machbase/neo-server/v8/mods/service/sshd"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -50,7 +49,7 @@ func (s *svr) initShellProvider() {
 }
 
 // sshd shell provider
-func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
+func (s *svr) provideShellForSsh(user string, shellId string) *SshShell {
 	shellId = strings.ToUpper(shellId)
 	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
 	if shellDef == nil {
@@ -62,7 +61,7 @@ func (s *svr) provideShellForSsh(user string, shellId string) *sshd.Shell {
 		return nil
 	}
 
-	shell := &sshd.Shell{}
+	shell := &SshShell{}
 
 	shell.Cmd = parsed[0]
 	if len(parsed) > 1 {
