@@ -30,7 +30,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
-	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -55,10 +54,10 @@ type Server struct {
 	mqttd *mqttd
 	httpd *httpd
 	sshd  *sshd
+	bakd  *backupd
 
 	bridgeSvc bridge.Service
 	schedSvc  scheduler.Service
-	backupSvc backup.Service
 
 	certdir           string
 	authHandler       AuthHandler
@@ -335,14 +334,14 @@ func (s *Server) Start() error {
 		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
-			s.backupSvc = backup.NewBackupService(
-				backup.WithBackupServiceBaseDir(backupDirAbs),
-				backup.WithBackupServiceDatabase(s.db),
+			s.bakd = NewBackupd(
+				WithBackupdBaseDir(backupDirAbs),
+				WithBackupdDatabase(s.db),
 			)
 		}
 	}
-	if s.backupSvc != nil {
-		if err := s.backupSvc.Start(); err != nil {
+	if s.bakd != nil {
+		if err := s.bakd.Start(); err != nil {
 			return err
 		}
 	}
@@ -500,7 +499,7 @@ func (s *Server) Start() error {
 			WithHttpScheduleServer(s.schedSvc), // add, timer
 			WithHttpBridgeServer(s.bridgeSvc),
 			WithHttpServerSideFileSystem(serverFs),
-			WithHttpBackupService(s.backupSvc),
+			WithHttpBackupService(s.bakd),
 			WithHttpDebugMode(s.Http.DebugMode),
 			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 			WithHttpWebShellProvider(s.models.ShellProvider()),
@@ -633,8 +632,8 @@ func (s *Server) Stop() {
 	if s.bridgeSvc != nil {
 		s.bridgeSvc.Stop()
 	}
-	if s.backupSvc != nil {
-		s.backupSvc.Stop()
+	if s.bakd != nil {
+		s.bakd.Stop()
 	}
 	if s.models != nil {
 		s.models.Stop()

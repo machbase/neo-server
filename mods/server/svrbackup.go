@@ -1,4 +1,4 @@
-package backup
+package server
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
-func NewBackupService(opts ...BackupServiceOption) Service {
-	ret := &backupService{
+func NewBackupd(opts ...BackupdOption) *backupd {
+	ret := &backupd{
 		log: logging.GetLog("backupd"),
 	}
 	for _, opt := range opts {
@@ -26,17 +26,9 @@ func NewBackupService(opts ...BackupServiceOption) Service {
 	return ret
 }
 
-type Service interface {
-	Start() error
-	Stop()
+type BackupdOption func(s *backupd)
 
-	HttpRouter(r gin.IRouter)
-	HttpHandler(ctx *gin.Context)
-}
-
-type BackupServiceOption func(s *backupService)
-
-type backupService struct {
+type backupd struct {
 	log     logging.Log
 	baseDir string
 	db      api.Database
@@ -45,22 +37,20 @@ type backupService struct {
 	mutex   sync.Mutex
 }
 
-var _ = Service((*backupService)(nil))
-
-func WithBackupServiceBaseDir(baseDir string) BackupServiceOption {
-	return func(s *backupService) {
+func WithBackupdBaseDir(baseDir string) BackupdOption {
+	return func(s *backupd) {
 		// baseDir, err := filepath.Abs(baseDir)
 		s.baseDir = baseDir
 	}
 }
 
-func WithBackupServiceDatabase(db api.Database) BackupServiceOption {
-	return func(s *backupService) {
+func WithBackupdDatabase(db api.Database) BackupdOption {
+	return func(s *backupd) {
 		s.db = db
 	}
 }
 
-func (s *backupService) Start() error {
+func (s *backupd) Start() error {
 	s.log.Infof("backupd started at %s", s.baseDir)
 	if runtime.GOOS == "windows" {
 		s.cutset = "\\"
@@ -71,11 +61,11 @@ func (s *backupService) Start() error {
 	return nil
 }
 
-func (s *backupService) Stop() {
+func (s *backupd) Stop() {
 	s.log.Infof("backupd stop")
 }
 
-func (s *backupService) HttpRouter(r gin.IRouter) {
+func (s *backupd) HttpRouter(r gin.IRouter) {
 	// /web/api/backup/archives
 	r.GET("/archives", s.handleArchives) // returns backup list
 	// r.GET("/archives/:id", s.HttpHandler) // returns the backup detail
@@ -88,14 +78,14 @@ func (s *backupService) HttpRouter(r gin.IRouter) {
 	r.DELETE("/mounts/:name", s.handleUnmount) // unmount
 }
 
-func (s *backupService) HttpHandler(ctx *gin.Context) {
+func (s *backupd) HttpHandler(ctx *gin.Context) {
 	s.log.Info("backup api request", ctx.Request.Method, ctx.Request.RequestURI)
 	ctx.JSON(200, gin.H{
 		"message": "pong",
 	})
 }
 
-func (s *backupService) handleArchiveStatus(ctx *gin.Context) {
+func (s *backupd) handleArchiveStatus(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -135,7 +125,7 @@ type BackupArchive struct {
 	Path string `json:"path" binding:"required"`
 }
 
-func (s *backupService) handleArchive(ctx *gin.Context) {
+func (s *backupd) handleArchive(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -248,7 +238,7 @@ func (s *backupService) handleArchive(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupService) backupManager(conn api.Conn, archive BackupArchive, sqlText string) {
+func (s *backupd) backupManager(conn api.Conn, archive BackupArchive, sqlText string) {
 	go func() {
 		defer conn.Close()
 
@@ -278,7 +268,7 @@ type ArchiveInfo struct {
 	MountName string `json:"mountName,omitempty"`
 }
 
-func (s *backupService) handleArchives(ctx *gin.Context) {
+func (s *backupd) handleArchives(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -369,7 +359,7 @@ func (s *backupService) handleArchives(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupService) handleMount(ctx *gin.Context) {
+func (s *backupd) handleMount(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -427,7 +417,7 @@ func (s *backupService) handleMount(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
-func (s *backupService) handleUnmount(ctx *gin.Context) {
+func (s *backupd) handleUnmount(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 
@@ -476,7 +466,7 @@ type StorageMount struct {
 	Flag            int    `json:"flag"`
 }
 
-func (s *backupService) handleMounts(ctx *gin.Context) {
+func (s *backupd) handleMounts(ctx *gin.Context) {
 	tick := time.Now()
 	rsp := gin.H{"success": false, "reason": "not specified"}
 

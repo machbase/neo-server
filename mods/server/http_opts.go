@@ -8,7 +8,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/bridge"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
-	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -162,9 +161,9 @@ func WithHttpBridgeServer(handler any) HttpOption {
 	}
 }
 
-func WithHttpBackupService(handler backup.Service) HttpOption {
+func WithHttpBackupService(handler *backupd) HttpOption {
 	return func(s *httpd) {
-		s.backupService = handler
+		s.bakd = handler
 	}
 }
 

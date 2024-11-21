@@ -27,7 +27,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods"
-	"github.com/machbase/neo-server/v8/mods/backup"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
@@ -80,7 +79,7 @@ type httpd struct {
 	listeners         []net.Listener
 	jwtCache          JwtCache
 	authServer        AuthServer
-	backupService     backup.Service
+	bakd              *backupd
 	mgmtImpl          mgmt.ManagementServer
 	schedMgmtImpl     schedule.ManagementServer
 	bridgeMgmtImpl    bridge.ManagementServer
@@ -280,9 +279,9 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/refs/*path", svr.handleRefs)
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
-			if svr.backupService != nil {
+			if svr.bakd != nil {
 				backupdGroup := group.Group("/api/backup")
-				svr.backupService.HttpRouter(backupdGroup)
+				svr.bakd.HttpRouter(backupdGroup)
 			}
 			svr.log.Infof("HTTP path %s for the web ui", prefix)
 		case HandlerLake:
