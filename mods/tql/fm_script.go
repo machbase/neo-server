@@ -759,7 +759,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	})
 	// $.db()
 	ctx.obj.Set("db", ottoFuncDB(ctx, node))
-	ctx.obj.Set("fetch", ottoFuncFetch(ctx, node))
+	ctx.obj.Set("request", ottoFuncRequest(ctx, node))
 
 	// init code
 	if initCode != "" {
@@ -789,8 +789,8 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	return ctx, nil
 }
 
-func ottoFuncFetch(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
-	// $.fetch(url, option).then(function(response) {...})
+func ottoFuncRequest(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
+	// $.request(url, option).do(function(response) {...})
 	return func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
 			return ctx.vm.MakeCustomError("HTTPError", "missing a URL")
@@ -847,14 +847,14 @@ func ottoFuncFetch(ctx *OttoContext, node *Node) func(call otto.FunctionCall) ot
 			return ctx.vm.MakeCustomError("InvalidOption", fmt.Sprintf("unsupported method %q", option.Method))
 		}
 
-		fetchObj, _ := ctx.vm.Object(`({})`)
-		fetchObj.Set("then", func(call otto.FunctionCall) otto.Value {
+		requestObj, _ := ctx.vm.Object(`({})`)
+		requestObj.Set("do", func(call otto.FunctionCall) otto.Value {
 			if len(call.ArgumentList) != 1 {
-				return ctx.vm.MakeCustomError("HTTPError", "then() requires a callback function")
+				return ctx.vm.MakeCustomError("HTTPError", "do() requires a callback function")
 			}
 			if !call.ArgumentList[0].IsFunction() {
 				return ctx.vm.MakeCustomError("HTTPError",
-					fmt.Sprintf("then() requires a callback function, but got %s", call.ArgumentList[0].Class()))
+					fmt.Sprintf("do() requires a callback function, but got %s", call.ArgumentList[0].Class()))
 			}
 			callback := call.ArgumentList[0]
 			responseObj, _ := ctx.vm.Object(`({})`)
@@ -986,7 +986,7 @@ func ottoFuncFetch(ctx *OttoContext, node *Node) func(call otto.FunctionCall) ot
 			}
 			return otto.UndefinedValue()
 		})
-		return fetchObj.Value()
+		return requestObj.Value()
 	}
 }
 
