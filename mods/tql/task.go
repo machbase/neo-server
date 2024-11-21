@@ -17,7 +17,7 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
-	"github.com/machbase/neo-server/v8/mods/expression"
+	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
 	"github.com/pkg/errors"
 )
 

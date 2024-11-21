@@ -10,9 +10,9 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
-func (s *svr) initShellProvider() {
+func (s *Server) initShellProvider() {
 	candidates := []string{}
-	for _, addr := range s.conf.Grpc.Listeners {
+	for _, addr := range s.Grpc.Listeners {
 		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
 			continue
 		}
@@ -40,7 +40,7 @@ func (s *svr) initShellProvider() {
 			shellCmd = exename
 		}
 	}
-	if s.conf.Grpc.Insecure {
+	if s.Grpc.Insecure {
 		shellCmd = fmt.Sprintf(`"%s" shell --insecure --server %s`, shellCmd, candidates[0])
 	} else {
 		shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
@@ -49,7 +49,7 @@ func (s *svr) initShellProvider() {
 }
 
 // sshd shell provider
-func (s *svr) provideShellForSsh(user string, shellId string) *SshShell {
+func (s *Server) provideShellForSsh(user string, shellId string) *SshShell {
 	shellId = strings.ToUpper(shellId)
 	shellDef, _ := s.models.ShellProvider().GetShell(shellId)
 	if shellDef == nil {

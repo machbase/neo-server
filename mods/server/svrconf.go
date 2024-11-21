@@ -7,22 +7,188 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/machbase/neo-server/v8/api/machsvr"
+	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/pkg/errors"
 )
+
+func init() {
+	booter.Register(
+		"machbase.com/neo-server",
+		func() *Config {
+			return NewConfig()
+		},
+		func(conf *Config) (booter.Boot, error) {
+			return NewServer(conf)
+		},
+	)
+
+	defaultLogConf := logging.Config{
+		Console:                     false,
+		Filename:                    "-",
+		Append:                      true,
+		RotateSchedule:              "@midnight",
+		MaxSize:                     10,
+		MaxBackups:                  1,
+		MaxAge:                      7,
+		Compress:                    false,
+		UTC:                         false,
+		DefaultPrefixWidth:          10,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+	}
+
+	booter.Register(
+		"machbase.com/neo-logging",
+		func() *logging.Config {
+			conf := defaultLogConf
+			return &conf
+		},
+		func(conf *logging.Config) (booter.Boot, error) {
+			logging.Configure(conf)
+			return &logging.Module{}, nil
+		},
+	)
+}
+
+type Config struct {
+	DataDir        string
+	PrefDir        string
+	BackupDir      string
+	FileDirs       []string
+	MachbasePreset MachbasePreset
+	Machbase       MachbaseConfig
+	AuthHandler    AuthHandlerConfig
+	Shell          ShellConfig
+	Grpc           GrpcConfig
+	Http           HttpConfig
+	Mqtt           MqttConfig
+	Jwt            JwtConfig
+	NavelCord      *NavelCordConfig
+
+	CreateDBQueries     []string // sql sentences
+	CreateDBScriptFiles []string // file path
+	StartupQueries      []string // sql sentences
+	StartupScriptFiles  []string // file path
+
+	NoBanner       bool
+	ExperimentMode bool
+
+	MachbaseInitOption machsvr.InitOption
+}
+
+var PreferredPreset string = "auto"
+
+func NewConfig() *Config {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
+	conf := Config{
+		DataDir:   ".",
+		PrefDir:   filepath.Join(homeDir, ".config", "machbase"),
+		BackupDir: ".",
+		Grpc: GrpcConfig{
+			Listeners:      []string{"unix://./mach-grpc.sock"},
+			MaxRecvMsgSize: 4,
+			MaxSendMsgSize: 4,
+		},
+		Http: HttpConfig{
+			Listeners: []string{},
+		},
+		Mqtt: MqttConfig{
+			Listeners:           []string{},
+			MaxMessageSizeLimit: 1024 * 1024,
+		},
+		Shell: ShellConfig{
+			Listeners:   []string{},
+			IdleTimeout: 2 * time.Minute,
+		},
+		Jwt: JwtConfig{
+			AtDuration: 5 * time.Minute,
+			RtDuration: 60 * time.Minute,
+			Secret:     "__secret__",
+		},
+		NoBanner: false,
+	}
+
+	switch strings.ToLower(PreferredPreset) {
+	case "fog":
+		conf.MachbasePreset = PresetFog
+	case "edge":
+		conf.MachbasePreset = PresetEdge
+	default:
+		sysCPU := runtime.NumCPU()
+		if sysCPU <= 4 {
+			conf.MachbasePreset = PresetEdge
+		} else {
+			conf.MachbasePreset = PresetFog
+		}
+	}
+
+	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
+	return &conf
+}
+
+type AuthHandlerConfig struct {
+	Enabled bool
+}
+
+type GrpcConfig struct {
+	Listeners      []string
+	MaxRecvMsgSize int
+	MaxSendMsgSize int
+	Insecure       bool
+}
+
+type HttpConfig struct {
+	Listeners []string
+	WebDir    string
+
+	EnableWebUI     bool
+	EnableTokenAuth bool
+	DebugMode       bool
+}
+
+type MqttConfig struct {
+	Listeners []string
+
+	EnableTokenAuth bool
+	EnableTls       bool
+	ServerCertPath  string
+	ServerKeyPath   string
+
+	MaxMessageSizeLimit int
+	EnablePersistence   bool
+}
+
+type ShellConfig struct {
+	Listeners     []string
+	IdleTimeout   time.Duration
+	ServerKeyPath string
+}
+
+type NavelCordConfig struct {
+	Port int
+}
 
 //go:embed svrconf.hcl
 var DefaultFallbackConfig []byte
 
 var DefaultFallbackPname string = "neo"
 
-func (s *svr) GetConfig() string {
+func (s *Server) GetConfig() string {
 	return string(DefaultFallbackConfig)
 }
 
-func (s *svr) checkRewriteMachbaseConf(confpath string) (bool, error) {
+func (s *Server) checkRewriteMachbaseConf(confpath string) (bool, error) {
 	shouldRewrite := false
 	content, err := os.ReadFile(confpath)
 	if err != nil {
@@ -54,18 +220,18 @@ func (s *svr) checkRewriteMachbaseConf(confpath string) (bool, error) {
 		}
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
-		if key == "PORT_NO" && strconv.FormatInt(int64(s.conf.Machbase.PORT_NO), 10) != value {
-			s.log.Infof("MACH PORT_NO will be %d, previously %s", s.conf.Machbase.PORT_NO, value)
+		if key == "PORT_NO" && strconv.FormatInt(int64(s.Machbase.PORT_NO), 10) != value {
+			s.log.Infof("MACH PORT_NO will be %d, previously %s", s.Machbase.PORT_NO, value)
 			shouldRewrite = true
-		} else if key == "BIND_IP_ADDRESS" && s.conf.Machbase.BIND_IP_ADDRESS != value {
-			s.log.Infof("MACH BIND_IP_ADDRESS will be %s, previously %s", s.conf.Machbase.BIND_IP_ADDRESS, value)
+		} else if key == "BIND_IP_ADDRESS" && s.Machbase.BIND_IP_ADDRESS != value {
+			s.log.Infof("MACH BIND_IP_ADDRESS will be %s, previously %s", s.Machbase.BIND_IP_ADDRESS, value)
 			shouldRewrite = true
 		}
 	}
 	return shouldRewrite, nil
 }
 
-func (s *svr) rewriteMachbaseConf(confpath string) error {
+func (s *Server) rewriteMachbaseConf(confpath string) error {
 	content, err := os.ReadFile(confpath)
 	if err != nil {
 		return errors.Wrap(err, "MACH machbase.conf not available")
@@ -99,9 +265,9 @@ func (s *svr) rewriteMachbaseConf(confpath string) error {
 		}
 		key = strings.TrimSpace(key)
 		if key == "PORT_NO" {
-			newConfLines = append(newConfLines, fmt.Sprintf("PORT_NO = %d", s.conf.Machbase.PORT_NO))
+			newConfLines = append(newConfLines, fmt.Sprintf("PORT_NO = %d", s.Machbase.PORT_NO))
 		} else if key == "BIND_IP_ADDRESS" {
-			newConfLines = append(newConfLines, fmt.Sprintf("BIND_IP_ADDRESS = %s", s.conf.Machbase.BIND_IP_ADDRESS))
+			newConfLines = append(newConfLines, fmt.Sprintf("BIND_IP_ADDRESS = %s", s.Machbase.BIND_IP_ADDRESS))
 		} else {
 			newConfLines = append(newConfLines, line)
 		}

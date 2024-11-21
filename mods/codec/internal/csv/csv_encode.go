@@ -15,7 +15,6 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/expression"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -142,7 +141,7 @@ func (ex *Exporter) AddRow(values []any) error {
 	var cols = make([]string, len(values))
 
 	for i, r := range values {
-		if r == nil || r == expression.NullValue {
+		if r == nil {
 			r = ex.nullAlternative
 		}
 		switch sqlVal := r.(type) {

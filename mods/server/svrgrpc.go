@@ -26,7 +26,7 @@ import (
 )
 
 // Factory
-func NewGrpcd(db *machsvr.RPCServer, options ...Option) (*grpcd, error) {
+func NewGrpc(db *machsvr.RPCServer, options ...Option) (*grpcd, error) {
 	s := &grpcd{
 		log:            logging.GetLog("grpcd"),
 		machImpl:       db,
@@ -42,27 +42,27 @@ func NewGrpcd(db *machsvr.RPCServer, options ...Option) (*grpcd, error) {
 type Option func(svr *grpcd)
 
 // ListenAddresses
-func OptionListenAddress(addrs ...string) Option {
+func WithGrpcListenAddress(addrs ...string) Option {
 	return func(s *grpcd) {
 		s.listenAddresses = append(s.listenAddresses, addrs...)
 	}
 }
 
 // MaxRecvMsgSize
-func OptionMaxRecvMsgSize(size int) Option {
+func WithGrpcMaxRecvMsgSize(size int) Option {
 	return func(s *grpcd) {
 		s.maxRecvMsgSize = size
 	}
 }
 
 // MaxSendMsgSize
-func OptionMaxSendMsgSize(size int) Option {
+func WithGrpcMaxSendMsgSize(size int) Option {
 	return func(s *grpcd) {
 		s.maxSendMsgSize = size
 	}
 }
 
-func OptionTlsCreds(keyPath string, certPath string) Option {
+func WithGrpcTlsCreds(keyPath string, certPath string) Option {
 	return func(s *grpcd) {
 		s.keyPath = keyPath
 		s.certPath = certPath
@@ -70,14 +70,14 @@ func OptionTlsCreds(keyPath string, certPath string) Option {
 }
 
 // mgmt implements
-func OptionManagementServer(handler mgmt.ManagementServer) Option {
+func WithGrpcManagementServer(handler mgmt.ManagementServer) Option {
 	return func(s *grpcd) {
 		s.mgmtImpl = handler
 	}
 }
 
 // bridge implements
-func OptionBridgeServer(handler any) Option {
+func WithGrpcBridgeServer(handler any) Option {
 	return func(s *grpcd) {
 		if o, ok := handler.(bridge.ManagementServer); ok {
 			s.bridgeMgmtImpl = o
@@ -89,13 +89,13 @@ func OptionBridgeServer(handler any) Option {
 }
 
 // schedule
-func OptionScheduleServer(handler schedule.ManagementServer) Option {
+func WithGrpcScheduleServer(handler schedule.ManagementServer) Option {
 	return func(s *grpcd) {
 		s.schedMgmtImpl = handler
 	}
 }
 
-func OptionServerInsecure(ignoreInsecure bool) Option {
+func WithGrpcServerInsecure(ignoreInsecure bool) Option {
 	return func(s *grpcd) {
 		s.ignoreInsecure = ignoreInsecure
 	}

@@ -3,8 +3,8 @@ package tql_test
 import (
 	"testing"
 
-	"github.com/machbase/neo-server/v8/mods/expression"
 	. "github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
 	"github.com/stretchr/testify/require"
 )
 
