@@ -2,13 +2,14 @@ package box
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -20,7 +21,7 @@ type Exporter struct {
 	style           string
 	separateColumns bool
 	drawBorder      bool
-	output          spec.OutputStream
+	output          io.Writer
 	showRownum      bool
 	heading         bool
 	precision       int
@@ -44,7 +45,7 @@ func (ex *Exporter) ContentType() string {
 	return "plain/text"
 }
 
-func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
 }
 
@@ -130,13 +131,16 @@ func (ex *Exporter) Close() {
 		ex.writer.Render()
 		ex.writer.ResetRows()
 	}
-	ex.output.Close()
+	if closer, ok := ex.output.(io.Closer); ok {
+		closer.Close()
+	}
 }
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Render()
-	ex.output.Flush()
-
+	if flusher, ok := ex.output.(api.Flusher); ok {
+		flusher.Flush()
+	}
 	ex.writer.ResetRows()
 	if !heading {
 		ex.writer.ResetHeaders()

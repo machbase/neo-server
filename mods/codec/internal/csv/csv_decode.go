@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"golang.org/x/text/encoding"
 )
 
@@ -22,7 +21,7 @@ type Decoder struct {
 	comma         rune
 	heading       bool
 	headerColumns bool
-	input         spec.InputStream
+	input         io.Reader
 	timeformat    string
 	timeLocation  *time.Location
 	tableName     string
@@ -37,7 +36,7 @@ func NewDecoder() *Decoder {
 	return &Decoder{}
 }
 
-func (dec *Decoder) SetInputStream(in spec.InputStream) {
+func (dec *Decoder) SetInputStream(in io.Reader) {
 	dec.input = in
 }
 

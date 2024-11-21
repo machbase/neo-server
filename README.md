@@ -24,7 +24,7 @@ Bridges integrated with external systems
 - [x] MySQL
 - [x] MS-SQL
 - [x] MQTT Broker
-- [x] NATS Server (v8.0.20)
+- [x] NATS Server
 
 ## Documents
 
@@ -50,8 +50,8 @@ https://hub.docker.com/r/machbase/machbase-neo
 
 ## Build from sources
 
-- Install Go 1.23 or higher
-- Require C compiler and linker (e.g: gcc) 
+- Install Go 1.23
+- Require C compiler and linker (e.g: gcc)
 - Checkout machbase/neo-server
 - Execute `go run mage.go install-neo-web` to download web-ui package
 - Execute `go run mage.go machbase-neo` to build machbase-neo

@@ -9,13 +9,17 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"io"
 	"math/big"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/sha3"
 )
 
 type EllipticCurve struct {
@@ -194,4 +198,14 @@ func GenerateClientCertificate(subject pkix.Name, notBefore time.Time, notAfter 
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func HashCertificate(cert *x509.Certificate) (string, error) {
+	raw := cert.Raw
+	b64str := base64.StdEncoding.EncodeToString(raw)
+	b64str = strings.Trim(b64str, "\r\n ")
+
+	sha := sha3.New256()
+	sha.Write([]byte(b64str))
+	return hex.EncodeToString(sha.Sum(nil)), nil
 }

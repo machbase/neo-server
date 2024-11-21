@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -15,10 +16,8 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
+	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/expression"
-	"github.com/machbase/neo-server/v8/mods/service/eventbus"
-	"github.com/machbase/neo-server/v8/mods/stream"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/pkg/errors"
 )
 
@@ -28,7 +27,7 @@ type Task struct {
 	params       map[string][]string
 	db           api.Database
 	inputReader  io.Reader
-	outputWriter spec.OutputStream
+	outputWriter io.Writer
 	toJsonOutput bool
 	logWriter    io.Writer
 	consoleUser  string
@@ -107,19 +106,12 @@ func (x *Task) InputReader() io.Reader {
 	return x.inputReader
 }
 
-func (x *Task) SetOutputWriter(w io.Writer) error {
-	var err error
+func (x *Task) SetOutputWriter(w io.Writer) {
 	if w == nil {
-		x.outputWriter, err = stream.NewOutputStream("-")
-		if err != nil {
-			return err
-		}
-	} else if o, ok := w.(spec.OutputStream); ok {
-		x.outputWriter = o
+		x.outputWriter = os.Stdout
 	} else {
-		x.outputWriter = &stream.WriterOutputStream{Writer: w}
+		x.outputWriter = w
 	}
-	return nil
 }
 
 func (x *Task) SetOutputWriterJson(w io.Writer, json bool) {
@@ -127,9 +119,9 @@ func (x *Task) SetOutputWriterJson(w io.Writer, json bool) {
 	x.toJsonOutput = json
 }
 
-func (x *Task) OutputWriter() spec.OutputStream {
+func (x *Task) OutputWriter() io.Writer {
 	if x.outputWriter == nil {
-		x.outputWriter, _ = stream.NewOutputStream("-")
+		x.outputWriter = os.Stdout
 	}
 	return x.outputWriter
 }

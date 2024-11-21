@@ -3,15 +3,15 @@ package html
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 )
 
 type Exporter struct {
 	internal.RowsEncoderBase
 	imageType string
-	output    spec.OutputStream
+	output    io.Writer
 }
 
 func NewEncoder() *Exporter {
@@ -58,6 +58,6 @@ func (ex *Exporter) AddRow(values []any) error {
 func (ex *Exporter) Flush(heading bool) {
 }
 
-func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
 }

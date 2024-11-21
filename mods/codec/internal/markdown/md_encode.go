@@ -3,6 +3,7 @@ package markdown
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"runtime/debug"
 	"strconv"
@@ -10,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
@@ -25,7 +26,7 @@ type Exporter struct {
 	rownum     int64
 	mdLines    []string
 
-	output        spec.OutputStream
+	output        io.Writer
 	showRownum    bool
 	precision     int
 	timeformatter *util.TimeFormatter
@@ -55,7 +56,7 @@ func (ex *Exporter) SetLogger(l facility.Logger) {
 	ex.logger = l
 }
 
-func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
 }
 
@@ -137,12 +138,16 @@ func (ex *Exporter) Close() {
 				ex.output.Write([]byte(line))
 			}
 		}
-		ex.output.Close()
+		if closer, ok := ex.output.(io.Closer); ok {
+			closer.Close()
+		}
 	})
 }
 
 func (ex *Exporter) Flush(heading bool) {
-	ex.output.Flush()
+	if flusher, ok := ex.output.(api.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (ex *Exporter) encodeFloat64(v float64) string {

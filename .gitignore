@@ -27,6 +27,7 @@ examples/**/target
 testsuite_tmp/
 
 mods/service/httpd/web/ui/*
+mods/server/web/ui/*
 mach-grpc.sock
 
 native/**/*_dummy.o

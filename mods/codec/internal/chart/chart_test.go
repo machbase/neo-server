@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/chart"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,7 +59,7 @@ func TestLine(t *testing.T) {
 		fsmock := &VolatileFileWriterMock{}
 		buffer := &bytes.Buffer{}
 		c := chart.NewChart()
-		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetOutputStream(buffer)
 		c.SetVolatileFileWriter(fsmock)
 		c.SetChartJson(output == "json")
 		c.SetChartId("WejMYXCGcYNL")
@@ -117,7 +116,7 @@ func TestScatter(t *testing.T) {
 		buffer := &bytes.Buffer{}
 		fsmock := &VolatileFileWriterMock{}
 		c := chart.NewChart()
-		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetOutputStream(buffer)
 		c.SetVolatileFileWriter(fsmock)
 		c.SetChartJson(output == "json")
 		c.ChartID = "WejMYXCGcYNL"
@@ -173,7 +172,7 @@ func TestTangentialPolarBar(t *testing.T) {
 	for _, output := range []string{"json", "html"} {
 		buffer := &bytes.Buffer{}
 		c := chart.NewChart()
-		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetOutputStream(buffer)
 		c.SetChartJson(output == "json")
 		c.ChartID = "WejMYXCGcYNL"
 		c.Theme = "dark"
@@ -229,7 +228,7 @@ func TestTangentialPolarBar(t *testing.T) {
 func TestAnscombeQuatet(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetOutputStream(buffer)
 	c.SetChartJson(true)
 	c.ChartID = "WejMYXCGcYNL"
 	c.Theme = "dark"
@@ -334,7 +333,7 @@ func TestAnscombeQuatet(t *testing.T) {
 func TestMarkLine(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetOutputStream(buffer)
 	c.SetChartJson(true)
 	c.ChartID = "WejMYXCGcYNL"
 	c.Theme = "dark"
@@ -389,7 +388,7 @@ func TestMarkLine(t *testing.T) {
 func TestCandleStick(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	c := chart.NewChart()
-	c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+	c.SetOutputStream(buffer)
 	c.SetChartJson(true)
 	c.ChartID = "WejMYXCGcYNL"
 	c.Theme = "dark"

@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	gojson "encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -19,7 +19,7 @@ type Exporter struct {
 	tick time.Time
 	nrow int
 
-	output        spec.OutputStream
+	output        io.Writer
 	Rownum        bool
 	Heading       bool
 	precision     int
@@ -45,7 +45,7 @@ func (ex *Exporter) ContentType() string {
 	return "application/json"
 }
 
-func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
 }
 
@@ -142,11 +142,15 @@ func (ex *Exporter) Close() {
 	}
 	footer := fmt.Sprintf(`]},"success":true,"reason":"success","elapse":"%s"}`, time.Since(ex.tick).String())
 	ex.output.Write([]byte(footer))
-	ex.output.Close()
+	if closer, ok := ex.output.(io.Closer); ok {
+		closer.Close()
+	}
 }
 
 func (ex *Exporter) Flush(heading bool) {
-	ex.output.Flush()
+	if flusher, ok := ex.output.(api.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (ex *Exporter) encodeFloat64(v float64) any {

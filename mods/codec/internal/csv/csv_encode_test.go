@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/csv"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,9 +17,7 @@ func TestCsvEncoder(t *testing.T) {
 	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetTimeformat("KITCHEN")
 	enc.SetPrecision(3)
 	enc.SetRownum(true)
@@ -68,9 +65,7 @@ func TestCsvEncoderNullValue(t *testing.T) {
 	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetTimeformat("KITCHEN")
 	enc.SetPrecision(2)
 	enc.SetRownum(true)
@@ -161,9 +156,7 @@ func runTimeformat(t *testing.T, format string) string {
 	require.Equal(t, "text/csv; charset=utf-8", enc.ContentType())
 
 	w := &bytes.Buffer{}
-	out := &stream.WriterOutputStream{Writer: w}
-
-	enc.SetOutputStream(out)
+	enc.SetOutputStream(w)
 	enc.SetTimeformat(format)
 	enc.SetPrecision(0)
 	enc.SetRownum(false)

@@ -10,7 +10,6 @@ import (
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/chart"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +18,7 @@ func TestCompat(t *testing.T) {
 		buffer := &bytes.Buffer{}
 		fsmock := &VolatileFileWriterMock{}
 		c := chart.NewRectChart("line")
-		c.SetOutputStream(stream.NewOutputStreamWriter(buffer))
+		c.SetOutputStream(buffer)
 		c.SetVolatileFileWriter(fsmock)
 		c.SetChartJson(output == "json")
 		c.SetChartId("WejMYXCGcYNL")
@@ -90,7 +89,7 @@ func TestScatterCompat(t *testing.T) {
 
 	line := chart.NewRectChart("scatter")
 	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.OutputStream(buffer),
 		opts.VolatileFileWriter(fsmock),
 		opts.ChartId("MjYwMjY0NTY1OTY2MTUxNjg_"),
 		opts.ChartJson(true),
@@ -140,7 +139,7 @@ func TestBarCompat(t *testing.T) {
 
 	line := chart.NewRectChart("bar")
 	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.OutputStream(buffer),
 		opts.VolatileFileWriter(fsmock),
 		opts.ChartJson(true),
 		opts.ChartId("MjYwMjY0NTY1OTY2MTUxNjg_"),
@@ -190,7 +189,7 @@ func TestLine3DCompat(t *testing.T) {
 
 	line := chart.NewRectChart("line3D")
 	opts := []opts.Option{
-		opts.OutputStream(stream.NewOutputStreamWriter(buffer)),
+		opts.OutputStream(buffer),
 		opts.VolatileFileWriter(fsmock),
 		opts.ChartId("zmsXewYeZOqW"),
 		opts.ChartJson(true),

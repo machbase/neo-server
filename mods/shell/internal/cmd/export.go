@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"compress/gzip"
+	"io"
 	"strings"
 	"time"
 
@@ -9,8 +10,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
-	"github.com/machbase/neo-server/v8/mods/stream"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -90,13 +89,14 @@ func doExport(ctx *action.ActionContext) {
 	}
 
 	var outputPath = util.StripQuote(cmd.Output)
-	var output spec.OutputStream
-	output, err = stream.NewOutputStream(outputPath)
+	output, err := util.NewOutputStream(outputPath)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	defer output.Close()
+	if closer, ok := output.(io.Closer); ok {
+		defer closer.Close()
+	}
 
 	if cmd.Compress == "gzip" {
 		gw := gzip.NewWriter(output)
@@ -108,7 +108,7 @@ func doExport(ctx *action.ActionContext) {
 				}
 			}
 		}()
-		output = &stream.WriterOutputStream{Writer: gw}
+		output = gw
 	}
 
 	encoder := codec.NewEncoder(cmd.Format,

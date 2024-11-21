@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"net"
 	"runtime/debug"
 	"strconv"
@@ -12,10 +13,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 	"github.com/machbase/neo-server/v8/mods/expression"
 	"github.com/machbase/neo-server/v8/mods/nums"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -26,7 +27,7 @@ type Exporter struct {
 	writer *csv.Writer
 	comma  rune
 
-	output          spec.OutputStream
+	output          io.Writer
 	showRownum      bool
 	precision       int
 	nullAlternative any
@@ -51,7 +52,7 @@ func (ex *Exporter) ContentType() string {
 	return "text/csv; charset=utf-8"
 }
 
-func (ex *Exporter) SetOutputStream(o spec.OutputStream) {
+func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
 }
 
@@ -116,13 +117,17 @@ func (ex *Exporter) Close() {
 	ex.closeOnce.Do(func() {
 		ex.writer.Flush()
 		ex.output.Write([]byte("\n"))
-		ex.output.Close()
+		if closer, ok := ex.output.(io.Closer); ok {
+			closer.Close()
+		}
 	})
 }
 
 func (ex *Exporter) Flush(heading bool) {
 	ex.writer.Flush()
-	ex.output.Flush()
+	if flusher, ok := ex.output.(api.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (ex *Exporter) AddRow(values []any) error {

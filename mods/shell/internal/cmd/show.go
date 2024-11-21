@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -10,8 +12,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
-	"github.com/machbase/neo-server/v8/mods/stream"
-	"github.com/machbase/neo-server/v8/mods/stream/spec"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -437,13 +437,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 }
 
 func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) {
-	var output spec.OutputStream
-	output, err := stream.NewOutputStream("-")
-	if err != nil {
-		ctx.Println("ERR", err.Error())
-	}
-	defer output.Close()
-
+	var output io.Writer = os.Stdout
 	encoder := codec.NewEncoder(codec.BOX,
 		opts.OutputStream(output),
 		opts.Rownum(showRownum),

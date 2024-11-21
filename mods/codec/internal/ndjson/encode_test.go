@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/internal/ndjson"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,7 +57,7 @@ func TestJsonEncode(t *testing.T) {
 		out := &bytes.Buffer{}
 
 		enc := ndjson.NewEncoder()
-		enc.SetOutputStream(stream.NewOutputStreamWriter(out))
+		enc.SetOutputStream(out)
 		enc.SetTimeformat(tt.timeformat)
 		enc.SetTimeLocation(tt.tz)
 		enc.SetColumnTypes("string", "datetime", "double")

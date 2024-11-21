@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
-	"github.com/machbase/neo-server/v8/mods/stream"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/charset"
 	"golang.org/x/text/encoding"
@@ -103,10 +103,16 @@ func doImport(ctx *action.ActionContext) {
 		cmd.encoding = enc
 	}
 
-	in, err := stream.NewInputStream(cmd.Input)
-	if err != nil {
-		ctx.Println(err.Error())
-		return
+	var in io.ReadCloser
+	if cmd.Input == "-" || cmd.Input == "" {
+		in = io.NopCloser(os.Stdin)
+	} else {
+		if r, err := os.OpenFile(cmd.Input, os.O_RDONLY, 0644); err != nil {
+			ctx.Println(err.Error())
+			return
+		} else {
+			in = r
+		}
 	}
 	defer in.Close()
 
@@ -148,7 +154,7 @@ func doImport(ctx *action.ActionContext) {
 			}
 			buff = append(buff, bs...)
 		}
-		in = &stream.ReaderInputStream{Reader: bytes.NewReader(buff)}
+		in = io.NopCloser(bytes.NewReader(buff))
 	} else {
 		if cmd.Compress == "gzip" {
 			gr, err := gzip.NewReader(in)
@@ -156,7 +162,7 @@ func doImport(ctx *action.ActionContext) {
 				ctx.Println("ERR", err.Error())
 				return
 			}
-			in = &stream.ReaderInputStream{Reader: gr}
+			in = gr
 			defer gr.Close()
 		}
 	}
