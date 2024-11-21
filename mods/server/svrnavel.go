@@ -13,11 +13,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *svr) StartNavelCord() {
-	if s.conf.NavelCord == nil {
+func (s *Server) StartNavelCord() {
+	if s.NavelCord == nil {
 		return
 	}
-	if conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", s.conf.NavelCord.Port)); err != nil {
+	if conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", s.NavelCord.Port)); err != nil {
 		s.log.Error("NavelCord failed to connect:", err)
 		go func() {
 			s.log.Error("Shutdown by NavelCord failure.")
@@ -58,7 +58,7 @@ func (s *svr) StartNavelCord() {
 	}()
 }
 
-func (s *svr) StopNavelCord() {
+func (s *Server) StopNavelCord() {
 	if s.navel == nil {
 		return
 	}

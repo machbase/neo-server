@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-func (s *svr) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
+func (s *Server) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ListKeyResponse{}
 	defer func() {
@@ -66,7 +66,7 @@ func (s *svr) ListKey(context.Context, *mgmt.ListKeyRequest) (*mgmt.ListKeyRespo
 	return rsp, nil
 }
 
-func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKeyResponse, error) {
+func (s *Server) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.GenKeyResponse{Reason: "not specified"}
 	defer func() {
@@ -129,7 +129,7 @@ func (s *svr) GenKey(ctx context.Context, req *mgmt.GenKeyRequest) (*mgmt.GenKey
 	return rsp, nil
 }
 
-func (s *svr) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.DelKeyResponse, error) {
+func (s *Server) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.DelKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.DelKeyResponse{}
 	defer func() {
@@ -147,7 +147,7 @@ func (s *svr) DelKey(ctx context.Context, req *mgmt.DelKeyRequest) (*mgmt.DelKey
 	return rsp, nil
 }
 
-func (s *svr) ServerKey(ctx context.Context, req *mgmt.ServerKeyRequest) (*mgmt.ServerKeyResponse, error) {
+func (s *Server) ServerKey(ctx context.Context, req *mgmt.ServerKeyRequest) (*mgmt.ServerKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ServerKeyResponse{Reason: "unspecified"}
 	defer func() {
@@ -301,7 +301,7 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 	}
 }
 
-func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {
+func (s *Server) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShellResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ListShellResponse{}
 	defer func() {
@@ -319,7 +319,7 @@ func (s *svr) ListShell(context.Context, *mgmt.ListShellRequest) (*mgmt.ListShel
 	return rsp, nil
 }
 
-func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.AddShellResponse, error) {
+func (s *Server) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.AddShellResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.AddShellResponse{Reason: "not specified"}
 	defer func() {
@@ -356,7 +356,7 @@ func (s *svr) AddShell(ctx context.Context, req *mgmt.AddShellRequest) (*mgmt.Ad
 	return rsp, nil
 }
 
-func (s *svr) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.DelShellResponse, error) {
+func (s *Server) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.DelShellResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.DelShellResponse{}
 	defer func() {
@@ -370,7 +370,7 @@ func (s *svr) DelShell(ctx context.Context, req *mgmt.DelShellRequest) (*mgmt.De
 	return rsp, nil
 }
 
-func (s *svr) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*mgmt.ListSshKeyResponse, error) {
+func (s *Server) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*mgmt.ListSshKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ListSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
@@ -388,7 +388,7 @@ func (s *svr) ListSshKey(ctx context.Context, req *mgmt.ListSshKeyRequest) (*mgm
 	return rsp, nil
 }
 
-func (s *svr) AddSshKey(ctx context.Context, req *mgmt.AddSshKeyRequest) (*mgmt.AddSshKeyResponse, error) {
+func (s *Server) AddSshKey(ctx context.Context, req *mgmt.AddSshKeyRequest) (*mgmt.AddSshKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.AddSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
@@ -404,7 +404,7 @@ func (s *svr) AddSshKey(ctx context.Context, req *mgmt.AddSshKeyRequest) (*mgmt.
 	return rsp, nil
 }
 
-func (s *svr) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mgmt.DelSshKeyResponse, error) {
+func (s *Server) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mgmt.DelSshKeyResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.DelSshKeyResponse{Reason: "not-implemented"}
 	defer func() {
@@ -421,7 +421,7 @@ func (s *svr) DelSshKey(ctx context.Context, req *mgmt.DelSshKeyRequest) (*mgmt.
 }
 
 // // mgmt server implements
-func (s *svr) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
+func (s *Server) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.ShutdownResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ShutdownResponse{}
 	if runtime.GOOS != "windows" {
@@ -461,7 +461,7 @@ func (s *svr) Shutdown(ctx context.Context, req *mgmt.ShutdownRequest) (*mgmt.Sh
 	return rsp, nil
 }
 
-func (s *svr) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest) (*mgmt.ServicePortsResponse, error) {
+func (s *Server) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest) (*mgmt.ServicePortsResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ServicePortsResponse{}
 
@@ -482,7 +482,7 @@ func (s *svr) ServicePorts(ctx context.Context, req *mgmt.ServicePortsRequest) (
 	return rsp, nil
 }
 
-func (s *svr) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgmt.ServerInfoResponse, error) {
+func (s *Server) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgmt.ServerInfoResponse, error) {
 	tick := time.Now()
 	rsp := &mgmt.ServerInfoResponse{}
 	defer func() {
@@ -504,7 +504,7 @@ func (s *svr) ServerInfo(ctx context.Context, req *mgmt.ServerInfoRequest) (*mgm
 	return rsp, nil
 }
 
-func (s *svr) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt.SessionsResponse, error) {
+func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt.SessionsResponse, error) {
 	rsp := &mgmt.SessionsResponse{}
 	tick := time.Now()
 	defer func() {
@@ -544,7 +544,7 @@ func (s *svr) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt.Se
 	return rsp, nil
 }
 
-func (s *svr) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) (*mgmt.KillSessionResponse, error) {
+func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) (*mgmt.KillSessionResponse, error) {
 	rsp := &mgmt.KillSessionResponse{}
 	tick := time.Now()
 	defer func() {
@@ -567,7 +567,7 @@ var maxProcessors int32
 var pid int32
 var ver *mods.Version
 
-func (s *svr) getServerInfo() (*mgmt.ServerInfoResponse, error) {
+func (s *Server) getServerInfo() (*mgmt.ServerInfoResponse, error) {
 	if maxProcessors == 0 {
 		maxProcessors = int32(runtime.GOMAXPROCS(-1))
 	}
@@ -636,7 +636,7 @@ type SessionWatcher interface {
 
 var _ SessionWatcher = &machsvr.Database{}
 
-func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, sessions []*mgmt.Session, err error) {
+func (s *Server) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, sessions []*mgmt.Session, err error) {
 	if reqStatz {
 		if st := machsvr.StatzSnapshot(); st != nil {
 			statz = &mgmt.Statz{
@@ -665,7 +665,7 @@ func (s *svr) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, ses
 	return
 }
 
-func (s *svr) MqttInfo() map[string]any {
+func (s *Server) MqttInfo() map[string]any {
 	if s.mqttd == nil {
 		return nil
 	}

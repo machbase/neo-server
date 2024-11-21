@@ -7,8 +7,8 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/machbase/neo-server/v8/mods/expression"
 	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
 )
 
 func NewNode(task *Task) *Node {

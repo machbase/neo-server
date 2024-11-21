@@ -9,7 +9,6 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -20,14 +19,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/crypto/ssh"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
@@ -45,128 +41,17 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/ssh"
 )
 
-func init() {
-	booter.Register(
-		"machbase.com/neo-server",
-		func() *Config {
-			return NewConfig()
-		},
-		func(conf *Config) (booter.Boot, error) {
-			return NewServer(conf)
-		},
-	)
-
-	defaultLogConf := logging.Config{
-		Console:                     false,
-		Filename:                    "-",
-		Append:                      true,
-		RotateSchedule:              "@midnight",
-		MaxSize:                     10,
-		MaxBackups:                  1,
-		MaxAge:                      7,
-		Compress:                    false,
-		UTC:                         false,
-		DefaultPrefixWidth:          10,
-		DefaultEnableSourceLocation: false,
-		DefaultLevel:                "TRACE",
-	}
-
-	booter.Register(
-		"machbase.com/neo-logging",
-		func() *logging.Config {
-			conf := defaultLogConf
-			return &conf
-		},
-		func(conf *logging.Config) (booter.Boot, error) {
-			logging.Configure(conf)
-			return &logging.Module{}, nil
-		},
-	)
-}
-
-type Config struct {
-	DataDir        string
-	PrefDir        string
-	BackupDir      string
-	FileDirs       []string
-	MachbasePreset MachbasePreset
-	Machbase       MachbaseConfig
-	AuthHandler    AuthHandlerConfig
-	Shell          ShellConfig
-	Grpc           GrpcConfig
-	Http           HttpConfig
-	Mqtt           MqttConfig
-	Jwt            JwtConfig
-	NavelCord      *NavelCordConfig
-
-	CreateDBQueries     []string // sql sentences
-	CreateDBScriptFiles []string // file path
-	StartupQueries      []string // sql sentences
-	StartupScriptFiles  []string // file path
-
-	NoBanner       bool
-	ExperimentMode bool
-
-	MachbaseInitOption machsvr.InitOption
-}
-
-type AuthHandlerConfig struct {
-	Enabled bool
-}
-
-type GrpcConfig struct {
-	Listeners      []string
-	MaxRecvMsgSize int
-	MaxSendMsgSize int
-	Insecure       bool
-}
-
-type HttpConfig struct {
-	Listeners []string
-	WebDir    string
-
-	EnableWebUI     bool
-	EnableTokenAuth bool
-	DebugMode       bool
-}
-
-type MqttConfig struct {
-	Listeners []string
-
-	EnableTokenAuth bool
-	EnableTls       bool
-	ServerCertPath  string
-	ServerKeyPath   string
-
-	MaxMessageSizeLimit int
-	EnablePersistence   bool
-}
-
-type ShellConfig struct {
-	Listeners     []string
-	IdleTimeout   time.Duration
-	ServerKeyPath string
-}
-
-type NavelCordConfig struct {
-	Port int
-}
-
-type Server interface {
-	booter.Boot
-}
-
-type svr struct {
+type Server struct {
 	mgmt.UnimplementedManagementServer
+	Config
 
-	conf  *Config
 	log   logging.Log
 	db    *machsvr.Database
 	navel *net.TCPConn
 	grpcd *grpcd
-
 	mqttd *mqttd
 	httpd *httpd
 	sshd  *sshd
@@ -197,60 +82,9 @@ type svr struct {
 	snowflakes            []string
 }
 
-var PreferredPreset string = "auto"
+var _ booter.Boot = (*Server)(nil)
 
-func NewConfig() *Config {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	conf := Config{
-		DataDir:   ".",
-		PrefDir:   filepath.Join(homeDir, ".config", "machbase"),
-		BackupDir: ".",
-		Grpc: GrpcConfig{
-			Listeners:      []string{"unix://./mach-grpc.sock"},
-			MaxRecvMsgSize: 4,
-			MaxSendMsgSize: 4,
-		},
-		Http: HttpConfig{
-			Listeners: []string{},
-		},
-		Mqtt: MqttConfig{
-			Listeners:           []string{},
-			MaxMessageSizeLimit: 1024 * 1024,
-		},
-		Shell: ShellConfig{
-			Listeners:   []string{},
-			IdleTimeout: 2 * time.Minute,
-		},
-		Jwt: JwtConfig{
-			AtDuration: 5 * time.Minute,
-			RtDuration: 60 * time.Minute,
-			Secret:     "__secret__",
-		},
-		NoBanner: false,
-	}
-
-	switch strings.ToLower(PreferredPreset) {
-	case "fog":
-		conf.MachbasePreset = PresetFog
-	case "edge":
-		conf.MachbasePreset = PresetEdge
-	default:
-		sysCPU := runtime.NumCPU()
-		if sysCPU <= 4 {
-			conf.MachbasePreset = PresetEdge
-		} else {
-			conf.MachbasePreset = PresetFog
-		}
-	}
-
-	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
-	return &conf
-}
-
-func NewServer(conf *Config) (Server, error) {
+func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
 		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
 			conf.NavelCord = &NavelCordConfig{
@@ -258,8 +92,8 @@ func NewServer(conf *Config) (Server, error) {
 			}
 		}
 	}
-	return &svr{
-		conf:         conf,
+	return &Server{
+		Config:       *conf,
 		servicePorts: make(map[string][]*model.ServicePort),
 	}, nil
 }
@@ -283,10 +117,10 @@ type DatabaseAuthServer interface {
 	UserAuth(ctx context.Context, user string, password string) (bool, string, error)
 }
 
-var _ DatabaseServer = &machsvr.Database{}
-var _ DatabaseAuthServer = &machsvr.Database{}
+var _ DatabaseServer = (*machsvr.Database)(nil)
+var _ DatabaseAuthServer = (*machsvr.Database)(nil)
 
-func (s *svr) Start() error {
+func (s *Server) Start() error {
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
 
@@ -295,7 +129,7 @@ func (s *svr) Start() error {
 		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
 	}
 
-	prefdirPath, err := filepath.Abs(s.conf.PrefDir)
+	prefdirPath, err := filepath.Abs(s.PrefDir)
 	if err != nil {
 		return errors.Wrap(err, "prefdir")
 	}
@@ -323,19 +157,19 @@ func (s *svr) Start() error {
 		s.licenseFileTime = stat.ModTime()
 	}
 
-	if s.conf.Jwt.AtDuration > 0 && s.conf.Jwt.RtDuration > 0 {
-		JwtConfigure(&s.conf.Jwt)
+	if s.Jwt.AtDuration > 0 && s.Jwt.RtDuration > 0 {
+		JwtConfigure(&s.Jwt)
 	}
 
 	s.models = model.NewService(
 		model.WithConfigDirPath(prefdirPath),
-		model.WithExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
 	)
 	if err := s.models.Start(); err != nil {
 		return err
 	}
 
-	homepath, err := filepath.Abs(s.conf.DataDir)
+	homepath, err := filepath.Abs(s.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "datadir")
 	}
@@ -363,48 +197,47 @@ func (s *svr) Start() error {
 	}
 
 	// port-check MACH
-	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)); err != nil {
+	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
 		return errors.Wrap(err, "MACH port not available")
 	} else {
-		machPort := fmt.Sprintf("tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
+		machPort := fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
 		s.AddServicePort("mach", machPort)
 	}
-
 	// port-check gRPC
-	for _, addr := range s.conf.Grpc.Listeners {
+	for _, addr := range s.Grpc.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "gRPC port not available")
 		}
 		s.AddServicePort("grpc", addr)
 	}
 	// port-check HTTP
-	for _, addr := range s.conf.Http.Listeners {
+	for _, addr := range s.Http.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "HTTP port not available")
 		}
 		s.AddServicePort("http", addr)
 	}
 	// port-check MQTT
-	for _, addr := range s.conf.Mqtt.Listeners {
+	for _, addr := range s.Mqtt.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "MQTT port not available")
 		}
 		s.AddServicePort("mqtt", addr)
 	}
 	// port-check SSHD
-	for _, addr := range s.conf.Shell.Listeners {
+	for _, addr := range s.Shell.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
 			return errors.Wrap(err, "SSHD port not available")
 		}
 		s.AddServicePort("shell", addr)
 	}
 
-	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.conf.AuthHandler.Enabled)
+	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.AuthHandler.Enabled)
 
-	s.log.Infof("apply machbase '%s' preset", s.conf.MachbasePreset)
+	s.log.Infof("apply machbase '%s' preset", s.MachbasePreset)
 	confpath := filepath.Join(homepath, "conf", "machbase.conf")
 	if _, err := os.Stat(confpath); err != nil {
-		if err := applyMachbaseConfig(confpath, &s.conf.Machbase); err != nil {
+		if err := applyMachbaseConfig(confpath, &s.Machbase); err != nil {
 			return errors.Wrap(err, "machbase.conf")
 		}
 	} else if rewrite, err := s.checkRewriteMachbaseConf(confpath); err != nil {
@@ -415,8 +248,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	s.log.Infof("apply machbase init option: %d", s.conf.MachbaseInitOption)
-	if err := machsvr.Initialize(homepath, s.conf.Machbase.PORT_NO, s.conf.MachbaseInitOption); err != nil {
+	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
+	if err := machsvr.Initialize(homepath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
 		return errors.Wrap(err, "initialize database failed")
 	}
 	if !machsvr.ExistsDatabase() {
@@ -439,7 +272,7 @@ func (s *svr) Start() error {
 		return errors.Wrap(err, "startup database")
 	}
 
-	if !s.conf.NoBanner {
+	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
@@ -462,15 +295,15 @@ func (s *svr) Start() error {
 		cancel()
 	}
 
-	if len(s.conf.CreateDBQueries) > 0 && s.databaseCreated {
-		if err := s.runSqlScripts("CreateDBQueries", s.conf.CreateDBQueries); err != nil {
+	if len(s.CreateDBQueries) > 0 && s.databaseCreated {
+		if err := s.runSqlScripts("CreateDBQueries", s.CreateDBQueries); err != nil {
 			s.log.Error("ERR", err.Error())
 			return err
 		}
 	}
 
-	if len(s.conf.CreateDBScriptFiles) > 0 && s.databaseCreated {
-		for _, f := range s.conf.CreateDBScriptFiles {
+	if len(s.CreateDBScriptFiles) > 0 && s.databaseCreated {
+		for _, f := range s.CreateDBScriptFiles {
 			if f == "" {
 				continue
 			}
@@ -480,15 +313,15 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if len(s.conf.StartupQueries) > 0 {
-		if err := s.runSqlScripts("StartupQueries", s.conf.StartupQueries); err != nil {
+	if len(s.StartupQueries) > 0 {
+		if err := s.runSqlScripts("StartupQueries", s.StartupQueries); err != nil {
 			s.log.Error("ERR", err.Error())
 			return err
 		}
 	}
 
-	if len(s.conf.StartupScriptFiles) > 0 {
-		for _, f := range s.conf.StartupScriptFiles {
+	if len(s.StartupScriptFiles) > 0 {
+		for _, f := range s.StartupScriptFiles {
 			if f == "" {
 				continue
 			}
@@ -498,8 +331,8 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if s.conf.BackupDir != "" {
-		if backupDirAbs, err := filepath.Abs(s.conf.BackupDir); err != nil {
+	if s.BackupDir != "" {
+		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
 			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
 		} else {
 			s.backupSvc = backup.NewBackupService(
@@ -514,7 +347,7 @@ func (s *svr) Start() error {
 		}
 	}
 
-	serverFs, err := ssfs.NewServerSideFileSystem(s.conf.FileDirs)
+	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
 	if err != nil {
 		s.log.Warnf("Server filesystem, %s", err.Error())
 		return errors.Wrap(err, "server side file system")
@@ -522,7 +355,7 @@ func (s *svr) Start() error {
 	ssfs.SetDefault(serverFs)
 
 	tqlLoader := tql.NewLoader()
-	tql.SetGrpcAddresses(s.conf.Grpc.Listeners)
+	tql.SetGrpcAddresses(s.Grpc.Listeners)
 
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
@@ -546,23 +379,23 @@ func (s *svr) Start() error {
 	}
 
 	// native port
-	s.log.Infof("MACH Listen tcp://%s:%d", s.conf.Machbase.BIND_IP_ADDRESS, s.conf.Machbase.PORT_NO)
+	s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
 
 	// grpc server
-	if len(s.conf.Grpc.Listeners) > 0 {
+	if len(s.Grpc.Listeners) > 0 {
 		machRpcSvr := machsvr.NewRPCServer(s.db,
 			machsvr.WithLogger(logging.Wrap(s.log, nil)),
 			machsvr.WithAuthProvider(s),
 		)
-		s.grpcd, err = NewGrpcd(machRpcSvr,
-			OptionListenAddress(s.conf.Grpc.Listeners...),
-			OptionMaxRecvMsgSize(s.conf.Grpc.MaxRecvMsgSize*1024*1024),
-			OptionMaxSendMsgSize(s.conf.Grpc.MaxSendMsgSize*1024*1024),
-			OptionTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-			OptionManagementServer(s),
-			OptionBridgeServer(s.bridgeSvc),
-			OptionScheduleServer(s.schedSvc),
-			OptionServerInsecure(s.conf.Grpc.Insecure),
+		s.grpcd, err = NewGrpc(machRpcSvr,
+			WithGrpcListenAddress(s.Grpc.Listeners...),
+			WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
+			WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
+			WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
+			WithGrpcManagementServer(s),
+			WithGrpcBridgeServer(s.bridgeSvc),
+			WithGrpcScheduleServer(s.schedSvc),
+			WithGrpcServerInsecure(s.Grpc.Insecure),
 		)
 		if err != nil {
 			return errors.Wrap(err, "grpc server")
@@ -574,14 +407,14 @@ func (s *svr) Start() error {
 	}
 
 	// mqtt server
-	if len(s.conf.Mqtt.Listeners) > 0 {
+	if len(s.Mqtt.Listeners) > 0 {
 		var tlsConf *tls.Config
-		if s.conf.Mqtt.EnableTls {
-			serverCert := s.conf.Mqtt.ServerCertPath
+		if s.Mqtt.EnableTls {
+			serverCert := s.Mqtt.ServerCertPath
 			if len(serverCert) == 0 {
 				serverCert = s.ServerCertificatePath()
 			}
-			serverKey := s.conf.Mqtt.ServerKeyPath
+			serverKey := s.Mqtt.ServerKeyPath
 			if len(serverKey) == 0 {
 				serverKey = s.ServerPrivateKeyPath()
 			}
@@ -592,16 +425,16 @@ func (s *svr) Start() error {
 			}
 		}
 		opts := []MqttOption{
-			WithMqttAuthServer(s, s.conf.Mqtt.EnableTokenAuth && !s.conf.Mqtt.EnableTls),
-			WithMqttMaxMessageSizeLimit(s.conf.Mqtt.MaxMessageSizeLimit),
+			WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
+			WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
 			WithMqttTqlLoader(tqlLoader),
 		}
-		if s.conf.Mqtt.EnablePersistence {
+		if s.Mqtt.EnablePersistence {
 			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
 			opts = append(opts, WithMqttBadgerPersistent(mqtt_dir))
 		}
-		if len(s.conf.Http.Listeners) > 0 {
-			tok := strings.SplitN(s.conf.Http.Listeners[0], "://", 2)
+		if len(s.Http.Listeners) > 0 {
+			tok := strings.SplitN(s.Http.Listeners[0], "://", 2)
 			var addr = ""
 			if len(tok) == 2 {
 				addr = fmt.Sprintf("%s/web/api/mqtt", tok[1])
@@ -612,7 +445,7 @@ func (s *svr) Start() error {
 		}
 
 		// mqtt server listeners
-		for _, addr := range s.conf.Mqtt.Listeners {
+		for _, addr := range s.Mqtt.Listeners {
 			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
 				addr = strings.TrimPrefix(addr, "ws://")
 				addr = strings.TrimPrefix(addr, "wss://")
@@ -644,12 +477,12 @@ func (s *svr) Start() error {
 			envs["MACHBASE_NEO"] = b
 		}
 		envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
-		envs["MACHBASE_NEO_FILE"] = strings.Join(s.conf.FileDirs, string(filepath.ListSeparator))
-		envs["MACHBASE_NEO_HTTP"] = strings.Join(s.conf.Http.Listeners, ",")
-		envs["MACHBASE_NEO_MQTT"] = strings.Join(s.conf.Mqtt.Listeners, ",")
+		envs["MACHBASE_NEO_FILE"] = strings.Join(s.FileDirs, string(filepath.ListSeparator))
+		envs["MACHBASE_NEO_HTTP"] = strings.Join(s.Http.Listeners, ",")
+		envs["MACHBASE_NEO_MQTT"] = strings.Join(s.Mqtt.Listeners, ",")
 		envs["MACHBASE_HOME"] = homepath
 		pkgsDir := filepath.Join(homepath, "pkgs")
-		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.conf.ExperimentMode); err != nil {
+		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.ExperimentMode); err != nil {
 			return errors.Wrap(err, "pkg manager")
 		} else {
 			s.pkgMgr = mgr
@@ -657,24 +490,24 @@ func (s *svr) Start() error {
 	}
 
 	// http server
-	if len(s.conf.Http.Listeners) > 0 {
+	if len(s.Http.Listeners) > 0 {
 		opts := []HttpOption{
 			WithHttpLicenseFilePath(s.licenseFilePath),
-			WithHttpListenAddress(s.conf.Http.Listeners...),
-			WithHttpAuthServer(s, s.conf.Http.EnableTokenAuth),
+			WithHttpListenAddress(s.Http.Listeners...),
+			WithHttpAuthServer(s, s.Http.EnableTokenAuth),
 			WithHttpTqlLoader(tqlLoader),
 			WithHttpManagementServer(s),        // add, key
 			WithHttpScheduleServer(s.schedSvc), // add, timer
 			WithHttpBridgeServer(s.bridgeSvc),
 			WithHttpServerSideFileSystem(serverFs),
 			WithHttpBackupService(s.backupSvc),
-			WithHttpDebugMode(s.conf.Http.DebugMode),
-			WithHttpExperimentModeProvider(func() bool { return s.conf.ExperimentMode }),
+			WithHttpDebugMode(s.Http.DebugMode),
+			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 			WithHttpWebShellProvider(s.models.ShellProvider()),
 			WithHttpServerInfoFunc(s.getServerInfo),
 			WithHttpMqttInfoFunc(s.MqttInfo),
 			WithHttpServerSessionsFunc(s.ServerSessions),
-			WithHttpEnableWeb(s.conf.Http.EnableWebUI),
+			WithHttpEnableWeb(s.Http.EnableWebUI),
 			WithHttpPackageManager(s.pkgMgr),
 		}
 		if s.mqttd != nil {
@@ -688,15 +521,15 @@ func (s *svr) Start() error {
 			shellAddrs = append(shellAddrs, sp.Address)
 		}
 		opts = append(opts, WithHttpNeoShellAddress(shellAddrs...))
-		if s.conf.Http.WebDir != "" {
-			stat, err := os.Stat(s.conf.Http.WebDir)
+		if s.Http.WebDir != "" {
+			stat, err := os.Stat(s.Http.WebDir)
 			if err != nil {
 				return err
 			}
 			if !stat.IsDir() {
 				return fmt.Errorf("web ui path is not a directory")
 			}
-			opts = append(opts, WithHttpWebDir(s.conf.Http.WebDir))
+			opts = append(opts, WithHttpWebDir(s.Http.WebDir))
 		}
 		s.httpd, err = NewHttp(s.db, opts...)
 		if err != nil {
@@ -712,11 +545,11 @@ func (s *svr) Start() error {
 	s.initShellProvider()
 
 	// ssh shell server
-	if len(s.conf.Shell.Listeners) > 0 {
+	if len(s.Shell.Listeners) > 0 {
 		s.sshd, err = NewSsh(
-			WithSshListenAddress(s.conf.Shell.Listeners...),
+			WithSshListenAddress(s.Shell.Listeners...),
 			WithSshServerKeyPath(s.ServerPrivateKeyPath()),
-			WithSshIdleTimeout(s.conf.Shell.IdleTimeout),
+			WithSshIdleTimeout(s.Shell.IdleTimeout),
 			WithSshAuthServer(s),
 			WithSshMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
 			WithSshShellProvider(s.provideShellForSsh),
@@ -730,7 +563,7 @@ func (s *svr) Start() error {
 		}
 	}
 
-	if s.conf.Http.EnableWebUI {
+	if s.Http.EnableWebUI {
 		svcPorts, err := s.getServicePorts("http")
 		if err != nil {
 			return errors.Wrap(err, "service ports")
@@ -756,7 +589,7 @@ func (s *svr) Start() error {
 	s.pkgMgr.Start()
 
 	// navel cord
-	if s.conf.NavelCord != nil {
+	if s.NavelCord != nil {
 		s.StartNavelCord()
 	}
 	return nil
@@ -774,7 +607,7 @@ func representativePort(addr string) string {
 	return addr
 }
 
-func (s *svr) Stop() {
+func (s *Server) Stop() {
 	util.RunShutdownHooks()
 	if s.pkgMgr != nil {
 		s.pkgMgr.Stop()
@@ -813,7 +646,7 @@ func (s *svr) Stop() {
 	s.log.Infof("shutdown.")
 }
 
-func (s *svr) AddServicePort(svc string, addr string) error {
+func (s *Server) AddServicePort(svc string, addr string) error {
 	svc = strings.ToLower(svc)
 	if strings.HasPrefix(addr, "tcp://") {
 		host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp://"))
@@ -848,7 +681,7 @@ func (s *svr) AddServicePort(svc string, addr string) error {
 	return nil
 }
 
-func (s *svr) getServicePorts(svc string) ([]*model.ServicePort, error) {
+func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
 
@@ -870,19 +703,19 @@ func (s *svr) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	return ports, nil
 }
 
-func (s *svr) ServerPrivateKeyPath() string {
+func (s *Server) ServerPrivateKeyPath() string {
 	return filepath.Join(s.certdir, "machbase_key.pem")
 }
 
-func (s *svr) ServerPublicKeyPath() string {
+func (s *Server) ServerPublicKeyPath() string {
 	return filepath.Join(s.certdir, "machbase_pub.pem")
 }
 
-func (s *svr) ServerCertificatePath() string {
+func (s *Server) ServerCertificatePath() string {
 	return filepath.Join(s.certdir, "machbase_cert.pem")
 }
 
-func (s *svr) ServerCertificate() (*x509.Certificate, error) {
+func (s *Server) ServerCertificate() (*x509.Certificate, error) {
 	buff, err := os.ReadFile(s.ServerCertificatePath())
 	if err != nil {
 		return nil, err
@@ -901,7 +734,7 @@ type AuthorizedSshKey struct {
 
 const authorized_ssh_keys = "ssh_keys"
 
-func (s *svr) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
+func (s *Server) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
 	s.authorizedSshKeysLock.RLock()
 	defer s.authorizedSshKeysLock.RUnlock()
 
@@ -951,7 +784,7 @@ func (s *svr) GetAllAuthorizedSshKeys() ([]*AuthorizedSshKey, error) {
 	return list, nil
 }
 
-func (s *svr) AddAuthorizedSshKey(keyType string, key string, comment string) error {
+func (s *Server) AddAuthorizedSshKey(keyType string, key string, comment string) error {
 	switch keyType {
 	case "ssh-rsa":
 	case "ecdsa-sha2-nistp256":
@@ -989,7 +822,7 @@ func (s *svr) AddAuthorizedSshKey(keyType string, key string, comment string) er
 	return nil
 }
 
-func (s *svr) RemoveAuthorizedSshKey(fingerprint string) error {
+func (s *Server) RemoveAuthorizedSshKey(fingerprint string) error {
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		return err
@@ -1033,7 +866,7 @@ func (s *svr) RemoveAuthorizedSshKey(fingerprint string) error {
 	return nil
 }
 
-func (s *svr) checkListenPort(address string) error {
+func (s *Server) checkListenPort(address string) error {
 	if !strings.HasPrefix(address, "tcp://") {
 		return nil
 	}
@@ -1049,7 +882,7 @@ func (s *svr) checkListenPort(address string) error {
 }
 
 // AuthorizedCertificate returns client's X.509 certificate, it returns nil if not found with the given id
-func (s *svr) AuthorizedCertificate(id string) (*x509.Certificate, error) {
+func (s *Server) AuthorizedCertificate(id string) (*x509.Certificate, error) {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
 	nfo, err := os.Stat(path)
 	if err != nil {
@@ -1066,7 +899,7 @@ func (s *svr) AuthorizedCertificate(id string) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
-func (s *svr) IterateAuthorizedCertificates(cb func(id string) bool) error {
+func (s *Server) IterateAuthorizedCertificates(cb func(id string) bool) error {
 	if cb == nil {
 		return nil
 	}
@@ -1088,17 +921,17 @@ func (s *svr) IterateAuthorizedCertificates(cb func(id string) bool) error {
 	return nil
 }
 
-func (s *svr) SetAuthorizedCertificate(id string, pemBytes []byte) error {
+func (s *Server) SetAuthorizedCertificate(id string, pemBytes []byte) error {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
 	return os.WriteFile(path, pemBytes, 00600)
 }
 
-func (s *svr) RemoveAuthorizedCertificate(id string) error {
+func (s *Server) RemoveAuthorizedCertificate(id string) error {
 	path := filepath.Join(s.authorizedKeysDir, fmt.Sprintf("%s_cert.pem", id))
 	return os.Remove(path)
 }
 
-func (s *svr) ServerPublicKey() (any, error) {
+func (s *Server) ServerPublicKey() (any, error) {
 	buff, err := os.ReadFile(s.ServerPublicKeyPath())
 	if err != nil {
 		return nil, err
@@ -1119,7 +952,7 @@ func (s *svr) ServerPublicKey() (any, error) {
 	}
 }
 
-func (s *svr) ServerPrivateKey() (crypto.PrivateKey, error) {
+func (s *Server) ServerPrivateKey() (crypto.PrivateKey, error) {
 	if s.cachedServerPrivateKey != nil {
 		return s.cachedServerPrivateKey, nil
 	}
@@ -1140,7 +973,7 @@ func (s *svr) ServerPrivateKey() (crypto.PrivateKey, error) {
 	return priKey, nil
 }
 
-func (s *svr) mkKeysIfNotExists() error {
+func (s *Server) mkKeysIfNotExists() error {
 	priPath := s.ServerPrivateKeyPath()
 	pubPath := s.ServerPublicKeyPath()
 	certPath := s.ServerCertificatePath()
@@ -1242,9 +1075,9 @@ func makeListener(addr string) (net.Listener, error) {
 // ////////////////////////////////
 // implements AuthServer interface
 
-var _ AuthServer = (*svr)(nil)
+var _ AuthServer = (*Server)(nil)
 
-func (s *svr) ValidateClientToken(token string) (bool, error) {
+func (s *Server) ValidateClientToken(token string) (bool, error) {
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) == 0 {
 		return false, errors.New("invalid token")
@@ -1256,7 +1089,7 @@ func (s *svr) ValidateClientToken(token string) (bool, error) {
 	return VerifyClientToken(token, cliCert.PublicKey)
 }
 
-func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
+func (s *Server) ValidateClientCertificate(clientId string, certHash string) (bool, error) {
 	cert, err := s.AuthorizedCertificate(clientId)
 	if err != nil {
 		if err == os.ErrNotExist {
@@ -1273,7 +1106,7 @@ func (s *svr) ValidateClientCertificate(clientId string, certHash string) (bool,
 	return hash == certHash, nil
 }
 
-func (s *svr) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error) {
+func (s *Server) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool, string, error) {
 	list, err := s.GetAllAuthorizedSshKeys()
 	if err != nil {
 		s.log.Warnf("ssh %q public key", user, err.Error())
@@ -1291,7 +1124,7 @@ func (s *svr) ValidateUserPublicKey(user string, publicKey ssh.PublicKey) (bool,
 	return false, "", nil
 }
 
-func (s *svr) ValidateUserPassword(user string, password string) (bool, string, error) {
+func (s *Server) ValidateUserPassword(user string, password string) (bool, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -1305,7 +1138,7 @@ func (s *svr) ValidateUserPassword(user string, password string) (bool, string, 
 	}
 }
 
-func (s *svr) ValidateUserOtp(user string, otp string) (bool, error) {
+func (s *Server) ValidateUserOtp(user string, otp string) (bool, error) {
 	for _, n := range s.snowflakes {
 		if otp == n {
 			return true, nil
@@ -1314,15 +1147,15 @@ func (s *svr) ValidateUserOtp(user string, otp string) (bool, error) {
 	return false, nil
 }
 
-func (s *svr) GenerateOtp(user string) (string, error) {
+func (s *Server) GenerateOtp(user string) (string, error) {
 	return s.snowflakes[rand.Intn(len(s.snowflakes))], nil
 }
 
-func (s *svr) GenerateSnowflake() string {
+func (s *Server) GenerateSnowflake() string {
 	return s.genSnowflake.Generate().Base64()
 }
 
-func (s *svr) runSqlScriptFile(title string, path string) error {
+func (s *Server) runSqlScriptFile(title string, path string) error {
 	if path == "" {
 		return nil
 	}
@@ -1351,7 +1184,7 @@ func (s *svr) runSqlScriptFile(title string, path string) error {
 	return nil
 }
 
-func (s *svr) runSqlScripts(title string, queries []string) error {
+func (s *Server) runSqlScripts(title string, queries []string) error {
 	if len(queries) == 0 {
 		return nil
 	}
