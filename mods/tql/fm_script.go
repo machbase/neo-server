@@ -18,6 +18,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/pkg/errors"
 	"github.com/robertkrimen/otto"
@@ -613,7 +614,11 @@ func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 	}
 	if inflight := node.Inflight(); inflight != nil {
 		ctx.obj.Set("key", inflight.key)
-		ctx.obj.Set("values", inflight.value)
+		if arr, ok := inflight.value.([]any); ok {
+			ctx.obj.Set("values", arr)
+		} else {
+			ctx.obj.Set("values", []any{inflight.value})
+		}
 	}
 	_, err = ctx.Run()
 	return nil, err
@@ -1019,6 +1024,23 @@ func ottoValue(ctx *OttoContext, value any) (otto.Value, error) {
 
 func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
 	return func(call otto.FunctionCall) otto.Value {
+		var bridgeName string
+		if len(call.ArgumentList) > 0 {
+			// parse db options `$.db({bridge: "name"})`
+			for _, key := range call.ArgumentList[0].Object().Keys() {
+				if v, err := call.ArgumentList[0].Object().Get(key); err == nil {
+					switch key {
+					case "bridge":
+						if !v.IsString() {
+							return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a bridge, but got %q", v.Class()))
+						}
+						bridgeName, _ = v.ToString()
+					default:
+						return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("unknown db option %q: %v", key, v.String()))
+					}
+				}
+			}
+		}
 		db, _ := ctx.vm.Object(`({})`)
 		// $.db().query(sql, params...).next(function(row) {...})
 		db.Set("query", func(call otto.FunctionCall) otto.Value {
@@ -1046,7 +1068,17 @@ func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.
 						fmt.Sprintf("forEach() requires a callback function, but got %s", handler.ArgumentList[0].Class()))
 				}
 				callback := handler.ArgumentList[0]
-				conn, err := node.task.ConnDatabase(node.task.ctx)
+				var conn api.Conn
+				var err error
+				if bridgeName == "" {
+					conn, err = node.task.ConnDatabase(node.task.ctx)
+				} else {
+					if db, dbErr := connector.New(bridgeName); dbErr == nil {
+						conn, err = db.Connect(node.task.ctx)
+					} else {
+						err = dbErr
+					}
+				}
 				if err != nil {
 					node.task.Cancel()
 					return ctx.vm.MakeCustomError("DBError", err.Error())

@@ -122,6 +122,30 @@ func TestScript(t *testing.T) {
 				DISCARD()`,
 		},
 		{
+			Name: "js-timeformat",
+			Script: `
+				STRING(param("format_time") ?? "808210800", separator('\n'))
+				SCRIPT("js", {
+					epoch = parseInt($.values[0])
+					time = new Date(epoch * 1000)
+					$.yield(epoch, time.toISOString())
+				})
+				CSV()`,
+			ExpectCSV: []string{"808210800,1995-08-12T07:00:00.000Z", "", ""},
+		},
+		{
+			Name: "js-timeformat-parse",
+			Script: `
+				STRING(param("timestamp") ?? "1995-08-12T00:00:00.000Z", separator('\n'))
+				SCRIPT("js", {
+					ts = new Date( Date.parse($.values[0]) );
+					epoch = ts / 1000;
+					$.yield(epoch, ts.toISOString());
+				})
+				CSV()`,
+			ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
+		},
+		{
 			Name: "create-table",
 			Script: `
 				SCRIPT("js", {
