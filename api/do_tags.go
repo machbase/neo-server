@@ -30,10 +30,10 @@ func ListTags(ctx context.Context, conn Conn, fullTable string) ([]*TagInfo, err
 	return tags, nil
 }
 
-func ListTagsWalk(ctx context.Context, conn Conn, table string, callback func(*TagInfo, error) bool) {
+func ListTagsWalk(ctx context.Context, conn Conn, table string, callback func(*TagInfo) bool) {
 	rows, err := conn.Query(ctx, ListTagsSql(table))
 	if err != nil {
-		callback(nil, err)
+		callback(&TagInfo{Err: err})
 		return
 	}
 	defer rows.Close()
@@ -41,8 +41,8 @@ func ListTagsWalk(ctx context.Context, conn Conn, table string, callback func(*T
 	database, userName, tableName := TableName(table).Split()
 	for rows.Next() {
 		nfo := &TagInfo{Database: database, User: userName, Table: tableName}
-		err := rows.Scan(&nfo.Id, &nfo.Name)
-		if !callback(nfo, err) {
+		nfo.Err = rows.Scan(&nfo.Id, &nfo.Name)
+		if !callback(nfo) {
 			return
 		}
 	}

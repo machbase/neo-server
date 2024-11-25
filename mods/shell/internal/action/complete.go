@@ -11,7 +11,7 @@ type AutoComplete struct {
 	PrefixCompleterInterface
 }
 
-var _ readline.Command = &AutoComplete{}
+var _ readline.Command = (*AutoComplete)(nil)
 
 func (c *AutoComplete) String() string {
 	return "COMPLETION_SHELL"

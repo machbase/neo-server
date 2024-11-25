@@ -245,6 +245,25 @@ func (typ TableType) String() string {
 	}
 }
 
+func (typ TableType) ShortString() string {
+	switch typ {
+	case TableTypeLog:
+		return "Log"
+	case TableTypeFixed:
+		return "Fixed"
+	case TableTypeVolatile:
+		return "Volatile"
+	case TableTypeLookup:
+		return "Lookup"
+	case TableTypeKeyValue:
+		return "KeyValue"
+	case TableTypeTag:
+		return "Tag"
+	default:
+		return fmt.Sprintf("UndefinedTable-%d", typ)
+	}
+}
+
 func (typ TableType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, typ.String())), nil
 }

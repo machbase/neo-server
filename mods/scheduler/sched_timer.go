@@ -22,7 +22,7 @@ type TimerEntry struct {
 	log      logging.Log
 }
 
-var _ Entry = &TimerEntry{}
+var _ Entry = (*TimerEntry)(nil)
 
 func NewTimerEntry(s *svr, def *model.ScheduleDefinition) (*TimerEntry, error) {
 	ret := &TimerEntry{

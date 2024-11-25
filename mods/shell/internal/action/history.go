@@ -8,7 +8,7 @@ import (
 	"github.com/nyaosorg/go-readline-ny"
 )
 
-var _ readline.IHistory = &History{}
+var _ readline.IHistory = (*History)(nil)
 
 type History struct {
 	buffer   []string
