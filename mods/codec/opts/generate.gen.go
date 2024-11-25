@@ -283,13 +283,13 @@ func DataZoom(typ string, minPercentage float32, maxPercentage float32) Option {
 //	mods/codec/internal/csv/csv_decode.go:68:1
 //	mods/codec/internal/csv/csv_encode.go:83:1
 type CanSetDelimiter interface {
-	SetDelimiter(newDelimiter string)
+	SetDelimiter(delimiter string)
 }
 
-func Delimiter(newDelimiter string) Option {
+func Delimiter(delimiter string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetDelimiter); ok {
-			_o.SetDelimiter(newDelimiter)
+			_o.SetDelimiter(delimiter)
 		}
 	}
 }

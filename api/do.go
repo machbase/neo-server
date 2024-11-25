@@ -35,6 +35,7 @@ type TableInfo struct {
 	Id       int64     `json:"id"`             // M$SYS_TABLES.ID
 	Type     TableType `json:"type"`           // M$SYS_TABLES.TYPE
 	Flag     TableFlag `json:"flag,omitempty"` // M$SYS_TABLES.FLAG
+	Err      error     `json:"-"`
 }
 
 func (ti *TableInfo) Kind() string {
@@ -74,6 +75,7 @@ type IndexInfo struct {
 	Table      string   `json:"table"`
 	Cols       []string `json:"columns"`
 	DatabaseId int      `json:"database_id"`
+	Err        error    `json:"-"`
 }
 
 type LicenseInfo struct {
@@ -87,11 +89,14 @@ type LicenseInfo struct {
 }
 
 type TagInfo struct {
-	Database string `json:"database"`
-	User     string `json:"user"`
-	Table    string `json:"table"`
-	Name     string `json:"name"`
-	Id       int64  `json:"id"`
+	Database   string       `json:"database"`
+	User       string       `json:"user"`
+	Table      string       `json:"table"`
+	Name       string       `json:"name"`
+	Id         int64        `json:"id"`
+	Err        error        `json:"-"`
+	Summarized bool         `json:"summarized"`
+	Stat       *TagStatInfo `json:"stat,omitempty"`
 }
 
 type TagStatInfo struct {

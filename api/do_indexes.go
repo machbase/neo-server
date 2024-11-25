@@ -52,31 +52,31 @@ func ListIndexesSql() string {
 	`)
 }
 
-func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo, error) bool) {
+func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo) bool) {
 	sqlText := ListIndexesSql()
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(nil, err)
+		callback(&IndexInfo{Err: err})
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		nfo := &IndexInfo{Cols: make([]string, 1)}
-		err = rows.Scan(&nfo.User, &nfo.Database, &nfo.Table, &nfo.Cols[0], &nfo.Name, &nfo.Type, &nfo.Id)
-		if !callback(nfo, err) {
+		nfo.Err = rows.Scan(&nfo.User, &nfo.Database, &nfo.Table, &nfo.Cols[0], &nfo.Name, &nfo.Type, &nfo.Id)
+		if !callback(nfo) {
 			return
 		}
 	}
 }
 
 func ListIndexes(ctx context.Context, conn Conn) (ret []*IndexInfo, cause error) {
-	ListIndexesWalk(ctx, conn, func(ii *IndexInfo, err error) bool {
-		if err == nil && ii != nil {
+	ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
+		if ii.Err == nil && ii != nil {
 			ret = append(ret, ii)
 		}
-		cause = err
-		return err == nil
+		cause = ii.Err
+		return ii.Err == nil
 	})
 	return
 }

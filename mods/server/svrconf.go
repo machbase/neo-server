@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -87,38 +86,7 @@ type Config struct {
 var PreferredPreset string = "auto"
 
 func NewConfig() *Config {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	conf := Config{
-		DataDir:   ".",
-		PrefDir:   filepath.Join(homeDir, ".config", "machbase"),
-		BackupDir: ".",
-		Grpc: GrpcConfig{
-			Listeners:      []string{"unix://./mach-grpc.sock"},
-			MaxRecvMsgSize: 4,
-			MaxSendMsgSize: 4,
-		},
-		Http: HttpConfig{
-			Listeners: []string{},
-		},
-		Mqtt: MqttConfig{
-			Listeners:           []string{},
-			MaxMessageSizeLimit: 1024 * 1024,
-		},
-		Shell: ShellConfig{
-			Listeners:   []string{},
-			IdleTimeout: 2 * time.Minute,
-		},
-		Jwt: JwtConfig{
-			AtDuration: 5 * time.Minute,
-			RtDuration: 60 * time.Minute,
-			Secret:     "__secret__",
-		},
-		NoBanner: false,
-	}
-
+	conf := Config{}
 	switch strings.ToLower(PreferredPreset) {
 	case "fog":
 		conf.MachbasePreset = PresetFog
@@ -132,7 +100,6 @@ func NewConfig() *Config {
 			conf.MachbasePreset = PresetFog
 		}
 	}
-
 	conf.Machbase = *DefaultMachbaseConfig(conf.MachbasePreset)
 	return &conf
 }

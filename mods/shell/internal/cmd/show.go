@@ -365,8 +365,8 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		t = ctx.NewBox([]string{"ROWNUM", "_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"})
 	}
 	nrow := 0
-	api.ListTagsWalk(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(tag *api.TagInfo, err error) bool {
-		if err != nil {
+	api.ListTagsWalk(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(tag *api.TagInfo) bool {
+		if tag.Err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
 		}
@@ -505,9 +505,9 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
 	nrow := 0
-	api.ListTablesWalk(ctx.Ctx, ctx.Conn, showAll, func(ti *api.TableInfo, err error) bool {
-		if err != nil {
-			ctx.Println("ERR", err.Error())
+	api.ListTablesWalk(ctx.Ctx, ctx.Conn, showAll, func(ti *api.TableInfo) bool {
+		if ti.Err != nil {
+			ctx.Println("ERR", ti.Err.Error())
 			return false
 		}
 		// if !showAll && strings.HasPrefix(ti.Name, "_") {

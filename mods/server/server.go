@@ -427,20 +427,11 @@ func (s *Server) Start() error {
 			WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
 			WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
 			WithMqttTqlLoader(tqlLoader),
+			WithMqttWsHandleListener(s.Http.Listeners),
 		}
 		if s.Mqtt.EnablePersistence {
 			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
 			opts = append(opts, WithMqttBadgerPersistent(mqtt_dir))
-		}
-		if len(s.Http.Listeners) > 0 {
-			tok := strings.SplitN(s.Http.Listeners[0], "://", 2)
-			var addr = ""
-			if len(tok) == 2 {
-				addr = fmt.Sprintf("%s/web/api/mqtt", tok[1])
-			} else {
-				addr = fmt.Sprintf("%s/web/api/mqtt", tok[0])
-			}
-			opts = append(opts, WithMqttWsHandleListener(addr))
 		}
 
 		// mqtt server listeners

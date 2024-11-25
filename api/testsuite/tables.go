@@ -21,7 +21,7 @@ func ShowTables(t *testing.T, db api.Database, ctx context.Context) {
 	defer conn.Close()
 
 	result := map[string]*api.TableInfo{}
-	api.ListTablesWalk(ctx, conn, true, func(ti *api.TableInfo, err error) bool {
+	api.ListTablesWalk(ctx, conn, true, func(ti *api.TableInfo) bool {
 		require.NoError(t, err, "tables fail")
 		result[fmt.Sprintf("%s.%s.%s", ti.Database, ti.User, ti.Name)] = ti
 		return true
@@ -288,9 +288,9 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 
 	// tags
 	tags := []*api.TagInfo{}
-	api.ListTagsWalk(ctx, conn, "TAG_DATA", func(tag *api.TagInfo, err error) bool {
+	api.ListTagsWalk(ctx, conn, "TAG_DATA", func(tag *api.TagInfo) bool {
 		// TODO: MACHCLI-ERR-3, Communication link failure
-		require.NoError(t, err, "tags fail")
+		require.NoError(t, tag.Err, "tags fail")
 		require.Greater(t, tag.Id, int64(0))
 		require.Contains(t, []string{"insert-once", "insert-twice"}, tag.Name)
 		tags = append(tags, tag)

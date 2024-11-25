@@ -68,31 +68,31 @@ func ListTablesSql(showAll bool, descriptiveType bool) string {
 		`ORDER by j.NAME`)
 }
 
-func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(*TableInfo, error) bool) {
+func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(*TableInfo) bool) {
 	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(nil, err)
+		callback(&TableInfo{Err: err})
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		ti := &TableInfo{}
-		err := rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
-		if !callback(ti, err) {
+		ti.Err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		if !callback(ti) {
 			return
 		}
 	}
 }
 
 func ListTables(ctx context.Context, conn Conn, showAll bool) (ret []*TableInfo, cause error) {
-	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo, err error) bool {
-		if err == nil && ti != nil {
+	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo) bool {
+		if ti.Err == nil && ti != nil {
 			ret = append(ret, ti)
 		}
-		cause = err
-		return err == nil
+		cause = ti.Err
+		return ti.Err == nil
 	})
 	return
 }

@@ -119,9 +119,9 @@ func configureTcpConn(conn *net.TCPConn) {
 	conn.SetNoDelay(noDelay)
 }
 
-func WithMqttWsHandleListener(addr string) MqttOption {
+func WithMqttWsHandleListener(httpListeners []string) MqttOption {
 	return func(s *mqttd) error {
-		s.wsListener = &WsListener{svr: s, id: "mqtt2-ws", addr: addr}
+		s.wsListener = &WsListener{svr: s, id: "mqtt2-ws", httpListeners: httpListeners}
 		return s.broker.AddListener(s.wsListener)
 	}
 }
@@ -426,22 +426,33 @@ func (h *AuthHook) OnDisconnect(cl *mqtt.Client, err error, expire bool) {
 
 type WsListener struct {
 	sync.RWMutex
-	svr       *mqttd
-	id        string
-	addr      string
-	log       *slog.Logger
-	upgrader  *websocket.Upgrader
-	establish listeners.EstablishFn
+	svr           *mqttd
+	id            string
+	httpListeners []string
+	log           *slog.Logger
+	upgrader      *websocket.Upgrader
+	establish     listeners.EstablishFn
 }
 
-var _ = listeners.Listener((*WsListener)(nil))
+var _ listeners.Listener = (*WsListener)(nil)
 
 func (l *WsListener) ID() string {
 	return l.id
 }
 
 func (l *WsListener) Address() string {
-	return l.addr
+	for _, addr := range l.httpListeners {
+		tok := strings.SplitN(addr, "://", 2)
+		if len(tok) == 2 {
+			if tok[0] != "tcp" {
+				continue
+			}
+			return fmt.Sprintf("%s/web/api/mqtt", tok[1])
+		} else {
+			return fmt.Sprintf("%s/web/api/mqtt", tok[0])
+		}
+	}
+	return ""
 }
 
 func (l *WsListener) Protocol() string {

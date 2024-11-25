@@ -174,7 +174,7 @@ type NeoConnector struct {
 	password string
 }
 
-var _ driver.Connector = &NeoConnector{}
+var _ driver.Connector = (*NeoConnector)(nil)
 
 func (cn *NeoConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	conn, err := cn.client.Connect(ctx, api.WithPassword(cn.user, cn.password))

@@ -200,7 +200,7 @@ func (x *Task) Compile(codeReader io.Reader) error {
 		if x.output != nil {
 			nodeNames = append(nodeNames, x.output.Name())
 		}
-		x.LogTrace("Task compiled", strings.Join(nodeNames, " → "))
+		x.LogDebug("Task compiled", strings.Join(nodeNames, " → "))
 	}
 	return err
 }

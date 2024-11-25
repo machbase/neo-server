@@ -20,8 +20,8 @@ type lakeReq interface {
 	next() ([]any, error)
 }
 
-var _ lakeReq = &lakeDefaultReq{}
-var _ lakeReq = &lakeStandardReq{}
+var _ lakeReq = (*lakeDefaultReq)(nil)
+var _ lakeReq = (*lakeStandardReq)(nil)
 
 type lakeDefaultValue struct {
 	Tag string

@@ -11,13 +11,13 @@ type Match interface {
 	Match([]rune) ([]rune, int64, bool)
 }
 
-var _ Match = &mText{}
-var _ Match = &mDigit{}
-var _ Match = &mYYYY{}
-var _ Match = &mMM{}
-var _ Match = &mMON{}
-var _ Match = &mDD{}
-var _ Match = &mAM{}
+var _ Match = (*mText)(nil)
+var _ Match = (*mDigit)(nil)
+var _ Match = (*mYYYY)(nil)
+var _ Match = (*mMM)(nil)
+var _ Match = (*mMON)(nil)
+var _ Match = (*mDD)(nil)
+var _ Match = (*mAM)(nil)
 
 type mText struct {
 	runes []rune

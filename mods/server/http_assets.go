@@ -168,7 +168,7 @@ type MemoryFS struct {
 	stop     chan bool
 }
 
-var _ tql.VolatileAssetsProvider = &MemoryFS{}
+var _ tql.VolatileAssetsProvider = (*MemoryFS)(nil)
 
 func (fs *MemoryFS) Start() {
 	fs.stop = make(chan bool)

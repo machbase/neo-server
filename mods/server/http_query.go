@@ -472,9 +472,9 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 	defer conn.Close()
 
 	rownum := 0
-	api.ListTablesWalk(ctx, conn, showAll, func(ti *api.TableInfo, err error) bool {
-		if err != nil {
-			rsp.Success, rsp.Reason = false, err.Error()
+	api.ListTablesWalk(ctx, conn, showAll, func(ti *api.TableInfo) bool {
+		if ti.Err != nil {
+			rsp.Success, rsp.Reason = false, ti.Err.Error()
 			return false
 		}
 		if nameFilter != "" {
@@ -543,9 +543,9 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo, err error) bool {
-		if err != nil {
-			rsp.Success, rsp.Reason = false, err.Error()
+	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
+		if tag.Err != nil {
+			rsp.Success, rsp.Reason = false, tag.Err.Error()
 			return false
 		}
 		if nameFilter != "" && !strings.HasPrefix(tag.Name, nameFilter) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/internal/postgres"
@@ -47,6 +48,9 @@ func Register(def *model.BridgeDefinition) (err error) {
 			return err
 		}
 		registry[def.Name] = br
+		if sqlBridge, ok := br.(SqlBridge); ok {
+			connector.SetDatabase(def.Name, sqlBridge.DB(), sqlBridge.Type(), def.Path)
+		}
 		return nil
 	} else {
 		return fmt.Errorf("unsupported bridge type %s", def.Type)

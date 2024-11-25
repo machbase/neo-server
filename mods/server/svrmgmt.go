@@ -232,15 +232,6 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 	return certBytes, clientKeyPEM, token, nil
 }
 
-// func hashCertificate(cert *x509.Certificate) (string, error) {
-// 	raw := cert.Raw
-// 	b64str := base64.StdEncoding.EncodeToString(raw)
-// 	b64str = strings.TrimSpace(b64str)
-// 	sha := sha3.New256()
-// 	sha.Write([]byte(b64str))
-// 	return hex.EncodeToString(sha.Sum(nil)), nil
-// }
-
 func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method string) (token string, err error) {
 	var signature []byte
 	hash := sha256.New()
@@ -634,7 +625,7 @@ type SessionWatcher interface {
 	ListWatcher(cb func(*machsvr.ConnState) bool)
 }
 
-var _ SessionWatcher = &machsvr.Database{}
+var _ SessionWatcher = (*machsvr.Database)(nil)
 
 func (s *Server) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, sessions []*mgmt.Session, err error) {
 	if reqStatz {

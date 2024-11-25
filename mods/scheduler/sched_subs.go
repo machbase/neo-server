@@ -46,7 +46,7 @@ type SubscriberEntry struct {
 	wd *util.WriteDescriptor
 }
 
-var _ Entry = &SubscriberEntry{}
+var _ Entry = (*SubscriberEntry)(nil)
 
 func NewSubscriberEntry(s *svr, def *model.ScheduleDefinition) (*SubscriberEntry, error) {
 	ret := &SubscriberEntry{

@@ -309,7 +309,7 @@ var contextIdSerial int64
 
 //// grpc stat handler
 
-var _ stats.Handler = &grpcd{}
+var _ stats.Handler = (*grpcd)(nil)
 
 func (s *grpcd) TagRPC(ctx context.Context, nfo *stats.RPCTagInfo) context.Context {
 	return ctx
