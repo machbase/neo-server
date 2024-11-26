@@ -372,12 +372,24 @@ func (h *AuthHook) Provides(b byte) bool {
 		mqtt.OnConnect,
 		mqtt.OnPublished,
 		mqtt.OnDisconnect,
+		mqtt.OnPacketEncode,
 	}, []byte{b})
 }
 
 // Init configures the hook with the auth ledger to be used for checking.
 func (h *AuthHook) Init(config any) error {
 	return nil
+}
+
+func (h *AuthHook) OnPacketEncode(cl *mqtt.Client, pk packets.Packet) packets.Packet {
+	if pk.FixedHeader.Type == packets.Puback {
+		// investigate the reason code of the puback packet
+		// why it is not 0
+		if pk.ReasonCode == 1 {
+			pk.ReasonCode = 0
+		}
+	}
+	return pk
 }
 
 // OnConnectAuthenticate returns true if the connecting client has rules which provide access
