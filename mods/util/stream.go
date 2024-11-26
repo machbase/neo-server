@@ -11,6 +11,17 @@ import (
 	"sync"
 )
 
+type NopCloseWriter struct {
+	io.Writer
+}
+
+func (w *NopCloseWriter) Write(p []byte) (n int, err error) {
+	return w.Writer.Write(p)
+}
+func (w *NopCloseWriter) Close() error {
+	return nil
+}
+
 func NewOutputStream(output string) (out io.Writer, err error) {
 	var outputFields = strings.Fields(output)
 	if len(outputFields) > 0 && outputFields[0] == "exec" {

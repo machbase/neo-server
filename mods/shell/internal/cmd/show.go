@@ -437,7 +437,7 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 }
 
 func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) {
-	var output io.Writer = os.Stdout
+	var output io.Writer = &util.NopCloseWriter{Writer: os.Stdout}
 	encoder := codec.NewEncoder(codec.BOX,
 		opts.OutputStream(output),
 		opts.Rownum(showRownum),
