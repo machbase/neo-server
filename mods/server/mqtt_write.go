@@ -380,11 +380,20 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	var appenderSet []*AppenderWrapper
 	var appender api.Appender
 	var peerId = cl.Net.Remote
+	tableNameFields := strings.SplitN(wp.Table, ".", 2)
+	tableUser := "SYS"
+	if len(tableNameFields) == 2 {
+		tableUser = strings.ToUpper(tableNameFields[0])
+		wp.Table = strings.ToUpper(tableNameFields[1])
+	} else {
+		wp.Table = strings.ToUpper(wp.Table)
+	}
+	var appenderName = tableUser + "." + wp.Table
 
 	if val, exists := s.appenders.Get(peerId); exists {
 		appenderSet = val.([]*AppenderWrapper)
 		for _, a := range appenderSet {
-			if a.appender.TableName() == wp.Table {
+			if a.appender.TableName() == appenderName {
 				appender = a.appender
 				break
 			}
@@ -393,21 +402,12 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 
 	if appender == nil {
 		ctx, ctxCancel := context.WithCancel(context.Background())
-		tableNameFields := strings.SplitN(wp.Table, ".", 2)
-		tableUser := "SYS"
-		if len(tableNameFields) == 2 {
-			tableUser = strings.ToUpper(tableNameFields[0])
-			wp.Table = strings.ToUpper(tableNameFields[1])
-		} else {
-			wp.Table = strings.ToUpper(wp.Table)
-		}
-
 		if conn, err := s.db.Connect(ctx, api.WithTrustUser(tableUser)); err != nil {
 			ctxCancel()
 			s.log.Warn(cl.Net.Remote, err.Error())
 			return
 		} else {
-			appender, err = conn.Appender(ctx, tableUser+"."+wp.Table)
+			appender, err = conn.Appender(ctx, appenderName)
 			if err != nil {
 				ctxCancel()
 				s.log.Warn(cl.Net.Remote, "fail to create appender,", err.Error())
@@ -423,6 +423,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 				appenderSet = []*AppenderWrapper{}
 			}
 			appenderSet = append(appenderSet, aw)
+			fmt.Println("append peerId:", peerId)
 			s.appenders.Set(peerId, appenderSet)
 		}
 	}
