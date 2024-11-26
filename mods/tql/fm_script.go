@@ -729,11 +729,26 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 
 	var err error
 	yield := func(key any, args []otto.Value) otto.Value {
-		var values = make([]any, len(args))
-		for i, v := range args {
-			values[i], err = v.Export()
-			if err != nil {
-				values[i] = v.String()
+		var values []any
+		if len(args) == 1 && args[0].IsObject() && args[0].Object().Class() == "Array" {
+			arr, _ := args[0].Object().Value().Export()
+			if v, ok := arr.([][]any); ok {
+				values = make([]any, len(v))
+				for i, v := range v {
+					values[i] = v
+				}
+			} else if v, ok := arr.([]any); ok {
+				values = v
+			} else {
+				values = []any{arr}
+			}
+		} else {
+			values = make([]any, len(args))
+			for i, v := range args {
+				values[i], err = v.Export()
+				if err != nil {
+					values[i] = v.String()
+				}
 			}
 		}
 		NewRecord(key, values).Tell(node.next)
