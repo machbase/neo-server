@@ -789,7 +789,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
 		}
 	}
-	task.SetOutputWriterJson(ctx.Writer, true)
+	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
 	task.SetDatabase(svr.db)
 	if err := task.Compile(codeReader); err != nil {
 		svr.log.Error("tql parse error", err.Error())
@@ -879,9 +879,9 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
 	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" {
-		task.SetOutputWriterJson(ctx.Writer, true)
+		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
 	} else {
-		task.SetOutputWriter(ctx.Writer)
+		task.SetOutputWriter(&util.NopCloseWriter{Writer: ctx.Writer})
 	}
 	if err := task.CompileScript(script); err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())

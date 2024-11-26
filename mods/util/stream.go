@@ -18,7 +18,15 @@ type NopCloseWriter struct {
 func (w *NopCloseWriter) Write(p []byte) (n int, err error) {
 	return w.Writer.Write(p)
 }
+
 func (w *NopCloseWriter) Close() error {
+	return nil
+}
+
+func (w *NopCloseWriter) Flush() error {
+	if f, ok := w.Writer.(interface{ Flush() error }); ok {
+		return f.Flush()
+	}
 	return nil
 }
 
