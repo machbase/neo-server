@@ -1651,8 +1651,14 @@ func (node *Node) fmPushValue(idx int, newValue any, opts ...any) (any, error) {
 		node.SetValue("isFirst", true)
 		cols := node.task.ResultColumns() // cols contains "ROWNUM"
 		if len(cols) >= idx {
-			head := cols[0 : idx+1]
-			tail := cols[idx+1:]
+			var head []*api.Column
+			var tail []*api.Column
+			if len(cols) == idx {
+				head = cols
+			} else {
+				head = cols[0 : idx+1]
+				tail = cols[idx+1:]
+			}
 			updateCols := []*api.Column{}
 			updateCols = append(updateCols, head...)
 			updateCols = append(updateCols, api.MakeColumnOf(columnName, newValue))
