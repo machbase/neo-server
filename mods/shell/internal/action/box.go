@@ -22,11 +22,11 @@ type Box interface {
 }
 
 func (ctx *ActionContext) NewCompactBox(header []string) Box {
-	return ctx.newBox(header, true, true, "-", os.Stdout)
+	return ctx.newBox(header, true, true, "-", &util.NopCloseWriter{Writer: os.Stdout})
 }
 
 func (ctx *ActionContext) NewBox(header []string) Box {
-	return ctx.newBox(header, false, true, "-", os.Stdout)
+	return ctx.newBox(header, false, true, "-", &util.NopCloseWriter{Writer: os.Stdout})
 }
 
 func (ctx *ActionContext) newBox(header []string, compact bool, heading bool, format string, mirror io.Writer) Box {

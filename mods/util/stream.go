@@ -84,7 +84,7 @@ func (out *fout) reset() error {
 	defer out.mutex.Unlock()
 
 	if out.path == "-" {
-		out.w = os.Stdout
+		out.w = &NopCloseWriter{Writer: os.Stdout}
 	} else {
 		var err error
 		out.w, err = os.OpenFile(out.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)

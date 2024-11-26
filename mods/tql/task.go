@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/pkg/errors"
 )
 
@@ -108,7 +109,7 @@ func (x *Task) InputReader() io.Reader {
 
 func (x *Task) SetOutputWriter(w io.Writer) {
 	if w == nil {
-		x.outputWriter = os.Stdout
+		x.outputWriter = &util.NopCloseWriter{Writer: os.Stdout}
 	} else {
 		x.outputWriter = w
 	}
@@ -121,7 +122,7 @@ func (x *Task) SetOutputWriterJson(w io.Writer, json bool) {
 
 func (x *Task) OutputWriter() io.Writer {
 	if x.outputWriter == nil {
-		x.outputWriter = os.Stdout
+		x.outputWriter = &util.NopCloseWriter{Writer: os.Stdout}
 	}
 	return x.outputWriter
 }
