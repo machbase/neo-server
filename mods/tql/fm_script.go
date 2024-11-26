@@ -1012,16 +1012,6 @@ func ottoFuncRequest(ctx *OttoContext, node *Node) func(call otto.FunctionCall) 
 
 func ottoValue(ctx *OttoContext, value any) (otto.Value, error) {
 	switch v := value.(type) {
-	// case []any:
-	// 	arr := make([]otto.Value, len(v))
-	// 	for i, n := range v {
-	// 		if val, err := ottoValue(ctx, n); err == nil {
-	// 			arr[i] = val
-	// 		} else {
-	// 			return otto.UndefinedValue(), err
-	// 		}
-	// 	}
-	// 	return otto.ToValue(arr)
 	case map[string]any:
 		obj, _ := ctx.vm.Object(`({})`)
 		for k, n := range v {
@@ -1147,7 +1137,17 @@ func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.
 					params[i], _ = v.Export()
 				}
 			}
-			conn, err := node.task.ConnDatabase(node.task.ctx)
+			var conn api.Conn
+			var err error
+			if bridgeName == "" {
+				conn, err = node.task.ConnDatabase(node.task.ctx)
+			} else {
+				if db, dbErr := connector.New(bridgeName); dbErr == nil {
+					conn, err = db.Connect(node.task.ctx)
+				} else {
+					err = dbErr
+				}
+			}
 			if err != nil {
 				node.task.Cancel()
 				return ctx.vm.MakeCustomError("DBError", err.Error())
