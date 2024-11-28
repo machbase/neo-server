@@ -15,36 +15,50 @@ import (
 )
 
 func TestCsvDecoder(t *testing.T) {
-	data := []byte("json.data,1678147077000000000,1.234,2.3450,typeval,1234,2345,1111,pnameval,1,\"{\"\"name\"\":1234}\",192.168.1.100")
+	tests := []struct {
+		name   string
+		input  string
+		expect [][]any
+	}{
+		{
+			name:  "basic",
+			input: "json.data,1678147077000000000,1.234,2.3450,typeval,1234,2345,1111,pnameval,1,\"{\"\"name\"\":1234}\",192.168.1.100",
+			expect: [][]any{
+				{"json.data", time.Unix(0, 1678147077000000000), 1.234, float32(2.345), "typeval", int32(1234), int16(2345), int32(1111), "pnameval", int64(1), "{\"name\":1234}", net.IPv4(192, 168, 1, 100)},
+			},
+		},
+		{
+			name:  "null-values",
+			input: `null.double,1678147077000000000,,,,,,,,,,`,
+			expect: [][]any{
+				{"null.double", time.Unix(1678147077, 0), nil, nil, "", nil, nil, nil, "", nil, "", nil},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dec := csv.NewDecoder()
+			input := bytes.NewBuffer([]byte(tc.input))
+			dec.SetInputStream(input)
+			dec.SetDelimiter(",")
+			dec.SetTimeformat("ns")
+			dec.SetHeader(false)
+			dec.SetColumnTypes(
+				api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_DATETIME, api.COLUMN_TYPE_DOUBLE, api.COLUMN_TYPE_FLOAT, api.COLUMN_TYPE_VARCHAR,
+				api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_SHORT, api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_LONG, api.COLUMN_TYPE_VARCHAR,
+				api.COLUMN_TYPE_IPV4)
+			dec.Open()
 
-	dec := csv.NewDecoder()
-	input := bytes.NewBuffer(data)
-	dec.SetInputStream(input)
-	dec.SetDelimiter(",")
-	dec.SetTimeformat("ns")
-	dec.SetHeader(false)
-	dec.SetColumnTypes(
-		api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_DATETIME, api.COLUMN_TYPE_DOUBLE, api.COLUMN_TYPE_FLOAT, api.COLUMN_TYPE_VARCHAR,
-		api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_SHORT, api.COLUMN_TYPE_INTEGER, api.COLUMN_TYPE_VARCHAR, api.COLUMN_TYPE_LONG, api.COLUMN_TYPE_VARCHAR,
-		api.COLUMN_TYPE_IPV4)
-	dec.Open()
+			fields, _, err := dec.NextRow()
+			require.Nil(t, err)
 
-	fields, _, err := dec.NextRow()
-	require.Nil(t, err)
-
-	ts := time.Unix(0, 1678147077000000000)
-	require.Equal(t, "json.data", fields[0])
-	require.Equal(t, ts, fields[1])
-	require.Equal(t, 1.234, fields[2])
-	require.Equal(t, float32(2.345), fields[3])
-	require.Equal(t, "typeval", fields[4])
-	require.Equal(t, int32(1234), fields[5])
-	require.Equal(t, int16(2345), fields[6])
-	require.Equal(t, int32(1111), fields[7])
-	require.Equal(t, "pnameval", fields[8])
-	require.Equal(t, int64(1), fields[9])
-	require.Equal(t, "{\"name\":1234}", fields[10])
-	require.Equal(t, "192.168.1.100", fields[11].(net.IP).String())
+			for _, rec := range tc.expect {
+				for i, val := range rec {
+					require.Equal(t, val, fields[i], fmt.Sprintf("Test case: %s field[%d], expect:%+v, actual", tc.name, i, val))
+				}
+			}
+		})
+	}
 }
 
 func TestCsvDecoderTimeformat(t *testing.T) {

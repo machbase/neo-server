@@ -511,7 +511,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 		desc = desc0
 	}
 	tableName := strings.ToUpper(dbName)
-	precision := lineprotocol.Nanosecond
+	timePrecision := lineprotocol.Nanosecond
 
 	dec := lineprotocol.NewDecoder(bytes.NewBuffer(pk.Payload))
 	if dec == nil {
@@ -552,7 +552,7 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 			fields[string(key)] = val.Interface()
 		}
 
-		ts, err := dec.Time(precision, time.Time{})
+		ts, err := dec.Time(timePrecision, time.Time{})
 		if err != nil {
 			s.log.Warn(cl.Net.Remote, "time error:", err.Error())
 			return

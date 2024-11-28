@@ -83,24 +83,75 @@ func (typ DataType) Apply(value any, timeformat string, tz *time.Location) (any,
 			}
 		}
 	case DataTypeInt16, COLUMN_TYPE_SHORT:
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToInt16(value)
 	case COLUMN_TYPE_USHORT, "unsigned short":
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToUint16(value)
 	case DataTypeInt32, COLUMN_TYPE_INTEGER, "int":
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToInt32(value)
 	case COLUMN_TYPE_UINTEGER, "unsigned integer":
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToUint32(value)
 	case DataTypeInt64, COLUMN_TYPE_LONG:
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToInt64(value)
 	case COLUMN_TYPE_ULONG, "unsigned long":
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToUint64(value)
 	case DataTypeFloat32: //, DB_COLUMN_TYPE_FLOAT:
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToFloat32(value)
 	case DataTypeFloat64: //, DB_COLUMN_TYPE_DOUBLE:
+		switch v := value.(type) {
+		case string:
+			if v == "" {
+				return nil, nil
+			}
+		}
 		return util.ToFloat64(value)
 	case DataTypeIPv4, DataTypeIPv6:
 		switch v := value.(type) {
 		case string:
+			if v == "" {
+				return nil, nil
+			}
 			return util.ParseIP(v)
 		default:
 			return nil, fmt.Errorf("%T is not %s convertible", v, typ)
@@ -108,6 +159,9 @@ func (typ DataType) Apply(value any, timeformat string, tz *time.Location) (any,
 	case DataTypeBoolean:
 		switch v := value.(type) {
 		case string:
+			if v == "" {
+				return nil, nil
+			}
 			return util.ParseBoolean(v)
 		default:
 			return nil, fmt.Errorf("%T is not %s convertible", v, typ)
