@@ -7,14 +7,15 @@ on:
       - 'dev-*'  
 
 jobs:
-  darwin:
+  build:
     strategy:
       matrix:
         include:
           - { platform: macos-14, arch: arm64, os: macos }
           - { platform: macos-13, arch: x64, os: macos }
-          - { platform: windows-2019, arch: x64, os: windows }
+          - { platform: ubuntu-20.04, arch: x64, os: linux }
           - { platform: ubuntu-20.04, arch: arm32, os: linux }
+          - { platform: windows-2019, arch: x64, os: windows }
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -33,7 +34,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: false
-          cache: false
       - name: Setup zig
         if: matrix.os == 'linux' && matrix.arch == 'arm32'
         uses: goto-bus-stop/setup-zig@v2
@@ -48,7 +48,7 @@ jobs:
         if: matrix.arch != 'arm32'
         run: go run mage.go test machbase-neo
       - name: Build arm32
-        if: matrix.os == 'linux' && matrix.arch == 'arm32'
+        if: matrix.arch == 'arm32'
         run: go run mage.go buildx machbase-neo linux arm packagex linux arm
       - name: Codecov
         if: matrix.os == 'linux' && matrix.arch == 'x64'
@@ -86,12 +86,7 @@ jobs:
           retention-days: 5
           path: packages/machbase-neo-v*.zip
   linux:
-    strategy:
-      matrix:
-        arch: [ arm64, x64 ]
-    runs-on: [ self-hosted, linux, '${{ matrix.arch }}', ubuntu20 ]
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+    runs-on: [ self-hosted, linux, arm64, ubuntu20 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,16 +102,11 @@ jobs:
         run: go run mage.go InstallNeoWeb
       - name: Build
         run: go run mage.go test machbase-neo
-      - name: Codecov
-        if: matrix.arch == 'x64'
-        uses: codecov/codecov-action@v5
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Package
         run: go run mage.go package
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: machbase-neo-snapshot-linux-${{ matrix.arch }}
+          name: machbase-neo-snapshot-linux-arm64
           retention-days: 5
           path: packages/machbase-neo-v*.zip
