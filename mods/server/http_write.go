@@ -46,13 +46,17 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		compress = "-"
 	}
 
+	errRsp := func(status int, reason string) {
+		rsp.Reason = reason
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(status, rsp)
+	}
+
 	tableName := ctx.Param("table")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
 	timeLocation, err := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
 	if err != nil {
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusBadRequest, rsp)
+		errRsp(http.StatusBadRequest, err.Error())
 		return
 	}
 	method := strString(ctx.Query("method"), "insert")
@@ -74,32 +78,24 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusUnauthorized, rsp)
+		errRsp(http.StatusUnauthorized, err.Error())
 		return
 	}
 	defer conn.Close()
 
 	exists, err := api.ExistsTable(ctx, conn, tableName)
 	if err != nil {
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		errRsp(http.StatusInternalServerError, err.Error())
 		return
 	}
 	if !exists {
-		rsp.Reason = fmt.Sprintf("Table '%s' does not exist", tableName)
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusNotFound, rsp)
+		errRsp(http.StatusNotFound, fmt.Sprintf("table '%s' does not exist", tableName))
 		return
 	}
 
 	desc, err := api.DescribeTable(ctx, conn, tableName, false)
 	if err != nil {
-		rsp.Reason = fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error())
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
 		return
 	}
 
@@ -107,9 +103,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
 		if err != nil {
-			rsp.Reason = err.Error()
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
+			errRsp(http.StatusInternalServerError, err.Error())
 			return
 		}
 		in = bufio.NewReader(gr)
@@ -133,9 +127,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	if method == "append" {
 		appender, err = conn.Appender(ctx, tableName)
 		if err != nil {
-			rsp.Reason = err.Error()
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
+			errRsp(http.StatusInternalServerError, err.Error())
 			return
 		}
 		defer appender.Close()
@@ -157,18 +149,14 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		if format == "json" {
 			bs, err := io.ReadAll(in)
 			if err != nil {
-				rsp.Reason = err.Error()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusBadRequest, rsp)
+				errRsp(http.StatusBadRequest, err.Error())
 				return
 			}
 
 			wr := msg.WriteRequest{}
 			dec := json.NewDecoder(bytes.NewBuffer(bs))
 			if err := dec.Decode(&wr); err != nil {
-				rsp.Reason = err.Error()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusBadRequest, rsp)
+				errRsp(http.StatusBadRequest, err.Error())
 				return
 			}
 			if wr.Data != nil && len(wr.Data.Columns) > 0 {
@@ -185,9 +173,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 						}
 					}
 					if _type == api.ColumnTypeUnknown {
-						rsp.Reason = fmt.Sprintf("column %q not found in the table %q", colName, tableName)
-						rsp.Elapse = time.Since(tick).String()
-						ctx.JSON(http.StatusBadRequest, rsp)
+						errRsp(http.StatusBadRequest, fmt.Sprintf("column %q not found in the table %q", colName, tableName))
 						return
 					}
 					columnTypes = append(columnTypes, _type.DataType())
@@ -218,9 +204,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	decoder := codec.NewDecoder(format, codecOpts...)
 
 	if decoder == nil {
-		rsp.Reason = "codec not found"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		errRsp(http.StatusInternalServerError, "codec not found")
 		return
 	}
 
@@ -249,17 +233,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
 			}
 			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
-				rsp.Reason = result.Err().Error()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusInternalServerError, rsp)
+				errRsp(http.StatusInternalServerError, result.Err().Error())
 				return
 			}
 		} else { // append
 			err = appender.Append(vals...)
 			if err != nil {
-				rsp.Reason = err.Error()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusInternalServerError, rsp)
+				errRsp(http.StatusInternalServerError, err.Error())
 				return
 			}
 		}

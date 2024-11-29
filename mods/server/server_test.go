@@ -7,15 +7,20 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
-var brokerAddr = ""
 var testTimeTick = time.Unix(1705291859, 0)
+
 var mqttServer *mqttd
+var mqttServerAddress = ""
+
+var httpServer *httpd
+var httpServerAddress = ""
 
 func TestMain(m *testing.M) {
 	// logging
@@ -40,26 +45,56 @@ func TestMain(m *testing.M) {
 	ssfs.SetDefault(serverFs)
 	tqlLoader := tql.NewLoader()
 
+	// http server
+	httpOpts := []HttpOption{
+		WithHttpListenAddress("tcp://127.0.0.1:0"),
+		WithHttpTqlLoader(tqlLoader),
+		WithHttpServerInfoFunc(func() (*mgmt.ServerInfoResponse, error) {
+			return &mgmt.ServerInfoResponse{
+				Success: true,
+				Reason:  "success",
+				Elapse:  "0ms",
+				Version: &mgmt.Version{},
+				Runtime: &mgmt.Runtime{},
+			}, nil
+		}),
+	}
+	if svr, err := NewHttp(database, httpOpts...); err != nil {
+		panic(err)
+	} else {
+		httpServer = svr
+	}
+	if err := httpServer.Start(); err != nil {
+		panic(err)
+	}
+
+	// get http listener address
+	if addr := httpServer.listeners[0].Addr().String(); addr == "" {
+		panic("Listener not found")
+	} else {
+		httpServerAddress = "http://" + strings.TrimPrefix(addr, "tcp://")
+	}
+
 	// mqtt broker
-	opts := []MqttOption{
+	mqttOpts := []MqttOption{
 		WithMqttTcpListener("127.0.0.1:0", nil),
 		WithMqttTqlLoader(tqlLoader),
 	}
-	if svr, err := NewMqtt(database, opts...); err != nil {
+	if svr, err := NewMqtt(database, mqttOpts...); err != nil {
 		panic(err)
 	} else {
 		mqttServer = svr
 	}
-	mqttServer.db = database
 
 	if err := mqttServer.Start(); err != nil {
 		panic(err)
 	}
 
+	// get mqtt listener address
 	if addr, ok := mqttServer.broker.Listeners.Get("mqtt-tcp-0"); !ok {
 		panic("Listener not found")
 	} else {
-		brokerAddr = strings.TrimPrefix(addr.Address(), "tcp://")
+		mqttServerAddress = strings.TrimPrefix(addr.Address(), "tcp://")
 	}
 
 	// run tests
@@ -67,6 +102,7 @@ func TestMain(m *testing.M) {
 
 	// cleanup
 	mqttServer.Stop()
+	httpServer.Stop()
 	testServer.StopServer(m)
 }
 
@@ -89,6 +125,11 @@ func initTestData(db api.Database) {
 
 	rows := [][]any{
 		{"temp", testTimeTick, 3.14},
+	}
+	for i := 1; i <= 10; i++ {
+		rows = append(rows,
+			[]any{"test.query", testTimeTick.Add(time.Duration(i) * time.Second), 1.5 * float64(i)},
+		)
 	}
 	for _, row := range rows {
 		result = conn.Exec(ctx, `INSERT INTO example VALUES (?, ?, ?)`, row[0], row[1], row[2])

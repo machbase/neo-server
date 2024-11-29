@@ -175,11 +175,17 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			}
 		},
 	}
-	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
-		svr.log.Error("query fail", err.Error())
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+
+	select {
+	case <-ctx.Request.Context().Done():
+		query.Cancel()
+	case r := <-query.Run(ctx, conn, req.SqlText):
+		if r.Err != nil {
+			svr.log.Error("query fail", r.Err.Error())
+			rsp.Reason = r.Err.Error()
+			rsp.Elapse = time.Since(tick).String()
+			ctx.JSON(http.StatusInternalServerError, rsp)
+		}
 	}
 }
 
@@ -543,6 +549,12 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
+	var isCancelled bool
+	go func() {
+		<-ctx.Request.Context().Done()
+		isCancelled = true
+	}()
+
 	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
 			rsp.Success, rsp.Reason = false, tag.Err.Error()
@@ -556,7 +568,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 			rownum,
 			tag.Name,
 		})
-		return true
+		return !isCancelled
 	})
 
 	rsp.Elapse = time.Since(tick).String()

@@ -23,7 +23,7 @@ import (
 
 //go:generate moq -out ./server_mock_test.go -pkg server ../../api Database Conn Rows Row Result Appender
 
-type TestCase struct {
+type MqttTestCase struct {
 	Ver  uint
 	Name string
 
@@ -35,10 +35,10 @@ type TestCase struct {
 	Expect    any
 }
 
-func runTest(t *testing.T, tc *TestCase) {
+func runMqttTest(t *testing.T, tc *MqttTestCase) {
 	t.Helper()
 
-	brokerUrl, err := url.Parse("tcp://" + brokerAddr)
+	brokerUrl, err := url.Parse("tcp://" + mqttServerAddress)
 	require.NoError(t, err)
 
 	wg := sync.WaitGroup{}
@@ -166,8 +166,8 @@ func runTest(t *testing.T, tc *TestCase) {
 	}
 }
 
-func TestQuery(t *testing.T) {
-	tests := []TestCase{
+func TestMqttQuery(t *testing.T) {
+	tests := []MqttTestCase{
 		{
 			Name:      "db/query simple",
 			Topic:     "db/query",
@@ -257,14 +257,14 @@ func TestQuery(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.Name, func(t *testing.T) {
 				tt.Ver = ver
-				runTest(t, &tt)
+				runMqttTest(t, &tt)
 			})
 		}
 	}
 }
 
 func TestWriteResponse(t *testing.T) {
-	brokerUrl, err := url.Parse("tcp://" + brokerAddr)
+	brokerUrl, err := url.Parse("tcp://" + mqttServerAddress)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -341,14 +341,14 @@ func TestWriteResponse(t *testing.T) {
 	require.Equal(t, "success, 1 record(s) inserted", response["reason"])
 }
 
-func TestWrite(t *testing.T) {
+func TestMqttWrite(t *testing.T) {
 	tests := []struct {
 		Vers        []uint
-		TC          TestCase
+		TC          MqttTestCase
 		ExpectCount int
 	}{
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/write/example json",
 				Topic:   "db/write/example",
 				Payload: []byte(`[["my-car", 1705291859000000000, 1.2345], ["my-car", 1705291860000000000, 2.3456]]`),
@@ -356,7 +356,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/write/example json columns",
 				Topic:   "db/write/example",
 				Payload: []byte(`{"data":{"columns":["NAME","TIME","VALUE"],"rows":[["my-car", 1705291861000000000, 1.2345], ["my-car", 1705291862000000000, 2.3456]]}}}`),
@@ -364,7 +364,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:  "db/write/example ndjson",
 				Topic: "db/write/example",
 				Payload: []byte(`{"NAME":"my-car", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
@@ -374,7 +374,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/write/example csv",
 				Topic:   "db/write/example:csv",
 				Payload: []byte("my-car,1705291863000000000,1.2345\nmy-car,1705291864000000000,2.3456"),
@@ -382,7 +382,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:       "db/write/example csv v5",
 				Topic:      "db/write/example",
 				Properties: map[string]string{"format": "csv", "timeformat": "s"},
@@ -392,7 +392,7 @@ func TestWrite(t *testing.T) {
 			Vers:        []uint{5},
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:       "db/write/example csv v5-time-value",
 				Topic:      "db/write/example",
 				Properties: map[string]string{"format": "csv", "timeformat": "s", "header": "columns"},
@@ -402,7 +402,7 @@ func TestWrite(t *testing.T) {
 			Vers:        []uint{5},
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/write/example json gzip",
 				Topic:   "db/write/example:json:gzip",
 				Payload: compress([]byte(`[["my-car", 1705291869000000000, 1.2345], ["my-car", 1705291870000000000, 2.3456]]`)),
@@ -410,7 +410,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/write/example csv gzip",
 				Topic:   "db/write/example:csv:gzip",
 				Payload: compress([]byte("my-car,1705291871000000000,1.2345\nmy-car,1705291872000000000,2.3456")),
@@ -418,7 +418,7 @@ func TestWrite(t *testing.T) {
 			ExpectCount: 2,
 		},
 		{
-			TC: TestCase{
+			TC: MqttTestCase{
 				Name:    "db/metrics/example ILP",
 				Topic:   "db/metrics/example",
 				Payload: []byte("my-car speed=1.2345 1732742196000000000\nmy-car speed=2.3456 1732742197000000000\n"),
@@ -434,7 +434,7 @@ func TestWrite(t *testing.T) {
 		}
 		for _, ver := range vers {
 			tt.TC.Ver = ver
-			runTest(t, &tt.TC)
+			runMqttTest(t, &tt.TC)
 
 			conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 			if err != nil {
@@ -504,7 +504,7 @@ func TestAppend(t *testing.T) {
 	csvData := []byte("my-car,1705291859000000000,1.2345\nmy-car,1705291860000000000,2.3456")
 	jsonGzipData := compress(jsonData)
 	csvGzipData := compress(csvData)
-	tests := []TestCase{
+	tests := []MqttTestCase{
 		{
 			Name:    "db/append/example",
 			Topic:   "db/append/example",
@@ -599,7 +599,7 @@ func TestAppend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			runTest(t, &tt)
+			runMqttTest(t, &tt)
 
 			conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 			if err != nil {
@@ -636,7 +636,7 @@ func compress(data []byte) []byte {
 func TestTql(t *testing.T) {
 	csvData := []byte("my-car,1705291859000000000,1.2345\nmy-car,1705291860000000000,2.3456")
 
-	tests := []TestCase{
+	tests := []MqttTestCase{
 		{
 			Name:    "db/tql/csv_append.tql",
 			Topic:   "db/tql/csv_append.tql",
@@ -647,7 +647,7 @@ func TestTql(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.Name, func(t *testing.T) {
 				tt.Ver = ver
-				runTest(t, &tt)
+				runMqttTest(t, &tt)
 
 				conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 				if err != nil {

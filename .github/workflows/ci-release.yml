@@ -52,7 +52,7 @@ jobs:
         strategy:
           matrix:
             arch: [ arm64, x64 ]
-        runs-on: [ self-hosted, linux, '${{ matrix.arch }}', ubuntu18 ]
+        runs-on: [ self-hosted, linux, '${{ matrix.arch }}', ubuntu20 ]
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         steps:
@@ -159,7 +159,7 @@ jobs:
               overwrite: true
               file_glob: true
     docker-arm64:
-      runs-on: [ self-hosted, linux, ARM64, ubuntu18 ]
+      runs-on: [ self-hosted, linux, ARM64, ubuntu20 ]
       env:
         ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
       needs: [ linux ]
@@ -181,7 +181,7 @@ jobs:
             go run mage.go machbase-neo && \
             scp tmp/machbase-neo ${{ secrets.DOCKER_HOST }}:/home/ubuntu/docker-build/arm64/
     docker-amd64:
-      runs-on: [ self-hosted, linux, X64, ubuntu18 ]
+      runs-on: [ self-hosted, linux, X64, ubuntu20 ]
       env:
         ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
       needs: [ docker-arm64 ]
