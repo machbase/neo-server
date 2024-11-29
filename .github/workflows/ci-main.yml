@@ -55,11 +55,11 @@ jobs:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v3 # checkout@v4 requires GLIBC_2.28
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup go compiler
-        uses: actions/setup-go@v4 # setup-go@v5 requires GLIBC_2.28
+        uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           check-latest: false
@@ -70,13 +70,13 @@ jobs:
         run: go run mage.go test machbase-neo
       - name: Codecov
         if: matrix.arch == 'x64'
-        uses: codecov/codecov-action@v3 #codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Package
         run: go run mage.go package
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3 # upload-artifact@v4 requires GLIBC_2.28
+        uses: actions/upload-artifact@v4
         with:
           name: machbase-neo-snapshot-linux-${{ matrix.arch }}
           retention-days: 5

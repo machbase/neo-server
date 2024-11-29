@@ -57,11 +57,11 @@ jobs:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
         steps:
           - name: Checkout
-            uses: actions/checkout@v3 # for ubuntu-20.04 --> actions/checkout@v4
+            uses: actions/checkout@v4
             with:
               fetch-depth: 0
           - name: Setup go compiler
-            uses: actions/setup-go@v4 #for ubuntu-20.04 --> actions/setup-go@v5
+            uses: actions/setup-go@v5
             with:
               go-version-file: 'go.mod'
               check-latest: false
@@ -165,11 +165,11 @@ jobs:
       needs: [ linux ]
       steps:
         - name: Checkout
-          uses: actions/checkout@v3
+          uses: actions/checkout@v4
           with:
             fetch-depth: 0
         - name: Set up go compiler
-          uses: actions/setup-go@v4
+          uses: actions/setup-go@v5
           with:
             go-version-file: 'go.mod'
             check-latest: false
@@ -187,11 +187,11 @@ jobs:
       needs: [ docker-arm64 ]
       steps:
         - name: Checkout
-          uses: actions/checkout@v3
+          uses: actions/checkout@v4
           with:
             fetch-depth: 0
         - name: Set up go compiler
-          uses: actions/setup-go@v4
+          uses: actions/setup-go@v5
           with:
             go-version-file: 'go.mod'
             check-latest: false
