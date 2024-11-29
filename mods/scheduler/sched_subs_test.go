@@ -21,7 +21,7 @@ func TestInsertPayload(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			result := extracColumns([]byte(tc.payload))
+			result := extractColumns([]byte(tc.payload))
 			require.EqualValues(t, tc.expect, result)
 		})
 	}

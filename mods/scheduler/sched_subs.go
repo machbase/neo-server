@@ -305,7 +305,7 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	}
 }
 
-func extracColumns(payload []byte) []string {
+func extractColumns(payload []byte) []string {
 	cols := gjson.Get(string(payload), "data.columns")
 	if !cols.Exists() || !cols.IsArray() {
 		return nil
@@ -392,14 +392,12 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 			ent.log.Warn(err.Error())
 			return
 		}
-		// replyTopic := wr.ReplyTo
-
 		/// the json of payload can have 3 types of forms.
 		// 1. Array of Array: [[field1, field2],[field1,field]]
 		// 2. Array : [field1, field2]
 		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
 
-		if names := extracColumns(bs); len(names) > 0 {
+		if names := extractColumns(bs); len(names) > 0 {
 			columnNames = names
 			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))

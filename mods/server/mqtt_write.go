@@ -18,6 +18,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
+	"github.com/tidwall/gjson"
 )
 
 func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
@@ -208,14 +209,12 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		// 1. Array of Array: [[field1, field2],[field1,field]]
 		// 2. Array : [field1, field2]
 		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
-		wr := WriteRequest{}
-		dec := json.NewDecoder(bytes.NewBuffer(bs))
-		// ignore json decoder error, the payload json can be non-full-document json.
-		dec.Decode(&wr)
-		replyTopic = wr.ReplyTo
 
-		if wr.Data != nil && len(wr.Data.Columns) > 0 {
-			columnNames = wr.Data.Columns
+		if reply := extractReplyTo(bs); reply != "" {
+			replyTopic = reply
+		}
+		if names := extractColumns(bs); len(names) > 0 {
+			columnNames = names
 			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
@@ -566,4 +565,26 @@ func (s *mqttd) handleMetrics(cl *mqtt.Client, pk packets.Packet) {
 			s.log.Warnf(cl.Net.Remote, "lineprotocol fail:", result.Err().Error())
 		}
 	}
+}
+
+// extractColumns extracts column names from the payload.
+func extractColumns(payload []byte) []string {
+	cols := gjson.Get(string(payload), "data.columns")
+	if !cols.Exists() || !cols.IsArray() {
+		return nil
+	}
+	ret := []string{}
+	cols.ForEach(func(key, value gjson.Result) bool {
+		ret = append(ret, value.String())
+		return true
+	})
+	return ret
+}
+
+func extractReplyTo(payload []byte) string {
+	reply := gjson.Get(string(payload), "reply")
+	if reply.Exists() {
+		return reply.String()
+	}
+	return ""
 }
