@@ -72,8 +72,8 @@ jobs:
         if: matrix.os == 'windows'
         uses: dlemstra/code-sign-action@v1
         with:
-          certificate: '${{ secrets.CODESIGN_WIN_CERTIFICATE }}' 
-          password: '${{ secrets.CODESIGN_WIN_PASS }}'
+          certificate: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
+          password: ${{ secrets.CODESIGN_WIN_PASS }}
           folder: './tmp'
           recursive: false
           files: |
