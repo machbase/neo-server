@@ -1,0 +1,50 @@
+@create_table = create tag table if not exists example( name varchar(80) primary key, time datetime basetime, value double summarized)
+
+### create example table
+
+
+GET http://127.0.0.1:5654/db/query
+    ?q={{create_table}}
+
+
+### Count records in example table
+GET http://127.0.0.1:5654/db/query
+    ?q=select count(*) from example
+    &format=csv
+
+###
+POST http://127.0.0.1:5654/db/query
+Content-Type: application/json
+
+{
+    "q": "select * from example limit 10",
+    "format": "csv"
+}
+
+###
+POST http://127.0.0.1:5654/db/write/example
+    ?timeformat=2006-01-02
+Content-Type: application/json
+
+{
+    "data": {
+        "columns": ["name", "time", "value"],
+        "rows": [
+            ["John", "2021-01-01", 100],
+            ["John", "2021-01-02", 200]
+        ]
+    }
+}
+
+###
+GET http://127.0.0.1:5654/db/query
+    ?q=select * from example where name = 'John'
+    &format=json
+    &timeformat=Default
+
+###
+
+GET http://127.0.0.1:5654/db/query
+    ?q=delete from example where name = 'John'
+
+###

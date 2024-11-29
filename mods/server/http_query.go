@@ -139,6 +139,9 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 
 	query := &api.Query{
 		Begin: func(q *api.Query) {
+			if !q.IsFetch() {
+				return
+			}
 			cols := q.Columns()
 			ctx.Writer.Header().Set("Content-Type", encoder.ContentType())
 			if len(req.Compress) > 0 {

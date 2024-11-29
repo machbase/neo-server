@@ -108,6 +108,9 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 
 	query := &api.Query{
 		Begin: func(q *api.Query) {
+			if !q.IsFetch() {
+				return
+			}
 			cols := q.Columns()
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
