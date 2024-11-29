@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -373,6 +374,10 @@ func TestMarkdown(t *testing.T) {
 
 			expect, err := os.ReadFile(tc.expectFile)
 			require.NoError(t, err)
+			if runtime.GOOS == "windows" {
+				// replace \r\n to \n for windows
+				expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
+			}
 			require.Equal(t, string(expect), string(result))
 		})
 	}
