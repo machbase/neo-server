@@ -1,50 +1,129 @@
+### Variables
 @create_table = create tag table if not exists example( name varchar(80) primary key, time datetime basetime, value double summarized)
+@server = http://127.0.0.1:5654
 
-### create example table
-
-
-GET http://127.0.0.1:5654/db/query
-    ?q={{create_table}}
-
-
-### Count records in example table
-GET http://127.0.0.1:5654/db/query
-    ?q=select count(*) from example
-    &format=csv
-
+### Create a table
 ###
-POST http://127.0.0.1:5654/db/query
+GET {{ server }}/db/query?q={{ create_table }}
+
+### Query SQL: GET method
+###
+### Try querying the table with different formats: 
+###     csv, box, json, ndjson
+###
+GET {{ server }}/db/query
+    ?q=select count(*) from example
+    &format=box
+
+### Query SQL: POST method
+###
+### Try querying the table with different formats:
+###     csv, box, json, ndjson
+###
+POST {{ server }}/db/query
 Content-Type: application/json
 
 {
     "q": "select * from example limit 10",
-    "format": "csv"
+    "format": "box",
+    "timeformat": "Default",
+    "tz": "Local"
 }
 
+### Write data: JSON format
 ###
-POST http://127.0.0.1:5654/db/write/example
-    ?timeformat=2006-01-02
+POST {{ server }}/db/write/example
+    ?timeformat=Default
+    &tz=Local
 Content-Type: application/json
 
 {
     "data": {
         "columns": ["name", "time", "value"],
         "rows": [
-            ["John", "2021-01-01", 100],
-            ["John", "2021-01-02", 200]
+            ["John", "2024-01-02 19:00:57", 100],
+            ["John", "2024-01-02 19:10:00", 200]
         ]
     }
 }
 
+### Write data: CSV format
 ###
-GET http://127.0.0.1:5654/db/query
-    ?q=select * from example where name = 'John'
-    &format=json
+POST {{ server }}/db/write/example
+    ?timeformat=Default
+    &tz=Local
+    &header=columns
+Content-Type: text/csv
+
+time,name,value
+2024-01-03 09:04:10,Jane,300
+2024-01-04 10:06:20,Jane,400
+
+
+### Write data: NDJSON format
+###
+POST {{ server }}/db/write/example
+    ?timeformat=Default
+    &tz=Local
+Content-Type: application/x-ndjson
+
+{"time":"2024-01-05 10:05:05","name":"Alice","value":500}
+{"time":"2024-01-06 11:08:10","name":"Alice","value":600}
+
+
+### Query data
+###
+### Try querying the table with different formats:
+###     csv, box, json, ndjson
+###
+GET {{ server }}/db/query
+    ?q=SELECT * FROM example WHERE name in ('John', 'Jane', 'Alice')
+    &format=box
     &timeformat=Default
+    &tz=Local
 
+### Run TQL script
 ###
-
-GET http://127.0.0.1:5654/db/query
-    ?q=delete from example where name = 'John'
-
+### Try with different functions instead of "CSV()":
+###     MARKDOWN(), JSON(), NDJSON()
 ###
+POST {{ server }}/db/tql
+Content-Type: text/plain
+
+SQL(`
+    SELECT
+        name, MIN(time) as time, AVG(value) as value
+    FROM
+        EXAMPLE
+    WHERE
+        name in ('John', 'Jane', 'Alice')
+    GROUP BY name
+`)
+CSV()
+
+
+### Run TQL script - CHART
+###
+POST {{ server }}/db/tql
+Content-Type: text/plain
+
+SQL(`
+    SELECT
+        name, MIN(time) as time, AVG(value) as value
+    FROM
+        EXAMPLE
+    WHERE
+        name in ('John', 'Jane', 'Alice')
+    GROUP BY name
+`)
+CHART(
+    chartOption({
+        legend: { show: true },
+        xAxis: { type: 'category', data: column(0) },
+        yAxis: { type: 'value' },
+        series: [
+            { type: 'bar', name: 'VALUE', data: column(2) }
+        ]
+    }),
+    size(500, 500)
+)
