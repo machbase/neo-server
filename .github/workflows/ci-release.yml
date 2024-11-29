@@ -3,7 +3,7 @@ name: Releases
 on:
   push:
     tags:
-      - v*
+      - v_disabled*
 
 jobs:
     darwin:
