@@ -377,6 +377,7 @@ func TestMarkdown(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				// replace \r\n to \n for windows
 				expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
+				result = bytes.ReplaceAll(result, []byte("\r\n"), []byte("\n"))
 			}
 			require.Equal(t, string(expect), string(result))
 		})
