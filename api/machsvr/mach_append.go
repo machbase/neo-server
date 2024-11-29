@@ -65,9 +65,9 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		var colCount int32
 		if err := row.Scan(&tableId, &tableType, &tableFlag, &colCount); err != nil {
 			if err.Error() == "sql: no rows in result set" {
-				return nil, fmt.Errorf("table '%s' not found", appender.tableName)
+				return nil, fmt.Errorf("table '%s' does not exist", strings.ToUpper(appender.tableName))
 			} else {
-				return nil, fmt.Errorf("table '%s' not found, %s", appender.tableName, err.Error())
+				return nil, fmt.Errorf("table '%s' does not exist, %s", strings.ToUpper(appender.tableName), err.Error())
 			}
 		}
 		if tableType != api.TableTypeLog && tableType != api.TableTypeTag {

@@ -2,138 +2,525 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHttpQuery(t *testing.T) {
-	var expectRows = 0
-
-	dbMock := &DatabaseMock{}
-	dbMock.ConnectFunc = func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-		conn := &ConnMock{}
-		conn.CloseFunc = func() error { return nil }
-		conn.QueryFunc = func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-			rows := &RowsMock{}
-			switch sqlText {
-			case `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`:
-				rows.ScanFunc = func(cols ...any) error {
-					if len(params) == 2 {
-						*(cols[0].(*time.Time)) = time.Time{}
-						*(cols[1].(*time.Time)) = time.Time{}
-					}
-					return nil
-				}
-				rows.ColumnsFunc = func() (api.Columns, error) {
-					return api.Columns{
-						{Name: "min(min_time)", DataType: api.ColumnTypeDatetime.DataType()},
-						{Name: "max(max_time)", DataType: api.ColumnTypeDatetime.DataType()},
-					}, nil
-				}
-				rows.IsFetchableFunc = func() bool { return true }
-				rows.MessageFunc = func() string { return "success" }
-				rows.NextFunc = func() bool {
-					expectRows--
-					return expectRows >= 0
-				}
-				rows.CloseFunc = func() error { return nil }
-			case "SELECT to_timestamp((mTime))/1000000 AS TIME, SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE from (select TIME / (1 * 1 * 1000000000) * (1 * 1 * 1000000000) as mtime, sum(VALUE) as SUMMVAL, count(VALUE) as CNTMVAL from EXAMPLE where NAME in ('wave%3B') and TIME between 1693552595418000000 and 1693552598408000000 group by mTime) Group by TIME order by TIME LIMIT 441":
-				rows.ScanFunc = func(cols ...any) error {
-					if len(params) == 2 {
-						*(cols[0].(*time.Time)) = time.Time{}
-						*(cols[1].(*float64)) = 1.2345
-					}
-					return nil
-				}
-				rows.ColumnsFunc = func() (api.Columns, error) {
-					return api.Columns{
-						{Name: "TIME", DataType: api.ColumnTypeDatetime.DataType()},
-						{Name: "VALUE", DataType: api.ColumnTypeDouble.DataType()},
-					}, nil
-				}
-				rows.IsFetchableFunc = func() bool { return true }
-				rows.MessageFunc = func() string { return "success" }
-				rows.NextFunc = func() bool {
-					expectRows--
-					return expectRows >= 0
-				}
-				rows.CloseFunc = func() error { return nil }
-			default:
-				fmt.Println("======>SQL:", sqlText)
-			}
-			return rows, nil
-		}
-		return conn, nil
+	tests := []struct {
+		name        string
+		sqlText     string
+		params      map[string]string
+		contentType string
+		expectObj   map[string]any
+	}{
+		{
+			name:        "select_v$example",
+			sqlText:     `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						[]any{float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_transpose",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: map[string]string{
+				"transpose": "true",
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"cols": []any{
+						[]any{float64(testTimeTick.UnixNano())},
+						[]any{float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_rowsFlatten",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: map[string]string{
+				"rowsFlatten": "true",
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano()),
+					},
+				},
+			},
+		},
+		{
+			name:    "select_v$example_rowsArray",
+			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			params: map[string]string{
+				"rowsArray": "true",
+			},
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"types":   []any{"datetime", "datetime"},
+					"rows": []any{
+						map[string]any{"(MIN(MIN_TIME))": float64(testTimeTick.UnixNano()), "(MAX(MAX_TIME))": float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+		{
+			name: "select_between_sub_query",
+			sqlText: `SELECT
+						to_timestamp((mTime)) AS TIME,
+						SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE
+					FROM (
+						SELECT
+							TIME / (1000 * 1000 * 1000) * (1000 * 1000 * 1000) as mtime, 
+							sum(VALUE) as SUMMVAL,
+							count(VALUE) as CNTMVAL
+						FROM
+							EXAMPLE
+						WHERE
+							NAME = 'test.query'
+						AND TIME BETWEEN 1705291858000000000 and 1705291958000000000
+						GROUP BY mTime
+					)
+					GROUP BY TIME
+					ORDER by TIME LIMIT 400`,
+			contentType: "application/json",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"TIME", "VALUE"},
+					"types":   []any{"int64", "double"},
+					"rows": []any{
+						[]any{float64(testTimeTick.Add(time.Second).UnixNano()), 1.5 * 1.0},
+						[]any{float64(testTimeTick.Add(2 * time.Second).UnixNano()), 1.5 * 2.0},
+						[]any{float64(testTimeTick.Add(3 * time.Second).UnixNano()), 1.5 * 3.0},
+						[]any{float64(testTimeTick.Add(4 * time.Second).UnixNano()), 1.5 * 4.0},
+						[]any{float64(testTimeTick.Add(5 * time.Second).UnixNano()), 1.5 * 5.0},
+						[]any{float64(testTimeTick.Add(6 * time.Second).UnixNano()), 1.5 * 6.0},
+						[]any{float64(testTimeTick.Add(7 * time.Second).UnixNano()), 1.5 * 7.0},
+						[]any{float64(testTimeTick.Add(8 * time.Second).UnixNano()), 1.5 * 8.0},
+						[]any{float64(testTimeTick.Add(9 * time.Second).UnixNano()), 1.5 * 9.0},
+						[]any{float64(testTimeTick.Add(10 * time.Second).UnixNano()), 1.5 * 10.0},
+					},
+				},
+			},
+		},
 	}
 
-	wsvr, err := NewHttp(dbMock,
-		WithHttpDebugMode(true),
-	)
-	if err != nil {
-		t.Fatal(err)
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run("GET_"+tc.name, func(t *testing.T) {
+			var params = "q=" + url.QueryEscape(tc.sqlText)
+			for k, v := range tc.params {
+				params = params + "&" + k + "=" + url.QueryEscape(v)
+			}
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params, nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+		t.Run("POST_"+tc.name, func(t *testing.T) {
+			params := map[string]any{"q": tc.sqlText}
+			for k, v := range tc.params {
+				switch k {
+				case "transpose", "rowsFlatten", "rowsArray":
+					params[k] = v == "true"
+				default:
+					params[k] = v
+				}
+			}
+			payload, _ := json.Marshal(params)
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/query", bytes.NewBuffer(payload))
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			req.Header.Set("Content-Type", "application/json")
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(result))
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+
+	}
+}
+
+func TestHttpTables(t *testing.T) {
+	tests := []struct {
+		name       string
+		queryParam string
+		expectObj  map[string]any
+	}{
+		{
+			name: "tables",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
+					"types":   []any{"int32", "string", "string", "string", "string"},
+					"rows": []any{
+						[]any{float64(1), "MACHBASEDB", "SYS", "EXAMPLE", "Tag Table"},
+						[]any{float64(2), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
+						[]any{float64(3), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
+						[]any{float64(4), "MACHBASEDB", "SYS", "TAG_SIMPLE", "Tag Table"},
+					},
+				},
+			},
+		},
+		{
+			name:       "tables_name_filter",
+			queryParam: "?showall=true&name=*DATA*",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
+					"types":   []any{"int32", "string", "string", "string", "string"},
+					"rows": []any{
+						[]any{float64(1), "MACHBASEDB", "SYS", "LOG_DATA", "Log Table"},
+						[]any{float64(2), "MACHBASEDB", "SYS", "TAG_DATA", "Tag Table"},
+						[]any{float64(3), "MACHBASEDB", "SYS", "_EXAMPLE_DATA_0", "KeyValue Table (data)"},
+						[]any{float64(4), "MACHBASEDB", "SYS", "_TAG_DATA_DATA_0", "KeyValue Table (data)"},
+						[]any{float64(5), "MACHBASEDB", "SYS", "_TAG_DATA_META", "Lookup Table (meta)"},
+						[]any{float64(6), "MACHBASEDB", "SYS", "_TAG_SIMPLE_DATA_0", "KeyValue Table (data)"},
+					},
+				},
+			},
+		},
 	}
 
-	r := wsvr.Router()
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
 
-	runTestQuery := func(sqlText string, expect string, params map[string]string) {
-		var w *httptest.ResponseRecorder
-		var req *http.Request
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/tables"+tc.queryParam, nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
 
-		expectRows = 1
-		w = httptest.NewRecorder()
-		//u := fmt.Sprintf("/db/query?q=%s", url.QueryEscape(sqlText))
-		args := []string{fmt.Sprintf("/db/query?q=%s", url.QueryEscape(sqlText))}
-		for k, v := range params {
-			args = append(args, fmt.Sprintf("%s=%s", k, url.QueryEscape(v)))
-		}
-		req, _ = http.NewRequest("GET", strings.Join(args, "&"), nil)
-		r.ServeHTTP(w, req)
-		if w.Code != http.StatusOK {
-			t.Log("StatusCode:", w.Result().Status, "Body:", w.Body.String())
-			t.Fail()
-		}
-		if strings.HasPrefix(expect, "/r/") {
-			reg := regexp.MustCompile("^" + strings.TrimPrefix(expect, "/r/"))
-			if actual := w.Body.String(); !reg.MatchString(actual) {
-				t.Log("Expect:", expect)
-				t.Log("Actual:", actual)
-				t.Fail()
-			}
-		} else {
-			if actual := w.Body.String(); actual != expect {
-				t.Log("Expect:", expect)
-				t.Log("Actual:", actual)
-				t.Fail()
-			}
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+	}
+}
+
+func TestHttpTags(t *testing.T) {
+	tests := []struct {
+		name      string
+		table     string
+		expectObj map[string]any
+	}{
+		{
+			name:  "tags",
+			table: "example",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{"ROWNUM", "NAME"},
+					"types":   []any{"int32", "string"},
+					"rows": []any{
+						[]any{float64(1), "temp"},
+						[]any{float64(2), "test.query"},
+					},
+				},
+			},
+		},
+	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/tables/"+tc.table+"/tags", nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+	}
+}
+
+func TestHttpTagStat(t *testing.T) {
+	tests := []struct {
+		name      string
+		table     string
+		tag       string
+		expectObj map[string]any
+	}{
+		{
+			name:  "tag_stat",
+			table: "example",
+			tag:   "temp",
+			expectObj: map[string]any{
+				"success": true, "reason": "success",
+				"data": map[string]any{
+					"columns": []any{
+						"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
+						"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
+					"types": []any{"int32", "string", "int64", "datetime", "datetime", "double", "datetime", "double", "datetime", "datetime"},
+					"rows": []any{
+						[]any{
+							float64(1), "temp", float64(1), float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano()),
+							3.14, float64(testTimeTick.UnixNano()), 3.14, float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano())},
+					},
+				},
+			},
+		},
+	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/web/api/tables/"+tc.table+"/tags/"+tc.tag+"/stat", nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+	}
+}
+
+func TestTQL(t *testing.T) {
+	tests := []struct {
+		name        string
+		codes       string
+		contentType string
+		expect      []string
+		expectObj   map[string]any
+	}{
+		{
+			name: "csv_output",
+			codes: `FAKE(linspace(0,1,2))
+					CSV()`,
+			contentType: "text/csv; charset=utf-8",
+			expect: []string{
+				"0", "1", "\n",
+			},
+		},
+		{
+			name: "json_output",
+			codes: `FAKE(linspace(0,1,2))
+					JSON()`,
+			contentType: "application/json",
+			expectObj: map[string]any{"success": true, "reason": "success", "data": map[string]any{
+				"columns": []any{"x"}, "types": []any{"double"},
+				"rows": []any{[]any{0.0}, []any{1.0}},
+			}},
+		},
+	}
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			t.Run(method+"_"+tc.name, func(t *testing.T) {
+				var req *http.Request
+				if method == http.MethodGet {
+					req, _ = http.NewRequest(method, httpServerAddress+"/web/api/tql?$="+url.QueryEscape(tc.codes), nil)
+				} else {
+					reader := bytes.NewBufferString(tc.codes)
+					req, _ = http.NewRequest(method, httpServerAddress+"/web/api/tql", reader)
+				}
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+				rsp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, rsp.StatusCode)
+				require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+				result, _ := io.ReadAll(rsp.Body)
+				rsp.Body.Close()
+				if tc.expectObj != nil {
+					resultObj := map[string]any{}
+					err := json.Unmarshal(result, &resultObj)
+					require.NoError(t, err)
+					delete(resultObj, "elapse")
+					require.EqualValues(t, tc.expectObj, resultObj)
+				} else {
+					require.Equal(t, strings.Join(tc.expect, "\n"), string(result))
+				}
+			})
 		}
 	}
-	runTestQuery(`select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`,
-		`/r/{"data":{"columns":\["min\(min_time\)","max\(max_time\)"\],"types":\["datetime","datetime"\],"rows":\[\[-6795364578871345152,-6795364578871345152\]\]},"success":true,"reason":"success","elapse":".+"}`,
-		map[string]string{})
+}
 
-	runTestQuery(`select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`,
-		`/r/{"data":{"columns":\["min\(min_time\)","max\(max_time\)"],"types":\["datetime","datetime"\],"rows":\[-6795364578871345152,-6795364578871345152\]},"success":true,"reason":"success","elapse":".+"}`,
-		map[string]string{"format": "json", "rowsFlatten": "true"})
+func TestTQL_Payload(t *testing.T) {
+	tests := []struct {
+		name        string
+		codes       string
+		payload     []byte
+		payloadType string
+		contentType string
+		expect      []string
+		expectObj   map[string]any
+	}{
+		{
+			name: "csv_from_payload",
+			codes: `CSV(payload())
+					CSV()`,
+			payload:     []byte("a,1\nb,2\n"),
+			payloadType: "text/csv",
+			contentType: "text/csv; charset=utf-8",
+			expect:      []string{"a,1", "b,2", "\n"},
+		},
+		{
+			name:        "csv_map.tql",
+			codes:       "@csv_map.tql",
+			payload:     []byte("a,1\nb,2\n"),
+			payloadType: "text/csv",
+			contentType: "text/csv; charset=utf-8",
+			expect:      []string{"a,10", "b,20", "\n"},
+		},
+	}
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
 
-	runTestQuery(`select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'my-car;'`,
-		`/r/{"data":{"columns":\["min\(min_time\)","max\(max_time\)"\],"types":\["datetime","datetime"\],"rows":\[{"max\(max_time\)":-6795364578871345152,"min\(min_time\)":-6795364578871345152}\]},"success":true,"reason":"success","elapse":".+"}`,
-		map[string]string{"format": "json", "rowsArray": "true"})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var req *http.Request
+			payload := bytes.NewBuffer(tc.payload)
+			if strings.HasPrefix(tc.codes, "@") {
+				req, _ = http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/tql/"+tc.codes[1:], payload)
+			} else {
+				req, _ = http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/tql?$="+url.QueryEscape(tc.codes), payload)
+			}
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			req.Header.Set("Content-Type", tc.payloadType)
 
-	runTestQuery(`SELECT to_timestamp((mTime))/1000000 AS TIME, SUM(SUMMVAL) / SUM(CNTMVAL) AS VALUE from (select TIME / (1 * 1 * 1000000000) * (1 * 1 * 1000000000) as mtime, sum(VALUE) as SUMMVAL, count(VALUE) as CNTMVAL from EXAMPLE where NAME in ('wave%3B') and TIME between 1693552595418000000 and 1693552598408000000 group by mTime) Group by TIME order by TIME LIMIT 441`,
-		`/r/{"data":{"columns":\["TIME","VALUE"\],"types":\["datetime","double"\],"rows":\[\[-6795364578871345152,0\]\]},"success":true,"reason":"success","elapse":".+"}`,
-		map[string]string{})
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			require.Equal(t, tc.contentType, rsp.Header.Get("Content-Type"))
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+			if tc.expectObj != nil {
+				resultObj := map[string]any{}
+				err := json.Unmarshal(result, &resultObj)
+				require.NoError(t, err)
+				delete(resultObj, "elapse")
+				require.EqualValues(t, tc.expectObj, resultObj)
+			} else {
+				require.Equal(t, strings.Join(tc.expect, "\n"), string(result))
+			}
+		})
+	}
+}
+
+func TestTQL_SyntaxErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		codes     string
+		expectObj map[string]any
+	}{
+		{
+			name: "mapkey_wrong_argument",
+			codes: `FAKE(linspace(0,1,2))
+					MAPKEY(-1,-1) // intended syntax error
+					//APPEND(table('example'))
+					JSON()`,
+			expectObj: map[string]any{
+				"success": true,
+				"reason":  "success",
+				"data": map[string]any{
+					"columns": []any{"x"},
+					"types":   []any{"double"},
+					"rows":    []any{},
+				},
+			},
+		},
+	}
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := bytes.NewBufferString(tc.codes)
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/tql", reader)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			resultObj := map[string]any{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+			delete(resultObj, "elapse")
+			require.EqualValues(t, tc.expectObj, resultObj)
+		})
+	}
 }
 
 type SplitSqlResult struct {
@@ -146,135 +533,43 @@ type SplitSqlResult struct {
 }
 
 func TestSplitSQL(t *testing.T) {
-	dbMock := &DatabaseMock{}
-	httpSvr, err := NewHttp(dbMock,
-		WithHttpDebugMode(true),
-	)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		input   string
+		expects []*util.SqlStatement
+	}{
+		{
+			name:  "select_first",
+			input: `select * from first;`,
+			expects: []*util.SqlStatement{
+				{BeginLine: 1, EndLine: 1, IsComment: false, Text: "select * from first;", Env: &util.SqlStatementEnv{}},
+			},
+		},
+		{
+			name:  "select_second",
+			input: "\nselect * from second;  ",
+			expects: []*util.SqlStatement{
+				{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from second;", Env: &util.SqlStatementEnv{}},
+			},
+		},
 	}
 
-	r := httpSvr.Router()
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
 
-	runTestSplitSQL := func(sqlText string, expect []*util.SqlStatement) {
-		var w *httptest.ResponseRecorder
-		var req *http.Request
+	for _, tc := range tests {
+		req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/splitter/sql", strings.NewReader(tc.input))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+		result, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
 
-		w = httptest.NewRecorder()
-		req, _ = http.NewRequest("POST", "/web/api/splitter/sql", strings.NewReader(sqlText))
-		r.ServeHTTP(w, req)
-		if w.Code != http.StatusOK {
-			t.Log("StatusCode:", w.Result().Status, "Body:", w.Body.String())
-			t.Fail()
-		}
-		result := SplitSqlResult{}
-		response := w.Body.String()
-		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-			t.Log("Error:", err, response)
-			t.Fail()
-		}
-		if !result.Success {
-			t.Log("Error:", result.Reason, response)
-			t.Fail()
-		}
-		require.EqualValues(t, expect, result.Data.Statements, response)
+		resultObj := SplitSqlResult{}
+		err = json.Unmarshal(result, &resultObj)
+		require.NoError(t, err)
+
+		require.EqualValues(t, tc.expects, resultObj.Data.Statements)
 	}
-	runTestSplitSQL(`select * from first;`,
-		[]*util.SqlStatement{
-			{BeginLine: 1, EndLine: 1, IsComment: false, Text: "select * from first;", Env: &util.SqlStatementEnv{}},
-		})
-
-	runTestSplitSQL("\nselect * from second;  ",
-		[]*util.SqlStatement{
-			{BeginLine: 2, EndLine: 2, IsComment: false, Text: "select * from second;", Env: &util.SqlStatementEnv{}},
-		})
-}
-
-func TestTQL_CSV(t *testing.T) {
-	w := httptest.NewRecorder()
-	s, ctx, engine := NewMockServer(w)
-	err := s.Login("sys", "manager")
-	require.Nil(t, err)
-	defer s.Shutdown()
-
-	reader := bytes.NewBufferString(`
-		FAKE(linspace(0,1,2))
-		CSV()
-	`)
-	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
-	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	engine.HandleContext(ctx)
-	require.Equal(t, 200, w.Result().StatusCode)
-	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
-	require.Equal(t, strings.Join([]string{"0", "1", "\n"}, "\n"), w.Body.String())
-}
-
-func TestTQL_JSON(t *testing.T) {
-	w := httptest.NewRecorder()
-	s, ctx, engine := NewMockServer(w)
-	err := s.Login("sys", "manager")
-	require.Nil(t, err)
-	defer s.Shutdown()
-
-	reader := bytes.NewBufferString(`
-		FAKE(linspace(0,1,2))
-		JSON()
-	`)
-	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
-	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	engine.HandleContext(ctx)
-	require.Equal(t, 200, w.Result().StatusCode)
-	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	expectReg := regexp.MustCompile(`^{"data":{"columns":\["x"\],"types":\["double"\],"rows":\[\[0\],\[1\]\]},"success":true,"reason":"success","elapse":"[0-9.]+[nµm]?s"}`)
-	if !expectReg.MatchString(w.Body.String()) {
-		t.Log("FAIL", w.Body.String())
-		t.Fail()
-	}
-}
-
-func TestTQLWrongSyntax(t *testing.T) {
-	w := httptest.NewRecorder()
-	s, ctx, engine := NewMockServer(w)
-	err := s.Login("sys", "manager")
-	require.Nil(t, err)
-	defer s.Shutdown()
-
-	reader := bytes.NewBufferString(`
-		FAKE(linspace(0,1,2))
-		MAPKEY(-1,-1) // intended syntax error
-		//APPEND(table('example'))
-		JSON()
-	`)
-	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql", reader)
-	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	engine.HandleContext(ctx)
-	require.Equal(t, 200, w.Result().StatusCode)
-	//expectReg := regexp.MustCompile(`^{"success":false,"reason":"f\(MAPKEY\) invalid number of args; expect:1, actual:2","elapse":"[0-9.]+[nµm]?s","data":{"message":"append 0 row \(success 0, fail 0\)"}}`)
-	expectReg := regexp.MustCompile(`^{"data":{"columns":\["x"\],"types":\["double"\],"rows":\[\]},"success":true,"reason":"success","elapse":"[0-9.]+[nµm]?s"}`)
-	if !expectReg.MatchString(w.Body.String()) {
-		t.Log("FAIL received:", w.Body.String())
-		t.Fail()
-	}
-}
-
-func TestTQLParam_CSV(t *testing.T) {
-	w := httptest.NewRecorder()
-	s, ctx, engine := NewMockServer(w)
-	err := s.Login("sys", "manager")
-	require.Nil(t, err)
-	defer s.Shutdown()
-
-	script := url.QueryEscape(`
-		CSV(payload())
-		CSV()
-	`)
-	payload := bytes.NewBufferString("a,1\nb,2\n")
-
-	ctx.Request, _ = http.NewRequest(http.MethodPost, "/web/api/tql?"+TQL_SCRIPT_PARAM+"="+script, payload)
-	ctx.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.AccessToken()))
-	ctx.Request.Header.Set("Content-Type", "text/csv")
-	engine.HandleContext(ctx)
-	require.Equal(t, 200, w.Result().StatusCode)
-	require.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
-	require.Equal(t, strings.Join([]string{"a,1", "b,2", "\n"}, "\n"), w.Body.String())
 }

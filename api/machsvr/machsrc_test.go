@@ -35,6 +35,12 @@ func TestInsert(t *testing.T) {
 	testsuite.InsertAndQuery(t, db, context.TODO())
 }
 
+func TestAppendTag(t *testing.T) {
+	db := testsuite.Database_machsvr(t)
+	testsuite.AppendTag(t, db, context.TODO())
+	testsuite.AppendTagNotExist(t, db, context.TODO())
+}
+
 func TestTables(t *testing.T) {
 	db := testsuite.Database_machsvr(t)
 	testsuite.ShowTables(t, db, context.TODO())

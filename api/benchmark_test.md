@@ -31,7 +31,7 @@ create tag table tag_simple(
 - 2024.10.31
 
 ```sh
-go test -benchmem -run=^$ -bench . github.com/machbase/neo-server/api
+go test -benchmem -run=^$ -bench . github.com/machbase/neo-server/v8/api
 
 goos: darwin
 goarch: arm64

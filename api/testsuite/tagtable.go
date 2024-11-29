@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,4 +74,78 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, err)
 	require.Equal(t, int64(expectCount), sc)
 	require.Equal(t, int64(0), fc)
+}
+
+func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
+	tableName := "append_tag"
+
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	result := conn.Exec(ctx, fmt.Sprintf(`CREATE TAG TABLE %s (
+		name     varchar(200) primary key,
+		time     datetime basetime,
+		value    double summarized,
+		id       varchar(80),
+		jsondata json)`, tableName))
+	conn.Close()
+	require.NoError(t, result.Err(), "create table fail")
+
+	defer func() {
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		require.NoError(t, err, "connect fail")
+		conn.Exec(ctx, fmt.Sprintf(`DROP TABLE %s`, tableName))
+		conn.Close()
+	}()
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, tableName)
+	if err != nil {
+		panic(err)
+	}
+
+	testCount := 100
+	ts := time.Now()
+	for i := 0; i < testCount; i++ {
+		err = appender.Append(
+			fmt.Sprintf("name-%d", i%5),
+			ts.Add(time.Duration(i)),
+			1.001*float64(i+1),
+			"some-id-string",
+			`{"name":"json"}`)
+		if err != nil {
+			panic(err)
+		}
+	}
+	appender.Close()
+	conn.Close()
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	defer conn.Close()
+	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
+	if row.Err() != nil {
+		panic(row.Err())
+	}
+	var count int
+	err = row.Scan(&count)
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, testCount, count)
+}
+
+func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	appender, err := conn.Appender(ctx, "notexist")
+	require.NotNil(t, err)
+	require.True(t, strings.Contains(err.Error(), "does not exist"))
+	if appender != nil {
+		appender.Close()
+	}
 }

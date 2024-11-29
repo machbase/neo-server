@@ -15,6 +15,7 @@ type Query struct {
 	Next func(q *Query, rownum int64) bool
 
 	// End is called after when the query is finished, Or non-query execution is finished.
+	// If the query is cancelled, End is not called.
 	End func(q *Query)
 
 	isFetch     bool
@@ -23,6 +24,7 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
+	isCancelled bool
 }
 
 func (qc *Query) IsFetch() bool {
@@ -54,6 +56,27 @@ func (qc *Query) Scan(values ...any) error {
 // If the sqlText was not a select query, it returns nil.
 func (qc *Query) Columns() Columns {
 	return qc.columns
+}
+
+type QueryResult struct {
+	Err error
+}
+
+func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any) <-chan QueryResult {
+	ch := make(chan QueryResult)
+	go func() {
+		defer close(ch)
+		if err := qc.Execute(ctx, conn, sqlText, args...); err != nil {
+			ch <- QueryResult{Err: err}
+			return
+		}
+		ch <- QueryResult{}
+	}()
+	return ch
+}
+
+func (qc *Query) Cancel() {
+	qc.isCancelled = true
 }
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
@@ -88,6 +111,9 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	}
 	if qc.End != nil {
 		defer func() {
+			if qc.isCancelled {
+				return
+			}
 			if qc.err == nil {
 				if qc.rowNum == 0 {
 					qc.userMessage = "no rows fetched."
@@ -103,7 +129,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		}()
 	}
 
-	for qc.rows.Next() {
+	for !qc.isCancelled && qc.rows.Next() {
 		qc.rowNum++
 		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
 			break

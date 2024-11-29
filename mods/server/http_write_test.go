@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,6 +27,190 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHttpWrite(t *testing.T) {
+	tests := []struct {
+		name             string
+		queryParams      string
+		payloadType      string
+		payloadReq       any
+		selectSql        string
+		selectQueryParam string
+		selectExpect     []string
+	}{
+		{
+			name:        "json",
+			queryParams: "?timeformat=s",
+			payloadType: "application/json",
+			payloadReq: map[string]any{
+				"data": map[string]any{
+					"columns": []string{"name", "time", "value", "jsondata", "ival", "sval"},
+					"rows": [][]any{
+						{"test_1", testTimeTick.Unix(), 1.12, nil, 101, 102},
+						{"test_1", testTimeTick.Unix() + 1, 2.23, nil, 201, 202},
+					},
+				},
+			},
+			selectSql:        `select * from test_w where name = 'test_1'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`test_1,1705291859,1.12,NULL,101,102`,
+				`test_1,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+		{
+			name:        "ndjson",
+			queryParams: "?timeformat=s&method=insert",
+			payloadType: "application/x-ndjson",
+			payloadReq: []any{
+				map[string]any{"name": "test_2", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102},
+				map[string]any{"name": "test_2", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202},
+			},
+			selectSql:        `select * from test_w where name = 'test_2'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`test_2,1705291859,1.12,NULL,101,102`,
+				`test_2,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+		{
+			name:        "ndjson-append",
+			queryParams: "?timeformat=s&method=append",
+			payloadType: "application/x-ndjson",
+			payloadReq: []any{
+				map[string]any{"name": "test_3", "time": testTimeTick.Unix(), "value": 1.12, "jsondata": nil, "ival": 101, "sval": 102},
+				map[string]any{"name": "test_3", "time": testTimeTick.Unix() + 1, "value": 2.23, "jsondata": nil, "ival": 201, "sval": 202},
+			},
+			selectSql:        `select * from test_w where name = 'test_3'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`test_3,1705291859,1.12,NULL,101,102`,
+				`test_3,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+		{
+			name:        "csv",
+			queryParams: "?timeformat=s&method=insert&header=columns",
+			payloadType: "text/csv",
+			payloadReq: []any{
+				`name,TIME,Value,JSONDATA,ival,SVAL`, // case-in-sensitive
+				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
+				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
+			},
+			selectSql:        `select * from test_w where name = 'csv_1'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`csv_1,1705291859,1.12,NULL,101,102`,
+				`csv_1,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+		{
+			name:        "csv",
+			queryParams: "?timeformat=s&method=insert&header=columns&compress=gzip",
+			payloadType: "text/csv",
+			payloadReq: []any{
+				`name,TIME,Value,JSONDATA,ival,SVAL`, // case-in-sensitive
+				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
+				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
+			},
+			selectSql:        `select * from test_w where name = 'csv_gzip'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`csv_gzip,1705291859,1.12,NULL,101,102`,
+				`csv_gzip,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	creTable := `create tag table test_w (
+		name varchar(200) primary key,
+		time datetime basetime,
+		value double summarized,
+		jsondata json,
+		ival int,
+		sval short)`
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	defer func() {
+		dropTable := `drop table test_w`
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, _ := http.DefaultClient.Do(req)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+	}()
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var payload io.Reader
+			var compressed bool
+			if tc.payloadType == "application/json" {
+				b, _ := json.Marshal(tc.payloadReq)
+				payload = bytes.NewBuffer(b)
+			} else if tc.payloadType == "application/x-ndjson" {
+				b := &bytes.Buffer{}
+				enc := json.NewEncoder(b)
+				for _, row := range tc.payloadReq.([]any) {
+					enc.Encode(row)
+				}
+				payload = b
+			} else if tc.payloadType == "text/csv" {
+				var w io.Writer
+				b := &bytes.Buffer{}
+				if strings.Contains(tc.queryParams, "compress=gzip") {
+					compressed = true
+					w = gzip.NewWriter(b)
+				} else {
+					w = b
+				}
+				for _, row := range tc.payloadReq.([]any) {
+					w.Write([]byte(row.(string) + "\n"))
+				}
+				if g, ok := w.(*gzip.Writer); ok {
+					g.Close()
+				}
+				payload = b
+			}
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/write/test_w"+tc.queryParams, payload)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			req.Header.Set("Content-Type", tc.payloadType)
+			if compressed {
+				req.Header.Set("Content-Encoding", "gzip")
+			}
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			rspBody, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
+
+			conn, _ := httpServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
+			conn.Exec(context.Background(), `EXEC table_flush(test_w)`)
+			conn.Close()
+
+			if tc.selectSql != "" {
+				req, _ = http.NewRequest(http.MethodGet,
+					httpServerAddress+"/db/query?q="+url.QueryEscape(tc.selectSql)+tc.selectQueryParam, nil)
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+				rsp, err = http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
+				rspBody, _ = io.ReadAll(rsp.Body)
+				rsp.Body.Close()
+				require.Equal(t, strings.Join(tc.selectExpect, "\n"), string(rspBody))
+			}
+		})
+	}
+}
 
 func TestImageFileUpload(t *testing.T) {
 	if runtime.GOOS == "windows" {
