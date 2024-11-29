@@ -18,14 +18,13 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func (svr *httpd) handleWrite(ctx *gin.Context) {
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &WriteResponse{Reason: "not specified"}
 	tick := time.Now()
 
 	if ctx.ContentType() == "multipart/form-data" {
@@ -153,7 +152,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				return
 			}
 
-			wr := msg.WriteRequest{}
+			wr := WriteRequest{}
 			dec := json.NewDecoder(bytes.NewBuffer(bs))
 			if err := dec.Decode(&wr); err != nil {
 				errRsp(http.StatusBadRequest, err.Error())
@@ -250,7 +249,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleFileWrite(ctx *gin.Context) {
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &WriteResponse{Reason: "not specified"}
 	tick := time.Now()
 
 	if ctx.ContentType() != "multipart/form-data" {
@@ -353,7 +352,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		if len(v) == 0 {
 			continue
 		}
-		mff := &msg.UserFileData{
+		mff := &UserFileData{
 			Filename: v[0].Filename,
 			Size:     v[0].Size,
 		}
@@ -410,8 +409,8 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 			return
 		}
 		if rsp.Data == nil {
-			rsp.Data = &msg.WriteResponseData{}
-			rsp.Data.Files = make(map[string]*msg.UserFileData)
+			rsp.Data = &WriteResponseData{}
+			rsp.Data.Files = make(map[string]*UserFileData)
 		}
 		rsp.Data.Files[strings.ToUpper(k)] = mff
 	}

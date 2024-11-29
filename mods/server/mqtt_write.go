@@ -13,7 +13,6 @@ import (
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -24,7 +23,7 @@ import (
 func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	tick := time.Now()
 	var replyTopic string
-	var rsp = &msg.WriteResponse{Reason: "not specified"}
+	var rsp = &WriteResponse{Reason: "not specified"}
 
 	defer func() {
 		if replyTopic == "" {
@@ -209,7 +208,7 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 		// 1. Array of Array: [[field1, field2],[field1,field]]
 		// 2. Array : [field1, field2]
 		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
-		wr := msg.WriteRequest{}
+		wr := WriteRequest{}
 		dec := json.NewDecoder(bytes.NewBuffer(bs))
 		// ignore json decoder error, the payload json can be non-full-document json.
 		dec.Decode(&wr)

@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -33,11 +32,11 @@ import (
 // @Failure     500  {object}  msg.QueryResponse
 // @Router      /db/query [get]
 func (svr *httpd) handleQuery(ctx *gin.Context) {
-	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
+	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
 	var err error
-	req := &msg.QueryRequest{Precision: -1}
+	req := &QueryRequest{Precision: -1}
 	if ctx.Request.Method == http.MethodPost {
 		contentType := ctx.ContentType()
 		if contentType == "application/json" {
@@ -234,7 +233,7 @@ func (svr *httpd) handleWatchQuery(ctx *gin.Context) {
 		})
 	if err != nil {
 		svr.log.Debug("Watcher error", err.Error())
-		rsp := msg.QueryResponse{Reason: err.Error(), Elapse: time.Since(tick).String()}
+		rsp := QueryResponse{Reason: err.Error(), Elapse: time.Since(tick).String()}
 		ctx.JSON(http.StatusInternalServerError, rsp)
 		return
 	}
@@ -311,7 +310,7 @@ func (svr *httpd) handleSplitSQL(ctx *gin.Context) {
 }
 
 func (svr *httpd) handleFileQuery(ctx *gin.Context) {
-	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
+	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
 	tableName := ctx.Param("table")
@@ -418,7 +417,7 @@ func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 		return
 	}
 
-	fileData := &msg.UserFileData{}
+	fileData := &UserFileData{}
 	if err := json.Unmarshal([]byte(fileDataStr), fileData); err != nil {
 		rsp.Reason = err.Error()
 		rsp.Elapse = time.Since(tick).String()
@@ -458,8 +457,8 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 		nameFilterGlob = glob.IsGlob(nameFilter)
 	}
 
-	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
-	data := &msg.QueryData{
+	rsp := &QueryResponse{Success: true, Reason: "success"}
+	data := &QueryData{
 		Columns: []string{"ROWNUM", "DB", "USER", "NAME", "TYPE"},
 		Types: []api.DataType{
 			api.DataTypeInt32,  // rownum
@@ -531,8 +530,8 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	table := strings.ToUpper(ctx.Param("table"))
 	nameFilter := strings.ToUpper(ctx.Query("name"))
 
-	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
-	data := &msg.QueryData{
+	rsp := &QueryResponse{Success: true, Reason: "success"}
+	data := &QueryData{
 		Columns: []string{"ROWNUM", "NAME"},
 		Types: []api.DataType{
 			api.DataTypeInt32,  // rownum
@@ -593,7 +592,7 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 // @Router      /web/api/tables/:table/tags/:tag/stat [get]
 func (svr *httpd) handleTagStat(ctx *gin.Context) {
 	tick := time.Now()
-	rsp := &msg.QueryResponse{Success: true, Reason: "success"}
+	rsp := &QueryResponse{Success: true, Reason: "success"}
 	table := strings.ToUpper(ctx.Param("table"))
 	tag := ctx.Param("tag")
 	timeformat := strString(ctx.Query("timeformat"), "ns")
@@ -618,7 +617,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 		return
 	}
 
-	data := &msg.QueryData{
+	data := &QueryData{
 		Columns: []string{
 			"ROWNUM", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME",
 			"MIN_VALUE", "MIN_VALUE_TIME", "MAX_VALUE", "MAX_VALUE_TIME", "RECENT_ROW_TIME"},
@@ -734,7 +733,7 @@ func (svr *httpd) handleTqlQueryExec(ctx *gin.Context) {
 // POST "/tql?$=...."
 // GET  "/tql?$=...."
 func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
-	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
+	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
 	claim, _ := svr.getJwtClaim(ctx)
@@ -850,7 +849,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 // GET  "/tql/*path"
 // POST "/tql/*path"
 func (svr *httpd) handleTqlFile(ctx *gin.Context) {
-	rsp := &msg.QueryResponse{Success: false, Reason: "not specified"}
+	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
 	path := ctx.Param("path")

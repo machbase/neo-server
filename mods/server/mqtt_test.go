@@ -17,7 +17,6 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,8 +134,8 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 	}
 
 	switch expect := tc.Expect.(type) {
-	case *msg.QueryResponse:
-		actual := msg.QueryResponse{}
+	case *QueryResponse:
+		actual := QueryResponse{}
 		if err := json.Unmarshal(recvPayload, &actual); err != nil {
 			t.Logf("Test %q response malformed; %s", tc.Name, err.Error())
 			t.Fail()
@@ -173,10 +172,10 @@ func TestMqttQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'" }`),
 			Subscribe: "db/reply",
-			Expect: &msg.QueryResponse{
+			Expect: &QueryResponse{
 				Success: true,
 				Reason:  "success",
-				Data: &msg.QueryData{
+				Data: &QueryData{
 					Columns: []string{"NAME", "TIME", "VALUE"},
 					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{
@@ -190,10 +189,10 @@ func TestMqttQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT" }`),
 			Subscribe: "db/reply",
-			Expect: &msg.QueryResponse{
+			Expect: &QueryResponse{
 				Success: true,
 				Reason:  "success",
-				Data: &msg.QueryData{
+				Data: &QueryData{
 					Columns: []string{"NAME", "TIME", "VALUE"},
 					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{

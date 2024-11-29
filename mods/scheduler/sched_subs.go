@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -211,9 +210,15 @@ func (ent *SubscriberEntry) Stop() error {
 	}
 }
 
+type Reason struct {
+	Success bool
+	Reason  string
+	Elapse  string
+}
+
 func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, dup bool, retain bool) {
 	tick := time.Now()
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &Reason{Reason: "not specified"}
 
 	defer func() {
 		if ent.err != nil {
@@ -240,7 +245,7 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 
 func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 	tick := time.Now()
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &Reason{Reason: "not specified"}
 
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
@@ -268,7 +273,7 @@ func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 	}
 }
 
-func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *msg.WriteResponse) {
+func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *Reason) {
 	sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 	if err != nil {
 		ent.err = err
@@ -313,7 +318,7 @@ func extracColumns(payload []byte) []string {
 	return ret
 }
 
-func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
+func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
 		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
@@ -477,7 +482,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s inserted", util.HumanizeNumber(recno), records)
 }
 
-func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
+func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
 		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())

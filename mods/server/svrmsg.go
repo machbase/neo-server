@@ -1,4 +1,4 @@
-package msg
+package server
 
 import "github.com/machbase/neo-server/v8/api"
 
