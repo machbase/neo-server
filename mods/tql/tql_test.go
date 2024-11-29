@@ -30,17 +30,16 @@ type TqlTestCase struct {
 	ExpectCSV []string
 }
 
-func (tc TqlTestCase) Run(t *testing.T) {
+func runTestCase(t *testing.T, tc TqlTestCase) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	output := &bytes.Buffer{}
-	logOutput := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
 	task.SetDatabase(testServer.DatabaseSVR())
 	task.SetOutputWriter(output)
-	task.SetLogWriter(logOutput)
+	task.SetLogWriter(os.Stdout)
 	if err := task.CompileString(tc.Script); err != nil {
 		t.Log("ERROR:", tc.Name, err.Error())
 		t.Fail()
@@ -52,7 +51,6 @@ func (tc TqlTestCase) Run(t *testing.T) {
 		t.Fail()
 		return
 	}
-	fmt.Println("LOG:", tc.Name, logOutput.String())
 	switch task.OutputContentType() {
 	case "text/plain", "text/csv; charset=utf-8":
 		if len(tc.ExpectCSV) > 0 {
@@ -108,8 +106,10 @@ func TestSql(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		tt.Run(t)
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
 	}
 }
 
@@ -152,9 +152,12 @@ func TestScript(t *testing.T) {
 					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
 					if (ret instanceof Error) {
 						console.error(ret.message);
+						$.yield(ret.message);
+					} else {
+						$.yield("create-table done");
 					}
 				})
-				DISCARD()`,
+				CSV()`,
 		},
 		{
 			Name: "select-value",
@@ -211,7 +214,9 @@ func TestScript(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		tt.Run(t)
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,8 +135,8 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 	}
 
 	switch expect := tc.Expect.(type) {
-	case *msg.QueryResponse:
-		actual := msg.QueryResponse{}
+	case *QueryResponse:
+		actual := QueryResponse{}
 		if err := json.Unmarshal(recvPayload, &actual); err != nil {
 			t.Logf("Test %q response malformed; %s", tc.Name, err.Error())
 			t.Fail()
@@ -173,10 +173,10 @@ func TestMqttQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'" }`),
 			Subscribe: "db/reply",
-			Expect: &msg.QueryResponse{
+			Expect: &QueryResponse{
 				Success: true,
 				Reason:  "success",
-				Data: &msg.QueryData{
+				Data: &QueryData{
 					Columns: []string{"NAME", "TIME", "VALUE"},
 					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{
@@ -190,10 +190,10 @@ func TestMqttQuery(t *testing.T) {
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT" }`),
 			Subscribe: "db/reply",
-			Expect: &msg.QueryResponse{
+			Expect: &QueryResponse{
 				Success: true,
 				Reason:  "success",
-				Data: &msg.QueryData{
+				Data: &QueryData{
 					Columns: []string{"NAME", "TIME", "VALUE"},
 					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
 					Rows: [][]any{
@@ -345,87 +345,135 @@ func TestMqttWrite(t *testing.T) {
 	tests := []struct {
 		Vers        []uint
 		TC          MqttTestCase
+		ExpectSql   string
 		ExpectCount int
 	}{
 		{
 			TC: MqttTestCase{
-				Name:    "db/write/example json",
-				Topic:   "db/write/example",
-				Payload: []byte(`[["my-car", 1705291859000000000, 1.2345], ["my-car", 1705291860000000000, 2.3456]]`),
+				Name:  "mqtt-write-json",
+				Topic: "db/write/test_mqtt",
+				Payload: []byte(`[
+					["json1", 1705291859000000000, 1.2345],
+					["json1", 1705291860000000000, 2.3456]
+				]`),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'json1'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:    "db/write/example json columns",
-				Topic:   "db/write/example",
-				Payload: []byte(`{"data":{"columns":["NAME","TIME","VALUE"],"rows":[["my-car", 1705291861000000000, 1.2345], ["my-car", 1705291862000000000, 2.3456]]}}}`),
+				Name:  "mqtt-write-json-columns",
+				Topic: "db/write/test_mqtt",
+				Payload: []byte(`
+					{
+						"data": {
+							"columns": ["NAME","TIME","VALUE"],
+							"rows": [
+								["json2", 1705291861000000000, 1.2345],
+								["json2", 1705291862000000000, 2.3456]
+							]
+						}
+					}`),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'json2'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:  "db/write/example ndjson",
-				Topic: "db/write/example",
-				Payload: []byte(`{"NAME":"my-car", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
-					`{"NAME":"my-car", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
+				Name:  "mqtt-write-ndjson",
+				Topic: "db/write/test_mqtt",
+				Payload: []byte(`{"NAME":"ndjson1", "TIME":1705291859, "VALUE":1.2345}` + "\n" +
+					`{"NAME":"ndjson1", "TIME":1705291860, "VALUE":2.3456}` + "\n"),
 				Properties: map[string]string{"format": "ndjson", "timeformat": "s"},
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'ndjson1'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:    "db/write/example csv",
-				Topic:   "db/write/example:csv",
-				Payload: []byte("my-car,1705291863000000000,1.2345\nmy-car,1705291864000000000,2.3456"),
+				Name:    "mqtt-write-csv",
+				Topic:   "db/write/test_mqtt:csv",
+				Payload: []byte("csv1,1705291863000000000,1.2345\ncsv1,1705291864000000000,2.3456"),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv1'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:       "db/write/example csv v5",
-				Topic:      "db/write/example",
+				Name:       "mqtt-write-csv-v5",
+				Topic:      "db/write/test_mqtt",
 				Properties: map[string]string{"format": "csv", "timeformat": "s"},
-				Payload:    []byte("my-car,1705291865,1.2345\nmy-car,170529166,2.3456"),
+				Payload:    []byte("csv2,1705291865,1.2345\ncsv2,170529166,2.3456"),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv2'`,
 			ExpectCount: 2,
 			Vers:        []uint{5},
 		},
 		{
 			TC: MqttTestCase{
-				Name:       "db/write/example csv v5-time-value",
-				Topic:      "db/write/example",
+				Name:       "mqtt-write-csv-v5-time-value",
+				Topic:      "db/write/test_mqtt",
 				Properties: map[string]string{"format": "csv", "timeformat": "s", "header": "columns"},
-				Payload:    []byte("TIME,VALUE,NAME\n1705291867,1.2345,my-car\n1705291868,2.3456,my-car"),
+				Payload:    []byte("TIME,VALUE,NAME\n1705291867,1.2345,csv3\n1705291868,2.3456,csv3"),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv3'`,
 			ExpectCount: 2,
 			Vers:        []uint{5},
 		},
 		{
 			TC: MqttTestCase{
-				Name:    "db/write/example json gzip",
-				Topic:   "db/write/example:json:gzip",
-				Payload: compress([]byte(`[["my-car", 1705291869000000000, 1.2345], ["my-car", 1705291870000000000, 2.3456]]`)),
+				Name:    "mqtt-write-json-gzip",
+				Topic:   "db/write/test_mqtt:json:gzip",
+				Payload: compress([]byte(`[["json3", 1705291869000000000, 1.2345], ["json3", 1705291870000000000, 2.3456]]`)),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'json3'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:    "db/write/example csv gzip",
-				Topic:   "db/write/example:csv:gzip",
-				Payload: compress([]byte("my-car,1705291871000000000,1.2345\nmy-car,1705291872000000000,2.3456")),
+				Name:    "mqtt-write-csv-gzip",
+				Topic:   "db/write/test_mqtt:csv:gzip",
+				Payload: compress([]byte("csv4,1705291871000000000,1.2345\ncsv4,1705291872000000000,2.3456")),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'csv4'`,
 			ExpectCount: 2,
 		},
 		{
 			TC: MqttTestCase{
-				Name:    "db/metrics/example ILP",
-				Topic:   "db/metrics/example",
-				Payload: []byte("my-car speed=1.2345 1732742196000000000\nmy-car speed=2.3456 1732742197000000000\n"),
+				Name:    "mqtt-write-ilp",
+				Topic:   "db/metrics/test_mqtt",
+				Payload: []byte("ilp speed=1.2345 1732742196000000000\nilp speed=2.3456 1732742197000000000\n"),
 			},
+			ExpectSql:   `select count(*) from test_mqtt where name = 'ilp.speed'`,
 			ExpectCount: 2,
 		},
 	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	creTable := `create tag table test_mqtt (
+		name varchar(200) primary key,
+		time datetime basetime,
+		value double -- summarized,
+		-- jsondata json,
+		-- ival int,
+		-- sval short
+	)`
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+	rsp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
+	defer func() {
+		dropTable := `drop table test_mqtt`
+		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, _ := http.DefaultClient.Do(req)
+		require.Equal(t, http.StatusOK, rsp.StatusCode)
+	}()
 
 	for _, tt := range tests {
 		vers := tt.Vers
@@ -433,26 +481,18 @@ func TestMqttWrite(t *testing.T) {
 			vers = []uint{4, 5}
 		}
 		for _, ver := range vers {
-			tt.TC.Ver = ver
-			runMqttTest(t, &tt.TC)
+			t.Run(tt.TC.Name, func(t *testing.T) {
+				tt.TC.Ver = ver
+				runMqttTest(t, &tt.TC)
 
-			conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
-			if err != nil {
-				t.Fatalf("Test %q failed, connect error: %s", tt.TC.Name, err.Error())
-			}
-			defer conn.Close()
-			conn.QueryRow(context.Background(), "EXEC table_flush(example)")
-			var count int
-			var tag = "my-car"
-			if tt.TC.Topic == "db/metrics/example" {
-				tag = "my-car.speed"
-			}
-			conn.QueryRow(context.Background(), "select count(*) from example where name = ?", tag).Scan(&count)
-			if count != tt.ExpectCount {
-				t.Logf("Test %q expect %d rows, got %d", tt.TC.Name, tt.ExpectCount, count)
-				t.Fail()
-			}
-			conn.QueryRow(context.Background(), "delete from example where name = 'my-car'")
+				conn, err := mqttServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
+				require.NoError(t, err)
+				conn.QueryRow(context.Background(), "EXEC table_flush(test_mqtt)")
+				var count int
+				conn.QueryRow(context.Background(), tt.ExpectSql).Scan(&count)
+				require.Equal(t, tt.ExpectCount, count)
+				conn.Close()
+			})
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package msg
+package server
 
 import "github.com/machbase/neo-server/v8/api"
 
@@ -29,8 +29,8 @@ type QueryResponse struct {
 }
 
 type QueryData struct {
-	Columns []string       `json:"columns"`
-	Types   []api.DataType `json:"types"`
+	Columns []string       `json:"columns,omitempty"`
+	Types   []api.DataType `json:"types,omitempty"`
 	Rows    [][]any        `json:"rows"`
 }
 

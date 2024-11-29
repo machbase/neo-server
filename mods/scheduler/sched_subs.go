@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -20,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/nats-io/nats.go"
+	"github.com/tidwall/gjson"
 )
 
 type SubscriberEntry struct {
@@ -210,9 +210,15 @@ func (ent *SubscriberEntry) Stop() error {
 	}
 }
 
+type Reason struct {
+	Success bool
+	Reason  string
+	Elapse  string
+}
+
 func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, dup bool, retain bool) {
 	tick := time.Now()
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &Reason{Reason: "not specified"}
 
 	defer func() {
 		if ent.err != nil {
@@ -239,7 +245,7 @@ func (ent *SubscriberEntry) doMqttTask(topic string, payload []byte, msgId int, 
 
 func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 	tick := time.Now()
-	rsp := &msg.WriteResponse{Reason: "not specified"}
+	rsp := &Reason{Reason: "not specified"}
 
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
@@ -267,7 +273,7 @@ func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 	}
 }
 
-func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *msg.WriteResponse) {
+func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rsp *Reason) {
 	sc, err := ent.s.tqlLoader.Load(ent.TaskTql)
 	if err != nil {
 		ent.err = err
@@ -299,7 +305,20 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	}
 }
 
-func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
+func extractColumns(payload []byte) []string {
+	cols := gjson.Get(string(payload), "data.columns")
+	if !cols.Exists() || !cols.IsArray() {
+		return nil
+	}
+	ret := []string{}
+	cols.ForEach(func(key, value gjson.Result) bool {
+		ret = append(ret, value.String())
+		return true
+	})
+	return ret
+}
+
+func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
 		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())
@@ -377,14 +396,9 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 		// 1. Array of Array: [[field1, field2],[field1,field]]
 		// 2. Array : [field1, field2]
 		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
-		wr := msg.WriteRequest{}
-		dec := json.NewDecoder(bytes.NewBuffer(bs))
-		// ignore json decoder error, the payload json can be non-full-document json.
-		dec.Decode(&wr)
-		// replyTopic := wr.ReplyTo
 
-		if wr.Data != nil && len(wr.Data.Columns) > 0 {
-			columnNames = wr.Data.Columns
+		if names := extractColumns(bs); len(names) > 0 {
+			columnNames = names
 			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
@@ -466,7 +480,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s inserted", util.HumanizeNumber(recno), records)
 }
 
-func (ent *SubscriberEntry) doAppend(payload []byte, rsp *msg.WriteResponse) {
+func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	if ent.conn == nil {
 		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s %s", ent.name, ent.TaskTql, err.Error())

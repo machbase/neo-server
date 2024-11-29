@@ -48,7 +48,7 @@ jobs:
         run: go run mage.go test
       - name: Codecov
         if: matrix.platform == 'ubuntu-20.04'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Build

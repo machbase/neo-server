@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/msg"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -22,8 +21,8 @@ import (
 
 func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 	tick := time.Now()
-	req := &msg.QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
-	rsp := &msg.QueryResponse{Reason: "not specified"}
+	req := &QueryRequest{Format: "json", Timeformat: "ns", TimeLocation: "UTC", Precision: -1, Heading: true}
+	rsp := &QueryResponse{Reason: "not specified"}
 	replyTopic := s.defaultReplyTopic
 	defer func() {
 		rsp.Elapse = time.Since(tick).String()
@@ -109,6 +108,9 @@ func (s *mqttd) handleQuery(cl *mqtt.Client, pk packets.Packet) {
 
 	query := &api.Query{
 		Begin: func(q *api.Query) {
+			if !q.IsFetch() {
+				return
+			}
 			cols := q.Columns()
 			rsp.ContentType = encoder.ContentType()
 			codec.SetEncoderColumns(encoder, cols)
@@ -176,7 +178,7 @@ func (s *mqttd) handleTql(cl *mqtt.Client, pk packets.Packet) {
 		params = vs
 	}
 
-	wr := msg.WriteRequest{}
+	wr := WriteRequest{}
 	dec := json.NewDecoder(bytes.NewBuffer(pk.Payload))
 	// ignore json decoder error, the payload json can be non-full-document json.
 	dec.Decode(&wr)

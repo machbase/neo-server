@@ -142,6 +142,8 @@ func TestHttpWrite(t *testing.T) {
 	rsp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rsp.StatusCode)
+	rsp.Body.Close()
+
 	defer func() {
 		dropTable := `drop table test_w`
 		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(dropTable), nil)
