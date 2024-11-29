@@ -30,7 +30,7 @@ type TqlTestCase struct {
 	ExpectCSV []string
 }
 
-func (tc TqlTestCase) Run(t *testing.T) {
+func runTestCase(t *testing.T, tc TqlTestCase) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -108,8 +108,10 @@ func TestSql(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		tt.Run(t)
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
 	}
 }
 
@@ -211,7 +213,9 @@ func TestScript(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		tt.Run(t)
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
 	}
 }
