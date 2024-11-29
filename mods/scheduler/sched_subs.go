@@ -20,6 +20,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/nats-io/nats.go"
+	"github.com/tidwall/gjson"
 )
 
 type SubscriberEntry struct {
@@ -299,6 +300,19 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	}
 }
 
+func extracColumns(payload []byte) []string {
+	cols := gjson.Get(string(payload), "data.columns")
+	if !cols.Exists() || !cols.IsArray() {
+		return nil
+	}
+	ret := []string{}
+	cols.ForEach(func(key, value gjson.Result) bool {
+		ret = append(ret, value.String())
+		return true
+	})
+	return ret
+}
+
 func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 	if ent.conn == nil {
 		if conn, err := ent.s.db.Connect(ent.ctx, api.WithTrustUser("sys")); err != nil {
@@ -373,18 +387,15 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *msg.WriteResponse) {
 			ent.log.Warn(err.Error())
 			return
 		}
+		// replyTopic := wr.ReplyTo
+
 		/// the json of payload can have 3 types of forms.
 		// 1. Array of Array: [[field1, field2],[field1,field]]
 		// 2. Array : [field1, field2]
 		// 3. Full document:  {data:{rows:[[field1, field2],[field1,field2]]}}
-		wr := msg.WriteRequest{}
-		dec := json.NewDecoder(bytes.NewBuffer(bs))
-		// ignore json decoder error, the payload json can be non-full-document json.
-		dec.Decode(&wr)
-		// replyTopic := wr.ReplyTo
 
-		if wr.Data != nil && len(wr.Data.Columns) > 0 {
-			columnNames = wr.Data.Columns
+		if names := extracColumns(bs); len(names) > 0 {
+			columnNames = names
 			columnTypes = make([]api.DataType, 0, len(columnNames))
 			_hold := make([]string, 0, len(columnNames))
 			for _, colName := range columnNames {
