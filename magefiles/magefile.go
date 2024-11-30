@@ -260,19 +260,7 @@ func CheckTmp() error {
 	return err
 }
 
-func CheckMoq() error {
-	const moqRepo = "github.com/matryer/moq@latest"
-	if _, err := sh.Output("moq", "-version"); err != nil {
-		err = sh.RunV("go", "install", moqRepo)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func Generate() error {
-	mg.Deps(CheckMoq)
 	return sh.RunV("go", "generate", "./...")
 }
 

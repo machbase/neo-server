@@ -9,7 +9,7 @@
 <tbody>
 <tr>
 <td align="left">1</td>
-<td align="left">executed.</td>
+<td align="left">Created successfully.</td>
 </tr>
 </tbody>
 </table>

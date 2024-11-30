@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,22 @@ var testServer *testsuite.Server
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./test/tmp")
 	testServer.StartServer(m)
+
+	ctx := context.TODO()
+	db := testServer.DatabaseSVR()
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		panic(err)
+	}
+	result := conn.Exec(ctx, "create tag table example (name varchar(100) primary key, time datetime basetime, value double)")
+	if result.Err() != nil {
+		panic(result.Err())
+	}
+	conn.Exec(ctx, "insert into example values('tag1', 1692686707380411000, 0.100)")
+	conn.Exec(ctx, "insert into example values('tag1', 1692686708380411000, 0.200)")
+	conn.Exec(ctx, "exec table_flush(example)")
+	conn.Close()
+
 	code := m.Run()
 	testServer.StopServer(m)
 	os.Exit(code)
@@ -73,6 +90,7 @@ func TestSql(t *testing.T) {
 				`,
 			ExpectCSV: []string{
 				"DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
+				"MACHBASEDB,SYS,EXAMPLE,19,Tag,NULL",
 				"MACHBASEDB,SYS,LOG_DATA,13,Log,NULL",
 				"MACHBASEDB,SYS,TAG_DATA,6,Tag,NULL",
 				"MACHBASEDB,SYS,TAG_SIMPLE,12,Tag,NULL",

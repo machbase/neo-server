@@ -21,8 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate moq -out ./server_mock_test.go -pkg server ../../api Database Conn Rows Row Result Appender
-
 type MqttTestCase struct {
 	Ver  uint
 	Name string
@@ -495,48 +493,6 @@ func TestMqttWrite(t *testing.T) {
 			})
 		}
 	}
-}
-
-func NewRowsWrap(columns api.Columns, values [][]any) *RowsMockWrap {
-	ret := &RowsMockWrap{columns: columns, values: values}
-	rows := &RowsMock{}
-	rows.NextFunc = ret.Next
-	rows.CloseFunc = ret.Close
-	rows.ColumnsFunc = ret.Columns
-	rows.ScanFunc = ret.Scan
-	ret.RowsMock = rows
-	ret.cursor = -1
-	return ret
-}
-
-type RowsMockWrap struct {
-	*RowsMock
-	columns api.Columns
-	values  [][]any
-	cursor  int
-}
-
-func (rw *RowsMockWrap) Close() error {
-	return nil
-}
-
-func (rw *RowsMockWrap) Columns() (api.Columns, error) {
-	return rw.columns, nil
-}
-
-func (rw *RowsMockWrap) Next() bool {
-	rw.cursor++
-	return rw.cursor < len(rw.values)
-}
-
-func (rw *RowsMockWrap) Scan(cols ...any) error {
-	for i := range cols {
-		val := rw.values[rw.cursor][i]
-		if err := api.Scan(val, cols[i]); err != nil {
-			return fmt.Errorf("ERR RowsMockWrap.Scan() %T %s", cols[i], err.Error())
-		}
-	}
-	return nil
 }
 
 func TestAppend(t *testing.T) {
