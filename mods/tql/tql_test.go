@@ -168,7 +168,7 @@ func TestSql(t *testing.T) {
 				`"     * IN ()"`,
 				`"   VOLATILE INDEX SCAN (_EXAMPLE_META)"`,
 				`"    [KEY RANGE]"`,
-				`"     * "`,
+				`"     * name = 'tag1'"`,
 				"", "", "",
 			},
 		},
