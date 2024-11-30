@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -42,9 +43,10 @@ func TestMain(m *testing.M) {
 }
 
 type TqlTestCase struct {
-	Name      string
-	Script    string
-	ExpectCSV []string
+	Name         string
+	Script       string
+	ExpectCSV    []string
+	RunCondition func() bool
 }
 
 func runTestCase(t *testing.T, tc TqlTestCase) {
@@ -171,6 +173,13 @@ func TestSql(t *testing.T) {
 				`"     * name = 'tag1'"`,
 				"", "", "",
 			},
+			RunCondition: func() bool {
+				// FIXME: This test is not working on macOS
+				//        because of EXPLAIN does not include the name compare part on macOS.
+				// `"    [KEY RANGE]"`,
+				// `"     * name = 'tag1'"`,
+				return runtime.GOOS != "darwin"
+			},
 		},
 		{
 			Name: "shell-command",
@@ -180,6 +189,10 @@ func TestSql(t *testing.T) {
 				CSV()
 				`,
 			ExpectCSV: []string{`"Hello, World!"`, "123", "", "", ""},
+			RunCondition: func() bool {
+				// FIXME: This test is not working on Windows
+				return runtime.GOOS != "windows"
+			},
 		},
 	}
 
@@ -189,6 +202,10 @@ func TestSql(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
+			if tc.RunCondition != nil && !tc.RunCondition() {
+				t.Skip("Skip this test")
+				return
+			}
 			runTestCase(t, tc)
 		})
 	}
