@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -280,6 +281,24 @@ func TestDBInsert(t *testing.T) {
 		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"3 rows inserted."}}`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL("delete from example where name = 'signal'")`,
+		`MARKDOWN()`,
+	}
+	resultLines = []string{
+		`|MESSAGE|`,
+		`|:-----|`,
+		`|3 rows deleted.|`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
+	require.Nil(t, err)
+	defer conn.Close()
+	// delete meta
+	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal'`)
+	require.Nil(t, result.Err())
 }
 
 func TestDBAppend(t *testing.T) {
@@ -293,6 +312,24 @@ func TestDBAppend(t *testing.T) {
 		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"append 3 rows \(success 3, fail 0\)"}}`,
 	}
 	runTest(t, codeLines, resultLines)
+
+	codeLines = []string{
+		`SQL("delete from example where name = 'signal'")`,
+		`MARKDOWN()`,
+	}
+	resultLines = []string{
+		`|MESSAGE|`,
+		`|:-----|`,
+		`|3 rows deleted.|`,
+	}
+	runTest(t, codeLines, resultLines)
+
+	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
+	require.Nil(t, err)
+	defer conn.Close()
+	// delete meta
+	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal'`)
+	require.Nil(t, result.Err())
 }
 
 func TestDB_ddl(t *testing.T) {

@@ -853,7 +853,7 @@ func TestHttpQuery(t *testing.T) {
 	tests := []struct {
 		name        string
 		sqlText     string
-		params      map[string]string
+		params      url.Values
 		contentType string
 		expectObj   map[string]any
 	}{
@@ -875,8 +875,8 @@ func TestHttpQuery(t *testing.T) {
 		{
 			name:    "select_v$example_transpose",
 			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
-			params: map[string]string{
-				"transpose": "true",
+			params: url.Values{
+				"transpose": []string{"true"},
 			},
 			contentType: "application/json",
 			expectObj: map[string]any{
@@ -894,8 +894,8 @@ func TestHttpQuery(t *testing.T) {
 		{
 			name:    "select_v$example_rowsFlatten",
 			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
-			params: map[string]string{
-				"rowsFlatten": "true",
+			params: url.Values{
+				"rowsFlatten": []string{"true"},
 			},
 			contentType: "application/json",
 			expectObj: map[string]any{
@@ -912,8 +912,8 @@ func TestHttpQuery(t *testing.T) {
 		{
 			name:    "select_v$example_rowsArray",
 			sqlText: `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
-			params: map[string]string{
-				"rowsArray": "true",
+			params: url.Values{
+				"rowsArray": []string{"true"},
 			},
 			contentType: "application/json",
 			expectObj: map[string]any{
@@ -974,10 +974,7 @@ func TestHttpQuery(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run("GET_"+tc.name, func(t *testing.T) {
-			var params = "q=" + url.QueryEscape(tc.sqlText)
-			for k, v := range tc.params {
-				params = params + "&" + k + "=" + url.QueryEscape(v)
-			}
+			var params = "q=" + url.QueryEscape(tc.sqlText) + "&" + tc.params.Encode()
 			req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?"+params, nil)
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 			rsp, err := http.DefaultClient.Do(req)
@@ -998,9 +995,9 @@ func TestHttpQuery(t *testing.T) {
 			for k, v := range tc.params {
 				switch k {
 				case "transpose", "rowsFlatten", "rowsArray":
-					params[k] = v == "true"
+					params[k] = v[0] == "true"
 				default:
-					params[k] = v
+					params[k] = v[0]
 				}
 			}
 			payload, _ := json.Marshal(params)

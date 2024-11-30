@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -42,9 +43,10 @@ func TestMain(m *testing.M) {
 }
 
 type TqlTestCase struct {
-	Name      string
-	Script    string
-	ExpectCSV []string
+	Name         string
+	Script       string
+	ExpectCSV    []string
+	RunCondition func() bool
 }
 
 func runTestCase(t *testing.T, tc TqlTestCase) {
@@ -99,6 +101,23 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
+			Name: "show-indexes",
+			Script: `
+				SQL("show indexes ")
+				CSV(header(true))
+				`,
+			ExpectCSV: []string{
+				"DATABASE_NAME,USER_NAME,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,INDEX_ID",
+				"MACHBASEDB,SYS,_EXAMPLE_META,_ID,__PK_IDX__EXAMPLE_META_1,REDBLACK,16",
+				"MACHBASEDB,SYS,_EXAMPLE_META,NAME,_EXAMPLE_META_NAME,REDBLACK,17",
+				"MACHBASEDB,SYS,_TAG_DATA_META,_ID,__PK_IDX__TAG_DATA_META_1,REDBLACK,3",
+				"MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,4",
+				"MACHBASEDB,SYS,_TAG_SIMPLE_META,_ID,__PK_IDX__TAG_SIMPLE_META_1,REDBLACK,9",
+				"MACHBASEDB,SYS,_TAG_SIMPLE_META,NAME,_TAG_SIMPLE_META_NAME,REDBLACK,10",
+				"", "",
+			},
+		},
+		{
 			Name: "desc-table",
 			Script: `
 				SQL("desc tag_data;")
@@ -123,9 +142,70 @@ func TestSql(t *testing.T) {
 				"",
 			},
 		},
+		{
+			Name: "show-tags",
+			Script: `
+				SQL("show tags example")
+				CSV(header(true))
+				`,
+			ExpectCSV: []string{
+				"_ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME",
+				"1,tag1,2,1692686707380411000,1692686708380411000,1692686708380411000,NULL,NULL,NULL,NULL",
+				"",
+				"",
+			},
+		},
+		{
+			Name: "explain-select",
+			Script: `
+				SQL("explain select * from example where name = 'tag1'")
+				CSV(header(true))
+				`,
+			ExpectCSV: []string{
+				"",
+				`" PROJECT"`,
+				`"  TAG READ (RAW)"`,
+				`"   KEYVALUE INDEX SCAN (_EXAMPLE_DATA_0)"`,
+				`"    [KEY RANGE]"`,
+				`"     * IN ()"`,
+				`"   VOLATILE INDEX SCAN (_EXAMPLE_META)"`,
+				`"    [KEY RANGE]"`,
+				`"     * name = 'tag1'"`,
+				"", "", "",
+			},
+			RunCondition: func() bool {
+				// FIXME: This test is not working on macOS
+				//        because of EXPLAIN does not include the name compare part on macOS.
+				// `"    [KEY RANGE]"`,
+				// `"     * name = 'tag1'"`,
+				return runtime.GOOS != "darwin"
+			},
+		},
+		{
+			Name: "shell-command",
+			Script: `
+				FAKE( once(1) )
+				SHELL("echo 'Hello, World!'; echo 123;")
+				CSV()
+				`,
+			ExpectCSV: []string{`"Hello, World!"`, "123", "", "", ""},
+			RunCondition: func() bool {
+				// FIXME: This test is not working on Windows
+				return runtime.GOOS != "windows"
+			},
+		},
 	}
+
+	tql.ShellExecutable = func(addr, path string) ([]string, error) {
+		return []string{"/bin/bash", path}, nil
+	}
+
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
+			if tc.RunCondition != nil && !tc.RunCondition() {
+				t.Skip("Skip this test")
+				return
+			}
 			runTestCase(t, tc)
 		})
 	}

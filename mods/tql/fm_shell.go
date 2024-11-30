@@ -62,13 +62,12 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 		subArgs = append(subArgs, args0)
 	}
 
-	tmpFile, err := os.CreateTemp("", "sample")
+	tmpFile, err := os.CreateTemp("", "runner")
 	if err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	}
 	defer os.Remove(tmpFile.Name())
-	rowNum := 1
 	for i, subCmd := range subCmdList {
 		args := subArgs[i]
 
@@ -81,13 +80,14 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			fmt.Fprintln(tmpFile, line+";")
 		}
 	}
+	tmpFile.Close()
 
 	var cmd *exec.Cmd
-	if ex, err := os.Executable(); err != nil {
+	if args, err := ShellExecutable(_grpcServer, tmpFile.Name()); err != nil {
 		ErrorRecord(err).Tell(node.next)
 		return
 	} else {
-		cmd = exec.Command(ex, "shell", "--server", _grpcServer, "run", tmpFile.Name())
+		cmd = exec.Command(args[0], args[1:]...)
 		cmd.Env = append(os.Environ(), "NEOSHELL_USER="+node.task.consoleUser)
 		cmd.Env = append(cmd.Env, "NEOSHELL_PASSWORD="+node.task.consoleOtp)
 
@@ -102,10 +102,22 @@ func (node *Node) fmShell(cmd0 string, args0 ...string) {
 			node.task.LogError(err.Error())
 			ErrorRecord(err).Tell(node.next)
 		} else {
+			var rowNum = 1
 			for _, ln := range strings.Split(string(output), "\n") {
 				NewRecord(rowNum, ln).Tell(node.next)
 				rowNum++
 			}
 		}
 	}
+}
+
+// intended expose this var to be replaced in shell test cases
+var ShellExecutable = func(serverAddr string, scriptPath string) ([]string, error) {
+	ex, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return []string{
+		ex, "shell", "--server", serverAddr, "run", scriptPath,
+	}, nil
 }
