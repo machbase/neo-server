@@ -1,7 +1,5 @@
 package tql_test
 
-//go:generate moq -out ./task_mock_test.go -pkg tql_test ../../../neo-server/api Database Conn Rows Result Appender
-
 import (
 	"bufio"
 	"bytes"
@@ -16,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -95,7 +92,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task.SetLogWriter(logBuf)
 	task.SetLogLevel(tql.INFO)
 	task.SetConsoleLogLevel(tql.FATAL)
-	task.SetDatabase(&mockDb)
+	task.SetDatabase(testServer.DatabaseSVR())
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
 	}
@@ -210,88 +207,13 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	}
 }
 
-var mockDbResult [][]any
-var mockDbCursor = 0
-var mockDb = DatabaseMock{
-	ConnectFunc: func(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-		conn := &ConnMock{
-			CloseFunc: func() error { return nil },
-			QueryFunc: func(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-				switch sqlText {
-				case `SELECT time, value FROM EXAMPLE WHERE name = 'tag1' AND time BETWEEN 1 AND 2 LIMIT 0, 1000000`:
-					fallthrough
-				case `select time, value from example where name = 'tag1'`:
-					return &RowsMock{
-						IsFetchableFunc: func() bool { return true },
-						NextFunc:        func() bool { mockDbCursor++; return len(mockDbResult) >= mockDbCursor },
-						CloseFunc:       func() error { return nil },
-						ColumnsFunc: func() (api.Columns, error) {
-							return api.Columns{
-								{Name: "time", DataType: api.ColumnTypeDatetime.DataType()},
-								{Name: "value", DataType: api.ColumnTypeDouble.DataType()},
-							}, nil
-						},
-						MessageFunc: func() string { return "no rows selected." },
-						ScanFunc: func(cols ...any) error {
-							cols[0] = mockDbResult[mockDbCursor-1][0]
-							cols[1] = mockDbResult[mockDbCursor-1][1]
-							return nil
-						},
-					}, nil
-				case `create tag table example(...)`:
-					return &RowsMock{
-						IsFetchableFunc:  func() bool { return false },
-						NextFunc:         func() bool { return false },
-						CloseFunc:        func() error { return nil },
-						MessageFunc:      func() string { return "executed." },
-						RowsAffectedFunc: func() int64 { return 0 },
-					}, nil
-				default:
-					fmt.Println("===>", sqlText)
-					return &RowsMock{
-						IsFetchableFunc: func() bool { return true },
-						NextFunc:        func() bool { return false },
-						CloseFunc:       func() error { return nil },
-					}, nil
-				}
-			},
-			ExecFunc: func(ctx context.Context, sqlText string, params ...any) api.Result {
-				switch sqlText {
-				case `INSERT INTO example(name,a) VALUES(?,?)`:
-					fmt.Println("task_test, mock_db: ", sqlText, params)
-					return &ResultMock{
-						ErrFunc:          func() error { return nil },
-						MessageFunc:      func() string { return "a row inserted." },
-						RowsAffectedFunc: func() int64 { return 1 },
-					}
-				default:
-					fmt.Println("task_test, mock_db: ", sqlText)
-				}
-				return nil
-			},
-			AppenderFunc: func(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-				return &AppenderMock{
-					AppendFunc: func(values ...any) error { return nil },
-					CloseFunc:  func() (int64, int64, error) { return 0, 0, nil },
-				}, nil
-			},
-		}
-		return conn, nil
-	},
-}
-
 func TestDBSql(t *testing.T) {
-	mockDbCursor = 0
-	mockDbResult = [][]any{
-		{1692686707380411000, 0.1},
-		{1692686708380411000, 0.2},
-	}
 	codeLines := []string{
 		`SQL("select time, value from example where name = 'tag1'")`,
 		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
-		"time,value",
+		"TIME,VALUE",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
 		"",
@@ -300,18 +222,13 @@ func TestDBSql(t *testing.T) {
 }
 
 func TestDBSqlRownum(t *testing.T) {
-	mockDbCursor = 0
-	mockDbResult = [][]any{
-		{1692686707380411000, 0.1},
-		{1692686708380411000, 0.2},
-	}
 	codeLines := []string{
 		`SQL("select time, value from example where name = 'tag1'")`,
 		`PUSHKEY('test')`,
 		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
-		"ROWNUM,time,value",
+		"ROWNUM,TIME,VALUE",
 		"1,1692686707380411000,0.100",
 		"2,1692686708380411000,0.200",
 		"",
@@ -320,17 +237,12 @@ func TestDBSqlRownum(t *testing.T) {
 }
 
 func TestDBQuery(t *testing.T) {
-	mockDbCursor = 0
-	mockDbResult = [][]any{
-		{1692686707380411000, 0.1},
-		{1692686708380411000, 0.2},
-	}
 	codeLines := []string{
-		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))`,
 		`CSV( precision(3), header(true) )`,
 	}
 	resultLines := []string{
-		"time,value",
+		"TIME,VALUE",
 		"1692686707380411000,0.100",
 		"1692686708380411000,0.200",
 		"",
@@ -339,27 +251,21 @@ func TestDBQuery(t *testing.T) {
 }
 
 func TestDBQueryRowsFlatten(t *testing.T) {
-	mockDbCursor = 0
-	mockDbResult = [][]any{
-		{1692686707380411000, 0.1},
-		{1692686708380411000, 0.2},
-	}
 	codeLines := []string{
-		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))`,
 		`JSON( precision(3), rowsFlatten(true) )`,
 	}
 	resultLines := []string{
-		`/r/{"data":{"columns":\["time","value"\],"types":\["datetime","double"\],"rows":\[1692686707380411000,0.1,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
+		`/r/{"data":{"columns":\["TIME","VALUE"\],"types":\["datetime","double"\],"rows":\[1692686707380411000,0.1,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
 	runTest(t, codeLines, resultLines)
 
-	mockDbCursor = 0
 	codeLines = []string{
-		`QUERY('value', from('example', 'tag1', "time"), between(1, 2))`,
+		`QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))`,
 		`JSON( precision(3), rowsFlatten(true), rownum(true) )`,
 	}
 	resultLines = []string{
-		`/r/{"data":{"columns":\["ROWNUM","time","value"\],"types":\["int64","datetime","double"\],"rows":\[1,1692686707380411000,0.1,2,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
+		`/r/{"data":{"columns":\["ROWNUM","TIME","VALUE"\],"types":\["int64","datetime","double"\],"rows":\[1,1692686707380411000,0.1,2,1692686708380411000,0.2\]},"success":true,"reason":"success","elapse":".+"}`,
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -367,7 +273,8 @@ func TestDBQueryRowsFlatten(t *testing.T) {
 func TestDBInsert(t *testing.T) {
 	codeLines := []string{
 		`FAKE( linspace(0, 1, 3) )`,
-		`INSERT('a', table('example'), tag('signal'))`,
+		`PUSHVALUE(0, time('now'))`,
+		`INSERT('time', 'value', table('example'), tag('signal'))`,
 	}
 	resultLines := []string{
 		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"3 rows inserted."}}`,
@@ -378,11 +285,12 @@ func TestDBInsert(t *testing.T) {
 func TestDBAppend(t *testing.T) {
 	codeLines := []string{
 		`FAKE( linspace(0, 1, 3) )`,
-		`MAPVALUE(-1, 'signal')`,
+		`PUSHVALUE(-1, 'signal')`,
+		`PUSHVALUE(1, time('now'))`,
 		`APPEND( table('example') )`,
 	}
 	resultLines := []string{
-		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"append 3 rows \(success 0, fail 0\)"}}`,
+		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"append 3 rows \(success 3, fail 0\)"}}`,
 	}
 	runTest(t, codeLines, resultLines)
 }
@@ -391,7 +299,7 @@ func TestDB_ddl(t *testing.T) {
 	var codeLines, resultLines []string
 
 	codeLines = []string{
-		`SQL("create tag table example(...)")`,
+		`SQL("create tag table if not exists example( name varchar(40) primary key, time datetime basetime, value double summarized )")`,
 		`MARKDOWN(html(true), rownum(true), heading(true), brief(true))`,
 	}
 	resultLines = loadLines("./test/sql_ddl_executed.txt")
@@ -1076,14 +984,9 @@ func TestCsvToNDJson(t *testing.T) {
 		"NDJSON( timeformat('default'), tz('UTC') )",
 	}
 	resultLines = []string{
-		`{"time":"2023-08-22 06:45:07.38","value":0.1}`,
-		`{"time":"2023-08-22 06:45:08.38","value":0.2}`,
+		`{"TIME":"2023-08-22 06:45:07.38","VALUE":0.1}`,
+		`{"TIME":"2023-08-22 06:45:08.38","VALUE":0.2}`,
 		"",
-	}
-	mockDbCursor = 0
-	mockDbResult = [][]any{
-		{time.Unix(0, 1692686707380411000), 0.1},
-		{time.Unix(0, 1692686708380411000), 0.2},
 	}
 	runTest(t, codeLines, resultLines)
 }
