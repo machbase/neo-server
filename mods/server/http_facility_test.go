@@ -72,30 +72,6 @@ func (fda *mockServer) RefreshToken() string {
 	return fda.refreshToken
 }
 
-func (fda *mockServer) Connect(ctx context.Context, options ...api.ConnectOption) (api.Conn, error) {
-	return &mockConn{}, nil
-}
-
-type mockConn struct {
-	api.Conn
-}
-
-func (fda *mockConn) Close() error { return nil }
-func (fda *mockConn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
-	ret := &AppenderMock{}
-	ret.AppendFunc = func(values ...any) error { return nil }
-	ret.CloseFunc = func() (int64, int64, error) { return 0, 0, nil }
-	ret.TableNameFunc = func() string { return tableName }
-	ret.ColumnsFunc = func() (api.Columns, error) {
-		return api.Columns{
-			{Name: "NAME", DataType: api.ColumnTypeVarchar.DataType()},
-			{Name: "TIME", DataType: api.ColumnTypeDatetime.DataType()},
-			{Name: "VALUE", DataType: api.ColumnTypeDouble.DataType()},
-		}, nil
-	}
-	return ret, nil
-}
-
 var singleMockServer sync.Mutex
 
 func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gin.Engine) {
@@ -187,7 +163,7 @@ func (mock *schedServerMock) DelSchedule(context.Context, *schedule.DelScheduleR
 }
 
 func TestTimer(t *testing.T) {
-	wsvr, err := NewHttp(&DatabaseMock{},
+	wsvr, err := NewHttp(nil,
 		WithHttpDebugMode(true),
 	)
 	if err != nil {
@@ -504,7 +480,7 @@ func (mock *mgmtServerMock) DelKey(context.Context, *mgmt.DelKeyRequest) (*mgmt.
 }
 
 func TestKey(t *testing.T) {
-	wsvr, err := NewHttp(&DatabaseMock{},
+	wsvr, err := NewHttp(nil,
 		WithHttpDebugMode(true),
 	)
 	if err != nil {
@@ -641,7 +617,7 @@ func (mock bridgeServerMock) GetBridge(ctx context.Context, req *bridgerpc.GetBr
 }
 
 func TestBridge(t *testing.T) {
-	wsvr, err := NewHttp(&DatabaseMock{},
+	wsvr, err := NewHttp(nil,
 		WithHttpDebugMode(true),
 	)
 	if err != nil {

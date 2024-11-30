@@ -517,6 +517,7 @@ func TestHttpWrite(t *testing.T) {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 		rsp, _ := http.DefaultClient.Do(req)
 		require.Equal(t, http.StatusOK, rsp.StatusCode)
+		rsp.Body.Close()
 	})
 
 	for _, tc := range tests {
@@ -607,6 +608,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 		rsp, _ := http.DefaultClient.Do(req)
 		require.Equal(t, http.StatusOK, rsp.StatusCode)
+		rsp.Body.Close()
 	})
 
 	var chFileId = make(chan uuid.UUID)
@@ -836,6 +838,7 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 		rsp, _ := http.DefaultClient.Do(req)
 		require.Equal(t, http.StatusOK, rsp.StatusCode)
+		rsp.Body.Close()
 	})
 
 	for _, tc := range tests {
