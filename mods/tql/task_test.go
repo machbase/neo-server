@@ -271,19 +271,34 @@ func TestDBQueryRowsFlatten(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func flushTable(table string) error {
+	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
+	if err != nil {
+		return err
+	}
+	result := conn.Exec(context.TODO(), fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
+	if result.Err() != nil {
+		return result.Err()
+	}
+	conn.Close()
+	return nil
+}
+
 func TestDBInsert(t *testing.T) {
 	codeLines := []string{
 		`FAKE( linspace(0, 1, 3) )`,
-		`PUSHVALUE(0, time('now'))`,
-		`INSERT('time', 'value', table('example'), tag('signal'))`,
+		`PUSHVALUE(0, timeAdd('now', value(0)*2000000000))`,
+		`INSERT('time', 'value', table('example'), tag('signal.3'))`,
 	}
 	resultLines := []string{
 		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"3 rows inserted."}}`,
 	}
 	runTest(t, codeLines, resultLines)
 
+	require.NoError(t, flushTable("example"))
+
 	codeLines = []string{
-		`SQL("delete from example where name = 'signal'")`,
+		`SQL("delete from example where name = 'signal.3'")`,
 		`MARKDOWN()`,
 	}
 	resultLines = []string{
@@ -294,18 +309,20 @@ func TestDBInsert(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 
 	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
-	require.Nil(t, err)
+	require.NoError(t, err)
 	defer conn.Close()
 	// delete meta
-	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal'`)
-	require.Nil(t, result.Err())
+	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal.3'`)
+	require.NoError(t, result.Err())
+
+	require.NoError(t, flushTable("example"))
 }
 
 func TestDBAppend(t *testing.T) {
 	codeLines := []string{
 		`FAKE( linspace(0, 1, 3) )`,
-		`PUSHVALUE(-1, 'signal')`,
-		`PUSHVALUE(1, time('now'))`,
+		`PUSHVALUE(0, timeAdd('now', value(0)*2000000000))`,
+		`PUSHVALUE(0, 'signal.append')`,
 		`APPEND( table('example') )`,
 	}
 	resultLines := []string{
@@ -313,8 +330,10 @@ func TestDBAppend(t *testing.T) {
 	}
 	runTest(t, codeLines, resultLines)
 
+	require.NoError(t, flushTable("example"))
+
 	codeLines = []string{
-		`SQL("delete from example where name = 'signal'")`,
+		`SQL("delete from example where name = 'signal.append'")`,
 		`MARKDOWN()`,
 	}
 	resultLines = []string{
@@ -328,7 +347,7 @@ func TestDBAppend(t *testing.T) {
 	require.Nil(t, err)
 	defer conn.Close()
 	// delete meta
-	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal'`)
+	result := conn.Exec(context.TODO(), `delete from example metadata where name = 'signal.append'`)
 	require.Nil(t, result.Err())
 }
 
@@ -1324,7 +1343,7 @@ func TestMathMarkdown(t *testing.T) {
 	var codeLines, resultLines []string
 	codeLines = []string{
 		`FAKE( linspace(0, 1, 2))`,
-		`PUSHKEY('signal')`,
+		`PUSHKEY('signal.md')`,
 		`MARKDOWN()`,
 	}
 	resultLines = []string{
