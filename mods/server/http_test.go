@@ -29,6 +29,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestStatz(t *testing.T) {
@@ -611,8 +612,6 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 		rsp.Body.Close()
 	})
 
-	var chFileId = make(chan uuid.UUID)
-
 	t.Run("watcher", func(t *testing.T) {
 		// call watch api
 		params := url.Values{}
@@ -633,13 +632,11 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 			rsp.Body.Close()
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 		}
-		t.Cleanup(func() {
-			rsp.Body.Close()
-		})
-
 		t.Parallel()
 
+		var fileId string
 		reader := bufio.NewReader(rsp.Body)
+	waiting_loop:
 		for {
 			line, err := reader.ReadString('\n')
 			require.NoError(t, err)
@@ -649,20 +646,43 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 				continue
 			default:
 				msg := strings.TrimPrefix(line, "data: ")
-				require.True(t, strings.Contains(line, `\"FN\":\"image.png\"`), msg)
-				return
+				require.Equal(t, "test", gjson.Get(msg, "NAME").String(), msg)
+				require.Equal(t, testTimeTick.Format(util.GetTimeformat("Default")), gjson.Get(msg, "TIME").String(), msg)
+				extData := gjson.Get(msg, "EXT_DATA").String()
+				require.Equal(t, "image.png", gjson.Get(extData, "FN").String(), extData)
+				require.Equal(t, int64(12692), gjson.Get(extData, "SZ").Int(), extData)
+				require.Equal(t, "image/png", gjson.Get(extData, "CT").String(), extData)
+				require.Equal(t, "/tmp/store", gjson.Get(extData, "SD").String(), extData)
+				fileId = gjson.Get(extData, "ID").String()
+				break waiting_loop
 			}
 		}
+		rsp.Body.Close()
+
+		// get image file
+		req, _ = http.NewRequest(http.MethodGet, httpServerAddress+"/db/query/file/TEST/EXT_DATA/"+fileId, nil)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+		rsp, err = http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		rspBody, _ := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		require.Equal(t, http.StatusOK, rsp.StatusCode, "%s %q", string(rspBody), fileId)
+		require.Equal(t, "image/png", rsp.Header.Get("Content-Type"))
+		require.Equal(t, "12692", rsp.Header.Get("Content-Length"))
+		require.Equal(t, "attachment; filename=image.png", rsp.Header.Get("Content-Disposition"))
+		rsp.Body.Close()
+
+		imgBody, _ := os.ReadFile("test/image.png")
+		require.Equal(t, imgBody, rspBody)
 	})
 
 	t.Run("uploader", func(t *testing.T) {
 		t.Parallel()
 
 		fd, _ := os.Open("test/image.png")
-
 		req, err = buildMultipartFormDataRequest(httpServerAddress+"/db/write/TEST",
 			[]string{"NAME", "TIME", "VALUE", "EXT_DATA"},
-			[]any{"test", time.Now(), 3.14, fd})
+			[]any{"test", testTimeTick, 3.14, fd})
 		if err != nil {
 			t.Fatal(err)
 			return
@@ -674,7 +694,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 		require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
 		result := map[string]any{}
-		if err := json.Unmarshal([]byte(rspBody), &result); err != nil {
+		if err := json.Unmarshal(rspBody, &result); err != nil {
 			t.Fatal(err)
 		}
 		ext_id := result["data"].(map[string]any)["files"].(map[string]any)["EXT_DATA"].(map[string]any)["ID"].(string)
@@ -705,34 +725,8 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 		require.NoError(t, err, rspBody)
 		ts, err := timestamp.Time()
 		require.NoError(t, err, rspBody)
-		require.LessOrEqual(t, ts.UnixNano(), time.Now().UnixNano(), rspBody)
-		require.GreaterOrEqual(t, ts.UnixNano(), time.Now().Add(-5*time.Second).UnixNano(), rspBody)
-
-		chFileId <- id
-	})
-
-	t.Run("query_file", func(t *testing.T) {
-		t.Parallel()
-
-		var fileId uuid.UUID
-		select {
-		case id := <-chFileId:
-			fileId = id
-		case <-time.NewTimer(10 * time.Second).C:
-			t.Fatal("timeout")
-		}
-
-		req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query/file/TEST/EXT_DATA/"+fileId.String(), nil)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
-		rsp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		rspBody, _ := io.ReadAll(rsp.Body)
-		rsp.Body.Close()
-		require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
-		require.Equal(t, "image/png", rsp.Header.Get("Content-Type"))
-		require.Equal(t, "12692", rsp.Header.Get("Content-Length"))
-		require.Equal(t, "attachment; filename=image.png", rsp.Header.Get("Content-Disposition"))
-		rsp.Body.Close()
+		require.LessOrEqual(t, ts.UnixNano(), testTimeTick.UnixNano(), rspBody)
+		require.GreaterOrEqual(t, ts.UnixNano(), testTimeTick.Add(-5*time.Second).UnixNano(), rspBody)
 	})
 }
 
