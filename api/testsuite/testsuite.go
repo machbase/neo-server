@@ -3,10 +3,14 @@ package testsuite
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +24,119 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+type TestCase func(*testing.T, api.Database, context.Context)
+
+func TestAll(t *testing.T, db api.Database) {
+	tt := []TestCase{
+		UserAuth,
+		Ping,
+		License,
+		DescribeTable,
+		InsertAndQuery,
+		AppendTag,
+		AppendTagNotExist,
+		ShowTables,
+		ExistsTable,
+		Indexes,
+		Explain,     // machcli does not support explain
+		ExplainFull, // machcli does not support explain
+		Columns,
+		LogTableExec,
+		LogTableAppend,
+		TagTableAppend,
+		WatchLogTable,
+		DemoUser,
+	}
+
+	ctx := context.TODO()
+	db_name := strings.TrimPrefix(fmt.Sprintf("%T", db), "*")
+	db_name = strings.SplitN(db_name, ".", 2)[0]
+	for _, tc := range tt {
+		name := runtime.FuncForPC(reflect.ValueOf(tc).Pointer()).Name()
+		name = strings.TrimPrefix(name, "github.com/machbase/neo-server/v8/api/testsuite.")
+		name = fmt.Sprintf("%s_%s", db_name, name)
+		t.Run(name, func(t *testing.T) { tc(t, db, ctx) })
+	}
+}
+
+func DropTestTables(db api.Database) error {
+	ctx := context.TODO()
+	conn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	defer conn.Close()
+	if r := conn.Exec(ctx, "DROP TABLE tag_data"); r.Err() != nil {
+		return r.Err()
+	}
+	if r := conn.Exec(ctx, "DROP TABLE tag_simple"); r.Err() != nil {
+		return r.Err()
+	}
+	if r := conn.Exec(ctx, "DROP TABLE log_data"); r.Err() != nil {
+		return r.Err()
+	}
+	return nil
+}
+
+func CreateTestTables(db api.Database) error {
+	// create test tables
+	ctx := context.TODO()
+	conn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	defer conn.Close()
+
+	result := conn.Exec(ctx, api.SqlTidy(`
+		create tag table tag_data(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double summarized,
+			short_value     short,
+			ushort_value    ushort,
+			int_value       integer,
+			uint_value 	    uinteger,
+			long_value      long,
+			ulong_value 	ulong,
+			str_value       varchar(400),
+			json_value      json,
+			ipv4_value      ipv4,
+			ipv6_value      ipv6
+		)
+	`))
+	if err := result.Err(); err != nil {
+		return err
+	}
+
+	result = conn.Exec(ctx, api.SqlTidy(`
+		create tag table tag_simple(
+			name            varchar(100) primary key, 
+			time            datetime basetime, 
+			value           double
+		)
+	`))
+	if err := result.Err(); err != nil {
+		return err
+	}
+
+	result = conn.Exec(ctx, api.SqlTidy(`
+		create table log_data(
+		    time datetime,
+			short_value short,
+			ushort_value ushort,
+			int_value integer,
+			uint_value uinteger,
+			long_value long,
+			ulong_value ulong,
+			double_value double,
+			float_value float,
+			str_value varchar(400),
+			json_value json,
+			ipv4_value ipv4,
+			ipv6_value ipv6,
+			text_value text,
+			bin_value binary)
+	`))
+	if err := result.Err(); err != nil {
+		return err
+	}
+	return nil
+}
 
 //go:embed testsuite.conf
 var defaultConfig []byte
@@ -104,69 +221,14 @@ func (s *Server) StartServer(m *testing.M) {
 		panic(err)
 	}
 
-	// create test tables
 	ctx := context.TODO()
-	conn, _ := s.machsvrDatabase.Connect(ctx, api.WithTrustUser("sys"))
-	result := conn.Exec(ctx, api.SqlTidy(`
-		create tag table tag_data(
-			name            varchar(100) primary key, 
-			time            datetime basetime, 
-			value           double summarized,
-			short_value     short,
-			ushort_value    ushort,
-			int_value       integer,
-			uint_value 	    uinteger,
-			long_value      long,
-			ulong_value 	ulong,
-			str_value       varchar(400),
-			json_value      json,
-			ipv4_value      ipv4,
-			ipv6_value      ipv6
-		)
-	`))
-	if err := result.Err(); err != nil {
-		panic(err)
-	}
-
-	result = conn.Exec(ctx, api.SqlTidy(`
-		create tag table tag_simple(
-			name            varchar(100) primary key, 
-			time            datetime basetime, 
-			value           double
-		)
-	`))
-	if err := result.Err(); err != nil {
-		panic(err)
-	}
-
-	result = conn.Exec(ctx, api.SqlTidy(`
-		create table log_data(
-		    time datetime,
-			short_value short,
-			ushort_value ushort,
-			int_value integer,
-			uint_value uinteger,
-			long_value long,
-			ulong_value ulong,
-			double_value double,
-			float_value float,
-			str_value varchar(400),
-			json_value json,
-			ipv4_value ipv4,
-			ipv6_value ipv6,
-			text_value text,
-			bin_value binary)
-	`))
-	if err := result.Err(); err != nil {
-		panic(err)
-	}
 
 	// trace_log_level
-	conn, err = s.machsvrDatabase.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := s.machsvrDatabase.Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		panic(err)
 	}
-	result = conn.Exec(ctx, "alter system set trace_log_level=1023")
+	result := conn.Exec(ctx, "alter system set trace_log_level=1023")
 	if result.Err() != nil {
 		panic(result.Err())
 	}
@@ -209,8 +271,6 @@ func (s *Server) StartServer(m *testing.M) {
 }
 
 func (s *Server) StopServer(m *testing.M) {
-	ctx := context.TODO()
-
 	if err := s.machcliDatabase.Close(); err != nil {
 		panic(err)
 	}
@@ -222,28 +282,6 @@ func (s *Server) StopServer(m *testing.M) {
 	}
 	s.grpcServer.Stop()
 
-	conn, err := s.machsvrDatabase.Connect(ctx, api.WithTrustUser("sys"))
-	if err != nil {
-		panic(err)
-	}
-	conn.Exec(ctx, "EXEC table_flush(tag_data)")
-	conn.Exec(ctx, "EXEC table_flush(tag_simple)")
-	conn.Exec(ctx, "EXEC table_flush(log_data)")
-	result := conn.Exec(ctx, `drop table tag_data`)
-	if err := result.Err(); err != nil {
-		if err.Error() != "MACH-ERR 2031 Resource busy (TAG_DATA)." {
-			panic(err)
-		}
-	}
-
-	result = conn.Exec(ctx, `drop table log_data`)
-	if err := result.Err(); err != nil {
-		if err.Error() != "MACH-ERR 2031 Resource busy (LOG_DATA)." {
-			panic(err)
-		}
-	}
-	conn.Close()
-
 	if err := s.machsvrDatabase.Shutdown(); err != nil {
 		panic(err)
 	}
@@ -253,6 +291,14 @@ func (s *Server) StopServer(m *testing.M) {
 	if err := os.RemoveAll(s.machsvrDataDir); err != nil {
 		panic(err)
 	}
+}
+
+func (s *Server) CreateTestTables() error {
+	return CreateTestTables(s.machsvrDatabase)
+}
+
+func (s *Server) DropTestTables() error {
+	return DropTestTables(s.machsvrDatabase)
 }
 
 func (s *Server) ClientConn() *grpc.ClientConn {

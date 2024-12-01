@@ -14,7 +14,9 @@ var testServer *testsuite.Server
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./testsuite_tmp")
 	testServer.StartServer(m)
+	testServer.CreateTestTables()
 	code := m.Run()
+	testServer.DropTestTables()
 	testServer.StopServer(m)
 	os.Exit(code)
 }

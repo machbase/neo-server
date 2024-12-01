@@ -27,6 +27,7 @@ var testHttpAddress string
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./test/tmp")
 	testServer.StartServer(m)
+	testServer.CreateTestTables()
 
 	ctx := context.TODO()
 	db := testServer.DatabaseSVR()
@@ -63,6 +64,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	http.Stop()
+	testServer.DropTestTables()
 	testServer.StopServer(m)
 	os.Exit(code)
 }

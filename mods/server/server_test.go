@@ -37,6 +37,7 @@ func TestMain(m *testing.M) {
 	// database
 	testServer := testsuite.NewServer("./testsuite_tmp")
 	testServer.StartServer(m)
+	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
 	initTestData(database)
 
@@ -104,6 +105,7 @@ func TestMain(m *testing.M) {
 	// cleanup
 	mqttServer.Stop()
 	httpServer.Stop()
+	testServer.DropTestTables()
 	testServer.StopServer(m)
 }
 
