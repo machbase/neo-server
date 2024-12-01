@@ -1,12 +1,17 @@
 package machrpc_test
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api/machrpc"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
@@ -31,151 +36,164 @@ func TestMain(m *testing.M) {
 }
 
 func TestAll(t *testing.T) {
-	testsuite.TestAll(t, testServer.DatabaseRPC())
+	testsuite.TestAll(t, testServer.DatabaseRPC(),
+		tcConnectFail,
+		tcDriverQuery,
+		tcDriver,
+	)
 }
 
-// func TestExec(t *testing.T) {
-// 	ctx := context.TODO()
-// 	conn, err := database.Connect(ctx, api.WithPassword("sys", "manager"))
-// 	if err != nil {
-// 		t.Fatalf("connect error: %s", err.Error())
-// 	}
-// 	defer conn.Close()
+func connect(t *testing.T) *sql.DB {
+	t.Helper()
+	//db, err := sql.Open("machbase", fmt.Sprintf("tcp://sys:manager@%s", MockServerAddr))
+	db, err := sql.Open("machbase", "machbase")
+	if err != nil {
+		t.Fatalf("db connection failure %q", err.Error())
+	}
+	return db
+}
 
-// 	result := conn.Exec(context.TODO(), "insert into example (name, time, value) values(?, ?, ?)", 1, 2, 3)
-// 	require.NotNil(t, result)
-// 	require.Nil(t, result.Err())
-// 	require.Equal(t, int64(1), result.RowsAffected())
-// }
+func tcConnectFail(t *testing.T) {
+	tests := []string{
+		"tcp://127.0.0.1:5655",
+		"tcp://sys:man@127.0.0.1:5655",
+		"tcp://sys@127.0.0.1:5655",
+	}
+	for _, tt := range tests {
+		db, err := sql.Open("mach", tt)
+		require.NotNil(t, err)
+		require.Nil(t, db)
+	}
+}
 
-// func TestQueryRow(t *testing.T) {
-// 	ctx := context.TODO()
-// 	conn, err := database.Connect(ctx, api.WithPassword("sys", "manager"))
-// 	if err != nil {
-// 		t.Fatalf("connect error: %s", err.Error())
-// 	}
-// 	defer conn.Close()
+func tcDriverQuery(t *testing.T) {
+	db := connect(t)
+	defer db.Close()
 
-// 	row := conn.QueryRow(context.TODO(), "select count(*) from tag_data where name = ?", "query1")
-// 	require.NotNil(t, row)
+	rows, err := db.Query(`select * from tag_data where name = ?`, "query1")
+	require.Nil(t, err)
+	require.NotNil(t, rows)
+	rows.Close()
 
-// 	require.Nil(t, row.Err())
-// 	require.Equal(t, int64(1), row.RowsAffected())
-// 	require.Equal(t, "a row selected.", row.Message())
-// 	columns, _ := row.Columns()
-// 	require.Equal(t, 1, len(columns))
+	conn, err := db.Conn(context.TODO())
+	require.Nil(t, err)
+	require.NotNil(t, conn)
 
-// 	var val int
-// 	if err := row.Scan(&val); err != nil {
-// 		t.Fatalf("row scan fail; %s", err.Error())
-// 	}
-// 	require.Equal(t, 123, val)
-// }
+	rows, err = conn.QueryContext(context.TODO(), `select * from tag_data where name = ?`, "query1")
+	require.Nil(t, err)
+	require.NotNil(t, rows)
+	rows.Close()
 
-// func TestQuery(t *testing.T) {
-// 	ctx := context.TODO()
-// 	conn, err := database.Connect(ctx, api.WithPassword("sys", "manager"))
-// 	if err != nil {
-// 		t.Fatalf("connect error: %s", err.Error())
-// 	}
-// 	defer conn.Close()
+	conn.Close()
+}
 
-// 	rows, err := conn.Query(context.TODO(), "select * from example where name = ?", "query1")
-// 	if err != nil {
-// 		t.Fatalf("query fail, %q", err.Error())
-// 	}
-// 	defer rows.Close()
+func tcDriver(t *testing.T) {
+	t.Skip("skip test, require server process running")
+	sql.Register("local-unix", &machrpc.Driver{
+		ServerAddr: "unix://../../tmp/mach-grpc.sock",
+		User:       "sys",
+		Password:   "manager",
+	})
+	testDriverDataSource(t, "local-unix")
 
-// 	require.True(t, rows.IsFetchable())
-// 	require.Equal(t, int64(0), rows.RowsAffected())
-// 	require.Equal(t, "success", rows.Message())
+	sql.Register("local-tcp", &machrpc.Driver{
+		ServerAddr: "tcp://127.0.0.1:5655",
+		User:       "sys",
+		Password:   "manager",
+	})
+	testDriverDataSource(t, "local-tcp")
+}
 
-// 	columns, err := rows.Columns()
-// 	if err != nil {
-// 		t.Fatalf("columns error, %s", err.Error())
-// 	}
-// 	require.Equal(t, 3, len(columns))
+func testDriverDataSource(t *testing.T, dataSourceName string) {
+	t.Helper()
+	db, err := sql.Open(dataSourceName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.NotNil(t, db)
 
-// 	var name string
-// 	var ts time.Time
-// 	var value float64
-// 	for rows.Next() {
-// 		err := rows.Scan(&name, &ts, &value)
-// 		if err != nil {
-// 			t.Fatalf("rows scan error, %s", err.Error())
-// 		}
-// 	}
+	var tableName = strings.ToUpper("tagdata")
+	var count int
 
-// 	require.Equal(t, "tag", name)
-// 	require.Equal(t, time.Unix(0, 1).Nanosecond(), ts.Nanosecond())
-// 	require.Equal(t, 3.14, value)
-// }
+	row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
+	if row.Err() != nil {
+		t.Fatal(row.Err())
+	}
+	err = row.Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// func TestAppend(t *testing.T) {
-// 	ctx := context.TODO()
-// 	conn, err := database.Connect(ctx, api.WithPassword("sys", "manager"))
-// 	if err != nil {
-// 		t.Fatalf("connect error: %s", err.Error())
-// 	}
-// 	defer conn.Close()
+	if count == 0 {
+		sqlText := fmt.Sprintf(`
+			create tag table %s (
+				name            varchar(200) primary key,
+				time            datetime basetime,
+				value           double summarized,
+				type            varchar(40),
+				ivalue          long,
+				svalue          varchar(400),
+				id              varchar(80),
+				pname           varchar(80),
+				sampling_period long,
+				payload         json
+			)`, tableName)
+		_, err := db.Exec(sqlText)
+		if err != nil {
+			t.Error(err)
+		}
 
-// 	appender, err := conn.Appender(context.TODO(), "example")
-// 	if err != nil {
-// 		t.Fatalf("appender error, %s", err.Error())
-// 	}
-// 	require.NotNil(t, appender)
+		row := db.QueryRow("select count(*) from M$SYS_TABLES where name = ?", tableName)
+		if row.Err() != nil {
+			t.Error(row.Err())
+		}
+		err = row.Scan(&count)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	require.Equal(t, 1, count)
 
-// 	for i := 0; i < 10; i++ {
-// 		err := appender.Append(i)
-// 		if err != nil {
-// 			t.Fatalf("append fail, %s", err.Error())
-// 		}
-// 	}
+	expectCount := 10000
+	ts := time.Now()
+	for i := 0; i < expectCount; i++ {
+		result, err := db.Exec("insert into "+tableName+" (name, time, value, id) values(?, ?, ?, ?)",
+			fmt.Sprintf("name-%d", count%5),
+			ts.Add(time.Duration(i)),
+			0.1001+0.1001*float32(count),
+			fmt.Sprintf("id-%08d", i))
+		if err != nil {
+			t.Error(err)
+		}
+		require.Nil(t, err)
+		nrows, _ := result.RowsAffected()
+		require.Equal(t, int64(1), nrows)
+	}
 
-// 	succ, fail, err := appender.Close()
-// 	if err != nil {
-// 		t.Errorf("appender close error, %s", err.Error())
-// 	}
-// 	require.Equal(t, int64(10), succ)
-// 	require.Equal(t, int64(0), fail)
-// }
+	rows, err := db.Query("select name, time, value, id from "+tableName+" where time >= ? order by time", ts)
+	if err != nil {
+		t.Error(err)
+	}
+	pass := 0
+	for rows.Next() {
+		var name string
+		var ts time.Time
+		var value float64
+		var id string
+		err := rows.Scan(&name, &ts, &value, &id)
+		if err != nil {
+			t.Logf("ERR> %v", err.Error())
+			break
+		}
+		require.Equal(t, fmt.Sprintf("name-%d", count%5), name)
+		pass++
+		// t.Logf("==> %v %v %v %v", name, ts, value, id)
+	}
+	rows.Close()
+	require.Equal(t, expectCount, pass)
 
-// var database api.Database
-
-// func TestNewClient(t *testing.T) {
-// 	var cli *machrpc.Client
-// 	var err error
-
-// 	// no server address
-// 	cli, err = machrpc.NewClient(&machrpc.Config{})
-// 	require.NotNil(t, err, "no error without server addr, want error")
-// 	require.Nil(t, cli, "new client should fail")
-// 	require.Equal(t, "server address is not specified", err.Error())
-
-// 	// success creating client
-// 	cli, err = machrpc.NewClient(&machrpc.Config{ServerAddr: MockServerAddr})
-// 	if err != nil {
-// 		t.Fatalf("new client: %s", err.Error())
-// 	}
-
-// 	ctx := context.TODO()
-
-// 	// empty username, password
-// 	conn, err := cli.Connect(ctx)
-// 	require.NotNil(t, err)
-// 	require.Equal(t, "no user specified, use WithPassword() option", err.Error())
-// 	require.Nil(t, conn)
-
-// 	// wrong password
-// 	conn, err = cli.Connect(ctx, api.WithPassword("sys", "mm"))
-// 	require.NotNil(t, err)
-// 	require.Equal(t, "invalid username or password", err.Error())
-// 	require.Nil(t, conn)
-
-// 	// correct username, password
-// 	conn, err = cli.Connect(ctx, api.WithPassword("sys", "manager"))
-// 	require.Nil(t, err)
-// 	require.NotNil(t, conn)
-
-// 	conn.Close()
-// }
+	r := db.QueryRow("select count(*) from "+tableName+" where time >= ?", ts)
+	r.Scan(&count)
+	require.Equal(t, expectCount, count)
+	t.Logf("DB=%#v", db.Stats())
+}
