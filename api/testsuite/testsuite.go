@@ -27,7 +27,7 @@ import (
 
 type TestCase func(*testing.T, api.Database, context.Context)
 
-func TestAll(t *testing.T, db api.Database) {
+func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 	tt := []TestCase{
 		UserAuth,
 		Ping,
@@ -57,6 +57,12 @@ func TestAll(t *testing.T, db api.Database) {
 		name = strings.TrimPrefix(name, "github.com/machbase/neo-server/v8/api/testsuite.")
 		name = fmt.Sprintf("%s_%s", db_name, name)
 		t.Run(name, func(t *testing.T) { tc(t, db, ctx) })
+	}
+
+	for _, tc := range tests {
+		name := runtime.FuncForPC(reflect.ValueOf(tc).Pointer()).Name()
+		name = filepath.Base(name)
+		t.Run(name, tc)
 	}
 }
 

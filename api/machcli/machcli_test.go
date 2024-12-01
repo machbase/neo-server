@@ -21,77 +21,10 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestUserAuth(t *testing.T) {
-	// machcli
-	testsuite.UserAuth(t, testServer.DatabaseCLI(), context.TODO())
+func TestAll(t *testing.T) {
+	testsuite.TestAll(t, testServer.DatabaseCLI())
 }
 
-func TestPing(t *testing.T) {
-	// machcli
-	testsuite.Ping(t, testServer.DatabaseCLI(), context.TODO())
+func TestLogTableAppend(t *testing.T) {
+	testsuite.LogTableAppend(t, testServer.DatabaseCLI(), context.TODO())
 }
-
-func TestLicense(t *testing.T) {
-	// machcli
-	testsuite.License(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestDescribeTable(t *testing.T) {
-	// machcli
-	testsuite.DescribeTable(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestInsert(t *testing.T) {
-	// machcli
-	testsuite.InsertAndQuery(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestAppendTag(t *testing.T) {
-	// machcli
-	testsuite.AppendTagNotExist(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestTables(t *testing.T) {
-	// machcli
-	testsuite.ShowTables(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestExistsTable(t *testing.T) {
-	// machcli
-	testsuite.ExistsTable(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestIndexes(t *testing.T) {
-	// machcli
-	testsuite.Indexes(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-func TestColumns(t *testing.T) {
-	// machcli
-	testsuite.Columns(t, testServer.DatabaseCLI(), context.TODO())
-}
-
-// func TestLogTableExec(t *testing.T) {
-// 	// machcli
-// 	testsuite.LogTableExec(t, testServer.DatabaseCLI(), context.TODO())
-// }
-
-// func TestLogTableAppend(t *testing.T) {
-// 	// machcli
-// 	testsuite.LogTableAppend(t, testServer.DatabaseCLI(), context.TODO())
-// }
-
-// func TestTagTableAppend(t *testing.T) {
-// 	// machcli
-// 	testsuite.TagTableAppend(t, testServer.DatabaseCLI(), context.TODO())
-// }
-
-// func TestWatchLogTable(t *testing.T) {
-// 	// machcli
-// 	testsuite.WatchLogTable(t, testServer.DatabaseCLI(), context.TODO())
-// }
-
-// func TestDemoUser(t *testing.T) {
-// 	// machcli
-// 	testsuite.DemoUser(t, testServer.DatabaseCLI(), context.TODO())
-// }

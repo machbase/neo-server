@@ -6,10 +6,16 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
 func Explain(t *testing.T, db api.Database, ctx context.Context) {
+	// TODO: Explain is not implemented in machcli
+	if _, ok := db.(*machcli.Database); ok {
+		t.Skip("Explain is not implemented in machcli")
+	}
+
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)
@@ -24,6 +30,10 @@ func Explain(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func ExplainFull(t *testing.T, db api.Database, ctx context.Context) {
+	// TODO: Explain is not implemented in machcli
+	if _, ok := db.(*machcli.Database); ok {
+		t.Skip("Explain is not implemented in machcli")
+	}
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	if err != nil {
 		t.Fatal(err)

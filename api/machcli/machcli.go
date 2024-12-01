@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -131,16 +132,19 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 type Conn struct {
 	handle unsafe.Pointer
 	db     *Database
+
+	closeOnce sync.Once
 }
 
 var _ api.Conn = (*Conn)(nil)
 
-func (c *Conn) Close() error {
-	if err := mach.CliDisconnect(c.handle); err == nil {
-		return nil
-	} else {
-		return errorWithCause(c, err)
-	}
+func (c *Conn) Close() (ret error) {
+	c.closeOnce.Do(func() {
+		if err := mach.CliDisconnect(c.handle); err != nil {
+			ret = errorWithCause(c, err)
+		}
+	})
+	return ret
 }
 
 func (c *Conn) Error() error {
@@ -352,16 +356,18 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			value = unsafe.Pointer(val)
 			valueLen = 8
 		case net.IP:
-			if len(val) == 4 {
+			if ipv4 := val.To4(); ipv4 != nil {
 				cType = mach.MACHCLI_C_TYPE_CHAR
 				sqlType = mach.MACHCLI_SQL_TYPE_IPV4
-				value = unsafe.Pointer(&(val.To4()[0]))
-				valueLen = 4
+				bStr := []byte(ipv4.String())
+				value = (unsafe.Pointer)(&bStr[0])
+				valueLen = len(bStr)
 			} else {
 				cType = mach.MACHCLI_C_TYPE_CHAR
 				sqlType = mach.MACHCLI_SQL_TYPE_IPV6
-				value = unsafe.Pointer(&(val.To16()[0]))
-				valueLen = 16
+				bStr := []byte(val.To16().String())
+				value = (unsafe.Pointer)(&bStr[0])
+				valueLen = len(bStr)
 			}
 		case string:
 			cType = mach.MACHCLI_C_TYPE_CHAR
@@ -886,24 +892,20 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 		return nil, err
 	}
 
-	// XXX
-	// TODO temporary solution to skip the first column
-	stmt.columnDescs = make([]ColumnDesc, num-1)
+	stmt.columnDescs = make([]ColumnDesc, num)
 	for i := 0; i < num; i++ {
-		if i == 0 {
-			continue
-		}
 		d := ColumnDesc{}
 		if err := mach.CliDescribeCol(stmt.handle, i, &d.Name, (*mach.SqlType)(&d.Type), &d.Size, &d.Scale, &d.Nullable); err != nil {
 			err = errorWithCause(stmt, err)
 			stmt.Close()
 			return nil, err
 		}
-		stmt.columnDescs[i-1] = d
+		stmt.columnDescs[i] = d
 
 		ret.columns = append(ret.columns, &api.Column{
 			Name:     d.Name,
 			Length:   d.Size,
+			Type:     d.Type.ColumnType(),
 			DataType: api.ParseDataType(d.Type.String()),
 		})
 		ret.columnNames = append(ret.columnNames, d.Name)
@@ -967,5 +969,11 @@ func (a *Appender) Append(args ...any) error {
 }
 
 func (a *Appender) AppendLogTime(ts time.Time, values ...any) error {
-	return api.ErrNotImplemented("AppendWithTimestamp")
+	colTypes := append([]mach.SqlType{mach.MACHCLI_SQL_TYPE_DATETIME}, a.columnTypes...)
+	colNames := append([]string{"_ARRIVAL_TIME"}, a.columnNames...)
+	values = append([]any{ts}, values...)
+	if err := mach.CliAppendData(a.stmt.handle, colTypes, colNames, values); err != nil {
+		return errorWithCause(a.stmt, err)
+	}
+	return nil
 }

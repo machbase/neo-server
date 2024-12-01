@@ -9,10 +9,16 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
 func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
+	// TODO: Append is not implemented in machcli
+	if _, ok := db.(*machcli.Database); ok {
+		t.Skip("Append is not implemented in machcli")
+	}
+
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -77,6 +83,10 @@ func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
+	// TODO: Append is not implemented in machcli
+	if _, ok := db.(*machcli.Database); ok {
+		t.Skip("Append is not implemented in machcli")
+	}
 	tableName := "append_tag"
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
@@ -99,7 +109,6 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 
 	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
-	defer conn.Close()
 
 	appender, err := conn.Appender(ctx, tableName)
 	if err != nil {
@@ -124,7 +133,6 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 
 	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err)
-	defer conn.Close()
 	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
 	if row.Err() != nil {
 		panic(row.Err())
@@ -135,6 +143,7 @@ func AppendTag(t *testing.T, db api.Database, ctx context.Context) {
 		panic(err)
 	}
 	require.Equal(t, testCount, count)
+	conn.Close()
 }
 
 func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {
