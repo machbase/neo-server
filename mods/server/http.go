@@ -160,6 +160,17 @@ func (svr *httpd) Stop() {
 	}
 }
 
+func (svr *httpd) AdvertiseAddress() string {
+	for _, addr := range svr.listeners {
+		if strAddr := addr.Addr().String(); strAddr == "" {
+			continue
+		} else {
+			return "http://" + strings.TrimPrefix(strAddr, "tcp://")
+		}
+	}
+	return ""
+}
+
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(RecoveryWithLogging(svr.log))

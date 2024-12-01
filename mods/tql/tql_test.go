@@ -3,6 +3,7 @@ package tql_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -12,11 +13,16 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/mods/server"
 	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 var testServer *testsuite.Server
+var testHttpAddress string
 
 func TestMain(m *testing.M) {
 	testServer = testsuite.NewServer("./test/tmp")
@@ -37,15 +43,51 @@ func TestMain(m *testing.M) {
 	conn.Exec(ctx, "exec table_flush(example)")
 	conn.Close()
 
+	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
+	ssfs.SetDefault(f)
+
+	http, err := server.NewHttp(db,
+		server.WithHttpListenAddress("tcp://127.0.0.1:0"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	if err := http.Start(); err != nil {
+		panic(err)
+	}
+	testHttpAddress = http.AdvertiseAddress()
+	if testHttpAddress == "" {
+		panic("http server address is empty")
+	}
+
 	code := m.Run()
+
+	http.Stop()
 	testServer.StopServer(m)
 	os.Exit(code)
+}
+
+func flushTable(table string) error {
+	conn, err := testServer.DatabaseSVR().Connect(context.TODO(), api.WithPassword("sys", "manager"))
+	if err != nil {
+		return err
+	}
+	result := conn.Exec(context.TODO(), fmt.Sprintf("EXEC TABLE_FLUSH('%s')", table))
+	if result.Err() != nil {
+		return result.Err()
+	}
+	conn.Close()
+	return nil
 }
 
 type TqlTestCase struct {
 	Name         string
 	Script       string
+	Payload      string
+	ExpectErr    string
 	ExpectCSV    []string
+	ExpectText   []string
+	ExpectFunc   func(t *testing.T, result string)
 	RunCondition func() bool
 }
 
@@ -57,35 +99,56 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	output := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
 	task.SetDatabase(testServer.DatabaseSVR())
-	task.SetOutputWriter(output)
 	task.SetLogWriter(os.Stdout)
+	task.SetOutputWriterJson(output, true)
+	if tc.Payload != "" {
+		task.SetInputReader(bytes.NewBufferString(tc.Payload))
+	}
 	if err := task.CompileString(tc.Script); err != nil {
 		t.Log("ERROR:", tc.Name, err.Error())
 		t.Fail()
 		return
 	}
 	result := task.Execute()
+	if tc.ExpectErr != "" {
+		require.Error(t, result.Err)
+		require.Equal(t, tc.ExpectErr, result.Err.Error())
+		return
+	}
 	if result.Err != nil {
 		t.Log("ERROR:", tc.Name, result.Err.Error())
 		t.Fail()
 		return
 	}
+
 	switch task.OutputContentType() {
-	case "text/plain", "text/csv; charset=utf-8":
-		if len(tc.ExpectCSV) > 0 {
-			require.Equal(t, tc.ExpectCSV, strings.Split(output.String(), "\n"))
+	case "text/plain", "text/csv; charset=utf-8", "text/markdown", "application/xhtml+xml", "application/json":
+		outputText := output.String()
+		if outputText == "" && result.IsDbSink {
+			if v, err := json.Marshal(result); err == nil {
+				outputText = string(v)
+			} else {
+				outputText = "ERROR: failed to marshal result"
+			}
+		}
+		if tc.ExpectFunc != nil {
+			tc.ExpectFunc(t, outputText)
+		} else if len(tc.ExpectCSV) > 0 {
+			require.Equal(t, strings.Join(tc.ExpectCSV, "\n"), outputText)
+		} else if len(tc.ExpectText) > 0 {
+			require.Equal(t, strings.Join(tc.ExpectText, "\n"), outputText)
 		} else {
-			fmt.Println(output.String())
+			t.Fatalf("unhandled output %q: %s", task.OutputContentType(), outputText)
 		}
 	default:
-		t.Log("ERROR:", tc.Name, "unexpected content type:", task.OutputContentType())
+		t.Fatal("ERROR:", tc.Name, "unexpected content type:", task.OutputContentType())
 	}
 }
 
-func TestSql(t *testing.T) {
+func TestTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "show-tables",
+			Name: "SQL_show-tables",
 			Script: `
 				SQL("show tables;")
 				CSV(header(true))
@@ -101,7 +164,7 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
-			Name: "show-indexes",
+			Name: "SQL_show-indexes",
 			Script: `
 				SQL("show indexes ")
 				CSV(header(true))
@@ -118,7 +181,7 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
-			Name: "desc-table",
+			Name: "SQL_desc-table",
 			Script: `
 				SQL("desc tag_data;")
 				CSV(header(true))
@@ -143,7 +206,7 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
-			Name: "show-tags",
+			Name: "SQL_show-tags",
 			Script: `
 				SQL("show tags example")
 				CSV(header(true))
@@ -156,7 +219,7 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
-			Name: "explain-select",
+			Name: "SQL_explain-select",
 			Script: `
 				SQL("explain select * from example where name = 'tag1'")
 				CSV(header(true))
@@ -182,7 +245,136 @@ func TestSql(t *testing.T) {
 			},
 		},
 		{
-			Name: "shell-command",
+			Name: "SQL_select-from-example",
+			Script: `
+				SQL("select time, value from example where name = 'tag1'")
+				CSV( precision(3), header(true) )
+				`,
+			ExpectCSV: []string{
+				"TIME,VALUE",
+				"1692686707380411000,0.100",
+				"1692686708380411000,0.200",
+				"", "",
+			},
+		},
+		{
+			Name: "SQL_select-from-example-rownum",
+			Script: `
+				SQL("select time, value from example where name = 'tag1'")
+				PUSHKEY('test')
+				CSV( precision(3), header(true) )
+				`,
+			ExpectCSV: []string{
+				"ROWNUM,TIME,VALUE",
+				"1,1692686707380411000,0.100",
+				"2,1692686708380411000,0.200",
+				"", "",
+			},
+		},
+		{
+			Name: "SQL_create-tag-table",
+			Script: `
+				SQL("create tag table if not exists example( name varchar(40) primary key, time datetime basetime, value double summarized )")
+				MARKDOWN(html(true), rownum(true), heading(true), brief(true))
+				`,
+			ExpectText: loadLines("./test/sql_ddl_executed.txt"),
+		},
+		{
+			Name: "QUERY_CSV",
+			Script: `
+				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				CSV( precision(3), header(true) )
+				`,
+			ExpectCSV: []string{
+				"TIME,VALUE",
+				"1692686707380411000,0.100",
+				"1692686708380411000,0.200",
+				"", "",
+			},
+		},
+		{
+			Name: "QUERY_JSON-rows-flatten",
+			Script: `
+				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				JSON( precision(3), rowsFlatten(true) )
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[1692686707380411000,0.1,1692686708380411000,0.2]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "QUERY_JSON-rows-flatten-rownum",
+			Script: `
+				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				JSON( precision(3), rowsFlatten(true), rownum(true) )
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["ROWNUM","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["int64","datetime","double"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[1,1692686707380411000,0.1,2,1692686708380411000,0.2]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "FAKE_INSERT",
+			Script: `
+				FAKE( linspace(0, 1, 3) )
+				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
+				INSERT('time', 'value', table('example'), tag('signal.3'))
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
+				require.Equal(t, `{"message":"3 rows inserted."}`, gjson.Get(result, "data").Raw, result)
+				require.NoError(t, flushTable("example"))
+			},
+		},
+		{
+			Name: "FAKE_INSERT-cleanup",
+			Script: `
+				SQL("delete from example where name = 'signal.3'")
+				MARKDOWN()
+				`,
+			ExpectText: []string{
+				`|MESSAGE|`,
+				`|:-----|`,
+				`|3 rows deleted.|`,
+				``,
+			},
+		},
+		{
+			Name: "FAKE_APPEND",
+			Script: `
+				FAKE( linspace(0, 1, 3) )
+				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
+				PUSHVALUE(0, 'signal.append')
+				APPEND( table('example') )
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
+				require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
+				require.NoError(t, flushTable("example"))
+			},
+		},
+		{
+			Name: "FAKE_APPEND-cleanup",
+			Script: `
+				SQL("delete from example where name = 'signal.append'")
+				MARKDOWN()
+				`,
+			ExpectText: []string{
+				`|MESSAGE|`,
+				`|:-----|`,
+				`|3 rows deleted.|`,
+				``,
+			},
+		},
+		{
+			Name: "SHELL_shell-command",
 			Script: `
 				FAKE( once(1) )
 				SHELL("echo 'Hello, World!'; echo 123;")
@@ -193,6 +385,509 @@ func TestSql(t *testing.T) {
 				// FIXME: This test is not working on Windows
 				return runtime.GOOS != "windows"
 			},
+		},
+		{
+			Name: "CSV_payload_CSV",
+			Script: `
+				CSV(payload(),
+					field(0, stringType(), "name"),
+					field(1, datetimeType("s"), "time"),
+					field(2, doubleType(), "value"),
+					field(3, stringType(), "active")
+				)
+				CSV(timeformat("s"), heading(true))
+				`,
+			Payload: `temp.name,1691662156,123.456789,true` + "\n",
+			ExpectCSV: []string{
+				`name,time,value,active`,
+				`temp.name,1691662156,123.456789,true`,
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_payload_JSON_timeformat",
+			Script: `
+				CSV(payload(),
+					field(0, stringType(), "name"),
+					field(1, datetimeType("2006/01/02 15:04:05", "KST"), "time"),
+					field(2, doubleType(), "value"),
+					field(3, stringType(), "active")
+				)
+				CSV(timeformat("s"), heading(true))
+				`,
+			Payload: `temp.name,2023/08/10 19:09:16,123.456789,true` + "\n",
+			ExpectCSV: []string{
+				`name,time,value,active`,
+				`temp.name,1691662156,123.456789,true`,
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_payload_MAPVALUE_MARKDOWN",
+			Script: `
+				CSV(payload(), header(false))
+				MAPVALUE(2, value(2) != "VALUE" ? parseFloat(value(2))*10 : value(2))
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`NAME,TIME,VALUE,BOOL`,
+				`wave.sin,1676432361,0.000000,true`,
+				`wave.cos,1676432361,1.0000000,false`,
+				`wave.sin,1676432362,0.406736,true`,
+				`wave.cos,1676432362,0.913546,false`,
+				`wave.sin,1676432363,0.743144,true`,
+			}, "\n") + "\n",
+			ExpectText: []string{
+				`|column0|column1|column2|column3|`,
+				`|:-----|:-----|:-----|:-----|`,
+				`|NAME|TIME|VALUE|BOOL|`,
+				`|wave.sin|1676432361|0.000000|true|`,
+				`|wave.cos|1676432361|10.000000|false|`,
+				`|wave.sin|1676432362|4.067360|true|`,
+				`|wave.cos|1676432362|9.135460|false|`,
+				`|wave.sin|1676432363|7.431440|true|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_MARKDOWN",
+			Script: `
+				CSV(payload(), header(true))
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`NAME,TIME,VALUE`,
+				`wave.sin,1676432361,0.000000`,
+				`wave.cos,1676432361,1.000000`,
+				`wave.sin,1676432362,0.406736`,
+				`wave.cos,1676432362,0.913546`,
+				`wave.sin,1676432363,0.743144`,
+			}, "\n"),
+			ExpectText: []string{
+				`|NAME|TIME|VALUE|`,
+				`|:-----|:-----|:-----|`,
+				`|wave.sin|1676432361|0.000000|`,
+				`|wave.cos|1676432361|1.000000|`,
+				`|wave.sin|1676432362|0.406736|`,
+				`|wave.cos|1676432362|0.913546|`,
+				`|wave.sin|1676432363|0.743144|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_payload_MARKDOWN",
+			Script: `
+				CSV(payload(), header(true))
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`NAME,TIME,VALUE`,
+				`wave.sin,1676432361,0.000000`,
+				`wave.cos,1676432361,1.000000`,
+				`wave.sin,1676432362,0.406736`,
+				`wave.cos,1676432362,0.913546`,
+				`wave.sin,1676432363,0.743144`,
+				"\n"}, "\n"),
+			ExpectText: []string{
+				`|NAME|TIME|VALUE|`,
+				`|:-----|:-----|:-----|`,
+				`|wave.sin|1676432361|0.000000|`,
+				`|wave.cos|1676432361|1.000000|`,
+				`|wave.sin|1676432362|0.406736|`,
+				`|wave.cos|1676432362|0.913546|`,
+				`|wave.sin|1676432363|0.743144|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_header(true)_MARKDOWN",
+			Script: `
+				CSV(payload(),
+				field(0, stringType(), 'name'),
+				field(1, datetimeType('s'), 'time'),
+				field(2, doubleType(), 'value'),
+				header(true))
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`NAME,TIME,VALUE`,
+				`wave.sin,1676432361,0.000000`,
+				`wave.cos,1676432361,1.000000`,
+				`wave.sin,1676432362,0.406736`,
+				`wave.cos,1676432362,0.913546`,
+				`wave.sin,1676432363,0.743144`,
+			}, "\n"),
+			ExpectText: []string{
+				`|name|time|value|`,
+				`|:-----|:-----|:-----|`,
+				`|wave.sin|1676432361000000000|0.000000|`,
+				`|wave.cos|1676432361000000000|1.000000|`,
+				`|wave.sin|1676432362000000000|0.406736|`,
+				`|wave.cos|1676432362000000000|0.913546|`,
+				`|wave.sin|1676432363000000000|0.743144|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_header(false)_MARKDOWN",
+			Script: `
+				CSV(payload(),
+				field(0, stringType(), 'NAME'),
+				field(1, datetimeType('s'), 'TIME'),
+				field(2, doubleType(), 'VALUE'),
+				header(false))
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`wave.sin,1676432361,0.000000`,
+				`wave.cos,1676432361,1.000000`,
+				`wave.sin,1676432362,0.406736`,
+				`wave.cos,1676432362,0.913546`,
+				`wave.sin,1676432363,0.743144`,
+			}, "\n"),
+			ExpectText: []string{
+				`|NAME|TIME|VALUE|`,
+				`|:-----|:-----|:-----|`,
+				`|wave.sin|1676432361000000000|0.000000|`,
+				`|wave.cos|1676432361000000000|1.000000|`,
+				`|wave.sin|1676432362000000000|0.406736|`,
+				`|wave.cos|1676432362000000000|0.913546|`,
+				`|wave.sin|1676432363000000000|0.743144|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_no_header_MARKDOWN",
+			Script: `
+				CSV(payload())
+				MARKDOWN()
+				`,
+			Payload: strings.Join([]string{
+				`wave.sin,1676432361,0.000000`,
+				`wave.cos,1676432361,1.000000`,
+				`wave.sin,1676432362,0.406736`,
+				`wave.cos,1676432362,0.913546`,
+				`wave.sin,1676432363,0.743144`,
+			}, "\n"),
+			ExpectText: []string{
+				`|column0|column1|column2|`,
+				`|:-----|:-----|:-----|`,
+				`|wave.sin|1676432361|0.000000|`,
+				`|wave.cos|1676432361|1.000000|`,
+				`|wave.sin|1676432362|0.406736|`,
+				`|wave.cos|1676432362|0.913546|`,
+				`|wave.sin|1676432363|0.743144|`,
+				"",
+			},
+		},
+		{
+			Name: "CSV_file",
+			Script: `
+				CSV(file('/iris.data'))
+				DROP(10)
+				TAKE(2)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`5.4,3.7,1.5,0.2,Iris-setosa`,
+				`4.8,3.4,1.6,0.2,Iris-setosa`,
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_file_JSON_timeformat",
+			Script: `
+				CSV(file('/iris.data'))
+				DROP(10)
+				TAKE(2)
+				JSON(timeformat('2006-01-02 15:04:05'), tz('LOCAL'))
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["column0","column1","column2","column3","column4"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string","string","string","string","string"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `["5.4","3.7","1.5","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.0").Raw)
+				require.Equal(t, `["4.8","3.4","1.6","0.2","Iris-setosa"]`, gjson.Get(result, "data.rows.1").Raw)
+			},
+		},
+		{
+			Name: "CSV_charset_jp",
+			Script: `
+				CSV(file("/euc-jp.csv"), charset("EUC-JP"))
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`利用されてきた文字コー,1701913182,3.141592`,
+				"\n",
+			},
+		},
+		{
+			Name: "strSprintf",
+			Script: `
+				FAKE(json(strSprintf('[%.f, %q]', 123, "hello")))
+				CSV( heading(false) )
+				`,
+			ExpectCSV: []string{
+				`123,hello`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_AVG",
+			Script: `
+				FAKE( arrange(10, 30, 10) )
+				MAP_AVG(1, value(0))
+				CSV( precision(0) )
+				`,
+			ExpectCSV: []string{
+				"10,10",
+				"20,15",
+				"30,20",
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_MOVAVG",
+			Script: `
+				FAKE( linspace(0, 100, 100) )
+				MAP_MOVAVG(1, value(0), 10)
+				CSV( precision(4) )
+				`,
+			ExpectCSV: loadLines("./test/movavg_result.csv"),
+		},
+		{
+			Name: "MAP_MOVAVG_nowait",
+			Script: `
+				FAKE( linspace(0, 100, 100) )
+				MAP_MOVAVG(1, value(0), 10, noWait(true))
+				CSV( precision(4) )
+				`,
+			ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
+		},
+		{
+			Name: "MAP_LOWPASS",
+			Script: `
+				FAKE(arrange(1, 10, 1))
+				MAPVALUE(1, value(0) + simplex(1, value(0))*3)
+				MAP_LOWPASS(2, value(1), 0.3)
+				CSV(precision(2))
+				`,
+			ExpectCSV: []string{
+				`1.00,1.48,1.48`,
+				`2.00,0.40,1.15`,
+				`3.00,3.84,1.96`,
+				`4.00,2.89,2.24`,
+				`5.00,5.47,3.21`,
+				`6.00,5.29,3.83`,
+				`7.00,7.22,4.85`,
+				`8.00,10.31,6.49`,
+				`9.00,8.36,7.05`,
+				`10.00,8.56,7.50`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_KALMAN",
+			Script: `
+				FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
+				MAP_KALMAN(1, value(0), model(1.0, 1.0, 2.0))
+				CSV(precision(1))
+				`,
+			ExpectCSV: []string{
+				`1.3,1.3`,
+				`10.2,5.7`,
+				`5.0,5.4`,
+				`3.4,4.4`,
+				"\n",
+			},
+		},
+		{
+			Name: "MAP_DIFF",
+			Script: `
+				FAKE( csv("1\n3\n2\n7") )
+				MAP_DIFF(0, value(0))
+				CSV()
+				`,
+			ExpectCSV: []string{"NULL", "2", "-1", "5", "\n"},
+		},
+		{
+			Name: "MAP_NONEGDIFF",
+			Script: `
+				FAKE( csv("1\n3\n2\n7") )
+				MAP_NONEGDIFF(0, value(0))
+				CSV()
+				`,
+			ExpectCSV: []string{"NULL", "2", "0", "5", "\n"},
+		},
+		{
+			Name: "MAP_ABSDIFF",
+			Script: `
+				FAKE( csv("1\n3\n2\n7") )
+				MAP_ABSDIFF(0, value(0))
+				CSV()
+				`,
+			ExpectCSV: []string{"NULL", "2", "1", "5", "\n"},
+		},
+		{
+			Name: "FILTER_CHANGED_string",
+			Script: `
+				FAKE(json({
+					["A", 1.0],
+					["A", 2.0],
+					["B", 3.0],
+					["B", 4.0]
+				}))
+				FILTER_CHANGED(value(0))
+				CSV()
+				`,
+			ExpectCSV: []string{"A,1", "B,3", "\n"},
+		},
+		{
+			Name: "FILTER_CHANGED_bool",
+			Script: `
+				FAKE(json({
+					["A", true, 1.0],
+					["A", false, 2.0],
+					["B", false, 3.0],
+					["B", true, 4.0]
+				}))
+				FILTER_CHANGED(value(1))
+				CSV()
+				`,
+			ExpectCSV: []string{"A,true,1", "A,false,2", "B,true,4", "\n"},
+		},
+		{
+			Name: "FILTER_CHANGED_time",
+			Script: `
+				FAKE(json({
+					["A", 1692329338, 1.0],
+					["A", 1692329339, 2.0],
+					["B", 1692329340, 3.0],
+					["B", 1692329341, 4.0],
+					["B", 1692329342, 5.0],
+					["B", 1692329343, 6.0],
+					["B", 1692329344, 7.0],
+					["B", 1692329345, 8.0],
+					["C", 1692329346, 9.0],
+					["D", 1692329347, 9.1],
+					["D", 1692329348, 9.2],
+					["D", 1692329349, 9.3]
+				}))
+				MAPVALUE(1, parseTime(value(1), "s", tz("UTC")))
+				FILTER_CHANGED(value(0), retain(value(1), "2s"))
+				CSV(timeformat("s"))
+				`,
+			ExpectCSV: []string{
+				"A,1692329338,1",
+				"B,1692329342,5",
+				"D,1692329349,9.3",
+				"\n",
+			},
+		},
+		{
+			Name: "FILTER_CHANGED_useFirstWithLast(true)",
+			Script: `
+				FAKE(json({
+					["A", 1.0], ["A", 2.0],
+					["B", 3.0], ["B", 4.0], ["B", 5.0],
+					["C", 6.0], ["C", 7.0],
+					["D", 8.0], ["D", 9.0]
+				}))
+				FILTER_CHANGED(value(0), useFirstWithLast(true))
+				CSV()
+				`,
+			ExpectCSV: []string{"A,1", "A,2", "B,3", "B,5", "C,6", "C,7", "D,8", "D,9", "\n"},
+		},
+		{
+			Name: "FILTER_CHANGED_useFirstWithLast(false)",
+			Script: `
+				FAKE(json({
+					["A", 1.0], ["A", 2.0],
+					["B", 3.0], ["B", 4.0], ["B", 5.0],
+					["C", 6.0], ["C", 7.0],
+					["D", 8.0], ["D", 9.0]
+				}))
+				FILTER_CHANGED(value(0), useFirstWithLast(false))
+				CSV()
+				`,
+			ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
+		},
+		{
+			Name: "FILTER_CHANGED_useFirstWithLast(false)_implicit",
+			Script: `
+				FAKE(json({
+					["A", 1.0], ["A", 2.0],
+					["B", 3.0], ["B", 4.0], ["B", 5.0],
+					["C", 6.0], ["C", 7.0],
+					["D", 8.0], ["D", 9.0]
+				}))
+				FILTER_CHANGED(value(0))
+				CSV()
+				`,
+			// This result should be same as using "useFirstWithLast(false)"
+			ExpectCSV: []string{"A,1", "B,3", "C,6", "D,8", "\n"},
+		},
+		{
+			Name: "FAKE_sphere_4_4",
+			Script: `
+				FAKE( sphere(4, 4) )
+				PUSHKEY('test')
+				CSV( header(true), precision(6) )
+				`,
+			ExpectCSV: loadLines("./test/sphere_4_4.csv"),
+		},
+		{
+			Name: "FAKE_sphere_0_0",
+			Script: `
+				FAKE( sphere(0, 0) )
+				PUSHKEY('test')
+				CSV( header(false), precision(6) )
+				`,
+			ExpectCSV: loadLines("./test/sphere_0_0.csv"),
+		},
+		{
+			Name: "FFT",
+			Script: `
+				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+				MAPKEY('samples')
+				GROUPBYKEY(lazy(false))
+				FFT(minHz(0), maxHz(60))
+				CSV(precision(6))
+				`,
+			ExpectCSV: loadLines("./test/fft2d.csv"),
+		},
+		{
+			Name: "FFT_not_enough_samples_0",
+			Script: `
+				FAKE( linspace(0, 10, 100) )
+				FFT()
+				CSV()
+				`,
+			ExpectCSV: []string{"\n"},
+		},
+		{
+			Name: "FFT_not_enough_samples_16",
+			Script: `
+				FAKE( meshgrid(linspace(0, 10, 100), linspace(0, 10, 1000)) )
+				PUSHKEY('sample')
+				GROUPBYKEY()
+				FFT()
+				CSV()
+				`,
+			ExpectErr: "f(FFT) invalid 0th sample time, but int",
+		},
+		{
+			Name: "FFT_3d",
+			Script: `
+				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+				MAPKEY( roundTime(value(0), '500ms') )
+				GROUPBYKEY()
+				FFT(maxHz(60))
+				FLATTEN()
+				PUSHKEY('fft3d')
+				CSV(precision(6))
+				`,
+			ExpectCSV: loadLines("./test/fft3d.csv"),
 		},
 	}
 
@@ -211,13 +906,180 @@ func TestSql(t *testing.T) {
 	}
 }
 
+func TestFake_oscillator(t *testing.T) {
+	back := util.StandardTimeNow
+	util.StandardTimeNow = func() time.Time {
+		return time.Unix(0, 1692329338315327000)
+	}
+	defer func() {
+		util.StandardTimeNow = back
+	}()
+
+	tests := []TqlTestCase{
+		{
+			Name: "FAKE_oscillator_no_args",
+			Script: `
+				FAKE( oscillator() )
+				JSON()`,
+			ExpectErr: "f(oscillator) no time range is defined",
+		},
+		{
+			Name: "FAKE_oscillator_invalid_args",
+			Script: `
+				FAKE( oscillator(123) )
+				JSON()`,
+			ExpectErr: "f(oscillator) invalid arg type 'float64'",
+		},
+		{
+			Name: "FAKE_oscillator_no_time_range",
+			Script: `
+				FAKE( oscillator(freq(1.0, 1.0)) )
+				JSON()
+			`,
+			ExpectErr: "f(oscillator) no time range is defined",
+		},
+		{
+			Name: "FAKE_oscillator_dup_time_range",
+			Script: `
+				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms'), range(time('now-1s'), '1s', '200ms')) )
+				JSON()
+			`,
+			ExpectErr: "f(oscillator) duplicated time range",
+		},
+		{
+			Name: "FAKE_oscillator_minus_time_range",
+			Script: `
+				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '-200ms')) )
+				JSON()
+			`,
+			ExpectErr: "f(oscillator) period should be positive",
+		},
+		{
+			Name: "FAKE_oscillator_1",
+			Script: `
+				FAKE( oscillator(freq(1.0, 1.0), range(time('now-1s'), '1s', '200ms')) )
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.09615299237813928],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+			},
+		},
+		{
+			Name: "FAKE_oscillator_2",
+			Script: `
+				FAKE( oscillator(freq(1.0, 1.0), range(time('now'), '-1s', '200ms')) )
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, `["time","value"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[1692329337315327000,0.9169371548618853]`, gjson.Get(result, "data.rows.0").Raw, result)
+				require.Equal(t, `[[1692329337315327000,0.9169371548618853],[1692329337515327000,-0.09615299237813928],[1692329337715327000,-0.9763628786653529],[1692329337915327000,-0.5072715014883364],[1692329338115327000,0.662850914928241]]`, gjson.Get(result, "data.rows").Raw, result)
+			},
+		},
+		{
+			Name: "FAKE_oscillator_1Hz_2Hz_3Hz",
+			Script: `
+				FAKE( 
+					oscillator(
+						range(timeAdd(1685714509*1000000000,'1s'), '1s', '1ms'), 
+						freq(1, 1.0), freq(2, 2.0), freq(3, 3.0)))
+				PUSHKEY('test')
+				CSV( header(true), precision(6) )
+				`,
+			ExpectCSV: loadLines("./test/oscillator_1Hz_2Hz_3Hz.csv"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScript(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "hello-world",
+			Name: "tengo_src",
+			Script: `
+				SCRIPT({
+					ctx := import("context")
+					for i := 0; i < 10; i++ {
+						ctx.yieldKey("test", i, i*10)
+					}
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{
+				"0,0", "1,10", "2,20", "3,30", "4,40", "5,50", "6,60", "7,70", "8,80", "9,90", "\n",
+			},
+		},
+		{
+			Name: "tengo_src_map",
+			Script: `
+				SCRIPT({
+					ctx := import("context")
+					a := 10*2+1
+					// comment
+
+					ctx.yield(a)
+				})
+				SCRIPT({
+					ctx := import("context")
+					a := ctx.value(0)
+					ctx.yield(a+1, 2, 3, 4)
+				})
+				CSV()
+				`,
+			ExpectCSV: []string{"22,2,3,4", "\n"},
+		},
+		{
+			Name: "tengo_2",
+			Script: `
+				FAKE( linspace(1,2,2))
+				MAPKEY("hello")
+				SCRIPT("tengo", {
+					ctx := import("context")
+					ctx.yield(ctx.key(), ctx.value(0), ctx.param("temp", 0))
+				})
+				MAPVALUE(0, value(0), "key")
+				MAPVALUE(1, value(1), "value")
+				MAPVALUE(2, value(2), "parameter")
+				CSV(header(true))
+			`,
+			ExpectCSV: []string{
+				`key,value,parameter`, `hello,1,0`, `hello,2,0`, "\n",
+			},
+		},
+		{
+			Name: "js-console-log",
 			Script: `
 				SCRIPT("js", "console.log('Hello, World!')")
 				DISCARD()`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Empty(t, result)
+			},
+		},
+		{
+			Name: "js-finalize",
+			Script: `
+				FAKE( linspace(1,3,3))
+				SCRIPT("js", {
+					function finalize(){ $.yieldKey("last", 1.234); }
+					function square(x) { return x * x };
+						$.yield(square($.values[0]));
+					})
+				CSV(header(false))
+			`,
+			ExpectCSV: []string{
+				"1", "4", "9", "1.234", "\n",
+			},
 		},
 		{
 			Name: "js-timeformat",
@@ -244,12 +1106,40 @@ func TestScript(t *testing.T) {
 			ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
 		},
 		{
+			Name: "js-request",
+			Script: fmt.Sprintf(`
+					SCRIPT("js", {
+					$.result = {
+						columns: ["NAME", "TIME", "VALUE"],
+						types : ["string", "datetime", "double"]
+					};
+				},{
+					$.request("%s/db/query?q="+
+						encodeURIComponent("select name, time, value from example  limit 2"), {method: 'GET'})
+						.do(function(rsp) {
+							rsp.text(function(body){
+								obj = JSON.parse(body);
+								obj.data.rows.forEach(function(r){
+									$.yield(r[0], r[1], r[2]);
+								})
+							})
+						})
+					})
+				JSON(timeformat("s"))
+			`, testHttpAddress),
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+			},
+		},
+		{
 			Name: "create-table",
 			Script: `
 				SCRIPT("js", {
 					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
 					if (ret instanceof Error) {
-						console.error(ret.message);
 						$.yield(ret.message);
 					} else {
 						$.yield("create-table done");
@@ -259,6 +1149,9 @@ func TestScript(t *testing.T) {
 			RunCondition: func() bool {
 				// FIXME: This test is failing randomly on Windows
 				return runtime.GOOS != "windows"
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "create-table done\n\n", result)
 			},
 		},
 		{
@@ -320,6 +1213,9 @@ func TestScript(t *testing.T) {
 			RunCondition: func() bool {
 				// FIXME: 'create-table' test is failing randomly on Windows
 				return runtime.GOOS != "windows"
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Empty(t, result)
 			},
 		},
 	}
