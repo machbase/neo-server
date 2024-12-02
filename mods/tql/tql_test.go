@@ -404,9 +404,9 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
-			Name: "js-request",
+			Name: "js-request-json",
 			Script: fmt.Sprintf(`
-					SCRIPT("js", {
+				SCRIPT("js", {
 					$.result = {
 						columns: ["NAME", "TIME", "VALUE"],
 						types : ["string", "datetime", "double"]
@@ -420,6 +420,33 @@ func TestDatabaseTql(t *testing.T) {
 								obj.data.rows.forEach(function(r){
 									$.yield(r[0], r[1], r[2]);
 								})
+							})
+						})
+					})
+				JSON(timeformat("s"))
+			`, testHttpAddress),
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+			},
+		},
+		{
+			Name: "js-request-csv",
+			Script: fmt.Sprintf(`
+				SCRIPT("js", {
+					$.result = {
+						columns: ["NAME", "TIME", "VALUE"],
+						types : ["string", "datetime", "double"]
+					};
+				},{
+					$.request("%s/db/query?q="+
+							encodeURIComponent("select name, time, value from tag_simple limit 2")+"&format=csv&header=skip", 
+							{method: 'GET'}
+						).do(function(rsp) {
+							rsp.csv(function(r){
+								$.yield(r[0], parseInt(r[1]), parseFloat(r[2]));
 							})
 						})
 					})
@@ -806,6 +833,20 @@ func TestTql(t *testing.T) {
 			Name: "CSV_file",
 			Script: `
 				CSV(file('/iris.data'))
+				DROP(10)
+				TAKE(2)
+				CSV()
+				`,
+			ExpectCSV: []string{
+				`5.4,3.7,1.5,0.2,Iris-setosa`,
+				`4.8,3.4,1.6,0.2,Iris-setosa`,
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_file_gz",
+			Script: `
+				CSV(file('/iris.data.gz'))
 				DROP(10)
 				TAKE(2)
 				CSV()
@@ -1486,6 +1527,48 @@ func TestBridgeSqlite(t *testing.T) {
 				`,
 			Params:    map[string][]string{"id": {"-1"}},
 			ExpectCSV: []string{"\n"},
+		},
+		{
+			Name: "sqlite-js-insert",
+			Script: `
+				SCRIPT("js", {
+					err = $.db({bridge: 'sqlite'})
+						.exec("insert into example_sql values(?, ?, ?, ?, ?, ?)", 300, "charlie", 30, "street-300", 67.89, null)
+					if (err) {
+						$.yield(err.message);
+					}
+				})
+				DISCARD()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+			},
+		},
+		{
+			Name: "sqlite-js-query",
+			Script: `
+				SCRIPT("js", {
+					err = $.db({bridge: 'sqlite'}).query("select * from example_sql where id = ?", $.params.id)
+					    .forEach(function(row) {
+							id = row[0];
+							name = row[1];
+							age = row[2];
+							address = row[3];
+							$.yield(id, name, age, address);
+						})
+					if (err) {
+						$.yield(err.message);
+					}
+				})
+				JSON()
+				`,
+			Params: map[string][]string{"id": {"300"}},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, `["column0","column1","column2","column3"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["any","any","any","any"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[300,"charlie",30,"street-300"]`, gjson.Get(result, "data.rows.0").Raw, result)
+			},
 		},
 	}
 
