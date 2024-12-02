@@ -246,7 +246,7 @@ func scanTypeToDataType(sqlType string) DataType {
 	case "[]byte", "sql.RawBytes":
 		return DataTypeBinary
 	case "*interface {}":
-		// SQLite binds `count(*)` field as `*interface {}`
+		// FIXME: SQLite binds `count(*)` field as `*interface {}`
 		return DataTypeString
 	default:
 		return DataTypeAny

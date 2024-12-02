@@ -13,6 +13,8 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
+	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/server"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -73,6 +75,7 @@ type TqlTestCase struct {
 	Name         string
 	Script       string
 	Payload      string
+	Params       map[string][]string
 	ExpectErr    string
 	ExpectCSV    []string
 	ExpectText   []string
@@ -82,6 +85,11 @@ type TqlTestCase struct {
 
 func runTestCase(t *testing.T, tc TqlTestCase) {
 	t.Helper()
+	if tc.RunCondition != nil && !tc.RunCondition() {
+		t.Skip("Skip by tc.RunCondition")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -92,6 +100,9 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	task.SetOutputWriterJson(output, true)
 	if tc.Payload != "" {
 		task.SetInputReader(bytes.NewBufferString(tc.Payload))
+	}
+	if len(tc.Params) > 0 {
+		task.SetParams(tc.Params)
 	}
 	if err := task.CompileString(tc.Script); err != nil {
 		t.Log("ERROR:", tc.Name, err.Error())
@@ -139,7 +150,7 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	}
 }
 
-func TestTql(t *testing.T) {
+func TestDatabaseTql(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "SQL_show-tables",
@@ -393,6 +404,129 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "js-request",
+			Script: fmt.Sprintf(`
+					SCRIPT("js", {
+					$.result = {
+						columns: ["NAME", "TIME", "VALUE"],
+						types : ["string", "datetime", "double"]
+					};
+				},{
+					$.request("%s/db/query?q="+
+						encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: 'GET'})
+						.do(function(rsp) {
+							rsp.text(function(body){
+								obj = JSON.parse(body);
+								obj.data.rows.forEach(function(r){
+									$.yield(r[0], r[1], r[2]);
+								})
+							})
+						})
+					})
+				JSON(timeformat("s"))
+			`, testHttpAddress),
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+			},
+		},
+		{
+			Name: "create-table",
+			Script: `
+				SCRIPT("js", {
+					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
+					if (ret instanceof Error) {
+						$.yield(ret.message);
+					} else {
+						$.yield("create-table done");
+					}
+				})
+				CSV()`,
+			RunCondition: func() bool {
+				// FIXME: This test is failing randomly on Windows
+				return runtime.GOOS != "windows"
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "create-table done\n\n", result)
+			},
+		},
+		{
+			Name: "select-value",
+			Script: `
+				SCRIPT("js", {
+					var tick = 1731900710328594958;
+					for (i = 0; i < 10; i++) {
+						tick += 1000000000; // add 1 second
+						var ret = $.db().exec("insert into js_tag values('test-script', ?, ?)", tick, 1.23 * i);
+						if (ret instanceof Error) {
+							console.error(ret.message);
+						}
+					}
+					$.yield("done");
+				})
+				SCRIPT("js", {
+					$.result = {
+						columns: ["name", "time", "value"],
+						types: ["varchar", "datetime", "double"],
+					}
+				},{
+					$.db().query("select * from js_tag").forEach(function(row) {
+						$.yield(row[0], row[1], row[2]);
+					});
+				})
+				CSV(header(true))
+				`,
+			ExpectCSV: []string{
+				"name,time,value",
+				"test-script,1731900711328594944,0",
+				"test-script,1731900712328594944,1.23",
+				"test-script,1731900713328594944,2.46",
+				"test-script,1731900714328594944,3.69",
+				"test-script,1731900715328594944,4.92",
+				"test-script,1731900716328594944,6.15",
+				"test-script,1731900717328594944,7.38",
+				"test-script,1731900718328594944,8.61",
+				"test-script,1731900719328594944,9.84",
+				"test-script,1731900720328594944,11.07",
+				"",
+				"",
+			},
+			RunCondition: func() bool {
+				// FIXME: 'create-table' test is failing randomly on Windows
+				return runtime.GOOS != "windows"
+			},
+		},
+		{
+			Name: "drop-table",
+			Script: `
+				SCRIPT("js", {
+					var ret = $.db().exec("drop table js_tag");
+					if (ret instanceof Error) {
+						console.error(ret.message);
+					}
+				})
+				DISCARD()`,
+			RunCondition: func() bool {
+				// FIXME: 'create-table' test is failing randomly on Windows
+				return runtime.GOOS != "windows"
+			},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Empty(t, result)
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestTql(t *testing.T) {
+	tests := []TqlTestCase{
+		{
 			Name: "SHELL_shell-command",
 			Script: `
 				FAKE( once(1) )
@@ -453,7 +587,7 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
-			Name: "CSV_payload_JSON_timeformat",
+			Name: "CSV_payload_CSV_timeformat",
 			Script: `
 				CSV(payload(),
 					field(0, stringType(), "name"),
@@ -467,6 +601,32 @@ func TestTql(t *testing.T) {
 			ExpectCSV: []string{
 				`name,time,value,active`,
 				`temp.name,1691662156,123.456789,true`,
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_payload_CSV_timeformat_precision",
+			Script: `
+				CSV(payload(), field(0, timeType("s"), "time"), field(2, floatType(), "value"), field(3, boolType(),"flag") )
+				CSV(timeformat("s"), heading(true), precision(2))
+			`,
+			Payload: strings.Join([]string{
+				"1700256261,dry,1,true",
+				"1700256262,dry,2,false",
+				"1700256262,wet,2,TRUE",
+				"1700256263,dry,3,False",
+				"1700256264,dry,4,1",
+				"1700256264,wet,5,0",
+				"",
+			}, "\n"),
+			ExpectCSV: []string{
+				"time,column1,value,flag",
+				"1700256261,dry,1.00,true",
+				"1700256262,dry,2.00,false",
+				"1700256262,wet,2.00,true",
+				"1700256263,dry,3.00,false",
+				"1700256264,dry,4.00,true",
+				"1700256264,wet,5.00,false",
 				"\n",
 			},
 		},
@@ -959,10 +1119,6 @@ func TestTql(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			if tc.RunCondition != nil && !tc.RunCondition() {
-				t.Skip("Skip this test")
-				return
-			}
 			runTestCase(t, tc)
 		})
 	}
@@ -1167,117 +1323,220 @@ func TestScript(t *testing.T) {
 				CSV()`,
 			ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
 		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestBridgeSqlite(t *testing.T) {
+	tests := []TqlTestCase{
 		{
-			Name: "js-request",
-			Script: fmt.Sprintf(`
-					SCRIPT("js", {
-					$.result = {
-						columns: ["NAME", "TIME", "VALUE"],
-						types : ["string", "datetime", "double"]
-					};
-				},{
-					$.request("%s/db/query?q="+
-						encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: 'GET'})
-						.do(function(rsp) {
-							rsp.text(function(body){
-								obj = JSON.parse(body);
-								obj.data.rows.forEach(function(r){
-									$.yield(r[0], r[1], r[2]);
-								})
-							})
-						})
-					})
-				JSON(timeformat("s"))
-			`, testHttpAddress),
-			ExpectFunc: func(t *testing.T, result string) {
-				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
-				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw, result)
-				require.Equal(t, `[["tag1",1692686707380411000,0.1],["tag1",1692686708380411000,0.2]]`, gjson.Get(result, "data.rows").Raw, result)
+			Name: "sqlite-table-not-exist",
+			Script: `
+				SQL(bridge('sqlite'), "select * from example_sql")
+				CSV(heading(true))
+			`,
+			ExpectErr: "no such table: example_sql",
+		},
+		{
+			Name: "sqlite-create-table",
+			Script: `
+				SQL(bridge('sqlite'), "create table example_sql (` +
+				`	id INTEGER NOT NULL PRIMARY KEY,` +
+				`	name TEXT,` +
+				`	age INTEGER,` +
+				`	address TEXT,` +
+				`	weight REAL,` +
+				`	memo BLOB,` +
+				`	UNIQUE(name)` +
+				`)")
+				MARKDOWN()
+			`,
+			ExpectText: []string{
+				"|MESSAGE|",
+				"|:-----|",
+				"|Created successfully.|",
+				"",
 			},
 		},
 		{
-			Name: "create-table",
+			Name: "sqlite-insert",
 			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("create tag table js_tag (name varchar(40) primary key, time datetime basetime, value double)");
-					if (ret instanceof Error) {
-						$.yield(ret.message);
-					} else {
-						$.yield("create-table done");
-					}
-				})
-				CSV()`,
-			RunCondition: func() bool {
-				// FIXME: This test is failing randomly on Windows
-				return runtime.GOOS != "windows"
-			},
+				CSV("100,alpha,10,street-100\n200,bravo,20,street-200\n")
+				INSERT(bridge('sqlite'), "id", "name", "age", "address", table("example_sql"))
+			`,
 			ExpectFunc: func(t *testing.T, result string) {
-				require.Equal(t, "create-table done\n\n", result)
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, `1 row inserted.`, gjson.Get(result, "data.message").String())
 			},
 		},
+		// TODO: insert blob value
+		// conn.ExecContext(ctx, `insert into example_sql values(?, ?, ?, ?, ?, ?)`,
+		//                        200, "bravo", 20, "street-200", 56.789, []byte{0, 1, 0xFF})
+		// TODO: select blob value
+		// `200,bravo,20,street-200,56.789,\x00\x01\xFF`,
 		{
-			Name: "select-value",
+			Name: "sqlite",
 			Script: `
-				SCRIPT("js", {
-					var tick = 1731900710328594958;
-					for (i = 0; i < 10; i++) {
-						tick += 1000000000; // add 1 second
-						var ret = $.db().exec("insert into js_tag values('test-script', ?, ?)", tick, 1.23 * i);
-						if (ret instanceof Error) {
-							console.error(ret.message);
-						}
-					}
-					$.yield("done");
-				})
-				SCRIPT("js", {
-					$.result = {
-						columns: ["name", "time", "value"],
-						types: ["varchar", "datetime", "double"],
-					}
-				},{
-					$.db().query("select * from js_tag").forEach(function(row) {
-						$.yield(row[0], row[1], row[2]);
-					});
-				})
-				CSV(header(true))
-				`,
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				CSV(heading(true))
+			`,
 			ExpectCSV: []string{
-				"name,time,value",
-				"test-script,1731900711328594944,0",
-				"test-script,1731900712328594944,1.23",
-				"test-script,1731900713328594944,2.46",
-				"test-script,1731900714328594944,3.69",
-				"test-script,1731900715328594944,4.92",
-				"test-script,1731900716328594944,6.15",
-				"test-script,1731900717328594944,7.38",
-				"test-script,1731900718328594944,8.61",
-				"test-script,1731900719328594944,9.84",
-				"test-script,1731900720328594944,11.07",
-				"",
-				"",
-			},
-			RunCondition: func() bool {
-				// FIXME: 'create-table' test is failing randomly on Windows
-				return runtime.GOOS != "windows"
+				"id,name,age,address",
+				"100,alpha,10,street-100",
+				"200,bravo,20,street-200",
+				"\n",
 			},
 		},
 		{
-			Name: "drop-table",
+			Name: "sqlite-update-100",
 			Script: `
-				SCRIPT("js", {
-					var ret = $.db().exec("drop table js_tag");
-					if (ret instanceof Error) {
-						console.error(ret.message);
-					}
-				})
-				DISCARD()`,
-			RunCondition: func() bool {
-				// FIXME: 'create-table' test is failing randomly on Windows
-				return runtime.GOOS != "windows"
+				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)
+				CSV(heading(false))
+			`,
+			ExpectCSV: []string{"a row updated.", "\n"},
+		},
+		{
+			Name: "sqlite-update-200",
+			Script: `
+				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 56.789, 200)
+				CSV(heading(false))
+			`,
+			ExpectCSV: []string{"a row updated.", "\n"},
+		},
+		{
+			Name: "sqlite-select-updated",
+			Script: `
+				SQL(bridge('sqlite'), "select * from example_sql")
+				CSV(heading(true),nullValue('NULL'))
+			`,
+			ExpectCSV: []string{
+				"id,name,age,address,weight,memo",
+				"100,alpha,10,street-100,45.67,NULL",
+				`200,bravo,20,street-200,56.789,NULL`,
+				"\n",
 			},
+			RunCondition: func() bool {
+				// FIXME: sqlite3-CSV does not work with nullValue('NULL')
+				return false
+			},
+		},
+		{
+			Name: "sqlite-delete-syntax-error",
+			Script: `
+				SQL(bridge('sqlite'), 'delete example_sql where id = ?', 100)
+				CSV(heading(false))
+				`,
+			ExpectErr: "near \"example_sql\": syntax error",
+		},
+		{
+			Name: "sqlite-delete-before-count",
+			Script: `
+				SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))
+				JSON()
+				`,
+			Params: map[string][]string{"id": {"100"}},
 			ExpectFunc: func(t *testing.T, result string) {
-				require.Empty(t, result)
+				require.True(t, gjson.Get(result, "success").Bool())
+				// FIXME: count(*) should be integer instead of string
+				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[["1"]]}`, gjson.Get(result, "data").Raw)
+			},
+		},
+		{
+			Name: "sqlite-delete",
+			Script: `
+				SQL(bridge('sqlite'), 'delete from example_sql where id = ?', param('id'))
+				CSV(heading(false))
+				`,
+			Params:    map[string][]string{"id": {"100"}},
+			ExpectCSV: []string{"a row deleted.", "\n"},
+		},
+		{
+			Name: "sqlite-delete-after-count",
+			Script: `
+				SQL(bridge('sqlite'), 'select count(*) from example_sql where id = ?', param('id'))
+				JSON()
+				`,
+			Params: map[string][]string{"id": {"100"}},
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				// FIXME: count(*) should be integer instead of string
+				require.Equal(t, `{"columns":["count(*)"],"types":["string"],"rows":[["0"]]}`, gjson.Get(result, "data").Raw)
+			},
+		},
+		{
+			Name: "sqlite-select-no-rows",
+			Script: `
+				SQL(bridge('sqlite'), "select * from example_sql where id = ?", param('id'))
+				CSV(heading(true))
+				`,
+			Params:    map[string][]string{"id": {"-1"}},
+			ExpectCSV: []string{"id,name,age,address,weight,memo", "\n"},
+		},
+		{
+			Name: "sqlite-select-no-rows-no-header",
+			Script: `
+				SQL(bridge('sqlite'), "select * from example_sql where id = ?", param('id'))
+				CSV(heading(false))
+				`,
+			Params:    map[string][]string{"id": {"-1"}},
+			ExpectCSV: []string{"\n"},
+		},
+	}
+
+	if err := bridge.Register(&model.BridgeDefinition{
+		Type: model.BRIDGE_SQLITE,
+		Name: "sqlite",
+		Path: "file::memory:?cache=shared",
+	}); err == bridge.ErrBridgeDisabled {
+		t.Fatal(err)
+	} else {
+		defer bridge.Unregister("sqlite")
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestThrottle(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "throttle-10tps",
+			Script: `
+				FAKE( linspace(1, 10, 10))
+				THROTTLE( 10 )
+				SCRIPT("js", {
+					// Use javascript to add current time for validation
+					$.yield((new Date).getTime() * 1000000, $.values[0])
+				})
+				MAPVALUE(0, time(value(0)))
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, `10`, gjson.Get(result, "data.rows.#").String())
+				var lastTime time.Time
+				for i := 0; i < 10; i++ {
+					ts := time.Unix(0, gjson.Get(result, fmt.Sprintf("data.rows.%d", i)).Get("0").Int())
+					if i == 0 {
+						lastTime = ts
+						continue
+					}
+					delta := ts.Sub(lastTime)
+					lastTime = ts
+					// theoretically, 10tps should be 100ms
+					// but it may take little bit less than 100ms
+					require.True(t, delta > 90*time.Millisecond, "delta[%d]: %v", i, delta)
+				}
 			},
 		},
 	}
