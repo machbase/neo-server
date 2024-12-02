@@ -28,7 +28,7 @@ require (
 	github.com/jchenry/goldmark-pikchr v0.1.0
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine/v8 v8.0.35
+	github.com/machbase/neo-engine/v8 v8.0.36-0.20241202133727-ceeed639e9af
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
@@ -69,6 +69,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	oss.terrastruct.com/d2 v0.5.1
 )
+
+replace github.com/machbase/neo-engine/v8 => ../neo-engine/
 
 require (
 	cdr.dev/slog v1.4.2-0.20221206192828-e4803b10ae17 // indirect

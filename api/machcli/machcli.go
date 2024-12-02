@@ -2,6 +2,7 @@ package machcli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -207,7 +208,12 @@ func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row 
 	}
 	ret.rowCount = stmt.rowCount
 	if values, err := stmt.fetch(); err != nil {
-		ret.err = err
+		if err == io.EOF {
+			// it means no row fetched
+			ret.err = sql.ErrNoRows
+		} else {
+			ret.err = err
+		}
 		return ret
 	} else {
 		ret.values = values
@@ -866,6 +872,54 @@ func (r *Rows) Scan(dest ...any) error {
 }
 
 func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	db, user, table := api.TableName(tableName).Split()
+	dbId := -1
+	tableId := int64(-1)
+	var tableType api.TableType
+	var tableFlag api.TableFlag
+	var tableColCount int
+
+	if db != "" && db != "MACHBASEDB" {
+		row := c.QueryRow(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", db)
+		if row.Err() != nil {
+			return nil, row.Err()
+		}
+		if err := row.Scan(&dbId); err != nil {
+			return nil, err
+		}
+	}
+
+	describeSqlText := `SELECT
+			j.ID as TABLE_ID,
+			j.TYPE as TABLE_TYPE,
+			j.FLAG as TABLE_FLAG,
+			j.COLCOUNT as TABLE_COLCOUNT
+		from
+			M$SYS_USERS u,
+			M$SYS_TABLES j
+		where
+			u.NAME = ?
+		and j.USER_ID = u.USER_ID
+		and j.DATABASE_ID = ?
+		and j.NAME = ?`
+
+	r := c.QueryRow(ctx, describeSqlText, user, dbId, table)
+	if r.Err() != nil {
+		if r.Err() == sql.ErrNoRows {
+			return nil, fmt.Errorf("table '%s' does not exist", tableName)
+		}
+		return nil, r.Err()
+	}
+	if err := r.Scan(&tableId, &tableType, &tableFlag, &tableColCount); err != nil {
+		return nil, err
+	}
+
+	rows, err := c.Query(ctx, "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? and database_id = ? order by id", tableId, dbId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	ret := &Appender{tableName: strings.ToUpper(tableName)}
 	for _, opt := range opts {
 		switch o := opt.(type) {
@@ -875,6 +929,22 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
 	}
+	for rows.Next() {
+		col := &api.Column{}
+		err = rows.Scan(&col.Name, &col.Type, &col.Length, &col.Id, &col.Flag)
+		if err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(col.Name, "_") {
+			if tableType != api.TableTypeLog || col.Name != "_ARRIVAL_TIME" {
+				continue
+			}
+		}
+		col.DataType = col.Type.DataType()
+		ret.columns = append(ret.columns, col)
+		ret.columnNames = append(ret.columnNames, col.Name)
+		ret.columnTypes = append(ret.columnTypes, columnTypeToSqlType(col.Type))
+	}
 
 	stmt, err := c.NewStmt()
 	if err != nil {
@@ -883,41 +953,50 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	ret.stmt = stmt
 
 	if err := mach.CliAppendOpen(stmt.handle, ret.tableName, ret.errCheckCount); err != nil {
-		return nil, errorWithCause(stmt, err)
-	}
-
-	num, err := mach.CliNumResultCol(stmt.handle)
-	if err != nil {
+		err = errorWithCause(stmt, err)
 		stmt.Close()
 		return nil, err
 	}
-
-	stmt.columnDescs = make([]ColumnDesc, num)
-	for i := 0; i < num; i++ {
-		d := ColumnDesc{}
-		if err := mach.CliDescribeCol(stmt.handle, i, &d.Name, (*mach.SqlType)(&d.Type), &d.Size, &d.Scale, &d.Nullable); err != nil {
-			err = errorWithCause(stmt, err)
-			stmt.Close()
-			return nil, err
-		}
-		stmt.columnDescs[i] = d
-
-		ret.columns = append(ret.columns, &api.Column{
-			Name:     d.Name,
-			Length:   d.Size,
-			Type:     d.Type.ColumnType(),
-			DataType: api.ParseDataType(d.Type.String()),
-		})
-		ret.columnNames = append(ret.columnNames, d.Name)
-		ret.columnTypes = append(ret.columnTypes, mach.SqlType(d.Type))
-	}
-
 	return ret, nil
+}
+
+func columnTypeToSqlType(ct api.ColumnType) mach.SqlType {
+	switch ct {
+	case api.ColumnTypeShort:
+		return mach.MACHCLI_SQL_TYPE_INT16
+	case api.ColumnTypeUShort:
+		return mach.MACHCLI_SQL_TYPE_INT16
+	case api.ColumnTypeInteger:
+		return mach.MACHCLI_SQL_TYPE_INT32
+	case api.ColumnTypeUInteger:
+		return mach.MACHCLI_SQL_TYPE_INT32
+	case api.ColumnTypeLong:
+		return mach.MACHCLI_SQL_TYPE_INT64
+	case api.ColumnTypeULong:
+		return mach.MACHCLI_SQL_TYPE_INT64
+	case api.ColumnTypeDatetime:
+		return mach.MACHCLI_SQL_TYPE_DATETIME
+	case api.ColumnTypeFloat:
+		return mach.MACHCLI_SQL_TYPE_FLOAT
+	case api.ColumnTypeDouble:
+		return mach.MACHCLI_SQL_TYPE_DOUBLE
+	case api.ColumnTypeIPv4:
+		return mach.MACHCLI_SQL_TYPE_IPV4
+	case api.ColumnTypeIPv6:
+		return mach.MACHCLI_SQL_TYPE_IPV6
+	case api.ColumnTypeVarchar:
+		return mach.MACHCLI_SQL_TYPE_STRING
+	case api.ColumnTypeBinary:
+		return mach.MACHCLI_SQL_TYPE_BINARY
+	default:
+		return mach.MACHCLI_SQL_TYPE_STRING
+	}
 }
 
 type Appender struct {
 	stmt          *Stmt
 	tableName     string
+	tableType     api.TableType
 	errCheckCount int
 	columns       api.Columns
 	columnNames   []string
@@ -945,8 +1024,7 @@ func (a *Appender) TableName() string {
 }
 
 func (a *Appender) TableType() api.TableType {
-	// TODO implement
-	return api.TableTypeTag
+	return a.tableType
 }
 
 func (a *Appender) Columns() (api.Columns, error) {
@@ -963,16 +1041,14 @@ func (a *Appender) Flush() error {
 
 func (a *Appender) Append(args ...any) error {
 	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, args); err != nil {
-		return errorWithCause(a.stmt, err)
+		return err
 	}
 	return nil
 }
 
 func (a *Appender) AppendLogTime(ts time.Time, values ...any) error {
-	colTypes := append([]mach.SqlType{mach.MACHCLI_SQL_TYPE_DATETIME}, a.columnTypes...)
-	colNames := append([]string{"_ARRIVAL_TIME"}, a.columnNames...)
 	values = append([]any{ts}, values...)
-	if err := mach.CliAppendData(a.stmt.handle, colTypes, colNames, values); err != nil {
+	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, values); err != nil {
 		return errorWithCause(a.stmt, err)
 	}
 	return nil

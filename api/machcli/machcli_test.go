@@ -23,3 +23,9 @@ func TestAll(t *testing.T) {
 	testsuite.TestAll(t, testServer.DatabaseCLI())
 	testServer.DropTestTables()
 }
+
+// func TestFlight(t *testing.T) {
+// 	testServer.CreateTestTables()
+// 	testsuite.LogTableAppend(t, testServer.DatabaseCLI(), context.TODO())
+// 	testServer.DropTestTables()
+// }

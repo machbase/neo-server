@@ -186,6 +186,9 @@ func describe(ctx context.Context, conn Conn, name TableName, includeHiddenColum
 
 	if dbName != "" && dbName != "MACHBASEDB" {
 		row := conn.QueryRow(ctx, "select BACKUP_TBSID from V$STORAGE_MOUNT_DATABASES where MOUNTDB = ?", dbName)
+		if row.Err() != nil {
+			return nil, row.Err()
+		}
 		if err := row.Scan(&dbId); err != nil {
 			return nil, err
 		}

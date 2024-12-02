@@ -14,11 +14,6 @@ import (
 )
 
 func TagTableAppend(t *testing.T, db api.Database, ctx context.Context) {
-	// TODO: Append is not implemented in machcli
-	if _, ok := db.(*machcli.Database); ok {
-		t.Skip("Append is not implemented in machcli")
-	}
-
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -153,7 +148,7 @@ func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {
 
 	appender, err := conn.Appender(ctx, "notexist")
 	require.NotNil(t, err)
-	require.True(t, strings.Contains(err.Error(), "does not exist"))
+	require.True(t, strings.Contains(err.Error(), "does not exist"), err.Error())
 	if appender != nil {
 		appender.Close()
 	}
