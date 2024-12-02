@@ -156,6 +156,7 @@ type Server struct {
 	machsvrPort     int
 	machcliDatabase *machcli.Database
 	grpcServer      *grpc.Server
+	grpcServerWg    sync.WaitGroup
 	grpcListener    *bufconn.Listener
 	grpcClientConn  *grpc.ClientConn
 }
@@ -249,8 +250,10 @@ func (s *Server) StartServer(m *testing.M) {
 	s.grpcServer = grpc.NewServer()
 	machrpc.RegisterMachbaseServer(s.grpcServer, rpcSvr)
 
+	s.grpcServerWg.Add(1)
 	go func() {
 		s.grpcServer.Serve(s.grpcListener)
+		s.grpcServerWg.Done()
 	}()
 
 	resolver.SetDefaultScheme("passthrough")
@@ -287,7 +290,7 @@ func (s *Server) StopServer(m *testing.M) {
 		panic(err)
 	}
 	s.grpcServer.Stop()
-
+	s.grpcServerWg.Wait()
 	if err := s.machsvrDatabase.Shutdown(); err != nil {
 		panic(err)
 	}
