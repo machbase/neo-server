@@ -5,13 +5,11 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,11 +94,6 @@ func ExistsTable(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func Indexes(t *testing.T, db api.Database, ctx context.Context) {
-	// TODO fix the Communication link failure CLI bug on windows
-	if _, ok := db.(*machcli.Database); ok && runtime.GOOS == "windows" {
-		t.Skip("Communication link failure on windows")
-		return
-	}
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
@@ -138,12 +131,6 @@ func Indexes(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
-	// TODO fix the Communication link failure CLI bug on windows
-	if _, ok := db.(*machcli.Database); ok && runtime.GOOS == "windows" {
-		t.Skip("Communication link failure on windows")
-		return
-	}
-
 	now, _ := time.ParseInLocation("2006-01-02 15:04:05", "2021-01-01 00:00:00", time.UTC)
 
 	// Because INSERT statement uses '2021-01-01 00:00:00' as time value which was parsed in Local timezone,
@@ -195,6 +182,43 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, 1, numRows)
 	err = rows.Close()
 	require.NoError(t, err, "close fail")
+
+	var unbox = func(val any) any {
+		switch v := val.(type) {
+		case *int:
+			return *v
+		case *uint:
+			return *v
+		case *int16:
+			return *v
+		case *uint16:
+			return *v
+		case *int32:
+			return *v
+		case *uint32:
+			return *v
+		case *int64:
+			return *v
+		case *uint64:
+			return *v
+		case *float64:
+			return *v
+		case *float32:
+			return *v
+		case *string:
+			return *v
+		case *time.Time:
+			return *v
+		case *[]byte:
+			return *v
+		case *net.IP:
+			return *v
+		case *driver.Value:
+			return *v
+		default:
+			return val
+		}
+	}
 
 	var beginCalled, endCalled bool
 	var nextCalled int
@@ -327,11 +351,6 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func InsertNewTags(t *testing.T, db api.Database, ctx context.Context) {
-	// TODO fix the Communication link failure CLI bug on any platform
-	if _, ok := db.(*machcli.Database); ok {
-		t.Skip("Communication link failure on windows")
-		return
-	}
 	expectCount := 1000
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -386,41 +405,4 @@ func InsertNewTags(t *testing.T, db api.Database, ctx context.Context) {
 	}
 	rows.Close()
 	require.Equal(t, expectCount, count)
-}
-
-func unbox(val any) any {
-	switch v := val.(type) {
-	case *int:
-		return *v
-	case *uint:
-		return *v
-	case *int16:
-		return *v
-	case *uint16:
-		return *v
-	case *int32:
-		return *v
-	case *uint32:
-		return *v
-	case *int64:
-		return *v
-	case *uint64:
-		return *v
-	case *float64:
-		return *v
-	case *float32:
-		return *v
-	case *string:
-		return *v
-	case *time.Time:
-		return *v
-	case *[]byte:
-		return *v
-	case *net.IP:
-		return *v
-	case *driver.Value:
-		return *v
-	default:
-		return val
-	}
 }

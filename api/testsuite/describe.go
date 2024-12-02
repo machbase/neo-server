@@ -4,20 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"runtime"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
 func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
-	// TODO fix the Communication link failure CLI bug on windows
-	if _, ok := db.(*machcli.Database); ok && runtime.GOOS == "windows" {
-		t.Skip(" CLI bug on windows: varchar type to string")
-		return
-	}
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
 	require.NoError(t, err, "connect fail")
 	defer conn.Close()
