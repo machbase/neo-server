@@ -29,20 +29,7 @@ func TestMain(m *testing.M) {
 	testServer.StartServer(m)
 	testServer.CreateTestTables()
 
-	ctx := context.TODO()
 	db := testServer.DatabaseSVR()
-	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	if err != nil {
-		panic(err)
-	}
-	result := conn.Exec(ctx, "create tag table example (name varchar(100) primary key, time datetime basetime, value double)")
-	if result.Err() != nil {
-		panic(result.Err())
-	}
-	conn.Exec(ctx, "insert into example values('tag1', 1692686707380411000, 0.100)")
-	conn.Exec(ctx, "insert into example values('tag1', 1692686708380411000, 0.200)")
-	conn.Exec(ctx, "exec table_flush(example)")
-	conn.Close()
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
@@ -124,7 +111,12 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	}
 
 	switch task.OutputContentType() {
-	case "text/plain", "text/csv; charset=utf-8", "text/markdown", "application/xhtml+xml", "application/json":
+	case "text/plain",
+		"text/csv; charset=utf-8",
+		"text/markdown",
+		"application/xhtml+xml",
+		"application/json",
+		"application/x-ndjson":
 		outputText := output.String()
 		if outputText == "" && result.IsDbSink {
 			if v, err := json.Marshal(result); err == nil {
@@ -157,12 +149,10 @@ func TestTql(t *testing.T) {
 				`,
 			ExpectCSV: []string{
 				"DATABASE_NAME,USER_NAME,TABLE_NAME,TABLE_ID,TABLE_TYPE,TABLE_FLAG",
-				"MACHBASEDB,SYS,EXAMPLE,19,Tag,NULL",
 				"MACHBASEDB,SYS,LOG_DATA,13,Log,NULL",
 				"MACHBASEDB,SYS,TAG_DATA,6,Tag,NULL",
 				"MACHBASEDB,SYS,TAG_SIMPLE,12,Tag,NULL",
-				"",
-				"",
+				"\n",
 			},
 		},
 		{
@@ -173,13 +163,11 @@ func TestTql(t *testing.T) {
 				`,
 			ExpectCSV: []string{
 				"DATABASE_NAME,USER_NAME,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,INDEX_ID",
-				"MACHBASEDB,SYS,_EXAMPLE_META,_ID,__PK_IDX__EXAMPLE_META_1,REDBLACK,16",
-				"MACHBASEDB,SYS,_EXAMPLE_META,NAME,_EXAMPLE_META_NAME,REDBLACK,17",
 				"MACHBASEDB,SYS,_TAG_DATA_META,_ID,__PK_IDX__TAG_DATA_META_1,REDBLACK,3",
 				"MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,4",
 				"MACHBASEDB,SYS,_TAG_SIMPLE_META,_ID,__PK_IDX__TAG_SIMPLE_META_1,REDBLACK,9",
 				"MACHBASEDB,SYS,_TAG_SIMPLE_META,NAME,_TAG_SIMPLE_META_NAME,REDBLACK,10",
-				"", "",
+				"\n",
 			},
 		},
 		{
@@ -203,37 +191,53 @@ func TestTql(t *testing.T) {
 				"JSON_VALUE,json,32767,,",
 				"IPV4_VALUE,ipv4,15,,",
 				"IPV6_VALUE,ipv6,45,,",
-				"",
-				"",
+				"\n",
+			},
+		},
+		{
+			Name: "SQL_insert-tag1",
+			Script: `
+			CSV("tag1,1692686707380411000,0.100\ntag1,1692686708380411000,0.200\n",
+				header(false),
+				field(0, stringType(), "name"),
+				field(1, datetimeType("ns"), "time"),
+				field(2, doubleType(), "value")
+			)
+			INSERT('name', 'time', 'value', table('tag_simple'))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, `{"message":"2 rows inserted."}`, gjson.Get(result, "data").Raw)
+				require.NoError(t, flushTable("tag_simple"))
 			},
 		},
 		{
 			Name: "SQL_show-tags",
 			Script: `
-				SQL("show tags example")
+				SQL("show tags tag_simple")
 				CSV(header(true))
 				`,
 			ExpectCSV: []string{
 				"_ID,NAME,ROW_COUNT,MIN_TIME,MAX_TIME,RECENT_ROW_TIME,MIN_VALUE,MIN_VALUE_TIME,MAX_VALUE,MAX_VALUE_TIME",
 				"1,tag1,2,1692686707380411000,1692686708380411000,1692686708380411000,NULL,NULL,NULL,NULL",
-				"",
-				"",
+				"\n",
 			},
 		},
 		{
 			Name: "SQL_explain-select",
 			Script: `
-				SQL("explain select * from example where name = 'tag1'")
+				SQL("explain select * from tag_simple where name = 'tag1'")
 				CSV(header(true))
 				`,
 			ExpectCSV: []string{
 				"",
 				`" PROJECT"`,
 				`"  TAG READ (RAW)"`,
-				`"   KEYVALUE INDEX SCAN (_EXAMPLE_DATA_0)"`,
+				`"   KEYVALUE INDEX SCAN (_TAG_SIMPLE_DATA_0)"`,
 				`"    [KEY RANGE]"`,
 				`"     * IN ()"`,
-				`"   VOLATILE INDEX SCAN (_EXAMPLE_META)"`,
+				`"   VOLATILE INDEX SCAN (_TAG_SIMPLE_META)"`,
 				`"    [KEY RANGE]"`,
 				`"     * name = 'tag1'"`,
 				"", "", "",
@@ -247,22 +251,22 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
-			Name: "SQL_select-from-example",
+			Name: "SQL_select-from-table",
 			Script: `
-				SQL("select time, value from example where name = 'tag1'")
+				SQL("select time, value from tag_simple where name = 'tag1'")
 				CSV( precision(3), header(true) )
 				`,
 			ExpectCSV: []string{
 				"TIME,VALUE",
 				"1692686707380411000,0.100",
 				"1692686708380411000,0.200",
-				"", "",
+				"\n",
 			},
 		},
 		{
-			Name: "SQL_select-from-example-rownum",
+			Name: "SQL_select-from-table-rownum",
 			Script: `
-				SQL("select time, value from example where name = 'tag1'")
+				SQL("select time, value from tag_simple where name = 'tag1'")
 				PUSHKEY('test')
 				CSV( precision(3), header(true) )
 				`,
@@ -270,13 +274,14 @@ func TestTql(t *testing.T) {
 				"ROWNUM,TIME,VALUE",
 				"1,1692686707380411000,0.100",
 				"2,1692686708380411000,0.200",
-				"", "",
+				"\n",
 			},
 		},
 		{
 			Name: "SQL_create-tag-table",
 			Script: `
-				SQL("create tag table if not exists example( name varchar(40) primary key, time datetime basetime, value double summarized )")
+				SQL({create tag table if not exists tag_simple(
+					name varchar(40) primary key, time datetime basetime, value double summarized )})
 				MARKDOWN(html(true), rownum(true), heading(true), brief(true))
 				`,
 			ExpectText: loadLines("./test/sql_ddl_executed.txt"),
@@ -284,20 +289,20 @@ func TestTql(t *testing.T) {
 		{
 			Name: "QUERY_CSV",
 			Script: `
-				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
 				CSV( precision(3), header(true) )
 				`,
 			ExpectCSV: []string{
 				"TIME,VALUE",
 				"1692686707380411000,0.100",
 				"1692686708380411000,0.200",
-				"", "",
+				"\n",
 			},
 		},
 		{
 			Name: "QUERY_JSON-rows-flatten",
 			Script: `
-				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
 				JSON( precision(3), rowsFlatten(true) )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
@@ -310,7 +315,7 @@ func TestTql(t *testing.T) {
 		{
 			Name: "QUERY_JSON-rows-flatten-rownum",
 			Script: `
-				QUERY('value', from('example', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
 				JSON( precision(3), rowsFlatten(true), rownum(true) )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
@@ -321,23 +326,35 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_NDJSON",
+			Script: `
+				SQL("select time, value from tag_simple where name = 'tag1'")
+				NDJSON( timeformat('default'), tz('UTC') )
+				`,
+			ExpectText: []string{
+				`{"TIME":"2023-08-22 06:45:07.38","VALUE":0.1}`,
+				`{"TIME":"2023-08-22 06:45:08.38","VALUE":0.2}`,
+				"\n",
+			},
+		},
+		{
 			Name: "FAKE_INSERT",
 			Script: `
 				FAKE( linspace(0, 1, 3) )
 				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
-				INSERT('time', 'value', table('example'), tag('signal.3'))
+				INSERT('time', 'value', table('tag_simple'), tag('signal.3'))
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				require.Equal(t, `{"message":"3 rows inserted."}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable("example"))
+				require.NoError(t, flushTable("tag_simple"))
 			},
 		},
 		{
 			Name: "FAKE_INSERT-cleanup",
 			Script: `
-				SQL("delete from example where name = 'signal.3'")
+				SQL("delete from tag_simple where name = 'signal.3'")
 				MARKDOWN()
 				`,
 			ExpectText: []string{
@@ -353,19 +370,19 @@ func TestTql(t *testing.T) {
 				FAKE( linspace(0, 1, 3) )
 				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
 				PUSHVALUE(0, 'signal.append')
-				APPEND( table('example') )
+				APPEND( table('tag_simple') )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
 				require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
-				require.NoError(t, flushTable("example"))
+				require.NoError(t, flushTable("tag_simple"))
 			},
 		},
 		{
 			Name: "FAKE_APPEND-cleanup",
 			Script: `
-				SQL("delete from example where name = 'signal.append'")
+				SQL("delete from tag_simple where name = 'signal.append'")
 				MARKDOWN()
 				`,
 			ExpectText: []string{
@@ -386,6 +403,35 @@ func TestTql(t *testing.T) {
 			RunCondition: func() bool {
 				// FIXME: This test is not working on Windows
 				return runtime.GOOS != "windows"
+			},
+		},
+		{
+			Name: "CSV_CSV",
+			Script: `
+				CSV("1,line1\n2,line2\n3,\n4,line4")
+				CSV( heading(true) )
+				`,
+			ExpectCSV: []string{
+				"column0,column1",
+				"1,line1",
+				"2,line2",
+				"3,",
+				"4,line4",
+				"\n",
+			},
+		},
+		{
+			Name: "CSV_CSV_single_column",
+			Script: `
+				CSV("line1\nline2\n\nline4")
+				CSV( heading(true) )
+				`,
+			ExpectCSV: []string{
+				"column0",
+				"line1",
+				"line2",
+				"line4",
+				"\n",
 			},
 		},
 		{
@@ -580,6 +626,20 @@ func TestTql(t *testing.T) {
 				`|wave.cos|1676432362|0.913546|`,
 				`|wave.sin|1676432363|0.743144|`,
 				"",
+			},
+		},
+		{
+			Name: "CSV_NDJSON",
+			Script: `
+				CSV("1,line1\n2,line2\n3,\n4,line4")
+				NDJSON( rownum(true) )
+			`,
+			ExpectText: []string{
+				`{"ROWNUM":1,"column0":"1","column1":"line1"}`,
+				`{"ROWNUM":2,"column0":"2","column1":"line2"}`,
+				`{"ROWNUM":3,"column0":"3","column1":""}`,
+				`{"ROWNUM":4,"column0":"4","column1":"line4"}`,
+				"\n",
 			},
 		},
 		{
@@ -1117,7 +1177,7 @@ func TestScript(t *testing.T) {
 					};
 				},{
 					$.request("%s/db/query?q="+
-						encodeURIComponent("select name, time, value from example  limit 2"), {method: 'GET'})
+						encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: 'GET'})
 						.do(function(rsp) {
 							rsp.text(function(body){
 								obj = JSON.parse(body);

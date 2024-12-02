@@ -35,6 +35,20 @@ Content-Type: application/json
 POST {{ server }}/db/write/example
     ?timeformat=Default
     &tz=Local
+POST http://127.0.0.1:5654/db/query
+Content-Type: application/json
+
+{
+    "q": "select * from example limit 10",
+    "format": "json",
+    "timeformat": "Default",
+    "tz": "Local",
+    "transpose": true
+}
+
+###
+POST http://127.0.0.1:5654/db/write/example
+    ?timeformat=2006-01-02
 Content-Type: application/json
 
 {
