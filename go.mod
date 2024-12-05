@@ -70,8 +70,6 @@ require (
 	oss.terrastruct.com/d2 v0.5.1
 )
 
-replace github.com/machbase/neo-engine/v8 => ../neo-engine/
-
 require (
 	cdr.dev/slog v1.4.2-0.20221206192828-e4803b10ae17 // indirect
 	cloud.google.com/go/logging v1.9.0 // indirect
