@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type CompileErr string
@@ -27,6 +27,7 @@ type ExpectErr string
 type ExpectLog string
 type Payload string
 type MatchPrefix bool
+type ExpectFunc func(t *testing.T, result string)
 
 type Param = struct {
 	name  string
@@ -38,6 +39,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var compileErr string
 	var expectErr string
 	var expectLog string
+	var expectFunc ExpectFunc
 	var payload []byte
 	var params map[string][]string
 	var matchPrefix bool
@@ -55,6 +57,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			expectErr = string(v)
 		case ExpectLog:
 			expectLog = string(v)
+		case ExpectFunc:
+			expectFunc = v
 		case Payload:
 			payload = []byte(v)
 		case Param:
@@ -159,6 +163,10 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 		require.Nil(t, executeErr)
 	}
 
+	if expectFunc != nil {
+		expectFunc(t, w.String())
+		return
+	}
 	if expectErr == "" && expectLog == "" {
 		// case success
 		require.Nil(t, err)
@@ -188,16 +196,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			}
 
 			for n, expectLine := range expect {
-				if strings.HasPrefix(expectLine, "/r/") {
-					reg := regexp.MustCompile("^" + strings.TrimPrefix(expectLine, "/r/"))
-					if !reg.MatchString(resultLines[n]) {
-						t.Logf("Expected: %s", expectLine)
-						t.Logf("Actual  :    %s", resultLines[n])
-						t.Fail()
-					}
-				} else {
-					require.Equal(t, expectLine, resultLines[n], fmt.Sprintf("Expected(line#%d): %s", n, expectLine))
-				}
+				require.Equal(t, expectLine, resultLines[n], fmt.Sprintf("Expected(line#%d): %s", n, expectLine))
 			}
 		}
 		if strings.Contains(logString, "ERROR") || strings.Contains(logString, "WARN") {
@@ -328,10 +327,61 @@ func TestBoxplot(t *testing.T) {
 		`BOXPLOT(value(1), category(value(0)), order("A", "D","C","B","E"), boxplotInterp(true, false, true), boxplotOutput("dict"))`,
 		`JSON()`,
 	}
-	resultLines = []string{
-		`/r/{"data":{"columns":\["A","D","C","B","E"\],"types":\["dict","dict","dict","dict","dict"\],"rows":\[\[{"iqr":130,"lower":655,"max":1070,"min":650,"outlier":\[650\],"q1":850,"q2":930,"q3":980,"upper":1175},{"iqr":100,"lower":610,"max":920,"min":720,"outlier":null,"q1":760,"q2":810,"q3":860,"upper":1010},{"iqr":40,"lower":780,"max":970,"min":620,"outlier":\[620,720,720,950,970\],"q1":840,"q2":850,"q3":880,"upper":940},{"iqr":80,"lower":680,"max":960,"min":760,"outlier":null,"q1":800,"q2":840,"q3":880,"upper":1000},{"iqr":70,"lower":695,"max":950,"min":740,"outlier":null,"q1":800,"q2":810,"q3":870,"upper":975}\]\]},"success":true,"reason":"success","elapse":".+s"}`,
-	}
-	runTest(t, codeLines, resultLines)
+	runTest(t, codeLines, nil, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, `success`, gjson.Get(result, "reason").String())
+		require.Equal(t, `["A","D","C","B","E"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["dict","dict","dict","dict","dict"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, int64(130), gjson.Get(result, "data.rows.0.0.iqr").Int())
+		require.Equal(t, int64(655), gjson.Get(result, "data.rows.0.0.lower").Int())
+		require.Equal(t, int64(1070), gjson.Get(result, "data.rows.0.0.max").Int())
+		require.Equal(t, int64(650), gjson.Get(result, "data.rows.0.0.min").Int())
+		require.Equal(t, int64(850), gjson.Get(result, "data.rows.0.0.q1").Int())
+		require.Equal(t, int64(930), gjson.Get(result, "data.rows.0.0.q2").Int())
+		require.Equal(t, int64(980), gjson.Get(result, "data.rows.0.0.q3").Int())
+		require.Equal(t, int64(1175), gjson.Get(result, "data.rows.0.0.upper").Int())
+		require.Equal(t, `[650]`, gjson.Get(result, "data.rows.0.0.outlier").String())
+
+		require.Equal(t, int64(100), gjson.Get(result, "data.rows.0.1.iqr").Int())
+		require.Equal(t, int64(610), gjson.Get(result, "data.rows.0.1.lower").Int())
+		require.Equal(t, int64(920), gjson.Get(result, "data.rows.0.1.max").Int())
+		require.Equal(t, int64(720), gjson.Get(result, "data.rows.0.1.min").Int())
+		require.Equal(t, int64(760), gjson.Get(result, "data.rows.0.1.q1").Int())
+		require.Equal(t, int64(810), gjson.Get(result, "data.rows.0.1.q2").Int())
+		require.Equal(t, int64(860), gjson.Get(result, "data.rows.0.1.q3").Int())
+		require.Equal(t, int64(1010), gjson.Get(result, "data.rows.0.1.upper").Int())
+		require.Equal(t, ``, gjson.Get(result, "data.rows.0.1.outlier").String())
+
+		require.Equal(t, int64(40), gjson.Get(result, "data.rows.0.2.iqr").Int())
+		require.Equal(t, int64(780), gjson.Get(result, "data.rows.0.2.lower").Int())
+		require.Equal(t, int64(970), gjson.Get(result, "data.rows.0.2.max").Int())
+		require.Equal(t, int64(620), gjson.Get(result, "data.rows.0.2.min").Int())
+		require.Equal(t, int64(840), gjson.Get(result, "data.rows.0.2.q1").Int())
+		require.Equal(t, int64(850), gjson.Get(result, "data.rows.0.2.q2").Int())
+		require.Equal(t, int64(880), gjson.Get(result, "data.rows.0.2.q3").Int())
+		require.Equal(t, int64(940), gjson.Get(result, "data.rows.0.2.upper").Int())
+		require.Equal(t, `[620,720,720,950,970]`, gjson.Get(result, "data.rows.0.2.outlier").String())
+
+		require.Equal(t, int64(80), gjson.Get(result, "data.rows.0.3.iqr").Int())
+		require.Equal(t, int64(680), gjson.Get(result, "data.rows.0.3.lower").Int())
+		require.Equal(t, int64(960), gjson.Get(result, "data.rows.0.3.max").Int())
+		require.Equal(t, int64(760), gjson.Get(result, "data.rows.0.3.min").Int())
+		require.Equal(t, int64(800), gjson.Get(result, "data.rows.0.3.q1").Int())
+		require.Equal(t, int64(840), gjson.Get(result, "data.rows.0.3.q2").Int())
+		require.Equal(t, int64(880), gjson.Get(result, "data.rows.0.3.q3").Int())
+		require.Equal(t, int64(1000), gjson.Get(result, "data.rows.0.3.upper").Int())
+		require.Equal(t, ``, gjson.Get(result, "data.rows.0.3.outlier").String())
+
+		require.Equal(t, int64(70), gjson.Get(result, "data.rows.0.4.iqr").Int())
+		require.Equal(t, int64(695), gjson.Get(result, "data.rows.0.4.lower").Int())
+		require.Equal(t, int64(950), gjson.Get(result, "data.rows.0.4.max").Int())
+		require.Equal(t, int64(740), gjson.Get(result, "data.rows.0.4.min").Int())
+		require.Equal(t, int64(800), gjson.Get(result, "data.rows.0.4.q1").Int())
+		require.Equal(t, int64(810), gjson.Get(result, "data.rows.0.4.q2").Int())
+		require.Equal(t, int64(870), gjson.Get(result, "data.rows.0.4.q3").Int())
+		require.Equal(t, int64(975), gjson.Get(result, "data.rows.0.4.upper").Int())
+		require.Equal(t, ``, gjson.Get(result, "data.rows.0.4.outlier").String())
+	}))
 
 	codeLines = []string{
 		src,
@@ -1355,11 +1405,12 @@ func TestWhen(t *testing.T) {
 		`WHEN( glob("msg*", value(0)), doLog("hello", value(0), value(1)) )`,
 		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
 	}
-	resultLines = []string{
-		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
-	}
 	resultLog := ExpectLog("[INFO] hello msg123 0\n[INFO] hello msg123 2")
-	runTest(t, codeLines, resultLines, resultLog)
+	runTest(t, codeLines, nil, resultLog, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
 
 	var notifiedValues = []string{}
 	var httpClient *http.Client
@@ -1384,10 +1435,11 @@ func TestWhen(t *testing.T) {
 		`WHEN( glob("msg*", value(0)), doHttp("GET", strSprintf("http://example.com/notify?v=%f", value(1)), nil) )`,
 		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
 	}
-	resultLines = []string{
-		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
-	}
-	runTest(t, codeLines, resultLines, httpClient)
+	runTest(t, codeLines, nil, httpClient, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
 	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
 	require.Equal(t, "0.000000", notifiedValues[0])
 	require.Equal(t, "2.000000", notifiedValues[1])
@@ -1422,10 +1474,11 @@ func TestWhen(t *testing.T) {
 		`WHEN( glob("msg*", value(0)), doHttp("POST", "http://example.com/notify", value()) )`,
 		`INSERT(bridge("sqlite"), table("test_when"), "name", "value")`,
 	}
-	resultLines = []string{
-		`/r/{"success":true,"reason":"success","elapse":".+","data":{"message":"1 row inserted."}}`,
-	}
-	runTest(t, codeLines, resultLines, httpClient)
+	runTest(t, codeLines, nil, httpClient, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, "1 row inserted.", gjson.Get(result, "data.message").String())
+	}))
 	require.Equal(t, 2, len(notifiedValues), "notified should call 2 time, but %d", len(notifiedValues))
 	require.Equal(t, "msg123,0", notifiedValues[0])
 	require.Equal(t, "msg123,2", notifiedValues[1])
@@ -2411,8 +2464,13 @@ func TestDict(t *testing.T) {
 		`MAPVALUE(0, dict("key", value(0)) )`,
 		"JSON(precision(0))",
 	}
-	resultLines = []string{`/r/{"data":{"columns":\["x"\],"types":\["double"\],"rows":\[\[{"key":0}\],\[{"key":1}\]\]},"success":true,"reason":"success","elapse":".+"}`}
-	runTest(t, codeLines, resultLines)
+	runTest(t, codeLines, nil, ExpectFunc(func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, `["x"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["double"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, `[[{"key":0}],[{"key":1}]]`, gjson.Get(result, "data.rows").String())
+	}))
 
 	codeLines = []string{
 		"FAKE( arrange(0, 1, 1) )",

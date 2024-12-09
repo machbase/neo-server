@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type MqttTestCase struct {
@@ -29,8 +29,10 @@ type MqttTestCase struct {
 	Payload    []byte
 	Properties map[string]string
 
-	Subscribe string
-	Expect    any
+	Subscribe  string
+	ExpectFunc func(*testing.T, []byte)
+	ExpectCSV  []string
+	ExpectBin  []byte
 }
 
 func runMqttTest(t *testing.T, tc *MqttTestCase) {
@@ -42,7 +44,6 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 	wg := sync.WaitGroup{}
 
 	var recvPayload []byte
-	// var timeout = 2 * time.Second
 
 	cliCfg := autopaho.ClientConfig{
 		ServerUrls:                    []*url.URL{brokerUrl},
@@ -128,126 +129,130 @@ func runMqttTest(t *testing.T, tc *MqttTestCase) {
 	if tc.Subscribe != "" {
 		wg.Wait() // wait message
 	}
-	if tc.Expect == nil {
+
+	if tc.ExpectFunc != nil {
+		tc.ExpectFunc(t, recvPayload)
 		return
 	}
-
-	switch expect := tc.Expect.(type) {
-	case *QueryResponse:
-		actual := QueryResponse{}
-		if err := json.Unmarshal(recvPayload, &actual); err != nil {
-			t.Logf("Test %q response malformed; %s", tc.Name, err.Error())
-			t.Fail()
-		}
-		require.Equal(t, expect.Success, actual.Success)
-		require.Equal(t, expect.Reason, actual.Reason)
-		expectJson, _ := json.Marshal(expect.Data)
-		actualJson, _ := json.Marshal(actual.Data)
-		require.JSONEq(t, string(expectJson), string(actualJson), string(recvPayload))
-
-	case string:
-		actual := string(recvPayload)
-		if strings.HasPrefix(expect, "/r/") {
-			reg := regexp.MustCompile("^" + strings.TrimPrefix(expect, "/r/"))
-			if !reg.MatchString(actual) {
-				t.Logf("Test  : %s", tc.Name)
-				t.Logf("Expect: %s", expect)
-				t.Logf("Actual: %s", actual)
-				t.Fail()
-			}
-		} else {
-			require.Equal(t, expect, actual)
-		}
-	case []byte:
-		actual := recvPayload
-		require.Equal(t, hex.Dump(expect), hex.Dump(actual))
+	if tc.ExpectCSV != nil {
+		require.EqualValues(t, strings.Join(tc.ExpectCSV, "\n"), string(recvPayload))
+		return
+	}
+	if tc.ExpectBin != nil {
+		require.Equal(t, hex.Dump(tc.ExpectBin), hex.Dump(recvPayload))
+		return
 	}
 }
 
 func TestMqttQuery(t *testing.T) {
 	tests := []MqttTestCase{
 		{
-			Name:      "db/query simple",
+			Name:      "query_simple",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'" }`),
 			Subscribe: "db/reply",
-			Expect: &QueryResponse{
-				Success: true,
-				Reason:  "success",
-				Data: &QueryData{
-					Columns: []string{"NAME", "TIME", "VALUE"},
-					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
-					Rows: [][]any{
-						{"temp", testTimeTick.UnixNano(), 3.14},
-					},
-				},
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(strPayload, "data.columns").String(), strPayload)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(strPayload, "data.types").String(), strPayload)
+				require.Equal(t, `temp`, gjson.Get(strPayload, "data.rows.0.0").String(), strPayload)
+				require.Equal(t, testTimeTick.UnixNano(), gjson.Get(strPayload, "data.rows.0.1").Int(), strPayload)
+				require.Equal(t, 3.14, gjson.Get(strPayload, "data.rows.0.2").Float(), strPayload)
 			},
 		},
 		{
-			Name:      "db/query simple timeformat",
+			Name:      "query_simple_timeformat",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT" }`),
 			Subscribe: "db/reply",
-			Expect: &QueryResponse{
-				Success: true,
-				Reason:  "success",
-				Data: &QueryData{
-					Columns: []string{"NAME", "TIME", "VALUE"},
-					Types:   []api.DataType{api.DataTypeString, api.DataTypeDatetime, api.DataTypeFloat64},
-					Rows: [][]any{
-						{"temp", "2024-01-15 04:10:59", 3.14},
-					},
-				},
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(strPayload, "data.columns").String(), strPayload)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(strPayload, "data.types").String(), strPayload)
+				require.Equal(t, `temp`, gjson.Get(strPayload, "data.rows.0.0").String(), strPayload)
+				require.Equal(t, "2024-01-15 04:10:59", gjson.Get(strPayload, "data.rows.0.1").String(), strPayload)
+				require.Equal(t, 3.14, gjson.Get(strPayload, "data.rows.0.2").Float(), strPayload)
 			},
 		},
 		{
-			Name:      "db/query json timeformat rowsFlatten",
+			Name:      "query_json_timeformat_rowsFlatten",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT", "rowsFlatten": true }`),
 			Subscribe: "db/reply",
-			Expect:    `/r/{"data":{"columns":\["NAME","TIME","VALUE"\],"types":\["string","datetime","double"\],"rows":\["temp","2024-01-15 04:10:59",3.14\]},"success":true,"reason":"success","elapse":".*"}`,
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(strPayload, "data.columns").String(), strPayload)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(strPayload, "data.types").String(), strPayload)
+				require.Equal(t, `temp`, gjson.Get(strPayload, "data.rows.0").String(), strPayload)
+				require.Equal(t, "2024-01-15 04:10:59", gjson.Get(strPayload, "data.rows.1").String(), strPayload)
+				require.Equal(t, 3.14, gjson.Get(strPayload, "data.rows.2").Float(), strPayload)
+			},
 		},
 		{
-			Name:      "db/query json transpose",
+			Name:      "query_json_transpose",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "transpose": true }`),
 			Subscribe: "db/reply",
-			Expect:    `/r/{"data":{"columns":\["NAME","TIME","VALUE"\],"types":\["string","datetime","double"\],"cols":\[\["temp"\],\[1705291859000000000\],\[3.14\]\]},"success":true,"reason":"success","elapse":".+"}`,
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(strPayload, "data.columns").String(), strPayload)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(strPayload, "data.types").String(), strPayload)
+				require.Equal(t, `["temp"]`, gjson.Get(strPayload, "data.cols.0").String(), strPayload)
+				require.Equal(t, "[1705291859000000000]", gjson.Get(strPayload, "data.cols.1").String(), strPayload)
+				require.Equal(t, `[3.14]`, gjson.Get(strPayload, "data.cols.2").String(), strPayload)
+			},
 		},
 		{
-			Name:      "db/query json timeformat rowsArray",
+			Name:      "query_json_timeformat_rowsArray",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format":"json", "tz":"UTC", "timeformat": "DEFAULT", "rowsArray": true }`),
 			Subscribe: "db/reply",
-			Expect:    `/r/{"data":{"columns":\["NAME","TIME","VALUE"\],"types":\["string","datetime","double"\],"rows":\[{"NAME":"temp","TIME":"2024-01-15 04:10:59","VALUE":3.14}\]},"success":true,"reason":"success","elapse":".+"}`,
+			ExpectFunc: func(t *testing.T, payload []byte) {
+				strPayload := string(payload)
+				require.True(t, gjson.Get(strPayload, "success").Bool(), strPayload)
+				require.Equal(t, "success", gjson.Get(strPayload, "reason").String(), strPayload)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(strPayload, "data.columns").String(), strPayload)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(strPayload, "data.types").String(), strPayload)
+				require.Equal(t, `temp`, gjson.Get(strPayload, "data.rows.0.NAME").String(), strPayload)
+				require.Equal(t, `2024-01-15 04:10:59`, gjson.Get(strPayload, "data.rows.0.TIME").String(), strPayload)
+				require.Equal(t, 3.14, gjson.Get(strPayload, "data.rows.0.VALUE").Float(), strPayload)
+			},
 		},
 		{
-			Name:      "db/query simple, format=csv, reply",
+			Name:      "query_simple_format=csv_reply",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format": "csv", "reply":"db/reply/123" }`),
 			Subscribe: "db/reply/123",
-			Expect:    "NAME,TIME,VALUE\ntemp,1705291859000000000,3.14\n\n",
+			ExpectCSV: []string{"NAME,TIME,VALUE", "temp,1705291859000000000,3.14", "\n"},
 		},
 		{
-			Name:      "db/query simple, format=csv",
+			Name:      "query_simple_format=csv",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format": "csv" }`),
 			Subscribe: "db/reply",
-			Expect:    "NAME,TIME,VALUE\ntemp,1705291859000000000,3.14\n\n",
+			ExpectCSV: []string{"NAME,TIME,VALUE", "temp,1705291859000000000,3.14", "\n"},
 		},
 		{
-			Name:      "db/query simple, format=csv, compress",
+			Name:      "query_simple_format=csv_compress",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format": "csv", "compress":"gzip" }`),
 			Subscribe: "db/reply",
-			Expect:    compress([]byte("NAME,TIME,VALUE\ntemp,1705291859000000000,3.14\n\n")),
+			ExpectBin: compress([]byte("NAME,TIME,VALUE\ntemp,1705291859000000000,3.14\n\n")),
 		},
 		{
-			Name:      "db/query simple, format=csv, timeformat",
+			Name:      "query_simple_format=csv_timeformat_default",
 			Topic:     "db/query",
 			Payload:   []byte(`{"q": "select * from example where name = 'temp'", "format": "csv", "tz": "UTC", "timeformat": "DEFAULT" }`),
 			Subscribe: "db/reply",
-			Expect:    "NAME,TIME,VALUE\ntemp,2024-01-15 04:10:59,3.14\n\n",
+			ExpectCSV: []string{"NAME,TIME,VALUE", "temp,2024-01-15 04:10:59,3.14", "\n"},
 		},
 	}
 
