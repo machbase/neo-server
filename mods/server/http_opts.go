@@ -65,6 +65,13 @@ func WithHttpLicenseFilePath(path string) HttpOption {
 	}
 }
 
+// End User License Agreement (EULA) file path
+func WithHttpEulaFilePath(path string) HttpOption {
+	return func(s *httpd) {
+		s.eulaFilePath = path
+	}
+}
+
 func WithHttpEnableWeb(enable bool) HttpOption {
 	return func(s *httpd) {
 		s.disableWeb = !enable

@@ -13,6 +13,9 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 )
 
+//go:embed eula.txt
+var eulaTxt string
+
 //go:embed assets/*
 var assetsDir embed.FS
 

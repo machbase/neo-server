@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -92,7 +93,11 @@ type httpd struct {
 	tqlLoader tql.Loader
 	serverFs  *ssfs.SSFS
 
+	eulaPassed             bool
+	eulaFilePath           string
 	licenseFilePath        string
+	licenseStatusLastTime  time.Time
+	licenseStatus          string
 	debugMode              bool
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
@@ -222,6 +227,7 @@ func (svr *httpd) Router() *gin.Engine {
 			} else {
 				group.StaticFS(contentBase, GetAssets(contentBase))
 			}
+			group.Any("/api/license/eula", svr.handleEula)
 			group.POST("/api/login", svr.handleLogin)
 			group.GET("/api/term/:term_id/data", svr.handleTermData)
 			group.GET("/api/console/:console_id/data", svr.handleConsoleData)
@@ -514,6 +520,8 @@ type LoginCheckRsp struct {
 	Elapse         string                   `json:"elapse"`
 	ServerInfo     *ServerInfo              `json:"server,omitempty"`
 	ExperimentMode bool                     `json:"experimentMode"`
+	EulaRequired   bool                     `json:"eulaRequired,omitempty"`
+	LicenseStatus  string                   `json:"licenseStatus,omitempty"`
 	Shells         []*model.ShellDefinition `json:"shells,omitempty"`
 }
 
@@ -734,20 +742,68 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, "")
 	}
 
-	options := &LoginCheckRsp{
-		Success: true,
-		Reason:  "success",
+	if !svr.eulaPassed {
+		if _, err := os.Stat(svr.eulaFilePath); err == nil {
+			if content, err := os.ReadFile(svr.eulaFilePath); err == nil {
+				h := sha1.New()
+				h.Write(content)
+				installedEulaHash := h.Sum(nil)
+				h = sha1.New()
+				h.Write([]byte(eulaTxt))
+				currentEulaHash := h.Sum(nil)
+				svr.eulaPassed = bytes.Equal(installedEulaHash, currentEulaHash)
+			}
+		}
 	}
-	options.ServerInfo = svr.getServerInfo()
+
+	if svr.licenseStatusLastTime.IsZero() || time.Since(svr.licenseStatusLastTime) > 30*time.Minute {
+		svr.licenseStatusLastTime = time.Now()
+		svr.licenseStatus = "Unknown"
+		if conn, err := svr.getUserConnection(ctx); err == nil {
+			if _, err = api.GetLicenseInfo(ctx, conn); err == nil {
+				svr.licenseStatus = "Valid"
+			}
+			conn.Close()
+		}
+	}
+
+	rsp := &LoginCheckRsp{
+		Success:       true,
+		EulaRequired:  !svr.eulaPassed,
+		LicenseStatus: svr.licenseStatus,
+		Reason:        "success",
+	}
+	rsp.ServerInfo = svr.getServerInfo()
 	if svr.experimentModeProvider != nil {
-		options.ExperimentMode = svr.experimentModeProvider()
+		rsp.ExperimentMode = svr.experimentModeProvider()
 	}
 	if svr.webShellProvider != nil {
-		options.Shells = svr.webShellProvider.GetAllShells(true)
+		rsp.Shells = svr.webShellProvider.GetAllShells(true)
 	}
-	options.Elapse = time.Since(tick).String()
+	rsp.Elapse = time.Since(tick).String()
 
-	ctx.JSON(http.StatusOK, options)
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) handleEula(ctx *gin.Context) {
+	switch ctx.Request.Method {
+	case http.MethodGet:
+		ctx.String(http.StatusOK, eulaTxt)
+	case http.MethodPost:
+		if err := os.WriteFile(svr.eulaFilePath, []byte(eulaTxt), 0644); err != nil {
+			ctx.JSON(http.StatusInternalServerError, map[string]any{"success": false, "reason": err.Error()})
+		} else {
+			ctx.JSON(http.StatusOK, map[string]any{"success": true, "reason": "success"})
+		}
+	case http.MethodDelete:
+		if err := os.Remove(svr.eulaFilePath); err != nil {
+			ctx.JSON(http.StatusInternalServerError, map[string]any{"success": false, "reason": err.Error()})
+		} else {
+			ctx.JSON(http.StatusOK, map[string]any{"success": true, "reason": "success"})
+		}
+	default:
+		ctx.String(http.StatusMethodNotAllowed, "")
+	}
 }
 
 func (svr *httpd) getServerInfo() *ServerInfo {

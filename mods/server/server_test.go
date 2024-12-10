@@ -51,6 +51,7 @@ func TestMain(m *testing.M) {
 	httpOpts := []HttpOption{
 		WithHttpListenAddress("tcp://127.0.0.1:0"),
 		WithHttpTqlLoader(tqlLoader),
+		WithHttpEulaFilePath("./testsuite_tmp/eula.txt"),
 		WithHttpServerInfoFunc(func() (*mgmt.ServerInfoResponse, error) {
 			return &mgmt.ServerInfoResponse{
 				Success: true,
