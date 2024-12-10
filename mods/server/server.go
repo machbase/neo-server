@@ -479,10 +479,14 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// EULA installation path
+	eulaFilePath := filepath.Join(prefdirPath, "EULA.TXT")
+
 	// http server
 	if len(s.Http.Listeners) > 0 {
 		opts := []HttpOption{
 			WithHttpLicenseFilePath(s.licenseFilePath),
+			WithHttpEulaFilePath(eulaFilePath),
 			WithHttpListenAddress(s.Http.Listeners...),
 			WithHttpAuthServer(s, s.Http.EnableTokenAuth),
 			WithHttpTqlLoader(tqlLoader),

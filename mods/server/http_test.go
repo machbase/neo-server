@@ -330,6 +330,97 @@ func jwtLogin(username, password string) (string, string, error) {
 	return loginRsp.AccessToken, loginRsp.RefreshToken, nil
 }
 
+func TestLicense(t *testing.T) {
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+	require.NotEmpty(t, at)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		expect func(t *testing.T, rsp *http.Response)
+	}{
+		{
+			name:   "get-check-eula-required",
+			method: http.MethodGet,
+			path:   "/web/api/check",
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusOK, rsp.StatusCode)
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, true, gjson.GetBytes(body, "success").Bool())
+				require.Equal(t, "success", gjson.GetBytes(body, "reason").String())
+				require.Equal(t, true, gjson.GetBytes(body, "eulaRequired").Bool())
+				require.Equal(t, "Valid", gjson.GetBytes(body, "licenseStatus").String())
+			},
+		},
+		{
+			name:   "get-eula",
+			method: http.MethodGet,
+			path:   "/web/api/license/eula",
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusOK, rsp.StatusCode)
+				require.Equal(t, "text/plain; charset=utf-8", rsp.Header.Get("Content-Type"))
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, eulaTxt, string(body))
+			},
+		},
+		{
+			name:   "post-eula",
+			method: http.MethodPost,
+			path:   "/web/api/license/eula",
+			expect: func(t *testing.T, rsp *http.Response) {
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+				require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+				require.Equal(t, true, gjson.GetBytes(body, "success").Bool())
+				require.Equal(t, "success", gjson.GetBytes(body, "reason").String())
+			},
+		},
+		{
+			name:   "get-check-eula",
+			method: http.MethodGet,
+			path:   "/web/api/check",
+			expect: func(t *testing.T, rsp *http.Response) {
+				require.Equal(t, http.StatusOK, rsp.StatusCode)
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, true, gjson.GetBytes(body, "success").Bool())
+				require.Equal(t, "success", gjson.GetBytes(body, "reason").String())
+				require.Equal(t, false, gjson.GetBytes(body, "eulaRequired").Bool(), string(body))
+				require.Equal(t, "Valid", gjson.GetBytes(body, "licenseStatus").String())
+			},
+		},
+		{
+			name:   "delete-eula",
+			method: http.MethodDelete,
+			path:   "/web/api/license/eula",
+			expect: func(t *testing.T, rsp *http.Response) {
+				body, err := io.ReadAll(rsp.Body)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusOK, rsp.StatusCode, string(body))
+				require.Equal(t, "application/json; charset=utf-8", rsp.Header.Get("Content-Type"))
+				require.Equal(t, true, gjson.GetBytes(body, "success").Bool())
+				require.Equal(t, "success", gjson.GetBytes(body, "reason").String())
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(tc.method, httpServerAddress+tc.path, nil)
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			tc.expect(t, rsp)
+			rsp.Body.Close()
+		})
+	}
+}
+
 // Test /web/api/md
 func TestMarkdown(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")

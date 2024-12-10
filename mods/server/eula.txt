@@ -1,0 +1,126 @@
+
+SOFTWARE LICENSE AGREEMENT
+
+This Software License Agreement ("Agreement") is made and entered into by and
+between Machbase USA, Inc., a corporation organized under the laws of the United
+States ("Company"), and the individual or entity obtaining a license to use
+the software product known as "Machbase Neo" ("Licensee").
+
+This Agreement governs Licensee’s use of the software, including any updates,
+upgrades, or accompanying documentation provided by the Company (collectively
+referred to as the "Software"). By installing, copying, or using the Software, Licensee
+agrees to be bound by the terms and conditions set forth below.
+
+1. GRANT OF LICENSE
+
+1.1 License Grant: Subject to the terms and conditions of this Agreement, the
+    Company hereby grants the Licensee a non-exclusive, non-transferable, and
+    revocable license to use the Software solely for its intended purpose, as described
+    in the accompanying documentation.
+
+1.2 License for Non-Commercial Use: The Software may be freely distributed, copied,
+    and used for non-commercial purposes, including academic, research, and personal
+    projects, provided that all copyright notices and proprietary markings remain intact.
+
+1.3 License Restrictions: For commercial use, Licensee may not:
+    - Reverse engineer, decompile, or disassemble the Software, except to the
+      extent expressly permitted by applicable law.
+    - Transfer, sublicense, rent, lease, or distribute the Software without prior written
+      consent from the Company.
+    - Use the Software for any purpose other than those expressly permitted under
+      this Agreement.
+
+1.4 Open Source Components: The Software may include open-source components
+    that are governed by their respective open-source licenses. Licensee agrees to
+    comply with the terms of such licenses, which are incorporated herein by reference.
+
+1.5 Commercial Libraries: The Software may link to proprietary commercial libraries
+    licensed to the Company. Such libraries are provided solely for use with the Software,
+    and Licensee may not use them independently or outside the scope of this Agreement.
+
+2. OWNERSHIP AND INTELLECTUAL PROPERTY
+
+2.1 Ownership: The Software is licensed, not sold. All rights, title, and interest in and
+    to the Software, including all intellectual property rights, remain the exclusive
+    property of the Company or its licensors.
+
+2.2 Third-Party Software: The Software may include components licensed from third
+    parties. Such components are governed by the terms provided by their respective licensors.
+
+3. SOFTWARE UPDATES AND EXTERNAL COMMUNICATION
+
+3.1 Updates: The Company may, at its sole discretion, provide updates, patches, or
+    upgrades to the Software. Such updates are governed by the terms of this Agreement
+    unless otherwise specified.
+
+3.2 External Communication: To ensure optimal functionality and the availability of
+    updates, the Software may periodically connect to external servers to check for
+    updates and transmit version information, including but not limited to the current
+    version, configuration details, and system compatibility data. By using the Software,
+    Licensee consents to such communication and data transmission.
+
+4. TERM AND TERMINATION
+
+4.1 Term: This Agreement is effective upon installation or use of the Software and
+    continues until terminated.
+
+4.2 Termination: The Company may terminate this Agreement immediately if Licensee
+    breaches any provision of this Agreement. Upon termination, Licensee must cease all
+    use of the Software and destroy all copies. This termination clause does not apply to
+    non-commercial use of the Software.
+
+5. DISCLAIMER OF WARRANTIES
+
+5.1 No Warranty: The Software is provided "AS IS" without any express or implied
+    warranties, including but not limited to warranties of merchantability, fitness for a
+    particular purpose, or non-infringement. The Company does not warrant that the
+    Software will meet Licensee’s requirements or operate uninterrupted or error-free.
+
+5.2 Third-Party Software Disclaimer: The Company disclaims all liability for any issues
+    arising from open-source components or third-party libraries included with the Software.
+
+6. LIMITATION OF LIABILITY
+
+6.1 Exclusion of Damages: In no event shall the Company be liable for any indirect,
+    incidental, special, consequential, or punitive damages, including but not limited to
+    loss of profits or data, arising out of or related to this Agreement.
+
+6.2 Liability Cap: The Company’s total liability for any claims under this Agreement
+    shall not exceed the amount paid by the Licensee for the Software.
+
+7. CONFIDENTIALITY
+
+7.1 Confidential Information: Licensee agrees not to disclose any non-public
+    information provided by the Company, including but not limited to technical data,
+    pricing, or Software performance metrics.
+
+8. GOVERNING LAW AND DISPUTE RESOLUTION
+
+8.1 Governing Law: This Agreement shall be governed by and construed in
+    accordance with the laws of the State of California, United States, without regard to its
+    conflict of laws principles.
+
+8.2 Dispute Resolution: Any disputes arising under this Agreement shall be resolved
+    through binding arbitration in accordance with the rules of the American Arbitration
+    Association. The arbitration shall be conducted in San Francisco, California, and the
+    language of arbitration shall be English.
+
+9. GENERAL PROVISIONS
+
+9.1 Entire Agreement: This Agreement constitutes the entire agreement between the parties
+    and supersedes all prior agreements or understandings, whether written or oral,
+    relating to the subject matter herein.
+
+9.2 Amendments: Any modifications or amendments to this Agreement must be made in writing
+    and signed by both parties.
+
+9.3 Severability: If any provision of this Agreement is found to be unenforceable,
+    the remaining provisions shall remain in full force and effect.
+
+Acknowledgment 
+    By installing or using the Software, Licensee acknowledges that they have read,
+    understood, and agreed to be bound by the terms and conditions of this Agreement.
+
+Machbase USA, Inc. Contact Information: sales@machbase.com
+
+Effective Date: 01/01/2025
