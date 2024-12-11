@@ -350,6 +350,47 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, int64(1), result.RowsAffected())
 }
 
+func InsertMeta(t *testing.T, db api.Database, ctx context.Context) {
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// create tag table
+	result := conn.Exec(ctx, api.SqlTidy(`
+		CREATE TAG TABLE MYTAG (
+			name varchar(32) primary key,
+			time datetime basetime,
+			value double summarized
+		) METADATA(
+			factory varchar(32),
+			equipment varchar(64) 
+		)`))
+	require.NoError(t, result.Err())
+
+	result = conn.Exec(ctx, "INSERT INTO MYTAG METADATA(name, factory, equipment) values('FA1_CNC', 'FA1', 'CNC')")
+	require.NoError(t, result.Err())
+	result = conn.Exec(ctx, "INSERT INTO MYTAG METADATA(name, factory, equipment) values('FA4_MILLING', 'FA4', 'MILLING')")
+	require.NoError(t, result.Err())
+
+	// flush
+	result = conn.Exec(ctx, "EXEC table_flush(MYTAG)")
+	require.NoError(t, result.Err(), "table_flush fail")
+
+	// select tag metadata
+	rows, err := conn.Query(ctx, "SELECT _id, name, factory, equipment FROM _MYTAG_META")
+	require.NoError(t, err)
+	var id, name, factory, equipment string
+	for rows.Next() {
+		require.NoError(t, rows.Scan(&id, &name, &factory, &equipment))
+		fmt.Printf("id: %s, name: %s, factory: %s, equipment: %s\n", id, name, factory, equipment)
+	}
+	rows.Close()
+
+	// drop tag table
+	result = conn.Exec(ctx, "DROP TABLE MYTAG")
+	require.NoError(t, result.Err())
+}
+
 func InsertNewTags(t *testing.T, db api.Database, ctx context.Context) {
 	expectCount := 1000
 	wg := sync.WaitGroup{}
