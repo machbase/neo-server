@@ -760,8 +760,8 @@ func (svr *httpd) handleCheck(ctx *gin.Context) {
 		svr.licenseStatusLastTime = time.Now()
 		svr.licenseStatus = "Unknown"
 		if conn, err := svr.getUserConnection(ctx); err == nil {
-			if _, err = api.GetLicenseInfo(ctx, conn); err == nil {
-				svr.licenseStatus = "Valid"
+			if nfo, err := api.GetLicenseInfo(ctx, conn); err == nil {
+				svr.licenseStatus = nfo.LicenseStatus
 			}
 			conn.Close()
 		}

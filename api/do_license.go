@@ -15,6 +15,8 @@ func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
 	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate); err != nil {
 		return nil, err
 	}
+	// TODO: get license status
+	ret.LicenseStatus = "Valid"
 	return ret, nil
 }
 

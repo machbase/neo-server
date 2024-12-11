@@ -79,13 +79,14 @@ type IndexInfo struct {
 }
 
 type LicenseInfo struct {
-	Id          string `json:"id"`
-	Type        string `json:"type"`
-	Customer    string `json:"customer"`
-	Project     string `json:"project"`
-	CountryCode string `json:"countryCode"`
-	InstallDate string `json:"installDate"`
-	IssueDate   string `json:"issueDate"`
+	Id            string `json:"id"`
+	Type          string `json:"type"`
+	Customer      string `json:"customer"`
+	Project       string `json:"project"`
+	CountryCode   string `json:"countryCode"`
+	InstallDate   string `json:"installDate"`
+	IssueDate     string `json:"issueDate"`
+	LicenseStatus string `json:"licenseStatus,omitempty"`
 }
 
 type TagInfo struct {
