@@ -185,7 +185,20 @@ func doImport(ctx *action.ActionContext) {
 	var appender api.Appender
 	var lineno int = 0
 
-	hold := []string{}
+	holder := ""
+	columns := strings.Join(desc.Columns.Names(), ",")
+	if cmd.Method == "insert" || desc.Flag == api.TableFlagMeta {
+		hold := []string{}
+		for i := 0; i < len(desc.Columns); i++ {
+			hold = append(hold, "?")
+		}
+		holder = strings.Join(hold, ",")
+	}
+	tableName := strings.ToUpper(cmd.Table)
+	if desc.Flag == api.TableFlagMeta {
+		tableName = strings.TrimSuffix(tableName, "_META")
+	}
+
 	tick := time.Now()
 	for ctx.Ctx.Err() == nil {
 		vals, _, err := decoder.NextRow()
@@ -201,19 +214,22 @@ func doImport(ctx *action.ActionContext) {
 			ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
 			break
 		}
-		if cmd.Method == "insert" {
-			for i := 0; i < len(desc.Columns); i++ {
-				hold = append(hold, "?")
-			}
-			query := fmt.Sprintf("insert into %s values(%s)", cmd.Table, strings.Join(hold, ","))
+
+		if desc.Flag == api.TableFlagMeta {
+			query := fmt.Sprintf("insert into %s metadata(%s) values(%s)", tableName, columns, holder)
 			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
 				ctx.Println(result.Err().Error())
 				break
 			}
-			hold = hold[:0]
+		} else if cmd.Method == "insert" {
+			query := fmt.Sprintf("insert into %s values(%s)", tableName, holder)
+			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
+				ctx.Println(result.Err().Error())
+				break
+			}
 		} else { // append
 			if appender == nil {
-				appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table)
+				appender, err = ctx.Conn.Appender(ctx.Ctx, tableName)
 				if err != nil {
 					ctx.Println("ERR", err.Error())
 					break

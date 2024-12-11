@@ -34,6 +34,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		License,
 		DescribeTable,
 		InsertAndQuery,
+		InsertMeta,
 		AppendTag,
 		AppendTagNotExist,
 		ShowTables,
