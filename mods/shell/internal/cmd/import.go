@@ -195,7 +195,8 @@ func doImport(ctx *action.ActionContext) {
 		holder = strings.Join(hold, ",")
 	}
 	tableName := strings.ToUpper(cmd.Table)
-	if desc.Flag == api.TableFlagMeta {
+	if desc.Flag == api.TableFlagMeta && strings.HasPrefix(tableName, "_") && strings.HasSuffix(tableName, "_META") {
+		tableName = tableName[1:]
 		tableName = strings.TrimSuffix(tableName, "_META")
 	}
 
@@ -208,7 +209,6 @@ func doImport(ctx *action.ActionContext) {
 			}
 			break
 		}
-		lineno++
 
 		if len(vals) != len(desc.Columns) {
 			ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
@@ -241,6 +241,7 @@ func doImport(ctx *action.ActionContext) {
 				break
 			}
 		}
+		lineno++
 		if appender != nil && lineno%500000 == 0 {
 			// update progress message per 500K records
 			tps := int(float64(lineno) / time.Since(tick).Seconds())
