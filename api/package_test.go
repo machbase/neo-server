@@ -39,13 +39,15 @@ func TestAll(t *testing.T) {
 	testsuite.TestAll(t, db,
 		tcParseCommandLine,
 		tcCommands,
+		tcBridge,
+		tcScan,
 	)
 	if err := testServer.DropTestTables(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestBridge(t *testing.T) {
+func tcBridge(t *testing.T) {
 	tests := []struct {
 		Name        string
 		Bridge      string
@@ -169,7 +171,7 @@ func TestBridge(t *testing.T) {
 	}
 }
 
-func TestScan(t *testing.T) {
+func tcScan(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 1729578712564320000).In(time.UTC)

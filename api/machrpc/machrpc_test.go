@@ -45,7 +45,6 @@ func TestAll(t *testing.T) {
 
 func connect(t *testing.T) *sql.DB {
 	t.Helper()
-	//db, err := sql.Open("machbase", fmt.Sprintf("tcp://sys:manager@%s", MockServerAddr))
 	db, err := sql.Open("machbase", "machbase")
 	if err != nil {
 		t.Fatalf("db connection failure %q", err.Error())
@@ -68,7 +67,6 @@ func tcConnectFail(t *testing.T) {
 
 func tcDriverQuery(t *testing.T) {
 	db := connect(t)
-	defer db.Close()
 
 	rows, err := db.Query(`select * from tag_data where name = ?`, "query1")
 	require.Nil(t, err)
@@ -84,7 +82,11 @@ func tcDriverQuery(t *testing.T) {
 	require.NotNil(t, rows)
 	rows.Close()
 
-	conn.Close()
+	err = conn.Close()
+	require.NoError(t, err)
+
+	err = db.Close()
+	require.NoError(t, err)
 }
 
 func tcDriver(t *testing.T) {
@@ -187,13 +189,17 @@ func testDriverDataSource(t *testing.T, dataSourceName string) {
 		}
 		require.Equal(t, fmt.Sprintf("name-%d", count%5), name)
 		pass++
-		// t.Logf("==> %v %v %v %v", name, ts, value, id)
 	}
-	rows.Close()
+	err = rows.Close()
+	require.NoError(t, err)
 	require.Equal(t, expectCount, pass)
 
 	r := db.QueryRow("select count(*) from "+tableName+" where time >= ?", ts)
-	r.Scan(&count)
+	err = r.Scan(&count)
+	require.NoError(t, err)
 	require.Equal(t, expectCount, count)
 	t.Logf("DB=%#v", db.Stats())
+
+	err = db.Close()
+	require.NoError(t, err)
 }
