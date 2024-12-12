@@ -183,7 +183,7 @@ func doImport(ctx *action.ActionContext) {
 
 	decoder := codec.NewDecoder(cmd.InputFormat, decOpts...)
 	var appender api.Appender
-	var lineno int = 0
+	var lineno, success, fail int
 
 	holder := ""
 	columns := strings.Join(desc.Columns.Names(), ",")
@@ -210,22 +210,28 @@ func doImport(ctx *action.ActionContext) {
 			break
 		}
 
+		lineno++
 		if len(vals) != len(desc.Columns) {
 			ctx.Printfln("line %d contains %d columns, but expected %d", lineno, len(vals), len(desc.Columns))
-			break
+			fail++
+			continue
 		}
 
 		if desc.Flag == api.TableFlagMeta {
 			query := fmt.Sprintf("insert into %s metadata(%s) values(%s)", tableName, columns, holder)
 			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
-				ctx.Println(result.Err().Error())
-				break
+				ctx.Println(fmt.Sprintf("line %d", lineno), result.Err().Error())
+				fail++
+			} else {
+				success++
 			}
 		} else if cmd.Method == "insert" {
 			query := fmt.Sprintf("insert into %s values(%s)", tableName, holder)
 			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
-				ctx.Println(result.Err().Error())
-				break
+				ctx.Println(fmt.Sprintf("line %d", lineno), result.Err().Error())
+				fail++
+			} else {
+				success++
 			}
 		} else { // append
 			if appender == nil {
@@ -241,7 +247,6 @@ func doImport(ctx *action.ActionContext) {
 				break
 			}
 		}
-		lineno++
 		if appender != nil && lineno%500000 == 0 {
 			// update progress message per 500K records
 			tps := int(float64(lineno) / time.Since(tick).Seconds())
@@ -255,7 +260,11 @@ func doImport(ctx *action.ActionContext) {
 
 	ctx.Print("\r\n")
 	if cmd.Method == "insert" {
-		ctx.Printf("import total %s record(s) %sed\n", util.NumberFormat(lineno), cmd.Method)
+		if fail == 0 {
+			ctx.Printf("import total %s record(s) %sed\n", util.NumberFormat(success), cmd.Method)
+		} else {
+			ctx.Printf("import total %s record(s) %sed, %s failed\n", util.NumberFormat(success), cmd.Method, util.NumberFormat(fail))
+		}
 	} else if appender != nil {
 		succ, fail, err := appender.Close()
 		if err != nil {
