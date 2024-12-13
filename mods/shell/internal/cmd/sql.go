@@ -45,12 +45,14 @@ const helpSql string = `  sql [options] <query>
                             consult "help tz"
        --[no-]heading       print header
        --[no-]footer        print footer message
+	-T,--timing             print elapsed time
     -p,--precision <int>    set precision of float value to force round`
 
 type SqlCmd struct {
 	Output       string         `name:"output" short:"o" default:"-"`
 	Heading      bool           `name:"heading" negatable:"" default:"true"`
 	Footer       bool           `name:"footer" negatable:"" default:"true"`
+	Timing       bool           `name:"timing" short:"T"`
 	TimeLocation *time.Location `name:"tz"`
 	Format       string         `name:"format" short:"f" default:"box" enum:"box,csv,json"`
 	Compress     string         `name:"compress" default:"-" enum:"-,gzip"`
@@ -160,8 +162,10 @@ func doSql(ctx *action.ActionContext) {
 	}
 	nextPauseRow := int64(pageHeight)
 
+	var beginTime time.Time
 	query := &api.Query{
 		Begin: func(q *api.Query) {
+			beginTime = time.Now()
 			cols := q.Columns()
 			codec.SetEncoderColumnsTimeLocation(encoder, cols, cmd.TimeLocation)
 			encoder.Open()
@@ -197,6 +201,9 @@ func doSql(ctx *action.ActionContext) {
 				ctx.Println(q.UserMessage())
 			} else {
 				ctx.Println()
+			}
+			if cmd.Timing {
+				ctx.Println("Elapsed Time:", time.Since(beginTime).String())
 			}
 		},
 	}
