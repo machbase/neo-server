@@ -50,6 +50,7 @@ func doRun(ctx *action.ActionContext) {
 	}
 	file, err := os.Open(cmd.Filename)
 	if err != nil {
+		ctx.Println("ERR", err.Error())
 		return
 	}
 	defer file.Close()
