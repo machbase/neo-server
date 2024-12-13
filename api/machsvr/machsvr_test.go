@@ -34,14 +34,14 @@ func TestAll(t *testing.T) {
 	testsuite.TestAll(t, machsvrDB)
 	testsuite.DropTestTables(machsvrDB)
 
-	testsuite.CreateTestTables(machsvrDB)
+	testsuite.CreateTestTables(machrpcDB)
 	testsuite.TestAll(t, machrpcDB,
 		tcRpcPing,
 		tcRpcUserAuth,
 		tcRpcExplain,
 		tcRpcExec,
 	)
-	testsuite.DropTestTables(machsvrDB)
+	testsuite.DropTestTables(machrpcDB)
 }
 
 func connectRpc(t *testing.T, ctx context.Context) *machrpc.ConnHandle {

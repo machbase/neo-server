@@ -69,8 +69,10 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 
 func DropTestTables(db api.Database) error {
 	ctx := context.TODO()
-	conn, _ := db.Connect(ctx, api.WithPassword("sys", "manager"))
-	defer conn.Close()
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	if err != nil {
+		return err
+	}
 	if r := conn.Exec(ctx, "DROP TABLE tag_data"); r.Err() != nil {
 		return r.Err()
 	}
@@ -80,7 +82,7 @@ func DropTestTables(db api.Database) error {
 	if r := conn.Exec(ctx, "DROP TABLE log_data"); r.Err() != nil {
 		return r.Err()
 	}
-	return nil
+	return conn.Close()
 }
 
 func CreateTestTables(db api.Database) error {
@@ -290,7 +292,7 @@ func (s *Server) StopServer(m *testing.M) {
 	if err := s.grpcListener.Close(); err != nil {
 		panic(err)
 	}
-	s.grpcServer.Stop()
+	s.grpcServer.GracefulStop()
 	s.grpcServerWg.Wait()
 	if err := s.machsvrDatabase.Shutdown(); err != nil {
 		panic(err)

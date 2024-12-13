@@ -382,7 +382,17 @@ func InsertMeta(t *testing.T, db api.Database, ctx context.Context) {
 	var id, name, factory, equipment string
 	for rows.Next() {
 		require.NoError(t, rows.Scan(&id, &name, &factory, &equipment))
-		fmt.Printf("id: %s, name: %s, factory: %s, equipment: %s\n", id, name, factory, equipment)
+		if id == "1" {
+			require.Equal(t, "FA1_CNC", name)
+			require.Equal(t, "FA1", factory)
+			require.Equal(t, "CNC", equipment)
+		} else if id == "2" {
+			require.Equal(t, "FA4_MILLING", name)
+			require.Equal(t, "FA4", factory)
+			require.Equal(t, "MILLING", equipment)
+		} else {
+			t.Fatalf("Unknown tag metadata: %s", id)
+		}
 	}
 	rows.Close()
 
