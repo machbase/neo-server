@@ -42,7 +42,7 @@ type TlsConfig struct {
 // serverAddr can be tcp://ip_addr:port or unix://path.
 // The path of unix domain socket can be absolute/relative path.
 type Client struct {
-	grpcConn grpc.ClientConnInterface
+	grpcConn *grpc.ClientConn
 	cli      MachbaseClient
 
 	serverAddr    string
@@ -155,6 +155,7 @@ func MakeGrpcConn(addr string, tlsConfig *tls.Config) (*grpc.ClientConn, error) 
 
 func (client *Client) Close() {
 	client.closeOnce.Do(func() {
+		client.grpcConn.Close()
 		client.grpcConn = nil
 		client.cli = nil
 	})
