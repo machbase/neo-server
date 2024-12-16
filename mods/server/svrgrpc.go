@@ -227,16 +227,16 @@ func (svr *grpcd) Start() error {
 
 func (svr *grpcd) Stop() {
 	if svr.rpcServer != nil {
-		svr.rpcServer.Stop()
+		svr.rpcServer.GracefulStop()
 	}
 	if svr.rpcServerInsecure != nil {
-		svr.rpcServerInsecure.Stop()
+		svr.rpcServerInsecure.GracefulStop()
 	}
 	if svr.mgmtServer != nil {
-		svr.mgmtServer.Stop()
+		svr.mgmtServer.GracefulStop()
 	}
 	if svr.mgmtServerInsecure != nil {
-		svr.mgmtServerInsecure.Stop()
+		svr.mgmtServerInsecure.GracefulStop()
 	}
 }
 
