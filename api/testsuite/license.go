@@ -22,4 +22,5 @@ func License(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, "KR", lic.CountryCode)
 	require.NotEmpty(t, lic.InstallDate)
 	require.NotEmpty(t, lic.IssueDate)
+	require.NotEmpty(t, lic.LicenseStatus)
 }
