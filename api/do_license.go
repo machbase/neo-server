@@ -11,12 +11,14 @@ import (
 
 func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
-	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE from v$license_info")
-	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate); err != nil {
+	var violateStatus int
+	row := conn.QueryRow(ctx, "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE, ISSUE_DATE, VIOLATE_STATUS, VIOLATE_MSG from v$license_info")
+	if err := row.Scan(&ret.Id, &ret.Type, &ret.Customer, &ret.Project, &ret.CountryCode, &ret.InstallDate, &ret.IssueDate, &violateStatus, &ret.LicenseStatus); err != nil {
 		return nil, err
 	}
-	// TODO: get license status
-	ret.LicenseStatus = "Valid"
+	if violateStatus == 0 {
+		ret.LicenseStatus = "Valid"
+	}
 	return ret, nil
 }
 
