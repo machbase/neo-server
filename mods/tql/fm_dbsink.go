@@ -121,18 +121,18 @@ func (ins *insert) _addRowBridge(values []any) error {
 	defer conn.Close()
 	result, err := conn.ExecContext(ins.node.task.ctx, sqlText, values...)
 	if err != nil {
-		return errors.Wrapf(err, sqlText)
+		return errors.Wrap(err, sqlText)
 	}
 	if br.SupportLastInsertId() {
 		lastInsertId, err := result.LastInsertId()
 		if err != nil {
-			return errors.Wrapf(err, sqlText)
+			return errors.Wrap(err, sqlText)
 		}
 		ins.lastInsertId = lastInsertId
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return errors.Wrapf(err, sqlText)
+		return errors.Wrap(err, sqlText)
 	}
 	ins.rowsAffected = rowsAffected
 	return nil

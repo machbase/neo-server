@@ -2,8 +2,6 @@ package tql
 
 import (
 	"errors"
-	"fmt"
-	"math"
 	"regexp"
 	"strings"
 
@@ -19,34 +17,6 @@ type TagPath struct {
 type TagPathField struct {
 	Columns []string
 	expr    *expression.Expression
-}
-
-func (tpf TagPathField) Eval(args ...any) (float64, error) {
-	if len(tpf.Columns) != len(args) {
-		return math.NaN(), fmt.Errorf("require %d args, but have %d", len(tpf.Columns), len(args))
-	}
-	var result any
-	var err error
-	if tpf.expr == nil {
-		result = args[0]
-	} else {
-		p := map[string]any{}
-		for i := range tpf.Columns {
-			p[tpf.Columns[i]] = args[i]
-		}
-		result, err = tpf.expr.Evaluate(p)
-		if err != nil {
-			return math.NaN(), err
-		}
-	}
-	switch v := result.(type) {
-	case float64:
-		return v, nil
-	case float32:
-		return float64(v), nil
-	default:
-		return math.NaN(), fmt.Errorf("evaluted values should be float, but have %T", v)
-	}
 }
 
 var _dummy_functions = map[string]expression.Function{}
@@ -66,12 +36,6 @@ func ParseTagPath(path string) (*TagPath, error) {
 
 func ParseTagPathWithFunctions(path string, functions map[string]expression.Function) (*TagPath, error) {
 	toks := regexpTagPath.FindAllStringSubmatch(path, -1)
-	// fmt.Println("PATH", path)
-	// for i := range toks {
-	// 	for n := range toks[i] {
-	// 		fmt.Printf("  toks[%d][%d] %s\n", i, n, toks[i][n])
-	// 	}
-	// }
 	if len(toks) != 1 || len(toks[0]) < 3 {
 		return nil, errors.New("invalid syntax")
 	}

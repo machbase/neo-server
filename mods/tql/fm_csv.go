@@ -232,7 +232,7 @@ func (src *csvSource) gen(node *Node) {
 				if src.printer == nil {
 					src.printer = message.NewPrinter(language.English)
 				}
-				node.task.LogInfof(src.printer.Sprintf("Loading %v records", number.Decimal(rownum)))
+				node.task.LogInfo(src.printer.Sprintf("Loading %v records", number.Decimal(rownum)))
 			}
 		} else {
 			err = nil

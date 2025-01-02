@@ -158,7 +158,7 @@ func (out *output) start() {
 					} else {
 						// fail to open sink encoder
 						out.lastError = err
-						out.task.LogErrorf(err.Error())
+						out.task.LogError(err.Error())
 						out.task.fireCircuitBreak(nil)
 						saneEncoder = false
 					}
@@ -169,16 +169,16 @@ func (out *output) start() {
 				if rec.IsArray() {
 					for _, v := range rec.Array() {
 						if err := out.addRow(v); err != nil {
-							out.task.LogErrorf(err.Error())
+							out.task.LogError(err.Error())
 						}
 					}
 				} else if rec.IsTuple() {
 					if err := out.addRow(rec); err != nil {
-						out.task.LogErrorf(err.Error())
+						out.task.LogError(err.Error())
 					}
 				} else if rec.IsImage() {
 					if err := out.addRow(rec); err != nil {
-						out.task.LogErrorf(err.Error())
+						out.task.LogError(err.Error())
 					}
 				}
 			}
