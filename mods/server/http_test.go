@@ -28,6 +28,7 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -319,7 +320,7 @@ func jwtLogin(username, password string) (string, string, error) {
 		return "", "", err
 	}
 	if rsp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf(rsp.Status)
+		return "", "", errors.New(rsp.Status)
 	}
 	loginRsp := &LoginRsp{}
 	err = json.NewDecoder(rsp.Body).Decode(loginRsp)
