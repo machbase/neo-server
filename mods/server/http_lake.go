@@ -49,9 +49,6 @@ type MachbaseResult struct {
 }
 
 type MetaResult struct {
-	// ErrorCode    int                      `json:"errorCode"`
-	// ErrorMessage string                   `json:"errorMessage"`
-	// Columns      []MachbaseColumn         `json:"columns"`
 	Data []map[string]interface{} `json:"data"`
 }
 
@@ -72,13 +69,6 @@ type SelectReturn struct {
 	Columns  []MachbaseColumn `json:"columns"`
 	Samples  interface{}      `json:"samples"`
 }
-
-// type SelectReturn struct {
-// 	CalcMode string           `json:"calc_mode"`
-// 	Columns  []MachbaseColumn `json:"columns"`
-// 	Rows     [][]interface{}  `json:"rows"`
-// 	Samples  interface{}      `json:"samples"`
-// }
 
 type (
 	lakesvr struct {
@@ -108,7 +98,6 @@ type (
 	}
 	SelectTagList struct {
 		TagList []map[string]interface{} `json:"tag"`
-		// TagList []map[string]interface{} `json:"tag"`
 	}
 	ReturnData struct {
 		TagName string      `json:"tag_name"`
@@ -126,7 +115,7 @@ var lakeSvr = lakesvr{}
 func init() {
 
 	lakeSvr.Info = new(LakeInfo)
-	// 원래는 CreateLake를 통해 값 수신, 임시 테스트
+	// Receive values from CreateLake, temporary test
 	lakeSvr.Info.TagExtCol = append(lakeSvr.Info.TagExtCol, Schema{
 		ColName:   "name",
 		ColType:   "varchar",
@@ -144,7 +133,7 @@ func init() {
 	})
 	SetColumnList()
 
-	// =========== 임시 테스트 ================
+	// =========== Temporary test ================
 	localPlan = os.Getenv("PLAN_NAME")
 	if localPlan == "" {
 		localPlan = MACHLAKE_PLAN_TINY
@@ -313,10 +302,10 @@ func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
 	svr.log.Trace(trackId, "start handleLakeGetValues()")
 
-	// 기존 lake에서는 cli를 통해서 db 사용
+	// Previous lake server used cli to use db
 	dataType := ctx.Param("type")
 
-	// form-data, query-string  수신
+	// Receiving form-data, query-string
 	switch dataType {
 	case "raw":
 		svr.GetRawData(ctx)
@@ -338,8 +327,6 @@ func (svr *httpd) handleLakeGetValues(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 	}
 }
-
-// get handler들이 앞줄이 다 공통이라 나중에 함수로?
 
 func (svr *httpd) GetRawData(ctx *gin.Context) {
 	trackId := ctx.GetString(HTTP_TRACKID)
@@ -377,7 +364,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 
 	currentPlan := lakePlanMap[localPlan]
 
-	// plan을 알아야 LimitSelTag 값을 알 수 있음
+	// It may be necessary to know the plan to know the LimitSelTag value
 	if param.TagName != "" {
 		param.TagList = strings.Split(param.TagName, param.Separator)
 		if len(param.TagList) > currentPlan.limitSelectTag { // lakeserver conf 값,   mysql 에서 데이터 로드 필요
@@ -450,7 +437,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 				ctx.JSON(http.StatusUnprocessableEntity, rsp)
 				return
 			}
-		} else { // 일반적으로 limit을 param으로 받아오는지?
+		} else { // generally limit is received as a param?
 			param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
 		}
 	} else if param.TableName == "TAGDATA" {
@@ -469,7 +456,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 				return
 			}
 		} else {
-			// nfx #128 해결 후 삭제 예정
+			// TODO: remove this after solving nfx #128
 			param.Direction = "0"
 		}
 	} else if param.TableName == "TAGDATA" {
@@ -668,7 +655,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 			return
 		}
 	} else {
-		// nfx #128 해결 후 삭제 예정
+		// TODO: remove this after solving nfx #128
 		param.Direction = "0"
 	}
 
@@ -712,7 +699,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		}
 		sqlText += makeLimit(param.Offset, param.Limit)
 
-	} else if param.TableName == "TAGDATA" { //TAGDATA 테이블인 경우 롤업이 없으므로 DateTrunc 함수 사용
+	} else if param.TableName == "TAGDATA" { // Use TAGDATA table, so there is no need to use ROLLUP
 		sqlText = fmt.Sprintf(SqlTidy(`
 		SELECT NAME, %s, %s(VALUE) AS VALUE
 		FROM TAGDATA
@@ -726,15 +713,6 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		sqlText += " " + makeLimit(param.Offset, param.Limit) // add space
 	}
 	svr.log.Debug(trackId, "query : ", sqlText)
-	// dbData, err := svr.getData(sqlText, param.Scale)
-	// if err != nil {
-	// 	svr.log.Info(trackId, "get data error : ", err.Error())
-	// 	rsp.Message = err.Error()
-	// 	ctx.JSON(http.StatusFailedDependency, rsp)
-	// 	return
-	// }
-
-	// data := MakeReturnFormat(dbData, param.CalcMode, param.ReturnType, "tag", param.TagList)
 
 	conn, err := svr.getTrustConnection(ctx)
 	if err != nil {

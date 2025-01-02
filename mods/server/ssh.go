@@ -555,7 +555,6 @@ func signerFromPem(pemBytes []byte, password []byte) (ssh.Signer, error) {
 func parsePemBlock(block *pem.Block) (interface{}, error) {
 	switch block.Type {
 	case "RSA PRIVATE KEY":
-		//key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("parsing PKCS private key failed %v", err)

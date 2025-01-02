@@ -559,7 +559,6 @@ func (svr *httpd) handleKeysGen(ctx *gin.Context) {
 	}
 
 	if req.NotBefore == 0 {
-		// req.NotBefore = time.Now().UnixNano() // client certificate: asn1: structure error: cannot represent time as GeneralizedTime 에러 발생
 		req.NotBefore = time.Now().Unix()
 	}
 	if req.NotAfter <= req.NotBefore {

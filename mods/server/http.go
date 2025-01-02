@@ -630,7 +630,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 		return
 	}
 
-	// request로 전달받은 refresh token의 refreshClaim으로 변환하면서 verified 확인한다.
+	// Convert refresh token to refreshClaim and verify it.
 	refreshClaim := NewClaimEmpty()
 	verified, err := VerifyTokenWithClaim(req.RefreshToken, refreshClaim)
 	if err != nil {
@@ -648,7 +648,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 
 	svr.log.Tracef("'%s' relogin", refreshClaim.Subject)
 
-	// 저장되어 있는 refresh token과 비교한다.
+	// Comparing with stored refresh token.
 	// load refresh token from cached table by claim.ID
 	storedToken, ok := svr.jwtCache.GetRefreshToken(refreshClaim.ID)
 	if !ok {
@@ -664,14 +664,13 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 		return
 	}
 
-	// 저장되어 있던 refresh token과 요청한 refresh token이 일치하면
-	// access token을 재발급한다.
+	// Re-issue access token when stored refresh token is matched with requested refresh token
 
 	/// Note:
-	///   refreshToken으로 새로운 accessToken을 갱신하는 과정에서
-	///   refreshToken 자체는 갱신하거나/갱신하지 않는 두 가지 선택이 있는데
-	///     1) 여기처럼 갱신하는 정책은 사용자가 지속적으로 시스템을 사용하는 경우 ID/PW로 로그인을 다시하지 않아도 된다.
-	///     2) 갱신하지 않는 경우는 refreshToken의 expire 주기마다 로그인을 수행해야 한다.
+	///   In the process of renewing a new accessToken with refreshToken,
+	///   refreshToken itself has two options to renew or not to renew.
+	///     1) If you renew it like here, the user does not have to log in with ID/PW again even if they continue to use the system.
+	///     2) If you do not renew it, you have to log in with ID/PW every time the refreshToken expires.
 	accessToken, refreshToken, refreshTokenId, err := svr.issueAccessToken(refreshClaim.Subject)
 	if err != nil {
 		rsp.Reason = err.Error()
@@ -680,7 +679,7 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 		return
 	}
 
-	// 신규 발급된 refresh token을 저장한다.
+	// store re-issued refresh token
 	svr.jwtCache.SetRefreshToken(refreshTokenId, refreshToken)
 
 	rsp.Success, rsp.Reason = true, "success"
@@ -1139,14 +1138,7 @@ func (cons *WebConsole) sendMessage(evt *eventbus.Event) {
 			cons.log.Warn("ERR", err.Error())
 			cons.Close()
 			break
-		} /* else {
-			if cons.log.TraceEnabled() {
-				w := &bytes.Buffer{}
-				enc := json.NewEncoder(w)
-				enc.Encode(evt)
-				cons.log.Trace("NOTI", strings.TrimSpace(w.String()))
-			}
-		}*/
+		}
 	}
 	cons.lastFlushTime = time.Now()
 	cons.messages = cons.messages[0:0]
@@ -1363,12 +1355,11 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"success": false, "reason": err.Error()})
 			return
 		}
-		// svr.log.Debugf("term %s resize %d %d", termKey, req.Rows, req.Cols)
 	}
 	ctx.JSON(http.StatusOK, gin.H{"success": true, "reason": "success"})
 }
 
-const termBuffSize = 4096 // 8192
+const termBuffSize = 4096
 
 var terminals = &Terminals{
 	list: cmap.New(),
