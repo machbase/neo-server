@@ -176,11 +176,6 @@ func (x *Task) GetVariable(name string) (any, error) {
 }
 
 func (x *Task) CompileScript(sc *Script) error {
-	// file, err := os.Open(sc.path)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer file.Close()
 	x.volatileAssetsProvider = sc.vap
 	return x.Compile(bytes.NewBuffer(sc.content))
 }

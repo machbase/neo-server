@@ -3,7 +3,6 @@ package tql
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"math"
 	"runtime/debug"
 	"strings"
@@ -40,17 +39,9 @@ type Node struct {
 
 	pragma  []*Line
 	tqlLine *Line
-
-	// Deprecated
-	Body      io.Reader
-	warnedCtx bool
-	warnedK   bool
-	warnedV   bool
 }
 
-var (
-	_ expression.Parameters = &Node{}
-)
+var _ expression.Parameters = (*Node)(nil)
 
 func (node *Node) compile(code string) error {
 	expr, err := node.Parse(code)
@@ -101,31 +92,6 @@ func (node *Node) SetEOF(f func(*Node)) {
 // Get implements expression.Parameters
 func (node *Node) Get(name string) (any, error) {
 	switch name {
-	case "K":
-		if !node.warnedK {
-			node.task.LogWarn("The tql variable 'K' is deprecated, use 'key()' instead")
-			node.warnedK = true
-		}
-		if node._inflight != nil {
-			return node._inflight.key, nil
-		}
-	case "V":
-		if !node.warnedV {
-			node.task.LogWarn("The tql variable 'V' is deprecated, use 'value()' instead")
-			node.warnedV = true
-		}
-		if node._inflight != nil {
-			return node._inflight.value, nil
-		}
-	case "CTX":
-		if !node.warnedCtx {
-			node.task.LogWarn("The tql variable 'CTX' is deprecated, use 'context()'. And 'payload()' for 'CTX.Body'")
-			node.warnedCtx = true
-		}
-		if node.Body == nil {
-			node.Body = node.task.inputReader
-		}
-		return node, nil
 	case "PI":
 		return math.Pi, nil
 	case "nil", "NULL":
@@ -143,7 +109,6 @@ func (node *Node) Get(name string) (any, error) {
 			return inflight.GetVariable(name)
 		}
 	}
-	return nil, nil
 }
 
 func (node *Node) fmSET(left any, right any) (any, error) {
