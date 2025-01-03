@@ -896,6 +896,30 @@ func TestTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "FAKE_arrange_zero_step",
+			Script: `FAKE( arrange(10, 30, 0) )
+					CSV()`,
+			ExpectErr: `FUNCTION "arrange" step can not be 0`,
+		},
+		{
+			Name: "FAKE_arrange_start_stop_equal",
+			Script: `FAKE( arrange(10, 10, 10) )
+					CSV()`,
+			ExpectErr: `FUNCTION "arrange" start, stop can not be equal`,
+		},
+		{
+			Name: "FAKE_arrange_start_stop_invalid1",
+			Script: `FAKE( arrange(10, 30, -10) )
+					CSV()`,
+			ExpectErr: `FUNCTION "arrange" step can not be less than 0`,
+		},
+		{
+			Name: "FAKE_arrange_start_stop_invalid2",
+			Script: `FAKE( arrange(30, 10, 10) )
+					CSV()`,
+			ExpectErr: `FUNCTION "arrange" step can not be greater than 0`,
+		},
+		{
 			Name: "MAP_AVG",
 			Script: `
 				FAKE( arrange(10, 30, 10) )
