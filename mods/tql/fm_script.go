@@ -675,7 +675,32 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	} else {
 		ctx.sc = s
 	}
+
+	var didSetResult = false
+	doResult := func() error {
+		resultObj, err := ctx.obj.Get("result")
+		if err != nil {
+			return fmt.Errorf("SCRIPT result, %s", err.Error())
+		}
+		if resultObj.IsDefined() {
+			var opts ScriptOttoResultOption
+			if err := opts.Load(resultObj); err != nil {
+				msg := strings.TrimPrefix(err.Error(), "json: ")
+				return fmt.Errorf("line %d, SCRIPT option, %s", node.tqlLine.line, msg)
+			}
+			if cols := opts.ResultColumns(); cols != nil {
+				node.task.SetResultColumns(cols)
+			}
+			didSetResult = true
+		}
+		return nil
+	}
+
 	node.SetEOF(func(*Node) {
+		// set $.result columns if no records are yielded
+		if !didSetResult {
+			doResult()
+		}
 		ctx.onceFinalize.Do(func() {
 			f, _ := ctx.vm.Get("finalize")
 			if f.IsDefined() && f.IsFunction() {
@@ -751,6 +776,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 				}
 			}
 		}
+		// set $.result columns before the first yield
+		if ctx.yieldCount == 0 && !didSetResult {
+			doResult()
+		}
 		NewRecord(key, values).Tell(node.next)
 		ctx.yieldCount++
 		return otto.TrueValue()
@@ -790,20 +819,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		if err != nil {
 			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
 		}
-		resultObj, err := ctx.obj.Get("result")
-		if err != nil {
-			return nil, fmt.Errorf("SCRIPT result, %s", err.Error())
-		}
-		if resultObj.IsDefined() {
-			var opts ScriptOttoResultOption
-			if err := opts.Load(resultObj); err != nil {
-				msg := strings.TrimPrefix(err.Error(), "json: ")
-				return nil, fmt.Errorf("line %d, SCRIPT option, %s", node.tqlLine.line, msg)
-			}
-			if cols := opts.ResultColumns(); cols != nil {
-				node.task.SetResultColumns(cols)
-			}
-		}
+		// err = doResult()
+		// if err != nil {
+		// 	return nil, err
+		// }
 	}
 
 	return ctx, nil
