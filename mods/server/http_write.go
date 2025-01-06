@@ -208,7 +208,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	var prevCols []string
-
+	var hasProcessedHeader bool
 	for {
 		vals, cols, err := decoder.NextRow()
 		if err != nil {
@@ -236,6 +236,10 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				return
 			}
 		} else { // append
+			if !hasProcessedHeader && headerColumns && len(cols) > 0 {
+				appender = appender.WithInputColumns(cols...)
+				hasProcessedHeader = true
+			}
 			err = appender.Append(vals...)
 			if err != nil {
 				errRsp(http.StatusInternalServerError, err.Error())

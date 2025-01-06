@@ -503,6 +503,7 @@ func TestMqttWrite(t *testing.T) {
 func TestAppend(t *testing.T) {
 	jsonData := []byte(`[["my-car", 1705291859000000000, 1.2345], ["my-car", 1705291860000000000, 2.3456]]`)
 	csvData := []byte("my-car,1705291859000000000,1.2345\nmy-car,1705291860000000000,2.3456")
+	csvDataWithHeader := []byte("Value,time,NAme\n1.2345,1705291859000000000,my-car\n2.3456,1705291860000000000,my-car")
 	jsonGzipData := compress(jsonData)
 	csvGzipData := compress(csvData)
 	tests := []MqttTestCase{
@@ -580,6 +581,13 @@ func TestAppend(t *testing.T) {
 			Payload:    csvData,
 			Ver:        uint(5),
 			Properties: map[string]string{"method": "append", "format": "csv"},
+		},
+		{
+			Name:       "append_csv_partial",
+			Topic:      "db/write/example",
+			Payload:    csvDataWithHeader,
+			Ver:        uint(5),
+			Properties: map[string]string{"method": "append", "format": "csv", "header": "columns"},
 		},
 		{
 			Name:    "db/append/example csv gzip",

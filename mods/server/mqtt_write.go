@@ -346,8 +346,8 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 				case "skip":
 					headerSkip = true
 				case "column", "columns":
-					s.log.Warn(cl.Net.Remote, "header=columns is not allowed in append method")
 					headerSkip = true
+					headerColumns = true
 				default:
 				}
 			}
@@ -469,14 +469,19 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	decoder := codec.NewDecoder(wp.Format, codecOpts...)
 
 	recNo := 0
+	hasProcessedHeader := false
 	for {
-		vals, _, err := decoder.NextRow()
+		vals, cols, err := decoder.NextRow()
 		if err != nil {
 			if err != io.EOF {
 				s.log.Warn(cl.Net.Remote, "append", wp.Format, err.Error())
 				return
 			}
 			break
+		}
+		if !hasProcessedHeader && headerColumns && len(cols) > 0 {
+			appender = appender.WithInputColumns(cols...)
+			hasProcessedHeader = true
 		}
 		err = appender.Append(vals...)
 		if err != nil {
