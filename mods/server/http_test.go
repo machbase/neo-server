@@ -556,7 +556,7 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=insert&header=columns",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value,JSONDATA,ival,SVAL`, // case-in-sensitive
+				`name,TIME,Value,JSONDATA,ival,SVAL`, // case insensitive
 				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
 				`csv_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
 			},
@@ -573,7 +573,7 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=append&header=columns",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value`, // case-in-sensitive
+				`name,TIME,Value`, // case insensitive
 				`csv_partial_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12`,
 				`csv_partial_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23`,
 			},
@@ -586,11 +586,28 @@ func TestHttpWrite(t *testing.T) {
 				"\n"},
 		},
 		{
+			name:        "csv-append-partial2",
+			queryParams: "?timeformat=s&method=append&header=columns",
+			payloadType: "text/csv",
+			payloadReq: []any{
+				`name,TIME,Value,sval`, // case insensitive
+				`csv_partial_2,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,102`,
+				`csv_partial_2,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,202`,
+			},
+			selectSql:        `select * from test_w where name = 'csv_partial_2'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`csv_partial_2,1705291859,1.12,NULL,NULL,102`,
+				`csv_partial_2,1705291860,2.23,NULL,NULL,202`,
+				"\n"},
+		},
+		{
 			name:        "csv",
 			queryParams: "?timeformat=s&method=insert&header=columns&compress=gzip",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value,JSONDATA,ival,SVAL`, // case-in-sensitive
+				`name,TIME,Value,JSONDATA,ival,SVAL`, // case insensitive
 				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12,,101,102`,
 				`csv_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23,,201,202`,
 			},
@@ -607,7 +624,7 @@ func TestHttpWrite(t *testing.T) {
 			queryParams: "?timeformat=s&method=append&header=columns&compress=gzip",
 			payloadType: "text/csv",
 			payloadReq: []any{
-				`name,TIME,Value`, // case-in-sensitive
+				`name,TIME,Value`, // case insensitive
 				`csv_partial_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12`,
 				`csv_partial_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23`,
 			},
