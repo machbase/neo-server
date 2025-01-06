@@ -251,7 +251,7 @@ func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (strin
 		return "", err
 	}
 	if !rsp.Success {
-		return "", fmt.Errorf(rsp.Reason)
+		return "", errors.New(rsp.Reason)
 	}
 	return rsp.Plan, nil
 }
@@ -628,6 +628,7 @@ type Appender struct {
 	tableName    string
 	tableType    api.TableType
 	columns      api.Columns
+	inputColumns []AppenderInputColumn
 	handle       *AppenderHandle
 
 	buffer           []*AppendRecord
@@ -639,6 +640,28 @@ type Appender struct {
 }
 
 var _ api.Appender = (*Appender)(nil)
+
+type AppenderInputColumn struct {
+	Name string
+	Idx  int
+}
+
+func (appender *Appender) WithInputColumns(columns ...string) api.Appender {
+	appender.inputColumns = nil
+	for _, col := range columns {
+		appender.inputColumns = append(appender.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
+	}
+	if len(appender.inputColumns) > 0 {
+		for idx, col := range appender.columns {
+			for inIdx, inCol := range appender.inputColumns {
+				if col.Name == inCol.Name {
+					appender.inputColumns[inIdx].Idx = idx
+				}
+			}
+		}
+	}
+	return appender
+}
 
 // Close releases all resources that allocated to the Appender
 func (appender *Appender) Close() (int64, int64, error) {
@@ -685,6 +708,14 @@ func (appender *Appender) AppendLogTime(ts time.Time, cols ...any) error {
 func (appender *Appender) Append(cols ...any) error {
 	if appender.appendClient == nil {
 		return sql.ErrTxDone
+	}
+
+	if len(appender.inputColumns) > 0 {
+		newValues := make([]any, len(appender.columns))
+		for i, inputCol := range appender.inputColumns {
+			newValues[inputCol.Idx] = cols[i]
+		}
+		cols = newValues
 	}
 
 	params, err := ConvertAnyToPbTuple(cols)

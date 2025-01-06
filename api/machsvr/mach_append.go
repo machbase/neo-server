@@ -157,6 +157,8 @@ type Appender struct {
 	closed    bool
 	columns   api.Columns
 
+	inputColumns []AppenderInputColumn
+
 	buffer *mach.AppendBuffer
 
 	successCount int64
@@ -164,6 +166,28 @@ type Appender struct {
 }
 
 var _ api.Appender = (*Appender)(nil)
+
+type AppenderInputColumn struct {
+	Name string
+	Idx  int
+}
+
+func (ap *Appender) WithInputColumns(columns ...string) api.Appender {
+	ap.inputColumns = nil
+	for _, col := range columns {
+		ap.inputColumns = append(ap.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
+	}
+	if len(ap.inputColumns) > 0 {
+		for idx, col := range ap.columns {
+			for inIdx, inputCol := range ap.inputColumns {
+				if col.Name == inputCol.Name {
+					ap.inputColumns[inIdx].Idx = idx
+				}
+			}
+		}
+	}
+	return ap
+}
 
 func (ap *Appender) Close() (int64, int64, error) {
 	if ap.closed {
@@ -227,8 +251,19 @@ func (ap *Appender) append(values ...any) error {
 	if len(ap.columns) == 0 {
 		return api.ErrDatabaseNoColumns(ap.tableName)
 	}
-	if len(ap.columns) != len(values) {
-		return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
+	if len(ap.inputColumns) > 0 {
+		if len(ap.inputColumns) != len(values) {
+			return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
+		}
+		newValues := make([]any, len(ap.columns))
+		for i, inputCol := range ap.inputColumns {
+			newValues[inputCol.Idx] = values[i]
+		}
+		values = newValues
+	} else {
+		if len(ap.columns) != len(values) {
+			return api.ErrDatabaseLengthOfColumns(ap.tableName, len(ap.columns), len(values))
+		}
 	}
 	if ap.closed {
 		return api.ErrDatabaseClosedAppender

@@ -207,6 +207,9 @@ type Appender interface {
 
 	// TableType returns the type of the table to which the Appender is appending data.
 	TableType() TableType
+
+	// WithInputColumns sets the input column names for the Appender.
+	WithInputColumns(columns ...string) Appender
 }
 
 type Flusher interface {

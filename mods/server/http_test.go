@@ -569,6 +569,23 @@ func TestHttpWrite(t *testing.T) {
 				"\n"},
 		},
 		{
+			name:        "csv-append-partial",
+			queryParams: "?timeformat=s&method=append&header=columns",
+			payloadType: "text/csv",
+			payloadReq: []any{
+				`name,TIME,Value`, // case-in-sensitive
+				`csv_partial_1,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12`,
+				`csv_partial_1,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23`,
+			},
+			selectSql:        `select * from test_w where name = 'csv_partial_1'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`csv_partial_1,1705291859,1.12,NULL,NULL,NULL`,
+				`csv_partial_1,1705291860,2.23,NULL,NULL,NULL`,
+				"\n"},
+		},
+		{
 			name:        "csv",
 			queryParams: "?timeformat=s&method=insert&header=columns&compress=gzip",
 			payloadType: "text/csv",
@@ -583,6 +600,23 @@ func TestHttpWrite(t *testing.T) {
 				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
 				`csv_gzip,1705291859,1.12,NULL,101,102`,
 				`csv_gzip,1705291860,2.23,NULL,201,202`,
+				"\n"},
+		},
+		{
+			name:        "csv-append-partial-gzip",
+			queryParams: "?timeformat=s&method=append&header=columns&compress=gzip",
+			payloadType: "text/csv",
+			payloadReq: []any{
+				`name,TIME,Value`, // case-in-sensitive
+				`csv_partial_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()) + `,1.12`,
+				`csv_partial_gzip,` + fmt.Sprintf("%d", testTimeTick.Unix()+1) + `,2.23`,
+			},
+			selectSql:        `select * from test_w where name = 'csv_partial_gzip'`,
+			selectQueryParam: `&timeformat=s&format=csv`,
+			selectExpect: []string{
+				`NAME,TIME,VALUE,JSONDATA,IVAL,SVAL`,
+				`csv_partial_gzip,1705291859,1.12,NULL,NULL,NULL`,
+				`csv_partial_gzip,1705291860,2.23,NULL,NULL,NULL`,
 				"\n"},
 		},
 	}

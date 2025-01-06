@@ -1019,6 +1019,10 @@ func (a *Appender) Close() (int64, int64, error) {
 	}
 }
 
+func (a *Appender) WithInputColumns(columns ...string) api.Appender {
+	return a
+}
+
 func (a *Appender) TableName() string {
 	return a.tableName
 }

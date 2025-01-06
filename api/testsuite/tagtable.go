@@ -148,3 +148,67 @@ func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {
 		appender.Close()
 	}
 }
+
+func AppendTagPartial(t *testing.T, db api.Database, ctx context.Context) {
+	tableName := "append_tag2"
+
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	result := conn.Exec(ctx, fmt.Sprintf(`
+	CREATE TAG TABLE %s (
+		name     varchar(200) primary key,
+		time     datetime basetime,
+		value    double summarized,
+		id       varchar(80),
+		jsondata json)
+	METADATA( factory varchar(32), equipment varchar(64) )`, tableName))
+	conn.Close()
+	require.NoError(t, result.Err(), "create table fail")
+
+	defer func() {
+		conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+		require.NoError(t, err, "connect fail")
+		conn.Exec(ctx, fmt.Sprintf(`DROP TABLE %s`, tableName))
+		conn.Close()
+	}()
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+
+	appender, err := conn.Appender(ctx, tableName)
+	if err != nil {
+		panic(err)
+	}
+
+	// arbitrary column order
+	appender = appender.WithInputColumns("time", "name", "jsondata", "value")
+
+	testCount := 100
+	ts := time.Now()
+	for i := 0; i < testCount; i++ {
+		err = appender.Append(
+			ts.Add(time.Duration(i)),
+			fmt.Sprintf("name-%d", i%5),
+			`{"name":"json"}`,
+			1.001*float64(i+1))
+		if err != nil {
+			panic(err)
+		}
+	}
+	appender.Close()
+	conn.Close()
+
+	conn, err = db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err)
+	row := conn.QueryRow(ctx, "select count(*) from "+tableName+" where time >= ?", ts)
+	if row.Err() != nil {
+		panic(row.Err())
+	}
+	var count int
+	err = row.Scan(&count)
+	if err != nil {
+		panic(err)
+	}
+	require.Equal(t, testCount, count)
+	conn.Close()
+}
