@@ -236,7 +236,7 @@ func (svr *httpd) Router() *gin.Engine {
 				svr.log.Infof("MQTT websocket handler enabled")
 			}
 			if svr.tqlLoader != nil {
-				svr.memoryFs = &MemoryFS{Prefix: "/web/api/tql-assets/"}
+				svr.memoryFs = NewMemoryFS("/web/api/tql-assets/")
 				go svr.memoryFs.Start()
 				svr.tqlLoader.SetVolatileAssetsProvider(svr.memoryFs)
 				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))

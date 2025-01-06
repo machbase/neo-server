@@ -171,11 +171,17 @@ type MemoryFS struct {
 	stop     chan bool
 }
 
+func NewMemoryFS(prefix string) *MemoryFS {
+	return &MemoryFS{
+		Prefix: prefix,
+		list:   map[string]*MemoryFile{},
+		stop:   make(chan bool),
+	}
+}
+
 var _ tql.VolatileAssetsProvider = (*MemoryFS)(nil)
 
 func (fs *MemoryFS) Start() {
-	fs.stop = make(chan bool)
-	fs.list = map[string]*MemoryFile{}
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
