@@ -937,7 +937,7 @@ func buildMultipartFormDataRequest(url string, names []string, values []any) (*h
 	return ret, nil
 }
 
-func TestLineProtocol2(t *testing.T) {
+func TestLineProtocol(t *testing.T) {
 	tests := []struct {
 		name string
 		data string
@@ -979,16 +979,33 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 	})
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// success case - line protocol
-			req, _ := http.NewRequest("POST", httpServerAddress+"/metrics/write?db=test", bytes.NewBufferString(tc.data))
-			req.Header.Set("Content-Type", "application/octet-stream")
-			rsp, err := http.DefaultClient.Do(req)
-			require.NoError(t, err)
-			rspBody, _ := io.ReadAll(rsp.Body)
-			rsp.Body.Close()
-			require.Equal(t, http.StatusNoContent, rsp.StatusCode, string(rspBody))
-		})
+		for _, compress := range []bool{false, true} {
+			buf := &bytes.Buffer{}
+			if compress {
+				w := gzip.NewWriter(buf)
+				w.Write([]byte(tc.data))
+				w.Close()
+			} else {
+				buf.WriteString(tc.data)
+			}
+			testName := tc.name
+			if compress {
+				testName += "-gzip"
+			}
+			t.Run(testName, func(t *testing.T) {
+				// success case - line protocol
+				req, _ := http.NewRequest("POST", httpServerAddress+"/metrics/write?db=test", buf)
+				req.Header.Set("Content-Type", "application/octet-stream")
+				if compress {
+					req.Header.Set("Content-Encoding", "gzip")
+				}
+				rsp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				rspBody, _ := io.ReadAll(rsp.Body)
+				rsp.Body.Close()
+				require.Equal(t, http.StatusNoContent, rsp.StatusCode, string(rspBody))
+			})
+		}
 	}
 }
 
