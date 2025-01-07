@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
+	"github.com/stretchr/testify/require"
 )
 
 var testTimeTick = time.Unix(1705291859, 0)
@@ -144,12 +145,12 @@ func initTestData(db api.Database) {
 	conn.Exec(ctx, `EXEC table_flush(example)`)
 }
 
-func Example_representativePort() {
-	fmt.Println(representativePort("tcp://127.0.0.1:1234"))
-	fmt.Println(representativePort("http://192.168.1.100:1234"))
-	fmt.Println(representativePort("unix:///var/run/neo-server.sock"))
-	// Output:
-	//   > Local:   http://127.0.0.1:1234
-	//   > Network: http://192.168.1.100:1234
-	//   > Unix:    /var/run/neo-server.sock
+func TestRepresentativePort(t *testing.T) {
+	require.Equal(t, "  > Local:   http://127.0.0.1:1234", representativePort("tcp://127.0.0.1:1234"))
+	require.Equal(t, "  > Network: http://192.168.1.100:1234", representativePort("http://192.168.1.100:1234"))
+	if runtime.GOOS == "windows" {
+		require.Equal(t, `  > Unix:    C:\var\run\neo-server.sock`, representativePort(`unix://C:\var\run\neo-server.sock`))
+	} else {
+		require.Equal(t, "  > Unix:    /var/run/neo-server.sock", representativePort("unix:///var/run/neo-server.sock"))
+	}
 }

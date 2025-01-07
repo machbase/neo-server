@@ -594,7 +594,7 @@ func representativePort(addr string) string {
 	if strings.HasPrefix(addr, "http://127.0.0.1:") {
 		addr = fmt.Sprintf("  > Local:   %s", addr)
 	} else if strings.HasPrefix(addr, "unix://") {
-		addr = fmt.Sprintf("  > Unix:    %s", strings.TrimPrefix(addr, "unix://"))
+		addr = fmt.Sprintf("  > Unix:    %s", filepath.FromSlash(strings.TrimPrefix(addr, "unix://")))
 	} else {
 		addr = fmt.Sprintf("  > Network: %s", addr)
 	}
