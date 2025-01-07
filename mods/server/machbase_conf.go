@@ -201,41 +201,41 @@ func DefaultMachbaseConfig(preset MachbasePreset) *MachbaseConfig {
 	}
 	switch preset {
 	case PresetFog:
-		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 2147483648        // 2GB
-		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 8589934592 // 8GB
-		c.PROCESS_MAX_SIZE = 64 * 1024 * 1024 * 1024            // 64GB
-		c.TAG_TABLE_META_MAX_SIZE = 8 * 1024 * 1024 * 1024      // 8GB
-		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 2147483648      // 2GB
-		c.RS_CACHE_ENABLE = 1                                   //
-		c.RS_CACHE_MAX_MEMORY_SIZE = 536870912                  // 512MB
-		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 16777216              // 16MB
-		c.TAG_CACHE_MAX_MEMORY_SIZE = 512 * 1024 * 1024         // 512MB
-		c.DEFAULT_LSM_MAX_LEVEL = 2                             //
-		c.MAX_QPX_MEM = 1073741824                              // 1GB
-		c.ROLLUP_FETCH_COUNT_LIMIT = 3000000                    //
-		c.TAG_CACHE_ENABLE = 31                                 //
-		c.TAG_PARTITION_COUNT = 4                               //
-		c.TAG_DATA_PART_SIZE = 16777216                         //
+		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 2 * 1024 * 1024 * 1024        // 2GB
+		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 8 * 1024 * 1024 * 1024 // 8GB
+		c.PROCESS_MAX_SIZE = 64 * 1024 * 1024 * 1024                        // 64GB
+		c.TAG_TABLE_META_MAX_SIZE = 512 * 1024 * 1024                       // 512MB
+		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 2 * 1024 * 1024 * 1024      // 2GB
+		c.RS_CACHE_ENABLE = 1                                               //
+		c.RS_CACHE_MAX_MEMORY_SIZE = 512 * 1024 * 1024                      // 512MB
+		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 16 * 1024 * 1024                  // 16MB
+		c.TAG_CACHE_MAX_MEMORY_SIZE = 512 * 1024 * 1024                     // 512MB
+		c.DEFAULT_LSM_MAX_LEVEL = 2                                         //
+		c.MAX_QPX_MEM = 1024 * 1024 * 1024                                  // 1GB
+		c.ROLLUP_FETCH_COUNT_LIMIT = 3000000                                //
+		c.TAG_CACHE_ENABLE = 31                                             //
+		c.TAG_PARTITION_COUNT = 4                                           //
+		c.TAG_DATA_PART_SIZE = 16 * 1024 * 1024                             // 16MB
 	case PresetEdge:
-		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 134217728        // 128M
-		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 268435456 // 256M
-		c.PROCESS_MAX_SIZE = 32 * 1024 * 1024 * 1024           // 32GB
-		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 536870912      // 512M
-		c.RS_CACHE_ENABLE = 0                                  //
-		c.RS_CACHE_MAX_MEMORY_SIZE = 33554432                  // 32M
-		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 4194304              // 4M
-		c.DEFAULT_LSM_MAX_LEVEL = 0                            //
-		c.MAX_QPX_MEM = 268435456                              // 256MB
-		c.ROLLUP_FETCH_COUNT_LIMIT = 10000                     // Max speed of 32bit rollup : 10000rec/sec
-		c.HANDLE_LIMIT = 4096                                  //
-		c.TAG_CACHE_MAX_MEMORY_SIZE = 256 * 1024 * 1024        // 256MB
-		c.DISK_TAG_INDEX_BLOCKS = 128                          //
-		c.STREAM_THREAD_COUNT = 0                              //
-		c.TAG_TABLE_META_MAX_SIZE = 4 * 1024 * 1024 * 1024     // 4GB
-		c.DISK_BUFFER_COUNT = 1                                //
-		c.TAG_CACHE_ENABLE = 3                                 //
-		c.TAG_PARTITION_COUNT = 1                              //
-		c.TAG_DATA_PART_SIZE = 1048576                         //
+		c.DISK_COLUMNAR_PAGE_CACHE_MAX_SIZE = 128 * 1024 * 1024        // 128MB
+		c.DISK_COLUMNAR_TABLESPACE_MEMORY_MAX_SIZE = 256 * 1024 * 1024 // 256MB
+		c.PROCESS_MAX_SIZE = 32 * 1024 * 1024 * 1024                   // 32GB
+		c.TAG_TABLE_META_MAX_SIZE = 100 * 1024 * 1024                  // 100MB
+		c.VOLATILE_TABLESPACE_MEMORY_MAX_SIZE = 512 * 1024 * 1024      // 512MB
+		c.RS_CACHE_ENABLE = 0                                          //
+		c.RS_CACHE_MAX_MEMORY_SIZE = 32 * 1024 * 1024                  // 32M
+		c.RS_CACHE_MAX_MEMORY_PER_QUERY = 4 * 1024 * 1024              // 4M
+		c.TAG_CACHE_MAX_MEMORY_SIZE = 256 * 1024 * 1024                // 256MB
+		c.DEFAULT_LSM_MAX_LEVEL = 0                                    //
+		c.MAX_QPX_MEM = 256 * 1024 * 1024                              // 256MB
+		c.ROLLUP_FETCH_COUNT_LIMIT = 10000                             // Max speed of 32bit rollup : 10000rec/sec
+		c.DISK_TAG_INDEX_BLOCKS = 128                                  //
+		c.STREAM_THREAD_COUNT = 0                                      //
+		c.DISK_BUFFER_COUNT = 1                                        //
+		c.TAG_CACHE_ENABLE = 3                                         //
+		c.TAG_PARTITION_COUNT = 1                                      //
+		c.TAG_DATA_PART_SIZE = 1024 * 1024                             // 1MB
+		c.HANDLE_LIMIT = 4096                                          //
 	}
 	return c
 }
