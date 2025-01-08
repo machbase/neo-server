@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,6 +151,9 @@ func AppendTagNotExist(t *testing.T, db api.Database, ctx context.Context) {
 }
 
 func AppendTagPartial(t *testing.T, db api.Database, ctx context.Context) {
+	if _, ok := db.(*machcli.Database); ok {
+		t.Skip("skip test for cli")
+	}
 	tableName := "append_tag2"
 
 	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))

@@ -37,6 +37,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		InsertMeta,
 		AppendTag,
 		AppendTagNotExist,
+		AppendTagPartial,
 		ShowTables,
 		ExistsTable,
 		Indexes,
@@ -92,7 +93,7 @@ func CreateTestTables(db api.Database) error {
 	defer conn.Close()
 
 	result := conn.Exec(ctx, api.SqlTidy(`
-		create tag table tag_data(
+		create tag table if not exists tag_data(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
 			value           double summarized,
@@ -113,7 +114,7 @@ func CreateTestTables(db api.Database) error {
 	}
 
 	result = conn.Exec(ctx, api.SqlTidy(`
-		create tag table tag_simple(
+		create tag table if not exists tag_simple(
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
 			value           double
@@ -124,7 +125,7 @@ func CreateTestTables(db api.Database) error {
 	}
 
 	result = conn.Exec(ctx, api.SqlTidy(`
-		create table log_data(
+		create table if not exists log_data(
 		    time datetime,
 			short_value short,
 			ushort_value ushort,

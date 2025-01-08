@@ -1,7 +1,6 @@
 package testsuite_test
 
 import (
-	"context"
 	_ "embed"
 	"os"
 	"testing"
@@ -33,15 +32,5 @@ func TestAll(t *testing.T) {
 		if err := testsuite.DropTestTables(db); err != nil {
 			t.Fatalf("ERROR: %s", err)
 		}
-	}
-}
-
-func TestTagMeta(t *testing.T) {
-	for _, db := range []api.Database{
-		testServer.DatabaseSVR(),
-		testServer.DatabaseRPC(),
-	} {
-		ctx := context.TODO()
-		testsuite.AppendTagPartial(t, db, ctx)
 	}
 }
