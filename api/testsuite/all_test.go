@@ -3,7 +3,9 @@ package testsuite_test
 import (
 	_ "embed"
 	"os"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
@@ -31,6 +33,10 @@ func TestAll(t *testing.T) {
 		testsuite.TestAll(t, db)
 		if err := testsuite.DropTestTables(db); err != nil {
 			t.Fatalf("ERROR: %s", err)
+		}
+		if runtime.GOOS == "windows" {
+			// workaround for windows, it crash randomly when closing a connection of "drop table"
+			time.Sleep(10 * time.Second)
 		}
 	}
 }

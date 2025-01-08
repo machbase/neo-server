@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +31,10 @@ func TestMain(m *testing.M) {
 		Password: "manager",
 	})
 	code := m.Run()
-	testServer.DropTestTables()
+	if runtime.GOOS != "windows" {
+		// workaround for windows, it crash randomly when closing a connection of "drop table"
+		testServer.DropTestTables()
+	}
 	testServer.StopServer(m)
 	os.Exit(code)
 }
