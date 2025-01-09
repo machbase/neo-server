@@ -806,6 +806,49 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		}
 		return yield(v_key, call.ArgumentList[1:])
 	})
+	// function $.yieldArray(array)
+	ctx.obj.Set("yieldArray", func(call otto.FunctionCall) otto.Value {
+		var v_key any
+		if inflight := node.Inflight(); inflight != nil {
+			v_key = inflight.key
+		}
+		if v_key == nil {
+			v_key = ctx.yieldCount
+		}
+		if len(call.ArgumentList) != 1 || call.ArgumentList[0].Class() != "Array" {
+			return ctx.vm.MakeCustomError("SCRIPT", "argument should be an array")
+		}
+		obj, _ := call.ArgumentList[0].Export()
+		args := []otto.Value{}
+		switch arr := obj.(type) {
+		case []any:
+			for _, v := range arr {
+				ov, _ := ctx.vm.ToValue(v)
+				args = append(args, ov)
+			}
+		case []bool:
+			for _, v := range arr {
+				ov, _ := ctx.vm.ToValue(v)
+				args = append(args, ov)
+			}
+		case []string:
+			for _, v := range arr {
+				ov, _ := ctx.vm.ToValue(v)
+				args = append(args, ov)
+			}
+		case []int64:
+			for _, v := range arr {
+				ov, _ := ctx.vm.ToValue(v)
+				args = append(args, ov)
+			}
+		case []float64:
+			for _, v := range arr {
+				ov, _ := ctx.vm.ToValue(v)
+				args = append(args, ov)
+			}
+		}
+		return yield(v_key, args)
+	})
 	// $.db()
 	ctx.obj.Set("db", ottoFuncDB(ctx, node))
 	ctx.obj.Set("request", ottoFuncRequest(ctx, node))

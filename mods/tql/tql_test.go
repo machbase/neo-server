@@ -1388,6 +1388,90 @@ func TestScript(t *testing.T) {
 				CSV()`,
 			ExpectCSV: []string{"808185600,1995-08-12T00:00:00.000Z", "", ""},
 		},
+		{
+			Name: "js-yieldArray-string",
+			Script: `
+				STRING('1,2,3,4,5', separator('\n'))
+				SCRIPT("js", {
+					$.yieldArray($.values[0].split(','))
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[["1","2","3","4","5"]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "js-yieldArray-bool",
+			Script: `
+				STRING('true,true,false,true,false', separator('\n'))
+				SCRIPT("js", {
+					$.yieldArray($.values[0].split(',').map(function(v){ return v === 'true'}))
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[[true,true,false,true,false]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "js-yieldArray-number",
+			Script: `
+				STRING('1.2,2.3,3.4,5.6', separator('\n'))
+				SCRIPT("js", {
+					$.yieldArray($.values[0].split(',').map(function(v){ return parseFloat(v) }))
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[[1.2,2.3,3.4,5.6]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "js-yieldArray-number-int64",
+			Script: `
+				STRING('1,2,3,4,5', separator('\n'))
+				SCRIPT("js", {
+					$.yieldArray($.values[0].split(',').map(function(v){ return parseInt(v) }))
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["STRING"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[[1,2,3,4,5]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name: "js-yieldArray-number-mixed",
+			Script: `
+				SCRIPT("js", {
+					$.result = {
+						columns: ["a", "b", "c", "d"],
+						types: ["int64", "double", "string", "bool"]
+					};
+					var arr = [1, 2.3, '3.4', true];
+					$.yieldArray(arr);
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
 	}
 
 	for _, tc := range tests {
