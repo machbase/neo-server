@@ -754,6 +754,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 
 	var err error
 	yield := func(key any, args []otto.Value) otto.Value {
+		fmt.Println("yield--------------", key, args)
 		var values []any
 		if len(args) == 1 && args[0].IsObject() && args[0].Object().Class() == "Array" {
 			arr, _ := args[0].Object().Value().Export()
@@ -771,6 +772,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 			values = make([]any, len(args))
 			for i, v := range args {
 				values[i], err = v.Export()
+				fmt.Printf("v[%d]: %+v %+v err:%v\n", i, v, values[i], err)
 				if err != nil {
 					values[i] = v.String()
 				}
@@ -815,7 +817,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		if v_key == nil {
 			v_key = ctx.yieldCount
 		}
-		if len(call.ArgumentList) != 1 || call.ArgumentList[0].Class() != "Array" {
+		if len(call.ArgumentList) != 1 || !slices.Contains([]string{"Array", "GoSlice"}, call.ArgumentList[0].Class()) {
 			return ctx.vm.MakeCustomError("SCRIPT", "argument should be an array")
 		}
 		obj, _ := call.ArgumentList[0].Export()
