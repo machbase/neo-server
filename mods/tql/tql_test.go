@@ -526,6 +526,34 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "select-value",
+			Script: `
+				SCRIPT("js", {
+					$.db().query("select * from js_tag").yield();
+				})
+				CSV(header(true))
+				`,
+			ExpectCSV: []string{
+				"NAME,TIME,VALUE",
+				"test-script,1731900711328594944,0",
+				"test-script,1731900712328594944,1.23",
+				"test-script,1731900713328594944,2.46",
+				"test-script,1731900714328594944,3.69",
+				"test-script,1731900715328594944,4.92",
+				"test-script,1731900716328594944,6.15",
+				"test-script,1731900717328594944,7.38",
+				"test-script,1731900718328594944,8.61",
+				"test-script,1731900719328594944,9.84",
+				"test-script,1731900720328594944,11.07",
+				"",
+				"",
+			},
+			RunCondition: func() bool {
+				// FIXME: 'create-table' test is failing randomly on Windows
+				return runtime.GOOS != "windows"
+			},
+		},
+		{
 			Name: "drop-table",
 			Script: `
 				SCRIPT("js", {

@@ -1126,6 +1126,53 @@ func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.
 				}
 			}
 			queryObj, _ := ctx.vm.Object(`({})`)
+			queryObj.Set("yield", func(handler otto.FunctionCall) otto.Value {
+				var conn api.Conn
+				var err error
+				if bridgeName == "" {
+					conn, err = node.task.ConnDatabase(node.task.ctx)
+				} else {
+					if db, dbErr := connector.New(bridgeName); dbErr == nil {
+						conn, err = db.Connect(node.task.ctx)
+					} else {
+						err = dbErr
+					}
+				}
+				if err != nil {
+					node.task.Cancel()
+					return ctx.vm.MakeCustomError("DBError", err.Error())
+				}
+				defer conn.Close()
+
+				rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
+				if err != nil {
+					node.task.Cancel()
+					return ctx.vm.MakeCustomError("DBError", err.Error())
+				}
+				cols, _ := rows.Columns()
+
+				// set headers
+				types := []string{}
+				for _, col := range cols {
+					types = append(types, string(col.DataType))
+				}
+				var opts = ScriptOttoResultOption{
+					Columns: cols.Names(),
+					Types:   types,
+				}
+				if cols := opts.ResultColumns(); cols != nil {
+					node.task.SetResultColumns(cols)
+				}
+				// yield rows
+				count := 0
+				for rows.Next() {
+					values, _ := cols.MakeBuffer()
+					rows.Scan(values...)
+					count++
+					NewRecord(count, values).Tell(node.next)
+				}
+				return otto.UndefinedValue()
+			})
 			queryObj.Set("forEach", func(handler otto.FunctionCall) otto.Value {
 				if len(handler.ArgumentList) != 1 {
 					return ctx.vm.MakeCustomError("DBError", "forEach() requires a callback function")
