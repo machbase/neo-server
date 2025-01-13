@@ -631,6 +631,7 @@ type OttoContext struct {
 	obj          *otto.Object
 	yieldCount   int64
 	onceFinalize sync.Once
+	didSetResult bool
 }
 
 func (ctx *OttoContext) Run() (any, error) {
@@ -676,30 +677,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		ctx.sc = s
 	}
 
-	var didSetResult = false
-	doResult := func() error {
-		resultObj, err := ctx.obj.Get("result")
-		if err != nil {
-			return fmt.Errorf("SCRIPT result, %s", err.Error())
-		}
-		if resultObj.IsDefined() {
-			var opts ScriptOttoResultOption
-			if err := opts.Load(resultObj); err != nil {
-				msg := strings.TrimPrefix(err.Error(), "json: ")
-				return fmt.Errorf("line %d, SCRIPT option, %s", node.tqlLine.line, msg)
-			}
-			if cols := opts.ResultColumns(); cols != nil {
-				node.task.SetResultColumns(cols)
-			}
-			didSetResult = true
-		}
-		return nil
-	}
-
 	node.SetEOF(func(*Node) {
 		// set $.result columns if no records are yielded
-		if !didSetResult {
-			doResult()
+		if !ctx.didSetResult {
+			ctx.doResult()
 		}
 		ctx.onceFinalize.Do(func() {
 			f, _ := ctx.vm.Get("finalize")
@@ -708,20 +689,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 			}
 		})
 	})
-	consoleLog := func(level Level) func(call otto.FunctionCall) otto.Value {
-		return func(call otto.FunctionCall) otto.Value {
-			params := []any{}
-			for _, v := range call.ArgumentList {
-				params = append(params, v.String())
-			}
-			node.task._log(level, params...)
-			return otto.UndefinedValue()
-		}
-	}
 	con, _ := ctx.vm.Get("console")
-	con.Object().Set("log", consoleLog(INFO))
-	con.Object().Set("warn", consoleLog(WARN))
-	con.Object().Set("error", consoleLog(ERROR))
+	con.Object().Set("log", ctx.consoleLog(INFO))
+	con.Object().Set("warn", ctx.consoleLog(WARN))
+	con.Object().Set("error", ctx.consoleLog(ERROR))
 
 	// define $
 	ctx.obj, _ = ctx.vm.Object(`($ = {})`)
@@ -752,51 +723,109 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	}
 	ctx.obj.Set("params", param)
 
-	var err error
-	yield := func(key any, args []otto.Value) otto.Value {
-		var values []any
-		if len(args) == 1 && args[0].IsObject() && args[0].Object().Class() == "Array" {
-			arr, _ := args[0].Object().Value().Export()
-			if v, ok := arr.([][]any); ok {
-				values = make([]any, len(v))
-				for i, v := range v {
-					values[i] = v
-				}
-			} else if v, ok := arr.([]any); ok {
-				values = v
-			} else {
-				values = []any{arr}
-			}
-		} else {
-			values = make([]any, len(args))
-			for i, v := range args {
-				values[i], err = v.Export()
-				if err != nil {
-					values[i] = v.String()
-				}
-			}
-		}
-		// set $.result columns before the first yield
-		if ctx.yieldCount == 0 && !didSetResult {
-			doResult()
-		}
-		NewRecord(key, values).Tell(node.next)
-		ctx.yieldCount++
-		return otto.TrueValue()
-	}
 	// function $.yield(...)
-	ctx.obj.Set("yield", func(call otto.FunctionCall) otto.Value {
+	ctx.obj.Set("yield", ottoFuncYield(ctx))
+	// function $.yieldKey(key, ...)
+	ctx.obj.Set("yieldKey", ottoFuncYieldKey(ctx))
+	// function $.yieldArray(array)
+	ctx.obj.Set("yieldArray", ottoFuncYieldArray(ctx))
+	// $.db()
+	ctx.obj.Set("db", ottoFuncDB(ctx))
+	// $.request()
+	ctx.obj.Set("request", ottoFuncRequest(ctx))
+
+	// init code
+	if initCode != "" {
+		if node.tqlLine != nil && node.tqlLine.line > 1 {
+			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
+		}
+		_, err := ctx.vm.Run(initCode)
+		if err != nil {
+			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+		}
+	}
+
+	return ctx, nil
+}
+
+func (ctx *OttoContext) doResult() error {
+	resultObj, err := ctx.obj.Get("result")
+	if err != nil {
+		return fmt.Errorf("SCRIPT result, %s", err.Error())
+	}
+	if resultObj.IsDefined() {
+		var opts ScriptOttoResultOption
+		if err := opts.Load(resultObj); err != nil {
+			msg := strings.TrimPrefix(err.Error(), "json: ")
+			return fmt.Errorf("line %d, SCRIPT option, %s", ctx.node.tqlLine.line, msg)
+		}
+		if cols := opts.ResultColumns(); cols != nil {
+			ctx.node.task.SetResultColumns(cols)
+		}
+		ctx.didSetResult = true
+	}
+	return nil
+}
+
+func (ctx *OttoContext) consoleLog(level Level) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
+		params := []any{}
+		for _, v := range call.ArgumentList {
+			params = append(params, v.String())
+		}
+		ctx.node.task._log(level, params...)
+		return otto.UndefinedValue()
+	}
+}
+
+func (ctx *OttoContext) yield(key any, args []otto.Value) otto.Value {
+	var values []any
+	var err error
+	if len(args) == 1 && args[0].IsObject() && args[0].Object().Class() == "Array" {
+		arr, _ := args[0].Object().Value().Export()
+		if v, ok := arr.([][]any); ok {
+			values = make([]any, len(v))
+			for i, v := range v {
+				values[i] = v
+			}
+		} else if v, ok := arr.([]any); ok {
+			values = v
+		} else {
+			values = []any{arr}
+		}
+	} else {
+		values = make([]any, len(args))
+		for i, v := range args {
+			values[i], err = v.Export()
+			if err != nil {
+				values[i] = v.String()
+			}
+		}
+	}
+	// set $.result columns before the first yield
+	if ctx.yieldCount == 0 && !ctx.didSetResult {
+		ctx.doResult()
+	}
+	NewRecord(key, values).Tell(ctx.node.next)
+	ctx.yieldCount++
+	return otto.TrueValue()
+}
+
+func ottoFuncYield(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
 		var v_key any
-		if inflight := node.Inflight(); inflight != nil {
+		if inflight := ctx.node.Inflight(); inflight != nil {
 			v_key = inflight.key
 		}
 		if v_key == nil {
 			v_key = ctx.yieldCount
 		}
-		return yield(v_key, call.ArgumentList)
-	})
-	// function $.yieldKey(key, ...)
-	ctx.obj.Set("yieldKey", func(call otto.FunctionCall) otto.Value {
+		return ctx.yield(v_key, call.ArgumentList)
+	}
+}
+
+func ottoFuncYieldKey(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) < 2 {
 			return otto.FalseValue()
 		}
@@ -804,12 +833,14 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		if v_key == nil {
 			v_key = ctx.yieldCount
 		}
-		return yield(v_key, call.ArgumentList[1:])
-	})
-	// function $.yieldArray(array)
-	ctx.obj.Set("yieldArray", func(call otto.FunctionCall) otto.Value {
+		return ctx.yield(v_key, call.ArgumentList[1:])
+	}
+}
+
+func ottoFuncYieldArray(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
 		var v_key any
-		if inflight := node.Inflight(); inflight != nil {
+		if inflight := ctx.node.Inflight(); inflight != nil {
 			v_key = inflight.key
 		}
 		if v_key == nil {
@@ -847,31 +878,11 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 				args = append(args, ov)
 			}
 		}
-		return yield(v_key, args)
-	})
-	// $.db()
-	ctx.obj.Set("db", ottoFuncDB(ctx, node))
-	ctx.obj.Set("request", ottoFuncRequest(ctx, node))
-
-	// init code
-	if initCode != "" {
-		if node.tqlLine != nil && node.tqlLine.line > 1 {
-			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
-		}
-		_, err := ctx.vm.Run(initCode)
-		if err != nil {
-			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
-		}
-		// err = doResult()
-		// if err != nil {
-		// 	return nil, err
-		// }
+		return ctx.yield(v_key, args)
 	}
-
-	return ctx, nil
 }
 
-func ottoFuncRequest(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
+func ottoFuncRequest(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 	// $.request(url, option).do(function(response) {...})
 	return func(call otto.FunctionCall) otto.Value {
 		if len(call.ArgumentList) == 0 {
@@ -941,7 +952,7 @@ func ottoFuncRequest(ctx *OttoContext, node *Node) func(call otto.FunctionCall) 
 			callback := call.ArgumentList[0]
 			responseObj, _ := ctx.vm.Object(`({})`)
 
-			httpClient := node.task.NewHttpClient()
+			httpClient := ctx.node.task.NewHttpClient()
 			httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
 			var httpResponse *http.Response
 			if httpErr == nil {
@@ -1089,7 +1100,8 @@ func ottoValue(ctx *OttoContext, value any) (otto.Value, error) {
 	}
 }
 
-func ottoFuncDB(ctx *OttoContext, node *Node) func(call otto.FunctionCall) otto.Value {
+func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	var node = ctx.node
 	return func(call otto.FunctionCall) otto.Value {
 		var bridgeName string
 		if len(call.ArgumentList) > 0 {
