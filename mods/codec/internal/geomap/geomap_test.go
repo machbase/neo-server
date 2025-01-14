@@ -190,6 +190,7 @@ func TestGeoMap(t *testing.T) {
 						fmt.Println("Error", err.Error())
 						t.Fail()
 					}
+					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
 					require.JSONEq(t, string(expect), buffer.String(), "%s result unmatched\n%s", output, buffer.String())
 				}
 				if output == "html" {
@@ -198,6 +199,7 @@ func TestGeoMap(t *testing.T) {
 						fmt.Println("Error", err.Error())
 						t.Fail()
 					}
+					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
 					require.Equal(t, string(expect), buffer.String(), "%s result unmatched\n%s", output, buffer.String())
 					expectStr := string(expect)
 					if !StringsEq(t, expectStr, buffer.String()) {
@@ -205,12 +207,13 @@ func TestGeoMap(t *testing.T) {
 					}
 				}
 				if tc.expectJS != "" {
+					require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
 					expect, err := os.ReadFile(filepath.Join("test", tc.expectJS))
 					if err != nil {
 						fmt.Println("Error", err.Error())
 						t.Fail()
 					}
-					require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
+					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
 					require.Equal(t, string(expect), fsmock.buff.String(), fsmock.buff.String())
 				}
 			})
