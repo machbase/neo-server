@@ -121,7 +121,11 @@ func TestGeoMap(t *testing.T) {
 								"prop1": {"this": "that"}
 							}
 						}
-					]
+					],
+					"popup": {
+						"content": "<b>GeoJSON</b>",
+						"open": 0
+					}
 				}`,
 				`{ "type": "Feature",
 					"geometry": {
@@ -129,7 +133,11 @@ func TestGeoMap(t *testing.T) {
 						"coordinates": [125.6, 10.1]
 					},
 					"properties": {
-						"name": "Dinagat Islands"
+						"name": "Dinagat Islands",
+						"popup": {
+							"content": "<b>Dinagat Islands</b>",
+							"open": true
+						}
 					}
 				}`,
 				`{ "type": "Point",
@@ -218,5 +226,60 @@ func TestGeoMap(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestNewPopupMap(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  map[string]interface{}
+		expect *geomap.Popup
+	}{
+		{
+			name: "empty",
+			input: map[string]interface{}{
+				"popup": nil,
+			},
+			expect: nil,
+		},
+		{
+			name: "no_popup",
+			input: map[string]interface{}{
+				"other": "value",
+			},
+			expect: nil,
+		},
+		{
+			name: "popup_open",
+			input: map[string]interface{}{
+				"popup": map[string]any{
+					"content": "Hello World",
+					"open":    true,
+				},
+			},
+			expect: &geomap.Popup{
+				Content: "Hello World",
+				Open:    true,
+			},
+		},
+		{
+			name: "popup_no_open",
+			input: map[string]interface{}{
+				"popup": map[string]any{
+					"content": "Hello World",
+				},
+			},
+			expect: &geomap.Popup{
+				Content: "Hello World",
+				Open:    false,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := geomap.NewPopupMap(tc.input)
+			require.Equal(t, tc.expect, actual)
+		})
 	}
 }

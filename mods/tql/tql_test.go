@@ -1786,9 +1786,9 @@ func TestGeoJSON(t *testing.T) {
 				require.Equal(t, fmt.Sprintf(`(()=>{
 var map = L.map("%s", {crs: L.CRS.EPSG3857, attributionControl:false});
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-var __ptstyle = {color:"#2020F0",fillOpacity:0.5,opacity:0.5,radius:4,stroke:false};
-L.geoJSON({"geometry":{"coordinates":[127.027756,37.49785],"type":"Point"},"type":"Feature"}).addTo(map);
 map.fitBounds([[37.49785,127.027756],[37.49785,127.027756]]);
+var __ptstyle = {color:"#2020F0",fillOpacity:0.5,opacity:0.5,radius:4,stroke:false};
+var obj0 = L.geoJSON({"type":"Feature","geometry":{"type":"Point","coordinates":[127.027756,37.49785]},"properties":null}, {}).addTo(map);
 })();`, id), mock.buff.String())
 			},
 		},

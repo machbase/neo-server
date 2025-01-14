@@ -48,7 +48,7 @@ type GeoMap struct {
 
 	crs         string
 	objs        []nums.Geography
-	geojsonObjs []string
+	layers      []*Layer
 	icons       []*Icon
 	pointStyles map[string]*PointStyle
 }
@@ -199,62 +199,25 @@ func (gm *GeoMap) Open() error {
 
 var _sliceGeometries = []string{"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection"}
 
-func (gm *GeoMap) AddRow(values []any) error {
-	extendBound := func(lat, lon float64) {
-		if gm.Bound == nil {
-			gm.Bound = nums.NewLatLonBound(&nums.LatLon{Lat: lat, Lon: lon})
-		} else {
-			gm.Bound = gm.Bound.Extend(&nums.LatLon{Lat: lat, Lon: lon})
-		}
+func (gm *GeoMap) extendBound(lat, lon float64) {
+	if gm.Bound == nil {
+		gm.Bound = nums.NewLatLonBound(&nums.LatLon{Lat: lat, Lon: lon})
+	} else {
+		gm.Bound = gm.Bound.Extend(&nums.LatLon{Lat: lat, Lon: lon})
 	}
+}
+
+func (gm *GeoMap) AddRow(values []any) error {
 	for _, val := range values {
 		if val == nil {
 			continue
 		}
 		if v, ok := val.(nums.Geography); ok {
+			gm.addGeoObject(v)
 			gm.objs = append(gm.objs, v)
-			for _, coord := range v.Coordinates() {
-				// Caution!!: nums.Geography is "lat,lon" order
-				extendBound(coord[0], coord[1])
-			}
 		} else if m, ok := val.(map[string]any); ok {
-			// Caution!!: geojson is "lon,lat" order
-			typeString := m["type"].(string)
-			if typeString == "FeatureCollection" {
-				jsonBytes, _ := json.Marshal(m)
-				obj, err := geojson.UnmarshalFeatureCollection(jsonBytes)
-				if err != nil {
-					gm.logger.LogWarnf("GEOMAP invalid geojson %s", err.Error())
-				} else {
-					gm.geojsonObjs = append(gm.geojsonObjs, string(jsonBytes))
-					for _, f := range obj.Features {
-						bound := f.Geometry.Bound()
-						extendBound(bound.Min.Lat(), bound.Min.Lon())
-						extendBound(bound.Max.Lat(), bound.Max.Lon())
-					}
-				}
-			} else if typeString == "Feature" {
-				jsonBytes, _ := json.Marshal(m)
-				obj, err := geojson.UnmarshalFeature(jsonBytes)
-				if err != nil {
-					gm.logger.LogWarnf("GEOMAP invalid geojson %s", err.Error())
-				} else {
-					gm.geojsonObjs = append(gm.geojsonObjs, string(jsonBytes))
-					bound := obj.Geometry.Bound()
-					extendBound(bound.Min.Lat(), bound.Min.Lon())
-					extendBound(bound.Max.Lat(), bound.Max.Lon())
-				}
-			} else if slices.Contains(_sliceGeometries, typeString) {
-				jsonBytes, _ := json.Marshal(m)
-				obj, err := geojson.UnmarshalGeometry(jsonBytes)
-				if err != nil {
-					gm.logger.LogWarnf("GEOMAP invalid geojson %s", err.Error())
-				} else {
-					gm.geojsonObjs = append(gm.geojsonObjs, string(jsonBytes))
-					bound := obj.Coordinates.Bound()
-					extendBound(bound.Min.Lat(), bound.Min.Lon())
-					extendBound(bound.Max.Lat(), bound.Max.Lon())
-				}
+			if err := gm.addGeoJSON(m); err != nil {
+				return err
 			}
 		}
 	}
@@ -303,7 +266,13 @@ func (gm *GeoMap) Close() {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 
-	if js, err := defaultPointStyle.Properties.MarshalJS(); err == nil {
+	if gm.Bound != nil && !gm.Bound.IsEmpty() {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
+	} else {
+		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.setView(%s, %d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
+	}
+
+	if js, err := MarshalJS(defaultPointStyle.Properties); err == nil {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("var %s = %s;", defaultPointStyleVarName, js))
 	}
 	for n, v := range gm.pointStyles {
@@ -323,10 +292,7 @@ func (gm *GeoMap) Close() {
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
 	}
 
-	for _, geojsonLayer := range gm.geojsonObjs {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.geoJSON(%s).addTo(map);`, geojsonLayer))
-	}
-	for _, layer := range gm.Layers() {
+	for _, layer := range gm.layers {
 		var opt string
 		if layer.Style == "" {
 			if v, err := layer.Option.MarshalJS(); err != nil {
@@ -339,19 +305,14 @@ func (gm *GeoMap) Close() {
 			opt = layer.Style
 		}
 		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(map);`,
-			layer.Name, layer.Type, layer.Coord, opt))
+			layer.Name, layer.Type, layer.Jsonized, opt))
 		if layer.Popup != nil {
-			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
 			if layer.Popup.Open {
-				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.openPopup();", layer.Name))
+				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q).openPopup();", layer.Name, layer.Popup.Content))
+			} else {
+				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
 			}
 		}
-	}
-
-	if gm.Bound != nil && !gm.Bound.IsEmpty() {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
-	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.setView(%s, %d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
 	}
 
 	if gm.volatileFileWriter != nil {
@@ -390,82 +351,150 @@ func crsMarshalJS(c *nums.CRS, varname string) string {
 		c.Code, c.Proj, strings.Join(res, ","), org, bound)
 }
 
-func (gm *GeoMap) Layers() []*Layer {
-	var ret []*Layer
-	for i, obj := range gm.objs {
-		layer := &Layer{
-			Name: fmt.Sprintf("obj%d", i),
-			Type: "marker",
-		}
-
-		if mkr, ok := obj.(nums.GeoMarker); ok {
-			layer.Type = mkr.Marker()
-		} else {
-			switch ov := obj.(type) {
-			case *nums.Circle:
-				layer.Type = "circle"
-			case *nums.SingleLatLon:
-				layer.Type = "point"
-			case *nums.MultiLatLon:
-				switch ov.Type() {
-				case "Polygon":
-					layer.Type = "polygon"
-				case "LineString":
-					layer.Type = "polyline"
-				}
-			}
-		}
-
-		if orgProps := obj.Properties(); orgProps != nil {
-			props := nums.GeoProperties{}
-			props.Copy(orgProps)
-			if v, ok := props.PopString("popup.content"); ok {
-				layer.Popup = &Popup{Content: v}
-				if flag, ok := props.PopBool("popup.open"); ok && flag {
-					layer.Popup.Open = true
-				}
-			}
-			pointStyleName := ""
-			if ps, ok := props.PopString("point.style"); ok {
-				pointStyleName = ps
-			}
-			if layer.Type == "point" {
-				layer.Type = defaultPointStyle.Type
-				layer.Style = defaultPointStyleVarName
-				if st, ok := gm.pointStyles[pointStyleName]; ok {
-					layer.Type = st.Type
-					layer.Style = pointStyleName
-				}
-			} else {
-				layer.Option = props
-			}
-		}
-
-		switch obj.(type) {
-		case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLon:
-			coord := obj.Coordinates()
-			if len(coord) > 0 {
-				layer.Coord = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
-			}
-		case *nums.MultiLatLon:
-			coord := obj.Coordinates()
-			buff := []string{}
-			for _, c := range coord {
-				buff = append(buff, fmt.Sprintf("[%v,%v]", c[0], c[1]))
-			}
-			layer.Coord = fmt.Sprintf("[%s]", strings.Join(buff, ","))
-		default:
-			coord := obj.Coordinates()
-			arr := []string{}
-			for _, p := range coord {
-				arr = append(arr, fmt.Sprintf("[%v,%v]", p[0], p[1]))
-			}
-			layer.Coord = "[" + strings.Join(arr, ",") + "]"
-		}
-
-		ret = append(ret, layer)
+func (gm *GeoMap) addGeoJSON(m map[string]any) error {
+	// Caution!!: geojson is "lon,lat" order
+	typeAny, ok := m["type"]
+	if !ok {
+		return nil
 	}
-	return ret
+	typeString, ok := typeAny.(string)
+	if !ok {
+		return nil
+	}
+	if typeString == "FeatureCollection" {
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalFeatureCollection(jsonBytes)
+		if err != nil {
+			return fmt.Errorf("GEOMAP invalid geojson %s", err.Error())
+		}
+		for _, f := range obj.Features {
+			bound := f.Geometry.Bound()
+			gm.extendBound(bound.Min.Lat(), bound.Min.Lon())
+			gm.extendBound(bound.Max.Lat(), bound.Max.Lon())
+		}
+		layer := &Layer{
+			Name: fmt.Sprintf("obj%d", len(gm.layers)),
+			Type: "geoJSON",
+		}
+		layer.Popup = NewPopupMap(obj.ExtraMembers)
+		jsonBytes, _ = obj.MarshalJSON()
+		layer.Jsonized = string(jsonBytes)
+		gm.layers = append(gm.layers, layer)
+	} else if typeString == "Feature" {
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalFeature(jsonBytes)
+		if err != nil {
+			return fmt.Errorf("GEOMAP invalid geojson %s", err.Error())
+		}
+		bound := obj.Geometry.Bound()
+		gm.extendBound(bound.Min.Lat(), bound.Min.Lon())
+		gm.extendBound(bound.Max.Lat(), bound.Max.Lon())
+		layer := &Layer{
+			Name: fmt.Sprintf("obj%d", len(gm.layers)),
+			Type: "geoJSON",
+		}
+		layer.Popup = NewPopupMap(obj.Properties)
+		jsonBytes, _ = obj.MarshalJSON()
+		layer.Jsonized = string(jsonBytes)
+		gm.layers = append(gm.layers, layer)
+	} else if slices.Contains(_sliceGeometries, typeString) {
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalGeometry(jsonBytes)
+		if err != nil {
+			return fmt.Errorf("GEOMAP invalid geojson %s", err.Error())
+		}
+		bound := obj.Coordinates.Bound()
+		gm.extendBound(bound.Min.Lat(), bound.Min.Lon())
+		gm.extendBound(bound.Max.Lat(), bound.Max.Lon())
+		layer := &Layer{
+			Name:     fmt.Sprintf("obj%d", len(gm.layers)),
+			Type:     "geoJSON",
+			Jsonized: string(jsonBytes),
+		}
+		gm.layers = append(gm.layers, layer)
+	} else {
+		return fmt.Errorf("GEOMAP invalid geojson %q", typeString)
+	}
+	return nil
+}
+
+func (gm *GeoMap) addGeoObject(obj nums.Geography) {
+	// Caution!!: nums.Geography is "lat,lon" order
+	layer := &Layer{
+		Name: fmt.Sprintf("obj%d", len(gm.layers)),
+		Type: "marker",
+	}
+
+	if mkr, ok := obj.(nums.GeoMarker); ok {
+		layer.Type = mkr.Marker()
+	} else {
+		switch ov := obj.(type) {
+		case *nums.Circle:
+			layer.Type = "circle"
+		case *nums.SingleLatLon:
+			layer.Type = "point"
+		case *nums.MultiLatLon:
+			switch ov.Type() {
+			case "Polygon":
+				layer.Type = "polygon"
+			case "LineString":
+				layer.Type = "polyline"
+			}
+		}
+	}
+
+	if orgProps := obj.Properties(); orgProps != nil {
+		props := nums.GeoProperties{}
+		props.Copy(orgProps)
+		if v, ok := props.PopString("popup.content"); ok {
+			layer.Popup = &Popup{Content: v}
+			if flag, ok := props.PopBool("popup.open"); ok && flag {
+				layer.Popup.Open = true
+			}
+		}
+		pointStyleName := ""
+		if ps, ok := props.PopString("point.style"); ok {
+			pointStyleName = ps
+		}
+		if layer.Type == "point" {
+			layer.Type = defaultPointStyle.Type
+			layer.Style = defaultPointStyleVarName
+			if st, ok := gm.pointStyles[pointStyleName]; ok {
+				layer.Type = st.Type
+				layer.Style = pointStyleName
+			}
+		} else {
+			layer.Option = props
+		}
+	}
+
+	switch obj.(type) {
+	case nums.GeoCircleMarker, nums.GeoPointMarker, nums.GeoCircle, *nums.SingleLatLon:
+		coord := obj.Coordinates()
+		if len(coord) > 0 {
+			layer.Jsonized = fmt.Sprintf("[%v,%v]", coord[0][0], coord[0][1])
+		}
+	case *nums.MultiLatLon:
+		coord := obj.Coordinates()
+		buff := []string{}
+		for _, c := range coord {
+			buff = append(buff, fmt.Sprintf("[%v,%v]", c[0], c[1]))
+		}
+		layer.Jsonized = fmt.Sprintf("[%s]", strings.Join(buff, ","))
+	default:
+		coord := obj.Coordinates()
+		arr := []string{}
+		for _, p := range coord {
+			arr = append(arr, fmt.Sprintf("[%v,%v]", p[0], p[1]))
+		}
+		layer.Jsonized = "[" + strings.Join(arr, ",") + "]"
+	}
+
+	for _, coord := range obj.Coordinates() {
+		gm.extendBound(coord[0], coord[1])
+	}
+
+	gm.layers = append(gm.layers, layer)
 }
 
 func (gm *GeoMap) JSAssetsNoEscaped() template.HTML {
