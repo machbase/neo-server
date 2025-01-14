@@ -20,6 +20,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/paulmach/orb/geojson"
 	"github.com/pkg/errors"
 	"github.com/robertkrimen/otto"
 )
@@ -733,6 +734,8 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	ctx.obj.Set("db", ottoFuncDB(ctx))
 	// $.request()
 	ctx.obj.Set("request", ottoFuncRequest(ctx))
+	// $.geojson()
+	ctx.obj.Set("geojson", ottoFuncGeoJSON(ctx))
 
 	// init code
 	if initCode != "" {
@@ -1284,5 +1287,51 @@ func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 			return retValue
 		})
 		return db.Value()
+	}
+}
+
+func ottoFuncGeoJSON(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) != 1 {
+			return ctx.vm.MakeCustomError("GeoJSONError", "missing a GeoJSON object")
+		}
+		value := call.ArgumentList[0]
+		if !value.IsObject() {
+			return ctx.vm.MakeCustomError("GeoJSONError", fmt.Sprintf("requires a GeoJSON object, but got %q", value.Class()))
+		}
+		obj := value.Object()
+		typeString, err := obj.Get("type")
+		if err != nil {
+			return ctx.vm.MakeCustomError("GeoJSONError", "missing a GeoJSON type")
+		}
+		jsonBytes, err := json.Marshal(obj)
+		if err != nil {
+			return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
+		}
+		var geoObj any
+		switch typeString.String() {
+		case "FeatureCollection":
+			if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
+				geoObj = geo
+			} else {
+				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
+			}
+		case "Feature":
+			if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
+				geoObj = geo
+			} else {
+				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
+			}
+		case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+			if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
+				geoObj = geo
+			} else {
+				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
+			}
+		default:
+			return ctx.vm.MakeCustomError("GeoJSONError", fmt.Sprintf("requires a GeoJSON type, but got %q", typeString.String()))
+		}
+		var _ = geoObj
+		return obj.Value()
 	}
 }

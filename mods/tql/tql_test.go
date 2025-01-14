@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"runtime"
 	"strings"
@@ -71,16 +72,32 @@ func flushTable(table string) error {
 	return nil
 }
 
+type VolatileFileWriterMock struct {
+	name     string
+	deadline time.Time
+	buff     bytes.Buffer
+}
+
+func (v *VolatileFileWriterMock) VolatileFilePrefix() string { return "/web/api/tql-assets/" }
+
+func (v *VolatileFileWriterMock) VolatileFileWrite(name string, data []byte, deadline time.Time) fs.File {
+	v.buff.Write(data)
+	v.name = name
+	v.deadline = deadline
+	return nil
+}
+
 type TqlTestCase struct {
-	Name         string
-	Script       string
-	Payload      string
-	Params       map[string][]string
-	ExpectErr    string
-	ExpectCSV    []string
-	ExpectText   []string
-	ExpectFunc   func(t *testing.T, result string)
-	RunCondition func() bool
+	Name               string
+	Script             string
+	Payload            string
+	Params             map[string][]string
+	ExpectErr          string
+	ExpectCSV          []string
+	ExpectText         []string
+	ExpectFunc         func(t *testing.T, result string)
+	ExpectVolatileFile func(t *testing.T, mock *VolatileFileWriterMock)
+	RunCondition       func() bool
 }
 
 func runTestCase(t *testing.T, tc TqlTestCase) {
@@ -90,6 +107,8 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 		return
 	}
 
+	memMock := &VolatileFileWriterMock{}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -98,6 +117,7 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	task.SetDatabase(testServer.DatabaseSVR())
 	task.SetLogWriter(os.Stdout)
 	task.SetOutputWriterJson(output, true)
+	task.SetVolatileAssetsProvider(memMock)
 	if tc.Payload != "" {
 		task.SetInputReader(bytes.NewBufferString(tc.Payload))
 	}
@@ -144,6 +164,9 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 			require.Equal(t, strings.Join(tc.ExpectText, "\n"), outputText)
 		} else {
 			t.Fatalf("unhandled output %q: %s", task.OutputContentType(), outputText)
+		}
+		if tc.ExpectVolatileFile != nil {
+			tc.ExpectVolatileFile(t, memMock)
 		}
 	default:
 		t.Fatal("ERROR:", tc.Name, "unexpected content type:", task.OutputContentType())
@@ -1718,6 +1741,58 @@ func TestBridgeSqlite(t *testing.T) {
 		defer bridge.Unregister("sqlite")
 	}
 
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestGeoJSON(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-geojson-point",
+			Script: `
+				SCRIPT("js", {
+					var lat = 37.497850;
+					var lon =  127.027756;
+					var name = "Gangnam-cross";
+					var obj = $.geojson({
+						type: "Feature",
+						geometry: {
+							type: "Point",
+							coordinates: [lon, lat]
+						}
+					});
+					if( obj instanceof Error ) {
+						$.yield(obj.message);
+					} else {
+						$.yield(obj);
+					}
+				})
+				GEOMAP()`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
+				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
+				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
+				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
+				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
+				id := gjson.Get(result, "ID").String()
+				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
+				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
+			},
+			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
+				id := strings.TrimSuffix(strings.TrimPrefix(mock.name, "/web/api/tql-assets/"), ".js")
+				require.Equal(t, fmt.Sprintf(`(()=>{
+var map = L.map("%s", {crs: L.CRS.EPSG3857, attributionControl:false});
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+var __ptstyle = {color:"#2020F0",fillOpacity:0.5,opacity:0.5,radius:4,stroke:false};
+L.geoJSON({"geometry":{"coordinates":[127.027756,37.49785],"type":"Point"},"type":"Feature"}).addTo(map);
+map.fitBounds([[37.49785,127.027756],[37.49785,127.027756]]);
+})();`, id), mock.buff.String())
+			},
+		},
+	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTestCase(t, tc)

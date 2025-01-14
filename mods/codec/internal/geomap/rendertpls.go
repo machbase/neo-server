@@ -8,7 +8,7 @@ var HeaderTemplate = `
 <style>
     .geomap_container { width:100%; height:100%; display: flex;justify-content: center;align-items: center;}
     .geomap_item {margin: auto;}
-	.leaflet-tile-pane{ -webkit-filter: grayscale({{ .TileGrayscale }}%); filter: grayscale({{ .TileGrayscale }}%);}
+    .leaflet-tile-pane{ -webkit-filter: grayscale({{ .TileGrayscale }}%); filter: grayscale({{ .TileGrayscale }}%);}
 </style>
 {{- range .CSSAssets }}
     <link href="{{ . }}" rel="stylesheet">
