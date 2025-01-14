@@ -169,12 +169,20 @@ func (tf *TimeFormatter) FormatEpoch(ts time.Time) any {
 	switch tf.format {
 	case "ns":
 		return ts.UnixNano()
+	case "ns.str":
+		return strconv.FormatInt(ts.UnixNano(), 10)
 	case "us":
 		return ts.UnixMicro()
+	case "us.str":
+		return strconv.FormatInt(ts.UnixMicro(), 10)
 	case "ms":
 		return ts.UnixMilli()
+	case "ms.str":
+		return strconv.FormatInt(ts.UnixMilli(), 10)
 	case "s":
 		return ts.Unix()
+	case "s.str":
+		return strconv.FormatInt(ts.Unix(), 10)
 	default:
 		format := GetTimeformat(tf.format)
 		if tf.location == nil {

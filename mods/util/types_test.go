@@ -58,17 +58,33 @@ func TestTimeFormatter(t *testing.T) {
 	obj := tf.FormatEpoch(ts)
 	require.Equal(t, int64(1692907084548634123), obj)
 
+	tf = util.NewTimeFormatter(util.Timeformat("ns.str"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "1692907084548634123", obj)
+
 	tf = util.NewTimeFormatter(util.Timeformat("us"), util.TimeLocation(time.UTC))
 	obj = tf.FormatEpoch(ts)
 	require.Equal(t, int64(1692907084548634), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("us.str"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "1692907084548634", obj)
 
 	tf = util.NewTimeFormatter(util.Timeformat("ms"), util.TimeLocation(time.UTC))
 	obj = tf.FormatEpoch(ts)
 	require.Equal(t, int64(1692907084548), obj)
 
+	tf = util.NewTimeFormatter(util.Timeformat("ms.str"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "1692907084548", obj)
+
 	tf = util.NewTimeFormatter(util.Timeformat("s"), util.TimeLocation(time.UTC))
 	obj = tf.FormatEpoch(ts)
 	require.Equal(t, int64(1692907084), obj)
+
+	tf = util.NewTimeFormatter(util.Timeformat("s.str"), util.TimeLocation(time.UTC))
+	obj = tf.FormatEpoch(ts)
+	require.Equal(t, "1692907084", obj)
 
 	tf = util.NewTimeFormatter(util.Timeformat("DEFAULT"), util.TimeLocation(nil))
 	obj = tf.FormatEpoch(ts)
