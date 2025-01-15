@@ -90,10 +90,14 @@ func (b *LatLonBound) String() string {
 }
 
 func (b *LatLonBound) Contains(pt *LatLon) bool {
-	if pt.Lon < b.Min.Lon || b.Max.Lon < pt.Lon {
+	return b.ContainsLatLon(pt.Lat, pt.Lon)
+}
+
+func (b *LatLonBound) ContainsLatLon(lat, lon float64) bool {
+	if lon < b.Min.Lon || b.Max.Lon < lon {
 		return false
 	}
-	if pt.Lat < b.Min.Lat || b.Max.Lat < pt.Lat {
+	if lat < b.Min.Lat || b.Max.Lat < lat {
 		return false
 	}
 	return true
@@ -101,6 +105,10 @@ func (b *LatLonBound) Contains(pt *LatLon) bool {
 
 func (b *LatLonBound) IsEmpty() bool {
 	return b.Min.Lat > b.Max.Lat || b.Min.Lon > b.Max.Lon
+}
+
+func (b *LatLonBound) IsPoint() bool {
+	return b.Min.Lat == b.Max.Lat && b.Min.Lon == b.Max.Lon
 }
 
 func (b *LatLonBound) Center() *LatLon {
@@ -141,18 +149,22 @@ func (b *LatLonBound) RightBottom() *LatLon {
 }
 
 func (b *LatLonBound) Extend(pt *LatLon) *LatLonBound {
+	return b.ExtendLatLon(pt.Lat, pt.Lon)
+}
+
+func (b *LatLonBound) ExtendLatLon(lat, lon float64) *LatLonBound {
 	// already included, no big deal
-	if b.Contains(pt) {
+	if b.ContainsLatLon(lat, lon) {
 		return b
 	}
 	return &LatLonBound{
 		Min: NewLatLon(
-			math.Min(b.Min.Lat, pt.Lat),
-			math.Min(b.Min.Lon, pt.Lon),
+			math.Min(b.Min.Lat, lat),
+			math.Min(b.Min.Lon, lon),
 		),
 		Max: NewLatLon(
-			math.Max(b.Max.Lat, pt.Lat),
-			math.Max(b.Max.Lon, pt.Lon),
+			math.Max(b.Max.Lat, lat),
+			math.Max(b.Max.Lon, lon),
 		),
 	}
 }
