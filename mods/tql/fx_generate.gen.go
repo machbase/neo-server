@@ -295,7 +295,6 @@ func NewNode(task *Task) *Node {
 		"opacity":             x.gen_opacity,
 		"outputStream":        x.gen_outputStream,
 		"plugins":             x.gen_plugins,
-		"pointStyle":          x.gen_pointStyle,
 		"precision":           x.gen_precision,
 		"rownum":              x.gen_rownum,
 		"rowsArray":           x.gen_rowsArray,
@@ -4589,29 +4588,6 @@ func (x *Node) gen_plugins(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.Plugins(p0...)
-	return ret, nil
-}
-
-// gen_pointStyle
-//
-// syntax: pointStyle(string, string, string)
-func (x *Node) gen_pointStyle(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("pointStyle", 3, len(args))
-	}
-	p0, err := convString(args, 0, "pointStyle", "string")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convString(args, 1, "pointStyle", "string")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convString(args, 2, "pointStyle", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.PointStyle(p0, p1, p2)
 	return ret, nil
 }
 

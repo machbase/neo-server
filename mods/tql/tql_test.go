@@ -1770,7 +1770,7 @@ func TestGeoJSON(t *testing.T) {
 						$.yield(obj);
 					}
 				})
-				GEOMAP()`,
+				GEOMAP(mapId("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
 				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
@@ -1779,17 +1779,43 @@ func TestGeoJSON(t *testing.T) {
 				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
 				id := gjson.Get(result, "ID").String()
 				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
+				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
+				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
 				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
 			},
 			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-				id := strings.TrimSuffix(strings.TrimPrefix(mock.name, "/web/api/tql-assets/"), ".js")
-				require.Equal(t, fmt.Sprintf(`(()=>{
-var map = L.map("%s", {crs: L.CRS.EPSG3857, attributionControl:false});
+				require.Equal(t, `var MTY3NzQ2MDY4NzQyNTc4MTc2 = {
+    defaultPointStyle: {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7},
+    geojson: {
+        pointToLayer: function (feature, latlng) {
+            if (feature.properties && feature.properties.icon) {
+                return L.marker(latlng, {icon: feature.properties.icon});
+            }
+            return L.circleMarker(latlng, {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7});
+        },
+        style: function (feature) {
+            if (feature.properties && feature.properties.style) {
+                return feature.properties.style;
+            }
+            return {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7};
+        },
+        onEachFeature: function (feature, layer) {
+            if (feature.properties && feature.properties.popup && feature.properties.popup.content) {
+                if (feature.properties.popup.open) {
+                    layer.bindPopup(feature.properties.popup.content).openPopup();
+                } else {
+                    layer.bindPopup(feature.properties.popup.content);
+                }
+            }
+        },
+    },
+};
+((opt)=>{
+var map = L.map("MTY3NzQ2MDY4NzQyNTc4MTc2", {crs: L.CRS.EPSG3857, attributionControl:false});
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 map.fitBounds([[37.49785,127.027756],[37.49785,127.027756]]);
-var __ptstyle = {color:"#2020F0",fillOpacity:0.5,opacity:0.5,radius:4,stroke:false};
-var obj0 = L.geoJSON({"type":"Feature","geometry":{"type":"Point","coordinates":[127.027756,37.49785]},"properties":null}, {}).addTo(map);
-})();`, id), mock.buff.String())
+var obj0 = L.geoJSON({"type":"Feature","geometry":{"type":"Point","coordinates":[127.027756,37.49785]},"properties":null}, opt.geojson).addTo(map);
+})(MTY3NzQ2MDY4NzQyNTc4MTc2);`, mock.buff.String())
 			},
 		},
 	}

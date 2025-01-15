@@ -7,5 +7,5 @@
     },
     "jsAssets": ["/web/geomap/leaflet.js"],
     "cssAssets": ["/web/geomap/leaflet.css"],
-    "jsCodeAssets": ["/web/api/tql-assets/WejMYXCGcYNL.js"]
+    "jsCodeAssets": ["/web/api/tql-assets/WejMYXCGcYNL_opt.js","/web/api/tql-assets/WejMYXCGcYNL.js"]
 }

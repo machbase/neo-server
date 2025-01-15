@@ -46,21 +46,19 @@ type GeoMap struct {
 	JSCodeAssets []string
 	PageTitle    string
 
-	crs         string
-	objs        []nums.Geography
-	layers      []*Layer
-	icons       []*Icon
-	pointStyles map[string]*PointStyle
+	crs    string
+	objs   []nums.Geography
+	layers []*Layer
+	icons  []*Icon
 }
 
 func New() *GeoMap {
 	return &GeoMap{
-		logger:      facility.DiscardLogger,
-		MapID:       snowflake.Generate(),
-		Width:       "600px",
-		Height:      "600px",
-		pointStyles: map[string]*PointStyle{},
-		crs:         "L.CRS.EPSG3857",
+		logger: facility.DiscardLogger,
+		MapID:  snowflake.Generate(),
+		Width:  "600px",
+		Height: "600px",
+		crs:    "L.CRS.EPSG3857",
 	}
 }
 
@@ -165,31 +163,6 @@ func (gm *GeoMap) SetIcon(name string, opt string) {
 	gm.icons = append(gm.icons, icn)
 }
 
-var pointTypeNames = map[string]string{
-	"marker":       "marker",
-	"circle":       "circle",
-	"circlemarker": "circleMarker",
-}
-
-func (gm *GeoMap) SetPointStyle(name string, typ string, opt string) {
-	if rn, ok := pointTypeNames[strings.ToLower(typ)]; !ok {
-		gm.logger.LogWarnf("GEOMAP pointStyle unknown type %q", typ)
-	} else {
-		typ = rn
-	}
-	if !strings.HasPrefix(strings.TrimSpace(opt), "{") {
-		opt = "{" + opt + "}"
-	}
-	pstyle := &PointStyle{Name: name, Type: typ, Properties: map[string]any{}}
-	pstyle.Properties.Copy(defaultPointStyle.Properties)
-	if err := json.Unmarshal([]byte(opt), &pstyle.Properties); err != nil {
-		gm.logger.LogWarnf("GEOMAP pointStyle option", err.Error())
-		return
-	}
-	pstyle.Name = name
-	gm.pointStyles[name] = pstyle
-}
-
 func (gm *GeoMap) Flush(heading bool) {
 }
 
@@ -224,6 +197,10 @@ func (gm *GeoMap) AddRow(values []any) error {
 	return nil
 }
 
+func (gm *GeoMap) appendJSCode(lines ...string) {
+	gm.JSCodes = append(gm.JSCodes, lines...)
+}
+
 func (gm *GeoMap) Close() {
 	if gm.output == nil {
 		return
@@ -256,32 +233,22 @@ func (gm *GeoMap) Close() {
 		// https://github.com/kartena/Proj4Leaflet/releases/tag/1.0.1
 		gm.JSAssets = append(gm.JSAssets, "/web/geomap/proj4leaflet.js")
 		// add crs code
-		gm.JSCodes = append(gm.JSCodes, crsMarshalJS(nums.KakaoCRS, gm.crs))
+		gm.appendJSCode(crsMarshalJS(nums.KakaoCRS, gm.crs))
 	}
 
-	gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var map = L.map("%s", {crs: %s, attributionControl:false});`, gm.MapID, gm.crs))
+	gm.appendJSCode(fmt.Sprintf(`var map = L.map("%s", {crs: %s, attributionControl:false});`, gm.MapID, gm.crs))
 	if gm.tileOption != "" {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
+		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
 	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
+		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
+		gm.appendJSCode(fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
 	} else {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("map.setView(%s, %d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
+		gm.appendJSCode(fmt.Sprintf("map.setView(%s, %d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
 	}
 
-	if js, err := MarshalJS(defaultPointStyle.Properties); err == nil {
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("var %s = %s;", defaultPointStyleVarName, js))
-	}
-	for n, v := range gm.pointStyles {
-		if js, err := v.Properties.MarshalJS(); err != nil {
-			gm.logger.LogWarnf("GEOMAP invalid point style %s", err.Error())
-		} else {
-			gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("var %s = %s;", n, js))
-		}
-	}
 	for _, icn := range gm.icons {
 		var icnJson string
 		if cnt, err := json.Marshal(icn); err != nil {
@@ -289,7 +256,7 @@ func (gm *GeoMap) Close() {
 		} else {
 			icnJson = string(cnt)
 		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
+		gm.appendJSCode(fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
 	}
 
 	for _, layer := range gm.layers {
@@ -304,22 +271,22 @@ func (gm *GeoMap) Close() {
 		} else {
 			opt = layer.Style
 		}
-		gm.JSCodes = append(gm.JSCodes, fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(map);`,
-			layer.Name, layer.Type, layer.Jsonized, opt))
-		if layer.Popup != nil {
-			if layer.Popup.Open {
-				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q).openPopup();", layer.Name, layer.Popup.Content))
-			} else {
-				gm.JSCodes = append(gm.JSCodes, fmt.Sprintf("%s.bindPopup(%q);", layer.Name, layer.Popup.Content))
-			}
+		if layer.Type == "geoJSON" {
+			opt = "opt.geojson"
 		}
+		gm.appendJSCode(fmt.Sprintf(`var %s = L.%s(%s, %s).addTo(map);`,
+			layer.Name, layer.Type, layer.Jsonized, opt))
 	}
 
-	if gm.volatileFileWriter != nil {
-		prefix := gm.volatileFileWriter.VolatileFilePrefix()
-		path := fmt.Sprintf("%s/%s.js", strings.TrimSuffix(prefix, "/"), gm.MapID)
-		jscode := fmt.Sprintf("(()=>{\n%s\n})();", strings.Join(gm.JSCodes, "\n"))
-		gm.volatileFileWriter.VolatileFileWrite(path, []byte(jscode), time.Now().Add(30*time.Second))
+	if gm.toJsonOutput && gm.volatileFileWriter != nil {
+		prefix := strings.TrimSuffix(gm.volatileFileWriter.VolatileFilePrefix(), "/")
+
+		path := fmt.Sprintf("%s/%s_opt.js", prefix, gm.MapID)
+		gm.volatileFileWriter.VolatileFileWrite(path, []byte(gm.JSCodesOptionNoEscaped()), time.Now().Add(30*time.Second))
+		gm.JSCodeAssets = append(gm.JSCodeAssets, path)
+
+		path = fmt.Sprintf("%s/%s.js", prefix, gm.MapID)
+		gm.volatileFileWriter.VolatileFileWrite(path, []byte(gm.JSCodesNoEscaped()), time.Now().Add(30*time.Second))
 		gm.JSCodeAssets = append(gm.JSCodeAssets, path)
 	}
 	if gm.toJsonOutput {
@@ -376,7 +343,6 @@ func (gm *GeoMap) addGeoJSON(m map[string]any) error {
 			Name: fmt.Sprintf("obj%d", len(gm.layers)),
 			Type: "geoJSON",
 		}
-		layer.Popup = NewPopupMap(obj.ExtraMembers)
 		jsonBytes, _ = obj.MarshalJSON()
 		layer.Jsonized = string(jsonBytes)
 		gm.layers = append(gm.layers, layer)
@@ -393,7 +359,6 @@ func (gm *GeoMap) addGeoJSON(m map[string]any) error {
 			Name: fmt.Sprintf("obj%d", len(gm.layers)),
 			Type: "geoJSON",
 		}
-		layer.Popup = NewPopupMap(obj.Properties)
 		jsonBytes, _ = obj.MarshalJSON()
 		layer.Jsonized = string(jsonBytes)
 		gm.layers = append(gm.layers, layer)
@@ -452,20 +417,12 @@ func (gm *GeoMap) addGeoObject(obj nums.Geography) {
 				layer.Popup.Open = true
 			}
 		}
-		pointStyleName := ""
+		pointStyleName := "defaultPointStyle"
 		if ps, ok := props.PopString("point.style"); ok {
 			pointStyleName = ps
 		}
-		if layer.Type == "point" {
-			layer.Type = defaultPointStyle.Type
-			layer.Style = defaultPointStyleVarName
-			if st, ok := gm.pointStyles[pointStyleName]; ok {
-				layer.Type = st.Type
-				layer.Style = pointStyleName
-			}
-		} else {
-			layer.Option = props
-		}
+		layer.Style = pointStyleName
+		layer.Option = props
 	}
 
 	switch obj.(type) {
@@ -519,6 +476,46 @@ func (gm *GeoMap) JSCodeAssetsNoEscaped() template.HTML {
 		lst = append(lst, fmt.Sprintf("%q", itm))
 	}
 	return template.HTML("[" + strings.Join(lst, ",") + "]")
+}
+
+// The variable name is mapID.
+var mapOptions = `var %s = {
+    defaultPointStyle: {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7},
+    geojson: {
+        pointToLayer: function (feature, latlng) {
+            if (feature.properties && feature.properties.icon) {
+                return L.marker(latlng, {icon: feature.properties.icon});
+            }
+            return L.circleMarker(latlng, {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7});
+        },
+        style: function (feature) {
+            if (feature.properties && feature.properties.style) {
+                return feature.properties.style;
+            }
+            return {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7};
+        },
+        onEachFeature: function (feature, layer) {
+            if (feature.properties && feature.properties.popup && feature.properties.popup.content) {
+                if (feature.properties.popup.open) {
+                    layer.bindPopup(feature.properties.popup.content).openPopup();
+                } else {
+                    layer.bindPopup(feature.properties.popup.content);
+                }
+            }
+        },
+    },
+};
+`
+
+func (gm *GeoMap) JSCodesOptionNoEscaped() template.JS {
+	return template.JS(fmt.Sprintf(mapOptions, gm.MapID))
+}
+
+func (gm *GeoMap) JSCodesNoEscaped() template.JS {
+	lst := []string{"((opt)=>{"}
+	lst = append(lst, gm.JSCodes...)
+	lst = append(lst, fmt.Sprintf("})(%s);", gm.MapID))
+	return template.JS(strings.Join(lst, "\n"))
 }
 
 func (gm *GeoMap) renderJSON() {

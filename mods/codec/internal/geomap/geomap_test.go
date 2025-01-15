@@ -59,7 +59,7 @@ func TestGeoMap(t *testing.T) {
 		expectJS     string
 	}{
 		{
-			name: "point-circle",
+			name: "geomap_test",
 			input: [][]any{
 				{
 					nums.GeoPointMarker{
@@ -152,7 +152,7 @@ func TestGeoMap(t *testing.T) {
 
 	for _, tc := range tests {
 		outputs := []string{}
-		if tc.expectJS != "" {
+		if tc.expectJSON != "" {
 			outputs = append(outputs, "json")
 		}
 		if tc.expectHTML != "" {
@@ -170,7 +170,6 @@ func TestGeoMap(t *testing.T) {
 				c.SetMapId("WejMYXCGcYNL")
 				c.SetGeoMapJson(output == "json")
 				c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
-				c.SetPointStyle("rec", "circleMarker", `"color": "#ff0000"`)
 				if output == "json" {
 					require.Equal(t, "application/json", c.ContentType())
 				} else {
@@ -200,6 +199,17 @@ func TestGeoMap(t *testing.T) {
 					}
 					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
 					require.JSONEq(t, string(expect), buffer.String(), "%s result unmatched\n%s", output, buffer.String())
+
+					if tc.expectJS != "" {
+						require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
+						expect, err := os.ReadFile(filepath.Join("test", tc.expectJS))
+						if err != nil {
+							fmt.Println("Error", err.Error())
+							t.Fail()
+						}
+						expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
+						require.Equal(t, string(expect), fsmock.buff.String(), fsmock.buff.String())
+					}
 				}
 				if output == "html" {
 					expect, err := os.ReadFile(filepath.Join("test", tc.expectHTML))
@@ -213,16 +223,8 @@ func TestGeoMap(t *testing.T) {
 					if !StringsEq(t, expectStr, buffer.String()) {
 						require.Equal(t, expectStr, buffer.String(), "%s result unmatched\n%s", output, buffer.String())
 					}
-				}
-				if tc.expectJS != "" {
-					require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
-					expect, err := os.ReadFile(filepath.Join("test", tc.expectJS))
-					if err != nil {
-						fmt.Println("Error", err.Error())
-						t.Fail()
-					}
-					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
-					require.Equal(t, string(expect), fsmock.buff.String(), fsmock.buff.String())
+					require.Equal(t, fsmock.name, "")
+					require.Zero(t, fsmock.buff.String())
 				}
 			})
 		}

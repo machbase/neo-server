@@ -19,25 +19,6 @@ type Icon struct {
 	ShadowAnchor []float64 `json:"shadowAnchor,omitempty"`
 }
 
-type PointStyle struct {
-	Name       string             `json:"-"`
-	Type       string             `json:"type"`
-	Properties nums.GeoProperties `json:"options"`
-}
-
-var defaultPointStyle = PointStyle{
-	Type: "circleMarker",
-	Properties: nums.GeoProperties{
-		"radius":      4,
-		"stroke":      false,
-		"color":       "#2020F0",
-		"opacity":     0.5,
-		"fillOpacity": 0.5,
-	},
-}
-
-const defaultPointStyleVarName = "__ptstyle"
-
 type Layer struct {
 	Name     string             `json:"name"`
 	Type     string             `json:"type"`

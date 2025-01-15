@@ -36,6 +36,10 @@ var HtmlTemplate = `{{- define "geomap" }}<!DOCTYPE html>
     {{- template "header" . }}
 <body style="width:100vw; height:100vh">
     {{- template "base" . }}
+<script>
+    {{ .JSCodesOptionNoEscaped }}
+    {{ .JSCodesNoEscaped }}
+</script>
 </body>
 </html>
 {{ end }}
