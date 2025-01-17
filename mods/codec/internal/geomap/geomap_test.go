@@ -226,57 +226,64 @@ func TestGeoMap(t *testing.T) {
 	}
 }
 
-// func TestNewPopupMap(t *testing.T) {
-// 	tests := []struct {
-// 		name   string
-// 		input  map[string]interface{}
-// 		expect *geomap.Popup
-// 	}{
-// 		{
-// 			name: "empty",
-// 			input: map[string]interface{}{
-// 				"popup": nil,
-// 			},
-// 			expect: nil,
-// 		},
-// 		{
-// 			name: "no_popup",
-// 			input: map[string]interface{}{
-// 				"other": "value",
-// 			},
-// 			expect: nil,
-// 		},
-// 		{
-// 			name: "popup_open",
-// 			input: map[string]interface{}{
-// 				"popup": map[string]any{
-// 					"content": "Hello World",
-// 					"open":    true,
-// 				},
-// 			},
-// 			expect: &geomap.Popup{
-// 				Content: "Hello World",
-// 				Open:    true,
-// 			},
-// 		},
-// 		{
-// 			name: "popup_no_open",
-// 			input: map[string]interface{}{
-// 				"popup": map[string]any{
-// 					"content": "Hello World",
-// 				},
-// 			},
-// 			expect: &geomap.Popup{
-// 				Content: "Hello World",
-// 				Open:    false,
-// 			},
-// 		},
-// 	}
+func TestCoord(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  any
+		expect string
+	}{
+		{
+			name:   "point-float",
+			input:  []any{102.0, 0.5},
+			expect: `[102,0.5]`,
+		},
+		{
+			name:   "point-int",
+			input:  []any{102, 0.5},
+			expect: `[102,0.5]`,
+		},
+		{
+			name:   "point-int64",
+			input:  []any{int64(102), 5},
+			expect: `[102,5]`,
+		},
+		{
+			name: "point-poly1",
+			input: []any{
+				[]any{102.0, 1.5},
+				[]any{202.0, 2.5},
+			},
+			expect: `[[102,1.5],[202,2.5]]`,
+		},
+		{
+			name: "point-poly2",
+			input: []any{
+				[]any{[]int64{102, 1}, []any{202.0, 2.5}},
+				[]any{[]any{302.0, 3.5}, []any{402.0, 4.5}},
+			},
+			expect: `[[[102,1],[202,2.5]],[[302,3.5],[402,4.5]]]`,
+		},
+		{
+			name: "point-poly3",
+			input: []any{
+				[]any{
+					[]any{[]any{102.0, 1.5}, []any{202.0, 2.5}},
+					[]any{[]any{302.0, 3.5}, []any{402.0, 4.5}},
+				},
+				[]any{
+					[]any{[]any{102.0, 1.5}, []any{202.0, 2.5}},
+				},
+			},
+			expect: `[[[[102,1.5],[202,2.5]],[[302,3.5],[402,4.5]]],[[[102,1.5],[202,2.5]]]]`,
+		},
+	}
 
-// 	for _, tc := range tests {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			actual := geomap.NewPopupMap(tc.input)
-// 			require.Equal(t, tc.expect, actual)
-// 		})
-// 	}
-// }
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			conv := geomap.ConvCoordinates(tc.input, nil)
+			actual, err := geomap.MarshalJS(conv)
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, actual)
+		})
+	}
+}

@@ -1,24 +1,4 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title></title>
-<style>
-    .geomap_container { width:100%; height:100%; display: flex;justify-content: center;align-items: center;}
-    .geomap_item {margin: auto;}
-    .leaflet-tile-pane{ -webkit-filter: grayscale(0%); filter: grayscale(0%);}
-</style>
-    <link href="/web/geomap/leaflet.css" rel="stylesheet">
-    <script src="/web/geomap/leaflet.js"></script>
-</head>
-
-<body style="width:100vw; height:100vh">
-<div class="geomap_container">
-    <div class="geomap_item" id="WejMYXCGcYNL" style="width:600px;height:600px;"></div>
-</div>
-
-<script>
-    var WejMYXCGcYNL = {
+var MTY3NzQ2MDY4NzQyNTc4MTc2 = {
     defaultPointStyle: {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7},
     geojson: {
         pointToLayer: function (feature, latlng) {
@@ -44,16 +24,9 @@
         },
     },
 };
-
-    ((opt)=>{
-var map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
+((opt)=>{
+var map = L.map("MTY3NzQ2MDY4NzQyNTc4MTc2", {crs: L.CRS.EPSG3857, attributionControl:false});
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-map.fitBounds([[37.49785,127.018666],[37.503058,127.027756]]);
-var obj0 = L.marker([37.49785,127.027756],{}).addTo(map);
-obj0.bindPopup("<b>Gangname</b><br/>Hello World?").openPopup();
-var obj1 = L.circleMarker([37.503058,127.018666],{radius:100}).addTo(map);
-obj1.bindPopup("<b>circle1</b>");
-})(WejMYXCGcYNL);
-</script>
-</body>
-</html>
+map.setView([37.49785,127.027756],13);
+var obj0 = L.geoJSON({geometry:{coordinates:[127.027756,37.49785],type:"Point"},type:"Feature"},opt.geojson).addTo(map);
+})(MTY3NzQ2MDY4NzQyNTc4MTc2);

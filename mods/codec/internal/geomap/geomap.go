@@ -163,8 +163,6 @@ func (gm *GeoMap) Open() error {
 	return nil
 }
 
-// var _sliceGeometries = []string{"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection"}
-
 func (gm *GeoMap) extendBound(lat, lon float64) {
 	if gm.Bound == nil {
 		gm.Bound = nums.NewLatLonBound(&nums.LatLon{Lat: lat, Lon: lon})

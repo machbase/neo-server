@@ -48,10 +48,82 @@ func (l *Layer) LeafletJS() string {
 	}
 }
 
+func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
+	if coord == nil {
+		return nil
+	}
+	switch value := coord.(type) {
+	case [][]any:
+		ret := make([]any, len(value))
+		for i := range value {
+			ret[i] = ConvCoordinates(value[i], callbackLatLon)
+		}
+		return ret
+	case []any:
+		retAny := make([]any, len(value))
+		for i := range value {
+			switch val := value[i].(type) {
+			case []any:
+				sub := make([]any, len(val))
+				for j := range val {
+					sub[j] = ConvCoordinates(val[j], callbackLatLon)
+				}
+				if len(sub) == 2 {
+					if lat, ok := sub[0].(float64); ok {
+						if lon, ok := sub[1].(float64); ok {
+							if callbackLatLon != nil {
+								callbackLatLon(lat, lon)
+							}
+						}
+					}
+				}
+				retAny[i] = sub
+			default:
+				retAny[i] = ConvCoordinates(val, callbackLatLon)
+			}
+		}
+		if len(retAny) == 2 {
+			if lat, ok := retAny[0].(float64); ok {
+				if lon, ok := retAny[1].(float64); ok {
+					if callbackLatLon != nil {
+						callbackLatLon(lat, lon)
+					}
+				}
+			}
+		}
+		return retAny
+	case []float64:
+		ret := value
+		if len(ret) == 2 {
+			if callbackLatLon != nil {
+				callbackLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case []int64:
+		ret := make([]float64, len(value))
+		for i, val := range value {
+			ret[i] = float64(val)
+		}
+		if len(ret) == 2 {
+			if callbackLatLon != nil {
+				callbackLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case float64:
+		return value
+	case int64:
+		return float64(value)
+	case int:
+		return float64(value)
+	default:
+		fmt.Printf("unknown type value %T %v\n", value, value)
+	}
+	return nil
+}
+
 func NewLayer(m map[string]interface{}) (*Layer, error) {
-	// Caution!!
-	// geojson and orb is [lon,lat] order
-	// leaflet is [lat,lon] order
 	if m == nil {
 		return nil, errors.New("unknown layer")
 	}
@@ -64,39 +136,30 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		return nil, fmt.Errorf("unknown layer type %v", typeAny)
 	}
 	switch typeString {
-	case "marker":
-		ret := &Layer{Type: "marker"}
+	case "marker", "circleMarker", "polyline", "polygon":
+		// Caution!!
+		// leaflet is [lat,lon] order
+		layer := &Layer{Type: typeString}
 		if coord, ok := m["value"]; ok {
-			ret.Value = coord
+			layer.Value = ConvCoordinates(coord, func(lat, long float64) {
+				if layer.Bound == nil {
+					layer.Bound = nums.NewLatLonBound(nums.NewLatLon(lat, long))
+				} else {
+					layer.Bound = layer.Bound.ExtendLatLon(lat, long)
+				}
+			})
 		} else {
 			return nil, errors.New("marker value not found")
 		}
-		if coord, ok := ret.Value.([]float64); ok && len(coord) == 2 {
-			ret.Bound = nums.NewLatLonBound(nums.NewLatLon(coord[0], coord[1]))
-		}
 		if prop, ok := m["option"]; ok {
 			if propMap, ok := prop.(map[string]any); ok {
-				ret.Option = propMap
+				layer.Option = propMap
 			}
 		}
-		return ret, nil
-	case "circleMarker":
-		ret := &Layer{Type: "circleMarker"}
-		if coord, ok := m["value"]; ok {
-			ret.Value = coord
-		} else {
-			return nil, errors.New("circleMarker value not found")
-		}
-		if coord, ok := ret.Value.([]float64); ok && len(coord) == 2 {
-			ret.Bound = nums.NewLatLonBound(nums.NewLatLon(coord[0], coord[1]))
-		}
-		if prop, ok := m["option"]; ok {
-			if propMap, ok := prop.(map[string]any); ok {
-				ret.Option = propMap
-			}
-		}
-		return ret, nil
+		return layer, nil
 	case "FeatureCollection":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
 		jsonBytes, _ := json.Marshal(m)
 		obj, err := geojson.UnmarshalFeatureCollection(jsonBytes)
 		if err != nil {
@@ -117,6 +180,8 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		}
 		return layer, nil
 	case "Feature":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
 		jsonBytes, _ := json.Marshal(m)
 		obj, err := geojson.UnmarshalFeature(jsonBytes)
 		if err != nil {
@@ -130,6 +195,8 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		)
 		return layer, nil
 	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
 		jsonBytes, _ := json.Marshal(m)
 		obj, err := geojson.UnmarshalGeometry(jsonBytes)
 		if err != nil {
@@ -211,6 +278,16 @@ func MarshalJS(value any) (string, error) {
 		}
 		return "[" + strings.Join(fields, ",") + "]", nil
 	case [][][]float64:
+		fields := []string{}
+		for _, arr := range val {
+			elm, err := MarshalJS(arr)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, elm)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case [][][][]float64:
 		fields := []string{}
 		for _, arr := range val {
 			elm, err := MarshalJS(arr)

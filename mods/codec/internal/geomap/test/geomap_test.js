@@ -27,7 +27,7 @@ var WejMYXCGcYNL = {
 ((opt)=>{
 var map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-map.setView([51.505,-0.09],13);
+map.fitBounds([[37.49785,127.018666],[37.503058,127.027756]]);
 var obj0 = L.marker([37.49785,127.027756],{}).addTo(map);
 obj0.bindPopup("<b>Gangname</b><br/>Hello World?").openPopup();
 var obj1 = L.circleMarker([37.503058,127.018666],{radius:100}).addTo(map);
