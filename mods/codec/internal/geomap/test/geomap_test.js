@@ -1,17 +1,26 @@
 var WejMYXCGcYNL = {
-    defaultPointStyle: {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7},
     geojson: {
         pointToLayer: function (feature, latlng) {
             if (feature.properties && feature.properties.icon) {
                 return L.marker(latlng, {icon: feature.properties.icon});
             }
-            return L.circleMarker(latlng, {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7});
+            return L.circleMarker(latlng, {
+                radius: (feature.properties && feature.properties.radius) ? feature.properties.radius : 10,
+                stroke: (feature.properties && feature.properties.stroke != undefined) ? feature.properties.stroke : true,
+                color:  (feature.properties && feature.properties.color) ? feature.properties.color : "#3388ff", 
+                opacity: (feature.properties && feature.properties.opacity) ? feature.properties.opacity : 1.0,
+                fillOpacity: (feature.properties && feature.properties.fillOpacity) ? feature.properties.fillOpacity : 0.2
+            });
         },
         style: function (feature) {
-            if (feature.properties && feature.properties.style) {
-                return feature.properties.style;
-            }
-            return {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7};
+            return {
+                radius: (feature.properties && feature.properties.radius) ? feature.properties.radius : 4,
+                stroke: (feature.properties && feature.properties.stroke != undefined) ? feature.properties.stroke : true,
+                weight: (feature.properties && feature.properties.weight) ? feature.properties.weight : 3,
+                color:  (feature.properties && feature.properties.color) ? feature.properties.color : "#3388ff", 
+                opacity: (feature.properties && feature.properties.opacity) ? feature.properties.opacity : 1.0,
+                fillOpacity: (feature.properties && feature.properties.fillOpacity) ? feature.properties.fillOpacity : 0.2
+            };
         },
         onEachFeature: function (feature, layer) {
             if (feature.properties && feature.properties.popup && feature.properties.popup.content) {

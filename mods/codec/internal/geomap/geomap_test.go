@@ -62,8 +62,8 @@ func TestGeoMap(t *testing.T) {
 			input: []string{
 				`{
 					"type": "marker",
-					"value": [37.497850, 127.027756],
-					"option": {
+					"coordinates": [37.497850, 127.027756],
+					"properties": {
 						"popup": {
 							"content": "<b>Gangname</b><br/>Hello World?",
 							"open": true
@@ -72,8 +72,8 @@ func TestGeoMap(t *testing.T) {
 				}`,
 				`{
 					"type": "circleMarker",
-					"value": [37.503058, 127.018666],
-					"option": {
+					"coordinates": [37.503058, 127.018666],
+					"properties": {
 						"radius": 100,
 						"popup": {
 							"content": "<b>circle1</b>"

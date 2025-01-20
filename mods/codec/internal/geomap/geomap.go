@@ -177,13 +177,9 @@ func (gm *GeoMap) AddRow(values []any) error {
 			continue
 		}
 		if m, ok := val.(map[string]any); ok {
-			layer, err := NewLayer(m)
+			layer, err := NewLayer(m, gm.extendBound)
 			if err != nil {
 				return err
-			}
-			if layer.Bound != nil {
-				gm.extendBound(layer.Bound.Min.Lat, layer.Bound.Min.Lon)
-				gm.extendBound(layer.Bound.Max.Lat, layer.Bound.Max.Lon)
 			}
 			gm.layers = append(gm.layers, layer)
 		}
@@ -255,10 +251,10 @@ func (gm *GeoMap) Close() {
 
 	for i, layer := range gm.layers {
 		var popupMap map[string]any
-		if popup, ok := layer.Option["popup"]; ok {
+		if popup, ok := layer.Properties["popup"]; ok {
 			if m, ok := popup.(map[string]any); ok {
 				popupMap = m
-				delete(layer.Option, "popup")
+				delete(layer.Properties, "popup")
 			}
 		}
 		gm.appendJSCode(fmt.Sprintf(`var obj%d = %s.addTo(map);`, i, layer.LeafletJS()))
@@ -337,19 +333,28 @@ func (gm *GeoMap) JSCodeAssetsNoEscaped() template.HTML {
 
 // The variable name is mapID.
 var mapOptions = `var %s = {
-    defaultPointStyle: {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7},
     geojson: {
         pointToLayer: function (feature, latlng) {
             if (feature.properties && feature.properties.icon) {
                 return L.marker(latlng, {icon: feature.properties.icon});
             }
-            return L.circleMarker(latlng, {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7});
+            return L.circleMarker(latlng, {
+                radius: (feature.properties && feature.properties.radius) ? feature.properties.radius : 10,
+                stroke: (feature.properties && feature.properties.stroke != undefined) ? feature.properties.stroke : true,
+                color:  (feature.properties && feature.properties.color) ? feature.properties.color : "#3388ff", 
+                opacity: (feature.properties && feature.properties.opacity) ? feature.properties.opacity : 1.0,
+                fillOpacity: (feature.properties && feature.properties.fillOpacity) ? feature.properties.fillOpacity : 0.2
+            });
         },
         style: function (feature) {
-            if (feature.properties && feature.properties.style) {
-                return feature.properties.style;
-            }
-            return {radius: 4, stroke: false, color: "#FF0000", opacity: 0.7, fillOpacity: 0.7};
+            return {
+                radius: (feature.properties && feature.properties.radius) ? feature.properties.radius : 4,
+                stroke: (feature.properties && feature.properties.stroke != undefined) ? feature.properties.stroke : true,
+                weight: (feature.properties && feature.properties.weight) ? feature.properties.weight : 3,
+                color:  (feature.properties && feature.properties.color) ? feature.properties.color : "#3388ff", 
+                opacity: (feature.properties && feature.properties.opacity) ? feature.properties.opacity : 1.0,
+                fillOpacity: (feature.properties && feature.properties.fillOpacity) ? feature.properties.fillOpacity : 0.2
+            };
         },
         onEachFeature: function (feature, layer) {
             if (feature.properties && feature.properties.popup && feature.properties.popup.content) {

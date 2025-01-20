@@ -51,36 +51,36 @@ func TestNewLayer(t *testing.T) {
 		{
 			name: "marker",
 			input: map[string]any{
-				"type":   "marker",
-				"value":  []float64{12.34, 56.78},
-				"option": map[string]any{},
+				"type":        "marker",
+				"coordinates": []float64{12.34, 56.78},
+				"properties":  map[string]any{},
 			},
 			expect: `L.marker([12.34,56.78],{})`,
 		},
 		{
 			name: "marker-any",
 			input: map[string]any{
-				"type":   "marker",
-				"value":  []any{12.34, 56},
-				"option": map[string]any{},
+				"type":        "marker",
+				"coordinates": []any{12.34, 56},
+				"properties":  map[string]any{},
 			},
 			expect: `L.marker([12.34,56],{})`,
 		},
 		{
 			name: "marker-style",
 			input: map[string]any{
-				"type":   "marker",
-				"value":  []float64{12.34, 56.78},
-				"option": map[string]any{"style": map[string]any{"color": "red"}},
+				"type":        "marker",
+				"coordinates": []float64{12.34, 56.78},
+				"properties":  map[string]any{"style": map[string]any{"color": "red"}},
 			},
 			expect: `L.marker([12.34,56.78],{style:{color:"red"}})`,
 		},
 		{
 			name: "circleMarker",
 			input: map[string]any{
-				"type":  "circleMarker",
-				"value": []float64{12.34, 56.78},
-				"option": map[string]any{
+				"type":        "circleMarker",
+				"coordinates": []float64{12.34, 56.78},
+				"properties": map[string]any{
 					"radius": 10,
 					"style":  map[string]any{"color": "red"},
 				},
@@ -90,16 +90,16 @@ func TestNewLayer(t *testing.T) {
 		{
 			name: "polyline",
 			input: map[string]any{
-				"type":  "polyline",
-				"value": [][]float64{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118.2}},
+				"type":        "polyline",
+				"coordinates": [][]float64{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118.2}},
 			},
 			expect: `L.polyline([[45.51,-122.68],[37.77,-122.43],[34.04,-118.2]],{})`,
 		},
 		{
 			name: "polyline-any",
 			input: map[string]any{
-				"type":  "polyline",
-				"value": [][]any{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118}},
+				"type":        "polyline",
+				"coordinates": [][]any{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118}},
 			},
 			expect: `L.polyline([[45.51,-122.68],[37.77,-122.43],[34.04,-118]],{})`,
 		},
@@ -141,7 +141,7 @@ func TestNewLayer(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := NewLayer(tc.input)
+			actual, err := NewLayer(tc.input, nil)
 			require.NoError(t, err)
 			require.Equal(t, tc.expect, actual.LeafletJS())
 		})

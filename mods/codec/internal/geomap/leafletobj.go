@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/paulmach/orb/geojson"
 )
 
@@ -23,23 +22,22 @@ type Icon struct {
 }
 
 type Layer struct {
-	Type   string            `json:"type"`
-	Value  any               `json:"value"`
-	Option map[string]any    `json:"option,omitempty"`
-	Bound  *nums.LatLonBound `json:"-"`
+	Type        string         `json:"type"`
+	Coordinates any            `json:"coordinates"`
+	Properties  map[string]any `json:"properties,omitempty"`
 }
 
 func (l *Layer) LeafletJS() string {
 	if l == nil {
 		return "null"
 	}
-	if js, err := MarshalJS(l.Value); err != nil {
+	if js, err := MarshalJS(l.Coordinates); err != nil {
 		return fmt.Sprintf("error: %v", err)
 	} else {
 		if l.Type == "geoJSON" {
 			return fmt.Sprintf("L.%s(%s,opt.geojson)", l.Type, js)
 		} else {
-			props, err := MarshalJS(l.Option)
+			props, err := MarshalJS(l.Properties)
 			if err != nil {
 				props = `{error: "` + err.Error() + `"}`
 			}
@@ -48,7 +46,7 @@ func (l *Layer) LeafletJS() string {
 	}
 }
 
-func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
+func ConvCoordinates(coord any, extendLatLon func(lat, long float64)) any {
 	if coord == nil {
 		return nil
 	}
@@ -56,7 +54,7 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 	case [][]any:
 		ret := make([]any, len(value))
 		for i := range value {
-			ret[i] = ConvCoordinates(value[i], callbackLatLon)
+			ret[i] = ConvCoordinates(value[i], extendLatLon)
 		}
 		return ret
 	case []any:
@@ -66,27 +64,27 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 			case []any:
 				sub := make([]any, len(val))
 				for j := range val {
-					sub[j] = ConvCoordinates(val[j], callbackLatLon)
+					sub[j] = ConvCoordinates(val[j], extendLatLon)
 				}
 				if len(sub) == 2 {
 					if lat, ok := sub[0].(float64); ok {
 						if lon, ok := sub[1].(float64); ok {
-							if callbackLatLon != nil {
-								callbackLatLon(lat, lon)
+							if extendLatLon != nil {
+								extendLatLon(lat, lon)
 							}
 						}
 					}
 				}
 				retAny[i] = sub
 			default:
-				retAny[i] = ConvCoordinates(val, callbackLatLon)
+				retAny[i] = ConvCoordinates(val, extendLatLon)
 			}
 		}
 		if len(retAny) == 2 {
 			if lat, ok := retAny[0].(float64); ok {
 				if lon, ok := retAny[1].(float64); ok {
-					if callbackLatLon != nil {
-						callbackLatLon(lat, lon)
+					if extendLatLon != nil {
+						extendLatLon(lat, lon)
 					}
 				}
 			}
@@ -95,16 +93,16 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 	case []float64:
 		ret := value
 		if len(ret) == 2 {
-			if callbackLatLon != nil {
-				callbackLatLon(ret[0], ret[1])
+			if extendLatLon != nil {
+				extendLatLon(ret[0], ret[1])
 			}
 		}
 		return ret
 	case [][]float64:
-		if callbackLatLon != nil {
+		if extendLatLon != nil {
 			for i := range value {
 				if len(value[i]) == 2 {
-					callbackLatLon(value[i][0], value[i][1])
+					extendLatLon(value[i][0], value[i][1])
 				}
 			}
 		}
@@ -115,8 +113,8 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 			ret[i] = float64(val)
 		}
 		if len(ret) == 2 {
-			if callbackLatLon != nil {
-				callbackLatLon(ret[0], ret[1])
+			if extendLatLon != nil {
+				extendLatLon(ret[0], ret[1])
 			}
 		}
 		return ret
@@ -132,7 +130,7 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 	return nil
 }
 
-func NewLayer(m map[string]interface{}) (*Layer, error) {
+func NewLayer(m map[string]interface{}, extendLatLon func(float64, float64)) (*Layer, error) {
 	if m == nil {
 		return nil, errors.New("unknown layer")
 	}
@@ -149,20 +147,14 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		// Caution!!
 		// leaflet is [lat,lon] order
 		layer := &Layer{Type: typeString}
-		if coord, ok := m["value"]; ok {
-			layer.Value = ConvCoordinates(coord, func(lat, long float64) {
-				if layer.Bound == nil {
-					layer.Bound = nums.NewLatLonBound(nums.NewLatLon(lat, long))
-				} else {
-					layer.Bound = layer.Bound.ExtendLatLon(lat, long)
-				}
-			})
+		if coord, ok := m["coordinates"]; ok {
+			layer.Coordinates = ConvCoordinates(coord, extendLatLon)
 		} else {
 			return nil, errors.New("marker value not found")
 		}
-		if prop, ok := m["option"]; ok {
+		if prop, ok := m["properties"]; ok {
 			if propMap, ok := prop.(map[string]any); ok {
-				layer.Option = propMap
+				layer.Properties = propMap
 			}
 		}
 		return layer, nil
@@ -174,17 +166,12 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid geojson %s", err.Error())
 		}
-		layer := &Layer{Type: "geoJSON", Value: m}
-		for _, f := range obj.Features {
-			b := f.Geometry.Bound()
-			if layer.Bound == nil {
-				layer.Bound = nums.NewLatLonBound(
-					nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
-					nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
-				)
-			} else {
-				layer.Bound.ExtendLatLon(b.Min.Lat(), b.Min.Lon())
-				layer.Bound.ExtendLatLon(b.Max.Lat(), b.Max.Lon())
+		layer := &Layer{Type: "geoJSON", Coordinates: m}
+		if extendLatLon != nil {
+			for _, f := range obj.Features {
+				b := f.Geometry.Bound()
+				extendLatLon(b.Min.Lat(), b.Min.Lon())
+				extendLatLon(b.Max.Lat(), b.Max.Lon())
 			}
 		}
 		return layer, nil
@@ -196,12 +183,12 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid geojson %s", err.Error())
 		}
-		b := obj.Geometry.Bound()
-		layer := &Layer{Type: "geoJSON", Value: m}
-		layer.Bound = nums.NewLatLonBound(
-			nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
-			nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
-		)
+		layer := &Layer{Type: "geoJSON", Coordinates: m, Properties: obj.Properties}
+		if extendLatLon != nil {
+			b := obj.Geometry.Bound()
+			extendLatLon(b.Min.Lat(), b.Min.Lon())
+			extendLatLon(b.Max.Lat(), b.Max.Lon())
+		}
 		return layer, nil
 	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
 		// Caution!!
@@ -211,12 +198,12 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid geojson %s", err.Error())
 		}
-		b := obj.Coordinates.Bound()
-		layer := &Layer{Type: "geoJSON", Value: m}
-		layer.Bound = nums.NewLatLonBound(
-			nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
-			nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
-		)
+		layer := &Layer{Type: "geoJSON", Coordinates: m}
+		if extendLatLon != nil {
+			b := obj.Coordinates.Bound()
+			extendLatLon(b.Min.Lat(), b.Min.Lon())
+			extendLatLon(b.Max.Lat(), b.Max.Lon())
+		}
 		return layer, nil
 	default:
 		return nil, fmt.Errorf("unknown layer type %s", typeString)
