@@ -1,11 +1,14 @@
 package geomap
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/mods/nums"
+	"github.com/paulmach/orb/geojson"
 )
 
 type Icon struct {
@@ -19,94 +22,291 @@ type Icon struct {
 	ShadowAnchor []float64 `json:"shadowAnchor,omitempty"`
 }
 
-type PointStyle struct {
-	Name       string             `json:"-"`
-	Type       string             `json:"type"`
-	Properties nums.GeoProperties `json:"options"`
-}
-
-var defaultPointStyle = PointStyle{
-	Type: "circleMarker",
-	Properties: nums.GeoProperties{
-		"radius":      4,
-		"stroke":      false,
-		"color":       "#2020F0",
-		"opacity":     0.5,
-		"fillOpacity": 0.5,
-	},
-}
-
-const defaultPointStyleVarName = "__ptstyle"
-
 type Layer struct {
-	Name     string             `json:"name"`
-	Type     string             `json:"type"`
-	Jsonized string             `json:"jsonized"`
-	Option   nums.GeoProperties `json:"option,omitempty"`
-	Popup    *Popup             `json:"popup,omitempty"`
-	Style    string             `json:"pointStyle,omitempty"`
+	Type   string            `json:"type"`
+	Value  any               `json:"value"`
+	Option map[string]any    `json:"option,omitempty"`
+	Bound  *nums.LatLonBound `json:"-"`
 }
 
-type Popup struct {
-	Content string `json:"content"`
-	Open    bool   `json:"open,omitempty"`
+func (l *Layer) LeafletJS() string {
+	if l == nil {
+		return "null"
+	}
+	if js, err := MarshalJS(l.Value); err != nil {
+		return fmt.Sprintf("error: %v", err)
+	} else {
+		if l.Type == "geoJSON" {
+			return fmt.Sprintf("L.%s(%s,opt.geojson)", l.Type, js)
+		} else {
+			props, err := MarshalJS(l.Option)
+			if err != nil {
+				props = `{error: "` + err.Error() + `"}`
+			}
+			return fmt.Sprintf("L.%s(%s,%s)", l.Type, js, props)
+		}
+	}
 }
 
-func NewPopupMap(m map[string]interface{}) *Popup {
-	if m == nil {
+func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
+	if coord == nil {
 		return nil
 	}
-	if popup, ok := m["popup"]; ok {
-		if popupMap, ok := popup.(map[string]any); ok {
-			ret := &Popup{}
-			if content, ok := popupMap["content"]; ok {
-				ret.Content = content.(string)
-			} else {
-				return nil
+	switch value := coord.(type) {
+	case [][]any:
+		ret := make([]any, len(value))
+		for i := range value {
+			ret[i] = ConvCoordinates(value[i], callbackLatLon)
+		}
+		return ret
+	case []any:
+		retAny := make([]any, len(value))
+		for i := range value {
+			switch val := value[i].(type) {
+			case []any:
+				sub := make([]any, len(val))
+				for j := range val {
+					sub[j] = ConvCoordinates(val[j], callbackLatLon)
+				}
+				if len(sub) == 2 {
+					if lat, ok := sub[0].(float64); ok {
+						if lon, ok := sub[1].(float64); ok {
+							if callbackLatLon != nil {
+								callbackLatLon(lat, lon)
+							}
+						}
+					}
+				}
+				retAny[i] = sub
+			default:
+				retAny[i] = ConvCoordinates(val, callbackLatLon)
 			}
-			if open, ok := popupMap["open"]; ok {
-				if flag, ok := open.(bool); ok {
-					ret.Open = flag
+		}
+		if len(retAny) == 2 {
+			if lat, ok := retAny[0].(float64); ok {
+				if lon, ok := retAny[1].(float64); ok {
+					if callbackLatLon != nil {
+						callbackLatLon(lat, lon)
+					}
 				}
 			}
-			delete(m, "popup")
-			return ret
 		}
+		return retAny
+	case []float64:
+		ret := value
+		if len(ret) == 2 {
+			if callbackLatLon != nil {
+				callbackLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case [][]float64:
+		if callbackLatLon != nil {
+			for i := range value {
+				if len(value[i]) == 2 {
+					callbackLatLon(value[i][0], value[i][1])
+				}
+			}
+		}
+		return value
+	case []int64:
+		ret := make([]float64, len(value))
+		for i, val := range value {
+			ret[i] = float64(val)
+		}
+		if len(ret) == 2 {
+			if callbackLatLon != nil {
+				callbackLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case float64:
+		return value
+	case int64:
+		return float64(value)
+	case int:
+		return float64(value)
+	default:
+		fmt.Printf("unknown type value %T %v\n", value, value)
 	}
 	return nil
 }
 
-func MarshalJS(gp map[string]any) (string, error) {
-	keys := []string{}
-	for k := range gp {
-		keys = append(keys, k)
+func NewLayer(m map[string]interface{}) (*Layer, error) {
+	if m == nil {
+		return nil, errors.New("unknown layer")
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
-	fields := []string{}
-	for _, k := range keys {
-		vv := gp[k]
-		var line string
-		if k == "icon" {
-			line = fmt.Sprintf("%s:%v", k, vv)
-		} else {
-			switch v := vv.(type) {
-			case bool:
-				line = fmt.Sprintf("%s:%t", k, v)
-			case string:
-				line = fmt.Sprintf("%s:%q", k, v)
-			case map[string]any:
-				if str, err := MarshalJS(v); err != nil {
-					return "", err
+	typeAny, ok := m["type"]
+	if !ok || typeAny == nil {
+		return nil, errors.New("unknown layer type")
+	}
+	typeString, ok := typeAny.(string)
+	if !ok {
+		return nil, fmt.Errorf("unknown layer type %v", typeAny)
+	}
+	switch typeString {
+	case "marker", "circleMarker", "circle", "polyline", "polygon":
+		// Caution!!
+		// leaflet is [lat,lon] order
+		layer := &Layer{Type: typeString}
+		if coord, ok := m["value"]; ok {
+			layer.Value = ConvCoordinates(coord, func(lat, long float64) {
+				if layer.Bound == nil {
+					layer.Bound = nums.NewLatLonBound(nums.NewLatLon(lat, long))
 				} else {
-					line = str
+					layer.Bound = layer.Bound.ExtendLatLon(lat, long)
 				}
-			default:
-				line = fmt.Sprintf("%s:%v", k, v)
+			})
+		} else {
+			return nil, errors.New("marker value not found")
+		}
+		if prop, ok := m["option"]; ok {
+			if propMap, ok := prop.(map[string]any); ok {
+				layer.Option = propMap
 			}
 		}
-		fields = append(fields, line)
+		return layer, nil
+	case "FeatureCollection":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalFeatureCollection(jsonBytes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid geojson %s", err.Error())
+		}
+		layer := &Layer{Type: "geoJSON", Value: m}
+		for _, f := range obj.Features {
+			b := f.Geometry.Bound()
+			if layer.Bound == nil {
+				layer.Bound = nums.NewLatLonBound(
+					nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
+					nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
+				)
+			} else {
+				layer.Bound.ExtendLatLon(b.Min.Lat(), b.Min.Lon())
+				layer.Bound.ExtendLatLon(b.Max.Lat(), b.Max.Lon())
+			}
+		}
+		return layer, nil
+	case "Feature":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalFeature(jsonBytes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid geojson %s", err.Error())
+		}
+		b := obj.Geometry.Bound()
+		layer := &Layer{Type: "geoJSON", Value: m}
+		layer.Bound = nums.NewLatLonBound(
+			nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
+			nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
+		)
+		return layer, nil
+	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+		// Caution!!
+		// geojson and orb is [lon,lat] order
+		jsonBytes, _ := json.Marshal(m)
+		obj, err := geojson.UnmarshalGeometry(jsonBytes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid geojson %s", err.Error())
+		}
+		b := obj.Coordinates.Bound()
+		layer := &Layer{Type: "geoJSON", Value: m}
+		layer.Bound = nums.NewLatLonBound(
+			nums.NewLatLon(b.Min.Lat(), b.Min.Lon()),
+			nums.NewLatLon(b.Max.Lat(), b.Max.Lon()),
+		)
+		return layer, nil
+	default:
+		return nil, fmt.Errorf("unknown layer type %s", typeString)
 	}
-	return "{" + strings.Join(fields, ",") + "}", nil
+}
+
+func MarshalJS(value any) (string, error) {
+	if value == nil {
+		return "null", nil
+	}
+	switch val := value.(type) {
+	case map[string]any:
+		keys := []string{}
+		for k := range val {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+		fields := []string{}
+		for _, k := range keys {
+			v := val[k]
+			vv, err := MarshalJS(v)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("%s:%s", k, vv))
+		}
+		return "{" + strings.Join(fields, ",") + "}", nil
+	case bool, int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8, float64:
+		return fmt.Sprintf("%v", val), nil
+	case string:
+		return fmt.Sprintf(`%q`, val), nil
+	case []any:
+		fields := []string{}
+		for _, elm := range val {
+			v, err := MarshalJS(elm)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, v)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case []map[string]any:
+		fields := []string{}
+		for _, elm := range val {
+			v, err := MarshalJS(elm)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, v)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case []float64:
+		fields := []string{}
+		for _, val := range val {
+			fields = append(fields, fmt.Sprintf("%v", val))
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case [][]float64:
+		fields := []string{}
+		for _, arr := range val {
+			elm, err := MarshalJS(arr)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, elm)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case [][][]float64:
+		fields := []string{}
+		for _, arr := range val {
+			elm, err := MarshalJS(arr)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, elm)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case [][][][]float64:
+		fields := []string{}
+		for _, arr := range val {
+			elm, err := MarshalJS(arr)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, elm)
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	default:
+		return fmt.Sprintf("unknown(%T)", val), nil
+	}
 }

@@ -49,7 +49,6 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "opacity", Func: opts.Opacity},
 	{Name: "outputStream", Func: opts.OutputStream},
 	{Name: "plugins", Func: opts.Plugins},
-	{Name: "pointStyle", Func: opts.PointStyle},
 	{Name: "precision", Func: opts.Precision},
 	{Name: "rownum", Func: opts.Rownum},
 	{Name: "rowsArray", Func: opts.RowsArray},

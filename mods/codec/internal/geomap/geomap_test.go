@@ -51,37 +51,35 @@ mismatched:
 
 func TestGeoMap(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        [][]any
-		inputGeoJSON []string
-		expectJSON   string
-		expectHTML   string
-		expectJS     string
+		name       string
+		input      []string
+		expectJSON string
+		expectHTML string
+		expectJS   string
 	}{
 		{
-			name: "point-circle",
-			input: [][]any{
-				{
-					nums.GeoPointMarker{
-						GeoPoint: nums.NewGeoPoint(&nums.LatLon{Lat: 37.497850, Lon: 127.027756}, map[string]any{
-							"popup.content": "<b>Gangname</b><br/>Hello World?",
-							"popup.open":    true,
-						}),
-					},
-				},
-				{
-					nums.GeoCircleMarker{
-						GeoCircle: nums.NewGeoCircle(&nums.LatLon{Lat: 37.503058, Lon: 127.018666}, 100, `{
-							"popup.content": "<b>circle1</b>"
-						}`),
-					},
-				},
-				{
-					nums.NewGeoPoint(
-						&nums.LatLon{Lat: 37.496727, Lon: 127.026612},
-						map[string]any{"popup.content": "<b>point1</b>"},
-					),
-				},
+			name: "geomap_test",
+			input: []string{
+				`{
+					"type": "marker",
+					"value": [37.497850, 127.027756],
+					"option": {
+						"popup": {
+							"content": "<b>Gangname</b><br/>Hello World?",
+							"open": true
+						}
+					}
+				}`,
+				`{
+					"type": "circleMarker",
+					"value": [37.503058, 127.018666],
+					"option": {
+						"radius": 100,
+						"popup": {
+							"content": "<b>circle1</b>"
+						}
+					}
+				}`,
 			},
 			expectJSON: "geomap_test.json",
 			expectHTML: "geomap_test.html",
@@ -89,7 +87,7 @@ func TestGeoMap(t *testing.T) {
 		},
 		{
 			name: "geojson",
-			inputGeoJSON: []string{
+			input: []string{
 				`{ "type": "FeatureCollection",
 					"features": [
 						{ "type": "Feature",
@@ -152,7 +150,7 @@ func TestGeoMap(t *testing.T) {
 
 	for _, tc := range tests {
 		outputs := []string{}
-		if tc.expectJS != "" {
+		if tc.expectJSON != "" {
 			outputs = append(outputs, "json")
 		}
 		if tc.expectHTML != "" {
@@ -170,7 +168,6 @@ func TestGeoMap(t *testing.T) {
 				c.SetMapId("WejMYXCGcYNL")
 				c.SetGeoMapJson(output == "json")
 				c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
-				c.SetPointStyle("rec", "circleMarker", `"color": "#ff0000"`)
 				if output == "json" {
 					require.Equal(t, "application/json", c.ContentType())
 				} else {
@@ -178,7 +175,7 @@ func TestGeoMap(t *testing.T) {
 				}
 
 				c.Open()
-				for _, jsonString := range tc.inputGeoJSON {
+				for _, jsonString := range tc.input {
 					obj := map[string]any{}
 					err := json.Unmarshal([]byte(jsonString), &obj)
 					if err != nil {
@@ -186,9 +183,6 @@ func TestGeoMap(t *testing.T) {
 						t.Fail()
 					}
 					c.AddRow([]any{obj})
-				}
-				for _, row := range tc.input {
-					c.AddRow(row)
 				}
 				c.Close()
 
@@ -200,6 +194,17 @@ func TestGeoMap(t *testing.T) {
 					}
 					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
 					require.JSONEq(t, string(expect), buffer.String(), "%s result unmatched\n%s", output, buffer.String())
+
+					if tc.expectJS != "" {
+						require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
+						expect, err := os.ReadFile(filepath.Join("test", tc.expectJS))
+						if err != nil {
+							fmt.Println("Error", err.Error())
+							t.Fail()
+						}
+						expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
+						require.Equal(t, string(expect), fsmock.buff.String(), fsmock.buff.String())
+					}
 				}
 				if output == "html" {
 					expect, err := os.ReadFile(filepath.Join("test", tc.expectHTML))
@@ -213,72 +218,71 @@ func TestGeoMap(t *testing.T) {
 					if !StringsEq(t, expectStr, buffer.String()) {
 						require.Equal(t, expectStr, buffer.String(), "%s result unmatched\n%s", output, buffer.String())
 					}
-				}
-				if tc.expectJS != "" {
-					require.Equal(t, fsmock.name, "/web/api/tql-assets/WejMYXCGcYNL.js")
-					expect, err := os.ReadFile(filepath.Join("test", tc.expectJS))
-					if err != nil {
-						fmt.Println("Error", err.Error())
-						t.Fail()
-					}
-					expect = bytes.ReplaceAll(expect, []byte("\r\n"), []byte("\n"))
-					require.Equal(t, string(expect), fsmock.buff.String(), fsmock.buff.String())
+					require.Equal(t, fsmock.name, "")
+					require.Zero(t, fsmock.buff.String())
 				}
 			})
 		}
 	}
 }
 
-func TestNewPopupMap(t *testing.T) {
+func TestCoord(t *testing.T) {
 	tests := []struct {
 		name   string
-		input  map[string]interface{}
-		expect *geomap.Popup
+		input  any
+		expect string
 	}{
 		{
-			name: "empty",
-			input: map[string]interface{}{
-				"popup": nil,
-			},
-			expect: nil,
+			name:   "point-float",
+			input:  []any{102.0, 0.5},
+			expect: `[102,0.5]`,
 		},
 		{
-			name: "no_popup",
-			input: map[string]interface{}{
-				"other": "value",
-			},
-			expect: nil,
+			name:   "point-int",
+			input:  []any{102, 0.5},
+			expect: `[102,0.5]`,
 		},
 		{
-			name: "popup_open",
-			input: map[string]interface{}{
-				"popup": map[string]any{
-					"content": "Hello World",
-					"open":    true,
+			name:   "point-int64",
+			input:  []any{int64(102), 5},
+			expect: `[102,5]`,
+		},
+		{
+			name: "point-poly1",
+			input: []any{
+				[]any{102.0, 1.5},
+				[]any{202.0, 2.5},
+			},
+			expect: `[[102,1.5],[202,2.5]]`,
+		},
+		{
+			name: "point-poly2",
+			input: []any{
+				[]any{[]int64{102, 1}, []any{202.0, 2.5}},
+				[]any{[]any{302.0, 3.5}, []any{402.0, 4.5}},
+			},
+			expect: `[[[102,1],[202,2.5]],[[302,3.5],[402,4.5]]]`,
+		},
+		{
+			name: "point-poly3",
+			input: []any{
+				[]any{
+					[]any{[]any{102.0, 1.5}, []any{202.0, 2.5}},
+					[]any{[]any{302.0, 3.5}, []any{402.0, 4.5}},
+				},
+				[]any{
+					[]any{[]any{102.0, 1.5}, []any{202.0, 2.5}},
 				},
 			},
-			expect: &geomap.Popup{
-				Content: "Hello World",
-				Open:    true,
-			},
-		},
-		{
-			name: "popup_no_open",
-			input: map[string]interface{}{
-				"popup": map[string]any{
-					"content": "Hello World",
-				},
-			},
-			expect: &geomap.Popup{
-				Content: "Hello World",
-				Open:    false,
-			},
+			expect: `[[[[102,1.5],[202,2.5]],[[302,3.5],[402,4.5]]],[[[102,1.5],[202,2.5]]]]`,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := geomap.NewPopupMap(tc.input)
+			conv := geomap.ConvCoordinates(tc.input, nil)
+			actual, err := geomap.MarshalJS(conv)
+			require.NoError(t, err)
 			require.Equal(t, tc.expect, actual)
 		})
 	}

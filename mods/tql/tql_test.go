@@ -1770,7 +1770,7 @@ func TestGeoJSON(t *testing.T) {
 						$.yield(obj);
 					}
 				})
-				GEOMAP()`,
+				GEOMAP(mapId("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
 				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
@@ -1779,19 +1779,41 @@ func TestGeoJSON(t *testing.T) {
 				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
 				id := gjson.Get(result, "ID").String()
 				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
+				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
+				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
 				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
 			},
 			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-				id := strings.TrimSuffix(strings.TrimPrefix(mock.name, "/web/api/tql-assets/"), ".js")
-				require.Equal(t, fmt.Sprintf(`(()=>{
-var map = L.map("%s", {crs: L.CRS.EPSG3857, attributionControl:false});
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-map.fitBounds([[37.49785,127.027756],[37.49785,127.027756]]);
-var __ptstyle = {color:"#2020F0",fillOpacity:0.5,opacity:0.5,radius:4,stroke:false};
-var obj0 = L.geoJSON({"type":"Feature","geometry":{"type":"Point","coordinates":[127.027756,37.49785]},"properties":null}, {}).addTo(map);
-})();`, id), mock.buff.String())
+				b, _ := os.ReadFile("./test/js-geojson-point.js")
+				expect := strings.ReplaceAll(string(b), "\r\n", "\n")
+				require.Equal(t, expect, mock.buff.String())
 			},
 		},
+		// FIXME: javascript 4 depth array
+		// {
+		// 	Name: "js-geojson-polygon",
+		// 	Script: `
+		// 		SCRIPT("js", {
+		// 			$.yield({
+		// 				type: "polygon",
+		// 				value: [
+		// 					[
+		// 						[[37, -109.05],[41, -109.03],[41, -102.05],[37, -102.04]],
+		// 						[[37.29, -108.58],[40.71, -108.58],[40.71, -102.50],[37.29, -102.50]]
+		// 					],
+		// 					[
+		// 						[[41, -111.03],[45, -111.04],[45, -104.05],[41, -104.05]]
+		// 					]
+		// 				]
+		// 			})
+		// 		})
+		// 		GEOMAP()`,
+		// 	ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
+		// 		b, _ := os.ReadFile("./test/js-geojson-polygon.js")
+		// 		expect := strings.ReplaceAll(string(b), "\r\n", "\n")
+		// 		require.Equal(t, expect, mock.buff.String())
+		// 	},
+		// },
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
