@@ -58,6 +58,15 @@ func TestNewLayer(t *testing.T) {
 			expect: `L.marker([12.34,56.78],{})`,
 		},
 		{
+			name: "marker-any",
+			input: map[string]any{
+				"type":   "marker",
+				"value":  []any{12.34, 56},
+				"option": map[string]any{},
+			},
+			expect: `L.marker([12.34,56],{})`,
+		},
+		{
 			name: "marker-style",
 			input: map[string]any{
 				"type":   "marker",
@@ -77,6 +86,22 @@ func TestNewLayer(t *testing.T) {
 				},
 			},
 			expect: `L.circleMarker([12.34,56.78],{radius:10,style:{color:"red"}})`,
+		},
+		{
+			name: "polyline",
+			input: map[string]any{
+				"type":  "polyline",
+				"value": [][]float64{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118.2}},
+			},
+			expect: `L.polyline([[45.51,-122.68],[37.77,-122.43],[34.04,-118.2]],{})`,
+		},
+		{
+			name: "polyline-any",
+			input: map[string]any{
+				"type":  "polyline",
+				"value": [][]any{{45.51, -122.68}, {37.77, -122.43}, {34.04, -118}},
+			},
+			expect: `L.polyline([[45.51,-122.68],[37.77,-122.43],[34.04,-118]],{})`,
 		},
 		{
 			name: "geojson-feature-collection",

@@ -100,6 +100,15 @@ func ConvCoordinates(coord any, callbackLatLon func(lat, long float64)) any {
 			}
 		}
 		return ret
+	case [][]float64:
+		if callbackLatLon != nil {
+			for i := range value {
+				if len(value[i]) == 2 {
+					callbackLatLon(value[i][0], value[i][1])
+				}
+			}
+		}
+		return value
 	case []int64:
 		ret := make([]float64, len(value))
 		for i, val := range value {
@@ -136,7 +145,7 @@ func NewLayer(m map[string]interface{}) (*Layer, error) {
 		return nil, fmt.Errorf("unknown layer type %v", typeAny)
 	}
 	switch typeString {
-	case "marker", "circleMarker", "polyline", "polygon":
+	case "marker", "circleMarker", "circle", "polyline", "polygon":
 		// Caution!!
 		// leaflet is [lat,lon] order
 		layer := &Layer{Type: typeString}
