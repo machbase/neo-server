@@ -795,7 +795,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 				require.Equal(t, "image.png", gjson.Get(extData, "FN").String(), extData)
 				require.Equal(t, int64(12692), gjson.Get(extData, "SZ").Int(), extData)
 				require.Equal(t, "image/png", gjson.Get(extData, "CT").String(), extData)
-				require.Equal(t, "/tmp/store", gjson.Get(extData, "SD").String(), extData)
+				require.Equal(t, "./testsuite_tmp/store", gjson.Get(extData, "SD").String(), extData)
 				fileId = gjson.Get(extData, "ID").String()
 				break waiting_loop
 			}
@@ -853,7 +853,7 @@ func TestImageFileUploadAndWatch(t *testing.T) {
 							"CT":"image/png",
 							"FN":"image.png",
 							"ID":"`+ext_id+`",
-							"SD":"/tmp/store",
+							"SD":"./testsuite_tmp/store",
 							"SZ":12692
 						}
 					}
@@ -893,7 +893,7 @@ func buildMultipartFormDataRequest(url string, names []string, values []any) (*h
 			h.Set("Content-Disposition",
 				fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
 					escapeQuotes(key), escapeQuotes(filename)))
-			h.Set("X-Store-Dir", "/tmp/store")
+			h.Set("X-Store-Dir", "${data}/store")
 			if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
 				h.Set("Content-Type", contentType)
 			} else {

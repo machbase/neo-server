@@ -503,6 +503,7 @@ func (s *Server) Start() error {
 			WithHttpServerSessionsFunc(s.ServerSessions),
 			WithHttpEnableWeb(s.Http.EnableWebUI),
 			WithHttpPackageManager(s.pkgMgr),
+			WithHttpPathMap("data", homepath),
 		}
 		if s.mqttd != nil {
 			if h := s.mqttd.WsHandlerFunc(); h != nil {

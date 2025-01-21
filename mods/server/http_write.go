@@ -373,6 +373,12 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
+		// replace pathMap
+		for k, v := range svr.pathMap {
+			storeDir = strings.ReplaceAll(storeDir, fmt.Sprintf("${%s}", k), v)
+		}
+		storeDir = filepath.FromSlash(storeDir)
+
 		mff.StoreDir = storeDir
 		idv6, _ := idGen.NewV6AtTime(ts)
 		mff.Id = idv6.String()

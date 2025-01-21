@@ -35,8 +35,9 @@ func TestMain(m *testing.M) {
 		DefaultLevel:                "INFO",
 	})
 
+	dataPath := "./testsuite_tmp"
 	// database
-	testServer := testsuite.NewServer("./testsuite_tmp")
+	testServer := testsuite.NewServer(dataPath)
 	testServer.StartServer(m)
 	testServer.CreateTestTables()
 	database := testServer.DatabaseSVR()
@@ -62,6 +63,7 @@ func TestMain(m *testing.M) {
 				Runtime: &mgmt.Runtime{},
 			}, nil
 		}),
+		WithHttpPathMap("data", dataPath),
 	}
 	if svr, err := NewHttp(database, httpOpts...); err != nil {
 		panic(err)

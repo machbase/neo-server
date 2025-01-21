@@ -179,3 +179,9 @@ func WithHttpPackageManager(pm *pkgs.PkgManager) HttpOption {
 		s.pkgMgr = pm
 	}
 }
+
+func WithHttpPathMap(name string, realPath string) HttpOption {
+	return func(s *httpd) {
+		s.pathMap[name] = realPath
+	}
+}

@@ -54,6 +54,7 @@ func NewHttp(db api.Database, options ...HttpOption) (*httpd, error) {
 			{Prefix: "/web", Handler: "web"},
 		},
 		neoShellAccount: make(map[string]string),
+		pathMap:         map[string]string{},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -104,6 +105,7 @@ type httpd struct {
 	uiContentFs            http.FileSystem
 
 	memoryFs *MemoryFS
+	pathMap  map[string]string
 
 	statzAllowed []string
 }
