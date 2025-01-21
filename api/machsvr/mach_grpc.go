@@ -138,6 +138,8 @@ func (s *RPCServer) ConnClose(ctx context.Context, req *machrpc.ConnCloseRequest
 	h := req.Conn.Handle
 	if parole, ok := s.getSession(h); !ok {
 		rsp.Reason = fmt.Sprintf("Conn does not exist %q", h)
+	} else if parole.rawConn == nil {
+		rsp.Reason = fmt.Sprintf("Conn is invalid %q", h)
 	} else {
 		if err := parole.rawConn.Close(); err != nil {
 			s.log.Warn("connection close", "handle", h, "error", err.Error())
@@ -188,8 +190,10 @@ func (s *RPCServer) Exec(ctx context.Context, req *machrpc.ExecRequest) (*machrp
 	var rawConn *Conn
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
+		return rsp, nil
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
+		return rsp, nil
 	} else {
 		rawConn = conn.rawConn
 	}
@@ -274,8 +278,10 @@ func (s *RPCServer) Query(ctx context.Context, req *machrpc.QueryRequest) (*mach
 	var rawConn *Conn
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
+		return rsp, nil
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
+		return rsp, nil
 	} else {
 		rawConn = conn.rawConn
 	}
@@ -412,8 +418,10 @@ func (s *RPCServer) Appender(ctx context.Context, req *machrpc.AppenderRequest) 
 
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
+		return rsp, nil
 	} else if conn.rawConn == nil {
 		rsp.Reason = "invalid connection"
+		return rsp, nil
 	} else {
 		opts := []api.AppenderOption{}
 		realAppender, err := conn.rawConn.Appender(ctx, req.TableName, opts...)
