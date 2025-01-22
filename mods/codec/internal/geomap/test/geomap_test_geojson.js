@@ -39,6 +39,6 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 map.fitBounds([[0,100],[20.1,135.7]]);
 var obj0 = L.geoJSON({features:[{geometry:{coordinates:[102,0.5],type:"Point"},properties:{prop0:"value0"},type:"Feature"},{geometry:{coordinates:[[102,0],[103,1],[104,0],[105,1]],type:"LineString"},properties:{prop0:"value0",prop1:0},type:"Feature"},{geometry:{coordinates:[[[100,0],[101,0],[101,1],[100,1],[100,0]]],type:"Polygon"},properties:{prop0:"value0",prop1:{this:"that"}},type:"Feature"}],popup:{content:"<b>GeoJSON</b>",open:0},type:"FeatureCollection"},opt.geojson).addTo(map);
 var obj1 = L.geoJSON({geometry:{coordinates:[125.6,10.1],type:"Point"},properties:{name:"Dinagat Islands",popup:{content:"<b>Dinagat Islands</b>",open:true}},type:"Feature"},opt.geojson).addTo(map);
-obj1.bindPopup("<b>Dinagat Islands</b>").openPopup();
+var popup1 = obj1.bindPopup("<b>Dinagat Islands</b>", {}).openPopup();
 var obj2 = L.geoJSON({coordinates:[135.7,20.1],type:"Point"},opt.geojson).addTo(map);
 })(WejMYXCGcYNL);

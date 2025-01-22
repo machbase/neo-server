@@ -249,7 +249,7 @@ func (gm *GeoMap) Close() {
 		gm.appendJSCode(fmt.Sprintf(`var %s = L.icon(%s);`, icn.Name, icnJson))
 	}
 
-	for i, layer := range gm.layers {
+	for objIdx, layer := range gm.layers {
 		var popupMap map[string]any
 		if popup, ok := layer.Properties["popup"]; ok {
 			if m, ok := popup.(map[string]any); ok {
@@ -257,13 +257,45 @@ func (gm *GeoMap) Close() {
 				delete(layer.Properties, "popup")
 			}
 		}
-		gm.appendJSCode(fmt.Sprintf(`var obj%d = %s.addTo(map);`, i, layer.LeafletJS()))
-		if popupMap != nil {
-			if popupMap["open"] == true {
-				gm.appendJSCode(fmt.Sprintf(`obj%d.bindPopup(%q).openPopup();`, i, popupMap["content"]))
-			} else {
-				gm.appendJSCode(fmt.Sprintf(`obj%d.bindPopup(%q);`, i, popupMap["content"]))
+		var tooltipMap map[string]any
+		if tooltip, ok := layer.Properties["tooltip"]; ok {
+			if m, ok := tooltip.(map[string]any); ok {
+				tooltipMap = m
+				delete(layer.Properties, "tooltip")
 			}
+		}
+		gm.appendJSCode(fmt.Sprintf(`var obj%d = %s.addTo(map);`, objIdx, layer.LeafletJS()))
+		if popupMap != nil {
+			openCode := ""
+			contentCode := ""
+			if content, ok := popupMap["content"].(string); ok {
+				contentCode = content
+				delete(popupMap, "content")
+			}
+			if open, ok := popupMap["open"].(bool); ok {
+				if open {
+					openCode = `.openPopup()`
+				}
+				delete(popupMap, "open")
+			}
+			popupJS, _ := MarshalJS(popupMap)
+			gm.appendJSCode(fmt.Sprintf(`var popup%d = obj%d.bindPopup(%q, %s)%s;`, objIdx, objIdx, contentCode, popupJS, openCode))
+		}
+		if tooltipMap != nil {
+			openCode := ""
+			contentCode := ""
+			if content, ok := tooltipMap["content"].(string); ok {
+				contentCode = content
+				delete(tooltipMap, "content")
+			}
+			if open, ok := tooltipMap["open"].(bool); ok {
+				if open {
+					openCode = `.openTooltip()`
+				}
+				delete(tooltipMap, "open")
+			}
+			tooltipJS, _ := MarshalJS(tooltipMap)
+			gm.appendJSCode(fmt.Sprintf(`var tooltip%d = obj%d.bindTooltip(%q, %s)%s;`, objIdx, objIdx, contentCode, tooltipJS, openCode))
 		}
 	}
 
