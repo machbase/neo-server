@@ -45,6 +45,7 @@ const helpSql string = `  sql [options] <query>
                             consult "help tz"
        --[no-]heading       print header
        --[no-]footer        print footer message
+	   --[no-]pause         pause for the screen paging
 	-T,--timing             print elapsed time
     -p,--precision <int>    set precision of float value to force round`
 
@@ -60,6 +61,8 @@ type SqlCmd struct {
 	Rownum       bool           `name:"rownum" negatable:"" default:"true"`
 	Timeformat   string         `name:"timeformat" short:"t"`
 	Precision    int            `name:"precision" short:"p" default:"-1"`
+	Pause        bool           `name:"pause" default:"false"`
+	NoPause      bool           `name:"no-pause" default:"false"`
 	BoxStyle     string         `kong:"-"`
 	Interactive  bool           `kong:"-"`
 	Help         bool           `kong:"-"`
@@ -119,7 +122,13 @@ func doSql(ctx *action.ActionContext) {
 		cmd.Interactive = false
 	} else {
 		if outputPath == "-" {
-			cmd.Interactive = ctx.Interactive
+			if cmd.Pause {
+				cmd.Interactive = true
+			} else if cmd.NoPause {
+				cmd.Interactive = false
+			} else {
+				cmd.Interactive = ctx.Interactive
+			}
 		} else {
 			cmd.Interactive = false
 		}
@@ -134,8 +143,8 @@ func doSql(ctx *action.ActionContext) {
 		opts.TimeLocation(cmd.TimeLocation),
 		opts.Delimiter(cmd.Delimiter),
 		opts.BoxStyle(cmd.BoxStyle),
-		opts.BoxSeparateColumns(cmd.Interactive),
-		opts.BoxDrawBorder(cmd.Interactive),
+		opts.BoxSeparateColumns(ctx.Interactive), // always column-separate in interactive mode
+		opts.BoxDrawBorder(ctx.Interactive),
 	)
 
 	headerHeight := 0
