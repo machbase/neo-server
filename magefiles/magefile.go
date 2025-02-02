@@ -24,11 +24,12 @@ import (
 var Default = BuildNeoServer
 
 var Aliases = map[string]any{
-	"machbase-neo":    BuildNeoServer,
-	"neoshell":        BuildNeoShell,
-	"cleanpackage":    CleanPackage,
-	"buildversion":    BuildVersion,
-	"install-neo-web": InstallNeoWeb,
+	"machbase-neo":       BuildNeoServer,
+	"machbase-neo-debug": BuildNeoServerDebug,
+	"neoshell":           BuildNeoShell,
+	"cleanpackage":       CleanPackage,
+	"buildversion":       BuildVersion,
+	"install-neo-web":    InstallNeoWeb,
 }
 
 var vLastVersion string
@@ -42,14 +43,18 @@ func BuildVersion() {
 }
 
 func BuildNeoServer() error {
-	return Build("machbase-neo")
+	return Build("machbase-neo", true)
+}
+
+func BuildNeoServerDebug() error {
+	return Build("machbase-neo", false)
 }
 
 func BuildNeoShell() error {
-	return Build("neoshell")
+	return Build("neoshell", true)
 }
 
-func Build(target string) error {
+func Build(target string, strip bool) error {
 	mg.Deps(CheckTmp, GetVersion)
 
 	fmt.Println("Build", target, vBuildVersion, "...")
@@ -73,9 +78,11 @@ func Build(target string) error {
 		"-X", fmt.Sprintf("%s/mods.versionGitSHA=%s", mod, gitSHA),
 		"-X", fmt.Sprintf("%s/mods.editionString=%s", mod, edition),
 		"-X", fmt.Sprintf("%s/mods.buildTimestamp=%s", mod, timestamp),
-		"-s", // this may reduce binary size about (110M -> 86M)
-		"-w",
 	}, " ")
+	if strip {
+		// this may reduce binary size about (110M -> 86M)
+		ldflags += " -s -w"
+	}
 	args = append(args, "-ldflags", ldflags)
 
 	// executable file
