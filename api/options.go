@@ -2,6 +2,7 @@ package api
 
 import (
 	"strings"
+	"time"
 )
 
 type ConnectOption interface {
@@ -50,4 +51,21 @@ func SqlTidy(sqlTextLines ...string) string {
 		lines[i] = strings.TrimSpace(ln)
 	}
 	return strings.Join(lines, " ")
+}
+
+type ConnectOptionTimeout struct {
+	Timeout time.Duration
+}
+
+func (ConnectOptionTimeout) connectOption() {}
+
+// ConnectTimeout
+//
+// if ConnectTimeout is set, Connect() will wait for the connection to be established
+// if the connection is not established within the timeout, Connect() will return an error
+//
+//	0 : no timeout
+//	> 0 : timeout duration
+func WithConnectTimeout(timeout time.Duration) ConnectOption {
+	return &ConnectOptionTimeout{Timeout: timeout}
 }

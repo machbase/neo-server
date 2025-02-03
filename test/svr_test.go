@@ -93,7 +93,7 @@ func TestMain(m *testing.M) {
 	}
 
 	/// preparing benchmark table
-	db, err := machsvr.NewDatabase()
+	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
 	if err != nil {
 		panic(err)
 	}

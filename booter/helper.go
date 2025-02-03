@@ -87,6 +87,24 @@ func Uint64FromCty(value cty.Value) (uint64, error) {
 	}
 }
 
+func Float64FromCty(value cty.Value) (float64, error) {
+	switch value.Type() {
+	case cty.Number:
+		f := value.AsBigFloat()
+		l, _ := f.Float64()
+		return l, nil
+	case cty.String:
+		s := value.AsString()
+		if l, err := strconv.ParseFloat(s, 64); err == nil {
+			return l, err
+		} else {
+			return 0, fmt.Errorf("value is not a number-compatible, %s", value.Type())
+		}
+	default:
+		return 0, fmt.Errorf("value is not a number, %s", value.Type())
+	}
+}
+
 func PriorityFromCty(value cty.Value) int {
 	switch value.Type() {
 	case cty.Number:

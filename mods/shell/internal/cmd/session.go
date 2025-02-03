@@ -22,11 +22,13 @@ func init() {
 
 const helpSession = `    session command [options]
   commands:
-    list              list sessions
-    kill <id>         force to close a session
-    stat              show session stat
+    list                list sessions
+    kill <id>           force to close a session
+    stat                show session stat
+    limit               get open session limit
+    limit [--set <num>] set open session limit
   options:
-    -a,--all          includes detail description`
+    -a,--all            includes detail description`
 
 type SessionCmd struct {
 	List struct {
@@ -38,6 +40,9 @@ type SessionCmd struct {
 	} `cmd:"" name:"kill"`
 	Stat struct {
 	} `cmd:"" name:"stat"`
+	Limit struct {
+		Set int `name:"set" default:"-2147483648"`
+	} `cmd:"" name:"limit"`
 	Help bool `kong:"-"`
 }
 
@@ -67,7 +72,33 @@ func doSession(ctx *action.ActionContext) {
 		doSessionKill(ctx, cmd.Kill.Id, cmd.Kill.Force)
 	case "stat":
 		doSessionStat(ctx)
+	case "limit":
+		doSessionLimit(ctx, cmd.Limit.Set)
 	}
+}
+
+func doSessionLimit(ctx *action.ActionContext, newLimit int) {
+	mgmtClient, err := ctx.Actor.ManagementClient()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	req := &mgmt.MaxOpenConnsRequest{}
+	if newLimit == -2147483648 {
+		req.Cmd = "get"
+	} else {
+		req.Cmd = "set"
+		req.Limit = int32(newLimit)
+	}
+
+	rsp, err := mgmtClient.MaxOpenConns(ctx.Ctx, req)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	ctx.Println("session limit:", rsp.Limit)
+	ctx.Println("      remains:", rsp.Remains)
 }
 
 func doSessionList(ctx *action.ActionContext, showAll bool) {

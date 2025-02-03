@@ -41,6 +41,9 @@ define VARS {
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
 
+    MAX_OPEN_CONN         = flag("--max-open-conn", 0)
+    MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 1.5)
+
     EXPERIMENT_MODE       = flag("--experiment", false)
     MACHBASE_INIT_OPTION  = flag("--machbase-init-option", 2)
     CREATEDB_SCRIPT_FILES = flag("--createdb-script-files", "")
@@ -78,6 +81,8 @@ module "machbase.com/neo-server" {
         ExperimentMode   = VARS_EXPERIMENT_MODE
         MachbaseInitOption  = VARS_MACHBASE_INIT_OPTION
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
+        MaxOpenConns         = VARS_MAX_OPEN_CONN
+        MaxOpenConnsFactor   = VARS_MAX_OPEN_CONN_FACTOR
         Machbase         = {
             HANDLE_LIMIT     = 2048
             PORT_NO          = VARS_MACH_LISTEN_PORT
