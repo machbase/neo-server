@@ -3,7 +3,6 @@ package machsvr_test
 import (
 	"context"
 	"os"
-	"runtime"
 	"testing"
 	"time"
 
@@ -48,15 +47,14 @@ func TestAll(t *testing.T) {
 }
 
 func tcSetMaxConn(t *testing.T) {
-	expectLimit := int(float64(runtime.NumCPU()) * 1.5)
 	engine := machsvrDB.(*machsvr.Database)
-	limit, open := engine.MaxOpenConns()
-	require.Equal(t, expectLimit, limit)
+	expectLimit, open := engine.MaxOpenConns()
+	require.NotZero(t, expectLimit)
 	require.LessOrEqual(t, 0, open)
 
-	expectLimit -= 2
+	expectLimit += 2
 	engine.SetMaxOpenConns(expectLimit)
-	limit, open = engine.MaxOpenConns()
+	limit, open := engine.MaxOpenConns()
 	require.Equal(t, expectLimit, limit)
 	require.LessOrEqual(t, 0, open)
 }

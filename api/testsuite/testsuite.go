@@ -219,7 +219,7 @@ func (s *Server) StartServer(m *testing.M) {
 	}
 
 	// setup
-	if db, err := machsvr.NewDatabase(machsvr.DatabaseOption{}); err != nil {
+	if db, err := machsvr.NewDatabase(machsvr.DatabaseOption{MaxOpenConns: 10}); err != nil {
 		panic(err)
 	} else {
 		s.machsvrDatabase = db
@@ -327,7 +327,7 @@ type TestingT interface {
 
 func Database_machsvr(t TestingT) api.Database {
 	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(machsvr.DatabaseOption{}); err != nil {
+	if machsvr_db, err := machsvr.NewDatabase(machsvr.DatabaseOption{MaxOpenConns: 10}); err != nil {
 		t.Log("Error", err.Error())
 		t.Fail()
 	} else {
