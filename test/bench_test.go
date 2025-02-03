@@ -32,7 +32,7 @@ func BenchmarkAppend(b *testing.B) {
 	runtime.GC()
 	runtime.ReadMemStats(&memBefore)
 
-	db, err := machsvr.NewDatabase()
+	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
 	require.NoError(b, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -79,7 +79,7 @@ func BenchmarkAppend(b *testing.B) {
 // BenchmarkSelect-8           6524          14599373 ns/op            2139 B/op         49 allocs/op
 
 func BenchmarkSelect(b *testing.B) {
-	db, err := machsvr.NewDatabase()
+	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
 	require.NoError(b, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

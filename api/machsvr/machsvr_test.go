@@ -3,11 +3,13 @@ package machsvr_test
 import (
 	"context"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/stretchr/testify/require"
 )
@@ -40,8 +42,23 @@ func TestAll(t *testing.T) {
 		tcRpcUserAuth,
 		tcRpcExplain,
 		tcRpcExec,
+		tcSetMaxConn,
 	)
 	testsuite.DropTestTables(machrpcDB)
+}
+
+func tcSetMaxConn(t *testing.T) {
+	expectLimit := int(float64(runtime.NumCPU()) * 1.5)
+	engine := machsvrDB.(*machsvr.Database)
+	limit, open := engine.MaxOpenConns()
+	require.Equal(t, expectLimit, limit)
+	require.LessOrEqual(t, 0, open)
+
+	expectLimit -= 2
+	engine.SetMaxOpenConns(expectLimit)
+	limit, open = engine.MaxOpenConns()
+	require.Equal(t, expectLimit, limit)
+	require.LessOrEqual(t, 0, open)
 }
 
 func connectRpc(t *testing.T, ctx context.Context) *machrpc.ConnHandle {

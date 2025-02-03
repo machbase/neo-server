@@ -310,6 +310,16 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 		} else {
 			return fmt.Errorf("%s should be uint", refName)
 		}
+	case reflect.Float32, reflect.Float64:
+		if value.Type() == cty.Number || value.Type() == cty.String {
+			if v, err := Float64FromCty(value); err != nil {
+				return err
+			} else {
+				ref.SetFloat(v)
+			}
+		} else {
+			return fmt.Errorf("%s should be float", refName)
+		}
 	case reflect.Slice:
 		vs := value.AsValueSlice()
 		slice := reflect.MakeSlice(ref.Type(), len(vs), len(vs))

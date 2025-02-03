@@ -260,7 +260,10 @@ func (s *Server) Start() error {
 	}
 
 	// create database instance
-	s.db, err = machsvr.NewDatabase()
+	s.db, err = machsvr.NewDatabase(machsvr.DatabaseOption{
+		MaxOpenConns:       s.Config.MaxOpenConns,
+		MaxOpenConnsFactor: s.Config.MaxOpenConnsFactor,
+	})
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
 	}
@@ -273,6 +276,12 @@ func (s *Server) Start() error {
 
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
+	}
+
+	if max, _ := s.db.MaxOpenConns(); max >= 0 {
+		s.log.Infof("MACH MaxOpenConnections: %d", max)
+	} else if max == -1 {
+		s.log.Infof("MACH MaxOpenConnections: unlimited")
 	}
 
 	if shouldInstallLicense {

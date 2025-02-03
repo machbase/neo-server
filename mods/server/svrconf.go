@@ -81,6 +81,8 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption machsvr.InitOption
+	MaxOpenConns       int
+	MaxOpenConnsFactor float64
 }
 
 var PreferredPreset string = "auto"

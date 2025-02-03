@@ -554,6 +554,27 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 	return rsp, nil
 }
 
+func (s *Server) MaxOpenConns(ctx context.Context, req *mgmt.MaxOpenConnsRequest) (*mgmt.MaxOpenConnsResponse, error) {
+	rsp := &mgmt.MaxOpenConnsResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("MaxOpenConns panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if strings.ToLower(req.Cmd) == "set" {
+		s.db.SetMaxOpenConns(int(req.Limit))
+	}
+	limit, remains := s.db.MaxOpenConns()
+	rsp.Limit = int32(limit)
+	rsp.Remains = int32(remains)
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
 var maxProcessors int32
 var pid int32
 var ver *mods.Version

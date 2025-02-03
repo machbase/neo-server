@@ -20,6 +20,7 @@ service Management {
     rpc ServerInfo(ServerInfoRequest) returns (ServerInfoResponse) {}
     rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
     rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
+    rpc MaxOpenConns(MaxOpenConnsRequest) returns (MaxOpenConnsResponse) {}
 }
 
 message ListShellRequest{
@@ -245,4 +246,17 @@ message KillSessionResponse {
     bool   success  = 1;
     string reason   = 2;
     string elapse   = 3;
+}
+
+message MaxOpenConnsRequest {
+    string cmd   = 1;   // get, set
+    int32  limit = 2;   // set
+}
+
+message MaxOpenConnsResponse {
+    bool   success      = 1;
+    string reason       = 2;
+    string elapse       = 3;
+    int32  limit        = 4; // get
+    int32  remains      = 5; // get
 }

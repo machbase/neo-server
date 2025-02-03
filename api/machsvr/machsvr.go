@@ -94,6 +94,21 @@ func RestoreDatabase(path string) error {
 	return mach.EngRestoreDatabase(_env.handle, path)
 }
 
+type DatabaseOption struct {
+	// MaxOpenConns
+	//
+	//	< 0 : unlimited
+	//	0 : default, maxOpenConns = CPU count * maxOpenConnsFactor
+	//	> 0 : specified max open connections
+	MaxOpenConns int
+
+	// MaxOpenConnsFactor
+	//
+	//	used to calculate the number of max open connections when maxOpenConns is 0
+	//	default is 1.5
+	MaxOpenConnsFactor float64
+}
+
 type Env struct {
 	sync.Mutex
 	handle          unsafe.Pointer
@@ -109,11 +124,14 @@ type Database struct {
 	conns     cmap.ConcurrentMap[string, *ConnWatcher]
 	onceStart sync.Once
 	onceStop  sync.Once
+
+	maxConnsMutex sync.RWMutex
+	maxConnsChan  chan struct{}
 }
 
 var _ api.Database = (*Database)(nil)
 
-func NewDatabase() (*Database, error) {
+func NewDatabase(opt DatabaseOption) (*Database, error) {
 	_env.Lock()
 	defer _env.Unlock()
 
@@ -124,6 +142,19 @@ func NewDatabase() (*Database, error) {
 			idGen:  sonyflake.NewSonyflake(sonyflake.Settings{}),
 		}
 	})
+
+	if opt.MaxOpenConnsFactor <= 0 {
+		opt.MaxOpenConnsFactor = 1.5
+	}
+
+	if opt.MaxOpenConns < 0 {
+		opt.MaxOpenConns = -1
+	} else if opt.MaxOpenConns == 0 {
+		opt.MaxOpenConns = int(float64(runtime.NumCPU()) * opt.MaxOpenConnsFactor)
+	}
+
+	_env.database.SetMaxOpenConns(opt.MaxOpenConns)
+
 	return _env.database, nil
 }
 
@@ -151,6 +182,48 @@ func (db *Database) Shutdown() (err error) {
 
 func (db *Database) Error() error {
 	return mach.EngError(db.handle)
+}
+
+// MaxOpenConns returns the maximum number of open connections
+// and the current remains capacity.
+func (db *Database) MaxOpenConns() (int, int) {
+	db.maxConnsMutex.RLock()
+	defer db.maxConnsMutex.RUnlock()
+	if db.maxConnsChan == nil {
+		// unlimited
+		return -1, -1
+	}
+	limit := cap(db.maxConnsChan)
+	remains := len(db.maxConnsChan)
+	return limit, remains
+}
+
+func (db *Database) SetMaxOpenConns(desiredMaxOpenConns int) {
+	if desiredMaxOpenConns < 0 {
+		desiredMaxOpenConns = -1
+	}
+	if desiredMaxOpenConns == 0 {
+		desiredMaxOpenConns = int(float64(runtime.NumCPU()) * 1.5)
+	}
+
+	currentCap := cap(db.maxConnsChan)
+	if currentCap == desiredMaxOpenConns {
+		return
+	}
+
+	var newChan chan struct{}
+	db.maxConnsMutex.Lock()
+	defer func() {
+		db.maxConnsChan = newChan
+		db.maxConnsMutex.Unlock()
+	}()
+
+	if desiredMaxOpenConns > 0 {
+		newChan = make(chan struct{}, desiredMaxOpenConns)
+		for i := 0; i < desiredMaxOpenConns; i++ {
+			newChan <- struct{}{}
+		}
+	}
 }
 
 func (db *Database) UserAuth(ctx context.Context, username string, password string) (bool, string, error) {
@@ -265,6 +338,8 @@ type Conn struct {
 	latestTime    time.Time
 	latestSql     string
 	closeCallback func()
+
+	returnChan chan struct{}
 }
 
 var _ api.Conn = (*Conn)(nil)
@@ -275,9 +350,11 @@ func (conn *Conn) SetLatestSql(sql string) {
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+	var connTimeout time.Duration
 	ret := &Conn{
-		ctx: ctx,
-		db:  db,
+		ctx:        ctx,
+		db:         db,
+		returnChan: db.maxConnsChan,
 	}
 	for _, o := range opts {
 		switch v := o.(type) {
@@ -287,10 +364,26 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		case *api.ConnectOptionTrustUser:
 			ret.username = v.User
 			ret.isTrustUser = true
+		case *api.ConnectOptionTimeout:
+			connTimeout = v.Timeout
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
 	}
+
+	// control max open connections
+	if ret.returnChan != nil {
+		if connTimeout > 0 {
+			select {
+			case <-ret.returnChan:
+			case <-time.After(connTimeout):
+				return nil, api.NewError("connect timeout")
+			}
+		} else {
+			<-ret.returnChan
+		}
+	}
+
 	var handle unsafe.Pointer
 	if ret.isTrustUser {
 		if err := mach.EngConnectTrust(db.handle, ret.username, &handle); err != nil {
@@ -339,6 +432,9 @@ func (conn *Conn) Close() (err error) {
 	}
 	conn.closeOnce.Do(func() {
 		defer func() {
+			if conn.returnChan != nil {
+				conn.returnChan <- struct{}{}
+			}
 			if r := recover(); r != nil {
 				fmt.Println("Recovered in Conn.Close", r)
 			}
