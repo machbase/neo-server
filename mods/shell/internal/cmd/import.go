@@ -116,7 +116,12 @@ func doImport(ctx *action.ActionContext) {
 	}
 	defer in.Close()
 
-	exists, truncated, err := api.ExistsTableTruncate(ctx.Ctx, ctx.Conn, cmd.Table, cmd.TruncateTable)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	exists, truncated, err := api.ExistsTableTruncate(ctx.Ctx, conn, cmd.Table, cmd.TruncateTable)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -130,7 +135,7 @@ func doImport(ctx *action.ActionContext) {
 	}
 
 	var desc *api.TableDescription
-	if desc0, err := api.DescribeTable(ctx.Ctx, ctx.Conn, cmd.Table, false); err != nil {
+	if desc0, err := api.DescribeTable(ctx.Ctx, conn, cmd.Table, false); err != nil {
 		ctx.Printfln("ERR fail to get table info '%s', %s", cmd.Table, err.Error())
 		return
 	} else {
@@ -219,7 +224,7 @@ func doImport(ctx *action.ActionContext) {
 
 		if desc.Flag == api.TableFlagMeta {
 			query := fmt.Sprintf("insert into %s metadata(%s) values(%s)", tableName, columns, holder)
-			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
+			if result := conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
 				ctx.Println(fmt.Sprintf("line %d", lineno), result.Err().Error())
 				fail++
 			} else {
@@ -227,7 +232,7 @@ func doImport(ctx *action.ActionContext) {
 			}
 		} else if cmd.Method == "insert" {
 			query := fmt.Sprintf("insert into %s values(%s)", tableName, holder)
-			if result := ctx.Conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
+			if result := conn.Exec(ctx.Ctx, query, vals...); result.Err() != nil {
 				ctx.Println(fmt.Sprintf("line %d", lineno), result.Err().Error())
 				fail++
 			} else {
@@ -235,7 +240,7 @@ func doImport(ctx *action.ActionContext) {
 			}
 		} else { // append
 			if appender == nil {
-				appender, err = ctx.Conn.Appender(ctx.Ctx, tableName)
+				appender, err = conn.Appender(ctx.Ctx, tableName)
 				if err != nil {
 					ctx.Println("ERR", err.Error())
 					break

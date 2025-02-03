@@ -12,7 +12,7 @@ import (
 type ActionContext struct {
 	Actor        *Actor
 	Line         string
-	Conn         api.Conn
+	BorrowConn   func() (api.Conn, error)
 	Ctx          context.Context
 	CtxCancel    context.CancelFunc
 	Lang         language.Tag

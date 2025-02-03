@@ -107,7 +107,12 @@ func doFake(ctx *action.ActionContext) {
 
 	var appender api.Appender
 	if len(cmd.Table) > 0 {
-		appender, err = ctx.Conn.Appender(ctx.Ctx, cmd.Table)
+		conn, err := ctx.BorrowConn()
+		if err != nil {
+			ctx.Printfln("ERR", err.Error())
+			return
+		}
+		appender, err = conn.Appender(ctx.Ctx, cmd.Table)
 		if err != nil {
 			ctx.Printfln("ERR", err.Error())
 			return

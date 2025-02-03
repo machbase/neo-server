@@ -52,7 +52,12 @@ func doExplain(ctx *action.ActionContext) {
 
 	tick := time.Now()
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	plan, err := ctx.Conn.Explain(ctx.Ctx, sqlText, cmd.Full)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	plan, err := conn.Explain(ctx.Ctx, sqlText, cmd.Full)
 	if err != nil {
 		ctx.Println(err.Error())
 		return

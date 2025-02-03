@@ -161,7 +161,12 @@ func doExport(ctx *action.ActionContext) {
 		},
 	}
 
-	if err := query.Execute(ctx.Ctx, ctx.Conn, "select * from "+cmd.Table); err != nil {
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	if err := query.Execute(ctx.Ctx, conn, "select * from "+cmd.Table); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 	if printProgress {
