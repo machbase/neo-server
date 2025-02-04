@@ -49,18 +49,28 @@ func (cli *Actor) Process(line string) {
 	defer cancel()
 	var conn api.Conn
 	closeOnce := sync.Once{}
-
-	conn, err := cli.db.Connect(ctx, api.WithPassword(cli.conf.User, cli.conf.Password))
-	if err != nil {
-		fmt.Println("ERR", err.Error())
-		return
+	closeConn := func() {
+		closeOnce.Do(func() {
+			if conn != nil {
+				conn.Close()
+			}
+		})
 	}
-	defer closeOnce.Do(func() { conn.Close() })
+	defer closeConn()
 
 	actCtx := &ActionContext{
-		Line:         line,
-		Actor:        cli,
-		Conn:         conn,
+		Line:  line,
+		Actor: cli,
+		BorrowConn: func() (api.Conn, error) {
+			if conn == nil {
+				if c, err := cli.db.Connect(ctx, api.WithPassword(cli.conf.User, cli.conf.Password)); err != nil {
+					fmt.Println("ERR", err.Error())
+				} else {
+					conn = c
+				}
+			}
+			return conn, nil
+		},
 		Ctx:          ctx,
 		CtxCancel:    cancel,
 		Lang:         cli.conf.Lang,
@@ -85,7 +95,7 @@ func (cli *Actor) Process(line string) {
 			}
 		}
 	exit:
-		closeOnce.Do(func() { conn.Close() })
+		closeConn()
 		actCtx.CtxCancel()
 		close(c)
 	}()

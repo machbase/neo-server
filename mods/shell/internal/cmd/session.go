@@ -97,8 +97,10 @@ func doSessionLimit(ctx *action.ActionContext, newLimit int) {
 		return
 	}
 
-	ctx.Println("session limit:", rsp.Limit)
-	ctx.Println("      remains:", rsp.Remains)
+	box := ctx.NewBox([]string{"NAME", "VALUE"})
+	box.AppendRow("OPEN LIMIT", util.NumberFormat(rsp.Limit))
+	box.AppendRow("OPEN REMAINS", util.NumberFormat(rsp.Remains))
+	box.Render()
 }
 
 func doSessionList(ctx *action.ActionContext, showAll bool) {
@@ -116,7 +118,12 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 	for _, s := range sessions {
 		sess[s.Id] = s
 	}
-	rows, err := ctx.Conn.Query(ctx.Ctx, `SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION`)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	rows, err := conn.Query(ctx.Ctx, `SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION`)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}

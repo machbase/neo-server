@@ -181,7 +181,12 @@ func doShowUsers(ctx *action.ActionContext) {
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
-	list, err := api.ListIndexes(ctx.Ctx, ctx.Conn)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListIndexes(ctx.Ctx, conn)
 	if err != nil {
 		ctx.Println("unable to find indexes; ERR", err.Error())
 		return
@@ -334,8 +339,14 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		return
 	}
 
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
 	tableName := args[0]
-	tableType, err := api.QueryTableType(ctx.Ctx, ctx.Conn, tableName)
+	tableType, err := api.QueryTableType(ctx.Ctx, conn, tableName)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -346,7 +357,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		return
 	}
 
-	desc, err := api.DescribeTable(ctx.Ctx, ctx.Conn, tableName, false)
+	desc, err := api.DescribeTable(ctx.Ctx, conn, tableName, false)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -365,14 +376,14 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 		t = ctx.NewBox([]string{"ROWNUM", "_ID", "NAME", "ROW_COUNT", "MIN_TIME", "MAX_TIME", "RECENT_ROW_TIME"})
 	}
 	nrow := 0
-	api.ListTagsWalk(ctx.Ctx, ctx.Conn, strings.ToUpper(args[0]), func(tag *api.TagInfo) bool {
+	api.ListTagsWalk(ctx.Ctx, conn, strings.ToUpper(args[0]), func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
 			ctx.Println("ERR", err.Error())
 			return false
 		}
 		nrow++
 		if summarized {
-			stat, err := api.TagStat(ctx.Ctx, ctx.Conn, tableName, tag.Name)
+			stat, err := api.TagStat(ctx.Ctx, conn, tableName, tag.Name)
 			if err != nil {
 				ctx.Println("ERR", err.Error())
 				return false
@@ -382,7 +393,7 @@ func doShowTags(ctx *action.ActionContext, args []string) {
 				stat.MinValue, stat.MinValueTime,
 				stat.MaxValue, stat.MaxValueTime)
 		} else {
-			stat, err := api.TagStat(ctx.Ctx, ctx.Conn, tableName, tag.Name)
+			stat, err := api.TagStat(ctx.Ctx, conn, tableName, tag.Name)
 			if err != nil {
 				// tag exists in _table_meta, but not found in v$table_stat
 				t.AppendRow(nrow, tag.Id, tag.Name, "", "", "", "")
@@ -402,8 +413,14 @@ func doShowTagStat(ctx *action.ActionContext, args []string) {
 		return
 	}
 
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
 	t := ctx.NewBox([]string{"NAME", "VALUE"})
-	stat, err := api.TagStat(ctx.Ctx, ctx.Conn, args[0], args[1])
+	stat, err := api.TagStat(ctx.Ctx, conn, args[0], args[1])
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -471,7 +488,14 @@ func doShowByQuery0(ctx *action.ActionContext, sqlText string, showRownum bool) 
 			ctx.Println(q.UserMessage())
 		},
 	}
-	if err := query.Execute(ctx.Ctx, ctx.Conn, sqlText); err != nil {
+
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	if err := query.Execute(ctx.Ctx, conn, sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 }
@@ -485,7 +509,13 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 
 	table := args[0]
 
-	desc, err := api.DescribeTable(ctx.Ctx, ctx.Conn, table, showAll)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	desc, err := api.DescribeTable(ctx.Ctx, conn, table, showAll)
 	if err != nil {
 		ctx.Println("unable to describe", table, "; ERR", err.Error())
 		return
@@ -503,9 +533,15 @@ func doShowTable(ctx *action.ActionContext, args []string, showAll bool) {
 }
 
 func doShowTables(ctx *action.ActionContext, showAll bool) {
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
 	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
 	nrow := 0
-	api.ListTablesWalk(ctx.Ctx, ctx.Conn, showAll, func(ti *api.TableInfo) bool {
+	api.ListTablesWalk(ctx.Ctx, conn, showAll, func(ti *api.TableInfo) bool {
 		if ti.Err != nil {
 			ctx.Println("ERR", ti.Err.Error())
 			return false
@@ -525,7 +561,13 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 }
 
 func doShowMVTables(ctx *action.ActionContext, tablesTable string) {
-	rows, err := ctx.Conn.Query(ctx.Ctx, fmt.Sprintf("select NAME, TYPE, FLAG, ID from %s order by ID", tablesTable))
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	rows, err := conn.Query(ctx.Ctx, fmt.Sprintf("select NAME, TYPE, FLAG, ID from %s order by ID", tablesTable))
 	if err != nil {
 		ctx.Printfln("ERR select %s fail; %s", tablesTable, err.Error())
 		return

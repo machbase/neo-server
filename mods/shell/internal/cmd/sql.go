@@ -217,8 +217,14 @@ func doSql(ctx *action.ActionContext) {
 		},
 	}
 
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
-	if err := query.Execute(ctx.Ctx, ctx.Conn, sqlText); err != nil {
+	if err := query.Execute(ctx.Ctx, conn, sqlText); err != nil {
 		ctx.Println("ERR", err.Error())
 	}
 }

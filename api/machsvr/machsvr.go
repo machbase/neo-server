@@ -376,11 +376,17 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		if connTimeout > 0 {
 			select {
 			case <-ret.returnChan:
+			case <-ctx.Done():
+				return nil, api.NewError("connect canceled")
 			case <-time.After(connTimeout):
 				return nil, api.NewError("connect timeout")
 			}
 		} else {
-			<-ret.returnChan
+			select {
+			case <-ret.returnChan:
+			case <-ctx.Done():
+				return nil, api.NewError("connect canceled")
+			}
 		}
 	}
 

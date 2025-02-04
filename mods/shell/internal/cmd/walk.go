@@ -77,7 +77,13 @@ func doWalk(ctx *action.ActionContext) {
 
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
 
-	walker, err := NewWalker(ctx.Ctx, ctx.Conn, sqlText, util.GetTimeformat(cmd.Timeformat), cmd.TimeLocation, cmd.Precision)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+
+	walker, err := NewWalker(ctx.Ctx, conn, sqlText, util.GetTimeformat(cmd.Timeformat), cmd.TimeLocation, cmd.Precision)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
