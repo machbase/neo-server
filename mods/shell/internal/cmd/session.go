@@ -26,7 +26,7 @@ const helpSession = `    session command [options]
     kill <id>           force to close a session
     stat                show session stat
     limit               get open session limit
-    limit [--set <num>] set open session limit
+    limit [--set=<num>] set open session limit
   options:
     -a,--all            includes detail description`
 
@@ -97,9 +97,15 @@ func doSessionLimit(ctx *action.ActionContext, newLimit int) {
 		return
 	}
 
+	numberOrUnlimited := func(n int32) string {
+		if n == -1 {
+			return "unlimited"
+		}
+		return util.NumberFormat(int(n))
+	}
 	box := ctx.NewBox([]string{"NAME", "VALUE"})
-	box.AppendRow("OPEN LIMIT", util.NumberFormat(rsp.Limit))
-	box.AppendRow("OPEN REMAINS", util.NumberFormat(rsp.Remains))
+	box.AppendRow("OPEN LIMIT", numberOrUnlimited(rsp.Limit))
+	box.AppendRow("OPEN REMAINS", numberOrUnlimited(rsp.Remains))
 	box.Render()
 }
 
