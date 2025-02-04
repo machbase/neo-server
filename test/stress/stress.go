@@ -26,6 +26,8 @@ func main() {
 	var neoHttpAddr string
 	var cleanStart bool
 	var cleanStop bool
+	var slowQueryThreshold time.Duration
+	var httpTimeout time.Duration
 	var overrideTimeout time.Duration
 	var overrideAppender int
 	var overrideSelector int
@@ -34,6 +36,8 @@ func main() {
 	flag.StringVar(&neoHttpAddr, "neo-http", "http://127.0.0.1:5654", "machbase-neo http address")
 	flag.BoolVar(&cleanStart, "clean-start", false, "drop table before start")
 	flag.BoolVar(&cleanStop, "clean-stop", false, "drop table after stop")
+	flag.DurationVar(&slowQueryThreshold, "slow-query", 0, "slow query threshold time duration")
+	flag.DurationVar(&httpTimeout, "http-timeout", 0, "http timeout duration, 0 means no timeout")
 	flag.DurationVar(&overrideTimeout, "timeout", 0, "override timeout of the scenario")
 	flag.IntVar(&overrideAppender, "append", -1, "override append worker count")
 	flag.IntVar(&overrideSelector, "select", -1, "override select worker count")
@@ -66,7 +70,7 @@ func main() {
 		fmt.Println("Select worker:", scenario.SelectWorker)
 		fmt.Println()
 		start := time.Now()
-		scenario.Run(neoHttpAddr, cleanStart, cleanStop)
+		scenario.Run(neoHttpAddr, cleanStart, cleanStop, httpTimeout, slowQueryThreshold)
 		fmt.Println("Total time:", time.Since(start))
 	}
 }
@@ -226,7 +230,7 @@ type Scenario struct {
 	Timeout                  time.Duration
 }
 
-func (s Scenario) Run(neoHttpAddr string, cleanStart bool, cleanStop bool) {
+func (s Scenario) Run(neoHttpAddr string, cleanStart bool, cleanStop bool, httpTimeout time.Duration, slowQueryThreshold time.Duration) {
 	if cleanStart {
 		s.DropTable(neoHttpAddr)
 	}
@@ -241,6 +245,7 @@ func (s Scenario) Run(neoHttpAddr string, cleanStart bool, cleanStop bool) {
 			MaxIdleConnsPerHost: 20,
 			MaxConnsPerHost:     (s.AppendWorker + s.SelectWorker) * 2,
 		},
+		Timeout: httpTimeout,
 	}
 	// Append Data
 	for i := 0; i < s.AppendWorker; i++ {
@@ -353,8 +358,8 @@ func (s Scenario) Run(neoHttpAddr string, cleanStart bool, cleanStop bool) {
 					}
 					stat.AddSelectRowsCount(int64(len(rows)))
 					stat.AddSelectTime(elapse, reqElapse)
-					if elapse > 2*time.Second {
-						fmt.Println("Long select elapse:", elapse, "\n", sqlText)
+					if slowQueryThreshold > 0 && elapse > slowQueryThreshold {
+						fmt.Println("Slow query elapse:", elapse, "\n", sqlText)
 					}
 				}
 			}

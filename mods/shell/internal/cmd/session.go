@@ -97,8 +97,10 @@ func doSessionLimit(ctx *action.ActionContext, newLimit int) {
 		return
 	}
 
-	ctx.Println("session limit:", rsp.Limit)
-	ctx.Println("      remains:", rsp.Remains)
+	box := ctx.NewBox([]string{"NAME", "VALUE"})
+	box.AppendRow("OPEN LIMIT", util.NumberFormat(rsp.Limit))
+	box.AppendRow("OPEN REMAINS", util.NumberFormat(rsp.Remains))
+	box.Render()
 }
 
 func doSessionList(ctx *action.ActionContext, showAll bool) {
