@@ -25,6 +25,7 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
+	startWait   chan struct{}
 	cancelWait  chan struct{}
 }
 
@@ -64,6 +65,7 @@ type QueryResult struct {
 }
 
 func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any) <-chan QueryResult {
+	qc.startWait = make(chan struct{})
 	ch := make(chan QueryResult)
 	go func() {
 		defer close(ch)
@@ -73,6 +75,10 @@ func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any
 		}
 		ch <- QueryResult{}
 	}()
+	// If the HTTP context is closed before the go-routine starts,
+	// the connection might already be closed by the time qc.Execute() is executed.
+	// So, we need to wait for the go-routine to start before returning the channel.
+	<-qc.startWait
 	return ch
 }
 
@@ -89,9 +95,15 @@ func (qc *Query) Cancel() {
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
 	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
+		if qc.startWait != nil {
+			close(qc.startWait)
+		}
 		return err
 	} else {
 		qc.rows = r
+		if qc.startWait != nil {
+			close(qc.startWait)
+		}
 	}
 	defer func() {
 		qc.rows.Close()
