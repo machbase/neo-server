@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type Query struct {
@@ -24,7 +25,7 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
-	isCancelled bool
+	cancelWait  chan struct{}
 }
 
 func (qc *Query) IsFetch() bool {
@@ -76,7 +77,14 @@ func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any
 }
 
 func (qc *Query) Cancel() {
-	qc.isCancelled = true
+	if qc.rows == nil {
+		return
+	}
+	qc.cancelWait = make(chan struct{})
+	select {
+	case <-qc.cancelWait:
+	case <-time.After(60 * time.Second):
+	}
 }
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
@@ -85,7 +93,12 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	} else {
 		qc.rows = r
 	}
-	defer qc.rows.Close()
+	defer func() {
+		qc.rows.Close()
+		if qc.cancelWait != nil {
+			close(qc.cancelWait)
+		}
+	}()
 
 	qc.isFetch = qc.rows.IsFetchable()
 
@@ -111,7 +124,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	}
 	if qc.End != nil {
 		defer func() {
-			if qc.isCancelled {
+			if qc.cancelWait != nil {
 				return
 			}
 			if qc.err == nil {
@@ -129,7 +142,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		}()
 	}
 
-	for !qc.isCancelled && qc.rows.Next() {
+	for qc.cancelWait == nil && qc.rows.Next() {
 		qc.rowNum++
 		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
 			break
