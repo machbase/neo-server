@@ -188,9 +188,18 @@ func doSessionStat(ctx *action.ActionContext) {
 		return
 	}
 	if statz != nil {
+		connUse := statz.Conns
+		connWaitTimePerUse := time.Duration(0)
+		connUseTimePerUse := time.Duration(0)
+		if connUse > 0 {
+			connWaitTimePerUse = time.Duration(statz.ConnWaitTime / uint64(connUse))
+			connUseTimePerUse = time.Duration(statz.ConnUseTime / uint64(connUse))
+		}
 		box := ctx.NewBox([]string{"NAME", "VALUE"})
 		box.AppendRow("CONNS", util.NumberFormat(statz.ConnsInUse))
 		box.AppendRow("CONNS_USED", util.NumberFormat(statz.Conns))
+		box.AppendRow("CONNS_WAIT_AVG_TIME", connWaitTimePerUse.String())
+		box.AppendRow("CONNS_USE_AVG_TIME", connUseTimePerUse.String())
 		box.AppendRow("STMTS", util.NumberFormat(statz.StmtsInUse))
 		box.AppendRow("STMTS_USED", util.NumberFormat(statz.Stmts))
 		box.AppendRow("APPENDERS", util.NumberFormat(statz.AppendersInUse))

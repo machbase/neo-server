@@ -510,6 +510,8 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 			rsp.Statz = &mgmt.Statz{
 				Conns:          statz.Conns,
 				ConnsInUse:     statz.ConnsInUse,
+				ConnWaitTime:   statz.ConnWaitTime,
+				ConnUseTime:    statz.ConnUseTime,
 				Stmts:          statz.Stmts,
 				StmtsInUse:     statz.StmtsInUse,
 				Appenders:      statz.Appenders,
@@ -654,6 +656,8 @@ func (s *Server) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, 
 			statz = &mgmt.Statz{
 				Conns:          st.Conns,
 				ConnsInUse:     st.ConnsInUse,
+				ConnWaitTime:   st.ConnWaitTime,
+				ConnUseTime:    st.ConnUseTime,
 				Stmts:          st.Stmts,
 				StmtsInUse:     st.StmtsInUse,
 				Appenders:      st.Appenders,

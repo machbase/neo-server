@@ -335,6 +335,7 @@ type Conn struct {
 	db          *Database
 
 	id            string
+	connectTime   time.Time
 	latestTime    time.Time
 	latestSql     string
 	closeCallback func()
@@ -371,6 +372,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		}
 	}
 
+	waitTime := time.Now()
 	// control max open connections
 	if ret.returnChan != nil {
 		if connTimeout > 0 {
@@ -401,6 +403,8 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		}
 	}
 	ret.handle = handle
+	ret.connectTime = time.Now()
+	statz.AllocConn(time.Since(waitTime))
 
 	if id, err := mach.EngSessionID(ret.handle); err == nil {
 		ret.id = fmt.Sprintf("%d", id)
@@ -412,7 +416,6 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		ret.id = fmt.Sprintf("%X", id)
 	}
 
-	statz.AllocConn()
 	if statz.Debug {
 		_, file, no, ok := runtime.Caller(1)
 		if ok {
@@ -423,7 +426,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		ret.SetLatestSql("CLOSE") // 3. set latest sql time
 		db.RemoveWatcher(ret.id)
 	}
-	db.RegisterWatcher(ret.id, ret) // 1. set creTime
+	db.RegisterWatcher(ret.id, ret) // 1. register watcher
 	ret.SetLatestSql("CONNECT")     // 2. set latest sql time
 	return ret, nil
 }
@@ -446,7 +449,7 @@ func (conn *Conn) Close() (err error) {
 			}
 		}()
 		conn.closed = true
-		statz.FreeConn()
+		statz.FreeConn(time.Since(conn.connectTime))
 		err = mach.EngDisconnect(conn.handle)
 		if conn.closeCallback != nil {
 			conn.closeCallback()
@@ -902,6 +905,8 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 
 type Statz struct {
 	Conns          int64
+	ConnWaitTime   uint64
+	ConnUseTime    uint64
 	Stmts          int64
 	Appenders      int64
 	ConnsInUse     int32
@@ -913,13 +918,15 @@ type Statz struct {
 
 var statz Statz
 
-func (s *Statz) AllocConn() {
+func (s *Statz) AllocConn(connWaitTime time.Duration) {
 	atomic.AddInt32(&s.ConnsInUse, 1)
 	atomic.AddInt64(&s.Conns, 1)
+	atomic.AddUint64(&s.ConnWaitTime, uint64(connWaitTime))
 }
 
-func (s *Statz) FreeConn() {
+func (s *Statz) FreeConn(connUseTime time.Duration) {
 	atomic.AddInt32(&s.ConnsInUse, -1)
+	atomic.AddUint64(&s.ConnUseTime, uint64(connUseTime))
 }
 
 func (s *Statz) AllocStmt() {

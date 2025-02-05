@@ -112,6 +112,7 @@ func dumpResponse(rsp *http.Response, msg string) {
 type Stat struct {
 	RunCh         chan time.Duration
 	runCount      int64
+	prevRunCount  int64
 	runElapsedSum time.Duration
 	runElapseMin  time.Duration
 	runElapseMax  time.Duration
@@ -183,9 +184,13 @@ func (s *Stat) Stop() {
 var printer = message.NewPrinter(language.English)
 
 func (s *Stat) Print() {
-	printer.Println("Elapsed:", time.Since(s.startTime), "Workers:", s.workers, "Runs:", s.runs)
-	printer.Println("Run    :", s.runCount, "/", s.workers*s.runs)
-	printer.Println("  http : avg", s.runElapsedSum/time.Duration(s.runCount), "min", s.runElapseMin, "max", s.runElapseMax)
-	printer.Println("  query: avg", s.queryElapsedSum/time.Duration(s.runCount), "min", s.queryElapsedMin, "max", s.queryElapsedMax)
+	thisRunCount := s.runCount - s.prevRunCount
+
+	printer.Println(" Elapsed:", time.Since(s.startTime), "Workers:", s.workers, "Runs:", s.runs)
+	printer.Println(" Query runs:", s.runCount, "/", s.workers*s.runs, ", This cycle:", thisRunCount)
+	printer.Println(" http   avg:", s.runElapsedSum/time.Duration(s.runCount), "min:", s.runElapseMin, "max:", s.runElapseMax)
+	printer.Println(" query  avg:", s.queryElapsedSum/time.Duration(s.runCount), "min:", s.queryElapsedMin, "max:", s.queryElapsedMax)
 	fmt.Println()
+
+	s.prevRunCount = s.runCount
 }

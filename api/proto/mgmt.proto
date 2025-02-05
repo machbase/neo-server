@@ -228,6 +228,8 @@ message Statz {
     int32 stmtsInUse     = 5;
     int32 appendersInUse = 6;
     int32 rawConns       = 7;
+    uint64 connWaitTime  = 8;
+    uint64 connUseTime   = 9;
 }
 
 message Session {

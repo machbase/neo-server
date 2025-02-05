@@ -850,13 +850,15 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	if svr.serverSessionsFunc != nil {
 		statz, _, _ := svr.serverSessionsFunc(true, false)
 		ret["sess"] = map[string]any{
-			"conns":          statz.ConnsInUse,
-			"conns_used":     statz.Conns,
-			"stmts":          statz.StmtsInUse,
-			"stmts_used":     statz.Stmts,
-			"appenders":      statz.AppendersInUse,
-			"appenders_used": statz.Appenders,
-			"raw_conns":      statz.RawConns,
+			"conns":           statz.ConnsInUse,
+			"conns_used":      statz.Conns,
+			"conns_wait_time": time.Duration(statz.ConnWaitTime),
+			"conns_use_time":  time.Duration(statz.ConnUseTime),
+			"stmts":           statz.StmtsInUse,
+			"stmts_used":      statz.Stmts,
+			"appenders":       statz.AppendersInUse,
+			"appenders_used":  statz.Appenders,
+			"raw_conns":       statz.RawConns,
 		}
 	}
 	if svr.mqttInfoFunc != nil {
