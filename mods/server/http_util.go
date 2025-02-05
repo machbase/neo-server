@@ -42,6 +42,7 @@ var metricLatencyUnder1ms = uint64(0)
 var metricLatencyUnder100ms = uint64(0)
 var metricLatencyUnder1s = uint64(0)
 var metricLatencyUnder5s = uint64(0)
+var metricLatencyUnder3s = uint64(0)
 var metricLatencyOver5s = uint64(0)
 var metricRecvContentBytes = uint64(0)
 var metricSendContentBytes = uint64(0)
@@ -64,6 +65,8 @@ func MetricsInterceptor() gin.HandlerFunc {
 			atomic.AddUint64(&metricLatencyUnder100ms, 1)
 		} else if latencyMillis <= 1000 { // under 1s
 			atomic.AddUint64(&metricLatencyUnder1s, 1)
+		} else if latencyMillis <= 3000 { // under 3s
+			atomic.AddUint64(&metricLatencyUnder3s, 1)
 		} else if latencyMillis <= 5000 { // under 5s
 			atomic.AddUint64(&metricLatencyUnder5s, 1)
 		} else { // over 1s
@@ -97,6 +100,7 @@ func Metrics() map[string]any {
 	ret["latency_1ms"] = atomic.LoadUint64(&metricLatencyUnder1ms)
 	ret["latency_100ms"] = atomic.LoadUint64(&metricLatencyUnder100ms)
 	ret["latency_1s"] = atomic.LoadUint64(&metricLatencyUnder1s)
+	ret["latency_3s"] = atomic.LoadUint64(&metricLatencyUnder3s)
 	ret["latency_5s"] = atomic.LoadUint64(&metricLatencyUnder5s)
 	ret["latency_over_5s"] = atomic.LoadUint64(&metricLatencyOver5s)
 	ret["bytes_recv"] = atomic.LoadUint64(&metricRecvContentBytes)
