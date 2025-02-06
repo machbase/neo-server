@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,35 +16,60 @@ import (
 	"golang.org/x/text/message"
 )
 
+// scenario-name -> sql-texts
+var scenarios = map[string][]string{}
+
+func init() {
+	scenarios["default"] = []string{
+		"select * from test_table limit 10",
+	}
+}
+
 func main() {
 	numberOfWorkers := 1
 	neoHttpAddr := "http://127.0.0.1:5654"
 	numberOfRuns := 1
+	scenario := "default"
 
 	flag.StringVar(&neoHttpAddr, "neo-http", neoHttpAddr, "Neo HTTP address")
 	flag.IntVar(&numberOfWorkers, "n", numberOfWorkers, "Number of workers to use")
 	flag.IntVar(&numberOfRuns, "r", numberOfRuns, "Number of runs")
+	flag.StringVar(&scenario, "scenario", scenario, "Scenario to run")
 	flag.Parse()
 
+	sqlTexts := scenarios[scenario]
+	if len(sqlTexts) == 0 {
+		fmt.Println("Unknown scenario:", scenario)
+		os.Exit(1)
+	}
+
+	runChan := make(chan time.Duration, 1000)
+	queryChan := make(chan time.Duration, 1000)
+
 	stat := NewStat(numberOfWorkers, numberOfRuns)
-	stat.Start()
+	stat.Start(runChan, queryChan)
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < numberOfWorkers; i++ {
 		wg.Add(1)
-		go func(workerId int) {
+		go func(workerId int, queries []string) {
 			defer wg.Done()
+			lenQueries := int32(len(queries))
 			for r := 0; r < numberOfRuns; r++ {
 				start := time.Now()
 
-				queryNeo(neoHttpAddr, stat)
+				sqlText := queries[rand.Int31n(lenQueries)]
+				queryElapse := queryNeo(neoHttpAddr, sqlText)
 
 				runElapse := time.Since(start)
-				stat.RunCh <- runElapse
+				runChan <- runElapse
+				queryChan <- queryElapse
 			}
-		}(i)
+		}(i, sqlTexts)
 	}
 	wg.Wait()
+	close(runChan)
+	close(queryChan)
 	stat.Stop()
 }
 
@@ -54,10 +80,8 @@ var client = &http.Client{
 	},
 }
 
-func queryNeo(neoHttpAddr string, stat *Stat) {
-	//sqlText := "select * from test_table order by time limit 10"
-	sqlText := "select * from test_table limit 10"
-
+// execute the query and return the elapsed time that is said in the response JSON.
+func queryNeo(neoHttpAddr string, sqlText string) time.Duration {
 	req, err := http.NewRequest("GET", neoHttpAddr+"/db/query?q="+url.QueryEscape(sqlText), nil)
 	if err != nil {
 		fmt.Println("Failed to create request:", err)
@@ -95,7 +119,7 @@ func queryNeo(neoHttpAddr string, stat *Stat) {
 		fmt.Println("Failed to parse elapse:", err)
 		os.Exit(1)
 	}
-	stat.QueryCh <- elapse
+	return elapse
 }
 
 func dumpResponse(rsp *http.Response, msg string) {
@@ -110,14 +134,12 @@ func dumpResponse(rsp *http.Response, msg string) {
 }
 
 type Stat struct {
-	RunCh         chan time.Duration
 	runCount      int64
 	prevRunCount  int64
 	runElapsedSum time.Duration
 	runElapseMin  time.Duration
 	runElapseMax  time.Duration
 
-	QueryCh         chan time.Duration
 	queryElapsedSum time.Duration
 	queryElapsedMin time.Duration
 	queryElapsedMax time.Duration
@@ -133,8 +155,6 @@ type Stat struct {
 
 func NewStat(worker, run int) *Stat {
 	return &Stat{
-		RunCh:     make(chan time.Duration, 1000),
-		QueryCh:   make(chan time.Duration, 1000),
 		closeCh:   make(chan struct{}),
 		ticker:    time.NewTicker(10 * time.Second),
 		startTime: time.Now(),
@@ -143,13 +163,13 @@ func NewStat(worker, run int) *Stat {
 	}
 }
 
-func (s *Stat) Start() {
+func (s *Stat) Start(runCh chan time.Duration, queryCh chan time.Duration) {
 	s.closeWg.Add(1)
 	go func() {
 		defer s.closeWg.Done()
 		for {
 			select {
-			case d := <-s.RunCh:
+			case d := <-runCh:
 				s.runCount++
 				s.runElapsedSum += d
 				if s.runElapseMin == 0 || d < s.runElapseMin {
@@ -158,7 +178,7 @@ func (s *Stat) Start() {
 				if d > s.runElapseMax {
 					s.runElapseMax = d
 				}
-			case d := <-s.QueryCh:
+			case d := <-queryCh:
 				s.queryElapsedSum += d
 				if s.queryElapsedMin == 0 || d < s.queryElapsedMin {
 					s.queryElapsedMin = d
