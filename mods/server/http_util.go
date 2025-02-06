@@ -130,10 +130,19 @@ type HttpLoggerFilter func(req *http.Request, statusCode int, latency time.Durat
 func HttpLogger(loggingName string, logEnabled *bool, logLatencyThreshold *time.Duration) gin.HandlerFunc {
 	return HttpLoggerWithFilter(loggingName, func(req *http.Request, statusCode int, latency time.Duration) bool {
 		// when log is disabled
-		if logEnabled == nil || !*logEnabled || logLatencyThreshold == nil {
+		if logEnabled == nil || !*logEnabled {
 			return false
 		}
-		// when log is enabled
+		// when status code is error
+		if statusCode >= 400 {
+			return true
+		}
+		// when logLatencyThreshold is not set
+		if logLatencyThreshold == nil || *logLatencyThreshold < 0 {
+			return false
+		}
+
+		// when logLatencyThreshold is set
 		return latency >= *logLatencyThreshold
 	})
 }
@@ -181,8 +190,12 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 		// Process request
 		c.Next()
 
-		// ignore health checker
+		// ignore healthz
 		if strings.HasSuffix(c.Request.URL.Path, "/healthz") && c.Request.Method == http.MethodGet {
+			return
+		}
+		// ignore statz
+		if strings.HasSuffix(c.Request.URL.Path, "/statz") && c.Request.Method == http.MethodGet {
 			return
 		}
 
