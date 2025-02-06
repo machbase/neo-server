@@ -127,8 +127,14 @@ func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.Hand
 
 type HttpLoggerFilter func(req *http.Request, statusCode int, latency time.Duration) bool
 
-func HttpLogger(loggingName string) gin.HandlerFunc {
-	return HttpLoggerWithFilter(loggingName, nil)
+func HttpLogger(loggingName string, logLatencyThreshold time.Duration) gin.HandlerFunc {
+	if logLatencyThreshold > 0 {
+		return HttpLoggerWithFilter(loggingName, func(req *http.Request, statusCode int, latency time.Duration) bool {
+			return latency >= logLatencyThreshold
+		})
+	} else {
+		return HttpLoggerWithFilter(loggingName, nil)
+	}
 }
 
 func HttpLoggerWithFilter(loggingName string, filter HttpLoggerFilter) gin.HandlerFunc {

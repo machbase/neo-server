@@ -124,6 +124,7 @@ type HttpConfig struct {
 	EnableWebUI     bool
 	EnableTokenAuth bool
 	DebugMode       bool
+	DebugLatency    string
 }
 
 type MqttConfig struct {

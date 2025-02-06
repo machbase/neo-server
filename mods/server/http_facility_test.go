@@ -164,7 +164,7 @@ func (mock *schedServerMock) DelSchedule(context.Context, *schedule.DelScheduleR
 
 func TestTimer(t *testing.T) {
 	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true),
+		WithHttpDebugMode(true, ""),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -481,7 +481,7 @@ func (mock *mgmtServerMock) DelKey(context.Context, *mgmt.DelKeyRequest) (*mgmt.
 
 func TestKey(t *testing.T) {
 	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true),
+		WithHttpDebugMode(true, ""),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -618,7 +618,7 @@ func (mock bridgeServerMock) GetBridge(ctx context.Context, req *bridgerpc.GetBr
 
 func TestBridge(t *testing.T) {
 	wsvr, err := NewHttp(nil,
-		WithHttpDebugMode(true),
+		WithHttpDebugMode(true, ""),
 	)
 	if err != nil {
 		t.Fatal(err)

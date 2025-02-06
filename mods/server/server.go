@@ -504,7 +504,7 @@ func (s *Server) Start() error {
 			WithHttpBridgeServer(s.bridgeSvc),
 			WithHttpServerSideFileSystem(serverFs),
 			WithHttpBackupService(s.bakd),
-			WithHttpDebugMode(s.Http.DebugMode),
+			WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 			WithHttpWebShellProvider(s.models.ShellProvider()),
 			WithHttpServerInfoFunc(s.getServerInfo),

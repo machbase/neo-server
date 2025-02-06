@@ -40,6 +40,7 @@ define VARS {
 
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
+    HTTP_DEBUG_LATENCY    = flag("--http-debug-latency", "0")
 
     MAX_OPEN_CONN         = flag("--max-open-conn", 0)
     MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 1.5)
@@ -109,6 +110,7 @@ module "machbase.com/neo-server" {
             WebDir           = VARS_UI_DIR
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
+            DebugLatency     = "${VARS_HTTP_DEBUG_LATENCY}"
             EnableWebUI      = VARS_HTTP_ENABLE_WEBUI
         }
         Mqtt = {

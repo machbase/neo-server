@@ -100,6 +100,7 @@ type httpd struct {
 	licenseStatusLastTime  time.Time
 	licenseStatus          string
 	debugMode              bool
+	debugLogFilterLatency  time.Duration
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -182,7 +183,7 @@ func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(RecoveryWithLogging(svr.log))
 	if svr.debugMode {
-		r.Use(HttpLogger("http-log"))
+		r.Use(HttpLogger("http-log", svr.debugLogFilterLatency))
 	}
 	r.Use(svr.corsHandler())
 	r.Use(MetricsInterceptor())

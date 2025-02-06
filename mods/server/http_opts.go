@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/api/bridge"
@@ -90,9 +91,12 @@ func WithHttpServerSideFileSystem(ssfs *ssfs.SSFS) HttpOption {
 	}
 }
 
-func WithHttpDebugMode(isDebug bool) HttpOption {
+func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
 	return func(s *httpd) {
 		s.debugMode = isDebug
+		if filterLatency != "" {
+			s.debugLogFilterLatency, _ = time.ParseDuration(filterLatency)
+		}
 	}
 }
 
