@@ -42,7 +42,7 @@ define VARS {
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
     HTTP_DEBUG_LATENCY    = flag("--http-debug-latency", "0")
 
-    MAX_OPEN_CONN         = flag("--max-open-conn", 0)
+    MAX_OPEN_CONN         = flag("--max-open-conn", -1)
     MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 1.5)
 
     EXPERIMENT_MODE       = flag("--experiment", false)

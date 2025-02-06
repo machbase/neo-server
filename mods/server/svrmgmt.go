@@ -577,6 +577,27 @@ func (s *Server) MaxOpenConns(ctx context.Context, req *mgmt.MaxOpenConnsRequest
 	return rsp, nil
 }
 
+func (s *Server) HttpDebugMode(ctx context.Context, req *mgmt.HttpDebugModeRequest) (*mgmt.HttpDebugModeResponse, error) {
+	rsp := &mgmt.HttpDebugModeResponse{}
+	tick := time.Now()
+	defer func() {
+		if panic := recover(); panic != nil {
+			s.log.Error("HttpDebugMode panic recover", panic)
+		}
+		rsp.Elapse = time.Since(tick).String()
+	}()
+
+	if strings.ToLower(req.Cmd) == "set" {
+		s.httpd.SetDebugMode(req.Enable, time.Duration(req.LogLatency))
+	}
+	enable, logLatency := s.httpd.DebugMode()
+	rsp.Enable = enable
+	rsp.LogLatency = int64(logLatency)
+	rsp.Success = true
+	rsp.Reason = "success"
+	return rsp, nil
+}
+
 var maxProcessors int32
 var pid int32
 var ver *mods.Version

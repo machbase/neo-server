@@ -179,12 +179,23 @@ func (svr *httpd) AdvertiseAddress() string {
 	return ""
 }
 
+// DebugMode returns the current debug mode and the log filter latency
+func (svr *httpd) DebugMode() (bool, time.Duration) {
+	return svr.debugMode, svr.debugLogFilterLatency
+}
+
+// SetDebugMode sets the debug mode and the log filter latency
+func (svr *httpd) SetDebugMode(debug bool, filterLatency time.Duration) {
+	svr.debugMode = debug
+	if filterLatency >= 0 {
+		svr.debugLogFilterLatency = filterLatency
+	}
+}
+
 func (svr *httpd) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(RecoveryWithLogging(svr.log))
-	if svr.debugMode {
-		r.Use(HttpLogger("http-log", svr.debugLogFilterLatency))
-	}
+	r.Use(HttpLogger("http-log", &svr.debugMode, &svr.debugLogFilterLatency))
 	r.Use(svr.corsHandler())
 	r.Use(MetricsInterceptor())
 

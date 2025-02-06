@@ -21,6 +21,7 @@ service Management {
     rpc Sessions(SessionsRequest) returns (SessionsResponse) {}
     rpc KillSession(KillSessionRequest) returns (KillSessionResponse) {}
     rpc MaxOpenConns(MaxOpenConnsRequest) returns (MaxOpenConnsResponse) {}
+    rpc HttpDebugMode(HttpDebugModeRequest) returns (HttpDebugModeResponse) {}
 }
 
 message ListShellRequest{
@@ -261,4 +262,18 @@ message MaxOpenConnsResponse {
     string elapse       = 3;
     int32  limit        = 4; // get
     int32  remains      = 5; // get
+}
+
+message HttpDebugModeRequest {
+    string cmd        = 1;  // get, set
+    bool   enable     = 2;  // set
+    int64  logLatency = 3;  // set
+}
+
+message HttpDebugModeResponse {
+    bool   success      = 1;
+    string reason       = 2;
+    string elapse       = 3;
+    bool   enable       = 4; // get
+    int64  logLatency   = 5; // get
 }
