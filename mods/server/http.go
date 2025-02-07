@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,8 @@ type httpd struct {
 	licenseStatus          string
 	debugMode              bool
 	debugLogFilterLatency  time.Duration
+	readBufSize            int
+	writeBufSize           int
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -139,7 +142,25 @@ func (svr *httpd) Start() error {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	svr.httpServer = &http.Server{}
+	var connContext func(context.Context, net.Conn) context.Context
+	if runtime.GOOS != "windows" {
+		connContext = func(ctx context.Context, c net.Conn) context.Context {
+			if tcpCon := c.(*net.TCPConn); tcpCon != nil {
+				tcpCon.SetNoDelay(true)
+				tcpCon.SetLinger(0)
+				if svr.readBufSize > 0 {
+					tcpCon.SetReadBuffer(svr.readBufSize)
+				}
+				if svr.writeBufSize > 0 {
+					tcpCon.SetWriteBuffer(svr.writeBufSize)
+				}
+			}
+			return ctx
+		}
+	}
+	svr.httpServer = &http.Server{
+		ConnContext: connContext,
+	}
 	svr.httpServer.Handler = svr.Router()
 
 	for _, listen := range svr.listenAddresses {

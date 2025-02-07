@@ -95,18 +95,31 @@ func RestoreDatabase(path string) error {
 }
 
 type DatabaseOption struct {
-	// MaxOpenConns
+	// MaxOpenConn
 	//
 	//	< 0 : unlimited
 	//	0 : default, maxOpenConns = CPU count * maxOpenConnsFactor
 	//	> 0 : specified max open connections
-	MaxOpenConns int
+	MaxOpenConn int
 
-	// MaxOpenConnsFactor
+	// MaxOpenConnFactor
 	//
 	//	used to calculate the number of max open connections when maxOpenConns is 0
-	//	default is 1.5
-	MaxOpenConnsFactor float64
+	//	default is 2.0
+	MaxOpenConnFactor float64
+
+	// MaxOpenQuery
+	//
+	//	< 0 : unlimited
+	//	0 : default, maxQueryConns = CPU count * maxOpenConnsFactor
+	//	> 0 : specified max query connections
+	MaxOpenQuery int
+
+	// MaxOpenQueryFactor
+	//
+	//	used to calculate the number of max query connections when maxQueryConns is 0
+	//	default is 2.0
+	MaxOpenQueryFactor float64
 }
 
 type Env struct {
@@ -125,8 +138,10 @@ type Database struct {
 	onceStart sync.Once
 	onceStop  sync.Once
 
-	maxConnsMutex sync.RWMutex
-	maxConnsChan  chan struct{}
+	maxConnMutex  sync.RWMutex
+	maxConnChan   chan struct{}
+	maxQueryMutex sync.RWMutex
+	maxQueryChan  chan struct{}
 }
 
 var _ api.Database = (*Database)(nil)
@@ -143,17 +158,28 @@ func NewDatabase(opt DatabaseOption) (*Database, error) {
 		}
 	})
 
-	if opt.MaxOpenConnsFactor <= 0 {
-		opt.MaxOpenConnsFactor = 1.5
+	if opt.MaxOpenConnFactor <= 0 {
+		opt.MaxOpenConnFactor = 2.0
 	}
 
-	if opt.MaxOpenConns < 0 {
-		opt.MaxOpenConns = -1
-	} else if opt.MaxOpenConns == 0 {
-		opt.MaxOpenConns = int(float64(runtime.NumCPU()) * opt.MaxOpenConnsFactor)
+	if opt.MaxOpenConn < 0 {
+		opt.MaxOpenConn = -1
+	} else if opt.MaxOpenConn == 0 {
+		opt.MaxOpenConn = int(float64(runtime.NumCPU()) * opt.MaxOpenConnFactor)
 	}
 
-	_env.database.SetMaxOpenConns(opt.MaxOpenConns)
+	_env.database.SetMaxOpenConn(opt.MaxOpenConn)
+
+	if opt.MaxOpenQueryFactor <= 0 {
+		opt.MaxOpenQueryFactor = 2.0
+	}
+	if opt.MaxOpenQuery < 0 {
+		opt.MaxOpenQuery = -1
+	} else if opt.MaxOpenQuery == 0 {
+		opt.MaxOpenQuery = int(float64(runtime.NumCPU()) * opt.MaxOpenQueryFactor)
+	}
+
+	_env.database.SetMaxOpenQuery(opt.MaxOpenQuery)
 
 	return _env.database, nil
 }
@@ -184,43 +210,85 @@ func (db *Database) Error() error {
 	return mach.EngError(db.handle)
 }
 
-// MaxOpenConns returns the maximum number of open connections
+// MaxOpenConn returns the maximum number of open connections
 // and the current remains capacity.
-func (db *Database) MaxOpenConns() (int, int) {
-	db.maxConnsMutex.RLock()
-	defer db.maxConnsMutex.RUnlock()
-	if db.maxConnsChan == nil {
+func (db *Database) MaxOpenConn() (int, int) {
+	db.maxConnMutex.RLock()
+	defer db.maxConnMutex.RUnlock()
+	if db.maxConnChan == nil {
 		// unlimited
 		return -1, -1
 	}
-	limit := cap(db.maxConnsChan)
-	remains := len(db.maxConnsChan)
+	limit := cap(db.maxConnChan)
+	remains := len(db.maxConnChan)
 	return limit, remains
 }
 
-func (db *Database) SetMaxOpenConns(desiredMaxOpenConns int) {
-	if desiredMaxOpenConns < 0 {
-		desiredMaxOpenConns = -1
+func (db *Database) SetMaxOpenConn(desiredMaxOpenConn int) {
+	if desiredMaxOpenConn < 0 {
+		desiredMaxOpenConn = -1
 	}
-	if desiredMaxOpenConns == 0 {
-		desiredMaxOpenConns = int(float64(runtime.NumCPU()) * 1.5)
+	if desiredMaxOpenConn == 0 {
+		desiredMaxOpenConn = int(float64(runtime.NumCPU()) * 2.0)
 	}
 
-	currentCap := cap(db.maxConnsChan)
-	if currentCap == desiredMaxOpenConns {
+	currentCap := cap(db.maxConnChan)
+	if currentCap == desiredMaxOpenConn {
 		return
 	}
 
 	var newChan chan struct{}
-	db.maxConnsMutex.Lock()
+	db.maxConnMutex.Lock()
 	defer func() {
-		db.maxConnsChan = newChan
-		db.maxConnsMutex.Unlock()
+		db.maxConnChan = newChan
+		db.maxConnMutex.Unlock()
 	}()
 
-	if desiredMaxOpenConns > 0 {
-		newChan = make(chan struct{}, desiredMaxOpenConns)
-		for i := 0; i < desiredMaxOpenConns; i++ {
+	if desiredMaxOpenConn > 0 {
+		newChan = make(chan struct{}, desiredMaxOpenConn)
+		for i := 0; i < desiredMaxOpenConn; i++ {
+			newChan <- struct{}{}
+		}
+	}
+}
+
+// MaxOpenQuery returns the maximum number of open query connections
+// and the current remains capacity.
+func (db *Database) MaxOpenQuery() (int, int) {
+	db.maxQueryMutex.RLock()
+	defer db.maxQueryMutex.RUnlock()
+	if db.maxQueryChan == nil {
+		// unlimited
+		return -1, -1
+	}
+	limit := cap(db.maxQueryChan)
+	remains := len(db.maxQueryChan)
+	return limit, remains
+}
+
+func (db *Database) SetMaxOpenQuery(desiredMaxOpenQuery int) {
+	if desiredMaxOpenQuery < 0 {
+		desiredMaxOpenQuery = -1
+	}
+	if desiredMaxOpenQuery == 0 {
+		desiredMaxOpenQuery = int(float64(runtime.NumCPU()) * 2.0)
+	}
+
+	currentCap := cap(db.maxQueryChan)
+	if currentCap == desiredMaxOpenQuery {
+		return
+	}
+
+	var newChan chan struct{}
+	db.maxQueryMutex.Lock()
+	defer func() {
+		db.maxQueryChan = newChan
+		db.maxQueryMutex.Unlock()
+	}()
+
+	if desiredMaxOpenQuery > 0 {
+		newChan = make(chan struct{}, desiredMaxOpenQuery)
+		for i := 0; i < desiredMaxOpenQuery; i++ {
 			newChan <- struct{}{}
 		}
 	}
@@ -355,7 +423,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	ret := &Conn{
 		ctx:        ctx,
 		db:         db,
-		returnChan: db.maxConnsChan,
+		returnChan: db.maxConnChan,
 	}
 	for _, o := range opts {
 		switch v := o.(type) {
@@ -537,7 +605,8 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.R
 func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	conn.SetLatestSql(sqlText)
 	rows := &Rows{
-		sqlText: sqlText,
+		sqlText:              sqlText,
+		candidatedReturnChan: conn.db.maxQueryChan,
 	}
 	if err := mach.EngAllocStmt(conn.handle, &rows.stmt); err != nil {
 		return nil, err

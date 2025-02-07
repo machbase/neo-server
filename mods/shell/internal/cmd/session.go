@@ -25,8 +25,8 @@ const helpSession = `    session command [options]
     list                list sessions
     kill <id>           force to close a session
     stat                show session stat
-    limit               get open session limit
-    limit [--set=<num>] set open session limit
+    limit               get limit
+    set-limit [--conn=<num>] [--query=<num>] set limit
   options:
     -a,--all            includes detail description`
 
@@ -41,8 +41,11 @@ type SessionCmd struct {
 	Stat struct {
 	} `cmd:"" name:"stat"`
 	Limit struct {
-		Set int `name:"set" default:"-2147483648"`
 	} `cmd:"" name:"limit"`
+	SetLimit struct {
+		Conn  int `name:"conn" default:"-2147483648"`
+		Query int `name:"query" default:"-2147483648"`
+	} `cmd:"" name:"set-limit"`
 	Help bool `kong:"-"`
 }
 
@@ -73,25 +76,28 @@ func doSession(ctx *action.ActionContext) {
 	case "stat":
 		doSessionStat(ctx)
 	case "limit":
-		doSessionLimit(ctx, cmd.Limit.Set)
+		doSessionLimit(ctx, -2147483648, -2147483648)
+	case "set-limit":
+		doSessionLimit(ctx, cmd.SetLimit.Conn, cmd.SetLimit.Query)
 	}
 }
 
-func doSessionLimit(ctx *action.ActionContext, newLimit int) {
+func doSessionLimit(ctx *action.ActionContext, newConnLimit int, newQueryLimit int) {
 	mgmtClient, err := ctx.Actor.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	req := &mgmt.MaxOpenConnsRequest{}
-	if newLimit == -2147483648 {
+	req := &mgmt.LimitSessionRequest{}
+	if newConnLimit < -1 && newQueryLimit < -1 {
 		req.Cmd = "get"
 	} else {
 		req.Cmd = "set"
-		req.Limit = int32(newLimit)
+		req.MaxOpenConn = int32(newConnLimit)
+		req.MaxOpenQuery = int32(newQueryLimit)
 	}
 
-	rsp, err := mgmtClient.MaxOpenConns(ctx.Ctx, req)
+	rsp, err := mgmtClient.LimitSession(ctx.Ctx, req)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -104,8 +110,10 @@ func doSessionLimit(ctx *action.ActionContext, newLimit int) {
 		return util.NumberFormat(int(n))
 	}
 	box := ctx.NewBox([]string{"NAME", "VALUE"})
-	box.AppendRow("OPEN LIMIT", numberOrUnlimited(rsp.Limit))
-	box.AppendRow("OPEN REMAINS", numberOrUnlimited(rsp.Remains))
+	box.AppendRow("CONN LIMIT", numberOrUnlimited(rsp.MaxOpenConn))
+	box.AppendRow("CONN REMAINS", numberOrUnlimited(rsp.RemainedOpenConn))
+	box.AppendRow("QUERY LIMIT", numberOrUnlimited(rsp.MaxOpenQuery))
+	box.AppendRow("QUERY REMAINS", numberOrUnlimited(rsp.RemainedOpenQuery))
 	box.Render()
 }
 

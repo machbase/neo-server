@@ -261,8 +261,10 @@ func (s *Server) Start() error {
 
 	// create database instance
 	s.db, err = machsvr.NewDatabase(machsvr.DatabaseOption{
-		MaxOpenConns:       s.Config.MaxOpenConns,
-		MaxOpenConnsFactor: s.Config.MaxOpenConnsFactor,
+		MaxOpenConn:        s.Config.MaxOpenConn,
+		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
+		MaxOpenQuery:       s.Config.MaxOpenQuery,
+		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
 	})
 	if err != nil {
 		return errors.Wrap(err, "database instance failed")
@@ -278,10 +280,18 @@ func (s *Server) Start() error {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
-	if max, _ := s.db.MaxOpenConns(); max >= 0 {
-		s.log.Infof("MACH MaxOpenConnections: %d", max)
-	} else if max == -1 {
-		s.log.Infof("MACH MaxOpenConnections: unlimited")
+	enableLimiter := true
+	if enableLimiter {
+		strOrUnlimited := func(n int) string {
+			if n < 0 {
+				return "unlimited"
+			}
+			return strconv.Itoa(n)
+		}
+		maxConn, _ := s.db.MaxOpenConn()
+		maxQuery, _ := s.db.MaxOpenQuery()
+		s.log.Info("MACH MaxOpenConn:", strOrUnlimited(maxConn))
+		s.log.Info("MACH MaxOpenQuery:", strOrUnlimited(maxQuery))
 	}
 
 	if shouldInstallLicense {
@@ -505,6 +515,8 @@ func (s *Server) Start() error {
 			WithHttpServerSideFileSystem(serverFs),
 			WithHttpBackupService(s.bakd),
 			WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
+			WithHttpWriteBufSize(s.Http.WriteBufSize),
+			WithHttpReadBufSize(s.Http.ReadBufSize),
 			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 			WithHttpWebShellProvider(s.models.ShellProvider()),
 			WithHttpServerInfoFunc(s.getServerInfo),

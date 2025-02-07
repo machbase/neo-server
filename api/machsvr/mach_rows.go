@@ -1,6 +1,7 @@
 package machsvr
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -186,6 +187,25 @@ type Rows struct {
 	sqlText    string
 	columns    api.Columns
 	fetchError error
+
+	returnChan           chan struct{}
+	candidatedReturnChan chan struct{}
+}
+
+var _ api.QueryLimiter = (*Rows)(nil)
+
+// PromoteQueryLimit activates the query limit to the Rows
+func (rows *Rows) QueryLimit(ctx context.Context) bool {
+	rows.returnChan = rows.candidatedReturnChan
+	if rows.returnChan == nil {
+		return true
+	}
+	select {
+	case <-rows.returnChan:
+		return true
+	case <-ctx.Done():
+	}
+	return false
 }
 
 // Close release all resources that assigned to the Rows
@@ -197,6 +217,9 @@ func (rows *Rows) Close() error {
 		rows.stmt = nil
 	}
 	rows.sqlText = ""
+	if rows.returnChan != nil {
+		rows.returnChan <- struct{}{}
+	}
 	return err
 }
 

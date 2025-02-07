@@ -81,8 +81,10 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption machsvr.InitOption
-	MaxOpenConns       int
-	MaxOpenConnsFactor float64
+	MaxOpenConn        int
+	MaxOpenConnFactor  float64
+	MaxOpenQuery       int
+	MaxOpenQueryFactor float64
 }
 
 var PreferredPreset string = "auto"
@@ -125,6 +127,8 @@ type HttpConfig struct {
 	EnableTokenAuth bool
 	DebugMode       bool
 	DebugLatency    string
+	WriteBufSize    int
+	ReadBufSize     int
 }
 
 type MqttConfig struct {

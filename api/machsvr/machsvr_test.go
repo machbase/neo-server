@@ -48,15 +48,15 @@ func TestAll(t *testing.T) {
 
 func tcSetMaxConn(t *testing.T) {
 	engine := machsvrDB.(*machsvr.Database)
-	expectLimit, open := engine.MaxOpenConns()
+	expectLimit, open := engine.MaxOpenConn()
 	require.NotZero(t, expectLimit)
-	require.LessOrEqual(t, 0, open)
+	require.LessOrEqual(t, -1, open)
 
-	expectLimit += 2
-	engine.SetMaxOpenConns(expectLimit)
-	limit, open := engine.MaxOpenConns()
+	expectLimit = 1000
+	engine.SetMaxOpenConn(expectLimit)
+	limit, open := engine.MaxOpenConn()
 	require.Equal(t, expectLimit, limit)
-	require.LessOrEqual(t, 0, open)
+	require.LessOrEqual(t, -1, open)
 }
 
 func connectRpc(t *testing.T, ctx context.Context) *machrpc.ConnHandle {
