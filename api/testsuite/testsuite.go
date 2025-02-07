@@ -327,7 +327,7 @@ type TestingT interface {
 
 func Database_machsvr(t TestingT) api.Database {
 	var db api.Database
-	if machsvr_db, err := machsvr.NewDatabase(machsvr.DatabaseOption{MaxOpenConn: 10}); err != nil {
+	if machsvr_db, err := machsvr.NewDatabase(machsvr.DatabaseOption{MaxOpenConn: -1, MaxOpenQuery: -1}); err != nil {
 		t.Log("Error", err.Error())
 		t.Fail()
 	} else {
