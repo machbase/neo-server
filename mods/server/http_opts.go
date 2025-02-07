@@ -100,6 +100,18 @@ func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
 	}
 }
 
+func WithHttpReadBufSize(size int) HttpOption {
+	return func(s *httpd) {
+		s.readBufSize = size
+	}
+}
+
+func WithHttpWriteBufSize(size int) HttpOption {
+	return func(s *httpd) {
+		s.writeBufSize = size
+	}
+}
+
 func WithHttpWebDir(path string) HttpOption {
 	return func(s *httpd) {
 		s.uiContentFs = WrapAssets(path)

@@ -556,8 +556,8 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 	return rsp, nil
 }
 
-func (s *Server) MaxOpenConns(ctx context.Context, req *mgmt.MaxOpenConnsRequest) (*mgmt.MaxOpenConnsResponse, error) {
-	rsp := &mgmt.MaxOpenConnsResponse{}
+func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest) (*mgmt.LimitSessionResponse, error) {
+	rsp := &mgmt.LimitSessionResponse{}
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
@@ -567,11 +567,19 @@ func (s *Server) MaxOpenConns(ctx context.Context, req *mgmt.MaxOpenConnsRequest
 	}()
 
 	if strings.ToLower(req.Cmd) == "set" {
-		s.db.SetMaxOpenConns(int(req.Limit))
+		if limit := int(req.MaxOpenConn); limit >= -1 {
+			s.db.SetMaxOpenConn(limit)
+		}
+		if limit := int(req.MaxOpenQuery); limit >= -1 {
+			s.db.SetMaxOpenQuery(limit)
+		}
 	}
-	limit, remains := s.db.MaxOpenConns()
-	rsp.Limit = int32(limit)
-	rsp.Remains = int32(remains)
+	limitConn, remainsConn := s.db.MaxOpenConn()
+	limitQuery, remainsQuery := s.db.MaxOpenQuery()
+	rsp.MaxOpenConn = int32(limitConn)
+	rsp.RemainedOpenConn = int32(remainsConn)
+	rsp.MaxOpenQuery = int32(limitQuery)
+	rsp.RemainedOpenQuery = int32(remainsQuery)
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil

@@ -125,7 +125,6 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		}
 		return nil
 	}
-
 	if cols, err := qc.rows.Columns(); err != nil {
 		return err
 	} else {
@@ -154,6 +153,15 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		}()
 	}
 
+	if pql, ok := qc.rows.(QueryLimiter); ok {
+		timeCtx, timeCancel := context.WithTimeout(ctx, 60*time.Second)
+		if !pql.QueryLimit(timeCtx) {
+			timeCancel()
+			qc.err = fmt.Errorf("query limit exceeded")
+			return qc.err
+		}
+		timeCancel()
+	}
 	for qc.cancelWait == nil && qc.rows.Next() {
 		qc.rowNum++
 		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
@@ -162,4 +170,8 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	}
 
 	return qc.err
+}
+
+type QueryLimiter interface {
+	QueryLimit(context.Context) bool
 }

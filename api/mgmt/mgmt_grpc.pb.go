@@ -34,7 +34,7 @@ const (
 	Management_ServerInfo_FullMethodName    = "/mgmt.Management/ServerInfo"
 	Management_Sessions_FullMethodName      = "/mgmt.Management/Sessions"
 	Management_KillSession_FullMethodName   = "/mgmt.Management/KillSession"
-	Management_MaxOpenConns_FullMethodName  = "/mgmt.Management/MaxOpenConns"
+	Management_LimitSession_FullMethodName  = "/mgmt.Management/LimitSession"
 	Management_HttpDebugMode_FullMethodName = "/mgmt.Management/HttpDebugMode"
 )
 
@@ -57,7 +57,7 @@ type ManagementClient interface {
 	ServerInfo(ctx context.Context, in *ServerInfoRequest, opts ...grpc.CallOption) (*ServerInfoResponse, error)
 	Sessions(ctx context.Context, in *SessionsRequest, opts ...grpc.CallOption) (*SessionsResponse, error)
 	KillSession(ctx context.Context, in *KillSessionRequest, opts ...grpc.CallOption) (*KillSessionResponse, error)
-	MaxOpenConns(ctx context.Context, in *MaxOpenConnsRequest, opts ...grpc.CallOption) (*MaxOpenConnsResponse, error)
+	LimitSession(ctx context.Context, in *LimitSessionRequest, opts ...grpc.CallOption) (*LimitSessionResponse, error)
 	HttpDebugMode(ctx context.Context, in *HttpDebugModeRequest, opts ...grpc.CallOption) (*HttpDebugModeResponse, error)
 }
 
@@ -219,10 +219,10 @@ func (c *managementClient) KillSession(ctx context.Context, in *KillSessionReque
 	return out, nil
 }
 
-func (c *managementClient) MaxOpenConns(ctx context.Context, in *MaxOpenConnsRequest, opts ...grpc.CallOption) (*MaxOpenConnsResponse, error) {
+func (c *managementClient) LimitSession(ctx context.Context, in *LimitSessionRequest, opts ...grpc.CallOption) (*LimitSessionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MaxOpenConnsResponse)
-	err := c.cc.Invoke(ctx, Management_MaxOpenConns_FullMethodName, in, out, cOpts...)
+	out := new(LimitSessionResponse)
+	err := c.cc.Invoke(ctx, Management_LimitSession_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ type ManagementServer interface {
 	ServerInfo(context.Context, *ServerInfoRequest) (*ServerInfoResponse, error)
 	Sessions(context.Context, *SessionsRequest) (*SessionsResponse, error)
 	KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error)
-	MaxOpenConns(context.Context, *MaxOpenConnsRequest) (*MaxOpenConnsResponse, error)
+	LimitSession(context.Context, *LimitSessionRequest) (*LimitSessionResponse, error)
 	HttpDebugMode(context.Context, *HttpDebugModeRequest) (*HttpDebugModeResponse, error)
 	mustEmbedUnimplementedManagementServer()
 }
@@ -315,8 +315,8 @@ func (UnimplementedManagementServer) Sessions(context.Context, *SessionsRequest)
 func (UnimplementedManagementServer) KillSession(context.Context, *KillSessionRequest) (*KillSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KillSession not implemented")
 }
-func (UnimplementedManagementServer) MaxOpenConns(context.Context, *MaxOpenConnsRequest) (*MaxOpenConnsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MaxOpenConns not implemented")
+func (UnimplementedManagementServer) LimitSession(context.Context, *LimitSessionRequest) (*LimitSessionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LimitSession not implemented")
 }
 func (UnimplementedManagementServer) HttpDebugMode(context.Context, *HttpDebugModeRequest) (*HttpDebugModeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HttpDebugMode not implemented")
@@ -612,20 +612,20 @@ func _Management_KillSession_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Management_MaxOpenConns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MaxOpenConnsRequest)
+func _Management_LimitSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LimitSessionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ManagementServer).MaxOpenConns(ctx, in)
+		return srv.(ManagementServer).LimitSession(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Management_MaxOpenConns_FullMethodName,
+		FullMethod: Management_LimitSession_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ManagementServer).MaxOpenConns(ctx, req.(*MaxOpenConnsRequest))
+		return srv.(ManagementServer).LimitSession(ctx, req.(*LimitSessionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -716,8 +716,8 @@ var Management_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Management_KillSession_Handler,
 		},
 		{
-			MethodName: "MaxOpenConns",
-			Handler:    _Management_MaxOpenConns_Handler,
+			MethodName: "LimitSession",
+			Handler:    _Management_LimitSession_Handler,
 		},
 		{
 			MethodName: "HttpDebugMode",
