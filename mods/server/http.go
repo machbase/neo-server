@@ -145,7 +145,7 @@ func (svr *httpd) Start() error {
 	var connContext func(context.Context, net.Conn) context.Context
 	if runtime.GOOS != "windows" {
 		connContext = func(ctx context.Context, c net.Conn) context.Context {
-			if tcpCon := c.(*net.TCPConn); tcpCon != nil {
+			if tcpCon, ok := c.(*net.TCPConn); ok && tcpCon != nil {
 				tcpCon.SetNoDelay(true)
 				tcpCon.SetLinger(0)
 				if svr.readBufSize > 0 {

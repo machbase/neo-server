@@ -41,11 +41,6 @@ define VARS {
     HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
     HTTP_DEBUG_LATENCY    = flag("--http-debug-latency", "0")
-<<<<<<< HEAD
-
-    MAX_OPEN_CONN         = flag("--max-open-conn", -1)
-    MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 1.5)
-=======
     HTTP_READBUF_SIZE     = flag("--http-readbuf-size", 0)  // 0 means default
     HTTP_WRITEBUF_SIZE    = flag("--http-writebuf-size", 0) // 0 means default
 
@@ -53,7 +48,6 @@ define VARS {
     MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 2.0)
     MAX_OPEN_QUERY        = flag("--max-open-query", 0)
     MAX_OPEN_QUERY_FACTOR = flag("--max-open-query-factor", 2.0)
->>>>>>> ba8b266b263587af0960e31fea220badd7916f49
 
     EXPERIMENT_MODE       = flag("--experiment", false)
     MACHBASE_INIT_OPTION  = flag("--machbase-init-option", 2)
@@ -123,11 +117,8 @@ module "machbase.com/neo-server" {
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
             DebugLatency     = "${VARS_HTTP_DEBUG_LATENCY}"
-<<<<<<< HEAD
-=======
             WriteBufSize     = VARS_HTTP_WRITEBUF_SIZE
             ReadBufSize      = VARS_HTTP_READBUF_SIZE
->>>>>>> ba8b266b263587af0960e31fea220badd7916f49
             EnableWebUI      = VARS_HTTP_ENABLE_WEBUI
         }
         Mqtt = {
