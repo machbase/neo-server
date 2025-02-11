@@ -518,6 +518,7 @@ func (s *Server) Start() error {
 			WithHttpWriteBufSize(s.Http.WriteBufSize),
 			WithHttpReadBufSize(s.Http.ReadBufSize),
 			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
+			WithHttpStatzAllow(s.Http.AllowStatz...),
 			WithHttpWebShellProvider(s.models.ShellProvider()),
 			WithHttpEnableWeb(s.Http.EnableWebUI),
 			WithHttpPackageManager(s.pkgMgr),

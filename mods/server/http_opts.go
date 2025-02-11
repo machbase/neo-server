@@ -139,7 +139,17 @@ func WithHttpWebShellProvider(provider model.ShellProvider) HttpOption {
 
 func WithHttpStatzAllow(remotes ...string) HttpOption {
 	return func(s *httpd) {
-		s.statzAllowed = append(s.statzAllowed, remotes...)
+		addr := make([]string, 0, len(remotes))
+		for _, remote := range remotes {
+			list := strings.Split(remote, ",")
+			for _, item := range list {
+				if item == "" {
+					continue
+				}
+				addr = append(addr, item)
+			}
+		}
+		s.statzAllowed = append(s.statzAllowed, addr...)
 	}
 }
 

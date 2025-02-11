@@ -126,6 +126,7 @@ type HttpConfig struct {
 	EnableWebUI     bool
 	EnableTokenAuth bool
 	DebugMode       bool
+	AllowStatz      []string
 	DebugLatency    string
 	WriteBufSize    int
 	ReadBufSize     int
