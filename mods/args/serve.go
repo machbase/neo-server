@@ -23,7 +23,7 @@ func Main() int {
 		return 1
 	}
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
-		return doServe(cli.Serve.Preset, false)
+		return doServe(cli.Serve.Preset, false, false)
 	}
 	switch cli.Command {
 	case "gen-config":
@@ -33,7 +33,9 @@ func Main() int {
 	case "help":
 		doHelp(cli.Help.Command, cli.Help.SubCommand)
 	case "serve":
-		return doServe(cli.Serve.Preset, false)
+		return doServe(cli.Serve.Preset, false, false)
+	case "serve-headless":
+		return doServe(cli.Serve.Preset, true, false)
 	case "restore":
 		return doRestore(&cli.Restore)
 	case "shell":
@@ -45,8 +47,9 @@ func Main() int {
 	return 0
 }
 
-func doServe(preset string, doNotExit bool) int {
+func doServe(preset string, headless bool, doNotExit bool) int {
 	server.PreferredPreset = preset
+	server.Headless = headless
 
 	booter.SetConfigFileSuffix(".conf")
 	booter.SetFallbackConfig(server.DefaultFallbackConfig)

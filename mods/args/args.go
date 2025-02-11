@@ -63,7 +63,7 @@ func ParseCommand(args []string) (*NeoCommand, error) {
 	}
 
 	switch cli.Command {
-	case "serve":
+	case "serve", "serve-headless":
 		return parseServe(cli)
 	case "restore":
 		return parseRestore(cli)
