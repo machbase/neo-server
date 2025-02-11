@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -919,8 +920,51 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	})
 	if format == "" || format == "json" {
 		ctx.JSON(http.StatusOK, ret)
+	} else {
+		tpl := template.New("statz").Funcs(template.FuncMap{
+			"isMap": func(v any) bool {
+				switch v.(type) {
+				case map[string]any, map[string]float64, map[string]string, map[string]int64:
+					return true
+				default:
+					return false
+				}
+			},
+		})
+		tpl = template.Must(tpl.Parse(tmplStatz))
+		if err := tpl.ExecuteTemplate(ctx.Writer, "statz", ret); err != nil {
+			ctx.String(http.StatusInternalServerError, err.Error())
+		}
 	}
 }
+
+var tmplStatz = `
+{{- define "statz" }}
+<style>
+  table {
+    border-collapse: collapse;
+  }
+  tr:nth-child(even) {
+    background-color: #f2f2f2;
+  }
+  td {
+    border: 1px solid #ddd;
+    padding: 8px;
+  }
+</style>
+<table>
+{{- range $key, $value := . }}
+<tr>
+  <td>{{ $key }}</td>
+  {{- if isMap $value }}
+  	<td> {{- template "statz" $value }} </td>
+  {{- else }}
+    <td> {{ $value }} </td>
+  {{- end }}
+</tr>
+{{- end }}
+</table>
+{{ end }}`
 
 type LicenseResponse struct {
 	Success bool             `json:"success"`
