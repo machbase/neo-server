@@ -868,11 +868,9 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	}
 
 	ret := map[string]any{}
-	// ret["neo"] = map[string]any{
-	// 	"volatile_fs": svr.memoryFs.Statz(),
-	// }
+	includes := ctx.QueryArray("keys")
+	format := ctx.Query("format")
 
-	includes := []string{} // []string{"cmdline", "memstats"}
 	expvar.Do(func(kv expvar.KeyValue) {
 		if m, ok := kv.Value.(metric.ExpVar); ok {
 			switch raw := m.Metric().(type) {
@@ -919,8 +917,9 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 			}
 		}
 	})
-
-	ctx.JSON(http.StatusOK, ret)
+	if format == "" || format == "json" {
+		ctx.JSON(http.StatusOK, ret)
+	}
 }
 
 type LicenseResponse struct {
