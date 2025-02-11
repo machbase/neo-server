@@ -368,10 +368,6 @@ func (ts *Timeseries) Interval() time.Duration {
 	return ts.interval
 }
 
-func (ts *Timeseries) Samples() []Metric {
-	return ts.samples
-}
-
 func (ts *Timeseries) reset() {
 	ts.total.Reset()
 	for _, s := range ts.samples {
@@ -405,6 +401,13 @@ func (ts *Timeseries) roll() {
 		}
 		ts.total.Aggregate(roll, ts.samples)
 	}
+}
+
+func (ts *Timeseries) Samples() []Metric {
+	ts.Lock()
+	defer ts.Unlock()
+	ts.roll()
+	return ts.samples
 }
 
 func (ts *Timeseries) Add(value float64) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
@@ -37,18 +38,16 @@ func strString(str string, def string) string {
 	return str
 }
 
-var timeFrames = []string{"2m1s", "15m30s", "1h1m"}
-
 var (
-	metricRequestTotal     = metric.NewExpVarIntCounter("machbase:http:count", timeFrames...)
-	metricResponseLatency  = metric.NewExpVarDurationHistogram("machbase:http:latency", timeFrames...)
-	metricRecvContentBytes = metric.NewExpVarIntCounter("machbase:http:recv_bytes", timeFrames...)
-	metricSendContentBytes = metric.NewExpVarIntCounter("machbase:http:send_bytes", timeFrames...)
-	metricStatus1xx        = metric.NewExpVarIntCounter("machbase:http:status_1xx", timeFrames...)
-	metricStatus2xx        = metric.NewExpVarIntCounter("machbase:http:status_2xx", timeFrames...)
-	metricStatus3xx        = metric.NewExpVarIntCounter("machbase:http:status_3xx", timeFrames...)
-	metricStatus4xx        = metric.NewExpVarIntCounter("machbase:http:status_4xx", timeFrames...)
-	metricStatus5xx        = metric.NewExpVarIntCounter("machbase:http:status_5xx", timeFrames...)
+	metricRequestTotal     = metric.NewExpVarIntCounter("machbase:http:count", api.MetricTimeFrames...)
+	metricResponseLatency  = metric.NewExpVarDurationHistogram("machbase:http:latency", api.MetricTimeFrames...)
+	metricRecvContentBytes = metric.NewExpVarIntCounter("machbase:http:recv_bytes", api.MetricTimeFrames...)
+	metricSendContentBytes = metric.NewExpVarIntCounter("machbase:http:send_bytes", api.MetricTimeFrames...)
+	metricStatus1xx        = metric.NewExpVarIntCounter("machbase:http:status_1xx", api.MetricTimeFrames...)
+	metricStatus2xx        = metric.NewExpVarIntCounter("machbase:http:status_2xx", api.MetricTimeFrames...)
+	metricStatus3xx        = metric.NewExpVarIntCounter("machbase:http:status_3xx", api.MetricTimeFrames...)
+	metricStatus4xx        = metric.NewExpVarIntCounter("machbase:http:status_4xx", api.MetricTimeFrames...)
+	metricStatus5xx        = metric.NewExpVarIntCounter("machbase:http:status_5xx", api.MetricTimeFrames...)
 )
 
 func MetricsInterceptor() gin.HandlerFunc {

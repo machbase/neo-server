@@ -13,7 +13,12 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
-var MetricTimeFrames = []string{"2m1s", "15m30s", "1h1m"}
+// 2m1s   -> 1s  : 2 * 60 = 120
+// 60m30s -> 30s : 2 * 60 = 120
+// 10h5m  -> 5m  : 10 * 12 = 120
+var MetricTimeFrames = []string{"2m1s", "60m30s", "10h5m"}
+
+const MetricQueryRowsMax = 120
 
 var (
 	// sessions
@@ -45,17 +50,17 @@ func init() {
 	// Example for internal metrics
 	numGoRoutine := metric.NewExpVarIntGauge("go:num_goroutine", MetricTimeFrames...)
 	numCGoCall := metric.NewExpVarIntGauge("go:num_cgo_call", MetricTimeFrames...)
-	goAlloc := metric.NewExpVarIntGauge("go:alloc", MetricTimeFrames...)
-	goAllocTotal := metric.NewExpVarIntGauge("go:alloc_total", MetricTimeFrames...)
+	// goAlloc := metric.NewExpVarIntGauge("go:alloc", MetricTimeFrames...)
+	// goAllocTotal := metric.NewExpVarIntGauge("go:alloc_total", MetricTimeFrames...)
 
 	go func() {
 		for range time.Tick(100 * time.Millisecond) {
-			m := &runtime.MemStats{}
-			runtime.ReadMemStats(m)
+			// m := &runtime.MemStats{}
+			// runtime.ReadMemStats(m)
+			// goAlloc.Add(int64(float64(m.Alloc) / 1000000))
+			// goAllocTotal.Add(int64(float64(m.TotalAlloc) / 1000000))
 			numGoRoutine.Add(int64(runtime.NumGoroutine()))
 			numCGoCall.Add(runtime.NumCgoCall())
-			goAlloc.Add(int64(float64(m.Alloc) / 1000000))
-			goAllocTotal.Add(int64(float64(m.TotalAlloc) / 1000000))
 		}
 	}()
 }
@@ -190,7 +195,7 @@ func QueryStatz(interval time.Duration, filter func(key string, value metric.Exp
 	slices.SortFunc(ret.Cols, func(a, b *Column) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-	rowsCount := 60
+	rowsCount := MetricQueryRowsMax
 	now := time.Now()
 
 	ret.Rows = make([]*QueryStatzRow, rowsCount)
@@ -225,11 +230,9 @@ func QueryStatz(interval time.Duration, filter func(key string, value metric.Exp
 			}
 
 			if timeseries != nil {
-				timeseries.Lock()
 				if samples := timeseries.Samples(); r < len(samples) {
 					valueMetric = samples[r]
 				}
-				timeseries.Unlock()
 			}
 
 			if valueMetric != nil {

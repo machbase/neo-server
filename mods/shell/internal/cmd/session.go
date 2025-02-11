@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -225,8 +224,8 @@ func doSessionStat(ctx *action.ActionContext, reset bool) {
 		box.AppendRow("QUERY_HWM_EXEC", time.Duration(statz.QueryHwmExec).String())
 		box.AppendRow("QUERY_HWM_WAIT", time.Duration(statz.QueryHwmWait).String())
 		box.AppendRow("QUERY_HWM_FETCH", time.Duration(statz.QueryHwmFetch).String())
-		box.AppendRow("QUERY_HWM_SQL", api.SqlTidyWidth(80, statz.QueryHwmSql))
-		box.AppendRow("QUERY_HWM_SQL_ARG", statz.QueryHwmSqlArg)
+		// box.AppendRow("QUERY_HWM_SQL", api.SqlTidyWidth(80, statz.QueryHwmSql))
+		// box.AppendRow("QUERY_HWM_SQL_ARG", statz.QueryHwmSqlArg)
 		box.Render()
 	}
 }
