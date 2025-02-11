@@ -3,12 +3,12 @@ package machsvr
 import (
 	"context"
 	"database/sql"
+	"expvar"
 	"fmt"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -472,7 +472,7 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	}
 	ret.handle = handle
 	ret.connectTime = time.Now()
-	statz.AllocConn(time.Since(waitTime))
+	api.AllocConn(time.Since(waitTime))
 
 	if id, err := mach.EngSessionID(ret.handle); err == nil {
 		ret.id = fmt.Sprintf("%d", id)
@@ -484,12 +484,6 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 		ret.id = fmt.Sprintf("%X", id)
 	}
 
-	if statz.Debug {
-		_, file, no, ok := runtime.Caller(1)
-		if ok {
-			fmt.Printf("Conn.Connect() from %s#%d\n", file, no)
-		}
-	}
 	ret.closeCallback = func() {
 		ret.SetLatestSql("CLOSE") // 3. set latest sql time
 		db.RemoveWatcher(ret.id)
@@ -501,12 +495,6 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 
 // Close closes connection
 func (conn *Conn) Close() (err error) {
-	if statz.Debug {
-		_, file, no, ok := runtime.Caller(1)
-		if ok {
-			fmt.Printf("Conn.Close() from %s#%d\n", file, no)
-		}
-	}
 	conn.closeOnce.Do(func() {
 		defer func() {
 			if conn.returnChan != nil {
@@ -517,7 +505,7 @@ func (conn *Conn) Close() (err error) {
 			}
 		}()
 		conn.closed = true
-		statz.FreeConn(time.Since(conn.connectTime))
+		api.FreeConn(time.Since(conn.connectTime))
 		err = mach.EngDisconnect(conn.handle)
 		if conn.closeCallback != nil {
 			conn.closeCallback()
@@ -554,10 +542,10 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.R
 	if result.err = mach.EngAllocStmt(conn.handle, &stmt); result.err != nil {
 		return result
 	}
-	statz.AllocStmt()
+	api.AllocStmt()
 	defer func() {
 		mach.EngFreeStmt(stmt)
-		statz.FreeStmt()
+		api.FreeStmt()
 	}()
 	if len(params) == 0 {
 		if result.err = mach.EngDirectExecute(stmt, sqlText); result.err != nil {
@@ -638,7 +626,7 @@ func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api
 	} else {
 		rows.columns = cols
 	}
-	statz.AllocStmt()
+	api.AllocStmt()
 	return rows, nil
 }
 
@@ -747,12 +735,12 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 	conn.SetLatestSql(sqlText)
 	var row = &Row{}
 	var stmt unsafe.Pointer
-	statz.AllocStmt()
+	api.AllocStmt()
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
 	}
 	defer func() {
-		statz.FreeStmt()
+		api.FreeStmt()
 		err := mach.EngFreeStmt(stmt)
 		if err != nil && row.err == nil {
 			row.err = err
@@ -972,58 +960,14 @@ func bind(stmt unsafe.Pointer, idx int, c any) error {
 	return nil
 }
 
-type Statz struct {
-	Conns          int64
-	ConnWaitTime   uint64
-	ConnUseTime    uint64
-	Stmts          int64
-	Appenders      int64
-	ConnsInUse     int32
-	StmtsInUse     int32
-	AppendersInUse int32
-	RawConns       int32
-	Debug          bool
+func init() {
+	expvar.Publish("machbase:session:raw_conns", expvar.Func(func() any { return rawConns() }))
+	api.RawConns = rawConns
 }
 
-var statz Statz
-
-func (s *Statz) AllocConn(connWaitTime time.Duration) {
-	atomic.AddInt32(&s.ConnsInUse, 1)
-	atomic.AddInt64(&s.Conns, 1)
-	atomic.AddUint64(&s.ConnWaitTime, uint64(connWaitTime))
-}
-
-func (s *Statz) FreeConn(connUseTime time.Duration) {
-	atomic.AddInt32(&s.ConnsInUse, -1)
-	atomic.AddUint64(&s.ConnUseTime, uint64(connUseTime))
-}
-
-func (s *Statz) AllocStmt() {
-	atomic.AddInt32(&s.StmtsInUse, 1)
-	atomic.AddInt64(&s.Stmts, 1)
-}
-
-func (s *Statz) FreeStmt() {
-	atomic.AddInt32(&s.StmtsInUse, -1)
-}
-
-func (s *Statz) AllocAppender() {
-	atomic.AddInt32(&s.AppendersInUse, 1)
-	atomic.AddInt64(&s.Appenders, 1)
-}
-
-func (s *Statz) FreeAppender() {
-	atomic.AddInt32(&s.AppendersInUse, -1)
-}
-
-func StatzDebug(flag bool) {
-	statz.Debug = flag
-}
-
-func StatzSnapshot() *Statz {
-	ret := statz
+func rawConns() int {
 	if _env.handle != nil {
-		ret.RawConns = int32(mach.EngConnectionCount(_env.handle))
+		return mach.EngConnectionCount(_env.handle)
 	}
-	return &ret
+	return 0
 }

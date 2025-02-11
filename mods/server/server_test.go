@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -54,15 +53,6 @@ func TestMain(m *testing.M) {
 		WithHttpListenAddress("tcp://127.0.0.1:0"),
 		WithHttpTqlLoader(tqlLoader),
 		WithHttpEulaFilePath("./testsuite_tmp/eula.txt"),
-		WithHttpServerInfoFunc(func() (*mgmt.ServerInfoResponse, error) {
-			return &mgmt.ServerInfoResponse{
-				Success: true,
-				Reason:  "success",
-				Elapse:  "0ms",
-				Version: &mgmt.Version{},
-				Runtime: &mgmt.Runtime{},
-			}, nil
-		}),
 		WithHttpPathMap("data", dataPath),
 	}
 	if svr, err := NewHttp(database, httpOpts...); err != nil {

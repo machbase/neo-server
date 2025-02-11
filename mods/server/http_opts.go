@@ -100,6 +100,12 @@ func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
 	}
 }
 
+func WithHttpLinger(linger int) HttpOption {
+	return func(s *httpd) {
+		s.linger = linger
+	}
+}
+
 func WithHttpReadBufSize(size int) HttpOption {
 	return func(s *httpd) {
 		s.readBufSize = size
@@ -133,31 +139,23 @@ func WithHttpWebShellProvider(provider model.ShellProvider) HttpOption {
 
 func WithHttpStatzAllow(remotes ...string) HttpOption {
 	return func(s *httpd) {
-		s.statzAllowed = append(s.statzAllowed, remotes...)
-	}
-}
-
-func WithHttpServerInfoFunc(fn func() (*mgmt.ServerInfoResponse, error)) HttpOption {
-	return func(s *httpd) {
-		s.serverInfoFunc = fn
-	}
-}
-
-func WithHttpMqttInfoFunc(fn func() map[string]any) HttpOption {
-	return func(s *httpd) {
-		s.mqttInfoFunc = fn
+		addr := make([]string, 0, len(remotes))
+		for _, remote := range remotes {
+			list := strings.Split(remote, ",")
+			for _, item := range list {
+				if item == "" {
+					continue
+				}
+				addr = append(addr, item)
+			}
+		}
+		s.statzAllowed = append(s.statzAllowed, addr...)
 	}
 }
 
 func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
 	return func(s *httpd) {
 		s.mqttWsHandler = gin.WrapF(fn)
-	}
-}
-
-func WithHttpServerSessionsFunc(fn func(statz, session bool) (*mgmt.Statz, []*mgmt.Session, error)) HttpOption {
-	return func(s *httpd) {
-		s.serverSessionsFunc = fn
 	}
 }
 

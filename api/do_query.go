@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +20,9 @@ type Query struct {
 	// End is called after when the query is finished, Or non-query execution is finished.
 	// If the query is cancelled, End is not called.
 	End func(q *Query)
+
+	// Stat is called after when the query iteration is finished.
+	Stat func(m *QueryMeter)
 
 	isFetch     bool
 	columns     Columns
@@ -94,6 +99,7 @@ func (qc *Query) Cancel() {
 }
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
+	meter := NewQueryMeter()
 	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
 		if qc.startWait != nil {
 			close(qc.startWait)
@@ -130,6 +136,9 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	} else {
 		qc.columns = cols
 	}
+
+	meter.MarkExecute(sqlText, args)
+
 	if qc.Begin != nil {
 		qc.Begin(qc)
 	}
@@ -152,6 +161,13 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 			qc.End(qc)
 		}()
 	}
+	defer func() {
+		meter.MarkFetch()
+
+		if qc.Stat != nil {
+			qc.Stat(meter)
+		}
+	}()
 
 	if pql, ok := qc.rows.(QueryLimiter); ok {
 		timeCtx, timeCancel := context.WithTimeout(ctx, 60*time.Second)
@@ -161,6 +177,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 			return qc.err
 		}
 		timeCancel()
+		meter.MarkLimitWait()
 	}
 	for qc.cancelWait == nil && qc.rows.Next() {
 		qc.rowNum++
@@ -175,3 +192,53 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 type QueryLimiter interface {
 	QueryLimit(context.Context) bool
 }
+
+type QueryMeter struct {
+	ts        time.Time
+	SqlText   string
+	SqlArgs   []any
+	Execute   time.Duration
+	LimitWait time.Duration
+	Fetch     time.Duration
+}
+
+func NewQueryMeter() *QueryMeter {
+	metricQueryCount.Add(1)
+	return &QueryMeter{ts: time.Now()}
+}
+
+func (m *QueryMeter) MarkExecute(sqlText string, args []any) {
+	m.SqlText = sqlText
+	m.SqlArgs = args
+	m.Execute = time.Since(m.ts)
+	metricQueryExecuteElapse.Add(m.Execute)
+}
+
+func (m *QueryMeter) MarkLimitWait() {
+	m.LimitWait = time.Since(m.ts) - m.Execute
+	metricQueryLimitWait.Add(m.LimitWait)
+}
+
+func (m *QueryMeter) MarkFetch() {
+	m.Fetch = time.Since(m.ts) - m.Execute - m.LimitWait
+	metricQueryFetchElapse.Add(m.Fetch)
+
+	elapse := int64(m.Execute + m.LimitWait + m.Fetch)
+	// update high water mark of query elapse
+	if queryElapseHwm.Load() < elapse {
+		queryElapseHwm.Store(elapse)
+
+		queryElapseHwmLock.Lock()
+		defer queryElapseHwmLock.Unlock()
+
+		metricQueryHwmSqlText.Set(m.SqlText)
+		metricQueryHwmSqlArgs.Set(fmt.Sprintf("%v", m.SqlArgs))
+		metricQueryHwmElapse.Set(int64(m.Execute + m.LimitWait + m.Fetch))
+		metricQueryHwmLimitWait.Set(int64(m.LimitWait))
+		metricQueryHwmFetchElapse.Set(int64(m.Fetch))
+		metricQueryHwmExecuteElapse.Set(int64(m.Execute))
+	}
+}
+
+var queryElapseHwmLock sync.Mutex
+var queryElapseHwm atomic.Int64

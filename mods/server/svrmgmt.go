@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"encoding/pem"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
@@ -501,24 +503,16 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("Sessions panic recover", panic)
+			debug.PrintStack()
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
+	if req.ResetStatz {
+		api.ResetQueryStatz()
+	}
 	if req.Statz {
-		if statz := machsvr.StatzSnapshot(); statz != nil {
-			rsp.Statz = &mgmt.Statz{
-				Conns:          statz.Conns,
-				ConnsInUse:     statz.ConnsInUse,
-				ConnWaitTime:   statz.ConnWaitTime,
-				ConnUseTime:    statz.ConnUseTime,
-				Stmts:          statz.Stmts,
-				StmtsInUse:     statz.StmtsInUse,
-				Appenders:      statz.Appenders,
-				AppendersInUse: statz.AppendersInUse,
-				RawConns:       statz.RawConns,
-			}
-		}
+		rsp.Statz = api.StatzSnapshot()
 	}
 	if req.Sessions {
 		sessions := []*mgmt.Session{}
@@ -671,48 +665,4 @@ func (s *Server) getServerInfo() (*mgmt.ServerInfoResponse, error) {
 		"gc_pause_total_ns": mem.PauseTotalNs,
 	}
 	return rsp, nil
-}
-
-type SessionWatcher interface {
-	ListWatcher(cb func(*machsvr.ConnState) bool)
-}
-
-var _ SessionWatcher = (*machsvr.Database)(nil)
-
-func (s *Server) ServerSessions(reqStatz, reqSessions bool) (statz *mgmt.Statz, sessions []*mgmt.Session, err error) {
-	if reqStatz {
-		if st := machsvr.StatzSnapshot(); st != nil {
-			statz = &mgmt.Statz{
-				Conns:          st.Conns,
-				ConnsInUse:     st.ConnsInUse,
-				ConnWaitTime:   st.ConnWaitTime,
-				ConnUseTime:    st.ConnUseTime,
-				Stmts:          st.Stmts,
-				StmtsInUse:     st.StmtsInUse,
-				Appenders:      st.Appenders,
-				AppendersInUse: st.AppendersInUse,
-				RawConns:       st.RawConns,
-			}
-		}
-	}
-	if reqSessions {
-		sessions = []*mgmt.Session{}
-		s.db.ListWatcher(func(st *machsvr.ConnState) bool {
-			sessions = append(sessions, &mgmt.Session{
-				Id:            st.Id,
-				CreTime:       st.CreatedTime.UnixNano(),
-				LatestSqlTime: st.LatestTime.UnixNano(),
-				LatestSql:     st.LatestSql,
-			})
-			return true
-		})
-	}
-	return
-}
-
-func (s *Server) MqttInfo() map[string]any {
-	if s.mqttd == nil {
-		return nil
-	}
-	return s.mqttd.Statz()
 }

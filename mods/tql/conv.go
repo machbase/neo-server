@@ -75,16 +75,6 @@ func convLatLon(args []any, idx int, fname string, expect string) (*nums.LatLon,
 	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
 }
 
-func convGeography(args []any, idx int, fname string, expect string) (nums.Geography, error) {
-	if idx >= len(args) {
-		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))
-	}
-	if o, ok := args[idx].(nums.Geography); ok {
-		return o, nil
-	}
-	return nil, ErrWrongTypeOfArgs(fname, idx, expect, args[idx])
-}
-
 func convCharset(args []any, idx int, fname string, expect string) (encoding.Encoding, error) {
 	if idx >= len(args) {
 		return nil, ErrInvalidNumOfArgs(fname, idx+1, len(args))

@@ -38,7 +38,6 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "icon", Func: opts.Icon},
 	{Name: "initialLocation", Func: opts.InitialLocation},
 	{Name: "inputStream", Func: opts.InputStream},
-	{Name: "layer", Func: opts.Layer},
 	{Name: "lineWidth", Func: opts.LineWidth},
 	{Name: "logger", Func: opts.Logger},
 	{Name: "mapAssets", Func: opts.MapAssets},
