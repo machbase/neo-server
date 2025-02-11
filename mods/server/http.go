@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
@@ -72,11 +75,7 @@ type httpd struct {
 	enableTokenAuth bool
 	handlers        []*HandlerConfig
 	disableWeb      bool
-
-	serverInfoFunc     func() (*mgmt.ServerInfoResponse, error)
-	serverSessionsFunc func(statz, session bool) (*mgmt.Statz, []*mgmt.Session, error)
-	mqttInfoFunc       func() map[string]any
-	mqttWsHandler      func(*gin.Context)
+	mqttWsHandler   func(*gin.Context)
 
 	httpServer        *http.Server
 	listeners         []net.Listener
@@ -104,6 +103,7 @@ type httpd struct {
 	debugLogFilterLatency  time.Duration
 	readBufSize            int
 	writeBufSize           int
+	linger                 int
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -147,7 +147,9 @@ func (svr *httpd) Start() error {
 		connContext = func(ctx context.Context, c net.Conn) context.Context {
 			if tcpCon, ok := c.(*net.TCPConn); ok && tcpCon != nil {
 				tcpCon.SetNoDelay(true)
-				tcpCon.SetLinger(0)
+				if svr.linger >= 0 {
+					tcpCon.SetLinger(svr.linger)
+				}
 				if svr.readBufSize > 0 {
 					tcpCon.SetReadBuffer(svr.readBufSize)
 				}
@@ -864,42 +866,59 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		ctx.String(http.StatusForbidden, "")
 		return
 	}
-	if svr.serverInfoFunc == nil {
-		ctx.String(http.StatusServiceUnavailable, "")
-		return
-	}
-	stat, err := svr.serverInfoFunc()
-	if err != nil {
-		ctx.String(http.StatusInternalServerError, err.Error())
-		return
-	}
 
 	ret := map[string]any{}
-	ret["neo"] = map[string]any{
-		"mem":         stat.Runtime.Mem,
-		"volatile_fs": svr.memoryFs.Statz(),
-	}
+	// ret["neo"] = map[string]any{
+	// 	"volatile_fs": svr.memoryFs.Statz(),
+	// }
 
-	if svr.serverSessionsFunc != nil {
-		statz, _, _ := svr.serverSessionsFunc(true, false)
-		ret["sess"] = map[string]any{
-			"conns":           statz.ConnsInUse,
-			"conns_used":      statz.Conns,
-			"conns_wait_time": time.Duration(statz.ConnWaitTime),
-			"conns_use_time":  time.Duration(statz.ConnUseTime),
-			"stmts":           statz.StmtsInUse,
-			"stmts_used":      statz.Stmts,
-			"appenders":       statz.AppendersInUse,
-			"appenders_used":  statz.Appenders,
-			"raw_conns":       statz.RawConns,
+	includes := []string{} // []string{"cmdline", "memstats"}
+	expvar.Do(func(kv expvar.KeyValue) {
+		if m, ok := kv.Value.(metric.ExpVar); ok {
+			switch raw := m.Metric().(type) {
+			case metric.MultiTimeseries:
+				ret[kv.Key] = raw.Value()
+			case *metric.Timeseries:
+				ret[kv.Key] = raw.Value()
+			case *metric.Gauge:
+				ret[kv.Key] = raw.Value()
+			case *metric.Histogram:
+				ret[kv.Key] = raw.Value()
+			case *metric.Counter:
+				ret[kv.Key] = raw.Value()
+			default:
+				b, _ := json.Marshal(raw)
+				o := map[string]any{}
+				json.Unmarshal(b, &o)
+				ret[kv.Key] = o
+			}
+		} else if strings.HasPrefix(kv.Key, "machbase:") ||
+			slices.Contains(includes, kv.Key) {
+			switch m := kv.Value.(type) {
+			case *expvar.String:
+				ret[kv.Key] = m.Value()
+			case *expvar.Int:
+				ret[kv.Key] = m.Value()
+			case *expvar.Float:
+				ret[kv.Key] = m.Value()
+			case expvar.Func:
+				ret[kv.Key] = m.Value()
+			default:
+				str := m.String()
+				if strings.HasPrefix(str, "{") {
+					o := map[string]any{}
+					json.Unmarshal([]byte(str), &o)
+					ret[kv.Key] = o
+				} else if strings.HasPrefix(str, "[") {
+					o := []any{}
+					json.Unmarshal([]byte(str), &o)
+					ret[kv.Key] = o
+				} else {
+					ret[kv.Key] = str
+				}
+			}
 		}
-	}
-	if svr.mqttInfoFunc != nil {
-		if statz := svr.mqttInfoFunc(); statz != nil {
-			ret["mqtt"] = statz
-		}
-	}
-	ret["http"] = Metrics()
+	})
 
 	ctx.JSON(http.StatusOK, ret)
 }

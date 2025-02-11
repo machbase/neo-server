@@ -1,6 +1,7 @@
 package api
 
 import (
+	"regexp"
 	"strings"
 	"time"
 )
@@ -51,6 +52,32 @@ func SqlTidy(sqlTextLines ...string) string {
 		lines[i] = strings.TrimSpace(ln)
 	}
 	return strings.Join(lines, " ")
+}
+
+func SqlTidyWidth(width int, sqlTextLines ...string) string {
+	sqlText := SqlTidy(sqlTextLines...)
+	re := regexp.MustCompile(`\s+`)
+	sqlText = re.ReplaceAllString(sqlText, " ")
+
+	words := strings.Split(sqlText, " ")
+	lines := []string{}
+	currentLine := ""
+
+	for _, word := range words {
+		if len(currentLine)+len(word)+1 > width {
+			lines = append(lines, currentLine)
+			currentLine = word
+		} else {
+			if currentLine != "" {
+				currentLine += " "
+			}
+			currentLine += word
+		}
+	}
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+	return strings.Join(lines, "\n")
 }
 
 type ConnectOptionTimeout struct {

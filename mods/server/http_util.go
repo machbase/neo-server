@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 func strBool(str string, def bool) bool {
@@ -37,80 +37,47 @@ func strString(str string, def string) string {
 	return str
 }
 
-var metricRequestTotal = uint64(0)
-var metricLatencyUnder1ms = uint64(0)
-var metricLatencyUnder100ms = uint64(0)
-var metricLatencyUnder1s = uint64(0)
-var metricLatencyUnder5s = uint64(0)
-var metricLatencyUnder3s = uint64(0)
-var metricLatencyOver5s = uint64(0)
-var metricRecvContentBytes = uint64(0)
-var metricSendContentBytes = uint64(0)
-var metricStatus1xx = uint64(0)
-var metricStatus2xx = uint64(0)
-var metricStatus3xx = uint64(0)
-var metricStatus4xx = uint64(0)
-var metricStatus5xx = uint64(0)
+var timeFrames = []string{"2m1s", "15m30s", "1h1m"}
+
+var (
+	metricRequestTotal     = metric.NewExpVarIntCounter("machbase:http:count", timeFrames...)
+	metricResponseLatency  = metric.NewExpVarDurationHistogram("machbase:http:latency", timeFrames...)
+	metricRecvContentBytes = metric.NewExpVarIntCounter("machbase:http:recv_bytes", timeFrames...)
+	metricSendContentBytes = metric.NewExpVarIntCounter("machbase:http:send_bytes", timeFrames...)
+	metricStatus1xx        = metric.NewExpVarIntCounter("machbase:http:status_1xx", timeFrames...)
+	metricStatus2xx        = metric.NewExpVarIntCounter("machbase:http:status_2xx", timeFrames...)
+	metricStatus3xx        = metric.NewExpVarIntCounter("machbase:http:status_3xx", timeFrames...)
+	metricStatus4xx        = metric.NewExpVarIntCounter("machbase:http:status_4xx", timeFrames...)
+	metricStatus5xx        = metric.NewExpVarIntCounter("machbase:http:status_5xx", timeFrames...)
+)
 
 func MetricsInterceptor() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		latencyMillis := time.Since(start).Milliseconds()
 
-		atomic.AddUint64(&metricRequestTotal, 1)
-		if latencyMillis <= 1 { // under 1ms
-			atomic.AddUint64(&metricLatencyUnder100ms, 1)
-		} else if latencyMillis <= 100 { // under 100ms
-			atomic.AddUint64(&metricLatencyUnder100ms, 1)
-		} else if latencyMillis <= 1000 { // under 1s
-			atomic.AddUint64(&metricLatencyUnder1s, 1)
-		} else if latencyMillis <= 3000 { // under 3s
-			atomic.AddUint64(&metricLatencyUnder3s, 1)
-		} else if latencyMillis <= 5000 { // under 5s
-			atomic.AddUint64(&metricLatencyUnder5s, 1)
-		} else { // over 1s
-			atomic.AddUint64(&metricLatencyOver5s, 1)
-		}
+		metricRequestTotal.Add(1)
+		metricResponseLatency.Add(time.Since(start))
 		if s := c.Request.ContentLength; s > 0 {
-			atomic.AddUint64(&metricRecvContentBytes, uint64(s))
+			metricRecvContentBytes.Add(s)
 		}
 		if s := c.Writer.Size(); s > 0 {
-			atomic.AddUint64(&metricSendContentBytes, uint64(s))
+			metricSendContentBytes.Add(int64(s))
 		}
 
 		status := c.Writer.Status()
 		if status < 200 {
-			atomic.AddUint64(&metricStatus1xx, 1)
+			metricStatus1xx.Add(1)
 		} else if status < 300 {
-			atomic.AddUint64(&metricStatus2xx, 1)
+			metricStatus2xx.Add(1)
 		} else if status < 400 {
-			atomic.AddUint64(&metricStatus3xx, 1)
+			metricStatus3xx.Add(1)
 		} else if status < 500 {
-			atomic.AddUint64(&metricStatus4xx, 1)
+			metricStatus4xx.Add(1)
 		} else {
-			atomic.AddUint64(&metricStatus5xx, 1)
+			metricStatus5xx.Add(1)
 		}
 	}
-}
-
-func Metrics() map[string]any {
-	ret := make(map[string]any)
-	ret["request_total"] = atomic.LoadUint64(&metricRequestTotal)
-	ret["latency_1ms"] = atomic.LoadUint64(&metricLatencyUnder1ms)
-	ret["latency_100ms"] = atomic.LoadUint64(&metricLatencyUnder100ms)
-	ret["latency_1s"] = atomic.LoadUint64(&metricLatencyUnder1s)
-	ret["latency_3s"] = atomic.LoadUint64(&metricLatencyUnder3s)
-	ret["latency_5s"] = atomic.LoadUint64(&metricLatencyUnder5s)
-	ret["latency_over_5s"] = atomic.LoadUint64(&metricLatencyOver5s)
-	ret["bytes_recv"] = atomic.LoadUint64(&metricRecvContentBytes)
-	ret["bytes_send"] = atomic.LoadUint64(&metricSendContentBytes)
-	ret["status_1xx"] = atomic.LoadUint64(&metricStatus1xx)
-	ret["status_2xx"] = atomic.LoadUint64(&metricStatus2xx)
-	ret["status_3xx"] = atomic.LoadUint64(&metricStatus3xx)
-	ret["status_4xx"] = atomic.LoadUint64(&metricStatus4xx)
-	ret["status_5xx"] = atomic.LoadUint64(&metricStatus5xx)
-	return ret
 }
 
 func RecoveryWithLogging(log logging.Log, recovery ...gin.RecoveryFunc) gin.HandlerFunc {

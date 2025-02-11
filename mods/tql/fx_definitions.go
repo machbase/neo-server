@@ -232,6 +232,7 @@ var FxDefinitions = []Definition{
 	{"sphere", defTask.fmSphere},
 	{"json", defTask.fmJsonData},
 	{"csv", defTask.fmCsvData},
+	{"statz", defTask.fmStatz},
 	{"FAKE", defTask.fmFake},
 	// maps.group
 	{"GROUP", defTask.fmGroup},

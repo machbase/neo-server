@@ -2,6 +2,7 @@ package server
 
 import (
 	"embed"
+	"expvar"
 	"io/fs"
 	"net/http"
 	"os"
@@ -172,11 +173,14 @@ type MemoryFS struct {
 }
 
 func NewMemoryFS(prefix string) *MemoryFS {
-	return &MemoryFS{
+	ret := &MemoryFS{
 		Prefix: prefix,
 		list:   map[string]*MemoryFile{},
 		stop:   make(chan bool),
 	}
+	expvar.Publish("machbase:memoryfs:count", expvar.Func(ret.statzCount))
+	expvar.Publish("machbase:memoryfs:total_size", expvar.Func(ret.statzTotalSize))
+	return ret
 }
 
 var _ tql.VolatileAssetsProvider = (*MemoryFS)(nil)
@@ -234,19 +238,16 @@ func (fs *MemoryFS) VolatileFileWrite(name string, val []byte, deadline time.Tim
 	return ret
 }
 
-func (fs *MemoryFS) Statz() map[string]any {
+func (fs *MemoryFS) statzCount() any { return len(fs.list) }
+
+func (fs *MemoryFS) statzTotalSize() any {
+	var total int64
 	fs.listLock.Lock()
-	total := int64(0)
-	count := len(fs.list)
 	for _, v := range fs.list {
 		total += int64(len(v.data))
 	}
 	fs.listLock.Unlock()
-
-	return map[string]any{
-		"count":      count,
-		"total_size": total,
-	}
+	return total
 }
 
 type MemoryFile struct {

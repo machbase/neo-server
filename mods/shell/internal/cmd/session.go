@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/mods/shell/internal/action"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -24,7 +25,7 @@ const helpSession = `    session command [options]
   commands:
     list                list sessions
     kill <id>           force to close a session
-    stat                show session stat
+    stat [--reset]      show session stat
     limit               get limit
     set-limit [--conn=<num>] [--query=<num>] set limit
   options:
@@ -39,6 +40,7 @@ type SessionCmd struct {
 		Force bool   `name:"force" short:"f"`
 	} `cmd:"" name:"kill"`
 	Stat struct {
+		Reset bool `name:"reset"`
 	} `cmd:"" name:"stat"`
 	Limit struct {
 	} `cmd:"" name:"limit"`
@@ -74,7 +76,7 @@ func doSession(ctx *action.ActionContext) {
 	case "kill <id>":
 		doSessionKill(ctx, cmd.Kill.Id, cmd.Kill.Force)
 	case "stat":
-		doSessionStat(ctx)
+		doSessionStat(ctx, cmd.Stat.Reset)
 	case "limit":
 		doSessionLimit(ctx, -2147483648, -2147483648)
 	case "set-limit":
@@ -123,7 +125,7 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	_, sessions, err := serverSessions(mgmtClient, ctx.Ctx, false, true)
+	_, sessions, err := serverSessions(mgmtClient, ctx.Ctx, false, true, false)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -184,13 +186,13 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 	}
 }
 
-func doSessionStat(ctx *action.ActionContext) {
+func doSessionStat(ctx *action.ActionContext, reset bool) {
 	mgmtClient, err := ctx.Actor.ManagementClient()
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	statz, _, err := serverSessions(mgmtClient, ctx.Ctx, true, false)
+	statz, _, err := serverSessions(mgmtClient, ctx.Ctx, true, false, reset)
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 		return
@@ -206,13 +208,25 @@ func doSessionStat(ctx *action.ActionContext) {
 		box := ctx.NewBox([]string{"NAME", "VALUE"})
 		box.AppendRow("CONNS", util.NumberFormat(statz.ConnsInUse))
 		box.AppendRow("CONNS_USED", util.NumberFormat(statz.Conns))
-		box.AppendRow("CONNS_WAIT_AVG_TIME", connWaitTimePerUse.String())
-		box.AppendRow("CONNS_USE_AVG_TIME", connUseTimePerUse.String())
+		box.AppendRow("CONNS_WAIT_AVG", connWaitTimePerUse.String())
+		box.AppendRow("CONNS_USE_AVG", connUseTimePerUse.String())
 		box.AppendRow("STMTS", util.NumberFormat(statz.StmtsInUse))
 		box.AppendRow("STMTS_USED", util.NumberFormat(statz.Stmts))
 		box.AppendRow("APPENDERS", util.NumberFormat(statz.AppendersInUse))
 		box.AppendRow("APPENDERS_USED", util.NumberFormat(statz.Appenders))
 		box.AppendRow("RAW_CONNS", util.NumberFormat(statz.RawConns))
+		box.AppendRow("QUERY_EXEC_HWM", time.Duration(statz.QueryExecHwm).String())
+		box.AppendRow("QUERY_EXEC_AVG", time.Duration(statz.QueryExecAvg).String())
+		box.AppendRow("QUERY_WAIT_HWM", time.Duration(statz.QueryWaitHwm).String())
+		box.AppendRow("QUERY_WAIT_AVG", time.Duration(statz.QueryWaitAvg).String())
+		box.AppendRow("QUERY_FETCH_HWM", time.Duration(statz.QueryFetchHwm).String())
+		box.AppendRow("QUERY_FETCH_AVG", time.Duration(statz.QueryFetchAvg).String())
+		box.AppendRow("QUERY_HWM", time.Duration(statz.QueryHwm).String())
+		box.AppendRow("QUERY_HWM_EXEC", time.Duration(statz.QueryHwmExec).String())
+		box.AppendRow("QUERY_HWM_WAIT", time.Duration(statz.QueryHwmWait).String())
+		box.AppendRow("QUERY_HWM_FETCH", time.Duration(statz.QueryHwmFetch).String())
+		box.AppendRow("QUERY_HWM_SQL", api.SqlTidyWidth(80, statz.QueryHwmSql))
+		box.AppendRow("QUERY_HWM_SQL_ARG", statz.QueryHwmSqlArg)
 		box.Render()
 	}
 }
@@ -233,8 +247,8 @@ func doSessionKill(ctx *action.ActionContext, id string, force bool) {
 	}
 }
 
-func serverSessions(client mgmt.ManagementClient, ctx context.Context, reqStatz, reqSessions bool) (*mgmt.Statz, []*mgmt.Session, error) {
-	req := &mgmt.SessionsRequest{Statz: reqStatz, Sessions: reqSessions}
+func serverSessions(client mgmt.ManagementClient, ctx context.Context, reqStatz, reqSessions, reset bool) (*mgmt.Statz, []*mgmt.Session, error) {
+	req := &mgmt.SessionsRequest{Statz: reqStatz, Sessions: reqSessions, ResetStatz: reset}
 	rsp, err := client.Sessions(ctx, req)
 	if err != nil {
 		return nil, nil, err

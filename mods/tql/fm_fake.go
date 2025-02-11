@@ -16,6 +16,8 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
+	"github.com/machbase/neo-server/v8/mods/util/glob"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 /*
@@ -43,10 +45,68 @@ func (node *Node) fmFake(origin any) (any, error) {
 		genCsvData(node, gen)
 	case *rawdata:
 		genRawData(node, gen)
+	case *statz:
+		genStatz(node, gen)
 	default:
 		return nil, ErrWrongTypeOfArgs("FAKE", 0, "fakeSource", origin)
 	}
 	return nil, nil
+}
+
+type statz struct {
+	interval   time.Duration
+	keyFilters []string
+}
+
+func genStatz(node *Node, gen *statz) {
+	statz := api.QueryStatz(gen.interval, func(key string, value metric.ExpVar) bool {
+		if len(gen.keyFilters) == 0 {
+			return true
+		} else {
+			for _, filter := range gen.keyFilters {
+				if glob.IsGlob(filter) {
+					if ok, _ := glob.Match(filter, key); ok {
+						return true
+					}
+				} else {
+					if filter == key {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	})
+	if statz.Err != nil {
+		ErrorRecord(statz.Err).Tell(node.next)
+		return
+	}
+	// set columns
+	cols := []*api.Column{
+		api.MakeColumnRownum(),
+		api.MakeColumnDatetime("time"),
+	}
+	cols = append(cols, statz.Cols...)
+	node.task.SetResultColumns(cols)
+	if len(statz.Rows) == 0 {
+		return
+	}
+	// yield rows
+	for i, row := range statz.Rows {
+		NewRecord(i, append([]any{row.Timestamp}, row.Values...)).Tell(node.next)
+	}
+}
+
+func (node *Node) fmStatz(samplingInterval string, keyFilters ...string) *statz {
+	var interval = time.Second
+	if dur, err := time.ParseDuration(samplingInterval); err == nil {
+		interval = dur
+	}
+	ret := &statz{
+		interval:   interval,
+		keyFilters: keyFilters,
+	}
+	return ret
 }
 
 type rawdata struct {

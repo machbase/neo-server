@@ -212,7 +212,7 @@ func (rows *Rows) QueryLimit(ctx context.Context) bool {
 func (rows *Rows) Close() error {
 	var err error
 	if rows.stmt != nil {
-		statz.FreeStmt()
+		api.FreeStmt()
 		err = mach.EngFreeStmt(rows.stmt)
 		rows.stmt = nil
 	}

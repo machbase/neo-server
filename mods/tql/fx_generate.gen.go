@@ -217,6 +217,7 @@ func NewNode(task *Task) *Node {
 		"sphere":               x.gen_sphere,
 		"json":                 x.gen_json,
 		"csv":                  x.gen_csv,
+		"statz":                x.gen_statz,
 		"FAKE":                 x.gen_FAKE,
 		"GROUP":                x.gen_GROUP,
 		"by":                   x.gen_by,
@@ -284,7 +285,6 @@ func NewNode(task *Task) *Node {
 		"icon":                x.gen_icon,
 		"initialLocation":     x.gen_initialLocation,
 		"inputStream":         x.gen_inputStream,
-		"layer":               x.gen_layer,
 		"lineWidth":           x.gen_lineWidth,
 		"logger":              x.gen_logger,
 		"mapAssets":           x.gen_mapAssets,
@@ -3224,6 +3224,29 @@ func (x *Node) gen_csv(args ...any) (any, error) {
 	return x.fmCsvData(p0)
 }
 
+// gen_statz
+//
+// syntax: statz(string, ...string)
+func (x *Node) gen_statz(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("statz", 1, len(args))
+	}
+	p0, err := convString(args, 0, "statz", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1 := []string{}
+	for n := 1; n < len(args); n++ {
+		argv, err := convString(args, n, "statz", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p1 = append(p1, argv)
+	}
+	ret := x.fmStatz(p0, p1...)
+	return ret, nil
+}
+
 // gen_FAKE
 //
 // syntax: FAKE()
@@ -4397,21 +4420,6 @@ func (x *Node) gen_inputStream(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.InputStream(p0)
-	return ret, nil
-}
-
-// gen_layer
-//
-// syntax: layer(Geography)
-func (x *Node) gen_layer(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("layer", 1, len(args))
-	}
-	p0, err := convGeography(args, 0, "layer", "nums.Geography")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.Layer(p0)
 	return ret, nil
 }
 

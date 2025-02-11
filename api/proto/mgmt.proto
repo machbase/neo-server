@@ -209,8 +209,9 @@ message Runtime {
 }
 
 message SessionsRequest {
-    bool statz = 1;
-    bool sessions = 2;
+    bool statz      = 1;
+    bool sessions   = 2;
+    bool resetStatz = 3;
 }
 
 message SessionsResponse {
@@ -231,6 +232,18 @@ message Statz {
     int32 rawConns       = 7;
     uint64 connWaitTime  = 8;
     uint64 connUseTime   = 9;
+    uint64 queryHwm      = 10;
+    string queryHwmSql   = 11;
+    uint64 queryHwmExec  = 12;
+    uint64 queryHwmWait  = 13;
+    uint64 queryHwmFetch = 14;
+    string queryHwmSqlArg= 15;
+    uint64 queryExecHwm  = 16;
+    uint64 queryExecAvg  = 17;
+    uint64 queryWaitHwm  = 18;
+    uint64 queryWaitAvg  = 19;
+    uint64 queryFetchHwm = 20;
+    uint64 queryFetchAvg = 21;
 }
 
 message Session {

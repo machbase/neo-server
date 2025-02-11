@@ -100,6 +100,12 @@ func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
 	}
 }
 
+func WithHttpLinger(linger int) HttpOption {
+	return func(s *httpd) {
+		s.linger = linger
+	}
+}
+
 func WithHttpReadBufSize(size int) HttpOption {
 	return func(s *httpd) {
 		s.readBufSize = size
@@ -137,27 +143,9 @@ func WithHttpStatzAllow(remotes ...string) HttpOption {
 	}
 }
 
-func WithHttpServerInfoFunc(fn func() (*mgmt.ServerInfoResponse, error)) HttpOption {
-	return func(s *httpd) {
-		s.serverInfoFunc = fn
-	}
-}
-
-func WithHttpMqttInfoFunc(fn func() map[string]any) HttpOption {
-	return func(s *httpd) {
-		s.mqttInfoFunc = fn
-	}
-}
-
 func WithHttpMqttWsHandlerFunc(fn http.HandlerFunc) HttpOption {
 	return func(s *httpd) {
 		s.mqttWsHandler = gin.WrapF(fn)
-	}
-}
-
-func WithHttpServerSessionsFunc(fn func(statz, session bool) (*mgmt.Statz, []*mgmt.Session, error)) HttpOption {
-	return func(s *httpd) {
-		s.serverSessionsFunc = fn
 	}
 }
 

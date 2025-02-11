@@ -129,6 +129,7 @@ type HttpConfig struct {
 	DebugLatency    string
 	WriteBufSize    int
 	ReadBufSize     int
+	Linger          int
 }
 
 type MqttConfig struct {

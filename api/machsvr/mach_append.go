@@ -110,7 +110,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		mach.EngFreeStmt(appender.stmt)
 		return nil, err
 	}
-	statz.AllocAppender()
+	api.AllocAppender()
 
 	colCount, err := mach.EngColumnCount(appender.stmt)
 	if err != nil {
@@ -195,7 +195,7 @@ func (ap *Appender) Close() (int64, int64, error) {
 	}
 	ap.closed = true
 	var err error
-	statz.FreeAppender()
+	api.FreeAppender()
 	ap.successCount, ap.failCount, err = mach.EngAppendClose(ap.stmt)
 	if err != nil {
 		return ap.successCount, ap.failCount, err

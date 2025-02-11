@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"io"
 	"log/slog"
@@ -58,6 +59,8 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 		return nil, err
 	}
 	svr.broker.Info.Version = strings.TrimPrefix(mods.DisplayVersion(), "v")
+
+	expvar.Publish("machbase:mqtt", expvar.Func(svr.Statz))
 	return svr, nil
 }
 
@@ -252,7 +255,7 @@ func (s *mqttd) Stop() {
 	}
 }
 
-func (s *mqttd) Statz() map[string]any {
+func (s *mqttd) Statz() any {
 	nfo := s.broker.Info
 	buf, _ := json.Marshal(nfo)
 	ret := map[string]any{}
