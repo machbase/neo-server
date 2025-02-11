@@ -34,7 +34,13 @@ var WejMYXCGcYNL = {
     },
 };
 ((opt)=>{
-var map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
+var map;
+if (opt && opt.map) {
+  map = opt.map;
+} else {
+  map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
+  opt.map = map;
+}
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 map.fitBounds([[37.49785,127.018666],[37.503058,127.027756]]);
 var obj0 = L.marker([37.49785,127.027756],{}).addTo(map);

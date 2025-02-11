@@ -165,7 +165,7 @@ func TestGeoMap(t *testing.T) {
 				c.SetLogger(facility.TestLogger(t))
 				c.SetOutputStream(buffer)
 				c.SetVolatileFileWriter(fsmock)
-				c.SetMapId("WejMYXCGcYNL")
+				c.SetGeomapID("WejMYXCGcYNL")
 				c.SetGeoMapJson(output == "json")
 				c.SetInitialLocation(nums.NewLatLon(51.505, -0.09), 13)
 				if output == "json" {

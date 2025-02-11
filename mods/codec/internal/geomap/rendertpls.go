@@ -23,7 +23,7 @@ var HeaderTemplate = `
 var BaseTemplate = `
 {{- define "base" }}
 <div class="geomap_container">
-    <div class="geomap_item" id="{{ .MapID }}" style="width:{{ .Width }};height:{{ .Height }};"></div>
+    <div class="geomap_item" id="{{ .GeomapID }}" style="width:{{ .Width }};height:{{ .Height }};"></div>
 </div>
 {{- range .JSCodeAssets }}
 <script src="{{ . }}" type="text/javascript" charset="UTF-8"></script>
@@ -48,7 +48,7 @@ var HtmlTemplate = `{{- define "geomap" }}<!DOCTYPE html>
 var JsonTemplate = `
 {{- define "geomap" }}
 {
-    "ID":"{{ .MapID }}",
+    "geomapID":"{{ .GeomapID }}",
     "style": {
         "width": "{{ .Width }}",
         "height": "{{ .Height }}",
