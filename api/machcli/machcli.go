@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +65,19 @@ type Config struct {
 	Host string
 	Port int
 
+	// MaxOpenConns
+	//
+	//	< 0 : unlimited
+	//	0 : default, maxOpenConns = CPU count * maxOpenConnsFactor
+	//	> 0 : specified max open connections
+	MaxOpenConns int
+
+	// MaxOpenConnsFactor
+	//
+	//	used to calculate the number of max open connections when maxOpenConns is 0
+	//	default is 1.5
+	MaxOpenConnsFactor float64
+
 	TrustUsers map[string]string
 }
 
@@ -74,6 +88,9 @@ type Database struct {
 
 	trustUsersMutex sync.RWMutex
 	trustUsers      map[string]string
+
+	maxConnsMutex sync.RWMutex
+	maxConnsChan  chan struct{}
 }
 
 var _ api.Database = (*Database)(nil)
@@ -92,6 +109,18 @@ func NewDatabase(conf *Config) (*Database, error) {
 	for u, p := range conf.TrustUsers {
 		ret.trustUsers[u] = p
 	}
+
+	if conf.MaxOpenConnsFactor <= 0 {
+		conf.MaxOpenConnsFactor = 1.5
+	}
+
+	if conf.MaxOpenConns < 0 {
+		conf.MaxOpenConns = -1
+	} else if conf.MaxOpenConns == 0 {
+		conf.MaxOpenConns = int(float64(runtime.NumCPU()) * conf.MaxOpenConnsFactor)
+	}
+
+	ret.SetMaxOpenConns(conf.MaxOpenConns)
 	return ret, nil
 }
 
@@ -100,6 +129,48 @@ func (db *Database) Close() error {
 		return nil
 	} else {
 		return errorWithCause(db, err)
+	}
+}
+
+// MaxOpenConns returns the maximum number of open connections
+// and the current remains capacity.
+func (db *Database) MaxOpenConns() (int, int) {
+	db.maxConnsMutex.RLock()
+	defer db.maxConnsMutex.RUnlock()
+	if db.maxConnsChan == nil {
+		// unlimited
+		return -1, -1
+	}
+	limit := cap(db.maxConnsChan)
+	remains := len(db.maxConnsChan)
+	return limit, remains
+}
+
+func (db *Database) SetMaxOpenConns(desiredMaxOpenConns int) {
+	if desiredMaxOpenConns < 0 {
+		desiredMaxOpenConns = -1
+	}
+	if desiredMaxOpenConns == 0 {
+		desiredMaxOpenConns = int(float64(runtime.NumCPU()) * 1.5)
+	}
+
+	currentCap := cap(db.maxConnsChan)
+	if currentCap == desiredMaxOpenConns {
+		return
+	}
+
+	var newChan chan struct{}
+	db.maxConnsMutex.Lock()
+	defer func() {
+		db.maxConnsChan = newChan
+		db.maxConnsMutex.Unlock()
+	}()
+
+	if desiredMaxOpenConns > 0 {
+		newChan = make(chan struct{}, desiredMaxOpenConns)
+		for i := 0; i < desiredMaxOpenConns; i++ {
+			newChan <- struct{}{}
+		}
 	}
 }
 
@@ -151,6 +222,17 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
 	}
+
+	returnChan := db.maxConnsChan
+
+	if returnChan != nil {
+		select {
+		case <-returnChan:
+		case <-ctx.Done():
+			return nil, api.NewError("connect canceled")
+		}
+	}
+
 	handle := new(unsafe.Pointer)
 	if err := mach.CliConnect(db.handle, db.connectionString(user, password), handle); err != nil {
 		return nil, errorWithCause(db, err)
@@ -158,7 +240,12 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 
 	db.SetTrustUser(user, password)
 
-	ret := &Conn{db: db, handle: *handle}
+	ret := &Conn{
+		db:         db,
+		handle:     *handle,
+		usedAt:     time.Now(),
+		returnChan: returnChan,
+	}
 	return ret, nil
 }
 
@@ -166,13 +253,23 @@ type Conn struct {
 	handle unsafe.Pointer
 	db     *Database
 
-	closeOnce sync.Once
+	usedAt     time.Time
+	usedCount  int64
+	closeOnce  sync.Once
+	returnChan chan struct{}
 }
 
 var _ api.Conn = (*Conn)(nil)
 
 func (c *Conn) Close() (ret error) {
 	c.closeOnce.Do(func() {
+		defer func() {
+			c.usedAt = time.Now()
+			c.usedCount++
+			if c.returnChan != nil {
+				c.returnChan <- struct{}{}
+			}
+		}()
 		if err := mach.CliDisconnect(c.handle); err != nil {
 			ret = errorWithCause(c, err)
 		}

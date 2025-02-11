@@ -421,9 +421,11 @@ func (s *Server) startMachbaseCli() error {
 	}
 
 	db, err := machcli.NewDatabase(&machcli.Config{
-		Host:       host,
-		Port:       port,
-		TrustUsers: map[string]string{"sys": "manager"},
+		Host:               host,
+		Port:               port,
+		MaxOpenConns:       s.Config.MaxOpenConn,
+		MaxOpenConnsFactor: s.Config.MaxOpenConnFactor,
+		TrustUsers:         map[string]string{"sys": "manager"},
 	})
 	if err != nil {
 		return err
