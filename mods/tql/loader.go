@@ -3,6 +3,7 @@ package tql
 import (
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,7 +36,7 @@ func (ld *loader) Load(path string) (*Script, error) {
 		return nil, fmt.Errorf("not found '%s'", path)
 	}
 	ret = &Script{
-		path0:   path,
+		path0:   filepath.ToSlash(path),
 		content: ent.Content,
 		vap:     ld.vap,
 	}

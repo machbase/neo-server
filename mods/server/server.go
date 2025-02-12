@@ -374,6 +374,7 @@ func (s *Server) Start() error {
 
 	tqlLoader := tql.NewLoader()
 	tql.SetGrpcAddresses(s.Grpc.Listeners)
+	tql.StartCache()
 
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
@@ -653,6 +654,7 @@ func (s *Server) Stop() {
 	if s.models != nil {
 		s.models.Stop()
 	}
+	tql.StartCache()
 	if err := s.db.Shutdown(); err != nil {
 		s.log.Warnf("db shutdown; %s", err.Error())
 	}

@@ -174,6 +174,7 @@ var FxDefinitions = []Definition{
 	{"FFT", defTask.fmFastFourierTransform},
 	// maps.encoder
 	{"// maps.encoder", nil},
+	{"cache", defTask.fmCache},
 	{"CSV", defTask.fmCsv},
 	{"JSON", defTask.fmJson},
 	{"NDJSON", defTask.fmNDJson},

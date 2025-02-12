@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"sync"
 
@@ -24,8 +25,9 @@ var (
 )
 
 type Encoder struct {
-	format string
-	opts   []opts.Option
+	format      string
+	opts        []opts.Option
+	cacheOption *CacheOption
 }
 
 func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
@@ -48,6 +50,10 @@ type output struct {
 	closeWg     sync.WaitGroup
 	lastError   error
 	lastMessage string
+
+	cacheOption *CacheOption
+	cacheWriter *bytes.Buffer
+	cachedData  []byte
 
 	pragma  []*Line
 	tqlLine *Line
@@ -87,9 +93,21 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		if val == nil {
 			return nil, errors.New("no encoder found")
 		}
+		var writer io.Writer = node.task.OutputWriter()
+		// check cache option
+		if val.cacheOption != nil && tqlResultCache != nil {
+			ret.cacheOption = val.cacheOption
+			if content, ok := tqlResultCache.Get(val.cacheOption.key); ok && content != nil {
+				ret.cachedData = content
+			} else {
+				ret.cacheWriter = &bytes.Buffer{}
+				writer = io.MultiWriter(ret.cacheWriter, node.task.OutputWriter())
+			}
+		}
+
 		options := []opts.Option{
 			opts.Logger(node.task),
-			opts.OutputStream(node.task.OutputWriter()),
+			opts.OutputStream(writer),
 			opts.ChartJson(node.task.toJsonOutput),
 			opts.GeoMapJson(node.task.toJsonOutput),
 			opts.VolatileFileWriter(node.task),
@@ -270,14 +288,18 @@ func (out *output) closeEncoder() {
 		}
 		out.lastMessage = resultMessage
 	}
+
+	if out.cacheOption != nil && out.cacheOption.key != "" && tqlResultCache != nil {
+		tqlResultCache.Set(out.cacheOption.key, out.cacheWriter.Bytes(), out.cacheOption.ttl)
+	}
 }
 
 func (out *output) addRow(rec *Record) error {
-	var addfunc func([]any) error
+	var addFunc func([]any) error
 	if out.encoder != nil {
-		addfunc = out.encoder.AddRow
+		addFunc = out.encoder.AddRow
 	} else if out.dbSink != nil {
-		addfunc = out.dbSink.AddRow
+		addFunc = out.dbSink.AddRow
 	} else {
 		return fmt.Errorf("%s has no destination", out.name)
 	}
@@ -290,7 +312,7 @@ func (out *output) addRow(rec *Record) error {
 	} else if rec.IsImage() && rec.Value() != nil {
 		value := rec.Value()
 		if raw, ok := value.([]byte); ok {
-			return addfunc([]any{rec.contentType, raw})
+			return addFunc([]any{rec.contentType, raw})
 		} else {
 			return fmt.Errorf("%s can not write invalid image data (%T)", out.name, value)
 		}
@@ -303,16 +325,16 @@ func (out *output) addRow(rec *Record) error {
 		case [][]any:
 			var err error
 			for n := range v {
-				err = addfunc(v[n])
+				err = addFunc(v[n])
 				if err != nil {
 					break
 				}
 			}
 			return err
 		case []any:
-			return addfunc(v)
+			return addFunc(v)
 		case any:
-			return addfunc([]any{v})
+			return addFunc([]any{v})
 		}
 	}
 	return nil

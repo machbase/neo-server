@@ -46,6 +46,7 @@ type Task struct {
 	volatileAssetsProvider VolatileAssetsProvider
 
 	// compiled result
+	sourcePath string
 	compiled   bool
 	compileErr error
 	output     *output
@@ -177,6 +178,7 @@ func (x *Task) GetVariable(name string) (any, error) {
 
 func (x *Task) CompileScript(sc *Script) error {
 	x.volatileAssetsProvider = sc.vap
+	x.sourcePath = sc.path0
 	return x.Compile(bytes.NewBuffer(sc.content))
 }
 
@@ -382,6 +384,15 @@ func (x *Task) execute() *Result {
 		}
 	}()
 
+	if x.output.cachedData != nil {
+		x.outputWriter.Write(x.output.cachedData)
+		return &Result{
+			Err:      nil,
+			Message:  "cached",
+			IsDbSink: x.output.dbSink != nil,
+			_created: x._created,
+		}
+	}
 	// start output
 	if x.output != nil {
 		x.output.start()

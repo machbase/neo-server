@@ -162,6 +162,7 @@ func NewNode(task *Task) *Node {
 		"maxHz": x.gen_maxHz,
 		"FFT":   x.gen_FFT,
 		// maps.encoder
+		"cache":           x.gen_cache,
 		"CSV":             x.gen_CSV,
 		"JSON":            x.gen_JSON,
 		"NDJSON":          x.gen_NDJSON,
@@ -2325,6 +2326,24 @@ func (x *Node) gen_FFT(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmFastFourierTransform(p0...)
+}
+
+// gen_cache
+//
+// syntax: cache(string, string)
+func (x *Node) gen_cache(args ...any) (any, error) {
+	if len(args) != 2 {
+		return nil, ErrInvalidNumOfArgs("cache", 2, len(args))
+	}
+	p0, err := convString(args, 0, "cache", "string")
+	if err != nil {
+		return nil, err
+	}
+	p1, err := convString(args, 1, "cache", "string")
+	if err != nil {
+		return nil, err
+	}
+	return x.fmCache(p0, p1)
 }
 
 // gen_CSV
