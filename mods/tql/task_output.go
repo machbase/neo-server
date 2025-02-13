@@ -6,6 +6,7 @@ import (
 	"io"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
@@ -97,8 +98,20 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		// check cache option
 		if val.cacheOption != nil && tqlResultCache != nil {
 			ret.cacheOption = val.cacheOption
-			if content, ok := tqlResultCache.Get(val.cacheOption.key); ok && content != nil {
-				ret.cachedData = content
+			if item := tqlResultCache.Get(val.cacheOption.key); item != nil {
+				// get cached data
+				ret.cachedData = item.Data
+				// check preemptive update is set and valid
+				if preemptiveUpdateRatio := val.cacheOption.preemptiveUpdate; preemptiveUpdateRatio > 0 && preemptiveUpdateRatio < 1 {
+					// check if the cache is required to be updated in advance
+					preemptiveTTL := time.Duration(float64(item.TTL) * preemptiveUpdateRatio)
+					preemptiveUpdateAt := item.ExpiresAt.Add(-1 * preemptiveTTL)
+					if preemptiveUpdateAt.Before(time.Now()) {
+						// update cache
+						ret.cacheWriter = &bytes.Buffer{}
+						writer = io.MultiWriter(ret.cacheWriter)
+					}
+				}
 			} else {
 				ret.cacheWriter = &bytes.Buffer{}
 				writer = io.MultiWriter(ret.cacheWriter, node.task.OutputWriter())
@@ -212,6 +225,12 @@ func (out *output) start() {
 				}
 			}
 		}
+
+		if out.cacheOption != nil && out.cacheOption.key != "" && out.cacheWriter != nil && tqlResultCache != nil {
+			if data := out.cacheWriter.Bytes(); len(data) > 0 {
+				tqlResultCache.Set(out.cacheOption.key, data, out.cacheOption.ttl)
+			}
+		}
 		out.closeWg.Done()
 	}()
 }
@@ -287,10 +306,6 @@ func (out *output) closeEncoder() {
 			out.lastError = err
 		}
 		out.lastMessage = resultMessage
-	}
-
-	if out.cacheOption != nil && out.cacheOption.key != "" && tqlResultCache != nil {
-		tqlResultCache.Set(out.cacheOption.key, out.cacheWriter.Bytes(), out.cacheOption.ttl)
 	}
 }
 

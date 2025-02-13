@@ -7,41 +7,73 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 var tqlResultCache *Cache
 
+var (
+	tqlResultCacheDataSize = metric.NewCounter()
+	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
+)
+
 func StartCache() {
-	tqlResultCache = newEncoderCache()
-	tqlResultCache.wg.Add(1)
+	tqlResultCache = newCache()
+	tqlResultCache.closeWg.Add(1)
 	go func() {
-		defer tqlResultCache.wg.Done()
+		defer tqlResultCache.closeWg.Done()
 		tqlResultCache.cache.Start()
+	}()
+
+	tqlResultCache.closeWg.Add(1)
+	go func() {
+		defer tqlResultCache.closeWg.Done()
+		for {
+			select {
+			case <-tqlResultCache.closeCh:
+				return
+			case <-time.Tick(time.Second):
+				value := tqlResultCacheDataSize.(*metric.Counter).Value()
+				metricCacheDataSize.Add(value)
+			}
+		}
 	}()
 }
 
 func StopCache() {
 	if tqlResultCache != nil {
 		tqlResultCache.cache.Stop()
-		tqlResultCache.wg.Wait()
+		close(tqlResultCache.closeCh)
+		tqlResultCache.closeWg.Wait()
+		tqlResultCache = nil
 	}
 }
 
 type Cache struct {
-	cache   *ttlcache.Cache[string, []byte]
-	wg      sync.WaitGroup
+	cache   *ttlcache.Cache[string, *CacheData]
+	closeWg sync.WaitGroup
 	closeCh chan struct{}
 }
 
-func newEncoderCache() *Cache {
-	cache := ttlcache.New[string, []byte](
-		ttlcache.WithCapacity[string, []byte](10),
+type CacheData struct {
+	CachedAt  time.Time
+	Data      []byte
+	ExpiresAt time.Time
+	TTL       time.Duration
+}
+
+func newCache() *Cache {
+	cache := ttlcache.New(
+		ttlcache.WithCapacity[string, *CacheData](10),
 	)
-	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, []byte]) {
-		fmt.Println("cache evict", i.Key())
+	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, *CacheData]) {
+		data := i.Value()
+		tqlResultCacheDataSize.Add(float64(len(data.Data)))
 	})
-	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, []byte]) {
-		fmt.Println("cache insert", i.Key())
+	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, *CacheData]) {
+		data := i.Value()
+		tqlResultCacheDataSize.Add(float64(len(data.Data)) * -1)
 	})
 	return &Cache{
 		cache:   cache,
@@ -50,55 +82,61 @@ func newEncoderCache() *Cache {
 }
 
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
-	c.cache.Set(key, value, ttl)
+	data := &CacheData{
+		Data:     value,
+		CachedAt: time.Now(),
+	}
+	c.cache.Set(key, data, ttl)
 }
 
-func (c *Cache) Get(key string) ([]byte, bool) {
+// Get returns cached content and its expiration time
+// If the key is empty, it will return nil
+func (c *Cache) Get(key string) *CacheData {
 	if key == "" {
-		// when tql sink has `cache` option, but is is not call from .tql file
-		// e.g. it called from tql-editor of web ui
-		return nil, false
+		return nil
 	}
-	item := c.cache.Get(key, ttlcache.WithDisableTouchOnHit[string, []byte]())
+	item := c.cache.Get(key, ttlcache.WithDisableTouchOnHit[string, *CacheData]())
 	if item == nil {
-		fmt.Println("cache miss", key)
-		return nil, false
+		// cache miss
+		return nil
 	}
-	fmt.Println("cache hit", key)
-	return item.Value(), true
+
+	ret := item.Value()
+	ret.ExpiresAt = item.ExpiresAt()
+	ret.TTL = item.TTL()
+	return ret
 }
 
 type CacheOption struct {
-	key string
-	ttl time.Duration
+	key              string
+	ttl              time.Duration
+	preemptiveUpdate float64
 }
 
 func (co *CacheOption) String() string {
-	return fmt.Sprintf("key: %s, ttl: %s", co.key, co.ttl)
+	return fmt.Sprintf("key: %s, ttl: %s, preemptiveUpdate: %f", co.key, co.ttl, co.preemptiveUpdate)
 }
 
 func (node *Node) fmCache(key string, ttlStr string) (*CacheOption, error) {
+	return node.fmCache2(key, ttlStr, 0)
+}
+
+func (node *Node) fmCache2(key string, ttlStr string, preemptiveUpdate float64) (*CacheOption, error) {
 	ttl := time.Minute
-	if node.task.sourcePath == "" {
-		// only .tql file source can cache the result output
-		// if the sourcePath is empty, it means the task is not from .tql file
-		key = ""
-	} else {
-		if key == "" {
-			key = node.task.sourcePath
+	key = fmt.Sprintf("%s:%s:%s", node.task.sourcePath, node.task.sourceHash, key)
+	if ttlStr != "" {
+		if d, err := time.ParseDuration(ttlStr); err != nil || d <= time.Second {
+			return nil, fmt.Errorf("invalid cache ttl %q", ttlStr)
 		} else {
-			key = node.task.sourcePath + "#" + key
-		}
-		if ttlStr != "" {
-			if d, err := time.ParseDuration(ttlStr); err != nil || d <= time.Second {
-				return nil, fmt.Errorf("invalid cache ttl %q", ttlStr)
-			} else {
-				ttl = d
-			}
+			ttl = d
 		}
 	}
+	if preemptiveUpdate < 0 || preemptiveUpdate >= 1 {
+		return nil, fmt.Errorf("invalid preemptive update ratio %f", preemptiveUpdate)
+	}
 	return &CacheOption{
-		key: key,
-		ttl: ttl,
+		key:              key,
+		ttl:              ttl,
+		preemptiveUpdate: preemptiveUpdate,
 	}, nil
 }

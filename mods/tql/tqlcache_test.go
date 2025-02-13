@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,15 +12,14 @@ import (
 )
 
 func TestTqlCache(t *testing.T) {
+	expectText := ""
 	tests := []struct {
 		Name       string
 		Script     string
 		Params     map[string][]string
 		Payload    string
 		Filename   string
-		ExpectCSV  []string
-		ExpectText []string
-		ExpectErr  string
+		ExpectFunc func(t *testing.T, result string)
 	}{
 		{
 			Name: "cache-enlist",
@@ -30,14 +28,15 @@ func TestTqlCache(t *testing.T) {
 						parseFloat(param("begin")), 
 						parseFloat(param("end")),
 						parseFloat(param("count"))) )
+				MAPVALUE(0, value(0)*random()*10)
 				CSV(
-					cache(param("begin") + "-" + param("end") + "-" +  param("count"), "10s")
+					cache(param("begin") + "-" + param("end") + "-" +  param("count"), "5s")
 				)`,
 			Params:   map[string][]string{"begin": {"1"}, "end": {"10"}, "count": {"10"}},
 			Filename: "/test/cache-enlist.tql",
-			ExpectCSV: []string{
-				"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "\n",
-			},
+			ExpectFunc: (func(t *testing.T, result string) {
+				expectText = result
+			}),
 		},
 		{
 			Name: "cache-hit",
@@ -46,17 +45,20 @@ func TestTqlCache(t *testing.T) {
 						parseFloat(param("begin")), 
 						parseFloat(param("end")),
 						parseFloat(param("count"))) )
+				MAPVALUE(0, value(0)*random()*10)
 				CSV(
-					cache(param("begin") + "-" + param("end") + "-" +  param("count"), "10s")
+					cache(param("begin") + "-" + param("end") + "-" +  param("count"), "5s")
 				)`,
 			Params:   map[string][]string{"begin": {"1"}, "end": {"10"}, "count": {"10"}},
 			Filename: "/test/cache-enlist.tql",
-			ExpectCSV: []string{
-				"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "\n",
-			},
+			ExpectFunc: (func(t *testing.T, result string) {
+				require.Equal(t, expectText, result)
+			}),
 		},
 	}
 
+	StartCache()
+	defer StopCache()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -64,7 +66,7 @@ func TestTqlCache(t *testing.T) {
 
 			output := &bytes.Buffer{}
 			task := NewTaskContext(ctx)
-			task.sourcePath = tc.Filename
+			//task.sourcePath = tc.Filename
 			task.SetLogWriter(os.Stdout)
 			task.SetOutputWriterJson(output, true)
 			if tc.Payload != "" {
@@ -79,11 +81,6 @@ func TestTqlCache(t *testing.T) {
 				return
 			}
 			result := task.Execute()
-			if tc.ExpectErr != "" {
-				require.Error(t, result.Err)
-				require.Equal(t, tc.ExpectErr, result.Err.Error())
-				return
-			}
 			if result.Err != nil {
 				t.Log("ERROR:", tc.Name, result.Err.Error())
 				t.Fail()
@@ -105,13 +102,7 @@ func TestTqlCache(t *testing.T) {
 						outputText = "ERROR: failed to marshal result"
 					}
 				}
-				if len(tc.ExpectCSV) > 0 {
-					require.Equal(t, strings.Join(tc.ExpectCSV, "\n"), outputText)
-				} else if len(tc.ExpectText) > 0 {
-					require.Equal(t, strings.Join(tc.ExpectText, "\n"), outputText)
-				} else {
-					t.Fatalf("unhandled output %q: %s", task.OutputContentType(), outputText)
-				}
+				tc.ExpectFunc(t, outputText)
 			default:
 				t.Fatal("ERROR:", tc.Name, "unexpected content type:", task.OutputContentType())
 			}
