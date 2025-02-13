@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -75,6 +76,7 @@ type CacheData struct {
 	Data      []byte
 	ExpiresAt time.Time
 	TTL       time.Duration
+	updates   atomic.Int32
 }
 
 func newCache() *Cache {
