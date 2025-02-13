@@ -2,6 +2,7 @@ package tql
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"sync"
 	"time"
@@ -126,6 +127,12 @@ func (node *Node) fmCache(key string, ttlStr string) (*CacheOption, error) {
 
 func (node *Node) fmCache2(key string, ttlStr string, preemptiveUpdate float64) (*CacheOption, error) {
 	ttl := time.Minute
+	if len(key) > 40 {
+		// make a long key to shorten one via sha1 hash
+		h := sha1.New()
+		h.Write([]byte(key))
+		key = fmt.Sprintf("%x", h.Sum(nil))
+	}
 	key = fmt.Sprintf("%s:%s:%s", node.task.sourcePath, node.task.sourceHash, key)
 	if ttlStr != "" {
 		if d, err := time.ParseDuration(ttlStr); err != nil || d <= time.Second {
