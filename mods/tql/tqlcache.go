@@ -16,6 +16,7 @@ var tqlResultCache *Cache
 var (
 	tqlResultCacheDataSize = metric.NewCounter()
 	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
+	metricCacheCount       = metric.NewExpVarIntGauge("machbase:tql:cache:count", api.MetricTimeFrames...)
 )
 
 func StartCache() {
@@ -33,9 +34,10 @@ func StartCache() {
 			select {
 			case <-tqlResultCache.closeCh:
 				return
-			case <-time.Tick(time.Second):
+			case <-time.Tick(100 * time.Millisecond):
 				value := tqlResultCacheDataSize.(*metric.Counter).Value()
 				metricCacheDataSize.Add(value)
+				metricCacheCount.Add(int64(tqlResultCache.cache.Len()))
 			}
 		}
 	}()
@@ -64,8 +66,9 @@ type CacheData struct {
 }
 
 func newCache() *Cache {
+	capacity := uint64(500)
 	cache := ttlcache.New(
-		ttlcache.WithCapacity[string, *CacheData](10),
+		ttlcache.WithCapacity[string, *CacheData](capacity),
 	)
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, *CacheData]) {
 		data := i.Value()
