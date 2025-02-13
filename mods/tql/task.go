@@ -3,6 +3,7 @@ package tql
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,8 @@ type Task struct {
 	volatileAssetsProvider VolatileAssetsProvider
 
 	// compiled result
+	sourcePath string
+	sourceHash string
 	compiled   bool
 	compileErr error
 	output     *output
@@ -177,6 +180,7 @@ func (x *Task) GetVariable(name string) (any, error) {
 
 func (x *Task) CompileScript(sc *Script) error {
 	x.volatileAssetsProvider = sc.vap
+	x.sourcePath = sc.path0
 	return x.Compile(bytes.NewBuffer(sc.content))
 }
 
@@ -185,7 +189,15 @@ func (x *Task) CompileString(code string) error {
 }
 
 func (x *Task) Compile(codeReader io.Reader) error {
-	err := x.compile(codeReader)
+	code, err := io.ReadAll(codeReader)
+	if err != nil {
+		return err
+	}
+	h := sha1.New()
+	h.Write(code)
+	x.sourceHash = fmt.Sprintf("%x", h.Sum(nil))
+
+	err = x.compile(bytes.NewBuffer(code))
 	if err != nil {
 		x.LogError("Compile", err.Error())
 	} else {
@@ -382,6 +394,46 @@ func (x *Task) execute() *Result {
 		}
 	}()
 
+	if x.output.cachedData != nil {
+		// send cached data to client first
+		x.outputWriter.Write(x.output.cachedData)
+
+		// Do preemptive update in background
+		if x.output.cacheWriter != nil {
+			var cancel context.CancelFunc
+			x.ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+			fmt.Println("cache preemptive update start")
+			go func() {
+				defer cancel()
+				x.executeOutput()
+				fmt.Println("cache preemptive update done")
+			}()
+		}
+		return &Result{
+			Err:      nil,
+			Message:  "cached",
+			IsDbSink: x.output.dbSink != nil,
+			_created: x._created,
+		}
+	}
+
+	x.executeOutput()
+
+	if x.output != nil {
+		return &Result{
+			Err:      x.output.lastError,
+			Message:  x.output.lastMessage,
+			IsDbSink: x.output.dbSink != nil,
+			_created: x._created,
+		}
+	}
+	return &Result{
+		Err:      errors.New("no sink exists"),
+		_created: x._created,
+	}
+}
+
+func (x *Task) executeOutput() {
 	// start output
 	if x.output != nil {
 		x.output.start()
@@ -399,19 +451,6 @@ func (x *Task) execute() *Result {
 	}
 	if x.output != nil {
 		x.output.stop()
-	}
-
-	if x.output != nil {
-		return &Result{
-			Err:      x.output.lastError,
-			Message:  x.output.lastMessage,
-			IsDbSink: x.output.dbSink != nil,
-			_created: x._created,
-		}
-	}
-	return &Result{
-		Err:      errors.New("no sink exists"),
-		_created: x._created,
 	}
 }
 

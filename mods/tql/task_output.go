@@ -3,8 +3,10 @@ package tql
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
@@ -24,8 +26,9 @@ var (
 )
 
 type Encoder struct {
-	format string
-	opts   []opts.Option
+	format      string
+	opts        []opts.Option
+	cacheOption *CacheOption
 }
 
 func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
@@ -48,6 +51,10 @@ type output struct {
 	closeWg     sync.WaitGroup
 	lastError   error
 	lastMessage string
+
+	cacheOption *CacheOption
+	cacheWriter *bytes.Buffer
+	cachedData  []byte
 
 	pragma  []*Line
 	tqlLine *Line
@@ -87,9 +94,33 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		if val == nil {
 			return nil, errors.New("no encoder found")
 		}
+		var writer io.Writer = node.task.OutputWriter()
+		// check cache option
+		if val.cacheOption != nil && tqlResultCache != nil {
+			ret.cacheOption = val.cacheOption
+			if item := tqlResultCache.Get(val.cacheOption.key); item != nil {
+				// get cached data
+				ret.cachedData = item.Data
+				// check preemptive update is set and valid
+				if preemptiveUpdateRatio := val.cacheOption.preemptiveUpdate; preemptiveUpdateRatio > 0 && preemptiveUpdateRatio < 1 {
+					// check if the cache is required to be updated in advance
+					preemptiveTTL := time.Duration(float64(item.TTL) * preemptiveUpdateRatio)
+					preemptiveUpdateAt := item.ExpiresAt.Add(-1 * preemptiveTTL)
+					if preemptiveUpdateAt.Before(time.Now()) {
+						// update cache
+						ret.cacheWriter = &bytes.Buffer{}
+						writer = io.MultiWriter(ret.cacheWriter)
+					}
+				}
+			} else {
+				ret.cacheWriter = &bytes.Buffer{}
+				writer = io.MultiWriter(ret.cacheWriter, node.task.OutputWriter())
+			}
+		}
+
 		options := []opts.Option{
 			opts.Logger(node.task),
-			opts.OutputStream(node.task.OutputWriter()),
+			opts.OutputStream(writer),
 			opts.ChartJson(node.task.toJsonOutput),
 			opts.GeoMapJson(node.task.toJsonOutput),
 			opts.VolatileFileWriter(node.task),
@@ -194,6 +225,12 @@ func (out *output) start() {
 				}
 			}
 		}
+
+		if out.cacheOption != nil && out.cacheOption.key != "" && out.cacheWriter != nil && tqlResultCache != nil {
+			if data := out.cacheWriter.Bytes(); len(data) > 0 {
+				tqlResultCache.Set(out.cacheOption.key, data, out.cacheOption.ttl)
+			}
+		}
 		out.closeWg.Done()
 	}()
 }
@@ -273,11 +310,11 @@ func (out *output) closeEncoder() {
 }
 
 func (out *output) addRow(rec *Record) error {
-	var addfunc func([]any) error
+	var addFunc func([]any) error
 	if out.encoder != nil {
-		addfunc = out.encoder.AddRow
+		addFunc = out.encoder.AddRow
 	} else if out.dbSink != nil {
-		addfunc = out.dbSink.AddRow
+		addFunc = out.dbSink.AddRow
 	} else {
 		return fmt.Errorf("%s has no destination", out.name)
 	}
@@ -290,7 +327,7 @@ func (out *output) addRow(rec *Record) error {
 	} else if rec.IsImage() && rec.Value() != nil {
 		value := rec.Value()
 		if raw, ok := value.([]byte); ok {
-			return addfunc([]any{rec.contentType, raw})
+			return addFunc([]any{rec.contentType, raw})
 		} else {
 			return fmt.Errorf("%s can not write invalid image data (%T)", out.name, value)
 		}
@@ -303,16 +340,16 @@ func (out *output) addRow(rec *Record) error {
 		case [][]any:
 			var err error
 			for n := range v {
-				err = addfunc(v[n])
+				err = addFunc(v[n])
 				if err != nil {
 					break
 				}
 			}
 			return err
 		case []any:
-			return addfunc(v)
+			return addFunc(v)
 		case any:
-			return addfunc([]any{v})
+			return addFunc([]any{v})
 		}
 	}
 	return nil

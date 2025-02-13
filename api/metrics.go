@@ -243,9 +243,9 @@ func QueryStatz(interval time.Duration, filter func(key string, value metric.Exp
 					g := gauge.Value()
 					row.Values[colIdx] = g["avg"]
 					colIdx++
-					row.Values[colIdx] = g["min"]
-					colIdx++
 					row.Values[colIdx] = g["max"]
+					colIdx++
+					row.Values[colIdx] = g["min"]
 					colIdx++
 				} else if histogram, ok := valueMetric.(*metric.Histogram); ok {
 					h := histogram.Value()

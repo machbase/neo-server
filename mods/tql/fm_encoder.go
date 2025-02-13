@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
@@ -15,6 +16,13 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		switch v := arg.(type) {
 		case *time.Location:
 			arg = opts.TimeLocation(v)
+		case *CacheOption:
+			if slices.Contains([]string{"json", "csv", "ndjson"}, format) {
+				ret.cacheOption = v
+				continue
+			} else {
+				return nil, fmt.Errorf("encoder '%s' does not support cache", format)
+			}
 		}
 
 		if opt, ok := arg.(opts.Option); ok {
