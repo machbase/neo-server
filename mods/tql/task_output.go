@@ -104,7 +104,7 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 				// check preemptive update is set and valid
 				if preemptiveUpdateRatio := val.cacheOption.preemptiveUpdate; preemptiveUpdateRatio > 0 && preemptiveUpdateRatio < 1 {
 					// check if the cache is required to be updated in advance
-					preemptiveTTL := time.Duration(float64(item.TTL) * preemptiveUpdateRatio)
+					preemptiveTTL := time.Duration(float64(item.TTL) * (1 - preemptiveUpdateRatio))
 					preemptiveUpdateAt := item.ExpiresAt.Add(-1 * preemptiveTTL)
 					if preemptiveUpdateAt.Before(time.Now()) {
 						// update cache

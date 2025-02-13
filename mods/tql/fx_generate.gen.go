@@ -2330,9 +2330,9 @@ func (x *Node) gen_FFT(args ...any) (any, error) {
 
 // gen_cache
 //
-// syntax: cache(string, string)
+// syntax: cache(string, string, ...float64)
 func (x *Node) gen_cache(args ...any) (any, error) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		return nil, ErrInvalidNumOfArgs("cache", 2, len(args))
 	}
 	p0, err := convString(args, 0, "cache", "string")
@@ -2343,7 +2343,15 @@ func (x *Node) gen_cache(args ...any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x.fmCache(p0, p1)
+	p2 := []float64{}
+	for n := 2; n < len(args); n++ {
+		argv, err := convFloat64(args, n, "cache", "...float64")
+		if err != nil {
+			return nil, err
+		}
+		p2 = append(p2, argv)
+	}
+	return x.fmCache(p0, p1, p2...)
 }
 
 // gen_CSV

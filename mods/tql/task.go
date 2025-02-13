@@ -54,6 +54,9 @@ type Task struct {
 	output     *output
 	nodes      []*Node
 
+	// preemptive cache update
+	_preemptiveCacheUpdateStarted bool
+
 	_shouldStop    bool
 	_resultColumns api.Columns
 	_stateLock     sync.RWMutex
@@ -399,14 +402,14 @@ func (x *Task) execute() *Result {
 		x.outputWriter.Write(x.output.cachedData)
 
 		// Do preemptive update in background
+		// if the cachedData and cacheWriter are set => preemptive update
 		if x.output.cacheWriter != nil {
 			var cancel context.CancelFunc
-			x.ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-			fmt.Println("cache preemptive update start")
+			x.ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+			x._preemptiveCacheUpdateStarted = true
 			go func() {
 				defer cancel()
 				x.executeOutput()
-				fmt.Println("cache preemptive update done")
 			}()
 		}
 		return &Result{
@@ -455,7 +458,10 @@ func (x *Task) executeOutput() {
 }
 
 func (x *Task) Cancel() {
-	x.fireCircuitBreak(nil)
+	// do not cancel if the task is in preemptive cache update mode
+	if !x._preemptiveCacheUpdateStarted {
+		x.fireCircuitBreak(nil)
+	}
 }
 
 func (x *Task) fireCircuitBreak(_ *Node) {

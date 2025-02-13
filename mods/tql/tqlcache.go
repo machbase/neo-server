@@ -16,8 +16,12 @@ var tqlResultCache *Cache
 
 var (
 	tqlResultCacheDataSize = metric.NewCounter()
-	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
-	metricCacheCount       = metric.NewExpVarIntGauge("machbase:tql:cache:count", api.MetricTimeFrames...)
+	metricCacheDataSize    = metric.NewExpVarIntCounter("machbase:tql:cache:data_size", api.MetricTimeFrames...)
+	metricCacheCount       = metric.NewExpVarIntCounter("machbase:tql:cache:count", api.MetricTimeFrames...)
+	metricInsertions       = metric.NewExpVarIntCounter("machbase:tql:cache:insertions", api.MetricTimeFrames...)
+	metricEvictions        = metric.NewExpVarIntCounter("machbase:tql:cache:evictions", api.MetricTimeFrames...)
+	metricHits             = metric.NewExpVarIntCounter("machbase:tql:cache:hits", api.MetricTimeFrames...)
+	metricMisses           = metric.NewExpVarIntCounter("machbase:tql:cache:misses", api.MetricTimeFrames...)
 )
 
 func StartCache() {
@@ -31,14 +35,22 @@ func StartCache() {
 	tqlResultCache.closeWg.Add(1)
 	go func() {
 		defer tqlResultCache.closeWg.Done()
+		var prevMet = tqlResultCache.cache.Metrics()
+
 		for {
 			select {
 			case <-tqlResultCache.closeCh:
 				return
-			case <-time.Tick(100 * time.Millisecond):
+			case <-time.Tick(1 * time.Second):
 				value := tqlResultCacheDataSize.(*metric.Counter).Value()
 				metricCacheDataSize.Add(value)
 				metricCacheCount.Add(int64(tqlResultCache.cache.Len()))
+				met := tqlResultCache.cache.Metrics()
+				metricInsertions.Add(int64(met.Insertions - prevMet.Insertions))
+				metricEvictions.Add(int64(met.Evictions - prevMet.Evictions))
+				metricHits.Add(int64(met.Hits - prevMet.Hits))
+				metricMisses.Add(int64(met.Misses - prevMet.Misses))
+				prevMet = met
 			}
 		}
 	}()
@@ -60,7 +72,6 @@ type Cache struct {
 }
 
 type CacheData struct {
-	CachedAt  time.Time
 	Data      []byte
 	ExpiresAt time.Time
 	TTL       time.Duration
@@ -87,8 +98,7 @@ func newCache() *Cache {
 
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	data := &CacheData{
-		Data:     value,
-		CachedAt: time.Now(),
+		Data: value,
 	}
 	c.cache.Set(key, data, ttl)
 }
@@ -121,11 +131,15 @@ func (co *CacheOption) String() string {
 	return fmt.Sprintf("key: %s, ttl: %s, preemptiveUpdate: %f", co.key, co.ttl, co.preemptiveUpdate)
 }
 
-func (node *Node) fmCache(key string, ttlStr string) (*CacheOption, error) {
-	return node.fmCache2(key, ttlStr, 0)
+func (node *Node) fmCache(key string, ttlStr string, extra ...float64) (*CacheOption, error) {
+	preemptiveUpdateRatio := 0.0
+	if len(extra) > 0 {
+		preemptiveUpdateRatio = extra[0]
+	}
+	return node.fmCachePreUpdate(key, ttlStr, preemptiveUpdateRatio)
 }
 
-func (node *Node) fmCache2(key string, ttlStr string, preemptiveUpdate float64) (*CacheOption, error) {
+func (node *Node) fmCachePreUpdate(key string, ttlStr string, preemptiveUpdate float64) (*CacheOption, error) {
 	ttl := time.Minute
 	if len(key) > 40 {
 		// make a long key to shorten one via sha1 hash
