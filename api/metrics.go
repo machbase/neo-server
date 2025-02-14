@@ -21,32 +21,36 @@ var MetricTimeFrames = []string{"2m1s", "60m30s", "10h5m"}
 const MetricQueryRowsMax = 120
 
 var (
-	// sessions
-	metricConns            = metric.NewExpVarIntCounter("machbase:session:conns", MetricTimeFrames...)
-	metricConnsCounter     = metric.NewCounter()
-	metricConnsInUse       = metric.NewExpVarIntCounter("machbase:session:conns_in_use", MetricTimeFrames...)
-	metricConnWaitTime     = metric.NewExpVarDurationGauge("machbase:session:conn_wait_time", MetricTimeFrames...)
-	metricConnUseTime      = metric.NewExpVarDurationGauge("machbase:session:conn_use_time", MetricTimeFrames...)
-	metricStmts            = metric.NewExpVarIntCounter("machbase:session:stmts", MetricTimeFrames...)
-	metricStmtsCounter     = metric.NewCounter()
-	metricStmtsInUse       = metric.NewExpVarIntCounter("machbase:session:stmts_in_use", MetricTimeFrames...)
-	metricAppenders        = metric.NewExpVarIntCounter("machbase:session:appenders", MetricTimeFrames...)
-	metricAppendersCounter = metric.NewCounter()
-	metricAppendersInUse   = metric.NewExpVarIntCounter("machbase:session:appenders_in_use", MetricTimeFrames...)
+	// session:conn
+	metricConns        = metric.NewExpVarIntCounter("machbase:session:conn:count", MetricTimeFrames...)
+	metricConnsCounter = metric.NewCounter()
+	metricConnsInUse   = metric.NewExpVarIntCounter("machbase:session:conn:in_use", MetricTimeFrames...)
+	metricConnWaitTime = metric.NewExpVarDurationGauge("machbase:session:conn:wait_time", MetricTimeFrames...)
+	metricConnUseTime  = metric.NewExpVarDurationGauge("machbase:session:conn:use_time", MetricTimeFrames...)
 
-	// query api
-	metricQueryCount         = metric.NewExpVarIntCounter("machbase:query:count", MetricTimeFrames...)
-	metricQueryExecuteElapse = metric.NewExpVarDurationGauge("machbase:query:execute_elapse", MetricTimeFrames...)
-	metricQueryLimitWait     = metric.NewExpVarDurationGauge("machbase:query:limit_wait", MetricTimeFrames...)
-	metricQueryFetchElapse   = metric.NewExpVarDurationGauge("machbase:query:fetch_elapse", MetricTimeFrames...)
+	// session:stmt
+	metricStmts        = metric.NewExpVarIntCounter("machbase:session:stmt:count", MetricTimeFrames...)
+	metricStmtsCounter = metric.NewCounter()
+	metricStmtsInUse   = metric.NewExpVarIntCounter("machbase:session:stmt:in_use", MetricTimeFrames...)
+
+	// session:appender
+	metricAppenders        = metric.NewExpVarIntCounter("machbase:session:append:count", MetricTimeFrames...)
+	metricAppendersCounter = metric.NewCounter()
+	metricAppendersInUse   = metric.NewExpVarIntCounter("machbase:session:append:in_use", MetricTimeFrames...)
+
+	// session:query
+	metricQueryCount         = metric.NewExpVarIntCounter("machbase:session:query:count", MetricTimeFrames...)
+	metricQueryExecuteElapse = metric.NewExpVarDurationGauge("machbase:session:query:exec_time", MetricTimeFrames...)
+	metricQueryLimitWait     = metric.NewExpVarDurationGauge("machbase:session:query:wait_time", MetricTimeFrames...)
+	metricQueryFetchElapse   = metric.NewExpVarDurationGauge("machbase:session:query:fetch_time", MetricTimeFrames...)
 
 	// longest query
-	metricQueryHwmSqlText       = expvar.NewString("machbase:query:hwm_sql_text")
-	metricQueryHwmSqlArgs       = expvar.NewString("machbase:query:hwm_sql_args")
-	metricQueryHwmElapse        = expvar.NewInt("machbase:query:hwm_elapse")
-	metricQueryHwmExecuteElapse = expvar.NewInt("machbase:query:hwm_execute_elapse")
-	metricQueryHwmLimitWait     = expvar.NewInt("machbase:query:hwm_limit_wait")
-	metricQueryHwmFetchElapse   = expvar.NewInt("machbase:query:hwm_fetch_elapse")
+	metricQueryHwmSqlText       = expvar.NewString("machbase:session:query:hwm:sql_text")
+	metricQueryHwmSqlArgs       = expvar.NewString("machbase:session:query:hwm:sql_args")
+	metricQueryHwmElapse        = expvar.NewInt("machbase:session:query:hwm:elapse")
+	metricQueryHwmExecuteElapse = expvar.NewInt("machbase:session:query:hwm:exec_time")
+	metricQueryHwmLimitWait     = expvar.NewInt("machbase:session:query:hwm:wait_time")
+	metricQueryHwmFetchElapse   = expvar.NewInt("machbase:session:query:hwm:fetch_time")
 )
 
 func init() {

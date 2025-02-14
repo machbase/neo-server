@@ -882,7 +882,9 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	}
 
 	stat := api.QueryStatzRows(dur, 1, func(kv expvar.KeyValue) bool {
-		return strings.HasPrefix(kv.Key, "machbase:") || slices.Contains(includes, kv.Key)
+		return strings.HasPrefix(kv.Key, "machbase:") ||
+			strings.HasPrefix(kv.Key, "go:") ||
+			slices.Contains(includes, kv.Key)
 	})
 	if stat.Err != nil {
 		ctx.String(http.StatusInternalServerError, stat.Err.Error())
@@ -900,7 +902,14 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 				if valueType == "dur" {
 					ret[col.Name] = printer.Sprintf("%s", time.Duration(value.(float64)))
 				} else if valueType == "i" {
-					ret[col.Name] = printer.Sprintf("%d", value)
+					switch val := value.(type) {
+					case float64:
+						ret[col.Name] = printer.Sprintf("%d", int64(val))
+					case int64:
+						ret[col.Name] = printer.Sprintf("%d", val)
+					default:
+						ret[col.Name] = printer.Sprintf("%v", value)
+					}
 				} else {
 					ret[col.Name] = printer.Sprintf("%f", value)
 				}

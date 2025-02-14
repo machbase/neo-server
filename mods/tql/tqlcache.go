@@ -17,8 +17,9 @@ var tqlResultCache *Cache
 
 var (
 	tqlResultCacheDataSize = metric.NewCounter()
-	metricCacheDataSize    = metric.NewExpVarIntCounter("machbase:tql:cache:data_size", api.MetricTimeFrames...)
-	metricCacheCount       = metric.NewExpVarIntCounter("machbase:tql:cache:count", api.MetricTimeFrames...)
+	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
+	tqlResultCacheCount    = metric.NewCounter()
+	metricCacheCount       = metric.NewExpVarIntGauge("machbase:tql:cache:count", api.MetricTimeFrames...)
 	metricInsertions       = metric.NewExpVarIntCounter("machbase:tql:cache:insertions", api.MetricTimeFrames...)
 	metricEvictions        = metric.NewExpVarIntCounter("machbase:tql:cache:evictions", api.MetricTimeFrames...)
 	metricHits             = metric.NewExpVarIntCounter("machbase:tql:cache:hits", api.MetricTimeFrames...)
@@ -37,15 +38,22 @@ func StartCache() {
 	go func() {
 		defer tqlResultCache.closeWg.Done()
 		var prevMet = tqlResultCache.cache.Metrics()
-
+		var prevCacheDataSize int64
+		var prevCacheCount int64
 		for {
 			select {
 			case <-tqlResultCache.closeCh:
 				return
-			case <-time.Tick(1 * time.Second):
+			case <-time.Tick(200 * time.Millisecond):
 				value := tqlResultCacheDataSize.(*metric.Counter).Value()
 				metricCacheDataSize.Add(value)
-				metricCacheCount.Add(int64(tqlResultCache.cache.Len()))
+				prevCacheDataSize = value
+				_ = prevCacheDataSize
+				value = int64(tqlResultCache.cache.Len())
+				metricCacheCount.Add(value)
+				_ = prevCacheCount
+				prevCacheCount = value
+
 				met := tqlResultCache.cache.Metrics()
 				metricInsertions.Add(int64(met.Insertions - prevMet.Insertions))
 				metricEvictions.Add(int64(met.Evictions - prevMet.Evictions))
@@ -87,10 +95,12 @@ func newCache() *Cache {
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, *CacheData]) {
 		data := i.Value()
 		tqlResultCacheDataSize.Add(float64(len(data.Data)))
+		tqlResultCacheCount.Add(1)
 	})
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, *CacheData]) {
 		data := i.Value()
 		tqlResultCacheDataSize.Add(float64(len(data.Data)) * -1)
+		tqlResultCacheCount.Add(-1)
 	})
 	return &Cache{
 		cache:   cache,
