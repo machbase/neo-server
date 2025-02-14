@@ -39,11 +39,12 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // Factory
@@ -871,56 +872,48 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	ret := map[string]any{}
 	includes := ctx.QueryArray("keys")
 	format := ctx.Query("format")
+	interval := ctx.Query("interval")
+	if interval == "" {
+		interval = "1s"
+	}
+	dur, err := time.ParseDuration(interval)
+	if err != nil {
+		dur = time.Second
+	}
 
-	expvar.Do(func(kv expvar.KeyValue) {
-		if m, ok := kv.Value.(metric.ExpVar); ok {
-			switch raw := m.Metric().(type) {
-			case metric.MultiTimeseries:
-				ret[kv.Key] = raw.Value()
-			case *metric.Timeseries:
-				ret[kv.Key] = raw.Value()
-			case *metric.Gauge:
-				ret[kv.Key] = raw.Value()
-			case *metric.Histogram:
-				ret[kv.Key] = raw.Value()
-			case *metric.Counter:
-				ret[kv.Key] = raw.Value()
-			default:
-				b, _ := json.Marshal(raw)
-				o := map[string]any{}
-				json.Unmarshal(b, &o)
-				ret[kv.Key] = o
-			}
-		} else if strings.HasPrefix(kv.Key, "machbase:") ||
-			slices.Contains(includes, kv.Key) {
-			switch m := kv.Value.(type) {
-			case *expvar.String:
-				ret[kv.Key] = m.Value()
-			case *expvar.Int:
-				ret[kv.Key] = m.Value()
-			case *expvar.Float:
-				ret[kv.Key] = m.Value()
-			case expvar.Func:
-				ret[kv.Key] = m.Value()
-			default:
-				str := m.String()
-				if strings.HasPrefix(str, "{") {
-					o := map[string]any{}
-					json.Unmarshal([]byte(str), &o)
-					ret[kv.Key] = o
-				} else if strings.HasPrefix(str, "[") {
-					o := []any{}
-					json.Unmarshal([]byte(str), &o)
-					ret[kv.Key] = o
-				} else {
-					ret[kv.Key] = str
-				}
-			}
-		}
+	stat := api.QueryStatzRows(dur, 1, func(kv expvar.KeyValue) bool {
+		return strings.HasPrefix(kv.Key, "machbase:") || slices.Contains(includes, kv.Key)
 	})
-	if format == "" || format == "json" {
-		ctx.JSON(http.StatusOK, ret)
-	} else {
+	if stat.Err != nil {
+		ctx.String(http.StatusInternalServerError, stat.Err.Error())
+		return
+	}
+	for idx, col := range stat.Cols {
+		value := stat.Rows[0].Values[idx]
+		valueType := stat.ValueTypes[idx]
+		if format == "html" {
+			printer := message.NewPrinter(language.English)
+			switch col.DataType {
+			case api.DataTypeInt64:
+				ret[col.Name] = printer.Sprintf("%d", value)
+			case api.DataTypeFloat64:
+				if valueType == "dur" {
+					ret[col.Name] = printer.Sprintf("%s", time.Duration(value.(float64)))
+				} else if valueType == "i" {
+					ret[col.Name] = printer.Sprintf("%d", value)
+				} else {
+					ret[col.Name] = printer.Sprintf("%f", value)
+				}
+			case api.DataTypeString:
+				ret[col.Name] = value
+			default:
+				ret[col.Name] = printer.Sprintf("%v", value)
+			}
+		} else {
+			ret[col.Name] = value
+		}
+	}
+	if format == "html" {
 		tpl := template.New("statz").Funcs(template.FuncMap{
 			"isMap": func(v any) bool {
 				switch v.(type) {
@@ -935,6 +928,8 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		if err := tpl.ExecuteTemplate(ctx.Writer, "statz", ret); err != nil {
 			ctx.String(http.StatusInternalServerError, err.Error())
 		}
+	} else {
+		ctx.JSON(http.StatusOK, ret)
 	}
 }
 
@@ -956,11 +951,7 @@ var tmplStatz = `
 {{- range $key, $value := . }}
 <tr>
   <td>{{ $key }}</td>
-  {{- if isMap $value }}
-  	<td> {{- template "statz" $value }} </td>
-  {{- else }}
-    <td> {{ $value }} </td>
-  {{- end }}
+  <td>{{ $value }}</td>
 </tr>
 {{- end }}
 </table>

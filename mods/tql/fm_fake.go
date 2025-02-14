@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"io"
 	"math"
@@ -17,7 +18,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 /*
@@ -59,17 +59,17 @@ type statz struct {
 }
 
 func genStatz(node *Node, gen *statz) {
-	statz := api.QueryStatz(gen.interval, func(key string, value metric.ExpVar) bool {
+	statz := api.QueryStatz(gen.interval, func(kv expvar.KeyValue) bool {
 		if len(gen.keyFilters) == 0 {
 			return true
 		} else {
 			for _, filter := range gen.keyFilters {
 				if glob.IsGlob(filter) {
-					if ok, _ := glob.Match(filter, key); ok {
+					if ok, _ := glob.Match(filter, kv.Key); ok {
 						return true
 					}
 				} else {
-					if filter == key {
+					if filter == kv.Key {
 						return true
 					}
 				}
