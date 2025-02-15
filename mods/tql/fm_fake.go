@@ -98,10 +98,20 @@ func genStatz(node *Node, gen *statz) {
 }
 
 func (node *Node) fmStatz(samplingInterval string, keyFilters ...string) *statz {
-	var interval = time.Second
-	if dur, err := time.ParseDuration(samplingInterval); err == nil {
-		interval = dur
+	var interval = api.MetricShortTerm
+	switch strings.ToLower(samplingInterval) {
+	case "short":
+		interval = api.MetricShortTerm
+	case "mid":
+		interval = api.MetricMidTerm
+	case "long":
+		interval = api.MetricLongTerm
+	default:
+		if dur, err := time.ParseDuration(samplingInterval); err == nil {
+			interval = dur
+		}
 	}
+
 	ret := &statz{
 		interval:   interval,
 		keyFilters: keyFilters,

@@ -894,6 +894,10 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		value := stat.Rows[0].Values[idx]
 		valueType := stat.ValueTypes[idx]
 		if format == "html" {
+			if value == nil {
+				ret[col.Name] = "null"
+				continue
+			}
 			printer := message.NewPrinter(language.English)
 			switch col.DataType {
 			case api.DataTypeInt64:

@@ -13,10 +13,13 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
-// 2m1s   -> 1s  : 2 * 60 = 120
-// 60m30s -> 30s : 2 * 60 = 120
-// 10h5m  -> 5m  : 10 * 12 = 120
-var MetricTimeFrames = []string{"2m1s", "60m30s", "10h5m"}
+const (
+	MetricShortTerm = 10 * time.Second
+	MetricMidTerm   = time.Minute
+	MetricLongTerm  = 15 * time.Minute
+)
+
+var MetricTimeFrames = []string{"20m10s", "2h1m", "30h15m"}
 
 const MetricQueryRowsMax = 120
 
