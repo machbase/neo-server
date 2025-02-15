@@ -16,7 +16,7 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		switch v := arg.(type) {
 		case *time.Location:
 			arg = opts.TimeLocation(v)
-		case *CacheOption:
+		case *CacheParam:
 			if slices.Contains([]string{"json", "csv", "ndjson"}, format) {
 				ret.cacheOption = v
 				continue

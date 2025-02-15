@@ -28,7 +28,7 @@ var (
 type Encoder struct {
 	format      string
 	opts        []opts.Option
-	cacheOption *CacheOption
+	cacheOption *CacheParam
 }
 
 func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
@@ -52,7 +52,7 @@ type output struct {
 	lastError   error
 	lastMessage string
 
-	cacheOption *CacheOption
+	cacheOption *CacheParam
 	cacheWriter *bytes.Buffer
 	cachedData  []byte
 
