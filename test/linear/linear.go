@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,11 +31,13 @@ func main() {
 	neoHttpAddr := "http://127.0.0.1:5654"
 	numberOfRuns := 1
 	scenario := "default"
+	useTql := false
 
 	flag.StringVar(&neoHttpAddr, "neo-http", neoHttpAddr, "Neo HTTP address")
 	flag.IntVar(&numberOfWorkers, "n", numberOfWorkers, "Number of workers to use")
 	flag.IntVar(&numberOfRuns, "r", numberOfRuns, "Number of runs")
 	flag.StringVar(&scenario, "scenario", scenario, "Scenario to run")
+	flag.BoolVar(&useTql, "tql", useTql, "Use TQL")
 	flag.Parse()
 
 	sqlTexts := scenarios[scenario]
@@ -59,7 +62,12 @@ func main() {
 				start := time.Now()
 
 				sqlText := queries[rand.Int31n(lenQueries)]
-				queryElapse := queryNeo(neoHttpAddr, sqlText)
+				var queryElapse time.Duration
+				if useTql {
+					queryElapse = queryNeoTql(neoHttpAddr, sqlText)
+				} else {
+					queryElapse = queryNeo(neoHttpAddr, sqlText)
+				}
 
 				runElapse := time.Since(start)
 				runChan <- runElapse
@@ -83,6 +91,49 @@ var client = &http.Client{
 // execute the query and return the elapsed time that is said in the response JSON.
 func queryNeo(neoHttpAddr string, sqlText string) time.Duration {
 	req, err := http.NewRequest("GET", neoHttpAddr+"/db/query?q="+url.QueryEscape(sqlText), nil)
+	if err != nil {
+		fmt.Println("Failed to create request:", err)
+		os.Exit(1)
+	}
+	rsp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Failed to select data:", err)
+		os.Exit(1)
+	}
+	if rsp.StatusCode != http.StatusOK {
+		dumpResponse(rsp, "Failed to select data")
+		os.Exit(1)
+	}
+
+	content, err := io.ReadAll(rsp.Body)
+	if err != nil {
+		fmt.Println("Failed to read response body:", err)
+		os.Exit(1)
+	}
+	rsp.Body.Close()
+
+	jsonStr := string(content)
+	success := gjson.Get(jsonStr, "success").Bool()
+	if !success {
+		reason := gjson.Get(jsonStr, "reason").String()
+		fmt.Println("Failed to select data:", reason)
+		os.Exit(1)
+	}
+	rows := gjson.Get(jsonStr, "data.rows").Array()
+	_ = rows
+	elapseStr := gjson.Get(jsonStr, "elapse").String()
+	elapse, err := time.ParseDuration(elapseStr)
+	if err != nil {
+		fmt.Println("Failed to parse elapse:", err)
+		os.Exit(1)
+	}
+	return elapse
+}
+
+// execute the query and return the elapsed time that is said in the response JSON.
+func queryNeoTql(neoHttpAddr string, sqlText string) time.Duration {
+	req, err := http.NewRequest("POST", neoHttpAddr+"/db/tql",
+		strings.NewReader(fmt.Sprintf("SQL(`%s`)\nJSON( cache(`%s`, `60s`, 0.5))\n", sqlText, sqlText)))
 	if err != nil {
 		fmt.Println("Failed to create request:", err)
 		os.Exit(1)
