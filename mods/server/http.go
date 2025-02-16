@@ -873,11 +873,11 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 	format := ctx.Query("format")
 	interval := ctx.Query("interval")
 	if interval == "" {
-		interval = "1s"
+		interval = "1m"
 	}
 	dur, err := time.ParseDuration(interval)
 	if err != nil {
-		dur = time.Second
+		dur = time.Minute
 	}
 
 	stat := api.QueryStatzRows(dur, 1, func(key string) (bool, int) {
