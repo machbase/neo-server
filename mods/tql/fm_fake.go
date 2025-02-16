@@ -16,8 +16,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
-	"github.com/machbase/neo-server/v8/mods/util/glob"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 /*
@@ -59,24 +57,7 @@ type statz struct {
 }
 
 func genStatz(node *Node, gen *statz) {
-	statz := api.QueryStatz(gen.interval, func(key string, value metric.ExpVar) bool {
-		if len(gen.keyFilters) == 0 {
-			return true
-		} else {
-			for _, filter := range gen.keyFilters {
-				if glob.IsGlob(filter) {
-					if ok, _ := glob.Match(filter, key); ok {
-						return true
-					}
-				} else {
-					if filter == key {
-						return true
-					}
-				}
-			}
-		}
-		return false
-	})
+	statz := api.QueryStatz(gen.interval, api.QueryStatzFilter(gen.keyFilters))
 	if statz.Err != nil {
 		ErrorRecord(statz.Err).Tell(node.next)
 		return
@@ -98,10 +79,20 @@ func genStatz(node *Node, gen *statz) {
 }
 
 func (node *Node) fmStatz(samplingInterval string, keyFilters ...string) *statz {
-	var interval = time.Second
-	if dur, err := time.ParseDuration(samplingInterval); err == nil {
-		interval = dur
+	var interval = api.MetricShortTerm
+	switch strings.ToLower(samplingInterval) {
+	case "short":
+		interval = api.MetricShortTerm
+	case "mid":
+		interval = api.MetricMidTerm
+	case "long":
+		interval = api.MetricLongTerm
+	default:
+		if dur, err := time.ParseDuration(samplingInterval); err == nil {
+			interval = dur
+		}
 	}
+
 	ret := &statz{
 		interval:   interval,
 		keyFilters: keyFilters,

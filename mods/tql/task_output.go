@@ -28,7 +28,7 @@ var (
 type Encoder struct {
 	format      string
 	opts        []opts.Option
-	cacheOption *CacheOption
+	cacheOption *CacheParam
 }
 
 func (e *Encoder) RowEncoder(args ...opts.Option) codec.RowsEncoder {
@@ -52,7 +52,7 @@ type output struct {
 	lastError   error
 	lastMessage string
 
-	cacheOption *CacheOption
+	cacheOption *CacheParam
 	cacheWriter *bytes.Buffer
 	cachedData  []byte
 
@@ -107,9 +107,11 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 					preemptiveTTL := time.Duration(float64(item.TTL) * (1 - preemptiveUpdateRatio))
 					preemptiveUpdateAt := item.ExpiresAt.Add(-1 * preemptiveTTL)
 					if preemptiveUpdateAt.Before(time.Now()) {
-						// update cache
-						ret.cacheWriter = &bytes.Buffer{}
-						writer = io.MultiWriter(ret.cacheWriter)
+						if u := item.updates.Add(1); u == 1 {
+							// update cache
+							ret.cacheWriter = &bytes.Buffer{}
+							writer = io.MultiWriter(ret.cacheWriter)
+						}
 					}
 				}
 			} else {

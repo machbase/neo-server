@@ -56,6 +56,7 @@ type Task struct {
 
 	// preemptive cache update
 	_preemptiveCacheUpdateStarted bool
+	_preemptiveCacheUpdateTimeout time.Duration
 
 	_shouldStop    bool
 	_resultColumns api.Columns
@@ -405,11 +406,16 @@ func (x *Task) execute() *Result {
 		// if the cachedData and cacheWriter are set => preemptive update
 		if x.output.cacheWriter != nil {
 			var cancel context.CancelFunc
-			x.ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+			x._preemptiveCacheUpdateTimeout = 10 * time.Second
+			x.ctx, cancel = context.WithTimeout(context.Background(), x._preemptiveCacheUpdateTimeout)
 			x._preemptiveCacheUpdateStarted = true
 			go func() {
 				defer cancel()
 				x.executeOutput()
+			}()
+			go func() {
+				<-x.ctx.Done()
+				x.fireCircuitBreak(nil)
 			}()
 		}
 		return &Result{

@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -16,16 +17,23 @@ var tqlResultCache *Cache
 
 var (
 	tqlResultCacheDataSize = metric.NewCounter()
-	metricCacheDataSize    = metric.NewExpVarIntCounter("machbase:tql:cache:data_size", api.MetricTimeFrames...)
-	metricCacheCount       = metric.NewExpVarIntCounter("machbase:tql:cache:count", api.MetricTimeFrames...)
+	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
+	tqlResultCacheCount    = metric.NewCounter()
+	metricCacheCount       = metric.NewExpVarIntGauge("machbase:tql:cache:count", api.MetricTimeFrames...)
 	metricInsertions       = metric.NewExpVarIntCounter("machbase:tql:cache:insertions", api.MetricTimeFrames...)
 	metricEvictions        = metric.NewExpVarIntCounter("machbase:tql:cache:evictions", api.MetricTimeFrames...)
 	metricHits             = metric.NewExpVarIntCounter("machbase:tql:cache:hits", api.MetricTimeFrames...)
 	metricMisses           = metric.NewExpVarIntCounter("machbase:tql:cache:misses", api.MetricTimeFrames...)
 )
 
-func StartCache() {
-	tqlResultCache = newCache()
+type CacheOption struct {
+	MaxCapacity uint64 // max number of items
+	// TODO: ttlcache.WithMaxCost has a bug that introduces deadlock
+	// MaxCost     uint64 // max cost (memory consumptio in Bytes) of items
+}
+
+func StartCache(cap CacheOption) {
+	tqlResultCache = newCache(cap)
 	tqlResultCache.closeWg.Add(1)
 	go func() {
 		defer tqlResultCache.closeWg.Done()
@@ -36,15 +44,16 @@ func StartCache() {
 	go func() {
 		defer tqlResultCache.closeWg.Done()
 		var prevMet = tqlResultCache.cache.Metrics()
-
 		for {
 			select {
 			case <-tqlResultCache.closeCh:
 				return
-			case <-time.Tick(1 * time.Second):
+			case <-time.Tick(api.MetricMeasurePeriod):
 				value := tqlResultCacheDataSize.(*metric.Counter).Value()
 				metricCacheDataSize.Add(value)
-				metricCacheCount.Add(int64(tqlResultCache.cache.Len()))
+				value = int64(tqlResultCache.cache.Len())
+				metricCacheCount.Add(value)
+
 				met := tqlResultCache.cache.Metrics()
 				metricInsertions.Add(int64(met.Insertions - prevMet.Insertions))
 				metricEvictions.Add(int64(met.Evictions - prevMet.Evictions))
@@ -75,20 +84,28 @@ type CacheData struct {
 	Data      []byte
 	ExpiresAt time.Time
 	TTL       time.Duration
+	updates   atomic.Int32
 }
 
-func newCache() *Cache {
-	capacity := uint64(500)
+func newCache(cap CacheOption) *Cache {
 	cache := ttlcache.New(
-		ttlcache.WithCapacity[string, *CacheData](capacity),
+		ttlcache.WithCapacity[string, *CacheData](cap.MaxCapacity),
+		//
+		// TODO: ttlcache.WithMaxCost has a bug that introduces deadlock
+		//
+		// ttlcache.WithMaxCost[string, *CacheData](cap.MaxCost, func(item *ttlcache.Item[string, *CacheData]) uint64 {
+		// 	return uint64(len(item.Value().Data))
+		// }),
 	)
 	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, *CacheData]) {
 		data := i.Value()
 		tqlResultCacheDataSize.Add(float64(len(data.Data)))
+		tqlResultCacheCount.Add(1)
 	})
 	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, *CacheData]) {
 		data := i.Value()
 		tqlResultCacheDataSize.Add(float64(len(data.Data)) * -1)
+		tqlResultCacheCount.Add(-1)
 	})
 	return &Cache{
 		cache:   cache,
@@ -121,17 +138,17 @@ func (c *Cache) Get(key string) *CacheData {
 	return ret
 }
 
-type CacheOption struct {
+type CacheParam struct {
 	key              string
 	ttl              time.Duration
 	preemptiveUpdate float64
 }
 
-func (co *CacheOption) String() string {
+func (co *CacheParam) String() string {
 	return fmt.Sprintf("key: %s, ttl: %s, preemptiveUpdate: %f", co.key, co.ttl, co.preemptiveUpdate)
 }
 
-func (node *Node) fmCache(key string, ttlStr string, extra ...float64) (*CacheOption, error) {
+func (node *Node) fmCache(key string, ttlStr string, extra ...float64) (*CacheParam, error) {
 	preemptiveUpdateRatio := 0.0
 	if len(extra) > 0 {
 		preemptiveUpdateRatio = extra[0]
@@ -139,7 +156,7 @@ func (node *Node) fmCache(key string, ttlStr string, extra ...float64) (*CacheOp
 	return node.fmCachePreUpdate(key, ttlStr, preemptiveUpdateRatio)
 }
 
-func (node *Node) fmCachePreUpdate(key string, ttlStr string, preemptiveUpdate float64) (*CacheOption, error) {
+func (node *Node) fmCachePreUpdate(key string, ttlStr string, preemptiveUpdate float64) (*CacheParam, error) {
 	ttl := time.Minute
 	if len(key) > 40 {
 		// make a long key to shorten one via sha1 hash
@@ -158,7 +175,7 @@ func (node *Node) fmCachePreUpdate(key string, ttlStr string, preemptiveUpdate f
 	if preemptiveUpdate < 0 || preemptiveUpdate >= 1 {
 		return nil, fmt.Errorf("invalid preemptive update ratio %f", preemptiveUpdate)
 	}
-	return &CacheOption{
+	return &CacheParam{
 		key:              key,
 		ttl:              ttl,
 		preemptiveUpdate: preemptiveUpdate,

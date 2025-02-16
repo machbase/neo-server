@@ -57,7 +57,7 @@ func TestTqlCache(t *testing.T) {
 		},
 	}
 
-	StartCache()
+	StartCache(CacheOption{})
 	defer StopCache()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
