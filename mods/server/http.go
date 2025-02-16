@@ -6,7 +6,6 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
-	"expvar"
 	"fmt"
 	"io"
 	"net"
@@ -881,10 +880,10 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 		dur = time.Second
 	}
 
-	stat := api.QueryStatzRows(dur, 1, func(kv expvar.KeyValue) bool {
-		return strings.HasPrefix(kv.Key, "machbase:") ||
-			strings.HasPrefix(kv.Key, "go:") ||
-			slices.Contains(includes, kv.Key)
+	stat := api.QueryStatzRows(dur, 1, func(key string) (bool, int) {
+		return strings.HasPrefix(key, "machbase:") ||
+			strings.HasPrefix(key, "go:") ||
+			slices.Contains(includes, key), 0
 	})
 	if stat.Err != nil {
 		ctx.String(http.StatusInternalServerError, stat.Err.Error())
@@ -904,7 +903,14 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 				ret[col.Name] = printer.Sprintf("%d", value)
 			case api.DataTypeFloat64:
 				if valueType == "dur" {
-					ret[col.Name] = printer.Sprintf("%s", time.Duration(value.(float64)))
+					switch val := value.(type) {
+					case float64:
+						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
+					case int64:
+						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
+					default:
+						ret[col.Name] = printer.Sprintf("%v", value)
+					}
 				} else if valueType == "i" {
 					switch val := value.(type) {
 					case float64:

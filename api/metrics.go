@@ -10,16 +10,19 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 const (
-	MetricShortTerm = 10 * time.Second
-	MetricMidTerm   = time.Minute
+	MetricShortTerm = 1 * time.Minute
+	MetricMidTerm   = 5 * time.Minute
 	MetricLongTerm  = 15 * time.Minute
 )
 
-var MetricTimeFrames = []string{"20m10s", "2h1m", "30h15m"}
+const MetricMeasurePeriod = 500 * time.Millisecond
+
+var MetricTimeFrames = []string{"2h1m", "10h5m", "30h15m"}
 
 const MetricQueryRowsMax = 120
 
@@ -61,7 +64,7 @@ func init() {
 	numCGoCall := metric.NewExpVarIntGauge("go:num_cgo_call", MetricTimeFrames...)
 
 	go func() {
-		for range time.Tick(100 * time.Millisecond) {
+		for range time.Tick(MetricMeasurePeriod) {
 			numGoRoutine.Add(int64(runtime.NumGoroutine()))
 			numCGoCall.Add(runtime.NumCgoCall())
 			metricConnsInUse.Add(int64(metricConnsCounter.(*metric.Counter).Value()))
@@ -157,57 +160,102 @@ func StatzSnapshot() *mgmt.Statz {
 	return ret
 }
 
-func QueryStatz(interval time.Duration, filter func(kv expvar.KeyValue) bool) *QueryStatzResult {
+func QueryStatzFilter(filters []string) func(key string) (bool, int) {
+	return func(key string) (bool, int) {
+		if len(filters) == 0 {
+			return true, 0
+		} else {
+			for idx, filter := range filters {
+				if glob.IsGlob(filter) {
+					if ok, _ := glob.Match(filter, key); ok {
+						return true, idx
+					}
+				} else {
+					if filter == key {
+						return true, idx
+					}
+				}
+			}
+		}
+		return false, 0
+	}
+}
+
+type MetricQueryKey struct {
+	key       string
+	field     string
+	column    *Column
+	valueType string
+	order     int
+}
+
+func QueryStatz(interval time.Duration, filter func(key string) (bool, int)) *QueryStatzResult {
 	return QueryStatzRows(interval, MetricQueryRowsMax, filter)
 }
 
-func QueryStatzRows(interval time.Duration, rowsCount int, filter func(kv expvar.KeyValue) bool) *QueryStatzResult {
+func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key string) (bool, int)) *QueryStatzResult {
 	ret := &QueryStatzResult{}
-	metricKeys := []string{}
+	if filter == nil {
+		filter = func(key string) (bool, int) { return true, 0 }
+	}
+	metricQueryKeys := []MetricQueryKey{}
 	expvar.Do(func(kv expvar.KeyValue) {
-		if filter != nil && !filter(kv) {
-			return
-		}
+		key := kv.Key
 		if _, ok := kv.Value.(*expvar.Int); ok {
-			ret.Cols = append(ret.Cols, MakeColumnInt64(kv.Key))
-			ret.ValueTypes = append(ret.ValueTypes, "i")
-			metricKeys = append(metricKeys, kv.Key)
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnInt64(kv.Key), valueType: "i", order: order})
+			}
 		} else if _, ok := kv.Value.(*expvar.String); ok {
-			ret.Cols = append(ret.Cols, MakeColumnString(kv.Key))
-			ret.ValueTypes = append(ret.ValueTypes, "s")
-			metricKeys = append(metricKeys, kv.Key)
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "s", order: order})
+			}
 		} else if _, ok := kv.Value.(*expvar.Float); ok {
-			ret.Cols = append(ret.Cols, MakeColumnDouble(kv.Key))
-			ret.ValueTypes = append(ret.ValueTypes, "f")
-			metricKeys = append(metricKeys, kv.Key)
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnDouble(kv.Key), valueType: "f", order: order})
+			}
 		} else if v, ok := kv.Value.(metric.ExpVar); ok {
 			switch v.MetricType() {
 			case "c":
-				ret.Cols = append(ret.Cols, MakeColumnInt64(kv.Key))
-				ret.ValueTypes = append(ret.ValueTypes, v.ValueType())
-				metricKeys = append(metricKeys, kv.Key)
+				if pass, order := filter(key); pass {
+					metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnInt64(kv.Key), valueType: v.ValueType(), order: order})
+				}
 			case "g":
-				ret.Cols = append(ret.Cols, MakeColumnDouble(kv.Key+"_avg"), MakeColumnDouble(kv.Key+"_min"), MakeColumnDouble(kv.Key+"_max"))
-				ret.ValueTypes = append(ret.ValueTypes, v.ValueType(), v.ValueType(), v.ValueType())
-				metricKeys = append(metricKeys, kv.Key)
+				for _, field := range []string{"avg", "max", "min"} {
+					subKey := fmt.Sprintf("%s_%s", kv.Key, field)
+					if pass, order := filter(subKey); pass {
+						metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
+					}
+				}
 			case "h":
-				ret.Cols = append(ret.Cols, MakeColumnDouble(kv.Key+"_p50"), MakeColumnDouble(kv.Key+"_p90"), MakeColumnDouble(kv.Key+"_p99"))
-				ret.ValueTypes = append(ret.ValueTypes, v.ValueType(), v.ValueType(), v.ValueType())
-				metricKeys = append(metricKeys, kv.Key)
+				for _, field := range []string{"p50", "p90", "p99"} {
+					subKey := fmt.Sprintf("%s_%s", kv.Key, field)
+					if pass, order := filter(subKey); pass {
+						metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
+					}
+				}
 			default:
-				ret.Cols = append(ret.Cols, MakeColumnString(kv.Key))
-				ret.ValueTypes = append(ret.ValueTypes, v.ValueType())
-				metricKeys = append(metricKeys, kv.Key)
+				if pass, order := filter(key); pass {
+					metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: v.ValueType(), order: order})
+				}
 			}
 		}
 	})
-	if len(ret.Cols) == 0 {
+	if len(metricQueryKeys) == 0 {
 		ret.Err = fmt.Errorf("no metrics found")
 		return ret
 	}
-	slices.SortFunc(ret.Cols, func(a, b *Column) int {
-		return strings.Compare(a.Name, b.Name)
+
+	slices.SortFunc(metricQueryKeys, func(a, b MetricQueryKey) int {
+		if a.order == b.order {
+			return strings.Compare(a.key+a.field, b.key+b.field)
+		}
+		return a.order - b.order
 	})
+
+	for _, queryKey := range metricQueryKeys {
+		ret.Cols = append(ret.Cols, queryKey.column)
+		ret.ValueTypes = append(ret.ValueTypes, queryKey.valueType)
+	}
 
 	if rowsCount > MetricQueryRowsMax {
 		rowsCount = MetricQueryRowsMax
@@ -225,8 +273,8 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(kv expvar
 	}
 
 	colIdxOffset := 0
-	for _, metricKey := range metricKeys {
-		kv := expvar.Get(metricKey)
+	for _, queryKey := range metricQueryKeys {
+		kv := expvar.Get(queryKey.key)
 		if val, ok := kv.(*expvar.Int); ok {
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val.Value()
@@ -274,19 +322,11 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(kv expvar
 						colIdx++
 					} else if gauge, ok := valueMetric.(*metric.Gauge); ok {
 						g := gauge.Value()
-						row.Values[colIdx] = g["avg"]
-						colIdx++
-						row.Values[colIdx] = g["max"]
-						colIdx++
-						row.Values[colIdx] = g["min"]
+						row.Values[colIdx] = g[queryKey.field]
 						colIdx++
 					} else if histogram, ok := valueMetric.(*metric.Histogram); ok {
 						h := histogram.Value()
-						row.Values[colIdx] = h["p50"]
-						colIdx++
-						row.Values[colIdx] = h["p90"]
-						colIdx++
-						row.Values[colIdx] = h["p99"]
+						row.Values[colIdx] = h[queryKey.field]
 						colIdx++
 					}
 				} else {

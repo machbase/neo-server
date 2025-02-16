@@ -48,7 +48,7 @@ func StartCache(cap CacheOption) {
 			select {
 			case <-tqlResultCache.closeCh:
 				return
-			case <-time.Tick(200 * time.Millisecond):
+			case <-time.Tick(api.MetricMeasurePeriod):
 				value := tqlResultCacheDataSize.(*metric.Counter).Value()
 				metricCacheDataSize.Add(value)
 				value = int64(tqlResultCache.cache.Len())
