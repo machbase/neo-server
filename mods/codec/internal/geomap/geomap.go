@@ -229,6 +229,12 @@ func (gm *GeoMap) Close() {
 	gm.appendJSCode(`var map;`)
 	gm.appendJSCode(`if (opt && opt.map) {`)
 	gm.appendJSCode(`  map = opt.map;`)
+	// remove all layers excpet the tile layer.
+	gm.appendJSCode(`  opt.map.eachLayer(function (layer) {`)
+	gm.appendJSCode(`    if (!(layer instanceof L.TileLayer)) {`)
+	gm.appendJSCode(`      opt.map.removeLayer(layer);`)
+	gm.appendJSCode(`    }`)
+	gm.appendJSCode(`  });`)
 	gm.appendJSCode(`} else {`)
 	gm.appendJSCode(fmt.Sprintf(`  map = L.map("%s", {crs: %s, attributionControl:false});`, gm.GeomapID, gm.crs))
 	if gm.tileOption != "" {
@@ -237,12 +243,6 @@ func (gm *GeoMap) Close() {
 		gm.appendJSCode(fmt.Sprintf(`  L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
 	gm.appendJSCode(`  opt.map = map;`)
-	// remove all layers excpet the tile layer.
-	gm.appendJSCode(`  opt.map.eachLayer(function (layer) {`)
-	gm.appendJSCode(`    if (!(layer instanceof L.TileLayer)) {`)
-	gm.appendJSCode(`      opt.map.removeLayer(layer);`)
-	gm.appendJSCode(`    }`)
-	gm.appendJSCode(`  });`)
 	gm.appendJSCode(`}`)
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() && !gm.Bound.IsPoint() {
