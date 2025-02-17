@@ -231,12 +231,19 @@ func (gm *GeoMap) Close() {
 	gm.appendJSCode(`  map = opt.map;`)
 	gm.appendJSCode(`} else {`)
 	gm.appendJSCode(fmt.Sprintf(`  map = L.map("%s", {crs: %s, attributionControl:false});`, gm.GeomapID, gm.crs))
-	gm.appendJSCode(`  opt.map = map;`, `}`)
 	if gm.tileOption != "" {
-		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
+		gm.appendJSCode(fmt.Sprintf(`  L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
 	} else {
-		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
+		gm.appendJSCode(fmt.Sprintf(`  L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
+	gm.appendJSCode(`  opt.map = map;`)
+	// remove all layers excpet the tile layer.
+	gm.appendJSCode(`  opt.map.eachLayer(function (layer) {`)
+	gm.appendJSCode(`    if (!(layer instanceof L.TileLayer)) {`)
+	gm.appendJSCode(`      opt.map.removeLayer(layer);`)
+	gm.appendJSCode(`    }`)
+	gm.appendJSCode(`  });`)
+	gm.appendJSCode(`}`)
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() && !gm.Bound.IsPoint() {
 		gm.appendJSCode(fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))

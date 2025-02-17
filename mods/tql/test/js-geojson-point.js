@@ -39,9 +39,14 @@ if (opt && opt.map) {
   map = opt.map;
 } else {
   map = L.map("MTY3NzQ2MDY4NzQyNTc4MTc2", {crs: L.CRS.EPSG3857, attributionControl:false});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
   opt.map = map;
+  opt.map.eachLayer(function (layer) {
+    if (!(layer instanceof L.TileLayer)) {
+      opt.map.removeLayer(layer);
+    }
+  });
 }
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 map.setView([37.49785,127.027756],13);
 var obj0 = L.geoJSON({geometry:{coordinates:[127.027756,37.49785],type:"Point"},type:"Feature"},opt.geojson).addTo(map);
 })(MTY3NzQ2MDY4NzQyNTc4MTc2);
