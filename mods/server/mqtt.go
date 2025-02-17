@@ -5,14 +5,13 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
-	"expvar"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -24,10 +23,12 @@ import (
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/storage/badger"
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"github.com/mochi-mqtt/server/v2/packets"
+	"github.com/mochi-mqtt/server/v2/system"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/pkg/errors"
 )
@@ -59,8 +60,6 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 		return nil, err
 	}
 	svr.broker.Info.Version = strings.TrimPrefix(mods.DisplayVersion(), "v")
-
-	expvar.Publish("machbase:mqtt", expvar.Func(svr.Statz))
 	return svr, nil
 }
 
@@ -242,32 +241,77 @@ type mqttd struct {
 	defaultReplyTopic string
 	wsListener        *WsListener
 	restrictTopics    bool
+
+	prevInfo   system.Info
+	closeStatz chan struct{}
+	wgStatz    sync.WaitGroup
 }
 
 func (s *mqttd) Start() error {
 	go s.broker.Serve()
+
+	s.closeStatz = make(chan struct{})
+	s.wgStatz.Add(1)
+	go func() {
+		defer s.wgStatz.Done()
+		for {
+			select {
+			case <-time.Tick(time.Second):
+				nfo := s.broker.Info
+				metricMqttRecvBytes.Add(nfo.BytesReceived - s.prevInfo.BytesReceived)
+				metricMqttSendBytes.Add(nfo.BytesSent - s.prevInfo.BytesSent)
+				metricMqttRecvMsgs.Add(nfo.MessagesReceived - s.prevInfo.MessagesReceived)
+				metricMqttSendMsgs.Add(nfo.MessagesSent - s.prevInfo.MessagesSent)
+				metricMqttDropMsgs.Add(nfo.MessagesDropped - s.prevInfo.MessagesDropped)
+				metricMqttSendPkts.Add(nfo.PacketsSent - s.prevInfo.PacketsSent)
+				metricMqttRecvPkts.Add(nfo.PacketsReceived - s.prevInfo.PacketsReceived)
+				metricMqttRetained.Add(nfo.Retained - s.prevInfo.Retained)
+				metricMqttSubscriptions.Add(nfo.Subscriptions - s.prevInfo.Subscriptions)
+				metricMqttInflight.Add(nfo.Inflight - s.prevInfo.Inflight)
+				metricMqttInflightDropped.Add(nfo.InflightDropped - s.prevInfo.InflightDropped)
+				metricMqttClients.Add(nfo.ClientsTotal - s.prevInfo.ClientsTotal)
+				metricMqttClientsConnected.Add(nfo.ClientsConnected - s.prevInfo.ClientsConnected)
+				metricMqttClientsDisconnected.Add(nfo.ClientsDisconnected - s.prevInfo.ClientsDisconnected)
+				metricGoHeapInUse.Add(int64(nfo.MemoryAlloc))
+				metricGoRoutines.Add(int64(nfo.Threads))
+				metricCGoCall.Add(runtime.NumCgoCall())
+				s.prevInfo = *nfo
+			case <-s.closeStatz:
+				return
+			}
+		}
+	}()
 	return nil
 }
 
 func (s *mqttd) Stop() {
+	close(s.closeStatz)
+	s.wgStatz.Wait()
 	if s.broker != nil {
 		s.broker.Close()
 	}
 }
 
-func (s *mqttd) Statz() any {
-	nfo := s.broker.Info
-	buf, _ := json.Marshal(nfo)
-	ret := map[string]any{}
-	json.Unmarshal(buf, &ret)
-	delete(ret, "version")
-	delete(ret, "uptime")
-	delete(ret, "time")
-	delete(ret, "started")
-	delete(ret, "threads")
-	delete(ret, "memory_alloc")
-	return ret
-}
+var (
+	metricGoHeapInUse = metric.NewExpVarIntGauge("go:heap_inuse", api.MetricTimeFrames...)
+	metricGoRoutines  = metric.NewExpVarIntGauge("go:goroutine", api.MetricTimeFrames...)
+	metricCGoCall     = metric.NewExpVarIntGauge("go:cgo_call", api.MetricTimeFrames...)
+
+	metricMqttRecvBytes           = metric.NewExpVarIntCounter("machbase:mqtt:recv_bytes", api.MetricTimeFrames...)
+	metricMqttSendBytes           = metric.NewExpVarIntCounter("machbase:mqtt:send_bytes", api.MetricTimeFrames...)
+	metricMqttRecvMsgs            = metric.NewExpVarIntCounter("machbase:mqtt:recv_msgs", api.MetricTimeFrames...)
+	metricMqttSendMsgs            = metric.NewExpVarIntCounter("machbase:mqtt:send_msgs", api.MetricTimeFrames...)
+	metricMqttDropMsgs            = metric.NewExpVarIntCounter("machbase:mqtt:drop_msgs", api.MetricTimeFrames...)
+	metricMqttSendPkts            = metric.NewExpVarIntCounter("machbase:mqtt:send_pkts", api.MetricTimeFrames...)
+	metricMqttRecvPkts            = metric.NewExpVarIntCounter("machbase:mqtt:recv_pkts", api.MetricTimeFrames...)
+	metricMqttRetained            = metric.NewExpVarIntCounter("machbase:mqtt:retained", api.MetricTimeFrames...)
+	metricMqttSubscriptions       = metric.NewExpVarIntCounter("machbase:mqtt:subscriptions", api.MetricTimeFrames...)
+	metricMqttClients             = metric.NewExpVarIntCounter("machbase:mqtt:clients", api.MetricTimeFrames...)
+	metricMqttClientsConnected    = metric.NewExpVarIntCounter("machbase:mqtt:clients_connected", api.MetricTimeFrames...)
+	metricMqttClientsDisconnected = metric.NewExpVarIntCounter("machbase:mqtt:clients_disconnected", api.MetricTimeFrames...)
+	metricMqttInflight            = metric.NewExpVarIntCounter("machbase:mqtt:inflight", api.MetricTimeFrames...)
+	metricMqttInflightDropped     = metric.NewExpVarIntCounter("machbase:mqtt:inflight_dropped", api.MetricTimeFrames...)
+)
 
 func (s *mqttd) WsHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
 	return s.wsListener.WsHandler

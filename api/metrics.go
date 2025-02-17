@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -60,13 +59,8 @@ var (
 )
 
 func init() {
-	numGoRoutine := metric.NewExpVarIntGauge("go:num_goroutine", MetricTimeFrames...)
-	numCGoCall := metric.NewExpVarIntGauge("go:num_cgo_call", MetricTimeFrames...)
-
 	go func() {
 		for range time.Tick(MetricMeasurePeriod) {
-			numGoRoutine.Add(int64(runtime.NumGoroutine()))
-			numCGoCall.Add(runtime.NumCgoCall())
 			metricConnsInUse.Add(int64(metricConnsCounter.(*metric.Counter).Value()))
 			metricStmtsInUse.Add(int64(metricStmtsCounter.(*metric.Counter).Value()))
 			metricAppendersInUse.Add(int64(metricAppendersCounter.(*metric.Counter).Value()))
