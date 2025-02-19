@@ -16,6 +16,7 @@ import (
 var rpcClient machrpc.MachbaseClient
 var machsvrDB api.Database
 var machrpcDB api.Database
+var machcliDB api.Database
 
 func TestMain(m *testing.M) {
 	s := testsuite.NewServer("./testsuite_tmp")
@@ -23,6 +24,7 @@ func TestMain(m *testing.M) {
 	rpcClient = machrpc.NewMachbaseClient(s.ClientConn())
 	machsvrDB = s.DatabaseSVR()
 	machrpcDB = s.DatabaseRPC()
+	machcliDB = s.DatabaseCLI()
 
 	code := m.Run()
 
