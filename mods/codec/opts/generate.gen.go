@@ -309,6 +309,21 @@ func GeoMapJson(flag bool) Option {
 	}
 }
 
+// SetGeomapID
+//
+//	mods/codec/internal/geomap/geomap.go:81:1
+type CanSetGeomapID interface {
+	SetGeomapID(id string)
+}
+
+func GeomapID(id string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetGeomapID); ok {
+			_o.SetGeomapID(id)
+		}
+	}
+}
+
 // SetGlobalOptions
 //
 //	mods/codec/internal/chart/chartcompat.go:76:1

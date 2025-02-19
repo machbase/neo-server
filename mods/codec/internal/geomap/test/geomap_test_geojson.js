@@ -34,8 +34,19 @@ var WejMYXCGcYNL = {
     },
 };
 ((opt)=>{
-var map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+var map;
+if (opt && opt.map) {
+  map = opt.map;
+  opt.map.eachLayer(function (layer) {
+    if (!(layer instanceof L.TileLayer)) {
+      opt.map.removeLayer(layer);
+    }
+  });
+} else {
+  map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+  opt.map = map;
+}
 map.fitBounds([[0,100],[20.1,135.7]]);
 var obj0 = L.geoJSON({features:[{geometry:{coordinates:[102,0.5],type:"Point"},properties:{prop0:"value0"},type:"Feature"},{geometry:{coordinates:[[102,0],[103,1],[104,0],[105,1]],type:"LineString"},properties:{prop0:"value0",prop1:0},type:"Feature"},{geometry:{coordinates:[[[100,0],[101,0],[101,1],[100,1],[100,0]]],type:"Polygon"},properties:{prop0:"value0",prop1:{this:"that"}},type:"Feature"}],popup:{content:"<b>GeoJSON</b>",open:0},type:"FeatureCollection"},opt.geojson).addTo(map);
 var obj1 = L.geoJSON({geometry:{coordinates:[125.6,10.1],type:"Point"},properties:{name:"Dinagat Islands",popup:{content:"<b>Dinagat Islands</b>",open:true}},type:"Feature"},opt.geojson).addTo(map);

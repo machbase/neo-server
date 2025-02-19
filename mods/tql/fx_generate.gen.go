@@ -277,6 +277,7 @@ func NewNode(task *Task) *Node {
 		"dataZoom":            x.gen_dataZoom,
 		"delimiter":           x.gen_delimiter,
 		"geoMapJson":          x.gen_geoMapJson,
+		"geomapID":            x.gen_geomapID,
 		"globalOptions":       x.gen_globalOptions,
 		"gridSize":            x.gen_gridSize,
 		"header":              x.gen_header,
@@ -289,7 +290,6 @@ func NewNode(task *Task) *Node {
 		"lineWidth":           x.gen_lineWidth,
 		"logger":              x.gen_logger,
 		"mapAssets":           x.gen_mapAssets,
-		"mapId":               x.gen_mapId,
 		"markAreaNameCoord":   x.gen_markAreaNameCoord,
 		"markLineXAxisCoord":  x.gen_markLineXAxisCoord,
 		"markLineYAxisCoord":  x.gen_markLineYAxisCoord,
@@ -4306,6 +4306,21 @@ func (x *Node) gen_geoMapJson(args ...any) (any, error) {
 	return ret, nil
 }
 
+// gen_geomapID
+//
+// syntax: geomapID(string)
+func (x *Node) gen_geomapID(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("geomapID", 1, len(args))
+	}
+	p0, err := convString(args, 0, "geomapID", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.GeomapID(p0)
+	return ret, nil
+}
+
 // gen_globalOptions
 //
 // syntax: globalOptions(string)
@@ -4493,21 +4508,6 @@ func (x *Node) gen_mapAssets(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.MapAssets(p0...)
-	return ret, nil
-}
-
-// gen_mapId
-//
-// syntax: mapId(string)
-func (x *Node) gen_mapId(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("mapId", 1, len(args))
-	}
-	p0, err := convString(args, 0, "mapId", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.MapId(p0)
 	return ret, nil
 }
 

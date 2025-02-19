@@ -689,6 +689,7 @@ func (svr *httpd) handleTagStat(ctx *gin.Context) {
 
 const TqlHeaderChartType = "X-Chart-Type"
 const TqlHeaderChartOutput = "X-Chart-Output"
+const TqlHeaderTqlOutput = "X-Tql-Output"
 const TqlHeaderConsoleId = "X-Console-Id"
 
 type ConsoleInfo struct {
@@ -892,7 +893,7 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	task.SetDatabase(svr.db)
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
-	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" {
+	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" || ctx.Request.Header.Get(TqlHeaderTqlOutput) == "json" {
 		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
 	} else {
 		task.SetOutputWriter(&util.NopCloseWriter{Writer: ctx.Writer})

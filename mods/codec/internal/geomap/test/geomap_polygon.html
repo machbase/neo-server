@@ -45,8 +45,19 @@
 };
 
     ((opt)=>{
-var map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+var map;
+if (opt && opt.map) {
+  map = opt.map;
+  opt.map.eachLayer(function (layer) {
+    if (!(layer instanceof L.TileLayer)) {
+      opt.map.removeLayer(layer);
+    }
+  });
+} else {
+  map = L.map("WejMYXCGcYNL", {crs: L.CRS.EPSG3857, attributionControl:false});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+  opt.map = map;
+}
 map.setView([51.505,-0.09],13);
 var obj0 = L.polygon([[[[37,-109.05],[41,-109.03],[41,-102.05],[37,-102.04]],[[37.29,-108.58],[40.71,-108.58],[40.71,-102.5],[37.29,-102.5]]],[[[41,-111.03],[45,-111.04],[45,-104.05],[41,-104.05]]]],{}).addTo(map);
 })(WejMYXCGcYNL);
