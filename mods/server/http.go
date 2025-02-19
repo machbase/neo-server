@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	httpPprof "net/http/pprof"
 	"net/url"
 	"os"
 	"path"
@@ -360,10 +361,14 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/tql/*path", svr.handleTqlFile)
 			group.GET("/tql", svr.handleTqlQuery)
 			group.POST("/tql", svr.handleTqlQuery)
-			group.GET("/statz", svr.handleStatz)
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
+	// debug group
+	debugGroup := r.Group("/debug")
+	debugGroup.Use(svr.allowDebug)
+	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
+	debugGroup.GET("/statz", svr.handleStatz)
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))
 	return r
@@ -849,25 +854,27 @@ func (svr *httpd) getServerInfo() *ServerInfo {
 	}
 }
 
-func (svr *httpd) allowStatz(remote string) bool {
+func (svr *httpd) allowDebug(ctx *gin.Context) {
+	remote := ctx.RemoteIP()
+	pass := false
 	if remote == "" || remote == "127.0.0.1" {
-		return true
+		pass = true
 	}
 	for _, p := range svr.statzAllowed {
 		if p == remote {
-			return true
+			pass = true
+			break
 		}
 	}
-	return false
+	if !pass {
+		ctx.String(http.StatusForbidden, "")
+		ctx.Abort()
+		return
+	}
+	ctx.Next()
 }
 
 func (svr *httpd) handleStatz(ctx *gin.Context) {
-	remote := ctx.RemoteIP()
-	if !svr.allowStatz(remote) {
-		ctx.String(http.StatusForbidden, "")
-		return
-	}
-
 	ret := map[string]any{}
 	includes := ctx.QueryArray("keys")
 	format := ctx.Query("format")

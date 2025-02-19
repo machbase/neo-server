@@ -27,7 +27,6 @@ type CommandHandler struct {
 	Explain       func(string, error)
 	SqlQuery      func(*Query, int64) bool
 
-	ctx    context.Context
 	params []any
 }
 
@@ -204,7 +203,6 @@ func (ch *CommandHandler) IsKnownVerb(v string) bool {
 func (ch *CommandHandler) Exec(ctx context.Context, args []string, params ...any) error {
 	cmd := ch.MakeCommand()
 	cmd.SetArgs(args)
-	ch.ctx = ctx
 	ch.params = params
 	if ch.PreExecute != nil {
 		ch.PreExecute(args)
@@ -323,13 +321,14 @@ func (ch *CommandHandler) NewSqlCommand() *cobra.Command {
 
 func (ch *CommandHandler) runShowTables(showAll *bool) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		conn, err := ch.Database(ch.ctx)
+		ctx := cmd.Context()
+		conn, err := ch.Database(ctx)
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
 		nrow := int64(0)
-		ListTablesWalk(ch.ctx, conn, *showAll, func(ti *TableInfo) bool {
+		ListTablesWalk(ctx, conn, *showAll, func(ti *TableInfo) bool {
 			nrow++
 			return ch.ShowTables(ti, nrow)
 		})
@@ -339,13 +338,14 @@ func (ch *CommandHandler) runShowTables(showAll *bool) func(cmd *cobra.Command, 
 
 func (ch *CommandHandler) runShowIndexes() func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		conn, err := ch.Database(ch.ctx)
+		ctx := cmd.Context()
+		conn, err := ch.Database(ctx)
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
 		nrow := int64(0)
-		ListIndexesWalk(ch.ctx, conn, func(ii *IndexInfo) bool {
+		ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
 			nrow++
 			return ch.ShowIndexes(ii, nrow)
 		})
@@ -355,15 +355,16 @@ func (ch *CommandHandler) runShowIndexes() func(cmd *cobra.Command, args []strin
 
 func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
 		var conn Conn
-		if c, err := ch.Database(ch.ctx); err != nil {
+		if c, err := ch.Database(ctx); err != nil {
 			return err
 		} else {
 			conn = c
 		}
 		defer conn.Close()
 
-		desc, err := DescribeTable(ch.ctx, conn, args[0], *showAll)
+		desc, err := DescribeTable(ctx, conn, args[0], *showAll)
 		if err != nil {
 			return err
 		}
@@ -373,8 +374,9 @@ func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, a
 }
 
 func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
 	var conn Conn
-	if c, err := ch.Database(ch.ctx); err != nil {
+	if c, err := ch.Database(ctx); err != nil {
 		return err
 	} else {
 		conn = c
@@ -382,7 +384,7 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 	defer conn.Close()
 
 	tableName := strings.ToUpper(args[0])
-	desc, err := DescribeTable(ch.ctx, conn, tableName, false)
+	desc, err := DescribeTable(ctx, conn, tableName, false)
 	if err != nil {
 		return err
 	}
@@ -397,12 +399,12 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 		}
 	}
 	nrow := int64(0)
-	ListTagsWalk(ch.ctx, conn, tableName, func(tag *TagInfo) bool {
+	ListTagsWalk(ctx, conn, tableName, func(tag *TagInfo) bool {
 		if err = tag.Err; err != nil {
 			return false
 		}
 		tag.Summarized = summarized
-		if stat, err := TagStat(ch.ctx, conn, tableName, tag.Name); err != nil {
+		if stat, err := TagStat(ctx, conn, tableName, tag.Name); err != nil {
 			// some tags may not have stat
 			// the err may be 'no rows in result set'
 			// ignore the error, for processing the next tag
@@ -420,14 +422,15 @@ func (ch *CommandHandler) runExplain(full *bool) func(cmd *cobra.Command, args [
 		if ch.Explain == nil {
 			return errors.New("handler .Explain not set")
 		}
+		ctx := cmd.Context()
 		var conn Conn
-		if c, err := ch.Database(ch.ctx); err != nil {
+		if c, err := ch.Database(ctx); err != nil {
 			return err
 		} else {
 			conn = c
 		}
 		defer conn.Close()
-		plan, err := conn.Explain(ch.ctx, strings.Join(args, " "), *full)
+		plan, err := conn.Explain(ctx, strings.Join(args, " "), *full)
 		ch.Explain(plan, err)
 		return nil
 	}
@@ -450,14 +453,16 @@ type SqlCommandOptions struct {
 
 func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+		ctx := cmd.Context()
 		var conn Conn
 		if *opt.pBridge == "" {
-			if c, err := ch.Database(ch.ctx); err != nil {
+			if c, err := ch.Database(ctx); err != nil {
 				return err
 			} else {
 				conn = c
 			}
 		} else {
+			return errors.New("bridge not supported")
 		}
 		defer conn.Close()
 		query := &Query{
@@ -472,7 +477,7 @@ func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []s
 			},
 		}
 		sqlText := args[len(args)-1]
-		if err := query.Execute(ch.ctx, conn, sqlText, ch.params...); err != nil {
+		if err := query.Execute(ctx, conn, sqlText, ch.params...); err != nil {
 			return err
 		}
 		return nil

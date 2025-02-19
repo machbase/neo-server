@@ -413,10 +413,6 @@ func (x *Task) execute() *Result {
 				defer cancel()
 				x.executeOutput()
 			}()
-			go func() {
-				<-x.ctx.Done()
-				x.fireCircuitBreak(nil)
-			}()
 		}
 		return &Result{
 			Err:      nil,

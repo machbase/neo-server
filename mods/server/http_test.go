@@ -37,7 +37,7 @@ func TestStatz(t *testing.T) {
 	at, _, err := jwtLogin("sys", "manager")
 	require.NoError(t, err)
 
-	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/statz", nil)
+	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/debug/statz", nil)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 	rsp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

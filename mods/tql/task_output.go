@@ -149,6 +149,7 @@ func (out *output) start() {
 	out.closeWg.Add(1)
 	go func() {
 		defer func() {
+			out.closeWg.Done()
 			if r := recover(); r != nil {
 				w := &bytes.Buffer{}
 				w.Write(debug.Stack())
@@ -162,6 +163,7 @@ func (out *output) start() {
 		for {
 			select {
 			case <-out.task.ctx.Done():
+				out.task.fireCircuitBreak(nil)
 				// task has been cancelled.
 				break loop
 			case rec := <-out.src:
@@ -233,7 +235,6 @@ func (out *output) start() {
 				tqlResultCache.Set(out.cacheOption.key, data, out.cacheOption.ttl)
 			}
 		}
-		out.closeWg.Done()
 	}()
 }
 

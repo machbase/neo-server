@@ -82,7 +82,11 @@ func (node *Node) Rownum() int {
 }
 
 func (node *Node) Receive(rec *Record) {
-	node.src <- rec
+	select {
+	case node.src <- rec:
+	case <-node.task.ctx.Done():
+		node.task.Cancel()
+	}
 }
 
 func (node *Node) SetEOF(f func(*Node)) {
@@ -162,14 +166,16 @@ func (node *Node) yield(key any, values []any) {
 func (node *Node) start() {
 	node.closeWg.Add(1)
 	go func() {
-		var lastWill *Record
 		defer func() {
+			node.closeWg.Done()
 			if o := recover(); o != nil {
 				w := &bytes.Buffer{}
 				w.Write(debug.Stack())
-				node.task.LogErrorf("panic %s inflight:%s %v\n%s", node.name, node._inflight.String(), o, w.String())
+				node.task.Log("panic", node.name, o, w.String())
+				node.task.LogErrorf("panic %s %v\n%s", node.name, o, w.String())
 			}
 		}()
+		var lastWill *Record
 	loop:
 		for {
 			select {
@@ -177,7 +183,11 @@ func (node *Node) start() {
 				// task has benn cancelled.
 				break loop
 			case rec := <-node.src:
-				if rec.IsEOF() || rec.IsCircuitBreak() {
+				if rec == nil {
+					// when chan is closed:
+					// while record.Tell() is called the ctx is done
+					break loop
+				} else if rec.IsEOF() || rec.IsCircuitBreak() {
 					lastWill = rec
 					break loop
 				} else if rec.IsError() {
@@ -235,7 +245,6 @@ func (node *Node) start() {
 			}
 			lastWill.Tell(node.next)
 		}
-		node.closeWg.Done()
 	}()
 }
 

@@ -607,6 +607,11 @@ func (s *Server) Start() error {
 	if s.NavelCord != nil {
 		s.StartNavelCord()
 	}
+
+	// metrics
+	startServerMetrics(s)
+	util.AddShutdownHook(func() { stopServerMetrics() })
+
 	return nil
 }
 

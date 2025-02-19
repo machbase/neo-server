@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
-	"expvar"
 	"fmt"
 	"io"
 	"log/slog"
@@ -59,8 +57,6 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 		return nil, err
 	}
 	svr.broker.Info.Version = strings.TrimPrefix(mods.DisplayVersion(), "v")
-
-	expvar.Publish("machbase:mqtt", expvar.Func(svr.Statz))
 	return svr, nil
 }
 
@@ -253,20 +249,6 @@ func (s *mqttd) Stop() {
 	if s.broker != nil {
 		s.broker.Close()
 	}
-}
-
-func (s *mqttd) Statz() any {
-	nfo := s.broker.Info
-	buf, _ := json.Marshal(nfo)
-	ret := map[string]any{}
-	json.Unmarshal(buf, &ret)
-	delete(ret, "version")
-	delete(ret, "uptime")
-	delete(ret, "time")
-	delete(ret, "started")
-	delete(ret, "threads")
-	delete(ret, "memory_alloc")
-	return ret
 }
 
 func (s *mqttd) WsHandlerFunc() func(w http.ResponseWriter, r *http.Request) {
