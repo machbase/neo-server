@@ -1770,14 +1770,14 @@ func TestGeoJSON(t *testing.T) {
 						$.yield(obj);
 					}
 				})
-				GEOMAP(mapId("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
+				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
 				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
 				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
 				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
 				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
-				id := gjson.Get(result, "ID").String()
+				id := gjson.Get(result, "geomapID").String()
 				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
 				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
 				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()

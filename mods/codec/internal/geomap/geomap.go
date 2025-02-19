@@ -20,9 +20,9 @@ type GeoMap struct {
 	internal.RowsEncoderBase
 	output io.Writer
 
-	MapID  string
-	Width  string
-	Height string
+	GeomapID string
+	Width    string
+	Height   string
 
 	toJsonOutput bool
 
@@ -51,11 +51,11 @@ type GeoMap struct {
 
 func New() *GeoMap {
 	return &GeoMap{
-		logger: facility.DiscardLogger,
-		MapID:  snowflake.Generate(),
-		Width:  "600px",
-		Height: "600px",
-		crs:    "L.CRS.EPSG3857",
+		logger:   facility.DiscardLogger,
+		GeomapID: snowflake.Generate(),
+		Width:    "600px",
+		Height:   "600px",
+		crs:      "L.CRS.EPSG3857",
 	}
 }
 
@@ -78,8 +78,8 @@ func (gm *GeoMap) SetOutputStream(o io.Writer) {
 	gm.output = o
 }
 
-func (gm *GeoMap) SetMapId(id string) {
-	gm.MapID = id
+func (gm *GeoMap) SetGeomapID(id string) {
+	gm.GeomapID = id
 }
 
 func (gm *GeoMap) SetSize(width, height string) {
@@ -226,12 +226,24 @@ func (gm *GeoMap) Close() {
 		gm.appendJSCode(crsMarshalJS(nums.KakaoCRS, gm.crs))
 	}
 
-	gm.appendJSCode(fmt.Sprintf(`var map = L.map("%s", {crs: %s, attributionControl:false});`, gm.MapID, gm.crs))
+	gm.appendJSCode(`var map;`)
+	gm.appendJSCode(`if (opt && opt.map) {`)
+	gm.appendJSCode(`  map = opt.map;`)
+	// remove all layers excpet the tile layer.
+	gm.appendJSCode(`  opt.map.eachLayer(function (layer) {`)
+	gm.appendJSCode(`    if (!(layer instanceof L.TileLayer)) {`)
+	gm.appendJSCode(`      opt.map.removeLayer(layer);`)
+	gm.appendJSCode(`    }`)
+	gm.appendJSCode(`  });`)
+	gm.appendJSCode(`} else {`)
+	gm.appendJSCode(fmt.Sprintf(`  map = L.map("%s", {crs: %s, attributionControl:false});`, gm.GeomapID, gm.crs))
 	if gm.tileOption != "" {
-		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
+		gm.appendJSCode(fmt.Sprintf(`  L.tileLayer("%s", %s).addTo(map);`, gm.tileTemplate, gm.tileOption))
 	} else {
-		gm.appendJSCode(fmt.Sprintf(`L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
+		gm.appendJSCode(fmt.Sprintf(`  L.tileLayer("%s").addTo(map);`, gm.tileTemplate))
 	}
+	gm.appendJSCode(`  opt.map = map;`)
+	gm.appendJSCode(`}`)
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() && !gm.Bound.IsPoint() {
 		gm.appendJSCode(fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
@@ -302,11 +314,11 @@ func (gm *GeoMap) Close() {
 	if gm.toJsonOutput && gm.volatileFileWriter != nil {
 		prefix := strings.TrimSuffix(gm.volatileFileWriter.VolatileFilePrefix(), "/")
 
-		path := fmt.Sprintf("%s/%s_opt.js", prefix, gm.MapID)
+		path := fmt.Sprintf("%s/%s_opt.js", prefix, gm.GeomapID)
 		gm.volatileFileWriter.VolatileFileWrite(path, []byte(gm.JSCodesOptionNoEscaped()), time.Now().Add(30*time.Second))
 		gm.JSCodeAssets = append(gm.JSCodeAssets, path)
 
-		path = fmt.Sprintf("%s/%s.js", prefix, gm.MapID)
+		path = fmt.Sprintf("%s/%s.js", prefix, gm.GeomapID)
 		gm.volatileFileWriter.VolatileFileWrite(path, []byte(gm.JSCodesNoEscaped()), time.Now().Add(30*time.Second))
 		gm.JSCodeAssets = append(gm.JSCodeAssets, path)
 	}
@@ -402,13 +414,13 @@ var mapOptions = `var %s = {
 `
 
 func (gm *GeoMap) JSCodesOptionNoEscaped() template.JS {
-	return template.JS(fmt.Sprintf(mapOptions, gm.MapID))
+	return template.JS(fmt.Sprintf(mapOptions, gm.GeomapID))
 }
 
 func (gm *GeoMap) JSCodesNoEscaped() template.JS {
 	lst := []string{"((opt)=>{"}
 	lst = append(lst, gm.JSCodes...)
-	lst = append(lst, fmt.Sprintf("})(%s);", gm.MapID))
+	lst = append(lst, fmt.Sprintf("})(%s);", gm.GeomapID))
 	return template.JS(strings.Join(lst, "\n"))
 }
 
