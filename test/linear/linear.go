@@ -32,12 +32,14 @@ func main() {
 	numberOfRuns := 1
 	scenario := "default"
 	useTql := false
+	useCache := false
 
 	flag.StringVar(&neoHttpAddr, "neo-http", neoHttpAddr, "Neo HTTP address")
 	flag.IntVar(&numberOfWorkers, "n", numberOfWorkers, "Number of workers to use")
 	flag.IntVar(&numberOfRuns, "r", numberOfRuns, "Number of runs")
 	flag.StringVar(&scenario, "scenario", scenario, "Scenario to run")
 	flag.BoolVar(&useTql, "tql", useTql, "Use TQL")
+	flag.BoolVar(&useCache, "cache", useCache, "Use cache")
 	flag.Parse()
 
 	sqlTexts := scenarios[scenario]
@@ -64,7 +66,7 @@ func main() {
 				sqlText := queries[rand.Int31n(lenQueries)]
 				var queryElapse time.Duration
 				if useTql {
-					queryElapse = queryNeoTql(neoHttpAddr, sqlText)
+					queryElapse = queryNeoTql(neoHttpAddr, sqlText, useCache)
 				} else {
 					queryElapse = queryNeo(neoHttpAddr, sqlText)
 				}
@@ -131,9 +133,15 @@ func queryNeo(neoHttpAddr string, sqlText string) time.Duration {
 }
 
 // execute the query and return the elapsed time that is said in the response JSON.
-func queryNeoTql(neoHttpAddr string, sqlText string) time.Duration {
+func queryNeoTql(neoHttpAddr string, sqlText string, useCache bool) time.Duration {
+	var code string
+	if useCache {
+		code = fmt.Sprintf("SQL(`%s`)\nJSON( cache(`%s`, `60s`, 0.5))\n", sqlText, sqlText)
+	} else {
+		code = fmt.Sprintf("SQL(`%s`)\nJSON()\n", sqlText)
+	}
 	req, err := http.NewRequest("POST", neoHttpAddr+"/db/tql",
-		strings.NewReader(fmt.Sprintf("SQL(`%s`)\nJSON( cache(`%s`, `60s`, 0.5))\n", sqlText, sqlText)))
+		strings.NewReader(code))
 	if err != nil {
 		fmt.Println("Failed to create request:", err)
 		os.Exit(1)
@@ -258,6 +266,9 @@ func (s *Stat) Print() {
 	thisRunCount := s.runCount - s.prevRunCount
 
 	printer.Println(" Elapsed:", time.Since(s.startTime), "Workers:", s.workers, "Runs:", s.runs)
+	if s.runCount == 0 {
+		return
+	}
 	printer.Println(" Query runs:", s.runCount, "/", s.workers*s.runs, ", This cycle:", thisRunCount)
 	printer.Println(" http   avg:", s.runElapsedSum/time.Duration(s.runCount), "min:", s.runElapseMin, "max:", s.runElapseMax)
 	printer.Println(" query  avg:", s.queryElapsedSum/time.Duration(s.runCount), "min:", s.queryElapsedMin, "max:", s.queryElapsedMax)
