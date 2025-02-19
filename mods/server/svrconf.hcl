@@ -38,7 +38,6 @@ define VARS {
     MQTT_ENABLE_TOKENAUTH = flag("--mqtt-enable-token-auth", false)
     MQTT_ENABLE_TLS       = flag("--mqtt-enable-tls", false)
 
-    HTTP_ENABLE_WEBUI     = flag("--http-enable-web", true)
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
     HTTP_DEBUG_LATENCY    = flag("--http-debug-latency", "0")
     HTTP_READBUF_SIZE     = flag("--http-readbuf-size", 0)  // 0 means default, bytes
@@ -122,7 +121,6 @@ module "machbase.com/neo-server" {
             WriteBufSize     = VARS_HTTP_WRITEBUF_SIZE
             ReadBufSize      = VARS_HTTP_READBUF_SIZE
             Linger           = VARS_HTTP_LINGER
-            EnableWebUI      = VARS_HTTP_ENABLE_WEBUI
             AllowStatz       = ["${VARS_HTTP_ALLOW_STATZ}"]
         }
         Mqtt = {

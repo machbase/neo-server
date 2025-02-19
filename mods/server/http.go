@@ -76,7 +76,6 @@ type httpd struct {
 	listenAddresses []string
 	enableTokenAuth bool
 	handlers        []*HandlerConfig
-	disableWeb      bool
 	mqttWsHandler   func(*gin.Context)
 
 	httpServer        *http.Server
@@ -254,9 +253,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/:oper", svr.handleLineProtocol)
 			svr.log.Infof("HTTP path %s for the line protocol", prefix)
 		case HandlerWeb: // web ui
-			if svr.disableWeb {
-				continue
-			}
 			contentBase := "/ui/"
 			group.GET("/", func(ctx *gin.Context) {
 				ctx.Redirect(http.StatusFound, path.Join(prefix, contentBase))

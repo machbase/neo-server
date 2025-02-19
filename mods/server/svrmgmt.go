@@ -516,15 +516,18 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 	}
 	if req.Sessions {
 		sessions := []*mgmt.Session{}
-		s.db.ListWatcher(func(st *machsvr.ConnState) bool {
-			sessions = append(sessions, &mgmt.Session{
-				Id:            st.Id,
-				CreTime:       st.CreatedTime.UnixNano(),
-				LatestSqlTime: st.LatestTime.UnixNano(),
-				LatestSql:     st.LatestSql,
+		if db, ok := s.db.(*machsvr.Database); ok {
+			db.ListWatcher(func(st *machsvr.ConnState) bool {
+				sessions = append(sessions, &mgmt.Session{
+					Id:            st.Id,
+					CreTime:       st.CreatedTime.UnixNano(),
+					LatestSqlTime: st.LatestTime.UnixNano(),
+					LatestSql:     st.LatestSql,
+				})
+				return true
 			})
-			return true
-		})
+		}
+		rsp.Sessions = sessions
 	}
 	rsp.Success = true
 	rsp.Reason = "success"
@@ -541,11 +544,16 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if err := s.db.KillConnection(req.Id, req.Force); err != nil {
-		rsp.Reason = err.Error()
+	if db, ok := s.db.(*machsvr.Database); ok {
+		if err := db.KillConnection(req.Id, req.Force); err != nil {
+			rsp.Reason = err.Error()
+		} else {
+			rsp.Success = true
+			rsp.Reason = "success"
+		}
 	} else {
-		rsp.Success = true
-		rsp.Reason = "success"
+		rsp.Success = false
+		rsp.Reason = "Session kill not supported in headonly mode"
 	}
 	return rsp, nil
 }
@@ -560,22 +568,27 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if strings.ToLower(req.Cmd) == "set" {
-		if limit := int(req.MaxOpenConn); limit >= -1 {
-			s.db.SetMaxOpenConn(limit)
+	if db, ok := s.db.(*machsvr.Database); ok {
+		if strings.ToLower(req.Cmd) == "set" {
+			if limit := int(req.MaxOpenConn); limit >= -1 {
+				db.SetMaxOpenConn(limit)
+			}
+			if limit := int(req.MaxOpenQuery); limit >= -1 {
+				db.SetMaxOpenQuery(limit)
+			}
 		}
-		if limit := int(req.MaxOpenQuery); limit >= -1 {
-			s.db.SetMaxOpenQuery(limit)
-		}
+		limitConn, remainsConn := db.MaxOpenConn()
+		limitQuery, remainsQuery := db.MaxOpenQuery()
+		rsp.MaxOpenConn = int32(limitConn)
+		rsp.RemainedOpenConn = int32(remainsConn)
+		rsp.MaxOpenQuery = int32(limitQuery)
+		rsp.RemainedOpenQuery = int32(remainsQuery)
+		rsp.Success = true
+		rsp.Reason = "success"
+	} else {
+		rsp.Success = false
+		rsp.Reason = "Session limit not supported in head-only mode"
 	}
-	limitConn, remainsConn := s.db.MaxOpenConn()
-	limitQuery, remainsQuery := s.db.MaxOpenQuery()
-	rsp.MaxOpenConn = int32(limitConn)
-	rsp.RemainedOpenConn = int32(remainsConn)
-	rsp.MaxOpenQuery = int32(limitQuery)
-	rsp.RemainedOpenQuery = int32(remainsQuery)
-	rsp.Success = true
-	rsp.Reason = "success"
 	return rsp, nil
 }
 

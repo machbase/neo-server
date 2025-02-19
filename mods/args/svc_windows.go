@@ -226,7 +226,7 @@ func (m *proxyService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	serveWg.Add(1)
 	go func() {
 		changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepts}
-		doServe(m.preset, true)
+		doServe(m.preset, false, true)
 		serveWg.Done()
 	}()
 loop:

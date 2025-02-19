@@ -21,7 +21,7 @@ import (
 type RPCServer struct {
 	machrpc.UnimplementedMachbaseServer
 	log          *slog.Logger
-	db           *Database
+	db           api.Database
 	authProvider AuthProvider
 	sessions     map[string]*ConnParole
 	sessionsLock sync.Mutex
@@ -31,7 +31,7 @@ type RPCServer struct {
 
 var _ machrpc.MachbaseServer = (*RPCServer)(nil)
 
-func NewRPCServer(db *Database, opts ...RPCServerOption) *RPCServer {
+func NewRPCServer(db api.Database, opts ...RPCServerOption) *RPCServer {
 	s := &RPCServer{
 		db:          db,
 		sessions:    make(map[string]*ConnParole),
@@ -114,7 +114,7 @@ func (s *RPCServer) Conn(ctx context.Context, req *machrpc.ConnRequest) (*machrp
 	} else {
 		h := s.authProvider.GenerateSnowflake()
 		parole := &ConnParole{
-			rawConn: conn.((*Conn)),
+			rawConn: conn,
 			handle:  h,
 			creTime: tick,
 		}
@@ -187,7 +187,7 @@ func (s *RPCServer) Exec(ctx context.Context, req *machrpc.ExecRequest) (*machrp
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	var rawConn *Conn
+	var rawConn api.Conn
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 		return rsp, nil
@@ -216,11 +216,12 @@ func (s *RPCServer) QueryRow(ctx context.Context, req *machrpc.QueryRowRequest) 
 	defer func() {
 		if panic := recover(); panic != nil {
 			s.log.Error("QueryRow panic recover", "error", panic)
+			debug.PrintStack()
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	var rawConn *Conn
+	var rawConn api.Conn
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 		return rsp, nil
@@ -239,10 +240,40 @@ func (s *RPCServer) QueryRow(ctx context.Context, req *machrpc.QueryRowRequest) 
 		return rsp, nil
 	}
 
-	var err error
 	rsp.Success = true
 	rsp.Reason = row.Message()
-	rsp.Values, err = machrpc.ConvertAnyToPb(row.(*Row).values)
+
+	if svrRow, ok := row.(*Row); ok {
+		// database is machsvr
+		if values, err := machrpc.ConvertAnyToPb(svrRow.values); err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		} else {
+			rsp.Values = values
+		}
+	} else {
+		// database is machcli
+		cols, err := row.Columns()
+		if err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		}
+		if buf, err := cols.MakeBuffer(); err != nil {
+			rsp.Reason = err.Error()
+			return rsp, nil
+		} else {
+			err = row.Scan(buf...)
+			if err != nil {
+				rsp.Reason = err.Error()
+				return rsp, nil
+			}
+			rsp.Values, err = machrpc.ConvertAnyToPb(buf)
+			if err != nil {
+				rsp.Reason = err.Error()
+				return rsp, nil
+			}
+		}
+	}
 	rsp.RowsAffected = row.RowsAffected()
 	if columns, err := row.Columns(); err != nil {
 		rsp.Success = false
@@ -258,10 +289,6 @@ func (s *RPCServer) QueryRow(ctx context.Context, req *machrpc.QueryRowRequest) 
 			})
 		}
 	}
-	if err != nil {
-		rsp.Success = false
-		rsp.Reason = err.Error()
-	}
 	return rsp, nil
 }
 
@@ -275,7 +302,7 @@ func (s *RPCServer) Query(ctx context.Context, req *machrpc.QueryRequest) (*mach
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	var rawConn *Conn
+	var rawConn api.Conn
 	if conn, ok := s.getSession(req.Conn.Handle); !ok {
 		rsp.Reason = "invalid connection handle"
 		return rsp, nil
@@ -293,7 +320,7 @@ func (s *RPCServer) Query(ctx context.Context, req *machrpc.QueryRequest) (*mach
 	}
 
 	if realRows.IsFetchable() {
-		rows := s.detainRows(realRows.(*Rows), req.Sql)
+		rows := s.detainRows(realRows, req.Sql)
 		rsp.RowsHandle = &machrpc.RowsHandle{
 			Handle: rows.Id(),
 		}
@@ -322,16 +349,22 @@ func (s *RPCServer) Columns(ctx context.Context, rows *machrpc.RowsHandle) (*mac
 		return rsp, nil
 	}
 
-	rsp.Columns = make([]*machrpc.Column, len(rowsWrap.Rows.columns))
-	for i, c := range rowsWrap.Rows.columns {
-		rsp.Columns[i] = &machrpc.Column{
-			Name:     c.Name,
-			DataType: string(c.DataType),
-			Length:   int32(c.Length),
-			Type:     int32(c.Type),
-			Flag:     int32(c.Flag),
+	if cols, err := rowsWrap.Rows.Columns(); err != nil {
+		rsp.Reason = err.Error()
+		return rsp, nil
+	} else {
+		rsp.Columns = make([]*machrpc.Column, len(cols))
+		for i, c := range cols {
+			rsp.Columns[i] = &machrpc.Column{
+				Name:     c.Name,
+				DataType: string(c.DataType),
+				Length:   int32(c.Length),
+				Type:     int32(c.Type),
+				Flag:     int32(c.Flag),
+			}
 		}
 	}
+
 	rsp.Success = true
 	rsp.Reason = "success"
 	return rsp, nil
@@ -342,7 +375,6 @@ func (s *RPCServer) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*m
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
-			debug.PrintStack()
 			s.log.Error("RowsFetch panic recover", "error", panic)
 		}
 		rsp.Elapse = time.Since(tick).String()
@@ -361,11 +393,19 @@ func (s *RPCServer) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*m
 		return rsp, nil
 	}
 
-	values, err := rowsWrap.Rows.columns.MakeBuffer()
-	if err != nil {
+	var values []any
+	if cols, err := rowsWrap.Rows.Columns(); err != nil {
 		rsp.Success = false
 		rsp.Reason = err.Error()
 		return rsp, nil
+	} else {
+		if buf, err := cols.MakeBuffer(); err != nil {
+			rsp.Success = false
+			rsp.Reason = err.Error()
+			return rsp, nil
+		} else {
+			values = buf
+		}
 	}
 	err = rowsWrap.Rows.Scan(values...)
 	if err != nil {
@@ -569,13 +609,13 @@ func (s *RPCServer) getRows(id string) (*RowsParole, error) {
 	return ret, nil
 }
 
-func (s *RPCServer) detainRows(rows *Rows, sqlText string) *RowsParole {
+func (s *RPCServer) detainRows(rows api.Rows, sqlText string) *RowsParole {
 	ser := atomic.AddInt64(&s.idSerial, 1)
 	key := fmt.Sprintf("%p#%d", rows, ser)
 	return s.detainRows0(key, rows, sqlText)
 }
 
-func (s *RPCServer) detainRows0(key string, rows *Rows, sqlText string) *RowsParole {
+func (s *RPCServer) detainRows0(key string, rows api.Rows, sqlText string) *RowsParole {
 	ret := &RowsParole{
 		Rows:       rows,
 		id:         key,
@@ -647,7 +687,7 @@ func (s *RPCServer) detainAppender0(key string, appender *Appender, tableName st
 }
 
 type ConnParole struct {
-	rawConn *Conn
+	rawConn api.Conn
 	handle  string
 	creTime time.Time
 }
@@ -672,7 +712,7 @@ func (svr *RPCServer) removeSession(handle string) {
 }
 
 type RowsParole struct {
-	Rows        *Rows
+	Rows        api.Rows
 	id          string
 	release     func()
 	releaseOnce sync.Once

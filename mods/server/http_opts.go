@@ -73,12 +73,6 @@ func WithHttpEulaFilePath(path string) HttpOption {
 	}
 }
 
-func WithHttpEnableWeb(enable bool) HttpOption {
-	return func(s *httpd) {
-		s.disableWeb = !enable
-	}
-}
-
 func WithHttpTqlLoader(loader tql.Loader) HttpOption {
 	return func(s *httpd) {
 		s.tqlLoader = loader
