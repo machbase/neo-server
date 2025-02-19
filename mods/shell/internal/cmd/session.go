@@ -142,6 +142,7 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 	if err != nil {
 		ctx.Println("ERR", err.Error())
 	}
+	defer rows.Close()
 	if showAll {
 		ctx.Println("[ V$NEO_SESSION ]")
 	}
@@ -177,7 +178,6 @@ func doSessionList(ctx *action.ActionContext, showAll bool) {
 		}
 	}
 	box.Render()
-	rows.Close()
 
 	if showAll {
 		ctx.Println("[ V$SESSION ]")

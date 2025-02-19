@@ -1164,6 +1164,7 @@ func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 					node.task.Cancel()
 					return ctx.vm.MakeCustomError("DBError", err.Error())
 				}
+				defer rows.Close()
 				cols, _ := rows.Columns()
 
 				// set headers
@@ -1219,6 +1220,7 @@ func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 					node.task.Cancel()
 					return ctx.vm.MakeCustomError("DBError", err.Error())
 				}
+				defer rows.Close()
 				for rows.Next() {
 					cols, _ := rows.Columns()
 					values, _ := cols.MakeBuffer()

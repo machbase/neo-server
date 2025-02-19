@@ -268,6 +268,7 @@ func (w *Watcher) executeLog() {
 		w.handleError(err)
 		return
 	}
+	defer rows.Close()
 	rowNum := 0
 	for rows.Next() {
 		rowNum++

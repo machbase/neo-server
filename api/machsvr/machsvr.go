@@ -735,10 +735,10 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 	conn.SetLatestSql(sqlText)
 	var row = &Row{}
 	var stmt unsafe.Pointer
-	api.AllocStmt()
 	if row.err = mach.EngAllocStmt(conn.handle, &stmt); row.err != nil {
 		return row
 	}
+	api.AllocStmt()
 	defer func() {
 		api.FreeStmt()
 		err := mach.EngFreeStmt(stmt)
