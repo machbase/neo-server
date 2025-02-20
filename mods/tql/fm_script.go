@@ -636,24 +636,9 @@ type OttoContext struct {
 }
 
 func (ctx *OttoContext) Run() (any, error) {
-	done := make(chan bool)
-	ticker := time.NewTicker(1 * time.Second)
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if ctx.node.task.shouldStop() {
-					ctx.vm.Interrupt <- func() {
-						ctx.node.task.LogWarn("script execution is interrupted")
-					}
-				}
-			}
-		}
-	}()
-	v, err := ctx.vm.Run(ctx.sc)
-	done <- true
+	v, err := ctx.runHalting("execution", func() (otto.Value, error) {
+		return ctx.vm.Run(ctx.sc)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -665,6 +650,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		node: node,
 		vm:   otto.New(),
 	}
+	ctx.vm.Interrupt = make(chan func(), 3) // 3 is for non-blocking: init, main, finalize
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -686,8 +672,11 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		ctx.onceFinalize.Do(func() {
 			f, _ := ctx.vm.Get("finalize")
 			if f.IsDefined() && f.IsFunction() {
-				ctx.vm.Call("finalize", nil)
+				ctx.runHalting("finalize", func() (otto.Value, error) {
+					return ctx.vm.Call("finalize", nil)
+				})
 			}
+			defer close(ctx.vm.Interrupt)
 		})
 	})
 	con, _ := ctx.vm.Get("console")
@@ -742,13 +731,47 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		if node.tqlLine != nil && node.tqlLine.line > 1 {
 			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
 		}
-		_, err := ctx.vm.Run(initCode)
+		_, err := ctx.runHalting("init", func() (otto.Value, error) {
+			return ctx.vm.Run(initCode)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
 		}
 	}
 
 	return ctx, nil
+}
+
+var ottoInterrupt = errors.New("script execution is interrupted")
+
+func (ctx *OttoContext) runHalting(stage string, r func() (otto.Value, error)) (otto.Value, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if r == ottoInterrupt {
+				ctx.node.task.LogWarnf("script %s is interrupted", stage)
+			} else {
+				panic(r)
+			}
+		}
+	}()
+	watchdogCleanup := make(chan struct{})
+	defer close(watchdogCleanup)
+	go func() {
+		for {
+			select {
+			case <-time.After(1 * time.Second):
+				if ctx.node.task.shouldStop() {
+					ctx.vm.Interrupt <- func() {
+						panic(ottoInterrupt)
+					}
+					return
+				}
+			case <-watchdogCleanup:
+				return
+			}
+		}
+	}()
+	return r()
 }
 
 func (ctx *OttoContext) doResult() error {

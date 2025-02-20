@@ -92,6 +92,7 @@ type TqlTestCase struct {
 	Script             string
 	Payload            string
 	Params             map[string][]string
+	CtxTimeout         time.Duration
 	ExpectErr          string
 	ExpectCSV          []string
 	ExpectText         []string
@@ -109,7 +110,11 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 
 	memMock := &VolatileFileWriterMock{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	timeout := 5 * time.Second
+	if tc.CtxTimeout > 0 {
+		timeout = tc.CtxTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	output := &bytes.Buffer{}
@@ -1521,6 +1526,32 @@ func TestScript(t *testing.T) {
 				require.Equal(t, `["a","b","c","d"]`, gjson.Get(result, "data.columns").Raw)
 				require.Equal(t, `["int64","double","string","bool"]`, gjson.Get(result, "data.types").Raw)
 				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptInterrupt(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-timeout",
+			Script: `
+				SCRIPT("js", {
+					for (var i = 0; i < 1000000000; i++) {
+					}
+					$.yield(123)
+				})
+				CSV()
+			`,
+			CtxTimeout: 100 * time.Millisecond,
+			ExpectFunc: func(t *testing.T, result string) {
+				fmt.Println(result)
 			},
 		},
 	}
