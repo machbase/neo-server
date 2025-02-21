@@ -350,3 +350,69 @@ func TableTypeDescription(typ TableType, flag TableFlag) string {
 	}
 	return desc
 }
+
+func ListIndexGap(ctx context.Context, conn Conn) ([]*IndexGapInfo, error) {
+	sqlText := SqlTidy(`select 
+		b.name as TABLE_NAME, 
+		c.name as INDEX_NAME, 
+		a.table_end_rid - a.end_rid as GAP
+	from
+		v$storage_dc_table_indexes a,
+		m$sys_tables b, m$sys_indexes c
+	where
+		a.id = c.id 
+	and c.table_id = b.id 
+	order by 3 desc`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := make([]*IndexGapInfo, 0, 20)
+	for rows.Next() {
+		rec := &IndexGapInfo{}
+		err := rows.Scan(&rec.TableName, &rec.IndexName, &rec.Gap)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}
+
+func ListRollupGap(ctx context.Context, conn Conn) ([]*RollupGapInfo, error) {
+	sqlText := SqlTidy(`SELECT
+		C.SOURCE_TABLE AS SRC_TABLE,
+		C.ROLLUP_TABLE,
+		B.TABLE_END_RID AS SRC_END_RID,
+		C.END_RID AS ROLLUP_END_RID,
+		B.TABLE_END_RID - C.END_RID AS GAP,
+		C.LAST_ELAPSED_MSEC*1000*1000 AS LAST_TIME
+	FROM
+		M$SYS_TABLES A,
+		V$STORAGE_TAG_TABLES B,
+		V$ROLLUP C
+	WHERE
+		A.ID=B.ID
+	AND A.NAME=C.SOURCE_TABLE
+	ORDER BY SRC_TABLE`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := make([]*RollupGapInfo, 0, 10)
+	for rows.Next() {
+		rec := &RollupGapInfo{}
+		err := rows.Scan(&rec.SrcTable, &rec.RollupTable, &rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &rec.LastElapsed)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}

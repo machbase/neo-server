@@ -360,6 +360,8 @@ func (x *Node) fmSql(args ...any) (any, error) {
 			ShowIndexes:   func(ii *api.IndexInfo, nrow int64) bool { return yieldIndexInfo(x, ii, nrow) },
 			DescribeTable: func(td *api.TableDescription) { yieldTableDescription(x, td) },
 			ShowTags:      func(tag *api.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
+			ShowIndexGap:  func(gaps []*api.IndexGapInfo) bool { return yieldIndexGap(x, gaps) },
+			ShowRollupGap: func(gaps []*api.RollupGapInfo) bool { return yieldRollupGap(x, gaps) },
 			Explain:       func(sql string, err error) { yieldExplain(x, sql, err) },
 			SqlQuery: func(q *api.Query, nrow int64) bool {
 				if nrow == -1 {
@@ -498,6 +500,39 @@ func yieldTags(node *Node, tag *api.TagInfo, nrow int64) bool {
 		NewRecord(nrow, []any{tag.Id, tag.Name, nil,
 			nil, nil, nil,
 			nil, nil, nil, nil}).Tell(node.next)
+	}
+	return true
+}
+
+func yieldRollupGap(node *Node, gaps []*api.RollupGapInfo) bool {
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
+		{Name: "SRC_TABLE", DataType: api.DataTypeString},
+		{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
+		{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
+		{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
+		{Name: "GAP", DataType: api.DataTypeInt64},
+		{Name: "LAST_TIME", DataType: api.DataTypeString},
+	})
+	for i, gap := range gaps {
+		NewRecord(i+1, []any{
+			gap.SrcTable, gap.RollupTable, gap.SrcEndRID, gap.RollupEndRID, gap.Gap, gap.LastElapsed.String(),
+		}).Tell(node.next)
+	}
+	return true
+}
+
+func yieldIndexGap(node *Node, gaps []*api.IndexGapInfo) bool {
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
+		{Name: "TABLE_NAME", DataType: api.DataTypeString},
+		{Name: "INDEX_NAME", DataType: api.DataTypeString},
+		{Name: "GAP", DataType: api.DataTypeInt64},
+	})
+	for i, gap := range gaps {
+		NewRecord(i+1, []any{
+			gap.TableName, gap.IndexName, gap.Gap,
+		}).Tell(node.next)
 	}
 	return true
 }

@@ -114,3 +114,18 @@ type TagStatInfo struct {
 	MaxValueTime  time.Time `json:"max_value_time"`
 	RecentRowTime time.Time `json:"recent_row_time"`
 }
+
+type IndexGapInfo struct {
+	TableName string `json:"table_name"`
+	IndexName string `json:"index_name"`
+	Gap       int64  `json:"gap"`
+}
+
+type RollupGapInfo struct {
+	SrcTable     string        `json:"src_table"`
+	RollupTable  string        `json:"rollup_table"`
+	SrcEndRID    int64         `json:"src_end_rid"`
+	RollupEndRID int64         `json:"rollup_end_rid"`
+	Gap          int64         `json:"gap"`
+	LastElapsed  time.Duration `json:"last_time"`
+}

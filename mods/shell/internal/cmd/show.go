@@ -143,19 +143,23 @@ func doShow(ctx *action.ActionContext) {
 }
 
 func doShowIndexGap(ctx *action.ActionContext) {
-	sqlText := `select 
-		b.name as TABLE_NAME, 
-		c.name as INDEX_NAME, 
-		a.table_end_rid - a.end_rid as GAP
-	from
-		v$storage_dc_table_indexes a,
-		m$sys_tables b, m$sys_indexes c
-	where
-		a.id = c.id 
-	and c.table_id = b.id 
-	order by 3 desc`
-
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListIndexGap(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find indexgap; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "INDEX_NAME", "GAP"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.TableName, nfo.IndexName, nfo.Gap)
+	}
+	box.Render()
 }
 
 func doShowLsm(ctx *action.ActionContext) {
@@ -302,22 +306,23 @@ func doShowTableUsage(ctx *action.ActionContext) {
 }
 
 func doShowRollupGap(ctx *action.ActionContext) {
-	sqlText := `SELECT
-		C.SOURCE_TABLE AS SRC_TABLE,
-		C.ROLLUP_TABLE,
-		B.TABLE_END_RID AS SRC_END_RID,
-		C.END_RID AS ROLLUP_END_RID,
-		B.TABLE_END_RID - C.END_RID AS GAP,
-		C.LAST_ELAPSED_MSEC AS LAST_TIME
-	FROM
-		M$SYS_TABLES A,
-		V$STORAGE_TAG_TABLES B,
-		V$ROLLUP C
-	WHERE
-		A.ID=B.ID
-	AND A.NAME=C.SOURCE_TABLE
-	ORDER BY SRC_TABLE`
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListRollupGap(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find rollupgap; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "LAST_TIME"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.SrcTable, nfo.RollupTable, nfo.SrcEndRID, nfo.RollupEndRID, nfo.Gap, nfo.LastElapsed.String())
+	}
+	box.Render()
 }
 
 func doShowTagIndexGap(ctx *action.ActionContext) {

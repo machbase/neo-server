@@ -24,6 +24,8 @@ type CommandHandler struct {
 	ShowTables    func(*TableInfo, int64) bool
 	ShowIndexes   func(*IndexInfo, int64) bool
 	ShowTags      func(*TagInfo, int64) bool
+	ShowRollupGap func([]*RollupGapInfo) bool
+	ShowIndexGap  func([]*IndexGapInfo) bool
 	Explain       func(string, error)
 	SqlQuery      func(*Query, int64) bool
 
@@ -257,6 +259,23 @@ func (ch *CommandHandler) NewShowCommand() *cobra.Command {
 		showCmd.AddCommand(showTags)
 	}
 
+	if ch.ShowRollupGap != nil {
+		showIndexGap := &cobra.Command{
+			Use:  "indexgap",
+			Args: cobra.NoArgs,
+		}
+		showIndexGap.RunE = ch.runShowIndexGap
+		showCmd.AddCommand(showIndexGap)
+	}
+
+	if ch.ShowRollupGap != nil {
+		showRollupGap := &cobra.Command{
+			Use:  "rollupgap",
+			Args: cobra.NoArgs,
+		}
+		showRollupGap.RunE = ch.runShowRollupGap
+		showCmd.AddCommand(showRollupGap)
+	}
 	if showCmd.HasSubCommands() {
 		showCmd.SilenceUsage = true
 		showCmd.SilenceErrors = true
@@ -414,6 +433,40 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 		nrow++
 		return ch.ShowTags(tag, nrow)
 	})
+	return err
+}
+
+func (ch *CommandHandler) runShowIndexGap(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	var conn Conn
+	if c, err := ch.Database(ctx); err != nil {
+		return err
+	} else {
+		conn = c
+	}
+	defer conn.Close()
+	lst, err := ListIndexGap(ctx, conn)
+	if err != nil {
+		return err
+	}
+	ch.ShowIndexGap(lst)
+	return err
+}
+
+func (ch *CommandHandler) runShowRollupGap(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	var conn Conn
+	if c, err := ch.Database(ctx); err != nil {
+		return err
+	} else {
+		conn = c
+	}
+	defer conn.Close()
+	lst, err := ListRollupGap(ctx, conn)
+	if err != nil {
+		return err
+	}
+	ch.ShowRollupGap(lst)
 	return err
 }
 
