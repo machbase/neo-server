@@ -1551,7 +1551,9 @@ func TestScriptInterrupt(t *testing.T) {
 			`,
 			CtxTimeout: 100 * time.Millisecond,
 			ExpectFunc: func(t *testing.T, result string) {
-				fmt.Println(result)
+				// SCRIPT should be interrupted by context timeout,
+				// so no result should be returned
+				require.Empty(t, result)
 			},
 		},
 	}

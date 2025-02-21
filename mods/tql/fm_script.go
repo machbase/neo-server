@@ -611,6 +611,7 @@ func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		defer closeOttoContext(ctx)
 		node.SetValue(js_ctx_key, ctx)
 	}
 	if inflight := node.Inflight(); inflight != nil {
@@ -645,6 +646,10 @@ func (ctx *OttoContext) Run() (any, error) {
 	return v.Export()
 }
 
+func closeOttoContext(ctx *OttoContext) {
+	close(ctx.vm.Interrupt)
+}
+
 func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
 	ctx := &OttoContext{
 		node: node,
@@ -676,7 +681,6 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 					return ctx.vm.Call("finalize", nil)
 				})
 			}
-			defer close(ctx.vm.Interrupt)
 		})
 	})
 	con, _ := ctx.vm.Get("console")
