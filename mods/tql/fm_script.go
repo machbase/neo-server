@@ -601,12 +601,26 @@ func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 	var ctx *OttoContext
 	var err error
 
+	defer func() {
+		if r := recover(); r != nil {
+			code := "{" + strings.TrimSpace(strings.TrimPrefix(initCode, "//")) + "}\n" +
+				"{" + strings.TrimSpace(strings.TrimPrefix(mainCode, "//")) + "}"
+			if r == ottoInterrupt {
+				node.task.LogWarnf("script is interrupted; %s", code)
+			} else {
+				node.task.LogWarnf("script panic; %v\n%s", r, code)
+			}
+		}
+	}()
+
 	if obj, ok := node.GetValue(js_ctx_key); ok {
 		if o, ok := obj.(*OttoContext); ok {
 			ctx = o
 		}
 	}
 	if ctx == nil {
+		// if script is interrupted whilethe init stage of the newOtterContext()
+		// ctx might be nil
 		ctx, err = newOttoContext(node, initCode, mainCode)
 		if err != nil {
 			return nil, err
@@ -633,32 +647,24 @@ type OttoContext struct {
 	yieldCount   int64
 	onceFinalize sync.Once
 	didSetResult bool
+
+	watchdogCleanup chan struct{}
 }
 
 func (ctx *OttoContext) Run() (any, error) {
-	done := make(chan bool)
-	ticker := time.NewTicker(1 * time.Second)
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				if ctx.node.task.shouldStop() {
-					ctx.vm.Interrupt <- func() {
-						ctx.node.task.LogWarn("script execution is interrupted")
-					}
-				}
-			}
-		}
-	}()
 	v, err := ctx.vm.Run(ctx.sc)
-	done <- true
 	if err != nil {
 		return nil, err
 	}
 	return v.Export()
 }
+
+func closeOttoContext(ctx *OttoContext) {
+	close(ctx.watchdogCleanup)
+	close(ctx.vm.Interrupt)
+}
+
+var ottoInterrupt = errors.New("script execution is interrupted")
 
 func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
 	ctx := &OttoContext{
@@ -679,11 +685,18 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	}
 
 	node.SetEOF(func(*Node) {
+		defer closeOttoContext(ctx)
 		// set $.result columns if no records are yielded
 		if !ctx.didSetResult {
 			ctx.doResult()
 		}
 		ctx.onceFinalize.Do(func() {
+			defer func() {
+				// intentionally ignore the panic from finalize state.
+				// it will raised to the task level.
+				// do not use "recover()" here.
+				// The related test case : TestScriptInterrupt()/js-timeout-finalize
+			}()
 			f, _ := ctx.vm.Get("finalize")
 			if f.IsDefined() && f.IsFunction() {
 				ctx.vm.Call("finalize", nil)
@@ -736,6 +749,25 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	ctx.obj.Set("request", ottoFuncRequest(ctx))
 	// $.geojson()
 	ctx.obj.Set("geojson", ottoFuncGeoJSON(ctx))
+
+	ctx.vm.Interrupt = make(chan func(), 3) // 1 is for non-blocking
+	ctx.watchdogCleanup = make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-time.After(1 * time.Second):
+				if ctx.node.task.shouldStop() {
+					ctx.vm.Interrupt <- func() {
+						panic(ottoInterrupt)
+					}
+					return
+				}
+			case <-ctx.watchdogCleanup:
+				return
+			}
+		}
+	}()
 
 	// init code
 	if initCode != "" {
