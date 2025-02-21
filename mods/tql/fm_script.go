@@ -601,17 +601,30 @@ func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 	var ctx *OttoContext
 	var err error
 
+	defer func() {
+		if r := recover(); r != nil {
+			code := "{" + strings.TrimSpace(strings.TrimPrefix(initCode, "//")) + "}\n" +
+				"{" + strings.TrimSpace(strings.TrimPrefix(mainCode, "//")) + "}"
+			if r == ottoInterrupt {
+				node.task.LogWarnf("script is interrupted; %s", code)
+			} else {
+				node.task.LogWarnf("script panic; %v\n%s", r, code)
+			}
+		}
+	}()
+
 	if obj, ok := node.GetValue(js_ctx_key); ok {
 		if o, ok := obj.(*OttoContext); ok {
 			ctx = o
 		}
 	}
 	if ctx == nil {
+		// if script is interrupted whilethe init stage of the newOtterContext()
+		// ctx might be nil
 		ctx, err = newOttoContext(node, initCode, mainCode)
 		if err != nil {
 			return nil, err
 		}
-		defer closeOttoContext(ctx)
 		node.SetValue(js_ctx_key, ctx)
 	}
 	if inflight := node.Inflight(); inflight != nil {
@@ -634,12 +647,12 @@ type OttoContext struct {
 	yieldCount   int64
 	onceFinalize sync.Once
 	didSetResult bool
+
+	watchdogCleanup chan struct{}
 }
 
 func (ctx *OttoContext) Run() (any, error) {
-	v, err := ctx.runHalting("execution", func() (otto.Value, error) {
-		return ctx.vm.Run(ctx.sc)
-	})
+	v, err := ctx.vm.Run(ctx.sc)
 	if err != nil {
 		return nil, err
 	}
@@ -647,15 +660,17 @@ func (ctx *OttoContext) Run() (any, error) {
 }
 
 func closeOttoContext(ctx *OttoContext) {
+	close(ctx.watchdogCleanup)
 	close(ctx.vm.Interrupt)
 }
+
+var ottoInterrupt = errors.New("script execution is interrupted")
 
 func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
 	ctx := &OttoContext{
 		node: node,
 		vm:   otto.New(),
 	}
-	ctx.vm.Interrupt = make(chan func(), 3) // 3 is for non-blocking: init, main, finalize
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -670,16 +685,21 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	}
 
 	node.SetEOF(func(*Node) {
+		defer closeOttoContext(ctx)
 		// set $.result columns if no records are yielded
 		if !ctx.didSetResult {
 			ctx.doResult()
 		}
 		ctx.onceFinalize.Do(func() {
+			defer func() {
+				// intentionally ignore the panic from finalize state.
+				// it will raised to the task level.
+				// do not use "recover()" here.
+				// The related test case : TestScriptInterrupt()/js-timeout-finalize
+			}()
 			f, _ := ctx.vm.Get("finalize")
 			if f.IsDefined() && f.IsFunction() {
-				ctx.runHalting("finalize", func() (otto.Value, error) {
-					return ctx.vm.Call("finalize", nil)
-				})
+				ctx.vm.Call("finalize", nil)
 			}
 		})
 	})
@@ -730,36 +750,9 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	// $.geojson()
 	ctx.obj.Set("geojson", ottoFuncGeoJSON(ctx))
 
-	// init code
-	if initCode != "" {
-		if node.tqlLine != nil && node.tqlLine.line > 1 {
-			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
-		}
-		_, err := ctx.runHalting("init", func() (otto.Value, error) {
-			return ctx.vm.Run(initCode)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
-		}
-	}
+	ctx.vm.Interrupt = make(chan func(), 3) // 1 is for non-blocking
+	ctx.watchdogCleanup = make(chan struct{})
 
-	return ctx, nil
-}
-
-var ottoInterrupt = errors.New("script execution is interrupted")
-
-func (ctx *OttoContext) runHalting(stage string, r func() (otto.Value, error)) (otto.Value, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			if r == ottoInterrupt {
-				ctx.node.task.LogWarnf("script %s is interrupted", stage)
-			} else {
-				panic(r)
-			}
-		}
-	}()
-	watchdogCleanup := make(chan struct{})
-	defer close(watchdogCleanup)
 	go func() {
 		for {
 			select {
@@ -770,12 +763,24 @@ func (ctx *OttoContext) runHalting(stage string, r func() (otto.Value, error)) (
 					}
 					return
 				}
-			case <-watchdogCleanup:
+			case <-ctx.watchdogCleanup:
 				return
 			}
 		}
 	}()
-	return r()
+
+	// init code
+	if initCode != "" {
+		if node.tqlLine != nil && node.tqlLine.line > 1 {
+			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
+		}
+		_, err := ctx.vm.Run(initCode)
+		if err != nil {
+			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+		}
+	}
+
+	return ctx, nil
 }
 
 func (ctx *OttoContext) doResult() error {
