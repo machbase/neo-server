@@ -102,27 +102,27 @@ func Indexes(t *testing.T, db api.Database, ctx context.Context) {
 	require.NoError(t, err, "indexes fail")
 	require.NotEmpty(t, ret, "indexes empty")
 	for _, r := range ret {
-		switch r.Name {
+		switch r.IndexName {
 		case "_TAG_DATA_META_NAME":
 			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_DATA_META", r.Table)
-			require.Equal(t, "NAME", r.Cols[0])
-			require.Equal(t, "REDBLACK", r.Type)
+			require.Equal(t, "_TAG_DATA_META", r.TableName)
+			require.Equal(t, "NAME", r.ColumnName)
+			require.Equal(t, "REDBLACK", r.IndexType)
 		case "__PK_IDX__TAG_DATA_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_DATA_META", r.Table)
-			require.Equal(t, "_ID", r.Cols[0])
-			require.Equal(t, "REDBLACK", r.Type)
+			require.Equal(t, "_TAG_DATA_META", r.TableName)
+			require.Equal(t, "_ID", r.ColumnName)
+			require.Equal(t, "REDBLACK", r.IndexType)
 		case "_TAG_SIMPLE_META_NAME":
 			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
-			require.Equal(t, "NAME", r.Cols[0])
-			require.Equal(t, "REDBLACK", r.Type)
+			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
+			require.Equal(t, "NAME", r.ColumnName)
+			require.Equal(t, "REDBLACK", r.IndexType)
 		case "__PK_IDX__TAG_SIMPLE_META_1":
 			require.Equal(t, "MACHBASEDB", r.Database)
-			require.Equal(t, "_TAG_SIMPLE_META", r.Table)
-			require.Equal(t, "_ID", r.Cols[0])
-			require.Equal(t, "REDBLACK", r.Type)
+			require.Equal(t, "_TAG_SIMPLE_META", r.TableName)
+			require.Equal(t, "_ID", r.ColumnName)
+			require.Equal(t, "REDBLACK", r.IndexType)
 		default:
 			t.Logf("Unknown index: %+v", r)
 			t.Fail()

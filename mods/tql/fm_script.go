@@ -691,12 +691,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 			ctx.doResult()
 		}
 		ctx.onceFinalize.Do(func() {
-			defer func() {
-				// intentionally ignore the panic from finalize state.
-				// it will raised to the task level.
-				// do not use "recover()" here.
-				// The related test case : TestScriptInterrupt()/js-timeout-finalize
-			}()
+			// intentionally ignore the panic from finalize stage.
+			// it will raised to the task level.
+			// do not use "recover()" here.
+			// The related test case : TestScriptInterrupt()/js-timeout-finalize
 			f, _ := ctx.vm.Get("finalize")
 			if f.IsDefined() && f.IsFunction() {
 				ctx.vm.Call("finalize", nil)

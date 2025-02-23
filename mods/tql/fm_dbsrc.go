@@ -352,15 +352,25 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		NewRecord(1, resultMsg).Tell(x.next)
 	} else {
 		ch := api.CommandHandler{
-			Database:      databaseProvider,
-			FallbackVerb:  "sql --",
-			SilenceUsage:  true,
-			SilenceErrors: true,
-			ShowTables:    func(ti *api.TableInfo, nrow int64) bool { return yieldTableInfo(x, ti, nrow) },
-			ShowIndexes:   func(ii *api.IndexInfo, nrow int64) bool { return yieldIndexInfo(x, ii, nrow) },
-			DescribeTable: func(td *api.TableDescription) { yieldTableDescription(x, td) },
-			ShowTags:      func(tag *api.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
-			Explain:       func(sql string, err error) { yieldExplain(x, sql, err) },
+			Database:        databaseProvider,
+			FallbackVerb:    "sql --",
+			SilenceUsage:    true,
+			SilenceErrors:   true,
+			ShowTables:      func(ti *api.TableInfo, nrow int64) bool { return yieldTableInfo(x, ti, nrow) },
+			ShowIndexes:     func(ii *api.IndexInfo, nrow int64) bool { return yieldIndexesInfo(x, ii, nrow) },
+			ShowIndex:       func(ii *api.IndexInfo) bool { return yieldIndexInfo(x, ii) },
+			ShowLsmIndexes:  func(li *api.LsmIndexInfo, nrow int64) bool { return yieldLsmIndexesInfo(x, li, nrow) },
+			DescribeTable:   func(td *api.TableDescription) { yieldTableDescription(x, td) },
+			ShowTags:        func(tag *api.TagInfo, nrow int64) bool { return yieldTags(x, tag, nrow) },
+			ShowIndexGap:    func(gap *api.IndexGapInfo, nrow int64) bool { return yieldIndexGap(x, gap, nrow) },
+			ShowTagIndexGap: func(gap *api.IndexGapInfo, nrow int64) bool { return yieldTagIndexGap(x, gap, nrow) },
+			ShowRollupGap:   func(gap *api.RollupGapInfo, nrow int64) bool { return yieldRollupGap(x, gap, nrow) },
+			ShowSessions:    func(info *api.SessionInfo, nrow int64) bool { return yieldSessionsInfo(x, info, nrow) },
+			ShowStatements:  func(info *api.StatementInfo, nrow int64) bool { return yieldStatementsInfo(x, info, nrow) },
+			ShowStorage:     func(info *api.StorageInfo, nrow int64) bool { return yieldStorageInfo(x, info, nrow) },
+			ShowTableUsage:  func(info *api.TableUsageInfo, nrow int64) bool { return yieldTableUsageInfo(x, info, nrow) },
+			ShowLicense:     func(info *api.LicenseInfo) bool { return yieldLicenseInfo(x, info) },
+			Explain:         func(sql string, err error) { yieldExplain(x, sql, err) },
 			SqlQuery: func(q *api.Query, nrow int64) bool {
 				if nrow == -1 {
 					resultMsg = q.UserMessage()
@@ -389,56 +399,102 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	return nil, nil
 }
 
+func withRownum(p interface{ Columns() api.Columns }) api.Columns {
+	return append(api.Columns{api.MakeColumnRownum()}, p.Columns()...)
+}
+
 func yieldTableInfo(node *Node, info *api.TableInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(withRownum(info))
+	}
+	NewRecord(nrow, info.Values()).Tell(node.next)
+	return true
+}
+
+func yieldIndexesInfo(node *Node, info *api.IndexInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(withRownum(info))
+	}
+	NewRecord(nrow, info.Values()).Tell(node.next)
+	return info.Err == nil
+}
+
+func yieldIndexInfo(node *Node, info *api.IndexInfo) bool {
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
+		api.MakeColumnString("TABLE_NAME"),
+		api.MakeColumnString("COLUMN_NAME"),
+		api.MakeColumnString("INDEX_NAME"),
+		api.MakeColumnString("INDEX_TYPE"),
+		api.MakeColumnString("KEY_COMPRESS"),
+		api.MakeColumnInt64("MAX_LEVEL"),
+		api.MakeColumnInt64("PART_VALUE_COUNT"),
+		api.MakeColumnString("BITMAP_ENCODE"),
+	})
+	NewRecord(1, []any{
+		info.TableName,
+		info.ColumnName,
+		info.IndexName,
+		info.IndexType,
+		info.KeyCompress,
+		info.MaxLevel,
+		info.PartValueCount,
+		info.BitMapEncode,
+	}).Tell(node.next)
+	return info.Err == nil
+}
+
+func yieldLsmIndexesInfo(node *Node, info *api.LsmIndexInfo, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(api.Columns{
 			api.MakeColumnRownum(),
-			{Name: "DATABASE_NAME", DataType: api.DataTypeString},
-			{Name: "USER_NAME", DataType: api.DataTypeString},
 			{Name: "TABLE_NAME", DataType: api.DataTypeString},
-			{Name: "TABLE_ID", DataType: api.DataTypeInt64},
-			{Name: "TABLE_TYPE", DataType: api.DataTypeString},
-			{Name: "TABLE_FLAG", DataType: api.DataTypeString},
+			{Name: "INDEX_NAME", DataType: api.DataTypeString},
+			{Name: "LEVEL", DataType: api.DataTypeInt64},
+			{Name: "COUNT", DataType: api.DataTypeInt64},
 		})
 	}
-	var flag any
-	if info.Flag != api.TableFlagNone {
-		flag = info.Flag.String()
-	}
 	NewRecord(nrow, []any{
-		info.Database,
-		info.User,
-		info.Name,
-		info.Id,
-		info.Type.ShortString(),
-		flag,
+		info.TableName,
+		info.IndexName,
+		info.Level,
+		info.Count,
 	}).Tell(node.next)
 	return true
 }
 
-func yieldIndexInfo(node *Node, info *api.IndexInfo, nrow int64) bool {
+func yieldStorageInfo(node *Node, info *api.StorageInfo, nrow int64) bool {
 	if nrow == 1 {
 		node.task.SetResultColumns(api.Columns{
 			api.MakeColumnRownum(),
-			{Name: "DATABASE_NAME", DataType: api.DataTypeString},
-			{Name: "USER_NAME", DataType: api.DataTypeString},
 			{Name: "TABLE_NAME", DataType: api.DataTypeString},
-			{Name: "COLUMN_NAME", DataType: api.DataTypeString},
-			{Name: "INDEX_NAME", DataType: api.DataTypeString},
-			{Name: "INDEX_TYPE", DataType: api.DataTypeString},
-			{Name: "INDEX_ID", DataType: api.DataTypeInt64},
+			{Name: "DATA_SIZE", DataType: api.DataTypeInt64},
+			{Name: "INDEX_SIZE", DataType: api.DataTypeInt64},
+			{Name: "TOTAL_SIZE", DataType: api.DataTypeInt64},
 		})
 	}
 	NewRecord(nrow, []any{
-		info.Database,
-		info.User,
-		info.Table,
-		info.Cols[0],
-		info.Name,
-		info.Type,
-		info.Id,
+		info.TableName,
+		info.DataSize,
+		info.IndexSize,
+		info.TotalSize,
 	}).Tell(node.next)
-	return info.Err == nil
+	return true
+}
+
+func yieldTableUsageInfo(node *Node, info *api.TableUsageInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			{Name: "TABLE_NAME", DataType: api.DataTypeString},
+			{Name: "STORAGE_USAGE", DataType: api.DataTypeInt64},
+		})
+	}
+	NewRecord(nrow, []any{
+		info.TableName,
+		info.StorageUsage,
+	}).Tell(node.next)
+	return true
 }
 
 func yieldTableDescription(node *Node, desc *api.TableDescription) {
@@ -499,6 +555,93 @@ func yieldTags(node *Node, tag *api.TagInfo, nrow int64) bool {
 			nil, nil, nil,
 			nil, nil, nil, nil}).Tell(node.next)
 	}
+	return true
+}
+
+func yieldRollupGap(node *Node, gap *api.RollupGapInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			{Name: "SRC_TABLE", DataType: api.DataTypeString},
+			{Name: "ROLLUP_TABLE", DataType: api.DataTypeString},
+			{Name: "SRC_END_RID", DataType: api.DataTypeInt64},
+			{Name: "ROLLUP_END_RID", DataType: api.DataTypeInt64},
+			{Name: "GAP", DataType: api.DataTypeInt64},
+			{Name: "LAST_ELAPSED", DataType: api.DataTypeString},
+		})
+	}
+
+	NewRecord(nrow, []any{
+		gap.SrcTable, gap.RollupTable, gap.SrcEndRID, gap.RollupEndRID, gap.Gap, gap.LastElapsed.String(),
+	}).Tell(node.next)
+	return true
+}
+
+func yieldIndexGap(node *Node, gap *api.IndexGapInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(withRownum(gap))
+	}
+	NewRecord(nrow, gap.Values()).Tell(node.next)
+	return true
+}
+
+func yieldTagIndexGap(node *Node, gap *api.IndexGapInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(withRownum(gap))
+	}
+	NewRecord(nrow, gap.Values()).Tell(node.next)
+	return true
+}
+
+func yieldSessionsInfo(node *Node, info *api.SessionInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(withRownum(info))
+	}
+	NewRecord(nrow, info.Values()).Tell(node.next)
+	return true
+}
+
+func yieldStatementsInfo(node *Node, info *api.StatementInfo, nrow int64) bool {
+	if nrow == 1 {
+		node.task.SetResultColumns(api.Columns{
+			api.MakeColumnRownum(),
+			{Name: "ID", DataType: api.DataTypeInt64},
+			{Name: "SESSION_ID", DataType: api.DataTypeInt64},
+			{Name: "STATE", DataType: api.DataTypeString},
+			{Name: "TYPE", DataType: api.DataTypeString},
+			{Name: "RECORD_SIZE", DataType: api.DataTypeInt64},
+			{Name: "APPEND_SUCCESS", DataType: api.DataTypeInt64},
+			{Name: "APPEND_FAIL", DataType: api.DataTypeInt64},
+			{Name: "QUERY", DataType: api.DataTypeString},
+		})
+	}
+	if info.IsNeo {
+		NewRecord(nrow, []any{
+			info.ID, info.SessionID, info.State, "neo", nil, info.AppendSuccessCount, info.AppendFailCount, info.Query,
+		}).Tell(node.next)
+	} else {
+		NewRecord(nrow, []any{
+			info.ID, info.SessionID, info.State, "", info.RecordSize, nil, nil, info.Query,
+		}).Tell(node.next)
+	}
+	return info.Err == nil
+}
+
+func yieldLicenseInfo(node *Node, info *api.LicenseInfo) bool {
+	node.task.SetResultColumns(api.Columns{
+		api.MakeColumnRownum(),
+		api.MakeColumnString("ID"),
+		api.MakeColumnString("TYPE"),
+		api.MakeColumnString("CUSTOMER"),
+		api.MakeColumnString("PROJECT"),
+		api.MakeColumnString("COUNTRY_CODE"),
+		api.MakeColumnString("INSTALL_DATE"),
+		api.MakeColumnString("ISSUE_DATE"),
+		api.MakeColumnString("STATUS"),
+	})
+	NewRecord(1, []any{
+		info.Id, info.Type, info.Customer, info.Project, info.CountryCode, info.InstallDate, info.IssueDate, info.LicenseStatus,
+	}).Tell(node.next)
 	return true
 }
 

@@ -73,9 +73,6 @@ func doDescribe(ctx *action.ActionContext) {
 		return
 	}
 
-	if len(desc.Indexes) > 0 {
-		ctx.Println("[ COLUMN ]")
-	}
 	nrow := 0
 	box := ctx.NewBox([]string{"ROWNUM", "NAME", "TYPE", "LENGTH", "FLAG", "INDEX"})
 	for _, col := range desc.Columns {

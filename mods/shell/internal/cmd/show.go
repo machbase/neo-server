@@ -35,6 +35,7 @@ const helpShow = `  show [options] <object>
     table [-a] <table>     describe the table
     meta-tables            list meta tables
     virtual-tables         list virtual tables
+    sessions               list sessions
     statements             list statements
     indexes                list indexes
     index <index>          describe the index
@@ -67,6 +68,7 @@ func pcShow() action.PrefixCompleterInterface {
 		action.PcItem("meta-tables"),
 		action.PcItem("virtual-tables"),
 		action.PcItem("statements"),
+		action.PcItem("sessions"),
 		action.PcItem("indexes"),
 		action.PcItem("index"),
 		action.PcItem("storage"),
@@ -118,6 +120,8 @@ func doShow(ctx *action.ActionContext) {
 		doShowIndex(ctx, cmd.Args)
 	case "license":
 		doShowLicense(ctx)
+	case "sessions":
+		doShowSessions(ctx)
 	case "statements":
 		doShowStatements(ctx)
 	case "storage":
@@ -143,41 +147,83 @@ func doShow(ctx *action.ActionContext) {
 }
 
 func doShowIndexGap(ctx *action.ActionContext) {
-	sqlText := `select 
-		b.name as TABLE_NAME, 
-		c.name as INDEX_NAME, 
-		a.table_end_rid - a.end_rid as GAP
-	from
-		v$storage_dc_table_indexes a,
-		m$sys_tables b, m$sys_indexes c
-	where
-		a.id = c.id 
-	and c.table_id = b.id 
-	order by 3 desc`
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.IndexGapInfo{}).Columns().Names()...))
+	nrow := 0
+	api.ListIndexGapWalk(ctx.Ctx, conn, func(igi *api.IndexGapInfo) bool {
+		if igi.Err != nil {
+			ctx.Println("ERR", igi.Err.Error())
+			return false
+		}
+		nrow++
+		box.AppendRow(append([]any{nrow}, igi.Values()...)...)
+		return true
+	})
+	box.Render()
+}
 
-	doShowByQuery0(ctx, sqlText, true)
+func doShowTagIndexGap(ctx *action.ActionContext) {
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.IndexGapInfo{}).Columns().Names()...))
+	nrow := 0
+	api.ListTagIndexGapWalk(ctx.Ctx, conn, func(igi *api.IndexGapInfo) bool {
+		if igi.Err != nil {
+			ctx.Println("ERR", igi.Err.Error())
+			return false
+		}
+		nrow++
+		box.AppendRow(append([]any{nrow}, igi.Values()...)...)
+		return true
+	})
+	box.Render()
 }
 
 func doShowLsm(ctx *action.ActionContext) {
-	sqlText := `select 
-		b.name as TABLE_NAME,
-		c.name as INDEX_NAME,
-		a.level as LEVEL,
-		a.end_rid - a.begin_rid as COUNT
-	from
-		v$storage_dc_lsmindex_levels a,
-		m$sys_tables b, m$sys_indexes c
-	where
-		c.id = a.index_id 
-	and b.id = a.table_id
-	order by 1, 2, 3`
-
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListLsmIndexes(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find lsm indexes; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "INDEX_NAME", "LEVEL", "COUNT"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.TableName, nfo.IndexName, nfo.Level, nfo.Count)
+	}
+	box.Render()
 }
 
 func doShowUsers(ctx *action.ActionContext) {
-	sqlText := "select name USER_NAME from m$sys_users"
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.GetUsers(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find users; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "USER_NAME"})
+	for _, name := range list {
+		nrow++
+		box.AppendRow(nrow, name)
+	}
+	box.Render()
 }
 
 func doShowIndexes(ctx *action.ActionContext) {
@@ -195,7 +241,7 @@ func doShowIndexes(ctx *action.ActionContext) {
 	box := ctx.NewBox([]string{"ROWNUM", "USER_NAME", "DB", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE"})
 	for _, nfo := range list {
 		nrow++
-		box.AppendRow(nrow, nfo.User, nfo.Database, nfo.Table, nfo.Cols[0], nfo.Name, nfo.Type)
+		box.AppendRow(nrow, nfo.User, nfo.Database, nfo.TableName, nfo.ColumnName, nfo.IndexName, nfo.IndexType)
 	}
 	box.Render()
 }
@@ -206,130 +252,137 @@ func doShowIndex(ctx *action.ActionContext, args []string) {
 		ctx.Println("Usage: show index <index>")
 		return
 	}
-	sqlText := `select 
-		a.name as TABLE_NAME,
-		c.name as COLUMN_NAME,
-		b.name as INDEX_NAME,
-		case b.type
-			when 1 then 'BITMAP'
-			when 2 then 'KEYWORD'
-			when 5 then 'REDBLACK'
-			when 6 then 'LSM'
-			when 8 then 'REDBLACK'
-			when 9 then 'KEYWORD_LSM'
-			else 'LSM' end 
-		as INDEX_TYPE,
-		case b.key_compress
-			when 0 then 'UNCOMPRESSED'
-			else 'COMPRESSED' end 
-		as KEY_COMPRESS,
-		b.max_level as MAX_LEVEL,
-		b.part_value_count as PART_VALUE_COUNT,
-		case b.bitmap_encode
-			when 0 then 'EQUAL'
-			else 'RANGE' end 
-		as BITMAP_ENCODE
-	from
-		m$sys_tables a,
-		m$sys_indexes b,
-		m$sys_index_columns c
-	where
-		a.id = b.table_id 
-	and b.id = c.index_id
-	and b.name = '%s'`
-	sqlText = fmt.Sprintf(sqlText, args[0])
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	nfo, err := api.DescribeIndex(ctx.Ctx, conn, args[0])
+	if err != nil {
+		ctx.Println("unable to describe index", args[0], "; ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "COLUMN_NAME", "INDEX_NAME", "INDEX_TYPE", "KEY_COMPRESS", "MAX_LEVEL", "PART_VALUE_COUNT", "BITMAP_ENCODE"})
+	box.AppendRow(1, nfo.TableName, nfo.ColumnName, nfo.IndexName, nfo.IndexType, nfo.KeyCompress, nfo.MaxLevel, nfo.PartValueCount, nfo.BitMapEncode)
+	box.Render()
 }
 
 func doShowLicense(ctx *action.ActionContext) {
-	sqlText := "select ID, TYPE, CUSTOMER, PROJECT, COUNTRY_CODE, INSTALL_DATE from v$license_info"
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	nfo, err := api.GetLicenseInfo(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox([]string{"ID", "TYPE", "CUSTOMER", "PROJECT", "COUNTRY_CODE", "INSTALL_DATE", " ISSUE_DATE", "STATUS"})
+	box.AppendRow(nfo.Id, nfo.Type, nfo.Customer, nfo.Project, nfo.CountryCode, nfo.InstallDate, nfo.IssueDate, nfo.LicenseStatus)
+	box.Render()
+}
+
+func doShowSessions(ctx *action.ActionContext) {
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.SessionInfo{}).Columns().Names()...))
+	nrow := 0
+	api.ListSessionsWalk(ctx.Ctx, conn, func(si *api.SessionInfo) bool {
+		if si.Err != nil {
+			ctx.Println("ERR", si.Err.Error())
+			return false
+		}
+		nrow++
+		box.AppendRow(append([]any{nrow}, si.Values()...)...)
+		return true
+	})
+	box.Render()
 }
 
 func doShowStatements(ctx *action.ActionContext) {
-	sqlText := "SELECT ID USER_ID, SESS_ID SESSION_ID, QUERY FROM V$STMT"
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	box := ctx.NewBox([]string{"ID", "SESSION_ID", "STATE", "TYPE", "RECORD_SIZE", "APPEND_SUCCESS", "APPEND_FAIL", "QUERY"})
+	api.ListStatementsWalk(ctx.Ctx, conn, func(stmt *api.StatementInfo) bool {
+		if stmt.Err != nil {
+			ctx.Println("ERR", stmt.Err.Error())
+			return false
+		}
+		if stmt.IsNeo {
+			box.AppendRow(stmt.ID, stmt.SessionID, stmt.State, "neo", "-", stmt.AppendSuccessCount, stmt.AppendFailCount, stmt.Query)
+		} else {
+			box.AppendRow(stmt.ID, stmt.SessionID, stmt.State, "", stmt.RecordSize, "-", "-", stmt.Query)
+		}
+		return true
+	})
+	box.Render()
 }
 
 func doShowStorage(ctx *action.ActionContext) {
-	sqlText := `select
-		a.table_name as TABLE_NAME,
-		a.data_size as DATA_SIZE,
-		case b.index_size 
-			when b.index_size then b.index_size 
-			else 0 end 
-		as INDEX_SIZE,
-		case a.data_size + b.index_size 
-			when a.data_size + b.index_size then a.data_size + b.index_size 
-			else a.data_size end 
-		as TOTAL_SIZE
-	from
-		(select
-			a.name as table_name,
-			sum(b.storage_usage) as data_size
-		from
-			m$sys_tables a,
-			v$storage_tables b
-		where a.id = b.id
-		group by a.name
-		) as a LEFT OUTER JOIN
-		(select
-			a.name,
-			sum(b.disk_file_size) as index_size
-		from
-			m$sys_tables a,
-			v$storage_dc_table_indexes b
-		where a.id = b.table_id
-		group by a.name) as b
-	on a.table_name = b.name
-	order by a.table_name`
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListStorage(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find storage; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.TableName, nfo.DataSize, nfo.IndexSize, nfo.TotalSize)
+	}
+	box.Render()
 }
 
 func doShowTableUsage(ctx *action.ActionContext) {
-	sqlText := `SELECT
-		a.NAME as TABLE_NAME,
-		t.STORAGE_USAGE as STORAGE_USAGE
-	FROM
-		M$SYS_TABLES a,
-		M$SYS_USERS u,
-		V$STORAGE_TABLES t
-	WHERE
-		a.user_id = u.user_id
-	AND t.ID = a.id
-	ORDER BY a.NAME`
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListTableUsage(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find table usage; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "STORAGE_USAGE"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.TableName, nfo.StorageUsage)
+	}
+	box.Render()
 }
 
 func doShowRollupGap(ctx *action.ActionContext) {
-	sqlText := `SELECT
-		C.SOURCE_TABLE AS SRC_TABLE,
-		C.ROLLUP_TABLE,
-		B.TABLE_END_RID AS SRC_END_RID,
-		C.END_RID AS ROLLUP_END_RID,
-		B.TABLE_END_RID - C.END_RID AS GAP,
-		C.LAST_ELAPSED_MSEC AS LAST_TIME
-	FROM
-		M$SYS_TABLES A,
-		V$STORAGE_TAG_TABLES B,
-		V$ROLLUP C
-	WHERE
-		A.ID=B.ID
-	AND A.NAME=C.SOURCE_TABLE
-	ORDER BY SRC_TABLE`
-	doShowByQuery0(ctx, sqlText, true)
-}
-
-func doShowTagIndexGap(ctx *action.ActionContext) {
-	sqlText := `SELECT
-		ID,
-		INDEX_STATE AS STATUS,
-		TABLE_END_RID - DISK_INDEX_END_RID AS DISK_GAP,
-		TABLE_END_RID - MEMORY_INDEX_END_RID AS MEMORY_GAP
-	FROM
-		V$STORAGE_TAG_TABLES
-	ORDER BY 1`
-	doShowByQuery0(ctx, sqlText, true)
+	conn, err := ctx.BorrowConn()
+	if err != nil {
+		ctx.Println("ERR", err.Error())
+		return
+	}
+	list, err := api.ListRollupGap(ctx.Ctx, conn)
+	if err != nil {
+		ctx.Println("unable to find rollupgap; ERR", err.Error())
+		return
+	}
+	nrow := 0
+	box := ctx.NewBox([]string{"ROWNUM", "SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "LAST_ELAPSED"})
+	for _, nfo := range list {
+		nrow++
+		box.AppendRow(nrow, nfo.SrcTable, nfo.RollupTable, nfo.SrcEndRID, nfo.RollupEndRID, nfo.Gap, nfo.LastElapsed.String())
+	}
+	box.Render()
 }
 
 func doShowTags(ctx *action.ActionContext, args []string) {
@@ -539,22 +592,18 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 		return
 	}
 
-	t := ctx.NewBox([]string{"ROWNUM", "DB", "USER", "NAME", "ID", "TYPE"})
+	t := ctx.NewBox(append([]string{"ROWNUM"}, (&api.TableInfo{}).Columns().Names()...))
 	nrow := 0
 	api.ListTablesWalk(ctx.Ctx, conn, showAll, func(ti *api.TableInfo) bool {
 		if ti.Err != nil {
 			ctx.Println("ERR", ti.Err.Error())
 			return false
 		}
-		// if !showAll && strings.HasPrefix(ti.Name, "_") {
-		// 	return true
-		// }
 		if ctx.Actor.Username() != "sys" && ti.Database != "MACHBASEDB" {
 			return true
 		}
 		nrow++
-		desc := api.TableTypeDescription(ti.Type, ti.Flag)
-		t.AppendRow(nrow, ti.Database, ti.User, ti.Name, ti.Id, desc)
+		t.AppendRow(append([]any{nrow}, ti.Values()...)...)
 		return true
 	})
 	t.Render()

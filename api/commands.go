@@ -20,12 +20,22 @@ type CommandHandler struct {
 	PreExecute  func(args []string)
 	PostExecute func(args []string, message string, err error)
 
-	DescribeTable func(*TableDescription)
-	ShowTables    func(*TableInfo, int64) bool
-	ShowIndexes   func(*IndexInfo, int64) bool
-	ShowTags      func(*TagInfo, int64) bool
-	Explain       func(string, error)
-	SqlQuery      func(*Query, int64) bool
+	DescribeTable   func(*TableDescription)
+	ShowTables      func(*TableInfo, int64) bool
+	ShowIndexes     func(*IndexInfo, int64) bool
+	ShowIndex       func(*IndexInfo) bool
+	ShowLsmIndexes  func(*LsmIndexInfo, int64) bool
+	ShowTags        func(*TagInfo, int64) bool
+	ShowRollupGap   func(*RollupGapInfo, int64) bool
+	ShowIndexGap    func(*IndexGapInfo, int64) bool
+	ShowTagIndexGap func(*IndexGapInfo, int64) bool
+	ShowSessions    func(*SessionInfo, int64) bool
+	ShowStatements  func(*StatementInfo, int64) bool
+	ShowStorage     func(*StorageInfo, int64) bool
+	ShowTableUsage  func(*TableUsageInfo, int64) bool
+	ShowLicense     func(*LicenseInfo) bool
+	Explain         func(string, error)
+	SqlQuery        func(*Query, int64) bool
 
 	params []any
 }
@@ -180,7 +190,7 @@ func (p *CommandTokenizer) Tokens() []string {
 				ret = append(ret, p.nextToken())
 			}
 		} else {
-			// trime spaces and single and double qutoes from remains of the stream
+			// trim spaces and single and double quotes from remains of the stream
 			remaining := tok + " " + strings.Trim(string(p.stream[p.idx:]), " \t\n\r")
 			if strings.HasPrefix(remaining, "'") && strings.HasSuffix(remaining, "'") {
 				remaining = remaining[1 : len(remaining)-1]
@@ -238,6 +248,24 @@ func (ch *CommandHandler) NewShowCommand() *cobra.Command {
 		showCmd.AddCommand(showIndexes)
 	}
 
+	if ch.ShowIndex != nil {
+		showIndex := &cobra.Command{
+			Use:  "index <index_name>",
+			Args: cobra.ExactArgs(1),
+		}
+		showIndex.RunE = ch.runShowIndex
+		showCmd.AddCommand(showIndex)
+	}
+
+	if ch.ShowLsmIndexes != nil {
+		showLsmIndexes := &cobra.Command{
+			Use:  "lsm",
+			Args: cobra.NoArgs,
+		}
+		showLsmIndexes.RunE = ch.runShowLsm
+		showCmd.AddCommand(showLsmIndexes)
+	}
+
 	if ch.DescribeTable != nil {
 		showTable := &cobra.Command{
 			Use:  "table [-a] <table_name>",
@@ -255,6 +283,77 @@ func (ch *CommandHandler) NewShowCommand() *cobra.Command {
 		}
 		showTags.RunE = ch.runShowTags
 		showCmd.AddCommand(showTags)
+	}
+
+	if ch.ShowIndexGap != nil {
+		showIndexGap := &cobra.Command{
+			Use:  "indexgap",
+			Args: cobra.NoArgs,
+		}
+		showIndexGap.RunE = ch.runShowIndexGap
+		showCmd.AddCommand(showIndexGap)
+	}
+
+	if ch.ShowTagIndexGap != nil {
+		showTagIndexGap := &cobra.Command{
+			Use:  "tagindexgap",
+			Args: cobra.NoArgs,
+		}
+		showTagIndexGap.RunE = ch.runShowTagIndexGap
+		showCmd.AddCommand(showTagIndexGap)
+	}
+	if ch.ShowRollupGap != nil {
+		showRollupGap := &cobra.Command{
+			Use:  "rollupgap",
+			Args: cobra.NoArgs,
+		}
+		showRollupGap.RunE = ch.runShowRollupGap
+		showCmd.AddCommand(showRollupGap)
+	}
+
+	if ch.ShowSessions != nil {
+		showSessions := &cobra.Command{
+			Use:  "sessions",
+			Args: cobra.NoArgs,
+		}
+		showSessions.RunE = ch.runShowSessions
+		showCmd.AddCommand(showSessions)
+	}
+
+	if ch.ShowStatements != nil {
+		showStatements := &cobra.Command{
+			Use:  "statements",
+			Args: cobra.NoArgs,
+		}
+		showStatements.RunE = ch.runShowStatements
+		showCmd.AddCommand(showStatements)
+	}
+
+	if ch.ShowStorage != nil {
+		showStorage := &cobra.Command{
+			Use:  "storage",
+			Args: cobra.NoArgs,
+		}
+		showStorage.RunE = ch.runShowStorage
+		showCmd.AddCommand(showStorage)
+	}
+
+	if ch.ShowTableUsage != nil {
+		showTableUsage := &cobra.Command{
+			Use:  "table-usage",
+			Args: cobra.NoArgs,
+		}
+		showTableUsage.RunE = ch.runShowTableUsage
+		showCmd.AddCommand(showTableUsage)
+	}
+
+	if ch.ShowLicense != nil {
+		showLicense := &cobra.Command{
+			Use:  "license",
+			Args: cobra.NoArgs,
+		}
+		showLicense.RunE = ch.runShowLicense
+		showCmd.AddCommand(showLicense)
 	}
 
 	if showCmd.HasSubCommands() {
@@ -353,6 +452,78 @@ func (ch *CommandHandler) runShowIndexes() func(cmd *cobra.Command, args []strin
 	}
 }
 
+func (ch *CommandHandler) runShowIndex(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	ii, err := DescribeIndex(ctx, conn, args[0])
+	if err != nil {
+		return err
+	}
+	ch.ShowIndex(ii)
+	return nil
+}
+
+func (ch *CommandHandler) runShowLsm(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	lst, err := ListLsmIndexes(ctx, conn)
+	if err != nil {
+		return err
+	}
+	for nrow, ii := range lst {
+		if !ch.ShowLsmIndexes(ii, int64(nrow+1)) {
+			break
+		}
+	}
+	return nil
+}
+
+func (ch *CommandHandler) runShowStorage(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	lst, err := ListStorage(ctx, conn)
+	if err != nil {
+		return err
+	}
+	for i, si := range lst {
+		if !ch.ShowStorage(si, int64(i+1)) {
+			break
+		}
+	}
+	return nil
+}
+
+func (ch *CommandHandler) runShowTableUsage(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	lst, err := ListTableUsage(ctx, conn)
+	if err != nil {
+		return err
+	}
+	for i, tu := range lst {
+		if !ch.ShowTableUsage(tu, int64(i+1)) {
+			break
+		}
+	}
+	return nil
+}
+
 func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
@@ -413,6 +584,100 @@ func (ch *CommandHandler) runShowTags(cmd *cobra.Command, args []string) error {
 		}
 		nrow++
 		return ch.ShowTags(tag, nrow)
+	})
+	return err
+}
+
+func (ch *CommandHandler) runShowIndexGap(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	nrow := int64(0)
+	ListIndexGapWalk(ctx, conn, func(gap *IndexGapInfo) bool {
+		if err = gap.Err; err != nil {
+			return false
+		}
+		nrow++
+		return ch.ShowIndexGap(gap, nrow)
+	})
+	return err
+}
+
+func (ch *CommandHandler) runShowTagIndexGap(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	nrow := int64(0)
+	ListTagIndexGapWalk(ctx, conn, func(gap *IndexGapInfo) bool {
+		if err = gap.Err; err != nil {
+			return false
+		}
+		nrow++
+		return ch.ShowTagIndexGap(gap, nrow)
+	})
+	return err
+}
+
+func (ch *CommandHandler) runShowRollupGap(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	var conn Conn
+	if c, err := ch.Database(ctx); err != nil {
+		return err
+	} else {
+		conn = c
+	}
+	defer conn.Close()
+	lst, err := ListRollupGap(ctx, conn)
+	if err != nil {
+		return err
+	}
+	for nrow, gap := range lst {
+		if !ch.ShowRollupGap(gap, int64(nrow+1)) {
+			break
+		}
+	}
+	return err
+}
+
+func (ch *CommandHandler) runShowSessions(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	nrow := int64(0)
+	ListSessionsWalk(ctx, conn, func(si *SessionInfo) bool {
+		if err = si.Err; err != nil {
+			return false
+		}
+		nrow++
+		return ch.ShowSessions(si, nrow)
+	})
+	return err
+}
+
+func (ch *CommandHandler) runShowStatements(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	conn, err := ch.Database(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	nrow := int64(0)
+	ListStatementsWalk(ctx, conn, func(nfo *StatementInfo) bool {
+		if err = nfo.Err; err != nil {
+			return false
+		}
+		nrow++
+		return ch.ShowStatements(nfo, nrow)
 	})
 	return err
 }
@@ -482,4 +747,21 @@ func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []s
 		}
 		return nil
 	}
+}
+
+func (ch *CommandHandler) runShowLicense(cmd *cobra.Command, _ []string) error {
+	ctx := cmd.Context()
+	var conn Conn
+	if c, err := ch.Database(ctx); err != nil {
+		return err
+	} else {
+		conn = c
+	}
+	defer conn.Close()
+	nfo, err := GetLicenseInfo(ctx, conn)
+	if err != nil {
+		return err
+	}
+	ch.ShowLicense(nfo)
+	return nil
 }

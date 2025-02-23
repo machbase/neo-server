@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -349,4 +350,216 @@ func TableTypeDescription(typ TableType, flag TableFlag) string {
 		desc += " (stat)"
 	}
 	return desc
+}
+
+func ListLsmIndexes(ctx context.Context, conn Conn) ([]*LsmIndexInfo, error) {
+	sqlText := `select 
+		b.name as TABLE_NAME,
+		c.name as INDEX_NAME,
+		a.level as LEVEL,
+		a.end_rid - a.begin_rid as COUNT
+	from
+		v$storage_dc_lsmindex_levels a,
+		m$sys_tables b, m$sys_indexes c
+	where
+		c.id = a.index_id 
+	and b.id = a.table_id
+	order by 1, 2, 3`
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ret := make([]*LsmIndexInfo, 0, 10)
+	for rows.Next() {
+		rec := &LsmIndexInfo{}
+		err := rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}
+
+func ListRollupGap(ctx context.Context, conn Conn) ([]*RollupGapInfo, error) {
+	sqlText := SqlTidy(`SELECT
+		C.SOURCE_TABLE AS SRC_TABLE,
+		C.ROLLUP_TABLE,
+		B.TABLE_END_RID AS SRC_END_RID,
+		C.END_RID AS ROLLUP_END_RID,
+		B.TABLE_END_RID - C.END_RID AS GAP,
+		C.LAST_ELAPSED_MSEC AS LAST_ELAPSED
+	FROM
+		M$SYS_TABLES A,
+		V$STORAGE_TAG_TABLES B,
+		V$ROLLUP C
+	WHERE
+		A.ID=B.ID
+	AND A.NAME=C.SOURCE_TABLE
+	ORDER BY SRC_TABLE`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := make([]*RollupGapInfo, 0, 10)
+	for rows.Next() {
+		rec := &RollupGapInfo{}
+		var lastElapsedMs float64
+		err := rows.Scan(&rec.SrcTable, &rec.RollupTable, &rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &lastElapsedMs)
+		if err != nil {
+			return nil, err
+		}
+		rec.LastElapsed = time.Duration(lastElapsedMs) * time.Millisecond
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}
+
+func ListStorage(ctx context.Context, conn Conn) ([]*StorageInfo, error) {
+	sqlText := SqlTidy(`select
+		a.table_name as TABLE_NAME,
+		a.data_size as DATA_SIZE,
+		case b.index_size 
+			when b.index_size then b.index_size 
+			else 0 end 
+		as INDEX_SIZE,
+		case a.data_size + b.index_size 
+			when a.data_size + b.index_size then a.data_size + b.index_size 
+			else a.data_size end 
+		as TOTAL_SIZE
+	from
+		(select
+			a.name as table_name,
+			sum(b.storage_usage) as data_size
+		from
+			m$sys_tables a,
+			v$storage_tables b
+		where a.id = b.id
+		group by a.name
+		) as a LEFT OUTER JOIN
+		(select
+			a.name,
+			sum(b.disk_file_size) as index_size
+		from
+			m$sys_tables a,
+			v$storage_dc_table_indexes b
+		where a.id = b.table_id
+		group by a.name) as b
+	on a.table_name = b.name
+	order by a.table_name`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := make([]*StorageInfo, 0, 10)
+	for rows.Next() {
+		rec := &StorageInfo{}
+		err := rows.Scan(&rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}
+
+func ListTableUsage(ctx context.Context, conn Conn) ([]*TableUsageInfo, error) {
+	sqlText := SqlTidy(`SELECT
+		a.NAME as TABLE_NAME,
+		t.STORAGE_USAGE as STORAGE_USAGE
+	FROM
+		M$SYS_TABLES a,
+		M$SYS_USERS u,
+		V$STORAGE_TABLES t
+	WHERE
+		a.user_id = u.user_id
+	AND t.ID = a.id
+	ORDER BY a.NAME`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ret := make([]*TableUsageInfo, 0, 10)
+	for rows.Next() {
+		rec := &TableUsageInfo{}
+		err := rows.Scan(&rec.TableName, &rec.StorageUsage)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, rec)
+	}
+	return ret, nil
+}
+
+func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*StatementInfo) bool) {
+	stmtRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
+	if err != nil {
+		callback(&StatementInfo{Err: err})
+		return
+	}
+	defer stmtRows.Close()
+
+	for stmtRows.Next() {
+		rec := &StatementInfo{}
+		rec.Err = stmtRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.RecordSize, &rec.Query)
+		if !callback(rec) {
+			return
+		}
+	}
+
+	neoRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, QUERY, APPEND_SUCCESS_CNT, APPEND_FAILURE_CNT FROM V$NEO_STMT")
+	if err != nil {
+		callback(&StatementInfo{Err: err, IsNeo: true})
+		return
+	}
+	defer neoRows.Close()
+
+	for neoRows.Next() {
+		rec := &StatementInfo{IsNeo: true}
+		rec.Err = neoRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.Query, &rec.AppendSuccessCount, &rec.AppendFailCount)
+		if !callback(rec) {
+			return
+		}
+	}
+}
+
+func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo) bool) {
+	rows, err := conn.Query(ctx, `SELECT ID, USER_ID, USER_NAME, MAX_QPX_MEM FROM V$SESSION`)
+	if err != nil {
+		callback(&SessionInfo{Err: err})
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		rec := &SessionInfo{}
+		rec.Err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.MaxQPXMem)
+		if !callback(rec) {
+			return
+		}
+	}
+
+	neoRows, err := conn.Query(ctx, "SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION")
+	if err != nil {
+		callback(&SessionInfo{Err: err})
+		return
+	}
+	defer neoRows.Close()
+
+	for neoRows.Next() {
+		rec := &SessionInfo{IsNeo: true}
+		rec.Err = neoRows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.StmtCount)
+		if !callback(rec) {
+			return
+		}
+	}
 }

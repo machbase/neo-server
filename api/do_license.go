@@ -9,6 +9,24 @@ import (
 	"time"
 )
 
+func GetUsers(ctx context.Context, conn Conn) ([]string, error) {
+	rows, err := conn.Query(ctx, "SELeCT NAME FROM M$SYS_USERS")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []string
+	for rows.Next() {
+		var user string
+		if err := rows.Scan(&user); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 func GetLicenseInfo(ctx context.Context, conn Conn) (*LicenseInfo, error) {
 	ret := &LicenseInfo{}
 	var violateStatus int
