@@ -416,7 +416,7 @@ func yieldIndexesInfo(node *Node, info *api.IndexInfo, nrow int64) bool {
 		node.task.SetResultColumns(withRownum(info))
 	}
 	NewRecord(nrow, info.Values()).Tell(node.next)
-	return info.Err == nil
+	return info.Err() == nil
 }
 
 func yieldIndexInfo(node *Node, info *api.IndexInfo) bool {
@@ -441,7 +441,7 @@ func yieldIndexInfo(node *Node, info *api.IndexInfo) bool {
 		info.PartValueCount,
 		info.BitMapEncode,
 	}).Tell(node.next)
-	return info.Err == nil
+	return info.Err() == nil
 }
 
 func yieldLsmIndexesInfo(node *Node, info *api.LsmIndexInfo, nrow int64) bool {
@@ -624,7 +624,7 @@ func yieldStatementsInfo(node *Node, info *api.StatementInfo, nrow int64) bool {
 			info.ID, info.SessionID, info.State, "", info.RecordSize, nil, nil, info.Query,
 		}).Tell(node.next)
 	}
-	return info.Err == nil
+	return info.Err() == nil
 }
 
 func yieldLicenseInfo(node *Node, info *api.LicenseInfo) bool {

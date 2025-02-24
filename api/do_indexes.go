@@ -68,14 +68,14 @@ func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo) b
 	sqlText := ListIndexesSql()
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(&IndexInfo{Err: err})
+		callback(&IndexInfo{err: err})
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		nfo := &IndexInfo{}
-		nfo.Err = rows.Scan(
+		nfo.err = rows.Scan(
 			&nfo.User, &nfo.Database, &nfo.TableName, &nfo.ColumnName,
 			&nfo.IndexName, &nfo.Id, &nfo.IndexType, &nfo.KeyCompress,
 			&nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
@@ -87,11 +87,11 @@ func ListIndexesWalk(ctx context.Context, conn Conn, callback func(*IndexInfo) b
 
 func ListIndexes(ctx context.Context, conn Conn) (ret []*IndexInfo, cause error) {
 	ListIndexesWalk(ctx, conn, func(ii *IndexInfo) bool {
-		if ii.Err == nil && ii != nil {
+		if ii.err == nil && ii != nil {
 			ret = append(ret, ii)
 		}
-		cause = ii.Err
-		return ii.Err == nil
+		cause = ii.err
+		return ii.err == nil
 	})
 	return
 }
@@ -134,10 +134,10 @@ func DescribeIndex(ctx context.Context, conn Conn, name string) (*IndexInfo, err
 		return nil, row.Err()
 	}
 	nfo := &IndexInfo{}
-	nfo.Err = row.Scan(
+	nfo.err = row.Scan(
 		&nfo.TableName, &nfo.ColumnName, &nfo.IndexName, &nfo.IndexType,
 		&nfo.KeyCompress, &nfo.MaxLevel, &nfo.PartValueCount, &nfo.BitMapEncode)
-	return nfo, nfo.Err
+	return nfo, nfo.err
 }
 
 func ListIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGapInfo) bool) {
@@ -157,13 +157,13 @@ func ListIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGapInf
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(&IndexGapInfo{Err: err})
+		callback(&IndexGapInfo{err: err})
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		rec := &IndexGapInfo{}
-		rec.Err = rows.Scan(&rec.ID, &rec.TableName, &rec.IndexName, &rec.Gap)
+		rec.err = rows.Scan(&rec.ID, &rec.TableName, &rec.IndexName, &rec.Gap)
 		if !callback(rec) {
 			return
 		}
@@ -182,7 +182,7 @@ func ListTagIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGap
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(&IndexGapInfo{Err: err, IsTagIndex: true})
+		callback(&IndexGapInfo{err: err, IsTagIndex: true})
 		return
 	}
 	defer rows.Close()
@@ -191,7 +191,7 @@ func ListTagIndexGapWalk(ctx context.Context, conn Conn, callback func(*IndexGap
 		rec := &IndexGapInfo{IsTagIndex: true}
 		err := rows.Scan(&rec.ID, &rec.Status, &rec.DiskGap, &rec.MemoryGap)
 		if err != nil {
-			rec.Err = err
+			rec.err = err
 		}
 		if !callback(rec) {
 			return

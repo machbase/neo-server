@@ -73,14 +73,14 @@ func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(
 	sqlText := ListTablesSql(showAll, false)
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		callback(&TableInfo{Err: err})
+		callback(&TableInfo{err: err})
 		return
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		ti := &TableInfo{}
-		ti.Err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
+		ti.err = rows.Scan(&ti.Database, &ti.User, &ti.Name, &ti.Id, &ti.Type, &ti.Flag)
 		if !callback(ti) {
 			return
 		}
@@ -89,11 +89,11 @@ func ListTablesWalk(ctx context.Context, conn Conn, showAll bool, callback func(
 
 func ListTables(ctx context.Context, conn Conn, showAll bool) (ret []*TableInfo, cause error) {
 	ListTablesWalk(ctx, conn, showAll, func(ti *TableInfo) bool {
-		if ti.Err == nil && ti != nil {
+		if ti.err == nil && ti != nil {
 			ret = append(ret, ti)
 		}
-		cause = ti.Err
-		return ti.Err == nil
+		cause = ti.err
+		return ti.err == nil
 	})
 	return
 }
@@ -352,7 +352,7 @@ func TableTypeDescription(typ TableType, flag TableFlag) string {
 	return desc
 }
 
-func ListLsmIndexes(ctx context.Context, conn Conn) ([]*LsmIndexInfo, error) {
+func ListLsmIndexesWalk(ctx context.Context, conn Conn, callback func(*LsmIndexInfo) bool) {
 	sqlText := `select 
 		b.name as TABLE_NAME,
 		c.name as INDEX_NAME,
@@ -367,22 +367,20 @@ func ListLsmIndexes(ctx context.Context, conn Conn) ([]*LsmIndexInfo, error) {
 	order by 1, 2, 3`
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return nil, err
+		callback(&LsmIndexInfo{err: err})
+		return
 	}
 	defer rows.Close()
-	ret := make([]*LsmIndexInfo, 0, 10)
 	for rows.Next() {
 		rec := &LsmIndexInfo{}
-		err := rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
-		if err != nil {
-			return nil, err
+		rec.err = rows.Scan(&rec.TableName, &rec.IndexName, &rec.Level, &rec.Count)
+		if !callback(rec) {
+			return
 		}
-		ret = append(ret, rec)
 	}
-	return ret, nil
 }
 
-func ListRollupGap(ctx context.Context, conn Conn) ([]*RollupGapInfo, error) {
+func ListRollupGapWalk(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
 	sqlText := SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
@@ -401,25 +399,23 @@ func ListRollupGap(ctx context.Context, conn Conn) ([]*RollupGapInfo, error) {
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return nil, err
+		callback(&RollupGapInfo{err: err})
+		return
 	}
 	defer rows.Close()
 
-	ret := make([]*RollupGapInfo, 0, 10)
 	for rows.Next() {
 		rec := &RollupGapInfo{}
 		var lastElapsedMs float64
-		err := rows.Scan(&rec.SrcTable, &rec.RollupTable, &rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &lastElapsedMs)
-		if err != nil {
-			return nil, err
-		}
+		rec.err = rows.Scan(&rec.SrcTable, &rec.RollupTable, &rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &lastElapsedMs)
 		rec.LastElapsed = time.Duration(lastElapsedMs) * time.Millisecond
-		ret = append(ret, rec)
+		if !callback(rec) {
+			return
+		}
 	}
-	return ret, nil
 }
 
-func ListStorage(ctx context.Context, conn Conn) ([]*StorageInfo, error) {
+func ListStorageWalk(ctx context.Context, conn Conn, callback func(*StorageInfo) bool) {
 	sqlText := SqlTidy(`select
 		a.table_name as TABLE_NAME,
 		a.data_size as DATA_SIZE,
@@ -454,23 +450,21 @@ func ListStorage(ctx context.Context, conn Conn) ([]*StorageInfo, error) {
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return nil, err
+		callback(&StorageInfo{err: err})
+		return
 	}
 	defer rows.Close()
 
-	ret := make([]*StorageInfo, 0, 10)
 	for rows.Next() {
 		rec := &StorageInfo{}
-		err := rows.Scan(&rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
-		if err != nil {
-			return nil, err
+		rec.err = rows.Scan(&rec.TableName, &rec.DataSize, &rec.IndexSize, &rec.TotalSize)
+		if !callback(rec) {
+			return
 		}
-		ret = append(ret, rec)
 	}
-	return ret, nil
 }
 
-func ListTableUsage(ctx context.Context, conn Conn) ([]*TableUsageInfo, error) {
+func ListTableUsageWalk(ctx context.Context, conn Conn, callback func(*TableUsageInfo) bool) {
 	sqlText := SqlTidy(`SELECT
 		a.NAME as TABLE_NAME,
 		t.STORAGE_USAGE as STORAGE_USAGE
@@ -485,33 +479,31 @@ func ListTableUsage(ctx context.Context, conn Conn) ([]*TableUsageInfo, error) {
 
 	rows, err := conn.Query(ctx, sqlText)
 	if err != nil {
-		return nil, err
+		callback(&TableUsageInfo{err: err})
+		return
 	}
 	defer rows.Close()
 
-	ret := make([]*TableUsageInfo, 0, 10)
 	for rows.Next() {
 		rec := &TableUsageInfo{}
-		err := rows.Scan(&rec.TableName, &rec.StorageUsage)
-		if err != nil {
-			return nil, err
+		rec.err = rows.Scan(&rec.TableName, &rec.StorageUsage)
+		if !callback(rec) {
+			return
 		}
-		ret = append(ret, rec)
 	}
-	return ret, nil
 }
 
 func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*StatementInfo) bool) {
 	stmtRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, RECORD_SIZE, QUERY FROM V$STMT")
 	if err != nil {
-		callback(&StatementInfo{Err: err})
+		callback(&StatementInfo{err: err})
 		return
 	}
 	defer stmtRows.Close()
 
 	for stmtRows.Next() {
 		rec := &StatementInfo{}
-		rec.Err = stmtRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.RecordSize, &rec.Query)
+		rec.err = stmtRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.RecordSize, &rec.Query)
 		if !callback(rec) {
 			return
 		}
@@ -519,14 +511,14 @@ func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*Statement
 
 	neoRows, err := conn.Query(ctx, "SELECT ID, SESS_ID, STATE, QUERY, APPEND_SUCCESS_CNT, APPEND_FAILURE_CNT FROM V$NEO_STMT")
 	if err != nil {
-		callback(&StatementInfo{Err: err, IsNeo: true})
+		callback(&StatementInfo{err: err, IsNeo: true})
 		return
 	}
 	defer neoRows.Close()
 
 	for neoRows.Next() {
 		rec := &StatementInfo{IsNeo: true}
-		rec.Err = neoRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.Query, &rec.AppendSuccessCount, &rec.AppendFailCount)
+		rec.err = neoRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.Query, &rec.AppendSuccessCount, &rec.AppendFailCount)
 		if !callback(rec) {
 			return
 		}
@@ -536,13 +528,13 @@ func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*Statement
 func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo) bool) {
 	rows, err := conn.Query(ctx, `SELECT ID, USER_ID, USER_NAME, MAX_QPX_MEM FROM V$SESSION`)
 	if err != nil {
-		callback(&SessionInfo{Err: err})
+		callback(&SessionInfo{err: err})
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		rec := &SessionInfo{}
-		rec.Err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.MaxQPXMem)
+		rec.err = rows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.MaxQPXMem)
 		if !callback(rec) {
 			return
 		}
@@ -550,14 +542,14 @@ func ListSessionsWalk(ctx context.Context, conn Conn, callback func(*SessionInfo
 
 	neoRows, err := conn.Query(ctx, "SELECT ID, USER_ID, USER_NAME, STMT_COUNT FROM V$NEO_SESSION")
 	if err != nil {
-		callback(&SessionInfo{Err: err})
+		callback(&SessionInfo{err: err})
 		return
 	}
 	defer neoRows.Close()
 
 	for neoRows.Next() {
 		rec := &SessionInfo{IsNeo: true}
-		rec.Err = neoRows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.StmtCount)
+		rec.err = neoRows.Scan(&rec.ID, &rec.UserID, &rec.UserName, &rec.StmtCount)
 		if !callback(rec) {
 			return
 		}

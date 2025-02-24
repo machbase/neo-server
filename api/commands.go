@@ -474,16 +474,15 @@ func (ch *CommandHandler) runShowLsm(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer conn.Close()
-	lst, err := ListLsmIndexes(ctx, conn)
-	if err != nil {
-		return err
-	}
-	for nrow, ii := range lst {
-		if !ch.ShowLsmIndexes(ii, int64(nrow+1)) {
-			break
+	rownum := int64(0)
+	ListLsmIndexesWalk(ctx, conn, func(lii *LsmIndexInfo) bool {
+		if err = lii.err; err != nil {
+			return false
 		}
-	}
-	return nil
+		rownum++
+		return ch.ShowLsmIndexes(lii, rownum)
+	})
+	return err
 }
 
 func (ch *CommandHandler) runShowStorage(cmd *cobra.Command, _ []string) error {
@@ -493,16 +492,15 @@ func (ch *CommandHandler) runShowStorage(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer conn.Close()
-	lst, err := ListStorage(ctx, conn)
-	if err != nil {
-		return err
-	}
-	for i, si := range lst {
-		if !ch.ShowStorage(si, int64(i+1)) {
-			break
+	rownum := int64(0)
+	ListStorageWalk(ctx, conn, func(si *StorageInfo) bool {
+		if err = si.err; err != nil {
+			return false
 		}
-	}
-	return nil
+		rownum++
+		return ch.ShowStorage(si, rownum)
+	})
+	return err
 }
 
 func (ch *CommandHandler) runShowTableUsage(cmd *cobra.Command, _ []string) error {
@@ -512,16 +510,15 @@ func (ch *CommandHandler) runShowTableUsage(cmd *cobra.Command, _ []string) erro
 		return err
 	}
 	defer conn.Close()
-	lst, err := ListTableUsage(ctx, conn)
-	if err != nil {
-		return err
-	}
-	for i, tu := range lst {
-		if !ch.ShowTableUsage(tu, int64(i+1)) {
-			break
+	rownum := int64(0)
+	ListTableUsageWalk(ctx, conn, func(tui *TableUsageInfo) bool {
+		if err = tui.err; err != nil {
+			return false
 		}
-	}
-	return nil
+		rownum++
+		return ch.ShowTableUsage(tui, rownum)
+	})
+	return err
 }
 
 func (ch *CommandHandler) runDescTable(showAll *bool) func(cmd *cobra.Command, args []string) error {
@@ -597,7 +594,7 @@ func (ch *CommandHandler) runShowIndexGap(cmd *cobra.Command, _ []string) error 
 	defer conn.Close()
 	nrow := int64(0)
 	ListIndexGapWalk(ctx, conn, func(gap *IndexGapInfo) bool {
-		if err = gap.Err; err != nil {
+		if err = gap.err; err != nil {
 			return false
 		}
 		nrow++
@@ -615,7 +612,7 @@ func (ch *CommandHandler) runShowTagIndexGap(cmd *cobra.Command, _ []string) err
 	defer conn.Close()
 	nrow := int64(0)
 	ListTagIndexGapWalk(ctx, conn, func(gap *IndexGapInfo) bool {
-		if err = gap.Err; err != nil {
+		if err = gap.err; err != nil {
 			return false
 		}
 		nrow++
@@ -626,22 +623,19 @@ func (ch *CommandHandler) runShowTagIndexGap(cmd *cobra.Command, _ []string) err
 
 func (ch *CommandHandler) runShowRollupGap(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	var conn Conn
-	if c, err := ch.Database(ctx); err != nil {
-		return err
-	} else {
-		conn = c
-	}
-	defer conn.Close()
-	lst, err := ListRollupGap(ctx, conn)
+	conn, err := ch.Database(ctx)
 	if err != nil {
 		return err
 	}
-	for nrow, gap := range lst {
-		if !ch.ShowRollupGap(gap, int64(nrow+1)) {
-			break
+	defer conn.Close()
+	rownum := int64(0)
+	ListRollupGapWalk(ctx, conn, func(gap *RollupGapInfo) bool {
+		if err = gap.err; err != nil {
+			return false
 		}
-	}
+		rownum++
+		return ch.ShowRollupGap(gap, rownum)
+	})
 	return err
 }
 
@@ -654,7 +648,7 @@ func (ch *CommandHandler) runShowSessions(cmd *cobra.Command, _ []string) error 
 	defer conn.Close()
 	nrow := int64(0)
 	ListSessionsWalk(ctx, conn, func(si *SessionInfo) bool {
-		if err = si.Err; err != nil {
+		if err = si.err; err != nil {
 			return false
 		}
 		nrow++
@@ -673,7 +667,7 @@ func (ch *CommandHandler) runShowStatements(cmd *cobra.Command, _ []string) erro
 
 	nrow := int64(0)
 	ListStatementsWalk(ctx, conn, func(nfo *StatementInfo) bool {
-		if err = nfo.Err; err != nil {
+		if err = nfo.err; err != nil {
 			return false
 		}
 		nrow++

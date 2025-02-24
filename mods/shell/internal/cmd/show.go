@@ -155,8 +155,8 @@ func doShowIndexGap(ctx *action.ActionContext) {
 	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.IndexGapInfo{}).Columns().Names()...))
 	nrow := 0
 	api.ListIndexGapWalk(ctx.Ctx, conn, func(igi *api.IndexGapInfo) bool {
-		if igi.Err != nil {
-			ctx.Println("ERR", igi.Err.Error())
+		if igi.Err() != nil {
+			ctx.Println("ERR", igi.Err().Error())
 			return false
 		}
 		nrow++
@@ -175,8 +175,8 @@ func doShowTagIndexGap(ctx *action.ActionContext) {
 	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.IndexGapInfo{}).Columns().Names()...))
 	nrow := 0
 	api.ListTagIndexGapWalk(ctx.Ctx, conn, func(igi *api.IndexGapInfo) bool {
-		if igi.Err != nil {
-			ctx.Println("ERR", igi.Err.Error())
+		if igi.Err() != nil {
+			ctx.Println("ERR", igi.Err().Error())
 			return false
 		}
 		nrow++
@@ -192,17 +192,17 @@ func doShowLsm(ctx *action.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	list, err := api.ListLsmIndexes(ctx.Ctx, conn)
-	if err != nil {
-		ctx.Println("unable to find lsm indexes; ERR", err.Error())
-		return
-	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "INDEX_NAME", "LEVEL", "COUNT"})
-	for _, nfo := range list {
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.LsmIndexInfo{}).Columns().Names()...))
+	api.ListLsmIndexesWalk(ctx.Ctx, conn, func(nfo *api.LsmIndexInfo) bool {
+		if nfo.Err() != nil {
+			ctx.Println("ERR", nfo.Err().Error())
+			return false
+		}
 		nrow++
-		box.AppendRow(nrow, nfo.TableName, nfo.IndexName, nfo.Level, nfo.Count)
-	}
+		box.AppendRow(append([]any{nrow}, nfo.Values()...)...)
+		return true
+	})
 	box.Render()
 }
 
@@ -292,8 +292,8 @@ func doShowSessions(ctx *action.ActionContext) {
 	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.SessionInfo{}).Columns().Names()...))
 	nrow := 0
 	api.ListSessionsWalk(ctx.Ctx, conn, func(si *api.SessionInfo) bool {
-		if si.Err != nil {
-			ctx.Println("ERR", si.Err.Error())
+		if si.Err() != nil {
+			ctx.Println("ERR", si.Err().Error())
 			return false
 		}
 		nrow++
@@ -311,8 +311,8 @@ func doShowStatements(ctx *action.ActionContext) {
 	}
 	box := ctx.NewBox([]string{"ID", "SESSION_ID", "STATE", "TYPE", "RECORD_SIZE", "APPEND_SUCCESS", "APPEND_FAIL", "QUERY"})
 	api.ListStatementsWalk(ctx.Ctx, conn, func(stmt *api.StatementInfo) bool {
-		if stmt.Err != nil {
-			ctx.Println("ERR", stmt.Err.Error())
+		if stmt.Err() != nil {
+			ctx.Println("ERR", stmt.Err().Error())
 			return false
 		}
 		if stmt.IsNeo {
@@ -331,17 +331,17 @@ func doShowStorage(ctx *action.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	list, err := api.ListStorage(ctx.Ctx, conn)
-	if err != nil {
-		ctx.Println("unable to find storage; ERR", err.Error())
-		return
-	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "DATA_SIZE", "INDEX_SIZE", "TOTAL_SIZE"})
-	for _, nfo := range list {
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.StorageInfo{}).Columns().Names()...))
+	api.ListStorageWalk(ctx.Ctx, conn, func(nfo *api.StorageInfo) bool {
+		if nfo.Err() != nil {
+			ctx.Println("unable to find storage; ERR", nfo.Err().Error())
+			return false
+		}
 		nrow++
-		box.AppendRow(nrow, nfo.TableName, nfo.DataSize, nfo.IndexSize, nfo.TotalSize)
-	}
+		box.AppendRow(append([]any{nrow}, nfo.Values()...)...)
+		return true
+	})
 	box.Render()
 }
 
@@ -351,17 +351,17 @@ func doShowTableUsage(ctx *action.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	list, err := api.ListTableUsage(ctx.Ctx, conn)
-	if err != nil {
-		ctx.Println("unable to find table usage; ERR", err.Error())
-		return
-	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "TABLE_NAME", "STORAGE_USAGE"})
-	for _, nfo := range list {
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.TableUsageInfo{}).Columns().Names()...))
+	api.ListTableUsageWalk(ctx.Ctx, conn, func(nfo *api.TableUsageInfo) bool {
+		if nfo.Err() != nil {
+			ctx.Println("unable to find table usage; ERR", nfo.Err().Error())
+			return false
+		}
 		nrow++
-		box.AppendRow(nrow, nfo.TableName, nfo.StorageUsage)
-	}
+		box.AppendRow(append([]any{nrow}, nfo.Values()...)...)
+		return true
+	})
 	box.Render()
 }
 
@@ -371,17 +371,17 @@ func doShowRollupGap(ctx *action.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	list, err := api.ListRollupGap(ctx.Ctx, conn)
-	if err != nil {
-		ctx.Println("unable to find rollupgap; ERR", err.Error())
-		return
-	}
 	nrow := 0
-	box := ctx.NewBox([]string{"ROWNUM", "SRC_TABLE", "ROLLUP_TABLE", "SRC_END_RID", "ROLLUP_END_RID", "GAP", "LAST_ELAPSED"})
-	for _, nfo := range list {
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.RollupGapInfo{}).Columns().Names()...))
+	api.ListRollupGapWalk(ctx.Ctx, conn, func(nfo *api.RollupGapInfo) bool {
+		if nfo.Err() != nil {
+			ctx.Println("unable to find rollupgap; ERR", nfo.Err().Error())
+			return false
+		}
 		nrow++
 		box.AppendRow(nrow, nfo.SrcTable, nfo.RollupTable, nfo.SrcEndRID, nfo.RollupEndRID, nfo.Gap, nfo.LastElapsed.String())
-	}
+		return true
+	})
 	box.Render()
 }
 
@@ -595,8 +595,8 @@ func doShowTables(ctx *action.ActionContext, showAll bool) {
 	t := ctx.NewBox(append([]string{"ROWNUM"}, (&api.TableInfo{}).Columns().Names()...))
 	nrow := 0
 	api.ListTablesWalk(ctx.Ctx, conn, showAll, func(ti *api.TableInfo) bool {
-		if ti.Err != nil {
-			ctx.Println("ERR", ti.Err.Error())
+		if ti.Err() != nil {
+			ctx.Println("ERR", ti.Err())
 			return false
 		}
 		if ctx.Actor.Username() != "sys" && ti.Database != "MACHBASEDB" {

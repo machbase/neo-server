@@ -481,8 +481,8 @@ func (svr *httpd) handleTables(ctx *gin.Context) {
 
 	rownum := 0
 	api.ListTablesWalk(ctx, conn, showAll, func(ti *api.TableInfo) bool {
-		if ti.Err != nil {
-			rsp.Success, rsp.Reason = false, ti.Err.Error()
+		if ti.Err() != nil {
+			rsp.Success, rsp.Reason = false, ti.Err().Error()
 			return false
 		}
 		if nameFilter != "" {

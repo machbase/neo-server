@@ -363,26 +363,6 @@ func tcParseCommandLine(t *testing.T) {
 	}
 }
 
-// func ExampleCommandHandler_NewShowCommand() {
-// 	h := &api.CommandHandler{
-// 		Database: func(ctx context.Context) (api.Conn, error) {
-// 			return testServer.DatabaseSVR().Connect(ctx, api.WithPassword("sys", "manager"))
-// 		},
-// 		ShowTables: func(ti *api.TableInfo, nrow int64) bool {
-// 			fmt.Println(nrow, ti.User, ti.Name, ti.Type)
-// 			return true
-// 		},
-// 	}
-// 	err := h.Exec(context.TODO(), api.ParseCommandLine("show tables"))
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	// Output:
-// 	// 1 SYS LOG_DATA LogTable
-// 	// 2 SYS TAG_DATA TagTable
-// 	// 3 SYS TAG_SIMPLE TagTable
-// }
-
 func tcCommands(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -397,29 +377,31 @@ func tcCommands(t *testing.T) {
 			expectErr: `unknown command "cmd_not_exist" for "machbase-neo"`,
 		},
 		{
-			name:  "show tables",
+			name:  "show_tables",
 			input: "show tables",
 			expect: []string{
-				"1 SYS LOG_DATA LogTable",
-				"2 SYS TAG_DATA TagTable",
-				"3 SYS TAG_SIMPLE TagTable",
+				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
+				"1,MACHBASEDB,SYS,LOG_DATA,13,Log,",
+				"2,MACHBASEDB,SYS,TAG_DATA,6,Tag,",
+				"3,MACHBASEDB,SYS,TAG_SIMPLE,12,Tag,",
 			},
 		},
 		{
-			name:  "show-tables-all",
+			name:  "show_tables_all",
 			input: "show tables --all",
 			expect: []string{
-				"1 SYS LOG_DATA LogTable",
-				"2 SYS TAG_DATA TagTable",
-				"3 SYS TAG_SIMPLE TagTable",
-				"4 SYS _TAG_DATA_DATA_0 KeyValueTable",
-				"5 SYS _TAG_DATA_META LookupTable",
-				"6 SYS _TAG_SIMPLE_DATA_0 KeyValueTable",
-				"7 SYS _TAG_SIMPLE_META LookupTable",
+				"ROWNUM,DATABASE,USER,NAME,ID,TYPE,FLAG",
+				"1,MACHBASEDB,SYS,LOG_DATA,13,Log,",
+				"2,MACHBASEDB,SYS,TAG_DATA,6,Tag,",
+				"3,MACHBASEDB,SYS,TAG_SIMPLE,12,Tag,",
+				"4,MACHBASEDB,SYS,_TAG_DATA_DATA_0,1,KeyValue,Data",
+				"5,MACHBASEDB,SYS,_TAG_DATA_META,2,Lookup,Meta",
+				"6,MACHBASEDB,SYS,_TAG_SIMPLE_DATA_0,7,KeyValue,Data",
+				"7,MACHBASEDB,SYS,_TAG_SIMPLE_META,8,Lookup,Meta",
 			},
 		},
 		{
-			name:  "show-table-log_data",
+			name:  "show_table_log_data",
 			input: "show table log_data",
 			expect: []string{
 				"TIME datetime 31  ",
@@ -439,7 +421,7 @@ func tcCommands(t *testing.T) {
 				"BIN_VALUE binary 67108864  "},
 		},
 		{
-			name:  "show-table-log_data-all",
+			name:  "show_table_log_data_all",
 			input: "show table -a log_data",
 			expect: []string{
 				"_ARRIVAL_TIME datetime 31  ",
@@ -461,7 +443,7 @@ func tcCommands(t *testing.T) {
 				"_RID long 20  "},
 		},
 		{
-			name:  "desc-table-tag_data-all",
+			name:  "desc_table_tag_data_all",
 			input: "desc -a tag_data",
 			expect: []string{
 				"NAME varchar 100 tag name ",
@@ -480,21 +462,93 @@ func tcCommands(t *testing.T) {
 				"_RID long 20  "},
 		},
 		{
-			name:  "show-indexes",
+			name:  "show_indexes",
 			input: `show indexes`,
 			expect: []string{
-				"1 SYS __PK_IDX__TAG_DATA_META_1 REDBLACK _TAG_DATA_META _ID",
-				"2 SYS _TAG_DATA_META_NAME REDBLACK _TAG_DATA_META NAME",
-				"3 SYS __PK_IDX__TAG_SIMPLE_META_1 REDBLACK _TAG_SIMPLE_META _ID",
-				"4 SYS _TAG_SIMPLE_META_NAME REDBLACK _TAG_SIMPLE_META NAME",
+				"ROWNUM,ID,DATABASE,USER,TABLE_NAME,COLUMN_NAME,INDEX_NAME,INDEX_TYPE,KEY_COMPRESS,MAX_LEVEL,PART_VALUE_COUNT,BITMAP_ENCODE",
+				"1,3,MACHBASEDB,SYS,_TAG_DATA_META,_ID,__PK_IDX__TAG_DATA_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
+				"2,4,MACHBASEDB,SYS,_TAG_DATA_META,NAME,_TAG_DATA_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
+				"3,9,MACHBASEDB,SYS,_TAG_SIMPLE_META,_ID,__PK_IDX__TAG_SIMPLE_META_1,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
+				"4,10,MACHBASEDB,SYS,_TAG_SIMPLE_META,NAME,_TAG_SIMPLE_META_NAME,REDBLACK,UNCOMPRESS,0,100000,EQUAL",
 			},
 		},
 		{
-			name:  "show-tags-tag_data",
+			name:   "show_lsm",
+			input:  "show lsm",
+			expect: []string{},
+		},
+		{
+			name:  "show_tags_tag_data",
 			input: "show tags tag_data",
 			expectFunc: func(t *testing.T, actual string) {
 				lines := strings.Split(actual, "\n")
 				require.Greater(t, len(lines), 100)
+			},
+		},
+		{
+			name:  "show_indexgap",
+			input: "show indexgap",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Equal(t, lines[0], "")
+				require.GreaterOrEqual(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_tagindexgap",
+			input: "show tagindexgap",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Equal(t, lines[0], "ROWNUM,ID,STATUS,DISK_GAP,MEMORY_GAP")
+				require.GreaterOrEqual(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_rollupgap",
+			input: "show rollupgap",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Equal(t, lines[0], "")
+				require.GreaterOrEqual(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_sessions",
+			input: "show sessions",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Greater(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_statements",
+			input: "show statements",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Greater(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_storage",
+			input: "show storage",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Greater(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_table_usage",
+			input: "show table-usage",
+			expectFunc: func(t *testing.T, actual string) {
+				lines := strings.Split(actual, "\n")
+				require.Greater(t, len(lines), 1)
+			},
+		},
+		{
+			name:  "show_license",
+			input: "show license",
+			expectFunc: func(t *testing.T, actual string) {
+				require.Contains(t, actual, "LICENSE")
 			},
 		},
 		{
@@ -529,15 +583,26 @@ func tcCommands(t *testing.T) {
 	}
 
 	output := &bytes.Buffer{}
-	h.ShowTables = showTables(t, output)
-	h.ShowIndexes = showIndexes(t, output)
+	h.ShowTables = printShowResult[*api.TableInfo](t, output)
+	h.ShowIndexes = printShowResult[*api.IndexInfo](t, output)
+	h.ShowIndex = showIndex(t, output)
+	h.ShowLsmIndexes = printShowResult[*api.LsmIndexInfo](t, output)
 	h.DescribeTable = descTable(t, output)
 	h.ShowTags = showTags(t, output)
+	h.ShowIndexGap = printShowResult[*api.IndexGapInfo](t, output)
+	h.ShowTagIndexGap = printShowResult[*api.IndexGapInfo](t, output)
+	h.ShowRollupGap = printShowResult[*api.RollupGapInfo](t, output)
+	h.ShowSessions = printShowResult[*api.SessionInfo](t, output)
+	h.ShowStatements = printShowResult[*api.StatementInfo](t, output)
+	h.ShowStorage = printShowResult[*api.StorageInfo](t, output)
+	h.ShowTableUsage = printShowResult[*api.TableUsageInfo](t, output)
+	h.ShowLicense = showLicense(t, output)
 	h.Explain = explain(t, output)
 	h.SqlQuery = sqlQuery(t, output)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defer output.Reset()
 			err := h.Exec(context.TODO(), api.ParseCommandLine(tt.input))
 			if err != nil {
 				if tt.expectErr != "" {
@@ -558,33 +623,47 @@ func tcCommands(t *testing.T) {
 				}
 				require.Equal(t, tt.expect, actual)
 			}
-			output.Reset()
 		})
 	}
 }
 
-func showTables(t *testing.T, output io.Writer) func(ti *api.TableInfo, nrow int64) bool {
-	return func(ti *api.TableInfo, nrow int64) bool {
-		if ti.Err != nil {
-			if ti.Err != io.EOF {
-				t.Fatal(ti.Err)
+func printShowResult[T api.InfoType](t *testing.T, output io.Writer) func(nfo T, nrow int64) bool {
+	return func(nfo T, nrow int64) bool {
+		if nfo.Err() != nil {
+			if nfo.Err() != io.EOF {
+				t.Fatal(nfo.Err())
 			}
 			return false
 		}
-		fmt.Fprintln(output, nrow, ti.User, ti.Name, ti.Type)
+		if nrow == 1 {
+			columns := append([]string{"ROWNUM"}, nfo.Columns().Names()...)
+			fmt.Fprintln(output, strings.Join(columns, ","))
+		}
+		rec := []string{fmt.Sprint(nrow)}
+		for _, v := range nfo.Values() {
+			rec = append(rec, fmt.Sprint(v))
+		}
+		fmt.Fprintln(output, strings.Join(rec, ","))
 		return true
 	}
 }
 
-func showIndexes(t *testing.T, output io.Writer) func(ti *api.IndexInfo, nrow int64) bool {
-	return func(ti *api.IndexInfo, nrow int64) bool {
-		if ti.Err != nil {
-			if ti.Err != io.EOF {
-				t.Fatal(ti.Err)
+func showIndex(t *testing.T, output io.Writer) func(nfo *api.IndexInfo) bool {
+	return func(nfo *api.IndexInfo) bool {
+		if nfo.Err() != nil {
+			if nfo.Err() != io.EOF {
+				t.Fatal(nfo.Err())
 			}
 			return false
 		}
-		fmt.Fprintln(output, nrow, ti.User, ti.IndexName, ti.IndexType, ti.TableName, ti.ColumnName)
+		fmt.Fprintln(output, nfo.TableName, nfo.ColumnName, nfo.IndexName, nfo.IndexType)
+		return true
+	}
+}
+
+func showLicense(_ *testing.T, output io.Writer) func(ti *api.LicenseInfo) bool {
+	return func(ti *api.LicenseInfo) bool {
+		fmt.Fprintln(output, ti.Values()...)
 		return true
 	}
 }
