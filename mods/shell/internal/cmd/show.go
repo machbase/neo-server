@@ -309,17 +309,15 @@ func doShowStatements(ctx *action.ActionContext) {
 		ctx.Println("ERR", err.Error())
 		return
 	}
-	box := ctx.NewBox([]string{"ID", "SESSION_ID", "STATE", "TYPE", "RECORD_SIZE", "APPEND_SUCCESS", "APPEND_FAIL", "QUERY"})
+	box := ctx.NewBox(append([]string{"ROWNUM"}, (&api.StatementInfo{}).Columns().Names()...))
+	nrow := 0
 	api.ListStatementsWalk(ctx.Ctx, conn, func(stmt *api.StatementInfo) bool {
 		if stmt.Err() != nil {
 			ctx.Println("ERR", stmt.Err().Error())
 			return false
 		}
-		if stmt.IsNeo {
-			box.AppendRow(stmt.ID, stmt.SessionID, stmt.State, "neo", "-", stmt.AppendSuccessCount, stmt.AppendFailCount, stmt.Query)
-		} else {
-			box.AppendRow(stmt.ID, stmt.SessionID, stmt.State, "", stmt.RecordSize, "-", "-", stmt.Query)
-		}
+		nrow++
+		box.AppendRow(append([]any{nrow}, stmt.Values()...)...)
 		return true
 	})
 	box.Render()

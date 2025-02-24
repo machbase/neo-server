@@ -401,7 +401,7 @@ type StatementInfo struct {
 	RecordSize         int64  `json:"record_size"`          // v$stmt
 	IsNeo              bool   `json:"is_neo"`               // v$neo_stmt
 	AppendSuccessCount int64  `json:"append_success_count"` // v$neo_stmt
-	AppendFailCount    int64  `json:"append_fail_count"`    // v$neo_stmt
+	AppendFailureCount int64  `json:"append_failure_count"` // v$neo_stmt
 	err                error  `json:"-"`
 }
 
@@ -410,16 +410,29 @@ func (si *StatementInfo) Columns() Columns {
 		{Name: "ID", DataType: DataTypeInt64},
 		{Name: "SESSION_ID", DataType: DataTypeInt64},
 		{Name: "STATE", DataType: DataTypeString},
-		{Name: "QUERY", DataType: DataTypeString},
+		{Name: "TYPE", DataType: DataTypeString},
 		{Name: "RECORD_SIZE", DataType: DataTypeInt64},
-		{Name: "APPEND_SUCCESS_COUNT", DataType: DataTypeInt64},
-		{Name: "APPEND_FAIL_COUNT", DataType: DataTypeInt64},
+		{Name: "APPEND_SUCCESS_CNT", DataType: DataTypeInt64},
+		{Name: "APPEND_FAILURE_CNT", DataType: DataTypeInt64},
+		{Name: "QUERY", DataType: DataTypeString},
 	}
 }
 
 func (si *StatementInfo) Values() []interface{} {
+	var typ string
+	var recordSize any
+	var appendSuccessCount any
+	var appendFailureCount any
+	if si.IsNeo {
+		typ = "neo"
+		appendSuccessCount = si.AppendSuccessCount
+		appendFailureCount = si.AppendFailureCount
+	} else {
+		typ = ""
+		recordSize = si.RecordSize
+	}
 	return []interface{}{
-		si.ID, si.SessionID, si.State, si.Query, si.RecordSize, si.AppendSuccessCount, si.AppendFailCount,
+		si.ID, si.SessionID, si.State, typ, recordSize, appendSuccessCount, appendFailureCount, si.Query,
 	}
 }
 

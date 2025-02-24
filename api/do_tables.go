@@ -518,7 +518,7 @@ func ListStatementsWalk(ctx context.Context, conn Conn, callback func(*Statement
 
 	for neoRows.Next() {
 		rec := &StatementInfo{IsNeo: true}
-		rec.err = neoRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.Query, &rec.AppendSuccessCount, &rec.AppendFailCount)
+		rec.err = neoRows.Scan(&rec.ID, &rec.SessionID, &rec.State, &rec.Query, &rec.AppendSuccessCount, &rec.AppendFailureCount)
 		if !callback(rec) {
 			return
 		}
