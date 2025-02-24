@@ -135,8 +135,21 @@ func queryNeo(neoHttpAddr string, sqlText string) time.Duration {
 // execute the query and return the elapsed time that is said in the response JSON.
 func queryNeoTql(neoHttpAddr string, sqlText string, useCache bool) time.Duration {
 	var code string
+	var useJSMem bool
 	if useCache {
 		code = fmt.Sprintf("SQL(`%s`)\nJSON( cache(`%s`, `60s`, 0.5))\n", sqlText, sqlText)
+	} else if useJSMem {
+		largeString := strings.Repeat("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 50)
+		code = fmt.Sprintf("SCRIPT('js', { "+
+			"$.db().query('%s').forEach( "+
+			"  function(rows){ "+
+			"    var state = {}; "+
+			"    for( var i = 0; i < 10000; i++){ "+
+			"      state[i] = \""+largeString+"\" + rows[0];"+
+			"    } "+
+			"    $.yieldArray(rows);"+
+			"})})"+
+			"\nJSON()\n", strings.ReplaceAll(strings.ReplaceAll(sqlText, "'", "\\'"), "\n", " "))
 	} else {
 		code = fmt.Sprintf("SQL(`%s`)\nJSON()\n", sqlText)
 	}
