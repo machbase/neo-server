@@ -274,9 +274,11 @@ func (s *Server) StartServer(m *testing.M) {
 
 	// machcli database
 	if db, err := machcli.NewDatabase(&machcli.Config{
-		Host:       "127.0.0.1",
-		Port:       s.machsvrPort,
-		TrustUsers: map[string]string{"sys": "manager"},
+		Host:         "127.0.0.1",
+		Port:         s.machsvrPort,
+		TrustUsers:   map[string]string{"sys": "manager"},
+		MaxOpenConn:  -1,
+		MaxOpenQuery: -1,
 	}); err != nil {
 		panic(err)
 	} else {
