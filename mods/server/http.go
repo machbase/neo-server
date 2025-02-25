@@ -182,6 +182,7 @@ func (svr *httpd) Stop() {
 	if svr.httpServer == nil {
 		return
 	}
+	svr.log.Infof("gracefully stopping server")
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 3*time.Second)
 	svr.httpServer.Shutdown(ctx)
 	cancelFunc()

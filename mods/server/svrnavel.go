@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/booter"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/pkg/errors"
 )
 
@@ -56,6 +57,7 @@ func (s *Server) StartNavelCord() {
 		s.log.Info("Shutdown by NavelCord")
 		booter.NotifySignal()
 	}()
+	util.AddShutdownHook(func() { s.StopNavelCord() })
 }
 
 func (s *Server) StopNavelCord() {

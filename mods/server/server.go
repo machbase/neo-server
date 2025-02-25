@@ -258,7 +258,6 @@ func (s *Server) Start() error {
 
 	// metrics
 	startServerMetrics(s)
-	util.AddShutdownHook(func() { stopServerMetrics() })
 
 	return nil
 }
@@ -311,37 +310,7 @@ func representativePort(addr string) string {
 
 func (s *Server) Stop() {
 	util.RunShutdownHooks()
-	if s.pkgMgr != nil {
-		s.pkgMgr.Stop()
-	}
-	if s.navel != nil {
-		s.StopNavelCord()
-	}
-	if s.sshd != nil {
-		s.sshd.Stop()
-	}
-	if s.mqttd != nil {
-		s.mqttd.Stop()
-	}
-	if s.httpd != nil {
-		s.httpd.Stop()
-	}
-	if s.grpcd != nil {
-		s.grpcd.Stop()
-	}
-	if s.schedSvc != nil {
-		s.schedSvc.Stop()
-	}
-	if s.bridgeSvc != nil {
-		s.bridgeSvc.Stop()
-	}
-	if s.bakd != nil {
-		s.bakd.Stop()
-	}
-	if s.models != nil {
-		s.models.Stop()
-	}
-	tql.StopCache()
+
 	if db, ok := s.db.(*machsvr.Database); ok {
 		if err := db.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
@@ -610,6 +579,7 @@ func (s *Server) startModelService() error {
 	if err := s.models.Start(); err != nil {
 		return err
 	}
+	util.AddShutdownHook(func() { s.models.Stop() })
 	return nil
 }
 
@@ -628,6 +598,7 @@ func (s *Server) startBackupService() error {
 		if err := s.bakd.Start(); err != nil {
 			return err
 		}
+		util.AddShutdownHook(func() { s.bakd.Stop() })
 	}
 	return nil
 }
@@ -745,9 +716,12 @@ func (s *Server) startGrpcServer() error {
 	if err := s.grpcd.Start(); err != nil {
 		return err
 	}
+	util.AddShutdownHook(func() { s.grpcd.Stop() })
 
 	tql.SetGrpcAddresses(s.Grpc.Listeners)
+
 	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
+	util.AddShutdownHook(func() { tql.StopCache() })
 
 	return nil
 }
@@ -764,12 +738,16 @@ func (s *Server) startBridgeAndSchedulerService() error {
 		bridge.WithProvider(s.models.BridgeProvider()),
 		bridge.WithScheduleServer(s.schedSvc),
 	)
+
 	if err := s.bridgeSvc.Start(); err != nil {
 		return err
 	}
+	util.AddShutdownHook(func() { s.bridgeSvc.Stop() })
+
 	if err := s.schedSvc.Start(); err != nil {
 		return err
 	}
+	util.AddShutdownHook(func() { s.schedSvc.Stop() })
 	return nil
 }
 
@@ -827,6 +805,7 @@ func (s *Server) startMqttServer() error {
 	if err := s.mqttd.Start(); err != nil {
 		return errors.Wrap(err, "mqtt server")
 	}
+	util.AddShutdownHook(func() { s.mqttd.Stop() })
 	return nil
 }
 
@@ -880,6 +859,7 @@ func (s *Server) startHttpServer() error {
 	if err := s.httpd.Start(); err != nil {
 		return errors.Wrap(err, "http server")
 	}
+	util.AddShutdownHook(func() { s.httpd.Stop() })
 	return nil
 }
 
@@ -902,6 +882,7 @@ func (s *Server) startSshServer() error {
 	if err := s.sshd.Start(); err != nil {
 		return err
 	}
+	util.AddShutdownHook(func() { s.sshd.Stop() })
 	return nil
 }
 
@@ -922,6 +903,7 @@ func (s *Server) initPackageManager() error {
 	} else {
 		s.pkgMgr = mgr
 	}
+	util.AddShutdownHook(func() { s.pkgMgr.Stop() })
 	return nil
 }
 
