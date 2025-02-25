@@ -18,11 +18,9 @@ func init() {
 	})
 }
 
-const helpExplain string = `  explain <query>
+const helpExplain string = `  explain [full] <query>
   arguments:
-    query       query statement to display the execution plan
-  options:
-    --full      full explain`
+    query       query statement to display the execution plan`
 
 type ExplainCmd struct {
 	Help  bool     `kong:"-"`
@@ -51,6 +49,11 @@ func doExplain(ctx *action.ActionContext) {
 	}
 
 	tick := time.Now()
+	if len(cmd.Query) > 1 && strings.EqualFold(cmd.Query[0], "full") {
+		// it allows to use 'explain full select...' as well as 'explain --full select...'
+		cmd.Full = true
+		cmd.Query = cmd.Query[1:]
+	}
 	sqlText := util.StripQuote(strings.Join(cmd.Query, " "))
 	conn, err := ctx.BorrowConn()
 	if err != nil {

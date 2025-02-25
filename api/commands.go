@@ -388,12 +388,11 @@ func (ch *CommandHandler) NewExplainCommand() *cobra.Command {
 		return nil
 	}
 	explainCmd := &cobra.Command{
-		Use:   "explain <query>",
+		Use:   "explain [full] <query>",
 		Short: "explain query",
 		Args:  cobra.MinimumNArgs(1),
 	}
-	full := explainCmd.Flags().BoolP("full", "f", false, "explain-full")
-	explainCmd.RunE = ch.runExplain(full)
+	explainCmd.RunE = ch.runExplain()
 	return explainCmd
 }
 
@@ -681,7 +680,7 @@ func (ch *CommandHandler) runShowStatements(cmd *cobra.Command, _ []string) erro
 	return err
 }
 
-func (ch *CommandHandler) runExplain(full *bool) func(cmd *cobra.Command, args []string) error {
+func (ch *CommandHandler) runExplain() func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if ch.Explain == nil {
 			return errors.New("handler .Explain not set")
@@ -694,7 +693,15 @@ func (ch *CommandHandler) runExplain(full *bool) func(cmd *cobra.Command, args [
 			conn = c
 		}
 		defer conn.Close()
-		plan, err := conn.Explain(ctx, strings.Join(args, " "), *full)
+
+		var fullRegex = regexp.MustCompile(`(?i)^full\s+`)
+		var full = false
+		if fullRegex.MatchString(args[0]) {
+			// it allows to use 'explain full select...' as well
+			args[0] = args[0][len("full"):]
+			full = true
+		}
+		plan, err := conn.Explain(ctx, strings.Join(args, " "), full)
 		ch.Explain(plan, err)
 		return nil
 	}
