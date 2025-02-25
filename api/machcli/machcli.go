@@ -70,13 +70,16 @@ type Config struct {
 	//	< 0 : unlimited
 	//	0 : default, maxOpenConns = CPU count * maxOpenConnsFactor
 	//	> 0 : specified max open connections
-	MaxOpenConns int
+	MaxOpenConn int
 
 	// MaxOpenConnsFactor
 	//
 	//	used to calculate the number of max open connections when maxOpenConns is 0
 	//	default is 1.5
-	MaxOpenConnsFactor float64
+	MaxOpenConnFactor float64
+
+	MaxOpenQuery       int
+	MaxOpenQueryFactor float64
 
 	TrustUsers map[string]string
 }
@@ -110,17 +113,17 @@ func NewDatabase(conf *Config) (*Database, error) {
 		ret.trustUsers[u] = p
 	}
 
-	if conf.MaxOpenConnsFactor <= 0 {
-		conf.MaxOpenConnsFactor = 1.5
+	if conf.MaxOpenConnFactor <= 0 {
+		conf.MaxOpenConnFactor = 1.5
 	}
 
-	if conf.MaxOpenConns < 0 {
-		conf.MaxOpenConns = -1
-	} else if conf.MaxOpenConns == 0 {
-		conf.MaxOpenConns = int(float64(runtime.NumCPU()) * conf.MaxOpenConnsFactor)
+	if conf.MaxOpenConn < 0 {
+		conf.MaxOpenConn = -1
+	} else if conf.MaxOpenConn == 0 {
+		conf.MaxOpenConn = int(float64(runtime.NumCPU()) * conf.MaxOpenConnFactor)
 	}
 
-	ret.SetMaxOpenConns(conf.MaxOpenConns)
+	ret.SetMaxOpenConns(conf.MaxOpenConn)
 	return ret, nil
 }
 
