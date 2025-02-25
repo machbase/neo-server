@@ -388,8 +388,7 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	}
 	var appenderName = tableUser + "." + wp.Table
 
-	if val, exists := s.appenders.Get(peerId); exists {
-		appenderSet = val.([]*AppenderWrapper)
+	if appenderSet, exists := s.appenders.Get(peerId); exists {
 		for _, a := range appenderSet {
 			if a.appender.TableName() == appenderName {
 				appender = a.appender

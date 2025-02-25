@@ -5,13 +5,13 @@ import (
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 func NewService(opts ...Option) Service {
 	s := &svr{
 		log:    logging.GetLog("bridge"),
-		ctxMap: cmap.New(),
+		ctxMap: cmap.New[*rowsWrap](),
 	}
 	for _, o := range opts {
 		o(s)
@@ -45,7 +45,7 @@ type svr struct {
 	Service
 
 	log    logging.Log
-	ctxMap cmap.ConcurrentMap
+	ctxMap cmap.ConcurrentMap[string, *rowsWrap]
 
 	schedMgmtImpl schedule.ManagementServer
 	models        model.BridgeProvider
