@@ -18,6 +18,9 @@ func doHelp(command string, subcommand string) error {
 	case "serve":
 		fmt.Println(os.Args[0] + " serve [args...]")
 		showShellHelp = false
+	case "serve-headless":
+		fmt.Println(os.Args[0] + " serve-headless [args...]")
+		showShellHelp = false
 	case "shell":
 		fmt.Println(os.Args[0] + " shell [flags] <sub-command> [args...]")
 		showServeHelp = false
@@ -54,7 +57,8 @@ func doHelp(command string, subcommand string) error {
 const helpRootText = ` <command> [args...]
 
 Commands:
-  serve <falgs>               start machbase-neo server process
+  serve <flags>               start machbase-neo server process
+  serve-headless <flags>      start machbase-neo server process in headless mode
   shell <flags> <sub-command> run neoshell client
   gen-config                  show config template
   restore                     restore database from backup

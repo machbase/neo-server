@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -63,11 +64,33 @@ func errorWithCause(obj any, cause error) error {
 type Config struct {
 	Host string
 	Port int
+
+	// MaxOpenConns
+	//
+	//	< 0 : unlimited
+	//	0 : default, maxOpenConns = CPU count * maxOpenConnsFactor
+	//	> 0 : specified max open connections
+	MaxOpenConns int
+
+	// MaxOpenConnsFactor
+	//
+	//	used to calculate the number of max open connections when maxOpenConns is 0
+	//	default is 1.5
+	MaxOpenConnsFactor float64
+
+	TrustUsers map[string]string
 }
 
 type Database struct {
-	Config
 	handle unsafe.Pointer
+	host   string
+	port   int
+
+	trustUsersMutex sync.RWMutex
+	trustUsers      map[string]string
+
+	maxConnsMutex sync.RWMutex
+	maxConnsChan  chan struct{}
 }
 
 var _ api.Database = (*Database)(nil)
@@ -77,7 +100,27 @@ func NewDatabase(conf *Config) (*Database, error) {
 	if err := mach.CliInitialize(handle); err != nil {
 		return nil, err
 	}
-	ret := &Database{Config: *conf, handle: *handle}
+	ret := &Database{
+		host:       conf.Host,
+		port:       conf.Port,
+		handle:     *handle,
+		trustUsers: map[string]string{},
+	}
+	for u, p := range conf.TrustUsers {
+		ret.trustUsers[u] = p
+	}
+
+	if conf.MaxOpenConnsFactor <= 0 {
+		conf.MaxOpenConnsFactor = 1.5
+	}
+
+	if conf.MaxOpenConns < 0 {
+		conf.MaxOpenConns = -1
+	} else if conf.MaxOpenConns == 0 {
+		conf.MaxOpenConns = int(float64(runtime.NumCPU()) * conf.MaxOpenConnsFactor)
+	}
+
+	ret.SetMaxOpenConns(conf.MaxOpenConns)
 	return ret, nil
 }
 
@@ -89,10 +132,59 @@ func (db *Database) Close() error {
 	}
 }
 
+// MaxOpenConns returns the maximum number of open connections
+// and the current remains capacity.
+func (db *Database) MaxOpenConns() (int, int) {
+	db.maxConnsMutex.RLock()
+	defer db.maxConnsMutex.RUnlock()
+	if db.maxConnsChan == nil {
+		// unlimited
+		return -1, -1
+	}
+	limit := cap(db.maxConnsChan)
+	remains := len(db.maxConnsChan)
+	return limit, remains
+}
+
+func (db *Database) SetMaxOpenConns(desiredMaxOpenConns int) {
+	if desiredMaxOpenConns < 0 {
+		desiredMaxOpenConns = -1
+	}
+	if desiredMaxOpenConns == 0 {
+		desiredMaxOpenConns = int(float64(runtime.NumCPU()) * 1.5)
+	}
+
+	currentCap := cap(db.maxConnsChan)
+	if currentCap == desiredMaxOpenConns {
+		return
+	}
+
+	var newChan chan struct{}
+	db.maxConnsMutex.Lock()
+	defer func() {
+		db.maxConnsChan = newChan
+		db.maxConnsMutex.Unlock()
+	}()
+
+	if desiredMaxOpenConns > 0 {
+		newChan = make(chan struct{}, desiredMaxOpenConns)
+		for i := 0; i < desiredMaxOpenConns; i++ {
+			newChan <- struct{}{}
+		}
+	}
+}
+
 func (db *Database) Ping(ctx context.Context) (time.Duration, error) {
 	tick := time.Now()
 	// TODO implement PING
 	return time.Since(tick), nil
+}
+
+func (db *Database) SetTrustUser(user, password string) error {
+	db.trustUsersMutex.Lock()
+	defer db.trustUsersMutex.Unlock()
+	db.trustUsers[user] = password
+	return nil
 }
 
 func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, string, error) {
@@ -106,7 +198,7 @@ func (db *Database) UserAuth(ctx context.Context, user, password string) (bool, 
 
 func (db *Database) connectionString(user string, password string) string {
 	return fmt.Sprintf("SERVER=%s;UID=%s;PWD=%s;CONNTYPE=1;PORT_NO=%d",
-		db.Host, strings.ToUpper(user), strings.ToUpper(password), db.Port)
+		db.host, strings.ToUpper(user), strings.ToUpper(password), db.port)
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
@@ -117,16 +209,43 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 			user = o.User
 			password = o.Password
 		case *api.ConnectOptionTrustUser:
-			return nil, errors.New("trust user option is not supported")
+			db.trustUsersMutex.RLock()
+			if pass, ok := db.trustUsers[o.User]; ok {
+				user = o.User
+				password = pass
+			}
+			db.trustUsersMutex.RUnlock()
+			if user == "" {
+				return nil, errors.New("trust user not found")
+			}
 		default:
 			return nil, fmt.Errorf("unknown option type-%T", o)
 		}
 	}
+
+	returnChan := db.maxConnsChan
+
+	if returnChan != nil {
+		select {
+		case <-returnChan:
+		case <-ctx.Done():
+			return nil, api.NewError("connect canceled")
+		}
+	}
+
 	handle := new(unsafe.Pointer)
 	if err := mach.CliConnect(db.handle, db.connectionString(user, password), handle); err != nil {
 		return nil, errorWithCause(db, err)
 	}
-	ret := &Conn{db: db, handle: *handle}
+
+	db.SetTrustUser(user, password)
+
+	ret := &Conn{
+		db:         db,
+		handle:     *handle,
+		usedAt:     time.Now(),
+		returnChan: returnChan,
+	}
 	return ret, nil
 }
 
@@ -134,13 +253,23 @@ type Conn struct {
 	handle unsafe.Pointer
 	db     *Database
 
-	closeOnce sync.Once
+	usedAt     time.Time
+	usedCount  int64
+	closeOnce  sync.Once
+	returnChan chan struct{}
 }
 
 var _ api.Conn = (*Conn)(nil)
 
 func (c *Conn) Close() (ret error) {
 	c.closeOnce.Do(func() {
+		defer func() {
+			c.usedAt = time.Now()
+			c.usedCount++
+			if c.returnChan != nil {
+				c.returnChan <- struct{}{}
+			}
+		}()
 		if err := mach.CliDisconnect(c.handle); err != nil {
 			ret = errorWithCause(c, err)
 		}
@@ -875,7 +1004,7 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	db, user, table := api.TableName(tableName).Split()
 	dbId := -1
 	tableId := int64(-1)
-	var tableType api.TableType
+	var tableType api.TableType = api.TableType(-1)
 	var tableFlag api.TableFlag
 	var tableColCount int
 
@@ -913,14 +1042,16 @@ func (c *Conn) Appender(ctx context.Context, tableName string, opts ...api.Appen
 	if err := r.Scan(&tableId, &tableType, &tableFlag, &tableColCount); err != nil {
 		return nil, err
 	}
-
+	if tableType != api.TableTypeLog && tableType != api.TableTypeTag {
+		return nil, fmt.Errorf("%s '%s' doesn't support append", tableType, tableName)
+	}
 	rows, err := c.Query(ctx, "select name, type, length, id, flag from M$SYS_COLUMNS where table_id = ? and database_id = ? order by id", tableId, dbId)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	ret := &Appender{tableName: strings.ToUpper(tableName)}
+	ret := &Appender{tableName: strings.ToUpper(tableName), tableType: tableType}
 	for _, opt := range opts {
 		switch o := opt.(type) {
 		case *api.AppenderOptionBuffer:
@@ -1001,25 +1132,51 @@ type Appender struct {
 	columns       api.Columns
 	columnNames   []string
 	columnTypes   []mach.SqlType
+	inputColumns  []AppenderInputColumn
+	closed        bool
+	successCount  int64
+	failCount     int64
 }
 
 var _ api.Appender = (*Appender)(nil)
 var _ api.Flusher = (*Appender)(nil)
 
+type AppenderInputColumn struct {
+	Name string
+	Idx  int
+}
+
 // Close returns the number of success and fail rows.
 func (a *Appender) Close() (int64, int64, error) {
-	if success, fail, err := mach.CliAppendClose(a.stmt.handle); err == nil {
-		return success, fail, nil
-	} else {
-		c := a.stmt.conn
-		if err := a.stmt.Close(); err != nil {
-			return success, fail, errorWithCause(c, err)
-		}
-		return success, fail, errorWithCause(a.stmt, err)
+	if a.closed {
+		return a.successCount, a.failCount, nil
 	}
+	a.closed = true
+	var err error
+
+	//// even if error occurred, we should close the statement
+	a.successCount, a.failCount, err = mach.CliAppendClose(a.stmt.handle)
+
+	if errClose := a.stmt.Close(); errClose != nil {
+		return a.successCount, a.failCount, errorWithCause(a.stmt.conn, errClose)
+	}
+	return a.successCount, a.failCount, err
 }
 
 func (a *Appender) WithInputColumns(columns ...string) api.Appender {
+	a.inputColumns = nil
+	for _, col := range columns {
+		a.inputColumns = append(a.inputColumns, AppenderInputColumn{Name: strings.ToUpper(col), Idx: -1})
+	}
+	if len(a.inputColumns) > 0 {
+		for idx, col := range a.columns {
+			for inIdx, inputCol := range a.inputColumns {
+				if col.Name == inputCol.Name {
+					a.inputColumns[inIdx].Idx = idx
+				}
+			}
+		}
+	}
 	return a
 }
 
@@ -1043,15 +1200,57 @@ func (a *Appender) Flush() error {
 	}
 }
 
-func (a *Appender) Append(args ...any) error {
-	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, args); err != nil {
-		return err
+func (a *Appender) Append(values ...any) error {
+	if a.tableType == api.TableTypeTag {
+		return a.append(values...)
+	} else if a.tableType == api.TableTypeLog {
+		var valuesWithTime []any
+		if len(values) == len(a.columns) {
+			valuesWithTime = values
+		} else {
+			valuesWithTime = append([]any{time.Time{}}, values...)
+		}
+		return a.append(valuesWithTime...)
+	} else {
+		return fmt.Errorf("%s can not be appended", a.tableName)
 	}
-	return nil
 }
 
 func (a *Appender) AppendLogTime(ts time.Time, values ...any) error {
+	if a.tableType != api.TableTypeLog {
+		return fmt.Errorf("%s is not a log table, use Append() instead", a.tableName)
+	}
 	values = append([]any{ts}, values...)
+	return a.append(values...)
+}
+
+func (a *Appender) append(values ...any) error {
+	if len(a.columns) == 0 {
+		return api.ErrDatabaseNoColumns(a.tableName)
+	}
+	if len(a.inputColumns) > 0 {
+		if len(a.inputColumns) != len(values) {
+			fmt.Println("inputColumns", len(a.inputColumns), a.inputColumns)
+			fmt.Println("values", len(values), values)
+			return api.ErrDatabaseLengthOfColumns(a.tableName, len(a.columns), len(values))
+		}
+		newValues := make([]any, len(a.columns))
+		for i, inputCol := range a.inputColumns {
+			newValues[inputCol.Idx] = values[i]
+		}
+		values = newValues
+	} else {
+		if len(a.columns) != len(values) {
+			return api.ErrDatabaseLengthOfColumns(a.tableName, len(a.columns), len(values))
+		}
+	}
+	if a.closed {
+		return api.ErrDatabaseClosedAppender
+	}
+	if a.stmt == nil || a.stmt.conn == nil {
+		return api.ErrDatabaseNoConnection
+	}
+
 	if err := mach.CliAppendData(a.stmt.handle, a.columnTypes, a.columnNames, values); err != nil {
 		return errorWithCause(a.stmt, err)
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
-func (s *Server) initShellProvider() {
+func (s *Server) initShellProvider() error {
 	candidates := []string{}
 	for _, addr := range s.Grpc.Listeners {
 		if runtime.GOOS == "windows" && strings.HasPrefix(addr, "unix://") {
@@ -29,7 +29,7 @@ func (s *Server) initShellProvider() {
 	})
 	if len(candidates) == 0 {
 		s.log.Warn("no port found for internal communication")
-		return
+		return nil
 	}
 
 	shellCmd := ""
@@ -46,6 +46,7 @@ func (s *Server) initShellProvider() {
 		shellCmd = fmt.Sprintf(`"%s" shell --server %s`, shellCmd, candidates[0])
 	}
 	s.models.ShellProvider().SetDefaultShellCommand(shellCmd)
+	return nil
 }
 
 // sshd shell provider

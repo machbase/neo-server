@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/booter"
@@ -47,8 +49,9 @@ type Server struct {
 	mgmt.UnimplementedManagementServer
 	Config
 
+	db api.Database
+
 	log   logging.Log
-	db    *machsvr.Database
 	navel *net.TCPConn
 	grpcd *grpcd
 	mqttd *mqttd
@@ -59,14 +62,14 @@ type Server struct {
 	bridgeSvc bridge.Service
 	schedSvc  scheduler.Service
 
-	certdir           string
 	authHandler       AuthHandler
 	authorizedKeysDir string
 	licenseFilePath   string
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	pkgMgr *pkgs.PkgManager
+	pkgMgr    *pkgs.PkgManager
+	tqlLoader tql.Loader
 
 	models model.Service
 
@@ -76,6 +79,9 @@ type Server struct {
 	servicePorts     map[string][]*model.ServicePort
 	servicePortsLock sync.RWMutex
 
+	certDirPath           string
+	prefDirPath           string
+	homeDirPath           string
 	authorizedSshKeysLock sync.RWMutex
 	genSnowflake          *snowflake.Node
 	snowflakes            []string
@@ -94,6 +100,7 @@ func NewServer(conf *Config) (*Server, error) {
 	return &Server{
 		Config:       *conf,
 		servicePorts: make(map[string][]*model.ServicePort),
+		tqlLoader:    tql.NewLoader(),
 	}, nil
 }
 
@@ -107,18 +114,6 @@ func Restore(dataDir string, backupDir string) error {
 	return nil
 }
 
-type DatabaseServer interface {
-	Startup() error
-	Shutdown() error
-}
-
-type DatabaseAuthServer interface {
-	UserAuth(ctx context.Context, user string, password string) (bool, string, error)
-}
-
-var _ DatabaseServer = (*machsvr.Database)(nil)
-var _ DatabaseAuthServer = (*machsvr.Database)(nil)
-
 func (s *Server) Start() error {
 	s.startupTime = time.Now()
 	s.log = logging.GetLog("neosvr")
@@ -128,477 +123,130 @@ func (s *Server) Start() error {
 		s.snowflakes = append(s.snowflakes, s.genSnowflake.Generate().Base64())
 	}
 
-	prefdirPath, err := filepath.Abs(s.PrefDir)
-	if err != nil {
-		return errors.Wrap(err, "prefdir")
-	}
-	if err := util.MkDirIfNotExists(filepath.Dir(prefdirPath)); err != nil {
-		return errors.Wrap(err, "prefdir")
-	}
-	if err := mkDirIfNotExists(prefdirPath); err != nil {
-		return errors.Wrap(err, "prefdir")
-	}
-	s.certdir = filepath.Join(prefdirPath, "cert")
-	if err := mkDirIfNotExistsMode(s.certdir, 0700); err != nil {
-		return errors.Wrap(err, "prefdir cert")
-	}
-	if err := s.mkKeysIfNotExists(); err != nil {
-		return errors.Wrap(err, "prefdir keys")
+	HeadOnly = strings.HasPrefix(s.DataDir, "machbase://")
+	if Headless {
+		if HeadOnly {
+			return fmt.Errorf("headless mode is not possible alongside head-only mode, %s", s.DataDir)
+		}
+		return s.StartHeadless()
 	}
 
-	s.authorizedKeysDir = filepath.Join(s.certdir, "authorized_keys")
-	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
-		return errors.Wrap(err, "authorized keys")
+	if err := s.preparePrefDir(); err != nil {
+		return err
 	}
 
-	s.licenseFilePath = filepath.Join(prefdirPath, "license.dat")
-	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
-		s.licenseFileTime = stat.ModTime()
+	if err := s.startModelService(); err != nil {
+		return err
+	}
+
+	if err := s.prepareHomeDir(); err != nil {
+		return err
+	}
+
+	if err := s.preparePorts(); err != nil {
+		return err
 	}
 
 	if s.Jwt.AtDuration > 0 && s.Jwt.RtDuration > 0 {
 		JwtConfigure(&s.Jwt)
 	}
 
-	s.models = model.NewService(
-		model.WithConfigDirPath(prefdirPath),
-		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
-	)
-	if err := s.models.Start(); err != nil {
-		return err
-	}
-
-	homepath, err := filepath.Abs(s.DataDir)
-	if err != nil {
-		return errors.Wrap(err, "datadir")
-	}
-	if err := mkDirIfNotExists(homepath); err != nil {
-		return errors.Wrap(err, "machbase_home")
-	}
-	if err := mkDirIfNotExists(filepath.Join(homepath, "conf")); err != nil {
-		return errors.Wrap(err, "machbase conf")
-	}
-	if err := mkDirIfNotExists(filepath.Join(homepath, "dbs")); err != nil {
-		return errors.Wrap(err, "machbase dbs")
-	}
-	if err := mkDirIfNotExists(filepath.Join(homepath, "trc")); err != nil {
-		return errors.Wrap(err, "machbase trc")
-	}
-
-	shouldInstallLicense := false
-	if !s.licenseFileTime.IsZero() {
-		stat, err := os.Stat(filepath.Join(homepath, "conf", "license.dat"))
-		if err != nil {
-			shouldInstallLicense = true
-		} else if stat.ModTime().Sub(s.licenseFileTime) < 0 {
-			shouldInstallLicense = true
-		}
-	}
-
-	// port-check MACH
-	if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
-		return errors.Wrap(err, "MACH port not available")
-	} else {
-		machPort := fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
-		s.AddServicePort("mach", machPort)
-	}
-	// port-check gRPC
-	for _, addr := range s.Grpc.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "gRPC port not available")
-		}
-		s.AddServicePort("grpc", addr)
-	}
-	// port-check HTTP
-	for _, addr := range s.Http.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "HTTP port not available")
-		}
-		s.AddServicePort("http", addr)
-	}
-	// port-check MQTT
-	for _, addr := range s.Mqtt.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "MQTT port not available")
-		}
-		s.AddServicePort("mqtt", addr)
-	}
-	// port-check SSHD
-	for _, addr := range s.Shell.Listeners {
-		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "SSHD port not available")
-		}
-		s.AddServicePort("shell", addr)
-	}
-
 	s.authHandler = NewAuthenticator(s.ServerCertificatePath(), s.authorizedKeysDir, s.AuthHandler.Enabled)
 
-	s.log.Infof("apply machbase '%s' preset", s.MachbasePreset)
-	confpath := filepath.Join(homepath, "conf", "machbase.conf")
-	if _, err := os.Stat(confpath); err != nil {
-		if err := applyMachbaseConfig(confpath, &s.Machbase); err != nil {
-			return errors.Wrap(err, "machbase.conf")
+	if HeadOnly {
+		if err := s.startMachbaseCli(); err != nil {
+			return err
 		}
-	} else if rewrite, err := s.checkRewriteMachbaseConf(confpath); err != nil {
-		return err
-	} else if rewrite {
-		if err := s.rewriteMachbaseConf(confpath); err != nil {
-			return errors.Wrap(err, "machbase.conf")
+	} else {
+		if err := s.startMachbaseSvr(); err != nil {
+			return err
 		}
-	}
-
-	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
-	if err := machsvr.Initialize(homepath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
-		return errors.Wrap(err, "initialize database failed")
-	}
-	if !machsvr.ExistsDatabase() {
-		s.log.Info("create database")
-		if err := machsvr.CreateDatabase(); err != nil {
-			return errors.Wrap(err, "create database failed")
-		}
-		s.databaseCreated = true
-	}
-
-	// create database instance
-	s.db, err = machsvr.NewDatabase(machsvr.DatabaseOption{
-		MaxOpenConn:        s.Config.MaxOpenConn,
-		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
-		MaxOpenQuery:       s.Config.MaxOpenQuery,
-		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
-	})
-	if err != nil {
-		return errors.Wrap(err, "database instance failed")
-	}
-	if s.db == nil {
-		return errors.New("database instance failed")
-	}
-	if err := s.db.Startup(); err != nil {
-		return errors.Wrap(err, "startup database")
 	}
 
 	if !s.NoBanner {
 		s.log.Infof("\n%s", mods.GenBanner())
 	}
 
-	enableLimiter := true
-	if enableLimiter {
-		strOrUnlimited := func(n int) string {
-			if n < 0 {
-				return "unlimited"
-			}
-			return strconv.Itoa(n)
-		}
-		maxConn, _ := s.db.MaxOpenConn()
-		maxQuery, _ := s.db.MaxOpenQuery()
-		s.log.Info("MACH MaxOpenConn:", strOrUnlimited(maxConn))
-		s.log.Info("MACH MaxOpenQuery:", strOrUnlimited(maxQuery))
-	}
+	s.checkMaxOpenConnections()
 
-	if shouldInstallLicense {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
-		if err != nil {
-			s.log.Error("ERR", err.Error())
+	if !HeadOnly {
+		if err := s.checkAndInstallLicense(); err != nil {
 			return err
 		}
-		if _, err = api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
-			s.log.Warn("set license fail,", err.Error())
-		} else {
-			s.log.Info("set license success")
-		}
-		if err := conn.Close(); err != nil {
-			s.log.Warn("ERR", err.Error())
-		}
-		cancel()
-	}
 
-	if len(s.CreateDBQueries) > 0 && s.databaseCreated {
-		if err := s.runSqlScripts("CreateDBQueries", s.CreateDBQueries); err != nil {
-			s.log.Error("ERR", err.Error())
+		if err := s.runInitScripts(); err != nil {
+			return err
+		}
+
+		// backup service
+		if err := s.startBackupService(); err != nil {
 			return err
 		}
 	}
 
-	if len(s.CreateDBScriptFiles) > 0 && s.databaseCreated {
-		for _, f := range s.CreateDBScriptFiles {
-			if f == "" {
-				continue
-			}
-			if err := s.runSqlScriptFile("CreateDBScriptFiles", f); err != nil {
-				return err
-			}
-		}
-	}
-
-	if len(s.StartupQueries) > 0 {
-		if err := s.runSqlScripts("StartupQueries", s.StartupQueries); err != nil {
-			s.log.Error("ERR", err.Error())
-			return err
-		}
-	}
-
-	if len(s.StartupScriptFiles) > 0 {
-		for _, f := range s.StartupScriptFiles {
-			if f == "" {
-				continue
-			}
-			if err := s.runSqlScriptFile("StartupScriptFiles", f); err != nil {
-				return err
-			}
-		}
-	}
-
-	if s.BackupDir != "" {
-		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
-			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
-		} else {
-			s.bakd = NewBackupd(
-				WithBackupdBaseDir(backupDirAbs),
-				WithBackupdDatabase(s.db),
-			)
-		}
-	}
-	if s.bakd != nil {
-		if err := s.bakd.Start(); err != nil {
-			return err
-		}
-	}
-
-	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
-	if err != nil {
-		s.log.Warnf("Server filesystem, %s", err.Error())
-		return errors.Wrap(err, "server side file system")
-	}
-	ssfs.SetDefault(serverFs)
-
-	tqlLoader := tql.NewLoader()
-	tql.SetGrpcAddresses(s.Grpc.Listeners)
-	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
-
-	s.schedSvc = scheduler.NewService(
-		scheduler.WithVerbose(false),
-		scheduler.WithProvider(s.models.ScheduleProvider()),
-		scheduler.WithTqlLoader(tqlLoader),
-		scheduler.WithDatabase(s.db),
-	)
-
-	s.bridgeSvc = bridge.NewService(
-		bridge.WithProvider(s.models.BridgeProvider()),
-		bridge.WithScheduleServer(s.schedSvc),
-	)
-
-	// start bridge service
-	if err := s.bridgeSvc.Start(); err != nil {
+	// server side file system
+	if err := s.startServerFileSystem(); err != nil {
 		return err
 	}
-	// start scheduler service
-	if err := s.schedSvc.Start(); err != nil {
+
+	// bridge and scheduler
+	if err := s.startBridgeAndSchedulerService(); err != nil {
 		return err
 	}
 
 	// native port
-	s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
+	if !HeadOnly {
+		s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
+	}
 
 	// grpc server
-	if len(s.Grpc.Listeners) > 0 {
-		machRpcSvr := machsvr.NewRPCServer(s.db,
-			machsvr.WithLogger(logging.Wrap(s.log, nil)),
-			machsvr.WithAuthProvider(s),
-		)
-		s.grpcd, err = NewGrpc(machRpcSvr,
-			WithGrpcListenAddress(s.Grpc.Listeners...),
-			WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
-			WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
-			WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
-			WithGrpcManagementServer(s),
-			WithGrpcBridgeServer(s.bridgeSvc),
-			WithGrpcScheduleServer(s.schedSvc),
-			WithGrpcServerInsecure(s.Grpc.Insecure),
-		)
-		if err != nil {
-			return errors.Wrap(err, "grpc server")
-		}
-		err := s.grpcd.Start()
-		if err != nil {
-			return errors.Wrap(err, "grpc server")
-		}
+	if err := s.startGrpcServer(); err != nil {
+		return fmt.Errorf("grpc server: %w", err)
 	}
 
 	// mqtt server
-	if len(s.Mqtt.Listeners) > 0 {
-		var tlsConf *tls.Config
-		if s.Mqtt.EnableTls {
-			serverCert := s.Mqtt.ServerCertPath
-			if len(serverCert) == 0 {
-				serverCert = s.ServerCertificatePath()
-			}
-			serverKey := s.Mqtt.ServerKeyPath
-			if len(serverKey) == 0 {
-				serverKey = s.ServerPrivateKeyPath()
-			}
-			if cfg, err := LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
-				return errors.Wrap(err, "mqtt server")
-			} else {
-				tlsConf = cfg
-			}
-		}
-		opts := []MqttOption{
-			WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
-			WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
-			WithMqttTqlLoader(tqlLoader),
-			WithMqttWsHandleListener(s.Http.Listeners),
-		}
-		if s.Mqtt.EnablePersistence {
-			mqtt_dir := filepath.Join(homepath, "mqtt", "data")
-			opts = append(opts, WithMqttBadgerPersistent(mqtt_dir))
-		}
-
-		// mqtt server listeners
-		for _, addr := range s.Mqtt.Listeners {
-			if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
-				addr = strings.TrimPrefix(addr, "ws://")
-				addr = strings.TrimPrefix(addr, "wss://")
-				opts = append(opts, WithMqttWebsocketListener(addr, tlsConf))
-			} else if strings.HasPrefix(addr, "unix://") {
-				addr = strings.TrimPrefix(addr, "unix://")
-				opts = append(opts, WithMqttUnixSockListener(addr))
-			} else {
-				addr = strings.TrimPrefix(addr, "tcp://")
-				addr = strings.TrimPrefix(addr, "tls://")
-				opts = append(opts, WithMqttTcpListener(addr, tlsConf))
-			}
-		}
-		s.mqttd, err = NewMqtt(s.db, opts...)
-		if err != nil {
-			return errors.Wrap(err, "mqtt server")
-		}
-		err = s.mqttd.Start()
-		if err != nil {
-			return errors.Wrap(err, "mqtt server")
-		}
+	if err := s.startMqttServer(); err != nil {
+		return fmt.Errorf("mqtt server: %w", err)
 	}
 
 	// package manager
-	if s.pkgMgr == nil {
-		envs := map[string]string{}
-		if b, err := os.Executable(); err == nil {
-			b, _ = filepath.Abs(b)
-			envs["MACHBASE_NEO"] = b
-		}
-		envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
-		envs["MACHBASE_NEO_FILE"] = strings.Join(s.FileDirs, string(filepath.ListSeparator))
-		envs["MACHBASE_NEO_HTTP"] = strings.Join(s.Http.Listeners, ",")
-		envs["MACHBASE_NEO_MQTT"] = strings.Join(s.Mqtt.Listeners, ",")
-		envs["MACHBASE_HOME"] = homepath
-		pkgsDir := filepath.Join(homepath, "pkgs")
-		if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.ExperimentMode); err != nil {
-			return errors.Wrap(err, "pkg manager")
-		} else {
-			s.pkgMgr = mgr
-		}
+	if err := s.initPackageManager(); err != nil {
+		return fmt.Errorf("package manager: %w", err)
 	}
 
-	// EULA installation path
-	eulaFilePath := filepath.Join(prefdirPath, "EULA.TXT")
-
 	// http server
-	if len(s.Http.Listeners) > 0 {
-		opts := []HttpOption{
-			WithHttpLicenseFilePath(s.licenseFilePath),
-			WithHttpEulaFilePath(eulaFilePath),
-			WithHttpListenAddress(s.Http.Listeners...),
-			WithHttpAuthServer(s, s.Http.EnableTokenAuth),
-			WithHttpTqlLoader(tqlLoader),
-			WithHttpManagementServer(s),        // add, key
-			WithHttpScheduleServer(s.schedSvc), // add, timer
-			WithHttpBridgeServer(s.bridgeSvc),
-			WithHttpServerSideFileSystem(serverFs),
-			WithHttpBackupService(s.bakd),
-			WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
-			WithHttpWriteBufSize(s.Http.WriteBufSize),
-			WithHttpReadBufSize(s.Http.ReadBufSize),
-			WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
-			WithHttpStatzAllow(s.Http.AllowStatz...),
-			WithHttpWebShellProvider(s.models.ShellProvider()),
-			WithHttpEnableWeb(s.Http.EnableWebUI),
-			WithHttpPackageManager(s.pkgMgr),
-			WithHttpPathMap("data", homepath),
-		}
-		if s.mqttd != nil {
-			if h := s.mqttd.WsHandlerFunc(); h != nil {
-				opts = append(opts, WithHttpMqttWsHandlerFunc(h))
-			}
-		}
-		shellPorts, _ := s.getServicePorts("shell")
-		shellAddrs := []string{}
-		for _, sp := range shellPorts {
-			shellAddrs = append(shellAddrs, sp.Address)
-		}
-		opts = append(opts, WithHttpNeoShellAddress(shellAddrs...))
-		if s.Http.WebDir != "" {
-			stat, err := os.Stat(s.Http.WebDir)
-			if err != nil {
-				return err
-			}
-			if !stat.IsDir() {
-				return fmt.Errorf("web ui path is not a directory")
-			}
-			opts = append(opts, WithHttpWebDir(s.Http.WebDir))
-		}
-		s.httpd, err = NewHttp(s.db, opts...)
-		if err != nil {
-			return errors.Wrap(err, "http server")
-		}
-		err = s.httpd.Start()
-		if err != nil {
-			return errors.Wrap(err, "http server")
-		}
+	if err := s.startHttpServer(); err != nil {
+		return fmt.Errorf("http server: %w", err)
 	}
 
 	// shells initialize
-	s.initShellProvider()
+	if err := s.initShellProvider(); err != nil {
+		return fmt.Errorf("shell provider: %w", err)
+	}
 
 	// ssh shell server
-	if len(s.Shell.Listeners) > 0 {
-		s.sshd, err = NewSsh(
-			WithSshListenAddress(s.Shell.Listeners...),
-			WithSshServerKeyPath(s.ServerPrivateKeyPath()),
-			WithSshIdleTimeout(s.Shell.IdleTimeout),
-			WithSshAuthServer(s),
-			WithSshMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
-			WithSshShellProvider(s.provideShellForSsh),
-		)
-		if err != nil {
-			return errors.Wrap(err, "shell server")
-		}
-		err := s.sshd.Start()
-		if err != nil {
-			return errors.Wrap(err, "shell server")
-		}
+	if err := s.startSshServer(); err != nil {
+		return fmt.Errorf("ssh server: %w", err)
 	}
 
-	if s.Http.EnableWebUI {
-		svcPorts, err := s.getServicePorts("http")
-		if err != nil {
-			return errors.Wrap(err, "service ports")
-		}
-		readyMsg := []string{}
-		for _, p := range svcPorts {
-			readyMsg = append(readyMsg, representativePort(p.Address))
-		}
-		dbInitInfo := ""
-		if s.databaseCreated {
-			dbInitInfo = strings.Join([]string{
-				fmt.Sprintf("\n\n >> New database created at '%s'", homepath),
-				"\n >> Open web browser, login username 'sys' password 'manager'.",
-			}, "\n")
-		}
-		s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
-			dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
-	} else {
-		s.log.Infof("\n\n  machbase-neo ready in %s", time.Since(s.startupTime).Round(time.Millisecond).String())
+	// ready message
+	svcPorts, err := s.getServicePorts("http")
+	if err != nil {
+		return errors.Wrap(err, "service ports")
 	}
+	readyMsg := []string{}
+	for _, p := range svcPorts {
+		readyMsg = append(readyMsg, representativePort(p.Address))
+	}
+	dbInitInfo := ""
+	if s.databaseCreated {
+		dbInitInfo = strings.Join([]string{
+			fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath),
+			"\n >> Open web browser, login username 'sys' password 'manager'.",
+		}, "\n")
+	}
+	s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
+		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
 
 	// pkgs
 	s.pkgMgr.Start()
@@ -610,8 +258,41 @@ func (s *Server) Start() error {
 
 	// metrics
 	startServerMetrics(s)
-	util.AddShutdownHook(func() { stopServerMetrics() })
 
+	return nil
+}
+
+func (s *Server) StartHeadless() error {
+	if err := s.preparePrefDir(); err != nil {
+		return err
+	}
+
+	if err := s.prepareHomeDir(); err != nil {
+		return err
+	}
+
+	if err := s.startMachbaseSvr(); err != nil {
+		return err
+	}
+
+	if !s.NoBanner {
+		s.log.Infof("\n%s", mods.GenBanner())
+	}
+
+	s.checkMaxOpenConnections()
+
+	if err := s.checkAndInstallLicense(); err != nil {
+		return err
+	}
+
+	// native port
+	s.log.Infof("MACH Listen tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
+
+	dbInitInfo := ""
+	if s.databaseCreated {
+		dbInitInfo = fmt.Sprintf("\n\n >> New database created at '%s'", s.homeDirPath)
+	}
+	s.log.Infof("%s\n\n  ready in %s", dbInitInfo, time.Since(s.startupTime).Round(time.Millisecond).String())
 	return nil
 }
 
@@ -629,42 +310,120 @@ func representativePort(addr string) string {
 
 func (s *Server) Stop() {
 	util.RunShutdownHooks()
-	if s.pkgMgr != nil {
-		s.pkgMgr.Stop()
+
+	if db, ok := s.db.(*machsvr.Database); ok {
+		if err := db.Shutdown(); err != nil {
+			s.log.Warnf("db shutdown; %s", err.Error())
+		}
+		machsvr.Finalize()
+	} else if db, ok := s.db.(*machcli.Database); ok {
+		if err := db.Close(); err != nil {
+			s.log.Warnf("db close; %s", err.Error())
+		}
 	}
-	if s.navel != nil {
-		s.StopNavelCord()
-	}
-	if s.sshd != nil {
-		s.sshd.Stop()
-	}
-	if s.mqttd != nil {
-		s.mqttd.Stop()
-	}
-	if s.httpd != nil {
-		s.httpd.Stop()
-	}
-	if s.grpcd != nil {
-		s.grpcd.Stop()
-	}
-	if s.schedSvc != nil {
-		s.schedSvc.Stop()
-	}
-	if s.bridgeSvc != nil {
-		s.bridgeSvc.Stop()
-	}
-	if s.bakd != nil {
-		s.bakd.Stop()
-	}
-	if s.models != nil {
-		s.models.Stop()
-	}
-	tql.StopCache()
-	if err := s.db.Shutdown(); err != nil {
-		s.log.Warnf("db shutdown; %s", err.Error())
-	}
-	machsvr.Finalize()
 	s.log.Infof("shutdown.")
+}
+
+func (s *Server) startMachbaseSvr() error {
+	s.log.Infof("apply machbase '%s' preset", s.MachbasePreset)
+	confFilePath := filepath.Join(s.homeDirPath, "conf", "machbase.conf")
+	if _, err := os.Stat(confFilePath); err != nil {
+		if err := applyMachbaseConfig(confFilePath, &s.Machbase); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
+	} else if rewrite, err := s.checkRewriteMachbaseConf(confFilePath); err != nil {
+		return err
+	} else if rewrite {
+		if err := s.rewriteMachbaseConf(confFilePath); err != nil {
+			return errors.Wrap(err, "machbase.conf")
+		}
+	}
+
+	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
+	if err := machsvr.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
+		return errors.Wrap(err, "initialize database failed")
+	}
+	if !machsvr.ExistsDatabase() {
+		s.log.Info("create database")
+		if err := machsvr.CreateDatabase(); err != nil {
+			return errors.Wrap(err, "create database failed")
+		}
+		s.databaseCreated = true
+	}
+
+	// create database instance
+	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{
+		MaxOpenConn:        s.Config.MaxOpenConn,
+		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
+		MaxOpenQuery:       s.Config.MaxOpenQuery,
+		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
+	})
+	if err != nil {
+		return errors.Wrap(err, "database instance failed")
+	}
+	if db == nil {
+		return errors.New("database instance failed")
+	} else {
+		s.db = db
+	}
+	if err := db.Startup(); err != nil {
+		return errors.Wrap(err, "startup database")
+	}
+
+	return nil
+}
+
+func (s *Server) startMachbaseCli() error {
+	addr, err := url.Parse(s.DataDir)
+	if err != nil {
+		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+	}
+	if addr.Scheme != "machbase" {
+		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+	}
+	if addr.Host == "" {
+		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+	}
+	if addr.Port() == "" {
+		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+	}
+	host := strings.TrimSuffix(addr.Host, ":"+addr.Port())
+	port := 0
+	if p, err := strconv.ParseInt(addr.Port(), 10, 32); err == nil {
+		port = int(p)
+	} else {
+		return fmt.Errorf("invalid --data address for headless mode, %s", s.DataDir)
+	}
+
+	db, err := machcli.NewDatabase(&machcli.Config{
+		Host:               host,
+		Port:               port,
+		MaxOpenConns:       s.Config.MaxOpenConn,
+		MaxOpenConnsFactor: s.Config.MaxOpenConnFactor,
+		TrustUsers:         map[string]string{"sys": "manager"},
+	})
+	if err != nil {
+		return err
+	}
+
+	if addr.User != nil {
+		user := addr.User.Username()
+		pass, set := addr.User.Password()
+		if set {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ok, _, err := db.UserAuth(ctx, user, pass)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("head-only mode user auth failed")
+			}
+			db.SetTrustUser(user, pass)
+		}
+	}
+	s.db = db
+	return nil
 }
 
 func (s *Server) AddServicePort(svc string, addr string) error {
@@ -702,6 +461,452 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 	return nil
 }
 
+func (s *Server) preparePorts() error {
+	// port-check MACH
+	if !HeadOnly {
+		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
+			return errors.Wrap(err, "MACH port not available")
+		} else {
+			machPort := fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
+			s.AddServicePort("mach", machPort)
+		}
+	}
+	// port-check gRPC
+	for _, addr := range s.Grpc.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "gRPC port not available")
+		}
+		s.AddServicePort("grpc", addr)
+	}
+	// port-check HTTP
+	for _, addr := range s.Http.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "HTTP port not available")
+		}
+		s.AddServicePort("http", addr)
+	}
+	// port-check MQTT
+	for _, addr := range s.Mqtt.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "MQTT port not available")
+		}
+		s.AddServicePort("mqtt", addr)
+	}
+	// port-check SSHD
+	for _, addr := range s.Shell.Listeners {
+		if err := s.checkListenPort(addr); err != nil {
+			return errors.Wrap(err, "SSHD port not available")
+		}
+		s.AddServicePort("shell", addr)
+	}
+	return nil
+}
+
+func (s *Server) preparePrefDir() error {
+	if path, err := filepath.Abs(s.PrefDir); err != nil {
+		return fmt.Errorf("prefdir: %s", err.Error())
+	} else {
+		s.prefDirPath = path
+	}
+	if err := util.MkDirIfNotExists(filepath.Dir(s.prefDirPath)); err != nil {
+		return fmt.Errorf("prefdir: %s", err.Error())
+	}
+	if err := mkDirIfNotExists(s.prefDirPath); err != nil {
+		return fmt.Errorf("prefdir: %s", err.Error())
+	}
+	s.certDirPath = filepath.Join(s.prefDirPath, "cert")
+	if err := mkDirIfNotExistsMode(s.certDirPath, 0700); err != nil {
+		return fmt.Errorf("prefdir cert: %s", err.Error())
+	}
+	if err := s.mkKeysIfNotExists(); err != nil {
+		return fmt.Errorf("prefdir keys: %s", err.Error())
+	}
+
+	s.authorizedKeysDir = filepath.Join(s.certDirPath, "authorized_keys")
+	if err := mkDirIfNotExistsMode(s.authorizedKeysDir, 0700); err != nil {
+		return fmt.Errorf("authorized keys: %s", err.Error())
+	}
+
+	s.licenseFilePath = filepath.Join(s.prefDirPath, "license.dat")
+	if stat, err := os.Stat(s.licenseFilePath); err == nil && !stat.IsDir() {
+		s.licenseFileTime = stat.ModTime()
+	}
+	return nil
+}
+
+func (s *Server) prepareHomeDir() error {
+	if HeadOnly {
+		bin, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if path, err := filepath.Abs(filepath.Dir(bin)); err != nil {
+			return err
+		} else {
+			s.homeDirPath = filepath.Join(path, "machbase_home")
+		}
+	} else {
+		if path, err := filepath.Abs(s.DataDir); err != nil {
+			return errors.Wrap(err, "datadir")
+		} else {
+			s.homeDirPath = path
+		}
+	}
+
+	if err := mkDirIfNotExists(s.homeDirPath); err != nil {
+		return errors.Wrap(err, "machbase_home")
+	}
+
+	if !HeadOnly {
+		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "conf")); err != nil {
+			return errors.Wrap(err, "machbase conf")
+		}
+		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "dbs")); err != nil {
+			return errors.Wrap(err, "machbase dbs")
+		}
+		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "trc")); err != nil {
+			return errors.Wrap(err, "machbase trc")
+		}
+	}
+	return nil
+}
+
+func (s *Server) startModelService() error {
+	s.models = model.NewService(
+		model.WithConfigDirPath(s.prefDirPath),
+		model.WithExperimentModeProvider(func() bool { return s.ExperimentMode }),
+	)
+	if err := s.models.Start(); err != nil {
+		return err
+	}
+	util.AddShutdownHook(func() { s.models.Stop() })
+	return nil
+}
+
+func (s *Server) startBackupService() error {
+	if s.BackupDir != "" {
+		if backupDirAbs, err := filepath.Abs(s.BackupDir); err != nil {
+			s.log.Errorf("Can not decide absolute path for backup dir, %s", err.Error())
+		} else {
+			s.bakd = NewBackupd(
+				WithBackupdBaseDir(backupDirAbs),
+				WithBackupdDatabase(s.db),
+			)
+		}
+	}
+	if s.bakd != nil {
+		if err := s.bakd.Start(); err != nil {
+			return err
+		}
+		util.AddShutdownHook(func() { s.bakd.Stop() })
+	}
+	return nil
+}
+
+func (s *Server) startServerFileSystem() error {
+	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
+	if err != nil {
+		s.log.Warnf("Server filesystem, %s", err.Error())
+		return errors.Wrap(err, "server side file system")
+	}
+	ssfs.SetDefault(serverFs)
+	return nil
+}
+
+func (s *Server) checkMaxOpenConnections() {
+	if db, ok := s.db.(*machsvr.Database); ok {
+		strOrUnlimited := func(n int) string {
+			if n < 0 {
+				return "unlimited"
+			}
+			return strconv.Itoa(n)
+		}
+		maxConn, _ := db.MaxOpenConn()
+		maxQuery, _ := db.MaxOpenQuery()
+		s.log.Info("MACH MaxOpenConn:", strOrUnlimited(maxConn))
+		s.log.Info("MACH MaxOpenQuery:", strOrUnlimited(maxQuery))
+	}
+}
+
+func (s *Server) checkAndInstallLicense() error {
+	if !s.licenseFileTime.IsZero() {
+		stat, err := os.Stat(filepath.Join(s.homeDirPath, "conf", "license.dat"))
+		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+			if err != nil {
+				s.log.Error("ERR", err.Error())
+				return err
+			}
+			if _, err = api.InstallLicenseFile(ctx, conn, s.licenseFilePath); err != nil {
+				s.log.Warn("set license fail,", err.Error())
+			} else {
+				s.log.Info("set license success")
+			}
+			if err := conn.Close(); err != nil {
+				s.log.Warn("ERR", err.Error())
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) runInitScripts() error {
+	if len(s.CreateDBQueries) > 0 && s.databaseCreated {
+		if err := s.runSqlScripts("CreateDBQueries", s.CreateDBQueries); err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+	}
+
+	if len(s.CreateDBScriptFiles) > 0 && s.databaseCreated {
+		for _, f := range s.CreateDBScriptFiles {
+			if f == "" {
+				continue
+			}
+			if err := s.runSqlScriptFile("CreateDBScriptFiles", f); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(s.StartupQueries) > 0 {
+		if err := s.runSqlScripts("StartupQueries", s.StartupQueries); err != nil {
+			s.log.Error("ERR", err.Error())
+			return err
+		}
+	}
+
+	if len(s.StartupScriptFiles) > 0 {
+		for _, f := range s.StartupScriptFiles {
+			if f == "" {
+				continue
+			}
+			if err := s.runSqlScriptFile("StartupScriptFiles", f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) startGrpcServer() error {
+	if len(s.Grpc.Listeners) == 0 {
+		return nil
+	}
+	machRpcSvr := machsvr.NewRPCServer(s.db,
+		machsvr.WithLogger(logging.Wrap(s.log, nil)),
+		machsvr.WithAuthProvider(s),
+	)
+	if grpcd, err := NewGrpc(machRpcSvr,
+		WithGrpcListenAddress(s.Grpc.Listeners...),
+		WithGrpcMaxRecvMsgSize(s.Grpc.MaxRecvMsgSize*1024*1024),
+		WithGrpcMaxSendMsgSize(s.Grpc.MaxSendMsgSize*1024*1024),
+		WithGrpcTlsCreds(s.ServerPrivateKeyPath(), s.ServerCertificatePath()),
+		WithGrpcManagementServer(s),
+		WithGrpcBridgeServer(s.bridgeSvc),
+		WithGrpcScheduleServer(s.schedSvc),
+		WithGrpcServerInsecure(s.Grpc.Insecure),
+	); err != nil {
+		return err
+	} else {
+		s.grpcd = grpcd
+	}
+	if err := s.grpcd.Start(); err != nil {
+		return err
+	}
+	util.AddShutdownHook(func() { s.grpcd.Stop() })
+
+	tql.SetGrpcAddresses(s.Grpc.Listeners)
+
+	tql.StartCache(tql.CacheOption{MaxCapacity: 500})
+	util.AddShutdownHook(func() { tql.StopCache() })
+
+	return nil
+}
+
+func (s *Server) startBridgeAndSchedulerService() error {
+	s.schedSvc = scheduler.NewService(
+		scheduler.WithVerbose(false),
+		scheduler.WithProvider(s.models.ScheduleProvider()),
+		scheduler.WithTqlLoader(s.tqlLoader),
+		scheduler.WithDatabase(s.db),
+	)
+
+	s.bridgeSvc = bridge.NewService(
+		bridge.WithProvider(s.models.BridgeProvider()),
+		bridge.WithScheduleServer(s.schedSvc),
+	)
+
+	if err := s.bridgeSvc.Start(); err != nil {
+		return err
+	}
+	util.AddShutdownHook(func() { s.bridgeSvc.Stop() })
+
+	if err := s.schedSvc.Start(); err != nil {
+		return err
+	}
+	util.AddShutdownHook(func() { s.schedSvc.Stop() })
+	return nil
+}
+
+func (s *Server) startMqttServer() error {
+	if len(s.Mqtt.Listeners) == 0 {
+		return nil
+	}
+	var tlsConf *tls.Config
+	if s.Mqtt.EnableTls {
+		serverCert := s.Mqtt.ServerCertPath
+		if len(serverCert) == 0 {
+			serverCert = s.ServerCertificatePath()
+		}
+		serverKey := s.Mqtt.ServerKeyPath
+		if len(serverKey) == 0 {
+			serverKey = s.ServerPrivateKeyPath()
+		}
+		if cfg, err := LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
+			return errors.Wrap(err, "mqtt server")
+		} else {
+			tlsConf = cfg
+		}
+	}
+	opts := []MqttOption{
+		WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
+		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
+		WithMqttTqlLoader(s.tqlLoader),
+		WithMqttWsHandleListener(s.Http.Listeners),
+	}
+	if s.Mqtt.EnablePersistence {
+		mqtt_dir := filepath.Join(s.homeDirPath, "mqtt", "data")
+		opts = append(opts, WithMqttBadgerPersistent(mqtt_dir))
+	}
+
+	// mqtt server listeners
+	for _, addr := range s.Mqtt.Listeners {
+		if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
+			addr = strings.TrimPrefix(addr, "ws://")
+			addr = strings.TrimPrefix(addr, "wss://")
+			opts = append(opts, WithMqttWebsocketListener(addr, tlsConf))
+		} else if strings.HasPrefix(addr, "unix://") {
+			addr = strings.TrimPrefix(addr, "unix://")
+			opts = append(opts, WithMqttUnixSockListener(addr))
+		} else {
+			addr = strings.TrimPrefix(addr, "tcp://")
+			addr = strings.TrimPrefix(addr, "tls://")
+			opts = append(opts, WithMqttTcpListener(addr, tlsConf))
+		}
+	}
+	if mqttd, err := NewMqtt(s.db, opts...); err != nil {
+		return errors.Wrap(err, "mqtt server")
+	} else {
+		s.mqttd = mqttd
+	}
+	if err := s.mqttd.Start(); err != nil {
+		return errors.Wrap(err, "mqtt server")
+	}
+	util.AddShutdownHook(func() { s.mqttd.Stop() })
+	return nil
+}
+
+func (s *Server) startHttpServer() error {
+	if len(s.Http.Listeners) == 0 {
+		return nil
+	}
+	opts := []HttpOption{
+		WithHttpLicenseFilePath(s.licenseFilePath),
+		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
+		WithHttpListenAddress(s.Http.Listeners...),
+		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
+		WithHttpTqlLoader(s.tqlLoader),
+		WithHttpManagementServer(s),        // add, key
+		WithHttpScheduleServer(s.schedSvc), // add, timer
+		WithHttpBridgeServer(s.bridgeSvc),
+		WithHttpServerSideFileSystem(ssfs.Default()),
+		WithHttpBackupService(s.bakd),
+		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
+		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
+		WithHttpWebShellProvider(s.models.ShellProvider()),
+		WithHttpPackageManager(s.pkgMgr),
+		WithHttpPathMap("data", s.homeDirPath),
+	}
+	if s.mqttd != nil {
+		if h := s.mqttd.WsHandlerFunc(); h != nil {
+			opts = append(opts, WithHttpMqttWsHandlerFunc(h))
+		}
+	}
+	shellPorts, _ := s.getServicePorts("shell")
+	shellAddrs := []string{}
+	for _, sp := range shellPorts {
+		shellAddrs = append(shellAddrs, sp.Address)
+	}
+	opts = append(opts, WithHttpNeoShellAddress(shellAddrs...))
+	if s.Http.WebDir != "" {
+		stat, err := os.Stat(s.Http.WebDir)
+		if err != nil {
+			return err
+		}
+		if !stat.IsDir() {
+			return fmt.Errorf("web ui path is not a directory")
+		}
+		opts = append(opts, WithHttpWebDir(s.Http.WebDir))
+	}
+	if httpd, err := NewHttp(s.db, opts...); err != nil {
+		return errors.Wrap(err, "http server")
+	} else {
+		s.httpd = httpd
+	}
+	if err := s.httpd.Start(); err != nil {
+		return errors.Wrap(err, "http server")
+	}
+	util.AddShutdownHook(func() { s.httpd.Stop() })
+	return nil
+}
+
+func (s *Server) startSshServer() error {
+	if len(s.Shell.Listeners) == 0 {
+		return nil
+	}
+	if sshd, err := NewSsh(
+		WithSshListenAddress(s.Shell.Listeners...),
+		WithSshServerKeyPath(s.ServerPrivateKeyPath()),
+		WithSshIdleTimeout(s.Shell.IdleTimeout),
+		WithSshAuthServer(s),
+		WithSshMotdMessage(fmt.Sprintf("machbase-neo %s %s", mods.VersionString(), mods.Edition())),
+		WithSshShellProvider(s.provideShellForSsh),
+	); err != nil {
+		return err
+	} else {
+		s.sshd = sshd
+	}
+	if err := s.sshd.Start(); err != nil {
+		return err
+	}
+	util.AddShutdownHook(func() { s.sshd.Stop() })
+	return nil
+}
+
+func (s *Server) initPackageManager() error {
+	envs := map[string]string{}
+	if b, err := os.Executable(); err == nil {
+		b, _ = filepath.Abs(b)
+		envs["MACHBASE_NEO"] = b
+	}
+	envs["MACHBASE_NEO_VERSION"] = mods.DisplayVersion()
+	envs["MACHBASE_NEO_FILE"] = strings.Join(s.FileDirs, string(filepath.ListSeparator))
+	envs["MACHBASE_NEO_HTTP"] = strings.Join(s.Http.Listeners, ",")
+	envs["MACHBASE_NEO_MQTT"] = strings.Join(s.Mqtt.Listeners, ",")
+	envs["MACHBASE_HOME"] = s.homeDirPath
+	pkgsDir := filepath.Join(s.homeDirPath, "pkgs")
+	if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.ExperimentMode); err != nil {
+		return errors.Wrap(err, "pkg manager")
+	} else {
+		s.pkgMgr = mgr
+	}
+	util.AddShutdownHook(func() { s.pkgMgr.Stop() })
+	return nil
+}
+
 func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 	s.servicePortsLock.RLock()
 	defer s.servicePortsLock.RUnlock()
@@ -725,15 +930,15 @@ func (s *Server) getServicePorts(svc string) ([]*model.ServicePort, error) {
 }
 
 func (s *Server) ServerPrivateKeyPath() string {
-	return filepath.Join(s.certdir, "machbase_key.pem")
+	return filepath.Join(s.certDirPath, "machbase_key.pem")
 }
 
 func (s *Server) ServerPublicKeyPath() string {
-	return filepath.Join(s.certdir, "machbase_pub.pem")
+	return filepath.Join(s.certDirPath, "machbase_pub.pem")
 }
 
 func (s *Server) ServerCertificatePath() string {
-	return filepath.Join(s.certdir, "machbase_cert.pem")
+	return filepath.Join(s.certDirPath, "machbase_cert.pem")
 }
 
 func (s *Server) ServerCertificate() (*x509.Certificate, error) {

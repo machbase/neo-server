@@ -10,6 +10,7 @@ import (
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/mochi-mqtt/server/v2/system"
 )
@@ -60,7 +61,7 @@ func startServerMetrics(s *Server) {
 			}
 		}
 	}()
-
+	util.AddShutdownHook(func() { stopServerMetrics() })
 }
 
 func stopServerMetrics() {

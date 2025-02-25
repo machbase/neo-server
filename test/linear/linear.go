@@ -161,11 +161,11 @@ func queryNeoTql(neoHttpAddr string, sqlText string, useCache bool) time.Duratio
 	}
 	rsp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Failed to select data:", err)
+		fmt.Println("Failed to request data:", err)
 		os.Exit(1)
 	}
 	if rsp.StatusCode != http.StatusOK {
-		dumpResponse(rsp, "Failed to select data")
+		dumpResponse(rsp, "Failed to response data: "+rsp.Status)
 		os.Exit(1)
 	}
 
@@ -180,7 +180,7 @@ func queryNeoTql(neoHttpAddr string, sqlText string, useCache bool) time.Duratio
 	success := gjson.Get(jsonStr, "success").Bool()
 	if !success {
 		reason := gjson.Get(jsonStr, "reason").String()
-		fmt.Println("Failed to select data:", reason)
+		fmt.Println("Failed to read data:", reason)
 		os.Exit(1)
 	}
 	rows := gjson.Get(jsonStr, "data.rows").Array()
