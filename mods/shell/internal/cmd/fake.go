@@ -13,12 +13,14 @@ import (
 
 func init() {
 	action.RegisterCmd(&action.Cmd{
-		Name:         "fake",
-		PcFunc:       pcFake,
-		Action:       doFake,
-		Desc:         "Generating fake data and writing into the specified table",
-		Usage:        strings.ReplaceAll(helpFake, "\t", "    "),
-		Experimental: false,
+		Name:              "fake",
+		PcFunc:            pcFake,
+		Action:            doFake,
+		Desc:              "Generating fake data and writing into the specified table",
+		Usage:             strings.ReplaceAll(helpFake, "\t", "    "),
+		Experimental:      false,
+		Deprecated:        true,
+		DeprecatedMessage: "Use TQL 'FAKE()' instead",
 	})
 }
 

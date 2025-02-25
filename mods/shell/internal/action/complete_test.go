@@ -20,7 +20,7 @@ func TestPrefixComplete(t *testing.T) {
 			expectLines: []string{
 				"bridge", "connect", "desc", "explain", "export", "fake", "help", "http",
 				"import", "key", "ping", "run", "session", "set", "shell", "show", "shutdown",
-				"sql", "ssh-key", "subscriber", "timer", "walk",
+				"sql", "ssh-key", "subscriber", "timer",
 			},
 		},
 		{
