@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"slices"
 	"strings"
@@ -16,6 +17,8 @@ type CommandHandler struct {
 	SilenceUsage  bool
 	SilenceErrors bool
 	FallbackVerb  string
+	OutWriter     io.Writer
+	ErrWriter     io.Writer
 
 	PreExecute  func(args []string)
 	PostExecute func(args []string, message string, err error)
@@ -68,6 +71,8 @@ func (ch *CommandHandler) MakeCommand() *cobra.Command {
 	}
 	cmd.SilenceUsage = ch.SilenceUsage
 	cmd.SilenceErrors = ch.SilenceErrors
+	cmd.SetErr(ch.ErrWriter)
+	cmd.SetOut(ch.OutWriter)
 	return cmd
 }
 

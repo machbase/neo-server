@@ -264,6 +264,33 @@ func TestDatabaseTql(t *testing.T) {
 			},
 		},
 		{
+			Name: "SQL_show_storage",
+			Script: `
+				SQL("show storage")
+				CSV(header(true))`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, strings.HasPrefix(result, "TABLE_NAME,DATA_SIZE,INDEX_SIZE,TOTAL_SIZE"), result)
+			},
+		},
+		{
+			Name: "SQL_show_table-usage",
+			Script: `
+				SQL("show table-usage")
+				CSV(header(true))`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, strings.HasPrefix(result, "TABLE_NAME,STORAGE_USAGE"), result)
+			},
+		},
+		// {
+		// 	Name: "SQL_show_lsm",
+		// 	Script: `
+		// 		SQL("show lsm")
+		// 		CSV(header(true))`,
+		// 	ExpectFunc: func(t *testing.T, result string) {
+		// 		require.True(t, strings.HasPrefix(result, "TABLE_NAME,INDEX_NAME,LEVEL,COUNT"), result)
+		// 	},
+		// },
+		{
 			Name: "SQL_explain-select",
 			Script: `
 				SQL("explain select * from tag_simple where name = 'tag1'")
