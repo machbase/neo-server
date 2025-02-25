@@ -285,7 +285,37 @@ func (c *Conn) Error() error {
 }
 
 func (c *Conn) Explain(ctx context.Context, query string, full bool) (string, error) {
-	return "", api.ErrNotImplemented("Explain")
+	if full {
+		query = "explain full " + query
+	} else {
+		query = "explain " + query
+	}
+
+	var stmt unsafe.Pointer
+	if err := mach.CliAllocStmt(c.handle, &stmt); err != nil {
+		return "", errorWithCause(c, err)
+	}
+	defer mach.CliFreeStmt(stmt)
+
+	if err := mach.CliExecDirect(stmt, query); err != nil {
+		return "", errorWithCause(c, err)
+	}
+
+	ret := make([]string, 0, 20)
+	buf := make([]byte, 256)
+	for {
+		if eof, err := mach.CliFetch(stmt); err != nil {
+			return "", errorWithCause(c, err)
+		} else if eof {
+			break
+		}
+		if n, err := mach.CliGetData(stmt, 0, mach.MACHCLI_C_TYPE_CHAR, (unsafe.Pointer)(&buf[0]), len(buf)); err != nil {
+			return "", errorWithCause(c, err)
+		} else {
+			ret = append(ret, string(buf[:n]))
+		}
+	}
+	return strings.Join(ret, "\n"), nil
 }
 
 func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
