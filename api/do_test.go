@@ -558,7 +558,7 @@ func tcCommands(t *testing.T) {
 		},
 		{
 			name:  "explain-full-select-all",
-			input: `explain -f -- select * from tag_data`,
+			input: `explain -- full select * from tag_data`,
 			expectFunc: func(t *testing.T, actual string) {
 				require.Greater(t, len(actual), 5000, actual)
 				require.Contains(t, actual, "EXECUTE")
