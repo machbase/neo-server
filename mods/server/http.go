@@ -41,7 +41,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -1475,11 +1475,11 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 const termBuffSize = 4096
 
 var terminals = &Terminals{
-	list: cmap.New(),
+	list: cmap.New[*WebTerm](),
 }
 
 type Terminals struct {
-	list cmap.ConcurrentMap
+	list cmap.ConcurrentMap[string, *WebTerm]
 }
 
 func (terms *Terminals) Register(termKey string, term *WebTerm) {
@@ -1491,10 +1491,8 @@ func (terms *Terminals) Unregister(termKey string) {
 }
 
 func (terms *Terminals) Find(termKey string) (*WebTerm, bool) {
-	if v, ok := terms.list.Get(termKey); ok {
-		if term, ok := v.(*WebTerm); ok {
-			return term, true
-		}
+	if term, ok := terms.list.Get(termKey); ok {
+		return term, true
 	}
 	return nil, false
 }

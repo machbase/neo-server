@@ -177,7 +177,7 @@ func (s *svr) querySqlBridge(br SqlBridge, req *bridgerpc.ExecRequest) (*bridger
 			enlistInfo: fmt.Sprintf("%s: %s", req.Name, cmd.SqlText),
 			enlistTime: time.Now(),
 			release: func() {
-				s.ctxMap.RemoveCb(handle, func(key string, v interface{}, exists bool) bool {
+				s.ctxMap.RemoveCb(handle, func(key string, v *rowsWrap, exists bool) bool {
 					rows.Close()
 					conn.Close()
 					return true
@@ -201,14 +201,9 @@ func (s *svr) SqlQueryResultFetch(ctx context.Context, cr *bridgerpc.SqlQueryRes
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	rowsWrapVal, exists := s.ctxMap.Get(cr.Handle)
+	rowsWrap, exists := s.ctxMap.Get(cr.Handle)
 	if !exists {
 		rsp.Reason = fmt.Sprintf("handle '%s' not found", cr.Handle)
-		return rsp, nil
-	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", cr.Handle)
 		return rsp, nil
 	}
 	if rowsWrap.rows == nil || rowsWrap.conn == nil {
@@ -265,14 +260,9 @@ func (s *svr) SqlQueryResultClose(ctx context.Context, cr *bridgerpc.SqlQueryRes
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
-	rowsWrapVal, exists := s.ctxMap.Get(cr.Handle)
+	rowsWrap, exists := s.ctxMap.Get(cr.Handle)
 	if !exists {
 		rsp.Reason = fmt.Sprintf("handle '%s' not found", cr.Handle)
-		return rsp, nil
-	}
-	rowsWrap, ok := rowsWrapVal.(*rowsWrap)
-	if !ok {
-		rsp.Reason = fmt.Sprintf("handle '%s' is not valid", cr.Handle)
 		return rsp, nil
 	}
 	rowsWrap.release()

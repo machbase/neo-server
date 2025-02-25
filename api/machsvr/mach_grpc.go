@@ -14,7 +14,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machrpc"
-	cmap "github.com/orcaman/concurrent-map"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/exp/rand"
 )
 
@@ -25,7 +25,7 @@ type RPCServer struct {
 	authProvider AuthProvider
 	sessions     map[string]*ConnParole
 	sessionsLock sync.Mutex
-	inflightMap  cmap.ConcurrentMap
+	inflightMap  cmap.ConcurrentMap[string, any]
 	idSerial     int64
 }
 
@@ -35,7 +35,7 @@ func NewRPCServer(db api.Database, opts ...RPCServerOption) *RPCServer {
 	s := &RPCServer{
 		db:          db,
 		sessions:    make(map[string]*ConnParole),
-		inflightMap: cmap.New(),
+		inflightMap: cmap.New[any](),
 	}
 	for _, opt := range opts {
 		opt(s)
