@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/paulmach/orb/geojson"
-	"github.com/pkg/errors"
 	"github.com/robertkrimen/otto"
 )
 
@@ -605,7 +605,7 @@ func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
 		if r := recover(); r != nil {
 			code := "{" + strings.TrimSpace(strings.TrimPrefix(initCode, "//")) + "}\n" +
 				"{" + strings.TrimSpace(strings.TrimPrefix(mainCode, "//")) + "}"
-			if r == ottoInterrupt {
+			if r == errOttoInterrupt {
 				node.task.LogWarnf("script is interrupted; %s", code)
 			} else {
 				node.task.LogWarnf("script panic; %v\n%s", r, code)
@@ -664,7 +664,7 @@ func closeOttoContext(ctx *OttoContext) {
 	close(ctx.vm.Interrupt)
 }
 
-var ottoInterrupt = errors.New("script execution is interrupted")
+var errOttoInterrupt = errors.New("script execution is interrupted")
 
 func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
 	ctx := &OttoContext{
@@ -757,7 +757,7 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 			case <-time.After(1 * time.Second):
 				if ctx.node.task.shouldStop() {
 					ctx.vm.Interrupt <- func() {
-						panic(ottoInterrupt)
+						panic(errOttoInterrupt)
 					}
 					return
 				}

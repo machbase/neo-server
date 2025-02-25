@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"runtime/debug"
@@ -11,7 +12,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/pkg/errors"
 )
 
 type DatabaseSink interface {

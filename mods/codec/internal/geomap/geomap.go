@@ -229,7 +229,7 @@ func (gm *GeoMap) Close() {
 	gm.appendJSCode(`var map;`)
 	gm.appendJSCode(`if (opt && opt.map) {`)
 	gm.appendJSCode(`  map = opt.map;`)
-	// remove all layers excpet the tile layer.
+	// remove all layers except the tile layer.
 	gm.appendJSCode(`  opt.map.eachLayer(function (layer) {`)
 	gm.appendJSCode(`    if (!(layer instanceof L.TileLayer)) {`)
 	gm.appendJSCode(`      opt.map.removeLayer(layer);`)
@@ -329,7 +329,7 @@ func (gm *GeoMap) Close() {
 	}
 }
 
-func crsMarshalJS(c *nums.CRS, varname string) string {
+func crsMarshalJS(c *nums.CRS, varName string) string {
 	res := []string{}
 	for _, r := range c.Options["resolutions"].([]float64) {
 		res = append(res, fmt.Sprintf("%v", r))
@@ -347,7 +347,7 @@ func crsMarshalJS(c *nums.CRS, varname string) string {
 			origin: %s,
 			bounds: L.bounds(%s)
 		});`,
-		varname,
+		varName,
 		c.Code, c.Proj, strings.Join(res, ","), org, bound)
 }
 

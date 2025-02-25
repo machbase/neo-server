@@ -5,7 +5,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -88,7 +87,7 @@ func ConvertAnyToPb(params []any) ([]*anypb.Any, error) {
 			return nil, fmt.Errorf("unsupported params[%d] type %T", i, p)
 		}
 		if err != nil {
-			return nil, errors.Wrapf(err, "convert params[%d]", i)
+			return nil, fmt.Errorf("convert params[%d], %s", i, err.Error())
 		}
 	}
 	return pbParams, nil

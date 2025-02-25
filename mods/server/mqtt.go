@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,7 +28,6 @@ import (
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"github.com/mochi-mqtt/server/v2/packets"
 	cmap "github.com/orcaman/concurrent-map"
-	"github.com/pkg/errors"
 )
 
 type MqttOption func(s *mqttd) error
@@ -76,10 +76,10 @@ func LoadTlsConfig(certFile string, keyFile string, loadSystemCA bool, loadPriva
 		// append root ca
 		ca, err := os.ReadFile(certFile)
 		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("fail to load ca key: %s\n", certFile))
+			return nil, fmt.Errorf("fail to load ca key: %s, %s", certFile, err.Error())
 		}
 		if ok := rootCAs.AppendCertsFromPEM(ca); !ok {
-			return nil, errors.Wrap(err, fmt.Sprintf("fail to add ca key: %s\n", certFile))
+			return nil, fmt.Errorf("fail to add ca key: %s", certFile)
 		}
 	}
 	ret := &tls.Config{

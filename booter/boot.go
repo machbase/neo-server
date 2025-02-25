@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"syscall"
-
-	"github.com/pkg/errors"
 )
 
 type Booter interface {
@@ -66,12 +64,12 @@ func (bt *boot) Startup() error {
 		// evaluate config values
 		err := EvalObject(objName, config, def.Config)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("config %s", objName))
+			return fmt.Errorf("config %s, %s", objName, err.Error())
 		}
 		// create instance
 		mod, err := fact.NewInstance(config)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("instance %s", def.Id))
+			return fmt.Errorf("instance %s, %s", def.Id, err.Error())
 		}
 		wrap := wrapper{
 			id:         def.Id,
@@ -105,7 +103,7 @@ func (bt *boot) Startup() error {
 		bootlog.Println("start", wrap.id, wrap.definition.Name)
 		err := wrap.real.Start()
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("mod start %s", wrap.id))
+			return fmt.Errorf("mod start %s, %s", wrap.id, err.Error())
 		}
 		wrap.state = Run
 	}

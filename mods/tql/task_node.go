@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
-	"github.com/pkg/errors"
 )
 
 type Closer interface {
@@ -46,7 +45,7 @@ var _ expression.Parameters = (*Node)(nil)
 func (node *Node) compile(code string) error {
 	expr, err := node.Parse(code)
 	if err != nil {
-		return errors.Wrapf(err, "at %s", code)
+		return fmt.Errorf("%s at %s", err.Error(), code)
 	}
 	if expr == nil {
 		return fmt.Errorf("compile error at %s", code)

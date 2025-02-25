@@ -2,10 +2,9 @@ package server
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"text/template"
-
-	"github.com/pkg/errors"
 )
 
 type MachbaseConfig struct {
@@ -246,16 +245,16 @@ var conf_template string
 func applyMachbaseConfig(confpath string, conf *MachbaseConfig) error {
 	tmpl, err := template.New("machbase_conf").Parse(conf_template)
 	if err != nil {
-		return errors.Wrap(err, "config template")
+		return fmt.Errorf("config template, %s", err.Error())
 	}
 	f, err := os.OpenFile(confpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
-		return errors.Wrap(err, "config file open")
+		return fmt.Errorf("config file open, %s", err.Error())
 	}
 	defer f.Close()
 	err = tmpl.Execute(f, conf)
 	if err != nil {
-		return errors.Wrap(err, "config file write")
+		return fmt.Errorf("config file write, %s", err.Error())
 	}
 	return nil
 }

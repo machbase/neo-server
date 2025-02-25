@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -41,7 +42,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	cmap "github.com/orcaman/concurrent-map"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -169,7 +169,7 @@ func (svr *httpd) Start() error {
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := util.MakeListener(listen)
 		if err != nil {
-			return errors.Wrap(err, "cannot start with failed listener")
+			return fmt.Errorf("cannot start with failed listener, %s", err.Error())
 		}
 		svr.listeners = append(svr.listeners, lsnr)
 		go svr.httpServer.Serve(lsnr)
@@ -507,14 +507,14 @@ func (svr *httpd) issueAccessToken(loginName string) (accessToken string, refres
 	claim := NewClaim(loginName)
 	accessToken, err = SignTokenWithClaim(claim)
 	if err != nil {
-		err = errors.Wrap(err, "signing at error")
+		err = fmt.Errorf("signing at error, %s", err.Error())
 		return
 	}
 
 	refreshClaim := NewClaimForRefresh(claim)
 	refreshToken, err = SignTokenWithClaim(refreshClaim)
 	if err != nil {
-		err = errors.Wrap(err, "signing rt error")
+		err = fmt.Errorf("signing rt error, %s", err.Error())
 		return
 	}
 	refreshTokenId = refreshClaim.ID
@@ -1529,14 +1529,14 @@ func NewWebTerm(hostPort string, userShell string, user string, password string)
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil },
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "NewTerm dial")
+		return nil, fmt.Errorf("NewTerm dial, %s", err.Error())
 	}
 
 	// Creating a session from the connection
 	session, err := conn.NewSession()
 	if err != nil {
 		conn.Close()
-		return nil, errors.Wrap(err, "NewTerm new session")
+		return nil, fmt.Errorf("NewTerm new session, %s", err.Error())
 	}
 	term := &WebTerm{
 		Type:      "xterm",
@@ -1549,15 +1549,15 @@ func NewWebTerm(hostPort string, userShell string, user string, password string)
 	}
 	term.Stdout, err = session.StdoutPipe()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewTerm stdout pipe")
+		return nil, fmt.Errorf("NewTerm stdout pipe, %s", err.Error())
 	}
 	term.Stderr, err = session.StderrPipe()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewTerm stderr pipe")
+		return nil, fmt.Errorf("NewTerm stderr pipe, %s", err.Error())
 	}
 	term.Stdin, err = session.StdinPipe()
 	if err != nil {
-		return nil, errors.Wrap(err, "NewTerm stdin pipe")
+		return nil, fmt.Errorf("NewTerm stdin pipe, %s", err.Error())
 	}
 
 	// request pty
@@ -1567,7 +1567,7 @@ func NewWebTerm(hostPort string, userShell string, user string, password string)
 	if err != nil {
 		term.Stdin.Close()
 		session.Close()
-		return nil, errors.Wrap(err, "NewTerm pty")
+		return nil, fmt.Errorf("NewTerm pty, %s", err.Error())
 	}
 	// request shell
 	err = session.Shell()
@@ -1575,7 +1575,7 @@ func NewWebTerm(hostPort string, userShell string, user string, password string)
 		term.Stdin.Close()
 		session.Close()
 		conn.Close()
-		return nil, errors.Wrap(err, "NewTerm shell")
+		return nil, fmt.Errorf("NewTerm shell, %s", err.Error())
 	}
 
 	return term, nil
@@ -1584,7 +1584,7 @@ func NewWebTerm(hostPort string, userShell string, user string, password string)
 func (term *WebTerm) SetWindowSize(rows, cols int) error {
 	err := term.session.WindowChange(rows, cols)
 	if err != nil {
-		return errors.Wrap(err, "SetWindowSize")
+		return fmt.Errorf("SetWindowSize, %s", err.Error())
 	}
 	term.Rows, term.Cols = rows, cols
 	return nil

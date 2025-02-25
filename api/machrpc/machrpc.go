@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -88,7 +88,7 @@ func NewClient(cfg *Config) (*Client, error) {
 		return nil, errors.New("server address is not specified")
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, "NewClient")
+		return nil, fmt.Errorf("NewClient, %s", err.Error())
 	}
 	client.grpcConn = conn
 	client.cli = NewMachbaseClient(conn)
@@ -573,7 +573,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 		TableName: tableName,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "Appender")
+		return nil, fmt.Errorf("Appender, %s", err.Error())
 	}
 
 	if !openRsp.Success {
@@ -593,7 +593,7 @@ func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.Ap
 
 	appendClient, err := conn.client.cli.Append(context.Background())
 	if err != nil {
-		return nil, errors.Wrap(err, "AppendClient")
+		return nil, fmt.Errorf("AppendClient, %s", err.Error())
 	}
 
 	ap.client = conn.client

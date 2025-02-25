@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -41,7 +42,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -232,7 +232,7 @@ func (s *Server) Start() error {
 	// ready message
 	svcPorts, err := s.getServicePorts("http")
 	if err != nil {
-		return errors.Wrap(err, "service ports")
+		return fmt.Errorf("service ports, %s", err.Error())
 	}
 	readyMsg := []string{}
 	for _, p := range svcPorts {
@@ -329,24 +329,24 @@ func (s *Server) startMachbaseSvr() error {
 	confFilePath := filepath.Join(s.homeDirPath, "conf", "machbase.conf")
 	if _, err := os.Stat(confFilePath); err != nil {
 		if err := applyMachbaseConfig(confFilePath, &s.Machbase); err != nil {
-			return errors.Wrap(err, "machbase.conf")
+			return fmt.Errorf("machbase.conf, %s", err.Error())
 		}
 	} else if rewrite, err := s.checkRewriteMachbaseConf(confFilePath); err != nil {
 		return err
 	} else if rewrite {
 		if err := s.rewriteMachbaseConf(confFilePath); err != nil {
-			return errors.Wrap(err, "machbase.conf")
+			return fmt.Errorf("machbase.conf, %s", err.Error())
 		}
 	}
 
 	s.log.Infof("apply machbase init option: %d", s.MachbaseInitOption)
 	if err := machsvr.Initialize(s.homeDirPath, s.Machbase.PORT_NO, s.MachbaseInitOption); err != nil {
-		return errors.Wrap(err, "initialize database failed")
+		return fmt.Errorf("initialize database failed, %s", err.Error())
 	}
 	if !machsvr.ExistsDatabase() {
 		s.log.Info("create database")
 		if err := machsvr.CreateDatabase(); err != nil {
-			return errors.Wrap(err, "create database failed")
+			return fmt.Errorf("create database failed, %s", err.Error())
 		}
 		s.databaseCreated = true
 	}
@@ -359,7 +359,7 @@ func (s *Server) startMachbaseSvr() error {
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
 	})
 	if err != nil {
-		return errors.Wrap(err, "database instance failed")
+		return fmt.Errorf("database instance failed, %s", err.Error())
 	}
 	if db == nil {
 		return errors.New("database instance failed")
@@ -367,7 +367,7 @@ func (s *Server) startMachbaseSvr() error {
 		s.db = db
 	}
 	if err := db.Startup(); err != nil {
-		return errors.Wrap(err, "startup database")
+		return fmt.Errorf("startup database, %s", err.Error())
 	}
 
 	return nil
@@ -433,7 +433,7 @@ func (s *Server) AddServicePort(svc string, addr string) error {
 	if strings.HasPrefix(addr, "tcp://") {
 		host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp://"))
 		if err != nil {
-			return errors.Wrapf(err, "%s host:port invalid syntax", svc)
+			return fmt.Errorf("%s host:port invalid syntax, %s", svc, err.Error())
 		}
 		lsnrHost := net.ParseIP(host)
 		if lsnrHost.Equal(net.IPv4zero) || lsnrHost.Equal(net.IPv6zero) {
@@ -467,7 +467,7 @@ func (s *Server) preparePorts() error {
 	// port-check MACH
 	if !HeadOnly {
 		if err := s.checkListenPort(fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)); err != nil {
-			return errors.Wrap(err, "MACH port not available")
+			return fmt.Errorf("MACH port not available, %s", err.Error())
 		} else {
 			machPort := fmt.Sprintf("tcp://%s:%d", s.Machbase.BIND_IP_ADDRESS, s.Machbase.PORT_NO)
 			s.AddServicePort("mach", machPort)
@@ -476,28 +476,28 @@ func (s *Server) preparePorts() error {
 	// port-check gRPC
 	for _, addr := range s.Grpc.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "gRPC port not available")
+			return fmt.Errorf("gRPC port not available, %s", err.Error())
 		}
 		s.AddServicePort("grpc", addr)
 	}
 	// port-check HTTP
 	for _, addr := range s.Http.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "HTTP port not available")
+			return fmt.Errorf("HTTP port not available, %s", err.Error())
 		}
 		s.AddServicePort("http", addr)
 	}
 	// port-check MQTT
 	for _, addr := range s.Mqtt.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "MQTT port not available")
+			return fmt.Errorf("MQTT port not available, %s", err.Error())
 		}
 		s.AddServicePort("mqtt", addr)
 	}
 	// port-check SSHD
 	for _, addr := range s.Shell.Listeners {
 		if err := s.checkListenPort(addr); err != nil {
-			return errors.Wrap(err, "SSHD port not available")
+			return fmt.Errorf("SSHD port not available, %s", err.Error())
 		}
 		s.AddServicePort("shell", addr)
 	}
@@ -549,25 +549,25 @@ func (s *Server) prepareHomeDir() error {
 		}
 	} else {
 		if path, err := filepath.Abs(s.DataDir); err != nil {
-			return errors.Wrap(err, "datadir")
+			return fmt.Errorf("datadir, %s", err.Error())
 		} else {
 			s.homeDirPath = path
 		}
 	}
 
 	if err := mkDirIfNotExists(s.homeDirPath); err != nil {
-		return errors.Wrap(err, "machbase_home")
+		return fmt.Errorf("machbase_home, %s", err.Error())
 	}
 
 	if !HeadOnly {
 		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "conf")); err != nil {
-			return errors.Wrap(err, "machbase conf")
+			return fmt.Errorf("machbase conf, %s", err.Error())
 		}
 		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "dbs")); err != nil {
-			return errors.Wrap(err, "machbase dbs")
+			return fmt.Errorf("machbase dbs, %s", err.Error())
 		}
 		if err := mkDirIfNotExists(filepath.Join(s.homeDirPath, "trc")); err != nil {
-			return errors.Wrap(err, "machbase trc")
+			return fmt.Errorf("machbase trc, %s", err.Error())
 		}
 	}
 	return nil
@@ -609,7 +609,7 @@ func (s *Server) startServerFileSystem() error {
 	serverFs, err := ssfs.NewServerSideFileSystem(s.FileDirs)
 	if err != nil {
 		s.log.Warnf("Server filesystem, %s", err.Error())
-		return errors.Wrap(err, "server side file system")
+		return fmt.Errorf("server side file system, %s", err.Error())
 	}
 	ssfs.SetDefault(serverFs)
 	return nil
@@ -768,7 +768,7 @@ func (s *Server) startMqttServer() error {
 			serverKey = s.ServerPrivateKeyPath()
 		}
 		if cfg, err := LoadTlsConfig(serverCert, serverKey, false, true); err != nil {
-			return errors.Wrap(err, "mqtt server")
+			return fmt.Errorf("mqtt server, %s", err.Error())
 		} else {
 			tlsConf = cfg
 		}
@@ -800,12 +800,12 @@ func (s *Server) startMqttServer() error {
 		}
 	}
 	if mqttd, err := NewMqtt(s.db, opts...); err != nil {
-		return errors.Wrap(err, "mqtt server")
+		return fmt.Errorf("mqtt server, %s", err.Error())
 	} else {
 		s.mqttd = mqttd
 	}
 	if err := s.mqttd.Start(); err != nil {
-		return errors.Wrap(err, "mqtt server")
+		return fmt.Errorf("mqtt server, %s", err.Error())
 	}
 	util.AddShutdownHook(func() { s.mqttd.Stop() })
 	return nil
@@ -854,12 +854,12 @@ func (s *Server) startHttpServer() error {
 		opts = append(opts, WithHttpWebDir(s.Http.WebDir))
 	}
 	if httpd, err := NewHttp(s.db, opts...); err != nil {
-		return errors.Wrap(err, "http server")
+		return fmt.Errorf("http server, %s", err.Error())
 	} else {
 		s.httpd = httpd
 	}
 	if err := s.httpd.Start(); err != nil {
-		return errors.Wrap(err, "http server")
+		return fmt.Errorf("http server, %s", err.Error())
 	}
 	util.AddShutdownHook(func() { s.httpd.Stop() })
 	return nil
@@ -901,7 +901,7 @@ func (s *Server) initPackageManager() error {
 	envs["MACHBASE_HOME"] = s.homeDirPath
 	pkgsDir := filepath.Join(s.homeDirPath, "pkgs")
 	if mgr, err := pkgs.NewPkgManager(pkgsDir, envs, s.ExperimentMode); err != nil {
-		return errors.Wrap(err, "pkg manager")
+		return fmt.Errorf("pkg manager, %s", err.Error())
 	} else {
 		s.pkgMgr = mgr
 	}
@@ -1230,27 +1230,27 @@ func (s *Server) mkKeysIfNotExists() error {
 
 	priPem, err := ec.EncodePrivate(pri)
 	if err != nil {
-		return errors.Wrap(err, "private key encoder")
+		return fmt.Errorf("private key encoder, %s", err.Error())
 	}
 
 	pubPem, err := ec.EncodePublic(pub)
 	if err != nil {
-		return errors.Wrap(err, "public key encoder")
+		return fmt.Errorf("public key encoder, %s", err.Error())
 	}
 
 	certBytes, err := GenerateServerCertificate(pri, pub)
 	if err != nil {
-		return errors.Wrap(err, "certificate encoder")
+		return fmt.Errorf("certificate encoder, %s", err.Error())
 	}
 
 	if err := os.WriteFile(priPath, []byte(priPem), 0600); err != nil {
-		return errors.Wrap(err, "private key writer")
+		return fmt.Errorf("private key writer, %s", err.Error())
 	}
 	if err := os.WriteFile(pubPath, []byte(pubPem), 0644); err != nil {
-		return errors.Wrap(err, "public key writer")
+		return fmt.Errorf("public key writer, %s", err.Error())
 	}
 	if err := os.WriteFile(certPath, certBytes, 0644); err != nil {
-		return errors.Wrap(err, "certificate writer")
+		return fmt.Errorf("certificate writer, %s", err.Error())
 	}
 
 	return nil

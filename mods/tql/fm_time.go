@@ -10,7 +10,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/stat"
 )
@@ -274,11 +273,11 @@ func (x *Node) fmTimeAdd(tsExpr any, deltaExpr any) (time.Time, error) {
 	var err error
 	baseTime, err = util.ToTime(tsExpr)
 	if err != nil {
-		return baseTime, errors.Wrap(err, "invalid time expression")
+		return baseTime, fmt.Errorf("invalid time expression: %s", err.Error())
 	}
 	delta, err = util.ToDuration(deltaExpr)
 	if err != nil {
-		return baseTime, errors.Wrap(err, "invalid time expression")
+		return baseTime, fmt.Errorf("invalid time expression: %s", err.Error())
 	}
 	return baseTime.Add(delta), nil
 }

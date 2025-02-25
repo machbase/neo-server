@@ -15,7 +15,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/logging"
-	"github.com/pkg/errors"
 )
 
 func init() {
@@ -170,7 +169,7 @@ func (s *Server) checkRewriteMachbaseConf(confpath string) (bool, error) {
 	shouldRewrite := false
 	content, err := os.ReadFile(confpath)
 	if err != nil {
-		return false, errors.Wrap(err, "MACH machbase.conf not available")
+		return false, fmt.Errorf("MACH machbase.conf not available, %s", err.Error())
 	}
 	reader := bufio.NewReader(bytes.NewBuffer(content))
 	parts := []string{}
@@ -180,7 +179,7 @@ func (s *Server) checkRewriteMachbaseConf(confpath string) (bool, error) {
 			if err == io.EOF {
 				break
 			} else {
-				return false, errors.Wrap(err, "MACH machbase.conf malformed")
+				return false, fmt.Errorf("MACH machbase.conf malformed, %s", err.Error())
 			}
 		}
 		parts = append(parts, string(str))
@@ -212,7 +211,7 @@ func (s *Server) checkRewriteMachbaseConf(confpath string) (bool, error) {
 func (s *Server) rewriteMachbaseConf(confpath string) error {
 	content, err := os.ReadFile(confpath)
 	if err != nil {
-		return errors.Wrap(err, "MACH machbase.conf not available")
+		return fmt.Errorf("MACH machbase.conf not available, %s", err.Error())
 	}
 	reader := bufio.NewReader(bytes.NewBuffer(content))
 	newConfLines := []string{}
@@ -223,7 +222,7 @@ func (s *Server) rewriteMachbaseConf(confpath string) error {
 			if err == io.EOF {
 				break
 			} else {
-				return errors.Wrap(err, "MACH machbase.conf malformed")
+				return fmt.Errorf("MACH machbase.conf malformed, %s", err.Error())
 			}
 		}
 		parts = append(parts, string(str))
@@ -252,13 +251,13 @@ func (s *Server) rewriteMachbaseConf(confpath string) error {
 	}
 	fd, err := os.OpenFile(confpath, os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return errors.Wrap(err, "MACH machbase.conf unable to write")
+		return fmt.Errorf("MACH machbase.conf unable to write, %s", err.Error())
 	}
 	if _, err = fd.Write([]byte(strings.Join(newConfLines, "\n"))); err != nil {
-		return errors.Wrap(err, "MACH machbase.conf write error")
+		return fmt.Errorf("MACH machbase.conf write error, %s", err.Error())
 	}
 	if err = fd.Close(); err != nil {
-		return errors.Wrap(err, "MACH machbase.conf close error")
+		return fmt.Errorf("MACH machbase.conf close error, %s", err.Error())
 	}
 	return nil
 }

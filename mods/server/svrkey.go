@@ -12,13 +12,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"io"
 	"math/big"
 	"reflect"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/sha3"
 )
 

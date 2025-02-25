@@ -1,6 +1,7 @@
 package booter
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/gocty"
@@ -77,7 +77,7 @@ func (bld *builder) BuildWithFiles(files []string) (Booter, error) {
 func (bld *builder) BuildWithDir(configDir string) (Booter, error) {
 	entries, err := os.ReadDir(configDir)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid config directory")
+		return nil, fmt.Errorf("invalid config directory, %s", err.Error())
 	}
 
 	files := make([]string, 0)

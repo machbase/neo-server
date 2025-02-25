@@ -2,12 +2,12 @@ package json
 
 import (
 	gojson "encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/pkg/errors"
 )
 
 type Decoder struct {

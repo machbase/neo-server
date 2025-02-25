@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 func ErrIncompatible(dstType string, src any) error {
@@ -272,28 +270,28 @@ func ParseTime(strVal string, format string, location *time.Location) (time.Time
 	switch timeLayout {
 	case "s":
 		if ts, err = ToInt64(strVal); err != nil {
-			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
+			return time.Time{}, fmt.Errorf("unable parse time in timeformat, %s", err.Error())
 		}
 		return time.Unix(ts, 0), nil
 	case "ms":
 		if ts, err = ToInt64(strVal); err != nil {
-			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
+			return time.Time{}, fmt.Errorf("unable parse time in timeformat, %s", err.Error())
 		}
 		return time.Unix(0, ts*int64(time.Millisecond)), nil
 	case "us":
 		if ts, err = ToInt64(strVal); err != nil {
-			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
+			return time.Time{}, fmt.Errorf("unable parse time in timeformat, %s", err.Error())
 		}
 		return time.Unix(0, ts*int64(time.Microsecond)), nil
 	case "ns":
 		if ts, err = ToInt64(strVal); err != nil {
-			return time.Time{}, errors.Wrap(err, "unable parse time in timeformat")
+			return time.Time{}, fmt.Errorf("unable parse time in timeformat, %s", err.Error())
 		}
 		return time.Unix(0, ts), nil
 	default:
 		baseTime, err = time.ParseInLocation(timeLayout, strVal, location)
 		if err != nil {
-			return baseTime, errors.Wrap(err, ErrIncompatible("time.Time", strVal).Error())
+			return baseTime, fmt.Errorf("%s, %s", ErrIncompatible("time.Time", strVal).Error(), err)
 		}
 	}
 	return baseTime, nil
