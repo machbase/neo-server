@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -28,7 +29,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )

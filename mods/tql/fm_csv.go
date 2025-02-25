@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	codecOpts "github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -84,7 +84,7 @@ func (src *csvSource) gen(node *Node) {
 		}
 		if stat.IsDir() {
 			node.task.LogErrorf("Fail to read %q, it is a directory", src.srcFile)
-			ErrorRecord(errors.New("Failed to read directory as CSV")).Tell(node.next)
+			ErrorRecord(errors.New("failed to read directory as CSV")).Tell(node.next)
 			return
 		}
 		content, err := os.Open(src.srcFile)

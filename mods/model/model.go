@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 )
 
 type ServicePort struct {
@@ -68,15 +68,15 @@ func WithExperimentModeProvider(provider func() bool) Option {
 func (s *svr) Start() error {
 	s.bridgeDir = filepath.Join(s.configDir, "bridges")
 	if err := s.mkDirIfNotExists(s.bridgeDir, 0755); err != nil {
-		return errors.Wrap(err, "bridge defs")
+		return fmt.Errorf("bridge defs, %s", err.Error())
 	}
 	s.schedDir = filepath.Join(s.configDir, "schedules")
 	if err := s.mkDirIfNotExists(s.schedDir, 0755); err != nil {
-		return errors.Wrap(err, "schedule defs")
+		return fmt.Errorf("schedule defs, %s", err.Error())
 	}
 	s.shellDir = filepath.Join(s.configDir, "shell")
 	if err := s.mkDirIfNotExists(s.shellDir, 0700); err != nil {
-		return errors.Wrap(err, "shell defs")
+		return fmt.Errorf("shell defs, %s", err.Error())
 	}
 	return nil
 }
@@ -301,7 +301,7 @@ func (s *svr) SaveShell(def *ShellDefinition) error {
 	}
 	binpath := args[0]
 	if fi, err := os.Stat(binpath); err != nil {
-		return errors.Wrapf(err, "'%s' is not accessible", binpath)
+		return fmt.Errorf("'%s' is not accessible, %s", binpath, err.Error())
 	} else {
 		if fi.IsDir() {
 			return fmt.Errorf("'%s' is not executable", binpath)

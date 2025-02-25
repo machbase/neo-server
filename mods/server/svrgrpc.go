@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"runtime"
@@ -19,7 +21,6 @@ import (
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/stats"
@@ -191,7 +192,7 @@ func (svr *grpcd) Start() error {
 		}
 		lsnr, err := util.MakeListener(listen)
 		if err != nil {
-			return errors.Wrap(err, "cannot start with failed listener")
+			return fmt.Errorf("cannot start with failed listener, %s", err.Error())
 		}
 		svr.log.Infof("gRPC Listen %s", listen)
 
@@ -254,7 +255,7 @@ func (svr *grpcd) loadTlsCreds() (credentials.TransportCredentials, error) {
 	block, _ := pem.Decode(caContent)
 	caCert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, errors.Wrap(err, "fail to load server CA cert")
+		return nil, fmt.Errorf("fail to load server CA cert, %s", err.Error())
 	}
 	caPool := x509.NewCertPool()
 	caPool.AddCert(caCert)

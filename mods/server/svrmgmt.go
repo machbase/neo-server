@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -28,7 +29,6 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc/peer"
 )
 
@@ -228,7 +228,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 
 	certBytes, err := GenerateClientCertificate(req.Name, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
 	if err != nil {
-		return nil, nil, "", errors.Wrap(err, "client certificate")
+		return nil, nil, "", fmt.Errorf("client certificate, %s", err.Error())
 	}
 
 	return certBytes, clientKeyPEM, token, nil

@@ -2,12 +2,12 @@ package tql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/pkg/errors"
 )
 
 type Table struct {
@@ -121,18 +121,18 @@ func (ins *insert) _addRowBridge(values []any) error {
 	defer conn.Close()
 	result, err := conn.ExecContext(ins.node.task.ctx, sqlText, values...)
 	if err != nil {
-		return errors.Wrap(err, sqlText)
+		return fmt.Errorf("%s, %s", err, sqlText)
 	}
 	if br.SupportLastInsertId() {
 		lastInsertId, err := result.LastInsertId()
 		if err != nil {
-			return errors.Wrap(err, sqlText)
+			return fmt.Errorf("%s, %s", err, sqlText)
 		}
 		ins.lastInsertId = lastInsertId
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return errors.Wrap(err, sqlText)
+		return fmt.Errorf("%s, %s", err, sqlText)
 	}
 	ins.rowsAffected = rowsAffected
 	return nil

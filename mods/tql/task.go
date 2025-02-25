@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,7 +21,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 )
 
 type Task struct {
@@ -266,7 +266,7 @@ func (x *Task) compile(codeReader io.Reader) error {
 			// sink
 			x.output, err = NewNode(x).compileSink(curLine)
 			if err != nil {
-				x.compileErr = errors.Wrapf(err, "line %d", curLine.line)
+				x.compileErr = fmt.Errorf("line %d: %s", curLine.line, err.Error())
 				return x.compileErr
 			}
 			x.output.pragma = pragmas

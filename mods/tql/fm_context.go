@@ -1,13 +1,13 @@
 package tql
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
-	"github.com/pkg/errors"
 )
 
 type NodeContext struct {

@@ -1,6 +1,7 @@
 package booter_test
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/booter"
-	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/pkg/errors"
 )
 
 func (s *Server) StartNavelCord() {

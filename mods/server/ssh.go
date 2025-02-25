@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,7 +17,6 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
-	"github.com/pkg/errors"
 	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -162,7 +162,7 @@ func (svr *sshd) Start() error {
 
 		ln, err := net.Listen("tcp", listenAddress)
 		if err != nil {
-			return errors.Wrap(err, "machshell")
+			return fmt.Errorf("machshell, %s", err.Error())
 		}
 		svr.listeners = append(svr.listeners, ln)
 
@@ -506,7 +506,7 @@ func signerFromPath(keypath, password string) (ssh.Signer, error) {
 	if len(keypath) > 0 {
 		pemBytes, err := os.ReadFile(keypath)
 		if err != nil {
-			return signer, errors.Wrap(err, "server key")
+			return signer, fmt.Errorf("server key, %s", err.Error())
 		}
 		var keypass []byte
 		if len(password) > 0 {
@@ -514,7 +514,7 @@ func signerFromPath(keypath, password string) (ssh.Signer, error) {
 		}
 		signer, err = signerFromPem(pemBytes, keypass)
 		if err != nil {
-			return signer, errors.Wrap(err, "server signer")
+			return signer, fmt.Errorf("server signer, %s", err.Error())
 		}
 	}
 	return signer, nil
@@ -522,7 +522,7 @@ func signerFromPath(keypath, password string) (ssh.Signer, error) {
 
 func signerFromPem(pemBytes []byte, password []byte) (ssh.Signer, error) {
 	// read pem block
-	err := errors.New("Pem decode failed, no key found")
+	err := errors.New("pem decode failed, no key found")
 	pemBlock, _ := pem.Decode(pemBytes)
 	if pemBlock == nil {
 		return nil, err

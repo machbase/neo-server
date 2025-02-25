@@ -3,10 +3,10 @@ package tql
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/d5/tengo/v2"
 	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/pkg/errors"
 )
 
 func tengof_print(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
@@ -263,7 +263,7 @@ func scSqlBridge_query(c *scSqlBridge) func(args ...tengo.Object) (tengo.Object,
 		}
 		rows, err := c.conn.QueryContext(ctx, queryText, params...)
 		if err != nil {
-			return nil, errors.Wrap(err, "query failed")
+			return nil, fmt.Errorf("query failed, %s", err.Error())
 		}
 		c.node.AddCloser(rows)
 		return &scSqlRows{ctx: c.node, rows: rows}, nil

@@ -2,12 +2,12 @@ package server
 
 import (
 	"crypto/x509"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 )
 

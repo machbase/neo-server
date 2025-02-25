@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 func ifThenElse(cond bool, a, b string) string {
@@ -142,7 +140,7 @@ func ExistsTableTruncate(ctx context.Context, conn Conn, fullTableName string, t
 	}
 	tableType, err0 := QueryTableType(ctx, conn, fullTableName)
 	if err0 != nil {
-		err = errors.Wrap(err0, fmt.Sprintf("table '%s' doesn't exist", fullTableName))
+		err = fmt.Errorf("table '%s' doesn't exist, %s", fullTableName, err0.Error())
 		return
 	}
 	if tableType == TableTypeLog {

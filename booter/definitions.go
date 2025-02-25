@@ -1,6 +1,7 @@
 package booter
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/pkg/errors"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )
@@ -268,7 +268,7 @@ func EvalReflectValue(refName string, ref reflect.Value, value cty.Value) error 
 			// string config를 url.URL struct로 변환
 			v, err := url.Parse(value.AsString())
 			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("%s should be url", refName))
+				return fmt.Errorf("%s should be url, %s", refName, err.Error())
 			}
 			ref.Set(reflect.ValueOf(*v))
 		} else {

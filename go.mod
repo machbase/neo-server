@@ -41,7 +41,6 @@ require (
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paulmach/orb v0.11.1
-	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.6
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/robertkrimen/otto v0.5.1
@@ -58,7 +57,6 @@ require (
 	go.abhg.dev/goldmark/mermaid v0.5.0
 	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/net v0.34.0
 	golang.org/x/sys v0.30.0
 	golang.org/x/term v0.28.0
 	golang.org/x/text v0.22.0
@@ -136,6 +134,7 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rs/xid v1.5.0 // indirect
@@ -154,6 +153,7 @@ require (
 	golang.org/x/arch v0.14.0 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/tools v0.23.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
