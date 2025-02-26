@@ -19,6 +19,7 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql/internal/expression"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
@@ -616,8 +617,13 @@ func (x *Task) LogFatal(args ...any) {
 
 func (x *Task) _log(level Level, args ...any) {
 	if x.logWriter != nil && level >= x.logLevel {
-		line := fmt.Sprintln(append([]any{"[" + Levels[level] + "]"}, args...)...)
-		x.logWriter.Write([]byte(line))
+		if l, ok := x.logWriter.(logging.Log); ok {
+			l.Log(level.LoggingLevel(), fmt.Sprint(args...))
+			return
+		} else {
+			line := fmt.Sprintln(append([]any{"[" + Levels[level] + "]"}, args...)...)
+			x.logWriter.Write([]byte(line))
+		}
 	}
 	if x.consoleTopic != "" && level >= x.consoleLogLevel {
 		toks := []string{}
@@ -630,8 +636,12 @@ func (x *Task) _log(level Level, args ...any) {
 
 func (x *Task) _logf(level Level, format string, args ...any) {
 	if x.logWriter != nil && level >= x.logLevel {
-		line := fmt.Sprintf("[%s] "+format+"\n", append([]any{Levels[level]}, args...)...)
-		x.logWriter.Write([]byte(line))
+		if l, ok := x.logWriter.(logging.Log); ok {
+			l.Logf(level.LoggingLevel(), format, args...)
+		} else {
+			line := fmt.Sprintf("[%s] "+format+"\n", append([]any{Levels[level]}, args...)...)
+			x.logWriter.Write([]byte(line))
+		}
 	}
 	if x.consoleTopic != "" && level >= x.consoleLogLevel {
 		eventbus.PublishLogTask(x.consoleTopic, Levels[level], fmt.Sprintf("%p", x), fmt.Sprintf(format, args...))
@@ -657,6 +667,23 @@ const (
 	ERROR
 	FATAL
 )
+
+func (l Level) LoggingLevel() logging.Level {
+	switch l {
+	default:
+		return logging.LevelInfo
+	case TRACE:
+		return logging.LevelTrace
+	case DEBUG:
+		return logging.LevelDebug
+	case WARN:
+		return logging.LevelWarn
+	case ERROR:
+		return logging.LevelError
+	case FATAL:
+		return logging.LevelError
+	}
+}
 
 func ParseLogLevel(str string) Level {
 	s := strings.ToUpper(str)
