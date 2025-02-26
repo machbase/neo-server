@@ -225,6 +225,9 @@ func (act *Actor) ShutdownServer() error {
 	defer cancel()
 	rsp, err := mgmtcli.Shutdown(ctx, &mgmt.ShutdownRequest{})
 	if err != nil {
+		if strings.Contains(err.Error(), "EOF") {
+			return nil
+		}
 		return err
 	}
 	if !rsp.Success {
