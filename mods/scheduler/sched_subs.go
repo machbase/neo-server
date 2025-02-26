@@ -293,6 +293,8 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	task.SetDatabase(ent.s.db)
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriterJson(io.Discard, true)
+	task.SetLogLevel(tql.INFO)
+	task.SetLogWriter(ent.log)
 	params := map[string][]string{}
 	for k, v := range header {
 		params[k] = v
@@ -305,7 +307,9 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 		return
 	}
 	if result := task.Execute(); result == nil || result.Err != nil {
-		ent.err = err
+		if result != nil && result.Err != nil {
+			ent.err = result.Err
+		}
 		ent.state = FAILED
 		ent.Stop()
 	} else {
