@@ -153,6 +153,8 @@ func (c *MqttBridge) BeforeRegister() error {
 	c.clientOpts = cfg
 	if len(c.serverAddresses) > 0 {
 		go c.run()
+	} else {
+		c.log.Warnf("bridge '%s' no broker address", c.name)
 	}
 
 	return nil

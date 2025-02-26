@@ -35,13 +35,12 @@ type SubscriberEntry struct {
 	s   *svr
 	log logging.Log
 
-	didOnConnectSubscriber bool
-	shouldSubscribe        bool
-	ctx                    context.Context
-	ctxCancel              context.CancelFunc
-	conn                   api.Conn
-	appender               api.Appender
-	subscription           bridge.Subscription
+	shouldSubscribe bool
+	ctx             context.Context
+	ctxCancel       context.CancelFunc
+	conn            api.Conn
+	appender        api.Appender
+	subscription    bridge.Subscription
 
 	wd *util.WriteDescriptor
 }
@@ -69,10 +68,9 @@ func (ent *SubscriberEntry) Start() error {
 	ent.shouldSubscribe = true
 	ent.ctx, ent.ctxCancel = context.WithCancel(context.Background())
 
-	if ent.didOnConnectSubscriber {
-		return nil
-	}
+	ent.log.Infof("starting, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
 	if br0, err := bridge.GetBridge(ent.Bridge); err != nil {
+		ent.log.Tracef("get bridge, %s", err.Error())
 		ent.state = FAILED
 		ent.err = err
 		return err
@@ -95,30 +93,38 @@ func (ent *SubscriberEntry) Start() error {
 	}
 }
 
+func (ent *SubscriberEntry) doMqttOnConnect(br *bridge.MqttBridge) {
+	if !ent.shouldSubscribe {
+		return
+	}
+	if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
+		ent.state = FAILED
+		ent.err = err
+	} else {
+		if subscription == nil {
+			ent.state = FAILED
+			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+		} else {
+			ent.subscription = subscription
+			ent.state = RUNNING
+			ent.err = nil
+		}
+	}
+}
+
 func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 	if ent.Topic == "" {
 		ent.state = FAILED
 		ent.err = fmt.Errorf("empty topic is not allowed, subscribe to %s", br.String())
 		return ent.err
 	}
-
-	ent.didOnConnectSubscriber = true
+	if br.IsConnected() {
+		ent.log.Tracef("bridge %s is already connected, renew subscription", br.String())
+		ent.doMqttOnConnect(br)
+		return ent.err
+	}
 	br.OnConnect(func(bridge any) {
-		if !ent.shouldSubscribe {
-			return
-		}
-		if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
-			ent.state = FAILED
-			ent.err = err
-		} else {
-			if subscription == nil {
-				ent.state = FAILED
-				ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
-			} else {
-				ent.subscription = subscription
-				ent.state = RUNNING
-			}
-		}
+		ent.doMqttOnConnect(br)
 	})
 	br.OnDisconnect(func(bridge any) {
 		if ent.shouldSubscribe {
@@ -160,6 +166,8 @@ func (ent *SubscriberEntry) startNats(br *bridge.NatsBridge) error {
 }
 
 func (ent *SubscriberEntry) Stop() error {
+	ent.log.Infof("stopping, bridge=%s, topic=%s", ent.Bridge, ent.Topic)
+
 	ent.state = STOPPING
 	ent.err = nil
 	ent.shouldSubscribe = false
