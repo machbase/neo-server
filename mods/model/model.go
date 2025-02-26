@@ -110,12 +110,12 @@ func (s *svr) LoadSchedule(name string) (*ScheduleDefinition, error) {
 	path := filepath.Join(s.schedDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		s.log.Warn("bridge def file", err.Error())
+		s.log.Warn("schedule load def file", err.Error())
 		return nil, err
 	}
 	def := &ScheduleDefinition{}
 	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warn("bridge def format", err.Error())
+		s.log.Warn("schedule load def format", err.Error())
 		return nil, err
 	}
 	def.Name = name
@@ -125,7 +125,7 @@ func (s *svr) LoadSchedule(name string) (*ScheduleDefinition, error) {
 func (s *svr) SaveSchedule(def *ScheduleDefinition) error {
 	buf, err := json.MarshalIndent(def, "", "\t")
 	if err != nil {
-		s.log.Warn("bridge def file", err.Error())
+		s.log.Warn("schedule save def file", err.Error())
 		return err
 	}
 	name := strings.ToUpper(def.Name)
@@ -169,12 +169,12 @@ func (s *svr) LoadBridge(name string) (*BridgeDefinition, error) {
 	path := filepath.Join(s.bridgeDir, fmt.Sprintf("%s.json", name))
 	content, err := os.ReadFile(path)
 	if err != nil {
-		s.log.Warn("bridge def file", err.Error())
+		s.log.Warn("bridge load def file", err.Error())
 		return nil, err
 	}
 	def := &BridgeDefinition{}
 	if err := json.Unmarshal(content, def); err != nil {
-		s.log.Warn("bridge def format", err.Error())
+		s.log.Warn("bridge load def format", err.Error())
 		return nil, err
 	}
 	return def, nil
@@ -183,7 +183,7 @@ func (s *svr) LoadBridge(name string) (*BridgeDefinition, error) {
 func (s *svr) SaveBridge(def *BridgeDefinition) error {
 	buf, err := json.MarshalIndent(def, "", "\t")
 	if err != nil {
-		s.log.Warn("bridge def file", err.Error())
+		s.log.Warn("bridge save def file", err.Error())
 		return err
 	}
 
@@ -435,12 +435,12 @@ func (s *svr) iterateScheduleDefs(cb func(*ScheduleDefinition) bool) error {
 		}
 		content, err := os.ReadFile(filepath.Join(s.schedDir, entry.Name()))
 		if err != nil {
-			s.log.Warn("schedule def file", err.Error())
+			s.log.Warn("schedule iterate def file", err.Error())
 			continue
 		}
 		def := &ScheduleDefinition{}
 		if err = json.Unmarshal(content, def); err != nil {
-			s.log.Warn("schedule def format", err.Error())
+			s.log.Warn("schedule iterate def format", err.Error())
 			continue
 		}
 		def.Name = strings.TrimSuffix(entry.Name(), ".json")
