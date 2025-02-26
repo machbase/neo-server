@@ -93,6 +93,25 @@ func (ent *SubscriberEntry) Start() error {
 	}
 }
 
+func (ent *SubscriberEntry) doMqttOnConnect(br *bridge.MqttBridge) {
+	if !ent.shouldSubscribe {
+		return
+	}
+	if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
+		ent.state = FAILED
+		ent.err = err
+	} else {
+		if subscription == nil {
+			ent.state = FAILED
+			ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
+		} else {
+			ent.subscription = subscription
+			ent.state = RUNNING
+			ent.err = nil
+		}
+	}
+}
+
 func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 	if ent.Topic == "" {
 		ent.state = FAILED
@@ -101,36 +120,11 @@ func (ent *SubscriberEntry) startMqtt(br *bridge.MqttBridge) error {
 	}
 	if br.IsConnected() {
 		ent.log.Tracef("bridge %s is already connected, renew subscription", br.String())
-		if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
-			ent.state = FAILED
-			ent.err = err
-		} else {
-			if subscription == nil {
-				ent.state = FAILED
-				ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
-			} else {
-				ent.subscription = subscription
-				ent.state = RUNNING
-			}
-		}
-		return nil
+		ent.doMqttOnConnect(br)
+		return ent.err
 	}
 	br.OnConnect(func(bridge any) {
-		if !ent.shouldSubscribe {
-			return
-		}
-		if subscription, err := br.Subscribe(ent.Topic, byte(ent.QoS), ent.doMqttTask); err != nil {
-			ent.state = FAILED
-			ent.err = err
-		} else {
-			if subscription == nil {
-				ent.state = FAILED
-				ent.err = fmt.Errorf("fail to subscribe %s %s", br.String(), ent.Topic)
-			} else {
-				ent.subscription = subscription
-				ent.state = RUNNING
-			}
-		}
+		ent.doMqttOnConnect(br)
 	})
 	br.OnDisconnect(func(bridge any) {
 		if ent.shouldSubscribe {
