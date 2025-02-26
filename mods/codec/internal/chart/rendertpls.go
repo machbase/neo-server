@@ -34,7 +34,7 @@ var HeaderTemplate = `
     <link href="{{ . }}" rel="stylesheet">
 {{- end }}
     <style>
-        .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
+        .chart_container {margin-top:30px; display: flex;justify-content: center;align-items: center; height: 100%;}
         .chart_item {margin: auto;}
     </style>
 </head>
@@ -55,7 +55,7 @@ var BaseTemplate = `
 var ChartTemplate = `{{- define "chart" }}<!DOCTYPE html>
 <html>
     {{- template "header" . }}
-<body>
+<body style="width:100vw; height:100vh">
     {{- template "base" . }}
 </body>
 </html>
