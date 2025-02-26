@@ -270,9 +270,7 @@ func (ent *SubscriberEntry) doNatsTask(natsMsg *nats.Msg) {
 			natsMsg.Ack()
 		}
 	}()
-	fmt.Println("-------------------")
 	if ent.wd.IsTqlDestination() {
-		fmt.Println("do tql")
 		ent.doTql(natsMsg.Data, natsMsg.Header, rsp)
 	} else {
 		if ent.wd.Method == "append" {
