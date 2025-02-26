@@ -420,7 +420,6 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 				appenderSet = []*AppenderWrapper{}
 			}
 			appenderSet = append(appenderSet, aw)
-			fmt.Println("append peerId:", peerId)
 			s.appenders.Set(peerId, appenderSet)
 		}
 	}
