@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"expvar"
 	"math"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/rand"
 )
 
 func mockTime(sec int) func() time.Time {
@@ -79,7 +79,6 @@ func TestHistogram(t *testing.T) {
 
 func TestHistogramNormalDist(t *testing.T) {
 	hist := NewHistogram().(*Histogram)
-	rand.Seed(uint64(time.Now().UnixNano()))
 	for i := 0; i < 10000; i++ {
 		hist.Add(rand.Float64() * 10)
 	}
