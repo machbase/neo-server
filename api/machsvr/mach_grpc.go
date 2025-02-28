@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"math/rand"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -15,7 +16,6 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machrpc"
 	cmap "github.com/orcaman/concurrent-map/v2"
-	"golang.org/x/exp/rand"
 )
 
 type RPCServer struct {
