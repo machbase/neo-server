@@ -287,15 +287,15 @@ func (node *Node) fmTimeUnix(t any) (float64, error) {
 }
 
 func (node *Node) fmTimeUnixMilli(t any) (float64, error) {
-	return node.fmTimeUnix0(t, "Milli")
+	return node.fmTimeUnix0(t, "ms")
 }
 
 func (node *Node) fmTimeUnixMicro(t any) (float64, error) {
-	return node.fmTimeUnix0(t, "Micro")
+	return node.fmTimeUnix0(t, "µs")
 }
 
 func (node *Node) fmTimeUnixNano(t any) (float64, error) {
-	return node.fmTimeUnix0(t, "Nano")
+	return node.fmTimeUnix0(t, "ns")
 }
 
 func (node *Node) fmTimeUnix0(t any, unit string) (float64, error) {
@@ -309,11 +309,11 @@ func (node *Node) fmTimeUnix0(t any, unit string) (float64, error) {
 		return 0, fmt.Errorf("timeUnix%s: %T(%v) is not time type", unit, t, t)
 	}
 	switch unit {
-	case "Nano":
+	case "ns":
 		return float64(tm.UnixNano()), nil
-	case "Micro":
+	case "µs":
 		return float64(tm.UnixMicro()), nil
-	case "Milli":
+	case "ms":
 		return float64(tm.UnixMilli()), nil
 	default:
 		return float64(tm.Unix()), nil
@@ -1006,10 +1006,10 @@ func (twc *TimeWindowColumnDsp) Result(ts time.Time) any {
 	}
 	switch twc.name {
 	case "fft":
-		freqs, values := fft.FastFourierTransform(twc.times, twc.values)
+		frequencies, values := fft.FastFourierTransform(twc.times, twc.values)
 		ret := [][]any{}
-		for i := range freqs {
-			hz := freqs[i]
+		for i := range frequencies {
+			hz := frequencies[i]
 			amp := values[i]
 			if hz == 0 || hz != hz {
 				continue
