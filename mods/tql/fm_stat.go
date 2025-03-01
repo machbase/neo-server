@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"gonum.org/v1/gonum/stat"
 )
@@ -39,12 +40,15 @@ func (node *Node) fmHistogram(value any, args ...any) (any, error) {
 	} else {
 		fv = f
 	}
+	var maxBins HistogramMaxBins
 	var bins *HistogramStepBins
 	var category StatCategoryName
 	var orders []StatCategoryName
 
 	for _, arg := range args {
 		switch v := arg.(type) {
+		case HistogramMaxBins:
+			maxBins = v
 		case *HistogramStepBins:
 			bins = v
 		case StatCategoryName:
@@ -56,82 +60,144 @@ func (node *Node) fmHistogram(value any, args ...any) (any, error) {
 		}
 	}
 
-	var hist *Histogram
+	var hist Histogram
 	if v, ok := node.GetValue("histogram"); ok {
-		hist = v.(*Histogram)
+		hist = v.(Histogram)
 	} else {
-		if bins == nil || bins.min >= bins.max || bins.step <= 0 {
-			return nil, ErrArgs("HISTOGRAM", 1, "invalid bins configuration")
-		}
-		hist = &Histogram{
-			bins:    bins,
-			orders:  orders,
-			buckets: map[StatCategoryName]*HistogramBuckets{},
+		if bins != nil {
+			if bins.min >= bins.max || bins.step <= 0 {
+				return nil, ErrArgs("HISTOGRAM", 1, "invalid bins configuration")
+			}
+			hist = &HistogramPredictedBins{
+				bins:    bins,
+				orders:  orders,
+				buckets: map[StatCategoryName]*HistogramBuckets{},
+			}
+		} else {
+			hist = &HistogramUnpredictedBins{
+				orders:  orders,
+				buckets: map[StatCategoryName]*nums.Histogram{},
+			}
 		}
 		node.SetValue("histogram", hist)
 		node.SetEOF(func(n *Node) {
-			cols := []*api.Column{
-				api.MakeColumnRownum(),
-				api.MakeColumnDouble("low"),
-				api.MakeColumnDouble("high"),
-			}
-			catNames := hist.orderedCategoryNames()
-
-			for _, catName := range catNames {
-				if catName == "" {
-					cols = append(cols, api.MakeColumnInt64("count"))
-				} else {
-					cols = append(cols, api.MakeColumnInt64(string(catName)))
-				}
-			}
-			node.task.SetResultColumns(cols)
 			id := 0
-			for i := range hist.buckets[catNames[0]].buckets {
-				vs := []any{}
-				countSum := int64(0)
+			switch h := hist.(type) {
+			case *HistogramPredictedBins:
+				cols := []*api.Column{
+					api.MakeColumnRownum(),
+					api.MakeColumnDouble("low"),
+					api.MakeColumnDouble("high"),
+				}
+				catNames := hist.orderedCategoryNames()
 				for _, catName := range catNames {
-					cat := hist.buckets[catName]
-					if len(vs) == 0 {
-						vs = append(vs, cat.buckets[i].low, cat.buckets[i].high)
+					if catName == "" {
+						cols = append(cols, api.MakeColumnInt64("count"))
+					} else {
+						cols = append(cols, api.MakeColumnInt64(string(catName)))
 					}
-					vs = append(vs, cat.buckets[i].count)
-					countSum += cat.buckets[i].count
 				}
-				if (i == 0 || i == len(hist.buckets[catNames[0]].buckets)-1) && countSum == 0 {
-					continue
+				node.task.SetResultColumns(cols)
+				for i := range h.buckets[catNames[0]].buckets {
+					vs := []any{}
+					countSum := int64(0)
+					for _, catName := range catNames {
+						cat := h.buckets[catName]
+						if len(vs) == 0 {
+							vs = append(vs, cat.buckets[i].low, cat.buckets[i].high)
+						}
+						vs = append(vs, cat.buckets[i].count)
+						countSum += cat.buckets[i].count
+					}
+					if (i == 0 || i == len(h.buckets[catNames[0]].buckets)-1) && countSum == 0 {
+						continue
+					}
+					node.yield(id, vs)
+					id++
 				}
-				node.yield(id, vs)
-				id++
+			case *HistogramUnpredictedBins:
+				cols := []*api.Column{
+					api.MakeColumnRownum(),
+					api.MakeColumnDouble("value"),
+				}
+				catNames := hist.orderedCategoryNames()
+				for _, catName := range catNames {
+					if catName == "" {
+						cols = append(cols, api.MakeColumnInt64("count"))
+					} else {
+						cols = append(cols, api.MakeColumnInt64(string(catName)))
+					}
+				}
+				node.task.SetResultColumns(cols)
+				for _, catName := range catNames {
+					cat := h.buckets[catName]
+					for _, bin := range cat.Bins() {
+						vs := []any{bin.Value(), bin.Count()}
+						node.yield(id, vs)
+						id++
+					}
+				}
 			}
 		})
 	}
 
-	if bucket, ok := hist.buckets[category]; !ok {
-		bucket := hist.bins.NewBuckets()
-		hist.buckets[category] = bucket
-		bucket.Add(fv)
-	} else {
-		bucket.Add(fv)
+	switch h := hist.(type) {
+	case *HistogramPredictedBins:
+		if bucket, ok := h.buckets[category]; !ok {
+			bucket := h.bins.NewBuckets()
+			h.buckets[category] = bucket
+			bucket.Add(fv)
+		} else {
+			bucket.Add(fv)
+		}
+	case *HistogramUnpredictedBins:
+		if bucket, ok := h.buckets[category]; !ok {
+			bucket = &nums.Histogram{MaxBins: int(maxBins)}
+			h.buckets[category] = bucket
+			bucket.Add(fv)
+		} else {
+			bucket.Add(fv)
+		}
 	}
 	return nil, nil
 }
 
-type Histogram struct {
+type Histogram interface {
+	orderedCategoryNames() []StatCategoryName
+}
+
+type HistogramUnpredictedBins struct {
+	buckets map[StatCategoryName]*nums.Histogram
+	orders  []StatCategoryName
+}
+
+func (hist *HistogramUnpredictedBins) orderedCategoryNames() []StatCategoryName {
+	catNames := []StatCategoryName{}
+	for cat := range hist.buckets {
+		catNames = append(catNames, cat)
+	}
+	return sortCategoryNames(catNames, hist.orders)
+}
+
+type HistogramPredictedBins struct {
 	bins    *HistogramStepBins
 	buckets map[StatCategoryName]*HistogramBuckets
 	orders  []StatCategoryName
 }
 
-func (hist *Histogram) orderedCategoryNames() []StatCategoryName {
+func (hist *HistogramPredictedBins) orderedCategoryNames() []StatCategoryName {
 	catNames := []StatCategoryName{}
 	for cat := range hist.buckets {
 		catNames = append(catNames, cat)
 	}
+	return sortCategoryNames(catNames, hist.orders)
+}
 
+func sortCategoryNames(catNames []StatCategoryName, orders []StatCategoryName) []StatCategoryName {
 	sort.Slice(catNames, func(i, j int) bool {
 		in := -1
 		jn := -1
-		for n, name := range hist.orders {
+		for n, name := range orders {
 			if name == catNames[i] {
 				in = n
 			}
@@ -169,6 +235,12 @@ type HistogramBin struct {
 	high  float64
 	count int64
 }
+
+func (node *Node) fmMaxBins(max int) any {
+	return HistogramMaxBins(max)
+}
+
+type HistogramMaxBins int
 
 func (node *Node) fmBins(min, max, step float64) (any, error) {
 	return &HistogramStepBins{

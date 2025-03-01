@@ -95,6 +95,7 @@ func NewNode(task *Task) *Node {
 		"ansiTimeformat": x.gen_ansiTimeformat,
 		// maps.stat
 		"HISTOGRAM":     x.gen_HISTOGRAM,
+		"maxBins":       x.gen_maxBins,
 		"bins":          x.gen_bins,
 		"BOXPLOT":       x.gen_BOXPLOT,
 		"boxplotInterp": x.gen_boxplotInterp,
@@ -1185,6 +1186,21 @@ func (x *Node) gen_HISTOGRAM(args ...any) (any, error) {
 		p1 = append(p1, argv)
 	}
 	return x.fmHistogram(p0, p1...)
+}
+
+// gen_maxBins
+//
+// syntax: maxBins(int)
+func (x *Node) gen_maxBins(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("maxBins", 1, len(args))
+	}
+	p0, err := convInt(args, 0, "maxBins", "int")
+	if err != nil {
+		return nil, err
+	}
+	ret := x.fmMaxBins(p0)
+	return ret, nil
 }
 
 // gen_bins

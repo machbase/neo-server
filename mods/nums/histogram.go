@@ -10,10 +10,16 @@ type Bin struct {
 	count float64
 }
 
+// The value of the bin.
+// This is the average of the values that fall into this bin.
+// If you have 10 values that fall into this bin, the value will be the average of those 10 values.
+// So you can calculate the total value of the bin by multiplying the value by the count.
 func (b Bin) Value() float64 {
 	return b.value
 }
 
+// The count of the bin.
+// This is the number of values that fall into this bin.
 func (b Bin) Count() float64 {
 	return b.count
 }
@@ -91,6 +97,16 @@ func (h *Histogram) Bins() []Bin {
 	return ret
 }
 
+// Quantile returns the value of the quantile.
+// The quantile is a value that divides the data into two parts.
+// For example, the median is the 50th percentile.
+// It divides the data into two parts, with half of the data below the median and half above.
+// The 90th percentile divides the data into two parts, with 90% of the data below the 90th percentile and 10% above.
+// The 99th percentile divides the data into two parts, with 99% of the data below the 99th percentile and 1% above.
+// The value of the quantile is the value that divides the data into two parts.
+//
+// ex) h.Quantile(0.5) // 50th percentile
+// ex) h.Quantile(0.9) // 90th percentile
 func (h *Histogram) Quantile(q float64) Bin {
 	h.Lock()
 	defer h.Unlock()
