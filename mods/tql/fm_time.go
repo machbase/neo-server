@@ -426,6 +426,9 @@ func (node *Node) fmTimeWindow(from any, until any, duration any, args ...any) a
 	if obj, ok := node.GetValue("timewindow"); ok {
 		tw = obj.(*TimeWindow)
 	} else {
+		// deprecated
+		node.task.LogWarn("TIMEWINDOW() deprecated, use GROUP(timewindow()) instead")
+
 		isFirstRecord = true
 		tw = NewTimeWindow()
 		if ts, err := util.ToTime(from); err != nil {
