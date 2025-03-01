@@ -158,9 +158,9 @@ type HistogramBuckets struct {
 	buckets       []HistogramBin
 }
 
-func (hcat *HistogramBuckets) Add(fv float64) {
-	n := hcat.bucketIndexer(fv)
-	hcat.buckets[n].count++
+func (histogramBuckets *HistogramBuckets) Add(fv float64) {
+	n := histogramBuckets.bucketIndexer(fv)
+	histogramBuckets.buckets[n].count++
 }
 
 // A histogram bin for a value in range [low, high)
@@ -355,7 +355,7 @@ func (node *Node) fmBoxplot(args ...any) (any, error) {
 				node.task.SetResultColumns(cols)
 
 				for i, result := range box.result {
-					// echart data [lower,  Q1,  median (or Q2),  Q3,  upper]
+					// echarts data [lower,  Q1,  median (or Q2),  Q3,  upper]
 					itm := []any{
 						result.lowerBound,
 						result.q1,

@@ -10,6 +10,14 @@ type Bin struct {
 	count float64
 }
 
+func (b Bin) Value() float64 {
+	return b.value
+}
+
+func (b Bin) Count() float64 {
+	return b.count
+}
+
 type Histogram struct {
 	sync.Mutex
 	MaxBins    int
@@ -19,9 +27,9 @@ type Histogram struct {
 
 func (h *Histogram) String() string {
 	return fmt.Sprintf(`{"p50": %f, "p90": %f, "p99": %f}`,
-		h.Quantile(0.5),
-		h.Quantile(0.9),
-		h.Quantile(0.99),
+		h.Quantile(0.5).Value(),
+		h.Quantile(0.9).Value(),
+		h.Quantile(0.99).Value(),
 	)
 }
 
@@ -75,7 +83,15 @@ func (h *Histogram) trim() {
 	}
 }
 
-func (h *Histogram) Bin(q float64) Bin {
+func (h *Histogram) Bins() []Bin {
+	h.Lock()
+	ret := make([]Bin, len(h.bins))
+	copy(ret, h.bins)
+	h.Unlock()
+	return ret
+}
+
+func (h *Histogram) Quantile(q float64) Bin {
 	h.Lock()
 	defer h.Unlock()
 
@@ -87,8 +103,4 @@ func (h *Histogram) Bin(q float64) Bin {
 		}
 	}
 	return Bin{}
-}
-
-func (h *Histogram) Quantile(q float64) float64 {
-	return h.Bin(q).value
 }
