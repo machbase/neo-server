@@ -362,7 +362,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 		desc = desc0
 	}
 
-	var instream io.Reader
+	var inputStream io.Reader
 	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
@@ -378,13 +378,13 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 			ent.log.Warn("fail to decompress,", err.Error())
 			return
 		}
-		instream = gr
+		inputStream = gr
 	} else {
-		instream = bytes.NewReader(payload)
+		inputStream = bytes.NewReader(payload)
 	}
 
 	codecOpts := []opts.Option{
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Timeformat(ent.wd.Timeformat),
 		opts.TimeLocation(ent.wd.TimeLocation),
 		opts.TableName(ent.wd.Table),
@@ -392,13 +392,13 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 		opts.Heading(ent.wd.Heading),
 	}
 
-	var recno uint64
+	var rownum uint64
 	var insertQuery string
 	var columnNames []string
 	var columnTypes []api.DataType
 
 	if ent.wd.Format == "json" {
-		bs, err := io.ReadAll(instream)
+		bs, err := io.ReadAll(inputStream)
 		if err != nil {
 			rsp.Reason = err.Error()
 			ent.log.Warn(err.Error())
@@ -432,7 +432,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 			valueHolder := strings.Join(_hold, ",")
 			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", ent.wd.Table, strings.Join(columnNames, ","), valueHolder)
 		}
-		instream = bytes.NewBuffer(bs)
+		inputStream = bytes.NewBuffer(bs)
 	}
 
 	if len(columnNames) == 0 {
@@ -441,7 +441,7 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 	}
 
 	codecOpts = append(codecOpts,
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Columns(columnNames...),
 		opts.ColumnTypes(columnTypes...),
 	)
@@ -477,19 +477,19 @@ func (ent *SubscriberEntry) doInsert(payload []byte, rsp *Reason) {
 			}
 			break
 		}
-		recno++
+		rownum++
 
 		if result := ent.conn.Exec(ent.ctx, insertQuery, vals...); result.Err() != nil {
 			ent.log.Warn(ent.name, ent.TaskTql, result.Err().Error())
 			return
 		}
 	}
-	ent.subscription.AddInserted(recno)
+	ent.subscription.AddInserted(rownum)
 	records := "record"
-	if recno > 1 {
+	if rownum > 1 {
 		records = "records"
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s inserted", util.HumanizeNumber(recno), records)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s inserted", util.HumanizeNumber(rownum), records)
 }
 
 func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
@@ -504,15 +504,15 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 	}
 
 	if ent.appender == nil {
-		if appd, err := ent.conn.Appender(ent.ctx, ent.wd.Table); err != nil {
+		if appender, err := ent.conn.Appender(ent.ctx, ent.wd.Table); err != nil {
 			rsp.Reason = fmt.Sprintf("%s %s fail to create appender, %s", ent.name, ent.TaskTql, err.Error())
 			ent.log.Warn(ent.TaskTql, err.Error())
 		} else {
-			ent.appender = appd
+			ent.appender = appender
 		}
 	}
 
-	var instream io.Reader
+	var inputStream io.Reader
 	if ent.wd.Compress == "gzip" {
 		gr, err := gzip.NewReader(bytes.NewBuffer(payload))
 		defer func() {
@@ -528,9 +528,9 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 			ent.log.Warn("fail to decompress,", err.Error())
 			return
 		}
-		instream = gr
+		inputStream = gr
 	} else {
-		instream = bytes.NewReader(payload)
+		inputStream = bytes.NewReader(payload)
 	}
 
 	cols, _ := ent.appender.Columns()
@@ -541,7 +541,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 		colTypes = colTypes[1:]
 	}
 	codecOpts := []opts.Option{
-		opts.InputStream(instream),
+		opts.InputStream(inputStream),
 		opts.Timeformat(ent.wd.Timeformat),
 		opts.TimeLocation(ent.wd.TimeLocation),
 		opts.TableName(ent.wd.Table),
@@ -559,7 +559,7 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 		return
 	}
 
-	recno := uint64(0)
+	rownum := uint64(0)
 	for {
 		var values []any
 		if vals, _, err := decoder.NextRow(); err != nil {
@@ -573,16 +573,16 @@ func (ent *SubscriberEntry) doAppend(payload []byte, rsp *Reason) {
 			values = vals
 		}
 		if err := ent.appender.Append(values...); err != nil {
-			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
-			ent.log.Warnf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), recno+1)
+			rsp.Reason = fmt.Sprintf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), rownum+1)
+			ent.log.Warnf("append %s, %s on the %d'th record", ent.wd.Format, err.Error(), rownum+1)
 			break
 		}
-		recno++
+		rownum++
 	}
-	ent.subscription.AddAppended(recno)
+	ent.subscription.AddAppended(rownum)
 	records := "record"
-	if recno > 1 {
+	if rownum > 1 {
 		records = "records"
 	}
-	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s appended", util.HumanizeNumber(recno), records)
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("%s %s appended", util.HumanizeNumber(rownum), records)
 }
