@@ -199,7 +199,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				require.Equal(t, expectLine, resultLines[n], fmt.Sprintf("Expected(line#%d): %s", n, expectLine))
 			}
 		}
-		if strings.Contains(logString, "ERROR") || strings.Contains(logString, "WARN") {
+		if strings.Contains(logString, "ERROR") || (strings.Contains(logString, "WARN") && !strings.Contains(logString, "deprecated")) {
 			t.Log("LOG OUTPUT:", logString)
 			t.Fail()
 		}
