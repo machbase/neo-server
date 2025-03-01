@@ -516,21 +516,6 @@ func MapAssets(args ...string) Option {
 	}
 }
 
-// SetMapId
-//
-//	mods/codec/internal/geomap/geomap.go:81:1
-type CanSetMapId interface {
-	SetMapId(id string)
-}
-
-func MapId(id string) Option {
-	return func(_one any) {
-		if _o, ok := _one.(CanSetMapId); ok {
-			_o.SetMapId(id)
-		}
-	}
-}
-
 // SetMarkAreaNameCoord
 //
 //	mods/codec/internal/chart/chartcompat.go:265:1
@@ -550,13 +535,13 @@ func MarkAreaNameCoord(from any, to any, label string, color string, opacity flo
 //
 //	mods/codec/internal/chart/chartcompat.go:273:1
 type CanSetMarkLineXAxisCoord interface {
-	SetMarkLineXAxisCoord(xaxis any, name string)
+	SetMarkLineXAxisCoord(xAxis any, name string)
 }
 
-func MarkLineXAxisCoord(xaxis any, name string) Option {
+func MarkLineXAxisCoord(xAxis any, name string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetMarkLineXAxisCoord); ok {
-			_o.SetMarkLineXAxisCoord(xaxis, name)
+			_o.SetMarkLineXAxisCoord(xAxis, name)
 		}
 	}
 }
@@ -565,13 +550,13 @@ func MarkLineXAxisCoord(xaxis any, name string) Option {
 //
 //	mods/codec/internal/chart/chartcompat.go:279:1
 type CanSetMarkLineYAxisCoord interface {
-	SetMarkLineYAxisCoord(yaxis any, name string)
+	SetMarkLineYAxisCoord(yAxis any, name string)
 }
 
-func MarkLineYAxisCoord(yaxis any, name string) Option {
+func MarkLineYAxisCoord(yAxis any, name string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetMarkLineYAxisCoord); ok {
-			_o.SetMarkLineYAxisCoord(yaxis, name)
+			_o.SetMarkLineYAxisCoord(yAxis, name)
 		}
 	}
 }

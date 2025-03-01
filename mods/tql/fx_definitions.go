@@ -45,7 +45,7 @@ var FxDefinitions = []Definition{
 	{"log2", `mathWrap("log2", math.Log2)`},
 	{"mod", `mathWrap2("mod", math.Mod)`},
 	{"pow", `mathWrap2("pow", math.Pow)`},
-	{"pow10", `mathWrapi("pow10", math.Pow10)`},
+	{"pow10", `mathWrapInt("pow10", math.Pow10)`},
 	{"remainder", `mathWrap2("remainder", math.Remainder)`},
 	{"round", `mathWrap("round", math.Round)`},
 	{"sin", `mathWrap("sin", math.Sin)`},
@@ -295,7 +295,7 @@ func mathWrap(name string, f func(float64) float64) func(args ...any) (any, erro
 	}
 }
 
-func mathWrapi(name string, f func(int) float64) func(args ...any) (any, error) {
+func mathWrapInt(name string, f func(int) float64) func(args ...any) (any, error) {
 	return func(args ...any) (any, error) {
 		if args == nil {
 			return nil, nil

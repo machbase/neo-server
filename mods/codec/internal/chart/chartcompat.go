@@ -270,14 +270,14 @@ func (w *ChartW) SetMarkAreaNameCoord(from any, to any, label string, color stri
 	w.markAreaList = append(w.markAreaList, l)
 }
 
-func (w *ChartW) SetMarkLineXAxisCoord(xaxis any, name string) {
-	val, _ := json.Marshal(convValue(xaxis))
+func (w *ChartW) SetMarkLineXAxisCoord(xAxis any, name string) {
+	val, _ := json.Marshal(convValue(xAxis))
 	l := fmt.Sprintf(`{"name":%q, "xAxis":%s, "label":{"formatter":%q}}`, name, string(val), name)
 	w.markLineList = append(w.markLineList, l)
 }
 
-func (w *ChartW) SetMarkLineYAxisCoord(yaxis any, name string) {
-	val, _ := json.Marshal(convValue(yaxis))
+func (w *ChartW) SetMarkLineYAxisCoord(yAxis any, name string) {
+	val, _ := json.Marshal(convValue(yAxis))
 	l := fmt.Sprintf(`{"name":%q, "yAxis":%s, "label":{"formatter":%q}}`, name, string(val), name)
 	w.markLineList = append(w.markLineList, l)
 }
