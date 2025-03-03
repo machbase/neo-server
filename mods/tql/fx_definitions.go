@@ -101,7 +101,6 @@ var FxDefinitions = []Definition{
 	// maps.stat
 	{"// maps.stat", nil},
 	{"HISTOGRAM", defTask.fmHistogram},
-	{"maxBins", defTask.fmMaxBins},
 	{"bins", defTask.fmBins},
 	{"BOXPLOT", defTask.fmBoxplot},
 	{"boxplotInterp", defTask.fmBoxplotInterp},

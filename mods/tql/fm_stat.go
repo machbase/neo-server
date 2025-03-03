@@ -236,18 +236,20 @@ type HistogramBin struct {
 	count int64
 }
 
-func (node *Node) fmMaxBins(max int) any {
-	return HistogramMaxBins(max)
-}
-
 type HistogramMaxBins int
 
-func (node *Node) fmBins(min, max, step float64) (any, error) {
-	return &HistogramStepBins{
-		min:  min,
-		max:  max,
-		step: step,
-	}, nil
+func (node *Node) fmBins(args ...float64) (any, error) {
+	if len(args) == 3 {
+		return &HistogramStepBins{
+			min:  args[0],
+			max:  args[1],
+			step: args[2],
+		}, nil
+	} else if len(args) == 1 {
+		return HistogramMaxBins(args[0]), nil
+	} else {
+		return nil, fmt.Errorf("f(%s) invalid number of args; expected 1 or 3, got %d", "bins", len(args))
+	}
 }
 
 type HistogramStepBins struct {

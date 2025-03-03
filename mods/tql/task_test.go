@@ -294,7 +294,7 @@ func TestHistogramUnpredictedBins(t *testing.T) {
 	codeLines := []string{
 		`FAKE( arrange(1, 100, 1) )`,
 		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
-		`HISTOGRAM(value(0), maxBins(10))`,
+		`HISTOGRAM(value(0), bins(10))`,
 		`CSV( header(true), precision(0) )`,
 	}
 	resultLines := []string{
