@@ -7,7 +7,7 @@ import (
 )
 
 func TestHistogramOrder(t *testing.T) {
-	hist := &Histogram{}
+	hist := &HistogramPredictedBins{}
 
 	hist.buckets = map[StatCategoryName]*HistogramBuckets{}
 	hist.buckets["Cat.A"] = nil

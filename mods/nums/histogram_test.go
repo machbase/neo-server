@@ -36,15 +36,15 @@ func TestHistogramNormalDist(t *testing.T) {
 		hist.Add(rand.Float64() * 10)
 	}
 
-	if v := hist.Quantile(0.5); math.Abs(v-5) > 0.5 {
+	if v := hist.Quantile(0.5); math.Abs(v.Value()-5) > 0.5 {
 		t.Fatalf("expected 5, got %f", v)
 	}
 
-	if v := hist.Quantile(0.9); math.Abs(v-9) > 0.5 {
+	if v := hist.Quantile(0.9); math.Abs(v.Value()-9) > 0.5 {
 		t.Fatalf("expected 9, got %f", v)
 	}
 
-	if v := hist.Quantile(0.99); math.Abs(v-10) > 0.5 {
+	if v := hist.Quantile(0.99); math.Abs(v.Value()-10) > 0.5 {
 		t.Fatalf("expected 10, got %f", v)
 	}
 }

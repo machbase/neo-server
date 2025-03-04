@@ -1189,24 +1189,17 @@ func (x *Node) gen_HISTOGRAM(args ...any) (any, error) {
 
 // gen_bins
 //
-// syntax: bins(float64, float64, float64)
+// syntax: bins(...float64)
 func (x *Node) gen_bins(args ...any) (any, error) {
-	if len(args) != 3 {
-		return nil, ErrInvalidNumOfArgs("bins", 3, len(args))
+	p0 := []float64{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convFloat64(args, n, "bins", "...float64")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convFloat64(args, 0, "bins", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p1, err := convFloat64(args, 1, "bins", "float64")
-	if err != nil {
-		return nil, err
-	}
-	p2, err := convFloat64(args, 2, "bins", "float64")
-	if err != nil {
-		return nil, err
-	}
-	return x.fmBins(p0, p1, p2)
+	return x.fmBins(p0...)
 }
 
 // gen_BOXPLOT

@@ -10,6 +10,20 @@ type Bin struct {
 	count float64
 }
 
+// The value of the bin.
+// This is the average of the values that fall into this bin.
+// If you have 10 values that fall into this bin, the value will be the average of those 10 values.
+// So you can calculate the total value of the bin by multiplying the value by the count.
+func (b Bin) Value() float64 {
+	return b.value
+}
+
+// The count of the bin.
+// This is the number of values that fall into this bin.
+func (b Bin) Count() float64 {
+	return b.count
+}
+
 type Histogram struct {
 	sync.Mutex
 	MaxBins    int
@@ -19,9 +33,9 @@ type Histogram struct {
 
 func (h *Histogram) String() string {
 	return fmt.Sprintf(`{"p50": %f, "p90": %f, "p99": %f}`,
-		h.Quantile(0.5),
-		h.Quantile(0.9),
-		h.Quantile(0.99),
+		h.Quantile(0.5).Value(),
+		h.Quantile(0.9).Value(),
+		h.Quantile(0.99).Value(),
 	)
 }
 
@@ -75,7 +89,25 @@ func (h *Histogram) trim() {
 	}
 }
 
-func (h *Histogram) Bin(q float64) Bin {
+func (h *Histogram) Bins() []Bin {
+	h.Lock()
+	ret := make([]Bin, len(h.bins))
+	copy(ret, h.bins)
+	h.Unlock()
+	return ret
+}
+
+// Quantile returns the value of the quantile.
+// The quantile is a value that divides the data into two parts.
+// For example, the median is the 50th percentile.
+// It divides the data into two parts, with half of the data below the median and half above.
+// The 90th percentile divides the data into two parts, with 90% of the data below the 90th percentile and 10% above.
+// The 99th percentile divides the data into two parts, with 99% of the data below the 99th percentile and 1% above.
+// The value of the quantile is the value that divides the data into two parts.
+//
+// ex) h.Quantile(0.5) // 50th percentile
+// ex) h.Quantile(0.9) // 90th percentile
+func (h *Histogram) Quantile(q float64) Bin {
 	h.Lock()
 	defer h.Unlock()
 
@@ -87,8 +119,4 @@ func (h *Histogram) Bin(q float64) Bin {
 		}
 	}
 	return Bin{}
-}
-
-func (h *Histogram) Quantile(q float64) float64 {
-	return h.Bin(q).value
 }

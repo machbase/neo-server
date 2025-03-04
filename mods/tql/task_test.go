@@ -290,6 +290,30 @@ func TestHistogram(t *testing.T) {
 	runTest(t, codeLines, resultLines)
 }
 
+func TestHistogramUnpredictedBins(t *testing.T) {
+	codeLines := []string{
+		`FAKE( arrange(1, 100, 1) )`,
+		`MAPVALUE(0, (simplex(12, value(0)) + 1) * 100)`,
+		`HISTOGRAM(value(0), bins(10))`,
+		`CSV( header(true), precision(0) )`,
+	}
+	resultLines := []string{
+		"value,count",
+		"23,1",
+		"44,6",
+		"59,12",
+		"80,26",
+		"99,20",
+		"113,18",
+		"129,5",
+		"141,2",
+		"153,7",
+		"170,3",
+		"",
+	}
+	runTest(t, codeLines, resultLines)
+}
+
 func TestBoxplot(t *testing.T) {
 	var codeLines, resultLines []string
 	src := `
