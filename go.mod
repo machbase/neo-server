@@ -34,7 +34,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/microsoft/go-mssqldb v1.5.0
-	github.com/mochi-mqtt/server/v2 v2.6.6
+	github.com/mochi-mqtt/server/v2 v2.7.9
 	github.com/nats-io/nats.go v1.36.0
 	github.com/nyaosorg/go-box/v2 v2.1.4
 	github.com/nyaosorg/go-readline-ny v1.0.1
