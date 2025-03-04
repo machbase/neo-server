@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ import (
 
 var serverConf = []byte(`
 define VARS {
-	WORKDIR = "../tmp"
+	WORKDIR = "./tmp"
 }
 
 module "machbase.com/neo-logging" {
@@ -74,7 +75,9 @@ processes,host=desktop zombies=0i,unknown=0i,dead=0i,paging=0i,total_threads=108
 var benchmarkTableName = strings.ToUpper("samplebench")
 
 func TestMain(m *testing.M) {
+	os.Mkdir("./tmp", 0755)
 	defer func() {
+		os.RemoveAll("./tmp")
 		e := recover()
 		if e == nil {
 			return

@@ -1,2 +1,4 @@
 CSV(payload())
+MAPVALUE(1, parseTime(value(1), "ns"))
+MAPVALUE(2, parseFloat(value(2)))
 APPEND( table("example") )

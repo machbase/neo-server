@@ -20,12 +20,12 @@ func TestGrpcTagTable(t *testing.T) {
 	var tableName = strings.ToUpper("tagdata")
 
 	client, err := machrpc.NewClient(&machrpc.Config{
-		ServerAddr:   "unix://../tmp/mach.sock",
+		ServerAddr:   "unix://./tmp/mach.sock",
 		QueryTimeout: 10 * time.Second,
 		Tls: &machrpc.TlsConfig{
-			ClientKey:  "../tmp/machbase_pref/cert/machbase_key.pem",
-			ClientCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
-			ServerCert: "../tmp/machbase_pref/cert/machbase_cert.pem",
+			ClientKey:  "./tmp/machbase_pref/cert/machbase_key.pem",
+			ClientCert: "./tmp/machbase_pref/cert/machbase_cert.pem",
+			ServerCert: "./tmp/machbase_pref/cert/machbase_cert.pem",
 		},
 	})
 
