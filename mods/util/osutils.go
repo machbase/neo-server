@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -33,4 +34,15 @@ func MakeListener(addr string) (net.Listener, error) {
 	} else {
 		return nil, fmt.Errorf("unsupported listen scheme %s", addr)
 	}
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+// RandomString generates a random string of the specified length.
+func RandomString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }
