@@ -1,7 +1,6 @@
 package tql
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -171,8 +170,6 @@ func (src *bytesSource) gen(node *Node) {
 		return
 	}
 
-	buff := bufio.NewReader(reader)
-
 	var label string
 	if src.toString {
 		label = "STRING"
@@ -184,42 +181,55 @@ func (src *bytesSource) gen(node *Node) {
 		api.MakeColumnString(label),
 	})
 
-	num := 1
-	for {
+	yield := func(num int, data []byte) {
 		if src.toString {
-			v, err := buff.ReadString(src.delimiter)
-			vlen := len(v)
-			for vlen > 0 && v[vlen-1] == src.delimiter {
-				if src.delimiter == '\n' && vlen > 1 && v[vlen-2] == '\r' {
-					v = v[0 : vlen-2]
-				} else {
-					v = v[0 : vlen-1]
-				}
-				vlen = len(v)
-			}
+			rec := string(data)
 			if src.trimspace {
-				v = strings.TrimSpace(v)
+				rec = strings.TrimSpace(rec)
 			}
-			NewRecord(num, v).Tell(node.next)
-			if err != nil {
-				break
-			}
+			NewRecord(num, rec).Tell(node.next)
 		} else {
-			v, err := buff.ReadBytes(src.delimiter)
-			vlen := len(v)
-			for vlen > 0 && v[vlen-1] == src.delimiter {
-				if src.delimiter == '\n' && vlen > 1 && v[vlen-2] == '\r' {
-					v = v[0 : vlen-2]
-				} else {
-					v = v[0 : vlen-1]
-				}
-				vlen = len(v)
-			}
-			NewRecord(num, v).Tell(node.next)
-			if err != nil {
+			NewRecord(num, data).Tell(node.next)
+		}
+	}
+
+	num := 1
+	remains := []byte{}
+	totalBytes := 0
+	isEOF := false
+	for !node.task.shouldStop() && !isEOF {
+		readbuf := make([]byte, 4024)
+		n, err := reader.Read(readbuf)
+		totalBytes += n
+		if err != nil || n == 0 {
+			isEOF = true
+		}
+		remains = append(remains, readbuf[:n]...)
+
+		for {
+			idx := bytes.IndexByte(remains, src.delimiter)
+			if idx == -1 {
 				break
 			}
+			line := remains[:idx+1]
+			if len(remains) > idx+1 {
+				remains = remains[idx+1:]
+			} else {
+				remains = remains[:0]
+			}
+
+			vlen := len(line)
+			if src.delimiter == '\n' && vlen > 1 && line[vlen-2] == '\r' {
+				line = line[0 : vlen-2]
+			} else {
+				line = line[0 : vlen-1]
+			}
+
+			yield(num, line)
+			num++
 		}
-		num++
+	}
+	if len(remains) > 0 {
+		yield(num, remains)
 	}
 }

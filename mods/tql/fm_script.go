@@ -702,7 +702,10 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 
 	// set $.payload
 	var payload = otto.UndefinedValue()
-	if node.task.inputReader != nil {
+	if node.task.nodes[0] == node && node.task.inputReader != nil {
+		// $.payload is defined, only when the SCRIPT is the SRC node.
+		// If the SCRIPT is not the SRC node, the payload has been using by the previous node.
+		// and if the "inputReader" was consumed here, the actual SRC node will see the EOF.
 		if b, err := io.ReadAll(node.task.inputReader); err == nil {
 			if v, err := otto.ToValue(string(b)); err == nil && len(b) > 0 {
 				payload = v
