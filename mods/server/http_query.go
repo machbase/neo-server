@@ -17,6 +17,7 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
@@ -893,6 +894,7 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	task.SetDatabase(svr.db)
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
+	task.SetLogWriter(logging.GetLog(filepath.Base(path)))
 	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" || ctx.Request.Header.Get(TqlHeaderTqlOutput) == "json" {
 		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
 	} else {
