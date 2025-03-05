@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/facility"
@@ -618,7 +619,7 @@ func (x *Task) LogFatal(args ...any) {
 func (x *Task) _log(level Level, args ...any) {
 	if x.logWriter != nil && level >= x.logLevel {
 		if l, ok := x.logWriter.(logging.Log); ok {
-			l.Log(level.LoggingLevel(), fmt.Sprint(args...))
+			l.Log(level.LoggingLevel(), strings.TrimRightFunc(fmt.Sprintln(args...), unicode.IsSpace))
 			return
 		} else {
 			line := fmt.Sprintln(append([]any{"[" + Levels[level] + "]"}, args...)...)
