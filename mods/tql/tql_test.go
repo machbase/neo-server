@@ -1555,6 +1555,28 @@ func TestScript(t *testing.T) {
 				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
 			},
 		},
+		{
+			Name: "js-system-free-os-memory",
+			Script: `
+				SCRIPT("js", {
+					$.system().free_os_memory();
+					$.yield("ok");
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"ok", "\n"},
+		},
+		{
+			Name: "js-system-gc",
+			Script: `
+				SCRIPT("js", {
+					$.system().gc();
+					$.yield("ok");
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"ok", "\n"},
+		},
 	}
 
 	for _, tc := range tests {
