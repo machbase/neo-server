@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -741,7 +743,8 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	ctx.obj.Set("request", ottoFuncRequest(ctx))
 	// $.geojson()
 	ctx.obj.Set("geojson", ottoFuncGeoJSON(ctx))
-
+	// $.system()
+	ctx.obj.Set("system", ottoFuncSystem(ctx))
 	ctx.vm.Interrupt = make(chan func(), 3) // 1 is for non-blocking
 	ctx.watchdogCleanup = make(chan struct{})
 
@@ -1359,5 +1362,22 @@ func ottoFuncGeoJSON(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 		}
 		var _ = geoObj
 		return obj.Value()
+	}
+}
+
+func ottoFuncSystem(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+	return func(call otto.FunctionCall) otto.Value {
+		sys, _ := ctx.vm.Object(`({})`)
+		// $.sys().free_os_memory()
+		sys.Set("free_os_memory", func(call otto.FunctionCall) otto.Value {
+			debug.FreeOSMemory()
+			return otto.UndefinedValue()
+		})
+		// $.sys().gc()
+		sys.Set("gc", func(call otto.FunctionCall) otto.Value {
+			runtime.GC()
+			return otto.UndefinedValue()
+		})
+		return sys.Value()
 	}
 }
