@@ -555,10 +555,11 @@ func (x *Task) OutputChartType() string {
 	return ""
 }
 
+var asNodeNameRegex = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+).+`)
+
 func asNodeName(expr *expression.Expression) string {
 	if toks := expr.Tokens(); len(toks) > 0 && toks[0].Kind == expression.FUNCTION {
-		r := regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+).+`)
-		subs := r.FindStringSubmatch(expr.String())
+		subs := asNodeNameRegex.FindStringSubmatch(expr.String())
 		if len(subs) >= 2 {
 			return subs[1] + "()"
 		}

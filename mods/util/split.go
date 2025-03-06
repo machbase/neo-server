@@ -186,6 +186,8 @@ func (v *NameValuePair) String() string {
 	}
 }
 
+var parseNameValuePairsRegexp = regexp.MustCompile(`(\w+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
+
 // ParseNameValuePairs parses multiple name=value pairs
 // where values can contain whitespace within double quotation marks.
 //
@@ -198,8 +200,7 @@ func (v *NameValuePair) String() string {
 //	}
 func ParseNameValuePairs(input string) []NameValuePair {
 	pairs := make([]NameValuePair, 0)
-	re := regexp.MustCompile(`(\w+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
-	matches := re.FindAllStringSubmatch(input, -1)
+	matches := parseNameValuePairsRegexp.FindAllStringSubmatch(input, -1)
 
 	for _, match := range matches {
 		key := match[1]

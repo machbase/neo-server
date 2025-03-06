@@ -1062,6 +1062,13 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+var (
+	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
+	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
+	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
+	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
+)
+
 // POST "/md"
 // POST "/md?darkMode=true"
 func (svr *httpd) handleMarkdown(ctx *gin.Context) {
@@ -1090,10 +1097,10 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	}
 	// {{ file_root }} => /web/api/tql
 	fileRoot := path.Join(strings.TrimSuffix(ctx.Request.URL.Path, "/md"), "tql")
-	src = regexp.MustCompile(`{{\s*file_root\s*}}`).ReplaceAll(src, []byte(fileRoot))
-	src = regexp.MustCompile(`{{\s*file_path\s*}}`).ReplaceAll(src, []byte(filePath))
-	src = regexp.MustCompile(`{{\s*file_name\s*}}`).ReplaceAll(src, []byte(fileName))
-	src = regexp.MustCompile(`{{\s*file_dir\s*}}`).ReplaceAll(src, []byte(fileDir))
+	src = mdFileRootRegexp.ReplaceAll(src, []byte(fileRoot))
+	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
+	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
+	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
 
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))

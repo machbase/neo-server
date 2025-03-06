@@ -54,10 +54,11 @@ func SqlTidy(sqlTextLines ...string) string {
 	return strings.Join(lines, " ")
 }
 
+var sqlTidyWidthRegexp = regexp.MustCompile(`\s+`)
+
 func SqlTidyWidth(width int, sqlTextLines ...string) string {
 	sqlText := SqlTidy(sqlTextLines...)
-	re := regexp.MustCompile(`\s+`)
-	sqlText = re.ReplaceAllString(sqlText, " ")
+	sqlText = sqlTidyWidthRegexp.ReplaceAllString(sqlText, " ")
 
 	words := strings.Split(sqlText, " ")
 	lines := []string{}

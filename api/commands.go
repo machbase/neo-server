@@ -95,6 +95,7 @@ func (ch *CommandHandler) Verbs() []string {
 
 var ErrCommandNotFound = errors.New("command not found")
 var spaces = []rune{' ', '\t', '\n', '\r'}
+var parseCommandLineRegex = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)`)
 
 func ParseCommandLine(commandLine string) []string {
 	// Special treatment for the first token 'sql'
@@ -109,8 +110,7 @@ func ParseCommandLine(commandLine string) []string {
 		}
 	}
 	// Regular expression to match words or quoted phrases
-	re := regexp.MustCompile(`"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)`)
-	matches := re.FindAllStringSubmatch(commandLine, -1)
+	matches := parseCommandLineRegex.FindAllStringSubmatch(commandLine, -1)
 
 	var result []string
 	for _, match := range matches {
@@ -680,6 +680,8 @@ func (ch *CommandHandler) runShowStatements(cmd *cobra.Command, _ []string) erro
 	return err
 }
 
+var explainFullRegex = regexp.MustCompile(`(?i)^full\s+`)
+
 func (ch *CommandHandler) runExplain() func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if ch.Explain == nil {
@@ -694,9 +696,8 @@ func (ch *CommandHandler) runExplain() func(cmd *cobra.Command, args []string) e
 		}
 		defer conn.Close()
 
-		var fullRegex = regexp.MustCompile(`(?i)^full\s+`)
 		var full = false
-		if fullRegex.MatchString(args[0]) {
+		if explainFullRegex.MatchString(args[0]) {
 			// it allows to use 'explain full select...' as well
 			args[0] = args[0][len("full"):]
 			full = true
