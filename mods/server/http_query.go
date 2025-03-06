@@ -792,7 +792,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		return
 	}
 
-	task := tql.NewTaskContext(ctx.Request.Context())
+	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetInputReader(input)
 	task.SetLogLevel(consoleInfo.logLevel)

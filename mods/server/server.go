@@ -40,6 +40,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	_ "github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"golang.org/x/crypto/ssh"

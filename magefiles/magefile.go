@@ -89,6 +89,9 @@ func Build(target string, strip bool) error {
 	if runtime.GOOS == "windows" {
 		args = append(args, "-tags=timetzdata")
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s.exe", target))
+	} else if runtime.GOOS == "linux" && !strip {
+		args = append(args, "-tags=debug")
+		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
 	} else {
 		args = append(args, "-o", fmt.Sprintf("./tmp/%s", target))
 	}

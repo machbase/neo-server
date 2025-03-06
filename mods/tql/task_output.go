@@ -243,7 +243,11 @@ func (out *output) Name() string {
 }
 
 func (out *output) Receive(rec *Record) {
-	out.src <- rec
+	select {
+	case out.src <- rec:
+	case <-out.task.ctx.Done():
+		out.task.Cancel()
+	}
 }
 
 func (out *output) stop() {
