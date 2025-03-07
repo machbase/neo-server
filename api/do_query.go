@@ -75,10 +75,16 @@ func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any
 	go func() {
 		defer close(ch)
 		if err := qc.Execute(ctx, conn, sqlText, args...); err != nil {
-			ch <- QueryResult{Err: err}
+			select {
+			case ch <- QueryResult{Err: err}:
+			case <-ctx.Done():
+			}
 			return
 		}
-		ch <- QueryResult{}
+		select {
+		case ch <- QueryResult{}:
+		case <-ctx.Done():
+		}
 	}()
 	// If the HTTP context is closed before the go-routine starts,
 	// the connection might already be closed by the time qc.Execute() is executed.
