@@ -43,6 +43,7 @@ define VARS {
     HTTP_READBUF_SIZE     = flag("--http-readbuf-size", 0)  // 0 means default, bytes
     HTTP_WRITEBUF_SIZE    = flag("--http-writebuf-size", 0) // 0 means default, bytes
     HTTP_LINGER           = flag("--http-linger", -1)       // -1 means disable so_linger, >= 0 means set so_linger
+    HTTP_KEEPALIVE        = flag("--http-keepalive", 0)     // 0 means disable, > 0 means enable and set_keepalive_period in seconds
     HTTP_ALLOW_STATZ      = flag("--http-allow-statz", "")  // allow statz for the given IP address
 
     MAX_OPEN_CONN         = flag("--max-open-conn", -1)
@@ -121,6 +122,7 @@ module "machbase.com/neo-server" {
             WriteBufSize     = VARS_HTTP_WRITEBUF_SIZE
             ReadBufSize      = VARS_HTTP_READBUF_SIZE
             Linger           = VARS_HTTP_LINGER
+            KeepAlive        = VARS_HTTP_KEEPALIVE
             AllowStatz       = ["${VARS_HTTP_ALLOW_STATZ}"]
         }
         Mqtt = {

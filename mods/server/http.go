@@ -105,6 +105,7 @@ type httpd struct {
 	readBufSize            int
 	writeBufSize           int
 	linger                 int
+	keepAlive              int
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -148,6 +149,10 @@ func (svr *httpd) Start() error {
 		connContext = func(ctx context.Context, c net.Conn) context.Context {
 			if tcpCon, ok := c.(*net.TCPConn); ok && tcpCon != nil {
 				tcpCon.SetNoDelay(true)
+				if svr.keepAlive > 0 {
+					tcpCon.SetKeepAlive(true)
+					tcpCon.SetKeepAlivePeriod(time.Duration(svr.keepAlive) * time.Second)
+				}
 				if svr.linger >= 0 {
 					tcpCon.SetLinger(svr.linger)
 				}
