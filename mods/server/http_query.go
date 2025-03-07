@@ -179,16 +179,11 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		},
 	}
 
-	select {
-	case <-ctx.Request.Context().Done():
-		query.Cancel()
-	case r := <-query.Run(ctx, conn, req.SqlText):
-		if r.Err != nil {
-			svr.log.Error("query fail", r.Err.Error())
-			rsp.Reason = r.Err.Error()
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-		}
+	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
+		svr.log.Error("query fail", err.Error())
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
 

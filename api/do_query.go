@@ -30,8 +30,6 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
-	startWait   chan struct{}
-	cancelWait  chan struct{}
 }
 
 func (qc *Query) IsFetch() bool {
@@ -65,63 +63,15 @@ func (qc *Query) Columns() Columns {
 	return qc.columns
 }
 
-type QueryResult struct {
-	Err error
-}
-
-func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any) <-chan QueryResult {
-	qc.startWait = make(chan struct{})
-	ch := make(chan QueryResult)
-	go func() {
-		defer close(ch)
-		if err := qc.Execute(ctx, conn, sqlText, args...); err != nil {
-			select {
-			case ch <- QueryResult{Err: err}:
-			case <-ctx.Done():
-			}
-			return
-		}
-		select {
-		case ch <- QueryResult{}:
-		case <-ctx.Done():
-		}
-	}()
-	// If the HTTP context is closed before the go-routine starts,
-	// the connection might already be closed by the time qc.Execute() is executed.
-	// So, we need to wait for the go-routine to start before returning the channel.
-	<-qc.startWait
-	return ch
-}
-
-func (qc *Query) Cancel() {
-	if qc.rows == nil {
-		return
-	}
-	qc.cancelWait = make(chan struct{})
-	select {
-	case <-qc.cancelWait:
-	case <-time.After(60 * time.Second):
-	}
-}
-
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
 	meter := NewQueryMeter()
 	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
-		if qc.startWait != nil {
-			close(qc.startWait)
-		}
 		return err
 	} else {
 		qc.rows = r
-		if qc.startWait != nil {
-			close(qc.startWait)
-		}
 	}
 	defer func() {
 		qc.rows.Close()
-		if qc.cancelWait != nil {
-			close(qc.cancelWait)
-		}
 	}()
 
 	qc.isFetch = qc.rows.IsFetchable()
@@ -150,9 +100,6 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	}
 	if qc.End != nil {
 		defer func() {
-			if qc.cancelWait != nil {
-				return
-			}
 			if qc.err == nil {
 				if qc.rowNum == 0 {
 					qc.userMessage = "no rows fetched."
@@ -185,7 +132,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		timeCancel()
 		meter.MarkLimitWait()
 	}
-	for qc.cancelWait == nil && qc.rows.Next() {
+	for qc.rows.Next() {
 		qc.rowNum++
 		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
 			break
