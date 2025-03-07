@@ -32,30 +32,22 @@ import "C"
 
 import (
 	"sync"
-	"time"
-
-	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 func init() {
-	var refreshLock sync.Mutex
+	Enabled = true
+}
 
-	metricActive := metric.NewExpVarIntGauge("go:jemalloc_active", api.MetricTimeFrames...)
-	metricResident := metric.NewExpVarIntGauge("go:jemalloc_resident", api.MetricTimeFrames...)
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			refreshLock.Lock()
-			C._refresh_jemalloc_stats()
-			if st := C._get_jemalloc_active(); st > 0 {
-				metricActive.Add(int64(st))
-			}
-			if st := C._get_jemalloc_resident(); st > 0 {
-				metricResident.Add(int64(st))
-			}
-			refreshLock.Unlock()
-		}
-	}()
+var refreshLock sync.Mutex
+
+func HeapStat(stat *Stat) {
+	refreshLock.Lock()
+	C._refresh_jemalloc_stats()
+	if st := C._get_jemalloc_active(); st > 0 {
+		stat.Active = int64(st)
+	}
+	if st := C._get_jemalloc_resident(); st > 0 {
+		stat.Resident = int64(st)
+	}
+	refreshLock.Unlock()
 }

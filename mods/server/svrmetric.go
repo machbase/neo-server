@@ -11,6 +11,7 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/mochi-mqtt/server/v2/system"
 )
@@ -116,6 +117,7 @@ func doSysMemStatz(s *Server) {
 		return
 	}
 	defer rows.Close()
+	var usageTotal int64
 	for rows.Next() {
 		var name string
 		var usage int64
@@ -136,5 +138,52 @@ func doSysMemStatz(s *Server) {
 			value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
 		}
 		value.Add(usage)
+		usageTotal += usage
+	}
+
+	var key = "machbase:sysmem:total"
+	var value *metric.ExpVarMetric[int64]
+	if met := expvar.Get(key); met != nil {
+		if g, ok := met.(*metric.ExpVarMetric[int64]); ok {
+			value = g
+		} else {
+			statzLog.Error("failed to get metric: %s %T", key, g)
+			return
+		}
+	} else {
+		value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
+	}
+	value.Add(usageTotal)
+
+	if jemalloc.Enabled {
+		stat := &jemalloc.Stat{}
+		jemalloc.HeapStat(stat)
+
+		var key = "go:jemalloc_active"
+		var value *metric.ExpVarMetric[int64]
+		if met := expvar.Get(key); met != nil {
+			if g, ok := met.(*metric.ExpVarMetric[int64]); ok {
+				value = g
+			} else {
+				statzLog.Error("failed to get metric: %s %T", key, g)
+				return
+			}
+		} else {
+			value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
+		}
+		value.Add(stat.Active)
+
+		key = "go:jemalloc_resident"
+		if met := expvar.Get(key); met != nil {
+			if g, ok := met.(*metric.ExpVarMetric[int64]); ok {
+				value = g
+			} else {
+				statzLog.Error("failed to get metric: %s %T", key, g)
+				return
+			}
+		} else {
+			value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
+		}
+		value.Add(stat.Resident)
 	}
 }
