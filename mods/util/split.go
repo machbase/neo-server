@@ -198,7 +198,7 @@ func (v *NameValuePair) String() string {
 //	}
 func ParseNameValuePairs(input string) []NameValuePair {
 	pairs := make([]NameValuePair, 0)
-	re := regexp.MustCompile(`(\w+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
+	re := regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
 	matches := re.FindAllStringSubmatch(input, -1)
 
 	for _, match := range matches {

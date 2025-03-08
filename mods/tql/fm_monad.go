@@ -2331,8 +2331,8 @@ func (sr *SubRoutine) Do(node *Node) error {
 	subTask.SetParams(node.task.params)
 	subTask.SetConsoleLogLevel(node.task.consoleLogLevel)
 	subTask.SetConsole(node.task.consoleUser, node.task.consoleId, node.task.consoleOtp)
-	subTask.SetLogWriter(sr)
-	//	subTask.SetInputReader(r io.Reader)
+	subTask.SetLogWriter(node.task.logWriter)
+	subTask.SetLogLevel(node.task.logLevel)
 	subTask.SetOutputWriterJson(io.Discard, true)
 	subTask.SetDatabase(node.task.db)
 	subTask.argValues = sr.inValue

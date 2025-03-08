@@ -1987,3 +1987,28 @@ func TestThrottle(t *testing.T) {
 		})
 	}
 }
+
+func TestPragma(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "pragma-log-level",
+			Script: `
+				#pragma log-level=warn
+				FAKE( linspace(1, 5, 5))
+				SCRIPT("js", { console.log("-", $.values[0]); $.yield($.values[0]) })
+				JSON()
+				`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, "success", gjson.Get(result, "reason").String())
+				require.Equal(t, `5`, gjson.Get(result, "data.rows.#").String())
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}

@@ -233,7 +233,7 @@ func ExampleSplitSqlStatements() {
 }
 
 func ExampleParseNameValuePairs() {
-	input := `name1=value1 name2="value \"with\" spaces" name3=value3 name4 `
+	input := `name1=value1 name2="value \"with\" spaces" name3=value3 name4 log-level=info`
 	result := util.ParseNameValuePairs(input)
 	for _, pair := range result {
 		fmt.Printf("%s=%s\n", pair.Name, pair.Value)
@@ -244,4 +244,5 @@ func ExampleParseNameValuePairs() {
 	// name2=value "with" spaces
 	// name3=value3
 	// name4=
+	// log-level=info
 }

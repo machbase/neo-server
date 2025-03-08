@@ -22,8 +22,7 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 	task := NewTaskContext(timeCtx)
 	task.SetOutputWriter(output)
 	task.SetLogWriter(logBuf)
-	task.SetLogLevel(INFO)
-	task.SetConsoleLogLevel(FATAL)
+	task.SetConsoleLogLevel(ERROR)
 
 	buf := []string{}
 	src := strings.Split(code, "\n")
@@ -132,7 +131,7 @@ func TestReadLine(t *testing.T) {
 		},
 		{
 			`FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))
-			|//+ stateful
+			|#pragma stateful
 			|WHEN( cond, doHttp())
 			|MAPVALUE()
 			`,

@@ -54,12 +54,12 @@ func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 		if strings.TrimSpace(lineText) == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(lineText), "//+") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[3:], line: lineNo, isComment: true, isPragma: true})
-			continue
-		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
 			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[2:], line: lineNo, isComment: true})
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(lineText), "#pragma") {
+			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[7:], line: lineNo, isComment: true, isPragma: true})
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {

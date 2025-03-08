@@ -94,8 +94,7 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	task := tql.NewTaskContext(ctx)
 	task.SetOutputWriter(w)
 	task.SetLogWriter(logBuf)
-	task.SetLogLevel(tql.INFO)
-	task.SetConsoleLogLevel(tql.FATAL)
+	task.SetConsoleLogLevel(tql.ERROR)
 	task.SetDatabase(testServer.DatabaseSVR())
 	if len(payload) > 0 {
 		task.SetInputReader(bytes.NewBuffer(payload))
@@ -671,6 +670,7 @@ func TestDiscardSink(t *testing.T) {
 	var resultLog ExpectLog
 
 	codeLines = []string{
+		`#pragma log-level=INFO`,
 		`CSV("1,line-1\n2,line-2\n3,line-3")`,
 		`MAPVALUE(0, parseFloat(value(0)))`,
 		`WHEN(`,
@@ -692,6 +692,7 @@ func TestDiscardSink(t *testing.T) {
 	runTest(t, codeLines, resultLines, resultLog)
 
 	codeLines = []string{
+		`#pragma log-level=INFO`,
 		`FAKE( json({         `,
 		`	[ 1, "hello" ],   `,
 		`	[ 2, "你好"],      `,
@@ -1424,6 +1425,7 @@ func TestWhen(t *testing.T) {
 	var codeLines, resultLines []string
 
 	codeLines = []string{
+		`#pragma log-level=INFO`,
 		`FAKE( linspace(0, 2, 2) )`,
 		`PUSHVALUE(0, "msg123")`,
 		`WHEN( glob("msg*", value(0)), doLog("hello", value(0), value(1)) )`,
@@ -1508,6 +1510,7 @@ func TestWhen(t *testing.T) {
 	require.Equal(t, "msg123,2", notifiedValues[1])
 
 	codeLines = []string{
+		`#pragma log-level=INFO`,
 		`FAKE( linspace(0, 1, 2) )`,
 		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
 		`  ARGS() // some comment`,
@@ -1521,6 +1524,7 @@ func TestWhen(t *testing.T) {
 	runTest(t, codeLines, resultLines, httpClient)
 
 	codeLines = []string{
+		`#pragma log-level=INFO`,
 		`FAKE( linspace(0, 1, 2) )`,
 		`WHEN( mod(value(0),2) == 1, do("test", value(0), {`,
 		`  FAKE( args() )`,
