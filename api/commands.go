@@ -20,6 +20,11 @@ type CommandHandler struct {
 	OutWriter     io.Writer
 	ErrWriter     io.Writer
 
+	// SetLockOSThread sets whether to lock the current goroutine to the current OS thread.
+	// It is only for experimental purpose.
+	// Do not use if you don't know exactly what you are doing.
+	LockOSThread bool
+
 	PreExecute  func(args []string)
 	PostExecute func(args []string, message string, err error)
 
@@ -748,6 +753,7 @@ func (ch *CommandHandler) runSql(opt SqlCommandOptions) func(*cobra.Command, []s
 				return ch.SqlQuery(q, nrow)
 			},
 		}
+		query.SetLockOSThread(ch.LockOSThread)
 		sqlText := args[len(args)-1]
 		if err := query.Execute(ctx, conn, sqlText, ch.params...); err != nil {
 			return err

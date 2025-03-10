@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,8 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
+	// experimental only
+	lockOSThread bool
 }
 
 func (qc *Query) IsFetch() bool {
@@ -48,6 +51,13 @@ func (qc *Query) UserMessage() string {
 	return qc.userMessage
 }
 
+// SetLockOSThread sets whether to lock the current goroutine to the current OS thread.
+// It is only for experimental purpose.
+// Do not use if you don't know exactly what you are doing.
+func (qc *Query) SetLockOSThread(lock bool) {
+	qc.lockOSThread = lock
+}
+
 func (qc *Query) Scan(values ...any) error {
 	err := qc.rows.Scan(values...)
 	if err != nil {
@@ -64,6 +74,14 @@ func (qc *Query) Columns() Columns {
 }
 
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
+	// It is possible to terminate the native thread to release system stack
+	// for reducing RSS memory usage
+	// by calling 'runtime.LockOSThread()' then NOT to call 'runtime.UnlockOSThread()' at the end.
+	// According by testing that using 80 http clients, it increase ~35% of latency (response time).
+	if qc.lockOSThread {
+		runtime.LockOSThread()
+	}
+
 	meter := NewQueryMeter()
 	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
 		return err

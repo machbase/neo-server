@@ -56,7 +56,7 @@ type output struct {
 	cacheWriter *bytes.Buffer
 	cachedData  []byte
 
-	pragma  []*Line
+	pragma  map[string]string
 	tqlLine *Line
 }
 

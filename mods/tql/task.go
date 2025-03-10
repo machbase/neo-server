@@ -25,6 +25,11 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
+const (
+	PRAGMA_LOG_LEVEL       = "log-level"
+	PRAGMA_SQL_THREAD_LOCK = "sql-thread-lock"
+)
+
 type Task struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
@@ -261,18 +266,22 @@ func (x *Task) compile(codeReader io.Reader) error {
 	}
 
 	nodeIdx := 0
-	var pragmas []*Line
+	var pragmas map[string]string
 	for _, curLine := range lines {
 		if curLine.isPragma {
 			kvs := util.ParseNameValuePairs(curLine.text)
 			for _, kv := range kvs {
 				switch kv.Name {
-				case "log-level":
+				case PRAGMA_LOG_LEVEL:
 					x.SetLogLevel(ParseLogLevel(kv.Value))
 					continue
+				default:
+					if pragmas == nil {
+						pragmas = map[string]string{}
+					}
+					pragmas[kv.Name] = kv.Value
 				}
 			}
-			pragmas = append(pragmas, curLine)
 			continue
 		}
 		if curLine.isComment {

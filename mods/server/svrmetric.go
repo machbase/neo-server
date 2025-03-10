@@ -35,6 +35,7 @@ var (
 	metricMqttClientsDisconnected = metric.NewExpVarIntCounter("machbase:mqtt:clients_disconnected", api.MetricTimeFrames...)
 	metricMqttInflight            = metric.NewExpVarIntCounter("machbase:mqtt:inflight", api.MetricTimeFrames...)
 	metricMqttInflightDropped     = metric.NewExpVarIntCounter("machbase:mqtt:inflight_dropped", api.MetricTimeFrames...)
+	metricSysMem                  = metric.NewExpVarIntGauge("machbase:sysmem_sum", api.MetricTimeFrames...)
 
 	metricMachConn   = metric.NewExpVarIntGauge("machbase:machsvr:conn", api.MetricTimeFrames...)
 	metricMachStmt   = metric.NewExpVarIntGauge("machbase:machsvr:stmt", api.MetricTimeFrames...)
@@ -111,49 +112,17 @@ func doSysMemStatz(s *Server) {
 		return
 	}
 	defer conn.Close()
-	rows, err := conn.Query(ctx, "select name, usage from v$sysmem")
-	if err != nil {
+	row := conn.QueryRow(ctx, "select sum(usage) from v$sysmem")
+	if err = row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
 		return
 	}
-	defer rows.Close()
 	var usageTotal int64
-	for rows.Next() {
-		var name string
-		var usage int64
-		if err := rows.Scan(&name, &usage); err != nil {
-			statzLog.Error("failed to scan machbase: %v", err)
-			return
-		}
-		var key = "machbase:sysmem:" + name
-		var value *metric.ExpVarMetric[int64]
-		if met := expvar.Get(key); met != nil {
-			if g, ok := met.(*metric.ExpVarMetric[int64]); ok {
-				value = g
-			} else {
-				statzLog.Error("failed to get metric: %s %T", key, g)
-				return
-			}
-		} else {
-			value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
-		}
-		value.Add(usage)
-		usageTotal += usage
+	if err = row.Scan(&usageTotal); err != nil {
+		statzLog.Error("failed to scan machbase: %v", err)
+		return
 	}
-
-	var key = "machbase:sysmem:total"
-	var value *metric.ExpVarMetric[int64]
-	if met := expvar.Get(key); met != nil {
-		if g, ok := met.(*metric.ExpVarMetric[int64]); ok {
-			value = g
-		} else {
-			statzLog.Error("failed to get metric: %s %T", key, g)
-			return
-		}
-	} else {
-		value = metric.NewExpVarIntGauge(key, api.MetricTimeFrames...)
-	}
-	value.Add(usageTotal)
+	metricSysMem.Add(usageTotal)
 
 	if jemalloc.Enabled {
 		stat := &jemalloc.Stat{}
