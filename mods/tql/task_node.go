@@ -36,7 +36,7 @@ type Node struct {
 
 	eofCallback func(*Node)
 
-	pragma  []*Line
+	pragma  map[string]string
 	tqlLine *Line
 }
 
@@ -90,6 +90,26 @@ func (node *Node) Receive(rec *Record) {
 
 func (node *Node) SetEOF(f func(*Node)) {
 	node.eofCallback = f
+}
+
+func (node *Node) Pragma(name string) string {
+	if node.pragma != nil {
+		if v, ok := node.pragma[name]; ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func (node *Node) PragmaBool(name string) bool {
+	if node.pragma != nil {
+		if v, ok := node.pragma[name]; ok {
+			if v == "" || v == "1" || strings.ToLower(v) == "true" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Get implements expression.Parameters

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,8 +31,8 @@ type Query struct {
 	userMessage string
 	rowNum      int64
 	rows        Rows
-	startWait   chan struct{}
-	cancelWait  chan struct{}
+	// experimental only
+	lockOSThread bool
 }
 
 func (qc *Query) IsFetch() bool {
@@ -50,6 +51,13 @@ func (qc *Query) UserMessage() string {
 	return qc.userMessage
 }
 
+// SetLockOSThread sets whether to lock the current goroutine to the current OS thread.
+// It is only for experimental purpose.
+// Do not use if you don't know exactly what you are doing.
+func (qc *Query) SetLockOSThread(lock bool) {
+	qc.lockOSThread = lock
+}
+
 func (qc *Query) Scan(values ...any) error {
 	err := qc.rows.Scan(values...)
 	if err != nil {
@@ -65,57 +73,23 @@ func (qc *Query) Columns() Columns {
 	return qc.columns
 }
 
-type QueryResult struct {
-	Err error
-}
-
-func (qc *Query) Run(ctx context.Context, conn Conn, sqlText string, args ...any) <-chan QueryResult {
-	qc.startWait = make(chan struct{})
-	ch := make(chan QueryResult)
-	go func() {
-		defer close(ch)
-		if err := qc.Execute(ctx, conn, sqlText, args...); err != nil {
-			ch <- QueryResult{Err: err}
-			return
-		}
-		ch <- QueryResult{}
-	}()
-	// If the HTTP context is closed before the go-routine starts,
-	// the connection might already be closed by the time qc.Execute() is executed.
-	// So, we need to wait for the go-routine to start before returning the channel.
-	<-qc.startWait
-	return ch
-}
-
-func (qc *Query) Cancel() {
-	if qc.rows == nil {
-		return
-	}
-	qc.cancelWait = make(chan struct{})
-	select {
-	case <-qc.cancelWait:
-	case <-time.After(60 * time.Second):
-	}
-}
-
 func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ...any) error {
+	// It is possible to terminate the native thread to release system stack
+	// for reducing RSS memory usage
+	// by calling 'runtime.LockOSThread()' then NOT to call 'runtime.UnlockOSThread()' at the end.
+	// According by testing that using 80 http clients, it increase ~35% of latency (response time).
+	if qc.lockOSThread {
+		runtime.LockOSThread()
+	}
+
 	meter := NewQueryMeter()
 	if r, err := conn.Query(ctx, sqlText, args...); err != nil {
-		if qc.startWait != nil {
-			close(qc.startWait)
-		}
 		return err
 	} else {
 		qc.rows = r
-		if qc.startWait != nil {
-			close(qc.startWait)
-		}
 	}
 	defer func() {
 		qc.rows.Close()
-		if qc.cancelWait != nil {
-			close(qc.cancelWait)
-		}
 	}()
 
 	qc.isFetch = qc.rows.IsFetchable()
@@ -144,9 +118,6 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	}
 	if qc.End != nil {
 		defer func() {
-			if qc.cancelWait != nil {
-				return
-			}
 			if qc.err == nil {
 				if qc.rowNum == 0 {
 					qc.userMessage = "no rows fetched."
@@ -179,7 +150,7 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 		timeCancel()
 		meter.MarkLimitWait()
 	}
-	for qc.cancelWait == nil && qc.rows.Next() {
+	for qc.rows.Next() {
 		qc.rowNum++
 		if qc.Next != nil && !qc.Next(qc, qc.rowNum) {
 			break

@@ -105,6 +105,7 @@ type httpd struct {
 	readBufSize            int
 	writeBufSize           int
 	linger                 int
+	keepAlive              int
 	webShellProvider       model.ShellProvider
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
@@ -148,6 +149,10 @@ func (svr *httpd) Start() error {
 		connContext = func(ctx context.Context, c net.Conn) context.Context {
 			if tcpCon, ok := c.(*net.TCPConn); ok && tcpCon != nil {
 				tcpCon.SetNoDelay(true)
+				if svr.keepAlive > 0 {
+					tcpCon.SetKeepAlive(true)
+					tcpCon.SetKeepAlivePeriod(time.Duration(svr.keepAlive) * time.Second)
+				}
 				if svr.linger >= 0 {
 					tcpCon.SetLinger(svr.linger)
 				}
@@ -1062,6 +1067,13 @@ func (svr *httpd) handleInstallLicense(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+var (
+	mdFileRootRegexp = regexp.MustCompile(`{{\s*file_root\s*}}`)
+	mdFilePathRegexp = regexp.MustCompile(`{{\s*file_path\s*}}`)
+	mdFileNameRegexp = regexp.MustCompile(`{{\s*file_name\s*}}`)
+	mdFileDirRegexp  = regexp.MustCompile(`{{\s*file_dir\s*}}`)
+)
+
 // POST "/md"
 // POST "/md?darkMode=true"
 func (svr *httpd) handleMarkdown(ctx *gin.Context) {
@@ -1090,10 +1102,10 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	}
 	// {{ file_root }} => /web/api/tql
 	fileRoot := path.Join(strings.TrimSuffix(ctx.Request.URL.Path, "/md"), "tql")
-	src = regexp.MustCompile(`{{\s*file_root\s*}}`).ReplaceAll(src, []byte(fileRoot))
-	src = regexp.MustCompile(`{{\s*file_path\s*}}`).ReplaceAll(src, []byte(filePath))
-	src = regexp.MustCompile(`{{\s*file_name\s*}}`).ReplaceAll(src, []byte(fileName))
-	src = regexp.MustCompile(`{{\s*file_dir\s*}}`).ReplaceAll(src, []byte(fileDir))
+	src = mdFileRootRegexp.ReplaceAll(src, []byte(fileRoot))
+	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
+	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
+	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
 
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))

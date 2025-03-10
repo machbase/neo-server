@@ -25,6 +25,11 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
+const (
+	PRAGMA_LOG_LEVEL       = "log-level"
+	PRAGMA_SQL_THREAD_LOCK = "sql-thread-lock"
+)
+
 type Task struct {
 	ctx          context.Context
 	ctxCancel    context.CancelFunc
@@ -39,6 +44,9 @@ type Task struct {
 	consoleTopic string
 	consoleOtp   string
 
+	// log level for io.Writer
+	// default is ERROR
+	// use `#pragma log-level: INFO` in the tql script to change the log level
 	logLevel        Level
 	consoleLogLevel Level
 
@@ -76,7 +84,10 @@ func NewTask() *Task {
 }
 
 func NewTaskContext(ctx context.Context) *Task {
-	ret := &Task{_created: time.Now()}
+	ret := &Task{
+		logLevel: ERROR,
+		_created: time.Now(),
+	}
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
 	return ret
 }
@@ -154,7 +165,7 @@ func (x *Task) SetConsoleLogLevel(level Level) {
 }
 
 func (x *Task) SetLogLevel(level Level) {
-	x.consoleLogLevel = level
+	x.logLevel = level
 }
 
 func (x *Task) SetParams(p map[string][]string) {
@@ -255,10 +266,22 @@ func (x *Task) compile(codeReader io.Reader) error {
 	}
 
 	nodeIdx := 0
-	var pragmas []*Line
+	var pragmas map[string]string
 	for _, curLine := range lines {
 		if curLine.isPragma {
-			pragmas = append(pragmas, curLine)
+			kvs := util.ParseNameValuePairs(curLine.text)
+			for _, kv := range kvs {
+				switch kv.Name {
+				case PRAGMA_LOG_LEVEL:
+					x.SetLogLevel(ParseLogLevel(kv.Value))
+					continue
+				default:
+					if pragmas == nil {
+						pragmas = map[string]string{}
+					}
+					pragmas[kv.Name] = kv.Value
+				}
+			}
 			continue
 		}
 		if curLine.isComment {
@@ -555,10 +578,11 @@ func (x *Task) OutputChartType() string {
 	return ""
 }
 
+var asNodeNameRegex = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+).+`)
+
 func asNodeName(expr *expression.Expression) string {
 	if toks := expr.Tokens(); len(toks) > 0 && toks[0].Kind == expression.FUNCTION {
-		r := regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9_]+).+`)
-		subs := r.FindStringSubmatch(expr.String())
+		subs := asNodeNameRegex.FindStringSubmatch(expr.String())
 		if len(subs) >= 2 {
 			return subs[1] + "()"
 		}
@@ -606,21 +630,12 @@ func (x *Task) LogDebug(args ...any) { x._log(DEBUG, args...) }
 func (x *Task) LogWarn(args ...any)  { x._log(WARN, args...) }
 func (x *Task) LogError(args ...any) { x._log(ERROR, args...) }
 
-func (x *Task) LogFatalf(format string, args ...any) {
-	stack := string(debug.Stack())
-	x._logf(FATAL, format+"\n%s", append(args, stack))
-}
-
-func (x *Task) LogFatal(args ...any) {
-	stack := string(debug.Stack())
-	x._log(FATAL, append(args, "\n", stack))
-}
-
 func (x *Task) _log(level Level, args ...any) {
 	if x.logWriter != nil && level >= x.logLevel {
-		if l, ok := x.logWriter.(logging.Log); ok {
-			l.Log(level.LoggingLevel(), strings.TrimRightFunc(fmt.Sprintln(args...), unicode.IsSpace))
-			return
+		if lw, ok := x.logWriter.(logging.Log); ok {
+			if lvl := level.LoggingLevel(); lvl >= lw.Level() {
+				lw.Log(lvl, strings.TrimRightFunc(fmt.Sprintln(args...), unicode.IsSpace))
+			}
 		} else {
 			line := fmt.Sprintln(append([]any{"[" + Levels[level] + "]"}, args...)...)
 			x.logWriter.Write([]byte(line))
@@ -637,8 +652,10 @@ func (x *Task) _log(level Level, args ...any) {
 
 func (x *Task) _logf(level Level, format string, args ...any) {
 	if x.logWriter != nil && level >= x.logLevel {
-		if l, ok := x.logWriter.(logging.Log); ok {
-			l.Logf(level.LoggingLevel(), format, args...)
+		if lw, ok := x.logWriter.(logging.Log); ok {
+			if lvl := level.LoggingLevel(); lvl >= lw.Level() {
+				lw.Logf(lvl, format, args...)
+			}
 		} else {
 			line := fmt.Sprintf("[%s] "+format+"\n", append([]any{Levels[level]}, args...)...)
 			x.logWriter.Write([]byte(line))
@@ -656,7 +673,7 @@ func (x *Task) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-var Levels = []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
+var Levels = []string{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"}
 
 type Level int
 
@@ -666,7 +683,6 @@ const (
 	INFO
 	WARN
 	ERROR
-	FATAL
 )
 
 func (l Level) LoggingLevel() logging.Level {
@@ -681,8 +697,6 @@ func (l Level) LoggingLevel() logging.Level {
 		return logging.LevelWarn
 	case ERROR:
 		return logging.LevelError
-	case FATAL:
-		return logging.LevelError
 	}
 }
 
@@ -693,5 +707,5 @@ func ParseLogLevel(str string) Level {
 			return Level(i)
 		}
 	}
-	return FATAL
+	return ERROR
 }

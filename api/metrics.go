@@ -207,6 +207,10 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 			if pass, order := filter(key); pass {
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnDouble(kv.Key), valueType: "f", order: order})
 			}
+		} else if _, ok := kv.Value.(expvar.Func); ok {
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
+			}
 		} else if v, ok := kv.Value.(metric.ExpVar); ok {
 			switch v.MetricType() {
 			case "c":
@@ -282,6 +286,11 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 		} else if val, ok := kv.(*expvar.Float); ok {
 			for r := 0; r < rowsCount; r++ {
 				ret.Rows[r].Values[colIdxOffset] = val.Value()
+			}
+			colIdxOffset++
+		} else if val, ok := kv.(expvar.Func); ok {
+			for r := 0; r < rowsCount; r++ {
+				ret.Rows[r].Values[colIdxOffset] = val()
 			}
 			colIdxOffset++
 		} else if val, ok := kv.(metric.ExpVar); ok {

@@ -40,6 +40,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/scheduler"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
+	_ "github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/snowflake"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"golang.org/x/crypto/ssh"
@@ -831,6 +832,11 @@ func (s *Server) startHttpServer() error {
 		WithHttpWebShellProvider(s.models.ShellProvider()),
 		WithHttpPackageManager(s.pkgMgr),
 		WithHttpPathMap("data", s.homeDirPath),
+		WithHttpLinger(s.Http.Linger),
+		WithHttpWriteBufSize(s.Http.WriteBufSize),
+		WithHttpReadBufSize(s.Http.ReadBufSize),
+		WithHttpKeepAlive(s.Http.KeepAlive),
+		WithHttpStatzAllow(s.Http.AllowStatz...),
 	}
 	if s.mqttd != nil {
 		if h := s.mqttd.WsHandlerFunc(); h != nil {

@@ -179,16 +179,11 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		},
 	}
 
-	select {
-	case <-ctx.Request.Context().Done():
-		query.Cancel()
-	case r := <-query.Run(ctx, conn, req.SqlText):
-		if r.Err != nil {
-			svr.log.Error("query fail", r.Err.Error())
-			rsp.Reason = r.Err.Error()
-			rsp.Elapse = time.Since(tick).String()
-			ctx.JSON(http.StatusInternalServerError, rsp)
-		}
+	if err := query.Execute(ctx, conn, req.SqlText); err != nil {
+		svr.log.Error("query fail", err.Error())
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
 	}
 }
 
@@ -792,10 +787,10 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		return
 	}
 
-	task := tql.NewTaskContext(ctx.Request.Context())
+	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetInputReader(input)
-	task.SetLogLevel(consoleInfo.logLevel)
+	task.SetLogWriter(logging.GetLog("_nonamed.tql"))
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
 	if claim != nil && consoleInfo.consoleId != "" {
 		if svr.authServer == nil {

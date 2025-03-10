@@ -281,6 +281,9 @@ func (dc *DataGenMachbase) gen(node *Node) {
 			}
 		},
 	}
+	if v, ok := node.pragma[PRAGMA_SQL_THREAD_LOCK]; ok && v != "false" && v != "0" {
+		query.SetLockOSThread(true)
+	}
 	if err := query.Execute(node.task.ctx, conn, dc.sqlText, dc.params...); err != nil {
 		dc.resultMsg = err.Error()
 		ErrorRecord(err).Tell(node.next)
@@ -394,6 +397,8 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		if !ch.IsKnownVerb(args[0]) {
 			args = append([]string{"sql", "--"}, sqlText)
 		}
+		ch.LockOSThread = x.PragmaBool(PRAGMA_SQL_THREAD_LOCK)
+
 		if err := ch.Exec(x.task.ctx, args, sqlParams...); err != nil {
 			return nil, err
 		}

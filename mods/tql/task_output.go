@@ -56,7 +56,7 @@ type output struct {
 	cacheWriter *bytes.Buffer
 	cachedData  []byte
 
-	pragma  []*Line
+	pragma  map[string]string
 	tqlLine *Line
 }
 
@@ -243,7 +243,11 @@ func (out *output) Name() string {
 }
 
 func (out *output) Receive(rec *Record) {
-	out.src <- rec
+	select {
+	case out.src <- rec:
+	case <-out.task.ctx.Done():
+		out.task.Cancel()
+	}
 }
 
 func (out *output) stop() {

@@ -51,19 +51,24 @@ func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 		lineText := string(parts)
 		parts = parts[:0]
 
-		if strings.TrimSpace(lineText) == "" {
+		trimLineText := strings.TrimSpace(lineText)
+		if trimLineText == "" {
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(lineText), "//+") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[3:], line: lineNo, isComment: true, isPragma: true})
+		if strings.HasPrefix(trimLineText, "#pragma") {
+			expressions = append(expressions, &Line{text: trimLineText[7:], line: lineNo, isComment: true, isPragma: true})
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(lineText), "//") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[2:], line: lineNo, isComment: true})
+		if strings.HasPrefix(trimLineText, "//+") {
+			expressions = append(expressions, &Line{text: trimLineText[3:], line: lineNo, isComment: true, isPragma: true})
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(lineText), "#") {
-			expressions = append(expressions, &Line{text: strings.TrimSpace(lineText)[1:], line: lineNo, isComment: true})
+		if strings.HasPrefix(trimLineText, "//") {
+			expressions = append(expressions, &Line{text: trimLineText[2:], line: lineNo, isComment: true})
+			continue
+		}
+		if strings.HasPrefix(trimLineText, "#") {
+			expressions = append(expressions, &Line{text: trimLineText[1:], line: lineNo, isComment: true})
 			continue
 		}
 

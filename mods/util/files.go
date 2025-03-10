@@ -13,6 +13,8 @@ func MkDirIfNotExists(path string) error {
 	return MkDirIfNotExistsMode(path, 0755)
 }
 
+var windowsDrivePattern = regexp.MustCompile("[A-Za-z]:")
+
 func MkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	sep := string(filepath.Separator)
 	dirs := strings.Split(path, sep)
@@ -21,7 +23,6 @@ func MkDirIfNotExistsMode(path string, mode fs.FileMode) error {
 	} else {
 		path = ""
 	}
-	windowsDrivePattern := regexp.MustCompile("[A-Za-z]:")
 	for n, d := range dirs {
 		if d == "" {
 			continue

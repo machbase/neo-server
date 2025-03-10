@@ -132,6 +132,7 @@ type HttpConfig struct {
 	WriteBufSize    int
 	ReadBufSize     int
 	Linger          int
+	KeepAlive       int
 }
 
 type MqttConfig struct {

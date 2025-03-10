@@ -642,6 +642,7 @@ type OttoContext struct {
 	didSetResult bool
 
 	watchdogCleanup chan struct{}
+	waitCleanup     sync.WaitGroup
 }
 
 func (ctx *OttoContext) Run() (any, error) {
@@ -654,6 +655,7 @@ func (ctx *OttoContext) Run() (any, error) {
 
 func closeOttoContext(ctx *OttoContext) {
 	close(ctx.watchdogCleanup)
+	ctx.waitCleanup.Wait()
 	close(ctx.vm.Interrupt)
 }
 
@@ -748,7 +750,9 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	ctx.vm.Interrupt = make(chan func(), 3) // 1 is for non-blocking
 	ctx.watchdogCleanup = make(chan struct{})
 
+	ctx.waitCleanup.Add(1)
 	go func() {
+		defer ctx.waitCleanup.Done()
 		for {
 			select {
 			case <-time.After(1 * time.Second):
