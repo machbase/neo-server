@@ -293,7 +293,6 @@ func (ent *SubscriberEntry) doTql(payload []byte, header map[string][]string, rs
 	task.SetDatabase(ent.s.db)
 	task.SetInputReader(bytes.NewBuffer(payload))
 	task.SetOutputWriterJson(io.Discard, true)
-	task.SetLogLevel(tql.INFO)
 	task.SetLogWriter(ent.log)
 	params := map[string][]string{}
 	for k, v := range header {

@@ -790,7 +790,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetInputReader(input)
-	task.SetLogLevel(consoleInfo.logLevel)
+	task.SetLogWriter(logging.GetLog("_nonamed.tql"))
 	task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
 	if claim != nil && consoleInfo.consoleId != "" {
 		if svr.authServer == nil {

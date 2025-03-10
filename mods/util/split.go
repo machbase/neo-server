@@ -186,7 +186,7 @@ func (v *NameValuePair) String() string {
 	}
 }
 
-var parseNameValuePairsRegexp = regexp.MustCompile(`(\w+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
+var parseNameValuePairsRegexp = regexp.MustCompile(`([\w-_.]+)(?:=("([^"\\]*(\\.[^"\\]*)*)"|[^ ]+))?`)
 
 // ParseNameValuePairs parses multiple name=value pairs
 // where values can contain whitespace within double quotation marks.
