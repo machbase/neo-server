@@ -92,13 +92,13 @@ func (node *Node) SetEOF(f func(*Node)) {
 	node.eofCallback = f
 }
 
-func (node *Node) Pragma(name string) string {
+func (node *Node) Pragma(name string) (string, bool) {
 	if node.pragma != nil {
 		if v, ok := node.pragma[name]; ok {
-			return v
+			return v, true
 		}
 	}
-	return ""
+	return "", false
 }
 
 func (node *Node) PragmaBool(name string) bool {
