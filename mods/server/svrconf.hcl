@@ -40,6 +40,7 @@ define VARS {
 
     HTTP_DEBUG_MODE       = flag("--http-debug", false)
     HTTP_DEBUG_LATENCY    = flag("--http-debug-latency", "0")
+    HTTP_NO_APPEND_WORKER = flag("--http-no-append-worker", false)
     HTTP_READBUF_SIZE     = flag("--http-readbuf-size", 0)  // 0 means default, bytes
     HTTP_WRITEBUF_SIZE    = flag("--http-writebuf-size", 0) // 0 means default, bytes
     HTTP_LINGER           = flag("--http-linger", -1)       // -1 means disable so_linger, >= 0 means set so_linger
@@ -119,6 +120,7 @@ module "machbase.com/neo-server" {
             EnableTokenAuth  = VARS_HTTP_ENABLE_TOKENAUTH
             DebugMode        = VARS_HTTP_DEBUG_MODE
             DebugLatency     = "${VARS_HTTP_DEBUG_LATENCY}"
+            NoAppendWorker   = VARS_HTTP_NO_APPEND_WORKER
             WriteBufSize     = VARS_HTTP_WRITEBUF_SIZE
             ReadBufSize      = VARS_HTTP_READBUF_SIZE
             Linger           = VARS_HTTP_LINGER

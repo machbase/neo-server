@@ -186,7 +186,6 @@ func (svr *httpd) Start() error {
 		go svr.httpServer.Serve(lsnr)
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
-	svr.useAppendWroker = true
 	if svr.useAppendWroker {
 		svr.appenders = make(map[string]*AppenderWrapper)
 		svr.appendersFlusher = make(chan struct{})

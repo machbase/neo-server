@@ -827,6 +827,7 @@ func (s *Server) startHttpServer() error {
 		WithHttpBridgeServer(s.bridgeSvc),
 		WithHttpServerSideFileSystem(ssfs.Default()),
 		WithHttpBackupService(s.bakd),
+		WithHttpNoAppendWorker(s.Http.NoAppendWorker),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpWebShellProvider(s.models.ShellProvider()),
