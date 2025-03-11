@@ -123,7 +123,8 @@ type HttpConfig struct {
 	Listeners []string
 	WebDir    string
 
-	EnableWebUI     bool
+	NoAppendWorker  bool
+	EnableWebUI     bool // deprecated, left for previous version's configuration file compatibility
 	EnableTokenAuth bool
 	DebugMode       bool
 	AllowStatz      []string

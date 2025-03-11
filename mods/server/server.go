@@ -515,6 +515,7 @@ func (s *Server) Start() error {
 			WithHttpBridgeServer(s.bridgeSvc),
 			WithHttpServerSideFileSystem(serverFs),
 			WithHttpBackupService(s.bakd),
+			WithHttpNoAppendWorker(s.Http.NoAppendWorker),
 			WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 			WithHttpWriteBufSize(s.Http.WriteBufSize),
 			WithHttpReadBufSize(s.Http.ReadBufSize),
@@ -524,6 +525,7 @@ func (s *Server) Start() error {
 			WithHttpEnableWeb(s.Http.EnableWebUI),
 			WithHttpPackageManager(s.pkgMgr),
 			WithHttpPathMap("data", homepath),
+			WithHttpLinger(s.Http.Linger),
 		}
 		if s.mqttd != nil {
 			if h := s.mqttd.WsHandlerFunc(); h != nil {

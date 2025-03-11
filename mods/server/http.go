@@ -90,6 +90,12 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
+	appenders          map[string]*AppenderWrapper
+	appendersLock      sync.Mutex
+	appendersFlusher   chan struct{}
+	appendersFlusherWg sync.WaitGroup
+	useAppendWorker    bool
+
 	neoShellAddress string
 	neoShellAccount map[string]string
 
@@ -176,6 +182,34 @@ func (svr *httpd) Start() error {
 		go svr.httpServer.Serve(lsnr)
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
+	if svr.useAppendWorker {
+		svr.appenders = make(map[string]*AppenderWrapper)
+		svr.appendersFlusher = make(chan struct{})
+		svr.appendersFlusherWg.Add(1)
+		go func() {
+			defer svr.appendersFlusherWg.Done()
+			for {
+				select {
+				case <-time.After(60 * time.Second):
+					svr.appendersLock.Lock()
+					var deleting []string
+					for tableName, value := range svr.appenders {
+						if !value.lastTime.IsZero() && time.Since(value.lastTime) > 60*time.Second {
+							value.appender.Close()
+							value.conn.Close()
+							deleting = append(deleting, tableName)
+						}
+					}
+					for _, tableName := range deleting {
+						delete(svr.appenders, tableName)
+					}
+					svr.appendersLock.Unlock()
+				case <-svr.appendersFlusher:
+					return
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -190,6 +224,16 @@ func (svr *httpd) Stop() {
 
 	if svr.memoryFs != nil {
 		svr.memoryFs.Stop()
+	}
+
+	if svr.useAppendWorker {
+		close(svr.appendersFlusher)
+		svr.appendersFlusherWg.Wait()
+		for _, value := range svr.appenders {
+			value.ctxCancel()
+			value.appender.Close()
+			value.conn.Close()
+		}
 	}
 }
 
