@@ -314,6 +314,7 @@ type AppenderWrapper struct {
 
 	// currently use by only http write?method=append
 	tableDesc *api.TableDescription
+	lastTime  time.Time
 }
 
 func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {

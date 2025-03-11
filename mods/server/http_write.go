@@ -123,7 +123,8 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		if svr.useAppendWroker {
 			svr.appendersLock.Lock()
 			defer svr.appendersLock.Unlock()
-			if aw, exists := svr.appenders.Get(tableName); exists {
+			if aw, exists := svr.appenders[tableName]; exists {
+				aw.lastTime = time.Now()
 				appender = aw.appender
 				desc = aw.tableDesc
 			}
@@ -149,9 +150,10 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 					conn:      appendConn,
 					appender:  appender,
 					tableDesc: desc,
+					lastTime:  time.Now(),
 				}
 				aw.ctx, aw.ctxCancel = context.WithCancel(context.Background())
-				svr.appenders.Set(tableName, aw)
+				svr.appenders[tableName] = aw
 			}
 		} else {
 			if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
