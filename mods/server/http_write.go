@@ -83,16 +83,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	// exists, err := api.ExistsTable(ctx, conn, tableName)
-	// if err != nil {
-	// 	errRsp(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
-	// if !exists {
-	// 	errRsp(http.StatusNotFound, fmt.Sprintf("table '%s' does not exist", tableName))
-	// 	return
-	// }
-
 	var in io.Reader
 	if compress == "gzip" {
 		gr, err := gzip.NewReader(ctx.Request.Body)
@@ -120,7 +110,9 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	var desc *api.TableDescription
 
 	if method == "append" {
-		if svr.useAppendWroker {
+		overrideUseAppenderWorker := ctx.GetHeader(TqlHeaderAppendWorker)
+		// set HTTP Header 'X-Append-Worker: no' to disable appender worker
+		if svr.useAppendWroker && overrideUseAppenderWorker == "" {
 			svr.appendersLock.Lock()
 			defer svr.appendersLock.Unlock()
 			if aw, exists := svr.appenders[tableName]; exists {
