@@ -311,6 +311,9 @@ type AppenderWrapper struct {
 	appender  api.Appender
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+
+	// currently use by only http write?method=append
+	tableDesc *api.TableDescription
 }
 
 func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {

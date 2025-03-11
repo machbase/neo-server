@@ -89,6 +89,10 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
+	appenders       cmap.ConcurrentMap[string, *AppenderWrapper]
+	appendersLock   sync.Mutex
+	useAppendWroker bool
+
 	neoShellAddress string
 	neoShellAccount map[string]string
 
@@ -180,6 +184,10 @@ func (svr *httpd) Start() error {
 		go svr.httpServer.Serve(lsnr)
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
+	svr.useAppendWroker = true
+	if svr.useAppendWroker {
+		svr.appenders = cmap.New[*AppenderWrapper]()
+	}
 	return nil
 }
 
@@ -196,6 +204,11 @@ func (svr *httpd) Stop() {
 	if svr.memoryFs != nil {
 		svr.memoryFs.Stop()
 	}
+	svr.appenders.IterCb(func(key string, value *AppenderWrapper) {
+		value.ctxCancel()
+		value.appender.Close()
+		value.conn.Close()
+	})
 }
 
 func (svr *httpd) AdvertiseAddress() string {

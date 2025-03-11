@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,21 +83,15 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 	defer conn.Close()
 
-	exists, err := api.ExistsTable(ctx, conn, tableName)
-	if err != nil {
-		errRsp(http.StatusInternalServerError, err.Error())
-		return
-	}
-	if !exists {
-		errRsp(http.StatusNotFound, fmt.Sprintf("table '%s' does not exist", tableName))
-		return
-	}
-
-	desc, err := api.DescribeTable(ctx, conn, tableName, false)
-	if err != nil {
-		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
-		return
-	}
+	// exists, err := api.ExistsTable(ctx, conn, tableName)
+	// if err != nil {
+	// 	errRsp(http.StatusInternalServerError, err.Error())
+	// 	return
+	// }
+	// if !exists {
+	// 	errRsp(http.StatusNotFound, fmt.Sprintf("table '%s' does not exist", tableName))
+	// 	return
+	// }
 
 	var in io.Reader
 	if compress == "gzip" {
@@ -122,14 +117,58 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	var appender api.Appender
 	var recNo int
 	var insertQuery string
+	var desc *api.TableDescription
 
 	if method == "append" {
-		appender, err = conn.Appender(ctx, tableName)
-		if err != nil {
-			errRsp(http.StatusInternalServerError, err.Error())
-			return
+		if svr.useAppendWroker {
+			svr.appendersLock.Lock()
+			defer svr.appendersLock.Unlock()
+			if aw, exists := svr.appenders.Get(tableName); exists {
+				appender = aw.appender
+				desc = aw.tableDesc
+			}
+			if appender == nil {
+				if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+					errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+					return
+				} else {
+					desc = tableDesc
+				}
+
+				appendConn, err := svr.getTrustConnection(ctx)
+				if err != nil {
+					errRsp(http.StatusInternalServerError, err.Error())
+					return
+				}
+				appender, err = appendConn.Appender(ctx, tableName)
+				if err != nil {
+					errRsp(http.StatusInternalServerError, err.Error())
+					return
+				}
+				aw := &AppenderWrapper{
+					conn:      appendConn,
+					appender:  appender,
+					tableDesc: desc,
+				}
+				aw.ctx, aw.ctxCancel = context.WithCancel(context.Background())
+				svr.appenders.Set(tableName, aw)
+			}
+		} else {
+			if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+				errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+				return
+			} else {
+				desc = tableDesc
+			}
+
+			appender, err = conn.Appender(ctx, tableName)
+			if err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
+				return
+			}
+			defer appender.Close()
 		}
-		defer appender.Close()
+
 		colNames := desc.Columns.Names()
 		colTypes := desc.Columns.DataTypes()
 		if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
@@ -143,6 +182,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			opts.ColumnTypes(colTypes...),
 		)
 	} else { // insert
+		if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+			errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+			return
+		} else {
+			desc = tableDesc
+		}
+
 		var columnNames []string
 		var columnTypes []api.DataType
 		if format == "json" {
