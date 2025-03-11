@@ -3,7 +3,9 @@ package tql
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -397,7 +399,15 @@ func (x *Node) fmSql(args ...any) (any, error) {
 		if !ch.IsKnownVerb(args[0]) {
 			args = append([]string{"sql", "--"}, sqlText)
 		}
-		ch.LockOSThread = x.PragmaBool(PRAGMA_SQL_THREAD_LOCK)
+		if str, ok := x.Pragma(PRAGMA_SQL_THREAD_LOCK); ok {
+			if str == "" || str == "true" || str == "1" {
+				ch.LockOSThread = true
+			} else if rate, err := strconv.ParseFloat(str, 64); err != nil {
+				if rand.Float64() <= rate {
+					ch.LockOSThread = true
+				}
+			}
+		}
 
 		if err := ch.Exec(x.task.ctx, args, sqlParams...); err != nil {
 			return nil, err

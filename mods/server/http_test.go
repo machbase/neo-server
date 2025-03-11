@@ -698,6 +698,7 @@ func TestHttpWrite(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/write/test_w"+tc.queryParams, payload)
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 			req.Header.Set("Content-Type", tc.payloadType)
+			req.Header.Set(TqlHeaderAppendWorker, "false")
 			if compressed {
 				req.Header.Set("Content-Encoding", "gzip")
 			}

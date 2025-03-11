@@ -89,6 +89,12 @@ type httpd struct {
 	bridgeRuntimeImpl bridge.RuntimeServer
 	pkgMgr            *pkgs.PkgManager
 
+	appenders          map[string]*AppenderWrapper
+	appendersLock      sync.Mutex
+	appendersFlusher   chan struct{}
+	appendersFlusherWg sync.WaitGroup
+	useAppendWroker    bool
+
 	neoShellAddress string
 	neoShellAccount map[string]string
 
@@ -180,6 +186,37 @@ func (svr *httpd) Start() error {
 		go svr.httpServer.Serve(lsnr)
 		svr.log.Infof("HTTP Listen %s", listen)
 	}
+	svr.useAppendWroker = true
+	if svr.useAppendWroker {
+		svr.appenders = make(map[string]*AppenderWrapper)
+		svr.appendersFlusher = make(chan struct{})
+		svr.appendersFlusherWg.Add(1)
+		go func() {
+			defer svr.appendersFlusherWg.Done()
+			for {
+				select {
+				case <-time.After(60 * time.Second):
+					svr.appendersLock.Lock()
+					for tableName, value := range svr.appenders {
+						if !value.lastTime.IsZero() && time.Since(value.lastTime) > 60*time.Second {
+							if appender, err := value.conn.Appender(value.ctx, tableName); err != nil {
+								svr.log.Errorf("failed to reconnect appender %s, %s", tableName, err.Error())
+							} else {
+								oldAppender := value.appender
+								value.appender = appender
+								value.lastTime = time.Time{}
+								oldAppender.Close()
+								svr.log.Debugf("renew appender %s", tableName)
+							}
+						}
+					}
+					svr.appendersLock.Unlock()
+				case <-svr.appendersFlusher:
+					return
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -195,6 +232,16 @@ func (svr *httpd) Stop() {
 
 	if svr.memoryFs != nil {
 		svr.memoryFs.Stop()
+	}
+
+	if svr.useAppendWroker {
+		close(svr.appendersFlusher)
+		svr.appendersFlusherWg.Wait()
+		for _, value := range svr.appenders {
+			value.ctxCancel()
+			value.appender.Close()
+			value.conn.Close()
+		}
 	}
 }
 
