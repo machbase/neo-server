@@ -114,7 +114,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		// set HTTP Header 'X-Append-Worker: no' to disable appender worker
 		if svr.useAppendWorker && overrideUseAppenderWorker == "" {
 			svr.appendersLock.Lock()
-			defer svr.appendersLock.Unlock()
 			if aw, exists := svr.appenders[tableName]; exists {
 				aw.lastTime = time.Now()
 				appender = aw.appender
@@ -123,6 +122,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			if appender == nil {
 				if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 					errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+					svr.appendersLock.Unlock()
 					return
 				} else {
 					desc = tableDesc
@@ -131,11 +131,13 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				appendConn, err := svr.getTrustConnection(ctx)
 				if err != nil {
 					errRsp(http.StatusInternalServerError, err.Error())
+					svr.appendersLock.Unlock()
 					return
 				}
 				appender, err = appendConn.Appender(ctx, tableName)
 				if err != nil {
 					errRsp(http.StatusInternalServerError, err.Error())
+					svr.appendersLock.Unlock()
 					return
 				}
 				aw := &AppenderWrapper{
@@ -146,7 +148,9 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				}
 				aw.ctx, aw.ctxCancel = context.WithCancel(context.Background())
 				svr.appenders[tableName] = aw
+				svr.log.Infof("appender open", tableName)
 			}
+			svr.appendersLock.Unlock()
 		} else {
 			if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 				errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))

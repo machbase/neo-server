@@ -190,14 +190,15 @@ func (svr *httpd) Start() error {
 			defer svr.appendersFlusherWg.Done()
 			for {
 				select {
-				case <-time.After(60 * time.Second):
+				case <-time.After(15 * time.Second):
 					svr.appendersLock.Lock()
 					var deleting []string
 					for tableName, value := range svr.appenders {
-						if !value.lastTime.IsZero() && time.Since(value.lastTime) > 60*time.Second {
+						if !value.lastTime.IsZero() && time.Since(value.lastTime) > 30*time.Second {
 							value.appender.Close()
 							value.conn.Close()
 							deleting = append(deleting, tableName)
+							svr.log.Info("appender close", tableName)
 						}
 					}
 					for _, tableName := range deleting {
