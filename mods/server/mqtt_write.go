@@ -344,7 +344,7 @@ func (aw *AppenderWrapper) Start() {
 			case vals := <-aw.appendC:
 				err := aw.appender.Append(vals...)
 				if err != nil {
-					aw.log.Error("append error:", err)
+					aw.log.Error("appender error:", err)
 				}
 			}
 		}
@@ -352,10 +352,9 @@ func (aw *AppenderWrapper) Start() {
 			vals := <-aw.appendC
 			err := aw.appender.Append(vals...)
 			if err != nil {
-				aw.log.Error("append error:", err)
+				aw.log.Error("appender error:", err)
 			}
 		}
-		aw.log.Info("appender close", aw.appender.TableName())
 	}(aw)
 }
 
@@ -367,7 +366,11 @@ func (aw *AppenderWrapper) Stop() {
 		aw.appendC = nil
 	}
 	aw.ctxCancel()
-	aw.appender.Close()
+	if success, fail, err := aw.appender.Close(); err != nil {
+		aw.log.Error("appender close error:", err)
+	} else {
+		aw.log.Info("appender close", aw.appender.TableName(), "success:", success, "fail:", fail)
+	}
 	aw.conn.Close()
 }
 
