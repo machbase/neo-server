@@ -104,22 +104,21 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.HeaderColumns(headerColumns),
 	}
 
-	var appender api.Appender
+	var appenderWrap *AppenderWrapper
 	var recNo int
 	var insertQuery string
 	var desc *api.TableDescription
 
 	if method == "append" {
-		overrideUseAppenderWorker := ctx.GetHeader(TqlHeaderAppendWorker)
 		// set HTTP Header 'X-Append-Worker: no' to disable appender worker
-		if svr.useAppendWorker && overrideUseAppenderWorker == "" {
+		if svr.useAppendWorker {
 			svr.appendersLock.Lock()
 			if aw, exists := svr.appenders[tableName]; exists {
+				appenderWrap = aw
 				aw.lastTime = time.Now()
-				appender = aw.appender
 				desc = aw.tableDesc
 			}
-			if appender == nil {
+			if appenderWrap == nil {
 				if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
 					errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
 					svr.appendersLock.Unlock()
@@ -134,42 +133,29 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 					svr.appendersLock.Unlock()
 					return
 				}
-				appender, err = appendConn.Appender(ctx, tableName)
+				appender, err := appendConn.Appender(ctx, tableName)
 				if err != nil {
 					errRsp(http.StatusInternalServerError, err.Error())
 					svr.appendersLock.Unlock()
 					return
 				}
-				aw := &AppenderWrapper{
+				appenderWrap = &AppenderWrapper{
 					conn:      appendConn,
 					appender:  appender,
 					tableDesc: desc,
 					lastTime:  time.Now(),
+					log:       svr.log,
 				}
-				aw.ctx, aw.ctxCancel = context.WithCancel(context.Background())
-				svr.appenders[tableName] = aw
-				svr.log.Infof("appender open", tableName)
+				appenderWrap.ctx, appenderWrap.ctxCancel = context.WithCancel(context.Background())
+				svr.appenders[tableName] = appenderWrap
+				appenderWrap.Start()
 			}
 			svr.appendersLock.Unlock()
-		} else {
-			if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
-				errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
-				return
-			} else {
-				desc = tableDesc
-			}
-
-			appender, err = conn.Appender(ctx, tableName)
-			if err != nil {
-				errRsp(http.StatusInternalServerError, err.Error())
-				return
-			}
-			defer appender.Close()
 		}
 
 		colNames := desc.Columns.Names()
 		colTypes := desc.Columns.DataTypes()
-		if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+		if appenderWrap.appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
 			colNames = colNames[1:]
 			colTypes = colTypes[1:]
 		}
@@ -252,7 +238,6 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 	}
 
 	var prevCols []string
-	var hasProcessedHeader bool
 	for {
 		vals, cols, err := decoder.NextRow()
 		if err != nil {
@@ -280,15 +265,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 				return
 			}
 		} else { // append
-			if !hasProcessedHeader && headerColumns && len(cols) > 0 {
-				appender = appender.WithInputColumns(cols...)
-				hasProcessedHeader = true
-			}
-			err = appender.Append(vals...)
-			if err != nil {
-				errRsp(http.StatusInternalServerError, err.Error())
-				return
-			}
+			appenderWrap.appendC <- vals
 		}
 	}
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", recNo, method)

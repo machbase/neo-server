@@ -195,10 +195,8 @@ func (svr *httpd) Start() error {
 					var deleting []string
 					for tableName, value := range svr.appenders {
 						if !value.lastTime.IsZero() && time.Since(value.lastTime) > 30*time.Second {
-							value.appender.Close()
-							value.conn.Close()
+							value.Stop()
 							deleting = append(deleting, tableName)
-							svr.log.Info("appender close", tableName)
 						}
 					}
 					for _, tableName := range deleting {
@@ -231,9 +229,7 @@ func (svr *httpd) Stop() {
 		close(svr.appendersFlusher)
 		svr.appendersFlusherWg.Wait()
 		for _, value := range svr.appenders {
-			value.ctxCancel()
-			value.appender.Close()
-			value.conn.Close()
+			value.Stop()
 		}
 	}
 }

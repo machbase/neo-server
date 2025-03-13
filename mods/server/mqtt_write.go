@@ -7,14 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/influxdata/line-protocol/v2/lineprotocol"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/packets"
@@ -315,6 +318,57 @@ type AppenderWrapper struct {
 	// currently use by only http write?method=append
 	tableDesc *api.TableDescription
 	lastTime  time.Time
+	// append runner
+	appendC    chan []interface{}
+	appendStop chan struct{}
+	appendWg   sync.WaitGroup
+	log        logging.Log
+}
+
+func (aw *AppenderWrapper) Start() {
+	aw.appendC = make(chan []interface{}, 1000)
+	aw.appendStop = make(chan struct{})
+	aw.appendWg.Add(1)
+	go func(aw *AppenderWrapper) {
+		defer aw.appendWg.Done()
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		aw.log.Info("appender open", aw.appender.TableName())
+	loop:
+		for {
+			select {
+			case <-aw.ctx.Done():
+				break loop
+			case <-aw.appendStop:
+				break loop
+			case vals := <-aw.appendC:
+				err := aw.appender.Append(vals...)
+				if err != nil {
+					aw.log.Error("append error:", err)
+				}
+			}
+		}
+		for len(aw.appendC) > 0 {
+			vals := <-aw.appendC
+			err := aw.appender.Append(vals...)
+			if err != nil {
+				aw.log.Error("append error:", err)
+			}
+		}
+		aw.log.Info("appender close", aw.appender.TableName())
+	}(aw)
+}
+
+func (aw *AppenderWrapper) Stop() {
+	if aw.appendC != nil {
+		close(aw.appendStop)
+		aw.appendWg.Wait()
+		close(aw.appendC)
+		aw.appendC = nil
+	}
+	aw.ctxCancel()
+	aw.appender.Close()
+	aw.conn.Close()
 }
 
 func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
