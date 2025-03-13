@@ -552,10 +552,10 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	defer conn.Close()
 
 	var isCancelled bool
-	go func() {
-		<-ctx.Request.Context().Done()
+	go func(ctx *gin.Context) {
+		<-ctx.Done()
 		isCancelled = true
-	}()
+	}(ctx)
 
 	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
@@ -792,7 +792,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		return
 	}
 
-	task := tql.NewTaskContext(ctx.Request.Context())
+	task := tql.NewTaskContext(ctx)
 	task.SetParams(params)
 	task.SetInputReader(input)
 	task.SetLogLevel(consoleInfo.logLevel)
@@ -827,10 +827,15 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			}
 		}
 	}
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
+	taskDone := make(chan struct{})
+	defer close(taskDone)
+	go func(ctx *gin.Context, task *tql.Task) {
+		select {
+		case <-taskDone:
+		case <-ctx.Done():
+			task.Cancel()
+		}
+	}(ctx, task)
 
 	result := task.Execute()
 	if result == nil {
@@ -925,10 +930,15 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			}
 		}
 	}
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
+	taskDone := make(chan struct{})
+	defer close(taskDone)
+	go func(ctx *gin.Context, task *tql.Task) {
+		select {
+		case <-taskDone:
+		case <-ctx.Done():
+			task.Cancel()
+		}
+	}(ctx, task)
 
 	result := task.Execute()
 	if result == nil {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 	"unsafe"
 
 	mach "github.com/machbase/neo-engine/v8"
@@ -182,6 +184,7 @@ func (row *Row) Scan(cols ...any) error {
 }
 
 type Rows struct {
+	sync.Mutex
 	stmt       unsafe.Pointer
 	stmtType   StmtType
 	sqlText    string
@@ -210,6 +213,9 @@ func (rows *Rows) QueryLimit(ctx context.Context) bool {
 
 // Close release all resources that assigned to the Rows
 func (rows *Rows) Close() error {
+	rows.Lock()
+	defer rows.Unlock()
+
 	var err error
 	if rows.stmt != nil {
 		api.FreeStmt()
@@ -309,6 +315,12 @@ func (rows *Rows) Message() string {
 
 // internal use only from machrpc server
 func (rows *Rows) Fetch() ([]any, bool, error) {
+	rows.Lock()
+	defer rows.Unlock()
+	if rows.stmt == nil {
+		return nil, false, io.EOF
+	}
+
 	// Do not proceed if the statement is not a SELECT
 	if !rows.IsFetchable() {
 		return nil, false, sql.ErrNoRows
@@ -355,6 +367,12 @@ func (rows *Rows) Fetch() ([]any, bool, error) {
 //		rows.Scan(&name, &value)
 //	}
 func (rows *Rows) Next() bool {
+	rows.Lock()
+	defer rows.Unlock()
+	if rows.stmt == nil {
+		return false
+	}
+
 	// the statement is not SELECT
 	if !rows.IsFetchable() {
 		return false
@@ -379,6 +397,12 @@ func (rows *Rows) FetchError() error {
 //		rows.Scan(&name, &value)
 //	}
 func (rows *Rows) Scan(cols ...any) error {
+	rows.Lock()
+	defer rows.Unlock()
+	if rows.stmt == nil {
+		return sql.ErrNoRows
+	}
+
 	if !rows.IsFetchable() {
 		return sql.ErrNoRows
 	}
