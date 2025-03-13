@@ -25,6 +25,223 @@ import (
 )
 
 func (svr *httpd) handleWrite(ctx *gin.Context) {
+	method := strString(ctx.Query("method"), "insert")
+	if method == "insert" {
+		svr.handleWriteInsert(ctx)
+	} else {
+		svr.handleWriteAppend(ctx)
+	}
+}
+
+func (svr *httpd) handleWriteAppend(ctx *gin.Context) {
+	rsp := &WriteResponse{Reason: "not specified"}
+	tick := time.Now()
+
+	if ctx.ContentType() == "multipart/form-data" {
+		svr.handleFileWrite(ctx)
+		return
+	}
+	format := "json"
+	if ctx.ContentType() == "text/csv" {
+		format = "csv"
+	} else if ctx.ContentType() == "application/x-ndjson" {
+		format = "ndjson"
+	}
+	compress := "-"
+	switch ctx.Request.Header.Get("Content-Encoding") {
+	case "gzip":
+		compress = "gzip"
+	default:
+		compress = "-"
+	}
+
+	errRsp := func(status int, reason string) {
+		rsp.Reason = reason
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(status, rsp)
+	}
+
+	tableName := ctx.Param("table")
+	timeformat := strString(ctx.Query("timeformat"), "ns")
+	timeLocation, err := util.ParseTimeLocation(ctx.Query("tz"), time.UTC)
+	if err != nil {
+		errRsp(http.StatusBadRequest, err.Error())
+		return
+	}
+	format = strString(ctx.Query("format"), format)
+	compress = strString(ctx.Query("compress"), compress)
+	delimiter := strString(ctx.Query("delimiter"), ",")
+
+	// check `heading` for backward compatibility
+	headerSkip := strBool(ctx.Query("heading"), false)
+	headerColumns := false
+	switch strings.ToLower(ctx.Query("header")) {
+	case "skip":
+		headerSkip = true
+	case "column", "columns":
+		headerColumns = true
+		headerSkip = true
+	default:
+	}
+
+	conn, err := svr.getTrustConnection(ctx)
+	if err != nil {
+		errRsp(http.StatusUnauthorized, err.Error())
+		return
+	}
+	defer conn.Close()
+
+	var in io.Reader
+	if compress == "gzip" {
+		gr, err := gzip.NewReader(ctx.Request.Body)
+		if err != nil {
+			errRsp(http.StatusInternalServerError, err.Error())
+			return
+		}
+		in = bufio.NewReader(gr)
+	} else {
+		in = ctx.Request.Body
+	}
+
+	codecOpts := []opts.Option{
+		opts.TableName(tableName),
+		opts.Timeformat(timeformat),
+		opts.TimeLocation(timeLocation),
+		opts.Delimiter(delimiter),
+		opts.Header(headerSkip),
+		opts.HeaderColumns(headerColumns),
+	}
+
+	var appenderWrap *AppenderWrapper
+	var appender api.Appender
+	var recNo int
+	var desc *api.TableDescription
+
+	// set HTTP Header 'X-Append-Worker: no' to disable appender worker
+	if svr.useAppendWorker && ctx.Request.Header.Get(TqlHeaderAppendWorker) != "false" {
+		svr.appendersLock.Lock()
+		if aw, exists := svr.appenders[tableName]; exists {
+			appenderWrap = aw
+			aw.lastTime = time.Now()
+			desc = aw.tableDesc
+		}
+		if appenderWrap == nil {
+			if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+				errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+				svr.appendersLock.Unlock()
+				return
+			} else {
+				desc = tableDesc
+			}
+
+			appendConn, err := svr.getTrustConnection(ctx)
+			if err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
+				svr.appendersLock.Unlock()
+				return
+			}
+			appender, err := appendConn.Appender(ctx, tableName)
+			if err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
+				svr.appendersLock.Unlock()
+				return
+			}
+			appenderWrap = &AppenderWrapper{
+				conn:      appendConn,
+				appender:  appender,
+				tableDesc: desc,
+				lastTime:  time.Now(),
+				log:       svr.log,
+			}
+			appenderWrap.ctx, appenderWrap.ctxCancel = context.WithCancel(context.Background())
+			svr.appenders[tableName] = appenderWrap
+			appenderWrap.Start()
+		}
+		appender = appenderWrap.appender
+		svr.appendersLock.Unlock()
+	} else {
+		if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+			errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+			svr.appendersLock.Unlock()
+			return
+		} else {
+			desc = tableDesc
+		}
+		appendConn, err := svr.getTrustConnection(ctx)
+		if err != nil {
+			errRsp(http.StatusInternalServerError, err.Error())
+			svr.appendersLock.Unlock()
+			return
+		}
+		defer appendConn.Close()
+		appender, err = appendConn.Appender(ctx, tableName)
+		if err != nil {
+			errRsp(http.StatusInternalServerError, err.Error())
+			svr.appendersLock.Unlock()
+			return
+		}
+		defer appender.Close()
+	}
+
+	colNames := desc.Columns.Names()
+	colTypes := desc.Columns.DataTypes()
+	if appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
+		colNames = colNames[1:]
+		colTypes = colTypes[1:]
+	}
+
+	codecOpts = append(codecOpts,
+		opts.InputStream(in),
+		opts.Columns(colNames...),
+		opts.ColumnTypes(colTypes...),
+	)
+
+	decoder := codec.NewDecoder(format, codecOpts...)
+
+	if decoder == nil {
+		errRsp(http.StatusInternalServerError, "codec not found")
+		return
+	}
+
+	var hasProcessedHeader bool
+	for {
+		vals, cols, err := decoder.NextRow()
+		if err != nil {
+			if err != io.EOF {
+				rsp.Reason = err.Error()
+				rsp.Elapse = time.Since(tick).String()
+				ctx.JSON(http.StatusBadRequest, rsp)
+				return
+			}
+			break
+		}
+		recNo++
+
+		// append
+		if appenderWrap != nil {
+			appenderWrap.appendC <- vals
+		} else {
+			if !hasProcessedHeader && headerColumns && len(cols) > 0 {
+				appender = appender.WithInputColumns(cols...)
+				hasProcessedHeader = true
+			}
+			err = appender.Append(vals...)
+			if err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
+				return
+			}
+			if err := appender.Append(vals...); err != nil {
+				errRsp(http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) appended", recNo)
+	rsp.Elapse = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
+
+func (svr *httpd) handleWriteInsert(ctx *gin.Context) {
 	rsp := &WriteResponse{Reason: "not specified"}
 	tick := time.Now()
 
@@ -104,131 +321,72 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		opts.HeaderColumns(headerColumns),
 	}
 
-	var appenderWrap *AppenderWrapper
 	var recNo int
 	var insertQuery string
 	var desc *api.TableDescription
 
-	if method == "append" {
-		// set HTTP Header 'X-Append-Worker: no' to disable appender worker
-		if svr.useAppendWorker {
-			svr.appendersLock.Lock()
-			if aw, exists := svr.appenders[tableName]; exists {
-				appenderWrap = aw
-				aw.lastTime = time.Now()
-				desc = aw.tableDesc
-			}
-			if appenderWrap == nil {
-				if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
-					errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
-					svr.appendersLock.Unlock()
-					return
-				} else {
-					desc = tableDesc
-				}
+	if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
+		errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+		return
+	} else {
+		desc = tableDesc
+	}
 
-				appendConn, err := svr.getTrustConnection(ctx)
-				if err != nil {
-					errRsp(http.StatusInternalServerError, err.Error())
-					svr.appendersLock.Unlock()
-					return
-				}
-				appender, err := appendConn.Appender(ctx, tableName)
-				if err != nil {
-					errRsp(http.StatusInternalServerError, err.Error())
-					svr.appendersLock.Unlock()
-					return
-				}
-				appenderWrap = &AppenderWrapper{
-					conn:      appendConn,
-					appender:  appender,
-					tableDesc: desc,
-					lastTime:  time.Now(),
-					log:       svr.log,
-				}
-				appenderWrap.ctx, appenderWrap.ctxCancel = context.WithCancel(context.Background())
-				svr.appenders[tableName] = appenderWrap
-				appenderWrap.Start()
-			}
-			svr.appendersLock.Unlock()
-		}
-
-		colNames := desc.Columns.Names()
-		colTypes := desc.Columns.DataTypes()
-		if appenderWrap.appender.TableType() == api.TableTypeLog && colNames[0] == "_ARRIVAL_TIME" {
-			colNames = colNames[1:]
-			colTypes = colTypes[1:]
-		}
-
-		codecOpts = append(codecOpts,
-			opts.InputStream(in),
-			opts.Columns(colNames...),
-			opts.ColumnTypes(colTypes...),
-		)
-	} else { // insert
-		if tableDesc, err := api.DescribeTable(ctx, conn, tableName, false); err != nil {
-			errRsp(http.StatusInternalServerError, fmt.Sprintf("fail to get table info '%s', %s", tableName, err.Error()))
+	var columnNames []string
+	var columnTypes []api.DataType
+	if format == "json" {
+		bs, err := io.ReadAll(in)
+		if err != nil {
+			errRsp(http.StatusBadRequest, err.Error())
 			return
-		} else {
-			desc = tableDesc
 		}
 
-		var columnNames []string
-		var columnTypes []api.DataType
-		if format == "json" {
-			bs, err := io.ReadAll(in)
-			if err != nil {
-				errRsp(http.StatusBadRequest, err.Error())
-				return
-			}
-
-			wr := WriteRequest{}
-			dec := json.NewDecoder(bytes.NewBuffer(bs))
-			if err := dec.Decode(&wr); err != nil {
-				errRsp(http.StatusBadRequest, err.Error())
-				return
-			}
-			if wr.Data != nil && len(wr.Data.Columns) > 0 {
-				columnNames = wr.Data.Columns
-				columnTypes = make([]api.DataType, 0, len(columnNames))
-				_hold := make([]string, 0, len(columnNames))
-				for _, colName := range columnNames {
-					_hold = append(_hold, "?")
-					_type := api.ColumnTypeUnknown
-					for _, d := range desc.Columns {
-						if d.Name == strings.ToUpper(colName) {
-							_type = d.Type
-							break
-						}
-					}
-					if _type == api.ColumnTypeUnknown {
-						errRsp(http.StatusBadRequest, fmt.Sprintf("column %q not found in the table %q", colName, tableName))
-						return
-					}
-					columnTypes = append(columnTypes, _type.DataType())
-				}
-				valueHolder := strings.Join(_hold, ",")
-				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
-			}
-			in = bytes.NewBuffer(bs)
+		wr := WriteRequest{}
+		dec := json.NewDecoder(bytes.NewBuffer(bs))
+		if err := dec.Decode(&wr); err != nil {
+			errRsp(http.StatusBadRequest, err.Error())
+			return
 		}
-		if len(columnNames) == 0 {
-			columnNames = desc.Columns.Names()
-			columnTypes = make([]api.DataType, 0, len(desc.Columns))
-			_hold := make([]string, 0, len(desc.Columns))
-			for _, c := range desc.Columns {
+		if wr.Data != nil && len(wr.Data.Columns) > 0 {
+			columnNames = wr.Data.Columns
+			columnTypes = make([]api.DataType, 0, len(columnNames))
+			_hold := make([]string, 0, len(columnNames))
+			for _, colName := range columnNames {
 				_hold = append(_hold, "?")
-				columnTypes = append(columnTypes, c.Type.DataType())
+				_type := api.ColumnTypeUnknown
+				for _, d := range desc.Columns {
+					if d.Name == strings.ToUpper(colName) {
+						_type = d.Type
+						break
+					}
+				}
+				if _type == api.ColumnTypeUnknown {
+					errRsp(http.StatusBadRequest, fmt.Sprintf("column %q not found in the table %q", colName, tableName))
+					return
+				}
+				columnTypes = append(columnTypes, _type.DataType())
 			}
 			valueHolder := strings.Join(_hold, ",")
-			insertQuery = fmt.Sprintf("INSERT INTO %s VALUES(%s)", tableName, valueHolder)
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(columnNames, ","), valueHolder)
 		}
-		codecOpts = append(codecOpts,
-			opts.InputStream(in),
-			opts.Columns(columnNames...),
-			opts.ColumnTypes(columnTypes...),
-		)
+		in = bytes.NewBuffer(bs)
 	}
+	if len(columnNames) == 0 {
+		columnNames = desc.Columns.Names()
+		columnTypes = make([]api.DataType, 0, len(desc.Columns))
+		_hold := make([]string, 0, len(desc.Columns))
+		for _, c := range desc.Columns {
+			_hold = append(_hold, "?")
+			columnTypes = append(columnTypes, c.Type.DataType())
+		}
+		valueHolder := strings.Join(_hold, ",")
+		insertQuery = fmt.Sprintf("INSERT INTO %s VALUES(%s)", tableName, valueHolder)
+	}
+	codecOpts = append(codecOpts,
+		opts.InputStream(in),
+		opts.Columns(columnNames...),
+		opts.ColumnTypes(columnTypes...),
+	)
 
 	decoder := codec.NewDecoder(format, codecOpts...)
 
@@ -251,21 +409,17 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 		}
 		recNo++
 
-		if method == "insert" {
-			if len(cols) > 0 && !slices.Equal(prevCols, cols) {
-				prevCols = cols
-				_hold := make([]string, len(cols))
-				for i := range desc.Columns {
-					_hold[i] = "?" // for prepared statement
-				}
-				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
+		if len(cols) > 0 && !slices.Equal(prevCols, cols) {
+			prevCols = cols
+			_hold := make([]string, len(cols))
+			for i := range desc.Columns {
+				_hold[i] = "?" // for prepared statement
 			}
-			if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
-				errRsp(http.StatusInternalServerError, result.Err().Error())
-				return
-			}
-		} else { // append
-			appenderWrap.appendC <- vals
+			insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
+		}
+		if result := conn.Exec(ctx, insertQuery, vals...); result.Err() != nil {
+			errRsp(http.StatusInternalServerError, result.Err().Error())
+			return
 		}
 	}
 	rsp.Success, rsp.Reason = true, fmt.Sprintf("success, %d record(s) %sed", recNo, method)
