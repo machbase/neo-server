@@ -54,6 +54,7 @@
         "grayscale",
         "GROUPBYKEY",
         "grpcd",
+        "healthz",
         "indexgap",
         "Infof",
         "JSONDATA",
