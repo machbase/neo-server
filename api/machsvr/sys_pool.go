@@ -13,7 +13,7 @@ import (
 var enableWorkerPool bool
 var pool chan *Worker
 var poolSize int
-var poolSizeHardLimit = runtime.NumCPU() * 2
+var poolSizeHardLimit = runtime.NumCPU() * 10
 var poolDB *Database
 
 func SetWorkerPoolSize(size int) {
