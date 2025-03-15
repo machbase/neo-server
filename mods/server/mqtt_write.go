@@ -334,6 +334,12 @@ func (aw *AppenderWrapper) Start() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		aw.log.Info("appender open", aw.appender.TableName())
+		var appendFunc func(...any) error
+		if appendSync, ok := aw.appender.(interface{ AppendSync(...any) error }); ok {
+			appendFunc = appendSync.AppendSync
+		} else {
+			appendFunc = aw.appender.Append
+		}
 	loop:
 		for {
 			select {
@@ -342,7 +348,7 @@ func (aw *AppenderWrapper) Start() {
 			case <-aw.appendStop:
 				break loop
 			case vals := <-aw.appendC:
-				err := aw.appender.Append(vals...)
+				err := appendFunc(vals...)
 				if err != nil {
 					aw.log.Error("appender error:", err)
 				}
@@ -350,7 +356,7 @@ func (aw *AppenderWrapper) Start() {
 		}
 		for len(aw.appendC) > 0 {
 			vals := <-aw.appendC
-			err := aw.appender.Append(vals...)
+			err := appendFunc(vals...)
 			if err != nil {
 				aw.log.Error("appender error:", err)
 			}

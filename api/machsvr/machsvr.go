@@ -190,6 +190,7 @@ func (db *Database) Startup() (err error) {
 
 	db.onceStart.Do(func() {
 		err = mach.EngStartup(db.handle)
+		StartWorkerPool(db)
 	})
 	return
 }
@@ -199,6 +200,9 @@ func (db *Database) Shutdown() (err error) {
 	defer _env.Unlock()
 
 	db.onceStop.Do(func() {
+		if enableWorkerPool {
+			StopWorkerPool()
+		}
 		err = mach.EngShutdown(db.handle)
 		_env.database = nil
 		_env.handle = nil
@@ -419,6 +423,22 @@ func (conn *Conn) SetLatestSql(sql string) {
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+	if enableWorkerPool {
+		return db.ConnectAsync(ctx, opts...)
+	}
+	return db.ConnectSync(ctx, opts...)
+}
+
+func (db *Database) ConnectAsync(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
+	req := &ConnectWork{
+		ctx:  ctx,
+		opts: opts,
+	}
+	req = workPool(req).(*ConnectWork)
+	return req.conn, req.err
+}
+
+func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
 	var connTimeout time.Duration
 	ret := &Conn{
 		ctx:        ctx,
@@ -493,8 +513,21 @@ func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api
 	return ret, nil
 }
 
-// Close closes connection
 func (conn *Conn) Close() (err error) {
+	if enableWorkerPool {
+		return conn.CloseAsync()
+	}
+	return conn.CloseSync()
+}
+
+func (conn *Conn) CloseAsync() error {
+	req := &ConnCloseWork{conn: conn}
+	req = workPool(req).(*ConnCloseWork)
+	return req.err
+}
+
+// Close closes connection
+func (conn *Conn) CloseSync() (err error) {
 	conn.closeOnce.Do(func() {
 		defer func() {
 			if conn.returnChan != nil {
@@ -536,6 +569,24 @@ func (conn *Conn) Connected() bool {
 // ExecContext executes SQL statements that does not return result
 // like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
 func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
+	if enableWorkerPool {
+		return conn.ExecAsync(ctx, sqlText, params...)
+	}
+	return conn.ExecSync(ctx, sqlText, params...)
+}
+
+func (conn *Conn) ExecAsync(ctx context.Context, sqlText string, params ...any) api.Result {
+	req := &ExecWork{
+		ctx:     ctx,
+		conn:    conn,
+		sqlText: sqlText,
+		params:  params,
+	}
+	req = workPool(req).(*ExecWork)
+	return req.result
+}
+
+func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) api.Result {
 	conn.SetLatestSql(sqlText)
 	var result = &Result{}
 	var stmt unsafe.Pointer
@@ -591,6 +642,24 @@ func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.R
 //	}
 //	defer rows.Close()
 func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	if enableWorkerPool {
+		return conn.QueryAsync(ctx, sqlText, params...)
+	}
+	return conn.QuerySync(ctx, sqlText, params...)
+}
+
+func (conn *Conn) QueryAsync(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
+	req := &QueryWork{
+		ctx:     ctx,
+		conn:    conn,
+		sqlText: sqlText,
+		params:  params,
+	}
+	req = workPool(req).(*QueryWork)
+	return req.rows, req.err
+}
+
+func (conn *Conn) QuerySync(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
 	conn.SetLatestSql(sqlText)
 	rows := &Rows{
 		sqlText:              sqlText,
@@ -732,6 +801,24 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 //	row := conn.QueryRow(ctx, "select count(*) from my_table where name = ?", "my_name")
 //	row.Scan(&cnt)
 func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
+	if enableWorkerPool {
+		return conn.QueryRowAsync(ctx, sqlText, params...)
+	}
+	return conn.QueryRowSync(ctx, sqlText, params...)
+}
+
+func (conn *Conn) QueryRowAsync(ctx context.Context, sqlText string, params ...any) api.Row {
+	req := &QueryRowWork{
+		ctx:     ctx,
+		conn:    conn,
+		sqlText: sqlText,
+		params:  params,
+	}
+	req = workPool(req).(*QueryRowWork)
+	return req.row
+}
+
+func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...any) api.Row {
 	conn.SetLatestSql(sqlText)
 	var row = &Row{}
 	var stmt unsafe.Pointer
@@ -823,6 +910,23 @@ func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) a
 }
 
 func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
+	if enableWorkerPool {
+		return conn.ExplainAsync(ctx, sqlText, full)
+	}
+	return conn.ExplainSync(ctx, sqlText, full)
+}
+
+func (conn *Conn) ExplainAsync(ctx context.Context, sqlText string, full bool) (string, error) {
+	req := &ExplainWork{
+		ctx:     ctx,
+		conn:    conn,
+		sqlText: sqlText,
+		full:    full,
+	}
+	req = workPool(req).(*ExplainWork)
+	return req.explain, req.err
+}
+func (conn *Conn) ExplainSync(ctx context.Context, sqlText string, full bool) (string, error) {
 	conn.SetLatestSql("EXPLAIN " + sqlText)
 	var stmt unsafe.Pointer
 	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {

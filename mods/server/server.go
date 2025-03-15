@@ -272,6 +272,7 @@ func (s *Server) Start() error {
 	if s.db == nil {
 		return errors.New("database instance failed")
 	}
+	machsvr.SetWorkerPoolSize(s.MaxPoolSize)
 	if err := s.db.Startup(); err != nil {
 		return errors.Wrap(err, "startup database")
 	}

@@ -555,7 +555,7 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
-			s.log.Error("MaxOpenConns panic recover", panic)
+			s.log.Error("LimitSession panic recover", panic)
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -567,9 +567,13 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 		if limit := int(req.MaxOpenQuery); limit >= -1 {
 			s.db.SetMaxOpenQuery(limit)
 		}
+		if limit := int(req.MaxPoolSize); limit >= 0 {
+			machsvr.SetWorkerPoolSize(limit)
+		}
 	}
 	limitConn, remainsConn := s.db.MaxOpenConn()
 	limitQuery, remainsQuery := s.db.MaxOpenQuery()
+	rsp.MaxPoolSize = int32(machsvr.WorkerPoolSize())
 	rsp.MaxOpenConn = int32(limitConn)
 	rsp.RemainedOpenConn = int32(remainsConn)
 	rsp.MaxOpenQuery = int32(limitQuery)

@@ -81,6 +81,7 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption machsvr.InitOption
+	MaxPoolSize        int
 	MaxOpenConn        int
 	MaxOpenConnFactor  float64
 	MaxOpenQuery       int

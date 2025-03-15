@@ -47,6 +47,7 @@ define VARS {
     HTTP_LINGER           = flag("--http-linger", -1)       // -1 means disable so_linger, >= 0 means set so_linger
     HTTP_ALLOW_STATZ      = flag("--http-allow-statz", "")  // allow statz for the given IP address
 
+    MAX_POOL_SIZE         = flag("--max-pool-size", 0)
     MAX_OPEN_CONN         = flag("--max-open-conn", -1)
     MAX_OPEN_CONN_FACTOR  = flag("--max-open-conn-factor", 2.0)
     MAX_OPEN_QUERY        = flag("--max-open-query", 0)
@@ -89,6 +90,7 @@ module "machbase.com/neo-server" {
         ExperimentMode   = VARS_EXPERIMENT_MODE
         MachbaseInitOption  = VARS_MACHBASE_INIT_OPTION
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
+        MaxPoolSize          = VARS_MAX_POOL_SIZE
         MaxOpenConn          = VARS_MAX_OPEN_CONN
         MaxOpenConnFactor    = VARS_MAX_OPEN_CONN_FACTOR
         MaxOpenQuery         = VARS_MAX_OPEN_QUERY
