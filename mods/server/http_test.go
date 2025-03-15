@@ -489,9 +489,6 @@ func TestMarkdown(t *testing.T) {
 }
 
 func TestHttpWrite(t *testing.T) {
-	api.StartAppendWorkers()
-	defer api.StopAppendWorkers()
-
 	tests := []struct {
 		name             string
 		queryParams      string

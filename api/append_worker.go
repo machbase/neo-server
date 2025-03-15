@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -142,6 +143,19 @@ func (aw *AppendWorker) Start() {
 	aw.appendWg.Add(1)
 	go func(aw *AppendWorker) {
 		defer aw.appendWg.Done()
+		runtime.LockOSThread()
+		// !!IMPORTANT!!
+		// machsvr.Appender implements "AppendSync()" which is at least x50 faster than "Append()"
+		// ONLY when it is called by a dedicated native thread,
+		// which is the case here by locking a native thread with "runtime.LockOSThread()".
+		// And intentionally ignore calling "runtime.UnlockOSThread()"
+		// to terminate the native thread when the goroutine is done.
+		var appendFunc func(...any) error
+		if appendSync, ok := aw.appender.(interface{ AppendSync(...any) error }); ok {
+			appendFunc = appendSync.AppendSync
+		} else {
+			appendFunc = aw.appender.Append
+		}
 		aw.log.Info("open")
 	loop:
 		for {
@@ -151,7 +165,7 @@ func (aw *AppendWorker) Start() {
 			case <-aw.appendStop:
 				break loop
 			case vals := <-aw.appendC:
-				err := aw.appender.Append(vals...)
+				err := appendFunc(vals...)
 				if err != nil {
 					aw.log.Error("error:", err)
 				}
@@ -159,7 +173,7 @@ func (aw *AppendWorker) Start() {
 		}
 		for len(aw.appendC) > 0 {
 			vals := <-aw.appendC
-			err := aw.appender.Append(vals...)
+			err := appendFunc(vals...)
 			if err != nil {
 				aw.log.Error("error:", err)
 			}
@@ -242,6 +256,8 @@ type AppenderWithWorker struct {
 	*AppendWorker
 	inputColumns []AppenderInputColumn
 }
+
+var _ Appender = (*AppenderWithWorker)(nil)
 
 type AppenderInputColumn struct {
 	Name string

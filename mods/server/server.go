@@ -185,10 +185,6 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// start append workers
-	api.StartAppendWorkers()
-	util.AddShutdownHook(func() { api.StopAppendWorkers() })
-
 	// server side file system
 	if err := s.startServerFileSystem(); err != nil {
 		return err

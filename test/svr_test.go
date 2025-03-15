@@ -102,8 +102,6 @@ func TestMain(m *testing.M) {
 	}
 	var count int
 
-	api.StartAppendWorkers()
-
 	checkTableSql := fmt.Sprintf("select count(*) from M$SYS_TABLES where name = '%s'", benchmarkTableName)
 	conn, err := db.Connect(context.TODO(), api.WithTrustUser("sys"))
 	if err != nil {
