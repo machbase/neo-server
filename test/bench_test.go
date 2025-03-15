@@ -24,6 +24,13 @@ import (
 // 2024.11.29 mac-mini(m1) native
 // BenchmarkAppend-8       26549180              3011 ns/op             252 B/op         10 allocs/op
 //
+// 2025.03.15 Apple M1 Max
+// - sync (no worker pool)
+// BenchmarkAppend-10      31044388              2595 ns/op             252 B/op         10 allocs/op
+// - async (worker pool)
+// BenchmarkAppend-10       7210270             10025 ns/op             300 B/op         11 allocs/op
+// - async with append worker
+// BenchmarkAppend-10       4773693             14949 ns/op             300 B/op         11 allocs/op
 
 func BenchmarkAppend(b *testing.B) {
 	var memBefore runtime.MemStats
@@ -44,16 +51,17 @@ func BenchmarkAppend(b *testing.B) {
 	}
 	defer conn.Close()
 
-	appender, err := conn.Appender(ctx, benchmarkTableName)
+	appender, err := api.GetAppendWorker(ctx, db, benchmarkTableName)
+	//appender, err := conn.Appender(ctx, benchmarkTableName)
 	require.Nil(b, err)
 
-	idgen := uuid.NewGen()
+	idGen := uuid.NewGen()
 
 	for i := 0; i < b.N; i++ {
-		id, _ := idgen.NewV6()
-		idstr := id.String()
-		jsonstr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
-		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idstr, jsonstr)
+		id, _ := idGen.NewV6()
+		idStr := id.String()
+		jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
+		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
 	}
 	appender.Close()
 
@@ -77,6 +85,12 @@ func BenchmarkAppend(b *testing.B) {
 //
 // 2024.11.29 mac-mini(m1) native
 // BenchmarkSelect-8           6524          14599373 ns/op            2139 B/op         49 allocs/op
+//
+// 2025.03.15 Apple M1 Max
+// - sync (no worker pool)
+// BenchmarkSelect-10          6954          14715639 ns/op            2162 B/op         49 allocs/op
+// - async (worker pool)
+// BenchmarkSelect-10          6386          14811332 ns/op            2422 B/op         54 allocs/op
 
 func BenchmarkSelect(b *testing.B) {
 	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
@@ -94,13 +108,13 @@ func BenchmarkSelect(b *testing.B) {
 	appender, err := conn.Appender(ctx, benchmarkTableName)
 	require.Nil(b, err)
 
-	idgen := uuid.NewGen()
+	idGen := uuid.NewGen()
 
 	for i := 0; i < 10000; i++ {
-		id, _ := idgen.NewV6()
-		idstr := id.String()
-		jsonstr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
-		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idstr, jsonstr)
+		id, _ := idGen.NewV6()
+		idStr := id.String()
+		jsonStr := `{"some":"jsondata, more length require 12345678901234567890abcdefghijklmn"}`
+		appender.Append("benchmark.tagname", time.Now(), 1.001*float32(i), idStr, jsonStr)
 	}
 	appender.Close()
 

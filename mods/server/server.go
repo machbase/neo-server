@@ -362,6 +362,7 @@ func (s *Server) startMachbaseSvr() error {
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
+		MaxWorkerPoolSize:  s.Config.MaxPoolSize,
 	})
 	if err != nil {
 		return fmt.Errorf("database instance failed, %s", err.Error())

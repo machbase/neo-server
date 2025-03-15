@@ -228,7 +228,7 @@ func generateClientKey(req *GenCertReq) ([]byte, []byte, string, error) {
 
 	certBytes, err := GenerateClientCertificate(req.Name, req.NotBefore, req.NotAfter, req.Issuer, req.IssuerKey, clientPub)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("client certificate, %s", err.Error())
+		return nil, nil, "", fmt.Errorf("client certificate: %s", err.Error())
 	}
 
 	return certBytes, clientKeyPEM, token, nil
@@ -553,7 +553,7 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 		}
 	} else {
 		rsp.Success = false
-		rsp.Reason = "Session kill not supported in headonly mode"
+		rsp.Reason = "Session kill not supported in head-only mode"
 	}
 	return rsp, nil
 }
@@ -563,7 +563,7 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 	tick := time.Now()
 	defer func() {
 		if panic := recover(); panic != nil {
-			s.log.Error("MaxOpenConns panic recover", panic)
+			s.log.Error("LimitSession panic recover", panic)
 		}
 		rsp.Elapse = time.Since(tick).String()
 	}()
@@ -576,9 +576,13 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 			if limit := int(req.MaxOpenQuery); limit >= -1 {
 				db.SetMaxOpenQuery(limit)
 			}
+			if limit := int(req.MaxPoolSize); limit >= -1 {
+				db.SetWorkerPoolSize(limit)
+			}
 		}
 		limitConn, remainsConn := db.MaxOpenConn()
 		limitQuery, remainsQuery := db.MaxOpenQuery()
+		rsp.MaxPoolSize = int32(db.WorkerPoolSize())
 		rsp.MaxOpenConn = int32(limitConn)
 		rsp.RemainedOpenConn = int32(remainsConn)
 		rsp.MaxOpenQuery = int32(limitQuery)
