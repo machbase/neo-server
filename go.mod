@@ -1,6 +1,6 @@
 module github.com/machbase/neo-server/v8
 
-go 1.23
+go 1.23.7
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
