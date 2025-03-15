@@ -185,6 +185,10 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// start append workers
+	api.StartAppendWorkers()
+	util.AddShutdownHook(func() { api.StopAppendWorkers() })
+
 	// server side file system
 	if err := s.startServerFileSystem(); err != nil {
 		return err
@@ -827,7 +831,6 @@ func (s *Server) startHttpServer() error {
 		WithHttpBridgeServer(s.bridgeSvc),
 		WithHttpServerSideFileSystem(ssfs.Default()),
 		WithHttpBackupService(s.bakd),
-		WithHttpNoAppendWorker(s.Http.NoAppendWorker),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpWebShellProvider(s.models.ShellProvider()),

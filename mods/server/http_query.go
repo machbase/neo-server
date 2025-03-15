@@ -687,7 +687,6 @@ const TqlHeaderChartType = "X-Chart-Type"
 const TqlHeaderChartOutput = "X-Chart-Output"
 const TqlHeaderTqlOutput = "X-Tql-Output"
 const TqlHeaderConsoleId = "X-Console-Id"
-const TqlHeaderAppendWorker = "X-Append-Worker"
 
 type ConsoleInfo struct {
 	consoleId       string

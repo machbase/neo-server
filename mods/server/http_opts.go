@@ -94,12 +94,6 @@ func WithHttpDebugMode(isDebug bool, filterLatency string) HttpOption {
 	}
 }
 
-func WithHttpNoAppendWorker(noAppenderWorker bool) HttpOption {
-	return func(s *httpd) {
-		s.useAppendWroker = !noAppenderWorker
-	}
-}
-
 func WithHttpKeepAlive(keepAlive int) HttpOption {
 	return func(s *httpd) {
 		s.keepAlive = keepAlive
