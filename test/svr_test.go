@@ -173,6 +173,7 @@ func TestMain(m *testing.M) {
 	rows.Close()
 	listNeoSession(db)
 
+	api.StopAppendWorkers()
 	// shutdown
 	b.Shutdown()
 	time.Sleep(3 * time.Second)

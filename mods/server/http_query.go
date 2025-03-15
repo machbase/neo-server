@@ -548,10 +548,10 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	defer conn.Close()
 
 	var isCancelled bool
-	go func() {
-		<-ctx.Request.Context().Done()
-		isCancelled = true
-	}()
+	go func(ctx *gin.Context, isCancelled *bool) {
+		<-ctx.Done()
+		*isCancelled = true
+	}(ctx, &isCancelled)
 
 	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
@@ -687,7 +687,6 @@ const TqlHeaderChartType = "X-Chart-Type"
 const TqlHeaderChartOutput = "X-Chart-Output"
 const TqlHeaderTqlOutput = "X-Tql-Output"
 const TqlHeaderConsoleId = "X-Console-Id"
-const TqlHeaderAppendWorker = "X-Append-Worker"
 
 type ConsoleInfo struct {
 	consoleId       string
@@ -823,10 +822,15 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			}
 		}
 	}
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
+	done := make(chan struct{})
+	defer close(done)
+	go func(ctx *gin.Context, task *tql.Task, done <-chan struct{}) {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			task.Cancel()
+		}
+	}(ctx, task, done)
 
 	result := task.Execute()
 	if result == nil {
@@ -922,10 +926,15 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			}
 		}
 	}
-	go func() {
-		<-ctx.Request.Context().Done()
-		task.Cancel()
-	}()
+	done := make(chan struct{})
+	defer close(done)
+	go func(ctx *gin.Context, task *tql.Task, done <-chan struct{}) {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			task.Cancel()
+		}
+	}(ctx, task, done)
 
 	result := task.Execute()
 	if result == nil {

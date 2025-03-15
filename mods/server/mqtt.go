@@ -27,7 +27,6 @@ import (
 	"github.com/mochi-mqtt/server/v2/hooks/storage/badger"
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"github.com/mochi-mqtt/server/v2/packets"
-	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 type MqttOption func(s *mqttd) error
@@ -37,9 +36,8 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 
 	caps := mqtt.NewDefaultServerCapabilities()
 	svr := &mqttd{
-		log:       log,
-		db:        db,
-		appenders: cmap.New[[]*AppenderWrapper](),
+		log: log,
+		db:  db,
 		broker: mqtt.New(&mqtt.Options{
 			Logger:                 logging.Wrap(log, logFilter),
 			InlineClient:           true,
@@ -231,7 +229,6 @@ type mqttd struct {
 	log               logging.Log
 	db                api.Database
 	broker            *mqtt.Server
-	appenders         cmap.ConcurrentMap[string, []*AppenderWrapper]
 	authServer        AuthServer
 	enableTokenAuth   bool
 	tqlLoader         tql.Loader
@@ -323,19 +320,6 @@ func (s *mqttd) onConnect(cl *mqtt.Client, pk packets.Packet) error {
 
 func (s *mqttd) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 	s.log.Debugf("%s disconnected listener=%s expired=%t err=%v", cl.Net.Remote, cl.Net.Listener, expire, err)
-	peerId := cl.Net.Remote
-	s.appenders.RemoveCb(peerId, func(key string, v []*AppenderWrapper, exists bool) bool {
-		if !exists {
-			return false
-		}
-		for _, aw := range v {
-			succ, fail, err := aw.appender.Close()
-			s.log.Debugf("%s close appender %s succ=%d fail=%d err=%v", peerId, aw.appender.TableName(), succ, fail, err)
-			aw.conn.Close()
-			aw.ctxCancel()
-		}
-		return true
-	})
 }
 
 type AuthHook struct {

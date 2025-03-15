@@ -188,15 +188,15 @@ type Rows struct {
 	columns    api.Columns
 	fetchError error
 
-	returnChan           chan struct{}
-	candidatedReturnChan chan struct{}
+	returnChan          chan struct{}
+	candidateReturnChan chan struct{}
 }
 
 var _ api.QueryLimiter = (*Rows)(nil)
 
 // PromoteQueryLimit activates the query limit to the Rows
 func (rows *Rows) QueryLimit(ctx context.Context) bool {
-	rows.returnChan = rows.candidatedReturnChan
+	rows.returnChan = rows.candidateReturnChan
 	if rows.returnChan == nil {
 		return true
 	}
@@ -210,6 +210,19 @@ func (rows *Rows) QueryLimit(ctx context.Context) bool {
 
 // Close release all resources that assigned to the Rows
 func (rows *Rows) Close() error {
+	if _env.database.enableWorkerPool {
+		return rows.CloseAsync()
+	}
+	return rows.CloseSync()
+}
+
+func (rows *Rows) CloseAsync() error {
+	req := &RowsCloseWork{rows: rows}
+	req = _env.database.workPool(req).(*RowsCloseWork)
+	return req.err
+}
+
+func (rows *Rows) CloseSync() error {
 	var err error
 	if rows.stmt != nil {
 		api.FreeStmt()
@@ -233,6 +246,19 @@ func (rows *Rows) StatementType() StmtType {
 }
 
 func (rows *Rows) RowsAffected() int64 {
+	if _env.database.enableWorkerPool {
+		return rows.RowsAffectedAsync()
+	}
+	return rows.RowsAffectedSync()
+}
+
+func (rows *Rows) RowsAffectedAsync() int64 {
+	req := &RowsAffectedWork{rows: rows}
+	req = _env.database.workPool(req).(*RowsAffectedWork)
+	return req.affected
+}
+
+func (rows *Rows) RowsAffectedSync() int64 {
 	if rows.IsFetchable() {
 		return 0
 	}
@@ -309,6 +335,19 @@ func (rows *Rows) Message() string {
 
 // internal use only from machrpc server
 func (rows *Rows) Fetch() ([]any, bool, error) {
+	if _env.database.enableWorkerPool {
+		return rows.FetchAsync()
+	}
+	return rows.FetchSync()
+}
+
+func (rows *Rows) FetchAsync() ([]any, bool, error) {
+	req := &RowsFetchWork{rows: rows}
+	req = _env.database.workPool(req).(*RowsFetchWork)
+	return req.values, req.next, req.err
+}
+
+func (rows *Rows) FetchSync() ([]any, bool, error) {
 	// Do not proceed if the statement is not a SELECT
 	if !rows.IsFetchable() {
 		return nil, false, sql.ErrNoRows
@@ -355,6 +394,19 @@ func (rows *Rows) Fetch() ([]any, bool, error) {
 //		rows.Scan(&name, &value)
 //	}
 func (rows *Rows) Next() bool {
+	if _env.database.enableWorkerPool {
+		return rows.NextAsync()
+	}
+	return rows.NextSync()
+}
+
+func (rows *Rows) NextAsync() bool {
+	req := &RowsNextWork{rows: rows}
+	req = _env.database.workPool(req).(*RowsNextWork)
+	return req.next
+}
+
+func (rows *Rows) NextSync() bool {
 	// the statement is not SELECT
 	if !rows.IsFetchable() {
 		return false
@@ -379,6 +431,19 @@ func (rows *Rows) FetchError() error {
 //		rows.Scan(&name, &value)
 //	}
 func (rows *Rows) Scan(cols ...any) error {
+	if _env.database.enableWorkerPool {
+		return rows.ScanAsync(cols...)
+	}
+	return rows.ScanSync(cols...)
+}
+
+func (rows *Rows) ScanAsync(cols ...any) error {
+	req := &RowsScanWork{rows: rows, values: cols}
+	req = _env.database.workPool(req).(*RowsScanWork)
+	return req.err
+}
+
+func (rows *Rows) ScanSync(cols ...any) error {
 	if !rows.IsFetchable() {
 		return sql.ErrNoRows
 	}

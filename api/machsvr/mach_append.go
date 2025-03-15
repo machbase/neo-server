@@ -21,6 +21,24 @@ import (
 //	defer app.Close()
 //	app.Append("name", time.Now(), 3.14)
 func (conn *Conn) Appender(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	if conn.db.enableWorkerPool {
+		return conn.AppenderAsync(ctx, tableName, opts...)
+	}
+	return conn.AppenderSync(ctx, tableName, opts...)
+}
+
+func (conn *Conn) AppenderAsync(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
+	req := &AppenderOpenWork{
+		ctx:   ctx,
+		conn:  conn,
+		table: tableName,
+		opts:  opts,
+	}
+	req = conn.db.workPool(req).(*AppenderOpenWork)
+	return req.appender, req.err
+}
+
+func (conn *Conn) AppenderSync(ctx context.Context, tableName string, opts ...api.AppenderOption) (api.Appender, error) {
 	appender := &Appender{}
 	appender.conn = conn
 	appender.tableName = strings.ToUpper(tableName)
@@ -190,6 +208,19 @@ func (ap *Appender) WithInputColumns(columns ...string) api.Appender {
 }
 
 func (ap *Appender) Close() (int64, int64, error) {
+	if _env.database.enableWorkerPool {
+		return ap.CloseAsync()
+	}
+	return ap.CloseSync()
+}
+
+func (ap *Appender) CloseAsync() (int64, int64, error) {
+	req := &AppenderCloseWork{appender: ap}
+	req = _env.database.workPool(req).(*AppenderCloseWork)
+	return req.success, req.failure, req.err
+}
+
+func (ap *Appender) CloseSync() (int64, int64, error) {
 	if ap.closed {
 		return ap.successCount, ap.failCount, nil
 	}
@@ -224,6 +255,19 @@ func (ap *Appender) TableType() api.TableType {
 }
 
 func (ap *Appender) Append(values ...any) error {
+	if _env.database.enableWorkerPool {
+		return ap.AppendAsync(values...)
+	}
+	return ap.AppendSync(values...)
+}
+
+func (ap *Appender) AppendAsync(values ...any) error {
+	req := &AppendWork{appender: ap, values: values}
+	req = _env.database.workPool(req).(*AppendWork)
+	return req.err
+}
+
+func (ap *Appender) AppendSync(values ...any) error {
 	if ap.tableType == api.TableTypeTag {
 		return ap.append(values...)
 	} else if ap.tableType == api.TableTypeLog {
@@ -240,6 +284,19 @@ func (ap *Appender) Append(values ...any) error {
 }
 
 func (ap *Appender) AppendLogTime(ts time.Time, cols ...any) error {
+	if _env.database.enableWorkerPool {
+		return ap.AppendLogTimeAsync(ts, cols...)
+	}
+	return ap.AppendLogTimeSync(ts, cols...)
+}
+
+func (ap *Appender) AppendLogTimeAsync(ts time.Time, cols ...any) error {
+	req := &AppendLogTimeWork{appender: ap, ts: ts, values: cols}
+	req = ap.conn.db.workPool(req).(*AppendLogTimeWork)
+	return req.err
+}
+
+func (ap *Appender) AppendLogTimeSync(ts time.Time, cols ...any) error {
 	if ap.tableType != api.TableTypeLog {
 		return fmt.Errorf("%s is not a log table, use Append() instead", ap.tableName)
 	}

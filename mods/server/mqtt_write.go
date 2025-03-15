@@ -306,17 +306,6 @@ func (s *mqttd) handleWrite(cl *mqtt.Client, pk packets.Packet) {
 	s.log.Trace(cl.Net.Remote, rsp.Reason)
 }
 
-type AppenderWrapper struct {
-	conn      api.Conn
-	appender  api.Appender
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-
-	// currently use by only http write?method=append
-	tableDesc *api.TableDescription
-	lastTime  time.Time
-}
-
 func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 	writePath := strings.TrimPrefix(strings.TrimPrefix(pk.TopicName, "db/append/"), "db/write/")
 	writePath = strings.ToUpper(writePath)
@@ -379,9 +368,6 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		return
 	}
 
-	var appenderSet []*AppenderWrapper
-	var appender api.Appender
-	var peerId = cl.Net.Remote
 	tableNameFields := strings.SplitN(wp.Table, ".", 2)
 	tableUser := "SYS"
 	if len(tableNameFields) == 2 {
@@ -391,42 +377,14 @@ func (s *mqttd) handleAppend(cl *mqtt.Client, pk packets.Packet) {
 		wp.Table = strings.ToUpper(wp.Table)
 	}
 	var appenderName = tableUser + "." + wp.Table
-
-	if appenderSet, exists := s.appenders.Get(peerId); exists {
-		for _, a := range appenderSet {
-			if a.appender.TableName() == appenderName {
-				appender = a.appender
-				break
-			}
-		}
+	var appender api.Appender
+	if aw, err := api.GetAppendWorker(context.TODO(), s.db, appenderName); err != nil {
+		s.log.Warn(cl.Net.Remote, "fail to get append worker,", err.Error())
+		return
+	} else {
+		appender = aw
 	}
-
-	if appender == nil {
-		ctx, ctxCancel := context.WithCancel(context.Background())
-		if conn, err := s.db.Connect(ctx, api.WithTrustUser(tableUser)); err != nil {
-			ctxCancel()
-			s.log.Warn(cl.Net.Remote, err.Error())
-			return
-		} else {
-			appender, err = conn.Appender(ctx, appenderName)
-			if err != nil {
-				ctxCancel()
-				s.log.Warn(cl.Net.Remote, "fail to create appender,", err.Error())
-				return
-			}
-			aw := &AppenderWrapper{
-				conn:      conn,
-				appender:  appender,
-				ctx:       ctx,
-				ctxCancel: ctxCancel,
-			}
-			if len(appenderSet) == 0 {
-				appenderSet = []*AppenderWrapper{}
-			}
-			appenderSet = append(appenderSet, aw)
-			s.appenders.Set(peerId, appenderSet)
-		}
-	}
+	defer appender.Close()
 
 	var inputStream io.Reader
 

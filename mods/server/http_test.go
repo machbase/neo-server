@@ -698,7 +698,6 @@ func TestHttpWrite(t *testing.T) {
 			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/db/write/test_w"+tc.queryParams, payload)
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 			req.Header.Set("Content-Type", tc.payloadType)
-			req.Header.Set(TqlHeaderAppendWorker, "false")
 			if compressed {
 				req.Header.Set("Content-Encoding", "gzip")
 			}
@@ -708,6 +707,7 @@ func TestHttpWrite(t *testing.T) {
 			rsp.Body.Close()
 			require.Equal(t, http.StatusOK, rsp.StatusCode, string(rspBody))
 
+			api.FlushAppendWorkers()
 			conn, _ := httpServer.db.Connect(context.Background(), api.WithTrustUser("sys"))
 			conn.Exec(context.Background(), `EXEC table_flush(test_w)`)
 			conn.Close()

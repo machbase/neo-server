@@ -358,6 +358,7 @@ func (s *Server) startMachbaseSvr() error {
 		MaxOpenConnFactor:  s.Config.MaxOpenConnFactor,
 		MaxOpenQuery:       s.Config.MaxOpenQuery,
 		MaxOpenQueryFactor: s.Config.MaxOpenQueryFactor,
+		MaxWorkerPoolSize:  s.Config.MaxPoolSize,
 	})
 	if err != nil {
 		return fmt.Errorf("database instance failed, %s", err.Error())
@@ -827,7 +828,6 @@ func (s *Server) startHttpServer() error {
 		WithHttpBridgeServer(s.bridgeSvc),
 		WithHttpServerSideFileSystem(ssfs.Default()),
 		WithHttpBackupService(s.bakd),
-		WithHttpNoAppendWorker(s.Http.NoAppendWorker),
 		WithHttpDebugMode(s.Http.DebugMode, s.Http.DebugLatency),
 		WithHttpExperimentModeProvider(func() bool { return s.ExperimentMode }),
 		WithHttpWebShellProvider(s.models.ShellProvider()),

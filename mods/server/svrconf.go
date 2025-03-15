@@ -80,6 +80,7 @@ type Config struct {
 	ExperimentMode bool
 
 	MachbaseInitOption machsvr.InitOption
+	MaxPoolSize        int
 	MaxOpenConn        int
 	MaxOpenConnFactor  float64
 	MaxOpenQuery       int
@@ -124,7 +125,7 @@ type HttpConfig struct {
 	Listeners []string
 	WebDir    string
 
-	NoAppendWorker  bool
+	NoAppendWorker  bool // deprecated, left for previous version's configuration file compatibility
 	EnableWebUI     bool // deprecated, left for previous version's configuration file compatibility
 	EnableTokenAuth bool
 	DebugMode       bool

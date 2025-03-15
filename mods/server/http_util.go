@@ -39,15 +39,21 @@ func strString(str string, def string) string {
 }
 
 var (
-	metricRequestTotal     = metric.NewExpVarIntCounter("machbase:http:count", api.MetricTimeFrames...)
-	metricResponseLatency  = metric.NewExpVarDurationHistogram("machbase:http:latency", api.MetricTimeFrames...)
-	metricRecvContentBytes = metric.NewExpVarIntCounter("machbase:http:recv_bytes", api.MetricTimeFrames...)
-	metricSendContentBytes = metric.NewExpVarIntCounter("machbase:http:send_bytes", api.MetricTimeFrames...)
-	metricStatus1xx        = metric.NewExpVarIntCounter("machbase:http:status_1xx", api.MetricTimeFrames...)
-	metricStatus2xx        = metric.NewExpVarIntCounter("machbase:http:status_2xx", api.MetricTimeFrames...)
-	metricStatus3xx        = metric.NewExpVarIntCounter("machbase:http:status_3xx", api.MetricTimeFrames...)
-	metricStatus4xx        = metric.NewExpVarIntCounter("machbase:http:status_4xx", api.MetricTimeFrames...)
-	metricStatus5xx        = metric.NewExpVarIntCounter("machbase:http:status_5xx", api.MetricTimeFrames...)
+	metricRequestTotal         = metric.NewExpVarIntCounter("machbase:http:count", api.MetricTimeFrames...)
+	metricResponseLatency      = metric.NewExpVarDurationHistogram("machbase:http:latency", api.MetricTimeFrames...)
+	metricWriteRequestTotal    = metric.NewExpVarIntCounter("machbase:http:write:count", api.MetricTimeFrames...)
+	metricWriteResponseLatency = metric.NewExpVarDurationHistogram("machbase:http:write:latency", api.MetricTimeFrames...)
+	metricQueryRequestTotal    = metric.NewExpVarIntCounter("machbase:http:query:count", api.MetricTimeFrames...)
+	metricQueryResponseLatency = metric.NewExpVarDurationHistogram("machbase:http:query:latency", api.MetricTimeFrames...)
+	metricTqlResponseLatency   = metric.NewExpVarDurationHistogram("machbase:http:tql:latency", api.MetricTimeFrames...)
+	metricTqlRequestTotal      = metric.NewExpVarIntCounter("machbase:http:tql:count", api.MetricTimeFrames...)
+	metricRecvContentBytes     = metric.NewExpVarIntCounter("machbase:http:recv_bytes", api.MetricTimeFrames...)
+	metricSendContentBytes     = metric.NewExpVarIntCounter("machbase:http:send_bytes", api.MetricTimeFrames...)
+	metricStatus1xx            = metric.NewExpVarIntCounter("machbase:http:status_1xx", api.MetricTimeFrames...)
+	metricStatus2xx            = metric.NewExpVarIntCounter("machbase:http:status_2xx", api.MetricTimeFrames...)
+	metricStatus3xx            = metric.NewExpVarIntCounter("machbase:http:status_3xx", api.MetricTimeFrames...)
+	metricStatus4xx            = metric.NewExpVarIntCounter("machbase:http:status_4xx", api.MetricTimeFrames...)
+	metricStatus5xx            = metric.NewExpVarIntCounter("machbase:http:status_5xx", api.MetricTimeFrames...)
 )
 
 func MetricsInterceptor() gin.HandlerFunc {
@@ -56,7 +62,18 @@ func MetricsInterceptor() gin.HandlerFunc {
 		c.Next()
 
 		metricRequestTotal.Add(1)
-		metricResponseLatency.Add(time.Since(start))
+		latency := time.Since(start)
+		metricResponseLatency.Add(latency)
+		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
+			metricWriteResponseLatency.Add(latency)
+			metricWriteRequestTotal.Add(1)
+		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
+			metricQueryResponseLatency.Add(latency)
+			metricQueryRequestTotal.Add(1)
+		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
+			metricTqlResponseLatency.Add(latency)
+			metricTqlRequestTotal.Add(1)
+		}
 		if s := c.Request.ContentLength; s > 0 {
 			metricRecvContentBytes.Add(s)
 		}
@@ -190,11 +207,11 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 			ErrorMessage = "\n" + ErrorMessage
 		}
 
-		wsize := c.Writer.Size()
-		if wsize == -1 {
-			wsize = 0
+		wSize := c.Writer.Size()
+		if wSize == -1 {
+			wSize = 0
 		}
-		WriteSize := util.HumanizeByteCount(int64(wsize))
+		WriteSize := util.HumanizeByteCount(int64(wSize))
 		ReadSize := util.HumanizeByteCount(c.Request.ContentLength)
 
 		color := ""
