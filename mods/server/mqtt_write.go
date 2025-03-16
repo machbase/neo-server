@@ -332,10 +332,11 @@ func (aw *AppenderWrapper) Start() {
 	go func(aw *AppenderWrapper) {
 		defer aw.appendWg.Done()
 		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
+		// intentionally ignore calling runtime.UnlockOSThread()
+		// defer runtime.UnlockOSThread()
 		aw.log.Info("appender open", aw.appender.TableName())
 		var appendFunc func(...any) error
-		if appendSync, ok := aw.appender.(interface{ AppendSync(...any) error }); ok {
+		if appendSync, ok := aw.appender.(api.AppendSync); ok {
 			appendFunc = appendSync.AppendSync
 		} else {
 			appendFunc = aw.appender.Append

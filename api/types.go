@@ -371,3 +371,7 @@ func DetectSQLStatementType(sqlText string) SQLStatementType {
 func (st SQLStatementType) IsFetch() bool {
 	return st == SQLStatementTypeSelect || st == SQLStatementTypeDescribe
 }
+
+type AppendSync interface {
+	AppendSync(...any) error
+}

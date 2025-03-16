@@ -184,6 +184,7 @@ type Appender struct {
 }
 
 var _ api.Appender = (*Appender)(nil)
+var _ api.AppendSync = (*Appender)(nil)
 
 type AppenderInputColumn struct {
 	Name string

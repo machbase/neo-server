@@ -200,7 +200,7 @@ func (db *Database) Shutdown() (err error) {
 	defer _env.Unlock()
 
 	db.onceStop.Do(func() {
-		if enableWorkerPool {
+		if useWorkerPool() {
 			StopWorkerPool()
 		}
 		err = mach.EngShutdown(db.handle)
@@ -423,7 +423,7 @@ func (conn *Conn) SetLatestSql(sql string) {
 }
 
 func (db *Database) Connect(ctx context.Context, opts ...api.ConnectOption) (api.Conn, error) {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return db.ConnectAsync(ctx, opts...)
 	}
 	return db.ConnectSync(ctx, opts...)
@@ -514,7 +514,7 @@ func (db *Database) ConnectSync(ctx context.Context, opts ...api.ConnectOption) 
 }
 
 func (conn *Conn) Close() (err error) {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return conn.CloseAsync()
 	}
 	return conn.CloseSync()
@@ -569,7 +569,7 @@ func (conn *Conn) Connected() bool {
 // ExecContext executes SQL statements that does not return result
 // like 'ALTER', 'CREATE TABLE', 'DROP TABLE', ...
 func (conn *Conn) Exec(ctx context.Context, sqlText string, params ...any) api.Result {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return conn.ExecAsync(ctx, sqlText, params...)
 	}
 	return conn.ExecSync(ctx, sqlText, params...)
@@ -642,7 +642,7 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 //	}
 //	defer rows.Close()
 func (conn *Conn) Query(ctx context.Context, sqlText string, params ...any) (api.Rows, error) {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return conn.QueryAsync(ctx, sqlText, params...)
 	}
 	return conn.QuerySync(ctx, sqlText, params...)
@@ -801,7 +801,7 @@ func columnDataTypeToRawType(typ api.DataType) (int, error) {
 //	row := conn.QueryRow(ctx, "select count(*) from my_table where name = ?", "my_name")
 //	row.Scan(&cnt)
 func (conn *Conn) QueryRow(ctx context.Context, sqlText string, params ...any) api.Row {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return conn.QueryRowAsync(ctx, sqlText, params...)
 	}
 	return conn.QueryRowSync(ctx, sqlText, params...)
@@ -910,7 +910,7 @@ func (conn *Conn) QueryRowSync(ctx context.Context, sqlText string, params ...an
 }
 
 func (conn *Conn) Explain(ctx context.Context, sqlText string, full bool) (string, error) {
-	if enableWorkerPool {
+	if useWorkerPool() {
 		return conn.ExplainAsync(ctx, sqlText, full)
 	}
 	return conn.ExplainSync(ctx, sqlText, full)

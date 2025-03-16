@@ -552,10 +552,10 @@ func (svr *httpd) handleTags(ctx *gin.Context) {
 	defer conn.Close()
 
 	var isCancelled bool
-	go func(ctx *gin.Context) {
-		<-ctx.Done()
+	go func() {
+		<-ctx.Request.Context().Done()
 		isCancelled = true
-	}(ctx)
+	}()
 
 	api.ListTagsWalk(ctx, conn, table, func(tag *api.TagInfo) bool {
 		if tag.Err != nil {
@@ -827,15 +827,10 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			}
 		}
 	}
-	taskDone := make(chan struct{})
-	defer close(taskDone)
-	go func(ctx *gin.Context, task *tql.Task) {
-		select {
-		case <-taskDone:
-		case <-ctx.Done():
-			task.Cancel()
-		}
-	}(ctx, task)
+	go func() {
+		<-ctx.Request.Context().Done()
+		task.Cancel()
+	}()
 
 	result := task.Execute()
 	if result == nil {
@@ -930,15 +925,10 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			}
 		}
 	}
-	taskDone := make(chan struct{})
-	defer close(taskDone)
-	go func(ctx *gin.Context, task *tql.Task) {
-		select {
-		case <-taskDone:
-		case <-ctx.Done():
-			task.Cancel()
-		}
-	}(ctx, task)
+	go func() {
+		<-ctx.Request.Context().Done()
+		task.Cancel()
+	}()
 
 	result := task.Execute()
 	if result == nil {
