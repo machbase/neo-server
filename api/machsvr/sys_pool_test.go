@@ -32,6 +32,17 @@ import (
 // BenchmarkCGoPool-512                3410            332480 ns/op            3576 B/op         55 allocs/op
 // BenchmarkCGoPool-1024               3105            361616 ns/op            3775 B/op         56 allocs/op
 
+//
+// workerPoolSize := 24
+//
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkCGoPool-32                 3975            294107 ns/op            3570 B/op         56 allocs/op
+// BenchmarkCGoPool-64                 2545            411271 ns/op            3515 B/op         55 allocs/op
+// BenchmarkCGoPool-128                2617            409350 ns/op            3548 B/op         55 allocs/op
+// BenchmarkCGoPool-256                2238            479350 ns/op            3616 B/op         55 allocs/op
+// BenchmarkCGoPool-512                2910            366128 ns/op            3595 B/op         55 allocs/op
+// BenchmarkCGoPool-1024               2076            502246 ns/op            3892 B/op         56 allocs/op
+
 func BenchmarkCGoPool(b *testing.B) {
 	workerPoolSize := 12
 

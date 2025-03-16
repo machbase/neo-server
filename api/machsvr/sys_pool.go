@@ -14,7 +14,7 @@ var enableWorkerPool bool
 var pool chan *Worker
 var poolSize int
 var poolSizeHardLimit = runtime.NumCPU() * 10
-var poolSizeSoftThreshold = 0
+var poolSizeSoftThreshold = 2
 var poolDB *Database
 
 func useWorkerPool() bool {
@@ -45,7 +45,11 @@ func SetWorkerPoolSize(size int) {
 			w.Stop()
 		}
 	}
-	poolSizeSoftThreshold = poolSize / 3
+	if poolSize < 4 {
+		poolSizeSoftThreshold = 0
+	} else {
+		poolSizeSoftThreshold = 2
+	}
 }
 
 func WorkerPoolSize() int {
