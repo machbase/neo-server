@@ -163,7 +163,7 @@ func NewDatabase(opt DatabaseOption) (*Database, error) {
 			conns:             cmap.New[*ConnWatcher](),
 			idGen:             sonyflake.NewSonyflake(sonyflake.Settings{}),
 			poolSize:          runtime.NumCPU(),
-			poolSizeHardLimit: runtime.NumCPU() * 2,
+			poolSizeHardLimit: runtime.NumCPU() * 100,
 		}
 	})
 
