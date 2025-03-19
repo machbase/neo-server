@@ -439,9 +439,11 @@ func TestDatabaseTql(t *testing.T) {
 				APPEND( table('tag_simple') )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
+				api.FlushAppendWorkers("tag_simple")
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)
 				require.Equal(t, "success", gjson.Get(result, "reason").String(), result)
-				require.Equal(t, `{"message":"append 3 rows (success 3, fail 0)"}`, gjson.Get(result, "data").Raw, result)
+				// since we are using api.AppendWorker, the success and fail count is always 0
+				require.Equal(t, `{"message":"append 3 rows (success 0, fail 0)"}`, gjson.Get(result, "data").Raw, result)
 				require.NoError(t, flushTable("tag_simple"))
 			},
 		},
