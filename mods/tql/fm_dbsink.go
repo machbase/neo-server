@@ -200,6 +200,7 @@ func (app *appender) Close() (string, error) {
 	if app.dbAppender != nil {
 		succ, fail, err = app.dbAppender.Close()
 	}
+	_ = succ
 	if err != nil {
 		return fmt.Sprintf("append fail, %s", err.Error()), err
 	} else {
@@ -207,7 +208,8 @@ func (app *appender) Close() (string, error) {
 		if app.nrows <= 1 {
 			unit = "row"
 		}
-		return fmt.Sprintf("append %d %s (success %d, fail %d)", app.nrows, unit, succ, fail), nil
+		// since we are using api.AppendWraper, success is always nrows
+		return fmt.Sprintf("append %d %s (success %d, fail %d)", app.nrows, unit, app.nrows, fail), nil
 	}
 }
 
