@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -19,6 +20,7 @@ type AppendWorker struct {
 
 	tableDesc *TableDescription
 	lastTime  time.Time
+	refCount  int32
 	// append runner
 	appendC    chan []interface{}
 	appendStop chan struct{}
@@ -43,7 +45,7 @@ func StartAppendWorkers() {
 				appendersLock.Lock()
 				var deleting []string
 				for tableName, value := range appenders {
-					if !value.lastTime.IsZero() && time.Since(value.lastTime) > 30*time.Second {
+					if !value.lastTime.IsZero() && time.Since(value.lastTime) > 30*time.Second && atomic.LoadInt32(&value.refCount) == 0 {
 						value.Stop()
 						deleting = append(deleting, tableName)
 					}
@@ -98,6 +100,7 @@ func GetAppendWorker(ctx context.Context, db Database, tableName string) (*Appen
 
 	if aw, exists := appenders[tableName]; exists {
 		aw.lastTime = time.Now()
+		atomic.AddInt32(&aw.refCount, 1)
 		return aw, nil
 	}
 
@@ -130,6 +133,7 @@ func GetAppendWorker(ctx context.Context, db Database, tableName string) (*Appen
 		appender:  appender,
 		tableDesc: tableDesc,
 		lastTime:  time.Now(),
+		refCount:  1,
 		log:       logging.GetLog(fmt.Sprintf("appender-%s", strings.ToLower(tableName))),
 	}
 	appenders[tableName] = ret
@@ -213,7 +217,7 @@ func (aw *AppendWorker) AppendLogTime(ts time.Time, vals ...any) error {
 }
 
 func (aw *AppendWorker) Close() (success, fail int64, err error) {
-	// ignore close
+	atomic.AddInt32(&aw.refCount, -1)
 	return 0, 0, nil
 }
 

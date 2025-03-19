@@ -180,25 +180,17 @@ func (x *Node) fmAppend(args ...any) (*appender, error) {
 }
 
 type appender struct {
-	conn      api.Conn
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-
-	nrows int
-
+	nrows      int
 	dbAppender api.Appender
-
-	table *Table
+	table      *Table
 }
 
 func (app *appender) Open(task *Task) (err error) {
-	app.ctx, app.ctxCancel = context.WithCancel(task.ctx)
-	if conn, err := task.ConnDatabase(app.ctx); err != nil {
-		return err
-	} else {
-		app.conn = conn
+	aw, err := api.GetAppendWorker(task.ctx, task.db, app.table.Name)
+	if err != nil {
+		return
 	}
-	app.dbAppender, err = app.conn.Appender(app.ctx, app.table.Name)
+	app.dbAppender = aw
 	return
 }
 
@@ -207,10 +199,6 @@ func (app *appender) Close() (string, error) {
 	var err error
 	if app.dbAppender != nil {
 		succ, fail, err = app.dbAppender.Close()
-	}
-	if app.conn != nil {
-		app.conn.Close()
-		app.ctxCancel()
 	}
 	if err != nil {
 		return fmt.Sprintf("append fail, %s", err.Error()), err
