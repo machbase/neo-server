@@ -320,6 +320,7 @@ func (svr *httpd) handleFileWrite(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
+	defer form.RemoveAll()
 
 	ts := time.Now()
 	columns := []string{}
