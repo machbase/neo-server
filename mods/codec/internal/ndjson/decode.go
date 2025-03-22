@@ -19,6 +19,10 @@ type Decoder struct {
 	timeformat   string
 	timeLocation *time.Location
 	tableName    string
+	values       []any
+	columns      []string
+	jsonObj      map[string]any
+	columnUppers []string
 }
 
 func NewDecoder() *Decoder {
@@ -43,6 +47,10 @@ func (dec *Decoder) SetTableName(tableName string) {
 
 func (dec *Decoder) SetColumns(names ...string) {
 	dec.columnNames = names
+	dec.columnUppers = make([]string, len(names))
+	for i, name := range names {
+		dec.columnUppers[i] = strings.ToUpper(name)
+	}
 }
 
 func (dec *Decoder) SetColumnTypes(types ...api.DataType) {
@@ -59,37 +67,41 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 	}
 
 	// decode json into a map
-	var jsonObj = map[string]any{}
-	err := dec.reader.Decode(&jsonObj)
+	if dec.jsonObj == nil {
+		dec.jsonObj = map[string]any{}
+	}
+	for k := range dec.jsonObj {
+		delete(dec.jsonObj, k)
+	}
+	err := dec.reader.Decode(&dec.jsonObj)
 	if err != nil {
 		return nil, nil, err
 	}
-	// make lower cased names
-	var obj = map[string]any{}
-	for k, v := range jsonObj {
-		obj[strings.ToLower(k)] = v
+	for k, v := range dec.jsonObj {
+		dec.jsonObj[strings.ToUpper(k)] = v
 	}
 	dec.nrow++
 
-	values := make([]any, 0, len(obj))
-	columns := make([]string, 0, len(obj))
+	// clear and reuse slices
+	dec.values = dec.values[:0]
+	dec.columns = dec.columns[:0]
 
 	for idx, colName := range dec.columnNames {
-		field, ok := obj[strings.ToLower(colName)]
+		field, ok := dec.jsonObj[dec.columnUppers[idx]]
 		if !ok {
 			continue
 		}
-		columns = append(columns, colName)
+		dec.columns = append(dec.columns, colName)
 		var value any
 		if field == nil {
-			values = append(values, nil)
+			dec.values = append(dec.values, nil)
 			continue
 		}
 		value, err = dec.columnTypes[idx].Apply(field, dec.timeformat, dec.timeLocation)
 		if err != nil {
 			return nil, nil, fmt.Errorf("rows[%d] field[%s] is not a %s, but %T", dec.nrow, colName, dec.columnTypes[idx], field)
 		}
-		values = append(values, value)
+		dec.values = append(dec.values, value)
 	}
-	return values, columns, nil
+	return dec.values, dec.columns, nil
 }
