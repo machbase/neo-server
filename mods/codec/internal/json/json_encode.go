@@ -1,6 +1,7 @@
 package json
 
 import (
+	"bytes"
 	"database/sql"
 	gojson "encoding/json"
 	"fmt"
@@ -32,6 +33,9 @@ type Exporter struct {
 	rowsFlatten bool
 	rowsArray   bool
 	series      [][]any
+	values      []any
+	jsonEncoder *gojson.Encoder
+	buffer      *bytes.Buffer
 }
 
 func NewEncoder() *Exporter {
@@ -167,67 +171,71 @@ func (ex *Exporter) encodeFloat64(v float64) any {
 func (ex *Exporter) AddRow(source []any) error {
 	ex.nrow++
 
-	values := make([]any, len(source))
+	if cap(ex.values) < len(source) {
+		ex.values = make([]any, len(source))
+	} else {
+		ex.values = ex.values[:len(source)]
+	}
 	for i, field := range source {
 		switch v := field.(type) {
 		case *time.Time:
-			values[i] = ex.timeformatter.FormatEpoch(*v)
+			ex.values[i] = ex.timeformatter.FormatEpoch(*v)
 		case time.Time:
-			values[i] = ex.timeformatter.FormatEpoch(v)
+			ex.values[i] = ex.timeformatter.FormatEpoch(v)
 		case *float64:
-			values[i] = ex.encodeFloat64(*v)
+			ex.values[i] = ex.encodeFloat64(*v)
 		case float64:
-			values[i] = ex.encodeFloat64(v)
+			ex.values[i] = ex.encodeFloat64(v)
 		case *float32:
-			values[i] = ex.encodeFloat64(float64(*v))
+			ex.values[i] = ex.encodeFloat64(float64(*v))
 		case float32:
-			values[i] = ex.encodeFloat64(float64(v))
+			ex.values[i] = ex.encodeFloat64(float64(v))
 		case *net.IP:
-			values[i] = v.String()
+			ex.values[i] = v.String()
 		case net.IP:
-			values[i] = v.String()
+			ex.values[i] = v.String()
 		case *sql.NullBool:
 			if v.Valid {
-				values[i] = v.Bool
+				ex.values[i] = v.Bool
 			}
 		case *sql.NullByte:
 			if v.Valid {
-				values[i] = v.Byte
+				ex.values[i] = v.Byte
 			}
 		case *sql.NullFloat64:
 			if v.Valid {
-				values[i] = v.Float64
+				ex.values[i] = v.Float64
 			}
 		case *sql.NullInt16:
 			if v.Valid {
-				values[i] = v.Int16
+				ex.values[i] = v.Int16
 			}
 		case *sql.NullInt32:
 			if v.Valid {
-				values[i] = v.Int32
+				ex.values[i] = v.Int32
 			}
 		case *sql.Null[float32]:
 			if v.Valid {
-				values[i] = v.V
+				ex.values[i] = v.V
 			}
 		case *sql.NullInt64:
 			if v.Valid {
-				values[i] = v.Int64
+				ex.values[i] = v.Int64
 			}
 		case *sql.NullString:
 			if v.Valid {
-				values[i] = v.String
+				ex.values[i] = v.String
 			}
 		case *sql.NullTime:
 			if v.Valid {
-				values[i] = ex.timeformatter.Format(v.Time)
+				ex.values[i] = ex.timeformatter.Format(v.Time)
 			}
 		case *sql.Null[net.IP]:
 			if v.Valid {
-				values[i] = v.V.String()
+				ex.values[i] = v.V.String()
 			}
 		default:
-			values[i] = field
+			ex.values[i] = field
 		}
 	}
 
@@ -236,7 +244,7 @@ func (ex *Exporter) AddRow(source []any) error {
 		if ex.Rownum {
 			vs["ROWNUM"] = ex.nrow
 		}
-		for i, v := range values {
+		for i, v := range ex.values {
 			if i >= len(ex.colNames) {
 				break
 			}
@@ -252,22 +260,22 @@ func (ex *Exporter) AddRow(source []any) error {
 		ex.output.Write(recJson)
 	} else if ex.transpose {
 		if ex.series == nil {
-			ex.series = make([][]any, len(values)-1)
+			ex.series = make([][]any, len(ex.values)-1)
 		}
-		if len(ex.series) < len(values) {
-			for i := 0; i < len(values)-len(ex.series); i++ {
+		if len(ex.series) < len(ex.values) {
+			for i := 0; i < len(ex.values)-len(ex.series); i++ {
 				ex.series = append(ex.series, []any{})
 			}
 		}
-		for n, v := range values {
+		for n, v := range ex.values {
 			ex.series[n] = append(ex.series[n], v)
 		}
 	} else if ex.rowsFlatten {
 		var recJson []byte
 		var err error
-		vs := values
+		vs := ex.values
 		if ex.Rownum {
-			vs = append([]any{ex.nrow}, values...)
+			vs = append([]any{ex.nrow}, ex.values...)
 		}
 		for i, v := range vs {
 			recJson, err = gojson.Marshal(v)
@@ -280,13 +288,18 @@ func (ex *Exporter) AddRow(source []any) error {
 			ex.output.Write(recJson)
 		}
 	} else {
-		var recJson []byte
+		if ex.buffer == nil {
+			ex.buffer = &bytes.Buffer{}
+			ex.jsonEncoder = gojson.NewEncoder(ex.buffer)
+		}
+		ex.buffer.Reset()
+
 		var err error
 		if ex.Rownum {
-			vs := append([]any{ex.nrow}, values...)
-			recJson, err = gojson.Marshal(vs)
+			vs := append([]any{ex.nrow}, ex.values...)
+			err = ex.jsonEncoder.Encode(vs)
 		} else {
-			recJson, err = gojson.Marshal(values)
+			err = ex.jsonEncoder.Encode(ex.values)
 		}
 		if err != nil {
 			return err
@@ -295,7 +308,8 @@ func (ex *Exporter) AddRow(source []any) error {
 		if ex.nrow > 1 {
 			ex.output.Write([]byte(","))
 		}
-		ex.output.Write(recJson)
+		str := ex.buffer.Bytes() // trim the last newline '\n'
+		ex.output.Write(str[0 : len(str)-1])
 	}
 
 	return nil
