@@ -83,8 +83,8 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 	dec.nrow++
 
 	// clear and reuse slices
-	dec.values = dec.values[:0]
-	dec.columns = dec.columns[:0]
+	dec.values = make([]any, 0, len(dec.columnNames))     // dec.values[:0]
+	dec.columns = make([]string, 0, len(dec.columnNames)) //dec.columns[:0]
 
 	for idx, colName := range dec.columnNames {
 		field, ok := dec.jsonObj[dec.columnUppers[idx]]
@@ -103,5 +103,6 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 		}
 		dec.values = append(dec.values, value)
 	}
-	return dec.values, dec.columns, nil
+	retVals, retCols := dec.values, dec.columns
+	return retVals, retCols, nil
 }

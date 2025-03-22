@@ -24,16 +24,16 @@ import (
 
 // new version of decode.go
 // cpu: AMD Ryzen 9 3900X 12-Core Processor
-// BenchmarkNDJsonDecoder-24         129907             10724 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106989             11041 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106771             10961 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         107634             10992 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         105990             11000 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         107485             10890 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106746             10993 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106914             10980 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106693             10994 ns/op            2240 B/op         49 allocs/op
-// BenchmarkNDJsonDecoder-24         106910             10972 ns/op            2240 B/op         49 allocs/op
+// BenchmarkNDJsonDecoder-24         123069             10883 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         106581             11050 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         106638             11021 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         107022             10997 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         106927             10919 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         106866             11032 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         107125             11004 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         107180             10988 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         107308             10950 ns/op            2208 B/op         47 allocs/op
+// BenchmarkNDJsonDecoder-24         133004             10988 ns/op            2208 B/op         47 allocs/op
 
 var benchRawInput = []byte{}
 
