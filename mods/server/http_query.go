@@ -844,12 +844,20 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	}
 }
 
+func handleError(ctx *gin.Context, statusCode int, msg string, tick time.Time) {
+	rsp := &QueryResponse{
+		Success: false,
+		Reason:  msg,
+		Elapse:  time.Since(tick).String(),
+	}
+	ctx.JSON(statusCode, rsp)
+}
+
 // tql as RESTful API
 //
 // GET  "/tql/*path"
 // POST "/tql/*path"
 func (svr *httpd) handleTqlFile(ctx *gin.Context) {
-	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
 	path := ctx.Param("path")
@@ -862,26 +870,20 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 				return
 			}
 		}
-		rsp.Reason = "tql not found"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusNotFound, rsp)
+		handleError(ctx, http.StatusNotFound, "tql not found", tick)
 		return
 	}
 	params, err := url.ParseQuery(ctx.Request.URL.RawQuery)
 	if err != nil {
 		svr.log.Error("tql params error", path, err.Error())
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusNotFound, rsp)
+		handleError(ctx, http.StatusBadRequest, err.Error(), tick)
 		return
 	}
 
 	script, err := svr.tqlLoader.Load(path)
 	if err != nil {
 		svr.log.Error("tql load fail", path, err.Error())
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusNotFound, rsp)
+		handleError(ctx, http.StatusNotFound, err.Error(), tick)
 		return
 	}
 
@@ -890,26 +892,26 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 	task.SetInputReader(ctx.Request.Body)
 	task.SetParams(params)
 	task.SetLogWriter(logging.GetLog(filepath.Base(path)))
+
+	// Set output writer based on headers
 	if ctx.Request.Header.Get(TqlHeaderChartOutput) == "json" || ctx.Request.Header.Get(TqlHeaderTqlOutput) == "json" {
 		task.SetOutputWriterJson(&util.NopCloseWriter{Writer: ctx.Writer}, true)
 	} else {
 		task.SetOutputWriter(&util.NopCloseWriter{Writer: ctx.Writer})
 	}
+
+	// Compile the script
 	if err := task.CompileScript(script); err != nil {
 		svr.log.Error("tql parse fail", path, err.Error())
-		rsp.Reason = err.Error()
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
+		handleError(ctx, http.StatusInternalServerError, err.Error(), tick)
 		return
 	}
 
 	contentType := task.OutputContentType()
-	switch contentType {
-	case "application/xhtml+xml":
-		ctx.Writer.Header().Set("Content-Type", "text/html")
-	default:
-		ctx.Writer.Header().Set("Content-Type", contentType)
+	if contentType == "application/xhtml+xml" {
+		contentType = "text/html"
 	}
+	ctx.Writer.Header().Set("Content-Type", contentType)
 	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
 	if chart := task.OutputChartType(); len(chart) > 0 {
 		ctx.Writer.Header().Set(TqlHeaderChartType, chart)
@@ -921,20 +923,27 @@ func (svr *httpd) handleTqlFile(ctx *gin.Context) {
 			}
 		}
 	}
+
+	// Handle task cancellation
 	go func() {
 		<-ctx.Request.Context().Done()
 		task.Cancel()
 	}()
 
+	// Exeute the task
 	result := task.Execute()
 	if result == nil {
 		svr.log.Error("tql execute return nil")
-		rsp.Reason = "task result is empty"
-		rsp.Elapse = time.Since(tick).String()
-		ctx.JSON(http.StatusInternalServerError, rsp)
-	} else if result.IsDbSink {
+		handleError(ctx, http.StatusInternalServerError, "task result is empty", tick)
+		return
+	}
+
+	if result.IsDbSink {
 		ctx.JSON(http.StatusOK, result)
-	} else if !ctx.Writer.Written() {
+		return
+	}
+
+	if !ctx.Writer.Written() {
 		ctx.JSON(http.StatusOK, result)
 	}
 }
