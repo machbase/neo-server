@@ -47,6 +47,7 @@ if (opt && opt.map) {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
   opt.map = map;
 }
-map.setView([37.49785,127.027756],13);
+opt.initPoint = {center:[37.49785,127.027756], zoomLevel:13};
+map.setView(opt.initPoint.center, opt.initPoint.zoomLevel);
 var obj0 = L.geoJSON({geometry:{coordinates:[127.027756,37.49785],type:"Point"},type:"Feature"},opt.geojson).addTo(map);
 })(MTY3NzQ2MDY4NzQyNTc4MTc2);

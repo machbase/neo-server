@@ -246,9 +246,11 @@ func (gm *GeoMap) Close() {
 	gm.appendJSCode(`}`)
 
 	if gm.Bound != nil && !gm.Bound.IsEmpty() && !gm.Bound.IsPoint() {
-		gm.appendJSCode(fmt.Sprintf("map.fitBounds(%s);", gm.Bound.String()))
+		gm.appendJSCode(fmt.Sprintf("opt.initBounds = %s;", gm.Bound.String()))
+		gm.appendJSCode("map.fitBounds(opt.initBounds);")
 	} else {
-		gm.appendJSCode(fmt.Sprintf("map.setView(%s,%d);", gm.InitialLatLon.String(), gm.InitialZoomLevel))
+		gm.appendJSCode(fmt.Sprintf("opt.initPoint = {center:%s, zoomLevel:%d};", gm.InitialLatLon.String(), gm.InitialZoomLevel))
+		gm.appendJSCode("map.setView(opt.initPoint.center, opt.initPoint.zoomLevel);")
 	}
 
 	for _, icn := range gm.icons {
