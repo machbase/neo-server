@@ -20,7 +20,7 @@ require (
 	github.com/go-git/go-git/v5 v5.13.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/gofrs/uuid/v5 v5.3.0
-	github.com/golang-jwt/jwt/v4 v4.5.1
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/hcl/v2 v2.17.0
 	github.com/influxdata/line-protocol/v2 v2.2.1
