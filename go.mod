@@ -11,6 +11,7 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/d5/tengo/v2 v2.16.1
 	github.com/dgraph-io/badger/v4 v4.2.0
+	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7
 	github.com/eclipse/paho.golang v0.21.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/fergusstrange/embedded-postgres v1.29.0
@@ -88,7 +89,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
-	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect
