@@ -37,10 +37,10 @@ func (x *Node) fmBridge(name string) *bridgeName {
 }
 
 func (node *Node) fmScript(args ...any) (any, error) {
-	var js_is_es6 bool
-	if flag, ok := node.pragma["es6"]; ok {
+	var js_is_es5 bool = true
+	if flag, ok := node.pragma["es5"]; ok {
 		if b, err := strconv.ParseBool(flag); err == nil {
-			js_is_es6 = b
+			js_is_es5 = b
 		}
 	}
 
@@ -60,7 +60,7 @@ func (node *Node) fmScript(args ...any) (any, error) {
 			}
 		case string:
 			switch name {
-			case "js", "javascript", "es6":
+			case "js", "javascript":
 				initCode, mainCode := "", ""
 				if len(args) == 2 { // SCRIPT("js", "main")
 					if str, ok := args[1].(string); !ok {
@@ -82,12 +82,13 @@ func (node *Node) fmScript(args ...any) (any, error) {
 				} else {
 					goto syntaxErr
 				}
-				if name == "es6" || (js_is_es6 && name == "js") {
-					return node.fmScriptGoja(initCode, mainCode)
-				} else {
+				if js_is_es5 {
 					return node.fmScriptOtto(initCode, mainCode)
+				} else {
+					return node.fmScriptGoja(initCode, mainCode)
 				}
 			case "tengo":
+				node.task.LogWarn("SCRIPT(\"tengo\") deprecated, use SCRIPT(\"js\") instead.")
 				if text, ok := args[1].(string); !ok {
 					goto syntaxErr
 				} else {
