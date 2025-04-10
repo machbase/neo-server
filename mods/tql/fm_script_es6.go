@@ -280,8 +280,14 @@ func (ctx *GojaContext) Run() (any, error) {
 func (ctx *GojaContext) consoleLog(level Level) func(args ...goja.Value) {
 	return func(args ...goja.Value) {
 		params := []any{}
-		for _, v := range args {
-			params = append(params, v.Export())
+		for _, value := range args {
+			val := value.Export()
+			if v, ok := val.(map[string]any); ok {
+				m, _ := json.Marshal(v)
+				params = append(params, string(m))
+			} else {
+				params = append(params, v)
+			}
 		}
 		ctx.node.task._log(level, params...)
 	}
@@ -687,6 +693,10 @@ func (ctx *GojaContext) gojaFuncSystem() goja.Value {
 	// $.system().gc()
 	ret.Set("gc", func() {
 		runtime.GC()
+	})
+	// $.system().now()
+	ret.Set("now", func() goja.Value {
+		return ctx.vm.ToValue(time.Now())
 	})
 	return ret
 }

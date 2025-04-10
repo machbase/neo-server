@@ -151,6 +151,24 @@ func TestScriptES6(t *testing.T) {
 			},
 		},
 		{
+			Name: "js-yield-object",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					$.yield({name:"John", age: 30, flag: true});
+					$.yield({name:"Jane", age: 25, flag: false});
+				})
+				JSON(rowsFlatten(true))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["column0"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["any"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `{"age":30,"flag":true,"name":"John"}`, gjson.Get(result, "data.rows.0").Raw)
+				require.Equal(t, `{"age":25,"flag":false,"name":"Jane"}`, gjson.Get(result, "data.rows.1").Raw)
+			},
+		},
+		{
 			Name: "js-system-free-os-memory",
 			Script: `
 				//+ es5=false
@@ -173,6 +191,23 @@ func TestScriptES6(t *testing.T) {
 				CSV()
 			`,
 			ExpectCSV: []string{"ok", "\n"},
+		},
+		{
+			Name: "js-system-now",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					let now = $.system().now();
+					$.yield("ok", now.Unix());
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string","double"]`, gjson.Get(result, "data.types").Raw)
+				require.NotEmpty(t, gjson.Get(result, "data.rows").Raw)
+			},
 		},
 	}
 
