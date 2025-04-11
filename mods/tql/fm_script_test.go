@@ -169,6 +169,32 @@ func TestScriptES6(t *testing.T) {
 			},
 		},
 		{
+			Name: "js-db-query",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					$.db().exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
+					$.db().exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", "2023-10-01 00:00:00", 1.234);
+					finalize = ()=>{
+						$.db().exec("drop table js_table");
+					}
+				},{
+					$.db().query("select name, time, value from js_table limit ?", 2).yield();
+					$.db().query("select name, time, value from js_table limit ?", 2).forEach((row) => {
+						$.yield(...row);
+					});
+				})
+				JSON()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool())
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `["js-db-query",1696086000000000000,1.234]`, gjson.Get(result, "data.rows.0").Raw)
+				require.Equal(t, `["js-db-query",1696086000000000000,1.234]`, gjson.Get(result, "data.rows.1").Raw)
+			},
+		},
+		{
 			Name: "js-system-free-os-memory",
 			Script: `
 				//+ es5=false

@@ -499,7 +499,7 @@ func TestDatabaseTql(t *testing.T) {
 					};
 				},{
 					$.request("%s/db/query?q="+
-							encodeURIComponent("select name, time, value from tag_simple limit 2")+"&format=csv&header=skip", 
+							encodeURIComponent("select name, time, value from tag_simple where name = 'tag1' limit 2")+"&format=csv&header=skip", 
 							{method: 'GET'}
 						).do(function(rsp) {
 							rsp.csv(function(r){
@@ -1594,6 +1594,7 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout",
 			Script: `
 				FAKE( linspace(1,10,10))
+				//+ es5=false
 				SCRIPT("js", {
 					for (var i = 0; i < 1000000000; i++) {
 					}
@@ -1612,6 +1613,7 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout-init",
 			Script: `
 				FAKE( linspace(1,10,10))
+				//+ es5=false
 				SCRIPT("js", {
 					for (var i = 0; i < 1000000000; i++) {
 					}
@@ -1631,6 +1633,7 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout-finalize",
 			Script: `
 				FAKE( linspace(1,10,10))
+				//+ es5=false
 				SCRIPT("js", {
 					function finalize(){
 						for (var i = 0; i < 1000000000; i++) {

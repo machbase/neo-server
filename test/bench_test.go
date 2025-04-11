@@ -22,6 +22,13 @@ import (
 //
 // 2024.11.29 mac-mini(m1) native
 // BenchmarkAppend-8       26549180              3011 ns/op             252 B/op         10 allocs/op
+//
+// 2025.04.11
+// cpu: mac-mini(m1) native
+// BenchmarkAppend-8       28999105              2741 ns/op             252 B/op         10 allocs/op
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkAppend-24       7882057              9398 ns/op             252 B/op         10 allocs/op
+
 func BenchmarkAppend(b *testing.B) {
 	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
 	require.NoError(b, err)
@@ -66,6 +73,13 @@ func BenchmarkAppend(b *testing.B) {
 //
 // 2024.11.29 mac-mini(m1) native
 // BenchmarkSelect-8           6524          14599373 ns/op            2139 B/op         49 allocs/op
+//
+// 2025.04.11
+// cpu: mac-mini(m1) native
+// BenchmarkSelect-8           6546          14871775 ns/op            2401 B/op         54 allocs/op
+// cpu: AMD Ryzen 9 3900X 12-Core Processor
+// BenchmarkSelect-24          5942          13417658 ns/op            2418 B/op         56 allocs/op
+
 func BenchmarkSelect(b *testing.B) {
 	db, err := machsvr.NewDatabase(machsvr.DatabaseOption{})
 	require.NoError(b, err)

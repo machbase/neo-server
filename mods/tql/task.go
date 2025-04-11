@@ -68,7 +68,9 @@ type Task struct {
 	_preemptiveCacheUpdateStarted bool
 	_preemptiveCacheUpdateTimeout time.Duration
 
-	_shouldStop    bool
+	_shouldStop          bool
+	_shouldStopListeners []func()
+
 	_resultColumns api.Columns
 	_stateLock     sync.RWMutex
 	_created       time.Time
@@ -491,10 +493,22 @@ func (x *Task) Cancel() {
 	}
 }
 
+func (x *Task) AddShouldStopListener(fn func()) {
+	x._stateLock.Lock()
+	x._shouldStopListeners = append(x._shouldStopListeners, fn)
+	x._stateLock.Unlock()
+}
+
 func (x *Task) fireCircuitBreak(_ *Node) {
+	if x._shouldStop {
+		return
+	}
 	x._stateLock.Lock()
 	x._shouldStop = true
 	x._stateLock.Unlock()
+	for _, fn := range x._shouldStopListeners {
+		fn()
+	}
 }
 
 func (x *Task) shouldStop() bool {

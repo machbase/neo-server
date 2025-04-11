@@ -71,8 +71,7 @@ type GojaContext struct {
 	onceFinalize sync.Once
 	didSetResult bool
 
-	watchdogCleanup chan struct{}
-	waitCleanup     sync.WaitGroup
+	onceInterrupt sync.Once
 }
 
 func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext, error) {
@@ -168,22 +167,11 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 	// $.system()
 	ctx.obj.Set("system", ctx.gojaFuncSystem)
 
-	ctx.watchdogCleanup = make(chan struct{})
-	ctx.waitCleanup.Add(1)
-	go func() {
-		defer ctx.waitCleanup.Done()
-		for {
-			select {
-			case <-time.After(1 * time.Second):
-				if ctx.node.task.shouldStop() {
-					ctx.vm.Interrupt(errOttoInterrupt)
-					return
-				}
-			case <-ctx.watchdogCleanup:
-				return
-			}
-		}
-	}()
+	ctx.node.task.AddShouldStopListener(func() {
+		ctx.onceInterrupt.Do(func() {
+			ctx.vm.Interrupt("interrupt")
+		})
+	})
 
 	// init code
 	if initCode != "" {
@@ -203,8 +191,9 @@ func closeGojaContext(ctx *GojaContext) {
 	if ctx == nil {
 		return
 	}
-	close(ctx.watchdogCleanup)
-	ctx.waitCleanup.Wait()
+	ctx.onceInterrupt.Do(func() {
+		ctx.vm.Interrupt("interrupt")
+	})
 }
 
 func (ctx *GojaContext) doResult() error {
