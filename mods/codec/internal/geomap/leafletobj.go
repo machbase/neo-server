@@ -118,10 +118,16 @@ func ConvCoordinates(coord any, extendLatLon func(lat, long float64)) any {
 			}
 		}
 		return ret
+	case *float64:
+		return *value
 	case float64:
 		return value
+	case *int64:
+		return float64(*value)
 	case int64:
 		return float64(value)
+	case *int:
+		return float64(*value)
 	case int:
 		return float64(value)
 	default:
