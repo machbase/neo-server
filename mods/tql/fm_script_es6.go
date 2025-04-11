@@ -275,7 +275,7 @@ func (ctx *GojaContext) consoleLog(level Level) func(args ...goja.Value) {
 				m, _ := json.Marshal(v)
 				params = append(params, string(m))
 			} else {
-				params = append(params, v)
+				params = append(params, val)
 			}
 		}
 		ctx.node.task._log(level, params...)
@@ -555,7 +555,7 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 			return nil
 		})
 
-		queryObj.Set("forEach", func(callback goja.Callable) error {
+		queryObj.Set("forEach", func(callback goja.Callable) goja.Value {
 			var conn api.Conn
 			var err error
 			if bridgeName == "" {
@@ -569,14 +569,14 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 			}
 			if err != nil {
 				node.task.Cancel()
-				return fmt.Errorf("DBError %s", err.Error())
+				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
 			}
 			defer conn.Close()
 
 			rows, err := conn.Query(node.task.ctx, sqlText, params...)
 			if err != nil {
 				node.task.Cancel()
-				return fmt.Errorf("DBError %s", err.Error())
+				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
 			}
 			defer rows.Close()
 			for rows.Next() {
@@ -584,7 +584,7 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 				values, _ := cols.MakeBuffer()
 				rows.Scan(values...)
 				if flag, e := callback(goja.Undefined(), ctx.vm.ToValue(values)); e != nil {
-					return fmt.Errorf("DBError %s", e.Error())
+					return ctx.vm.NewGoError(fmt.Errorf("DBError %s", e.Error()))
 				} else {
 					if goja.IsUndefined(flag) {
 						// if the callback does not return anything (undefined), continue
@@ -597,14 +597,14 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 					}
 				}
 			}
-			return nil
+			return goja.Undefined()
 		})
 
 		return queryObj
 	})
 
 	// $.db().exec(sql, params...)
-	db.Set("exec", func(sqlText string, params ...any) error {
+	db.Set("exec", func(sqlText string, params ...any) goja.Value {
 		var conn api.Conn
 		var err error
 		if bridgeName == "" {
@@ -618,16 +618,16 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 		}
 		if err != nil {
 			node.task.Cancel()
-			return fmt.Errorf("DBError %s", err.Error())
+			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
 		}
 		defer conn.Close()
 
 		result := conn.Exec(node.task.ctx, sqlText, params...)
 		if err = result.Err(); err != nil {
-			return fmt.Errorf("DBError %s", err.Error())
+			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
 		}
-		// ret := result.RowsAffected()
-		return nil
+		ret := result.RowsAffected()
+		return ctx.vm.ToValue(ret)
 	})
 
 	return db
