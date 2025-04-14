@@ -448,8 +448,8 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 				case "json":
 					dec := json.NewDecoder(httpResponse.Body)
 					for {
-						data := new(any)
-						err := dec.Decode(data)
+						data := map[string]any{}
+						err := dec.Decode(&data)
 						if err == io.EOF {
 							break
 						} else if err != nil {

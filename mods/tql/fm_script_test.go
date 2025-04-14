@@ -1,6 +1,7 @@
 package tql_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -233,6 +234,76 @@ func TestScriptES6(t *testing.T) {
 				require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").Raw)
 				require.Equal(t, `["string","double"]`, gjson.Get(result, "data.types").Raw)
 				require.NotEmpty(t, gjson.Get(result, "data.rows").Raw)
+			},
+		},
+		{
+			Name:    "js-payload-csv",
+			Payload: `1,2,3,4,5`,
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					$.payload.split(",").forEach((v) => {
+						$.yield(parseInt(v));
+					});
+				})
+				CSV()`,
+			ExpectCSV: []string{"1", "2", "3", "4", "5", "\n"},
+		},
+		{
+			Name: "js-compile-err",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					var1 + 1;
+				})
+				CSV()`,
+			ExpectErr: `ReferenceError: var1 is not defined at <eval>:4:6(0)`,
+		},
+		{
+			Name: "js-params",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					var1 = $.params.p1;
+					var2 = $.params["p2"];
+					$.yield(...var1, var2);
+				})
+				CSV()`,
+			Params:    map[string][]string{"p1": {"1", "2"}, "p2": {"abc"}},
+			ExpectCSV: []string{"1,2,abc", "\n"},
+		},
+		{
+			Name: "js-request",
+			Script: fmt.Sprintf(`
+				//+ es5=false
+				SCRIPT("js", {
+					$.request("%s/db/query?q="+encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: "GET"})
+					 .do( (rsp) => {
+					 	rsp.text((body) => {
+							obj = JSON.parse(body);
+							$.yield(obj.reason, obj.success);
+						})
+					})
+				})
+				CSV()`, testHttpAddress),
+			ExpectCSV: []string{"success,true", "\n"},
+		},
+		{
+			Name: "js-request-json",
+			Script: fmt.Sprintf(`
+				//+ es5=false
+				SCRIPT("js", {
+					$.request("%s/db/query?q="+encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: "GET"})
+					 .do( (rsp) => {
+					 	rsp.json((body) => {
+							$.yield(...body.data.columns);
+							$.yield(...body.data.types);
+						})
+					})
+				})
+				CSV()`, testHttpAddress),
+			ExpectCSV: []string{
+				`NAME,TIME,VALUE`, `string,datetime,double`, "\n",
 			},
 		},
 	}
