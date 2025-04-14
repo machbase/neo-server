@@ -169,6 +169,16 @@ func (c *Chart) Flush(heading bool) {
 }
 
 func (c *Chart) AddRow(values []any) error {
+	if len(values) == 1 {
+		if v, ok := values[0].(map[string]any); ok {
+			opt, err := json.Marshal(v)
+			if err != nil {
+				return err
+			}
+			c.option = string(opt)
+			return nil
+		}
+	}
 	if c.data == nil {
 		c.data = [][]any{}
 	}

@@ -315,6 +315,47 @@ func TestScriptES6(t *testing.T) {
 	}
 }
 
+func TestScriptGetSetValue(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-set-value",
+			Script: `
+				FAKE( linspace(1,2,1))
+				//+ es5=false
+				SCRIPT("js", {
+					$.set("key1", 123);
+					$.set("key2", "abc");
+					$.yield("");
+				})
+				MAPVALUE(0, $key1)
+				MAPVALUE(1, $key2)
+				CSV()
+			`,
+			ExpectCSV: []string{"123,abc", "\n"},
+		},
+		{
+			Name: "js-get-value",
+			Script: `
+				FAKE( linspace(1,2,1))
+				SET(key1, 123)
+				SET(key2, "abc")
+				//+ es5=false
+				SCRIPT("js", {
+					$.yield($.get("key1"), $.get("key2"));
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"123,abc", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptFFT(t *testing.T) {
 	tests := []TqlTestCase{
 		{
@@ -366,6 +407,125 @@ func TestScriptFFT(t *testing.T) {
 			ExpectCSV: []string{"\n"},
 		},
 	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptSimpleX(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-simplex",
+			Script: `
+				//+ es5=false
+				SCRIPT("js", {
+					gen = $.num().simplex(123)
+				},{
+					for(i=0; i < 5; i++) {
+						$.yield(i, gen.Eval(i, i * 0.6) );
+					}
+				})
+				CSV(precision(3))
+			`,
+			ExpectCSV: []string{
+				"0.000,0.000",
+				"1.000,0.349",
+				"2.000,0.319",
+				"3.000,0.038",
+				"4.000,-0.364",
+				"\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptNumQuantile(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-quantile",
+			Script: `
+				FAKE( arrange(1, 100, 1) )
+				//+ es5=false
+				SCRIPT("js", {
+					x = [];
+					function finalize() {
+						result = $.num().quantile(0.25, x);
+						$.yield(result);
+					}
+				},{
+					x.push($.values[0]);
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"25", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptNumMean(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-quantile",
+			Script: `
+				FAKE( arrange(1, 100, 1) )
+				//+ es5=false
+				SCRIPT("js", {
+					x = [];
+					function finalize() {
+						result = $.num().mean(x);
+						$.yield(result);
+					}
+				},{
+					x.push($.values[0]);
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"50.5", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptNumStdDev(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-quantile",
+			Script: `
+				FAKE( arrange(1, 100, 1) )
+				//+ es5=false
+				SCRIPT("js", {
+					x = [];
+					function finalize() {
+						result = $.num().stdDev(x);
+						$.yield(result);
+					}
+				},{
+					x.push($.values[0]);
+				})
+				CSV(precision(2))
+			`,
+			ExpectCSV: []string{"29.01", "\n"},
+		},
+	}
+
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTestCase(t, tc)

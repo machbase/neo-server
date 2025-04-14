@@ -17,7 +17,9 @@ import (
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/paulmach/orb/geojson"
+	"gonum.org/v1/gonum/stat"
 )
 
 const goja_ctx_key = "$goja_ctx$"
@@ -80,6 +82,7 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 		node: node,
 		vm:   goja.New(),
 	}
+	ctx.vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", false))
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -167,6 +170,10 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 	ctx.obj.Set("geojson", ctx.gojaFuncGeoJSON)
 	// $.system()
 	ctx.obj.Set("system", ctx.gojaFuncSystem)
+	// $.set()
+	ctx.obj.Set("set", ctx.gojaFuncSet)
+	// $.get()
+	ctx.obj.Set("get", ctx.gojaFuncGet)
 	// $.num()
 	ctx.obj.Set("num", ctx.gojaFuncNum)
 
@@ -321,7 +328,12 @@ func (ctx *GojaContext) yield(argKey goja.Value, args []goja.Value) {
 	if ctx.yieldCount == 0 && !ctx.didSetResult {
 		ctx.doResult()
 	}
-	NewRecord(key, values).Tell(ctx.node.next)
+
+	var vars map[string]any
+	if inf := ctx.node.Inflight(); inf != nil && inf.vars != nil {
+		vars = inf.vars
+	}
+	NewRecordVars(key, values, vars).Tell(ctx.node.next)
 	ctx.yieldCount++
 }
 
@@ -693,9 +705,36 @@ func (ctx *GojaContext) gojaFuncSystem() goja.Value {
 	return ret
 }
 
+func (ctx *GojaContext) gojaFuncSet(name string, value goja.Value) goja.Value {
+	if inf := ctx.node.Inflight(); inf != nil {
+		inf.SetVariable(name, value.Export())
+	}
+	return goja.Undefined()
+}
+
+func (ctx *GojaContext) gojaFuncGet(name string) goja.Value {
+	if inf := ctx.node.Inflight(); inf != nil {
+		if v, err := inf.GetVariable("$" + name); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("SCRIPT %s", err.Error()))
+		} else {
+			return ctx.vm.ToValue(v)
+		}
+	}
+	return goja.Undefined()
+}
+
 func (ctx *GojaContext) gojaFuncNum() goja.Value {
 	ret := ctx.vm.NewObject()
-	ret.Set("fft", func(times []any, values []any) goja.Value {
+	ret.Set("fft", gojaNumFFT(ctx))
+	ret.Set("mean", gojaNumMean(ctx))
+	ret.Set("quantile", gojaNumQuantile(ctx))
+	ret.Set("simplex", gojaNumSimplex(ctx))
+	ret.Set("stdDev", gojaNumStdDev(ctx))
+	return ret
+}
+
+func gojaNumFFT(ctx *GojaContext) func(times []any, values []any) goja.Value {
+	return func(times []any, values []any) goja.Value {
 		ts := make([]time.Time, len(times))
 		vs := make([]float64, len(values))
 		for i, val := range times {
@@ -720,6 +759,42 @@ func (ctx *GojaContext) gojaFuncNum() goja.Value {
 		}
 		xs, ys := fft.FastFourierTransform(ts, vs)
 		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
-	})
-	return ret
+	}
+}
+
+func gojaNumSimplex(ctx *GojaContext) func(seed int64) goja.Value {
+	return func(seed int64) goja.Value {
+		simplex := &GojaSimpleX{seed: seed}
+		return ctx.vm.ToValue(simplex)
+	}
+}
+
+type GojaSimpleX struct {
+	seed int64
+	gen  *opensimplex.Generator
+}
+
+func (sx *GojaSimpleX) Eval(dim ...float64) float64 {
+	if sx.gen == nil {
+		sx.gen = opensimplex.New(sx.seed)
+	}
+	return sx.gen.Eval(dim...)
+}
+
+func gojaNumQuantile(_ *GojaContext) func(p float64, x []float64) float64 {
+	return func(p float64, x []float64) float64 {
+		return stat.Quantile(p, stat.Empirical, x, nil)
+	}
+}
+
+func gojaNumMean(_ *GojaContext) func(x []float64) float64 {
+	return func(x []float64) float64 {
+		return stat.Mean(x, nil)
+	}
+}
+
+func gojaNumStdDev(_ *GojaContext) func(x []float64) float64 {
+	return func(x []float64) float64 {
+		return stat.StdDev(x, nil)
+	}
 }

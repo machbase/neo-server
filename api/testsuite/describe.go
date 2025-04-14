@@ -99,7 +99,11 @@ func DescribeTable(t *testing.T, db api.Database, ctx context.Context) {
 		}
 	}
 
-	desc, err := api.DescribeTable(ctx, conn, "m$sys_tables", false)
+	descConn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	defer descConn.Close()
+
+	desc, err := api.DescribeTable(ctx, descConn, "m$sys_tables", false)
 	require.NoError(t, err, "describe m$sys_tables fail")
 	require.Equal(t, "M$SYS_TABLES", desc.Name)
 }
