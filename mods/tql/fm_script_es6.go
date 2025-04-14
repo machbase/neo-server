@@ -16,6 +16,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/mods/nums/fft"
 	"github.com/paulmach/orb/geojson"
 )
 
@@ -166,6 +167,8 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 	ctx.obj.Set("geojson", ctx.gojaFuncGeoJSON)
 	// $.system()
 	ctx.obj.Set("system", ctx.gojaFuncSystem)
+	// $.num()
+	ctx.obj.Set("num", ctx.gojaFuncNum)
 
 	ctx.node.task.AddShouldStopListener(func() {
 		ctx.onceInterrupt.Do(func() {
@@ -686,6 +689,37 @@ func (ctx *GojaContext) gojaFuncSystem() goja.Value {
 	// $.system().now()
 	ret.Set("now", func() goja.Value {
 		return ctx.vm.ToValue(time.Now())
+	})
+	return ret
+}
+
+func (ctx *GojaContext) gojaFuncNum() goja.Value {
+	ret := ctx.vm.NewObject()
+	ret.Set("fft", func(times []any, values []any) goja.Value {
+		ts := make([]time.Time, len(times))
+		vs := make([]float64, len(values))
+		for i, val := range times {
+			switch v := val.(type) {
+			case time.Time:
+				ts[i] = v
+			case *time.Time:
+				ts[i] = *v
+			default:
+				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample time, but %T", i, val))
+			}
+		}
+		for i, val := range values {
+			switch v := val.(type) {
+			case float64:
+				vs[i] = v
+			case *float64:
+				vs[i] = *v
+			default:
+				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample value, but %T", i, val))
+			}
+		}
+		xs, ys := fft.FastFourierTransform(ts, vs)
+		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
 	})
 	return ret
 }

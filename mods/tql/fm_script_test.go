@@ -314,3 +314,61 @@ func TestScriptES6(t *testing.T) {
 		})
 	}
 }
+
+func TestScriptFFT(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-fft",
+			Script: `
+				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
+				//+ es5=false
+				SCRIPT("js", {
+					times = [];
+					values = [];
+					function finalize() {
+						result = $.num().fft(times, values);
+						for( i = 0; i < result.x.length; i++ ) {
+							if (result.x[i] > 60)
+								break
+							$.yield(result.x[i], result.y[i])
+						}
+					}
+				}, {
+					times.push($.values[0]);
+					values.push($.values[1]);
+				})
+				CSV(precision(6))
+				`,
+			ExpectCSV: loadLines("./test/fft2d.csv"),
+		},
+		{
+			Name: "js-fft_not_enough_samples_0",
+			Script: `
+				FAKE( linspace(0, 10, 100) )
+				//+ es5=false
+				SCRIPT("js", {
+					times = [];
+					values = [];
+					function finalize() {
+						result = $.num().fft(times, values);
+						for( i = 0; i < result.x.length; i++ ) {
+							if (result.x[i] > 60)
+								break
+							$.yield(result.x[i], result.y[i])
+						}
+					}
+				}, {
+					times.push($.values[0]);
+					values.push($.values[1]);
+				})
+				CSV()
+				`,
+			ExpectCSV: []string{"\n"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
