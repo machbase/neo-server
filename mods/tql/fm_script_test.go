@@ -174,16 +174,16 @@ func TestScriptES6(t *testing.T) {
 			Script: `
 				//+ es5=false
 				SCRIPT("js", {
-					$.db().exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
-					$.db().exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
-					finalize = ()=>{
-						$.db().exec("drop table js_table");
-					}
+					db = $.db();
+					db.exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
+					db.exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
 				},{
-					$.db().query("select name, time, value from js_table limit ?", 2).yield();
-					$.db().query("select name, time, value from js_table limit ?", 2).forEach((row) => {
+					db.query("select name, time, value from js_table limit ?", 2).yield();
+					db.query("select name, time, value from js_table limit ?", 2).forEach((row) => {
 						$.yield(...row);
 					});
+				},{
+					db.exec("drop table js_table");
 				})
 				JSON(timeformat("s"))
 			`,
@@ -366,17 +366,16 @@ func TestScriptFFT(t *testing.T) {
 				SCRIPT("js", {
 					times = [];
 					values = [];
-					function finalize() {
-						result = $.num().fft(times, values);
-						for( i = 0; i < result.x.length; i++ ) {
-							if (result.x[i] > 60)
-								break
-							$.yield(result.x[i], result.y[i])
-						}
-					}
 				}, {
 					times.push($.values[0]);
 					values.push($.values[1]);
+				}, {
+					result = $.num().fft(times, values);
+					for( i = 0; i < result.x.length; i++ ) {
+						if (result.x[i] > 60)
+							break
+						$.yield(result.x[i], result.y[i])
+					}
 				})
 				CSV(precision(6))
 				`,
@@ -390,17 +389,16 @@ func TestScriptFFT(t *testing.T) {
 				SCRIPT("js", {
 					times = [];
 					values = [];
-					function finalize() {
-						result = $.num().fft(times, values);
-						for( i = 0; i < result.x.length; i++ ) {
-							if (result.x[i] > 60)
-								break
-							$.yield(result.x[i], result.y[i])
-						}
-					}
 				}, {
 					times.push($.values[0]);
 					values.push($.values[1]);
+				}, {
+					result = $.num().fft(times, values);
+					for( i = 0; i < result.x.length; i++ ) {
+						if (result.x[i] > 60)
+							break
+						$.yield(result.x[i], result.y[i])
+					}
 				})
 				CSV()
 				`,
