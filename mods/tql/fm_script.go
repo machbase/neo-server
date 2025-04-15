@@ -11,20 +11,20 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/d5/tengo/v2"
-	"github.com/d5/tengo/v2/stdlib"
+	"github.com/dop251/goja"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/paulmach/orb/geojson"
-	"github.com/robertkrimen/otto"
+	"gonum.org/v1/gonum/stat"
 )
 
 type bridgeName struct {
@@ -37,19 +37,12 @@ func (x *Node) fmBridge(name string) *bridgeName {
 }
 
 func (node *Node) fmScript(args ...any) (any, error) {
-	var js_is_es5 bool = true
-	if flag, ok := node.pragma["es5"]; ok {
-		if b, err := strconv.ParseBool(flag); err == nil {
-			js_is_es5 = b
-		}
-	}
-
 	if len(args) == 1 {
 		text, ok := args[0].(string)
 		if !ok {
 			goto syntaxErr
 		}
-		return node.fmScriptTengo(text)
+		return node.fmScriptGoja("", text, "")
 	} else if len(args) >= 2 {
 		switch name := args[0].(type) {
 		case *bridgeName:
@@ -98,18 +91,7 @@ func (node *Node) fmScript(args ...any) (any, error) {
 				} else {
 					goto syntaxErr
 				}
-				if js_is_es5 {
-					return node.fmScriptOtto(initCode, mainCode)
-				} else {
-					return node.fmScriptGoja(initCode, mainCode, deinitCode)
-				}
-			case "tengo":
-				node.task.LogWarn("SCRIPT(\"tengo\") deprecated, use SCRIPT(\"js\") instead.")
-				if text, ok := args[1].(string); !ok {
-					goto syntaxErr
-				} else {
-					return node.fmScriptTengo(text)
-				}
+				return node.fmScriptGoja(initCode, mainCode, deinitCode)
 			default:
 				goto syntaxErr
 			}
@@ -206,494 +188,65 @@ func isPng(data []byte) bool {
 	return matched
 }
 
-type scriptlet struct {
-	script   *tengo.Script
-	compiled *tengo.Compiled
-	err      error
+const goja_ctx_key = "$goja_ctx$"
 
-	drop   bool
-	param  *Record
-	yields []*Record
-}
-
-func (node *Node) fmScriptTengo(content string) (any, error) {
-	var slet *scriptlet
-	if obj, ok := node.GetValue(tengo_script_key); ok {
-		if sl, ok := obj.(*scriptlet); ok {
-			slet = sl
-		}
-	} else {
-		slet = &scriptlet{param: &Record{}}
-		if s, c, err := script_compile(content, node); err != nil {
-			// script compile error
-			node.task.LogError("SCRIPT", err.Error())
-			fallbackCode := fmt.Sprintf(`import("context").yield(%s)`, strconv.Quote(err.Error()))
-			s, c, _ = script_compile(fallbackCode, node)
-			slet.script = s
-			slet.compiled = c
-		} else {
-			slet.script = s
-			slet.compiled = c
-		}
-		node.SetValue(tengo_script_key, slet)
-	}
-	if slet == nil {
-		return nil, errors.New("script internal error - nil script")
-	}
-	slet.drop = false
-	slet.yields = slet.yields[:0]
-	if inflight := node.Inflight(); inflight != nil {
-		slet.param.key, slet.param.value = inflight.key, inflight.value
-	}
-
-	slet.err = slet.compiled.RunContext(node.task.ctx)
-	if slet.err != nil {
-		node.task.LogError("SCRIPT", slet.err.Error())
-		return nil, slet.err
-	}
-
-	if slet.drop {
-		return nil, slet.err
-	} else if len(slet.yields) == 0 {
-		return slet.param, slet.err
-	} else {
-		return slet.yields, slet.err
-	}
-}
-
-const tengo_script_key = "$tengo_script"
-const tengo_uuid_key = "$tengo_uuid"
-
-func script_compile(content string, node *Node) (*tengo.Script, *tengo.Compiled, error) {
-	modules := stdlib.GetModuleMap([]string{
-		"math", "text", "times", "rand", "fmt", "json", "base64", "hex", "os", "enum",
-	}...)
-	modules.AddBuiltinModule("context", map[string]tengo.Object{
-		"key":      &tengo.UserFunction{Name: "key", Value: tengof_key(node)},
-		"value":    &tengo.UserFunction{Name: "value", Value: tengof_value(node)},
-		"drop":     &tengo.UserFunction{Name: "drop", Value: tengof_drop(node)},
-		"yieldKey": &tengo.UserFunction{Name: "yieldKey", Value: tengof_yieldKey(node)},
-		"yield":    &tengo.UserFunction{Name: "yield", Value: tengof_yield(node)},
-		"param":    &tengo.UserFunction{Name: "param", Value: tengof_param(node)},
-		"uuid":     &tengo.UserFunction{Name: "uuid", Value: tengof_uuid(node)},
-		"nil":      &tengo.UserFunction{Name: "nil", Value: tengof_nil(node)},
-		"bridge":   &tengo.UserFunction{Name: "bridge", Value: tengof_bridge(node)},
-		"print":    &tengo.UserFunction{Name: "print", Value: tengof_print(node)},
-		"println":  &tengo.UserFunction{Name: "println", Value: tengof_print(node)},
-		"printf":   &tengo.UserFunction{Name: "printf", Value: tengof_printf(node)},
-	})
-
-	s := tengo.NewScript([]byte(content))
-	s.SetImports(modules)
-	compiled, err := s.Compile()
-	return s, compiled, err
-}
-
-func tengof_key(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		if len(args) != 0 {
-			return nil, tengo.ErrWrongNumArguments
-		}
-		if obj, ok := node.GetValue(tengo_script_key); ok {
-			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				return anyToTengoObject(slet.param.key), nil
-			}
-		}
-		return nil, nil
-	}
-}
-
-func tengof_value(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		indexed := -1
-		if len(args) != 0 {
-			if i, ok := tengo.ToInt(args[0]); ok {
-				indexed = i
-			} else {
-				return nil, tengo.ErrInvalidIndexType
-			}
-		}
-		scriptObj, ok := node.GetValue(tengo_script_key)
-		if !ok {
-			return nil, nil
-		}
-		slet, ok := scriptObj.(*scriptlet)
-		if !ok || slet.param == nil {
-			return nil, nil
-		}
-
-		obj := anyToTengoObject(slet.param.value)
-		// value of a record should be always a tuple (= array).
-		if arr, ok := obj.(*tengo.Array); ok {
-			if indexed >= 0 {
-				if indexed >= len(arr.Value) {
-					return nil, tengo.ErrIndexOutOfBounds
-				}
-				return arr.Value[indexed], nil
-			} else {
-				return obj, nil
-			}
-		} else {
-			if indexed == 0 {
-				return obj, nil
-			} else if indexed > 0 {
-				return nil, tengo.ErrIndexOutOfBounds
-			}
-			return &tengo.Array{Value: []tengo.Object{obj}}, nil
-		}
-	}
-}
-
-func tengof_param(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		paramName := ""
-		defaultValue := ""
-		if len(args) > 0 {
-			if str, ok := tengo.ToString(args[0]); ok {
-				paramName = str
-			}
-		}
-		if len(args) > 1 {
-			if str, ok := tengo.ToString(args[1]); ok {
-				defaultValue = str
-			}
-		}
-		if paramName == "" {
-			return anyToTengoObject(defaultValue), nil
-		}
-		if v, ok := node.task.params[paramName]; ok {
-			if len(v) == 1 {
-				return anyToTengoObject(v[0]), nil
-			} else if len(v) > 1 {
-				ret := &tengo.Array{}
-				for _, elm := range v {
-					ret.Value = append(ret.Value, anyToTengoObject(elm))
-				}
-				return ret, nil
-			}
-		} else {
-			return anyToTengoObject(defaultValue), nil
-		}
-		return nil, nil
-	}
-}
-
-func tengof_drop(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		if obj, ok := node.GetValue(tengo_script_key); ok {
-			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				slet.drop = true
-			}
-		}
-		return nil, nil
-	}
-}
-
-func tengof_yieldKey(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		v_args := make([]any, len(args))
-		for i, v := range args {
-			v_args[i] = tengo.ToInterface(v)
-		}
-		if len(v_args) == 0 {
-			return nil, nil // yield no changes
-		}
-		if obj, ok := node.GetValue(tengo_script_key); ok {
-			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				if len(v_args) == 1 { // change key only
-					slet.yields = append(slet.yields, NewRecord(v_args[0], slet.param.value))
-				} else { // change key and values
-					slet.yields = append(slet.yields, NewRecord(v_args[0], v_args[1:]))
-				}
-			}
-		}
-		return nil, nil
-	}
-}
-
-func tengof_yield(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		v_args := make([]any, len(args))
-		for i, v := range args {
-			v_args[i] = tengo.ToInterface(v)
-		}
-		if obj, ok := node.GetValue(tengo_script_key); ok {
-			if slet, ok := obj.(*scriptlet); ok && slet.param != nil {
-				slet.yields = append(slet.yields, NewRecord(slet.param.key, v_args))
-			}
-		}
-		return nil, nil
-	}
-}
-
-func tengof_uuid(node *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		ver := 4
-		if len(args) == 1 {
-			if v, ok := args[0].(*tengo.Int); ok {
-				ver = int(v.Value)
-			}
-		}
-		var gen uuid.Generator
-		if obj, ok := node.GetValue(tengo_uuid_key); ok {
-			if id, ok := obj.(uuid.Generator); ok {
-				gen = id
-			}
-		}
-
-		if gen == nil {
-			gen = uuid.NewGen()
-			node.SetValue(tengo_uuid_key, gen)
-		}
-
-		var uid uuid.UUID
-		var err error
-		switch ver {
-		case 1:
-			uid, err = gen.NewV1()
-		case 4:
-			uid, err = gen.NewV4()
-		case 6:
-			uid, err = gen.NewV6()
-		case 7:
-			uid, err = gen.NewV7()
-		default:
-			return nil, tengo.ErrInvalidArgumentType{Name: "uuid version", Expected: "1,4,6,7", Found: fmt.Sprintf("%d", ver)}
-		}
-		if err != nil {
-			return nil, err
-		}
-		return anyToTengoObject(uid.String()), nil
-	}
-}
-
-func tengof_nil(_ *Node) func(args ...tengo.Object) (tengo.Object, error) {
-	return func(args ...tengo.Object) (tengo.Object, error) {
-		return tengo.UndefinedValue, nil
-	}
-}
-
-func tengoObjectToString(obj tengo.Object) (string, error) {
-	if o, ok := obj.(*tengo.String); ok {
-		return o.Value, nil
-	} else {
-		return "", errors.New("not a string")
-	}
-}
-
-func tengoSliceToAnySlice(arr []tengo.Object) []any {
-	ret := make([]any, len(arr))
-	for i, o := range arr {
-		ret[i] = tengoObjectToAny(o)
-	}
-	return ret
-}
-
-func tengoObjectToAny(obj tengo.Object) any {
-	switch o := obj.(type) {
-	case *tengo.String:
-		return o.Value
-	case *tengo.Float:
-		return o.Value
-	case *tengo.Int:
-		return o.Value
-	case *tengo.Bool:
-		return !o.IsFalsy()
-	default:
-		return obj.String()
-	}
-}
-
-func anyToTengoObject(av any) tengo.Object {
-	switch v := av.(type) {
-	case int:
-		return &tengo.Int{Value: int64(v)}
-	case *int:
-		return &tengo.Int{Value: int64(*v)}
-	case int16:
-		return &tengo.Int{Value: int64(v)}
-	case *int16:
-		return &tengo.Int{Value: int64(*v)}
-	case int32:
-		return &tengo.Int{Value: int64(v)}
-	case *int32:
-		return &tengo.Int{Value: int64(*v)}
-	case int64:
-		return &tengo.Int{Value: v}
-	case *int64:
-		return &tengo.Int{Value: *v}
-	case float64:
-		return &tengo.Float{Value: v}
-	case *float64:
-		return &tengo.Float{Value: *v}
-	case bool:
-		if v {
-			return tengo.TrueValue
-		} else {
-			return tengo.FalseValue
-		}
-	case *bool:
-		if *v {
-			return tengo.TrueValue
-		} else {
-			return tengo.FalseValue
-		}
-	case string:
-		return &tengo.String{Value: v}
-	case *string:
-		return &tengo.String{Value: *v}
-	case time.Time:
-		return &tengo.Time{Value: v}
-	case *time.Time:
-		return &tengo.Time{Value: *v}
-	case []byte:
-		return &tengo.Bytes{Value: v}
-	case []any:
-		arr := &tengo.Array{}
-		for _, n := range v {
-			arr.Value = append(arr.Value, anyToTengoObject(n))
-		}
-		return arr
-	}
-	return nil
-}
-
-const js_ctx_key = "$js_otto_ctx$"
-
-type ScriptOttoResultOption struct {
-	Key struct {
-		Name string `json:"name,omitempty"`
-		Type string `json:"type,omitempty"`
-	} `json:"key,omitempty"`
-	Columns []string `json:"columns"`
-	Types   []string `json:"types,omitempty"`
-}
-
-func (so *ScriptOttoResultOption) Load(obj otto.Value) error {
-	key, _ := obj.Object().Get("key")
-	if key.IsDefined() {
-		if name, _ := key.Object().Get("name"); name.IsDefined() {
-			so.Key.Name, _ = name.ToString()
-		}
-
-		if typ, _ := key.Object().Get("type"); typ.IsDefined() {
-			so.Key.Type, _ = typ.ToString()
-		}
-	}
-	cols, _ := obj.Object().Get("columns")
-	if cols.IsDefined() {
-		colsArr, _ := cols.Export()
-		if colsArr != nil {
-			so.Columns = append(so.Columns, colsArr.([]string)...)
-		}
-	}
-	types, _ := obj.Object().Get("types")
-	if types.IsDefined() {
-		typesArr, _ := types.Export()
-		if typesArr != nil {
-			so.Types = append(so.Types, typesArr.([]string)...)
-		}
-	}
-	return nil
-}
-
-func (so *ScriptOttoResultOption) ResultColumns() []*api.Column {
-	if len(so.Columns) == 0 {
-		return nil
-	}
-	cols := make([]*api.Column, len(so.Columns)+1)
-	cols[0] = &api.Column{Name: "key", DataType: api.DataTypeAny}
-	if so.Key.Name != "" {
-		cols[0].Name = so.Key.Name
-	}
-	if so.Key.Type != "" {
-		cols[0].DataType = api.ParseDataType(so.Key.Type)
-	}
-	for i, name := range so.Columns {
-		cols[i+1] = &api.Column{Name: name, DataType: api.DataTypeAny}
-		if len(so.Types) > i {
-			cols[i+1].DataType = api.ParseDataType(so.Types[i])
-		}
-	}
-	return cols
-}
-
-func (node *Node) fmScriptOtto(initCode string, mainCode string) (any, error) {
-	var ctx *OttoContext
+func (node *Node) fmScriptGoja(initCode string, mainCode string, deinitCode string) (any, error) {
+	var ctx *GojaContext
 	var err error
 
 	defer func() {
 		if r := recover(); r != nil {
 			code := "{" + strings.TrimSpace(strings.TrimPrefix(initCode, "//")) + "}\n" +
 				"{" + strings.TrimSpace(strings.TrimPrefix(mainCode, "//")) + "}"
-			if r == errOttoInterrupt {
-				node.task.LogWarnf("script is interrupted; %s", code)
-			} else {
-				node.task.LogWarnf("script panic; %v\n%s", r, code)
-			}
+			node.task.LogWarnf("script panic; %v\n%s", r, code)
 		}
 	}()
 
-	if obj, ok := node.GetValue(js_ctx_key); ok {
-		if o, ok := obj.(*OttoContext); ok {
+	if obj, ok := node.GetValue(goja_ctx_key); ok {
+		if o, ok := obj.(*GojaContext); ok {
 			ctx = o
 		}
 	}
+
 	if ctx == nil {
-		// if script is interrupted whilethe init stage of the newOtterContext()
-		// ctx might be nil
-		ctx, err = newOttoContext(node, initCode, mainCode)
+		ctx, err = newGojaContext(node, initCode, mainCode, deinitCode)
 		if err != nil {
 			return nil, err
 		}
-		node.SetValue(js_ctx_key, ctx)
+		node.SetValue(goja_ctx_key, ctx)
 	}
 	if inflight := node.Inflight(); inflight != nil {
-		ctx.obj.Set("key", inflight.key)
+		ctx.obj.Set("key", ctx.vm.ToValue(inflight.key))
 		if arr, ok := inflight.value.([]any); ok {
-			ctx.obj.Set("values", arr)
+			ctx.obj.Set("values", ctx.vm.ToValue(arr))
 		} else {
-			ctx.obj.Set("values", []any{inflight.value})
+			ctx.obj.Set("values", ctx.vm.ToValue([]any{inflight.value}))
 		}
 	}
 	_, err = ctx.Run()
 	return nil, err
 }
 
-type OttoContext struct {
-	vm           *otto.Otto
-	sc           *otto.Script
+type GojaContext struct {
+	vm           *goja.Runtime
+	sc           *goja.Program
 	node         *Node
-	obj          *otto.Object
+	obj          *goja.Object
 	yieldCount   int64
 	onceFinalize sync.Once
 	didSetResult bool
 
-	watchdogCleanup chan struct{}
-	waitCleanup     sync.WaitGroup
+	onceInterrupt sync.Once
+
+	uuidGen uuid.Generator
 }
 
-func (ctx *OttoContext) Run() (any, error) {
-	v, err := ctx.vm.Run(ctx.sc)
-	if err != nil {
-		return nil, err
-	}
-	return v.Export()
-}
-
-func closeOttoContext(ctx *OttoContext) {
-	close(ctx.watchdogCleanup)
-	ctx.waitCleanup.Wait()
-	close(ctx.vm.Interrupt)
-}
-
-var errOttoInterrupt = errors.New("script execution is interrupted")
-
-func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext, error) {
-	ctx := &OttoContext{
+func newGojaContext(node *Node, initCode string, mainCode string, deinitCode string) (*GojaContext, error) {
+	ctx := &GojaContext{
 		node: node,
-		vm:   otto.New(),
+		vm:   goja.New(),
 	}
+	ctx.vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", false))
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -701,14 +254,15 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		initCodeLine := strings.Count(initCode, "\n")
 		mainCode = strings.Repeat("\n", initCodeLine+node.tqlLine.line-1) + mainCode
 	}
-	if s, err := ctx.vm.Compile("", mainCode); err != nil {
+
+	if s, err := goja.Compile("", mainCode, false); err != nil {
 		return nil, err
 	} else {
 		ctx.sc = s
 	}
 
 	node.SetEOF(func(*Node) {
-		defer closeOttoContext(ctx)
+		defer closeGojaContext(ctx)
 		// set $.result columns if no records are yielded
 		if !ctx.didSetResult {
 			ctx.doResult()
@@ -716,92 +270,102 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 		ctx.onceFinalize.Do(func() {
 			// intentionally ignore the panic from finalize stage.
 			// it will raised to the task level.
-			// do not use "recover()" here.
-			// The related test case : TestScriptInterrupt()/js-timeout-finalize
-			f, _ := ctx.vm.Get("finalize")
-			if f.IsDefined() && f.IsFunction() {
-				ctx.vm.Call("finalize", nil)
+			if strings.TrimSpace(deinitCode) == "" {
+				if f, ok := goja.AssertFunction(ctx.vm.Get("finalize")); ok {
+					_, err := f(goja.Undefined())
+					if err != nil {
+						node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+					}
+				}
+			} else {
+				if node.tqlLine != nil && node.tqlLine.line > 1 {
+					mainCodeLine := strings.Count(mainCode, "\n")
+					deinitCode = strings.Repeat("\n", mainCodeLine) + deinitCode
+				}
+				_, err := ctx.vm.RunString(deinitCode)
+				if err != nil {
+					node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+				}
 			}
 		})
 	})
-	con, _ := ctx.vm.Get("console")
-	con.Object().Set("log", ctx.consoleLog(INFO))
-	con.Object().Set("warn", ctx.consoleLog(WARN))
-	con.Object().Set("error", ctx.consoleLog(ERROR))
+
+	// define console
+	con := ctx.vm.NewObject()
+	con.Set("log", ctx.consoleLog(INFO))
+	con.Set("debug", ctx.consoleLog(DEBUG))
+	con.Set("info", ctx.consoleLog(INFO))
+	con.Set("warn", ctx.consoleLog(WARN))
+	con.Set("error", ctx.consoleLog(ERROR))
+	ctx.vm.Set("console", con)
 
 	// define $
-	ctx.obj, _ = ctx.vm.Object(`($ = {})`)
+	ctx.obj = ctx.vm.NewObject()
+	ctx.vm.Set("$", ctx.obj)
 
 	// set $.payload
-	var payload = otto.UndefinedValue()
+	var payload = goja.Undefined()
 	if node.task.nodes[0] == node && node.task.inputReader != nil {
 		// $.payload is defined, only when the SCRIPT is the SRC node.
 		// If the SCRIPT is not the SRC node, the payload has been using by the previous node.
 		// and if the "inputReader" was consumed here, the actual SRC node will see the EOF.
 		if b, err := io.ReadAll(node.task.inputReader); err == nil {
-			if v, err := otto.ToValue(string(b)); err == nil && len(b) > 0 {
-				payload = v
-			}
+			payload = ctx.vm.ToValue(string(b))
 		}
 	}
 	ctx.obj.Set("payload", payload)
 
-	// set $.params[]
-	var param = otto.UndefinedValue()
-	if node.task.params != nil {
-		values := map[string]any{}
+	// set $.params
+
+	if pv, err := ctx.vm.RunString("()=>{return new Map()}"); err != nil {
+		return nil, fmt.Errorf("SCRIPT params, %s", err.Error())
+	} else {
+		values := pv.ToObject(ctx.vm)
 		for k, v := range node.task.params {
 			if len(v) == 1 {
-				values[k] = v[0]
+				values.Set(k, ctx.vm.ToValue(v[0]))
 			} else {
-				values[k] = v
+				values.Set(k, ctx.vm.ToValue(v))
 			}
 		}
-		param, _ = ctx.vm.ToValue(values)
+		ctx.obj.Set("params", values)
 	}
-	ctx.obj.Set("params", param)
 
 	// function $.yield(...)
-	ctx.obj.Set("yield", ottoFuncYield(ctx))
+	ctx.obj.Set("yield", ctx.gojaFuncYield)
 	// function $.yieldKey(key, ...)
-	ctx.obj.Set("yieldKey", ottoFuncYieldKey(ctx))
+	ctx.obj.Set("yieldKey", ctx.gojaFuncYieldKey)
 	// function $.yieldArray(array)
-	ctx.obj.Set("yieldArray", ottoFuncYieldArray(ctx))
+	ctx.obj.Set("yieldArray", ctx.gojaFuncYieldArray)
 	// $.db()
-	ctx.obj.Set("db", ottoFuncDB(ctx))
+	ctx.obj.Set("db", ctx.gojaFuncDB)
+	// $.publisher()
+	ctx.obj.Set("publisher", ctx.gojaFuncPublisher)
 	// $.request()
-	ctx.obj.Set("request", ottoFuncRequest(ctx))
+	ctx.obj.Set("request", ctx.gojaFuncRequest)
 	// $.geojson()
-	ctx.obj.Set("geojson", ottoFuncGeoJSON(ctx))
+	ctx.obj.Set("geojson", ctx.gojaFuncGeoJSON)
 	// $.system()
-	ctx.obj.Set("system", ottoFuncSystem(ctx))
-	ctx.vm.Interrupt = make(chan func(), 3) // 1 is for non-blocking
-	ctx.watchdogCleanup = make(chan struct{})
+	ctx.obj.Set("system", ctx.gojaFuncSystem)
+	// $.set()
+	ctx.obj.Set("set", ctx.gojaFuncSet)
+	// $.get()
+	ctx.obj.Set("get", ctx.gojaFuncGet)
+	// $.num()
+	ctx.obj.Set("num", ctx.gojaFuncNum)
 
-	ctx.waitCleanup.Add(1)
-	go func() {
-		defer ctx.waitCleanup.Done()
-		for {
-			select {
-			case <-time.After(1 * time.Second):
-				if ctx.node.task.shouldStop() {
-					ctx.vm.Interrupt <- func() {
-						panic(errOttoInterrupt)
-					}
-					return
-				}
-			case <-ctx.watchdogCleanup:
-				return
-			}
-		}
-	}()
+	ctx.node.task.AddShouldStopListener(func() {
+		ctx.onceInterrupt.Do(func() {
+			ctx.vm.Interrupt("interrupt")
+		})
+	})
 
 	// init code
-	if initCode != "" {
+	if strings.TrimSpace(initCode) != "" {
 		if node.tqlLine != nil && node.tqlLine.line > 1 {
 			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
 		}
-		_, err := ctx.vm.Run(initCode)
+		_, err := ctx.vm.RunString(initCode)
 		if err != nil {
 			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
 		}
@@ -810,16 +374,25 @@ func newOttoContext(node *Node, initCode string, mainCode string) (*OttoContext,
 	return ctx, nil
 }
 
-func (ctx *OttoContext) doResult() error {
-	resultObj, err := ctx.obj.Get("result")
-	if err != nil {
-		return fmt.Errorf("SCRIPT result, %s", err.Error())
+func closeGojaContext(ctx *GojaContext) {
+	if ctx == nil {
+		return
 	}
-	if resultObj.IsDefined() {
-		var opts ScriptOttoResultOption
-		if err := opts.Load(resultObj); err != nil {
-			msg := strings.TrimPrefix(err.Error(), "json: ")
-			return fmt.Errorf("line %d, SCRIPT option, %s", ctx.node.tqlLine.line, msg)
+	ctx.onceInterrupt.Do(func() {
+		ctx.vm.Interrupt("interrupt")
+	})
+}
+
+func (ctx *GojaContext) doResult() error {
+	if ctx.obj == nil {
+		fmt.Println("ctx.obj is nil")
+		return nil
+	}
+	resultObj := ctx.obj.Get("result")
+	if resultObj != nil && !goja.IsUndefined(resultObj) {
+		var opts ScriptGojaResultOption
+		if err := ctx.vm.ExportTo(resultObj, &opts); err != nil {
+			return fmt.Errorf("line %d, SCRIPT option, %s", ctx.node.tqlLine.line, err.Error())
 		}
 		if cols := opts.ResultColumns(); cols != nil {
 			ctx.node.task.SetResultColumns(cols)
@@ -829,499 +402,340 @@ func (ctx *OttoContext) doResult() error {
 	return nil
 }
 
-func (ctx *OttoContext) consoleLog(level Level) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		params := []any{}
-		for _, v := range call.ArgumentList {
-			params = append(params, v.String())
+type ScriptGojaResultOption map[string]any
+
+func (so ScriptGojaResultOption) ResultColumns() api.Columns {
+	var columns []string
+	var types []string
+	if c, ok := so["columns"]; !ok {
+		return nil
+	} else if s, ok := c.([]string); ok {
+		columns = s
+	} else {
+		for _, v := range c.([]any) {
+			if s, ok := v.(string); ok {
+				columns = append(columns, s)
+			} else {
+				columns = append(columns, fmt.Sprintf("%v", v))
+			}
 		}
-		ctx.node.task._log(level, params...)
-		return otto.UndefinedValue()
+	}
+	if t, ok := so["types"]; !ok {
+		return nil
+	} else if s, ok := t.([]string); ok {
+		types = s
+	} else {
+		for _, v := range t.([]any) {
+			if s, ok := v.(string); ok {
+				types = append(types, s)
+			} else {
+				types = append(types, fmt.Sprintf("%v", v))
+			}
+		}
+	}
+
+	cols := make([]*api.Column, len(columns)+1)
+	cols[0] = &api.Column{Name: "key", DataType: api.DataTypeAny}
+	for i, name := range columns {
+		cols[i+1] = &api.Column{Name: name, DataType: api.DataTypeAny}
+		if len(types) > i {
+			cols[i+1].DataType = api.ParseDataType(types[i])
+		}
+	}
+	return cols
+}
+
+func (ctx *GojaContext) Run() (any, error) {
+	if v, err := ctx.vm.RunProgram(ctx.sc); err != nil {
+		return nil, err
+	} else {
+		return v.Export(), nil
 	}
 }
 
-func (ctx *OttoContext) yield(key any, args []otto.Value) otto.Value {
-	var values []any
-	var err error
-	if len(args) == 1 && args[0].IsObject() && args[0].Object().Class() == "Array" {
-		arr, _ := args[0].Object().Value().Export()
-		if v, ok := arr.([][]any); ok {
-			values = make([]any, len(v))
-			for i, v := range v {
-				values[i] = v
+func (ctx *GojaContext) consoleLog(level Level) func(args ...goja.Value) {
+	return func(args ...goja.Value) {
+		params := []any{}
+		for _, value := range args {
+			val := value.Export()
+			if v, ok := val.(map[string]any); ok {
+				m, _ := json.Marshal(v)
+				params = append(params, string(m))
+			} else {
+				params = append(params, val)
 			}
-		} else if v, ok := arr.([]any); ok {
-			values = v
-		} else {
-			values = []any{arr}
 		}
-	} else {
-		values = make([]any, len(args))
-		for i, v := range args {
-			values[i], err = v.Export()
-			if err != nil {
-				values[i] = v.String()
-			}
+		ctx.node.task._log(level, params...)
+	}
+}
+
+func (ctx *GojaContext) gojaFuncYield(values ...goja.Value) {
+	var v_key goja.Value
+	if inflight := ctx.node.Inflight(); inflight != nil {
+		v_key = ctx.vm.ToValue(inflight.key)
+	}
+	if v_key == nil {
+		v_key = ctx.vm.ToValue(ctx.yieldCount)
+	}
+	ctx.yield(v_key, values)
+}
+
+func (ctx *GojaContext) gojaFuncYieldKey(key goja.Value, values ...goja.Value) {
+	ctx.yield(key, values)
+}
+
+func (ctx *GojaContext) gojaFuncYieldArray(values goja.Value) {
+	obj := values.ToObject(ctx.vm)
+	var arr []goja.Value
+	ctx.vm.ExportTo(obj, &arr)
+	ctx.gojaFuncYield(arr...)
+}
+
+func (ctx *GojaContext) yield(argKey goja.Value, args []goja.Value) {
+	var values []any
+	var key = argKey.Export()
+	values = make([]any, len(args))
+	for i, val := range args {
+		values[i] = val.Export()
+		if v, ok := values[i].(int64); ok {
+			values[i] = float64(v)
 		}
 	}
 	// set $.result columns before the first yield
 	if ctx.yieldCount == 0 && !ctx.didSetResult {
 		ctx.doResult()
 	}
-	NewRecord(key, values).Tell(ctx.node.next)
+
+	var vars map[string]any
+	if inf := ctx.node.Inflight(); inf != nil && inf.vars != nil {
+		vars = inf.vars
+	}
+	NewRecordVars(key, values, vars).Tell(ctx.node.next)
 	ctx.yieldCount++
-	return otto.TrueValue()
 }
 
-func ottoFuncYield(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		var v_key any
-		if inflight := ctx.node.Inflight(); inflight != nil {
-			v_key = inflight.key
-		}
-		if v_key == nil {
-			v_key = ctx.yieldCount
-		}
-		return ctx.yield(v_key, call.ArgumentList)
-	}
-}
-
-func ottoFuncYieldKey(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) < 2 {
-			return otto.FalseValue()
-		}
-		v_key, _ := call.ArgumentList[0].Export()
-		if v_key == nil {
-			v_key = ctx.yieldCount
-		}
-		return ctx.yield(v_key, call.ArgumentList[1:])
-	}
-}
-
-func ottoFuncYieldArray(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		var v_key any
-		if inflight := ctx.node.Inflight(); inflight != nil {
-			v_key = inflight.key
-		}
-		if v_key == nil {
-			v_key = ctx.yieldCount
-		}
-		if len(call.ArgumentList) != 1 || !slices.Contains([]string{"Array", "GoSlice"}, call.ArgumentList[0].Class()) {
-			return ctx.vm.MakeCustomError("SCRIPT", "argument should be an array")
-		}
-		obj, _ := call.ArgumentList[0].Export()
-		args := []otto.Value{}
-		switch arr := obj.(type) {
-		case []any:
-			for _, v := range arr {
-				ov, _ := ctx.vm.ToValue(v)
-				args = append(args, ov)
-			}
-		case []bool:
-			for _, v := range arr {
-				ov, _ := ctx.vm.ToValue(v)
-				args = append(args, ov)
-			}
-		case []string:
-			for _, v := range arr {
-				ov, _ := ctx.vm.ToValue(v)
-				args = append(args, ov)
-			}
-		case []int64:
-			for _, v := range arr {
-				ov, _ := ctx.vm.ToValue(v)
-				args = append(args, ov)
-			}
-		case []float64:
-			for _, v := range arr {
-				ov, _ := ctx.vm.ToValue(v)
-				args = append(args, ov)
-			}
-		}
-		return ctx.yield(v_key, args)
-	}
-}
-
-func ottoFuncRequest(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
+func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) goja.Value {
 	// $.request(url, option).do(function(response) {...})
-	return func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) == 0 {
-			return ctx.vm.MakeCustomError("HTTPError", "missing a URL")
-		}
-		option := struct {
-			Url     string            `json:"url"`
-			Method  string            `json:"method"` // GET, POST, PUT, DELETE
-			Body    string            `json:"body"`   // be-aware the type of body should be co-response to "Content-Type"
-			Headers map[string]string `json:"headers"`
-			// mode: "cors", // no-cors, *cors, same-origin
-			// cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-			// credentials: "same-origin", // include, *same-origin, omit
-			// redirect: "follow", // manual, *follow, error
-			// referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-		}{
-			Method:  "GET",
-			Headers: map[string]string{},
-		}
+	option := struct {
+		Url     string            `json:"url"`
+		Method  string            `json:"method"` // GET, POST, PUT, DELETE
+		Body    string            `json:"body"`   // be-aware the type of body should be co-response to "Content-Type"
+		Headers map[string]string `json:"headers"`
+		// mode: "cors", // no-cors, *cors, same-origin
+		// cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+		// credentials: "same-origin", // include, *same-origin, omit
+		// redirect: "follow", // manual, *follow, error
+		// referrerPolicy: "no-referrer", // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
+	}{
+		Url:     reqUrl,
+		Method:  "GET",
+		Headers: map[string]string{},
+	}
 
-		if url := call.ArgumentList[0]; !url.IsString() {
-			return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a URL, but got %q", url.Class()))
+	if method, ok := reqOpt["method"]; ok {
+		if s, ok := method.(string); ok {
+			option.Method = strings.ToUpper(s)
 		} else {
-			option.Url = url.String()
+			return ctx.vm.NewGoError(fmt.Errorf("HTTPError requires a method, but got %q", method))
 		}
-
-		if len(call.ArgumentList) > 1 {
-			for _, key := range call.ArgumentList[1].Object().Keys() {
-				if v, err := call.ArgumentList[1].Object().Get(key); err == nil {
-					switch key {
-					case "method":
-						if !v.IsString() {
-							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a method, but got %q", v.Class()))
-						}
-						option.Method, _ = v.ToString()
-					case "headers":
-						if !v.IsObject() {
-							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a headers object, but got %q", v.Class()))
-						}
-						for _, k := range v.Object().Keys() {
-							if h, err := v.Object().Get(k); err == nil {
-								option.Headers[k], _ = h.ToString()
-							}
-						}
-					case "body":
-						if !v.IsString() {
-							return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("requires a body, but got %q", v.Class()))
-						}
-						option.Body, _ = v.ToString()
-					}
-				}
-			}
-		}
-		if !slices.Contains([]string{"GET", "POST", "PUT", "DELETE"}, strings.ToUpper(option.Method)) {
-			return ctx.vm.MakeCustomError("InvalidOption", fmt.Sprintf("unsupported method %q", option.Method))
-		}
-
-		requestObj, _ := ctx.vm.Object(`({})`)
-		requestObj.Set("do", func(call otto.FunctionCall) otto.Value {
-			if len(call.ArgumentList) != 1 {
-				return ctx.vm.MakeCustomError("HTTPError", "do() requires a callback function")
-			}
-			if !call.ArgumentList[0].IsFunction() {
-				return ctx.vm.MakeCustomError("HTTPError",
-					fmt.Sprintf("do() requires a callback function, but got %s", call.ArgumentList[0].Class()))
-			}
-			callback := call.ArgumentList[0]
-			responseObj, _ := ctx.vm.Object(`({})`)
-
-			httpClient := ctx.node.task.NewHttpClient()
-			httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
-			var httpResponse *http.Response
-			if httpErr == nil {
-				for k, v := range option.Headers {
-					httpRequest.Header.Set(k, v)
-				}
-				if option.Method == "POST" || option.Method == "PUT" {
-					httpRequest.Body = io.NopCloser(strings.NewReader(option.Body))
-				}
-				if rsp, err := httpClient.Do(httpRequest); err != nil {
-					httpErr = err
-				} else {
-					defer rsp.Body.Close()
-					httpResponse = rsp
-					responseObj.Set("status", rsp.StatusCode)
-					responseObj.Set("statusText", rsp.Status)
-					hdr := map[string]any{}
-					for k, v := range rsp.Header {
-						if len(v) == 1 {
-							hdr[k] = v[0]
-						} else {
-							hdr[k] = v
-						}
-					}
-					// TODO: implement get(), forEach(), has(), keys()
-					responseObj.Set("headers", hdr)
-				}
-			}
-			responseObj.Set("url", option.Url)
-			responseObj.Set("ok", httpResponse != nil && httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300)
-			responseObj.Set("error", func(call otto.FunctionCall) otto.Value {
-				if httpErr == nil {
-					return otto.UndefinedValue()
-				}
-				return ctx.vm.MakeCustomError("HTTPError", httpErr.Error())
-			})
-			bodyFunc := func(typ string) func(call otto.FunctionCall) otto.Value {
-				return func(call otto.FunctionCall) otto.Value {
-					if httpErr != nil {
-						return ctx.vm.MakeCustomError("HTTPError", httpErr.Error())
-					}
-					if httpResponse == nil {
-						return otto.UndefinedValue()
-					}
-					if !slices.Contains([]string{"csv", "json", "text", "blob"}, typ) {
-						return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("%s() unknown function", typ))
-					}
-					if len(call.ArgumentList) == 0 || !call.ArgumentList[0].IsFunction() {
-						return ctx.vm.MakeCustomError("HTTPError", fmt.Sprintf("%s() requires a callback function", typ))
-					}
-					cb := call.ArgumentList[0]
-
-					switch typ {
-					case "csv":
-						dec := csv.NewReader(httpResponse.Body)
-						dec.FieldsPerRecord = -1
-						dec.TrimLeadingSpace = true
-						dec.ReuseRecord = true
-						for {
-							row, err := dec.Read()
-							if err == io.EOF {
-								break
-							} else if err != nil {
-								return ctx.vm.MakeCustomError("HTTPError", err.Error())
-							}
-							s := make([]any, len(row))
-							for i, v := range row {
-								s[i] = v
-							}
-							if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
-								return ctx.vm.MakeCustomError("HTTPError", e.Error())
-							}
-						}
-					case "json":
-						dec := json.NewDecoder(httpResponse.Body)
-						for {
-							data := new(any)
-							err := dec.Decode(data)
-							if err == io.EOF {
-								break
-							} else if err != nil {
-								return ctx.vm.MakeCustomError("HTTPError", err.Error())
-							}
-							var value otto.Value
-							value, err = ottoValue(ctx, data)
-							if err != nil {
-								return ctx.vm.MakeCustomError("HTTPError", err.Error())
-							}
-							if _, e := cb.Call(otto.UndefinedValue(), value); e != nil {
-								return ctx.vm.MakeCustomError("HTTPError", e.Error())
-							}
-						}
-					case "text":
-						if b, err := io.ReadAll(httpResponse.Body); err == nil {
-							if s, err := otto.ToValue(string(b)); err == nil {
-								if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
-									return ctx.vm.MakeCustomError("HTTPError", e.Error())
-								}
-							} else {
-								return ctx.vm.MakeCustomError("HTTPError", err.Error())
-							}
-						}
-					case "blob":
-						if b, err := io.ReadAll(httpResponse.Body); err == nil {
-							if s, err := otto.ToValue(b); err == nil {
-								if _, e := cb.Call(otto.UndefinedValue(), s); e != nil {
-									return ctx.vm.MakeCustomError("HTTPError", e.Error())
-								}
-							} else {
-								return ctx.vm.MakeCustomError("HTTPError", err.Error())
-							}
-						}
-					}
-					return otto.UndefinedValue()
-				}
-			}
-			responseObj.Set("text", bodyFunc("text"))
-			responseObj.Set("blob", bodyFunc("blob"))
-			responseObj.Set("json", bodyFunc("json"))
-			responseObj.Set("csv", bodyFunc("csv"))
-
-			if _, e := callback.Call(otto.UndefinedValue(), responseObj.Value()); e != nil {
-				return ctx.vm.MakeCustomError("HTTPError", e.Error())
-			}
-			return otto.UndefinedValue()
-		})
-		return requestObj.Value()
 	}
-}
+	if headers, ok := reqOpt["headers"]; ok {
+		if m, ok := headers.(map[string]any); ok {
+			for k, v := range m {
+				if s, ok := v.(string); ok {
+					option.Headers[k] = s
+				} else {
+					return ctx.vm.NewGoError(fmt.Errorf("HTTPError requires a headers, but got %q", v))
+				}
+			}
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("HTTPError requires a headers, but got %q", headers))
+		}
+	}
+	if body, ok := reqOpt["body"]; ok {
+		if s, ok := body.(string); ok {
+			option.Body = s
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("HTTPError requires a body, but got %q", body))
+		}
+	}
 
-func ottoValue(ctx *OttoContext, value any) (otto.Value, error) {
-	switch v := value.(type) {
-	case map[string]any:
-		obj, _ := ctx.vm.Object(`({})`)
-		for k, n := range v {
-			if val, err := ottoValue(ctx, n); err == nil {
-				obj.Set(k, val)
+	if !slices.Contains([]string{"GET", "POST", "PUT", "DELETE"}, option.Method) {
+		return ctx.vm.NewGoError(fmt.Errorf("HTTPError unsupported method %q", option.Method))
+	}
+
+	requestObj := ctx.vm.NewObject()
+	requestObj.Set("do", func(callback goja.Callable) goja.Value {
+		responseObj := ctx.vm.NewObject()
+		httpClient := ctx.node.task.NewHttpClient()
+		httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
+		var httpResponse *http.Response
+		if httpErr == nil {
+			for k, v := range option.Headers {
+				httpRequest.Header.Set(k, v)
+			}
+			if option.Method == "POST" || option.Method == "PUT" {
+				httpRequest.Body = io.NopCloser(strings.NewReader(option.Body))
+			}
+			if rsp, err := httpClient.Do(httpRequest); err != nil {
+				httpErr = err
 			} else {
-				return otto.UndefinedValue(), err
+				defer rsp.Body.Close()
+				httpResponse = rsp
+				responseObj.Set("status", rsp.StatusCode)
+				responseObj.Set("statusText", rsp.Status)
+				hdr := map[string]any{}
+				for k, v := range rsp.Header {
+					if len(v) == 1 {
+						hdr[k] = v[0]
+					} else {
+						hdr[k] = v
+					}
+				}
+				// TODO: implement get(), forEach(), has(), keys()
+				responseObj.Set("headers", hdr)
 			}
 		}
-		return obj.Value(), nil
-	default:
-		return otto.ToValue(v)
-	}
+		responseObj.Set("url", option.Url)
+		responseObj.Set("ok", httpResponse != nil && httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300)
+		responseObj.Set("error", func() goja.Value {
+			if httpErr == nil {
+				return goja.Undefined()
+			}
+			return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", httpErr.Error()))
+		})
+		bodyFunc := func(typ string) func(goja.Callable) goja.Value {
+			return func(callback goja.Callable) goja.Value {
+				if httpErr != nil {
+					return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", httpErr.Error()))
+				}
+				if httpResponse == nil {
+					return goja.Undefined()
+				}
+				if !slices.Contains([]string{"csv", "json", "text", "blob"}, typ) {
+					return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s() unknown function", typ))
+				}
+
+				switch typ {
+				case "csv":
+					dec := csv.NewReader(httpResponse.Body)
+					dec.FieldsPerRecord = -1
+					dec.TrimLeadingSpace = true
+					dec.ReuseRecord = true
+					for {
+						row, err := dec.Read()
+						if err == io.EOF {
+							break
+						} else if err != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", err.Error()))
+						}
+						s := make([]any, len(row))
+						for i, v := range row {
+							s[i] = v
+						}
+						if _, e := callback(goja.Undefined(), ctx.vm.ToValue(s)); e != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
+						}
+					}
+				case "json":
+					dec := json.NewDecoder(httpResponse.Body)
+					for {
+						data := map[string]any{}
+						err := dec.Decode(&data)
+						if err == io.EOF {
+							break
+						} else if err != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", err.Error()))
+						}
+						value := ctx.vm.ToValue(data)
+						if _, e := callback(goja.Undefined(), value); e != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
+						}
+					}
+				case "text":
+					if b, err := io.ReadAll(httpResponse.Body); err == nil {
+						s := ctx.vm.ToValue(string(b))
+						if _, e := callback(goja.Undefined(), s); e != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
+						}
+					}
+				case "blob":
+					if b, err := io.ReadAll(httpResponse.Body); err == nil {
+						s := ctx.vm.ToValue(string(b))
+						if _, e := callback(goja.Undefined(), s); e != nil {
+							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
+						}
+					}
+				}
+				return goja.Undefined()
+			}
+		}
+		responseObj.Set("text", bodyFunc("text"))
+		responseObj.Set("blob", bodyFunc("blob"))
+		responseObj.Set("json", bodyFunc("json"))
+		responseObj.Set("csv", bodyFunc("csv"))
+
+		if _, e := callback(goja.Undefined(), responseObj); e != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
+		}
+		return goja.Undefined()
+	})
+	return requestObj
 }
 
-func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	var node = ctx.node
-	return func(call otto.FunctionCall) otto.Value {
-		var bridgeName string
-		if len(call.ArgumentList) > 0 {
-			// parse db options `$.db({bridge: "name"})`
-			for _, key := range call.ArgumentList[0].Object().Keys() {
-				if v, err := call.ArgumentList[0].Object().Get(key); err == nil {
-					switch key {
-					case "bridge":
-						if !v.IsString() {
-							return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a bridge, but got %q", v.Class()))
-						}
-						bridgeName, _ = v.ToString()
-					default:
-						return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("unknown db option %q: %v", key, v.String()))
-					}
-				}
-			}
+func (ctx *GojaContext) gojaFuncPublisher(optObj map[string]any) goja.Value {
+	var cname string
+	if len(optObj) > 0 {
+		// parse db options `$.publisher({bridge: "name"})`
+		if br, ok := optObj["bridge"]; ok {
+			cname = br.(string)
 		}
-		db, _ := ctx.vm.Object(`({})`)
-		// $.db().query(sql, params...).next(function(row) {...})
-		db.Set("query", func(call otto.FunctionCall) otto.Value {
-			if len(call.ArgumentList) == 0 {
-				return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
-			}
-			sqlText := call.ArgumentList[0]
-			if !sqlText.IsString() {
-				return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
-			}
-			var params []any
-			if len(call.ArgumentList) > 1 {
-				params = make([]any, len(call.ArgumentList)-1)
-				for i, v := range call.ArgumentList[1:] {
-					params[i], _ = v.Export()
-				}
-			}
-			queryObj, _ := ctx.vm.Object(`({})`)
-			queryObj.Set("yield", func(handler otto.FunctionCall) otto.Value {
-				var conn api.Conn
-				var err error
-				if bridgeName == "" {
-					conn, err = node.task.ConnDatabase(node.task.ctx)
-				} else {
-					if db, dbErr := connector.New(bridgeName); dbErr == nil {
-						conn, err = db.Connect(node.task.ctx)
-					} else {
-						err = dbErr
-					}
-				}
-				if err != nil {
-					node.task.Cancel()
-					return ctx.vm.MakeCustomError("DBError", err.Error())
-				}
-				defer conn.Close()
+	}
+	br, err := bridge.GetBridge(cname)
+	if err != nil || br == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not found", cname))
+	}
 
-				rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
-				if err != nil {
-					node.task.Cancel()
-					return ctx.vm.MakeCustomError("DBError", err.Error())
-				}
-				defer rows.Close()
-				cols, _ := rows.Columns()
-
-				// set headers
-				types := []string{}
-				for _, col := range cols {
-					types = append(types, string(col.DataType))
-				}
-				var opts = ScriptOttoResultOption{
-					Columns: cols.Names(),
-					Types:   types,
-				}
-				if cols := opts.ResultColumns(); cols != nil {
-					node.task.SetResultColumns(cols)
-				}
-				// yield rows
-				count := 0
-				for rows.Next() {
-					values, _ := cols.MakeBuffer()
-					rows.Scan(values...)
-					count++
-					NewRecord(count, values).Tell(node.next)
-				}
-				return otto.UndefinedValue()
-			})
-			queryObj.Set("forEach", func(handler otto.FunctionCall) otto.Value {
-				if len(handler.ArgumentList) != 1 {
-					return ctx.vm.MakeCustomError("DBError", "forEach() requires a callback function")
-				}
-				if !handler.ArgumentList[0].IsFunction() {
-					return ctx.vm.MakeCustomError("DBError",
-						fmt.Sprintf("forEach() requires a callback function, but got %s", handler.ArgumentList[0].Class()))
-				}
-				callback := handler.ArgumentList[0]
-				var conn api.Conn
-				var err error
-				if bridgeName == "" {
-					conn, err = node.task.ConnDatabase(node.task.ctx)
-				} else {
-					if db, dbErr := connector.New(bridgeName); dbErr == nil {
-						conn, err = db.Connect(node.task.ctx)
-					} else {
-						err = dbErr
-					}
-				}
-				if err != nil {
-					node.task.Cancel()
-					return ctx.vm.MakeCustomError("DBError", err.Error())
-				}
-				defer conn.Close()
-
-				rows, err := conn.Query(node.task.ctx, sqlText.String(), params...)
-				if err != nil {
-					node.task.Cancel()
-					return ctx.vm.MakeCustomError("DBError", err.Error())
-				}
-				defer rows.Close()
-				for rows.Next() {
-					cols, _ := rows.Columns()
-					values, _ := cols.MakeBuffer()
-					rows.Scan(values...)
-					if flag, e := callback.Call(otto.UndefinedValue(), values); e != nil {
-						return ctx.vm.MakeCustomError("DBError", e.Error())
-					} else {
-						if flag.IsUndefined() {
-							// if the callback does not return anything (undefined), continue
-							continue
-						}
-						if !flag.IsBoolean() {
-							// if the callback returns a non-boolean value, break
-							break
-						}
-						if b, _ := flag.ToBoolean(); !b {
-							// if the callback returns false, break
-							break
-						}
-					}
-				}
-				return otto.UndefinedValue()
-			})
-			return queryObj.Value()
+	ret := ctx.vm.NewObject()
+	if mqttC, ok := br.(*bridge.MqttBridge); ok {
+		ret.Set("publish", func(topic string, payload any) goja.Value {
+			flag, err := mqttC.Publish(topic, payload)
+			if err != nil {
+				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
+			}
+			return ctx.vm.ToValue(flag)
 		})
+	} else if natsC, ok := br.(*bridge.NatsBridge); ok {
+		ret.Set("publish", func(subject string, payload any) goja.Value {
+			flag, err := natsC.Publish(subject, payload)
+			if err != nil {
+				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
+			}
+			return ctx.vm.ToValue(flag)
+		})
+	} else {
+		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not supported", cname))
+	}
 
-		// $.db().exec(sql, params...)
-		db.Set("exec", func(call otto.FunctionCall) otto.Value {
-			if len(call.ArgumentList) == 0 {
-				return ctx.vm.MakeCustomError("DBError", "missing a SQL text")
-			}
-			sqlText := call.ArgumentList[0]
-			if !sqlText.IsString() {
-				return ctx.vm.MakeCustomError("DBError", fmt.Sprintf("requires a SQL text, but got %q", sqlText.Class()))
-			}
-			var params []any
-			if len(call.ArgumentList) > 1 {
-				params = make([]any, len(call.ArgumentList)-1)
-				for i, v := range call.ArgumentList[1:] {
-					params[i], _ = v.Export()
-				}
-			}
+	return ret
+}
+
+func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
+	var node = ctx.node
+	var db = ctx.vm.NewObject()
+
+	var bridgeName string
+	if len(optObj) > 0 {
+		// parse db options `$.db({bridge: "name"})`
+		if br, ok := optObj["bridge"]; ok {
+			bridgeName = br.(string)
+		}
+	}
+
+	// $.db().query(sql, params...).next(function(row) {...})
+	db.Set("query", func(sqlText string, params ...any) goja.Value {
+		queryObj := ctx.vm.NewObject()
+		queryObj.Set("yield", func() error {
 			var conn api.Conn
 			var err error
 			if bridgeName == "" {
@@ -1335,81 +749,295 @@ func ottoFuncDB(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
 			}
 			if err != nil {
 				node.task.Cancel()
-				return ctx.vm.MakeCustomError("DBError", err.Error())
+				return fmt.Errorf("DBError %s", err.Error())
 			}
 			defer conn.Close()
 
-			result := conn.Exec(node.task.ctx, sqlText.String(), params...)
-			if err = result.Err(); err != nil {
-				return ctx.vm.MakeCustomError("DBError", err.Error())
+			rows, err := conn.Query(node.task.ctx, sqlText, params...)
+			if err != nil {
+				node.task.Cancel()
+				return fmt.Errorf("DBError %s", err.Error())
 			}
-			ret := result.RowsAffected()
-			retValue, _ := otto.ToValue(ret)
-			return retValue
+			defer rows.Close()
+
+			cols, _ := rows.Columns()
+			// set headers
+			types := []string{}
+			for _, col := range cols {
+				types = append(types, string(col.DataType))
+			}
+			var opts = ScriptGojaResultOption{
+				"columns": cols.Names(),
+				"types":   types,
+			}
+			if cols := opts.ResultColumns(); cols != nil {
+				node.task.SetResultColumns(cols)
+			}
+			// yield rows
+			count := 0
+			for rows.Next() {
+				values, _ := cols.MakeBuffer()
+				rows.Scan(values...)
+				count++
+				NewRecord(count, values).Tell(node.next)
+			}
+			return nil
 		})
-		return db.Value()
+
+		queryObj.Set("forEach", func(callback goja.Callable) goja.Value {
+			var conn api.Conn
+			var err error
+			if bridgeName == "" {
+				conn, err = node.task.ConnDatabase(node.task.ctx)
+			} else {
+				if db, dbErr := connector.New(bridgeName); dbErr == nil {
+					conn, err = db.Connect(node.task.ctx)
+				} else {
+					err = dbErr
+				}
+			}
+			if err != nil {
+				node.task.Cancel()
+				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
+			}
+			defer conn.Close()
+
+			rows, err := conn.Query(node.task.ctx, sqlText, params...)
+			if err != nil {
+				node.task.Cancel()
+				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
+			}
+			defer rows.Close()
+			for rows.Next() {
+				cols, _ := rows.Columns()
+				values, _ := cols.MakeBuffer()
+				rows.Scan(values...)
+				if flag, e := callback(goja.Undefined(), ctx.vm.ToValue(values)); e != nil {
+					return ctx.vm.NewGoError(fmt.Errorf("DBError %s", e.Error()))
+				} else {
+					if goja.IsUndefined(flag) {
+						// if the callback does not return anything (undefined), continue
+						continue
+					}
+					if !flag.ToBoolean() {
+						// if the callback returns a non-boolean value, break
+						// if the callback returns false, break
+						break
+					}
+				}
+			}
+			return goja.Undefined()
+		})
+
+		return queryObj
+	})
+
+	// $.db().exec(sql, params...)
+	db.Set("exec", func(sqlText string, params ...any) goja.Value {
+		var conn api.Conn
+		var err error
+		if bridgeName == "" {
+			conn, err = node.task.ConnDatabase(node.task.ctx)
+		} else {
+			if db, dbErr := connector.New(bridgeName); dbErr == nil {
+				conn, err = db.Connect(node.task.ctx)
+			} else {
+				err = dbErr
+			}
+		}
+		if err != nil {
+			node.task.Cancel()
+			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
+		}
+		defer conn.Close()
+
+		result := conn.Exec(node.task.ctx, sqlText, params...)
+		if err = result.Err(); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
+		}
+		ret := result.RowsAffected()
+		return ctx.vm.ToValue(ret)
+	})
+
+	return db
+}
+
+func (ctx *GojaContext) gojaFuncGeoJSON(value goja.Value) goja.Value {
+	obj := value.ToObject(ctx.vm)
+	if obj == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
+	}
+	typeString := obj.Get("type")
+	if typeString == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
+	}
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+	}
+	var geoObj any
+	switch typeString.String() {
+	case "FeatureCollection":
+		if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+		}
+	case "Feature":
+		if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+		}
+	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+		if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+		}
+	default:
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
+	}
+	var _ = geoObj
+	return obj
+}
+
+func (ctx *GojaContext) gojaFuncSystem() goja.Value {
+	ret := ctx.vm.NewObject()
+	// $.system().free_os_memory()
+	ret.Set("free_os_memory", func() {
+		debug.FreeOSMemory()
+	})
+	// $.system().gc()
+	ret.Set("gc", func() {
+		runtime.GC()
+	})
+	// $.system().now()
+	ret.Set("now", func() goja.Value {
+		return ctx.vm.ToValue(time.Now())
+	})
+	return ret
+}
+
+func (ctx *GojaContext) gojaFuncSet(name string, value goja.Value) goja.Value {
+	if inf := ctx.node.Inflight(); inf != nil {
+		inf.SetVariable(name, value.Export())
+	}
+	return goja.Undefined()
+}
+
+func (ctx *GojaContext) gojaFuncGet(name string) goja.Value {
+	if inf := ctx.node.Inflight(); inf != nil {
+		if v, err := inf.GetVariable("$" + name); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("SCRIPT %s", err.Error()))
+		} else {
+			return ctx.vm.ToValue(v)
+		}
+	}
+	return goja.Undefined()
+}
+
+func (ctx *GojaContext) gojaFuncNum() goja.Value {
+	ret := ctx.vm.NewObject()
+	ret.Set("fft", gojaNumFFT(ctx))
+	ret.Set("mean", gojaNumMean(ctx))
+	ret.Set("quantile", gojaNumQuantile(ctx))
+	ret.Set("simplex", gojaNumSimplex(ctx))
+	ret.Set("stdDev", gojaNumStdDev(ctx))
+	ret.Set("uuid", gojaNumUUID(ctx))
+	return ret
+}
+
+func gojaNumFFT(ctx *GojaContext) func(times []any, values []any) goja.Value {
+	return func(times []any, values []any) goja.Value {
+		ts := make([]time.Time, len(times))
+		vs := make([]float64, len(values))
+		for i, val := range times {
+			switch v := val.(type) {
+			case time.Time:
+				ts[i] = v
+			case *time.Time:
+				ts[i] = *v
+			default:
+				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample time, but %T", i, val))
+			}
+		}
+		for i, val := range values {
+			switch v := val.(type) {
+			case float64:
+				vs[i] = v
+			case *float64:
+				vs[i] = *v
+			default:
+				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample value, but %T", i, val))
+			}
+		}
+		xs, ys := fft.FastFourierTransform(ts, vs)
+		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
 	}
 }
 
-func ottoFuncGeoJSON(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) != 1 {
-			return ctx.vm.MakeCustomError("GeoJSONError", "missing a GeoJSON object")
+func gojaNumUUID(ctx *GojaContext) func(ver int) goja.Value {
+	return func(ver int) goja.Value {
+		if ctx.uuidGen == nil {
+			ctx.uuidGen = uuid.NewGen()
 		}
-		value := call.ArgumentList[0]
-		if !value.IsObject() {
-			return ctx.vm.MakeCustomError("GeoJSONError", fmt.Sprintf("requires a GeoJSON object, but got %q", value.Class()))
-		}
-		obj := value.Object()
-		typeString, err := obj.Get("type")
-		if err != nil {
-			return ctx.vm.MakeCustomError("GeoJSONError", "missing a GeoJSON type")
-		}
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
-			return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
-		}
-		var geoObj any
-		switch typeString.String() {
-		case "FeatureCollection":
-			if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
-			}
-		case "Feature":
-			if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
-			}
-		case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
-			if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.MakeCustomError("GeoJSONError", err.Error())
-			}
+		var uid uuid.UUID
+		var err error
+		switch ver {
+		case 1:
+			uid, err = ctx.uuidGen.NewV1()
+		case 4:
+			uid, err = ctx.uuidGen.NewV4()
+		case 6:
+			uid, err = ctx.uuidGen.NewV6()
+		case 7:
+			uid, err = ctx.uuidGen.NewV7()
 		default:
-			return ctx.vm.MakeCustomError("GeoJSONError", fmt.Sprintf("requires a GeoJSON type, but got %q", typeString.String()))
+			return ctx.vm.NewGoError(fmt.Errorf("UUIDError unknown version %d", ver))
 		}
-		var _ = geoObj
-		return obj.Value()
+		if err != nil {
+			return ctx.vm.NewGoError(err)
+		}
+
+		return ctx.vm.ToValue(uid.String())
 	}
 }
 
-func ottoFuncSystem(ctx *OttoContext) func(call otto.FunctionCall) otto.Value {
-	return func(call otto.FunctionCall) otto.Value {
-		sys, _ := ctx.vm.Object(`({})`)
-		// $.sys().free_os_memory()
-		sys.Set("free_os_memory", func(call otto.FunctionCall) otto.Value {
-			debug.FreeOSMemory()
-			return otto.UndefinedValue()
-		})
-		// $.sys().gc()
-		sys.Set("gc", func(call otto.FunctionCall) otto.Value {
-			runtime.GC()
-			return otto.UndefinedValue()
-		})
-		return sys.Value()
+func gojaNumSimplex(ctx *GojaContext) func(seed int64) goja.Value {
+	return func(seed int64) goja.Value {
+		simplex := &GojaSimpleX{seed: seed}
+		return ctx.vm.ToValue(simplex)
+	}
+}
+
+type GojaSimpleX struct {
+	seed int64
+	gen  *opensimplex.Generator
+}
+
+func (sx *GojaSimpleX) Eval(dim ...float64) float64 {
+	if sx.gen == nil {
+		sx.gen = opensimplex.New(sx.seed)
+	}
+	return sx.gen.Eval(dim...)
+}
+
+func gojaNumQuantile(_ *GojaContext) func(p float64, x []float64) float64 {
+	return func(p float64, x []float64) float64 {
+		slices.Sort(x)
+		return stat.Quantile(p, stat.Empirical, x, nil)
+	}
+}
+
+func gojaNumMean(_ *GojaContext) func(x []float64) float64 {
+	return func(x []float64) float64 {
+		return stat.Mean(x, nil)
+	}
+}
+
+func gojaNumStdDev(_ *GojaContext) func(x []float64) float64 {
+	return func(x []float64) float64 {
+		return stat.StdDev(x, nil)
 	}
 }

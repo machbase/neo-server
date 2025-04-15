@@ -1374,12 +1374,11 @@ func TestFake_oscillator(t *testing.T) {
 func TestScript(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "tengo_src",
+			Name: "script_src",
 			Script: `
 				SCRIPT({
-					ctx := import("context")
-					for i := 0; i < 10; i++ {
-						ctx.yieldKey("test", i, i*10)
+					for (i = 0; i < 10; i++) {
+						$.yieldKey("test", i, i*10)
 					}
 				})
 				CSV()
@@ -1389,32 +1388,33 @@ func TestScript(t *testing.T) {
 			},
 		},
 		{
-			Name: "tengo_src_map",
+			Name: "script_src_map",
 			Script: `
 				SCRIPT({
-					ctx := import("context")
-					a := 10*2+1
+					a = 10*2+1
 					// comment
 
-					ctx.yield(a)
+					$.yield(a)
 				})
 				SCRIPT({
-					ctx := import("context")
-					a := ctx.value(0)
-					ctx.yield(a+1, 2, 3, 4)
+					a = $.values[0];
+					$.yield(a+1, 2, 3, 4)
 				})
 				CSV()
 				`,
 			ExpectCSV: []string{"22,2,3,4", "\n"},
 		},
 		{
-			Name: "tengo_2",
+			Name: "script_2",
 			Script: `
 				FAKE( linspace(1,2,2))
 				MAPKEY("hello")
-				SCRIPT("tengo", {
-					ctx := import("context")
-					ctx.yield(ctx.key(), ctx.value(0), ctx.param("temp", 0))
+				SCRIPT("js", {
+					c = 0;
+					if ($.params.temp !== undefined) {
+						c = $.params.temp;
+					}
+					$.yield($.key, $.values[0], c)
 				})
 				MAPVALUE(0, value(0), "key")
 				MAPVALUE(1, value(1), "value")
@@ -1594,7 +1594,6 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout",
 			Script: `
 				FAKE( linspace(1,10,10))
-				//+ es5=false
 				SCRIPT("js", {
 					for (var i = 0; i < 1000000000; i++) {
 					}
@@ -1613,7 +1612,6 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout-init",
 			Script: `
 				FAKE( linspace(1,10,10))
-				//+ es5=false
 				SCRIPT("js", {
 					for (var i = 0; i < 1000000000; i++) {
 					}
@@ -1633,7 +1631,6 @@ func TestScriptInterrupt(t *testing.T) {
 			Name: "js-timeout-finalize",
 			Script: `
 				FAKE( linspace(1,10,10))
-				//+ es5=false
 				SCRIPT("js", {
 					function finalize(){
 						for (var i = 0; i < 1000000000; i++) {

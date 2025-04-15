@@ -9,7 +9,6 @@ require (
 	github.com/alecthomas/kong v0.8.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/creack/pty v1.1.18
-	github.com/d5/tengo/v2 v2.16.1
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/dop251/goja v0.0.0-20230122112309-96b1610dd4f7
 	github.com/eclipse/paho.golang v0.21.0
@@ -43,7 +42,6 @@ require (
 	github.com/paulmach/orb v0.11.1
 	github.com/pkg/sftp v1.13.6
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
-	github.com/robertkrimen/otto v0.5.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sevlyar/go-daemon v0.1.6
 	github.com/sony/sonyflake v1.2.0
@@ -159,7 +157,6 @@ require (
 	gonum.org/v1/plot v0.12.0 // indirect
 	google.golang.org/genproto v0.0.0-20231016165738-49dd2c1f3d0b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240604185151-ef581f913117 // indirect
-	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20230604222829-11c3c60fec14 // indirect
 )
