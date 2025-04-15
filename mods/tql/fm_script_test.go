@@ -13,7 +13,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-console-log",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", "console.log('Hello, World!')")
 				DISCARD()`,
 			ExpectFunc: func(t *testing.T, result string) {
@@ -24,7 +23,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-finalize",
 			Script: `
 				FAKE( linspace(1,3,3))
-				//+ es5=false
 				SCRIPT("js", {
 					function finalize(){ $.yieldKey("last", 1.234); }
 					function square(x) { return x * x };
@@ -40,7 +38,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-timeformat",
 			Script: `
 				STRING(param("format_time") ?? "808210800", separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					epoch = parseInt($.values[0])
 					time = new Date(epoch * 1000)
@@ -53,7 +50,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-timeformat-parse",
 			Script: `
 				STRING(param("timestamp") ?? "1995-08-12T00:00:00.000Z", separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					ts = new Date( Date.parse($.values[0]) );
 					epoch = ts / 1000;
@@ -66,7 +62,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-yieldArray-string",
 			Script: `
 				STRING('1,2,3,4,5', separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					$.yieldArray($.values[0].split(','))
 				})
@@ -83,7 +78,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-yieldArray-bool",
 			Script: `
 				STRING('true,true,false,true,false', separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					$.yieldArray($.values[0].split(',').map(function(v){ return v === 'true'}))
 				})
@@ -100,7 +94,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-yieldArray-number",
 			Script: `
 				STRING('1.2,2.3,3.4,5.6', separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					$.yieldArray($.values[0].split(',').map( (v) => { return parseFloat(v) }))
 				})
@@ -117,7 +110,6 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-yieldArray-number-int64",
 			Script: `
 				STRING('1,2,3,4,5', separator('\n'))
-				//+ es5=false
 				SCRIPT("js", {
 					$.yieldArray($.values[0].split(',').map( (v) => { return parseInt(v) }))
 				})
@@ -133,7 +125,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-yieldArray-number-mixed",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					$.result = {
 						columns: ["a", "b", "c", "d"],
@@ -154,7 +145,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-yield-object",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					$.yield({name:"John", age: 30, flag: true});
 					$.yield({name:"Jane", age: 25, flag: false});
@@ -172,7 +162,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-db-query",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					db = $.db();
 					db.exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
@@ -198,7 +187,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-system-free-os-memory",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					$.system().free_os_memory();
 					$.yield("ok");
@@ -210,7 +198,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-system-gc",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					$.system().gc();
 					$.yield("ok");
@@ -222,7 +209,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-system-now",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					let now = $.system().now();
 					$.yield("ok", now.Unix());
@@ -240,7 +226,6 @@ func TestScriptES6(t *testing.T) {
 			Name:    "js-payload-csv",
 			Payload: `1,2,3,4,5`,
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					$.payload.split(",").forEach((v) => {
 						$.yield(parseInt(v));
@@ -252,17 +237,15 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-compile-err",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					var1 + 1;
 				})
 				CSV()`,
-			ExpectErr: `ReferenceError: var1 is not defined at <eval>:4:6(0)`,
+			ExpectErr: `ReferenceError: var1 is not defined at <eval>:3:6(0)`,
 		},
 		{
 			Name: "js-params",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					var1 = $.params.p1;
 					var2 = $.params["p2"];
@@ -275,7 +258,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-request",
 			Script: fmt.Sprintf(`
-				//+ es5=false
 				SCRIPT("js", {
 					$.request("%s/db/query?q="+encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: "GET"})
 					 .do( (rsp) => {
@@ -291,7 +273,6 @@ func TestScriptES6(t *testing.T) {
 		{
 			Name: "js-request-json",
 			Script: fmt.Sprintf(`
-				//+ es5=false
 				SCRIPT("js", {
 					$.request("%s/db/query?q="+encodeURIComponent("select name, time, value from tag_simple limit 2"), {method: "GET"})
 					 .do( (rsp) => {
@@ -321,7 +302,6 @@ func TestScriptGetSetValue(t *testing.T) {
 			Name: "js-set-value",
 			Script: `
 				FAKE( linspace(1,2,1))
-				//+ es5=false
 				SCRIPT("js", {
 					$.set("key1", 123);
 					$.set("key2", "abc");
@@ -339,7 +319,6 @@ func TestScriptGetSetValue(t *testing.T) {
 				FAKE( linspace(1,2,1))
 				SET(key1, 123)
 				SET(key2, "abc")
-				//+ es5=false
 				SCRIPT("js", {
 					$.yield($.get("key1"), $.get("key2"));
 				})
@@ -362,7 +341,6 @@ func TestScriptFFT(t *testing.T) {
 			Name: "js-fft",
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
-				//+ es5=false
 				SCRIPT("js", {
 					times = [];
 					values = [];
@@ -385,7 +363,6 @@ func TestScriptFFT(t *testing.T) {
 			Name: "js-fft_not_enough_samples_0",
 			Script: `
 				FAKE( linspace(0, 10, 100) )
-				//+ es5=false
 				SCRIPT("js", {
 					times = [];
 					values = [];
@@ -417,7 +394,6 @@ func TestScriptSimpleX(t *testing.T) {
 		{
 			Name: "js-simplex",
 			Script: `
-				//+ es5=false
 				SCRIPT("js", {
 					gen = $.num().simplex(123)
 				},{
@@ -450,7 +426,6 @@ func TestScriptNumQuantile(t *testing.T) {
 			Name: "js-quantile",
 			Script: `
 				FAKE( arrange(1, 100, 1) )
-				//+ es5=false
 				SCRIPT("js", {
 					x = [];
 					function finalize() {
@@ -479,7 +454,6 @@ func TestScriptNumMean(t *testing.T) {
 			Name: "js-quantile",
 			Script: `
 				FAKE( arrange(1, 100, 1) )
-				//+ es5=false
 				SCRIPT("js", {
 					x = [];
 					function finalize() {
@@ -508,7 +482,6 @@ func TestScriptNumStdDev(t *testing.T) {
 			Name: "js-quantile",
 			Script: `
 				FAKE( arrange(1, 100, 1) )
-				//+ es5=false
 				SCRIPT("js", {
 					x = [];
 					function finalize() {
