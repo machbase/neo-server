@@ -24,7 +24,7 @@ import (
 
 const goja_ctx_key = "$goja_ctx$"
 
-func (node *Node) fmScriptGoja(initCode string, mainCode string) (any, error) {
+func (node *Node) fmScriptGoja(initCode string, mainCode string, deinitCode string) (any, error) {
 	var ctx *GojaContext
 	var err error
 
@@ -47,7 +47,7 @@ func (node *Node) fmScriptGoja(initCode string, mainCode string) (any, error) {
 	}
 
 	if ctx == nil {
-		ctx, err = newGojaContext(node, initCode, mainCode)
+		ctx, err = newGojaContext(node, initCode, mainCode, deinitCode)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ type GojaContext struct {
 	onceInterrupt sync.Once
 }
 
-func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext, error) {
+func newGojaContext(node *Node, initCode string, mainCode string, deinitCode string) (*GojaContext, error) {
 	ctx := &GojaContext{
 		node: node,
 		vm:   goja.New(),
@@ -108,8 +108,23 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 			// it will raised to the task level.
 			// do not use "recover()" here.
 			// The related test case : TestScriptInterrupt()/js-timeout-finalize
-			if f, ok := goja.AssertFunction(ctx.vm.Get("finalize")); ok {
-				f(goja.Undefined())
+			// init code
+			if strings.TrimSpace(deinitCode) == "" {
+				if f, ok := goja.AssertFunction(ctx.vm.Get("finalize")); ok {
+					_, err := f(goja.Undefined())
+					if err != nil {
+						node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+					}
+				}
+			} else {
+				if node.tqlLine != nil && node.tqlLine.line > 1 {
+					mainCodeLine := strings.Count(mainCode, "\n")
+					deinitCode = strings.Repeat("\n", mainCodeLine) + deinitCode
+				}
+				_, err := ctx.vm.RunString(deinitCode)
+				if err != nil {
+					node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
+				}
 			}
 		})
 	})
@@ -184,7 +199,7 @@ func newGojaContext(node *Node, initCode string, mainCode string) (*GojaContext,
 	})
 
 	// init code
-	if initCode != "" {
+	if strings.TrimSpace(initCode) != "" {
 		if node.tqlLine != nil && node.tqlLine.line > 1 {
 			initCode = strings.Repeat("\n", node.tqlLine.line-1) + initCode
 		}
@@ -783,6 +798,7 @@ func (sx *GojaSimpleX) Eval(dim ...float64) float64 {
 
 func gojaNumQuantile(_ *GojaContext) func(p float64, x []float64) float64 {
 	return func(p float64, x []float64) float64 {
+		slices.Sort(x)
 		return stat.Quantile(p, stat.Empirical, x, nil)
 	}
 }

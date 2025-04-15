@@ -61,7 +61,7 @@ func (node *Node) fmScript(args ...any) (any, error) {
 		case string:
 			switch name {
 			case "js", "javascript":
-				initCode, mainCode := "", ""
+				initCode, mainCode, deinitCode := "", "", ""
 				if len(args) == 2 { // SCRIPT("js", "main")
 					if str, ok := args[1].(string); !ok {
 						goto syntaxErr
@@ -79,13 +79,29 @@ func (node *Node) fmScript(args ...any) (any, error) {
 					} else {
 						mainCode = str
 					}
+				} else if len(args) == 4 { // SCRIPT("js", "init", "main", "deinit")
+					if str, ok := args[1].(string); !ok {
+						goto syntaxErr
+					} else {
+						initCode = str
+					}
+					if str, ok := args[2].(string); !ok {
+						goto syntaxErr
+					} else {
+						mainCode = str
+					}
+					if str, ok := args[3].(string); !ok {
+						goto syntaxErr
+					} else {
+						deinitCode = str
+					}
 				} else {
 					goto syntaxErr
 				}
 				if js_is_es5 {
 					return node.fmScriptOtto(initCode, mainCode)
 				} else {
-					return node.fmScriptGoja(initCode, mainCode)
+					return node.fmScriptGoja(initCode, mainCode, deinitCode)
 				}
 			case "tengo":
 				node.task.LogWarn("SCRIPT(\"tengo\") deprecated, use SCRIPT(\"js\") instead.")
