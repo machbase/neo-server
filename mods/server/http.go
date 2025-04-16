@@ -1673,10 +1673,16 @@ func contentTypeOfFile(name string) string {
 		return "text/markdown"
 	case ".css":
 		return "text/css"
-	case ".js":
+	case ".js", ".mjs":
 		return "text/javascript"
 	case ".htm", ".html":
 		return "text/html"
+	case ".py":
+		return "text/x-python"
+	case ".sh":
+		return "text/x-shellscript"
+	case ".ipynb":
+		return "application/x-ipynb+json"
 	}
 }
 

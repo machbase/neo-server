@@ -2,8 +2,10 @@ package tql_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -188,7 +190,8 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-system-free-os-memory",
 			Script: `
 				SCRIPT("js", {
-					$.system().free_os_memory();
+					m = require("system");
+					m.free_os_memory();
 					$.yield("ok");
 				})
 				CSV()
@@ -199,7 +202,8 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-system-gc",
 			Script: `
 				SCRIPT("js", {
-					$.system().gc();
+					m = require("system");
+					m.gc();
 					$.yield("ok");
 				})
 				CSV()
@@ -210,7 +214,8 @@ func TestScriptES6(t *testing.T) {
 			Name: "js-system-now",
 			Script: `
 				SCRIPT("js", {
-					let now = $.system().now();
+					m = require("system");
+					let now = m.now();
 					$.yield("ok", now.Unix());
 				})
 				JSON()
@@ -342,13 +347,14 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 				SCRIPT("js", {
+					m = require("dsp");
 					times = [];
 					values = [];
 				}, {
 					times.push($.values[0]);
 					values.push($.values[1]);
 				}, {
-					result = $.num().fft(times, values);
+					result = m.fft(times, values);
 					for( i = 0; i < result.x.length; i++ ) {
 						if (result.x[i] > 60)
 							break
@@ -364,13 +370,14 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 10, 100) )
 				SCRIPT("js", {
+					m = require("dsp");
 					times = [];
 					values = [];
 				}, {
 					times.push($.values[0]);
 					values.push($.values[1]);
 				}, {
-					result = $.num().fft(times, values);
+					result = dsp.fft(times, values);
 					for( i = 0; i < result.x.length; i++ ) {
 						if (result.x[i] > 60)
 							break
@@ -395,7 +402,7 @@ func TestScriptSimpleX(t *testing.T) {
 			Name: "js-simplex",
 			Script: `
 				SCRIPT("js", {
-					gen = $.num().simplex(123)
+					gen = require("generator").simplex(123);
 				},{
 					for(i=0; i < 5; i++) {
 						$.yield(i, gen.Eval(i, i * 0.6) );
@@ -420,6 +427,37 @@ func TestScriptSimpleX(t *testing.T) {
 	}
 }
 
+func TestScriptUUID(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-uuid",
+			Script: `
+				SCRIPT("js", {
+					gen = require("generator").uuid(1);
+				},{
+					for(i=0; i < 5; i++) {
+						$.yield(gen.Eval());
+					}
+				})
+				CSV(header(false))
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				rows := strings.Split(strings.TrimSpace(result), "\n")
+				require.Equal(t, 5, len(rows), result)
+				for _, l := range rows {
+					require.Equal(t, 36, len(l))
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptNumQuantile(t *testing.T) {
 	tests := []TqlTestCase{
 		{
@@ -427,13 +465,13 @@ func TestScriptNumQuantile(t *testing.T) {
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
+					m = require("stat");
 					x = [];
-					function finalize() {
-						result = $.num().quantile(0.25, x);
-						$.yield(result);
-					}
 				},{
 					x.push($.values[0]);
+				},{
+					result = m.quantile(0.25, x);
+					$.yield(result);
 				})
 				CSV()
 			`,
@@ -455,13 +493,13 @@ func TestScriptNumMean(t *testing.T) {
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
+					m = require("stat");
 					x = [];
-					function finalize() {
-						result = $.num().mean(x);
-						$.yield(result);
-					}
 				},{
 					x.push($.values[0]);
+				},{
+					result = m.mean(x);
+					$.yield(result);
 				})
 				CSV()
 			`,
@@ -479,21 +517,57 @@ func TestScriptNumMean(t *testing.T) {
 func TestScriptNumStdDev(t *testing.T) {
 	tests := []TqlTestCase{
 		{
-			Name: "js-quantile",
+			Name: "js-stddev",
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
+					m = require("stat");
 					x = [];
-					function finalize() {
-						result = $.num().stdDev(x);
-						$.yield(result);
-					}
 				},{
 					x.push($.values[0]);
+				},{
+					result = m.stdDev(x);
+					$.yield(result);
 				})
 				CSV(precision(2))
 			`,
 			ExpectCSV: []string{"29.01", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptModule(t *testing.T) {
+	tql.ClearPredefModules()
+	tql.RegisterPredefModule("/m.js", []byte(`
+		function test() {
+        	return "passed";
+		}
+		module.exports = {
+        	test: test
+		}
+	`))
+	t.Cleanup(func() {
+		tql.UnregisterPredefModule("/m.js")
+	})
+
+	tests := []TqlTestCase{
+		{
+			Name: "js-module",
+			Script: `
+				SCRIPT("js", {
+					var m = require("/m.js");
+				},{
+					$.yield(m.test());
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"passed", "\n"},
 		},
 	}
 

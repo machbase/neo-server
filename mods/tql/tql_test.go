@@ -1557,28 +1557,6 @@ func TestScript(t *testing.T) {
 				require.Equal(t, `[[1,2.3,"3.4",true]]`, gjson.Get(result, "data.rows").Raw)
 			},
 		},
-		{
-			Name: "js-system-free-os-memory",
-			Script: `
-				SCRIPT("js", {
-					$.system().free_os_memory();
-					$.yield("ok");
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"ok", "\n"},
-		},
-		{
-			Name: "js-system-gc",
-			Script: `
-				SCRIPT("js", {
-					$.system().gc();
-					$.yield("ok");
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"ok", "\n"},
-		},
 	}
 
 	for _, tc := range tests {
@@ -1882,7 +1860,8 @@ func TestGeoJSON(t *testing.T) {
 					var lat = 37.497850;
 					var lon =  127.027756;
 					var name = "Gangnam-cross";
-					var obj = $.geojson({
+					m = require("geo");
+					var obj = m.parseGeoJSON({
 						type: "Feature",
 						geometry: {
 							type: "Point",
@@ -1914,31 +1893,49 @@ func TestGeoJSON(t *testing.T) {
 				require.Equal(t, expect, mock.buff.String())
 			},
 		},
-		// FIXME: javascript 4 depth array
-		// {
-		// 	Name: "js-geojson-polygon",
-		// 	Script: `
-		// 		SCRIPT("js", {
-		// 			$.yield({
-		// 				type: "polygon",
-		// 				value: [
-		// 					[
-		// 						[[37, -109.05],[41, -109.03],[41, -102.05],[37, -102.04]],
-		// 						[[37.29, -108.58],[40.71, -108.58],[40.71, -102.50],[37.29, -102.50]]
-		// 					],
-		// 					[
-		// 						[[41, -111.03],[45, -111.04],[45, -104.05],[41, -104.05]]
-		// 					]
-		// 				]
-		// 			})
-		// 		})
-		// 		GEOMAP()`,
-		// 	ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
-		// 		b, _ := os.ReadFile("./test/js-geojson-polygon.js")
-		// 		expect := strings.ReplaceAll(string(b), "\r\n", "\n")
-		// 		require.Equal(t, expect, mock.buff.String())
-		// 	},
-		// },
+		{
+			Name: "js-geojson-polygon",
+			Script: `
+				SCRIPT("js", {
+					m = require("geo");
+					obj = m.parseGeoJSON({
+						type:"Feature",
+						geometry: {
+							type: "MultiPolygon",
+							coordinates: [
+								[
+									[ [ 2.291863239086439, 48.8577137262115 ], [ 2.293452085617105, 48.856693553273885 ], [ 2.2968403487010107, 48.85892279314069 ], [ 2.2951175030651143, 48.86006886087142 ], [ 2.291863239086439, 48.8577137262115 ] ]
+								],
+								[
+									[ [ 2.288226120523035, 48.86156752523257 ], [ 2.2899681088877344, 48.86042149181674 ], [ 2.290810388976098, 48.86063558796482 ], [ 2.2909826735397587, 48.8611015587675 ], [ 2.28947039792655, 48.862234983151495 ], [ 2.288226120523035, 48.86156752523257 ] ]
+								],
+								[
+									[ [ 2.2912927602678224, 48.85709062155263 ], [ 2.2905402133688426, 48.85661663833349 ], [ 2.291917551492446, 48.855746990243716 ], [ 2.2926328654095016, 48.85624492205244 ], [ 2.2912927602678224, 48.85709062155263 ] ]
+								]
+							]
+						}
+					})
+					$.yield(obj)
+				})
+				GEOMAP(geomapID("MTY3NzQ2MDY4NzQyNTc4MTc2"))`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "600px", gjson.Get(result, "style.width").String(), result)
+				require.Equal(t, "600px", gjson.Get(result, "style.height").String(), result)
+				require.Equal(t, int64(0), gjson.Get(result, "style.grayscale").Int(), result)
+				require.Equal(t, `["/web/geomap/leaflet.js"]`, gjson.Get(result, "jsAssets").String(), result)
+				require.Equal(t, `["/web/geomap/leaflet.css"]`, gjson.Get(result, "cssAssets").String(), result)
+				id := gjson.Get(result, "geomapID").String()
+				jsCodeAssets := gjson.Get(result, "jsCodeAssets.0").String()
+				require.Equal(t, "/web/api/tql-assets/"+id+"_opt.js", jsCodeAssets, result)
+				jsCodeAssets = gjson.Get(result, "jsCodeAssets.1").String()
+				require.Equal(t, "/web/api/tql-assets/"+id+".js", jsCodeAssets, result)
+			},
+			ExpectVolatileFile: func(t *testing.T, mock *VolatileFileWriterMock) {
+				b, _ := os.ReadFile("./test/js-geojson-polygon.js")
+				expect := strings.ReplaceAll(string(b), "\r\n", "\n")
+				require.Equal(t, expect, mock.buff.String())
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
