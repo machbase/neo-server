@@ -258,9 +258,6 @@ func ClearPredefModules() {
 }
 
 func jsSourceLoad(path string) ([]byte, error) {
-	if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") {
-		return nil, require.ModuleFileDoesNotExistError
-	}
 	if predefModules != nil {
 		if content, ok := predefModules[path]; ok {
 			return content, nil
