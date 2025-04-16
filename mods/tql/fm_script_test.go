@@ -396,7 +396,7 @@ func TestScriptFFT(t *testing.T) {
 	}
 }
 
-func TestScriptSimpleX(t *testing.T) {
+func TestScriptGeneratorSimpleX(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-simplex",
@@ -427,7 +427,7 @@ func TestScriptSimpleX(t *testing.T) {
 	}
 }
 
-func TestScriptUUID(t *testing.T) {
+func TestScriptGeneratorUUID(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-uuid",
@@ -458,7 +458,45 @@ func TestScriptUUID(t *testing.T) {
 	}
 }
 
-func TestScriptNumQuantile(t *testing.T) {
+func TestScriptFilterLowpass(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-filter-lowpass",
+			Script: `SCRIPT("js", {
+				const { arrange } = require("generator");
+				const lowpass = require("filter").lowpass(0.3);
+				const simplex = require("generator").simplex(1);
+			},{
+				for( x of arrange(1, 10, 1) ) {
+					v = x + simplex.Eval(x) * 3;
+					$.yield(x, v, lowpass.Eval(v));
+				}
+			})			
+			CSV(precision(2))
+			`,
+			ExpectCSV: []string{
+				`1.00,1.48,1.48`,
+				`2.00,0.40,1.15`,
+				`3.00,3.84,1.96`,
+				`4.00,2.89,2.24`,
+				`5.00,5.47,3.21`,
+				`6.00,5.29,3.83`,
+				`7.00,7.22,4.85`,
+				`8.00,10.31,6.49`,
+				`9.00,8.36,7.05`,
+				`10.00,8.56,7.50`,
+				"\n",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptStatQuantile(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -486,7 +524,7 @@ func TestScriptNumQuantile(t *testing.T) {
 	}
 }
 
-func TestScriptNumMean(t *testing.T) {
+func TestScriptStatMean(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -514,7 +552,7 @@ func TestScriptNumMean(t *testing.T) {
 	}
 }
 
-func TestScriptNumStdDev(t *testing.T) {
+func TestScriptStatStdDev(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-stddev",
