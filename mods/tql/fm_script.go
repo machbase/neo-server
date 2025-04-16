@@ -8,25 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
-	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/mods/nums/fft"
-	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
-	"github.com/paulmach/orb/geojson"
-	"gonum.org/v1/gonum/stat"
 )
 
 type bridgeName struct {
@@ -239,12 +231,9 @@ type GojaContext struct {
 	didSetResult bool
 
 	onceInterrupt sync.Once
-
-	uuidGen uuid.Generator
 }
 
-var registryLock sync.Mutex
-var registry *require.Registry
+// predefined modules, primarily for testing purpose
 var predefModules map[string][]byte
 
 func RegisterPredefModule(name string, content []byte) {
@@ -292,12 +281,7 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	}
 	ctx.vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", false))
 
-	registryLock.Lock()
-	if registry == nil {
-		registry = require.NewRegistry(require.WithLoader(jsSourceLoad))
-	}
-	registryLock.Unlock()
-	registry.Enable(ctx.vm)
+	enableModuleRegistry(ctx)
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -394,16 +378,10 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	ctx.obj.Set("publisher", ctx.gojaFuncPublisher)
 	// $.request()
 	ctx.obj.Set("request", ctx.gojaFuncRequest)
-	// $.geojson()
-	ctx.obj.Set("geojson", ctx.gojaFuncGeoJSON)
-	// $.system()
-	ctx.obj.Set("system", ctx.gojaFuncSystem)
 	// $.set()
 	ctx.obj.Set("set", ctx.gojaFuncSet)
 	// $.get()
 	ctx.obj.Set("get", ctx.gojaFuncGet)
-	// $.num()
-	ctx.obj.Set("num", ctx.gojaFuncNum)
 
 	ctx.node.task.AddShouldStopListener(func() {
 		ctx.onceInterrupt.Do(func() {
@@ -913,63 +891,6 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 	return db
 }
 
-func (ctx *GojaContext) gojaFuncGeoJSON(value goja.Value) goja.Value {
-	obj := value.ToObject(ctx.vm)
-	if obj == nil {
-		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
-	}
-	typeString := obj.Get("type")
-	if typeString == nil {
-		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
-	}
-	jsonBytes, err := json.Marshal(obj)
-	if err != nil {
-		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-	}
-	var geoObj any
-	switch typeString.String() {
-	case "FeatureCollection":
-		if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
-			geoObj = geo
-		} else {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-		}
-	case "Feature":
-		if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
-			geoObj = geo
-		} else {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-		}
-	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
-		if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
-			geoObj = geo
-		} else {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-		}
-	default:
-		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
-	}
-	var _ = geoObj
-	return obj
-}
-
-func (ctx *GojaContext) gojaFuncSystem() goja.Value {
-	ret := ctx.vm.NewObject()
-	// $.system().free_os_memory()
-	ret.Set("free_os_memory", func() {
-		debug.FreeOSMemory()
-	})
-	// $.system().gc()
-	ret.Set("gc", func() {
-		runtime.GC()
-	})
-	// $.system().now()
-	ret.Set("now", func() goja.Value {
-		return ctx.vm.ToValue(time.Now())
-	})
-	return ret
-}
-
 func (ctx *GojaContext) gojaFuncSet(name string, value goja.Value) goja.Value {
 	if inf := ctx.node.Inflight(); inf != nil {
 		inf.SetVariable(name, value.Export())
@@ -986,109 +907,4 @@ func (ctx *GojaContext) gojaFuncGet(name string) goja.Value {
 		}
 	}
 	return goja.Undefined()
-}
-
-func (ctx *GojaContext) gojaFuncNum() goja.Value {
-	ret := ctx.vm.NewObject()
-	ret.Set("fft", gojaNumFFT(ctx))
-	ret.Set("mean", gojaNumMean(ctx))
-	ret.Set("quantile", gojaNumQuantile(ctx))
-	ret.Set("simplex", gojaNumSimplex(ctx))
-	ret.Set("stdDev", gojaNumStdDev(ctx))
-	ret.Set("uuid", gojaNumUUID(ctx))
-	return ret
-}
-
-func gojaNumFFT(ctx *GojaContext) func(times []any, values []any) goja.Value {
-	return func(times []any, values []any) goja.Value {
-		ts := make([]time.Time, len(times))
-		vs := make([]float64, len(values))
-		for i, val := range times {
-			switch v := val.(type) {
-			case time.Time:
-				ts[i] = v
-			case *time.Time:
-				ts[i] = *v
-			default:
-				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample time, but %T", i, val))
-			}
-		}
-		for i, val := range values {
-			switch v := val.(type) {
-			case float64:
-				vs[i] = v
-			case *float64:
-				vs[i] = *v
-			default:
-				return ctx.vm.NewGoError(fmt.Errorf("FFTError invalid %dth sample value, but %T", i, val))
-			}
-		}
-		xs, ys := fft.FastFourierTransform(ts, vs)
-		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
-	}
-}
-
-func gojaNumUUID(ctx *GojaContext) func(ver int) goja.Value {
-	return func(ver int) goja.Value {
-		if ctx.uuidGen == nil {
-			ctx.uuidGen = uuid.NewGen()
-		}
-		var uid uuid.UUID
-		var err error
-		switch ver {
-		case 1:
-			uid, err = ctx.uuidGen.NewV1()
-		case 4:
-			uid, err = ctx.uuidGen.NewV4()
-		case 6:
-			uid, err = ctx.uuidGen.NewV6()
-		case 7:
-			uid, err = ctx.uuidGen.NewV7()
-		default:
-			return ctx.vm.NewGoError(fmt.Errorf("UUIDError unknown version %d", ver))
-		}
-		if err != nil {
-			return ctx.vm.NewGoError(err)
-		}
-
-		return ctx.vm.ToValue(uid.String())
-	}
-}
-
-func gojaNumSimplex(ctx *GojaContext) func(seed int64) goja.Value {
-	return func(seed int64) goja.Value {
-		simplex := &GojaSimpleX{seed: seed}
-		return ctx.vm.ToValue(simplex)
-	}
-}
-
-type GojaSimpleX struct {
-	seed int64
-	gen  *opensimplex.Generator
-}
-
-func (sx *GojaSimpleX) Eval(dim ...float64) float64 {
-	if sx.gen == nil {
-		sx.gen = opensimplex.New(sx.seed)
-	}
-	return sx.gen.Eval(dim...)
-}
-
-func gojaNumQuantile(_ *GojaContext) func(p float64, x []float64) float64 {
-	return func(p float64, x []float64) float64 {
-		slices.Sort(x)
-		return stat.Quantile(p, stat.Empirical, x, nil)
-	}
-}
-
-func gojaNumMean(_ *GojaContext) func(x []float64) float64 {
-	return func(x []float64) float64 {
-		return stat.Mean(x, nil)
-	}
-}
-
-func gojaNumStdDev(_ *GojaContext) func(x []float64) float64 {
-	return func(x []float64) float64 {
-		return stat.StdDev(x, nil)
-	}
 }
