@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -494,6 +495,42 @@ func TestScriptNumStdDev(t *testing.T) {
 				CSV(precision(2))
 			`,
 			ExpectCSV: []string{"29.01", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptModule(t *testing.T) {
+	tql.ClearPredefModules()
+	tql.RegisterPredefModule("/m.js", []byte(`
+		function test() {
+        	return "passed";
+		}
+		module.exports = {
+        	test: test
+		}
+	`))
+	t.Cleanup(func() {
+		tql.UnregisterPredefModule("/m.js")
+	})
+
+	tests := []TqlTestCase{
+		{
+			Name: "js-module",
+			Script: `
+				SCRIPT("js", {
+					var m = require("/m.js");
+				},{
+					$.yield(m.test());
+				})
+				CSV()
+			`,
+			ExpectCSV: []string{"passed", "\n"},
 		},
 	}
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/require"
 	"github.com/gofrs/uuid/v5"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -23,6 +24,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/paulmach/orb/geojson"
 	"gonum.org/v1/gonum/stat"
 )
@@ -241,12 +243,61 @@ type GojaContext struct {
 	uuidGen uuid.Generator
 }
 
+var registryLock sync.Mutex
+var registry *require.Registry
+var predefModules map[string][]byte
+
+func RegisterPredefModule(name string, content []byte) {
+	if predefModules == nil {
+		predefModules = map[string][]byte{}
+	}
+	predefModules[name] = content
+}
+
+func UnregisterPredefModule(name string) {
+	if predefModules != nil {
+		delete(predefModules, name)
+	}
+}
+
+func ClearPredefModules() {
+	if predefModules != nil {
+		for k := range predefModules {
+			delete(predefModules, k)
+		}
+	}
+}
+
+func jsSourceLoad(path string) ([]byte, error) {
+	if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") {
+		return nil, require.ModuleFileDoesNotExistError
+	}
+	if predefModules != nil {
+		if content, ok := predefModules[path]; ok {
+			return content, nil
+		}
+	}
+	ss := ssfs.Default()
+	ent, err := ss.Get("/" + strings.TrimPrefix(path, "/"))
+	if err != nil || ent.IsDir {
+		return nil, require.ModuleFileDoesNotExistError
+	}
+	return ent.Content, nil
+}
+
 func newGojaContext(node *Node, initCode string, mainCode string, deinitCode string) (*GojaContext, error) {
 	ctx := &GojaContext{
 		node: node,
 		vm:   goja.New(),
 	}
 	ctx.vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", false))
+
+	registryLock.Lock()
+	if registry == nil {
+		registry = require.NewRegistry(require.WithLoader(jsSourceLoad))
+	}
+	registryLock.Unlock()
+	registry.Enable(ctx.vm)
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
