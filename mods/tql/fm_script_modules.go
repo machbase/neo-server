@@ -2,6 +2,7 @@ package tql
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -23,6 +24,7 @@ func enableModuleRegistry(ctx *GojaContext) {
 	registry := require.NewRegistry(require.WithLoader(jsSourceLoad))
 	registry.RegisterNativeModule("system", ctx.nativeModuleSystem)
 	registry.RegisterNativeModule("generator", ctx.nativeModuleGenerator)
+	registry.RegisterNativeModule("filter", ctx.nativeModuleFilter)
 	registry.RegisterNativeModule("stat", ctx.nativeModuleStat)
 	registry.RegisterNativeModule("dsp", ctx.nativeModuleDsp)
 	registry.RegisterNativeModule("geo", ctx.nativeModuleGeo)
@@ -69,6 +71,28 @@ func (ctx *GojaContext) nativeModuleGenerator(r *goja.Runtime, module *goja.Obje
 	})
 }
 
+func (ctx *GojaContext) nativeModuleFilter(r *goja.Runtime, module *goja.Object) {
+	// m = require("filter")
+	o := module.Get("exports").(*goja.Object)
+	// lpf = m.lowpass(alpha); newValue = lpf.Eval(value);
+	o.Set("lowpass", func(alpha float64) goja.Value {
+		if alpha <= 0 || alpha >= 1 {
+			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1 "))
+		}
+		lpf := &lowPassFilter{alpha: alpha, prev: math.MaxInt64}
+		return ctx.vm.ToValue(lpf)
+	})
+}
+
+func (lpf *lowPassFilter) Eval(value float64) float64 {
+	if lpf.prev == math.MaxInt64 {
+		lpf.prev = value
+	} else {
+		lpf.prev = (1-lpf.alpha)*lpf.prev + lpf.alpha*value
+	}
+	return lpf.prev
+}
+
 func (ctx *GojaContext) nativeModuleStat(r *goja.Runtime, module *goja.Object) {
 	// m = require("stat")
 	o := module.Get("exports").(*goja.Object)
@@ -82,6 +106,7 @@ func (ctx *GojaContext) nativeModuleStat(r *goja.Runtime, module *goja.Object) {
 	})
 	// m.quantile(p, array)
 	o.Set("quantile", func(p float64, arr []float64) float64 {
+		slices.Sort(arr)
 		return stat.Quantile(p, stat.Empirical, arr, nil)
 	})
 }

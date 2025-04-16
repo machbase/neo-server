@@ -348,7 +348,6 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	ctx.obj.Set("payload", payload)
 
 	// set $.params
-
 	if pv, err := ctx.vm.RunString("()=>{return new Map()}"); err != nil {
 		return nil, fmt.Errorf("SCRIPT params, %s", err.Error())
 	} else {
@@ -393,7 +392,11 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 		}
 		_, err := ctx.vm.RunString(initCode)
 		if err != nil {
-			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+			if jsErr, ok := err.(*goja.Exception); ok {
+				return nil, fmt.Errorf("SCRIPT init, %s", strings.ReplaceAll(jsErr.String(), "github.com/dop251/goja_nodejs/", ""))
+			} else {
+				return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+			}
 		}
 	}
 
