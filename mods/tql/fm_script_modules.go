@@ -198,7 +198,7 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 	// lpf = m.lowpass(alpha); newValue = lpf.eval(value);
 	o.Set("lowpass", func(alpha float64) js.Value {
 		if alpha <= 0 || alpha >= 1 {
-			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1 "))
+			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1"))
 		}
 		ret := ctx.vm.NewObject()
 		prev := float64(math.MaxInt64)
