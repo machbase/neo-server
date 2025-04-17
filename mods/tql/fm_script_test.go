@@ -308,8 +308,9 @@ func TestScriptGetSetValue(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,2,1))
 				SCRIPT("js", {
-					$.set("key1", 123);
-					$.set("key2", "abc");
+					inflight = require("system").inflight();
+					inflight.set("key1", 123);
+					inflight.set("key2", "abc");
 					$.yield("");
 				})
 				MAPVALUE(0, $key1)
@@ -325,7 +326,8 @@ func TestScriptGetSetValue(t *testing.T) {
 				SET(key1, 123)
 				SET(key2, "abc")
 				SCRIPT("js", {
-					$.yield($.get("key1"), $.get("key2"));
+					inflight = require("system").inflight();
+					$.yield(inflight.get("key1"), inflight.get("key2"));
 				})
 				CSV()
 			`,

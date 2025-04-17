@@ -370,14 +370,8 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	ctx.obj.Set("yieldArray", ctx.jsFuncYieldArray)
 	// $.db()
 	ctx.obj.Set("db", ctx.jsFuncDB)
-	// $.publisher()
-	ctx.obj.Set("publisher", ctx.jsFuncPublisher)
 	// $.request()
 	ctx.obj.Set("request", ctx.jsFuncRequest)
-	// $.set()
-	ctx.obj.Set("set", ctx.jsFuncSet)
-	// $.get()
-	ctx.obj.Set("get", ctx.jsFuncGet)
 
 	ctx.node.task.AddShouldStopListener(func() {
 		ctx.onceInterrupt.Do(func() {
@@ -712,43 +706,6 @@ func (ctx *JSContext) jsFuncRequest(reqUrl string, reqOpt map[string]any) js.Val
 	return requestObj
 }
 
-func (ctx *JSContext) jsFuncPublisher(optObj map[string]any) js.Value {
-	var cname string
-	if len(optObj) > 0 {
-		// parse db options `$.publisher({bridge: "name"})`
-		if br, ok := optObj["bridge"]; ok {
-			cname = br.(string)
-		}
-	}
-	br, err := bridge.GetBridge(cname)
-	if err != nil || br == nil {
-		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not found", cname))
-	}
-
-	ret := ctx.vm.NewObject()
-	if mqttC, ok := br.(*bridge.MqttBridge); ok {
-		ret.Set("publish", func(topic string, payload any) js.Value {
-			flag, err := mqttC.Publish(topic, payload)
-			if err != nil {
-				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
-			}
-			return ctx.vm.ToValue(flag)
-		})
-	} else if natsC, ok := br.(*bridge.NatsBridge); ok {
-		ret.Set("publish", func(subject string, payload any) js.Value {
-			flag, err := natsC.Publish(subject, payload)
-			if err != nil {
-				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
-			}
-			return ctx.vm.ToValue(flag)
-		})
-	} else {
-		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not supported", cname))
-	}
-
-	return ret
-}
-
 func (ctx *JSContext) jsFuncDB(optObj map[string]any) js.Value {
 	var node = ctx.node
 	var db = ctx.vm.NewObject()
@@ -889,22 +846,4 @@ func (ctx *JSContext) jsFuncDB(optObj map[string]any) js.Value {
 	})
 
 	return db
-}
-
-func (ctx *JSContext) jsFuncSet(name string, value js.Value) js.Value {
-	if inf := ctx.node.Inflight(); inf != nil {
-		inf.SetVariable(name, value.Export())
-	}
-	return js.Undefined()
-}
-
-func (ctx *JSContext) jsFuncGet(name string) js.Value {
-	if inf := ctx.node.Inflight(); inf != nil {
-		if v, err := inf.GetVariable("$" + name); err != nil {
-			return ctx.vm.NewGoError(fmt.Errorf("SCRIPT %s", err.Error()))
-		} else {
-			return ctx.vm.ToValue(v)
-		}
-	}
-	return js.Undefined()
 }
