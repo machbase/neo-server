@@ -9,11 +9,13 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"time"
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
@@ -69,6 +71,7 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 		})
 		return ret
 	})
+	// m.publisher({bridge:"name"})
 	o.Set("publisher", func(optObj map[string]any) js.Value {
 		var cname string
 		if len(optObj) > 0 {
@@ -102,8 +105,40 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 		} else {
 			return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not supported", cname))
 		}
-
 		return ret
+	})
+	// m.statz("1m", ...keys)
+	o.Set("statz", func(samplingInterval string, keyFilters ...string) js.Value {
+		var interval = api.MetricShortTerm
+		switch strings.ToLower(samplingInterval) {
+		case "short":
+			interval = api.MetricShortTerm
+		case "mid":
+			interval = api.MetricMidTerm
+		case "long":
+			interval = api.MetricLongTerm
+		default:
+			if dur, err := time.ParseDuration(samplingInterval); err == nil {
+				interval = dur
+			}
+		}
+		statz := api.QueryStatz(interval, api.QueryStatzFilter(keyFilters))
+		if statz.Err != nil {
+			return ctx.vm.NewGoError(statz.Err)
+		}
+		ret := []map[string]any{}
+		for _, row := range statz.Rows {
+			m := map[string]any{
+				"time":   row.Timestamp,
+				"values": row.Values,
+			}
+			for i, v := range row.Values {
+				m[strings.ReplaceAll(keyFilters[i], ":", "_")] = v
+			}
+			ret = append(ret, m)
+			//ret = append(ret, append([]any{row.Timestamp}, row.Values...))
+		}
+		return ctx.vm.ToValue(ret)
 	})
 }
 

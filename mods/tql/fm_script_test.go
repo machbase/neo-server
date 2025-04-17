@@ -301,7 +301,7 @@ func TestScriptJS(t *testing.T) {
 	}
 }
 
-func TestScriptGetSetValue(t *testing.T) {
+func TestScriptSystemInflight(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-set-value",
@@ -332,6 +332,31 @@ func TestScriptGetSetValue(t *testing.T) {
 				CSV()
 			`,
 			ExpectCSV: []string{"123,abc", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptSystemStatz(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-statz",
+			Script: `
+				SCRIPT("js", {
+					statz = require("system").statz("1m", "go:goroutine_max");
+					last = statz.length - 1;
+					$.yield(statz[last].time, ...statz[last].values);
+				})
+				CSV()
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, len(result) > 20, result)
+			},
 		},
 	}
 
