@@ -19,8 +19,11 @@ import (
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/paulmach/orb/geojson"
+	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -230,7 +233,45 @@ func (ctx *JSContext) nativeModuleGenerator(r *js.Runtime, module *js.Object) {
 func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 	// m = require("filter")
 	o := module.Get("exports").(*js.Object)
-	// lpf = m.lowpass(alpha); newValue = lpf.eval(value);
+	// avg = m.avg();
+	// newValue = avg.eval(value);
+	o.Set("avg", func() js.Value {
+		ret := ctx.vm.NewObject()
+		count := 0
+		sum := 0.0
+		ret.Set("eval", func(value float64) float64 {
+			count++
+			sum += value
+			return sum / float64(count)
+		})
+		return ret
+	})
+	// movAvg = m.movavg(windowSize);
+	// newValue = movAvg.eval(value);
+	o.Set("movavg", func(windowSize int) js.Value {
+		if windowSize <= 1 {
+			return ctx.vm.NewGoError(errors.New("windowSize should be > 1"))
+		}
+		ret := ctx.vm.NewObject()
+		count := 0
+		sum := 0.0
+		window := make([]float64, windowSize)
+		ret.Set("eval", func(value float64) float64 {
+			count++
+			sum += value
+			if count > windowSize {
+				sum -= window[count%windowSize]
+				window[count%windowSize] = value
+				return sum / float64(windowSize)
+			} else {
+				window[count%windowSize] = value
+				return sum / float64(count)
+			}
+		})
+		return ret
+	})
+	// lpf = m.lowpass(alpha);
+	// newValue = lpf.eval(value);
 	o.Set("lowpass", func(alpha float64) js.Value {
 		if alpha <= 0 || alpha >= 1 {
 			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1"))
@@ -244,6 +285,40 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 				prev = (1-alpha)*prev + alpha*value
 			}
 			return prev
+		})
+		return ret
+	})
+	// kalman = m.kalman(initalVariance, processVariance, ObservationVariance);
+	// newValue = kalman.eval(time, ...vector);
+	o.Set("kalman", func(iv, pv, ov float64) js.Value {
+		var kf *kalman.KalmanFilter
+		var model *models.BrownianModel
+		ret := ctx.vm.NewObject()
+		ret.Set("eval", func(ts time.Time, vec ...float64) js.Value {
+			if kf == nil {
+				model = models.NewBrownianModel(
+					ts,
+					mat.NewVecDense(len(vec), vec),
+					models.BrownianModelConfig{
+						InitialVariance:     iv,
+						ProcessVariance:     pv,
+						ObservationVariance: ov,
+					},
+				)
+				kf = kalman.NewKalmanFilter(model)
+			} else {
+				kf.Update(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
+			}
+			newVal := model.Value(kf.State())
+			if dim := newVal.Len(); dim == 1 {
+				return ctx.vm.ToValue(newVal.AtVec(0))
+			} else {
+				ret := make([]float64, newVal.Len())
+				for i := range ret {
+					ret[i] = newVal.AtVec(i)
+				}
+				return ctx.vm.ToValue(ret)
+			}
 		})
 		return ret
 	})

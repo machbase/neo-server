@@ -555,6 +555,88 @@ func TestScriptFilterLowpass(t *testing.T) {
 	}
 }
 
+func TestScriptFilterAvg(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-filter-avg",
+			Script: `
+			FAKE( arrange(10, 30, 10) )
+			SCRIPT("js", {
+				const avg = require("filter").avg();
+			},{
+				$.yield($.values[0], avg.eval($.values[0]));
+			})			
+			CSV(precision(0))
+			`,
+			ExpectCSV: []string{
+				"10,10",
+				"20,15",
+				"30,20",
+				"\n",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptFilterMovAvg(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-filter-movavg",
+			Script: `SCRIPT("js", {
+				const { linspace } = require("generator");
+				const movavg = require("filter").movavg(10);
+			},{
+				for( x of linspace(0, 100, 100) ) {
+					$.yield(x, movavg.eval(x));
+				}
+			})			
+			CSV(precision(4))
+			`,
+			ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptFilterKalman(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-filter-kalman",
+			Script: `
+				FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
+				SCRIPT("js", {
+					const kalman = require("filter").kalman(1.0, 1.0, 2.0);
+				},{
+					$.yield($.values[0], kalman.eval(new Date(1744868877), $.values[0]));
+				})
+				CSV(precision(1))
+				`,
+			ExpectCSV: []string{
+				`1.3,1.3`,
+				`10.2,4.3`,
+				`5.0,4.4`,
+				`3.4,4.2`,
+				"\n",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptStatQuantile(t *testing.T) {
 	tests := []TqlTestCase{
 		{
