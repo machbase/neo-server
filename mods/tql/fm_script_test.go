@@ -10,7 +10,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestScriptES6(t *testing.T) {
+func TestScriptJS(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-console-log",
@@ -308,8 +308,9 @@ func TestScriptGetSetValue(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,2,1))
 				SCRIPT("js", {
-					$.set("key1", 123);
-					$.set("key2", "abc");
+					inflight = require("system").inflight();
+					inflight.set("key1", 123);
+					inflight.set("key2", "abc");
 					$.yield("");
 				})
 				MAPVALUE(0, $key1)
@@ -325,7 +326,8 @@ func TestScriptGetSetValue(t *testing.T) {
 				SET(key1, 123)
 				SET(key2, "abc")
 				SCRIPT("js", {
-					$.yield($.get("key1"), $.get("key2"));
+					inflight = require("system").inflight();
+					$.yield(inflight.get("key1"), inflight.get("key2"));
 				})
 				CSV()
 			`,
@@ -396,7 +398,7 @@ func TestScriptFFT(t *testing.T) {
 	}
 }
 
-func TestScriptSimpleX(t *testing.T) {
+func TestScriptGeneratorSimpleX(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-simplex",
@@ -405,7 +407,7 @@ func TestScriptSimpleX(t *testing.T) {
 					gen = require("generator").simplex(123);
 				},{
 					for(i=0; i < 5; i++) {
-						$.yield(i, gen.Eval(i, i * 0.6) );
+						$.yield(i, gen.eval(i, i * 0.6) );
 					}
 				})
 				CSV(precision(3))
@@ -427,7 +429,7 @@ func TestScriptSimpleX(t *testing.T) {
 	}
 }
 
-func TestScriptUUID(t *testing.T) {
+func TestScriptGeneratorUUID(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-uuid",
@@ -436,7 +438,7 @@ func TestScriptUUID(t *testing.T) {
 					gen = require("generator").uuid(1);
 				},{
 					for(i=0; i < 5; i++) {
-						$.yield(gen.Eval());
+						$.yield(gen.eval());
 					}
 				})
 				CSV(header(false))
@@ -458,7 +460,77 @@ func TestScriptUUID(t *testing.T) {
 	}
 }
 
-func TestScriptNumQuantile(t *testing.T) {
+func TestScriptGeneratorMeshgrid(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-meshgrid",
+			Script: `
+				SCRIPT("js", {
+					gen = require("generator").meshgrid([1,2,3], [4,5]);
+				},{
+					for(i=0; i < gen.length; i++) {
+						$.yield(...gen[i]);
+					}
+				})
+				CSV(header(false))
+			`,
+			ExpectCSV: []string{
+				"1,4",
+				"1,5",
+				"2,4",
+				"2,5",
+				"3,4",
+				"3,5",
+				"\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptFilterLowpass(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-filter-lowpass",
+			Script: `SCRIPT("js", {
+				const { arrange } = require("generator");
+				const lowpass = require("filter").lowpass(0.3);
+				const simplex = require("generator").simplex(1);
+			},{
+				for( x of arrange(1, 10, 1) ) {
+					v = x + simplex.eval(x) * 3;
+					$.yield(x, v, lowpass.eval(v));
+				}
+			})			
+			CSV(precision(2))
+			`,
+			ExpectCSV: []string{
+				`1.00,1.48,1.48`,
+				`2.00,0.40,1.15`,
+				`3.00,3.84,1.96`,
+				`4.00,2.89,2.24`,
+				`5.00,5.47,3.21`,
+				`6.00,5.29,3.83`,
+				`7.00,7.22,4.85`,
+				`8.00,10.31,6.49`,
+				`9.00,8.36,7.05`,
+				`10.00,8.56,7.50`,
+				"\n",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptStatQuantile(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -486,7 +558,7 @@ func TestScriptNumQuantile(t *testing.T) {
 	}
 }
 
-func TestScriptNumMean(t *testing.T) {
+func TestScriptStatMean(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -514,7 +586,7 @@ func TestScriptNumMean(t *testing.T) {
 	}
 }
 
-func TestScriptNumStdDev(t *testing.T) {
+func TestScriptStatStdDev(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-stddev",

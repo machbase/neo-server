@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dop251/goja"
+	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
@@ -36,7 +36,7 @@ func (node *Node) fmScript(args ...any) (any, error) {
 		if !ok {
 			goto syntaxErr
 		}
-		return node.fmScriptGoja("", text, "")
+		return node.fmScriptJS("", text, "")
 	} else if len(args) >= 2 {
 		switch name := args[0].(type) {
 		case *bridgeName:
@@ -85,7 +85,7 @@ func (node *Node) fmScript(args ...any) (any, error) {
 				} else {
 					goto syntaxErr
 				}
-				return node.fmScriptGoja(initCode, mainCode, deinitCode)
+				return node.fmScriptJS(initCode, mainCode, deinitCode)
 			default:
 				goto syntaxErr
 			}
@@ -182,10 +182,10 @@ func isPng(data []byte) bool {
 	return matched
 }
 
-const goja_ctx_key = "$goja_ctx$"
+const js_ctx_key = "$js_ctx$"
 
-func (node *Node) fmScriptGoja(initCode string, mainCode string, deinitCode string) (any, error) {
-	var ctx *GojaContext
+func (node *Node) fmScriptJS(initCode string, mainCode string, deinitCode string) (any, error) {
+	var ctx *JSContext
 	var err error
 
 	defer func() {
@@ -196,18 +196,18 @@ func (node *Node) fmScriptGoja(initCode string, mainCode string, deinitCode stri
 		}
 	}()
 
-	if obj, ok := node.GetValue(goja_ctx_key); ok {
-		if o, ok := obj.(*GojaContext); ok {
+	if obj, ok := node.GetValue(js_ctx_key); ok {
+		if o, ok := obj.(*JSContext); ok {
 			ctx = o
 		}
 	}
 
 	if ctx == nil {
-		ctx, err = newGojaContext(node, initCode, mainCode, deinitCode)
+		ctx, err = newJSContext(node, initCode, mainCode, deinitCode)
 		if err != nil {
 			return nil, err
 		}
-		node.SetValue(goja_ctx_key, ctx)
+		node.SetValue(js_ctx_key, ctx)
 	}
 	if inflight := node.Inflight(); inflight != nil {
 		ctx.obj.Set("key", ctx.vm.ToValue(inflight.key))
@@ -221,11 +221,11 @@ func (node *Node) fmScriptGoja(initCode string, mainCode string, deinitCode stri
 	return nil, err
 }
 
-type GojaContext struct {
-	vm           *goja.Runtime
-	sc           *goja.Program
+type JSContext struct {
+	vm           *js.Runtime
+	sc           *js.Program
 	node         *Node
-	obj          *goja.Object
+	obj          *js.Object
 	yieldCount   int64
 	onceFinalize sync.Once
 	didSetResult bool
@@ -258,9 +258,6 @@ func ClearPredefModules() {
 }
 
 func jsSourceLoad(path string) ([]byte, error) {
-	if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") {
-		return nil, require.ModuleFileDoesNotExistError
-	}
 	if predefModules != nil {
 		if content, ok := predefModules[path]; ok {
 			return content, nil
@@ -274,12 +271,12 @@ func jsSourceLoad(path string) ([]byte, error) {
 	return ent.Content, nil
 }
 
-func newGojaContext(node *Node, initCode string, mainCode string, deinitCode string) (*GojaContext, error) {
-	ctx := &GojaContext{
+func newJSContext(node *Node, initCode string, mainCode string, deinitCode string) (*JSContext, error) {
+	ctx := &JSContext{
 		node: node,
-		vm:   goja.New(),
+		vm:   js.New(),
 	}
-	ctx.vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", false))
+	ctx.vm.SetFieldNameMapper(js.TagFieldNameMapper("json", false))
 
 	enableModuleRegistry(ctx)
 
@@ -290,14 +287,14 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 		mainCode = strings.Repeat("\n", initCodeLine+node.tqlLine.line-1) + mainCode
 	}
 
-	if s, err := goja.Compile("", mainCode, false); err != nil {
+	if s, err := js.Compile("", mainCode, false); err != nil {
 		return nil, err
 	} else {
 		ctx.sc = s
 	}
 
 	node.SetEOF(func(*Node) {
-		defer closeGojaContext(ctx)
+		defer closeJSContext(ctx)
 		// set $.result columns if no records are yielded
 		if !ctx.didSetResult {
 			ctx.doResult()
@@ -306,8 +303,8 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 			// intentionally ignore the panic from finalize stage.
 			// it will raised to the task level.
 			if strings.TrimSpace(deinitCode) == "" {
-				if f, ok := goja.AssertFunction(ctx.vm.Get("finalize")); ok {
-					_, err := f(goja.Undefined())
+				if f, ok := js.AssertFunction(ctx.vm.Get("finalize")); ok {
+					_, err := f(js.Undefined())
 					if err != nil {
 						node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
 					}
@@ -339,7 +336,7 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	ctx.vm.Set("$", ctx.obj)
 
 	// set $.payload
-	var payload = goja.Undefined()
+	var payload = js.Undefined()
 	if node.task.nodes[0] == node && node.task.inputReader != nil {
 		// $.payload is defined, only when the SCRIPT is the SRC node.
 		// If the SCRIPT is not the SRC node, the payload has been using by the previous node.
@@ -351,7 +348,6 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	ctx.obj.Set("payload", payload)
 
 	// set $.params
-
 	if pv, err := ctx.vm.RunString("()=>{return new Map()}"); err != nil {
 		return nil, fmt.Errorf("SCRIPT params, %s", err.Error())
 	} else {
@@ -367,21 +363,15 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 	}
 
 	// function $.yield(...)
-	ctx.obj.Set("yield", ctx.gojaFuncYield)
+	ctx.obj.Set("yield", ctx.jsFuncYield)
 	// function $.yieldKey(key, ...)
-	ctx.obj.Set("yieldKey", ctx.gojaFuncYieldKey)
+	ctx.obj.Set("yieldKey", ctx.jsFuncYieldKey)
 	// function $.yieldArray(array)
-	ctx.obj.Set("yieldArray", ctx.gojaFuncYieldArray)
+	ctx.obj.Set("yieldArray", ctx.jsFuncYieldArray)
 	// $.db()
-	ctx.obj.Set("db", ctx.gojaFuncDB)
-	// $.publisher()
-	ctx.obj.Set("publisher", ctx.gojaFuncPublisher)
+	ctx.obj.Set("db", ctx.jsFuncDB)
 	// $.request()
-	ctx.obj.Set("request", ctx.gojaFuncRequest)
-	// $.set()
-	ctx.obj.Set("set", ctx.gojaFuncSet)
-	// $.get()
-	ctx.obj.Set("get", ctx.gojaFuncGet)
+	ctx.obj.Set("request", ctx.jsFuncRequest)
 
 	ctx.node.task.AddShouldStopListener(func() {
 		ctx.onceInterrupt.Do(func() {
@@ -396,14 +386,18 @@ func newGojaContext(node *Node, initCode string, mainCode string, deinitCode str
 		}
 		_, err := ctx.vm.RunString(initCode)
 		if err != nil {
-			return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+			if jsErr, ok := err.(*js.Exception); ok {
+				return nil, fmt.Errorf("SCRIPT init, %s", strings.ReplaceAll(jsErr.String(), "github.com/dop251/goja_nodejs/", ""))
+			} else {
+				return nil, fmt.Errorf("SCRIPT init, %s", err.Error())
+			}
 		}
 	}
 
 	return ctx, nil
 }
 
-func closeGojaContext(ctx *GojaContext) {
+func closeJSContext(ctx *JSContext) {
 	if ctx == nil {
 		return
 	}
@@ -412,14 +406,14 @@ func closeGojaContext(ctx *GojaContext) {
 	})
 }
 
-func (ctx *GojaContext) doResult() error {
+func (ctx *JSContext) doResult() error {
 	if ctx.obj == nil {
 		fmt.Println("ctx.obj is nil")
 		return nil
 	}
 	resultObj := ctx.obj.Get("result")
-	if resultObj != nil && !goja.IsUndefined(resultObj) {
-		var opts ScriptGojaResultOption
+	if resultObj != nil && !js.IsUndefined(resultObj) {
+		var opts JSResultOption
 		if err := ctx.vm.ExportTo(resultObj, &opts); err != nil {
 			return fmt.Errorf("line %d, SCRIPT option, %s", ctx.node.tqlLine.line, err.Error())
 		}
@@ -431,9 +425,9 @@ func (ctx *GojaContext) doResult() error {
 	return nil
 }
 
-type ScriptGojaResultOption map[string]any
+type JSResultOption map[string]any
 
-func (so ScriptGojaResultOption) ResultColumns() api.Columns {
+func (so JSResultOption) ResultColumns() api.Columns {
 	var columns []string
 	var types []string
 	if c, ok := so["columns"]; !ok {
@@ -474,7 +468,7 @@ func (so ScriptGojaResultOption) ResultColumns() api.Columns {
 	return cols
 }
 
-func (ctx *GojaContext) Run() (any, error) {
+func (ctx *JSContext) Run() (any, error) {
 	if v, err := ctx.vm.RunProgram(ctx.sc); err != nil {
 		return nil, err
 	} else {
@@ -482,8 +476,8 @@ func (ctx *GojaContext) Run() (any, error) {
 	}
 }
 
-func (ctx *GojaContext) consoleLog(level Level) func(args ...goja.Value) {
-	return func(args ...goja.Value) {
+func (ctx *JSContext) consoleLog(level Level) func(args ...js.Value) {
+	return func(args ...js.Value) {
 		params := []any{}
 		for _, value := range args {
 			val := value.Export()
@@ -498,8 +492,8 @@ func (ctx *GojaContext) consoleLog(level Level) func(args ...goja.Value) {
 	}
 }
 
-func (ctx *GojaContext) gojaFuncYield(values ...goja.Value) {
-	var v_key goja.Value
+func (ctx *JSContext) jsFuncYield(values ...js.Value) {
+	var v_key js.Value
 	if inflight := ctx.node.Inflight(); inflight != nil {
 		v_key = ctx.vm.ToValue(inflight.key)
 	}
@@ -509,18 +503,18 @@ func (ctx *GojaContext) gojaFuncYield(values ...goja.Value) {
 	ctx.yield(v_key, values)
 }
 
-func (ctx *GojaContext) gojaFuncYieldKey(key goja.Value, values ...goja.Value) {
+func (ctx *JSContext) jsFuncYieldKey(key js.Value, values ...js.Value) {
 	ctx.yield(key, values)
 }
 
-func (ctx *GojaContext) gojaFuncYieldArray(values goja.Value) {
+func (ctx *JSContext) jsFuncYieldArray(values js.Value) {
 	obj := values.ToObject(ctx.vm)
-	var arr []goja.Value
+	var arr []js.Value
 	ctx.vm.ExportTo(obj, &arr)
-	ctx.gojaFuncYield(arr...)
+	ctx.jsFuncYield(arr...)
 }
 
-func (ctx *GojaContext) yield(argKey goja.Value, args []goja.Value) {
+func (ctx *JSContext) yield(argKey js.Value, args []js.Value) {
 	var values []any
 	var key = argKey.Export()
 	values = make([]any, len(args))
@@ -543,7 +537,7 @@ func (ctx *GojaContext) yield(argKey goja.Value, args []goja.Value) {
 	ctx.yieldCount++
 }
 
-func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) goja.Value {
+func (ctx *JSContext) jsFuncRequest(reqUrl string, reqOpt map[string]any) js.Value {
 	// $.request(url, option).do(function(response) {...})
 	option := struct {
 		Url     string            `json:"url"`
@@ -594,7 +588,7 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 	}
 
 	requestObj := ctx.vm.NewObject()
-	requestObj.Set("do", func(callback goja.Callable) goja.Value {
+	requestObj.Set("do", func(callback js.Callable) js.Value {
 		responseObj := ctx.vm.NewObject()
 		httpClient := ctx.node.task.NewHttpClient()
 		httpRequest, httpErr := http.NewRequest(strings.ToUpper(option.Method), option.Url, strings.NewReader(option.Body))
@@ -627,19 +621,19 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 		}
 		responseObj.Set("url", option.Url)
 		responseObj.Set("ok", httpResponse != nil && httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300)
-		responseObj.Set("error", func() goja.Value {
+		responseObj.Set("error", func() js.Value {
 			if httpErr == nil {
-				return goja.Undefined()
+				return js.Undefined()
 			}
 			return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", httpErr.Error()))
 		})
-		bodyFunc := func(typ string) func(goja.Callable) goja.Value {
-			return func(callback goja.Callable) goja.Value {
+		bodyFunc := func(typ string) func(js.Callable) js.Value {
+			return func(callback js.Callable) js.Value {
 				if httpErr != nil {
 					return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", httpErr.Error()))
 				}
 				if httpResponse == nil {
-					return goja.Undefined()
+					return js.Undefined()
 				}
 				if !slices.Contains([]string{"csv", "json", "text", "blob"}, typ) {
 					return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s() unknown function", typ))
@@ -662,7 +656,7 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 						for i, v := range row {
 							s[i] = v
 						}
-						if _, e := callback(goja.Undefined(), ctx.vm.ToValue(s)); e != nil {
+						if _, e := callback(js.Undefined(), ctx.vm.ToValue(s)); e != nil {
 							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
 						}
 					}
@@ -677,26 +671,26 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", err.Error()))
 						}
 						value := ctx.vm.ToValue(data)
-						if _, e := callback(goja.Undefined(), value); e != nil {
+						if _, e := callback(js.Undefined(), value); e != nil {
 							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
 						}
 					}
 				case "text":
 					if b, err := io.ReadAll(httpResponse.Body); err == nil {
 						s := ctx.vm.ToValue(string(b))
-						if _, e := callback(goja.Undefined(), s); e != nil {
+						if _, e := callback(js.Undefined(), s); e != nil {
 							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
 						}
 					}
 				case "blob":
 					if b, err := io.ReadAll(httpResponse.Body); err == nil {
 						s := ctx.vm.ToValue(string(b))
-						if _, e := callback(goja.Undefined(), s); e != nil {
+						if _, e := callback(js.Undefined(), s); e != nil {
 							return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
 						}
 					}
 				}
-				return goja.Undefined()
+				return js.Undefined()
 			}
 		}
 		responseObj.Set("text", bodyFunc("text"))
@@ -704,52 +698,15 @@ func (ctx *GojaContext) gojaFuncRequest(reqUrl string, reqOpt map[string]any) go
 		responseObj.Set("json", bodyFunc("json"))
 		responseObj.Set("csv", bodyFunc("csv"))
 
-		if _, e := callback(goja.Undefined(), responseObj); e != nil {
+		if _, e := callback(js.Undefined(), responseObj); e != nil {
 			return ctx.vm.NewGoError(fmt.Errorf("HTTPError %s", e.Error()))
 		}
-		return goja.Undefined()
+		return js.Undefined()
 	})
 	return requestObj
 }
 
-func (ctx *GojaContext) gojaFuncPublisher(optObj map[string]any) goja.Value {
-	var cname string
-	if len(optObj) > 0 {
-		// parse db options `$.publisher({bridge: "name"})`
-		if br, ok := optObj["bridge"]; ok {
-			cname = br.(string)
-		}
-	}
-	br, err := bridge.GetBridge(cname)
-	if err != nil || br == nil {
-		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not found", cname))
-	}
-
-	ret := ctx.vm.NewObject()
-	if mqttC, ok := br.(*bridge.MqttBridge); ok {
-		ret.Set("publish", func(topic string, payload any) goja.Value {
-			flag, err := mqttC.Publish(topic, payload)
-			if err != nil {
-				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
-			}
-			return ctx.vm.ToValue(flag)
-		})
-	} else if natsC, ok := br.(*bridge.NatsBridge); ok {
-		ret.Set("publish", func(subject string, payload any) goja.Value {
-			flag, err := natsC.Publish(subject, payload)
-			if err != nil {
-				return ctx.vm.NewGoError(fmt.Errorf("publisher: %s", err.Error()))
-			}
-			return ctx.vm.ToValue(flag)
-		})
-	} else {
-		return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not supported", cname))
-	}
-
-	return ret
-}
-
-func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
+func (ctx *JSContext) jsFuncDB(optObj map[string]any) js.Value {
 	var node = ctx.node
 	var db = ctx.vm.NewObject()
 
@@ -762,7 +719,7 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 	}
 
 	// $.db().query(sql, params...).next(function(row) {...})
-	db.Set("query", func(sqlText string, params ...any) goja.Value {
+	db.Set("query", func(sqlText string, params ...any) js.Value {
 		queryObj := ctx.vm.NewObject()
 		queryObj.Set("yield", func() error {
 			var conn api.Conn
@@ -795,7 +752,7 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 			for _, col := range cols {
 				types = append(types, string(col.DataType))
 			}
-			var opts = ScriptGojaResultOption{
+			var opts = JSResultOption{
 				"columns": cols.Names(),
 				"types":   types,
 			}
@@ -813,7 +770,7 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 			return nil
 		})
 
-		queryObj.Set("forEach", func(callback goja.Callable) goja.Value {
+		queryObj.Set("forEach", func(callback js.Callable) js.Value {
 			var conn api.Conn
 			var err error
 			if bridgeName == "" {
@@ -841,10 +798,10 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 				cols, _ := rows.Columns()
 				values, _ := cols.MakeBuffer()
 				rows.Scan(values...)
-				if flag, e := callback(goja.Undefined(), ctx.vm.ToValue(values)); e != nil {
+				if flag, e := callback(js.Undefined(), ctx.vm.ToValue(values)); e != nil {
 					return ctx.vm.NewGoError(fmt.Errorf("DBError %s", e.Error()))
 				} else {
-					if goja.IsUndefined(flag) {
+					if js.IsUndefined(flag) {
 						// if the callback does not return anything (undefined), continue
 						continue
 					}
@@ -855,14 +812,14 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 					}
 				}
 			}
-			return goja.Undefined()
+			return js.Undefined()
 		})
 
 		return queryObj
 	})
 
 	// $.db().exec(sql, params...)
-	db.Set("exec", func(sqlText string, params ...any) goja.Value {
+	db.Set("exec", func(sqlText string, params ...any) js.Value {
 		var conn api.Conn
 		var err error
 		if bridgeName == "" {
@@ -889,22 +846,4 @@ func (ctx *GojaContext) gojaFuncDB(optObj map[string]any) goja.Value {
 	})
 
 	return db
-}
-
-func (ctx *GojaContext) gojaFuncSet(name string, value goja.Value) goja.Value {
-	if inf := ctx.node.Inflight(); inf != nil {
-		inf.SetVariable(name, value.Export())
-	}
-	return goja.Undefined()
-}
-
-func (ctx *GojaContext) gojaFuncGet(name string) goja.Value {
-	if inf := ctx.node.Inflight(); inf != nil {
-		if v, err := inf.GetVariable("$" + name); err != nil {
-			return ctx.vm.NewGoError(fmt.Errorf("SCRIPT %s", err.Error()))
-		} else {
-			return ctx.vm.ToValue(v)
-		}
-	}
-	return goja.Undefined()
 }
