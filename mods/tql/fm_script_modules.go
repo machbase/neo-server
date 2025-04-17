@@ -32,9 +32,8 @@ func enableModuleRegistry(ctx *JSContext) {
 	registry.RegisterNativeModule("system", ctx.nativeModuleSystem)
 	registry.RegisterNativeModule("generator", ctx.nativeModuleGenerator)
 	registry.RegisterNativeModule("filter", ctx.nativeModuleFilter)
-	registry.RegisterNativeModule("stat", ctx.nativeModuleStat)
-	registry.RegisterNativeModule("dsp", ctx.nativeModuleDsp)
-	registry.RegisterNativeModule("geo", ctx.nativeModuleGeo)
+	registry.RegisterNativeModule("analysis", ctx.nativeModuleAnalysis)
+	registry.RegisterNativeModule("spatial", ctx.nativeModuleSpatial)
 	registry.Enable(ctx.vm)
 }
 
@@ -306,9 +305,9 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 					},
 				)
 				kf = kalman.NewKalmanFilter(model)
-			} else {
-				kf.Update(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
 			}
+			kf.Update(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
+
 			newVal := model.Value(kf.State())
 			if dim := newVal.Len(); dim == 1 {
 				return ctx.vm.ToValue(newVal.AtVec(0))
@@ -324,8 +323,8 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 	})
 }
 
-func (ctx *JSContext) nativeModuleStat(r *js.Runtime, module *js.Object) {
-	// m = require("stat")
+func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
+	// m = require("analysis")
 	o := module.Get("exports").(*js.Object)
 	// m.mean(array)
 	o.Set("mean", func(arr []float64) float64 {
@@ -340,11 +339,6 @@ func (ctx *JSContext) nativeModuleStat(r *js.Runtime, module *js.Object) {
 		slices.Sort(arr)
 		return stat.Quantile(p, stat.Empirical, arr, nil)
 	})
-}
-
-func (ctx *JSContext) nativeModuleDsp(r *js.Runtime, module *js.Object) {
-	// m = require("dsp")
-	o := module.Get("exports").(*js.Object)
 	// m.fft(times, values)
 	o.Set("fft", func(times []any, values []any) js.Value {
 		ts := make([]time.Time, len(times))
@@ -374,15 +368,17 @@ func (ctx *JSContext) nativeModuleDsp(r *js.Runtime, module *js.Object) {
 	})
 }
 
-func (ctx *JSContext) nativeModuleGeo(r *js.Runtime, module *js.Object) {
-	// m = require("geo")
+func (ctx *JSContext) nativeModuleSpatial(r *js.Runtime, module *js.Object) {
+	// m = require("spatial")
 	o := module.Get("exports").(*js.Object)
 	o.Set("haversine", func(lat1, lon1, lat2, lon2 float64) float64 {
 		// EarthRadius is the radius of the earth in meters.
 		// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
 		const EarthRadius = 6378137.0 // meters
-		diffLat := lat2 - lat1
-		diffLon := lon2 - lon1
+		degreesToRadians := func(d float64) float64 { return d * math.Pi / 180 }
+
+		diffLat := degreesToRadians(lat2) - degreesToRadians(lat1)
+		diffLon := degreesToRadians(lon2) - degreesToRadians(lon1)
 		a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
 		c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 		return c * EarthRadius
