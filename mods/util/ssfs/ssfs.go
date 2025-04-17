@@ -344,6 +344,9 @@ func (ssfs *SSFS) getEntry(path string, filter SubEntryFilter, loadContent bool)
 		}
 		if children, ok := ssfs.virtualDirs[path]; ok {
 			for _, sub := range children {
+				if ssfs.ignores[sub] {
+					continue
+				}
 				ret.Children = append(ret.Children,
 					&SubEntry{
 						IsDir:    true,
