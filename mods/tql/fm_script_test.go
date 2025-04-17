@@ -10,7 +10,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestScriptES6(t *testing.T) {
+func TestScriptJS(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-console-log",
@@ -407,7 +407,7 @@ func TestScriptGeneratorSimpleX(t *testing.T) {
 					gen = require("generator").simplex(123);
 				},{
 					for(i=0; i < 5; i++) {
-						$.yield(i, gen.Eval(i, i * 0.6) );
+						$.yield(i, gen.eval(i, i * 0.6) );
 					}
 				})
 				CSV(precision(3))
@@ -438,7 +438,7 @@ func TestScriptGeneratorUUID(t *testing.T) {
 					gen = require("generator").uuid(1);
 				},{
 					for(i=0; i < 5; i++) {
-						$.yield(gen.Eval());
+						$.yield(gen.eval());
 					}
 				})
 				CSV(header(false))
@@ -460,6 +460,38 @@ func TestScriptGeneratorUUID(t *testing.T) {
 	}
 }
 
+func TestScriptGeneratorMeshgrid(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-meshgrid",
+			Script: `
+				SCRIPT("js", {
+					gen = require("generator").meshgrid([1,2,3], [4,5]);
+				},{
+					for(i=0; i < gen.length; i++) {
+						$.yield(...gen[i]);
+					}
+				})
+				CSV(header(false))
+			`,
+			ExpectCSV: []string{
+				"1,4",
+				"1,5",
+				"2,4",
+				"2,5",
+				"3,4",
+				"3,5",
+				"\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptFilterLowpass(t *testing.T) {
 	tests := []TqlTestCase{
 		{
@@ -470,8 +502,8 @@ func TestScriptFilterLowpass(t *testing.T) {
 				const simplex = require("generator").simplex(1);
 			},{
 				for( x of arrange(1, 10, 1) ) {
-					v = x + simplex.Eval(x) * 3;
-					$.yield(x, v, lowpass.Eval(v));
+					v = x + simplex.eval(x) * 3;
+					$.yield(x, v, lowpass.eval(v));
 				}
 			})			
 			CSV(precision(2))

@@ -116,14 +116,39 @@ func (ctx *JSContext) nativeModuleGenerator(r *js.Runtime, module *js.Object) {
 	})
 	// m.simplex(seed)
 	o.Set("simplex", func(seed int64) js.Value {
-		ret := &jsSimpleX{seed: seed}
-		return ctx.vm.ToValue(ret)
+		var gen *opensimplex.Generator
+		ret := ctx.vm.NewObject()
+		ret.Set("eval", func(dim ...float64) float64 {
+			if gen == nil {
+				gen = opensimplex.New(seed)
+			}
+			return gen.Eval(dim...)
+		})
+		return ret
 	})
 	// m.uuid(version)
 	o.Set("uuid", func(version int) js.Value {
-		if slices.Contains([]int{1, 4}, version) {
-			ret := &jsUUID{ver: version}
-			return ctx.vm.ToValue(ret)
+		if slices.Contains([]int{1, 4, 6, 7}, version) {
+			var gen uuid.Generator
+			ret := ctx.vm.NewObject()
+			ret.Set("eval", func() js.Value {
+				if gen == nil {
+					gen = uuid.NewGen()
+				}
+				var uid uuid.UUID
+				switch version {
+				case 1:
+					uid, _ = gen.NewV1()
+				case 4:
+					uid, _ = gen.NewV4()
+				case 6:
+					uid, _ = gen.NewV6()
+				case 7:
+					uid, _ = gen.NewV7()
+				}
+				return ctx.vm.ToValue(uid.String())
+			})
+			return ret
 		} else {
 			return ctx.vm.NewGoError(fmt.Errorf("uuid: unsupported version %d", version))
 		}
@@ -153,28 +178,40 @@ func (ctx *JSContext) nativeModuleGenerator(r *js.Runtime, module *js.Object) {
 	o.Set("linspace", func(start, stop float64, count int) js.Value {
 		return ctx.vm.ToValue(nums.Linspace(start, stop, count))
 	})
+	// m.meshgrid(arr1, arr2)
+	o.Set("meshgrid", func(arr1, arr2 []float64) js.Value {
+		len_x := len(arr1)
+		len_y := len(arr2)
+		arr := make([][]float64, len_x*len_y)
+		for x, v1 := range arr1 {
+			for y, v2 := range arr2 {
+				arr[x*len_y+y] = []float64{v1, v2}
+			}
+		}
+		return ctx.vm.ToValue(arr)
+	})
 }
 
 func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 	// m = require("filter")
 	o := module.Get("exports").(*js.Object)
-	// lpf = m.lowpass(alpha); newValue = lpf.Eval(value);
+	// lpf = m.lowpass(alpha); newValue = lpf.eval(value);
 	o.Set("lowpass", func(alpha float64) js.Value {
 		if alpha <= 0 || alpha >= 1 {
 			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1 "))
 		}
-		lpf := &lowPassFilter{alpha: alpha, prev: math.MaxInt64}
-		return ctx.vm.ToValue(lpf)
+		ret := ctx.vm.NewObject()
+		prev := float64(math.MaxInt64)
+		ret.Set("eval", func(value float64) float64 {
+			if prev == math.MaxInt64 {
+				prev = value
+			} else {
+				prev = (1-alpha)*prev + alpha*value
+			}
+			return prev
+		})
+		return ret
 	})
-}
-
-func (lpf *lowPassFilter) Eval(value float64) float64 {
-	if lpf.prev == math.MaxInt64 {
-		lpf.prev = value
-	} else {
-		lpf.prev = (1-lpf.alpha)*lpf.prev + lpf.alpha*value
-	}
-	return lpf.prev
 }
 
 func (ctx *JSContext) nativeModuleStat(r *js.Runtime, module *js.Object) {
@@ -227,51 +264,13 @@ func (ctx *JSContext) nativeModuleDsp(r *js.Runtime, module *js.Object) {
 	})
 }
 
-type jsUUID struct {
-	ver int
-	gen uuid.Generator
-}
-
-func (u *jsUUID) Eval() string {
-	if u.gen == nil {
-		u.gen = uuid.NewGen()
-	}
-	var uid uuid.UUID
-	switch u.ver {
-	case 1:
-		uid, _ = u.gen.NewV1()
-	case 4:
-		uid, _ = u.gen.NewV4()
-	case 6:
-		uid, _ = u.gen.NewV6()
-	case 7:
-		uid, _ = u.gen.NewV7()
-	}
-	return uid.String()
-}
-
-type jsSimpleX struct {
-	seed int64
-	gen  *opensimplex.Generator
-}
-
-func (sx *jsSimpleX) Eval(dim ...float64) float64 {
-	if sx.gen == nil {
-		sx.gen = opensimplex.New(sx.seed)
-	}
-	return sx.gen.Eval(dim...)
-}
-
-const (
-	// EarthRadius is the radius of the earth in meters.
-	// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
-	EarthRadius = 6378137.0 // meters
-)
-
 func (ctx *JSContext) nativeModuleGeo(r *js.Runtime, module *js.Object) {
 	// m = require("geo")
 	o := module.Get("exports").(*js.Object)
 	o.Set("haversine", func(lat1, lon1, lat2, lon2 float64) float64 {
+		// EarthRadius is the radius of the earth in meters.
+		// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
+		const EarthRadius = 6378137.0 // meters
 		diffLat := lat2 - lat1
 		diffLon := lon2 - lon1
 		a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
