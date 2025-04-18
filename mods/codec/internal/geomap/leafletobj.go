@@ -98,6 +98,37 @@ func ConvCoordinates(coord any, extendLatLon func(lat, long float64)) any {
 			}
 		}
 		return ret
+	case *[]float64:
+		ret := *value
+		if len(ret) == 2 {
+			if extendLatLon != nil {
+				extendLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case [2]float64:
+		ret := value
+		if len(ret) == 2 {
+			if extendLatLon != nil {
+				extendLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case *[2]float64:
+		ret := value
+		if len(ret) == 2 {
+			if extendLatLon != nil {
+				extendLatLon(ret[0], ret[1])
+			}
+		}
+		return ret
+	case [][2]float64:
+		if extendLatLon != nil {
+			for i := range value {
+				extendLatLon(value[i][0], value[i][1])
+			}
+		}
+		return value
 	case [][]float64:
 		if extendLatLon != nil {
 			for i := range value {
@@ -265,8 +296,26 @@ func MarshalJS(value any) (string, error) {
 		return "[" + strings.Join(fields, ",") + "]", nil
 	case []float64:
 		fields := []string{}
-		for _, val := range val {
-			fields = append(fields, fmt.Sprintf("%v", val))
+		for _, v := range val {
+			fields = append(fields, fmt.Sprintf("%v", v))
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case *[]float64:
+		fields := []string{}
+		for _, v := range *val {
+			fields = append(fields, fmt.Sprintf("%v", v))
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case [2]float64:
+		fields := []string{}
+		for _, v := range val {
+			fields = append(fields, fmt.Sprintf("%v", v))
+		}
+		return "[" + strings.Join(fields, ",") + "]", nil
+	case *[2]float64:
+		fields := []string{}
+		for _, v := range *val {
+			fields = append(fields, fmt.Sprintf("%v", v))
 		}
 		return "[" + strings.Join(fields, ",") + "]", nil
 	case [][]float64:
@@ -300,6 +349,10 @@ func MarshalJS(value any) (string, error) {
 		}
 		return "[" + strings.Join(fields, ",") + "]", nil
 	default:
-		return fmt.Sprintf("unknown(%T)", val), nil
+		if b, err := json.Marshal(val); err != nil {
+			return "", fmt.Errorf("unknown(%T) %s", val, err)
+		} else {
+			return string(b), nil
+		}
 	}
 }

@@ -398,6 +398,8 @@ func (ctx *JSContext) nativeModuleSpatial(r *js.Runtime, module *js.Object) {
 	o.Set("haversine", ctx.saptial_haversine)
 	// m.parseGeoJSON(value)
 	o.Set("parseGeoJSON", ctx.spatial_parseGeoJSON)
+	// m.simplify(tolerance, [lat1, lon1], [lat2, lon2], ...)
+	o.Set("simplify", ctx.spatial_simplify)
 }
 
 func (ctx *JSContext) saptial_haversine(call js.FunctionCall) js.Value {
@@ -457,6 +459,32 @@ invalid_arguments:
 		return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %s", err.Error()))
 	}
 	return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %v", call.Arguments))
+}
+
+// Ram-Douglas-Peucker simplify
+func (ctx *JSContext) spatial_simplify(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 3 {
+		return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %v", call.Arguments))
+	}
+	var tolerance float64
+	if err := ctx.vm.ExportTo(call.Arguments[0], &tolerance); err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %s", err.Error()))
+	}
+	points := make([]nums.Point, len(call.Arguments)-1)
+	for i := 1; i < len(call.Arguments); i++ {
+		var pt [2]float64
+		if err := ctx.vm.ExportTo(call.Arguments[i], &pt); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %s", err.Error()))
+		}
+		// nums.Point is a [Lng, Lat] 2D point of
+		points[i-1] = nums.Point([2]float64{pt[1], pt[0]})
+	}
+	simplified := nums.SimplifyPath(points, tolerance)
+	ret := make([][]float64, len(simplified))
+	for i, p := range simplified {
+		ret[i] = []float64{p[1], p[0]}
+	}
+	return ctx.vm.ToValue(ret)
 }
 
 func (ctx *JSContext) spatial_parseGeoJSON(value js.Value) js.Value {
