@@ -9,16 +9,23 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"time"
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/gofrs/uuid/v5"
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/nums"
 	"github.com/machbase/neo-server/v8/mods/nums/fft"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman"
+	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/paulmach/orb/geojson"
+	"gonum.org/v1/gonum/floats"
+	"gonum.org/v1/gonum/interp"
+	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -27,9 +34,8 @@ func enableModuleRegistry(ctx *JSContext) {
 	registry.RegisterNativeModule("system", ctx.nativeModuleSystem)
 	registry.RegisterNativeModule("generator", ctx.nativeModuleGenerator)
 	registry.RegisterNativeModule("filter", ctx.nativeModuleFilter)
-	registry.RegisterNativeModule("stat", ctx.nativeModuleStat)
-	registry.RegisterNativeModule("dsp", ctx.nativeModuleDsp)
-	registry.RegisterNativeModule("geo", ctx.nativeModuleGeo)
+	registry.RegisterNativeModule("analysis", ctx.nativeModuleAnalysis)
+	registry.RegisterNativeModule("spatial", ctx.nativeModuleSpatial)
 	registry.Enable(ctx.vm)
 }
 
@@ -47,6 +53,27 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 	// m.now()
 	o.Set("now", func() js.Value {
 		return ctx.vm.ToValue(time.Now())
+	})
+	// m.parseTime(value)
+	o.Set("parseTime", func(value js.Value) js.Value {
+		if t, ok := value.Export().(time.Time); ok {
+			return ctx.vm.ToValue(t)
+		}
+		if t, ok := value.Export().(string); ok {
+			if t, err := time.Parse(time.RFC3339, t); err == nil {
+				return ctx.vm.ToValue(t)
+			}
+			if t, err := time.Parse(time.RFC3339Nano, t); err == nil {
+				return ctx.vm.ToValue(t)
+			}
+		}
+		if t, ok := value.Export().(int64); ok {
+			return ctx.vm.ToValue(time.Unix(0, t*int64(time.Millisecond)))
+		}
+		if t, ok := value.Export().(float64); ok {
+			return ctx.vm.ToValue(time.Unix(0, int64(t*float64(time.Millisecond))))
+		}
+		return ctx.vm.NewGoError(fmt.Errorf("toTime: invalid time value %q", value.ExportType()))
 	})
 	// m.inflight()
 	o.Set("inflight", func() js.Value {
@@ -69,6 +96,7 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 		})
 		return ret
 	})
+	// m.publisher({bridge:"name"})
 	o.Set("publisher", func(optObj map[string]any) js.Value {
 		var cname string
 		if len(optObj) > 0 {
@@ -102,8 +130,40 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 		} else {
 			return ctx.vm.NewGoError(fmt.Errorf("publisher: bridge '%s' not supported", cname))
 		}
-
 		return ret
+	})
+	// m.statz("1m", ...keys)
+	o.Set("statz", func(samplingInterval string, keyFilters ...string) js.Value {
+		var interval = api.MetricShortTerm
+		switch strings.ToLower(samplingInterval) {
+		case "short":
+			interval = api.MetricShortTerm
+		case "mid":
+			interval = api.MetricMidTerm
+		case "long":
+			interval = api.MetricLongTerm
+		default:
+			if dur, err := time.ParseDuration(samplingInterval); err == nil {
+				interval = dur
+			}
+		}
+		statz := api.QueryStatz(interval, api.QueryStatzFilter(keyFilters))
+		if statz.Err != nil {
+			return ctx.vm.NewGoError(statz.Err)
+		}
+		ret := []map[string]any{}
+		for _, row := range statz.Rows {
+			m := map[string]any{
+				"time":   row.Timestamp,
+				"values": row.Values,
+			}
+			for i, v := range row.Values {
+				m[strings.ReplaceAll(keyFilters[i], ":", "_")] = v
+			}
+			ret = append(ret, m)
+			//ret = append(ret, append([]any{row.Timestamp}, row.Values...))
+		}
+		return ctx.vm.ToValue(ret)
 	})
 }
 
@@ -195,7 +255,45 @@ func (ctx *JSContext) nativeModuleGenerator(r *js.Runtime, module *js.Object) {
 func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 	// m = require("filter")
 	o := module.Get("exports").(*js.Object)
-	// lpf = m.lowpass(alpha); newValue = lpf.eval(value);
+	// avg = m.avg();
+	// newValue = avg.eval(value);
+	o.Set("avg", func() js.Value {
+		ret := ctx.vm.NewObject()
+		count := 0
+		sum := 0.0
+		ret.Set("eval", func(value float64) float64 {
+			count++
+			sum += value
+			return sum / float64(count)
+		})
+		return ret
+	})
+	// movAvg = m.movavg(windowSize);
+	// newValue = movAvg.eval(value);
+	o.Set("movavg", func(windowSize int) js.Value {
+		if windowSize <= 1 {
+			return ctx.vm.NewGoError(errors.New("windowSize should be > 1"))
+		}
+		ret := ctx.vm.NewObject()
+		count := 0
+		sum := 0.0
+		window := make([]float64, windowSize)
+		ret.Set("eval", func(value float64) float64 {
+			count++
+			sum += value
+			if count > windowSize {
+				sum -= window[count%windowSize]
+				window[count%windowSize] = value
+				return sum / float64(windowSize)
+			} else {
+				window[count%windowSize] = value
+				return sum / float64(count)
+			}
+		})
+		return ret
+	})
+	// lpf = m.lowpass(alpha);
+	// newValue = lpf.eval(value);
 	o.Set("lowpass", func(alpha float64) js.Value {
 		if alpha <= 0 || alpha >= 1 {
 			return ctx.vm.NewGoError(errors.New("alpha should be 0 < alpha < 1"))
@@ -212,29 +310,178 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 		})
 		return ret
 	})
+	// kalman = m.kalman(initalVariance, processVariance, ObservationVariance);
+	// newValue = kalman.eval(time, ...vector);
+	o.Set("kalman", func(iv, pv, ov float64) js.Value {
+		var kf *kalman.KalmanFilter
+		var model *models.BrownianModel
+		ret := ctx.vm.NewObject()
+		ret.Set("eval", func(ts time.Time, vec ...float64) js.Value {
+			if kf == nil {
+				model = models.NewBrownianModel(
+					ts,
+					mat.NewVecDense(len(vec), vec),
+					models.BrownianModelConfig{
+						InitialVariance:     iv,
+						ProcessVariance:     pv,
+						ObservationVariance: ov,
+					},
+				)
+				kf = kalman.NewKalmanFilter(model)
+			}
+			kf.Update(ts, model.NewMeasurement(mat.NewVecDense(len(vec), vec)))
+
+			newVal := model.Value(kf.State())
+			if dim := newVal.Len(); dim == 1 {
+				return ctx.vm.ToValue(newVal.AtVec(0))
+			} else {
+				ret := make([]float64, newVal.Len())
+				for i := range ret {
+					ret[i] = newVal.AtVec(i)
+				}
+				return ctx.vm.ToValue(ret)
+			}
+		})
+		return ret
+	})
 }
 
-func (ctx *JSContext) nativeModuleStat(r *js.Runtime, module *js.Object) {
-	// m = require("stat")
+func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
+	// m = require("analysis")
 	o := module.Get("exports").(*js.Object)
-	// m.mean(array)
-	o.Set("mean", func(arr []float64) float64 {
-		return stat.Mean(arr, nil)
+	// arr = m.sort(arr)
+	o.Set("sort", func(arr []float64) js.Value {
+		slices.Sort(arr)
+		return ctx.vm.ToValue(arr)
 	})
-	// m.stdDev(array)
-	o.Set("stdDev", func(arr []float64) float64 {
-		return stat.StdDev(arr, nil)
+	// s = m.sum(arr)
+	o.Set("sum", func(arr []float64) float64 {
+		return floats.Sum(arr)
+	})
+	// m.cdf(x, weight)
+	// x should be sorted, weight should be the same length as x
+	o.Set("cdf", func(p float64, x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("cdf: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.CDF(p, stat.Empirical, x, weight))
+	})
+	// m.circularMean(x, weight)
+	// weight should be the same length as x
+	o.Set("circularMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("circularMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.CircularMean(x, weight))
+	})
+	// m.correlation(x, y, weight)
+	// weight should be the same length as x and y
+	o.Set("correlation", func(x, y, weight []float64) js.Value {
+		if len(x) != len(y) {
+			return ctx.vm.NewGoError(fmt.Errorf("correlation: x and y should be the same length"))
+		}
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("correlation: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Correlation(x, y, weight))
+	})
+	// m.covariance(x, y, weight)
+	o.Set("covariance", func(x, y, weight []float64) js.Value {
+		if len(x) != len(y) {
+			return ctx.vm.NewGoError(fmt.Errorf("covariance: x and y should be the same length"))
+		}
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("covariance: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Covariance(x, y, weight))
+	})
+	// m.entropy(p)
+	o.Set("entropy", func(p []float64) float64 {
+		return stat.Entropy(p)
+	})
+	// m.geometricMean(array)
+	o.Set("geometricMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("geometricMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.GeometricMean(x, weight))
+	})
+	// m.mean(x, weight)
+	o.Set("mean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("mean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Mean(x, weight))
+	})
+	// m.harmonicMean(x, weight)
+	o.Set("harmonicMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("harmonicMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.HarmonicMean(x, weight))
+	})
+	// m.median(x, weight)
+	o.Set("median", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("median: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Quantile(0.5, stat.Empirical, x, weight))
+	})
+	// m.variance(x, weight)
+	o.Set("variance", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("variance: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Variance(x, weight))
+	})
+	// m.meanVariance(x, weight)
+	o.Set("meanVariance", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("meanVariance: x and weight should be the same length"))
+		}
+		m, v := stat.MeanVariance(x, weight)
+		return ctx.vm.ToValue(map[string]any{"mean": m, "variance": v})
+	})
+	// m.stdDev(x, weight)
+	o.Set("stdDev", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("stdDev: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.StdDev(x, weight))
+	})
+	// m.meanStdDev(x, weight)
+	o.Set("meanStdDev", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("meanStdDev: x and weight should be the same length"))
+		}
+		m, std := stat.MeanStdDev(x, weight)
+		return ctx.vm.ToValue(map[string]any{"mean": m, "stdDev": std})
+	})
+	// m.stdErr(std, sampleSize)
+	o.Set("stdErr", func(std, sampleSize float64) float64 {
+		return stat.StdErr(std, sampleSize)
+	})
+	// m.mode(array)
+	o.Set("mode", func(arr []float64) js.Value {
+		slices.Sort(arr)
+		v, c := stat.Mode(arr, nil)
+		return ctx.vm.ToValue(map[string]any{"value": v, "count": c})
+	})
+	// m.moment(array)
+	o.Set("moment", func(moment float64, arr []float64) float64 {
+		return stat.Moment(moment, arr, nil)
 	})
 	// m.quantile(p, array)
 	o.Set("quantile", func(p float64, arr []float64) float64 {
 		slices.Sort(arr)
 		return stat.Quantile(p, stat.Empirical, arr, nil)
 	})
-}
-
-func (ctx *JSContext) nativeModuleDsp(r *js.Runtime, module *js.Object) {
-	// m = require("dsp")
-	o := module.Get("exports").(*js.Object)
+	// m.linearRegression(x, y)
+	o.Set("linearRegression", func(x, y []float64) js.Value {
+		// y = alpha + beta*x
+		alpha, beta := stat.LinearRegression(x, y, nil, false)
+		return ctx.vm.ToValue(map[string]any{"alpha": alpha, "beta": beta})
+	})
 	// m.fft(times, values)
 	o.Set("fft", func(times []any, values []any) js.Value {
 		ts := make([]time.Time, len(times))
@@ -262,59 +509,194 @@ func (ctx *JSContext) nativeModuleDsp(r *js.Runtime, module *js.Object) {
 		xs, ys := fft.FastFourierTransform(ts, vs)
 		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
 	})
+	// m.interpPiecewiseConstant(x, y)
+	o.Set("interpPiecewiseConstant", func(x, y []float64) js.Value {
+		var predicator = &interp.PiecewiseConstant{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpPiecewiseLinear(x, y)
+	o.Set("interpPiecewiseLinear", func(x, y []float64) js.Value {
+		var predicator = &interp.PiecewiseLinear{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpAkimaSpline(x, y)
+	o.Set("interpAkimaSpline", func(x, y []float64) js.Value {
+		var predicator = &interp.AkimaSpline{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpFritschButland(x, y)
+	o.Set("interpFritschButland", func(x, y []float64) js.Value {
+		var predicator = &interp.FritschButland{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpLinearregression(x, y)
+	o.Set("interpLinearregression", func(x, y []float64) js.Value {
+		a, b := stat.LinearRegression(x, y, nil, false)
+		if b != b {
+			return ctx.vm.NewGoError(fmt.Errorf("predictLinearregression: invalid regression"))
+		}
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return a + b*x
+		})
+		return ret
+	})
 }
 
-func (ctx *JSContext) nativeModuleGeo(r *js.Runtime, module *js.Object) {
-	// m = require("geo")
+func (ctx *JSContext) nativeModuleSpatial(r *js.Runtime, module *js.Object) {
+	// m = require("spatial")
 	o := module.Get("exports").(*js.Object)
-	o.Set("haversine", func(lat1, lon1, lat2, lon2 float64) float64 {
-		// EarthRadius is the radius of the earth in meters.
-		// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
-		const EarthRadius = 6378137.0 // meters
-		diffLat := lat2 - lat1
-		diffLon := lon2 - lon1
-		a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
-		c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-		return c * EarthRadius
-	})
+	// m.haversine(lat1, lon1, lat2, lon2)
+	// m.haversine([lat1, lon1], [lat2, lon2])
+	// m.haversine({radius: 1000, coordinates: [[lat1, lon1], [lat2, lon2]]})
+	o.Set("haversine", ctx.saptial_haversine)
 	// m.parseGeoJSON(value)
-	o.Set("parseGeoJSON", func(value js.Value) js.Value {
-		obj := value.ToObject(ctx.vm)
-		if obj == nil {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
+	o.Set("parseGeoJSON", ctx.spatial_parseGeoJSON)
+	// m.simplify(tolerance, [lat1, lon1], [lat2, lon2], ...)
+	o.Set("simplify", ctx.spatial_simplify)
+}
+
+func (ctx *JSContext) saptial_haversine(call js.FunctionCall) js.Value {
+	// EarthRadius is the radius of the earth in meters.
+	// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
+	EarthRadius := 6378137.0 // meters
+	degreesToRadians := func(d float64) float64 { return d * math.Pi / 180 }
+	var lat1, lon1, lat2, lon2, diffLat, diffLon, a, c float64
+	var err error
+	if len(call.Arguments) == 1 {
+		arg := struct {
+			Radius float64      `json:"radius"`
+			Coord  [][2]float64 `json:"coordinates"`
+		}{}
+		if err = ctx.vm.ExportTo(call.Arguments[0], &arg); err != nil {
+			goto invalid_arguments
 		}
-		typeString := obj.Get("type")
-		if typeString == nil {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
+		if len(arg.Coord) != 2 {
+			goto invalid_arguments
 		}
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
+		if arg.Radius > 0 {
+			EarthRadius = arg.Radius
+		}
+		lat1, lon1 = arg.Coord[0][0], arg.Coord[0][1]
+		lat2, lon2 = arg.Coord[1][0], arg.Coord[1][1]
+	} else if len(call.Arguments) == 2 {
+		var loc1, loc2 []float64
+		if err = ctx.vm.ExportTo(call.Arguments[0], &loc1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[1], &loc2); err != nil {
+			goto invalid_arguments
+		}
+		lat1, lon1 = loc1[0], loc1[1]
+		lat2, lon2 = loc2[0], loc2[1]
+	} else if len(call.Arguments) == 4 {
+		if err = ctx.vm.ExportTo(call.Arguments[0], &lat1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[1], &lon1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[2], &lat2); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[3], &lon2); err != nil {
+			goto invalid_arguments
+		}
+	}
+	diffLat = degreesToRadians(lat2) - degreesToRadians(lat1)
+	diffLon = degreesToRadians(lon2) - degreesToRadians(lon1)
+	a = math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
+	c = 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return ctx.vm.ToValue(c * EarthRadius)
+invalid_arguments:
+	if err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %s", err.Error()))
+	}
+	return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %v", call.Arguments))
+}
+
+// Ram-Douglas-Peucker simplify
+func (ctx *JSContext) spatial_simplify(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 3 {
+		return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %v", call.Arguments))
+	}
+	var tolerance float64
+	if err := ctx.vm.ExportTo(call.Arguments[0], &tolerance); err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %s", err.Error()))
+	}
+	points := make([]nums.Point, len(call.Arguments)-1)
+	for i := 1; i < len(call.Arguments); i++ {
+		var pt [2]float64
+		if err := ctx.vm.ExportTo(call.Arguments[i], &pt); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("simplify: invalid arguments %s", err.Error()))
+		}
+		// nums.Point is a [Lng, Lat] 2D point of
+		points[i-1] = nums.Point([2]float64{pt[1], pt[0]})
+	}
+	simplified := nums.SimplifyPath(points, tolerance)
+	ret := make([][]float64, len(simplified))
+	for i, p := range simplified {
+		ret[i] = []float64{p[1], p[0]}
+	}
+	return ctx.vm.ToValue(ret)
+}
+
+func (ctx *JSContext) spatial_parseGeoJSON(value js.Value) js.Value {
+	obj := value.ToObject(ctx.vm)
+	if obj == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
+	}
+	typeString := obj.Get("type")
+	if typeString == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
+	}
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+	}
+	var geoObj any
+	switch typeString.String() {
+	case "FeatureCollection":
+		if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
 			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
 		}
-		var geoObj any
-		switch typeString.String() {
-		case "FeatureCollection":
-			if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		case "Feature":
-			if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
-			if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		default:
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
+	case "Feature":
+		if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
 		}
-		var _ = geoObj
-		return obj
-	})
+	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+		if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+		}
+	default:
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
+	}
+	var _ = geoObj
+	return obj
 }
