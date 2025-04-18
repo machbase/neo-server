@@ -6,7 +6,6 @@ import (
 	"log"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/stretchr/testify/require"
@@ -1035,37 +1034,62 @@ func TestScriptModule(t *testing.T) {
 	}
 }
 
-func TestScriptOpcua(t *testing.T) {
+func TestScriptOPCUA(t *testing.T) {
 	svr := startOPCUAServer()
 	defer svr.Close()
 
-	time.Sleep(1 * time.Second)
-
 	tests := []TqlTestCase{
 		{
-			Name: "js-opcua",
+			Name: "js-opcua-read",
 			Script: `
 				SCRIPT("js", {
 					ua = require("opcua");
-					client = ua.client({
-						endpoint: "opc.tcp://localhost:4840",
-						maxAge: 1000,
-					});
-					vs = client.read({
-						nodes: [
-							"ns=1;s=NoPermVariable",    // ua.StatusOK, int32(742)
-							"ns=1;s=ReadWriteVariable", // ua.StatusOK, 12.34
-							"ns=1;s=ReadOnlyVariable",  // ua.StatusOK, 9.87
-							"ns=1;s=NoAccessVariable",  // ua.StatusBadUserAccessDenied
-						],
-					});
-					for(v of vs) {
-						$.yield(v.status.toString(16), v.value);
-					}
+					nodes = [
+						"ns=1;s=ro_bool",   // true
+						"ns=1;s=rw_bool",   // true
+						"ns=1;s=ro_int32",  // int32(5)
+						"ns=1;s=rw_int32",  // int32(5)
+					];
+					client = ua.client({ endpoint: "opc.tcp://localhost:4840" });
+					vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturnBoth});
+					vs.forEach((v, idx) => {
+						$.yield(nodes[idx], v.status, v.value);
+					})
+				})
+				CSV(timeformat('default'), tz('UTC'))
+			`,
+			ExpectCSV: []string{
+				"ns=1;s=ro_bool,0,true",
+				"ns=1;s=rw_bool,0,true",
+				"ns=1;s=ro_int32,0,5",
+				"ns=1;s=rw_int32,0,5",
+				"\n"},
+		},
+		{
+			Name: "js-opcua-read-perms",
+			Script: `
+				SCRIPT("js", {
+					ua = require("opcua");
+					nodes = [
+						"ns=1;s=NoPermVariable",    // ua.StatusOK, int32(742)
+						"ns=1;s=ReadWriteVariable", // ua.StatusOK, 12.34
+						"ns=1;s=ReadOnlyVariable",  // ua.StatusOK, 9.87
+						"ns=1;s=NoAccessVariable",  // ua.StatusBadUserAccessDenied
+					];
+					client = ua.client({ endpoint: "opc.tcp://localhost:4840" });
+					vs = client.read({ nodes: nodes});
+					vs.forEach((v, idx) => {
+						$.yield(nodes[idx], v.statusCode, v.value);
+					})
 				})
 				CSV()
 			`,
-			ExpectCSV: []string{"0,742", "0,12.34", "0,9.87", "801f0000,NULL", "\n"},
+			ExpectCSV: []string{
+				"ns=1;s=NoPermVariable,StatusGood,742",
+				"ns=1;s=ReadWriteVariable,StatusGood,12.34",
+				"ns=1;s=ReadOnlyVariable,StatusGood,9.87",
+				"ns=1;s=NoAccessVariable,StatusBadUserAccessDenied,NULL",
+				"\n"},
 		},
 	}
 	for _, tc := range tests {
@@ -1119,13 +1143,13 @@ func startOPCUAServer() *opc_server.Server {
 
 	// Create some nodes for it.
 	n := nodeNS.AddNewVariableStringNode("ro_bool", true)
-	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(uint32(1))})
+	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(byte(1))})
 	nns_obj.AddRef(n, id.HasComponent, true)
 	n = nodeNS.AddNewVariableStringNode("rw_bool", true)
 	nns_obj.AddRef(n, id.HasComponent, true)
 
 	n = nodeNS.AddNewVariableStringNode("ro_int32", int32(5))
-	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(uint32(1))})
+	n.SetAttribute(ua.AttributeIDUserAccessLevel, &ua.DataValue{EncodingMask: ua.DataValueValue, Value: ua.MustVariant(byte(1))})
 	nns_obj.AddRef(n, id.HasComponent, true)
 	n = nodeNS.AddNewVariableStringNode("rw_int32", int32(5))
 	nns_obj.AddRef(n, id.HasComponent, true)

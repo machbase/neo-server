@@ -754,24 +754,18 @@ func (ctx *JSContext) opcua_client(call js.FunctionCall) js.Value {
 		if len(arg.Nodes) == 0 {
 			return ctx.vm.NewGoError(fmt.Errorf("opcua.read: missing nodes"))
 		}
-		nodeIDs := make([]*ua.NodeID, len(arg.Nodes))
-		for i, node := range arg.Nodes {
-			id, err := ua.ParseNodeID(node)
-			if err != nil {
-				return ctx.vm.NewGoError(fmt.Errorf("opcua.read: %s", err.Error()))
-			}
-			nodeIDs[i] = id
-		}
 
-		req := &ua.ReadRequest{
+		var rsp *ua.ReadResponse
+		var req = &ua.ReadRequest{
 			MaxAge:             arg.MaxAge,
 			TimestampsToReturn: arg.TimestampsToReturn,
 		}
-		for _, nodeID := range nodeIDs {
-			req.NodesToRead = append(req.NodesToRead, &ua.ReadValueID{
-				NodeID:      nodeID,
-				AttributeID: ua.AttributeIDValue,
-			})
+		for _, n := range arg.Nodes {
+			id, err := ua.ParseNodeID(n)
+			if err != nil {
+				return ctx.vm.NewGoError(fmt.Errorf("opcua.read: %s", err.Error()))
+			}
+			req.NodesToRead = append(req.NodesToRead, &ua.ReadValueID{NodeID: id})
 		}
 
 		// TODO: how to keep the connection open?
@@ -787,7 +781,6 @@ func (ctx *JSContext) opcua_client(call js.FunctionCall) js.Value {
 		defer c.Close(ctx)
 		// Close the connection when the function returns
 
-		var rsp *ua.ReadResponse
 		for {
 			rsp, err = c.Read(ctx, req)
 			if err == nil {
@@ -816,9 +809,14 @@ func (ctx *JSContext) opcua_client(call js.FunctionCall) js.Value {
 		}
 		ret := []js.Value{}
 		for _, data := range rsp.Results {
+			code := ""
+			if c, ok := ua.StatusCodes[data.Status]; ok {
+				code = c.Name
+			}
 			ent := map[string]any{
 				"status":            uint32(data.Status),
 				"statusText":        data.Status.Error(),
+				"statusCode":        code,
 				"sourceTimestamp":   data.SourceTimestamp,
 				"serverTimestamp":   data.ServerTimestamp,
 				"sourcePicoseconds": data.SourcePicoseconds,
