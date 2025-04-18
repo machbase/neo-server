@@ -16,8 +16,9 @@ jobs:
         include:
           - { platform: macos-14, arch: arm64, os: macos }
           - { platform: macos-13, arch: x64, os: macos }
-          - { platform: ubuntu-20.04, arch: x64, os: linux }
-          - { platform: ubuntu-20.04, arch: arm32, os: linux }
+          - { platform: ubuntu-22.04, arch: x64, os: linux }
+          - { platform: ubuntu-22.04-arm, arch: arm64, os: linux }
+          - { platform: ubuntu-22.04, arch: arm32, os: linux }
           - { platform: windows-2019, arch: x64, os: windows }
     runs-on: ${{ matrix.platform }}
     steps:
