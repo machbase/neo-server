@@ -36,6 +36,7 @@ func enableModuleRegistry(ctx *JSContext) {
 	registry.RegisterNativeModule("filter", ctx.nativeModuleFilter)
 	registry.RegisterNativeModule("analysis", ctx.nativeModuleAnalysis)
 	registry.RegisterNativeModule("spatial", ctx.nativeModuleSpatial)
+	registry.RegisterNativeModule("opcua", ctx.nativeModuleOpcua)
 	registry.Enable(ctx.vm)
 }
 
