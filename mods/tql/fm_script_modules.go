@@ -52,6 +52,27 @@ func (ctx *JSContext) nativeModuleSystem(r *js.Runtime, module *js.Object) {
 	o.Set("now", func() js.Value {
 		return ctx.vm.ToValue(time.Now())
 	})
+	// m.parseTime(value)
+	o.Set("parseTime", func(value js.Value) js.Value {
+		if t, ok := value.Export().(time.Time); ok {
+			return ctx.vm.ToValue(t)
+		}
+		if t, ok := value.Export().(string); ok {
+			if t, err := time.Parse(time.RFC3339, t); err == nil {
+				return ctx.vm.ToValue(t)
+			}
+			if t, err := time.Parse(time.RFC3339Nano, t); err == nil {
+				return ctx.vm.ToValue(t)
+			}
+		}
+		if t, ok := value.Export().(int64); ok {
+			return ctx.vm.ToValue(time.Unix(0, t*int64(time.Millisecond)))
+		}
+		if t, ok := value.Export().(float64); ok {
+			return ctx.vm.ToValue(time.Unix(0, int64(t*float64(time.Millisecond))))
+		}
+		return ctx.vm.NewGoError(fmt.Errorf("toTime: invalid time value %q", value.ExportType()))
+	})
 	// m.inflight()
 	o.Set("inflight", func() js.Value {
 		ret := ctx.vm.NewObject()
@@ -371,56 +392,109 @@ func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
 func (ctx *JSContext) nativeModuleSpatial(r *js.Runtime, module *js.Object) {
 	// m = require("spatial")
 	o := module.Get("exports").(*js.Object)
-	o.Set("haversine", func(lat1, lon1, lat2, lon2 float64) float64 {
-		// EarthRadius is the radius of the earth in meters.
-		// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
-		const EarthRadius = 6378137.0 // meters
-		degreesToRadians := func(d float64) float64 { return d * math.Pi / 180 }
-
-		diffLat := degreesToRadians(lat2) - degreesToRadians(lat1)
-		diffLon := degreesToRadians(lon2) - degreesToRadians(lon1)
-		a := math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
-		c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-		return c * EarthRadius
-	})
+	// m.haversine(lat1, lon1, lat2, lon2)
+	// m.haversine([lat1, lon1], [lat2, lon2])
+	// m.haversine({radius: 1000, coordinates: [[lat1, lon1], [lat2, lon2]]})
+	o.Set("haversine", ctx.saptial_haversine)
 	// m.parseGeoJSON(value)
-	o.Set("parseGeoJSON", func(value js.Value) js.Value {
-		obj := value.ToObject(ctx.vm)
-		if obj == nil {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
+	o.Set("parseGeoJSON", ctx.spatial_parseGeoJSON)
+}
+
+func (ctx *JSContext) saptial_haversine(call js.FunctionCall) js.Value {
+	// EarthRadius is the radius of the earth in meters.
+	// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
+	EarthRadius := 6378137.0 // meters
+	degreesToRadians := func(d float64) float64 { return d * math.Pi / 180 }
+	var lat1, lon1, lat2, lon2, diffLat, diffLon, a, c float64
+	var err error
+	if len(call.Arguments) == 1 {
+		arg := struct {
+			Radius float64      `json:"radius"`
+			Coord  [][2]float64 `json:"coordinates"`
+		}{}
+		if err = ctx.vm.ExportTo(call.Arguments[0], &arg); err != nil {
+			goto invalid_arguments
 		}
-		typeString := obj.Get("type")
-		if typeString == nil {
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
+		if len(arg.Coord) != 2 {
+			goto invalid_arguments
 		}
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
+		if arg.Radius > 0 {
+			EarthRadius = arg.Radius
+		}
+		lat1, lon1 = arg.Coord[0][0], arg.Coord[0][1]
+		lat2, lon2 = arg.Coord[1][0], arg.Coord[1][1]
+	} else if len(call.Arguments) == 2 {
+		var loc1, loc2 []float64
+		if err = ctx.vm.ExportTo(call.Arguments[0], &loc1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[1], &loc2); err != nil {
+			goto invalid_arguments
+		}
+		lat1, lon1 = loc1[0], loc1[1]
+		lat2, lon2 = loc2[0], loc2[1]
+	} else if len(call.Arguments) == 4 {
+		if err = ctx.vm.ExportTo(call.Arguments[0], &lat1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[1], &lon1); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[2], &lat2); err != nil {
+			goto invalid_arguments
+		}
+		if err = ctx.vm.ExportTo(call.Arguments[3], &lon2); err != nil {
+			goto invalid_arguments
+		}
+	}
+	diffLat = degreesToRadians(lat2) - degreesToRadians(lat1)
+	diffLon = degreesToRadians(lon2) - degreesToRadians(lon1)
+	a = math.Pow(math.Sin(diffLat/2), 2) + math.Cos(lat1)*math.Cos(lat2)*math.Pow(math.Sin(diffLon/2), 2)
+	c = 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return ctx.vm.ToValue(c * EarthRadius)
+invalid_arguments:
+	if err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %s", err.Error()))
+	}
+	return ctx.vm.NewGoError(fmt.Errorf("haversine: invalid arguments %v", call.Arguments))
+}
+
+func (ctx *JSContext) spatial_parseGeoJSON(value js.Value) js.Value {
+	obj := value.ToObject(ctx.vm)
+	if obj == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError requires a GeoJSON object, but got %q", value.ExportType()))
+	}
+	typeString := obj.Get("type")
+	if typeString == nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError missing a GeoJSON type"))
+	}
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+	}
+	var geoObj any
+	switch typeString.String() {
+	case "FeatureCollection":
+		if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
 			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
 		}
-		var geoObj any
-		switch typeString.String() {
-		case "FeatureCollection":
-			if geo, err := geojson.UnmarshalFeatureCollection(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		case "Feature":
-			if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
-			if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
-				geoObj = geo
-			} else {
-				return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
-			}
-		default:
-			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
+	case "Feature":
+		if geo, err := geojson.UnmarshalFeature(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
 		}
-		var _ = geoObj
-		return obj
-	})
+	case "Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "GeometryCollection":
+		if geo, err := geojson.UnmarshalGeometry(jsonBytes); err == nil {
+			geoObj = geo
+		} else {
+			return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", err.Error()))
+		}
+	default:
+		return ctx.vm.NewGoError(fmt.Errorf("GeoJSONError %s", "unsupported GeoJSON type"))
+	}
+	var _ = geoObj
+	return obj
 }

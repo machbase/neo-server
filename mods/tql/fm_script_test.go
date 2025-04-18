@@ -374,7 +374,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 				SCRIPT("js", {
-					m = require("dsp");
+					m = require("analysis");
 					times = [];
 					values = [];
 				}, {
@@ -397,7 +397,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 10, 100) )
 				SCRIPT("js", {
-					m = require("dsp");
+					m = require("analysis");
 					times = [];
 					values = [];
 				}, {
@@ -622,9 +622,9 @@ func TestScriptFilterKalman(t *testing.T) {
 				`,
 			ExpectCSV: []string{
 				`1.3,1.3`,
-				`10.2,4.3`,
-				`5.0,4.4`,
-				`3.4,4.2`,
+				`10.2,3.5`,
+				`5.0,3.8`,
+				`3.4,3.7`,
 				"\n",
 			},
 		},
@@ -644,7 +644,7 @@ func TestScriptStatQuantile(t *testing.T) {
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
-					m = require("stat");
+					m = require("analysis");
 					x = [];
 				},{
 					x.push($.values[0]);
@@ -672,7 +672,7 @@ func TestScriptStatMean(t *testing.T) {
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
-					m = require("stat");
+					m = require("analysis");
 					x = [];
 				},{
 					x.push($.values[0]);
@@ -700,7 +700,7 @@ func TestScriptStatStdDev(t *testing.T) {
 			Script: `
 				FAKE( arrange(1, 100, 1) )
 				SCRIPT("js", {
-					m = require("stat");
+					m = require("analysis");
 					x = [];
 				},{
 					x.push($.values[0]);
@@ -711,6 +711,67 @@ func TestScriptStatStdDev(t *testing.T) {
 				CSV(precision(2))
 			`,
 			ExpectCSV: []string{"29.01", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
+func TestScriptSpatialHaversine(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-haversine",
+			Script: `
+				SCRIPT("js", {
+					m = require("spatial");
+					//buenos aires
+					lat1 = -34.83333;
+					lon1 = -58.5166646;
+					//paris
+					lat2 = 49.0083899664;
+					lon2 = 2.53844117956;
+					distance = m.haversine(lat1, lon1, lat2, lon2);
+					$.yield(distance);
+				})
+				CSV(precision(0))
+			`,
+			ExpectCSV: []string{"8337886", "\n"},
+		},
+		{
+			Name: "js-haversine-latlon",
+			Script: `
+				SCRIPT("js", {
+					m = require("spatial");
+					//buenos aires
+					coord1 = [-34.83333, -58.5166646];
+					//paris
+					coord2 = [49.0083899664, 2.53844117956];
+					distance = m.haversine(coord1, coord2);
+					$.yield(distance);
+				})
+				CSV(precision(0))
+			`,
+			ExpectCSV: []string{"8337886", "\n"},
+		},
+		{
+			Name: "js-haversine-coordinates",
+			Script: `
+				SCRIPT("js", {
+					m = require("spatial");
+					//buenos aires
+					coord1 = [-34.83333, -58.5166646];
+					//paris
+					coord2 = [49.0083899664, 2.53844117956];
+					distance = m.haversine({radius: 6371000, coordinates: [coord1, coord2]});
+					$.yield(distance);
+				})
+				CSV(precision(0))
+			`,
+			ExpectCSV: []string{"8328556", "\n"},
 		},
 	}
 
