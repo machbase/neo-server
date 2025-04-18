@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"runtime"
@@ -15,6 +16,8 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/gofrs/uuid/v5"
+	"github.com/gopcua/opcua"
+	"github.com/gopcua/opcua/ua"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/bridge"
 	"github.com/machbase/neo-server/v8/mods/nums"
@@ -36,6 +39,7 @@ func enableModuleRegistry(ctx *JSContext) {
 	registry.RegisterNativeModule("filter", ctx.nativeModuleFilter)
 	registry.RegisterNativeModule("analysis", ctx.nativeModuleAnalysis)
 	registry.RegisterNativeModule("spatial", ctx.nativeModuleSpatial)
+	registry.RegisterNativeModule("opcua", ctx.nativeModuleOpcua)
 	registry.Enable(ctx.vm)
 }
 
@@ -310,7 +314,7 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 		})
 		return ret
 	})
-	// kalman = m.kalman(initalVariance, processVariance, ObservationVariance);
+	// kalman = m.kalman(initialVariance, processVariance, ObservationVariance);
 	// newValue = kalman.eval(time, ...vector);
 	o.Set("kalman", func(iv, pv, ov float64) js.Value {
 		var kf *kalman.KalmanFilter
@@ -569,14 +573,14 @@ func (ctx *JSContext) nativeModuleSpatial(r *js.Runtime, module *js.Object) {
 	// m.haversine(lat1, lon1, lat2, lon2)
 	// m.haversine([lat1, lon1], [lat2, lon2])
 	// m.haversine({radius: 1000, coordinates: [[lat1, lon1], [lat2, lon2]]})
-	o.Set("haversine", ctx.saptial_haversine)
+	o.Set("haversine", ctx.spatial_haversine)
 	// m.parseGeoJSON(value)
 	o.Set("parseGeoJSON", ctx.spatial_parseGeoJSON)
 	// m.simplify(tolerance, [lat1, lon1], [lat2, lon2], ...)
 	o.Set("simplify", ctx.spatial_simplify)
 }
 
-func (ctx *JSContext) saptial_haversine(call js.FunctionCall) js.Value {
+func (ctx *JSContext) spatial_haversine(call js.FunctionCall) js.Value {
 	// EarthRadius is the radius of the earth in meters.
 	// To keep things consistent, this value matches WGS84 Web Mercator (EPSG:3867).
 	EarthRadius := 6378137.0 // meters
@@ -699,4 +703,131 @@ func (ctx *JSContext) spatial_parseGeoJSON(value js.Value) js.Value {
 	}
 	var _ = geoObj
 	return obj
+}
+
+func (ctx *JSContext) nativeModuleOpcua(r *js.Runtime, module *js.Object) {
+	// m = require("opcua")
+	o := module.Get("exports").(*js.Object)
+	// m.client({})
+	o.Set("client", ctx.opcua_client)
+
+	// MessageSecurityMode
+	o.Set("MessageSecurityModeNone", ua.MessageSecurityModeNone)
+	o.Set("MessageSecurityModeSign", ua.MessageSecurityModeSign)
+	o.Set("MessageSecurityModeSignAndEncrypt", ua.MessageSecurityModeSignAndEncrypt)
+
+	// TimestampsToReturn
+	o.Set("TimestampsToReturnSource", ua.TimestampsToReturnSource)
+	o.Set("TimestampsToReturnServer", ua.TimestampsToReturnServer)
+	o.Set("TimestampsToReturnBoth", ua.TimestampsToReturnBoth)
+	o.Set("TimestampsToReturnNeither", ua.TimestampsToReturnNeither)
+	o.Set("TimestampsToReturnInvalid", ua.TimestampsToReturnInvalid)
+}
+
+func (ctx *JSContext) opcua_client(call js.FunctionCall) js.Value {
+	opts := struct {
+		Endpoint            string                 `json:"endpoint"`
+		MessageSecurityMode ua.MessageSecurityMode `json:"messageSecurityMode"`
+	}{
+		Endpoint:            "opc.tcp://localhost:4840",
+		MessageSecurityMode: ua.MessageSecurityModeNone,
+	}
+	if len(call.Arguments) > 0 {
+		if err := ctx.vm.ExportTo(call.Arguments[0], &opts); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.client: %s", err.Error()))
+		}
+	}
+
+	ret := ctx.vm.NewObject()
+	ret.Set("read", func(call js.FunctionCall) js.Value {
+		if len(call.Arguments) != 1 {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.read: missing argument"))
+		}
+		arg := struct {
+			MaxAge             float64               `json:"maxAge"`
+			Nodes              []string              `json:"nodes"`
+			TimestampsToReturn ua.TimestampsToReturn `json:"timestampsToReturn"`
+		}{}
+		if err := ctx.vm.ExportTo(call.Arguments[0], &arg); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.read: %s", err.Error()))
+		}
+		if len(arg.Nodes) == 0 {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.read: missing nodes"))
+		}
+
+		var rsp *ua.ReadResponse
+		var req = &ua.ReadRequest{
+			MaxAge:             arg.MaxAge,
+			TimestampsToReturn: arg.TimestampsToReturn,
+		}
+		for _, n := range arg.Nodes {
+			id, err := ua.ParseNodeID(n)
+			if err != nil {
+				return ctx.vm.NewGoError(fmt.Errorf("opcua.read: %s", err.Error()))
+			}
+			req.NodesToRead = append(req.NodesToRead, &ua.ReadValueID{NodeID: id})
+		}
+
+		// TODO: how to keep the connection open?
+		// Create a new client
+		c, err := opcua.NewClient(opts.Endpoint, opcua.SecurityMode(opts.MessageSecurityMode))
+		if err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.client: %s", err.Error()))
+		}
+
+		if err := c.Connect(ctx); err != nil {
+			return ctx.vm.NewGoError(fmt.Errorf("opcua.client: %s", err.Error()))
+		}
+		defer c.Close(ctx)
+		// Close the connection when the function returns
+
+		for {
+			rsp, err = c.Read(ctx, req)
+			if err == nil {
+				break
+			}
+			switch {
+			case err == io.EOF && c.State() != opcua.Closed:
+				// has to be retried unless user closed the connection
+				time.After(1 * time.Second)
+				continue
+			case errors.Is(err, ua.StatusBadSessionIDInvalid):
+				// Session is not activated has to be retried. Session will be recreated internally.
+				time.After(1 * time.Second)
+				continue
+			case errors.Is(err, ua.StatusBadSessionNotActivated):
+				// Session is invalid has to be retried. Session will be recreated internally.
+				time.After(1 * time.Second)
+				continue
+			case errors.Is(err, ua.StatusBadSecureChannelIDInvalid):
+				// secure channel will be recreated internally.
+				time.After(1 * time.Second)
+				continue
+			default:
+				return ctx.vm.NewGoError(fmt.Errorf("opcua.read: %s", err.Error()))
+			}
+		}
+		ret := []js.Value{}
+		for _, data := range rsp.Results {
+			code := ""
+			if c, ok := ua.StatusCodes[data.Status]; ok {
+				code = c.Name
+			}
+			ent := map[string]any{
+				"status":            uint32(data.Status),
+				"statusText":        data.Status.Error(),
+				"statusCode":        code,
+				"sourceTimestamp":   data.SourceTimestamp,
+				"serverTimestamp":   data.ServerTimestamp,
+				"sourcePicoseconds": data.SourcePicoseconds,
+				"serverPicoseconds": data.ServerPicoseconds,
+			}
+			if data.Value != nil {
+				ent["value"] = data.Value.Value()
+			}
+			ret = append(ret, ctx.vm.ToValue(ent))
+		}
+		return ctx.vm.ToValue(ret)
+	})
+	return ret
 }

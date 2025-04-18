@@ -2,6 +2,7 @@ package tql
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -222,6 +223,7 @@ func (node *Node) fmScriptJS(initCode string, mainCode string, deinitCode string
 }
 
 type JSContext struct {
+	context.Context
 	vm           *js.Runtime
 	sc           *js.Program
 	node         *Node
@@ -273,8 +275,9 @@ func jsSourceLoad(path string) ([]byte, error) {
 
 func newJSContext(node *Node, initCode string, mainCode string, deinitCode string) (*JSContext, error) {
 	ctx := &JSContext{
-		node: node,
-		vm:   js.New(),
+		Context: node.task.ctx,
+		node:    node,
+		vm:      js.New(),
 	}
 	ctx.vm.SetFieldNameMapper(js.TagFieldNameMapper("json", false))
 
