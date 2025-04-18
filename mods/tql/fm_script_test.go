@@ -637,7 +637,7 @@ func TestScriptFilterKalman(t *testing.T) {
 	}
 }
 
-func TestScriptStatQuantile(t *testing.T) {
+func TestScriptAnalysisQuantile(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -665,7 +665,7 @@ func TestScriptStatQuantile(t *testing.T) {
 	}
 }
 
-func TestScriptStatMean(t *testing.T) {
+func TestScriptAnalysisMean(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-quantile",
@@ -693,7 +693,7 @@ func TestScriptStatMean(t *testing.T) {
 	}
 }
 
-func TestScriptStatStdDev(t *testing.T) {
+func TestScriptAnalysisStdDev(t *testing.T) {
 	tests := []TqlTestCase{
 		{
 			Name: "js-stddev",

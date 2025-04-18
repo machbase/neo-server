@@ -23,6 +23,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/paulmach/orb/geojson"
+	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -347,18 +348,87 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
 	// m = require("analysis")
 	o := module.Get("exports").(*js.Object)
+	// m.cdf(array)
+	o.Set("cdf", func(p float64, arr []float64) float64 {
+		slices.Sort(arr)
+		return stat.CDF(p, stat.Empirical, arr, nil)
+	})
+	// m.circularMean(array)
+	o.Set("circularMean", func(arr []float64) float64 {
+		return stat.CircularMean(arr, nil)
+	})
+	// m.correlation(x, y)
+	o.Set("correlation", func(x, y []float64) float64 {
+		return stat.Correlation(x, y, nil)
+	})
+	// m.covariance(x, y)
+	o.Set("covariance", func(x, y []float64) float64 {
+		return stat.Covariance(x, y, nil)
+	})
+	// m.geometricMean(array)
+	o.Set("geometricMean", func(arr []float64) float64 {
+		return stat.GeometricMean(arr, nil)
+	})
+	// m.harmonicMean(array)
+	o.Set("harmonicMean", func(arr []float64) float64 {
+		return stat.HarmonicMean(arr, nil)
+	})
+	// m.median(array)
+	o.Set("median", func(arr []float64) float64 {
+		slices.Sort(arr)
+		return stat.Quantile(0.5, stat.Empirical, arr, nil)
+	})
 	// m.mean(array)
 	o.Set("mean", func(arr []float64) float64 {
 		return stat.Mean(arr, nil)
+	})
+	// m.variance(array)
+	o.Set("variance", func(arr []float64) float64 {
+		return stat.Variance(arr, nil)
+	})
+	// m.meanVariance(array)
+	o.Set("meanVariance", func(arr []float64) js.Value {
+		m, v := stat.MeanVariance(arr, nil)
+		return ctx.vm.ToValue(map[string]any{"mean": m, "variance": v})
 	})
 	// m.stdDev(array)
 	o.Set("stdDev", func(arr []float64) float64 {
 		return stat.StdDev(arr, nil)
 	})
+	// m.meanStdDev(array)
+	o.Set("meanStdDev", func(arr []float64) js.Value {
+		m, std := stat.MeanStdDev(arr, nil)
+		return ctx.vm.ToValue(map[string]any{"mean": m, "stdDev": std})
+	})
+	// m.stdErr(array)
+	o.Set("stdErr", func(arr []float64) float64 {
+		std := stat.StdDev(arr, nil)
+		return stat.StdErr(std, float64(len(arr)))
+	})
+	// m.entropy(array)
+	o.Set("entropy", func(arr []float64) float64 {
+		return stat.Entropy(arr)
+	})
+	// m.mode(array)
+	o.Set("mode", func(arr []float64) js.Value {
+		slices.Sort(arr)
+		v, c := stat.Mode(arr, nil)
+		return ctx.vm.ToValue(map[string]any{"value": v, "count": c})
+	})
+	// m.moment(array)
+	o.Set("moment", func(moment float64, arr []float64) float64 {
+		return stat.Moment(moment, arr, nil)
+	})
 	// m.quantile(p, array)
 	o.Set("quantile", func(p float64, arr []float64) float64 {
 		slices.Sort(arr)
 		return stat.Quantile(p, stat.Empirical, arr, nil)
+	})
+	// m.linearRegression(x, y)
+	o.Set("linearRegression", func(x, y []float64) js.Value {
+		// y = alpha + beta*x
+		alpha, beta := stat.LinearRegression(x, y, nil, false)
+		return ctx.vm.ToValue(map[string]any{"alpha": alpha, "beta": beta})
 	})
 	// m.fft(times, values)
 	o.Set("fft", func(times []any, values []any) js.Value {
@@ -386,6 +456,58 @@ func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
 		}
 		xs, ys := fft.FastFourierTransform(ts, vs)
 		return ctx.vm.ToValue(map[string]any{"x": xs, "y": ys})
+	})
+	// m.interpPiecewiseConstant(x, y)
+	o.Set("interpPiecewiseConstant", func(x, y []float64) js.Value {
+		var predicator = &interp.PiecewiseConstant{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpPiecewiseLinear(x, y)
+	o.Set("interpPiecewiseLinear", func(x, y []float64) js.Value {
+		var predicator = &interp.PiecewiseLinear{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpAkimaSpline(x, y)
+	o.Set("interpAkimaSpline", func(x, y []float64) js.Value {
+		var predicator = &interp.AkimaSpline{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpFritschButland(x, y)
+	o.Set("interpFritschButland", func(x, y []float64) js.Value {
+		var predicator = &interp.FritschButland{}
+		predicator.Fit(x, y)
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return predicator.Predict(x)
+		})
+		return ret
+	})
+	// m.interpLinearregression(x, y)
+	o.Set("interpLinearregression", func(x, y []float64) js.Value {
+		a, b := stat.LinearRegression(x, y, nil, false)
+		if b != b {
+			return ctx.vm.NewGoError(fmt.Errorf("predictLinearregression: invalid regression"))
+		}
+		ret := ctx.vm.NewObject()
+		ret.Set("predict", func(x float64) float64 {
+			return a + b*x
+		})
+		return ret
 	})
 }
 
