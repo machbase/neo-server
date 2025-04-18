@@ -23,6 +23,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/nums/kalman/models"
 	"github.com/machbase/neo-server/v8/mods/nums/opensimplex"
 	"github.com/paulmach/orb/geojson"
+	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/interp"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
@@ -348,66 +349,117 @@ func (ctx *JSContext) nativeModuleFilter(r *js.Runtime, module *js.Object) {
 func (ctx *JSContext) nativeModuleAnalysis(r *js.Runtime, module *js.Object) {
 	// m = require("analysis")
 	o := module.Get("exports").(*js.Object)
-	// m.cdf(array)
-	o.Set("cdf", func(p float64, arr []float64) float64 {
+	// arr = m.sort(arr)
+	o.Set("sort", func(arr []float64) js.Value {
 		slices.Sort(arr)
-		return stat.CDF(p, stat.Empirical, arr, nil)
+		return ctx.vm.ToValue(arr)
 	})
-	// m.circularMean(array)
-	o.Set("circularMean", func(arr []float64) float64 {
-		return stat.CircularMean(arr, nil)
+	// s = m.sum(arr)
+	o.Set("sum", func(arr []float64) float64 {
+		return floats.Sum(arr)
 	})
-	// m.correlation(x, y)
-	o.Set("correlation", func(x, y []float64) float64 {
-		return stat.Correlation(x, y, nil)
+	// m.cdf(x, weight)
+	// x should be sorted, weight should be the same length as x
+	o.Set("cdf", func(p float64, x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("cdf: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.CDF(p, stat.Empirical, x, weight))
 	})
-	// m.covariance(x, y)
-	o.Set("covariance", func(x, y []float64) float64 {
-		return stat.Covariance(x, y, nil)
+	// m.circularMean(x, weight)
+	// weight should be the same length as x
+	o.Set("circularMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("circularMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.CircularMean(x, weight))
+	})
+	// m.correlation(x, y, weight)
+	// weight should be the same length as x and y
+	o.Set("correlation", func(x, y, weight []float64) js.Value {
+		if len(x) != len(y) {
+			return ctx.vm.NewGoError(fmt.Errorf("correlation: x and y should be the same length"))
+		}
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("correlation: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Correlation(x, y, weight))
+	})
+	// m.covariance(x, y, weight)
+	o.Set("covariance", func(x, y, weight []float64) js.Value {
+		if len(x) != len(y) {
+			return ctx.vm.NewGoError(fmt.Errorf("covariance: x and y should be the same length"))
+		}
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("covariance: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Covariance(x, y, weight))
+	})
+	// m.entropy(p)
+	o.Set("entropy", func(p []float64) float64 {
+		return stat.Entropy(p)
 	})
 	// m.geometricMean(array)
-	o.Set("geometricMean", func(arr []float64) float64 {
-		return stat.GeometricMean(arr, nil)
+	o.Set("geometricMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("geometricMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.GeometricMean(x, weight))
 	})
-	// m.harmonicMean(array)
-	o.Set("harmonicMean", func(arr []float64) float64 {
-		return stat.HarmonicMean(arr, nil)
+	// m.mean(x, weight)
+	o.Set("mean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("mean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Mean(x, weight))
 	})
-	// m.median(array)
-	o.Set("median", func(arr []float64) float64 {
-		slices.Sort(arr)
-		return stat.Quantile(0.5, stat.Empirical, arr, nil)
+	// m.harmonicMean(x, weight)
+	o.Set("harmonicMean", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("harmonicMean: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.HarmonicMean(x, weight))
 	})
-	// m.mean(array)
-	o.Set("mean", func(arr []float64) float64 {
-		return stat.Mean(arr, nil)
+	// m.median(x, weight)
+	o.Set("median", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("median: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Quantile(0.5, stat.Empirical, x, weight))
 	})
-	// m.variance(array)
-	o.Set("variance", func(arr []float64) float64 {
-		return stat.Variance(arr, nil)
+	// m.variance(x, weight)
+	o.Set("variance", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("variance: x, y and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.Variance(x, weight))
 	})
-	// m.meanVariance(array)
-	o.Set("meanVariance", func(arr []float64) js.Value {
-		m, v := stat.MeanVariance(arr, nil)
+	// m.meanVariance(x, weight)
+	o.Set("meanVariance", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("meanVariance: x and weight should be the same length"))
+		}
+		m, v := stat.MeanVariance(x, weight)
 		return ctx.vm.ToValue(map[string]any{"mean": m, "variance": v})
 	})
-	// m.stdDev(array)
-	o.Set("stdDev", func(arr []float64) float64 {
-		return stat.StdDev(arr, nil)
+	// m.stdDev(x, weight)
+	o.Set("stdDev", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("stdDev: x and weight should be the same length"))
+		}
+		return ctx.vm.ToValue(stat.StdDev(x, weight))
 	})
-	// m.meanStdDev(array)
-	o.Set("meanStdDev", func(arr []float64) js.Value {
-		m, std := stat.MeanStdDev(arr, nil)
+	// m.meanStdDev(x, weight)
+	o.Set("meanStdDev", func(x, weight []float64) js.Value {
+		if weight != nil && len(x) != len(weight) {
+			return ctx.vm.NewGoError(fmt.Errorf("meanStdDev: x and weight should be the same length"))
+		}
+		m, std := stat.MeanStdDev(x, weight)
 		return ctx.vm.ToValue(map[string]any{"mean": m, "stdDev": std})
 	})
-	// m.stdErr(array)
-	o.Set("stdErr", func(arr []float64) float64 {
-		std := stat.StdDev(arr, nil)
-		return stat.StdErr(std, float64(len(arr)))
-	})
-	// m.entropy(array)
-	o.Set("entropy", func(arr []float64) float64 {
-		return stat.Entropy(arr)
+	// m.stdErr(std, sampleSize)
+	o.Set("stdErr", func(std, sampleSize float64) float64 {
+		return stat.StdErr(std, sampleSize)
 	})
 	// m.mode(array)
 	o.Set("mode", func(arr []float64) js.Value {
