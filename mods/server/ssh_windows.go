@@ -28,7 +28,7 @@ func (svr *sshd) shellHandler(ss ssh.Session) {
 	}
 
 	if shellId == model.SHELLID_JSH {
-		svr.jshHandler(ss)
+		svr.jshHandler(ss, shell.Cmd, shell.Args, shell.Envs)
 		return
 	}
 
