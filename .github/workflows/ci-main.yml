@@ -71,7 +71,7 @@ jobs:
           app-path: |-
             ./tmp/machbase-neo
       - name: Codesign windows app
-        if: matrix.os == 'windows'
+        if: matrix.os == 'windows-temporary-disable-code-sign'
         uses: dlemstra/code-sign-action@v1
         with:
           certificate: ${{ secrets.CODESIGN_WIN_CERTIFICATE }}
