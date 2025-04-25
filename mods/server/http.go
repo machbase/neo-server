@@ -1281,7 +1281,12 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 	// user able to decide shell other than "machbase-neo shell"
 	userShell := ctx.Query("shell")
-
+	if userShell == "JSH" {
+		consoleInfo := parseConsoleId(ctx)
+		if len(consoleInfo.consoleId) > 0 {
+			userShell = fmt.Sprintf("%s@%s", userShell, consoleInfo.consoleId)
+		}
+	}
 	// current websocket spec requires pass the token through handshake process
 	token := ctx.Query("token")
 	claim, err := svr.verifyAccessToken(token)

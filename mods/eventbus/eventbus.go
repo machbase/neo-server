@@ -11,14 +11,16 @@ func init() {
 }
 
 const (
-	EVT_PING = "ping"
-	EVT_LOG  = "log"
+	EVT_PING      = "ping"
+	EVT_LOG       = "log"
+	EVT_OPEN_FILE = "open_file"
 )
 
 type Event struct {
-	Type string `json:"type"`
-	Ping *Ping  `json:"ping,omitempty"`
-	Log  *Log   `json:"log,omitempty"`
+	Type     string    `json:"type"`
+	Ping     *Ping     `json:"ping,omitempty"`
+	Log      *Log      `json:"log,omitempty"`
+	OpenFile *OpenFile `json:"open_file,omitempty"`
 }
 
 type Ping struct {
@@ -77,4 +79,18 @@ func PublishLog(topic string, level string, message string) {
 
 func PublishLogTask(topic string, level string, task string, message string) {
 	Default.Publish(topic, NewLogTask(level, task, message))
+}
+
+type OpenFile struct {
+	Path string `json:"path"`
+}
+
+// topic = "console:%s:%s", user, id"
+func PublishOpenFile(topic string, file string) {
+	Default.Publish(topic, &Event{
+		Type: EVT_OPEN_FILE,
+		OpenFile: &OpenFile{
+			Path: file,
+		},
+	})
 }
