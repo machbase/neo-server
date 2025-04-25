@@ -462,7 +462,7 @@ func TestMqttWrite(t *testing.T) {
 		-- jsondata json,
 		-- ival int,
 		-- sval short
-	)`
+	) TAG_DUPLICATE_CHECK_DURATION=1;`
 	req, _ := http.NewRequest(http.MethodGet, httpServerAddress+"/db/query?q="+url.QueryEscape(creTable), nil)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
 	rsp, err := http.DefaultClient.Do(req)

@@ -50,8 +50,6 @@ type Server struct {
 	mgmt.UnimplementedManagementServer
 	Config
 
-	db api.Database
-
 	log   logging.Log
 	navel *net.TCPConn
 	grpcd *grpcd
@@ -69,8 +67,7 @@ type Server struct {
 	licenseFileTime   time.Time
 	databaseCreated   bool
 
-	pkgMgr    *pkgs.PkgManager
-	tqlLoader tql.Loader
+	pkgMgr *pkgs.PkgManager
 
 	models model.Service
 
@@ -90,6 +87,8 @@ type Server struct {
 
 var _ booter.Boot = (*Server)(nil)
 
+var tqlLoader tql.Loader = tql.NewLoader()
+
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
 		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
@@ -101,7 +100,6 @@ func NewServer(conf *Config) (*Server, error) {
 	return &Server{
 		Config:       *conf,
 		servicePorts: make(map[string][]*model.ServicePort),
-		tqlLoader:    tql.NewLoader(),
 	}, nil
 }
 
@@ -312,12 +310,12 @@ func representativePort(addr string) string {
 func (s *Server) Stop() {
 	util.RunShutdownHooks()
 
-	if db, ok := s.db.(*machsvr.Database); ok {
+	if db, ok := api.Default().(*machsvr.Database); ok {
 		if err := db.Shutdown(); err != nil {
 			s.log.Warnf("db shutdown; %s", err.Error())
 		}
 		machsvr.Finalize()
-	} else if db, ok := s.db.(*machcli.Database); ok {
+	} else if db, ok := api.Default().(*machcli.Database); ok {
 		if err := db.Close(); err != nil {
 			s.log.Warnf("db close; %s", err.Error())
 		}
@@ -366,7 +364,7 @@ func (s *Server) startMachbaseSvr() error {
 	if db == nil {
 		return errors.New("database instance failed")
 	} else {
-		s.db = db
+		api.SetDefault(db)
 	}
 	if err := db.Startup(); err != nil {
 		return fmt.Errorf("startup database, %s", err.Error())
@@ -426,7 +424,7 @@ func (s *Server) startMachbaseCli() error {
 			db.SetTrustUser(user, pass)
 		}
 	}
-	s.db = db
+	api.SetDefault(db)
 	return nil
 }
 
@@ -594,7 +592,7 @@ func (s *Server) startBackupService() error {
 		} else {
 			s.bakd = NewBackupd(
 				WithBackupdBaseDir(backupDirAbs),
-				WithBackupdDatabase(s.db),
+				WithBackupdDatabase(api.Default()),
 			)
 		}
 	}
@@ -618,7 +616,7 @@ func (s *Server) startServerFileSystem() error {
 }
 
 func (s *Server) checkMaxOpenConnections() {
-	if db, ok := s.db.(*machsvr.Database); ok {
+	if db, ok := api.Default().(*machsvr.Database); ok {
 		strOrUnlimited := func(n int) string {
 			if n < 0 {
 				return "unlimited"
@@ -638,7 +636,7 @@ func (s *Server) checkAndInstallLicense() error {
 		if err != nil || stat.ModTime().Sub(s.licenseFileTime) < 0 {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+			conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 			if err != nil {
 				s.log.Error("ERR", err.Error())
 				return err
@@ -699,7 +697,7 @@ func (s *Server) startGrpcServer() error {
 	if len(s.Grpc.Listeners) == 0 {
 		return nil
 	}
-	machRpcSvr := machsvr.NewRPCServer(s.db,
+	machRpcSvr := machsvr.NewRPCServer(api.Default(),
 		machsvr.WithLogger(logging.Wrap(s.log, nil)),
 		machsvr.WithAuthProvider(s),
 	)
@@ -734,8 +732,8 @@ func (s *Server) startBridgeAndSchedulerService() error {
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
-		scheduler.WithTqlLoader(s.tqlLoader),
-		scheduler.WithDatabase(s.db),
+		scheduler.WithTqlLoader(tqlLoader),
+		scheduler.WithDatabase(api.Default()),
 	)
 
 	s.bridgeSvc = bridge.NewService(
@@ -778,7 +776,7 @@ func (s *Server) startMqttServer() error {
 	opts := []MqttOption{
 		WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
 		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
-		WithMqttTqlLoader(s.tqlLoader),
+		WithMqttTqlLoader(tqlLoader),
 		WithMqttWsHandleListener(s.Http.Listeners),
 	}
 	if s.Mqtt.EnablePersistence {
@@ -801,7 +799,7 @@ func (s *Server) startMqttServer() error {
 			opts = append(opts, WithMqttTcpListener(addr, tlsConf))
 		}
 	}
-	if mqttd, err := NewMqtt(s.db, opts...); err != nil {
+	if mqttd, err := NewMqtt(api.Default(), opts...); err != nil {
 		return fmt.Errorf("mqtt server, %s", err.Error())
 	} else {
 		s.mqttd = mqttd
@@ -822,7 +820,7 @@ func (s *Server) startHttpServer() error {
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
-		WithHttpTqlLoader(s.tqlLoader),
+		WithHttpTqlLoader(tqlLoader),
 		WithHttpManagementServer(s),        // add, key
 		WithHttpScheduleServer(s.schedSvc), // add, timer
 		WithHttpBridgeServer(s.bridgeSvc),
@@ -860,7 +858,7 @@ func (s *Server) startHttpServer() error {
 		}
 		opts = append(opts, WithHttpWebDir(s.Http.WebDir))
 	}
-	if httpd, err := NewHttp(s.db, opts...); err != nil {
+	if httpd, err := NewHttp(api.Default(), opts...); err != nil {
 		return fmt.Errorf("http server, %s", err.Error())
 	} else {
 		s.httpd = httpd
@@ -1335,7 +1333,7 @@ func (s *Server) ValidateUserPassword(user string, password string) (bool, strin
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	passed, reason, err := s.db.UserAuth(ctx, user, password)
+	passed, reason, err := api.Default().UserAuth(ctx, user, password)
 	if err != nil {
 		return false, "", err
 	} else if !passed {
@@ -1400,7 +1398,7 @@ func (s *Server) runSqlScripts(title string, queries []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		s.log.Error("ERR", err.Error())
 		return err

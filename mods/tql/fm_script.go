@@ -1,7 +1,6 @@
 package tql
 
 import (
-	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -13,12 +12,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/machbase/neo-server/v8/mods/jsh"
+	"github.com/machbase/neo-server/v8/mods/jsh/console"
+	mod_dbms "github.com/machbase/neo-server/v8/mods/jsh/db"
+	"github.com/machbase/neo-server/v8/mods/logging"
+
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/mods/bridge"
-	"github.com/machbase/neo-server/v8/mods/bridge/connector"
-	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
@@ -32,155 +33,49 @@ func (x *Node) fmBridge(name string) *bridgeName {
 }
 
 func (node *Node) fmScript(args ...any) (any, error) {
-	if len(args) == 1 {
-		text, ok := args[0].(string)
-		if !ok {
-			goto syntaxErr
-		}
-		return node.fmScriptJS("", text, "")
-	} else if len(args) >= 2 {
-		switch name := args[0].(type) {
-		case *bridgeName:
-			if text, ok := args[1].(string); !ok {
-				goto syntaxErr
-			} else {
-				return node.fmScriptBridge(name, text)
-			}
-		case string:
-			switch name {
-			case "js", "javascript":
-				initCode, mainCode, deinitCode := "", "", ""
-				if len(args) == 2 { // SCRIPT("js", "main")
-					if str, ok := args[1].(string); !ok {
-						goto syntaxErr
-					} else {
-						mainCode = str
-					}
-				} else if len(args) == 3 { // SCRIPT("js", "init", "main")
-					if str, ok := args[1].(string); !ok {
-						goto syntaxErr
-					} else {
-						initCode = str
-					}
-					if str, ok := args[2].(string); !ok {
-						goto syntaxErr
-					} else {
-						mainCode = str
-					}
-				} else if len(args) == 4 { // SCRIPT("js", "init", "main", "deinit")
-					if str, ok := args[1].(string); !ok {
-						goto syntaxErr
-					} else {
-						initCode = str
-					}
-					if str, ok := args[2].(string); !ok {
-						goto syntaxErr
-					} else {
-						mainCode = str
-					}
-					if str, ok := args[3].(string); !ok {
-						goto syntaxErr
-					} else {
-						deinitCode = str
-					}
-				} else {
-					goto syntaxErr
-				}
-				return node.fmScriptJS(initCode, mainCode, deinitCode)
-			default:
-				goto syntaxErr
-			}
-		default:
-			goto syntaxErr
-		}
+	if len(args) > 0 && args[0] == "js" {
+		args = args[1:]
 	}
+	initCode, mainCode, deinitCode := "", "", ""
+	if len(args) == 1 { // SCRIPT("main")
+		if str, ok := args[0].(string); !ok {
+			goto syntaxErr
+		} else {
+			mainCode = str
+		}
+	} else if len(args) == 2 { // SCRIPT("init", "main")
+		if str, ok := args[0].(string); !ok {
+			goto syntaxErr
+		} else {
+			initCode = str
+		}
+		if str, ok := args[1].(string); !ok {
+			goto syntaxErr
+		} else {
+			mainCode = str
+		}
+	} else if len(args) == 3 { // SCRIPT("init", "main", "deinit")
+		if str, ok := args[0].(string); !ok {
+			goto syntaxErr
+		} else {
+			initCode = str
+		}
+		if str, ok := args[1].(string); !ok {
+			goto syntaxErr
+		} else {
+			mainCode = str
+		}
+		if str, ok := args[2].(string); !ok {
+			goto syntaxErr
+		} else {
+			deinitCode = str
+		}
+	} else {
+		goto syntaxErr
+	}
+	return node.fmScriptJS(initCode, mainCode, deinitCode)
 syntaxErr:
-	return nil, errors.New(`script: wrong syntax, 'SCRIPT( [script_name,] [init_script], script_text )`)
-}
-
-func (node *Node) fmScriptBridge(name *bridgeName, content string) (any, error) {
-	br, err := bridge.GetBridge(name.name)
-	if err != nil || br == nil {
-		return nil, fmt.Errorf(`script: bridge '%s' not found`, name.name)
-	}
-	switch engine := br.(type) {
-	case bridge.PythonBridge:
-		var input []byte
-		rec := node.Inflight()
-		if rec != nil {
-			b := &bytes.Buffer{}
-			w := csv.NewWriter(b)
-			if rec.IsArray() {
-				for _, r := range rec.Array() {
-					fields := util.StringFields(r.Fields(), "ns", nil, -1)
-					w.Write(fields)
-				}
-			} else {
-				fields := util.StringFields(rec.Fields(), "ns", nil, -1)
-				w.Write(fields)
-			}
-			w.Flush()
-			input = b.Bytes()
-		}
-		exitCode, stdout, stderr, err := engine.Invoke(node.task.ctx, []string{"-c", content}, input)
-		if err != nil {
-			if len(stdout) > 0 {
-				node.task.Log(string(stderr))
-			}
-			if len(stderr) > 0 {
-				node.task.LogWarn(string(stderr))
-			}
-			return nil, err
-		}
-		if len(stderr) > 0 {
-			node.task.LogWarn(string(stderr))
-		}
-		if exitCode != 0 {
-			node.task.LogWarn(fmt.Sprintf("script: exit %d", exitCode))
-		}
-		if len(stdout) > 0 {
-			if isPng(stdout) {
-				return NewImageRecord(stdout, "image/png"), nil
-			} else if isJpeg(stdout) {
-				return NewImageRecord(stdout, "image/jpeg"), nil
-			} else {
-				// yield the output from python's stdout as bytes chunk
-				//fmt.Println("output", string(stdout))
-				return NewBytesRecord(stdout), nil
-			}
-		}
-	default:
-		return nil, fmt.Errorf(`script: bridge '%s' is not support for SCRIPT()`, name.name)
-	}
-	return nil, nil
-}
-
-func isJpeg(data []byte) bool {
-	if len(data) < 4 {
-		return false
-	}
-	matched := true
-	for i, b := range []byte{0xFF, 0xD8, 0xFF} { // jpg
-		if data[i] != b {
-			matched = false
-			break
-		}
-	}
-	return matched
-}
-
-func isPng(data []byte) bool {
-	if len(data) < 4 {
-		return false
-	}
-	matched := true
-	for i, b := range []byte{0x89, 0x50, 0x4E, 0x47} { // png
-		if data[i] != b {
-			matched = false
-			break
-		}
-	}
-	return matched
+	return nil, errors.New(`script: wrong syntax, 'SCRIPT( init_script, main_script, deinit_script )`)
 }
 
 const js_ctx_key = "$js_ctx$"
@@ -224,6 +119,8 @@ func (node *Node) fmScriptJS(initCode string, mainCode string, deinitCode string
 
 type JSContext struct {
 	context.Context
+	*jsh.Cleaner
+
 	vm           *js.Runtime
 	sc           *js.Program
 	node         *Node
@@ -276,12 +173,19 @@ func jsSourceLoad(path string) ([]byte, error) {
 func newJSContext(node *Node, initCode string, mainCode string, deinitCode string) (*JSContext, error) {
 	ctx := &JSContext{
 		Context: node.task.ctx,
+		Cleaner: &jsh.Cleaner{},
 		node:    node,
 		vm:      js.New(),
 	}
 	ctx.vm.SetFieldNameMapper(js.TagFieldNameMapper("json", false))
+	console.Enable(ctx.vm, func(level logging.Level, args ...any) error {
+		node.task._log(LogginLevelFrom(level), args...)
+		return nil
+	})
 
-	enableModuleRegistry(ctx)
+	registry := require.NewRegistry(require.WithLoader(jsSourceLoad))
+	registry.Enable(ctx.vm)
+	jsh.RegisterNativeModules(ctx, registry, jsh.NativeModuleNamesExcludes("@jsh/process")...)
 
 	// add blank lines to the beginning of the script
 	// so that the compiler error message can show the correct line number
@@ -322,17 +226,10 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 					node.task.LogErrorf("SCRIPT finalize, %s", err.Error())
 				}
 			}
+
+			ctx.RunCleanup(ctx.node.task)
 		})
 	})
-
-	// define console
-	con := ctx.vm.NewObject()
-	con.Set("log", ctx.consoleLog(INFO))
-	con.Set("debug", ctx.consoleLog(DEBUG))
-	con.Set("info", ctx.consoleLog(INFO))
-	con.Set("warn", ctx.consoleLog(WARN))
-	con.Set("error", ctx.consoleLog(ERROR))
-	ctx.vm.Set("console", con)
 
 	// define $
 	ctx.obj = ctx.vm.NewObject()
@@ -375,6 +272,8 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	ctx.obj.Set("db", ctx.jsFuncDB)
 	// $.request()
 	ctx.obj.Set("request", ctx.jsFuncRequest)
+	// $.inflight()
+	ctx.obj.Set("inflight", ctx.jsFuncInflight)
 
 	ctx.node.task.AddShouldStopListener(func() {
 		ctx.onceInterrupt.Do(func() {
@@ -411,7 +310,6 @@ func closeJSContext(ctx *JSContext) {
 
 func (ctx *JSContext) doResult() error {
 	if ctx.obj == nil {
-		fmt.Println("ctx.obj is nil")
 		return nil
 	}
 	resultObj := ctx.obj.Get("result")
@@ -476,22 +374,6 @@ func (ctx *JSContext) Run() (any, error) {
 		return nil, err
 	} else {
 		return v.Export(), nil
-	}
-}
-
-func (ctx *JSContext) consoleLog(level Level) func(args ...js.Value) {
-	return func(args ...js.Value) {
-		params := []any{}
-		for _, value := range args {
-			val := value.Export()
-			if v, ok := val.(map[string]any); ok {
-				m, _ := json.Marshal(v)
-				params = append(params, string(m))
-			} else {
-				params = append(params, val)
-			}
-		}
-		ctx.node.task._log(level, params...)
 	}
 }
 
@@ -709,100 +591,81 @@ func (ctx *JSContext) jsFuncRequest(reqUrl string, reqOpt map[string]any) js.Val
 	return requestObj
 }
 
-func (ctx *JSContext) jsFuncDB(optObj map[string]any) js.Value {
-	var node = ctx.node
-	var db = ctx.vm.NewObject()
-
-	var bridgeName string
-	if len(optObj) > 0 {
-		// parse db options `$.db({bridge: "name"})`
-		if br, ok := optObj["bridge"]; ok {
-			bridgeName = br.(string)
+func (ctx *JSContext) jsFuncDB(call js.FunctionCall) js.Value {
+	defer func() {
+		if r := recover(); r != nil {
+			ctx.node.task.LogErrorf("SCRIPT db====, %s", r)
 		}
+	}()
+	var node = ctx.node
+	var dbObj = ctx.vm.NewObject()
+
+	dbArgs := make([]js.Value, len(call.Arguments))
+	for i, arg := range call.Arguments {
+		dbArgs[i] = ctx.vm.ToValue(arg.Export())
 	}
 
 	// $.db().query(sql, params...).next(function(row) {...})
-	db.Set("query", func(sqlText string, params ...any) js.Value {
+	dbObj.Set("query", func(call js.FunctionCall) js.Value {
 		queryObj := ctx.vm.NewObject()
-		queryObj.Set("yield", func() error {
-			var conn api.Conn
-			var err error
-			if bridgeName == "" {
-				conn, err = node.task.ConnDatabase(node.task.ctx)
-			} else {
-				if db, dbErr := connector.New(bridgeName); dbErr == nil {
-					conn, err = db.Connect(node.task.ctx)
-				} else {
-					err = dbErr
-				}
-			}
-			if err != nil {
-				node.task.Cancel()
-				return fmt.Errorf("DBError %s", err.Error())
-			}
-			defer conn.Close()
+		queryArgs := make([]js.Value, len(call.Arguments))
+		for i, arg := range call.Arguments {
+			queryArgs[i] = ctx.vm.ToValue(arg.Export())
+		}
 
-			rows, err := conn.Query(node.task.ctx, sqlText, params...)
-			if err != nil {
-				node.task.Cancel()
-				return fmt.Errorf("DBError %s", err.Error())
-			}
-			defer rows.Close()
+		queryObj.Set("yield", func(call js.FunctionCall) js.Value {
+			client := mod_dbms.NewClient(ctx, ctx.vm, dbArgs)
+			conn := client.Connect(js.FunctionCall{})
+			defer conn.Close(js.FunctionCall{})
+			rows := conn.Query(js.FunctionCall{Arguments: queryArgs})
+			defer rows.Close(js.FunctionCall{})
 
-			cols, _ := rows.Columns()
-			// set headers
-			types := []string{}
-			for _, col := range cols {
-				types = append(types, string(col.DataType))
+			var resultOpt = JSResultOption{
+				"columns": rows.ColumnNames(js.FunctionCall{}),
+				"types":   rows.ColumnTypes(js.FunctionCall{}),
 			}
-			var opts = JSResultOption{
-				"columns": cols.Names(),
-				"types":   types,
-			}
-			if cols := opts.ResultColumns(); cols != nil {
+			if cols := resultOpt.ResultColumns(); cols != nil {
 				node.task.SetResultColumns(cols)
 			}
 			// yield rows
 			count := 0
-			for rows.Next() {
-				values, _ := cols.MakeBuffer()
-				rows.Scan(values...)
+			for {
+				values := rows.Next(js.FunctionCall{})
+				if len(values) == 0 {
+					break
+				}
 				count++
 				NewRecord(count, values).Tell(node.next)
 			}
-			return nil
+			return js.Undefined()
 		})
 
 		queryObj.Set("forEach", func(callback js.Callable) js.Value {
-			var conn api.Conn
-			var err error
-			if bridgeName == "" {
-				conn, err = node.task.ConnDatabase(node.task.ctx)
-			} else {
-				if db, dbErr := connector.New(bridgeName); dbErr == nil {
-					conn, err = db.Connect(node.task.ctx)
-				} else {
-					err = dbErr
-				}
-			}
-			if err != nil {
-				node.task.Cancel()
-				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
-			}
-			defer conn.Close()
+			client := mod_dbms.NewClient(ctx, ctx.vm, dbArgs)
+			conn := client.Connect(js.FunctionCall{})
+			defer conn.Close(js.FunctionCall{})
+			rows := conn.Query(js.FunctionCall{Arguments: queryArgs})
+			defer rows.Close(js.FunctionCall{})
 
-			rows, err := conn.Query(node.task.ctx, sqlText, params...)
-			if err != nil {
-				node.task.Cancel()
-				return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
-			}
-			defer rows.Close()
-			for rows.Next() {
-				cols, _ := rows.Columns()
-				values, _ := cols.MakeBuffer()
-				rows.Scan(values...)
-				if flag, e := callback(js.Undefined(), ctx.vm.ToValue(values)); e != nil {
-					return ctx.vm.NewGoError(fmt.Errorf("DBError %s", e.Error()))
+			// ensure the columns are set
+			_ = rows.ColumnNames(js.FunctionCall{})
+			for {
+				values := rows.Next(js.FunctionCall{})
+				if len(values) == 0 {
+					break
+				}
+				names := rows.ColumnNames(js.FunctionCall{})
+
+				var rec = map[string]any{}
+				for i, col := range names {
+					if i < len(values) {
+						rec[col] = ctx.vm.ToValue(api.Unbox(values[i]))
+					} else {
+						rec[col] = js.Null()
+					}
+				}
+				if flag, e := callback(js.Undefined(), ctx.vm.ToValue(values), ctx.vm.ToValue(rec)); e != nil {
+					return ctx.vm.NewGoError(e)
 				} else {
 					if js.IsUndefined(flag) {
 						// if the callback does not return anything (undefined), continue
@@ -822,31 +685,33 @@ func (ctx *JSContext) jsFuncDB(optObj map[string]any) js.Value {
 	})
 
 	// $.db().exec(sql, params...)
-	db.Set("exec", func(sqlText string, params ...any) js.Value {
-		var conn api.Conn
-		var err error
-		if bridgeName == "" {
-			conn, err = node.task.ConnDatabase(node.task.ctx)
-		} else {
-			if db, dbErr := connector.New(bridgeName); dbErr == nil {
-				conn, err = db.Connect(node.task.ctx)
-			} else {
-				err = dbErr
-			}
-		}
-		if err != nil {
-			node.task.Cancel()
-			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
-		}
-		defer conn.Close()
-
-		result := conn.Exec(node.task.ctx, sqlText, params...)
-		if err = result.Err(); err != nil {
-			return ctx.vm.NewGoError(fmt.Errorf("DBError %s", err.Error()))
-		}
-		ret := result.RowsAffected()
-		return ctx.vm.ToValue(ret)
+	dbObj.Set("exec", func(call js.FunctionCall) js.Value {
+		client := mod_dbms.NewClient(ctx, ctx.vm, dbArgs)
+		conn := client.Connect(js.FunctionCall{})
+		defer conn.Close(js.FunctionCall{})
+		return conn.Exec(call)
 	})
 
-	return db
+	return dbObj
+}
+
+func (ctx *JSContext) jsFuncInflight() js.Value {
+	ret := ctx.vm.NewObject()
+	ret.Set("set", func(name string, value js.Value) js.Value {
+		if inf := ctx.node.Inflight(); inf != nil {
+			inf.SetVariable(name, value.Export())
+		}
+		return js.Undefined()
+	})
+	ret.Set("get", func(name string) js.Value {
+		if inf := ctx.node.Inflight(); inf != nil {
+			if v, err := inf.GetVariable("$" + name); err != nil {
+				return ctx.vm.NewGoError(fmt.Errorf("SCRIPT %s", err.Error()))
+			} else {
+				return ctx.vm.ToValue(v)
+			}
+		}
+		return js.Undefined()
+	})
+	return ret
 }

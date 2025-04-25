@@ -103,10 +103,10 @@ func doMachSvrStatz(_ *Server) {
 	metricMachAppend.Add(nfo.EngAppend)
 }
 
-func doSysMemStatz(s *Server) {
+func doSysMemStatz(_ *Server) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	conn, err := s.db.Connect(ctx, api.WithTrustUser("sys"))
+	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
 		return

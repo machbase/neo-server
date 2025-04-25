@@ -13,16 +13,22 @@ import (
 	"syscall"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/util/conpty"
 )
 
 func (svr *sshd) shellHandler(ss ssh.Session) {
-	user, shell, _ := svr.findShell(ss)
+	user, shell, shellId := svr.findShell(ss)
 	svr.log.Debugf("session open %s from %s", user, ss.RemoteAddr())
 
 	if shell == nil {
 		io.WriteString(ss, "No Shell configured.\n")
 		ss.Exit(1)
+		return
+	}
+
+	if shellId == model.SHELLID_JSH {
+		svr.jshHandler(ss, shell.Cmd, shell.Args, shell.Envs)
 		return
 	}
 

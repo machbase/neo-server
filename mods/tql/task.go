@@ -714,6 +714,21 @@ func (l Level) LoggingLevel() logging.Level {
 	}
 }
 
+func LogginLevelFrom(l logging.Level) Level {
+	switch l {
+	default:
+		return INFO
+	case logging.LevelTrace:
+		return TRACE
+	case logging.LevelDebug:
+		return DEBUG
+	case logging.LevelWarn:
+		return WARN
+	case logging.LevelError:
+		return ERROR
+	}
+}
+
 func ParseLogLevel(str string) Level {
 	s := strings.ToUpper(str)
 	for i := range Levels {
