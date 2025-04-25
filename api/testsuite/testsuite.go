@@ -47,6 +47,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		LogTableExec,
 		LogTableAppend,
 		TagTableAppend,
+		BitTable,
 		WatchLogTable,
 		DemoUser,
 	}
@@ -107,7 +108,7 @@ func CreateTestTables(db api.Database) error {
 			json_value      json,
 			ipv4_value      ipv4,
 			ipv6_value      ipv6
-		)
+		) TAG_DUPLICATE_CHECK_DURATION=1;
 	`))
 	if err := result.Err(); err != nil {
 		return err
@@ -118,7 +119,7 @@ func CreateTestTables(db api.Database) error {
 			name            varchar(100) primary key, 
 			time            datetime basetime, 
 			value           double
-		)
+		) TAG_DUPLICATE_CHECK_DURATION=1;
 	`))
 	if err := result.Err(); err != nil {
 		return err

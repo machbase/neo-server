@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/stretchr/testify/require"
 )
 
@@ -310,6 +311,11 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	result = conn.Exec(ctx, "EXEC table_flush(tag_data)")
 	require.NoError(t, result.Err(), "table_flush fail")
 
+	if _, ok := db.(*machcli.Database); ok {
+		// TODO: MACHCLI-ERR-3, Communication link failure
+		<-time.After(time.Second * 1)
+	}
+
 	// tags
 	tags := []*api.TagInfo{}
 	api.ListTagsWalk(ctx, conn, "TAG_DATA", func(tag *api.TagInfo) bool {
@@ -456,4 +462,66 @@ func InsertNewTags(t *testing.T, db api.Database, ctx context.Context) {
 	}
 	rows.Close()
 	require.Equal(t, expectCount, count)
+}
+
+func BitTable(t *testing.T, db api.Database, ctx context.Context) {
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	result := conn.Exec(ctx,
+		"CREATE TABLE bit_table (i1 INTEGER, i2 UINTEGER, i3 FLOAT, i4 DOUBLE, i5 SHORT, i6 VARCHAR(10))",
+	)
+	require.NoError(t, result.Err(), "create bit table fail")
+
+	result = conn.Exec(ctx, "INSERT INTO bit_table VALUES (-1, 1, 1, 1, 2, 'aaa')")
+	require.NoError(t, result.Err(), "insert bit table fail")
+	require.NoError(t, err)
+
+	rows, err := conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i2, 1) = 1")
+	require.NoError(t, err, "select bit table BITAND(i2, 1) should not fail")
+	for rows.Next() {
+		var i1 int
+		var i2 uint
+		var i3 float32
+		var i4 float64
+		var i5 int16
+		var i6 string
+		err := rows.Scan(&i1, &i2, &i3, &i4, &i5, &i6)
+		require.NoError(t, err, "scan bit table fail")
+		require.Equal(t, -1, i1)
+		require.Equal(t, uint(1), i2)
+		require.Equal(t, float32(1), i3)
+		require.Equal(t, float64(1), i4)
+		require.Equal(t, int16(2), i5)
+		require.Equal(t, "aaa", i6)
+	}
+	rows.Close()
+
+	if _, ok := db.(*machcli.Database); ok {
+		rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
+		require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
+		if rows != nil {
+			rows.Close()
+		}
+	} else {
+		// TODO : BITAND(i4, 1) SHOULD fail
+		// BUG: https://github.com/machbase/neo/issues/956
+		rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
+		// require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
+		if rows != nil {
+			rows.Close()
+		}
+	}
+
+	// TODO : BITAND(i1, i3) SHOULD fail
+	// BUG: https://github.com/machbase/neo/issues/956
+	// rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
+	//require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
+	// if rows != nil {
+	// 	rows.Close()
+	// }
+
+	result = conn.Exec(ctx, "DROP TABLE bit_table")
+	require.NoError(t, result.Err(), "drop bit table fail")
 }

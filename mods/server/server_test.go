@@ -115,7 +115,7 @@ func initTestData(db api.Database) {
 		name VARCHAR(40) PRIMARY KEY,
 		time DATETIME BASETIME,
 		value DOUBLE SUMMARIZED
-	)`)
+	) TAG_DUPLICATE_CHECK_DURATION=1`)
 	if result.Err() != nil {
 		panic(result.Err())
 	}

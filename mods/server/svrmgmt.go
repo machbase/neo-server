@@ -238,15 +238,15 @@ func GenerateClientToken(clientId string, clientPriKey crypto.PrivateKey, method
 	var signature []byte
 	hash := sha256.New()
 	hash.Write([]byte(clientId))
-	hashsum := hash.Sum(nil)
+	hashSum := hash.Sum(nil)
 	switch key := clientPriKey.(type) {
 	case *rsa.PrivateKey:
-		signature, err = rsa.SignPSS(rand.Reader, key, crypto.SHA256, hashsum, nil)
+		signature, err = rsa.SignPSS(rand.Reader, key, crypto.SHA256, hashSum, nil)
 		if err != nil {
 			return "", err
 		}
 	case *ecdsa.PrivateKey:
-		signature, err = ecdsa.SignASN1(rand.Reader, key, hashsum)
+		signature, err = ecdsa.SignASN1(rand.Reader, key, hashSum)
 		if err != nil {
 			return "", err
 		}
@@ -277,18 +277,18 @@ func VerifyClientToken(token string, clientPubKey crypto.PublicKey) (bool, error
 
 	hash := sha256.New()
 	hash.Write([]byte(parts[0]))
-	hashsum := hash.Sum(nil)
+	hashSum := hash.Sum(nil)
 
 	switch key := clientPubKey.(type) {
 	case *rsa.PublicKey:
-		err = rsa.VerifyPSS(key, crypto.SHA256, hashsum, signature, nil)
+		err = rsa.VerifyPSS(key, crypto.SHA256, hashSum, signature, nil)
 		if err != nil {
 			fmt.Printf("rsa <<< %s", err.Error())
 			return false, err
 		}
 		return err == nil, err
 	case *ecdsa.PublicKey:
-		return ecdsa.VerifyASN1(key, hashsum, signature), nil
+		return ecdsa.VerifyASN1(key, hashSum, signature), nil
 	default:
 		return false, fmt.Errorf("unsupported algorithm '%T'", key)
 	}
@@ -516,7 +516,7 @@ func (s *Server) Sessions(ctx context.Context, req *mgmt.SessionsRequest) (*mgmt
 	}
 	if req.Sessions {
 		sessions := []*mgmt.Session{}
-		if db, ok := s.db.(*machsvr.Database); ok {
+		if db, ok := api.Default().(*machsvr.Database); ok {
 			db.ListWatcher(func(st *machsvr.ConnState) bool {
 				sessions = append(sessions, &mgmt.Session{
 					Id:            st.Id,
@@ -544,7 +544,7 @@ func (s *Server) KillSession(ctx context.Context, req *mgmt.KillSessionRequest) 
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := s.db.(*machsvr.Database); ok {
+	if db, ok := api.Default().(*machsvr.Database); ok {
 		if err := db.KillConnection(req.Id, req.Force); err != nil {
 			rsp.Reason = err.Error()
 		} else {
@@ -568,7 +568,7 @@ func (s *Server) LimitSession(ctx context.Context, req *mgmt.LimitSessionRequest
 		rsp.Elapse = time.Since(tick).String()
 	}()
 
-	if db, ok := s.db.(*machsvr.Database); ok {
+	if db, ok := api.Default().(*machsvr.Database); ok {
 		if strings.ToLower(req.Cmd) == "set" {
 			if limit := int(req.MaxOpenConn); limit >= -1 {
 				db.SetMaxOpenConn(limit)

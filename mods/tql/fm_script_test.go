@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/tql"
@@ -24,6 +23,7 @@ func TestScriptJS(t *testing.T) {
 			Script: `
 				SCRIPT("js", "console.log('Hello, World!')")
 				DISCARD()`,
+			ExpectLog: []string{"Hello, World!"},
 			ExpectFunc: func(t *testing.T, result string) {
 				require.Empty(t, result)
 			},
@@ -194,10 +194,49 @@ func TestScriptJS(t *testing.T) {
 			},
 		},
 		{
+			Name: "js-db-query-module",
+			Script: `
+				SCRIPT("js", {
+					db = require("@jsh/db");
+				},{
+					client = new db.Client();
+					try{
+						conn = client.connect();
+						conn.exec("create tag table if not exists js_table2(name varchar(100) primary key, time datetime basetime, value double)");
+						conn.exec("insert into js_table2(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
+						conn.exec("EXEC table_flush(tag_data)")
+
+						rows = conn.query("select name, time, value from js_table2 limit ?", 2)
+						$.result = rows.columns();
+						for( let row of rows ) {
+							$.yield(row.NAME, row.TIME.Unix(), row.VALUE);
+						}
+					}catch(e) {
+						console.log("Error:", e);
+					}finally{
+						// intentionally not closing the rows
+						// rows.close();
+						conn.exec("drop table js_table2");
+						conn.close();
+					}
+				})
+				JSON(timeformat("s"))
+			`,
+			// ExpectLog: []string{
+			// 	"WARNING: db rows not closed!!!",
+			// },
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, gjson.Get(result, "success").Bool(), result)
+				require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").Raw)
+				require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").Raw)
+				require.Equal(t, `["js-db-query",1696118400,1.234]`, gjson.Get(result, "data.rows.0").Raw)
+			},
+		},
+		{
 			Name: "js-system-free-os-memory",
 			Script: `
 				SCRIPT("js", {
-					m = require("system");
+					m = require("@jsh/system");
 					m.free_os_memory();
 					$.yield("ok");
 				})
@@ -209,7 +248,7 @@ func TestScriptJS(t *testing.T) {
 			Name: "js-system-gc",
 			Script: `
 				SCRIPT("js", {
-					m = require("system");
+					m = require("@jsh/system");
 					m.gc();
 					$.yield("ok");
 				})
@@ -221,7 +260,7 @@ func TestScriptJS(t *testing.T) {
 			Name: "js-system-now",
 			Script: `
 				SCRIPT("js", {
-					m = require("system");
+					m = require("@jsh/system");
 					let now = m.now();
 					$.yield("ok", now.Unix());
 				})
@@ -315,9 +354,8 @@ func TestScriptSystemInflight(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,2,1))
 				SCRIPT("js", {
-					inflight = require("system").inflight();
-					inflight.set("key1", 123);
-					inflight.set("key2", "abc");
+					$.inflight().set("key1", 123);
+					$.inflight().set("key2", "abc");
 					$.yield("");
 				})
 				MAPVALUE(0, $key1)
@@ -333,8 +371,7 @@ func TestScriptSystemInflight(t *testing.T) {
 				SET(key1, 123)
 				SET(key2, "abc")
 				SCRIPT("js", {
-					inflight = require("system").inflight();
-					$.yield(inflight.get("key1"), inflight.get("key2"));
+					$.yield($.inflight().get("key1"), $.inflight().get("key2"));
 				})
 				CSV()
 			`,
@@ -355,7 +392,7 @@ func TestScriptSystemStatz(t *testing.T) {
 			Name: "js-statz",
 			Script: `
 				SCRIPT("js", {
-					statz = require("system").statz("1m", "go:goroutine_max");
+					statz = require("@jsh/system").statz("1m", "go:goroutine_max");
 					last = statz.length - 1;
 					$.yield(statz[last].time, ...statz[last].values);
 				})
@@ -381,7 +418,7 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( oscillator( range(timeAdd(1685714509*1000000000,'1s'), '1s', '100us'), freq(10, 1.0), freq(50, 2.0)))
 				SCRIPT("js", {
-					m = require("analysis");
+					m = require("@jsh/analysis");
 					times = [];
 					values = [];
 				}, {
@@ -404,593 +441,30 @@ func TestScriptFFT(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 10, 100) )
 				SCRIPT("js", {
-					m = require("analysis");
+					m = require("@jsh/analysis");
 					times = [];
 					values = [];
 				}, {
 					times.push($.values[0]);
 					values.push($.values[1]);
 				}, {
-					result = dsp.fft(times, values);
-					for( i = 0; i < result.x.length; i++ ) {
-						if (result.x[i] > 60)
-							break
-						$.yield(result.x[i], result.y[i])
+					try{
+						result = m.fft(times, values);
+						for( i = 0; i < result.x.length; i++ ) {
+							if (result.x[i] > 60)
+								break
+							$.yield(result.x[i], result.y[i])
+						}
+					} catch (e) {
+					 	console.error(e);
 					}
 				})
 				CSV()
 				`,
+			ExpectLog: []string{"[ERROR] fft invalid 0th sample value, but <nil>"},
 			ExpectCSV: []string{"\n"},
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptGeneratorSimpleX(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-simplex",
-			Script: `
-				SCRIPT("js", {
-					gen = require("generator").simplex(123);
-				},{
-					for(i=0; i < 5; i++) {
-						$.yield(i, gen.eval(i, i * 0.6) );
-					}
-				})
-				CSV(precision(3))
-			`,
-			ExpectCSV: []string{
-				"0.000,0.000",
-				"1.000,0.349",
-				"2.000,0.319",
-				"3.000,0.038",
-				"4.000,-0.364",
-				"\n"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptGeneratorUUID(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-uuid",
-			Script: `
-				SCRIPT("js", {
-					gen = require("generator").uuid(1);
-				},{
-					for(i=0; i < 5; i++) {
-						$.yield(gen.eval());
-					}
-				})
-				CSV(header(false))
-			`,
-			ExpectFunc: func(t *testing.T, result string) {
-				rows := strings.Split(strings.TrimSpace(result), "\n")
-				require.Equal(t, 5, len(rows), result)
-				for _, l := range rows {
-					require.Equal(t, 36, len(l))
-				}
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptGeneratorMeshgrid(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-meshgrid",
-			Script: `
-				SCRIPT("js", {
-					gen = require("generator").meshgrid([1,2,3], [4,5]);
-				},{
-					for(i=0; i < gen.length; i++) {
-						$.yield(...gen[i]);
-					}
-				})
-				CSV(header(false))
-			`,
-			ExpectCSV: []string{
-				"1,4",
-				"1,5",
-				"2,4",
-				"2,5",
-				"3,4",
-				"3,5",
-				"\n"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptFilterLowpass(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-filter-lowpass",
-			Script: `SCRIPT("js", {
-				const { arrange } = require("generator");
-				const lowpass = require("filter").lowpass(0.3);
-				const simplex = require("generator").simplex(1);
-			},{
-				for( x of arrange(1, 10, 1) ) {
-					v = x + simplex.eval(x) * 3;
-					$.yield(x, v, lowpass.eval(v));
-				}
-			})			
-			CSV(precision(2))
-			`,
-			ExpectCSV: []string{
-				`1.00,1.48,1.48`,
-				`2.00,0.40,1.15`,
-				`3.00,3.84,1.96`,
-				`4.00,2.89,2.24`,
-				`5.00,5.47,3.21`,
-				`6.00,5.29,3.83`,
-				`7.00,7.22,4.85`,
-				`8.00,10.31,6.49`,
-				`9.00,8.36,7.05`,
-				`10.00,8.56,7.50`,
-				"\n",
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptFilterAvg(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-filter-avg",
-			Script: `
-			FAKE( arrange(10, 30, 10) )
-			SCRIPT("js", {
-				const avg = require("filter").avg();
-			},{
-				$.yield($.values[0], avg.eval($.values[0]));
-			})			
-			CSV(precision(0))
-			`,
-			ExpectCSV: []string{
-				"10,10",
-				"20,15",
-				"30,20",
-				"\n",
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptFilterMovAvg(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-filter-movavg",
-			Script: `SCRIPT("js", {
-				const { linspace } = require("generator");
-				const movavg = require("filter").movavg(10);
-			},{
-				for( x of linspace(0, 100, 100) ) {
-					$.yield(x, movavg.eval(x));
-				}
-			})			
-			CSV(precision(4))
-			`,
-			ExpectCSV: loadLines("./test/movavg_result_nowait.csv"),
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptFilterKalman(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-filter-kalman",
-			Script: `
-				FAKE(json({[1.3], [10.2], [5.0], [3.4]}))
-				SCRIPT("js", {
-					const kalman = require("filter").kalman(1.0, 1.0, 2.0);
-				},{
-					$.yield($.values[0], kalman.eval(new Date(1744868877), $.values[0]));
-				})
-				CSV(precision(1))
-				`,
-			ExpectCSV: []string{
-				`1.3,1.3`,
-				`10.2,3.5`,
-				`5.0,3.8`,
-				`3.4,3.7`,
-				"\n",
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptAnalysis(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-cdf",
-			Script: `
-				FAKE( arrange(1, 100, 1) )
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [];
-				},{
-					x.push($.values[0]);
-				},{
-					result = m.cdf(1.0, x);
-					$.yield(result);
-				})
-				CSV(precision(2))
-			`,
-			ExpectCSV: []string{"0.01", "\n"},
-		},
-		{
-			Name: "js-circular-mean",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [0, 0.25 * Math.PI, 0.75 * Math.PI];
-					w = [1, 2, 2.5];
-				},{
-					$.yield(m.circularMean(x));
-					$.yield(m.circularMean(x, w));
-				})
-				CSV(precision(2))
-			`,
-			ExpectCSV: []string{"0.96", "1.37", "\n"},
-		},
-		{
-			Name: "js-correlation",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, -3, 7, 8, -4];
-					y = [10, 5, 6, 3, -1];
-					w = [2, 1.5, 3, 3, 2];
-				},{
-					result = m.correlation(x, y, w);
-					$.yield(result);
-				})
-				CSV(precision(5))
-			`,
-			ExpectCSV: []string{"0.59915", "\n"},
-		},
-		{
-			Name: "js-covariance",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, -3, 7, 8, -4];
-					y1 = [10, 2, 2, 4, 1];
-					y2 = [12, 1, 11, 12, 0];
-				},{
-					$.yield(m.covariance(x, y1));
-					$.yield(m.covariance(x, y2));
-					$.yield(m.variance(x));
-				})
-				CSV(precision(4))
-			`,
-			ExpectCSV: []string{"13.8000", "37.7000", "37.7000", "\n"},
-		},
-		{
-			Name: "js-entropy",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					$.yield(m.entropy([0.05, 0.1, 0.9, 0.05]));
-					$.yield(m.entropy([0.2, 0.4, 0.25, 0.15]));
-					$.yield(m.entropy([0.2, 0, 0, 0.5, 0, 0.2, 0.1, 0, 0, 0]));
-					$.yield(m.entropy([0, 0, 1, 0]));
-				})
-				CSV(precision(4))`,
-			ExpectCSV: []string{"0.6247", "1.3195", "1.2206", "0.0000", "\n"},
-		},
-		{
-			Name: "js-geometric-mean",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, 2, 9, 15, 4];
-					w = [2, 2, 6, 7, 1];
-					$.yield(m.mean(x, w));
-					$.yield(m.geometricMean(x, w));
-					log_x = [];
-					for( v of x ) {
-						log_x.push(Math.log(v));
-					}
-					$.yield(Math.exp(m.mean(log_x, w)));
-				})
-				CSV(precision(4))`,
-			ExpectCSV: []string{"10.1667", "8.7637", "8.7637", "\n"},
-		},
-		{
-			Name: "js-harmonic-mean",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, 2, 9, 15, 4];
-					w = [2, 2, 6, 7, 1];
-					$.yield(m.mean(x, w));
-					$.yield(m.harmonicMean(x, w));
-				})
-				CSV(precision(4))`,
-			ExpectCSV: []string{"10.1667", "6.8354", "\n"},
-		},
-		{
-			Name: "js-median",
-			Script: `
-				FAKE( arrange(1, 100, 1) )
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [];
-				},{
-					x.push($.values[0]);
-				},{
-					result = m.median(x);
-					$.yield(result);
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"50", "\n"},
-		},
-		{
-			Name: "js-quantile",
-			Script: `
-				FAKE( arrange(1, 100, 1) )
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [];
-				},{
-					x.push($.values[0]);
-				},{
-					result = m.quantile(0.25, x);
-					$.yield(result);
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"25", "\n"},
-		},
-		{
-			Name: "js-mean",
-			Script: `
-				FAKE( arrange(1, 100, 1) )
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [];
-				},{
-					x.push($.values[0]);
-				},{
-					result = m.mean(x);
-					$.yield(result);
-				})
-				CSV()
-			`,
-			ExpectCSV: []string{"50.5", "\n"},
-		},
-		{
-			Name: "js-stddev",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, 2, -9, 15, 4];
-					w = [2, 2, 6, 7, 1];
-				},{
-					$.yield(m.stdDev(x));
-					$.yield(m.stdDev(x, w));
-				})
-				CSV(precision(4))
-			`,
-			ExpectCSV: []string{"8.8034", "10.5733", "\n"},
-		},
-		{
-			Name: "js-stderr",
-			Script: `
-				SCRIPT("js", {
-					m = require("analysis");
-					x = [8, 2, -9, 15, 4];
-					w = [2, 2, 6, 7, 1];
-					mean = m.mean(x, w);
-					stddev = m.stdDev(x, w);
-					nSamples = m.sum(w);
-					stdErr = m.stdErr(stddev, nSamples);
-					$.yield("stddev", stddev);
-					$.yield("nSamples", nSamples);
-					$.yield("mean", mean);
-					$.yield("stderr", stdErr);
-				})
-				CSV(precision(4))`,
-			ExpectCSV: []string{
-				"stddev,10.5733",
-				"nSamples,18.0000",
-				"mean,4.1667",
-				"stderr,2.4921",
-				"\n",
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptAnalysisInterpolate(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-interpolate",
-			Script: `
-				SCRIPT("js", {
-					const {simplex} = require("generator").simplex(123);
-					m = require("analysis");
-					xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-					ys = [0, 0.001, 0.002, 0.1, 1, 2, 2.5, -10, -10.01, 2.49, 2.53, 2.55];
-					pc = m.interpPiecewiseConstant(xs, ys);
-					pl = m.interpPiecewiseLinear(xs, ys);
-					as = m.interpAkimaSpline(xs, ys);
-					fb = m.interpFritschButland(xs, ys);
-				},{
-					n = xs.length;
-					dx = 0.25;
-					nPts = Math.round((n-1)/dx)+1;
-					for( i = 0; i < nPts; i++ ) {
-						x = xs[0] + i * dx;
-						$.yield(x, pc.predict(x), pl.predict(x), as.predict(x), fb.predict(x));
-					}				
-				})
-				CSV(precision(2))
-			`,
-			ExpectCSV: []string{
-				"0.00,0.00,0.00,0.00,0.00",
-				"0.25,0.00,0.00,0.00,0.00",
-				"0.50,0.00,0.00,0.00,0.00",
-				"0.75,0.00,0.00,0.00,0.00",
-				"1.00,0.00,0.00,0.00,0.00",
-				"1.25,0.00,0.00,0.00,0.00",
-				"1.50,0.00,0.00,0.00,0.00",
-				"1.75,0.00,0.00,0.00,0.00",
-				"2.00,0.00,0.00,0.00,0.00",
-				"2.25,0.10,0.03,-0.01,0.01",
-				"2.50,0.10,0.05,-0.01,0.03",
-				"2.75,0.10,0.08,0.02,0.06",
-				"3.00,0.10,0.10,0.10,0.10",
-				"3.25,1.00,0.33,0.26,0.22",
-				"3.50,1.00,0.55,0.49,0.45",
-				"3.75,1.00,0.78,0.75,0.73",
-				"4.00,1.00,1.00,1.00,1.00",
-				"4.25,2.00,1.25,1.24,1.26",
-				"4.50,2.00,1.50,1.50,1.54",
-				"4.75,2.00,1.75,1.75,1.79",
-				"5.00,2.00,2.00,2.00,2.00",
-				"5.25,2.50,2.12,2.22,2.17",
-				"5.50,2.50,2.25,2.37,2.33",
-				"5.75,2.50,2.38,2.47,2.45",
-				"6.00,2.50,2.50,2.50,2.50",
-				"6.25,-10.00,-0.62,0.83,0.55",
-				"6.50,-10.00,-3.75,-2.98,-3.75",
-				"6.75,-10.00,-6.88,-7.18,-8.04",
-				"7.00,-10.00,-10.00,-10.00,-10.00",
-				"7.25,-10.01,-10.00,-11.16,-10.00",
-				"7.50,-10.01,-10.00,-11.55,-10.01",
-				"7.75,-10.01,-10.01,-11.18,-10.01",
-				"8.00,-10.01,-10.01,-10.01,-10.01",
-				"8.25,2.49,-6.88,-7.18,-8.06",
-				"8.50,2.49,-3.76,-2.99,-3.77",
-				"8.75,2.49,-0.63,0.82,0.53",
-				"9.00,2.49,2.49,2.49,2.49",
-				"9.25,2.53,2.50,2.50,2.51",
-				"9.50,2.53,2.51,2.51,2.52",
-				"9.75,2.53,2.52,2.52,2.52",
-				"10.00,2.53,2.53,2.53,2.53",
-				"10.25,2.55,2.53,2.54,2.54",
-				"10.50,2.55,2.54,2.54,2.54",
-				"10.75,2.55,2.54,2.55,2.55",
-				"11.00,2.55,2.55,2.55,2.55",
-				"\n"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			runTestCase(t, tc)
-		})
-	}
-}
-
-func TestScriptSpatialHaversine(t *testing.T) {
-	tests := []TqlTestCase{
-		{
-			Name: "js-haversine",
-			Script: `
-				SCRIPT("js", {
-					m = require("spatial");
-					//buenos aires
-					lat1 = -34.83333;
-					lon1 = -58.5166646;
-					//paris
-					lat2 = 49.0083899664;
-					lon2 = 2.53844117956;
-					distance = m.haversine(lat1, lon1, lat2, lon2);
-					$.yield(distance);
-				})
-				CSV(precision(0))
-			`,
-			ExpectCSV: []string{"8337886", "\n"},
-		},
-		{
-			Name: "js-haversine-latlon",
-			Script: `
-				SCRIPT("js", {
-					m = require("spatial");
-					//buenos aires
-					coord1 = [-34.83333, -58.5166646];
-					//paris
-					coord2 = [49.0083899664, 2.53844117956];
-					distance = m.haversine(coord1, coord2);
-					$.yield(distance);
-				})
-				CSV(precision(0))
-			`,
-			ExpectCSV: []string{"8337886", "\n"},
-		},
-		{
-			Name: "js-haversine-coordinates",
-			Script: `
-				SCRIPT("js", {
-					m = require("spatial");
-					//buenos aires
-					coord1 = [-34.83333, -58.5166646];
-					//paris
-					coord2 = [49.0083899664, 2.53844117956];
-					distance = m.haversine({radius: 6371000, coordinates: [coord1, coord2]});
-					$.yield(distance);
-				})
-				CSV(precision(0))
-			`,
-			ExpectCSV: []string{"8328556", "\n"},
-		},
-	}
-
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			runTestCase(t, tc)
@@ -1034,6 +508,43 @@ func TestScriptModule(t *testing.T) {
 	}
 }
 
+func TestScriptException(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-exception",
+			Script: `
+				SCRIPT("js", {
+					o = {a: 1, other: ()=>{throw "other error";}};
+					o.a++;
+					$.yield(o.a)
+					try {
+						o.undef_function();
+					} catch (e) {
+						console.error(e.message);
+					}
+					try {
+						o.other();
+					} catch (e) {
+						console.error(e);
+					}
+				})
+				CSV()
+			`,
+			ExpectLog: []string{
+				"[ERROR] Object has no member 'undef_function'",
+				"[ERROR] other error",
+			},
+			ExpectCSV: []string{"2", "\n"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptOPCUA(t *testing.T) {
 	svr := startOPCUAServer()
 	defer svr.Close()
@@ -1043,52 +554,54 @@ func TestScriptOPCUA(t *testing.T) {
 			Name: "js-opcua-read",
 			Script: `
 				SCRIPT("js", {
-					ua = require("opcua");
+					ua = require("@jsh/opcua");
 					nodes = [
 						"ns=1;s=ro_bool",   // true
 						"ns=1;s=rw_bool",   // true
 						"ns=1;s=ro_int32",  // int32(5)
 						"ns=1;s=rw_int32",  // int32(5)
 					];
-					client = ua.client({ endpoint: "opc.tcp://localhost:4840" });
-					vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturnBoth});
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					vs = client.read({ nodes: nodes, timestampsToReturn: ua.TimestampsToReturn.Both});
 					vs.forEach((v, idx) => {
-						$.yield(nodes[idx], v.status, v.value);
+						$.yield(nodes[idx], v.status, v.value, v.type);
 					})
+					client.close();
 				})
 				CSV(timeformat('default'), tz('UTC'))
 			`,
 			ExpectCSV: []string{
-				"ns=1;s=ro_bool,0,true",
-				"ns=1;s=rw_bool,0,true",
-				"ns=1;s=ro_int32,0,5",
-				"ns=1;s=rw_int32,0,5",
+				"ns=1;s=ro_bool,0,true,Boolean",
+				"ns=1;s=rw_bool,0,true,Boolean",
+				"ns=1;s=ro_int32,0,5,Int32",
+				"ns=1;s=rw_int32,0,5,Int32",
 				"\n"},
 		},
 		{
 			Name: "js-opcua-read-perms",
 			Script: `
 				SCRIPT("js", {
-					ua = require("opcua");
+					ua = require("@jsh/opcua");
 					nodes = [
 						"ns=1;s=NoPermVariable",    // ua.StatusOK, int32(742)
 						"ns=1;s=ReadWriteVariable", // ua.StatusOK, 12.34
 						"ns=1;s=ReadOnlyVariable",  // ua.StatusOK, 9.87
 						"ns=1;s=NoAccessVariable",  // ua.StatusBadUserAccessDenied
 					];
-					client = ua.client({ endpoint: "opc.tcp://localhost:4840" });
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
 					vs = client.read({ nodes: nodes});
 					vs.forEach((v, idx) => {
-						$.yield(nodes[idx], v.statusCode, v.value);
+						$.yield(nodes[idx], v.statusCode, v.value, v.type);
 					})
+					client.close();
 				})
 				CSV()
 			`,
 			ExpectCSV: []string{
-				"ns=1;s=NoPermVariable,StatusGood,742",
-				"ns=1;s=ReadWriteVariable,StatusGood,12.34",
-				"ns=1;s=ReadOnlyVariable,StatusGood,9.87",
-				"ns=1;s=NoAccessVariable,StatusBadUserAccessDenied,NULL",
+				"ns=1;s=NoPermVariable,StatusGood,742,Int32",
+				"ns=1;s=ReadWriteVariable,StatusGood,12.34,Double",
+				"ns=1;s=ReadOnlyVariable,StatusGood,9.87,Double",
+				"ns=1;s=NoAccessVariable,StatusBadUserAccessDenied,NULL,Null",
 				"\n"},
 		},
 	}

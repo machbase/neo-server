@@ -33,6 +33,7 @@ func TestMain(m *testing.M) {
 	testServer.CreateTestTables()
 
 	db := testServer.DatabaseSVR()
+	api.SetDefault(db)
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
@@ -98,6 +99,7 @@ type TqlTestCase struct {
 	ExpectText         []string
 	ExpectFunc         func(t *testing.T, result string)
 	ExpectVolatileFile func(t *testing.T, mock *VolatileFileWriterMock)
+	ExpectLog          []string
 	RunCondition       func() bool
 }
 
@@ -118,9 +120,10 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 	defer cancel()
 
 	output := &bytes.Buffer{}
+	log := &bytes.Buffer{}
 	task := tql.NewTaskContext(ctx)
 	task.SetDatabase(testServer.DatabaseSVR())
-	task.SetLogWriter(os.Stdout)
+	task.SetLogWriter(log)
 	task.SetOutputWriterJson(output, true)
 	task.SetVolatileAssetsProvider(memMock)
 	if tc.Payload != "" {
@@ -135,6 +138,9 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 		return
 	}
 	result := task.Execute()
+	if logText := log.String(); logText != "" {
+		fmt.Println("LOG:", tc.Name, logText)
+	}
 	if tc.ExpectErr != "" {
 		require.Error(t, result.Err)
 		require.Equal(t, tc.ExpectErr, result.Err.Error())
@@ -144,6 +150,22 @@ func runTestCase(t *testing.T, tc TqlTestCase) {
 		t.Log("ERROR:", tc.Name, result.Err.Error())
 		t.Fail()
 		return
+	}
+
+	logLines := strings.Split(log.String(), "\n")
+	if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
+		logLines = logLines[:len(logLines)-1]
+	}
+	for i, line := range logLines {
+		if i >= len(tc.ExpectLog) {
+			break
+		}
+		if line != tc.ExpectLog[i] {
+			t.Errorf("Expected Log %q, got %q", tc.ExpectLog[i], line)
+		}
+	}
+	if len(logLines) > len(tc.ExpectLog) {
+		t.Errorf("Expected Log %d lines, got %d", len(tc.ExpectLog), len(logLines))
 	}
 
 	switch task.OutputContentType() {
@@ -1573,13 +1595,14 @@ func TestScriptInterrupt(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
-					for (var i = 0; i < 1000000000; i++) {
-					}
+					s = require("@jsh/system")
+					s.sleep("10s")
 					$.yield(123)
 				})
 				CSV()
 			`,
 			CtxTimeout: 100 * time.Millisecond,
+			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:5:39(9))"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT should be interrupted by context timeout,
 				// so no result should be returned
@@ -1591,8 +1614,8 @@ func TestScriptInterrupt(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
-					for (var i = 0; i < 1000000000; i++) {
-					}
+					s = require("@jsh/system")
+					s.sleep("10s")
 				},{
 					$.yield(123)
 				})
@@ -1611,8 +1634,8 @@ func TestScriptInterrupt(t *testing.T) {
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
 					function finalize(){
-						for (var i = 0; i < 1000000000; i++) {
-						}
+						s = require("@jsh/system")
+						s.sleep("10s")
 					}
 				},{
 					$.yield($.values[0])
@@ -1620,6 +1643,7 @@ func TestScriptInterrupt(t *testing.T) {
 				CSV()
 			`,
 			CtxTimeout: 100 * time.Millisecond,
+			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:6:14(10))"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT was interrupted during the finalize()
 				// so the result exists
@@ -1860,7 +1884,7 @@ func TestGeoJSON(t *testing.T) {
 					var lat = 37.497850;
 					var lon =  127.027756;
 					var name = "Gangnam-cross";
-					m = require("spatial");
+					m = require("@jsh/spatial");
 					var obj = m.parseGeoJSON({
 						type: "Feature",
 						geometry: {
@@ -1897,7 +1921,7 @@ func TestGeoJSON(t *testing.T) {
 			Name: "js-geojson-polygon",
 			Script: `
 				SCRIPT("js", {
-					m = require("spatial");
+					m = require("@jsh/spatial");
 					obj = m.parseGeoJSON({
 						type:"Feature",
 						geometry: {

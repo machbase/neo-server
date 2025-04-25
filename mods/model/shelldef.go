@@ -20,9 +20,10 @@ const (
 	SHELLID_TAZ   = "TAZ"
 	SHELLID_DSH   = "DSH"
 	SHELLID_SHELL = "SHELL"
+	SHELLID_JSH   = "JSH"
 )
 
-var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL",
+var reservedShellNames = []string{"SQL", "TQL", "WORKSHEET", "TAG ANALYZER", "SHELL", "JSH",
 	/*and more for future uses*/
 	"WORKBOOK", "SCRIPT", "RUN", "CMD", "COMMAND", "CONSOLE", "MONITOR", "CHART",
 	"DASHBOARD", "LOG", "HOME", "PLAYGROUND", "GRAPH", "FLOW", "DIAGRAM", "PLOT"}
@@ -33,6 +34,9 @@ var reservedWebShellDef = map[string]*ShellDefinition{
 	SHELLID_WRK: {Type: "wrk", Label: "WORKSHEET", Icon: "clipboard-text-play-outline", Id: SHELLID_WRK},
 	SHELLID_TAZ: {Type: "taz", Label: "TAG ANALYZER", Icon: "chart-line", Id: SHELLID_TAZ},
 	SHELLID_DSH: {Type: "dsh", Label: "DASHBOARD", Icon: "dashboard", Id: SHELLID_DSH},
+	SHELLID_JSH: {Type: SHELL_TERM, Label: "JSH", Icon: "console", Id: SHELLID_JSH, Command: "@.js",
+		Attributes: &ShellAttributes{},
+	},
 	SHELLID_SHELL: {Type: SHELL_TERM, Label: "SHELL", Icon: "console", Id: SHELLID_SHELL,
 		Attributes: &ShellAttributes{Cloneable: true},
 	},
