@@ -43,7 +43,7 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	// m.ps()
 	o.Set("ps", j.process_ps)
 	// m.openEditor("/path/to/file")
-	o.Set("openEditor", j.process_open_editor)
+	o.Set("openEditor", j.process_openEditor)
 	// tok = m.addCleanup(()=>{})
 	o.Set("addCleanup", j.process_addCleanup)
 	// m.removeCleanup(tok)
@@ -71,18 +71,16 @@ func (j *Jsh) process_cwd() js.Value {
 }
 
 // jsh.openEditor(call js.FunctionCall) js.Value {
-func (j *Jsh) process_open_editor(call js.FunctionCall) js.Value {
-	if j.consoleId == "" {
+func (j *Jsh) process_openEditor(call js.FunctionCall) js.Value {
+	if j.consoleId == "" || j.userName == "" {
 		panic(j.vm.ToValue("openEditor: no console bind"))
 	}
 	if len(call.Arguments) == 0 {
-		panic(j.vm.ToValue(fmt.Sprintf("openEditor: missing argument")))
+		panic(j.vm.ToValue("openEditor: missing argument"))
 	}
 	var path string
 	j.vm.ExportTo(call.Arguments[0], &path)
-	topic := fmt.Sprintf("console:%s:%s", j.userName, j.consoleId)
-	// TODO replace Log to OpenFile
-	eventbus.PublishLog(topic, "INFO", "open editor - "+path)
+	eventbus.PublishOpenFile(fmt.Sprintf("console:%s:%s", j.userName, j.consoleId), path)
 	return js.Undefined()
 }
 
