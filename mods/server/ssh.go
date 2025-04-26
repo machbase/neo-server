@@ -617,6 +617,8 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []string) {
 	_ = env
 
+	user, _, _ := svr.findShell(ss)
+
 	// if ssh session is not interactive, disable echo
 	echo := len(ss.Command()) == 0
 
@@ -624,9 +626,10 @@ func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []str
 		ss.Context(),
 		jsh.WithNativeModules(jsh.NativeModuleNames()...),
 		jsh.WithParent(nil),
-		jsh.WithJshReader(ss),
-		jsh.WithJshWriter(ss),
-		jsh.WithJshEcho(echo),
+		jsh.WithReader(ss),
+		jsh.WithWriter(ss),
+		jsh.WithEcho(echo),
+		jsh.WithUserName(user),
 	)
 	err := j.Exec(append([]string{cmd}, args...))
 	if err != nil {

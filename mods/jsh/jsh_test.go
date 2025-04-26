@@ -19,9 +19,9 @@ func TestJshInterrupt(t *testing.T) {
 	w := &bytes.Buffer{}
 	jsh := NewJsh(
 		ctx,
-		WithJshWriter(w),
+		WithWriter(w),
 		WithNativeModules("@jsh/process", "@jsh/opcua"),
-		WithJshWorkingDir("/"),
+		WithWorkingDir("/"),
 	)
 
 	go func() {
@@ -76,8 +76,8 @@ func TestJsh(t *testing.T) {
 			jsh := NewJsh(
 				ctx,
 				WithNativeModules("@jsh/process", "@jsh/opcua"),
-				WithJshWriter(w),
-				WithJshWorkingDir("/"))
+				WithWriter(w),
+				WithWorkingDir("/"))
 
 			err := jsh.Exec(ts.args)
 			require.NoError(t, err)

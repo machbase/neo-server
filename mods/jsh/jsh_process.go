@@ -9,6 +9,7 @@ import (
 	"time"
 
 	js "github.com/dop251/goja"
+	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/jsh/system"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -41,6 +42,8 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("kill", j.process_kill)
 	// m.ps()
 	o.Set("ps", j.process_ps)
+	// m.openEditor("/path/to/file")
+	o.Set("openEditor", j.process_open_editor)
 	// tok = m.addCleanup(()=>{})
 	o.Set("addCleanup", j.process_addCleanup)
 	// m.removeCleanup(tok)
@@ -65,6 +68,22 @@ func (j *Jsh) process_args() js.Value {
 // jsh.cwd()
 func (j *Jsh) process_cwd() js.Value {
 	return j.vm.ToValue(j.cwd)
+}
+
+// jsh.openEditor(call js.FunctionCall) js.Value {
+func (j *Jsh) process_open_editor(call js.FunctionCall) js.Value {
+	if j.consoleId == "" {
+		panic(j.vm.ToValue("openEditor: no console bind"))
+	}
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue(fmt.Sprintf("openEditor: missing argument")))
+	}
+	var path string
+	j.vm.ExportTo(call.Arguments[0], &path)
+	topic := fmt.Sprintf("console:%s:%s", j.userName, j.consoleId)
+	// TODO replace Log to OpenFile
+	eventbus.PublishLog(topic, "INFO", "open editor - "+path)
+	return js.Undefined()
 }
 
 // jsh.chdir("/path/to/dir")
@@ -170,16 +189,7 @@ func (j *Jsh) process_exec(call js.FunctionCall) js.Value {
 			panic(j.vm.ToValue(fmt.Sprintf("exec: invalid argument %s", call.Arguments[i].ExportType())))
 		}
 	}
-	subJsh := NewJsh(
-		j.Context,
-		WithNativeModules(j.modules...),
-		WithJshWriter(j.writer),
-		WithJshReader(j.reader),
-		WithJshWorkingDir(j.cwd),
-		WithJshEcho(j.echo),
-		WithParent(j),
-	)
-	err := subJsh.Exec(args)
+	err := j.NewChild().Exec(args)
 	if err != nil {
 		return j.vm.NewGoError(err)
 	}
@@ -196,13 +206,13 @@ func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
 		}
 		w := logging.GetLog(logName)
 		nJsh := NewJsh(
-			ctx,              // daemon
-			WithParent(nil),  // daemon
-			WithJshWriter(w), // log writer
-			WithJshReader(bytes.NewBuffer(nil)),
+			ctx,             // daemon
+			WithParent(nil), // daemon
+			WithWriter(w),   // log writer
+			WithReader(bytes.NewBuffer(nil)),
 			WithNativeModules(j.modules...),
-			WithJshWorkingDir("/"),
-			WithJshEcho(false),
+			WithWorkingDir("/"),
+			WithEcho(false),
 		)
 		nJsh.program = j.program
 		nJsh.Run(name, "", args)

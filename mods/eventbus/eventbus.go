@@ -28,7 +28,7 @@ type Ping struct {
 }
 
 type Log struct {
-	Timestmap int64  `json:"timestamp"`
+	Timestamp int64  `json:"timestamp"`
 	Level     string `json:"level"`
 	Task      string `json:"task,omitempty"`
 	Message   string `json:"message"`
@@ -54,7 +54,7 @@ func NewLog(level string, message string) *Event {
 	return &Event{
 		Type: EVT_LOG,
 		Log: &Log{
-			Timestmap: time.Now().UnixNano(),
+			Timestamp: time.Now().UnixNano(),
 			Level:     level,
 			Message:   message,
 		},
@@ -65,7 +65,7 @@ func NewLogTask(level string, task string, message string) *Event {
 	return &Event{
 		Type: EVT_LOG,
 		Log: &Log{
-			Timestmap: time.Now().UnixNano(),
+			Timestamp: time.Now().UnixNano(),
 			Level:     level,
 			Task:      task,
 			Message:   message,

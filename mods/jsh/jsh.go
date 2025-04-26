@@ -61,30 +61,36 @@ func releaseJshPID(j *Jsh) {
 
 type JshOption func(*Jsh)
 
-func WithJshReader(r io.Reader) JshOption {
+func WithReader(r io.Reader) JshOption {
 	return func(j *Jsh) {
 		j.reader = r
 	}
 }
 
-func WithJshWriter(w io.Writer) JshOption {
+func WithWriter(w io.Writer) JshOption {
 	return func(j *Jsh) {
 		j.writer = w
 	}
 }
 
-func WithJshWorkingDir(cwd string) JshOption {
+func WithWorkingDir(cwd string) JshOption {
 	return func(j *Jsh) {
 		j.cwd = filepath.Clean(cwd)
 	}
 }
 
-// WithJshEcho sets the echo option for the Jsh instance.
+// WithEcho sets the echo option for the Jsh instance.
 // If true, the Jsh will echo the input to the writer.
 // default is true.
-func WithJshEcho(b bool) JshOption {
+func WithEcho(b bool) JshOption {
 	return func(j *Jsh) {
 		j.echo = b
+	}
+}
+
+func WithNewLineCRLF(b bool) JshOption {
+	return func(j *Jsh) {
+		j.newLineCRLF = b
 	}
 }
 
@@ -92,6 +98,12 @@ func WithJshEcho(b bool) JshOption {
 func WithUserName(name string) JshOption {
 	return func(j *Jsh) {
 		j.userName = name
+	}
+}
+
+func WithConsoleId(id string) JshOption {
+	return func(j *Jsh) {
+		j.consoleId = id
 	}
 }
 
@@ -137,24 +149,26 @@ type Jsh struct {
 	context.Context
 	*Cleaner
 
-	pid        JshPID
-	ppid       JshPID
-	cwd        string
-	reader     io.Reader
-	writer     io.Writer
-	echo       bool
-	vm         *js.Runtime
-	chStart    chan struct{}
-	chStop     chan struct{}
-	sourceName string
-	sourceCode string
-	userName   string
-	args       []string
-	modules    []string
-	program    *js.Program
-	startAt    time.Time
-	resultVal  js.Value
-	resultErr  []error
+	pid         JshPID
+	ppid        JshPID
+	cwd         string
+	reader      io.Reader
+	writer      io.Writer
+	consoleId   string // if the process bind to a web-console (websocket)
+	echo        bool
+	newLineCRLF bool
+	vm          *js.Runtime
+	chStart     chan struct{}
+	chStop      chan struct{}
+	sourceName  string
+	sourceCode  string
+	userName    string
+	args        []string
+	modules     []string
+	program     *js.Program
+	startAt     time.Time
+	resultVal   js.Value
+	resultErr   []error
 }
 
 func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
@@ -177,33 +191,23 @@ func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 	return ret
 }
 
-func (j *Jsh) Print(args ...any) error {
-	if l, ok := j.writer.(logging.Log); ok {
-		toks := make([]string, len(args))
-		for i, arg := range args {
-			if s, ok := arg.(string); ok {
-				toks[i] = s
-			} else {
-				toks[i] = fmt.Sprintf("%v", arg)
-			}
-		}
-		l.Log(logging.LevelInfo, strings.Join(toks, " "))
-	} else {
-		for i, arg := range args {
-			if i > 0 {
-				fmt.Fprint(j.writer, " ")
-			}
-			if s, ok := arg.(string); ok {
-				fmt.Fprint(j.writer, s)
-			} else {
-				fmt.Fprintf(j.writer, "%v", arg)
-			}
-		}
-	}
-	return nil
+func (j *Jsh) NewChild() *Jsh {
+	child := NewJsh(
+		j.Context,
+		WithNativeModules(j.modules...),
+		WithParent(j),
+		WithReader(j.reader),
+		WithWriter(j.writer),
+		WithEcho(j.echo),
+		WithNewLineCRLF(j.newLineCRLF),
+		WithWorkingDir(j.cwd),
+		WithUserName(j.userName),
+		WithConsoleId(j.consoleId),
+	)
+	return child
 }
 
-func (j *Jsh) Log(level logging.Level, args ...any) error {
+func (j *Jsh) print0(level logging.Level, args ...any) error {
 	if l, ok := j.writer.(logging.Log); ok {
 		toks := make([]string, len(args))
 		for i, arg := range args {
@@ -219,15 +223,28 @@ func (j *Jsh) Log(level logging.Level, args ...any) error {
 			if i > 0 {
 				fmt.Fprint(j.writer, " ")
 			}
+			var line string
 			if s, ok := arg.(string); ok {
-				fmt.Fprint(j.writer, s)
+				line = s
 			} else {
-				fmt.Fprintf(j.writer, "%v", arg)
+				line = fmt.Sprintf("%v", arg)
+			}
+			if j.newLineCRLF {
+				fmt.Fprint(j.writer, strings.ReplaceAll(line, "\n", "\r\n"))
+			} else {
+				fmt.Fprint(j.writer, line)
 			}
 		}
-		fmt.Fprintln(j.writer)
 	}
 	return nil
+}
+
+func (j *Jsh) Print(args ...any) error {
+	return j.print0(logging.LevelInfo, args...)
+}
+
+func (j *Jsh) Log(level logging.Level, args ...any) error {
+	return j.print0(level, append(args, "\n")...)
 }
 
 func (j *Jsh) Exec(args []string) error {

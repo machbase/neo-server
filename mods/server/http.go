@@ -34,6 +34,7 @@ import (
 	"github.com/machbase/neo-server/v8/api/schedule"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
+	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -1281,12 +1282,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	}
 	// user able to decide shell other than "machbase-neo shell"
 	userShell := ctx.Query("shell")
-	if userShell == "JSH" {
-		consoleInfo := parseConsoleId(ctx)
-		if len(consoleInfo.consoleId) > 0 {
-			userShell = fmt.Sprintf("%s@%s", userShell, consoleInfo.consoleId)
-		}
-	}
+
 	// current websocket spec requires pass the token through handshake process
 	token := ctx.Query("token")
 	claim, err := svr.verifyAccessToken(token)
@@ -1311,6 +1307,37 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	if err != nil {
 		svr.log.Errorf("term ws upgrade fail %s", err.Error())
 		ctx.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	defer func() {
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	if userShell == model.SHELLID_JSH {
+		consoleInfo := parseConsoleId(ctx)
+		wsRw := &WsReadWriter{Conn: conn}
+		terminals.Register(termKey, (*WebTerm)(nil)) // TODO set windows size for JSH
+		defer terminals.Unregister(termKey)
+		j := jsh.NewJsh(
+			ctx,
+			jsh.WithNativeModules(jsh.NativeModuleNames()...),
+			jsh.WithParent(nil),
+			jsh.WithReader(wsRw),
+			jsh.WithWriter(wsRw),
+			jsh.WithEcho(true),
+			jsh.WithNewLineCRLF(true),
+			jsh.WithUserName(termLoginName),
+			jsh.WithConsoleId(consoleInfo.consoleId),
+		)
+		err = j.Exec([]string{"@"})
+		if err != nil {
+			for _, err := range j.Errors() {
+				svr.log.Warnf("term jsh %s", jsh.ErrorToString(err))
+				ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
+			}
+		}
 		return
 	}
 
@@ -1479,7 +1506,7 @@ func (svr *httpd) handleTermWindowSize(ctx *gin.Context) {
 			"success": false,
 			"reason":  fmt.Sprintf("term '%s' not found", termKey)})
 		return
-	} else {
+	} else if term != nil { // If the websocket is JSH, *WebTerm is nil
 		err := term.SetWindowSize(req.Rows, req.Cols)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"success": false, "reason": err.Error()})
