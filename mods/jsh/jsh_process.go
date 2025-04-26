@@ -44,6 +44,8 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("ps", j.process_ps)
 	// m.openEditor("/path/to/file")
 	o.Set("openEditor", j.process_openEditor)
+	// m.process_parseCommandLine("cmd arg1 arg2 | cmd2 > redirect")
+	o.Set("parseCommandLine", j.process_parseCommandLine)
 	// tok = m.addCleanup(()=>{})
 	o.Set("addCleanup", j.process_addCleanup)
 	// m.removeCleanup(tok)
@@ -240,11 +242,7 @@ func (j *Jsh) process_ps(call js.FunctionCall) js.Value {
 	jshMutex.RLock()
 	defer jshMutex.RUnlock()
 
-	ret := make([]*js.Object, 0, len(jshProcesses))
-	for _, p := range jshProcesses {
-		if p == nil {
-			continue
-		}
+	var toObj = func(p *Jsh) *js.Object {
 		obj := j.vm.NewObject()
 		obj.Set("pid", uint32(p.pid))
 		obj.Set("ppid", uint32(p.ppid))
@@ -252,6 +250,26 @@ func (j *Jsh) process_ps(call js.FunctionCall) js.Value {
 		obj.Set("name", p.sourceName)
 		obj.Set("startAt", p.startAt)
 		obj.Set("uptime", time.Since(p.startAt).Round(time.Second).String())
+		return obj
+	}
+	if len(call.Arguments) > 0 {
+		var pid uint32
+		if err := j.vm.ExportTo(call.Arguments[0], &pid); err != nil {
+			panic(j.vm.ToValue(fmt.Sprintf("invalid argument %s", call.Arguments[0].ExportType())))
+		}
+		if p, exists := jshProcesses[JshPID(pid)]; exists && p != nil {
+			return j.vm.ToValue(toObj(p))
+		} else {
+			panic(j.vm.ToValue(fmt.Sprintf("ps: pid %d not found", pid)))
+		}
+	}
+
+	ret := make([]*js.Object, 0, len(jshProcesses))
+	for _, p := range jshProcesses {
+		if p == nil {
+			continue
+		}
+		obj := toObj(p)
 		ret = append(ret, obj)
 	}
 	return j.vm.ToValue(ret)
@@ -290,4 +308,105 @@ func (j *Jsh) process_removeCleanup(call js.FunctionCall) js.Value {
 	}
 	j.RemoveCleanup(id)
 	return js.Undefined()
+}
+
+func (j *Jsh) process_parseCommandLine(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue("missing argument"))
+	}
+	line, ok := call.Arguments[0].Export().(string)
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("invalid argument %s", call.Arguments[0].ExportType())))
+	}
+	parts := ParseCommandLine(line)
+	return j.vm.ToValue(parts)
+}
+
+type CommandPart struct {
+	Args     []string `json:"args"`
+	Pipe     bool     `json:"pipe"`
+	Redirect string   `json:"redirect"` // ">" or ">>"
+	Target   string   `json:"target"`
+}
+
+// parse line into args, pipe('|') and redirect('>') and redirect('>>')
+func ParseCommandLine(line string) []CommandPart {
+	var parts []CommandPart
+	var current CommandPart
+	var buffer string
+	var inSingleQuotes, inDoubleQuotes bool
+
+	for i := 0; i < len(line); i++ {
+		char := line[i]
+
+		switch char {
+		case ' ':
+			if inSingleQuotes || inDoubleQuotes {
+				buffer += string(char)
+			} else if buffer != "" {
+				current.Args = append(current.Args, buffer)
+				buffer = ""
+			}
+		case '"':
+			if inSingleQuotes {
+				buffer += string(char)
+			} else {
+				inDoubleQuotes = !inDoubleQuotes
+			}
+		case '\'':
+			if inDoubleQuotes {
+				buffer += string(char)
+			} else {
+				inSingleQuotes = !inSingleQuotes
+			}
+		case '|':
+			if inSingleQuotes || inDoubleQuotes {
+				buffer += string(char)
+			} else {
+				if buffer != "" {
+					current.Args = append(current.Args, buffer)
+					buffer = ""
+				}
+				current.Pipe = true
+				parts = append(parts, current)
+				current = CommandPart{}
+			}
+		case '>':
+			if inSingleQuotes || inDoubleQuotes {
+				buffer += string(char)
+			} else {
+				if buffer != "" {
+					current.Args = append(current.Args, buffer)
+					buffer = ""
+				}
+				if i+1 < len(line) && line[i+1] == '>' {
+					current.Redirect = ">>"
+					i++
+				} else {
+					current.Redirect = ">"
+				}
+				// Capture the target file
+				for i+1 < len(line) && line[i+1] == ' ' {
+					i++
+				}
+				start := i + 1
+				for i+1 < len(line) && line[i+1] != ' ' && line[i+1] != '|' {
+					i++
+				}
+				current.Target = line[start : i+1]
+				parts = append(parts, current)
+				current = CommandPart{}
+			}
+		default:
+			buffer += string(char)
+		}
+	}
+
+	if buffer != "" {
+		current.Args = append(current.Args, buffer)
+	}
+	if len(current.Args) > 0 || current.Pipe || current.Redirect != "" {
+		parts = append(parts, current)
+	}
+	return parts
 }

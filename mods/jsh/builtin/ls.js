@@ -4,8 +4,8 @@ r = jsh.readdir(".", (ent) => {
     fname = ent.name.padEnd(30, " ")
     flag = ent.isDir ? (ent.virtual ? "v" : "d") : "-"
     flag += ent.readOnly ? "r-" : "rw"
-    fsize = (""+ent.size).padStart(10, " ")
-    jsh.print(flag, fsize, " ", fname, "\n")
+    fSize = (""+ent.size).padStart(10, " ")
+    jsh.print(" ", flag, fSize, " ", fname, "\n")
     return true
 })
 

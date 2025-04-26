@@ -20,20 +20,25 @@ while(alive) {
 		continue
 	}
 	line = line.trim()
-	args = line.split(/[ ,]+/)
-    if(args[0] == "exit") {
-        alive = false
-	} else if(args[0] == "cd") {
-		r = jsh.chdir(args[1])
-		printResult(r)
-	} else if(args[0] == "pwd") {
-		jsh.print(jsh.cwd(), "\n")
-    } else {
-		try {
-			r = jsh.exec(args[0], ...args.slice(1))
-			printResult(r)
-		} catch(e) {
-			jsh.print(e.message, "\n")
-		}
+    parts = jsh.parseCommandLine(line)
+    for( i = 0; i < parts.length; i++) {
+        p = parts[i]
+        args = p.args
+        if(args[0] == "exit") {
+            alive = false
+            break
+        } else if(args[0] == "cd") {
+            r = jsh.chdir(...args.slice(1))
+            printResult(r)
+        } else if(args[0] == "pwd") {
+            jsh.print(jsh.cwd(...args.slice(1)), "\n")
+        } else {
+            try {
+                r = jsh.exec(args[0], ...args.slice(1))
+                printResult(r)
+            } catch(e) {
+                jsh.print(e.message, "\n")
+            }
+        }
     }
 }

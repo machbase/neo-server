@@ -85,3 +85,64 @@ func TestJsh(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCommandLine(t *testing.T) {
+	tests := []struct {
+		name   string
+		line   string
+		expect []CommandPart
+	}{
+		{
+			name:   "empty",
+			line:   "",
+			expect: []CommandPart{},
+		},
+		{
+			name: "args_with_quotes",
+			line: `cmd arg1 "arg2 with space" 'arg3 "double quote" within single quote'`,
+			expect: []CommandPart{
+				{Args: []string{"cmd", "arg1", "arg2 with space", `arg3 "double quote" within single quote`}},
+			},
+		},
+		{
+			name: "pipe_commands",
+			line: `cmd1 arg1 | cmd2 arg2 | cmd3 arg3`,
+			expect: []CommandPart{
+				{Args: []string{"cmd1", "arg1"}, Pipe: true},
+				{Args: []string{"cmd2", "arg2"}, Pipe: true},
+				{Args: []string{"cmd3", "arg3"}},
+			},
+		},
+		{
+			name: "pipe_and_redirect",
+			line: `echo "hello world" | grep "world" > output.txt`,
+			expect: []CommandPart{
+				{Args: []string{"echo", "hello world"}, Pipe: true, Redirect: "", Target: ""},
+				{Args: []string{"grep", "world"}, Pipe: false, Redirect: ">", Target: "output.txt"},
+			},
+		},
+		{
+			name: "pipe_and_redirect_contains_tabs",
+			line: `echo "hello		world" | grep "world" >> output.txt`,
+			expect: []CommandPart{
+				{Args: []string{"echo", "hello		world"}, Pipe: true, Redirect: "", Target: ""},
+				{Args: []string{"grep", "world"}, Pipe: false, Redirect: ">>", Target: "output.txt"},
+			},
+		},
+	}
+
+	for _, ts := range tests {
+		t.Run(ts.name, func(t *testing.T) {
+			result := ParseCommandLine(ts.line)
+			for i := 0; i < len(result); i++ {
+				require.Equal(t, ts.expect[i], result[i])
+			}
+			if len(ts.expect) > len(result) {
+				t.Fatalf("Expected %d parts, got %d", len(ts.expect), len(result))
+				for i := len(result); i < len(ts.expect); i++ {
+					t.Fatalf("Expected [%d] %v", i, ts.expect[i])
+				}
+			}
+		})
+	}
+}

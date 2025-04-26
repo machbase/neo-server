@@ -1309,11 +1309,7 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		ctx.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	defer func() {
-		if conn != nil {
-			conn.Close()
-		}
-	}()
+	defer conn.Close()
 
 	if userShell == model.SHELLID_JSH {
 		consoleInfo := parseConsoleId(ctx)
@@ -1363,9 +1359,6 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		terminals.Unregister(termKey)
 		if term != nil {
 			term.Close()
-		}
-		if conn != nil {
-			conn.Close()
 		}
 	}()
 

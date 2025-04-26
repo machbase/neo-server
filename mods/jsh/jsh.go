@@ -207,7 +207,7 @@ func (j *Jsh) NewChild() *Jsh {
 	return child
 }
 
-func (j *Jsh) print0(level logging.Level, args ...any) error {
+func (j *Jsh) print0(level logging.Level, eolLine bool, args ...any) error {
 	if l, ok := j.writer.(logging.Log); ok {
 		toks := make([]string, len(args))
 		for i, arg := range args {
@@ -235,16 +235,23 @@ func (j *Jsh) print0(level logging.Level, args ...any) error {
 				fmt.Fprint(j.writer, line)
 			}
 		}
+		if eolLine {
+			if j.newLineCRLF {
+				fmt.Fprint(j.writer, "\r\n")
+			} else {
+				fmt.Fprint(j.writer, "\n")
+			}
+		}
 	}
 	return nil
 }
 
 func (j *Jsh) Print(args ...any) error {
-	return j.print0(logging.LevelInfo, args...)
+	return j.print0(logging.LevelInfo, false, args...)
 }
 
 func (j *Jsh) Log(level logging.Level, args ...any) error {
-	return j.print0(level, append(args, "\n")...)
+	return j.print0(level, true, args...)
 }
 
 func (j *Jsh) Exec(args []string) error {
