@@ -410,7 +410,7 @@ func (j *Jsh) loadSource(path string) ([]byte, error) {
 }
 
 //go:embed builtin/jsh.js
-var replCode string
+var shCode string
 
 //go:embed builtin/ls.js
 var lsCode string
@@ -430,7 +430,7 @@ func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) 
 	}
 	if cmdPath == "@.js" {
 		sourceName = "jsh.js"
-		sourceCode = replCode
+		sourceCode = shCode
 	} else if cmdPath == "ls.js" {
 		sourceName = "ls"
 		sourceCode = lsCode

@@ -18,9 +18,11 @@ import (
 func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	// m = require("@jsh/process")
 	o := module.Get("exports").(*js.Object)
+	// m.pid()
 	o.Set("pid", j.process_pid)
+	// m.ppid()
 	o.Set("ppid", j.process_ppid)
-	// m.args
+	// m.args()
 	o.Set("args", j.process_args)
 	// m.cwd()
 	o.Set("cwd", j.process_cwd)
@@ -34,8 +36,6 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("print", j.process_print)
 	// m.exec(args)
 	o.Set("exec", j.process_exec)
-	// m.daemonize()
-	o.Set("daemonize", j.process_daemonize)
 	// m.sleep(ms)
 	o.Set("sleep", system.Sleep(j, r))
 	// m.kill(pid)
@@ -50,6 +50,9 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("addCleanup", j.process_addCleanup)
 	// m.removeCleanup(tok)
 	o.Set("removeCleanup", j.process_removeCleanup)
+
+	// m.daemonize()
+	o.Set("daemonize", j.process_daemonize)
 }
 
 // jsh.pid()

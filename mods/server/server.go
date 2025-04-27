@@ -34,6 +34,7 @@ import (
 	"github.com/machbase/neo-server/v8/booter"
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/bridge"
+	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -246,6 +247,25 @@ func (s *Server) Start() error {
 	}
 	s.log.Infof("%s\n\n  machbase-neo web running at:\n\n%s\n\n  ready in %s",
 		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
+
+	// jsh service
+	if result, err := jsh.ReadServices(); err != nil {
+		s.log.Warnf("JshServices read failed.", err.Error())
+	} else {
+		for _, name := range result.Added {
+			s.log.Info("JshServices read ADDED", name)
+		}
+		for _, name := range result.Updated {
+			s.log.Info("JshServices read UPDATED", name)
+		}
+		for _, name := range result.Removed {
+			s.log.Info("JshServices read REMOVED", name)
+		}
+		for _, e := range result.Errors {
+			s.log.Errorf("JshServices read ERROR %q %v", e.Name, e.ReadError)
+		}
+		result.Update()
+	}
 
 	// pkgs
 	s.pkgMgr.Start()
