@@ -97,6 +97,33 @@ func New(name string) (api.Database, error) {
 	return nil, fmt.Errorf("unknown database type: %s", name)
 }
 
+func NewWithDataSource(driverName string, dataSourceName string) (api.Database, error) {
+	var db *sql.DB
+	var err error
+
+	switch driverName {
+	case "sqlite":
+		db, err = sqlite.Connect(dataSourceName)
+		break
+	case "mssql":
+		db, err = mssql.Connect(dataSourceName)
+		break
+	case "postgres":
+		db, err = postgres.Connect(dataSourceName)
+		break
+	case "mysql":
+		db, err = mysql.Connect(dataSourceName)
+		break
+	default:
+		return nil, fmt.Errorf("unknown database type: %s", driverName)
+	}
+	if err != nil {
+		return nil, err
+	}
+	ret := &BridgedDatabase{db: db, dbType: driverName, dbConnect: dataSourceName}
+	return ret, nil
+}
+
 func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {
 	if db == nil {
 		panic("db is nil")

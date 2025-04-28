@@ -42,6 +42,8 @@ func NewClient(ctx context.Context, rt *js.Runtime, optValue []js.Value) *Client
 	opts := struct {
 		BridgeName       string `json:"bridge"`
 		LowerCaseColumns bool   `json:"lowerCaseColumns"`
+		Driver           string `json:"driver"`
+		DataSource       string `json:"dataSource"`
 	}{
 		BridgeName: "",
 	}
@@ -56,16 +58,22 @@ func NewClient(ctx context.Context, rt *js.Runtime, optValue []js.Value) *Client
 		BridgeName:       opts.BridgeName,
 		LowerCaseColumns: opts.LowerCaseColumns,
 	}
-	if opts.BridgeName == "" {
-		ret.db = api.Default()
-		if ret.db == nil {
-			panic(rt.ToValue("dbms: no database"))
-		}
-	} else {
+	if opts.BridgeName != "" {
 		if db, err := connector.New(opts.BridgeName); err == nil {
 			ret.db = db
 		} else {
 			panic(rt.NewGoError(err))
+		}
+	} else if opts.Driver != "" {
+		if db, err := connector.NewWithDataSource(opts.Driver, opts.DataSource); err == nil {
+			ret.db = db
+		} else {
+			panic(rt.NewGoError(err))
+		}
+	} else {
+		ret.db = api.Default()
+		if ret.db == nil {
+			panic(rt.ToValue("dbms: no database"))
 		}
 	}
 
