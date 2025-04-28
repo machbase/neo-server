@@ -163,12 +163,17 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 	for _, up := range result.Updated {
 		up.Stop()
 		cb(up, "UPDATE stop", up.StopError)
-		up.Start()
-		cb(up, "UPDATE start", up.StartError)
+		if up.StopError == nil {
+			up.Start()
+			cb(up, "UPDATE start", up.StartError)
+		}
 	}
 	for _, add := range result.Added {
 		add.Start()
 		cb(add, "ADD start", add.StartError)
+	}
+	for _, fl := range result.Errors {
+		cb(fl, "CONF", fl.ReadError)
 	}
 }
 
