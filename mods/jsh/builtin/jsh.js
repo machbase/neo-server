@@ -15,7 +15,7 @@ function printResult(r) {
 var alive = true;
 while(alive) {
     jsh.print("jsh", jsh.cwd(), "> ")
-    line = jsh.readline()
+    line = jsh.readLine()
 	if(line == undefined || line == "" || line == "\n") {
 		continue
 	}

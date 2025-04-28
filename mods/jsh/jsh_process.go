@@ -26,12 +26,12 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("args", j.process_args)
 	// m.cwd()
 	o.Set("cwd", j.process_cwd)
-	// m.chdir("/path/to/dir")
-	o.Set("chdir", j.process_chdir)
-	// m.readdir("/path/to/dir", (entry) => {})
-	o.Set("readdir", j.process_readdir)
-	// m.readline()
-	o.Set("readline", j.process_readline)
+	// m.cd("/path/to/dir")
+	o.Set("cd", j.process_cd)
+	// m.readDir("/path/to/dir", (entry) => {})
+	o.Set("readDir", j.process_readDir)
+	// m.readLine()
+	o.Set("readLine", j.process_readLine)
 	// m.stdout
 	o.Set("print", j.process_print)
 	// m.exec(args)
@@ -89,14 +89,14 @@ func (j *Jsh) process_openEditor(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-// jsh.chdir("/path/to/dir")
-func (j *Jsh) process_chdir(call js.FunctionCall) js.Value {
+// jsh.cd("/path/to/dir")
+func (j *Jsh) process_cd(call js.FunctionCall) js.Value {
 	if len(call.Arguments) == 0 {
-		panic(j.vm.ToValue(fmt.Sprintf("chdir: invalid argument %s", call.Arguments[0].ExportType())))
+		panic(j.vm.ToValue(fmt.Sprintf("cd: invalid argument %s", call.Arguments[0].ExportType())))
 	}
 	path, ok := call.Arguments[0].Export().(string)
 	if !ok {
-		panic(j.vm.ToValue(fmt.Sprintf("chdir: invalid argument %s", call.Arguments[0].ExportType())))
+		panic(j.vm.ToValue(fmt.Sprintf("cd: invalid argument %s", call.Arguments[0].ExportType())))
 	}
 
 	if !filepath.IsAbs(path) {
@@ -113,8 +113,8 @@ func (j *Jsh) process_chdir(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-// jsh.readdir("/path/to/dir", (dir) => {})
-func (j *Jsh) process_readdir(call js.FunctionCall) js.Value {
+// jsh.readDir("/path/to/dir", (dir) => {})
+func (j *Jsh) process_readDir(call js.FunctionCall) js.Value {
 	if len(call.Arguments) != 2 {
 		panic(j.vm.ToValue(fmt.Sprintf("readdir: missing argument")))
 	}
