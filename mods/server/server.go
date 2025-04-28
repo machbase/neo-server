@@ -252,19 +252,13 @@ func (s *Server) Start() error {
 	if result, err := jsh.ReadServices(); err != nil {
 		s.log.Warnf("JshServices read failed.", err.Error())
 	} else {
-		for _, name := range result.Added {
-			s.log.Info("JshServices read ADDED", name)
-		}
-		for _, name := range result.Updated {
-			s.log.Info("JshServices read UPDATED", name)
-		}
-		for _, name := range result.Removed {
-			s.log.Info("JshServices read REMOVED", name)
-		}
-		for _, e := range result.Errors {
-			s.log.Errorf("JshServices read ERROR %q %v", e.Name, e.ReadError)
-		}
-		result.Update()
+		result.Update(func(sc *jsh.ServiceConfig, act string, err error) {
+			if err != nil {
+				s.log.Info("JshService", act, err.Error())
+			} else {
+				s.log.Info("JshService", act)
+			}
+		})
 	}
 
 	// pkgs

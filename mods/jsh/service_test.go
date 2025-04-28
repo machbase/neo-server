@@ -1,6 +1,7 @@
 package jsh
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -13,9 +14,17 @@ func TestServices(t *testing.T) {
 
 	list, err := ReadServices()
 	require.NoError(t, err)
-	require.Equal(t, 1, len(list.Added))
-	require.Equal(t, "svc1", list.Added[0].Name)
-	require.Equal(t, 1, len(list.Errors))
+
+	fmt.Println("==>", list.Errors[0].ReadError)
 	require.Equal(t, "wrong1", list.Errors[0].Name)
 	require.Equal(t, "json: cannot unmarshal string into Go struct field ServiceConfig.stop_args of type []string", list.Errors[0].ReadError.Error())
+
+	require.Equal(t, 1, len(list.Added))
+	require.NoError(t, list.Added[0].ReadError)
+	require.Equal(t, "svc1", list.Added[0].Name)
+	require.Equal(t, "/sbin/svc.js", list.Added[0].StartCmd)
+	require.Equal(t, []string{"start", "arg1"}, list.Added[0].StartArgs)
+
+	require.Equal(t, "/sbin/svc.js", list.Added[0].StopCmd)
+	require.Equal(t, []string{"stop"}, list.Added[0].StopArgs)
 }

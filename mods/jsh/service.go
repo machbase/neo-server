@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
@@ -26,9 +25,10 @@ type ServiceConfig struct {
 	Name      string   `json:"-"`
 	Enabled   bool     `json:"enabled"`
 	StartCmd  string   `json:"start_cmd"`
-	StartArgs []string `json:"start_args"`
-	StopCmd   string   `json:"stop_cmd"`
-	StopArgs  []string `json:"stop_args"`
+	StartArgs []string `json:"start_args,omitempty"`
+
+	StopCmd  string   `json:"stop_cmd"`
+	StopArgs []string `json:"stop_args,omitempty"`
 
 	ReadError  error `json:"-"`
 	StartError error `json:"-"`
@@ -135,62 +135,75 @@ func ReadServices() (ServiceList, error) {
 	return ret, nil
 }
 
-func (list ServiceList) Update() {
+func (s *ServiceConfig) createJsh(ctx context.Context) *Jsh {
+	return NewJsh(
+		&JshDaemonContext{ctx},
+		WithNativeModules(NativeModuleNames()...),
+		WithParent(nil),
+		WithReader(nil),
+		WithWriter(os.Stdout), // TODO: change to logger
+		WithEcho(false),
+		WithUserName("sys"),
+	)
+}
+
+func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
+	if cb == nil {
+		cb = func(s *ServiceConfig, act string, err error) {
+			if err != nil {
+				fmt.Println("----", s.Name, act, err)
+			}
+		}
+	}
+	for _, rm := range result.Removed {
+		rm.Stop()
+		cb(rm, "REMOVE stop", rm.StopError)
+	}
+
+	for _, up := range result.Updated {
+		up.Stop()
+		cb(up, "UPDATE stop", up.StopError)
+		up.Start()
+		cb(up, "UPDATE start", up.StartError)
+	}
+	for _, add := range result.Added {
+		add.Start()
+		cb(add, "ADD start", add.StartError)
+	}
+}
+
+func (s *ServiceConfig) Start() {
 	jshServicesLock.Lock()
 	defer jshServicesLock.Unlock()
 
-	jshMutex.RLock()
-	defer jshMutex.RUnlock()
+	ctx := context.Background()
+	j := s.createJsh(ctx)
+	s.StartError = j.Exec(append([]string{s.StartCmd}, s.StartArgs...))
+	if s.StartError == nil {
+		jshServices[s.Name] = &Service{
+			Config: s,
+		}
+	}
+}
 
-	sh := func(ctx context.Context) *Jsh {
-		return NewJsh(
-			&JshDaemonContext{ctx},
-			WithNativeModules(NativeModuleNames()...),
-			WithParent(nil),
-			WithReader(nil),
-			WithWriter(os.Stdout), // TODO: change to logger
-			WithEcho(false),
-			WithUserName("sys"),
-		)
-	}
+func (s *ServiceConfig) Stop() {
+	jshServicesLock.Lock()
+	defer jshServicesLock.Unlock()
 
-	for _, rm := range list.Removed {
-		svc, exists := jshServices[rm.Name]
-		if !exists {
-			continue
-		}
-		if svc.Config.StopCmd == "" {
-			if p, ok := jshProcesses[svc.pid]; ok {
-				p.Interrupt()
-				svc.Config.StopError = nil
-			}
-		} else {
-			ctx, ctxCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			j := sh(ctx)
-			svc.Config.StopError = j.Exec(append([]string{svc.Config.StopCmd}, svc.Config.StopArgs...))
-			ctxCancel()
-		}
-		delete(jshServices, rm.Name)
+	svc, exists := jshServices[s.Name]
+	if !exists {
+		s.StopError = fmt.Errorf("service %s not found", s.Name)
+		return
 	}
-
-	for _, up := range list.Updated {
-		svc, exists := jshServices[up.Name]
-		if !exists {
-			continue
+	if svc.Config.StopCmd == "" {
+		if p, ok := jshProcesses[svc.pid]; ok {
+			p.Interrupt()
+			svc.Config.StopError = nil
 		}
-		// TODO  stop process and start process
-		_ = svc
+	} else {
+		ctx := context.Background()
+		j := s.createJsh(ctx)
+		svc.Config.StopError = j.Exec(append([]string{svc.Config.StopCmd}, svc.Config.StopArgs...))
 	}
-	for _, add := range list.Added {
-		// start process
-		ctx, ctxCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		j := sh(ctx)
-		add.StartError = j.Exec(append([]string{add.StartCmd}, add.StartArgs...))
-		ctxCancel()
-		if add.StartError == nil {
-			jshServices[add.Name] = &Service{
-				Config: add,
-			}
-		}
-	}
+	delete(jshServices, s.Name)
 }
