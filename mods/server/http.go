@@ -1331,7 +1331,11 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 		if err != nil {
 			for _, err := range j.Errors() {
 				svr.log.Warnf("term jsh %s", jsh.ErrorToString(err))
-				ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
+				// Check if the connection is hijacked by attempting a zero-byte write.
+				_, err := ctx.Writer.Write(nil)
+				if !errors.Is(err, http.ErrHijacked) {
+					ctx.String(http.StatusInternalServerError, jsh.ErrorToString(err))
+				}
 			}
 		}
 		return
