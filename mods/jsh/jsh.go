@@ -267,6 +267,13 @@ func (j *Jsh) Exec(args []string) error {
 	return j.Run(sourceName, sourceCode, args)
 }
 
+func (j *Jsh) ExecBackground(args []string) error {
+	go func() {
+		j.Exec(args)
+	}()
+	return nil
+}
+
 func init() {
 	nativeModules = map[string]func(context.Context) require.ModuleLoader{
 		"@jsh/process":   func(ctx context.Context) require.ModuleLoader { return ctx.(*Jsh).moduleProcess },

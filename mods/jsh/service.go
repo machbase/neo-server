@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
@@ -19,6 +20,7 @@ var jshServicesLock = sync.RWMutex{}
 type Service struct {
 	Config *ServiceConfig
 	pid    JshPID
+	log    logging.Log
 }
 
 type ServiceConfig struct {
@@ -136,12 +138,13 @@ func ReadServices() (ServiceList, error) {
 }
 
 func (s *ServiceConfig) createJsh(ctx context.Context) *Jsh {
+	log := logging.GetLog(fmt.Sprintf("services.%s", s.Name))
 	return NewJsh(
 		&JshDaemonContext{ctx},
 		WithNativeModules(NativeModuleNames()...),
 		WithParent(nil),
 		WithReader(nil),
-		WithWriter(os.Stdout), // TODO: change to logger
+		WithWriter(log),
 		WithEcho(false),
 		WithUserName("sys"),
 	)
@@ -149,11 +152,7 @@ func (s *ServiceConfig) createJsh(ctx context.Context) *Jsh {
 
 func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 	if cb == nil {
-		cb = func(s *ServiceConfig, act string, err error) {
-			if err != nil {
-				fmt.Println("----", s.Name, act, err)
-			}
-		}
+		cb = func(s *ServiceConfig, act string, err error) {}
 	}
 	for _, rm := range result.Removed {
 		rm.Stop()
@@ -178,17 +177,19 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 }
 
 func (s *ServiceConfig) Start() {
-	jshServicesLock.Lock()
-	defer jshServicesLock.Unlock()
+	go func() {
+		jshServicesLock.Lock()
+		defer jshServicesLock.Unlock()
 
-	ctx := context.Background()
-	j := s.createJsh(ctx)
-	s.StartError = j.Exec(append([]string{s.StartCmd}, s.StartArgs...))
-	if s.StartError == nil {
-		jshServices[s.Name] = &Service{
-			Config: s,
+		ctx := context.Background()
+		j := s.createJsh(ctx)
+		s.StartError = j.ExecBackground(append([]string{s.StartCmd}, s.StartArgs...))
+		if s.StartError == nil {
+			jshServices[s.Name] = &Service{
+				Config: s,
+			}
 		}
-	}
+	}()
 }
 
 func (s *ServiceConfig) Stop() {

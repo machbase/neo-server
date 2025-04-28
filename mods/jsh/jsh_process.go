@@ -202,20 +202,20 @@ func (j *Jsh) process_exec(call js.FunctionCall) js.Value {
 // jsh.daemonize()
 func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
 	go func(name string, program *js.Program, args []string) {
-		ctx := &JshDaemonContext{Context: context.Background()}
 		logName := name
 		if logName == "" {
 			logName = "jsh"
 		}
 		w := logging.GetLog(logName)
 		nJsh := NewJsh(
-			ctx,             // daemon
+			&JshDaemonContext{Context: context.Background()}, // daemon
 			WithParent(nil), // daemon
 			WithWriter(w),   // log writer
 			WithReader(bytes.NewBuffer(nil)),
 			WithNativeModules(j.modules...),
 			WithWorkingDir("/"),
 			WithEcho(false),
+			WithUserName(j.userName),
 		)
 		nJsh.program = j.program
 		nJsh.Run(name, "", args)
