@@ -393,6 +393,10 @@ func (rows *Rows) Columns() (api.Columns, error) {
 	}
 }
 
+func (rows *Rows) Err() error {
+	return rows.err
+}
+
 // Next returns true if there are at least one more record that can be fetchable
 // rows, _ := client.Query("select name, value from my_table")
 //

@@ -223,6 +223,10 @@ func (r *WrappedSqlRows) Message() string {
 	return "success"
 }
 
+func (r *WrappedSqlRows) Err() error {
+	return r.sqlRows.Err()
+}
+
 func scanTypeToDataType(sqlType string) DataType {
 	switch sqlType {
 	case "bool", "sql.NullBool":
