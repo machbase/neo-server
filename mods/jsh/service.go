@@ -25,7 +25,7 @@ type Service struct {
 
 type ServiceConfig struct {
 	Name      string   `json:"-"`
-	Enabled   bool     `json:"enabled"`
+	Enable    bool     `json:"enable"`
 	StartCmd  string   `json:"start_cmd"`
 	StartArgs []string `json:"start_args,omitempty"`
 
@@ -40,7 +40,7 @@ type ServiceConfig struct {
 func (svc *Service) String() string {
 	b := &strings.Builder{}
 	enable := "Disabled"
-	if svc.Config.Enabled {
+	if svc.Config.Enable {
 		enable = "ENABLED"
 	} else {
 		enable = "disabled"
@@ -59,7 +59,7 @@ func (svc *Service) String() string {
 
 func (lc *ServiceConfig) Diff(rc *ServiceConfig) bool {
 	return lc.Name == rc.Name &&
-		lc.Enabled == rc.Enabled &&
+		lc.Enable == rc.Enable &&
 		lc.StartCmd == rc.StartCmd &&
 		slices.Equal(lc.StartArgs, rc.StartArgs) &&
 		lc.StopCmd == rc.StopCmd &&
@@ -163,13 +163,17 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 		up.Stop()
 		cb(up, "UPDATE stop", up.StopError)
 		if up.StopError == nil {
-			up.Start()
-			cb(up, "UPDATE start", up.StartError)
+			if up.Enable {
+				up.Start()
+				cb(up, "UPDATE start", up.StartError)
+			}
 		}
 	}
 	for _, add := range result.Added {
-		add.Start()
-		cb(add, "ADD start", add.StartError)
+		if add.Enable {
+			add.Start()
+			cb(add, "ADD start", add.StartError)
+		}
 	}
 	for _, fl := range result.Errors {
 		cb(fl, "CONF", fl.ReadError)
