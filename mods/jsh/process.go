@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	js "github.com/dop251/goja"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/jsh/system"
 	"github.com/machbase/neo-server/v8/mods/logging"
@@ -36,6 +38,8 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("readLine", j.process_readLine)
 	// m.stdout
 	o.Set("print", j.process_print)
+	// m.table
+	o.Set("Table", j.process_Table)
 	// m.exec(args)
 	o.Set("exec", j.process_exec)
 	// m.sleep(ms)
@@ -55,6 +59,17 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 
 	// m.daemonize()
 	o.Set("daemonize", j.process_daemonize)
+
+	// m.serviceStatus()
+	o.Set("serviceStatus", j.process_serviceStatus)
+	// m.serviceStart(svc)
+	o.Set("serviceStart", j.process_serviceStart)
+	// m.serviceStop(svc)
+	o.Set("serviceStop", j.process_serviceStop)
+	// m.serviceReread()
+	o.Set("serviceReread", j.process_serviceReread)
+	// m.serviceUpdate()
+	o.Set("serviceUpdate", j.process_serviceUpdate)
 }
 
 // jsh.pid()
@@ -210,6 +225,48 @@ func (j *Jsh) process_print(call js.FunctionCall) js.Value {
 		panic(j.vm.NewGoError(err))
 	}
 	return js.Undefined()
+}
+
+func (j *Jsh) process_Table(call js.ConstructorCall) *js.Object {
+	ret := j.vm.NewObject()
+	tb := table.NewWriter()
+	tb.SetStyle(table.StyleLight)
+
+	ret.Set("appendRow", func(call js.FunctionCall) js.Value {
+		row := make([]any, len(call.Arguments))
+		for i := range call.Arguments {
+			if err := j.vm.ExportTo(call.Arguments[i], &row[i]); err != nil {
+				panic(j.vm.ToValue(fmt.Sprintf("Table.appendRow: invalid argument %s", err.Error())))
+			}
+		}
+		tb.AppendRow(row)
+		return js.Undefined()
+	})
+	ret.Set("resetRows", func(call js.FunctionCall) js.Value {
+		tb.ResetRows()
+		return js.Undefined()
+	})
+	ret.Set("appendHeader", func(call js.FunctionCall) js.Value {
+		row := make([]any, len(call.Arguments))
+		for i := range call.Arguments {
+			if err := j.vm.ExportTo(call.Arguments[i], &row[i]); err != nil {
+				panic(j.vm.ToValue(fmt.Sprintf("Table.appendRow: invalid argument %s", err.Error())))
+			}
+		}
+		tb.AppendHeader(row)
+		return js.Undefined()
+	})
+	ret.Set("resetHeaders", func(call js.FunctionCall) js.Value {
+		tb.ResetHeaders()
+		return js.Undefined()
+	})
+	ret.Set("render", func(call js.FunctionCall) js.Value {
+		for _, ln := range strings.Split(tb.Render(), "\n") {
+			j.Print(ln, "\n")
+		}
+		return js.Undefined()
+	})
+	return ret
 }
 
 // jsh.exec(["cmd", "arg1", "arg2"])
@@ -445,4 +502,130 @@ func ParseCommandLine(line string) []CommandPart {
 		parts = append(parts, current)
 	}
 	return parts
+}
+
+// jsh.serviceStatus()
+func (j *Jsh) process_serviceStatus(call js.FunctionCall) js.Value {
+	serviceName := ""
+	if len(call.Arguments) > 0 {
+		err := j.vm.ExportTo(call.Arguments[0], &serviceName)
+		if err != nil {
+			panic(j.vm.ToValue(fmt.Sprintf("invalid argument %s", call.Arguments[0].ExportType())))
+		}
+	}
+
+	jshServicesLock.RLock()
+	defer jshServicesLock.RUnlock()
+	ret := make([]map[string]any, 0)
+	if serviceName != "" {
+		s, ok := jshServices[serviceName]
+		if ok {
+			obj := map[string]any{}
+			obj["name"] = s.Config.Name
+			obj["enable"] = s.Config.Enable
+			if s.pid > 0 {
+				obj["pid"] = s.pid
+				obj["status"] = "Running"
+			} else {
+				obj["pid"] = 0
+				obj["status"] = "Stopped"
+			}
+			ret = append(ret, obj)
+		}
+	} else {
+		for name, s := range jshServices {
+			obj := map[string]any{}
+			obj["name"] = name
+			obj["enable"] = s.Config.Enable
+			if s.pid > 0 {
+				obj["pid"] = s.pid
+				obj["status"] = "Running"
+			} else {
+				obj["pid"] = 0
+				obj["status"] = "Stopped"
+			}
+			ret = append(ret, obj)
+		}
+	}
+	return j.vm.ToValue(ret)
+}
+
+// jsh.serviceStart(svc)
+func (j *Jsh) process_serviceStart(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue("serviceStart: missing argument"))
+	}
+	svc, ok := call.Arguments[0].Export().(string)
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStart: invalid argument %s", call.Arguments[0].ExportType())))
+	}
+	s, ok := jshServices[svc]
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStart: service %s not found", svc)))
+	}
+	if s.pid > 0 {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStart: service %s already running", svc)))
+	}
+	s.Config.Start()
+	return js.Undefined()
+}
+
+// jsh.serviceStop(svc)
+func (j *Jsh) process_serviceStop(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue("serviceStop: missing argument"))
+	}
+	svc, ok := call.Arguments[0].Export().(string)
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStop: invalid argument %s", call.Arguments[0].ExportType())))
+	}
+	s, ok := jshServices[svc]
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStop: service %s not found", svc)))
+	}
+	if s.pid == 0 {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceStop: service %s not running", svc)))
+	}
+	s.Config.Stop()
+	return js.Undefined()
+}
+
+// jsh.serviceReread()
+func (j *Jsh) process_serviceReread(call js.FunctionCall) js.Value {
+	if len(call.Arguments) > 0 {
+		panic(j.vm.ToValue("serviceReread: no argument"))
+	}
+	list, err := ReadServices()
+	if err != nil {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceReread: %s", err.Error())))
+	}
+	return j.vm.ToValue(list)
+}
+
+// jsh.serviceUpdate()
+func (j *Jsh) process_serviceUpdate(call js.FunctionCall) js.Value {
+	if len(call.Arguments) > 0 {
+		panic(j.vm.ToValue("serviceUpdate: no argument"))
+	}
+	list, err := ReadServices()
+	if err != nil {
+		panic(j.vm.ToValue(fmt.Sprintf("serviceUpdate: %s", err.Error())))
+	}
+
+	result := make([]map[string]any, 0)
+	list.Update(func(sc *ServiceConfig, s string, err error) {
+		if err != nil {
+			result = append(result, map[string]any{
+				"name":   sc.Name,
+				"status": "error",
+				"error":  err.Error(),
+			})
+		} else {
+			result = append(result, map[string]any{
+				"name":   sc.Name,
+				"status": s,
+			})
+		}
+	})
+	return j.vm.ToValue(result)
 }

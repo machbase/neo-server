@@ -6,18 +6,13 @@ import (
 )
 
 var cmds = map[string]string{
-	"jsh": jshCode,
 	"kill": killCode,
 	"ls": lsCode,
 	"open": openCode,
 	"ps": psCode,
+	"servicectl": servicectlCode,
+	"jsh": jshCode,
 }
-
-//go:embed jsh.js
-var jshCode string
-
-//go:embed kill.js
-var killCode string
 
 //go:embed ls.js
 var lsCode string
@@ -27,4 +22,13 @@ var openCode string
 
 //go:embed ps.js
 var psCode string
+
+//go:embed servicectl.js
+var servicectlCode string
+
+//go:embed jsh.js
+var jshCode string
+
+//go:embed kill.js
+var killCode string
 

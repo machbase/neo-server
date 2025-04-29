@@ -1,13 +1,12 @@
-jsh = require("@jsh/process")
+const {Table, ps} = require("@jsh/process")
 
-jsh.print("  pid     ppid   name                     uptime\n")
-jsh.print("------- ------- ------------------------ -----------\n")
-for( const p of jsh.ps() ) {
-    jsh.print(
-        (""+p.pid).padStart(7, " "), 
-        p.ppid == 0xFFFF ? "     - " : (""+p.ppid).padStart(7, " "),
-        p.name.padEnd(24, " "),
-        p.uptime,
-        "\n")
+tab = new Table()
+tab.appendHeader("PID", "PPID", "User", "Name", "Uptime")
+for( const p of ps() ) {
+    ppid = "-"
+    if ( p.ppid != 0xFFFFFFFF) {
+        ppid = p.ppid
+    }
+    tab.appendRow(p.pid, ppid, p.user, p.name, p.uptime)
 }
-jsh.print("\n")
+tab.render()

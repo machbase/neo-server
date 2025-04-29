@@ -30,6 +30,13 @@ import (
 
 type JshPID uint32
 
+func (o JshPID) String() string {
+	if o == PID_ORPHAN {
+		return "-"
+	}
+	return fmt.Sprintf("%d", o)
+}
+
 var jshProcesses = make(map[JshPID]*Jsh)
 var jshMutex = sync.RWMutex{}
 var jshCounter JshPID = 1024
@@ -125,7 +132,7 @@ func WithNativeModules(modules ...string) JshOption {
 
 const (
 	PID_DAEMON JshPID = 1
-	PID_ORPHAN JshPID = 0xFFFF
+	PID_ORPHAN JshPID = 0xFFFFFFFF
 )
 
 func WithParent(parent *Jsh) JshOption {
@@ -170,7 +177,16 @@ type Jsh struct {
 	startAt     time.Time
 	resultVal   js.Value
 	resultErr   []error
+
+	onStatusChanged func(j *Jsh, status JshStatus)
 }
+
+type JshStatus string
+
+const (
+	JshStatusRunning JshStatus = "Running"
+	JshStatusStopped JshStatus = "Stopped"
+)
 
 func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 	ret := &Jsh{
@@ -338,11 +354,17 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 	go func() {
 		allocJshPID(j)
 		defer func() {
+			if j.onStatusChanged != nil {
+				j.onStatusChanged(j, JshStatusStopped)
+			}
 			releaseJshPID(j)
 			close(j.chStop)
 		}()
 		close(j.chStart)
 
+		if j.onStatusChanged != nil {
+			j.onStatusChanged(j, JshStatusRunning)
+		}
 		if j.program == nil {
 			if program, err := js.Compile(sourceName, sourceCode, false); err != nil {
 				j.resultErr = append(j.resultErr, err)

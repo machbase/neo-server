@@ -24,7 +24,7 @@ type Service struct {
 }
 
 type ServiceConfig struct {
-	Name      string   `json:"-"`
+	Name      string   `json:"name,omitempty"`
 	Enable    bool     `json:"enable"`
 	StartCmd  string   `json:"start_cmd"`
 	StartArgs []string `json:"start_args,omitempty"`
@@ -57,7 +57,7 @@ func (svc *Service) String() string {
 	return b.String()
 }
 
-func (lc *ServiceConfig) Diff(rc *ServiceConfig) bool {
+func (lc *ServiceConfig) Equal(rc *ServiceConfig) bool {
 	return lc.Name == rc.Name &&
 		lc.Enable == rc.Enable &&
 		lc.StartCmd == rc.StartCmd &&
@@ -67,11 +67,11 @@ func (lc *ServiceConfig) Diff(rc *ServiceConfig) bool {
 }
 
 type ServiceList struct {
-	NoChanged []*ServiceConfig
-	Updated   []*ServiceConfig
-	Removed   []*ServiceConfig
-	Added     []*ServiceConfig
-	Errors    []*ServiceConfig
+	Unchanged []*ServiceConfig `json:"unchanged"`
+	Updated   []*ServiceConfig `json:"updated"`
+	Removed   []*ServiceConfig `json:"removed"`
+	Added     []*ServiceConfig `json:"added"`
+	Errors    []*ServiceConfig `json:"errors"`
 }
 
 func ReadServices() (ServiceList, error) {
@@ -111,18 +111,14 @@ func ReadServices() (ServiceList, error) {
 	defer jshServicesLock.Unlock()
 
 	// Check if the new service is different from the existing one
-	ret.Updated = make([]*ServiceConfig, 0, len(jshServices))
-	ret.Added = make([]*ServiceConfig, 0, len(jshServices))
-	ret.Removed = make([]*ServiceConfig, 0, 8)
-
 	for name, newConf := range newList {
 		if oldSvc, exists := jshServices[name]; exists {
-			if newConf.Diff(oldSvc.Config) {
+			if newConf.Equal(oldSvc.Config) {
+				// no change
+				ret.Unchanged = append(ret.Unchanged, newList[name])
+			} else {
 				// changed
 				ret.Updated = append(ret.Updated, newList[name])
-			} else {
-				// no change
-				ret.NoChanged = append(ret.NoChanged, newList[name])
 			}
 		} else {
 			// new service
@@ -156,6 +152,9 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 	}
 	for _, rm := range result.Removed {
 		rm.Stop()
+		jshServicesLock.Lock()
+		delete(jshServices, rm.Name)
+		jshServicesLock.Unlock()
 		cb(rm, "REMOVE stop", rm.StopError)
 	}
 
@@ -170,6 +169,9 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 		}
 	}
 	for _, add := range result.Added {
+		jshServicesLock.Lock()
+		jshServices[add.Name] = &Service{Config: add}
+		jshServicesLock.Unlock()
 		if add.Enable {
 			add.Start()
 			cb(add, "ADD start", add.StartError)
@@ -182,38 +184,44 @@ func (result ServiceList) Update(cb func(*ServiceConfig, string, error)) {
 
 func (s *ServiceConfig) Start() {
 	go func() {
-		jshServicesLock.Lock()
-		defer jshServicesLock.Unlock()
+		jshServicesLock.RLock()
+		defer jshServicesLock.RUnlock()
 
 		ctx := context.Background()
 		j := s.createJsh(ctx)
-		s.StartError = j.ExecBackground(append([]string{s.StartCmd}, s.StartArgs...))
-		if s.StartError == nil {
-			jshServices[s.Name] = &Service{
-				Config: s,
+		obj, exists := jshServices[s.Name]
+		if !exists {
+			s.StopError = fmt.Errorf("service %s not found", s.Name)
+			return
+		}
+		j.onStatusChanged = func(_ *Jsh, status JshStatus) {
+			if status == JshStatusRunning {
+				obj.pid = j.pid
+			} else if status == JshStatusStopped {
+				obj.pid = 0
 			}
 		}
+		s.StartError = j.ExecBackground(append([]string{s.StartCmd}, s.StartArgs...))
 	}()
 }
 
 func (s *ServiceConfig) Stop() {
-	jshServicesLock.Lock()
-	defer jshServicesLock.Unlock()
+	jshServicesLock.RLock()
+	defer jshServicesLock.RUnlock()
 
-	svc, exists := jshServices[s.Name]
+	obj, exists := jshServices[s.Name]
 	if !exists {
 		s.StopError = fmt.Errorf("service %s not found", s.Name)
 		return
 	}
-	if svc.Config.StopCmd == "" {
-		if p, ok := jshProcesses[svc.pid]; ok {
+	if obj.Config.StopCmd == "" {
+		if p, ok := jshProcesses[obj.pid]; ok {
 			p.Interrupt()
-			svc.Config.StopError = nil
+			obj.Config.StopError = nil
 		}
 	} else {
 		ctx := context.Background()
 		j := s.createJsh(ctx)
-		svc.Config.StopError = j.Exec(append([]string{svc.Config.StopCmd}, svc.Config.StopArgs...))
+		obj.Config.StopError = j.Exec(append([]string{obj.Config.StopCmd}, obj.Config.StopArgs...))
 	}
-	delete(jshServices, s.Name)
 }
