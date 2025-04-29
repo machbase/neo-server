@@ -498,29 +498,36 @@ func BitTable(t *testing.T, db api.Database, ctx context.Context) {
 	}
 	rows.Close()
 
-	if _, ok := db.(*machcli.Database); ok {
-		rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
-		require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
-		if rows != nil {
-			rows.Close()
-		}
+	rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
+	if _, ok := conn.(*machcli.Conn); ok {
+		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
+		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
 	} else {
-		// TODO : BITAND(i4, 1) SHOULD fail
-		// BUG: https://github.com/machbase/neo/issues/956
-		rows, err = conn.Query(ctx, "SELECT * FROM bit_table WHERE BITAND(i4, 1) = 1")
-		// require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
-		if rows != nil {
-			rows.Close()
-		}
+		require.NoError(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
+		require.False(t, rows.Next(), "select bit table BITAND(i4, 1) should fail")
+		require.Error(t, rows.Err(), "select bit table BITAND(i4, 1) should fail")
+		// https://github.com/machbase/neo/issues/956
+		require.Equal(t, "MACH-ERR 2037 Function [BITAND] argument data type is mismatched.", rows.Err().Error())
 	}
 
-	// TODO : BITAND(i1, i3) SHOULD fail
-	// BUG: https://github.com/machbase/neo/issues/956
-	// rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
-	//require.Error(t, err, "select bit table BITAND(i4, 1) should fail")
-	// if rows != nil {
-	// 	rows.Close()
-	// }
+	if rows != nil {
+		rows.Close()
+	}
+
+	rows, err = conn.Query(ctx, "SELECT BITAND(i1, i3) FROM bit_table")
+	if _, ok := conn.(*machcli.Conn); ok {
+		require.Error(t, err, "select bit table BITAND(i1, i3) should fail within Query()")
+		require.Equal(t, "MACHCLI-ERR-2037, Function [BITAND] argument data type is mismatched.", err.Error())
+	} else {
+		require.NoError(t, err, "select bit table BITAND(i1, i3) should not fail within Query()")
+		require.False(t, rows.Next(), "select bit table BITAND(i1, i3) should fail")
+		require.Error(t, rows.Err(), "select bit table BITAND(i4, 1) should fail")
+		// https://github.com/machbase/neo/issues/956
+		require.Equal(t, "MACH-ERR 2037 Function [BITAND] argument data type is mismatched.", rows.Err().Error())
+	}
+	if rows != nil {
+		rows.Close()
+	}
 
 	result = conn.Exec(ctx, "DROP TABLE bit_table")
 	require.NoError(t, result.Err(), "drop bit table fail")
