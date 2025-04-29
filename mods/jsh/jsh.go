@@ -15,6 +15,7 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/mods/jsh/analysis"
+	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 	"github.com/machbase/neo-server/v8/mods/jsh/console"
 	"github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
@@ -416,18 +417,6 @@ func (j *Jsh) loadSource(path string) ([]byte, error) {
 	return ent.Content, nil
 }
 
-//go:embed builtin/jsh.js
-var shCode string
-
-//go:embed builtin/ls.js
-var lsCode string
-
-//go:embed builtin/ps.js
-var psCode string
-
-//go:embed builtin/kill.js
-var killCode string
-
 var jsPath = []string{".", "/sbin"}
 
 func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) {
@@ -436,17 +425,12 @@ func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) 
 		cmdPath += ".js"
 	}
 	if cmdPath == "@.js" {
-		sourceName = "jsh.js"
-		sourceCode = shCode
-	} else if cmdPath == "ls.js" {
-		sourceName = "ls"
-		sourceCode = lsCode
-	} else if cmdPath == "ps.js" {
-		sourceName = "ps"
-		sourceCode = psCode
-	} else if cmdPath == "kill.js" {
-		sourceName = "kill"
-		sourceCode = killCode
+		cmdPath = "jsh.js"
+	}
+
+	if code, ok := builtin.Code(cmdPath); ok {
+		sourceName = strings.TrimSuffix(cmdPath, ".js")
+		sourceCode = code
 	} else if strings.HasPrefix(cmdPath, "/") {
 		if ent, err := root_fs.Get(cmdPath); err == nil && !ent.IsDir {
 			sourceName = cmdPath

@@ -28,7 +28,7 @@ while(alive) {
             alive = false
             break
         } else if(args[0] == "cd") {
-            r = jsh.chdir(...args.slice(1))
+            r = jsh.cd(...args.slice(1))
             printResult(r)
         } else if(args[0] == "pwd") {
             jsh.print(jsh.cwd(...args.slice(1)), "\n")

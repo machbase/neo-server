@@ -1312,6 +1312,9 @@ func (svr *httpd) handleTermData(ctx *gin.Context) {
 	defer conn.Close()
 
 	if userShell == model.SHELLID_JSH {
+		// TODO: client should send X-Console-Id,
+		// but this handler is for the web socket
+		// and web socket can not assign http header of the request.
 		consoleInfo := parseConsoleId(ctx)
 		wsRw := &WsReadWriter{Conn: conn}
 		terminals.Register(termKey, (*WebTerm)(nil)) // TODO set windows size for JSH

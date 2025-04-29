@@ -30,6 +30,8 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("cd", j.process_cd)
 	// m.readDir("/path/to/dir", (entry) => {})
 	o.Set("readDir", j.process_readDir)
+	// m.exists("/path/to/file"): {path: String, isDir: Boolean, readOnly: Boolean}
+	o.Set("exists", j.process_exists)
 	// m.readLine()
 	o.Set("readLine", j.process_readLine)
 	// m.stdout
@@ -77,6 +79,7 @@ func (j *Jsh) process_cwd() js.Value {
 
 // jsh.openEditor(call js.FunctionCall) js.Value {
 func (j *Jsh) process_openEditor(call js.FunctionCall) js.Value {
+	fmt.Println("openEditor", j.consoleId, j.userName)
 	if j.consoleId == "" || j.userName == "" {
 		panic(j.vm.ToValue("openEditor: no console bind"))
 	}
@@ -85,6 +88,7 @@ func (j *Jsh) process_openEditor(call js.FunctionCall) js.Value {
 	}
 	var path string
 	j.vm.ExportTo(call.Arguments[0], &path)
+	fmt.Println("openEditor", path)
 	eventbus.PublishOpenFile(fmt.Sprintf("console:%s:%s", j.userName, j.consoleId), path)
 	return js.Undefined()
 }
@@ -146,10 +150,10 @@ func (j *Jsh) process_readDir(call js.FunctionCall) js.Value {
 	root_fs := ssfs.Default()
 	ent, err := root_fs.Get(path)
 	if err != nil {
-		panic(j.vm.NewGoError(err))
+		panic(j.vm.ToValue(fmt.Sprintf("readdir: %s", err.Error())))
 	}
 	if !ent.IsDir {
-		panic(j.vm.ToValue(fmt.Errorf("%s is not a directory", path)))
+		panic(j.vm.ToValue(fmt.Sprintf("%s is not a directory", path)))
 	}
 
 	for _, d := range ent.Children {
@@ -165,6 +169,35 @@ func (j *Jsh) process_readDir(call js.FunctionCall) js.Value {
 		}
 	}
 	return js.Undefined()
+}
+
+func (j *Jsh) process_exists(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue("exists: missing argument"))
+	}
+
+	path, ok := call.Arguments[0].Export().(string)
+	if !ok {
+		panic(j.vm.ToValue(fmt.Sprintf("exists: invalid argument %s", call.Arguments[0].ExportType())))
+	}
+
+	if filepath.IsAbs(path) {
+		path = filepath.Clean(path)
+	} else {
+		path = filepath.Clean(filepath.Join(j.cwd, path))
+	}
+	root_fs := ssfs.Default()
+	ent, err := root_fs.Get(path)
+	if err != nil {
+		panic(j.vm.ToValue(fmt.Sprintf("exists: %s", err.Error())))
+	}
+
+	m := j.vm.NewObject()
+	m.Set("path", path)
+	m.Set("isDir", ent.IsDir)
+	m.Set("readOnly", ent.ReadOnly)
+
+	return j.vm.ToValue(m)
 }
 
 // jsh.print("hello", "world")
