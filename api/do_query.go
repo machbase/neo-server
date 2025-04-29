@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -156,7 +157,12 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 			break
 		}
 	}
-
+	if qc.err == nil && qc.rows != nil {
+		if rowsErr := qc.rows.Err(); rowsErr != io.EOF {
+			// to return error caused by rows.Next()
+			qc.err = rowsErr
+		}
+	}
 	return qc.err
 }
 

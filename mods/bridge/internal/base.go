@@ -170,6 +170,10 @@ func (r *Rows) Columns() (api.Columns, error) {
 	return ret, err
 }
 
+func (r *Rows) Err() error {
+	return r.sqlRows.Err()
+}
+
 func (r *Rows) IsFetchable() bool {
 	return true
 }

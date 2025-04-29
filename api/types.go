@@ -113,6 +113,9 @@ type Rows interface {
 	//	defer rows.Close()
 	Close() error
 
+	// Err returns the error, if any, that was encountered during the execution of the query.
+	Err() error
+
 	// IsFetchable returns true if the statement that produced this Rows is fetchable (e.g., a SELECT statement).
 	IsFetchable() bool
 

@@ -387,6 +387,11 @@ func (s *RPCServer) RowsFetch(ctx context.Context, rows *machrpc.RowsHandle) (*m
 	}
 
 	if !rowsWrap.Rows.Next() {
+		if err := rowsWrap.Rows.Err(); err != nil {
+			rsp.Reason = err.Error()
+			rsp.HasNoRows = true
+			return rsp, nil
+		}
 		rsp.Success = true
 		rsp.Reason = "success"
 		rsp.HasNoRows = true

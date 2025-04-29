@@ -419,7 +419,7 @@ func (rows *Rows) NextSync() bool {
 	return next
 }
 
-func (rows *Rows) FetchError() error {
+func (rows *Rows) Err() error {
 	return rows.fetchError
 }
 
