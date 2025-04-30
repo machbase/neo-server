@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
@@ -95,6 +97,78 @@ func New(name string) (api.Database, error) {
 	}
 
 	return nil, fmt.Errorf("unknown database type: %s", name)
+}
+
+func NewWithDataSource(driverName string, dataSource string) (api.Database, []api.ConnectOption, error) {
+	var db *sql.DB
+	var opts []api.ConnectOption
+	var err error
+
+	switch driverName {
+	case "sqlite":
+		db, err = sqlite.Connect(dataSource)
+		break
+	case "mssql":
+		db, err = mssql.Connect(dataSource)
+		break
+	case "postgres":
+		db, err = postgres.Connect(dataSource)
+		break
+	case "mysql":
+		db, err = mysql.Connect(dataSource)
+		break
+	case "machbase":
+		pairs := util.ParseNameValuePairs(dataSource)
+		var host string
+		var port int
+		var user string = "sys"
+		var password string = "manager"
+		var maxOpenConn = -1
+		var maxOpenQuery = -1
+		for _, pair := range pairs {
+			switch strings.ToLower(pair.Name) {
+			case "host":
+				host = pair.Value
+			case "port":
+				if p, err := strconv.Atoi(pair.Value); err == nil {
+					port = p
+				}
+			case "user":
+				user = pair.Value
+			case "password":
+				password = pair.Value
+			case "maxopenconn":
+				if p, err := strconv.Atoi(pair.Value); err == nil {
+					maxOpenConn = p
+				}
+			case "maxopenquery":
+				if p, err := strconv.Atoi(pair.Value); err == nil {
+					maxOpenQuery = p
+				}
+			}
+		}
+		if user != "" {
+			opts = append(opts, api.WithPassword(user, password))
+		}
+		db, err := machcli.NewDatabase(&machcli.Config{
+			Host:         host,
+			Port:         port,
+			TrustUsers:   map[string]string{},
+			MaxOpenConn:  maxOpenConn,
+			MaxOpenQuery: maxOpenQuery,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return db, opts, nil
+	default:
+		return nil, nil, fmt.Errorf("unknown database type: %s", driverName)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	ret := &BridgedDatabase{db: db, dbType: driverName, dbConnect: dataSource}
+	return ret, opts, nil
 }
 
 func SetDatabase(name string, db *sql.DB, dbType string, dbConn string) {

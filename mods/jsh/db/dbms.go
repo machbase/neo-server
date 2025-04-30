@@ -31,17 +31,21 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 }
 
 type Client struct {
-	ctx              context.Context `json:"-"`
-	rt               *js.Runtime     `json:"-"`
-	db               api.Database    `json:"-"`
-	BridgeName       string          `json:"bridge"`
-	LowerCaseColumns bool            `json:"lowerCaseColumns"`
+	ctx              context.Context     `json:"-"`
+	rt               *js.Runtime         `json:"-"`
+	db               api.Database        `json:"-"`
+	BridgeName       string              `json:"bridge"`
+	Driver           string              `json:"driver"`
+	ConnectOptions   []api.ConnectOption `json:"-"`
+	LowerCaseColumns bool                `json:"lowerCaseColumns"`
 }
 
 func NewClient(ctx context.Context, rt *js.Runtime, optValue []js.Value) *Client {
 	opts := struct {
 		BridgeName       string `json:"bridge"`
 		LowerCaseColumns bool   `json:"lowerCaseColumns"`
+		Driver           string `json:"driver"`
+		DataSource       string `json:"dataSource"`
 	}{
 		BridgeName: "",
 	}
@@ -54,18 +58,26 @@ func NewClient(ctx context.Context, rt *js.Runtime, optValue []js.Value) *Client
 		ctx:              ctx,
 		rt:               rt,
 		BridgeName:       opts.BridgeName,
+		Driver:           opts.Driver,
 		LowerCaseColumns: opts.LowerCaseColumns,
 	}
-	if opts.BridgeName == "" {
-		ret.db = api.Default()
-		if ret.db == nil {
-			panic(rt.ToValue("dbms: no database"))
-		}
-	} else {
+	if opts.BridgeName != "" {
 		if db, err := connector.New(opts.BridgeName); err == nil {
 			ret.db = db
 		} else {
 			panic(rt.NewGoError(err))
+		}
+	} else if opts.Driver != "" {
+		if db, opts, err := connector.NewWithDataSource(opts.Driver, opts.DataSource); err == nil {
+			ret.db = db
+			ret.ConnectOptions = opts
+		} else {
+			panic(rt.NewGoError(err))
+		}
+	} else {
+		ret.db = api.Default()
+		if ret.db == nil {
+			panic(rt.ToValue("dbms: no database"))
 		}
 	}
 
@@ -82,23 +94,26 @@ func (c *Client) jsConnect(call js.FunctionCall) js.Value {
 }
 
 func (c *Client) Connect(call js.FunctionCall) *CONN {
-	opts := struct {
-		ConnStr string `json:"conn"`
-	}{
-		ConnStr: "",
-	}
+	conf := struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}{}
 	if len(call.Arguments) > 0 {
-		if err := c.rt.ExportTo(call.Arguments[0], &opts); err != nil {
+		if err := c.rt.ExportTo(call.Arguments[0], &conf); err != nil {
 			panic(c.rt.NewGoError(err))
 		}
 	}
 	var conn api.Conn
 	var err error
-	if c.BridgeName == "" {
+	if c.BridgeName == "" && c.Driver == "" {
 		// TODO: fix this with actual user name
 		conn, err = c.db.Connect(c.ctx, api.WithTrustUser("sys"))
 	} else {
-		conn, err = c.db.Connect(c.ctx)
+		opts := append([]api.ConnectOption{}, c.ConnectOptions...)
+		if conf.User != "" {
+			opts = append(opts, api.WithPassword(conf.User, conf.Password))
+		}
+		conn, err = c.db.Connect(c.ctx, opts...)
 	}
 	if err != nil {
 		panic(c.rt.NewGoError(err))

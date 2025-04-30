@@ -1,12 +1,14 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -244,4 +246,41 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 			ErrorMessage,
 		)
 	}
+}
+
+type WsReadWriter struct {
+	*websocket.Conn
+	r io.Reader
+}
+
+var _ io.ReadWriter = (*WsReadWriter)(nil)
+
+func (ws *WsReadWriter) Read(p []byte) (int, error) {
+	if ws.r == nil {
+		if _, r, err := ws.NextReader(); err != nil {
+			return 0, err
+		} else {
+			ws.r = r
+		}
+	}
+	n, err := ws.r.Read(p)
+	if err == io.EOF {
+		if _, r, err := ws.NextReader(); err != nil {
+			return 0, err
+		} else {
+			ws.r = r
+		}
+		m, e := ws.r.Read(p[n:])
+		n += m
+		err = e
+	}
+	return n, err
+}
+
+func (ws *WsReadWriter) Write(data []byte) (int, error) {
+	err := (*ws).WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }

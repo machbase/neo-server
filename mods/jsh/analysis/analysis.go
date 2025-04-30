@@ -229,11 +229,11 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 			})
 			return ret
 		})
-		// m.interpLinearregression(x, y)
-		o.Set("interpLinearregression", func(x, y []float64) js.Value {
+		// m.interpLinearRegression(x, y)
+		o.Set("interpLinearRegression", func(x, y []float64) js.Value {
 			a, b := stat.LinearRegression(x, y, nil, false)
 			if b != b {
-				panic(rt.ToValue("predictLinearregression: invalid regression"))
+				panic(rt.ToValue("predictLinearRegression: invalid regression"))
 			}
 			ret := rt.NewObject()
 			ret.Set("predict", func(x float64) float64 {

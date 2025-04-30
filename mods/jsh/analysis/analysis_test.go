@@ -40,7 +40,7 @@ func runTestCase(t *testing.T, tc TestCase) {
 	w := &bytes.Buffer{}
 	j := jsh.NewJsh(ctx,
 		jsh.WithNativeModules("@jsh/process", "@jsh/analysis", "@jsh/generator"),
-		jsh.WithJshWriter(w),
+		jsh.WithWriter(w),
 	)
 	err := j.Run(tc.Name, tc.Script, nil)
 	if err != nil {

@@ -72,8 +72,8 @@ func (j *Jsh) readCh() (byte, error) {
 	return b[0], nil
 }
 
-// m.readline()
-func (j *Jsh) process_readline() js.Value {
+// m.readLine()
+func (j *Jsh) process_readLine() js.Value {
 	line := []byte{}
 	state := CHStateNormal
 	nm := []byte{}

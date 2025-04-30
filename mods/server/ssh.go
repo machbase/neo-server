@@ -296,17 +296,35 @@ func (svr *sshd) motdProvider(user string) string {
 }
 
 // splitUserAndShell splits USER and SHELL_ID and CMD from the user string.
-func (svr *sshd) splitUserAndShell(user string) (string, string, string) {
+func (svr *sshd) splitUserAndShell(user string) UsernameComposite {
+	ret := UsernameComposite{}
+
 	if strings.HasPrefix(strings.ToLower(user), "sys+") {
 		// only sys user can use this feature
 		toks := strings.SplitN(user, "+", 2)
-		return toks[0], "", toks[1]
+		ret.user = toks[0]
+		ret.command = toks[1]
 	} else if strings.Contains(user, ":") {
 		toks := strings.SplitN(user, ":", 2)
-		return toks[0], toks[1], ""
+		ret.user = toks[0]
+		ret.shellId = toks[1]
+		if strings.Contains(ret.shellId, "@") {
+			toks = strings.SplitN(ret.shellId, "@", 2)
+			ret.shellId = toks[0]
+			ret.consoleId = toks[1]
+		}
 	} else {
-		return user, model.SHELLID_SHELL, ""
+		ret.user = user
+		ret.shellId = model.SHELLID_SHELL
 	}
+	return ret
+}
+
+type UsernameComposite struct {
+	user      string
+	shellId   string
+	consoleId string
+	command   string
 }
 
 func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
@@ -315,7 +333,8 @@ func (svr *sshd) findShell(ss ssh.Session) (string, *SshShell, string) {
 	var shellId string
 	var command string
 
-	user, shellId, command = svr.splitUserAndShell(user)
+	uc := svr.splitUserAndShell(user)
+	user, shellId, command = uc.user, uc.shellId, uc.command
 	if command != "" {
 		shell = &SshShell{
 			Cmd:  command,
@@ -598,6 +617,8 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []string) {
 	_ = env
 
+	user, _, _ := svr.findShell(ss)
+
 	// if ssh session is not interactive, disable echo
 	echo := len(ss.Command()) == 0
 
@@ -605,9 +626,10 @@ func (svr *sshd) jshHandler(ss ssh.Session, cmd string, args []string, env []str
 		ss.Context(),
 		jsh.WithNativeModules(jsh.NativeModuleNames()...),
 		jsh.WithParent(nil),
-		jsh.WithJshReader(ss),
-		jsh.WithJshWriter(ss),
-		jsh.WithJshEcho(echo),
+		jsh.WithReader(ss),
+		jsh.WithWriter(ss),
+		jsh.WithEcho(echo),
+		jsh.WithUserName(user),
 	)
 	err := j.Exec(append([]string{cmd}, args...))
 	if err != nil {

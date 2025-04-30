@@ -15,6 +15,7 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/mods/jsh/analysis"
+	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 	"github.com/machbase/neo-server/v8/mods/jsh/console"
 	"github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
@@ -28,6 +29,13 @@ import (
 )
 
 type JshPID uint32
+
+func (o JshPID) String() string {
+	if o == PID_ORPHAN {
+		return "-"
+	}
+	return fmt.Sprintf("%d", o)
+}
 
 var jshProcesses = make(map[JshPID]*Jsh)
 var jshMutex = sync.RWMutex{}
@@ -61,30 +69,36 @@ func releaseJshPID(j *Jsh) {
 
 type JshOption func(*Jsh)
 
-func WithJshReader(r io.Reader) JshOption {
+func WithReader(r io.Reader) JshOption {
 	return func(j *Jsh) {
 		j.reader = r
 	}
 }
 
-func WithJshWriter(w io.Writer) JshOption {
+func WithWriter(w io.Writer) JshOption {
 	return func(j *Jsh) {
 		j.writer = w
 	}
 }
 
-func WithJshWorkingDir(cwd string) JshOption {
+func WithWorkingDir(cwd string) JshOption {
 	return func(j *Jsh) {
 		j.cwd = filepath.Clean(cwd)
 	}
 }
 
-// WithJshEcho sets the echo option for the Jsh instance.
+// WithEcho sets the echo option for the Jsh instance.
 // If true, the Jsh will echo the input to the writer.
 // default is true.
-func WithJshEcho(b bool) JshOption {
+func WithEcho(b bool) JshOption {
 	return func(j *Jsh) {
 		j.echo = b
+	}
+}
+
+func WithNewLineCRLF(b bool) JshOption {
+	return func(j *Jsh) {
+		j.newLineCRLF = b
 	}
 }
 
@@ -92,6 +106,12 @@ func WithJshEcho(b bool) JshOption {
 func WithUserName(name string) JshOption {
 	return func(j *Jsh) {
 		j.userName = name
+	}
+}
+
+func WithConsoleId(id string) JshOption {
+	return func(j *Jsh) {
+		j.consoleId = id
 	}
 }
 
@@ -112,7 +132,7 @@ func WithNativeModules(modules ...string) JshOption {
 
 const (
 	PID_DAEMON JshPID = 1
-	PID_ORPHAN JshPID = 0xFFFF
+	PID_ORPHAN JshPID = 0xFFFFFFFF
 )
 
 func WithParent(parent *Jsh) JshOption {
@@ -137,25 +157,36 @@ type Jsh struct {
 	context.Context
 	*Cleaner
 
-	pid        JshPID
-	ppid       JshPID
-	cwd        string
-	reader     io.Reader
-	writer     io.Writer
-	echo       bool
-	vm         *js.Runtime
-	chStart    chan struct{}
-	chStop     chan struct{}
-	sourceName string
-	sourceCode string
-	userName   string
-	args       []string
-	modules    []string
-	program    *js.Program
-	startAt    time.Time
-	resultVal  js.Value
-	resultErr  []error
+	pid         JshPID
+	ppid        JshPID
+	cwd         string
+	reader      io.Reader
+	writer      io.Writer
+	consoleId   string // if the process bind to a web-console (websocket)
+	echo        bool
+	newLineCRLF bool
+	vm          *js.Runtime
+	chStart     chan struct{}
+	chStop      chan struct{}
+	sourceName  string
+	sourceCode  string
+	userName    string
+	args        []string
+	modules     []string
+	program     *js.Program
+	startAt     time.Time
+	resultVal   js.Value
+	resultErr   []error
+
+	onStatusChanged func(j *Jsh, status JshStatus)
 }
+
+type JshStatus string
+
+const (
+	JshStatusRunning JshStatus = "Running"
+	JshStatusStopped JshStatus = "Stopped"
+)
 
 func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 	ret := &Jsh{
@@ -177,33 +208,23 @@ func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 	return ret
 }
 
-func (j *Jsh) Print(args ...any) error {
-	if l, ok := j.writer.(logging.Log); ok {
-		toks := make([]string, len(args))
-		for i, arg := range args {
-			if s, ok := arg.(string); ok {
-				toks[i] = s
-			} else {
-				toks[i] = fmt.Sprintf("%v", arg)
-			}
-		}
-		l.Log(logging.LevelInfo, strings.Join(toks, " "))
-	} else {
-		for i, arg := range args {
-			if i > 0 {
-				fmt.Fprint(j.writer, " ")
-			}
-			if s, ok := arg.(string); ok {
-				fmt.Fprint(j.writer, s)
-			} else {
-				fmt.Fprintf(j.writer, "%v", arg)
-			}
-		}
-	}
-	return nil
+func (j *Jsh) NewChild() *Jsh {
+	child := NewJsh(
+		j.Context,
+		WithNativeModules(j.modules...),
+		WithParent(j),
+		WithReader(j.reader),
+		WithWriter(j.writer),
+		WithEcho(j.echo),
+		WithNewLineCRLF(j.newLineCRLF),
+		WithWorkingDir(j.cwd),
+		WithUserName(j.userName),
+		WithConsoleId(j.consoleId),
+	)
+	return child
 }
 
-func (j *Jsh) Log(level logging.Level, args ...any) error {
+func (j *Jsh) print0(level logging.Level, eolLine bool, args ...any) error {
 	if l, ok := j.writer.(logging.Log); ok {
 		toks := make([]string, len(args))
 		for i, arg := range args {
@@ -219,15 +240,35 @@ func (j *Jsh) Log(level logging.Level, args ...any) error {
 			if i > 0 {
 				fmt.Fprint(j.writer, " ")
 			}
+			var line string
 			if s, ok := arg.(string); ok {
-				fmt.Fprint(j.writer, s)
+				line = s
 			} else {
-				fmt.Fprintf(j.writer, "%v", arg)
+				line = fmt.Sprintf("%v", arg)
+			}
+			if j.newLineCRLF {
+				fmt.Fprint(j.writer, strings.ReplaceAll(line, "\n", "\r\n"))
+			} else {
+				fmt.Fprint(j.writer, line)
 			}
 		}
-		fmt.Fprintln(j.writer)
+		if eolLine {
+			if j.newLineCRLF {
+				fmt.Fprint(j.writer, "\r\n")
+			} else {
+				fmt.Fprint(j.writer, "\n")
+			}
+		}
 	}
 	return nil
+}
+
+func (j *Jsh) Print(args ...any) error {
+	return j.print0(logging.LevelInfo, false, args...)
+}
+
+func (j *Jsh) Log(level logging.Level, args ...any) error {
+	return j.print0(level, true, args...)
 }
 
 func (j *Jsh) Exec(args []string) error {
@@ -241,6 +282,13 @@ func (j *Jsh) Exec(args []string) error {
 	}
 	args[0] = filepath.Base(args[0])
 	return j.Run(sourceName, sourceCode, args)
+}
+
+func (j *Jsh) ExecBackground(args []string) error {
+	go func() {
+		j.Exec(args)
+	}()
+	return nil
 }
 
 func init() {
@@ -306,11 +354,17 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 	go func() {
 		allocJshPID(j)
 		defer func() {
+			if j.onStatusChanged != nil {
+				j.onStatusChanged(j, JshStatusStopped)
+			}
 			releaseJshPID(j)
 			close(j.chStop)
 		}()
 		close(j.chStart)
 
+		if j.onStatusChanged != nil {
+			j.onStatusChanged(j, JshStatusRunning)
+		}
 		if j.program == nil {
 			if program, err := js.Compile(sourceName, sourceCode, false); err != nil {
 				j.resultErr = append(j.resultErr, err)
@@ -385,18 +439,6 @@ func (j *Jsh) loadSource(path string) ([]byte, error) {
 	return ent.Content, nil
 }
 
-//go:embed builtin/jsh.js
-var replCode string
-
-//go:embed builtin/ls.js
-var lsCode string
-
-//go:embed builtin/ps.js
-var psCode string
-
-//go:embed builtin/kill.js
-var killCode string
-
 var jsPath = []string{".", "/sbin"}
 
 func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) {
@@ -405,17 +447,12 @@ func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) 
 		cmdPath += ".js"
 	}
 	if cmdPath == "@.js" {
-		sourceName = "jsh.js"
-		sourceCode = replCode
-	} else if cmdPath == "ls.js" {
-		sourceName = "ls"
-		sourceCode = lsCode
-	} else if cmdPath == "ps.js" {
-		sourceName = "ps"
-		sourceCode = psCode
-	} else if cmdPath == "kill.js" {
-		sourceName = "kill"
-		sourceCode = killCode
+		cmdPath = "jsh.js"
+	}
+
+	if code, ok := builtin.Code(cmdPath); ok {
+		sourceName = strings.TrimSuffix(cmdPath, ".js")
+		sourceCode = code
 	} else if strings.HasPrefix(cmdPath, "/") {
 		if ent, err := root_fs.Get(cmdPath); err == nil && !ent.IsDir {
 			sourceName = cmdPath

@@ -38,7 +38,7 @@ func TestStatz(t *testing.T) {
 			w := &bytes.Buffer{}
 			j := jsh.NewJsh(ctx,
 				jsh.WithNativeModules("@jsh/process", "@jsh/system"),
-				jsh.WithJshWriter(w),
+				jsh.WithWriter(w),
 			)
 			err := j.Run(tc.Name, tc.Script, nil)
 			if err != nil {
