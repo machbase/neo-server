@@ -94,6 +94,9 @@ func TestDBMS(t *testing.T) {
 							console.log("for_in", n, ":", rec[n]);
 						}
 					}
+
+					row = conn.queryRow("select count(*) from tag_data where name = ?", "test-js")
+					console.log("queryRow:", row.values["count(*)"]);
 				} catch(e) {
 					console.log("Error:", e);
 				} finally {
@@ -110,6 +113,7 @@ func TestDBMS(t *testing.T) {
 				"for_in name : test-js",
 				"for_in time : 2025-04-22 12:26:36 +0000 UTC",
 				"for_in value : 1.234",
+				"queryRow: 1",
 				"",
 			},
 		},
