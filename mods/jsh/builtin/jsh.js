@@ -1,6 +1,9 @@
 jsh = require("@jsh/process")
-jsh.print("JSH shell\n\n")
-
+jsh.print("Welcome to JSH runtime.\n\n")
+jsh.print("    This is an JSH command line runtime in BETA stge.\n")
+jsh.print("    The commands and features are subjects to change.\n")
+jsh.print("    Type 'exit' to exit the shell.\n")
+jsh.print("\n")
 function printResult(r) {
 	if( r == undefined) {
 		return

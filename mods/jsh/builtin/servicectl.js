@@ -47,35 +47,44 @@ function handleStop(service) {
 }
 
 function handleReread() {
-    tab = new p.Table()
     try {
         var result = p.serviceReread()
-        if (result == null || result.length == 0) {
-            p.print("No services found\n")
-        } else {
-            [
-                ["Added", result.added],
-                ["Changed", result.updated],
-                ["Removed", result.removed],
-                ["Unchanged", result.unchanged],
-                ["Errored", result.errors],
-            ].forEach((item) => {
-                label = item[0]
-                list = item[1]
-                if(list.length == 0) {
-                    return
-                }
-                tab.appendHeader(`${label} Service`, "Enable", "StartCmd", "StartArgs")
-                for( s of list ) {
-                    tab.appendRow(s.name, s.enable, s.start_cmd, s.start_args.join(", "))
-                }
-                tab.render()
-                tab.resetRows()
-                tab.resetHeaders()
-            })
+        if (result == null) {
+            p.print("No services found", "\n")
+            return
         }
     } catch (e) {
-        p.print("Error:", e.message, "\n")
+        p.print("Error:", e, "\n")
+        return
+    }
+    if (result.added.length == 0 && result.updated.length == 0 && result.removed.length == 0 && result.unchanged.length == 0 && result.errors.length == 0) {
+        p.print("No services found", "\n")
+        return
+    }
+    tab = new p.Table()
+    try {
+        [
+            ["Added", result.added],
+            ["Changed", result.updated],
+            ["Removed", result.removed],
+            ["Unchanged", result.unchanged],
+            ["Errored", result.errors],
+        ].forEach((item) => {
+            label = item[0]
+            list = item[1]
+            if (list.length == 0) {
+                return
+            }
+            tab.appendHeader(`${label} Service`, "Enable", "StartCmd", "StartArgs")
+            for (s of list) {
+                tab.appendRow(s.name, s.enable, s.start_cmd, s.start_args.join(", "))
+            }
+            tab.render()
+            tab.resetRows()
+            tab.resetHeaders()
+        })
+    } catch (e) {
+        p.print("Error:", e, "\n")
     } finally {
         tab.render()
     }
@@ -97,7 +106,7 @@ if (args.length < 2 || ((args[1] == "start" || args[1] == "stop") && args.length
 } else {
     var command = args[1]
     var service = ""
-    if (command == "start" || command == "stop") {
+    if (command == "start" || command == "stop" || command == "status") {
         service = args[2]
     }
 

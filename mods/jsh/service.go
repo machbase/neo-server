@@ -82,6 +82,9 @@ func ReadServices() (ServiceList, error) {
 		return ret, err
 	}
 
+	if _, err := os.Stat(real.AbsPath); os.IsNotExist(err) {
+		return ret, os.ErrNotExist
+	}
 	dirEntries, err := os.ReadDir(real.AbsPath)
 	if err != nil {
 		return ret, err

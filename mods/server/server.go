@@ -250,7 +250,9 @@ func (s *Server) Start() error {
 
 	// jsh service
 	if result, err := jsh.ReadServices(); err != nil {
-		s.log.Warnf("JshServices read failed.", err.Error())
+		if err != os.ErrNotExist {
+			s.log.Warn("JshServices read failed.", err.Error())
+		}
 	} else {
 		result.Update(func(sc *jsh.ServiceConfig, act string, err error) {
 			if err != nil {

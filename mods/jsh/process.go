@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -597,7 +598,11 @@ func (j *Jsh) process_serviceReread(call js.FunctionCall) js.Value {
 	}
 	list, err := ReadServices()
 	if err != nil {
-		panic(j.vm.ToValue(fmt.Sprintf("serviceReread: %s", err.Error())))
+		if os.IsNotExist(err) {
+			return js.Null()
+		} else {
+			panic(j.vm.ToValue(fmt.Sprintf("serviceReread: %s", err.Error())))
+		}
 	}
 	return j.vm.ToValue(list)
 }
