@@ -90,6 +90,7 @@ func (c *Client) jsConnect(call js.FunctionCall) js.Value {
 	ret.Set("close", connection.Close)
 	ret.Set("exec", connection.Exec)
 	ret.Set("query", connection.jsQuery)
+	ret.Set("queryRow", connection.jsQueryRow)
 	return ret
 }
 
@@ -186,6 +187,86 @@ func (c *CONN) Exec(call js.FunctionCall) js.Value {
 		"message":      result.Message(),
 		"rowsAffected": result.RowsAffected(),
 	})
+}
+
+func (c *CONN) jsQueryRow(call js.FunctionCall) js.Value {
+	row := c.QueryRow(call)
+	ret := c.db.rt.NewObject()
+	if err := row.Err(); err != nil {
+		ret.Set("error", c.db.rt.ToValue(err.Error()))
+		ret.Set("values", js.Undefined())
+		return ret
+	}
+
+	columns, err := row.Columns()
+	if err != nil {
+		ret.Set("error", c.db.rt.ToValue(err.Error()))
+		ret.Set("columns", func() js.Value { return js.Null() })
+		ret.Set("columnNames", func() js.Value { return js.Null() })
+		ret.Set("columnTypes", func() js.Value { return js.Null() })
+		ret.Set("values", js.Null())
+		return ret
+	}
+	names := columns.Names()
+	if c.db.LowerCaseColumns {
+		for i, col := range names {
+			names[i] = strings.ToLower(col)
+		}
+	}
+	types := make([]string, len(columns))
+	for i, col := range columns {
+		types[i] = string(col.DataType)
+	}
+
+	ret.Set("columns", func() js.Value {
+		return c.db.rt.ToValue(map[string]any{
+			"columns": names,
+			"types":   types,
+		})
+	})
+	ret.Set("columnNames", func() js.Value { return c.db.rt.ToValue(names) })
+	ret.Set("columnTypes", func() js.Value { return c.db.rt.ToValue(types) })
+
+	buff, err := columns.MakeBuffer()
+	if err != nil {
+		ret.Set("error", c.db.rt.ToValue(err.Error()))
+		ret.Set("values", js.Null())
+		return ret
+	}
+	if err := row.Scan(buff...); err != nil {
+		ret.Set("error", c.db.rt.ToValue(err.Error()))
+		ret.Set("values", js.Null())
+		return ret
+	}
+	values := c.db.rt.NewObject()
+	for i, v := range buff {
+		if v == nil {
+			values.Set(names[i], js.Null())
+		} else {
+			values.Set(names[i], api.Unbox(v))
+		}
+	}
+	ret.Set("values", values)
+	ret.Set("error", js.Null())
+	return ret
+}
+
+func (c *CONN) QueryRow(call js.FunctionCall) api.Row {
+	var sqlText string
+	var params []any
+
+	if len(call.Arguments) == 0 {
+		panic(c.db.rt.ToValue("missing arguments"))
+	}
+	sqlText = call.Arguments[0].String()
+	params = make([]any, len(call.Arguments)-1)
+	for i := 1; i < len(call.Arguments); i++ {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &params[i-1]); err != nil {
+			panic(c.db.rt.NewGoError(err))
+		}
+	}
+
+	return c.conn.QueryRow(c.db.ctx, sqlText, params...)
 }
 
 func (c *CONN) jsQuery(call js.FunctionCall) js.Value {
