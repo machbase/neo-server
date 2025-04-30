@@ -96,6 +96,13 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 			}
 			return rt.ToValue(stat.Quantile(0.5, stat.Empirical, x, weight))
 		})
+		// m.medianInterp(x, weight)
+		o.Set("medianInterp", func(x, weight []float64) js.Value {
+			if weight != nil && len(x) != len(weight) {
+				panic(rt.ToValue("median: x and weight should be the same length"))
+			}
+			return rt.ToValue(stat.Quantile(0.5, stat.LinInterp, x, weight))
+		})
 		// m.variance(x, weight)
 		o.Set("variance", func(x, weight []float64) js.Value {
 			if weight != nil && len(x) != len(weight) {
@@ -145,11 +152,16 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 			slices.Sort(arr)
 			return stat.Quantile(p, stat.Empirical, arr, nil)
 		})
+		// m.quantileInterp(p, array)
+		o.Set("quantileInterp", func(p float64, arr []float64) float64 {
+			slices.Sort(arr)
+			return stat.Quantile(p, stat.LinInterp, arr, nil)
+		})
 		// m.linearRegression(x, y)
 		o.Set("linearRegression", func(x, y []float64) js.Value {
 			// y = alpha + beta*x
 			alpha, beta := stat.LinearRegression(x, y, nil, false)
-			return rt.ToValue(map[string]any{"alpha": alpha, "beta": beta})
+			return rt.ToValue(map[string]any{"intercept": alpha, "slope": beta})
 		})
 		// m.fft(times, values)
 		o.Set("fft", func(times []any, values []any) js.Value {
