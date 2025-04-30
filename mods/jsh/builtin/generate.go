@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -39,14 +40,21 @@ func main() {
 	fd.WriteString(")\n")
 	fd.WriteString("\n")
 
-	fd.WriteString("var cmds = map[string]string{\n")
+	names := make([]string, 0, len(list))
 	for name := range list {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	fd.WriteString("var cmds = map[string]string{\n")
+	for _, name := range names {
 		fd.WriteString(fmt.Sprintf(`	"%s": %sCode,`+"\n", name, name))
 	}
 	fd.WriteString("}\n")
 	fd.WriteString("\n")
 
-	for name, path := range list {
+	for _, name := range names {
+		path := list[name]
 		fd.WriteString(fmt.Sprintf("//go:embed %s\n", path))
 		fd.WriteString(fmt.Sprintf("var %sCode string\n", name))
 		fd.WriteString("\n")
