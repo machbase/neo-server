@@ -146,6 +146,7 @@
     ],
     "ignoreWords": [
         "APND",
+        "Connack",
         "MGTPE",
         "Peucker",
         "akimaspline",
