@@ -281,7 +281,7 @@ func (j *Jsh) Exec(args []string) error {
 	if sourceCode == "" {
 		return fmt.Errorf("command not found: %s", args[0])
 	}
-	args[0] = filepath.Base(args[0])
+	args[0] = sourceName
 	return j.Run(sourceName, sourceCode, args)
 }
 
