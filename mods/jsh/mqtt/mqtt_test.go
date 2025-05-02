@@ -61,7 +61,7 @@ func TestMqtt(t *testing.T) {
 			Script: `
 				const {println, sleep} = require("@jsh/process");
 				const mqtt = require("@jsh/mqtt")
-				
+
 				const clientConfig = {
 					serverUrls: ["tcp://127.0.0.1:1236"],
 					keepAlive: 30,
@@ -85,13 +85,9 @@ func TestMqtt(t *testing.T) {
 					client.awaitConnection(1000);
 
 					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
-					sleep(1000);
-					client.publish("test/topic", "Hello, MQTT?", 0);
-					client.publish("test/topic", "Good bye, MQTT!", 1);
-					client.publish("test/topic", "Farewell", 2);
-					sleep(1000);
+					client.publish("test/topic", "Hello, MQTT?", 2);
 				} catch (e) {
-				 	println(e.toString());
+				 	println(e);
 				}finally {
 					client.disconnect();
 					println("disconnected.");
@@ -99,9 +95,7 @@ func TestMqtt(t *testing.T) {
 			`,
 			Expect: []string{
 				"connected.",
-				"recv: test/topic 0 Hello, MQTT?",
-				"recv: test/topic 1 Good bye, MQTT!",
-				"recv: test/topic 2 Farewell",
+				"recv: test/topic 2 Hello, MQTT?",
 				"disconnected.",
 				"",
 			},

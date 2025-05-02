@@ -59,7 +59,7 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 			ctx: ctx,
 			rt:  rt,
 			obj: ret,
-			config: autopaho.ClientConfig{
+			config: &autopaho.ClientConfig{
 				ConnectUsername:               opts.Username,
 				ConnectPassword:               []byte(opts.Password),
 				ServerUrls:                    serverUrls,
@@ -113,7 +113,7 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 type Client struct {
 	ctx     context.Context
 	rt      *js.Runtime
-	config  autopaho.ClientConfig
+	config  *autopaho.ClientConfig
 	connMgr *autopaho.ConnectionManager
 	obj     *js.Object
 
@@ -128,7 +128,7 @@ func (c *Client) Connect(call js.FunctionCall) js.Value {
 	if c.connMgr != nil {
 		panic(c.rt.ToValue("already connected"))
 	}
-	if cm, err := autopaho.NewConnection(c.ctx, c.config); err != nil {
+	if cm, err := autopaho.NewConnection(c.ctx, *c.config); err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	} else {
 		c.connMgr = cm
@@ -264,8 +264,7 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 	if err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	}
-	_ = subRsp.Properties
-	return js.Undefined()
+	return c.rt.ToValue(subRsp)
 }
 
 func (c *Client) logError(err error) {
@@ -351,15 +350,16 @@ func (c *Client) handlePublishReceived(p paho.PublishReceived) (bool, error) {
 	r, err := c.OnMessage(c.obj, packet)
 	if err != nil {
 		c.logError(err)
-		return false, err
+		return true, err
 	}
-
+	if r == js.Undefined() || r == js.Null() {
+		return true, nil
+	}
 	var ret bool
 	if err := c.rt.ExportTo(r, &ret); err != nil {
 		c.logError(err)
 		return true, err
 	}
-	// TODO: shoule we return 'ret' that returned from js?
 	return true, nil
 }
 

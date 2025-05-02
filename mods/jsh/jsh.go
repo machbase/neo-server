@@ -358,19 +358,16 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 	j.sourceCode = sourceCode
 	j.args = args
 
-	defer func() {
-		if r := recover(); r != nil {
-			if j.writer != nil {
-				j.writer.Write(debug.Stack())
-			} else {
-				debug.PrintStack()
-			}
-		}
-	}()
-
 	go func() {
 		allocJshPID(j)
 		defer func() {
+			if r := recover(); r != nil {
+				if j.writer != nil {
+					j.writer.Write(debug.Stack())
+				} else {
+					debug.PrintStack()
+				}
+			}
 			if j.onStatusChanged != nil {
 				j.onStatusChanged(j, JshStatusStopped)
 			}
