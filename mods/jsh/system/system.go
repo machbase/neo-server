@@ -27,8 +27,6 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 		o.Set("parseTime", parseTime(ctx, rt))
 		// m.statz("1m", ...keys)
 		o.Set("statz", statz(ctx, rt))
-		// m.sleep("100ms")
-		o.Set("sleep", Sleep(ctx, rt))
 	}
 }
 
@@ -45,41 +43,6 @@ func gc() js.Value {
 func now(_ context.Context, rt *js.Runtime) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		return rt.ToValue(time.Now())
-	}
-}
-
-func Sleep(ctx context.Context, rt *js.Runtime) func(call js.FunctionCall) js.Value {
-	return func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("sleep: missing argument"))
-		}
-		dur := time.Duration(0)
-		switch v := call.Arguments[0].Export().(type) {
-		case time.Duration:
-			dur = v
-		case int:
-			dur = time.Duration(v) * time.Millisecond
-		case int32:
-			dur = time.Duration(v) * time.Millisecond
-		case int64:
-			dur = time.Duration(v) * time.Millisecond
-		case float32:
-			dur = time.Duration(v) * time.Millisecond
-		case float64:
-			dur = time.Duration(v) * time.Millisecond
-		case string:
-			if d, err := time.ParseDuration(v); err == nil {
-				dur = d
-			} else {
-				panic(rt.ToValue(fmt.Sprintf("sleep: invalid argument %s", v)))
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return rt.ToValue("sleep: interrupted")
-		case <-time.After(dur):
-		}
-		return js.Undefined()
 	}
 }
 

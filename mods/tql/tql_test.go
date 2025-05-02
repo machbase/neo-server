@@ -1595,8 +1595,8 @@ func TestScriptInterrupt(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
-					s = require("@jsh/system")
-					s.sleep("10s")
+					while(true) {
+					}
 					$.yield(123)
 				})
 				CSV()
@@ -1614,8 +1614,8 @@ func TestScriptInterrupt(t *testing.T) {
 			Script: `
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
-					s = require("@jsh/system")
-					s.sleep("10s")
+					while(true) {
+					}
 				},{
 					$.yield(123)
 				})
@@ -1634,8 +1634,7 @@ func TestScriptInterrupt(t *testing.T) {
 				FAKE( linspace(1,10,10))
 				SCRIPT("js", {
 					function finalize(){
-						s = require("@jsh/system")
-						s.sleep("10s")
+						while(true) {}
 					}
 				},{
 					$.yield($.values[0])
@@ -1643,7 +1642,7 @@ func TestScriptInterrupt(t *testing.T) {
 				CSV()
 			`,
 			CtxTimeout: 100 * time.Millisecond,
-			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:6:14(10))"},
+			ExpectLog:  []string{"[ERROR] SCRIPT finalize, interrupt at finalize (<eval>:4:6(1))"},
 			ExpectFunc: func(t *testing.T, result string) {
 				// SCRIPT was interrupted during the finalize()
 				// so the result exists

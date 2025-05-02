@@ -13,7 +13,6 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
-	"github.com/machbase/neo-server/v8/mods/jsh/system"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -46,7 +45,7 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	// m.exec(args)
 	o.Set("exec", j.process_exec)
 	// m.sleep(ms)
-	o.Set("sleep", system.Sleep(j, r))
+	o.Set("sleep", j.process_sleep)
 	// m.kill(pid)
 	o.Set("kill", j.process_kill)
 	// m.ps()
@@ -347,15 +346,19 @@ func (j *Jsh) schedule(call js.FunctionCall) js.Value {
 	}
 
 	done := make(chan struct{})
+	token := j.vm.NewObject()
+	token.Set("stop", func(call js.FunctionCall) js.Value {
+		j.Log(logging.LevelWarn, "schedule: stopped")
+		close(done)
+		return js.Undefined()
+	})
 	entryId, err := defaultCron.AddFunc(spec, func() {
-		token := j.vm.NewObject()
-		token.Set("stop", func(call js.FunctionCall) js.Value {
-			close(done)
-			return js.Undefined()
-		})
 		_, err := callback(js.Undefined(), j.vm.ToValue(time.Now()), token)
 		if err != nil {
-			j.Log(logging.LevelWarn, "schedule: callback", err)
+			if _, ok := err.(*js.InterruptedError); !ok {
+				// ignore interrupted error
+				j.Log(logging.LevelWarn, "schedule: callback", err)
+			}
 			close(done)
 		}
 	})
@@ -366,8 +369,47 @@ func (j *Jsh) schedule(call js.FunctionCall) js.Value {
 	select {
 	case <-done:
 	case <-j.Context.Done():
+		j.Log(logging.LevelWarn, "schedule: canceled")
+	case <-j.chKill:
+		j.Log(logging.LevelWarn, "schedule: interrupted")
 	}
 	defaultCron.Remove(entryId)
+	return js.Undefined()
+}
+
+// jsh.sleep()
+func (j *Jsh) process_sleep(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(j.vm.ToValue("sleep: missing argument"))
+	}
+	dur := time.Duration(0)
+	switch v := call.Arguments[0].Export().(type) {
+	case time.Duration:
+		dur = v
+	case int:
+		dur = time.Duration(v) * time.Millisecond
+	case int32:
+		dur = time.Duration(v) * time.Millisecond
+	case int64:
+		dur = time.Duration(v) * time.Millisecond
+	case float32:
+		dur = time.Duration(v) * time.Millisecond
+	case float64:
+		dur = time.Duration(v) * time.Millisecond
+	case string:
+		if d, err := time.ParseDuration(v); err == nil {
+			dur = d
+		} else {
+			panic(j.vm.ToValue(fmt.Sprintf("sleep: invalid argument %s", v)))
+		}
+	}
+	select {
+	case <-j.Context.Done():
+		j.Log(logging.LevelWarn, "sleep: canceled")
+	case <-j.chKill:
+		j.Log(logging.LevelWarn, "sleep: interrupted")
+	case <-time.After(dur):
+	}
 	return js.Undefined()
 }
 
@@ -378,7 +420,7 @@ func (j *Jsh) process_kill(call js.FunctionCall) js.Value {
 	}
 	if pid, ok := call.Arguments[0].Export().(int64); ok {
 		if p, exists := jshProcesses[JshPID(pid)]; exists && p != nil {
-			p.vm.Interrupt("killed")
+			p.Kill("killed")
 		} else {
 			panic(j.vm.ToValue(fmt.Sprintf("kill: pid %d not found", pid)))
 		}
