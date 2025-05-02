@@ -66,26 +66,29 @@ func TestMqtt(t *testing.T) {
 					serverUrls: ["tcp://127.0.0.1:1236"],
 					keepAlive: 30,
 					cleanStart: true,
+					onConnect: (ack) => {
+						println("connected.");
+					},
+					onConnectError: (err) => {
+						println("connect error", err);
+					},
+					onDisconnect: (disconn) => {
+						println("disconnected.");
+					},
+					onMessage: (msg) => {
+						println("recv:", msg.topic, msg.qos, msg.payload.string())
+					},
 				}
-				const callback = function (evt, msg) {
-					if (evt == "onConnectionUp") {
-						println("mqtt event:", evt);
-					} else if (evt == "onPublishReceived"){
-					 	println("mqtt event:", evt, msg.payload.string());
-					} else {
-						println("mqtt event:", evt);
-					}
-				}
-				const client = new mqtt.Client(clientConfig, callback);
+				const client = new mqtt.Client(clientConfig);
 				try {
-					println("connecting...");
 					client.connect();
 					client.awaitConnection(1000);
-					println("connected.");
 
-					client.subscribe({subscriptions:[{topic:"test/topic", qos:0}]});
-					sleep(300);
-					client.publish("test/topic", "Hello, MQTT!", 0);
+					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
+					sleep(1000);
+					client.publish("test/topic", "Hello, MQTT?", 0);
+					client.publish("test/topic", "Good bye, MQTT!", 1);
+					client.publish("test/topic", "Farewell", 2);
 					sleep(1000);
 				} catch (e) {
 				 	println(e.toString());
@@ -95,10 +98,10 @@ func TestMqtt(t *testing.T) {
 				}
 			`,
 			Expect: []string{
-				"connecting...",
 				"connected.",
-				"mqtt event: onConnectionUp",
-				"mqtt event: onPublishReceived Hello, MQTT!",
+				"recv: test/topic 0 Hello, MQTT?",
+				"recv: test/topic 1 Good bye, MQTT!",
+				"recv: test/topic 2 Farewell",
 				"disconnected.",
 				"",
 			},

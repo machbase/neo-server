@@ -3,6 +3,7 @@ package mqtt
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"time"
 
@@ -23,19 +24,23 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 
 func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
-		if len(call.Arguments) < 2 {
+		if len(call.Arguments) < 1 {
 			panic(rt.ToValue("missing arguments"))
 		}
 		opts := struct {
-			ServerUrls []string `json:"serverUrls"`
-			KeepAlive  uint16   `json:"keepAlive"`
-			CleanStart bool     `json:"cleanStart"`
+			ServerUrls     []string    `json:"serverUrls"`
+			KeepAlive      uint16      `json:"keepAlive,omitempty"`
+			CleanStart     bool        `json:"cleanStart,omitempty"`
+			Username       string      `json:"username,omitempty"`
+			Password       string      `json:"password,omitempty"`
+			ClientID       string      `json:"clientID,omitempty"`
+			OnConnect      js.Callable `json:"onConnect,omitempty"`
+			OnConnectError js.Callable `json:"onConnectError,omitempty"`
+			OnDisconnect   js.Callable `json:"onDisconnect,omitempty"`
+			OnClientError  js.Callable `json:"onClientError,omitempty"`
+			OnMessage      js.Callable `json:"onMessage,omitempty"`
 		}{}
 		if err := rt.ExportTo(call.Arguments[0], &opts); err != nil {
-			panic(rt.ToValue(err.Error()))
-		}
-		var callback js.Callable
-		if err := rt.ExportTo(call.Arguments[1], &callback); err != nil {
 			panic(rt.ToValue(err.Error()))
 		}
 
@@ -51,23 +56,43 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 		ret := rt.NewObject()
 
 		client := &Client{
-			ctx:      ctx,
-			rt:       rt,
-			callback: callback,
-			obj:      ret,
-			clientConfig: autopaho.ClientConfig{
+			ctx: ctx,
+			rt:  rt,
+			obj: ret,
+			config: autopaho.ClientConfig{
+				ConnectUsername:               opts.Username,
+				ConnectPassword:               []byte(opts.Password),
 				ServerUrls:                    serverUrls,
 				KeepAlive:                     opts.KeepAlive,
 				CleanStartOnInitialConnection: opts.CleanStart,
 				ConnectRetryDelay:             1 * time.Second, // default 10s
 				ConnectTimeout:                5 * time.Second, // default 10s
 			},
+			OnConnect:      opts.OnConnect,
+			OnConnectError: opts.OnConnectError,
+			OnDisconnect:   opts.OnDisconnect,
+			OnClientError:  opts.OnClientError,
+			OnMessage:      opts.OnMessage,
 		}
-		client.clientConfig.OnConnectError = client.OnClientError
-		client.clientConfig.OnConnectionUp = client.OnConnectionUp
-		client.clientConfig.ClientConfig.OnPublishReceived = []func(paho.PublishReceived) (bool, error){client.OnPublishReceived}
-		client.clientConfig.OnServerDisconnect = client.OnServerDisconnect
-		client.clientConfig.ClientConfig.OnClientError = client.OnClientError
+		if opts.OnConnectError != nil {
+			client.config.OnConnectError = client.handleConnectError
+		}
+		if opts.OnConnect != nil {
+			client.config.OnConnectionUp = client.handleConnectionUp
+		}
+		if opts.OnDisconnect != nil {
+			client.config.OnServerDisconnect = client.handleServerDisconnect
+		}
+		if opts.OnClientError != nil {
+			client.config.ClientConfig.OnClientError = client.handleClientError
+		}
+		if opts.OnMessage != nil {
+			client.config.ClientConfig.OnPublishReceived =
+				[]func(paho.PublishReceived) (bool, error){
+					client.handlePublishReceived,
+				}
+		}
+		client.config.ClientConfig.ClientID = opts.ClientID
 
 		// c.connect()
 		ret.Set("connect", client.Connect)
@@ -86,29 +111,48 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 }
 
 type Client struct {
-	ctx          context.Context
-	rt           *js.Runtime
-	clientConfig autopaho.ClientConfig
-	connMgr      *autopaho.ConnectionManager
-	obj          *js.Object
-	callback     js.Callable
+	ctx     context.Context
+	rt      *js.Runtime
+	config  autopaho.ClientConfig
+	connMgr *autopaho.ConnectionManager
+	obj     *js.Object
+
+	OnConnect      js.Callable
+	OnConnectError js.Callable
+	OnDisconnect   js.Callable
+	OnClientError  js.Callable
+	OnMessage      js.Callable
 }
 
 func (c *Client) Connect(call js.FunctionCall) js.Value {
 	if c.connMgr != nil {
 		panic(c.rt.ToValue("already connected"))
 	}
-	if cm, err := autopaho.NewConnection(c.ctx, c.clientConfig); err != nil {
+	if cm, err := autopaho.NewConnection(c.ctx, c.config); err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	} else {
 		c.connMgr = cm
+		if cleaner, ok := c.ctx.(Cleaner); ok {
+			cleaner.AddCleanup(func(out io.Writer) {
+				if c.connMgr != nil {
+					io.WriteString(out, "WARNING: mqtt connection not closed!!!\n")
+					c.connMgr.Disconnect(c.ctx)
+				}
+			})
+		}
 	}
 	return js.Undefined()
+}
+
+type Cleaner interface {
+	AddCleanup(func(io.Writer)) int64
+	RemoveCleanup(int64)
 }
 
 func (c *Client) Disconnect(call js.FunctionCall) js.Value {
 	if c.connMgr != nil {
 		c.connMgr.Disconnect(c.ctx)
+		c.connMgr = nil
 	}
 	return js.Undefined()
 }
@@ -224,43 +268,60 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-func (c *Client) OnClientError(err error) {
-	r, e := c.callback(js.Null(), c.rt.ToValue("onClientError"), c.rt.ToValue(err.Error()))
-	if e != nil {
-		panic(c.rt.ToValue(e.Error()))
-	}
-	if r != js.Undefined() {
-		rv := r.Export()
-		fmt.Println(rv)
-	}
-}
-
-func (c *Client) OnConnectError(err error) {
-	r, e := c.callback(js.Null(), c.rt.ToValue("onConnectError"), c.rt.ToValue(err.Error()))
-	if e != nil {
-		panic(c.rt.ToValue(e.Error()))
-	}
-	if r != js.Undefined() {
-		rv := r.Export()
-		fmt.Println(rv)
+func (c *Client) logError(err error) {
+	console, ok := c.rt.Get("console").(*js.Object)
+	if ok && console != nil {
+		callable, ok := js.AssertFunction(console.Get("error"))
+		if ok {
+			callable(c.obj, c.rt.ToValue(err.Error()))
+		}
 	}
 }
 
-func (c *Client) OnConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Connack) {
-	r, e := c.callback(js.Null(), c.rt.ToValue("onConnectionUp"), c.rt.ToValue(ack))
-	if e != nil {
-		panic(c.rt.ToValue(e.Error()))
+func (c *Client) handleClientError(err error) {
+	if c.OnClientError == nil {
+		return
 	}
-	if r != js.Undefined() {
-		rv := r.Export()
-		fmt.Println(rv)
+	_, e := c.OnClientError(c.obj, c.rt.ToValue(err.Error()))
+	if e != nil {
+		c.logError(e)
+		return
 	}
 }
 
-func (c *Client) OnPublishReceived(p paho.PublishReceived) (bool, error) {
+func (c *Client) handleConnectError(err error) {
+	if c.OnConnectError == nil {
+		return
+	}
+	_, e := c.OnConnectError(c.obj, c.rt.ToValue(err.Error()))
+	if e != nil {
+		c.logError(e)
+		return
+	}
+}
+
+func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Connack) {
+	if c.OnConnect == nil {
+		return
+	}
+	r, err := c.OnConnect(c.obj, c.rt.ToValue(ack))
+	if err != nil {
+		c.logError(err)
+		return
+	}
+	if r != js.Undefined() {
+		rv := r.Export()
+		_ = rv
+	}
+}
+
+func (c *Client) handlePublishReceived(p paho.PublishReceived) (bool, error) {
+	if c.OnMessage == nil {
+		return false, nil
+	}
 	packet := c.rt.NewObject()
 	packet.Set("packetID", p.Packet.PacketID)
-	packet.Set("qos", p.Packet.QoS)
+	packet.Set("qos", int(p.Packet.QoS))
 	packet.Set("retain", p.Packet.Retain)
 	packet.Set("topic", p.Packet.Topic)
 
@@ -287,21 +348,29 @@ func (c *Client) OnPublishReceived(p paho.PublishReceived) (bool, error) {
 		props.Set("user", userProps)
 		packet.Set("properties", props)
 	}
-	r, e := c.callback(c.obj, c.rt.ToValue("onPublishReceived"), packet)
-	if e != nil {
-		panic(c.rt.ToValue(e.Error()))
+	r, err := c.OnMessage(c.obj, packet)
+	if err != nil {
+		c.logError(err)
+		return false, err
 	}
-	if r != js.Undefined() {
-		rv := r.Export()
-		fmt.Println(rv)
+
+	var ret bool
+	if err := c.rt.ExportTo(r, &ret); err != nil {
+		c.logError(err)
+		return true, err
 	}
+	// TODO: shoule we return 'ret' that returned from js?
 	return true, nil
 }
 
-func (c *Client) OnServerDisconnect(_ *paho.Disconnect) {
-	r, e := c.callback(js.Null(), c.rt.ToValue("onServerDisconnect"), js.Undefined())
-	if e != nil {
-		panic(c.rt.ToValue(e.Error()))
+func (c *Client) handleServerDisconnect(dc *paho.Disconnect) {
+	if c.OnDisconnect == nil {
+		return
+	}
+	r, err := c.OnDisconnect(c.obj, c.rt.ToValue(dc))
+	if err != nil {
+		c.logError(err)
+		return
 	}
 	if r != js.Undefined() {
 		rv := r.Export()
