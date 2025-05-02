@@ -127,7 +127,7 @@ func (c *Client) Connect(call js.FunctionCall) *CONN {
 	if cleaner, ok := c.ctx.(Cleaner); ok {
 		tok := cleaner.AddCleanup(func(out io.Writer) {
 			if connection.conn != nil {
-				io.WriteString(out, "WARNING: db connection not closed!!!\n")
+				io.WriteString(out, "forced db connection to close by cleanup\n")
 				connection.conn.Close()
 			}
 		})
@@ -310,7 +310,7 @@ func (c *CONN) Query(call js.FunctionCall) *ROWS {
 	if cleaner, ok := c.db.ctx.(Cleaner); ok {
 		tok := cleaner.AddCleanup(func(out io.Writer) {
 			if rows.rows != nil {
-				io.WriteString(out, "WARNING: db rows not closed!!!\n")
+				io.WriteString(out, "forced db rows to close by cleanup\n")
 				rows.rows.Close()
 			}
 		})

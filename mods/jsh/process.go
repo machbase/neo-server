@@ -37,8 +37,9 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("exists", j.process_exists)
 	// m.readLine()
 	o.Set("readLine", j.process_readLine)
-	// m.stdout
+	// m.print("hello", "world")
 	o.Set("print", j.process_print)
+	o.Set("println", j.process_println)
 	// m.table
 	o.Set("Table", j.process_Table)
 	// m.exec(args)
@@ -222,7 +223,18 @@ func (j *Jsh) process_print(call js.FunctionCall) js.Value {
 	for i := 0; i < len(call.Arguments); i++ {
 		args[i] = call.Arguments[i].Export()
 	}
-	if err := j.Print(args...); err != nil {
+	if err := j.print0(logging.LevelInfo, false, args...); err != nil {
+		panic(j.vm.NewGoError(err))
+	}
+	return js.Undefined()
+}
+
+func (j *Jsh) process_println(call js.FunctionCall) js.Value {
+	args := make([]any, len(call.Arguments))
+	for i := 0; i < len(call.Arguments); i++ {
+		args[i] = call.Arguments[i].Export()
+	}
+	if err := j.print0(logging.LevelInfo, true, args...); err != nil {
 		panic(j.vm.NewGoError(err))
 	}
 	return js.Undefined()

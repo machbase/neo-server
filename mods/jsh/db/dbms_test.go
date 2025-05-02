@@ -61,8 +61,8 @@ func TestDBMS(t *testing.T) {
 				`cols.names: ["NAME","TIME","VALUE","SHORT_VALUE","USHORT_VALUE","INT_VALUE","UINT_VALUE","LONG_VALUE","ULONG_VALUE","STR_VALUE","JSON_VALUE","IPV4_VALUE","IPV6_VALUE"]`,
 				`cols.types: ["string","datetime","double","int16","int16","int32","int32","int64","int64","string","string","ipv4","ipv6"]`,
 				"rows: 0",
-				"WARNING: db rows not closed!!!",
-				"WARNING: db connection not closed!!!",
+				"forced db rows to close by cleanup",
+				"forced db connection to close by cleanup",
 				"",
 			},
 		},
@@ -94,6 +94,9 @@ func TestDBMS(t *testing.T) {
 							console.log("for_in", n, ":", rec[n]);
 						}
 					}
+
+					row = conn.queryRow("select count(*) from tag_data where name = ?", "test-js")
+					console.log("queryRow:", row.values["count(*)"]);
 				} catch(e) {
 					console.log("Error:", e);
 				} finally {
@@ -110,6 +113,7 @@ func TestDBMS(t *testing.T) {
 				"for_in name : test-js",
 				"for_in time : 2025-04-22 12:26:36 +0000 UTC",
 				"for_in value : 1.234",
+				"queryRow: 1",
 				"",
 			},
 		},

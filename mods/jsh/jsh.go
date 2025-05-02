@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -20,7 +21,10 @@ import (
 	"github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
 	"github.com/machbase/neo-server/v8/mods/jsh/generator"
+	"github.com/machbase/neo-server/v8/mods/jsh/http"
+	"github.com/machbase/neo-server/v8/mods/jsh/mqtt"
 	"github.com/machbase/neo-server/v8/mods/jsh/opcua"
+	"github.com/machbase/neo-server/v8/mods/jsh/psutil"
 	"github.com/machbase/neo-server/v8/mods/jsh/publisher"
 	"github.com/machbase/neo-server/v8/mods/jsh/spatial"
 	"github.com/machbase/neo-server/v8/mods/jsh/system"
@@ -280,7 +284,7 @@ func (j *Jsh) Exec(args []string) error {
 	if sourceCode == "" {
 		return fmt.Errorf("command not found: %s", args[0])
 	}
-	args[0] = filepath.Base(args[0])
+	args[0] = sourceName
 	return j.Run(sourceName, sourceCode, args)
 }
 
@@ -301,6 +305,9 @@ func init() {
 		"@jsh/analysis":  analysis.NewModuleLoader,
 		"@jsh/spatial":   spatial.NewModuleLoader,
 		"@jsh/generator": generator.NewModuleLoader,
+		"@jsh/mqtt":      mqtt.NewModuleLoader,
+		"@jsh/http":      http.NewModuleLoader,
+		"@jsh/psutil":    psutil.NewModuleLoader,
 		"@jsh/opcua":     opcua.NewModuleLoader,
 	}
 }
@@ -350,6 +357,16 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 	j.sourceName = sourceName
 	j.sourceCode = sourceCode
 	j.args = args
+
+	defer func() {
+		if r := recover(); r != nil {
+			if j.writer != nil {
+				j.writer.Write(debug.Stack())
+			} else {
+				debug.PrintStack()
+			}
+		}
+	}()
 
 	go func() {
 		allocJshPID(j)

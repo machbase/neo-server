@@ -78,7 +78,7 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 		if cleaner, ok := ctx.(Cleaner); ok {
 			tok := cleaner.AddCleanup(func(w io.Writer) {
 				if c.client != nil {
-					io.WriteString(w, "WARNING: opcua client not closed!!!\n")
+					io.WriteString(w, "forced opcua client to close the connection by cleanup\n")
 					c.Close(js.FunctionCall{})
 				}
 			})
