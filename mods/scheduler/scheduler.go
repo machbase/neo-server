@@ -10,6 +10,7 @@ import (
 	logging "github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/robfig/cron/v3"
 )
 
@@ -20,11 +21,16 @@ func NewService(opts ...Option) Service {
 	for _, o := range opts {
 		o(ret)
 	}
-	ret.crons = cron.New(
-		cron.WithLocation(time.Local),
-		cron.WithSeconds(),
-		cron.WithLogger(ret),
-	)
+	defaultCron := util.DefaultCron()
+	if defaultCron == nil {
+		defaultCron = cron.New(
+			cron.WithLocation(time.Local),
+			cron.WithSeconds(),
+			cron.WithLogger(ret),
+		)
+		util.SetDefaultCron(defaultCron)
+	}
+	ret.crons = defaultCron
 	return ret
 }
 

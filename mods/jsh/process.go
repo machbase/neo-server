@@ -15,6 +15,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/jsh/system"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
@@ -61,6 +62,8 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 
 	// m.daemonize()
 	o.Set("daemonize", j.process_daemonize)
+	// m.schedule("@every 2s", (currentTime) => { println("hello") })
+	o.Set("schedule", j.schedule)
 
 	// m.serviceStatus()
 	o.Set("serviceStatus", j.process_serviceStatus)
@@ -323,6 +326,48 @@ func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
 		nJsh.program = j.program
 		nJsh.Run(name, "", args)
 	}(j.sourceName, j.program, []string{})
+	return js.Undefined()
+}
+
+// jsh.schedule("@every 2s", (currentTime, token) => { println("hello"); token.stop(); })
+func (j *Jsh) schedule(call js.FunctionCall) js.Value {
+	defaultCron := util.DefaultCron()
+	if defaultCron == nil {
+		panic(j.vm.ToValue("schedule: scheduler does not exist"))
+	}
+	if len(call.Arguments) < 2 {
+		panic(j.vm.ToValue("schedule: missing argument"))
+	}
+	spec := call.Arguments[0].String()
+	var callback js.Callable
+	if fn, ok := js.AssertFunction(call.Arguments[1]); !ok {
+		panic(j.vm.ToValue("schedule: invalid callback"))
+	} else {
+		callback = fn
+	}
+
+	done := make(chan struct{})
+	entryId, err := defaultCron.AddFunc(spec, func() {
+		token := j.vm.NewObject()
+		token.Set("stop", func(call js.FunctionCall) js.Value {
+			close(done)
+			return js.Undefined()
+		})
+		_, err := callback(js.Undefined(), j.vm.ToValue(time.Now()), token)
+		if err != nil {
+			j.Log(logging.LevelWarn, "schedule: callback", err)
+			close(done)
+		}
+	})
+	if err != nil {
+		j.Log(logging.LevelWarn, "schedule:", err.Error())
+		return js.Undefined()
+	}
+	select {
+	case <-done:
+	case <-j.Context.Done():
+	}
+	defaultCron.Remove(entryId)
 	return js.Undefined()
 }
 
