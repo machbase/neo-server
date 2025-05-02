@@ -50,7 +50,7 @@ func TestScriptOPCUA(t *testing.T) {
 				// if it properly warns
 			`,
 			Expect: []string{
-				"WARNING: opcua client not closed!!!",
+				"forced opcua client to close the connection by cleanup",
 				"",
 			},
 		},

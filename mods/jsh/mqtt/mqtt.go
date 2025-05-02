@@ -135,7 +135,7 @@ func (c *Client) Connect(call js.FunctionCall) js.Value {
 		if cleaner, ok := c.ctx.(Cleaner); ok {
 			cleaner.AddCleanup(func(out io.Writer) {
 				if c.connMgr != nil {
-					io.WriteString(out, "WARNING: mqtt connection not closed!!!\n")
+					io.WriteString(out, "forced a mqtt connection to close by cleanup\n")
 					c.connMgr.Disconnect(c.ctx)
 				}
 			})
