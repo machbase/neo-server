@@ -53,6 +53,92 @@ func runTest(t *testing.T, tc TestCase) {
 	}
 }
 
+func TestTime(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "new-Time",
+			Script: `
+				const {println} = require("@jsh/process");
+				const system = require("@jsh/system");
+				println(system.time(1, 2).In(system.location("UTC")).toString());
+				println(system.time(1).In(system.location("UTC")).toString());
+				println(system.time().In(system.location("UTC")).toString());
+				println(system.time(0, 0).In(system.location("UTC")).toString());
+				println(system.time(0).In(system.location("Asia/Tokyo")).toString());
+				`,
+			Expect: []string{
+				"1970-01-01 00:00:01 +0000 UTC",
+				"1970-01-01 00:00:01 +0000 UTC",
+				"1970-01-01 00:00:00 +0000 UTC",
+				"1970-01-01 00:00:00 +0000 UTC",
+				"1970-01-01 09:00:00 +0900 JST",
+				"",
+			},
+		},
+		{
+			Name: "timeformat",
+			Script: `
+				const {println} = require("@jsh/process");
+				const system = require("@jsh/system");
+				ts = system.time(1).In(system.location("UTC"));
+				println(ts.Format("2006-01-02 15:04:05"));
+				`,
+			Expect: []string{
+				"1970-01-01 00:00:01",
+				"",
+			},
+		},
+		{
+			Name: "timeformat",
+			Script: `
+				const {println} = require("@jsh/process");
+				const system = require("@jsh/system");
+				ts = system.time(1).In(system.location("UTC"));
+				println(ts.Format("2006-01-02 15:04:05"));
+				`,
+			Expect: []string{
+				"1970-01-01 00:00:01",
+				"",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, tc)
+		})
+	}
+}
+
+func TestParseTime(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "parseTime",
+			Script: `
+				const {println} = require("@jsh/process");
+				const system = require("@jsh/system");
+				ts = system.parseTime(
+					"2023-10-01 12:00:00",
+					"2006-01-02 15:04:05",
+					system.location("UTC"));
+				println(ts.In(system.location("UTC")).Format("2006-01-02 15:04:05"));
+				println(ts.In(system.location("Asia/Seoul")).Format("2006-01-02 15:04:05"));
+				`,
+			Expect: []string{
+				"2023-10-01 12:00:00",
+				"2023-10-01 21:00:00",
+				"",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, tc)
+		})
+	}
+}
+
 func TestStatz(t *testing.T) {
 	tests := []TestCase{
 		{

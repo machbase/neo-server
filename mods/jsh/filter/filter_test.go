@@ -168,7 +168,7 @@ func TestKalman(t *testing.T) {
 
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
-					console.log(kalman.eval(s.parseTime(ts), x).toFixed(3));
+					console.log(kalman.eval(s.parseTime(ts,"ms"), x).toFixed(3));
 				}
 			`,
 			Expect: []string{
@@ -189,7 +189,7 @@ func TestKalman(t *testing.T) {
 			
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
-					console.log(kalman.eval(s.parseTime(ts), x).toFixed(3));
+					console.log(kalman.eval(s.parseTime(ts,"ms"), x).toFixed(3));
 				}
 			`,
 			Expect: []string{
@@ -219,7 +219,7 @@ func TestKalmanSmoother(t *testing.T) {
 				var ts = 1745484444000; // ms
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
-					console.log(kalman.eval(s.parseTime(ts), x).toFixed(2));
+					console.log(kalman.eval(s.parseTime(ts,"ms"), x).toFixed(2));
 				}
 			`,
 			Expect: []string{
@@ -239,7 +239,7 @@ func TestKalmanSmoother(t *testing.T) {
 				var ts = 1745484444000; // ms			
 				for( x of [1.3, 10.2, 5.0, 3.4] ) {
 					ts += 1000;
-					console.log(kalman.eval(s.parseTime(ts), x).toFixed(2));
+					console.log(kalman.eval(s.parseTime(ts,"ms"), x).toFixed(2));
 				}
 			`,
 			Expect: []string{

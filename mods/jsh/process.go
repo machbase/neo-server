@@ -353,7 +353,7 @@ func (j *Jsh) schedule(call js.FunctionCall) js.Value {
 		return js.Undefined()
 	})
 	entryId, err := defaultCron.AddFunc(spec, func() {
-		_, err := callback(js.Undefined(), j.vm.ToValue(time.Now()), token)
+		_, err := callback(js.Undefined(), j.vm.ToValue(time.Now().Unix()*1000), token)
 		if err != nil {
 			if _, ok := err.(*js.InterruptedError); !ok {
 				// ignore interrupted error
