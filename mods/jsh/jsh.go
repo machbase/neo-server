@@ -157,6 +157,8 @@ type JshDaemonContext struct {
 	context.Context
 }
 
+var _ builtin.JshContext = (*Jsh)(nil)
+
 type Jsh struct {
 	context.Context
 	*Cleaner
@@ -172,7 +174,7 @@ type Jsh struct {
 	vm          *js.Runtime
 	chStart     chan struct{}
 	chStop      chan struct{}
-	chKill      chan struct{}
+	chKill      chan string
 	sourceName  string
 	sourceCode  string
 	userName    string
@@ -203,7 +205,7 @@ func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 		echo:      true,
 		chStart:   make(chan struct{}),
 		chStop:    make(chan struct{}),
-		chKill:    make(chan struct{}),
+		chKill:    make(chan string),
 		startAt:   time.Now(),
 		resultVal: js.Undefined(),
 		resultErr: nil,
@@ -449,6 +451,10 @@ func (j *Jsh) Kill(sig string) {
 	close(j.chKill)
 	j.vm.Interrupt(sig)
 	j.chKill = nil
+}
+
+func (j *Jsh) Signal() <-chan string {
+	return j.chKill
 }
 
 func (j *Jsh) loadSource(path string) ([]byte, error) {

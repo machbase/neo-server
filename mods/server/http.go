@@ -35,6 +35,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/jsh"
+	jshHttp "github.com/machbase/neo-server/v8/mods/jsh/http"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
@@ -170,7 +171,9 @@ func (svr *httpd) Start() error {
 	svr.httpServer = &http.Server{
 		ConnContext: connContext,
 	}
-	svr.httpServer.Handler = svr.Router()
+	router := svr.Router()
+	svr.httpServer.Handler = router
+	jshHttp.SetDefaultRouter(router)
 
 	for _, listen := range svr.listenAddresses {
 		lsnr, err := util.MakeListener(listen)
