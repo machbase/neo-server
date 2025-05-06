@@ -103,12 +103,25 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 	req := rt.NewObject()
 	req.Set("header", ctx.Request.Header)
 	req.Set("method", ctx.Request.Method)
-	req.Set("url", ctx.Request.URL)
-	req.Set("query", ctx.Request.URL.Query())
 	req.Set("body", ctx.Request.Body)
+	req.Set("remoteAddr", ctx.Request.RemoteAddr)
+	req.Set("host", ctx.Request.Host)
+	req.Set("path", ctx.Request.URL.Path)
+	req.Set("query", ctx.Request.URL.Query())
+	req.Set("getHeader", func(call js.FunctionCall) js.Value {
+		if len(call.Arguments) == 0 {
+			panic(rt.ToValue("ctx.getHeader: missing header name"))
+		}
+		var name string
+		if err := rt.ExportTo(call.Arguments[0], &name); err != nil {
+			panic(rt.ToValue("ctx.getHeader: invalid header name " + err.Error()))
+		}
+		value := ctx.Request.Header.Get(name)
+		return rt.ToValue(value)
+	})
 
 	obj := rt.NewObject()
-	obj.Set("writer", ctx.Writer)
+	obj.Set("response", ctx.Writer)
 	obj.Set("request", req)
 	obj.Set("abort", func(call js.FunctionCall) js.Value {
 		ctx.Abort()
@@ -128,17 +141,6 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 		}
 		ctx.Redirect(code, url)
 		return js.Undefined()
-	})
-	obj.Set("getHeader", func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("ctx.getHeader: missing header name"))
-		}
-		var name string
-		if err := rt.ExportTo(call.Arguments[0], &name); err != nil {
-			panic(rt.ToValue("ctx.getHeader: invalid header name " + err.Error()))
-		}
-		value := ctx.Request.Header.Get(name)
-		return rt.ToValue(value)
 	})
 	obj.Set("setHeader", func(call js.FunctionCall) js.Value {
 		var name string

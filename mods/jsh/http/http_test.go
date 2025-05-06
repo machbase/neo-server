@@ -269,7 +269,7 @@ func TestMain(m *testing.M) {
 		const http = require("@jsh/http")
 		const lsnr = new http.Listener({network:'tcp', address:'` + serverAddress + `'})
 		lsnr.get("/hello", (ctx) => {
-			reqId = ctx.getHeader("X-Request-Id")
+			reqId = ctx.request.getHeader("X-Request-Id")
 			ctx.setHeader("X-Request-Id", reqId)
 			ctx.TEXT(http.status.OK, "Hello World")
 		})
