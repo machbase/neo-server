@@ -137,6 +137,7 @@ func (c *Client) Connect(call js.FunctionCall) js.Value {
 				if c.connMgr != nil {
 					io.WriteString(out, "forced a mqtt connection to close by cleanup\n")
 					c.connMgr.Disconnect(c.ctx)
+					c.connMgr = nil
 				}
 			})
 		}

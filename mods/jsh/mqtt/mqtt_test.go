@@ -72,9 +72,6 @@ func TestMqtt(t *testing.T) {
 					onConnectError: (err) => {
 						println("connect error", err);
 					},
-					onDisconnect: (disconn) => {
-						println("disconnected.");
-					},
 					onMessage: (msg) => {
 						println("recv:", msg.topic, msg.qos, msg.payload.string())
 					},
@@ -88,7 +85,7 @@ func TestMqtt(t *testing.T) {
 					client.publish("test/topic", "Hello, MQTT?", 2);
 					sleep(3000); // wait onMessage() to be called
 				} catch (e) {
-				 	println(e);
+				 	println("exception:", e);
 				}finally {
 					client.disconnect();
 					println("disconnected.");
