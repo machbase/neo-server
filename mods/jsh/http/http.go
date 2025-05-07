@@ -44,13 +44,13 @@ var statusCodes = map[string]int{
 	"ResetContent":                  http.StatusResetContent,                  // 205
 	"PartialContent":                http.StatusPartialContent,                // 206
 	"MultipleChoices":               http.StatusMultipleChoices,               // 300
-	"Moved Permanently":             http.StatusMovedPermanently,              // 301
+	"MovedPermanently":              http.StatusMovedPermanently,              // 301
 	"Found":                         http.StatusFound,                         // 302
 	"SeeOther":                      http.StatusSeeOther,                      // 303
 	"NotModified":                   http.StatusNotModified,                   // 304
 	"UseProxy":                      http.StatusUseProxy,                      // 305
 	"TemporaryRedirect":             http.StatusTemporaryRedirect,             // 307
-	"MovedPermanently":              http.StatusMovedPermanently,              // 308
+	"PermanentRedirect":             http.StatusPermanentRedirect,             // 308
 	"BadRequest":                    http.StatusBadRequest,                    // 400
 	"Unauthorized":                  http.StatusUnauthorized,                  // 401
 	"PaymentRequired":               http.StatusPaymentRequired,               // 402
@@ -62,8 +62,8 @@ var statusCodes = map[string]int{
 	"RequestTimeout":                http.StatusRequestTimeout,                // 408
 	"Conflict":                      http.StatusConflict,                      // 409
 	"Gone":                          http.StatusGone,                          // 410
-	"Length Required":               http.StatusLengthRequired,                // 411
-	"Precondition Failed":           http.StatusPreconditionFailed,            // 412
+	"LengthRequired":                http.StatusLengthRequired,                // 411
+	"PreconditionFailed":            http.StatusPreconditionFailed,            // 412
 	"RequestEntityTooLarge":         http.StatusRequestEntityTooLarge,         // 413
 	"RequestURITooLong":             http.StatusRequestURITooLong,             // 414
 	"UnsupportedMediaType":          http.StatusUnsupportedMediaType,          // 415
