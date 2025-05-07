@@ -308,7 +308,7 @@ func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Con
 		c.logError(err)
 		return
 	}
-	if r != js.Undefined() {
+	if r != nil && r != js.Undefined() && r != js.Null() {
 		rv := r.Export()
 		_ = rv
 	}

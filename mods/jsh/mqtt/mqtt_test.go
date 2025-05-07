@@ -112,13 +112,20 @@ func TestMqtt(t *testing.T) {
 var serverAddress = "127.0.0.1:1236"
 
 func TestMain(m *testing.M) {
-	svr, err := server.NewMqtt(nil, server.WithMqttTcpListener(serverAddress, nil))
+	chStarted := make(chan struct{})
+	svr, err := server.NewMqtt(nil,
+		server.WithMqttTcpListener(serverAddress, nil),
+		server.WithMqttOnStarted(func() {
+			close(chStarted)
+		}),
+	)
 	if err != nil {
 		panic(err)
 	}
 	if err := svr.Start(); err != nil {
 		panic(err)
 	}
+	<-chStarted
 	m.Run()
 	defer svr.Stop()
 }
