@@ -3,11 +3,12 @@ package http_test
 import (
 	"bytes"
 	"context"
-	"net/http"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/mods/jsh"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 type TestCase struct {
@@ -44,7 +45,7 @@ func runTest(t *testing.T, tc TestCase) {
 				t.Errorf("Expected regex %q, got %q", tc.Expect[i], line)
 			}
 		} else {
-			if !bytes.Equal(line, []byte(tc.Expect[i])) {
+			if !bytes.Equal(bytes.TrimSuffix(line, []byte("\r")), []byte(tc.Expect[i])) {
 				t.Errorf("Expected %q, got %q", tc.Expect[i], line)
 			}
 		}
@@ -54,15 +55,15 @@ func runTest(t *testing.T, tc TestCase) {
 	}
 }
 
-func TestMqtt(t *testing.T) {
+func TestHttp(t *testing.T) {
 	tests := []TestCase{
 		{
-			Name: "mqtt-client",
+			Name: "http-request",
 			Script: `
 				const {println} = require("@jsh/process");
 				const http = require("@jsh/http")
 				try {
-					req = http.request("http://127.0.0.1:29876/hello",{
+					req = http.request("http://` + serverAddress + `/hello",{
 						headers: {
 							"X-Request-Id": "1234567890",
 						},
@@ -74,17 +75,53 @@ func TestMqtt(t *testing.T) {
 						println("statusText:", rsp.statusText);
 						println("content-type:", rsp.headers["Content-Type"]);
 						println("body:", rsp.text());
+						println("X-Request-Id:", rsp.headers["X-Request-Id"]);
 					})
 				} catch (e) {
 				 	println(e.toString());
 				}
 			`,
 			Expect: []string{
-				"url: http://127.0.0.1:29876/hello",
+				"url: http://" + serverAddress + "/hello",
 				"error: <nil>",
 				"status: 200",
 				"statusText: 200 OK",
-				"content-type: text/plain",
+				"content-type: text/plain; charset=utf-8",
+				"body: Hello World",
+				"X-Request-Id: 1234567890",
+				"",
+			},
+		},
+		{
+			Name: "http-client",
+			Script: `
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					client = new http.Client();
+					client.do("http://` + serverAddress + `/hello",{
+						headers: {
+							"X-Request-Id": "1234567890",
+						},
+					}, (rsp) => {
+						println("url:", rsp.url);
+						println("error:", rsp.error());
+						println("status:", rsp.status);
+						println("statusText:", rsp.statusText);
+						println("content-type:", rsp.headers["Content-Type"]);
+						println("body:", rsp.text());
+						println("X-Request-Id:", rsp.headers["X-Request-Id"]);
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}
+			`,
+			Expect: []string{
+				"url: http://" + serverAddress + "/hello",
+				"error: <nil>",
+				"status: 200",
+				"statusText: 200 OK",
+				"content-type: text/plain; charset=utf-8",
 				"body: Hello World",
 				"X-Request-Id: 1234567890",
 				"",
@@ -99,21 +136,175 @@ func TestMqtt(t *testing.T) {
 	}
 }
 
+func TestHttpQueryParam(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "http-query-param",
+			Script: `
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					req = http.request("http://` + serverAddress + `/hello/machbase?greeting=Hi")
+					req.do((rsp) => {
+						println("statusText:", rsp.statusText);
+						println("content-type:", rsp.headers["Content-Type"]);
+						println("body:", rsp.text());
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}
+			`,
+			Expect: []string{
+				"statusText: 200 OK",
+				"content-type: application/json; charset=utf-8",
+				`body: {"greeting":"Hi","name":"machbase"}`,
+				"",
+			},
+		},
+		{
+			Name: "http-query-param-redirect",
+			Script: `
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					req = http.request("http://` + serverAddress + `/hello/boys/good_morning")
+					req.do((rsp) => {
+						println("statusText:", rsp.statusText);
+						println("content-type:", rsp.headers["Content-Type"]);
+						println("body:", rsp.text());
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}
+			`,
+			Expect: []string{
+				"statusText: 200 OK",
+				"content-type: application/json; charset=utf-8",
+				`body: {"greeting":"good_morning","name":"boys"}`,
+				"",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, tc)
+		})
+	}
+}
+
+func TestHttpStatic(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "http-static-html",
+			Script: `
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					req = http.request("http://` + serverAddress + `/html")
+					req.do((rsp) => {
+						println("statusText:", rsp.statusText);
+						println("content-type:", rsp.headers["Content-Type"]);
+						println(rsp.text());
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}
+			`,
+			Expect: []string{
+				"statusText: 200 OK",
+				"content-type: text/html; charset=utf-8",
+				`<html>`,
+				`<body>`,
+				`    <h1>Test HTML</h1>`,
+				`</body>`,
+				`</html>`,
+				``,
+			},
+		},
+		{
+			Name: "http-static-file",
+			Script: `
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					req = http.request("http://` + serverAddress + `/test_file")
+					req.do((rsp) => {
+						println("statusText:", rsp.statusText);
+						println("content-type:", rsp.headers["Content-Type"]);
+						println(rsp.text());
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}
+			`,
+			Expect: []string{
+				"statusText: 200 OK",
+				"content-type: text/plain; charset=utf-8",
+				`Hello, Text!`,
+				``,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, tc)
+		})
+	}
+}
+
 var serverAddress = "127.0.0.1:29876"
 
 func TestMain(m *testing.M) {
-	http.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("Hello World\n"))
-		reqId := req.Header.Get("X-Request-Id")
-		w.Write([]byte("X-Request-Id: " + reqId))
-	})
+	serverFs, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
+	ssfs.SetDefault(serverFs)
 
-	server := &http.Server{
-		Addr:    serverAddress,
-		Handler: http.DefaultServeMux,
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	w := &bytes.Buffer{}
+	j := jsh.NewJsh(ctx,
+		jsh.WithNativeModules("@jsh/process", "@jsh/http"),
+		jsh.WithWriter(w),
+	)
+	script := `
+		const {println} = require("@jsh/process");
+		const http = require("@jsh/http")
+		const svr = new http.Server({network:'tcp', address:'` + serverAddress + `'})
+		svr.get("/hello", (ctx) => {
+			reqId = ctx.request.getHeader("X-Request-Id")
+			ctx.setHeader("X-Request-Id", reqId)
+			ctx.TEXT(http.status.OK, "Hello World")
+		})
+		svr.get("/hello/:name", (ctx) => {
+			name = ctx.param("name")
+			greeting = ctx.query("greeting")
+			ctx.JSON(http.status.OK, {
+				"greeting": greeting,
+				"name": name,
+			})
+		})
+		svr.get("/hello/:name/:greeting", (ctx) => {
+			name = ctx.param("name")
+			greeting = ctx.param("greeting")
+			ctx.redirect(http.status.Found, ` + "`/hello/${name}?greeting=${greeting}`" + `)
+		})
+		svr.static("/html", "/html")
+		svr.staticFile("/test_file", "/html/hello.txt")
+		svr.listen((result)=>{ println("server started", result.network, result.address) });
+	`
+	go func() {
+		err := j.Run("testServer", script, nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
+	for {
+		time.Sleep(100 * time.Millisecond)
+		// wait for server to start and print("server started")
+		if w.Len() > 0 {
+			break
+		}
 	}
-	go server.ListenAndServe()
 	m.Run()
-	defer server.Close()
+	ctxCancel()
 }

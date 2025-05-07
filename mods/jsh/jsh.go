@@ -157,6 +157,8 @@ type JshDaemonContext struct {
 	context.Context
 }
 
+var _ builtin.JshContext = (*Jsh)(nil)
+
 type Jsh struct {
 	context.Context
 	*Cleaner
@@ -172,6 +174,7 @@ type Jsh struct {
 	vm          *js.Runtime
 	chStart     chan struct{}
 	chStop      chan struct{}
+	chKill      chan string
 	sourceName  string
 	sourceCode  string
 	userName    string
@@ -202,6 +205,7 @@ func NewJsh(ctx context.Context, opts ...JshOption) *Jsh {
 		echo:      true,
 		chStart:   make(chan struct{}),
 		chStop:    make(chan struct{}),
+		chKill:    make(chan string),
 		startAt:   time.Now(),
 		resultVal: js.Undefined(),
 		resultErr: nil,
@@ -416,11 +420,15 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 		j.vm.Interrupt("interrupted")
 		<-j.chStop
 	}
+	if j.chKill != nil {
+		close(j.chKill)
+		j.chKill = nil
+	}
 	for _, err := range j.resultErr {
 		if jsErr, ok := err.(*js.Exception); ok {
-			j.Print(jsErr.String(), "\n")
+			j.Print(j.sourceName, jsErr.String(), "\n")
 		} else {
-			j.Print(err.Error(), "\n")
+			j.Print(j.sourceName, err.Error(), "\n")
 		}
 	}
 	if len(j.resultErr) == 0 {
@@ -433,11 +441,20 @@ func (j *Jsh) Errors() []error {
 	return j.resultErr
 }
 
-func (j *Jsh) Interrupt() {
+func (j *Jsh) Kill(sig string) {
 	if j.vm == nil {
 		return
 	}
-	j.vm.Interrupt("interrupted")
+	// Note: calling order is matter.
+	// close() should be called first to interrupt the native functions like scheduler and sleep
+	// then Interrupt() should be called to interrupt JavaScript code.
+	close(j.chKill)
+	j.vm.Interrupt(sig)
+	j.chKill = nil
+}
+
+func (j *Jsh) Signal() <-chan string {
+	return j.chKill
 }
 
 func (j *Jsh) loadSource(path string) ([]byte, error) {

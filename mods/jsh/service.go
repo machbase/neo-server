@@ -219,7 +219,7 @@ func (s *ServiceConfig) Stop() {
 	}
 	if obj.Config.StopCmd == "" {
 		if p, ok := jshProcesses[obj.pid]; ok {
-			p.Interrupt()
+			p.Kill("stopped")
 			obj.Config.StopError = nil
 		}
 	} else {

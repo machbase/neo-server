@@ -26,7 +26,7 @@ func TestJshInterrupt(t *testing.T) {
 
 	go func() {
 		time.Sleep(1 * time.Second)
-		jsh.Interrupt()
+		jsh.Kill("interrupted")
 	}()
 
 	err := jsh.Exec([]string{"jsh-interrupt.js"})

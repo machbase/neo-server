@@ -72,9 +72,6 @@ func TestMqtt(t *testing.T) {
 					onConnectError: (err) => {
 						println("connect error", err);
 					},
-					onDisconnect: (disconn) => {
-						println("disconnected.");
-					},
 					onMessage: (msg) => {
 						println("recv:", msg.topic, msg.qos, msg.payload.string())
 					},
@@ -82,12 +79,13 @@ func TestMqtt(t *testing.T) {
 				const client = new mqtt.Client(clientConfig);
 				try {
 					client.connect();
-					client.awaitConnection(1000);
+					client.awaitConnection(10*1000);
 
 					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
 					client.publish("test/topic", "Hello, MQTT?", 2);
+					sleep(3000); // wait onMessage() to be called
 				} catch (e) {
-				 	println(e);
+				 	println("exception:", e);
 				}finally {
 					client.disconnect();
 					println("disconnected.");
@@ -112,13 +110,20 @@ func TestMqtt(t *testing.T) {
 var serverAddress = "127.0.0.1:1236"
 
 func TestMain(m *testing.M) {
-	svr, err := server.NewMqtt(nil, server.WithMqttTcpListener(serverAddress, nil))
+	chStarted := make(chan struct{})
+	svr, err := server.NewMqtt(nil,
+		server.WithMqttTcpListener(serverAddress, nil),
+		server.WithMqttOnStarted(func() {
+			close(chStarted)
+		}),
+	)
 	if err != nil {
 		panic(err)
 	}
 	if err := svr.Start(); err != nil {
 		panic(err)
 	}
+	<-chStarted
 	m.Run()
 	defer svr.Stop()
 }

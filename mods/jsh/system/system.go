@@ -11,6 +11,7 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 func NewModuleLoader(ctx context.Context) require.ModuleLoader {
@@ -23,12 +24,18 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 		o.Set("gc", gc)
 		// m.now()
 		o.Set("now", now(ctx, rt))
-		// m.parseTime(value)
+		// m.parseTime(value, "ms") e.g. s, ms, us, ns
+		// m.parseTime(value, "2006-01-02 15:04:05")
+		// m.parseTime(value, "RFC3339")
+		// m.parseTime(value, "2006-01-02 15:04:05", "Asia/Shanghai")
 		o.Set("parseTime", parseTime(ctx, rt))
+		// t = m.time(sec, nanoSec)
+		o.Set("time", timeTime(ctx, rt))
+		// m.location("Asia/Shanghai")
+		// m.location("UTC")
+		o.Set("location", timeLocation(ctx, rt))
 		// m.statz("1m", ...keys)
 		o.Set("statz", statz(ctx, rt))
-		// m.sleep("100ms")
-		o.Set("sleep", Sleep(ctx, rt))
 	}
 }
 
@@ -48,61 +55,99 @@ func now(_ context.Context, rt *js.Runtime) func(call js.FunctionCall) js.Value 
 	}
 }
 
-func Sleep(ctx context.Context, rt *js.Runtime) func(call js.FunctionCall) js.Value {
+func timeTime(_ context.Context, rt *js.Runtime) func(call js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
-		if len(call.Arguments) == 0 {
-			panic(rt.ToValue("sleep: missing argument"))
+		if len(call.Arguments) >= 2 {
+			var sec, nanoSec int64
+			rt.ExportTo(call.Arguments[0], &sec)
+			rt.ExportTo(call.Arguments[0], &nanoSec)
+			return rt.ToValue(time.Unix(int64(sec), 0)).(*js.Object)
+		} else if len(call.Arguments) == 1 {
+			var sec int64
+			rt.ExportTo(call.Arguments[0], &sec)
+			return rt.ToValue(time.Unix(int64(sec), 0)).(*js.Object)
+		} else {
+			return rt.ToValue(time.Unix(0, 0)).(*js.Object)
 		}
-		dur := time.Duration(0)
-		switch v := call.Arguments[0].Export().(type) {
-		case time.Duration:
-			dur = v
-		case int:
-			dur = time.Duration(v) * time.Millisecond
-		case int32:
-			dur = time.Duration(v) * time.Millisecond
-		case int64:
-			dur = time.Duration(v) * time.Millisecond
-		case float32:
-			dur = time.Duration(v) * time.Millisecond
-		case float64:
-			dur = time.Duration(v) * time.Millisecond
-		case string:
-			if d, err := time.ParseDuration(v); err == nil {
-				dur = d
-			} else {
-				panic(rt.ToValue(fmt.Sprintf("sleep: invalid argument %s", v)))
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return rt.ToValue("sleep: interrupted")
-		case <-time.After(dur):
-		}
-		return js.Undefined()
 	}
 }
 
-func parseTime(_ context.Context, rt *js.Runtime) func(value js.Value) js.Value {
-	return func(value js.Value) js.Value {
+func timeLocation(_ context.Context, rt *js.Runtime) func(js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		name := "UTC"
+		if len(call.Arguments) > 0 {
+			if err := rt.ExportTo(call.Arguments[0], &name); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("location: invalid argument %s", err.Error())))
+			}
+		}
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			panic(rt.ToValue(fmt.Sprintf("location: %s", err.Error())))
+		}
+		return rt.ToValue(loc)
+	}
+}
+
+func parseTime(_ context.Context, rt *js.Runtime) func(js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		if len(call.Arguments) == 0 {
+			panic(rt.ToValue("parseTime: missing argument"))
+		}
+		value := call.Arguments[0]
 		if t, ok := value.Export().(time.Time); ok {
 			return rt.ToValue(t)
 		}
-		if t, ok := value.Export().(string); ok {
-			if t, err := time.Parse(time.RFC3339, t); err == nil {
-				return rt.ToValue(t)
-			}
-			if t, err := time.Parse(time.RFC3339Nano, t); err == nil {
-				return rt.ToValue(t)
+		var format string
+		if len(call.Arguments) > 1 {
+			if err := rt.ExportTo(call.Arguments[1], &format); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
 			}
 		}
-		if t, ok := value.Export().(int64); ok {
-			return rt.ToValue(time.Unix(0, t*int64(time.Millisecond)))
+
+		if format == "s" {
+			var val int64
+			if err := rt.ExportTo(value, &val); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+			}
+			return rt.ToValue(time.Unix(val, 0))
+		} else if format == "ms" {
+			var val int64
+			if err := rt.ExportTo(value, &val); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+			}
+			return rt.ToValue(time.Unix(0, val*int64(time.Millisecond)))
+		} else if format == "us" {
+			var val int64
+			if err := rt.ExportTo(value, &val); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+			}
+			return rt.ToValue(time.Unix(0, val*int64(time.Microsecond)))
+		} else if format == "ns" {
+			var val int64
+			if err := rt.ExportTo(value, &val); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+			}
+			return rt.ToValue(time.Unix(0, val))
+		} else {
+			var val string
+			if err := rt.ExportTo(value, &val); err != nil {
+				panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+			}
+			var location *time.Location = time.Local
+			if len(call.Arguments) > 2 {
+				if err := rt.ExportTo(call.Arguments[2], &location); err != nil {
+					panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", err.Error())))
+				}
+			}
+			format = util.GetTimeformat(format)
+			if t, err := time.ParseInLocation(format, val, location); err == nil {
+				return rt.ToValue(t)
+			}
+			if t, err := time.ParseInLocation(format, val, time.Local); err == nil {
+				return rt.ToValue(t)
+			}
 		}
-		if t, ok := value.Export().(float64); ok {
-			return rt.ToValue(time.Unix(0, int64(t*float64(time.Millisecond))))
-		}
-		panic(rt.ToValue(fmt.Sprintf("parseTime: invalid time value %q", value.ExportType())))
+		panic(rt.ToValue(fmt.Sprintf("parseTime: invalid argument %s", value.String())))
 	}
 }
 

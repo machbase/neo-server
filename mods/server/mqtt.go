@@ -44,6 +44,7 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 			SysTopicResendInterval: 5,
 			Capabilities:           caps,
 		}),
+		authHook:          &AuthHook{},
 		defaultReplyTopic: "db/reply",
 	}
 	for _, opt := range opts {
@@ -51,7 +52,8 @@ func NewMqtt(db api.Database, opts ...MqttOption) (*mqttd, error) {
 			return nil, err
 		}
 	}
-	if err := svr.broker.AddHook(&AuthHook{svr: svr}, nil); err != nil {
+	svr.authHook.svr = svr
+	if err := svr.broker.AddHook(svr.authHook, nil); err != nil {
 		return nil, err
 	}
 	svr.broker.Info.Version = strings.TrimPrefix(mods.DisplayVersion(), "v")
@@ -225,11 +227,26 @@ func WithMqttMaxMessageSizeLimit(limit int) MqttOption {
 	}
 }
 
+func WithMqttOnStarted(fn func()) MqttOption {
+	return func(s *mqttd) error {
+		s.authHook.onStarted = fn
+		return nil
+	}
+}
+
+func WithMqttOnStopped(fn func()) MqttOption {
+	return func(s *mqttd) error {
+		s.authHook.onStopped = fn
+		return nil
+	}
+}
+
 type mqttd struct {
 	log               logging.Log
 	db                api.Database
 	broker            *mqtt.Server
 	authServer        AuthServer
+	authHook          *AuthHook
 	enableTokenAuth   bool
 	tqlLoader         tql.Loader
 	defaultReplyTopic string
@@ -324,7 +341,9 @@ func (s *mqttd) onDisconnect(cl *mqtt.Client, err error, expire bool) {
 
 type AuthHook struct {
 	mqtt.HookBase
-	svr *mqttd
+	svr       *mqttd
+	onStarted func()
+	onStopped func()
 }
 
 // ID returns the ID of the hook.
@@ -335,6 +354,8 @@ func (h *AuthHook) ID() string {
 // Provides indicates which hook methods this hook provides.
 func (h *AuthHook) Provides(b byte) bool {
 	return bytes.Contains([]byte{
+		mqtt.OnStarted,
+		mqtt.OnStopped,
 		mqtt.OnConnectAuthenticate,
 		mqtt.OnACLCheck,
 		mqtt.OnConnect,
@@ -347,6 +368,18 @@ func (h *AuthHook) Provides(b byte) bool {
 // Init configures the hook with the auth ledger to be used for checking.
 func (h *AuthHook) Init(config any) error {
 	return nil
+}
+
+func (h *AuthHook) OnStarted() {
+	if h.onStarted != nil {
+		h.onStarted()
+	}
+}
+
+func (h *AuthHook) OnStopped() {
+	if h.onStopped != nil {
+		h.onStopped()
+	}
 }
 
 func (h *AuthHook) OnPacketEncode(cl *mqtt.Client, pk packets.Packet) packets.Packet {

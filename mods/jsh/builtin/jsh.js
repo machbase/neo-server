@@ -34,7 +34,8 @@ while(alive) {
             r = jsh.cd(...args.slice(1))
             printResult(r)
         } else if(args[0] == "pwd") {
-            jsh.print(jsh.cwd(...args.slice(1)), "\n")
+            r = jsh.cwd(...args.slice(1))
+            jsh.print(r, "\n")
         } else {
             try {
                 r = jsh.exec(args[0], ...args.slice(1))
