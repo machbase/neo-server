@@ -118,32 +118,59 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 		db, err = mysql.Connect(dataSource)
 		break
 	case "machbase":
-		pairs := util.ParseNameValuePairs(dataSource)
 		var host string
 		var port int
 		var user string = "sys"
 		var password string = "manager"
 		var maxOpenConn = -1
 		var maxOpenQuery = -1
-		for _, pair := range pairs {
-			switch strings.ToLower(pair.Name) {
-			case "host":
-				host = pair.Value
-			case "port":
-				if p, err := strconv.Atoi(pair.Value); err == nil {
-					port = p
+		var conType = 1
+		if strings.Contains(dataSource, "SERVER=") {
+			// input := `SERVER=value1;UID=value2;PWD=value3;CONNTYPE=1;PORT_NO=1234`
+			inputSegs := strings.Split(dataSource, ";")
+			for _, seg := range inputSegs {
+				result := util.ParseNameValuePairs(seg)
+				for _, pair := range result {
+					switch strings.ToLower(pair.Name) {
+					case "server":
+						host = pair.Value
+					case "uid":
+						user = pair.Value
+					case "pwd":
+						password = pair.Value
+					case "port_no":
+						if p, err := strconv.Atoi(pair.Value); err == nil {
+							port = p
+						}
+					case "conntype":
+						if p, err := strconv.Atoi(pair.Value); err == nil {
+							conType = p
+						}
+					}
 				}
-			case "user":
-				user = pair.Value
-			case "password":
-				password = pair.Value
-			case "maxopenconn":
-				if p, err := strconv.Atoi(pair.Value); err == nil {
-					maxOpenConn = p
-				}
-			case "maxopenquery":
-				if p, err := strconv.Atoi(pair.Value); err == nil {
-					maxOpenQuery = p
+			}
+		} else {
+			pairs := util.ParseNameValuePairs(dataSource)
+			for _, pair := range pairs {
+				switch strings.ToLower(pair.Name) {
+				case "host":
+					host = pair.Value
+				case "port":
+					if p, err := strconv.Atoi(pair.Value); err == nil {
+						port = p
+					}
+				case "user":
+					user = pair.Value
+				case "password":
+					password = pair.Value
+				case "maxopenconn":
+					if p, err := strconv.Atoi(pair.Value); err == nil {
+						maxOpenConn = p
+					}
+				case "maxopenquery":
+					if p, err := strconv.Atoi(pair.Value); err == nil {
+						maxOpenQuery = p
+					}
 				}
 			}
 		}
@@ -156,6 +183,7 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 			TrustUsers:   map[string]string{},
 			MaxOpenConn:  maxOpenConn,
 			MaxOpenQuery: maxOpenQuery,
+			ConType:      conType,
 		})
 		if err != nil {
 			return nil, nil, err

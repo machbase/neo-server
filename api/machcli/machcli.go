@@ -82,6 +82,9 @@ type Config struct {
 	MaxOpenQueryFactor float64
 
 	TrustUsers map[string]string
+
+	// unused
+	ConType int
 }
 
 type Database struct {
