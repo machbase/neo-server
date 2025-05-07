@@ -5,6 +5,7 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/machbase/neo-server/v8/mods/jsh"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
@@ -297,6 +298,13 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 	}()
+	for {
+		time.Sleep(100 * time.Millisecond)
+		// wait for server to start and print("server started")
+		if w.Len() > 0 {
+			break
+		}
+	}
 	m.Run()
 	ctxCancel()
 }
