@@ -19,7 +19,7 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 		o.Set("Client", new_client(ctx, rt))
 		// lsnr = new http.Listener({network:'tcp', address:'127.0.0.1:9001'})
 		// lsnr = new http.Listener() // share the system default http server
-		o.Set("Listener", new_listener(ctx, rt))
+		o.Set("Server", new_server(ctx, rt))
 		// status.OK
 		o.Set("status", statusCodes)
 	}

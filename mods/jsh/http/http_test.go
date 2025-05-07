@@ -266,14 +266,15 @@ func TestMain(m *testing.M) {
 		jsh.WithWriter(w),
 	)
 	script := `
+		const {println} = require("@jsh/process");
 		const http = require("@jsh/http")
-		const lsnr = new http.Listener({network:'tcp', address:'` + serverAddress + `'})
-		lsnr.get("/hello", (ctx) => {
+		const svr = new http.Server({network:'tcp', address:'` + serverAddress + `'})
+		svr.get("/hello", (ctx) => {
 			reqId = ctx.request.getHeader("X-Request-Id")
 			ctx.setHeader("X-Request-Id", reqId)
 			ctx.TEXT(http.status.OK, "Hello World")
 		})
-		lsnr.get("/hello/:name", (ctx) => {
+		svr.get("/hello/:name", (ctx) => {
 			name = ctx.param("name")
 			greeting = ctx.query("greeting")
 			ctx.JSON(http.status.OK, {
@@ -281,14 +282,14 @@ func TestMain(m *testing.M) {
 				"name": name,
 			})
 		})
-		lsnr.get("/hello/:name/:greeting", (ctx) => {
+		svr.get("/hello/:name/:greeting", (ctx) => {
 			name = ctx.param("name")
 			greeting = ctx.param("greeting")
 			ctx.redirect(http.status.Found, ` + "`/hello/${name}?greeting=${greeting}`" + `)
 		})
-		lsnr.static("/html", "/html")
-		lsnr.staticFile("/test_file", "/html/hello.txt")
-		lsnr.listen();
+		svr.static("/html", "/html")
+		svr.staticFile("/test_file", "/html/hello.txt")
+		svr.listen((result)=>{ println("server started", result.network, result.address) });
 	`
 	go func() {
 		err := j.Run("testServer", script, nil)

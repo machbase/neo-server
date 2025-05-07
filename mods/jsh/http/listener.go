@@ -10,7 +10,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 )
 
-func new_listener(ctx context.Context, rt *js.Runtime) func(js.ConstructorCall) *js.Object {
+func new_server(ctx context.Context, rt *js.Runtime) func(js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
 		base := BaseListener{
 			Network: "tcp",
@@ -129,6 +129,21 @@ func (l *RListener) Listen(call js.FunctionCall) js.Value {
 		l.lsnr = lsnr
 	}
 
+	var callback js.Callable
+	if len(call.Arguments) > 0 {
+		if err := l.rt.ExportTo(call.Arguments[0], &callback); err != nil {
+			panic(l.rt.ToValue("http.Listener.Listen: invalid callback " + err.Error()))
+		}
+	}
+	if callback != nil {
+		obj := l.rt.NewObject()
+		obj.Set("network", l.lsnr.Addr().Network())
+		obj.Set("address", l.lsnr.Addr().String())
+
+		if _, err := callback(js.Undefined(), obj); err != nil {
+			panic(l.rt.ToValue("http.Listener.Listen: callback error " + err.Error()))
+		}
+	}
 	svr := &http.Server{}
 	svr.Handler = l.router.ir.(*gin.Engine)
 

@@ -104,7 +104,7 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 	req.Set("header", ctx.Request.Header)
 	req.Set("method", ctx.Request.Method)
 	req.Set("body", ctx.Request.Body)
-	req.Set("remoteAddr", ctx.Request.RemoteAddr)
+	req.Set("remoteAddress", ctx.Request.RemoteAddr)
 	req.Set("host", ctx.Request.Host)
 	req.Set("path", ctx.Request.URL.Path)
 	req.Set("query", ctx.Request.URL.Query())
