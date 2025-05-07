@@ -44,7 +44,7 @@ func runTest(t *testing.T, tc TestCase) {
 				t.Errorf("Expected regex %q, got %q", tc.Expect[i], line)
 			}
 		} else {
-			if !bytes.Equal(line, []byte(tc.Expect[i])) {
+			if !bytes.Equal(bytes.TrimSuffix(line, []byte("\r")), []byte(tc.Expect[i])) {
 				t.Errorf("Expected %q, got %q", tc.Expect[i], line)
 			}
 		}
