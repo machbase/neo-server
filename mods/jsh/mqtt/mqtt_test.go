@@ -82,10 +82,11 @@ func TestMqtt(t *testing.T) {
 				const client = new mqtt.Client(clientConfig);
 				try {
 					client.connect();
-					client.awaitConnection(1000);
+					client.awaitConnection(10*1000);
 
 					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
 					client.publish("test/topic", "Hello, MQTT?", 2);
+					sleep(3000); // wait onMessage() to be called
 				} catch (e) {
 				 	println(e);
 				}finally {

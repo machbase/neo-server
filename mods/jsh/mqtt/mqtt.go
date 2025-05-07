@@ -303,6 +303,11 @@ func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Con
 	if c.OnConnect == nil {
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			c.logError(fmt.Errorf("handleConnectionUp: %v", r))
+		}
+	}()
 	r, err := c.OnConnect(c.obj, c.rt.ToValue(ack))
 	if err != nil {
 		c.logError(err)
@@ -352,7 +357,7 @@ func (c *Client) handlePublishReceived(p paho.PublishReceived) (bool, error) {
 		c.logError(err)
 		return true, err
 	}
-	if r == js.Undefined() || r == js.Null() {
+	if r == nil || r == js.Undefined() || r == js.Null() {
 		return true, nil
 	}
 	var ret bool
@@ -360,7 +365,7 @@ func (c *Client) handlePublishReceived(p paho.PublishReceived) (bool, error) {
 		c.logError(err)
 		return true, err
 	}
-	return true, nil
+	return ret, nil
 }
 
 func (c *Client) handleServerDisconnect(dc *paho.Disconnect) {
