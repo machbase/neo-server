@@ -370,6 +370,7 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 		allocJshPID(j)
 		defer func() {
 			if r := recover(); r != nil {
+				j.writer.Write([]byte(fmt.Sprintf("%v\n", r)))
 				if j.writer != nil {
 					j.writer.Write(debug.Stack())
 				} else {

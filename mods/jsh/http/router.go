@@ -1,6 +1,9 @@
 package http
 
 import (
+	"encoding/json"
+	"io"
+
 	js "github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
@@ -47,7 +50,29 @@ func (r *Router) handle(method string, call js.FunctionCall) js.Value {
 	}
 
 	methodHandler(path, func(ctx *gin.Context) {
-		ctxObj := mkCtx(ctx, r.rt)
+		var body any
+		contentType := ctx.ContentType()
+		if contentType == "application/json" {
+			dec := json.NewDecoder(ctx.Request.Body)
+			if err := dec.Decode(&body); err != nil {
+				panic(r.rt.ToValue("http.Router.All: invalid json " + err.Error()))
+			} else {
+				body = r.rt.ToValue(body)
+			}
+		} else if contentType == "text/plain" {
+			if bs, err := io.ReadAll(ctx.Request.Body); err != nil {
+				panic(r.rt.ToValue("http.Router.All: invalid body " + err.Error()))
+			} else {
+				body = r.rt.ToValue(string(bs))
+			}
+		} else {
+			if bs, err := io.ReadAll(ctx.Request.Body); err != nil {
+				panic(r.rt.ToValue("http.Router.All: invalid body " + err.Error()))
+			} else {
+				body = r.rt.NewArrayBuffer(bs)
+			}
+		}
+		ctxObj := mkCtx(ctx, r.rt, body)
 		if _, err := callback(js.Undefined(), ctxObj); err != nil {
 			panic(r.rt.ToValue("http.Router.All: callback error " + err.Error()))
 		}
@@ -99,11 +124,11 @@ func (r *Router) StaticFile(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
+func mkCtx(ctx *gin.Context, rt *js.Runtime, body any) js.Value {
 	req := rt.NewObject()
 	req.Set("header", ctx.Request.Header)
 	req.Set("method", ctx.Request.Method)
-	req.Set("body", ctx.Request.Body)
+	req.Set("body", body)
 	req.Set("remoteAddress", ctx.Request.RemoteAddr)
 	req.Set("host", ctx.Request.Host)
 	req.Set("path", ctx.Request.URL.Path)
