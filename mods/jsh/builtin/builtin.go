@@ -16,6 +16,7 @@ func Code(cmd string) (string, bool) {
 
 type JshContext interface {
 	context.Context
+	Username() string
 	Signal() <-chan string
 	AddCleanup(func(io.Writer)) int64
 	RemoveCleanup(int64)

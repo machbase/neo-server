@@ -232,6 +232,10 @@ func (j *Jsh) NewChild() *Jsh {
 	return child
 }
 
+func (j *Jsh) Username() string {
+	return j.userName
+}
+
 func (j *Jsh) print0(level logging.Level, eolLine bool, args ...any) error {
 	if l, ok := j.writer.(logging.Log); ok {
 		toks := make([]string, len(args))

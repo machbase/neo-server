@@ -2,13 +2,18 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/api/machcli"
+	"github.com/machbase/neo-server/v8/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/machsvr"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector"
+	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 )
 
 func NewModuleLoader(ctx context.Context) require.ModuleLoader {
@@ -23,9 +28,10 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 
 func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
-		db := NewClient(ctx, rt, call.Arguments)
+		client := NewClient(ctx, rt, call.Arguments)
 		ret := rt.NewObject()
-		ret.Set("connect", db.jsConnect)
+		ret.Set("connect", client.jsConnect)
+		ret.Set("supportAppend", client.supportAppend)
 		return ret
 	}
 }
@@ -34,6 +40,7 @@ type Client struct {
 	ctx              context.Context     `json:"-"`
 	rt               *js.Runtime         `json:"-"`
 	db               api.Database        `json:"-"`
+	supportAppend    bool                `json:"-"`
 	BridgeName       string              `json:"bridge"`
 	Driver           string              `json:"driver"`
 	ConnectOptions   []api.ConnectOption `json:"-"`
@@ -81,6 +88,14 @@ func NewClient(ctx context.Context, rt *js.Runtime, optValue []js.Value) *Client
 		}
 	}
 
+	switch ret.db.(type) {
+	case *machrpc.Client:
+		ret.supportAppend = true
+	case *machsvr.Database:
+		ret.supportAppend = true
+	case *machcli.Database:
+		ret.supportAppend = true
+	}
 	return ret
 }
 
@@ -91,6 +106,10 @@ func (c *Client) jsConnect(call js.FunctionCall) js.Value {
 	ret.Set("exec", connection.Exec)
 	ret.Set("query", connection.jsQuery)
 	ret.Set("queryRow", connection.jsQueryRow)
+	if c.supportAppend {
+		ret.Set("appender", connection.Appender)
+	}
+
 	return ret
 }
 
@@ -107,8 +126,14 @@ func (c *Client) Connect(call js.FunctionCall) *CONN {
 	var conn api.Conn
 	var err error
 	if c.BridgeName == "" && c.Driver == "" {
-		// TODO: fix this with actual user name
-		conn, err = c.db.Connect(c.ctx, api.WithTrustUser("sys"))
+		var username string
+		if jshCtx, ok := c.ctx.(builtin.JshContext); ok {
+			username = jshCtx.Username()
+		}
+		if username == "" {
+			username = "sys"
+		}
+		conn, err = c.db.Connect(c.ctx, api.WithTrustUser(username))
 	} else {
 		opts := append([]api.ConnectOption{}, c.ConnectOptions...)
 		if conf.User != "" {
@@ -124,7 +149,7 @@ func (c *Client) Connect(call js.FunctionCall) *CONN {
 		db:   c,
 		conn: conn,
 	}
-	if cleaner, ok := c.ctx.(Cleaner); ok {
+	if cleaner, ok := c.ctx.(builtin.JshContext); ok {
 		tok := cleaner.AddCleanup(func(out io.Writer) {
 			if connection.conn != nil {
 				io.WriteString(out, "forced db connection to close by cleanup\n")
@@ -138,9 +163,97 @@ func (c *Client) Connect(call js.FunctionCall) *CONN {
 	return connection
 }
 
-type Cleaner interface {
-	AddCleanup(func(io.Writer)) int64
-	RemoveCleanup(int64)
+// conn.append(tablename, columns...)
+func (c *CONN) Appender(call js.FunctionCall) js.Value {
+	if !c.db.supportAppend {
+		panic(c.db.rt.ToValue(fmt.Sprintf("%T append not supported", c.db)))
+	}
+	var tableName string
+	if len(call.Arguments) > 0 {
+		if err := c.db.rt.ExportTo(call.Arguments[0], &tableName); err != nil {
+			panic(c.db.rt.ToValue(err.Error()))
+		}
+	}
+	var columns = make([]string, len(call.Arguments)-1)
+	for i := 1; i < len(call.Arguments); i++ {
+		if err := c.db.rt.ExportTo(call.Arguments[i], &columns[i-1]); err != nil {
+			panic(c.db.rt.ToValue(err.Error()))
+		}
+	}
+	appd, err := c.conn.Appender(c.db.ctx, tableName)
+	if err != nil {
+		c.Close(js.FunctionCall{})
+		panic(c.db.rt.ToValue(err.Error()))
+	}
+	if len(columns) > 0 {
+		appd = appd.WithInputColumns(columns...)
+	}
+
+	appender := &APPENDER{
+		db:       c.db,
+		appender: appd,
+	}
+	if cleaner, ok := c.db.ctx.(builtin.JshContext); ok {
+		tok := cleaner.AddCleanup(func(out io.Writer) {
+			if appender.appender != nil {
+				io.WriteString(out, "forced db appender to close by cleanup\n")
+				appender.Close(js.FunctionCall{})
+			}
+		})
+		appender.cancelCleaner = func() {
+			cleaner.RemoveCleanup(tok)
+		}
+	}
+	ret := c.db.rt.NewObject()
+	ret.Set("close", appender.Close)
+	ret.Set("append", appender.Append)
+	ret.Set("result", appender.Result)
+	return ret
+}
+
+type APPENDER struct {
+	db            *Client
+	appender      api.Appender
+	success       int64
+	fail          int64
+	cancelCleaner func()
+}
+
+func (apd *APPENDER) Close(call js.FunctionCall) js.Value {
+	if apd.appender != nil {
+		if s, f, err := apd.appender.Close(); err != nil {
+			panic(apd.db.rt.ToValue(err.Error()))
+		} else {
+			apd.success = s
+			apd.fail = f
+		}
+		apd.appender = nil
+	}
+	return js.Undefined()
+}
+
+func (apd *APPENDER) Append(call js.FunctionCall) js.Value {
+	if apd.appender == nil {
+		panic(apd.db.rt.ToValue("invalid appender"))
+	}
+	values := make([]any, len(call.Arguments))
+	for i := 0; i < len(call.Arguments); i++ {
+		if err := apd.db.rt.ExportTo(call.Arguments[i], &values[i]); err != nil {
+			panic(apd.db.rt.ToValue(err.Error()))
+		}
+	}
+	err := apd.appender.Append(values...)
+	if err != nil {
+		panic(apd.db.rt.ToValue(err.Error()))
+	}
+	return js.Undefined()
+}
+
+func (apd *APPENDER) Result(call js.FunctionCall) js.Value {
+	ret := apd.db.rt.NewObject()
+	ret.Set("success", apd.success)
+	ret.Set("fail", apd.fail)
+	return ret
 }
 
 type CONN struct {
@@ -307,7 +420,7 @@ func (c *CONN) Query(call js.FunctionCall) *ROWS {
 		}
 	}
 
-	if cleaner, ok := c.db.ctx.(Cleaner); ok {
+	if cleaner, ok := c.db.ctx.(builtin.JshContext); ok {
 		tok := cleaner.AddCleanup(func(out io.Writer) {
 			if rows.rows != nil {
 				io.WriteString(out, "forced db rows to close by cleanup\n")

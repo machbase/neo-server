@@ -117,6 +117,37 @@ func TestDBMS(t *testing.T) {
 				"",
 			},
 		},
+		{
+			Name: "dbms-append",
+			Script: `
+				const db = require("@jsh/db");
+				const { now, parseTime } = require("@jsh/system");
+				client = new db.Client({lowerCaseColumns:true});
+				console.log("client.supportAppend:", client.supportAppend);
+				var conn = null;
+				var appender = null;
+				try{
+					conn = client.connect();
+					appender = conn.appender("tag_data", "name", "time", "value");
+					let ts = (new Date()).getTime();
+					for (let i = 0; i < 100; i++) {
+						ts = ts + 1000;
+						appender.append("test-append", parseTime(ts, "ms"), i);
+					}
+				} catch(e) {
+					console.log("Error:", e);
+				} finally {
+				 	if (appender) appender.close();
+					if (conn) conn.close();
+				}
+				console.log("appender:", appender.result().success, appender.result().fail);
+			`,
+			Expect: []string{
+				"client.supportAppend: true",
+				"appender: 100 0",
+				"",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
