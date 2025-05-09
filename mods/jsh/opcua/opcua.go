@@ -182,8 +182,8 @@ func (c *Client) Read(call js.FunctionCall) js.Value {
 			"statusCode":      code,
 			"value":           val,
 			"type":            typ,
-			"sourceTimestamp": data.SourceTimestamp,
-			"serverTimestamp": data.ServerTimestamp,
+			"sourceTimestamp": data.SourceTimestamp.UnixMilli(),
+			"serverTimestamp": data.ServerTimestamp.UnixMilli(),
 		}
 		ret = append(ret, c.rt.ToValue(ent))
 	}

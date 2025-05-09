@@ -369,6 +369,12 @@ func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logging.GetLog("jsh").Errorf("daemonize: %v", r)
+			}
+		}()
+
 		var chJsh chan *Jsh
 		var doReload = false
 		if opts.Reload {
