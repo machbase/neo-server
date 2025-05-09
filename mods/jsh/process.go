@@ -304,14 +304,85 @@ func (j *Jsh) process_exec(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
+func (j *Jsh) realpath(path string) (string, error) {
+	if realPath, err := ssfs.Default().FindRealPath(path); err != nil {
+		return "", err
+	} else {
+		return realPath.AbsPath, nil
+	}
+}
+
+func watcher(watch <-chan *Jsh, watchPath string, pReload *bool) {
+	var pJsh *Jsh
+	var lastModified time.Time
+	for {
+		select {
+		case njsh := <-watch:
+			if njsh == nil {
+				return
+			}
+			pJsh = njsh
+		case <-time.After(1 * time.Second):
+			info, err := os.Stat(watchPath)
+			if err != nil {
+				return
+			}
+			modTime := info.ModTime()
+			if lastModified.IsZero() {
+				lastModified = modTime
+				continue
+			}
+			if modTime.Equal(lastModified) {
+				continue
+			}
+			lastModified = modTime
+			*pReload = true
+			if pJsh != nil {
+				pJsh.Kill("reload")
+			}
+		}
+	}
+}
+
 // jsh.daemonize()
 func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
-	go func(name string, program *js.Program, args []string) {
-		logName := name
+	opts := struct {
+		Reload bool `json:"reload"`
+	}{
+		Reload: false,
+	}
+	if len(call.Arguments) > 0 {
+		if err := j.vm.ExportTo(call.Arguments[0], &opts); err != nil {
+			panic(j.vm.ToValue(fmt.Sprintf("daemonize: invalid argument %s", err.Error())))
+		}
+	}
+
+	//var lastModified time.Time
+	var watchPath string
+	if opts.Reload {
+		if path, err := j.realpath(j.sourceName); err != nil {
+			// daemonize: reload watcher failed
+			opts.Reload = false
+		} else {
+			watchPath = path
+		}
+	}
+
+	go func() {
+		var chJsh chan *Jsh
+		var doReload = false
+		if opts.Reload {
+			chJsh = make(chan *Jsh)
+			defer close(chJsh)
+			go watcher(chJsh, watchPath, &doReload)
+		}
+
+		logName := j.sourceName
 		if logName == "" {
 			logName = "jsh"
 		}
 		w := logging.GetLog(logName)
+	reload:
 		nJsh := NewJsh(
 			&JshDaemonContext{Context: context.Background()}, // daemon
 			WithParent(nil), // daemon
@@ -323,8 +394,28 @@ func (j *Jsh) process_daemonize(call js.FunctionCall) js.Value {
 			WithUserName(j.userName),
 		)
 		nJsh.program = j.program
-		nJsh.Run(name, "", args)
-	}(j.sourceName, j.program, []string{})
+		if opts.Reload && chJsh != nil {
+			// notify current process
+			chJsh <- nJsh
+		}
+		nJsh.Run(j.sourceName, "", j.args)
+		if doReload {
+			// if process terminated by reload-watcher
+			doReload = false
+			// reload source code
+			_, j.sourceCode = j.searchPath(j.sourceName)
+			if j.sourceCode == "" {
+				panic(j.vm.ToValue(fmt.Sprintf("daemonize: %s not found", j.sourceName)))
+			}
+			if program, err := js.Compile(j.sourceName, j.sourceCode, false); err != nil {
+				panic(j.vm.ToValue(fmt.Sprintf("daemonize: %s", err.Error())))
+			} else {
+				j.program = program
+			}
+			goto reload
+		}
+	}()
+
 	return js.Undefined()
 }
 
