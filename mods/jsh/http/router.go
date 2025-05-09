@@ -1,6 +1,9 @@
 package http
 
 import (
+	"encoding/json"
+	"io"
+
 	js "github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
@@ -101,9 +104,30 @@ func (r *Router) StaticFile(call js.FunctionCall) js.Value {
 
 func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 	req := rt.NewObject()
+	contentType := ctx.ContentType()
+	if contentType == "application/json" {
+		obj := make(map[string]any)
+		dec := json.NewDecoder(ctx.Request.Body)
+		if err := dec.Decode(&obj); err != nil {
+			panic(rt.ToValue("http.Router.All: invalid json " + err.Error()))
+		} else {
+			req.Set("body", rt.ToValue(obj))
+		}
+	} else if contentType == "text/plain" {
+		if bs, err := io.ReadAll(ctx.Request.Body); err != nil {
+			panic(rt.ToValue("http.Router.All: invalid text " + err.Error()))
+		} else {
+			req.Set("body", rt.ToValue(string(bs)))
+		}
+	} else {
+		if bs, err := io.ReadAll(ctx.Request.Body); err != nil {
+			panic(rt.ToValue("http.Router.All: invalid body " + err.Error()))
+		} else {
+			req.Set("body", rt.NewArrayBuffer(bs))
+		}
+	}
 	req.Set("header", ctx.Request.Header)
 	req.Set("method", ctx.Request.Method)
-	req.Set("body", ctx.Request.Body)
 	req.Set("remoteAddress", ctx.Request.RemoteAddr)
 	req.Set("host", ctx.Request.Host)
 	req.Set("path", ctx.Request.URL.Path)

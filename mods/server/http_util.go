@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -250,7 +251,8 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 
 type WsReadWriter struct {
 	*websocket.Conn
-	r io.Reader
+	r  io.Reader
+	mu sync.Mutex
 }
 
 var _ io.ReadWriter = (*WsReadWriter)(nil)
@@ -278,6 +280,8 @@ func (ws *WsReadWriter) Read(p []byte) (int, error) {
 }
 
 func (ws *WsReadWriter) Write(data []byte) (int, error) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
 	err := (*ws).WriteMessage(websocket.BinaryMessage, data)
 	if err != nil {
 		return 0, err
