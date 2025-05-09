@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 
@@ -56,17 +57,31 @@ func (c *Client) Do(call js.FunctionCall) js.Value {
 			panic(c.rt.ToValue("http.Client.do invalid callback: " + err.Error()))
 		}
 	}
+	prepareClient(&config)
 	return do(c.ctx, c.rt, config)
 }
 
 type RequestConfig struct {
 	Url     string            `json:"-"`
+	Unix    string            `json:"unix"`
 	Method  string            `json:"method"`
 	Headers map[string]string `json:"headers"`
 	Body    any               `json:"body"`
 
 	httpClient *http.Client `json:"-"`
 	callback   js.Callable  `json:"-"`
+}
+
+func prepareClient(cfg *RequestConfig) {
+	client := &http.Client{}
+	if cfg.Unix != "" {
+		client.Transport = &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial("unix", cfg.Unix)
+			},
+		}
+	}
+	cfg.httpClient = client
 }
 
 func request(ctx context.Context, rt *js.Runtime) func(js.FunctionCall) js.Value {
@@ -77,7 +92,7 @@ func request(ctx context.Context, rt *js.Runtime) func(js.FunctionCall) js.Value
 			Body:    nil,
 		}
 		if len(call.Arguments) == 0 {
-			panic("http.request requires at least 2 arguments")
+			panic("http.request missing url")
 		}
 		config.Url = call.Arguments[0].String()
 		if len(call.Arguments) > 1 {
@@ -85,7 +100,7 @@ func request(ctx context.Context, rt *js.Runtime) func(js.FunctionCall) js.Value
 				panic(rt.ToValue("http.request invalid config: " + err.Error()))
 			}
 		}
-		config.httpClient = http.DefaultClient
+		prepareClient(&config)
 
 		ret := rt.NewObject()
 		ret.Set("url", config.Url)
@@ -193,7 +208,7 @@ func responseBlob(httpResponse *http.Response, rt *js.Runtime) func(js.FunctionC
 func responseJson(httpResponse *http.Response, rt *js.Runtime) func(js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		dec := json.NewDecoder(httpResponse.Body)
-		data := map[string]any{}
+		var data any
 		err := dec.Decode(&data)
 		if err == io.EOF {
 			return js.Null()

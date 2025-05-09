@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 
 	js "github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
@@ -165,6 +166,9 @@ func (l *RListener) Listen(call js.FunctionCall) js.Value {
 	l.lsnr = nil
 	svr.Close()
 
+	if l.Network == "unix" {
+		os.Remove(l.Address)
+	}
 	if l.closeCh != nil {
 		close(l.closeCh)
 		l.closeCh = nil
