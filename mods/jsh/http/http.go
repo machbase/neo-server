@@ -25,13 +25,13 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 	}
 }
 
-var defaultRouter gin.IRouter
+var defaultRouter *gin.Engine
 
-func SetDefaultRouter(router gin.IRouter) {
+func SetDefaultRouter(router *gin.Engine) {
 	defaultRouter = router
 }
 
-func DefaultRouter() gin.IRouter {
+func DefaultRouter() *gin.Engine {
 	return defaultRouter
 }
 

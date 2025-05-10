@@ -2,7 +2,9 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"path/filepath"
 
 	js "github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
@@ -11,7 +13,7 @@ import (
 )
 
 type Router struct {
-	ir  gin.IRouter `json:"-"`
+	ir  *gin.Engine `json:"-"`
 	rt  *js.Runtime `json:"-"`
 	obj *js.Object  `json:"-"`
 }
@@ -50,11 +52,56 @@ func (r *Router) handle(method string, call js.FunctionCall) js.Value {
 	}
 
 	methodHandler(path, func(ctx *gin.Context) {
-		ctxObj := mkCtx(ctx, r.rt)
+		ctxObj := r.mkCtx(ctx)
 		if _, err := callback(js.Undefined(), ctxObj); err != nil {
 			panic(r.rt.ToValue("http.Router.All: callback error " + err.Error()))
 		}
 	})
+	return js.Undefined()
+}
+
+func (r *Router) LoadHTMLFiles(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 1 {
+		panic(r.rt.ToValue("http.Router.LoadHTMLFiles: missing template"))
+	}
+
+	root := ssfs.Default()
+	paths := make([]string, 0, len(call.Arguments))
+	for i := 0; i < len(call.Arguments); i++ {
+		var arg string
+		if err := r.rt.ExportTo(call.Arguments[i], &arg); err != nil {
+			panic(r.rt.ToValue("http.Router.LoadHTMLFiles: invalid template " + err.Error()))
+		}
+		realPath, err := root.FindRealPath(arg)
+		if err != nil {
+			panic(r.rt.ToValue("http.Router.LoadHTMLFiles: invalid template " + err.Error()))
+		}
+		paths = append(paths, realPath.AbsPath)
+	}
+	fmt.Println("LoadHTMLFiles", paths)
+	r.ir.LoadHTMLFiles(paths...)
+	return js.Undefined()
+}
+
+func (r *Router) LoadHTMLGlob(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 2 {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: missing template directory and pattern"))
+	}
+	var path string
+	if err := r.rt.ExportTo(call.Arguments[0], &path); err != nil {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template directory" + err.Error()))
+	}
+	var pattern string
+	if err := r.rt.ExportTo(call.Arguments[1], &pattern); err != nil {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template " + err.Error()))
+	}
+	realPath, err := ssfs.Default().FindRealPath(path)
+	if err != nil {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template " + err.Error()))
+	}
+	pathPattern := filepath.Join(realPath.AbsPath, pattern)
+	fmt.Println("LoadHTMLGlob", pathPattern)
+	r.ir.LoadHTMLGlob(pathPattern)
 	return js.Undefined()
 }
 
@@ -102,7 +149,8 @@ func (r *Router) StaticFile(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
+func (r *Router) mkCtx(ctx *gin.Context) js.Value {
+	rt := r.rt
 	req := rt.NewObject()
 	contentType := ctx.ContentType()
 	if contentType == "application/json" {
@@ -203,16 +251,17 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 		value := ctx.Query(name)
 		return rt.ToValue(value)
 	})
-	obj.Set("TEXT", renderType(ctx, rt, "text"))
-	obj.Set("JSON", renderType(ctx, rt, "json"))
-	obj.Set("HTML", renderType(ctx, rt, "html"))
-	obj.Set("XML", renderType(ctx, rt, "xml"))
-	obj.Set("YAML", renderType(ctx, rt, "yaml"))
-	obj.Set("TOML", renderType(ctx, rt, "toml"))
+	obj.Set("TEXT", r.renderType(ctx, "text"))
+	obj.Set("JSON", r.renderType(ctx, "json"))
+	obj.Set("HTML", r.renderType(ctx, "html"))
+	obj.Set("XML", r.renderType(ctx, "xml"))
+	obj.Set("YAML", r.renderType(ctx, "yaml"))
+	obj.Set("TOML", r.renderType(ctx, "toml"))
 	return obj
 }
 
-func renderType(ctx *gin.Context, rt *js.Runtime, typ string) func(js.FunctionCall) js.Value {
+func (r *Router) renderType(ctx *gin.Context, typ string) func(js.FunctionCall) js.Value {
+	rt := r.rt
 	return func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) < 2 {
 			panic(rt.ToValue("ctx.render: missing status or string"))
@@ -286,7 +335,8 @@ func renderType(ctx *gin.Context, rt *js.Runtime, typ string) func(js.FunctionCa
 			if htmlTemplate == "" {
 				panic(rt.ToValue("ctx.render: missing template"))
 			}
-			r = render.HTML{Data: data}
+			ctx.HTML(code, htmlTemplate, data)
+			return js.Undefined()
 		default:
 			panic(rt.ToValue("ctx.render: invalid render type " + typ))
 		}

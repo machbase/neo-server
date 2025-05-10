@@ -255,11 +255,15 @@ func (s *Server) StartServer(m *testing.M) {
 	s.grpcServer = grpc.NewServer()
 	machrpc.RegisterMachbaseServer(s.grpcServer, rpcSvr)
 
+	grpcSvrStart := make(chan struct{})
 	s.grpcServerWg.Add(1)
 	go func() {
+		close(grpcSvrStart)
 		s.grpcServer.Serve(s.grpcListener)
 		s.grpcServerWg.Done()
 	}()
+	<-grpcSvrStart
+	time.Sleep(time.Millisecond * 1000)
 
 	resolver.SetDefaultScheme("passthrough")
 	rpcConn, err := grpc.NewClient("bufconn",

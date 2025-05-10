@@ -340,23 +340,36 @@ func TestHttpFormats(t *testing.T) {
 			useRegex: true,
 			expect: []string{
 				"application/xml; charset=utf-8",
-				`<map>((<str>Hello World</str>)(<num>123</num>)(<bool>true</bool>))</map>`,
+				`<map>((<str>Hello World</str>)|(<num>123</num>)||(<bool>true</bool>))+</map>`,
 				"",
 			},
 		},
-		// {
-		// 	format: "html",
-		// 	expect: []string{
-		// 		"application/xml; charset=utf-8",
-		// 		`<?xml version="1.0" encoding="UTF-8"?>`,
-		// 		`<map>`,
-		// 		`  <bool>true</bool>`,
-		// 		`  <num>123</num>`,
-		// 		`  <str>Hello World</str>`,
-		// 		`</map>`,
-		// 		"",
-		// 	},
-		// },
+		{
+			format: "html",
+			expect: []string{
+				"text/html; charset=utf-8",
+				`<html><body>`,
+				`  <h1>Hello, Hello World!</h1>`,
+				`  <p>num: 123</p>`,
+				`  <p>bool: true</p>`,
+				`</body></html>`,
+				"",
+				"",
+			},
+		},
+		{
+			format: "html-tmpl",
+			expect: []string{
+				"text/html; charset=utf-8",
+				`<html><body>`,
+				`  <h1>Hello, Hello World!</h1>`,
+				`  <p>num: 123</p>`,
+				`  <p>bool: true</p>`,
+				`</body></html>`,
+				"",
+				"",
+			},
+		},
 	}
 
 	for _, tn := range tests {
@@ -447,12 +460,17 @@ func TestMain(m *testing.M) {
 		svr.get("/formats/xml", ctx => {
 			ctx.XML(http.status.OK, {str:"Hello World", num: 123, bool: true})
 		})
+		//svr.loadHTMLFiles("/html/hello.tmpl")
+		svr.loadHTMLGlob("/", "**/*.html")
 		svr.get("/formats/html", ctx => {
-			ctx.HTML(http.status.OK, {str:"Hello World", num: 123, bool: true})
+			ctx.HTML(http.status.OK, "hello.html", {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/html-tmpl", ctx => {
+			ctx.HTML(http.status.OK, "hello_tmpl.html", {str:"Hello World", num: 123, bool: true})
 		})
 		svr.static("/html", "/html")
 		svr.staticFile("/test_file", "/html/hello.txt")
-		svr.listen((result)=>{ println("server started", result.network, result.address) });
+		svr.serve((result)=>{ println("server started", result.network, result.address) });
 	`
 	go func() {
 		err := j.Run("testServer", script, nil)

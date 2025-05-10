@@ -52,7 +52,9 @@ func new_server(ctx context.Context, rt *js.Runtime) func(js.ConstructorCall) *j
 		ret.Set("delete", lsnr.Delete)
 		ret.Set("static", lsnr.Static)
 		ret.Set("staticFile", lsnr.StaticFile)
-		ret.Set("listen", lsnr.Listen)
+		ret.Set("loadHTMLGlob", lsnr.LoadHTMLGlob)
+		ret.Set("loadHTMLFiles", lsnr.LoadHTMLFiles)
+		ret.Set("serve", lsnr.Serve)
 		ret.Set("close", lsnr.Close)
 		return ret
 	}
@@ -67,7 +69,9 @@ type Listener interface {
 	Delete(call js.FunctionCall) js.Value
 	Static(call js.FunctionCall) js.Value
 	StaticFile(call js.FunctionCall) js.Value
-	Listen(call js.FunctionCall) js.Value
+	LoadHTMLGlob(call js.FunctionCall) js.Value
+	LoadHTMLFiles(call js.FunctionCall) js.Value
+	Serve(call js.FunctionCall) js.Value
 	Close(call js.FunctionCall) js.Value
 }
 
@@ -93,6 +97,8 @@ func (l *BaseListener) Router(call js.FunctionCall) js.Value {
 	obj.Set("delete", l.router.Delete)
 	obj.Set("static", l.router.Static)
 	obj.Set("staticFile", l.router.StaticFile)
+	obj.Set("loadHTMLGlob", l.router.LoadHTMLGlob)
+	obj.Set("loadHTMLFiles", l.router.LoadHTMLFiles)
 	l.router.obj = obj
 
 	return l.router.obj
@@ -106,11 +112,19 @@ func (l *BaseListener) Delete(call js.FunctionCall) js.Value     { return l.rout
 func (l *BaseListener) Static(call js.FunctionCall) js.Value     { return l.router.Static(call) }
 func (l *BaseListener) StaticFile(call js.FunctionCall) js.Value { return l.router.StaticFile(call) }
 
+func (l *BaseListener) LoadHTMLGlob(call js.FunctionCall) js.Value {
+	return l.router.LoadHTMLGlob(call)
+}
+
+func (l *BaseListener) LoadHTMLFiles(call js.FunctionCall) js.Value {
+	return l.router.LoadHTMLFiles(call)
+}
+
 type PListener struct {
 	BaseListener
 }
 
-func (l *PListener) Listen(call js.FunctionCall) js.Value {
+func (l *PListener) Serve(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 func (l *PListener) Close(call js.FunctionCall) js.Value {
@@ -123,7 +137,7 @@ type RListener struct {
 	closeCh chan struct{}
 }
 
-func (l *RListener) Listen(call js.FunctionCall) js.Value {
+func (l *RListener) Serve(call js.FunctionCall) js.Value {
 	if lsnr, err := net.Listen(l.Network, l.Address); err != nil {
 		panic(l.rt.ToValue("http.Listener.Listen: " + err.Error()))
 	} else {
@@ -146,7 +160,7 @@ func (l *RListener) Listen(call js.FunctionCall) js.Value {
 		}
 	}
 	svr := &http.Server{}
-	svr.Handler = l.router.ir.(*gin.Engine)
+	svr.Handler = l.router.ir
 
 	done := make(chan struct{})
 	go func() {
