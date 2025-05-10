@@ -3,7 +3,9 @@ package http_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"regexp"
+	"sort"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ type TestCase struct {
 	Name      string
 	Script    string
 	UseRegex  bool
+	UseSort   bool
 	Expect    []string
 	ExpectLog []string
 }
@@ -32,6 +35,11 @@ func runTest(t *testing.T, tc TestCase) {
 		t.Fatalf("Error running script: %s", err)
 	}
 	lines := bytes.Split(w.Bytes(), []byte{'\n'})
+	if tc.UseSort {
+		sort.Slice(lines, func(i, j int) bool {
+			return bytes.Compare(lines[i], lines[j]) < 0
+		})
+	}
 	for i, line := range lines {
 		if i >= len(tc.Expect) {
 			break
@@ -254,6 +262,131 @@ func TestHttpStatic(t *testing.T) {
 	}
 }
 
+func TestHttpFormats(t *testing.T) {
+	tests := []struct {
+		format   string
+		useRegex bool
+		useSort  bool
+		expect   []string
+	}{
+		{
+			format: "text",
+			expect: []string{
+				"text/plain; charset=utf-8",
+				`Hello World`,
+				"",
+			},
+		},
+		{
+			format: "text-fmt",
+			expect: []string{
+				"text/plain; charset=utf-8",
+				`Hello PI, 3.14`,
+				"",
+			},
+		},
+		{
+			format: "json",
+			expect: []string{
+				"application/json; charset=utf-8",
+				`{"bool":true,"num":123,"str":"Hello World"}`,
+				"",
+			},
+		},
+		{
+			format: "json-indent",
+			expect: []string{
+				"application/json; charset=utf-8",
+				`{`,
+				`    "bool": true,`,
+				`    "num": 123,`,
+				`    "str": "Hello World"`,
+				`}`,
+				"",
+			},
+		},
+		{
+			format: "json-array",
+			expect: []string{"application/json; charset=utf-8",
+				`["Hello","World"]`,
+				"",
+			},
+		},
+		{
+			format: "yaml",
+			expect: []string{
+				"application/yaml; charset=utf-8",
+				`bool: true`,
+				`num: 123`,
+				`str: Hello World`,
+				"",
+				"",
+				"",
+			},
+		},
+		{
+			format: "toml",
+			expect: []string{
+				"application/toml; charset=utf-8",
+				`bool = true`,
+				`num = 123`,
+				`str = 'Hello World'`,
+				"",
+				"",
+			},
+		},
+		{
+			format:   "xml",
+			useRegex: true,
+			expect: []string{
+				"application/xml; charset=utf-8",
+				`<map>((<str>Hello World</str>)(<num>123</num>)(<bool>true</bool>))</map>`,
+				"",
+			},
+		},
+		// {
+		// 	format: "html",
+		// 	expect: []string{
+		// 		"application/xml; charset=utf-8",
+		// 		`<?xml version="1.0" encoding="UTF-8"?>`,
+		// 		`<map>`,
+		// 		`  <bool>true</bool>`,
+		// 		`  <num>123</num>`,
+		// 		`  <str>Hello World</str>`,
+		// 		`</map>`,
+		// 		"",
+		// 	},
+		// },
+	}
+
+	for _, tn := range tests {
+		name := fmt.Sprintf("http-formats-%s", tn.format)
+		script := fmt.Sprintf(`
+				const {println} = require("@jsh/process");
+				const http = require("@jsh/http")
+				try {
+					req = http.request("http://%s/formats/%s")
+					req.do((rsp) => {
+						println(rsp.headers["Content-Type"]);
+						println(rsp.text());
+					})
+				} catch (e) {
+				 	println(e.toString());
+				}`, serverAddress, tn.format)
+
+		tc := TestCase{
+			Name:     name,
+			Script:   script,
+			UseRegex: tn.useRegex,
+			UseSort:  tn.useSort,
+			Expect:   tn.expect,
+		}
+		t.Run(name, func(t *testing.T) {
+			runTest(t, tc)
+		})
+	}
+}
+
 var serverAddress = "127.0.0.1:29876"
 
 func TestMain(m *testing.M) {
@@ -287,6 +420,35 @@ func TestMain(m *testing.M) {
 			name = ctx.param("name")
 			greeting = ctx.param("greeting")
 			ctx.redirect(http.status.Found, ` + "`/hello/${name}?greeting=${greeting}`" + `)
+		})
+		svr.get("/formats/text", ctx => {
+			ctx.TEXT(http.status.OK, "Hello World")
+		})
+		svr.get("/formats/text-fmt", ctx => {
+			name = "PI";
+    		pi = 3.1415;
+    		ctx.TEXT(http.status.OK, "Hello %s, %3.2f", name, pi);
+		})
+		svr.get("/formats/json", ctx => {
+			ctx.JSON(http.status.OK, {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/json-indent", ctx => {
+			ctx.JSON(http.status.OK, {str:"Hello World", num: 123, bool: true}, {indent: true})
+		})
+		svr.get("/formats/json-array", ctx => {
+			ctx.JSON(http.status.OK, ["Hello", "World"])
+		})
+		svr.get("/formats/yaml", ctx => {
+			ctx.YAML(http.status.OK, {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/toml", ctx => {
+			ctx.TOML(http.status.OK, {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/xml", ctx => {
+			ctx.XML(http.status.OK, {str:"Hello World", num: 123, bool: true})
+		})
+		svr.get("/formats/html", ctx => {
+			ctx.HTML(http.status.OK, {str:"Hello World", num: 123, bool: true})
 		})
 		svr.static("/html", "/html")
 		svr.staticFile("/test_file", "/html/hello.txt")

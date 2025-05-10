@@ -203,7 +203,7 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 		value := ctx.Query(name)
 		return rt.ToValue(value)
 	})
-	obj.Set("TEXT", renderType(ctx, rt, "string"))
+	obj.Set("TEXT", renderType(ctx, rt, "text"))
 	obj.Set("JSON", renderType(ctx, rt, "json"))
 	obj.Set("HTML", renderType(ctx, rt, "html"))
 	obj.Set("XML", renderType(ctx, rt, "xml"))
@@ -215,17 +215,24 @@ func mkCtx(ctx *gin.Context, rt *js.Runtime) js.Value {
 func renderType(ctx *gin.Context, rt *js.Runtime, typ string) func(js.FunctionCall) js.Value {
 	return func(call js.FunctionCall) js.Value {
 		if len(call.Arguments) < 2 {
-			panic(rt.ToValue("ctx.string: missing status or string"))
+			panic(rt.ToValue("ctx.render: missing status or string"))
 		}
 		var code int
 		var data any
-		var str string
-		var values []any
+		var opts = struct {
+			// JSON
+			Indent bool `json:"indent"`
+		}{}
+		// HTML
+		var htmlTemplate string
+		// TEXT
+		var textFormat string
+		var textArgs []any
 		if err := rt.ExportTo(call.Arguments[0], &code); err != nil {
 			panic(rt.ToValue("ctx.render: invalid status " + err.Error()))
 		}
-		if typ == "string" {
-			if err := rt.ExportTo(call.Arguments[1], &str); err != nil {
+		if typ == "text" {
+			if err := rt.ExportTo(call.Arguments[1], &textFormat); err != nil {
 				panic(rt.ToValue("ctx.render: invalid string " + err.Error()))
 			}
 			for i := 2; i < len(call.Arguments); i++ {
@@ -233,29 +240,53 @@ func renderType(ctx *gin.Context, rt *js.Runtime, typ string) func(js.FunctionCa
 				if err := rt.ExportTo(call.Arguments[i], &v); err != nil {
 					panic(rt.ToValue("ctx.render: invalid value " + err.Error()))
 				}
-				values = append(values, v)
+				textArgs = append(textArgs, v)
+			}
+		} else if typ == "html" {
+			if err := rt.ExportTo(call.Arguments[1], &htmlTemplate); err != nil {
+				panic(rt.ToValue("ctx.render: invalid template " + err.Error()))
+			}
+			if len(call.Arguments) > 2 {
+				if err := rt.ExportTo(call.Arguments[2], &data); err != nil {
+					panic(rt.ToValue("ctx.render: invalid data " + err.Error()))
+				}
 			}
 		} else {
 			if err := rt.ExportTo(call.Arguments[1], &data); err != nil {
 				panic(rt.ToValue("ctx.render: invalid render " + err.Error()))
 			}
+			if len(call.Arguments) > 2 {
+				if err := rt.ExportTo(call.Arguments[2], &opts); err != nil {
+					panic(rt.ToValue("ctx.render: invalid options " + err.Error()))
+				}
+			}
 		}
+		// type casting to gin.H to be supported by pre-defined marshaler
+		if m, ok := data.(map[string]any); ok {
+			data = gin.H(m)
+		}
+		// decide render type
 		var r render.Render
 		switch typ {
-		case "string":
-			r = render.String{Format: str, Data: values}
+		case "text":
+			r = render.String{Format: textFormat, Data: textArgs}
 		case "json":
-			r = render.JSON{Data: data}
-		case "indentJSON":
-			r = render.IndentedJSON{Data: data}
-		case "xml":
-			r = render.XML{Data: data}
+			if opts.Indent {
+				r = render.IndentedJSON{Data: data}
+			} else {
+				r = render.JSON{Data: data}
+			}
 		case "yaml":
 			r = render.YAML{Data: data}
-		case "html":
-			r = render.HTML{Data: data}
 		case "toml":
-			r = render.ProtoBuf{Data: data}
+			r = render.TOML{Data: data}
+		case "xml":
+			r = render.XML{Data: data}
+		case "html":
+			if htmlTemplate == "" {
+				panic(rt.ToValue("ctx.render: missing template"))
+			}
+			r = render.HTML{Data: data}
 		default:
 			panic(rt.ToValue("ctx.render: invalid render type " + typ))
 		}
