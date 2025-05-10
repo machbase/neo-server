@@ -2,9 +2,9 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	js "github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
@@ -78,29 +78,37 @@ func (r *Router) LoadHTMLFiles(call js.FunctionCall) js.Value {
 		}
 		paths = append(paths, realPath.AbsPath)
 	}
-	fmt.Println("LoadHTMLFiles", paths)
 	r.ir.LoadHTMLFiles(paths...)
 	return js.Undefined()
 }
 
 func (r *Router) LoadHTMLGlob(call js.FunctionCall) js.Value {
-	if len(call.Arguments) < 2 {
-		panic(r.rt.ToValue("http.Router.LoadTemplate: missing template directory and pattern"))
-	}
-	var path string
-	if err := r.rt.ExportTo(call.Arguments[0], &path); err != nil {
-		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template directory" + err.Error()))
+	if len(call.Arguments) < 1 {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: missing template path pattern"))
 	}
 	var pattern string
-	if err := r.rt.ExportTo(call.Arguments[1], &pattern); err != nil {
-		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template " + err.Error()))
+	if err := r.rt.ExportTo(call.Arguments[0], &pattern); err != nil {
+		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template directory" + err.Error()))
 	}
+	dirs := strings.Split(filepath.Clean(pattern), "/")
+	offset := 0
+	for i, tok := range dirs {
+		if strings.Contains(tok, "*") || strings.Contains(tok, "?") {
+			offset = i
+			break
+		}
+	}
+	path := strings.Join(dirs[:offset], "/")
+	if path == "" && strings.HasPrefix(pattern, "/") {
+		path = "/"
+	}
+
+	pattern = strings.Join(dirs[offset:], "/")
 	realPath, err := ssfs.Default().FindRealPath(path)
 	if err != nil {
 		panic(r.rt.ToValue("http.Router.LoadTemplate: invalid template " + err.Error()))
 	}
 	pathPattern := filepath.Join(realPath.AbsPath, pattern)
-	fmt.Println("LoadHTMLGlob", pathPattern)
 	r.ir.LoadHTMLGlob(pathPattern)
 	return js.Undefined()
 }

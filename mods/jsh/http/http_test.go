@@ -461,7 +461,7 @@ func TestMain(m *testing.M) {
 			ctx.XML(http.status.OK, {str:"Hello World", num: 123, bool: true})
 		})
 		//svr.loadHTMLFiles("/html/hello.tmpl")
-		svr.loadHTMLGlob("/", "**/*.html")
+		svr.loadHTMLGlob("/tmpl/*.html")
 		svr.get("/formats/html", ctx => {
 			ctx.HTML(http.status.OK, "hello.html", {str:"Hello World", num: 123, bool: true})
 		})
