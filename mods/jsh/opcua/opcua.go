@@ -75,6 +75,7 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 		ret := rt.NewObject()
 		ret.Set("close", c.Close)
 		ret.Set("read", c.Read)
+		ret.Set("write", c.Write)
 		if cleaner, ok := ctx.(Cleaner); ok {
 			tok := cleaner.AddCleanup(func(w io.Writer) {
 				if c.client != nil {
@@ -188,4 +189,52 @@ func (c *Client) Read(call js.FunctionCall) js.Value {
 		ret = append(ret, c.rt.ToValue(ent))
 	}
 	return c.rt.ToValue(ret)
+}
+
+func (c *Client) Write(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		panic(c.rt.ToValue("missing argument"))
+	}
+	var req = &ua.WriteRequest{}
+	for _, arg := range call.Arguments {
+		lst := struct {
+			Node  string `json:"node"`
+			Value any    `json:"value"`
+		}{}
+		if err := c.rt.ExportTo(arg, &lst); err != nil {
+			panic(c.rt.ToValue(err.Error()))
+		}
+		nodeID, err := ua.ParseNodeID(lst.Node)
+		if err != nil {
+			panic(c.rt.ToValue(err.Error()))
+		}
+		value, err := ua.NewVariant(lst.Value)
+		if err != nil {
+			panic(c.rt.ToValue(err.Error()))
+		}
+		nodeToWrite := &ua.WriteValue{
+			NodeID:      nodeID,
+			AttributeID: ua.AttributeIDValue,
+			Value: &ua.DataValue{
+				EncodingMask: ua.DataValueValue,
+				Value:        value,
+			},
+		}
+		req.NodesToWrite = append(req.NodesToWrite, nodeToWrite)
+	}
+
+	rsp, err := c.client.Write(c.ctx, req)
+
+	ret := c.rt.NewObject()
+	ret.Set("error", err)
+	ret.Set("timestamp", rsp.ResponseHeader.Timestamp.UnixMilli())
+	ret.Set("requestHandle", rsp.ResponseHeader.RequestHandle)
+	ret.Set("serviceResult", uint32(rsp.ResponseHeader.ServiceResult))
+	ret.Set("stringTable", rsp.ResponseHeader.StringTable)
+	results := make([]any, len(rsp.Results))
+	for i, data := range rsp.Results {
+		results[i] = uint32(data)
+	}
+	ret.Set("results", c.rt.NewArray(results...))
+	return ret
 }

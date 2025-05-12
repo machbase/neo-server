@@ -102,6 +102,33 @@ func TestScriptOPCUA(t *testing.T) {
 				"",
 			},
 		},
+		{
+			Name: "opcua-write",
+			Script: `
+				ua = require("@jsh/opcua");
+				try {
+					// create the client
+					client = new ua.Client({ endpoint: "opc.tcp://localhost:4840" });
+					rsp = client.read({ nodes: ["ns=1;s=rw_bool", "ns=1;s=rw_int32"] });
+					console.log("read response:", rsp[0].value, rsp[1].value);
+					rsp = client.write({node: "ns=1;s=rw_bool", value: false}, {node: "ns=1;s=rw_int32", value: 1234})
+					console.log("write response error:", rsp.error, ", results:", rsp.results);
+					rsp = client.read({ nodes: ["ns=1;s=rw_bool", "ns=1;s=rw_int32"] });
+					console.log("read response:", rsp[0].value, rsp[1].value);
+				} catch (e) {
+					console.log("Error:", e);
+				} finally {
+				 	// do not forget to close the client
+					if (client !== undefined) client.close();
+				}
+			`,
+			Expect: []string{
+				"read response: true 5",
+				"write response error: <nil> , results: [0, 0]",
+				"read response: false 1234",
+				"",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
