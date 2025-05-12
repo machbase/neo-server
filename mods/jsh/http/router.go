@@ -28,6 +28,13 @@ func (r *Router) handle(method string, call js.FunctionCall) js.Value {
 	var path string
 	var callback js.Callable
 
+	defer func() {
+		if err := recover(); err != nil {
+			panic(r.rt.ToValue("http.Router: " +
+				method + " " + path + " " + err.(string)))
+		}
+	}()
+
 	if err := r.rt.ExportTo(call.Arguments[0], &path); err != nil {
 		panic(r.rt.ToValue("http.Router.All: invalid path " + err.Error()))
 	}
@@ -43,8 +50,14 @@ func (r *Router) handle(method string, call js.FunctionCall) js.Value {
 		methodHandler = r.ir.POST
 	case "PUT":
 		methodHandler = r.ir.PUT
+	case "PATCH":
+		methodHandler = r.ir.PATCH
 	case "DELETE":
 		methodHandler = r.ir.DELETE
+	case "HEAD":
+		methodHandler = r.ir.HEAD
+	case "OPTIONS":
+		methodHandler = r.ir.OPTIONS
 	case "ANY":
 		methodHandler = r.ir.Any
 	default:

@@ -29,18 +29,16 @@ func new_server(ctx context.Context, rt *js.Runtime) func(js.ConstructorCall) *j
 			if err := rt.ExportTo(call.Arguments[0], &base); err != nil {
 				panic(rt.ToValue("http.Listener invalid config: " + err.Error()))
 			}
-			base.router = &Router{ir: gin.New(), rt: rt}
-			lsnr = &RListener{
-				BaseListener: base,
-			}
-		} else {
-			base.router = &Router{ir: DefaultRouter(), rt: rt}
-			if base.router == nil {
+		}
+		if base.Address == "" {
+			if DefaultRouter() == nil {
 				panic(rt.ToValue("http.Listener: default router does not exist"))
 			}
-			lsnr = &PListener{
-				BaseListener: base,
-			}
+			base.router = &Router{ir: DefaultRouter(), rt: rt}
+			lsnr = &PListener{BaseListener: base}
+		} else {
+			base.router = &Router{ir: gin.New(), rt: rt}
+			lsnr = &RListener{BaseListener: base}
 		}
 
 		ret := rt.NewObject()
