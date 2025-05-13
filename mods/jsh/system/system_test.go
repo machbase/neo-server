@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/machbase/neo-server/v8/mods/jsh"
+	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 type TestCase struct {
@@ -19,8 +20,19 @@ type TestCase struct {
 
 func runTest(t *testing.T, tc TestCase) {
 	t.Helper()
-	ctx := context.TODO()
+
 	w := &bytes.Buffer{}
+	logging.Configure(&logging.Config{
+		Console:                     true,
+		Filename:                    "-",
+		Append:                      false,
+		DefaultPrefixWidth:          5,
+		DefaultEnableSourceLocation: false,
+		DefaultLevel:                "TRACE",
+		Writer:                      w,
+	})
+
+	ctx := context.TODO()
 	j := jsh.NewJsh(ctx,
 		jsh.WithNativeModules("@jsh/process", "@jsh/system"),
 		jsh.WithWriter(w),
@@ -50,6 +62,38 @@ func runTest(t *testing.T, tc TestCase) {
 	}
 	if len(lines) > len(tc.Expect) {
 		t.Errorf("Expected %d lines, got %d", len(tc.Expect), len(lines))
+	}
+}
+
+func TestLog(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "log",
+			Script: `
+				const system = require("@jsh/system");
+				const log = new system.Log("jsh-log");
+				log.info("test info");
+				log.error("test error");
+				log.warn("test warn");
+				log.debug("test debug");
+				log.trace("test trace");
+				`,
+			UseRegex: true,
+			Expect: []string{
+				`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\sINFO  jsh-log test info`,
+				`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\sERROR jsh-log test error`,
+				`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\sWARN  jsh-log test warn`,
+				`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\sDEBUG jsh-log test debug`,
+				`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\sTRACE jsh-log test trace`,
+				"",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTest(t, tc)
+		})
 	}
 }
 

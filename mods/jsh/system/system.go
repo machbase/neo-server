@@ -11,6 +11,7 @@ import (
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 )
 
@@ -18,6 +19,8 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 	return func(rt *js.Runtime, module *js.Object) {
 		// m = require("@jsh/system")
 		o := module.Get("exports").(*js.Object)
+		// l = new m.Log("name")
+		o.Set("Log", new_log(ctx, rt))
 		// m.free_os_memory()
 		o.Set("free_os_memory", free_os_memory)
 		// m.gc()
@@ -36,6 +39,41 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 		o.Set("location", timeLocation(ctx, rt))
 		// m.statz("1m", ...keys)
 		o.Set("statz", statz(ctx, rt))
+	}
+}
+
+func new_log(_ context.Context, rt *js.Runtime) func(call js.ConstructorCall) *js.Object {
+	return func(call js.ConstructorCall) *js.Object {
+		if len(call.Arguments) == 0 {
+			panic(rt.ToValue("missing arguments"))
+		}
+		var name string
+		if err := rt.ExportTo(call.Arguments[0], &name); err != nil {
+			panic(rt.ToValue(fmt.Sprintf("log: invalid argument %s", err.Error())))
+		}
+		l := &jshLog{l: logging.GetLog(name)}
+		ret := rt.NewObject()
+		ret.Set("trace", l.Logger(logging.LevelTrace))
+		ret.Set("debug", l.Logger(logging.LevelDebug))
+		ret.Set("info", l.Logger(logging.LevelInfo))
+		ret.Set("warn", l.Logger(logging.LevelWarn))
+		ret.Set("error", l.Logger(logging.LevelError))
+		return ret
+	}
+}
+
+type jshLog struct {
+	l logging.Log
+}
+
+func (log *jshLog) Logger(lvl logging.Level) func(call js.FunctionCall) js.Value {
+	return func(call js.FunctionCall) js.Value {
+		args := make([]string, len(call.Arguments))
+		for i, a := range call.Arguments {
+			args[i] = fmt.Sprintf("%v", a.Export())
+		}
+		log.l.Logf(lvl, "%s", strings.Join(args, " "))
+		return js.Undefined()
 	}
 }
 

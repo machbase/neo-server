@@ -37,6 +37,7 @@ type Config struct {
 	DefaultPrefixWidth          int           `json:"defaultPrefixWidth" default:"20" hidden:""`
 	DefaultEnableSourceLocation bool          `json:"defaultEnableSourceLocation" default:"false" hidden:""`
 	DefaultLevel                string        `json:"defaultLevel"  enum:"TRACE,DEBUG,INFO,WARN,ERROR" default:"INFO" help:"TRACE,DEBUG,INFO,WARN,ERROR"`
+	Writer                      io.Writer     `json:"-" hidden:""` // log writer for testing
 }
 
 type LogServerConfig struct {
@@ -80,7 +81,10 @@ func Configure(cfg *Config) {
 	SetDefaultLevel(ParseLogLevel(cfg.DefaultLevel))
 	SetDefaultEnableSourceLocation(cfg.DefaultEnableSourceLocation)
 
-	if cfg.Filename == "." {
+	if cfg.Writer != nil {
+		// for testing
+		defaultWriter = []*logWriter{{Writer: cfg.Writer, isTerm: false}}
+	} else if cfg.Filename == "." {
 		// defaultWriter = []*logWriter{{Writer: io.Discard, isTerm: false}}
 		defaultWriter = []*logWriter{}
 	} else if cfg.Filename == "-" {
