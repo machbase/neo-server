@@ -87,7 +87,7 @@ func WithWriter(w io.Writer) JshOption {
 
 func WithWorkingDir(cwd string) JshOption {
 	return func(j *Jsh) {
-		j.cwd = filepath.Clean(cwd)
+		j.cwd = filepath.ToSlash(filepath.Clean(cwd))
 	}
 }
 
