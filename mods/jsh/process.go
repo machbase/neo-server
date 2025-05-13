@@ -25,6 +25,10 @@ func (j *Jsh) moduleProcess(r *js.Runtime, module *js.Object) {
 	o.Set("pid", j.process_pid)
 	// m.ppid()
 	o.Set("ppid", j.process_ppid)
+	// m.isDaemon()
+	o.Set("isDaemon", j.process_isDaemon)
+	// m.isOrphan()
+	o.Set("isOrphan", j.process_isOrphan)
 	// m.args()
 	o.Set("args", j.process_args)
 	// m.cwd()
@@ -84,6 +88,15 @@ func (j *Jsh) process_pid() js.Value {
 // jsh.ppid()
 func (j *Jsh) process_ppid() js.Value {
 	return j.vm.ToValue(j.ppid)
+}
+
+// jsh.isDaemon()
+func (j *Jsh) process_isDaemon() js.Value {
+	return j.vm.ToValue(j.ppid == 1)
+}
+
+func (j *Jsh) process_isOrphan() js.Value {
+	return j.vm.ToValue(j.ppid == 0 || j.ppid == 0xFFFFFFFF)
 }
 
 // jsh.args()
