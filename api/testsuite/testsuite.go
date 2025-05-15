@@ -41,8 +41,8 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		ShowTables,
 		ExistsTable,
 		Indexes,
-		Explain,     // machcli does not support explain
-		ExplainFull, // machcli does not support explain
+		Explain,
+		ExplainFull,
 		Columns,
 		LogTableExec,
 		LogTableAppend,
@@ -232,6 +232,7 @@ func (s *Server) StartServer(m *testing.M) {
 		// MACH-ERR 3208 Server thread error: 3046 - Communication module error (rc=21): [mmpInitialize].
 		panic(err)
 	}
+	time.Sleep(time.Millisecond * 2000)
 
 	ctx := context.TODO()
 
