@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	js "github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/autopaho/queue"
+	"github.com/eclipse/paho.golang/autopaho/queue/memory"
 	"github.com/eclipse/paho.golang/paho"
+	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 )
 
 func NewModuleLoader(ctx context.Context) require.ModuleLoader {
@@ -22,24 +26,40 @@ func NewModuleLoader(ctx context.Context) require.ModuleLoader {
 	}
 }
 
+var clientIdSer = int64(0)
+
 func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
 		if len(call.Arguments) < 1 {
 			panic(rt.ToValue("missing arguments"))
 		}
+		clientId := atomic.AddInt64(&clientIdSer, 1)
 		opts := struct {
-			ServerUrls     []string    `json:"serverUrls"`
-			KeepAlive      uint16      `json:"keepAlive,omitempty"`
-			CleanStart     bool        `json:"cleanStart,omitempty"`
-			Username       string      `json:"username,omitempty"`
-			Password       string      `json:"password,omitempty"`
-			ClientID       string      `json:"clientID,omitempty"`
-			OnConnect      js.Callable `json:"onConnect,omitempty"`
-			OnConnectError js.Callable `json:"onConnectError,omitempty"`
-			OnDisconnect   js.Callable `json:"onDisconnect,omitempty"`
-			OnClientError  js.Callable `json:"onClientError,omitempty"`
-			OnMessage      js.Callable `json:"onMessage,omitempty"`
-		}{}
+			ServerUrls            []string    `json:"serverUrls"`
+			KeepAlive             uint16      `json:"keepAlive,omitempty"`
+			CleanStart            bool        `json:"cleanStart,omitempty"`
+			Username              string      `json:"username,omitempty"`
+			Password              string      `json:"password,omitempty"`
+			ClientID              string      `json:"clientID,omitempty"`
+			OnConnect             js.Callable `json:"onConnect,omitempty"`
+			OnConnectError        js.Callable `json:"onConnectError,omitempty"`
+			OnDisconnect          js.Callable `json:"onDisconnect,omitempty"`
+			OnClientError         js.Callable `json:"onClientError,omitempty"`
+			Debug                 bool        `json:"debug,omitempty"`
+			Queue                 string      `json:"queue,omitempty"`
+			SessionExpiryInterval uint32      `json:"sessionExpiryInterval,omitempty"`
+			ConnectRetryDelay     int         `json:"connectRetryDelay,omitempty"`
+			ConnectTimeout        int         `json:"connectTimeout,omitempty"`
+			PacketTimeout         int         `json:"packetTimeout,omitempty"`
+		}{
+			KeepAlive:             60,
+			CleanStart:            true,
+			ClientID:              fmt.Sprintf("mqtt-client-%d", clientId),
+			SessionExpiryInterval: 60,
+			ConnectRetryDelay:     10,
+			ConnectTimeout:        10,
+			PacketTimeout:         5,
+		}
 		if err := rt.ExportTo(call.Arguments[0], &opts); err != nil {
 			panic(rt.ToValue(err.Error()))
 		}
@@ -53,6 +73,10 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 			}
 		}
 
+		var q queue.Queue
+		if opts.Queue == "memory" {
+			q = memory.New()
+		}
 		ret := rt.NewObject()
 
 		client := &Client{
@@ -60,19 +84,24 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 			rt:  rt,
 			obj: ret,
 			config: &autopaho.ClientConfig{
+				Queue:                         q,
 				ConnectUsername:               opts.Username,
 				ConnectPassword:               []byte(opts.Password),
 				ServerUrls:                    serverUrls,
 				KeepAlive:                     opts.KeepAlive,
 				CleanStartOnInitialConnection: opts.CleanStart,
-				ConnectRetryDelay:             1 * time.Second, // default 10s
-				ConnectTimeout:                5 * time.Second, // default 10s
+				SessionExpiryInterval:         opts.SessionExpiryInterval,
+				ConnectRetryDelay:             time.Duration(opts.ConnectRetryDelay) * time.Second,
+				ConnectTimeout:                time.Duration(opts.ConnectTimeout) * time.Second,
+				ClientConfig: paho.ClientConfig{
+					ClientID:      opts.ClientID,
+					PacketTimeout: time.Duration(opts.PacketTimeout) * time.Second,
+				},
 			},
 			OnConnect:      opts.OnConnect,
 			OnConnectError: opts.OnConnectError,
 			OnDisconnect:   opts.OnDisconnect,
 			OnClientError:  opts.OnClientError,
-			OnMessage:      opts.OnMessage,
 		}
 		if opts.OnConnectError != nil {
 			client.config.OnConnectError = client.handleConnectError
@@ -86,26 +115,28 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 		if opts.OnClientError != nil {
 			client.config.ClientConfig.OnClientError = client.handleClientError
 		}
-		if opts.OnMessage != nil {
-			client.config.ClientConfig.OnPublishReceived =
-				[]func(paho.PublishReceived) (bool, error){
-					client.handlePublishReceived,
-				}
+		if opts.Debug {
+			client.config.Debug = client
+			client.config.Errors = client
+			client.config.PahoDebug = client
+			client.config.PahoErrors = client
 		}
-		client.config.ClientConfig.ClientID = opts.ClientID
 
 		// c.connect()
 		ret.Set("connect", client.Connect)
 		// c.disconnect()
 		ret.Set("disconnect", client.Disconnect)
+		// c.addPublishReceived(msg => {})
+		ret.Set("addPublishReceived", client.AddPublishReceived)
 		// c.subscribe(subs)
 		ret.Set("subscribe", client.Subscribe)
 		// c.publish(topic, payload, qos)
 		// c.publish(topic, payload)
 		ret.Set("publish", client.Publish)
-		// c.awaitConnection()
-		ret.Set("awaitConnection", client.AwaitConnection)
-		// c.subscribe(subs)
+		// c.awaitConnect(timeout)
+		ret.Set("awaitConnect", client.AwaitConnect)
+		// c.awaitDisconnect(timeout)
+		ret.Set("awaitDisconnect", client.AwaitDisconnect)
 		return ret
 	}
 }
@@ -121,7 +152,6 @@ type Client struct {
 	OnConnectError js.Callable
 	OnDisconnect   js.Callable
 	OnClientError  js.Callable
-	OnMessage      js.Callable
 }
 
 func (c *Client) Connect(call js.FunctionCall) js.Value {
@@ -132,7 +162,7 @@ func (c *Client) Connect(call js.FunctionCall) js.Value {
 		panic(c.rt.ToValue(err.Error()))
 	} else {
 		c.connMgr = cm
-		if cleaner, ok := c.ctx.(Cleaner); ok {
+		if cleaner, ok := c.ctx.(builtin.JshContext); ok {
 			cleaner.AddCleanup(func(out io.Writer) {
 				if c.connMgr != nil {
 					io.WriteString(out, "forced a mqtt connection to close by cleanup\n")
@@ -145,12 +175,35 @@ func (c *Client) Connect(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-type Cleaner interface {
-	AddCleanup(func(io.Writer)) int64
-	RemoveCleanup(int64)
-}
-
 func (c *Client) Disconnect(call js.FunctionCall) js.Value {
+	opts := struct {
+		WaitForEmptyQueue bool `json:"waitForEmptyQueue,omitempty"`
+		Timeout           int  `json:"timeout,omitempty"`
+	}{}
+	if len(call.Arguments) > 0 {
+		if err := c.rt.ExportTo(call.Arguments[0], &opts); err != nil {
+			panic(c.rt.ToValue(err.Error()))
+		}
+	}
+	var waitCtx context.Context
+	if opts.Timeout > 0 {
+		c, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Millisecond)
+		defer cancel()
+		waitCtx = c
+	}
+
+	if opts.WaitForEmptyQueue && c.config.Queue != nil {
+		if q, ok := c.config.Queue.(interface{ WaitForEmpty() chan struct{} }); ok {
+			if waitCtx != nil {
+				select {
+				case <-q.WaitForEmpty():
+				case <-waitCtx.Done():
+				}
+			} else {
+				<-q.WaitForEmpty()
+			}
+		}
+	}
 	if c.connMgr != nil {
 		c.connMgr.Disconnect(c.ctx)
 		c.connMgr = nil
@@ -158,7 +211,7 @@ func (c *Client) Disconnect(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
-func (c *Client) AwaitConnection(call js.FunctionCall) js.Value {
+func (c *Client) AwaitConnect(call js.FunctionCall) js.Value {
 	if c.connMgr == nil {
 		panic(c.rt.ToValue("not connected"))
 	}
@@ -185,42 +238,126 @@ func (c *Client) AwaitConnection(call js.FunctionCall) js.Value {
 	return js.Undefined()
 }
 
+func (c *Client) AwaitDisconnect(call js.FunctionCall) js.Value {
+	if c.connMgr == nil {
+		panic(c.rt.ToValue("not connected"))
+	}
+	timeout := 0
+	if len(call.Arguments) > 0 {
+		if err := c.rt.ExportTo(call.Arguments[0], &timeout); err != nil {
+			panic(c.rt.ToValue(err.Error()))
+		}
+		if timeout < 0 {
+			panic(c.rt.ToValue("invalid timeout"))
+		}
+	}
+	var ctx context.Context
+	if timeout == 0 {
+		ctx = c.ctx
+	} else {
+		c, cancel := context.WithTimeout(c.ctx, time.Duration(timeout)*time.Millisecond)
+		ctx = c
+		defer cancel()
+	}
+	select {
+	case <-ctx.Done():
+	case <-c.connMgr.Done():
+	}
+	return js.Undefined()
+}
+
+func (c *Client) AddPublishReceived(call js.FunctionCall) js.Value {
+	if c.connMgr == nil {
+		panic(c.rt.ToValue("not connected"))
+	}
+	if len(call.Arguments) < 1 {
+		panic(c.rt.ToValue("missing arguments"))
+	}
+	var callback js.Callable
+	if err := c.rt.ExportTo(call.Arguments[0], &callback); err != nil {
+		panic(c.rt.ToValue(err.Error()))
+	}
+	if callback == nil {
+		panic(c.rt.ToValue("invalid callback"))
+	}
+	c.connMgr.AddOnPublishReceived(c.handlePublishReceived(callback))
+	return js.Undefined()
+}
+
 func (c *Client) Publish(call js.FunctionCall) js.Value {
 	if c.connMgr == nil {
 		panic(c.rt.ToValue("not connected"))
 	}
-	if len(call.Arguments) < 2 {
+	if len(call.Arguments) != 2 {
 		panic(c.rt.ToValue("missing arguments"))
 	}
-	topic := call.Arguments[0].String()
+	pub := struct {
+		PacketID   uint16 `json:"packetID"`
+		QoS        byte   `json:"qos"`
+		Retain     bool   `json:"retain"`
+		Topic      string `json:"topic"`
+		Properties struct {
+			CorrelationData        []byte
+			ContentType            string            `json:"contentType"`
+			ResponseTopic          string            `json:"responseTopic"`
+			PayloadFormat          *byte             `json:"-"`
+			MessageExpiry          *uint32           `json:"-"`
+			SubscriptionIdentifier *int              `json:"-"`
+			TopicAlias             *uint16           `json:"-"`
+			User                   map[string]string `json:"user"`
+		} `json:"properties"`
+	}{}
+
+	if err := c.rt.ExportTo(call.Arguments[0], &pub); err != nil {
+		panic(c.rt.ToValue(err.Error()))
+	}
 	payload := []byte{}
 	if err := c.rt.ExportTo(call.Arguments[1], &payload); err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	}
-	qos := 0
-	if len(call.Arguments) > 2 {
-		if err := c.rt.ExportTo(call.Arguments[2], &qos); err != nil {
-			panic(c.rt.ToValue(err.Error()))
-		}
-		if qos < 0 || qos > 2 {
-			panic(c.rt.ToValue("invalid qos"))
-		}
-	}
 
 	pubReq := &paho.Publish{
-		Topic:   topic,
-		QoS:     byte(qos),
-		Payload: payload,
+		PacketID: pub.PacketID,
+		QoS:      pub.QoS,
+		Retain:   pub.Retain,
+		Topic:    pub.Topic,
+		Payload:  payload,
+		Properties: &paho.PublishProperties{
+			ContentType:   pub.Properties.ContentType,
+			ResponseTopic: pub.Properties.ResponseTopic,
+		},
 	}
-	pubRsp, err := c.connMgr.Publish(c.ctx, pubReq)
+	for k, v := range pub.Properties.User {
+		pubReq.Properties.User = append(pubReq.Properties.User,
+			paho.UserProperty{Key: k, Value: v})
+	}
+
+	var pubRsp *paho.PublishResponse
+	var err error
+	if c.config.Queue != nil && pubReq.QoS > 0 {
+		err = c.connMgr.PublishViaQueue(c.ctx, &autopaho.QueuePublish{Publish: pubReq})
+	} else {
+		pubRsp, err = c.connMgr.Publish(c.ctx, pubReq)
+	}
 	if err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	}
+
+	var reasonCode int
+	ret := c.rt.NewObject()
 	if pubRsp != nil {
-		_ = pubRsp.Properties
-		_ = pubRsp.ReasonCode
+		if rp := pubRsp.Properties; rp != nil {
+			prop := c.rt.NewObject()
+			for _, v := range rp.User {
+				prop.Set(v.Key, c.rt.ToValue(v.Value))
+			}
+			prop.Set("correlationData", rp.ReasonString)
+			ret.Set("properties", prop)
+		}
+		reasonCode = int(pubRsp.ReasonCode)
 	}
-	return js.Undefined()
+	ret.Set("reasonCode", reasonCode)
+	return ret
 }
 
 func (c *Client) Subscribe(call js.FunctionCall) js.Value {
@@ -230,6 +367,12 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 	if len(call.Arguments) < 1 {
 		panic(c.rt.ToValue("missing arguments"))
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			c.logError(fmt.Errorf("subscribe: %v", r))
+		}
+	}()
+
 	subs := struct {
 		UserProperties map[string]string `json:"userProperties"`
 		Subscriptions  []struct {
@@ -261,11 +404,35 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 		})
 	}
 
-	subRsp, err := c.connMgr.Subscribe(c.ctx, subReq)
+	subAck, err := c.connMgr.Subscribe(c.ctx, subReq)
 	if err != nil {
 		panic(c.rt.ToValue(err.Error()))
 	}
-	return c.rt.ToValue(subRsp)
+	ackObj := c.rt.NewObject()
+	reasons := make([]js.Value, len(subAck.Reasons))
+	for i, reason := range subAck.Reasons {
+		reasons[i] = c.rt.ToValue(int(reason))
+	}
+	ackObj.Set("reasons", reasons)
+	props := c.rt.NewObject()
+	user := c.rt.NewObject()
+	if p := subAck.Properties; p != nil {
+		props.Set("reasonString", p.ReasonString)
+		for _, v := range p.User {
+			user.Set(v.Key, c.rt.ToValue(v.Value))
+		}
+	}
+	props.Set("user", user)
+	ackObj.Set("properties", props)
+	return ackObj
+}
+
+func (c *Client) Println(args ...interface{}) {
+	fmt.Println(args...)
+}
+
+func (c *Client) Printf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
 }
 
 func (c *Client) logError(err error) {
@@ -279,7 +446,7 @@ func (c *Client) logError(err error) {
 }
 
 func (c *Client) handleClientError(err error) {
-	if c.OnClientError == nil {
+	if c.connMgr == nil || c.OnClientError == nil {
 		return
 	}
 	_, e := c.OnClientError(c.obj, c.rt.ToValue(err.Error()))
@@ -290,7 +457,7 @@ func (c *Client) handleClientError(err error) {
 }
 
 func (c *Client) handleConnectError(err error) {
-	if c.OnConnectError == nil {
+	if c.connMgr == nil || c.OnConnectError == nil {
 		return
 	}
 	_, e := c.OnConnectError(c.obj, c.rt.ToValue(err.Error()))
@@ -301,7 +468,7 @@ func (c *Client) handleConnectError(err error) {
 }
 
 func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Connack) {
-	if c.OnConnect == nil {
+	if c.connMgr == nil || c.OnConnect == nil {
 		return
 	}
 	defer func() {
@@ -309,7 +476,34 @@ func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Con
 			c.logError(fmt.Errorf("handleConnectionUp: %v", r))
 		}
 	}()
-	r, err := c.OnConnect(c.obj, c.rt.ToValue(ack))
+	ackObj := c.rt.NewObject()
+	ackObj.Set("sessionPresent", ack.SessionPresent)
+	ackObj.Set("reasonCode", int(ack.ReasonCode))
+	props := c.rt.NewObject()
+	userProps := c.rt.NewObject()
+	if ack.Properties != nil {
+		props.Set("reasonString", ack.Properties.ReasonString)
+		props.Set("reasonInfo", ack.Properties.ResponseInfo)
+		props.Set("assignedClientID", ack.Properties.AssignedClientID)
+		props.Set("authMethod", ack.Properties.AuthMethod)
+		if ack.Properties.ServerKeepAlive != nil {
+			props.Set("serverKeepAlive", c.rt.ToValue(*ack.Properties.ServerKeepAlive))
+		} else {
+			props.Set("serverKeepAlive", js.Undefined())
+		}
+		if ack.Properties.SessionExpiryInterval != nil {
+			props.Set("sessionExpiryInterval", c.rt.ToValue(*ack.Properties.SessionExpiryInterval))
+		} else {
+			props.Set("sessionExpiryInterval", js.Undefined())
+		}
+		for _, v := range ack.Properties.User {
+			userProps.Set(v.Key, c.rt.ToValue(v.Value))
+		}
+	}
+	props.Set("user", userProps)
+	ackObj.Set("properties", props)
+
+	r, err := c.OnConnect(c.obj, ackObj)
 	if err != nil {
 		c.logError(err)
 		return
@@ -320,53 +514,79 @@ func (c *Client) handleConnectionUp(_ *autopaho.ConnectionManager, ack *paho.Con
 	}
 }
 
-func (c *Client) handlePublishReceived(p paho.PublishReceived) (bool, error) {
-	if c.OnMessage == nil {
-		return false, nil
-	}
-	packet := c.rt.NewObject()
-	packet.Set("packetID", p.Packet.PacketID)
-	packet.Set("qos", int(p.Packet.QoS))
-	packet.Set("retain", p.Packet.Retain)
-	packet.Set("topic", p.Packet.Topic)
+func (c *Client) handlePublishReceived(callback js.Callable) func(p autopaho.PublishReceived) (bool, error) {
+	return func(p autopaho.PublishReceived) (bool, error) {
+		if c.connMgr == nil || callback == nil {
+			return false, nil
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				c.logError(fmt.Errorf("handlePublishReceived: %v", r))
+			}
+		}()
 
-	payload := c.rt.NewObject()
-	payload.Set("bytes", c.rt.NewArrayBuffer(p.Packet.Payload))
-	payload.Set("string", func(call js.FunctionCall) js.Value {
-		return c.rt.ToValue(string(p.Packet.Payload))
-	})
-	packet.Set("payload", payload)
+		pktObj := c.rt.NewObject()
+		pktObj.Set("packetID", p.Packet.PacketID)
+		pktObj.Set("topic", p.Packet.Topic)
+		pktObj.Set("qos", int(p.Packet.QoS))
+		pktObj.Set("retain", p.Packet.Retain)
 
-	if p.Packet.Properties != nil {
+		payload := c.rt.NewObject()
+		payload.Set("bytes", func(call js.FunctionCall) js.Value {
+			return c.rt.ToValue(p.Packet.Payload)
+		})
+		payload.Set("string", func(call js.FunctionCall) js.Value {
+			return c.rt.ToValue(string(p.Packet.Payload))
+		})
+		pktObj.Set("payload", payload)
+
 		props := c.rt.NewObject()
-		props.Set("correlationData", p.Packet.Properties.CorrelationData)
-		props.Set("contentType", p.Packet.Properties.ContentType)
-		props.Set("responseTopic", p.Packet.Properties.ResponseTopic)
-		props.Set("payloadFormat", p.Packet.Properties.PayloadFormat)
-		props.Set("messageExpiry", p.Packet.Properties.MessageExpiry)
-		props.Set("subscriptionIdentifier", p.Packet.Properties.SubscriptionIdentifier)
-		props.Set("topicAlias", p.Packet.Properties.TopicAlias)
 		userProps := c.rt.NewObject()
-		for _, v := range p.Packet.Properties.User {
-			userProps.Set(v.Key, c.rt.ToValue(v.Value))
+		if p.Packet.Properties != nil {
+			props.Set("correlationData", p.Packet.Properties.CorrelationData)
+			props.Set("contentType", p.Packet.Properties.ContentType)
+			props.Set("responseTopic", p.Packet.Properties.ResponseTopic)
+			if p.Packet.Properties.PayloadFormat != nil {
+				props.Set("payloadFormat", c.rt.ToValue(*p.Packet.Properties.PayloadFormat))
+			} else {
+				props.Set("payloadFormat", js.Undefined())
+			}
+			if p.Packet.Properties.MessageExpiry != nil {
+				props.Set("messageExpiry", c.rt.ToValue(*p.Packet.Properties.MessageExpiry))
+			} else {
+				props.Set("messageExpiry", js.Undefined())
+			}
+			if p.Packet.Properties.SubscriptionIdentifier != nil {
+				props.Set("subscriptionIdentifier", c.rt.ToValue(*p.Packet.Properties.SubscriptionIdentifier))
+			} else {
+				props.Set("subscriptionIdentifier", js.Undefined())
+			}
+			if p.Packet.Properties.TopicAlias != nil {
+				props.Set("topicAlias", c.rt.ToValue(*p.Packet.Properties.TopicAlias))
+			} else {
+				props.Set("topicAlias", js.Undefined())
+			}
+			for _, v := range p.Packet.Properties.User {
+				userProps.Set(v.Key, c.rt.ToValue(v.Value))
+			}
 		}
 		props.Set("user", userProps)
-		packet.Set("properties", props)
+		pktObj.Set("properties", props)
+		r, err := callback(c.obj, pktObj)
+		if err != nil {
+			c.logError(err)
+			return true, err
+		}
+		if r == nil || r == js.Undefined() || r == js.Null() {
+			return true, nil
+		}
+		var ret bool
+		if err := c.rt.ExportTo(r, &ret); err != nil {
+			c.logError(err)
+			return true, err
+		}
+		return ret, nil
 	}
-	r, err := c.OnMessage(c.obj, packet)
-	if err != nil {
-		c.logError(err)
-		return true, err
-	}
-	if r == nil || r == js.Undefined() || r == js.Null() {
-		return true, nil
-	}
-	var ret bool
-	if err := c.rt.ExportTo(r, &ret); err != nil {
-		c.logError(err)
-		return true, err
-	}
-	return ret, nil
 }
 
 func (c *Client) handleServerDisconnect(dc *paho.Disconnect) {

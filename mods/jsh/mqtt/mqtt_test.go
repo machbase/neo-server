@@ -60,40 +60,46 @@ func TestMqtt(t *testing.T) {
 			Name: "mqtt-client",
 			Script: `
 				const {println, sleep} = require("@jsh/process");
-				const mqtt = require("@jsh/mqtt")
-
+				const mqtt = require("@jsh/mqtt")				
 				const clientConfig = {
-					serverUrls: ["tcp://127.0.0.1:1236"],
-					keepAlive: 30,
-					cleanStart: true,
-					onConnect: (ack) => {
-						println("connected.");
+					serverUrls: ["tcp://127.0.0.1:12365"],
+					queue: "memory",
+					clientId: "mqtt-client-tester",
+					onConnect: ack => {
+						println("connected.", ack.reasonCode);
 					},
-					onConnectError: (err) => {
+					onConnectError: err => {
 						println("connect error", err);
-					},
-					onMessage: (msg) => {
-						println("recv:", msg.topic, msg.qos, msg.payload.string())
 					},
 				}
 				const client = new mqtt.Client(clientConfig);
+				let counter = 0;
 				try {
 					client.connect();
-					client.awaitConnection(10*1000);
-
+					client.awaitConnect(10*1000);
+					client.addPublishReceived(msg => {
+						println("recv:", msg.topic, msg.qos, msg.payload.string())
+						counter++;
+					})
 					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
-					client.publish("test/topic", "Hello, MQTT?", 2);
-					sleep(3000); // wait onMessage() to be called
+					let r = client.publish({topic:"test/topic", qos: 2}, "Hello, MQTT?");
+					client.publish({topic:"test/topic", qos: 1}, "reason code: "+r.reasonCode);
+					// wait until called publish received
+					for (let i=0; i<20; i++) {
+						if (counter >= 2) break;
+						sleep(100);
+					}
 				} catch (e) {
 				 	println("exception:", e);
 				}finally {
-					client.disconnect();
+					client.disconnect({waitForEmptyQueue: true, timeout: 10*1000});
 					println("disconnected.");
 				}
 			`,
 			Expect: []string{
-				"connected.",
+				"connected. 0",
 				"recv: test/topic 2 Hello, MQTT?",
+				"recv: test/topic 1 reason code: 0",
 				"disconnected.",
 				"",
 			},
@@ -107,9 +113,18 @@ func TestMqtt(t *testing.T) {
 	}
 }
 
-var serverAddress = "127.0.0.1:1236"
+var serverAddress = "127.0.0.1:12365"
 
 func TestMain(m *testing.M) {
+	// logging.Configure(&logging.Config{
+	// 	Console:                     true,
+	// 	Filename:                    "-",
+	// 	Append:                      false,
+	// 	DefaultPrefixWidth:          10,
+	// 	DefaultEnableSourceLocation: true,
+	// 	DefaultLevel:                "INFO",
+	// })
+
 	chStarted := make(chan struct{})
 	svr, err := server.NewMqtt(nil,
 		server.WithMqttTcpListener(serverAddress, nil),
