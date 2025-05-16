@@ -65,35 +65,35 @@ func TestMqtt(t *testing.T) {
 					serverUrls: ["tcp://127.0.0.1:12365"],
 					queue: "memory",
 					clientId: "mqtt-client-tester",
-					onConnect: ack => {
-						println("connected.", ack.reasonCode);
-					},
-					onConnectError: err => {
-						println("connect error", err);
-					},
 				}
 				const client = new mqtt.Client(clientConfig);
 				let counter = 0;
 				try {
-					client.connect();
-					client.awaitConnect(10*1000);
-					client.addPublishReceived(msg => {
-						println("recv:", msg.topic, msg.qos, msg.payload.string())
-						counter++;
-					})
-					client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
+					client.onConnectError = err => { println("connect error", err); }
+					client.onClientError = err => { println("client error", err); }
+					client.onConnect = ack => {
+						println("connected.", ack.reasonCode);
+						client.onMessage = msg => {
+							println("recv:", msg.topic, msg.qos, msg.payload.string())
+							counter++;
+						}
+						client.subscribe({subscriptions:[{topic:"test/topic", qos:2}]});
+					}
+					client.connect({timeout:10*1000});
+
 					let r = client.publish({topic:"test/topic", qos: 2}, "Hello, MQTT?");
 					client.publish({topic:"test/topic", qos: 1}, "reason code: "+r.reasonCode);
+
 					// wait until called publish received
 					for (let i=0; i<20; i++) {
 						if (counter >= 2) break;
 						sleep(100);
 					}
-				} catch (e) {
-				 	println("exception:", e);
-				}finally {
+					client.unsubscribe({topics:["test/topic"]});
 					client.disconnect({waitForEmptyQueue: true, timeout: 10*1000});
 					println("disconnected.");
+				} catch (e) {
+				 	println("exception:", e);
 				}
 			`,
 			Expect: []string{

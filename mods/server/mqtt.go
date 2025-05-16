@@ -255,8 +255,7 @@ type mqttd struct {
 }
 
 func (s *mqttd) Start() error {
-	go s.broker.Serve()
-	return nil
+	return s.broker.Serve()
 }
 
 func (s *mqttd) Stop() {
