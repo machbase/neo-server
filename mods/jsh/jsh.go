@@ -485,7 +485,7 @@ func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) 
 	if cmdPath == "@.js" {
 		cmdPath = "jsh.js"
 	}
-
+	cmdPath = filepath.FromSlash(cmdPath)
 	if code, ok := builtin.Code(cmdPath); ok {
 		sourceName = strings.TrimSuffix(cmdPath, ".js")
 		sourceCode = code
@@ -515,5 +515,6 @@ func (j *Jsh) searchPath(cmdPath string) (sourceName string, sourceCode string) 
 			}
 		}
 	}
+	sourceName = filepath.ToSlash(sourceName)
 	return
 }
