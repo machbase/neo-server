@@ -115,7 +115,7 @@ func new_client(ctx context.Context, rt *js.Runtime) func(call js.ConstructorCal
 		// c.subscribe(subs)
 		ret.Set("subscribe", client.Subscribe)
 		// c.unsubscribe(unsubs)
-		ret.Set("unsubscribe", client.Unubscribe)
+		ret.Set("unsubscribe", client.Unsubscribe)
 		// c.publish(topic, payload, qos)
 		// c.publish(topic, payload)
 		ret.Set("publish", client.Publish)
@@ -247,13 +247,13 @@ func (c *Client) Publish(call js.FunctionCall) js.Value {
 		Retain     bool   `json:"retain"`
 		Topic      string `json:"topic"`
 		Properties struct {
-			CorrelationData        []byte
-			ContentType            string            `json:"contentType"`
-			ResponseTopic          string            `json:"responseTopic"`
-			PayloadFormat          *byte             `json:"-"`
-			MessageExpiry          *uint32           `json:"-"`
-			SubscriptionIdentifier *int              `json:"-"`
-			TopicAlias             *uint16           `json:"-"`
+			CorrelationData        []byte            `json:"correlationData,omitempty"`
+			ContentType            string            `json:"contentType,omitempty"`
+			ResponseTopic          string            `json:"responseTopic,omitempty"`
+			PayloadFormat          *byte             `json:"payloadFormat,omitempty"`
+			MessageExpiry          *uint32           `json:"messageExpiry,omitempty"`
+			SubscriptionIdentifier *int              `json:"subscriptionIdentifier,omitempty"`
+			TopicAlias             *uint16           `json:"topicAlias,omitempty"`
 			User                   map[string]string `json:"user"`
 		} `json:"properties"`
 	}{}
@@ -324,8 +324,10 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 	}()
 
 	subs := struct {
-		UserProperties map[string]string `json:"userProperties"`
-		Subscriptions  []struct {
+		Properties struct {
+			User map[string]string `json:"user"`
+		} `json:"properties"`
+		Subscriptions []struct {
 			Topic             string `json:"topic"`
 			QoS               byte   `json:"qos"`
 			RetainHandling    byte   `json:"retainHandling"`
@@ -347,7 +349,7 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 		subReq.Subscriptions[i].NoLocal = sub.NoLocal
 		subReq.Subscriptions[i].RetainAsPublished = sub.RetainAsPublished
 	}
-	for k, v := range subs.UserProperties {
+	for k, v := range subs.Properties.User {
 		subReq.Properties.User = append(subReq.Properties.User, paho.UserProperty{
 			Key:   k,
 			Value: v,
@@ -377,7 +379,7 @@ func (c *Client) Subscribe(call js.FunctionCall) js.Value {
 	return ackObj
 }
 
-func (c *Client) Unubscribe(call js.FunctionCall) js.Value {
+func (c *Client) Unsubscribe(call js.FunctionCall) js.Value {
 	if c.connMgr == nil {
 		panic(c.rt.ToValue("not connected"))
 	}
@@ -391,8 +393,10 @@ func (c *Client) Unubscribe(call js.FunctionCall) js.Value {
 	}()
 
 	unsubs := struct {
-		Topics         []string          `json:"topics"`
-		UserProperties map[string]string `json:"userProperties"`
+		Topics     []string `json:"topics"`
+		Properties struct {
+			User map[string]string `json:"user"`
+		} `json:"properties"`
 	}{}
 	if err := c.rt.ExportTo(call.Arguments[0], &unsubs); err != nil {
 		panic(c.rt.ToValue(err.Error()))
@@ -400,7 +404,7 @@ func (c *Client) Unubscribe(call js.FunctionCall) js.Value {
 
 	unsubReq := &paho.Unsubscribe{Topics: unsubs.Topics}
 	unsubReq.Properties = &paho.UnsubscribeProperties{}
-	for k, v := range unsubs.UserProperties {
+	for k, v := range unsubs.Properties.User {
 		unsubReq.Properties.User = append(unsubReq.Properties.User, paho.UserProperty{
 			Key:   k,
 			Value: v,

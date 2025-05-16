@@ -137,6 +137,8 @@
         "uinteger",
         "ulong",
         "ulonglong",
+        "unsub",
+        "unsubs",
         "upgrader",
         "ushort",
         "varchar",
