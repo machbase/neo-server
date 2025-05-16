@@ -45,6 +45,14 @@ var jshProcesses = make(map[JshPID]*Jsh)
 var jshMutex = sync.RWMutex{}
 var jshCounter JshPID = 1024
 
+func ShutdownAll() {
+	jshMutex.Lock()
+	defer jshMutex.Unlock()
+	for _, j := range jshProcesses {
+		j.Kill("shutdown")
+	}
+}
+
 func allocJshPID(j *Jsh) {
 	jshMutex.Lock()
 	defer jshMutex.Unlock()

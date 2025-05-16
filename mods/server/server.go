@@ -249,12 +249,12 @@ func (s *Server) Start() error {
 		dbInitInfo, strings.Join(readyMsg, "\n"), time.Since(s.startupTime).Round(time.Millisecond).String())
 
 	// jsh service
-	if result, err := jsh.ReadServices(); err != nil {
+	if svcList, err := jsh.ReadServices(); err != nil {
 		if err != os.ErrNotExist {
 			s.log.Warn("JshServices read failed.", err.Error())
 		}
 	} else {
-		result.Update(func(sc *jsh.ServiceConfig, act string, err error) {
+		svcList.Update(func(sc *jsh.ServiceConfig, act string, err error) {
 			if err != nil {
 				s.log.Info("JshService", act, err.Error())
 			} else {
@@ -262,6 +262,9 @@ func (s *Server) Start() error {
 			}
 		})
 	}
+	util.AddShutdownHook(func() {
+		jsh.ShutdownAll()
+	})
 
 	// pkgs
 	s.pkgMgr.Start()
