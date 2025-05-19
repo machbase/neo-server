@@ -145,7 +145,7 @@ func (j *Jsh) process_cd(call js.FunctionCall) js.Value {
 	if !ent.IsDir {
 		panic(j.vm.ToValue(fmt.Sprintf("%q is not a directory", path)))
 	}
-	j.cwd = path
+	j.cwd = filepath.ToSlash(path)
 	return js.Undefined()
 }
 

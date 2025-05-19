@@ -56,7 +56,7 @@ func TestJsh(t *testing.T) {
 		{
 			name:   "jsh-hello-world",
 			args:   []string{"jsh-hello-world.js"},
-			expect: []string{"Hello, World!\n"},
+			expect: []string{"Hello, World!", "Current directory: /etc_services/", ""},
 		},
 		{
 			name: "jsh-cleanup",
