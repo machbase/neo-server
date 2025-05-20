@@ -201,57 +201,159 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 			ret.Set("y", rt.ToValue(ys))
 			return ret
 		})
-		// m.interpPiecewiseConstant(x, y)
-		o.Set("interpPiecewiseConstant", func(x, y []float64) js.Value {
-			var predicator = &interp.PiecewiseConstant{}
-			predicator.Fit(x, y)
-			ret := rt.NewObject()
-			ret.Set("predict", func(x float64) float64 {
-				return predicator.Predict(x)
-			})
-			return ret
-		})
-		// m.interpPiecewiseLinear(x, y)
-		o.Set("interpPiecewiseLinear", func(x, y []float64) js.Value {
-			var predicator = &interp.PiecewiseLinear{}
-			predicator.Fit(x, y)
-			ret := rt.NewObject()
-			ret.Set("predict", func(x float64) float64 {
-				return predicator.Predict(x)
-			})
-			return ret
-		})
-		// m.interpAkimaSpline(x, y)
-		o.Set("interpAkimaSpline", func(x, y []float64) js.Value {
-			var predicator = &interp.AkimaSpline{}
-			predicator.Fit(x, y)
-			ret := rt.NewObject()
-			ret.Set("predict", func(x float64) float64 {
-				return predicator.Predict(x)
-			})
-			return ret
-		})
-		// m.interpFritschButland(x, y)
-		o.Set("interpFritschButland", func(x, y []float64) js.Value {
-			var predicator = &interp.FritschButland{}
-			predicator.Fit(x, y)
-			ret := rt.NewObject()
-			ret.Set("predict", func(x float64) float64 {
-				return predicator.Predict(x)
-			})
-			return ret
-		})
-		// m.interpLinearRegression(x, y)
-		o.Set("interpLinearRegression", func(x, y []float64) js.Value {
-			a, b := stat.LinearRegression(x, y, nil, false)
-			if b != b {
-				panic(rt.ToValue("predictLinearRegression: invalid regression"))
-			}
-			ret := rt.NewObject()
-			ret.Set("predict", func(x float64) float64 {
-				return a + b*x
-			})
-			return ret
-		})
+		// m.PiecewiseConstant()
+		o.Set("PiecewiseConstant", new_piecewiseConstant(rt))
+		// m.PiecewiseLinear()
+		o.Set("PiecewiseLinear", new_piecewiseLinear(rt))
+		// m.AkimaSpline()
+		o.Set("AkimaSpline", new_akimaSpline(rt))
+		// m.FritschButland()
+		o.Set("FritschButland", new_fritschButland(rt))
+		// m.LinearRegression()
+		o.Set("LinearRegression", new_linearRegression(rt))
+		// m.ClampedCubic()
+		o.Set("ClampedCubic", new_clampedCubic(rt))
+		// m.NaturalCubic()
+		o.Set("NaturalCubic", new_naturalCubic(rt))
+		// m.NotAKnotCubic()
+		o.Set("NotAKnotCubic", new_notAKnotCubic(rt))
 	}
+}
+
+func new_piecewiseConstant(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.PiecewiseConstant{})
+	}
+}
+
+func new_piecewiseLinear(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.PiecewiseLinear{})
+	}
+}
+
+func new_akimaSpline(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.AkimaSpline{})
+	}
+}
+
+func new_fritschButland(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.FritschButland{})
+	}
+}
+
+func new_linearRegression(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &LinearRegression{})
+	}
+}
+
+func new_clampedCubic(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.ClampedCubic{})
+	}
+}
+
+func new_naturalCubic(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.NaturalCubic{})
+	}
+}
+
+func new_notAKnotCubic(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+	return func(c js.ConstructorCall) *js.Object {
+		return newInterpolator(rt, &interp.NotAKnotCubic{})
+	}
+}
+
+type LinearRegression struct {
+	a, b float64
+}
+
+func (lr *LinearRegression) Fit(xs, ys []float64) error {
+	if len(xs) != len(ys) {
+		return fmt.Errorf("x and y should be the same length")
+	}
+	if len(xs) < 2 {
+		return fmt.Errorf("x and y should have at least 2 points")
+	}
+	a, b := stat.LinearRegression(xs, ys, nil, false)
+	if b != b {
+		return fmt.Errorf("invalid regression")
+	}
+	lr.a = a
+	lr.b = b
+	return nil
+}
+
+func (lr *LinearRegression) Predict(x float64) float64 {
+	if lr.b != lr.b {
+		return 0
+	}
+	return lr.a + lr.b*x
+}
+
+type Interpolator struct {
+	rt     *js.Runtime
+	interp interface {
+		Fit(xs, ys []float64) error
+		Predict(x float64) float64
+	}
+}
+
+func newInterpolator(rt *js.Runtime, interp interface {
+	Fit(xs, ys []float64) error
+	Predict(x float64) float64
+}) *js.Object {
+	ip := &Interpolator{rt: rt, interp: interp}
+	obj := rt.NewObject()
+	obj.Set("fit", ip.Fit)
+	obj.Set("predict", ip.Predict)
+	if _, ok := interp.(interface {
+		PredictDerivative(x float64) float64
+	}); ok {
+		obj.Set("predictDerivative", ip.PredictDerivative)
+	}
+	return obj
+}
+
+func (ip *Interpolator) Fit(call js.FunctionCall) js.Value {
+	if len(call.Arguments) != 2 {
+		panic(ip.rt.ToValue("fit: x and y are required"))
+	}
+	var x, y []float64
+	if err := ip.rt.ExportTo(call.Arguments[0], &x); err != nil {
+		panic(ip.rt.ToValue(fmt.Sprintf("fit: %v", err)))
+	}
+	if err := ip.rt.ExportTo(call.Arguments[1], &y); err != nil {
+		panic(ip.rt.ToValue(fmt.Sprintf("fit: %v", err)))
+	}
+	if len(x) != len(y) {
+		panic(ip.rt.ToValue("fit: x and y should be the same length"))
+	}
+	ip.interp.Fit(x, y)
+	return js.Undefined()
+}
+
+func (ip *Interpolator) Predict(call js.FunctionCall) js.Value {
+	if len(call.Arguments) != 1 {
+		panic(ip.rt.ToValue("predict: x is required"))
+	}
+	x := call.Arguments[0].ToFloat()
+	return ip.rt.ToValue(ip.interp.Predict(x))
+}
+
+func (ip *Interpolator) PredictDerivative(call js.FunctionCall) js.Value {
+	if len(call.Arguments) != 1 {
+		panic(ip.rt.ToValue("predictDerivative: x is required"))
+	}
+	x := call.Arguments[0].ToFloat()
+	if derivative, ok := ip.interp.(interface {
+		PredictDerivative(x float64) float64
+	}); ok {
+		return ip.rt.ToValue(derivative.PredictDerivative(x))
+	}
+	panic(ip.rt.ToValue("predictDerivative: not supported"))
 }
