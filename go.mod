@@ -3,7 +3,6 @@ module github.com/machbase/neo-server/v8
 go 1.23.7
 
 require (
-	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/chroma/v2 v2.12.0
 	github.com/alecthomas/kong v0.8.0
