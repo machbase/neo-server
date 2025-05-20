@@ -164,43 +164,7 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 			return rt.ToValue(map[string]any{"intercept": alpha, "slope": beta})
 		})
 		// m.fft(times, values)
-		o.Set("fft", func(times []any, values []any) js.Value {
-			ts := make([]time.Time, len(times))
-			vs := make([]float64, len(values))
-			for i, val := range times {
-				switch v := val.(type) {
-				case time.Time:
-					ts[i] = v
-				case *time.Time:
-					ts[i] = *v
-				case int64:
-					ts[i] = time.Unix(0, v)
-				case *int64:
-					ts[i] = time.Unix(0, *v)
-				case float64:
-					ts[i] = time.Unix(0, int64(v))
-				case *float64:
-					ts[i] = time.Unix(0, int64(*v))
-				default:
-					panic(rt.ToValue(fmt.Sprintf("fft invalid %dth sample time, but %T", i, val)))
-				}
-			}
-			for i, val := range values {
-				switch v := val.(type) {
-				case float64:
-					vs[i] = v
-				case *float64:
-					vs[i] = *v
-				default:
-					panic(rt.ToValue(fmt.Sprintf("fft invalid %dth sample value, but %T", i, val)))
-				}
-			}
-			xs, ys := fft.FastFourierTransform(ts, vs)
-			ret := rt.NewObject()
-			ret.Set("x", rt.ToValue(xs))
-			ret.Set("y", rt.ToValue(ys))
-			return ret
-		})
+		o.Set("fft", make_fft(rt))
 		// m.PiecewiseConstant()
 		o.Set("PiecewiseConstant", new_piecewiseConstant(rt))
 		// m.PiecewiseLinear()
@@ -217,6 +181,46 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 		o.Set("NaturalCubic", new_naturalCubic(rt))
 		// m.NotAKnotCubic()
 		o.Set("NotAKnotCubic", new_notAKnotCubic(rt))
+	}
+}
+
+func make_fft(rt *js.Runtime) func(times []any, values []any) js.Value {
+	return func(times []any, values []any) js.Value {
+		ts := make([]time.Time, len(times))
+		vs := make([]float64, len(values))
+		for i, val := range times {
+			switch v := val.(type) {
+			case time.Time:
+				ts[i] = v
+			case *time.Time:
+				ts[i] = *v
+			case int64:
+				ts[i] = time.Unix(0, v)
+			case *int64:
+				ts[i] = time.Unix(0, *v)
+			case float64:
+				ts[i] = time.Unix(0, int64(v))
+			case *float64:
+				ts[i] = time.Unix(0, int64(*v))
+			default:
+				panic(rt.ToValue(fmt.Sprintf("fft invalid %dth sample time, but %T", i, val)))
+			}
+		}
+		for i, val := range values {
+			switch v := val.(type) {
+			case float64:
+				vs[i] = v
+			case *float64:
+				vs[i] = *v
+			default:
+				panic(rt.ToValue(fmt.Sprintf("fft invalid %dth sample value, but %T", i, val)))
+			}
+		}
+		xs, ys := fft.FastFourierTransform(ts, vs)
+		ret := rt.NewObject()
+		ret.Set("x", rt.ToValue(xs))
+		ret.Set("y", rt.ToValue(ys))
+		return ret
 	}
 }
 

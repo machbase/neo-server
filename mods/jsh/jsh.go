@@ -22,6 +22,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
 	"github.com/machbase/neo-server/v8/mods/jsh/generator"
 	"github.com/machbase/neo-server/v8/mods/jsh/http"
+	"github.com/machbase/neo-server/v8/mods/jsh/mat"
 	"github.com/machbase/neo-server/v8/mods/jsh/mqtt"
 	"github.com/machbase/neo-server/v8/mods/jsh/opcua"
 	"github.com/machbase/neo-server/v8/mods/jsh/psutil"
@@ -321,6 +322,7 @@ func init() {
 		"@jsh/analysis":  analysis.NewModuleLoader,
 		"@jsh/spatial":   spatial.NewModuleLoader,
 		"@jsh/generator": generator.NewModuleLoader,
+		"@jsh/mat":       mat.NewModuleLoader,
 		"@jsh/mqtt":      mqtt.NewModuleLoader,
 		"@jsh/http":      http.NewModuleLoader,
 		"@jsh/psutil":    psutil.NewModuleLoader,
