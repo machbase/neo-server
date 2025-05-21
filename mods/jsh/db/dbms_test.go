@@ -5,12 +5,29 @@ import (
 	"context"
 	"testing"
 
+	embedded_postgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/testsuite"
 	"github.com/machbase/neo-server/v8/mods/jsh"
 )
 
 func TestMain(m *testing.M) {
+	pgConf := embedded_postgres.DefaultConfig().
+		Username("dbuser").
+		Password("dbpass").
+		Database("db").
+		CachePath("./test/postgres").
+		Port(15455)
+	pgdb := embedded_postgres.NewDatabase(pgConf)
+	if err := pgdb.Start(); err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := pgdb.Stop(); err != nil {
+			panic(err)
+		}
+	}()
+
 	testServer := testsuite.NewServer("./test/tmp")
 	testServer.StartServer(m)
 	testServer.CreateTestTables()
@@ -28,6 +45,32 @@ type TestCase struct {
 	Name   string
 	Script string
 	Expect []string
+}
+
+func runTestCase(t *testing.T, tc TestCase) {
+	t.Helper()
+	ctx := context.TODO()
+	w := &bytes.Buffer{}
+	j := jsh.NewJsh(ctx,
+		jsh.WithNativeModules("@jsh/process", "@jsh/db", "@jsh/system"),
+		jsh.WithWriter(w),
+	)
+	err := j.Run(tc.Name, tc.Script, nil)
+	if err != nil {
+		t.Fatalf("Error running script: %s", err)
+	}
+	lines := bytes.Split(w.Bytes(), []byte{'\n'})
+	for i, line := range lines {
+		if i >= len(tc.Expect) {
+			break
+		}
+		if !bytes.Equal(line, []byte(tc.Expect[i])) {
+			t.Errorf("Expected %q, got %q", tc.Expect[i], line)
+		}
+	}
+	if len(lines) > len(tc.Expect) {
+		t.Errorf("Expected %d lines, got %d", len(tc.Expect), len(lines))
+	}
 }
 
 func TestDBMS(t *testing.T) {
@@ -156,28 +199,56 @@ func TestDBMS(t *testing.T) {
 	}
 }
 
-func runTestCase(t *testing.T, tc TestCase) {
-	t.Helper()
-	ctx := context.TODO()
-	w := &bytes.Buffer{}
-	j := jsh.NewJsh(ctx,
-		jsh.WithNativeModules("@jsh/process", "@jsh/db", "@jsh/system"),
-		jsh.WithWriter(w),
-	)
-	err := j.Run(tc.Name, tc.Script, nil)
-	if err != nil {
-		t.Fatalf("Error running script: %s", err)
+func TestPostgreSql(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "dbms-postgresql",
+			Script: `
+				const db = require("@jsh/db");
+				const { now, parseTime } = require("@jsh/system");
+				
+				client = new db.Client({
+					driver: "postgres",
+					dataSource: "host=127.0.0.1 port=15455 dbname=db user=dbuser password=dbpass sslmode=disable",
+					lowerCaseColumns:true,
+				});
+				var conn = null;
+				var rows = null;
+				try{
+					conn = client.connect();
+					r = conn.exec("CREATE TABLE test (id SERIAL PRIMARY KEY, name TEXT)");
+					console.log("create table:", r.message);
+					r = conn.exec("INSERT INTO test (name) VALUES ($1)", "foo")
+					console.log("insert foo:", r.message, r.rowsAffected);
+					r = conn.exec("INSERT INTO test (name) VALUES ($1)", "bar")
+					console.log("insert bar:", r.message, r.rowsAffected);
+
+					rows = conn.query("SELECT * FROM test ORDER BY id");
+					console.log("cols.names:", JSON.stringify(rows.columnNames()));
+					for (const rec of rows) {
+						console.log(...rec);
+					}
+				} catch(e) {
+					console.log("Error:", e.message);
+				} finally {
+				 	if(rows) rows.close();
+					if(conn) conn.close();
+				}
+			`,
+			Expect: []string{
+				"create table: Created successfully.",
+				"insert foo: a row inserted. 1",
+				"insert bar: a row inserted. 1",
+				`cols.names: ["id","name"]`,
+				"1 foo",
+				"2 bar",
+				"",
+			},
+		},
 	}
-	lines := bytes.Split(w.Bytes(), []byte{'\n'})
-	for i, line := range lines {
-		if i >= len(tc.Expect) {
-			break
-		}
-		if !bytes.Equal(line, []byte(tc.Expect[i])) {
-			t.Errorf("Expected %q, got %q", tc.Expect[i], line)
-		}
-	}
-	if len(lines) > len(tc.Expect) {
-		t.Errorf("Expected %d lines, got %d", len(tc.Expect), len(lines))
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
 	}
 }

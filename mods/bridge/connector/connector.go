@@ -111,7 +111,7 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 	case "mssql":
 		db, err = mssql.Connect(dataSource)
 		break
-	case "postgres":
+	case "postgres", "postgresql":
 		db, err = postgres.Connect(dataSource)
 		break
 	case "mysql":
