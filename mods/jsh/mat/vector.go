@@ -82,10 +82,7 @@ func (vec *VecDense) Cap(call js.FunctionCall) js.Value {
 		return vec.rt.ToValue("cap: not a VecDense matrix")
 	}
 	cap := dense.Cap()
-	ret := vec.rt.NewObject()
-	ret.Set("rows", cap)
-	ret.Set("cols", 1)
-	return ret
+	return vec.rt.ToValue(cap)
 }
 
 func (vec *VecDense) SetVec(call js.FunctionCall) js.Value {

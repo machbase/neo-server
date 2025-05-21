@@ -10,12 +10,12 @@ func TestVecDense(t *testing.T) {
 				const m = require("@jsh/mat")
 				v = new m.VecDense(3, [4, 5, 6]) 
 				console.log("dim:", v.dims().rows, v.dims().cols)
-				console.log("cap:", v.cap().rows, v.cap().cols)
+				console.log("cap:", v.cap())
 				console.log("len:", v.len())
 				`,
 			Expect: []string{
 				"dim: 3 1",
-				"cap: 3 1",
+				"cap: 3",
 				"len: 3",
 				"",
 			},
@@ -50,7 +50,7 @@ func TestVecDense(t *testing.T) {
 				const m = require("@jsh/mat")
 				v = new m.VecDense(3, [1.0, 2.0, 3.0])
 				console.log("dim:", v.dims().rows, v.dims().cols)
-				console.log("cap:", v.cap().rows, v.cap().cols)
+				console.log("cap:", v.cap())
 				console.log(m.format(v, {format: "v = %.2f", prefix: "    "}))
 				v.scaleVec(2.0, v)
 				console.log(m.format(v, {format: "v = %.2f", prefix: "    "}))
@@ -59,7 +59,7 @@ func TestVecDense(t *testing.T) {
 			`,
 			Expect: []string{
 				"dim: 3 1",
-				"cap: 3 1",
+				"cap: 3",
 				"v = ⎡1.00⎤",
 				"    ⎢2.00⎥",
 				"    ⎣3.00⎦",
