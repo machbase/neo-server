@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/machbase/neo-server/v8/mods/jsh"
-	"github.com/machbase/neo-server/v8/mods/jsh/console"
+	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
 	mod_dbms "github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/logging"
 
@@ -178,7 +178,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 		vm:      js.New(),
 	}
 	ctx.vm.SetFieldNameMapper(js.TagFieldNameMapper("json", false))
-	console.Enable(ctx.vm, func(level logging.Level, args ...any) error {
+	builtin.EnableConsole(ctx.vm, func(level logging.Level, args ...any) error {
 		node.task._log(LogginLevelFrom(level), args...)
 		return nil
 	})

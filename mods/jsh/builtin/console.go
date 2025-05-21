@@ -1,4 +1,4 @@
-package console
+package builtin
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
-func Enable(vm *js.Runtime, logger LogFunc) error {
+func EnableConsole(vm *js.Runtime, logger LogFunc) error {
 	con := vm.NewObject()
 	con.Set("log", console_log(vm, logging.LevelInfo, logger))
 	con.Set("debug", console_log(vm, logging.LevelDebug, logger))

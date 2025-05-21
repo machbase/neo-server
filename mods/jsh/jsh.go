@@ -17,7 +17,6 @@ import (
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/machbase/neo-server/v8/mods/jsh/analysis"
 	"github.com/machbase/neo-server/v8/mods/jsh/builtin"
-	"github.com/machbase/neo-server/v8/mods/jsh/console"
 	"github.com/machbase/neo-server/v8/mods/jsh/db"
 	"github.com/machbase/neo-server/v8/mods/jsh/filter"
 	"github.com/machbase/neo-server/v8/mods/jsh/generator"
@@ -417,7 +416,7 @@ func (j *Jsh) Run(sourceName, sourceCode string, args []string) error {
 			}
 		}
 		registry.Enable(j.vm)
-		console.Enable(j.vm, j.Log)
+		builtin.EnableConsole(j.vm, j.Log)
 
 		if result, err := j.vm.RunProgram(j.program); err != nil {
 			j.resultErr = append(j.resultErr, err)
