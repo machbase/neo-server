@@ -7,6 +7,32 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
+type Vector struct {
+	Matrix
+}
+
+func (v *Vector) toValue() *js.Object {
+	obj := v.Matrix.toValue()
+	obj.Set("atVec", v.AtVec)
+	obj.Set("len", v.Len)
+	return obj
+}
+
+func (v *Vector) AtVec(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		return js.Undefined()
+	}
+	row := int(call.Arguments[0].ToInteger())
+	vec := v.value.(mat.Vector)
+	ret := vec.AtVec(row)
+	return v.rt.ToValue(ret)
+}
+
+func (v *Vector) Len(call js.FunctionCall) js.Value {
+	ret := v.value.(mat.Vector).Len()
+	return v.rt.ToValue(ret)
+}
+
 func new_vecDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
 		defer func() {
@@ -15,7 +41,7 @@ func new_vecDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
 			}
 		}()
 		if len(call.Arguments) == 0 {
-			m := &VecDense{value: &mat.VecDense{}, rt: rt}
+			m := &VecDense{Vector: Vector{Matrix{value: &mat.VecDense{}, rt: rt}}}
 			return m.toValue()
 		}
 		var ncol int
@@ -28,98 +54,119 @@ func new_vecDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
 				panic(rt.ToValue(fmt.Sprintf("VecDense: %v", err)))
 			}
 		}
-		m := &VecDense{value: mat.NewVecDense(ncol, data), rt: rt}
+		m := &VecDense{Vector: Vector{Matrix{value: mat.NewVecDense(ncol, data), rt: rt}}}
 		return m.toValue()
 	}
 }
 
 type VecDense struct {
-	value *mat.VecDense
-	rt    *js.Runtime
+	Vector
 }
 
 func (m *VecDense) toValue() *js.Object {
-	obj := m.rt.NewObject()
-	obj.Set("dims", m.Dims)
+	obj := m.Vector.toValue()
 	obj.Set("cap", m.Cap)
-	obj.Set("set", m.Value)
-	obj.Set("add", m.Add)
-	obj.Set("sub", m.Sub)
-	obj.Set("mul", m.Mul)
-	obj.Set("mulElem", m.MulElem)
-	obj.Set("solveVec", m.Solve)
-	obj.Set("scale", m.Scale)
-	obj.Set("$", m.value)
+	obj.Set("setVec", m.SetVec)
+	obj.Set("addVec", m.AddVec)
+	obj.Set("subVec", m.SubVec)
+	obj.Set("mulVec", m.MulVec)
+	obj.Set("mulElemVec", m.MulElemVec)
+	obj.Set("solveVec", m.SolveVec)
+	obj.Set("scaleVec", m.ScaleVec)
 	return obj
 }
 
-func (vec *VecDense) Dims(call js.FunctionCall) js.Value {
-	r, c := vec.value.Dims()
-	ret := vec.rt.NewObject()
-	ret.Set("rows", r)
-	ret.Set("cols", c)
-	return ret
-}
-
 func (vec *VecDense) Cap(call js.FunctionCall) js.Value {
-	cap := vec.value.Cap()
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	cap := dense.Cap()
 	ret := vec.rt.NewObject()
 	ret.Set("rows", cap)
 	ret.Set("cols", 1)
 	return ret
 }
 
-func (vec *VecDense) Value(call js.FunctionCall) js.Value {
+func (vec *VecDense) SetVec(call js.FunctionCall) js.Value {
 	if len(call.Arguments) < 2 {
 		return vec.rt.ToValue("set: not enough arguments")
 	}
 	row := int(call.Arguments[0].ToInteger())
 	val := call.Arguments[1].ToFloat()
-	if row < 0 || row >= vec.value.Len() {
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	if row < 0 || row >= dense.Len() {
 		return vec.rt.ToValue("set: out of range")
 	}
-	vec.value.SetVec(row, val)
+	dense.SetVec(row, val)
 	return js.Undefined()
 }
 
-func (m *VecDense) Add(call js.FunctionCall) js.Value {
+func (vec *VecDense) AddVec(call js.FunctionCall) js.Value {
 	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.VecDense)
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.AddVec(a, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.AddVec(a, b)
 	return js.Undefined()
 }
 
-func (m *VecDense) Sub(call js.FunctionCall) js.Value {
+func (vec *VecDense) SubVec(call js.FunctionCall) js.Value {
 	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.VecDense)
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.SubVec(a, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.SubVec(a, b)
 	return js.Undefined()
 }
 
-func (m *VecDense) Mul(call js.FunctionCall) js.Value {
+func (vec *VecDense) MulVec(call js.FunctionCall) js.Value {
 	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.MulVec(a, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.MulVec(a, b)
 	return js.Undefined()
 }
 
-func (m *VecDense) MulElem(call js.FunctionCall) js.Value {
+func (vec *VecDense) MulElemVec(call js.FunctionCall) js.Value {
 	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.VecDense)
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.MulElemVec(a, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.MulElemVec(a, b)
 	return js.Undefined()
 }
 
-func (m *VecDense) Scale(call js.FunctionCall) js.Value {
+func (vec *VecDense) ScaleVec(call js.FunctionCall) js.Value {
 	alpha := call.Arguments[0].ToFloat()
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.ScaleVec(alpha, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.ScaleVec(alpha, b)
 	return js.Undefined()
 }
 
-func (m *VecDense) Solve(call js.FunctionCall) js.Value {
-	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+func (vec *VecDense) SolveVec(call js.FunctionCall) js.Value {
+	a := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.VecDense)
-	m.value.SolveVec(a, b)
+	dense := vec.value.(*mat.VecDense)
+	if dense == nil {
+		return vec.rt.ToValue("cap: not a VecDense matrix")
+	}
+	dense.SolveVec(a, b)
 	return js.Undefined()
 }

@@ -10,7 +10,7 @@ import (
 func new_symDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
 	return func(c js.ConstructorCall) *js.Object {
 		if len(c.Arguments) == 0 {
-			m := &SymDense{value: &mat.SymDense{}, rt: rt}
+			m := &SymDense{Dense{Matrix{value: &mat.SymDense{}, rt: rt}}}
 			return m.toValue()
 		}
 		var n int
@@ -23,82 +23,66 @@ func new_symDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
 				panic(rt.ToValue(fmt.Sprintf("SymDense: %v", err)))
 			}
 		}
-		m := &SymDense{value: mat.NewSymDense(n, data), rt: rt}
+		m := &SymDense{Dense{Matrix{value: mat.NewSymDense(n, data), rt: rt}}}
 		return m.toValue()
 	}
 }
 
 type SymDense struct {
-	value *mat.SymDense
-	rt    *js.Runtime
+	Dense
 }
 
 func (d *SymDense) toValue() *js.Object {
-	obj := d.rt.NewObject()
-	obj.Set("dims", d.Dims)
-	obj.Set("set", d.Set)
-	obj.Set("subset", d.Subset)
-	obj.Set("add", d.Add)
-	// obj.Set("mul", d.Mul)
-	// obj.Set("mulElem", d.MulElem)
-	// obj.Set("divElem", d.DivElem)
-	// obj.Set("inverse", d.Inverse)
-	// obj.Set("solve", d.Solve)
-	// obj.Set("exp", d.Exp)
-	// obj.Set("pow", d.Pow)
-	// obj.Set("scale", d.Scale)
-	obj.Set("$", d.value)
+	obj := d.Dense.toValue()
+	obj.Set("setSym", d.SetSym)
+	obj.Set("subsetSym", d.SubsetSym)
+	obj.Set("addSym", d.AddSym)
 	return obj
 }
 
-func (d *SymDense) Dims(call js.FunctionCall) js.Value {
-	r, c := d.value.Dims()
-	ret := d.rt.NewObject()
-	ret.Set("rows", r)
-	ret.Set("cols", c)
-	return ret
-}
-
 // Set sets the elements at (i,j) and (j,i) to the value v.
-func (d *SymDense) Set(call js.FunctionCall) js.Value {
+func (d *SymDense) SetSym(call js.FunctionCall) js.Value {
 	if len(call.Arguments) < 3 {
-		return d.rt.ToValue("set: not enough arguments")
+		return d.rt.ToValue("setSym: not enough arguments")
 	}
 	i := int(call.Arguments[0].ToInteger())
 	j := int(call.Arguments[1].ToInteger())
 	v := call.Arguments[2].ToFloat()
-	d.value.SetSym(i, j, v)
+	symdense := d.value.(*mat.SymDense)
+	symdense.SetSym(i, j, v)
 	return js.Undefined()
 }
 
-func (d *SymDense) Add(call js.FunctionCall) js.Value {
+func (d *SymDense) AddSym(call js.FunctionCall) js.Value {
 	if len(call.Arguments) < 2 {
-		return d.rt.ToValue("add: not enough arguments")
+		return d.rt.ToValue("addSym: not enough arguments")
 	}
 	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.SymDense)
 	if !ok {
-		return d.rt.ToValue("add: not a SymDense matrix")
+		return d.rt.ToValue("addSym: not a SymDense matrix")
 	}
 	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.SymDense)
 	if !ok {
-		return d.rt.ToValue("add: not a SymDense matrix")
+		return d.rt.ToValue("addSym: not a SymDense matrix")
 	}
-	d.value.AddSym(a, b)
+	symdense := d.value.(*mat.SymDense)
+	symdense.AddSym(a, b)
 	return js.Undefined()
 }
 
-func (d *SymDense) Subset(call js.FunctionCall) js.Value {
+func (d *SymDense) SubsetSym(call js.FunctionCall) js.Value {
 	if len(call.Arguments) < 2 {
-		return d.rt.ToValue("sub: not enough arguments")
+		return d.rt.ToValue("subsetSym: not enough arguments")
 	}
 	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.SymDense)
 	if !ok {
-		return d.rt.ToValue("sub: not a SymDense matrix")
+		return d.rt.ToValue("subsetSym: not a SymDense matrix")
 	}
 	n := []int{}
 	if err := d.rt.ExportTo(call.Arguments[1], &n); err != nil {
-		return d.rt.ToValue(fmt.Sprintf("sub: %v", err))
+		return d.rt.ToValue(fmt.Sprintf("subsetSym: %v", err))
 	}
-	d.value.SubsetSym(a, n)
+	symdense := d.value.(*mat.SymDense)
+	symdense.SubsetSym(a, n)
 	return js.Undefined()
 }

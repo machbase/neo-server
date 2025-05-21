@@ -10,7 +10,7 @@ import (
 func new_dense(rt *js.Runtime) func(js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
 		if len(call.Arguments) == 0 {
-			m := &Dense{value: &mat.Dense{}, rt: rt}
+			m := &Dense{Matrix: Matrix{value: &mat.Dense{}, rt: rt}}
 			return m.toValue()
 		}
 		var rows, cols int
@@ -26,19 +26,23 @@ func new_dense(rt *js.Runtime) func(js.ConstructorCall) *js.Object {
 				panic(rt.ToValue(fmt.Sprintf("Dense: %v", err)))
 			}
 		}
-		m := &Dense{value: mat.NewDense(rows, cols, data), rt: rt}
+		m := &Dense{Matrix: Matrix{value: mat.NewDense(rows, cols, data), rt: rt}}
 		return m.toValue()
 	}
 }
 
 type Dense struct {
-	value *mat.Dense
-	rt    *js.Runtime
+	Matrix
 }
 
 func (d *Dense) toValue() *js.Object {
-	obj := d.rt.NewObject()
-	obj.Set("dims", d.Dims)
+	obj := d.Matrix.toValue()
+	obj.Set("reuseAs", d.ReuseAs)
+	obj.Set("zero", d.Zero)
+	obj.Set("reset", d.Reset)
+	obj.Set("isEmpty", d.IsEmpty)
+	obj.Set("cloneFrom", d.CloneFrom)
+	obj.Set("caps", d.Caps)
 	obj.Set("set", d.Set)
 	obj.Set("add", d.Add)
 	obj.Set("sub", d.Sub)
@@ -50,12 +54,75 @@ func (d *Dense) toValue() *js.Object {
 	obj.Set("exp", d.Exp)
 	obj.Set("pow", d.Pow)
 	obj.Set("scale", d.Scale)
-	obj.Set("$", d.value)
 	return obj
 }
 
-func (d *Dense) Dims(call js.FunctionCall) js.Value {
-	r, c := d.value.Dims()
+func (d *Dense) ReuseAs(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 2 {
+		return d.rt.ToValue("reuseAs: not enough arguments")
+	}
+	rows := int(call.Arguments[0].ToInteger())
+	cols := int(call.Arguments[1].ToInteger())
+	if rows < 0 || cols < 0 {
+		return d.rt.ToValue("reuseAs: negative size")
+	}
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("reuseAs: nil matrix")
+	}
+	dense.ReuseAs(rows, cols)
+	return js.Undefined()
+}
+
+func (d *Dense) Zero(call js.FunctionCall) js.Value {
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("zero: nil matrix")
+	}
+	dense.Zero()
+	return js.Undefined()
+}
+
+func (d *Dense) Reset(call js.FunctionCall) js.Value {
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("reset: nil matrix")
+	}
+	dense.Reset()
+	return js.Undefined()
+}
+
+func (d *Dense) IsEmpty(call js.FunctionCall) js.Value {
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("isEmpty: nil matrix")
+	}
+	ret := dense.IsEmpty()
+	return d.rt.ToValue(ret)
+}
+
+func (d *Dense) CloneFrom(call js.FunctionCall) js.Value {
+	if len(call.Arguments) == 0 {
+		return d.rt.ToValue("denseCopyOf: not enough arguments")
+	}
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
+	if !ok {
+		return d.rt.ToValue("denseCopyOf: not a Dense matrix")
+	}
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("denseCopyOf: nil matrix")
+	}
+	dense.CloneFrom(a)
+	return js.Undefined()
+}
+
+func (d *Dense) Caps(call js.FunctionCall) js.Value {
+	dense := d.value.(*mat.Dense)
+	if dense == nil {
+		return d.rt.ToValue("caps: nil matrix")
+	}
+	r, c := dense.Caps()
 	ret := d.rt.NewObject()
 	ret.Set("rows", r)
 	ret.Set("cols", c)
@@ -72,91 +139,100 @@ func (d *Dense) Set(call js.FunctionCall) js.Value {
 	if row < 0 || col < 0 {
 		return d.rt.ToValue("set: negative index")
 	}
-	if row >= d.value.RawMatrix().Rows || col >= d.value.RawMatrix().Cols {
+	dense := d.value.(*mat.Dense)
+	r, c := dense.Dims()
+	if uint(row) >= uint(r) || uint(col) >= uint(c) {
 		return d.rt.ToValue("set: index out of range")
 	}
-	d.value.Set(row, col, val)
+	dense.Set(row, col, val)
 	return js.Undefined()
 }
 
 func (m *Dense) Add(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("add: not a Dense matrix")
 	}
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("add: not a Dense matrix")
 	}
-	m.value.Add(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.Add(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) Sub(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("sub: not a Dense matrix")
 	}
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("sub: not a Dense matrix")
 	}
-	m.value.Sub(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.Sub(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) Mul(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("mul: not a Dense matrix")
 	}
-	b := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("mul: not a Dense matrix")
 	}
-	m.value.Mul(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.Mul(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) MulElem(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("mulElem: not a Dense matrix")
 	}
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("mulElem: not a Dense matrix")
 	}
-	m.value.MulElem(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.MulElem(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) DivElem(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("divElem: not a Dense matrix")
 	}
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("divElem: not a Dense matrix")
 	}
-	m.value.DivElem(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.DivElem(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) Scale(call js.FunctionCall) js.Value {
 	a := call.Arguments[0].ToFloat()
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("scale: not a Dense matrix")
 	}
-	m.value.Scale(a, b)
+	dense := m.value.(*mat.Dense)
+	dense.Scale(a, b)
 	return js.Undefined()
 }
 
 func (m *Dense) Inverse(call js.FunctionCall) js.Value {
-	a := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
-	err := m.value.Inverse(a)
+	a := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
+	dense := m.value.(*mat.Dense)
+	err := dense.Inverse(a)
 	if err != nil {
 		return m.rt.ToValue(fmt.Sprintf("inverse: %v", err))
 	}
@@ -174,15 +250,16 @@ func (m *Dense) Inverse(call js.FunctionCall) js.Value {
 // VecDense (if B is a vector) or Solve method of Dense (if B is a
 // matrix) should be used instead of computing the Inverse of A.
 func (m *Dense) Solve(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("solve: not a Dense matrix")
 	}
-	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(*mat.Dense)
+	b, ok := call.Arguments[1].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("solve: not a Dense matrix")
 	}
-	err := m.value.Solve(a, b)
+	dense := m.value.(*mat.Dense)
+	err := dense.Solve(a, b)
 	if err != nil {
 		return m.rt.ToValue(fmt.Sprintf("solve: %v", err))
 	}
@@ -190,16 +267,17 @@ func (m *Dense) Solve(call js.FunctionCall) js.Value {
 }
 
 func (m *Dense) Exp(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("exp: not a Dense matrix")
 	}
-	m.value.Exp(a)
+	dense := m.value.(*mat.Dense)
+	dense.Exp(a)
 	return js.Undefined()
 }
 
 func (m *Dense) Pow(call js.FunctionCall) js.Value {
-	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(*mat.Dense)
+	a, ok := call.Arguments[0].(*js.Object).Get("$").Export().(mat.Matrix)
 	if !ok {
 		return m.rt.ToValue("pow: not a Dense matrix")
 	}
@@ -207,6 +285,7 @@ func (m *Dense) Pow(call js.FunctionCall) js.Value {
 	if b < 0 {
 		return m.rt.ToValue("pow: negative exponent")
 	}
-	m.value.Pow(a, int(b))
+	dense := m.value.(*mat.Dense)
+	dense.Pow(a, int(b))
 	return js.Undefined()
 }

@@ -5,6 +5,46 @@ import "testing"
 func TestVecDense(t *testing.T) {
 	tests := []TestCase{
 		{
+			Name: "vector_dim_cap_len",
+			Script: `
+				const m = require("@jsh/mat")
+				v = new m.VecDense(3, [4, 5, 6]) 
+				console.log("dim:", v.dims().rows, v.dims().cols)
+				console.log("cap:", v.cap().rows, v.cap().cols)
+				console.log("len:", v.len())
+				`,
+			Expect: []string{
+				"dim: 3 1",
+				"cap: 3 1",
+				"len: 3",
+				"",
+			},
+		},
+		{
+			Name: "vector_at_set",
+			Script: `
+				const m = require("@jsh/mat")
+				v = new m.VecDense(3, [4, 5, 6])
+				at = v.at(2, 0)
+				console.log("at(2,0):", at)
+				atVec = v.atVec(0)
+				console.log("atVec(0):", atVec)
+				v.setVec(1, 2.0)
+				console.log(m.format(v, {format: "v = %g", prefix: "    "}))
+				T = v.T()
+				console.log("T =", T.toString())
+			`,
+			Expect: []string{
+				"at(2,0): 6",
+				"atVec(0): 4",
+				"v = ⎡4⎤",
+				"    ⎢2⎥",
+				"    ⎣6⎦",
+				"T = [4  2  6]",
+				"",
+			},
+		},
+		{
 			Name: "vec",
 			Script: `
 				const m = require("@jsh/mat")
@@ -12,9 +52,9 @@ func TestVecDense(t *testing.T) {
 				console.log("dim:", v.dims().rows, v.dims().cols)
 				console.log("cap:", v.cap().rows, v.cap().cols)
 				console.log(m.format(v, {format: "v = %.2f", prefix: "    "}))
-				v.scale(2.0, v)
+				v.scaleVec(2.0, v)
 				console.log(m.format(v, {format: "v = %.2f", prefix: "    "}))
-				v.set(0, -1.0)
+				v.setVec(0, -1.0)
 				console.log(m.format(v, {format: "v = %.2f", prefix: "    "}))
 			`,
 			Expect: []string{
@@ -67,7 +107,7 @@ func TestDenseMat(t *testing.T) {
 				console.log(m.format(x, {format: "x = %.2f\n", prefix: "    "}))
 
 				prod = new m.VecDense()
-				prod.mul(A, x)
+				prod.mulVec(A, x)
 				console.log(m.format(prod, {format: "A*b = %.2f", prefix: "      "}))
 			`,
 			Expect: []string{

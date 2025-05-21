@@ -12,7 +12,7 @@ func TestSymDenseSet(t *testing.T) {
 				count = 1.0;
 				for(let i = 0; i < n; i++) {
 					for(let j = i; j < n; j++) {
-						a.set(i, j, count);
+						a.setSym(i, j, count);
 						count++;
 					}
 				}
@@ -21,11 +21,11 @@ func TestSymDenseSet(t *testing.T) {
 				}))
 
 				var sub = new m.SymDense();
-				sub.subset(a, [0, 2, 4]);
+				sub.subsetSym(a, [0, 2, 4]);
 				console.log(m.format(sub, {
 					format: "subset: [0, 2, 4]\n%v\n", squeeze: true,
 				}))
-				sub.subset(a, [0, 0, 4]);
+				sub.subsetSym(a, [0, 0, 4]);
 				console.log(m.format(sub, {
 					format: "subset: [0, 0, 4]\n%v", squeeze: true,
 				}))

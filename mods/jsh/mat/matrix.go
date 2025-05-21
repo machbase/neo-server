@@ -65,3 +65,46 @@ func Format(rt *js.Runtime) func(call js.FunctionCall) js.Value {
 		return rt.ToValue(fmt.Sprintf(opts.Format, f))
 	}
 }
+
+type Matrix struct {
+	value mat.Matrix
+	rt    *js.Runtime
+}
+
+func (m *Matrix) toValue() *js.Object {
+	obj := m.rt.NewObject()
+	obj.Set("dims", m.Dims)
+	obj.Set("at", m.At)
+	obj.Set("T", m.T)
+	obj.Set("$", m.value)
+	obj.Set("toString", m.String)
+	return obj
+}
+
+func (m *Matrix) String() string {
+	return fmt.Sprintf("%v", mat.Formatted(m.value))
+}
+
+func (m *Matrix) Dims(call js.FunctionCall) js.Value {
+	r, c := m.value.Dims()
+	ret := m.rt.NewObject()
+	ret.Set("rows", r)
+	ret.Set("cols", c)
+	return ret
+}
+
+func (m *Matrix) At(call js.FunctionCall) js.Value {
+	if len(call.Arguments) < 2 {
+		return m.rt.ToValue("at: not enough arguments")
+	}
+	i := int(call.Arguments[0].ToInteger())
+	j := int(call.Arguments[1].ToInteger())
+	v := m.value.At(i, j)
+	return m.rt.ToValue(v)
+}
+
+func (m *Matrix) T(call js.FunctionCall) js.Value {
+	val := m.value.T()
+	ret := &Matrix{value: val, rt: m.rt}
+	return ret.toValue()
+}
