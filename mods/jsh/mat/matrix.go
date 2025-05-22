@@ -42,7 +42,7 @@ func Format(rt *js.Runtime) func(call js.FunctionCall) js.Value {
 			Excerpt int    `json:"excerpt,omitempty"`
 			Sqeeze  bool   `json:"squeeze,omitempty"`
 		}{
-			Format: "",
+			Format: "%v",
 		}
 
 		if len(call.Arguments) > 1 {

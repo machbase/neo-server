@@ -17,6 +17,7 @@ func TestMain(m *testing.M) {
 		Password("dbpass").
 		Database("db").
 		CachePath("./test/postgres").
+		Version(embedded_postgres.V16).
 		Port(15455)
 	pgdb := embedded_postgres.NewDatabase(pgConf)
 	if err := pgdb.Start(); err != nil {

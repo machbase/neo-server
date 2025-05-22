@@ -150,6 +150,29 @@ func TestDenseMul(t *testing.T) {
 				"",
 			},
 		},
+		{
+			Name: "dense_mul",
+			Script: `const m = require("@jsh/mat")
+				A = new m.Dense(2, 2, [
+					1, 2,
+					3, 4,
+				])
+				b = new m.VecDense(2, [
+					2,
+					2,
+				])
+				C = new m.Dense()
+				C.mul(A, b)
+				console.log(m.format(C, {
+					format: "C = %v", prefix: "    ", squeeze: true,
+				}))
+			`,
+			Expect: []string{
+				"C = ⎡ 6⎤",
+				"    ⎣14⎦",
+				"",
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {

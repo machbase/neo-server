@@ -54,11 +54,18 @@ func runTestReadLine(t *testing.T, code string, expect []Line) {
 		e := expect[i]
 		l := lines[i]
 		require.Equal(t, e.text, l.text)
-		if e.text != l.text || e.isComment != l.isComment || e.isPragma != l.isPragma {
-			t.Logf("Expect[%d] %v", i, e)
-			t.Logf("Actual[%d] %v", i, *l)
+		if e.text != l.text || e.isComment != l.isComment || e.isPragma != l.isPragma || e.line != l.line {
+			t.Logf("Expect[%d]:%d %v", i, e.line, e)
+			t.Logf("Actual[%d]:%d %v", i, l.line, *l)
 			t.Fail()
 		}
+	}
+	if len(lines) > len(expect) {
+		for i := len(expect); i < len(lines); i++ {
+			l := lines[i]
+			t.Logf("Actual[%d]:%d %v", i, l.line, *l)
+		}
+		t.Fail()
 	}
 }
 
@@ -72,8 +79,8 @@ func TestReadLine(t *testing.T) {
 			|CSV()
 			`,
 			[]Line{
-				{text: "FAKE('안녕')"},
-				{text: "CSV()"},
+				{text: "FAKE('안녕')", line: 1},
+				{text: "CSV()", line: 2},
 			},
 		},
 		{
@@ -87,11 +94,11 @@ func TestReadLine(t *testing.T) {
 			|CSV()
 			`,
 			[]Line{
-				{text: "comment1", isComment: true},
-				{text: "FAKE('hello')"},
+				{text: "comment1", isComment: true, line: 1},
+				{text: "\nFAKE('hello')", line: 2},
 				{text: " MAPVALUE(2,\n  value(1) * 10,\n  true\n )", line: 3},
-				{text: " comment3 // and", isComment: true},
-				{text: "CSV()"},
+				{text: " comment3 // and", isComment: true, line: 7},
+				{text: "\nCSV()", line: 8},
 			},
 		},
 		{
@@ -104,9 +111,9 @@ func TestReadLine(t *testing.T) {
 			|CHART_LINE3D()
 			`,
 			[]Line{
-				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))"},
-				{text: "MAPVALUE(2,\n	sin(pow(value(0), 2) + pow(value(1), 2))\n	/\n	(pow(value(0), 2) + pow(value(1), 2))\n)"},
-				{text: "CHART_LINE3D()"},
+				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))", line: 1},
+				{text: "MAPVALUE(2,\n	sin(pow(value(0), 2) + pow(value(1), 2))\n	/\n	(pow(value(0), 2) + pow(value(1), 2))\n)", line: 2},
+				{text: "CHART_LINE3D()", line: 7},
 			},
 		},
 		{
@@ -114,8 +121,8 @@ func TestReadLine(t *testing.T) {
 			|MAPVALUE()
 			`,
 			[]Line{
-				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))"},
-				{text: "MAPVALUE()"},
+				{text: "FAKE(meshgrid(linspace(-4,4,100), linspace(-4,4, 100)))", line: 1},
+				{text: "MAPVALUE()", line: 2},
 			},
 		},
 		{
@@ -125,8 +132,8 @@ func TestReadLine(t *testing.T) {
 			|MAPVALUE()
 			`,
 			[]Line{
-				{text: "FAKE(meshgrid(linspace(-4,4,100 \n),\nlinspace(-4,4, 100)))"},
-				{text: "MAPVALUE()"},
+				{text: "FAKE(meshgrid(linspace(-4,4,100 \n),\nlinspace(-4,4, 100)))", line: 1},
+				{text: "MAPVALUE()", line: 4},
 			},
 		},
 		{
@@ -136,10 +143,10 @@ func TestReadLine(t *testing.T) {
 			|MAPVALUE()
 			`,
 			[]Line{
-				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))"},
-				{text: " stateful", isComment: true, isPragma: true},
-				{text: "WHEN( cond, doHttp())"},
-				{text: "MAPVALUE()"},
+				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))", line: 1},
+				{text: " stateful", isComment: true, isPragma: true, line: 2},
+				{text: "WHEN( cond, doHttp())", line: 3},
+				{text: "MAPVALUE()", line: 4},
 			},
 		},
 		{
@@ -149,10 +156,28 @@ func TestReadLine(t *testing.T) {
 			|MAPVALUE()
 			`,
 			[]Line{
-				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))"},
-				{text: " stateful", isComment: true, isPragma: true},
-				{text: "WHEN( cond, doHttp())"},
-				{text: "MAPVALUE()"},
+				{text: "FAKE(meshgrid(linspace(-4,4,100),linspace(-4,4, 100)))", line: 1},
+				{text: " stateful", isComment: true, isPragma: true, line: 2},
+				{text: "WHEN( cond, doHttp())", line: 3},
+				{text: "MAPVALUE()", line: 4},
+			},
+		},
+		{
+			`SCRIPT({
+			|
+			|  // comment-first
+			|  line2;
+			|  // comment-second
+			|  line4;
+			|
+			|}) // comment
+			|CSV()
+			`,
+			[]Line{
+				{text: " comment-first", isComment: true, line: 3},
+				{text: " comment-second", isComment: true, line: 5},
+				{text: "SCRIPT({\n\n  line2;\n\n  line4;\n})", line: 1},
+				{text: "CSV()", line: 9},
 			},
 		},
 	}

@@ -371,6 +371,16 @@ func (so JSResultOption) ResultColumns() api.Columns {
 
 func (ctx *JSContext) Run() (any, error) {
 	if v, err := ctx.vm.RunProgram(ctx.sc); err != nil {
+		if jsErr, ok := err.(*js.Exception); ok {
+			if uw := jsErr.Unwrap(); uw != nil {
+				err = uw
+				if stackFrames := jsErr.Stack(); len(stackFrames) > 0 {
+					f := stackFrames[len(stackFrames)-1]
+					p := f.Position()
+					err = fmt.Errorf("%s:%d:%d", err, p.Line, p.Column)
+				}
+			}
+		}
 		return nil, err
 	} else {
 		return v.Export(), nil

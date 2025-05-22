@@ -295,6 +295,19 @@ func TestScriptJS(t *testing.T) {
 			ExpectErr: `ReferenceError: var1 is not defined at <eval>:3:6(0)`,
 		},
 		{
+			Name: "js-invalid-module",
+			Script: `
+				SCRIPT("js", {
+					// hello world
+					//
+					//
+					//
+					const y = require("invalid_module");
+				})
+				CSV()`,
+			ExpectErr: `Invalid module:7:23`,
+		},
+		{
 			Name: "js-params",
 			Script: `
 				SCRIPT("js", {

@@ -313,7 +313,7 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 
 	if _, ok := db.(*machcli.Database); ok {
 		// TODO: MACHCLI-ERR-3, Communication link failure
-		<-time.After(time.Second * 1)
+		<-time.After(time.Second * 3)
 	}
 
 	// tags

@@ -33,7 +33,7 @@ func (v *Vector) Len(call js.FunctionCall) js.Value {
 	return v.rt.ToValue(ret)
 }
 
-func new_vecDense(rt *js.Runtime) func(c js.ConstructorCall) *js.Object {
+func new_vecDense(rt *js.Runtime) func(js.ConstructorCall) *js.Object {
 	return func(call js.ConstructorCall) *js.Object {
 		defer func() {
 			if r := recover(); r != nil {

@@ -64,6 +64,7 @@ func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 			continue
 		}
 		if strings.HasPrefix(trimLineText, "//") {
+			stmt = append(stmt, "")
 			expressions = append(expressions, &Line{text: trimLineText[2:], line: lineNo, isComment: true})
 			continue
 		}

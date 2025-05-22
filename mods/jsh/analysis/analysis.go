@@ -29,11 +29,11 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 		})
 		// m.cdf(x, weight)
 		// x should be sorted, weight should be the same length as x
-		o.Set("cdf", func(p float64, x, weight []float64) js.Value {
+		o.Set("cdf", func(q float64, x, weight []float64) js.Value {
 			if weight != nil && len(x) != len(weight) {
 				panic(rt.ToValue("cdf: x and weight should be the same length"))
 			}
-			return rt.ToValue(stat.CDF(p, stat.Empirical, x, weight))
+			return rt.ToValue(stat.CDF(q, stat.Empirical, x, weight))
 		})
 		// m.circularMean(x, weight)
 		// weight should be the same length as x
@@ -139,7 +139,6 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 		})
 		// m.mode(array)
 		o.Set("mode", func(arr []float64) js.Value {
-			slices.Sort(arr)
 			v, c := stat.Mode(arr, nil)
 			return rt.ToValue(map[string]any{"value": v, "count": c})
 		})
@@ -149,12 +148,10 @@ func NewModuleLoader(context.Context) require.ModuleLoader {
 		})
 		// m.quantile(p, array)
 		o.Set("quantile", func(p float64, arr []float64) float64 {
-			slices.Sort(arr)
 			return stat.Quantile(p, stat.Empirical, arr, nil)
 		})
 		// m.quantileInterp(p, array)
 		o.Set("quantileInterp", func(p float64, arr []float64) float64 {
-			slices.Sort(arr)
 			return stat.Quantile(p, stat.LinInterp, arr, nil)
 		})
 		// m.linearRegression(x, y)
