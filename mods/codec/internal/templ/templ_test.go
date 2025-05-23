@@ -13,7 +13,7 @@ import (
 func TestTemplEncoder(t *testing.T) {
 	tests := []TestCase{
 		{
-			Name: "hello_world",
+			Name: "hello_world_html",
 			Args: [][]any{
 				{"Hello", "World!"},
 				{3.14, true},
@@ -22,6 +22,19 @@ func TestTemplEncoder(t *testing.T) {
 			Expects: []string{
 				"<li>1: Hello World!",
 				"<li>2: 3.14 true",
+			},
+		},
+		{
+			Name: "hello_world_text",
+			Args: [][]any{
+				{"Hello", "World!"},
+				{3.14, true},
+			},
+			Template: `{{.ROWNUM}},{{ (index .Values 0) }},{{ (index .Values 1) }}`,
+			Format:   templ.TEXT,
+			Expects: []string{
+				"1,Hello,World!",
+				"2,3.14,true",
 			},
 		},
 		{
@@ -70,12 +83,18 @@ type TestCase struct {
 	Name     string
 	Args     [][]any
 	Template string
+	Format   templ.Format
 	Expects  []string
 }
 
 func runTestCase(t *testing.T, testCase TestCase) {
 	t.Helper()
-	enc := templ.NewEncoder()
+	var enc *templ.Exporter
+	if testCase.Format == templ.TEXT {
+		enc = templ.NewEncoder(templ.TEXT)
+	} else {
+		enc = templ.NewEncoder(templ.HTML)
+	}
 	require.Equal(t, "application/xhtml+xml", enc.ContentType())
 
 	w := &bytes.Buffer{}

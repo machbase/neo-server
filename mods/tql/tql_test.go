@@ -1721,6 +1721,24 @@ func TestBridgeSqlite(t *testing.T) {
 			},
 		},
 		{
+			Name: "sqlite",
+			Script: `
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				HTML(template({
+{{ if .IsFirst }}<ul>{{ end }}
+<li>{{ index .ROW "id" }}: {{ .ROW.name }}, {{ .ROW.age }}, {{ .ROW.address }}
+{{ if .IsLast }}</ul>{{ end }} }))
+			`,
+			ExpectCSV: []string{
+				"\n<ul>",
+				"<li>100: alpha, 10, street-100",
+				" ",
+				"",
+				"<li>200: bravo, 20, street-200",
+				"</ul> ",
+			},
+		},
+		{
 			Name: "sqlite-update-100",
 			Script: `
 				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)
