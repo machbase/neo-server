@@ -251,6 +251,7 @@ func ColumnTypes(types ...api.DataType) Option {
 //	mods/codec/internal/markdown/md_encode.go:63:1
 //	mods/codec/internal/ndjson/decode.go:48:1
 //	mods/codec/internal/ndjson/encode.go:77:1
+//	mods/codec/internal/templ/templ.go:39:1
 type CanSetColumns interface {
 	SetColumns(names ...string)
 }
@@ -585,7 +586,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/json/json_encode.go:52:1
 //	mods/codec/internal/markdown/md_encode.go:59:1
 //	mods/codec/internal/ndjson/encode.go:43:1
-//	mods/codec/internal/templ/templ.go:28:1
+//	mods/codec/internal/templ/templ.go:31:1
 type CanSetOutputStream interface {
 	SetOutputStream(o io.Writer)
 }
@@ -761,7 +762,7 @@ func TableName(tableName string) Option {
 
 // SetTemplate
 //
-//	mods/codec/internal/templ/templ.go:32:1
+//	mods/codec/internal/templ/templ.go:35:1
 type CanSetTemplate interface {
 	SetTemplate(template string)
 }

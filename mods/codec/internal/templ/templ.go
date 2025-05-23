@@ -15,6 +15,7 @@ type Exporter struct {
 	tmpl     *template.Template
 	record   *TemplObj
 	rownum   int
+	colNames []string
 }
 
 func NewEncoder() *Exporter {
@@ -32,6 +33,10 @@ func (ex *Exporter) SetOutputStream(o io.Writer) {
 
 func (ex *Exporter) SetTemplate(template string) {
 	ex.template = template
+}
+
+func (ex *Exporter) SetColumns(colNames ...string) {
+	ex.colNames = colNames
 }
 
 func (ex *Exporter) Open() error {
@@ -71,18 +76,23 @@ func (ex *Exporter) AddRow(values []any) error {
 		}
 	}
 	ex.record = &TemplObj{
+		ROW:     make(map[string]any),
 		Values:  values,
-		RowNum:  ex.rownum,
+		ROWNUM:  ex.rownum,
 		IsFirst: ex.rownum == 1,
 	}
 	if len(values) == 1 {
 		ex.record.Values = values[0]
 	}
+	for i := 0; i < len(values) && i < len(ex.colNames); i++ {
+		ex.record.ROW[ex.colNames[i]] = values[i]
+	}
 	return nil
 }
 
 type TemplObj struct {
-	RowNum  int
+	ROW     map[string]any
+	ROWNUM  int
 	Values  any
 	IsFirst bool
 	IsLast  bool

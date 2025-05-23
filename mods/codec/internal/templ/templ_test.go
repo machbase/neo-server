@@ -18,7 +18,7 @@ func TestTemplEncoder(t *testing.T) {
 				{"Hello", "World!"},
 				{3.14, true},
 			},
-			Template: `<li>{{.RowNum}}: {{ (index .Values 0) }} {{ (index .Values 1) }}`,
+			Template: `<li>{{.ROWNUM}}: {{ (index .Values 0) }} {{ (index .Values 1) }}`,
 			Expects: []string{
 				"<li>1: Hello World!",
 				"<li>2: 3.14 true",
@@ -49,7 +49,7 @@ function test() {
 				{3.14, true},
 			},
 			Template: `{{ if .IsFirst }}-head-{{end}}
-<li>{{.RowNum}}: {{ (index .Values 0) }} {{ (index .Values 1) }}
+<li>{{.ROWNUM}}: {{ (index .Values 0) }} {{ (index .Values 1) }}
 {{ if .IsLast }}-tail-{{end}}`,
 			Expects: []string{
 				"-head-\n",
