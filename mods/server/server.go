@@ -382,13 +382,15 @@ func (s *Server) startMachbaseSvr() error {
 	}
 	if db == nil {
 		return errors.New("database instance failed")
-	} else {
-		api.SetDefault(db)
 	}
 	if err := db.Startup(); err != nil {
 		return fmt.Errorf("startup database, %s", err.Error())
 	}
-
+	api.SetDefault(db)
+	api.StartAppendWorkers()
+	util.AddShutdownHook(func() {
+		api.StopAppendWorkers()
+	})
 	return nil
 }
 
@@ -444,6 +446,10 @@ func (s *Server) startMachbaseCli() error {
 		}
 	}
 	api.SetDefault(db)
+	api.StartAppendWorkers()
+	util.AddShutdownHook(func() {
+		api.StopAppendWorkers()
+	})
 	return nil
 }
 

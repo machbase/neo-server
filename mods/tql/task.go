@@ -356,6 +356,7 @@ var sinkOnlyFunctions = map[string]bool{
 	"APPEND()":          true,
 	"JSON()":            true,
 	"MARKDOWN()":        true,
+	"HTML()":            true,
 	"DISCARD()":         true,
 	"CHART()":           true,
 	"CHART_LINE()":      true,

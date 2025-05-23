@@ -57,6 +57,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "substituteNull", Func: opts.SubstituteNull},
 	{Name: "subtitle", Func: opts.Subtitle},
 	{Name: "tableName", Func: opts.TableName},
+	{Name: "template", Func: opts.Template},
 	{Name: "theme", Func: opts.Theme},
 	{Name: "tileGrayscale", Func: opts.TileGrayscale},
 	{Name: "tileOption", Func: opts.TileOption},

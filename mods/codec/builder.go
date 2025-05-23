@@ -12,6 +12,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/codec/internal/json"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/markdown"
 	"github.com/machbase/neo-server/v8/mods/codec/internal/ndjson"
+	"github.com/machbase/neo-server/v8/mods/codec/internal/templ"
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 )
 
@@ -73,7 +74,7 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case MARKDOWN:
 		ret = markdown.NewEncoder()
 	case HTML:
-		ret = html.NewEncoder()
+		ret = templ.NewEncoder()
 	case ECHART:
 		ret = chart.NewChart()
 	case ECHART_LINE:

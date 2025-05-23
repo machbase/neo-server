@@ -205,8 +205,6 @@ func (db *Database) Startup() (err error) {
 		if err == nil {
 			// start worker pool
 			db.startWorkerPool()
-			// start append workers
-			api.StartAppendWorkers()
 		}
 	})
 	return
@@ -217,7 +215,6 @@ func (db *Database) Shutdown() (err error) {
 	defer _env.Unlock()
 
 	db.onceStop.Do(func() {
-		api.StopAppendWorkers()
 		db.stopWorkerPool()
 		err = mach.EngShutdown(db.handle)
 		_env.database = nil

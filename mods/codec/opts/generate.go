@@ -24,6 +24,7 @@ var scanDirs = []string{
 	"../internal/ndjson",
 	"../internal/markdown",
 	"../internal/geomap",
+	"../internal/templ",
 }
 
 // add function names here not to generate

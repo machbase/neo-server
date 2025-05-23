@@ -305,6 +305,7 @@ func NewNode(task *Task) *Node {
 		"substituteNull":      x.gen_substituteNull,
 		"subtitle":            x.gen_subtitle,
 		"tableName":           x.gen_tableName,
+		"template":            x.gen_template,
 		"theme":               x.gen_theme,
 		"tileGrayscale":       x.gen_tileGrayscale,
 		"tileOption":          x.gen_tileOption,
@@ -4756,6 +4757,21 @@ func (x *Node) gen_tableName(args ...any) (any, error) {
 		return nil, err
 	}
 	ret := opts.TableName(p0)
+	return ret, nil
+}
+
+// gen_template
+//
+// syntax: template(string)
+func (x *Node) gen_template(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("template", 1, len(args))
+	}
+	p0, err := convString(args, 0, "template", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.Template(p0)
 	return ret, nil
 }
 

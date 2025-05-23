@@ -585,6 +585,7 @@ func Opacity(opacity float64) Option {
 //	mods/codec/internal/json/json_encode.go:52:1
 //	mods/codec/internal/markdown/md_encode.go:59:1
 //	mods/codec/internal/ndjson/encode.go:43:1
+//	mods/codec/internal/templ/templ.go:28:1
 type CanSetOutputStream interface {
 	SetOutputStream(o io.Writer)
 }
@@ -754,6 +755,21 @@ func TableName(tableName string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetTableName); ok {
 			_o.SetTableName(tableName)
+		}
+	}
+}
+
+// SetTemplate
+//
+//	mods/codec/internal/templ/templ.go:32:1
+type CanSetTemplate interface {
+	SetTemplate(template string)
+}
+
+func Template(template string) Option {
+	return func(_one any) {
+		if _o, ok := _one.(CanSetTemplate); ok {
+			_o.SetTemplate(template)
 		}
 	}
 }

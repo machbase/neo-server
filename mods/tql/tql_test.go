@@ -34,6 +34,7 @@ func TestMain(m *testing.M) {
 
 	db := testServer.DatabaseSVR()
 	api.SetDefault(db)
+	api.StartAppendWorkers()
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
