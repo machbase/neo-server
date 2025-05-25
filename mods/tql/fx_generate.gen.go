@@ -168,6 +168,7 @@ func NewNode(task *Task) *Node {
 		"NDJSON":          x.gen_NDJSON,
 		"MARKDOWN":        x.gen_MARKDOWN,
 		"HTML":            x.gen_HTML,
+		"TEXT":            x.gen_TEXT,
 		"DISCARD":         x.gen_DISCARD,
 		"CHART":           x.gen_CHART,
 		"CHART_LINE":      x.gen_CHART_LINE,
@@ -274,6 +275,7 @@ func NewNode(task *Task) *Node {
 		"chartOption":         x.gen_chartOption,
 		"columnTypes":         x.gen_columnTypes,
 		"columns":             x.gen_columns,
+		"contentType":         x.gen_contentType,
 		"dataZoom":            x.gen_dataZoom,
 		"delimiter":           x.gen_delimiter,
 		"geoMapJson":          x.gen_geoMapJson,
@@ -2423,6 +2425,21 @@ func (x *Node) gen_HTML(args ...any) (any, error) {
 	return x.fmHtml(p0...)
 }
 
+// gen_TEXT
+//
+// syntax: TEXT(...interface {})
+func (x *Node) gen_TEXT(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "TEXT", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmText(p0...)
+}
+
 // gen_DISCARD
 //
 // syntax: DISCARD(...interface {})
@@ -4244,6 +4261,21 @@ func (x *Node) gen_columns(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	ret := opts.Columns(p0...)
+	return ret, nil
+}
+
+// gen_contentType
+//
+// syntax: contentType(string)
+func (x *Node) gen_contentType(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, ErrInvalidNumOfArgs("contentType", 1, len(args))
+	}
+	p0, err := convString(args, 0, "contentType", "string")
+	if err != nil {
+		return nil, err
+	}
+	ret := opts.ContentType(p0)
 	return ret, nil
 }
 

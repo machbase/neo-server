@@ -413,6 +413,78 @@ func Unbox(val any) any {
 		return *v
 	case *driver.Value:
 		return *v
+	case *sql.NullBool:
+		if v.Valid {
+			return v.Bool
+		} else {
+			return nil
+		}
+	case *sql.NullInt16:
+		if v.Valid {
+			return v.Int16
+		} else {
+			return nil
+		}
+	case *sql.NullInt32:
+		if v.Valid {
+			return v.Int32
+		} else {
+			return nil
+		}
+	case *sql.NullInt64:
+		if v.Valid {
+			return v.Int64
+		} else {
+			return nil
+		}
+	case *sql.NullFloat64:
+		if v.Valid {
+			return v.Float64
+		} else {
+			return nil
+		}
+	case *sql.NullString:
+		if v.Valid {
+			return v.String
+		} else {
+			return nil
+		}
+	case *sql.NullTime:
+		if v.Valid {
+			return v.Time
+		} else {
+			return nil
+		}
+	case *sql.Null[net.IP]:
+		if v.Valid {
+			return v.V
+		} else {
+			return nil
+		}
+	case *sql.Null[[]byte]:
+		if v.Valid {
+			return v.V
+		} else {
+			return nil
+		}
+	case *sql.Null[float32]:
+		if v.Valid {
+			return v.V
+		} else {
+			return nil
+		}
+	case *sql.Null[float64]:
+		if v.Valid {
+			return v.V
+		} else {
+			return nil
+		}
+	case *sql.Null[any]:
+		if v.Valid {
+			return v.V
+		} else {
+			return nil
+		}
 	default:
 		return val
 	}

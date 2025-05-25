@@ -1,13 +1,12 @@
 package templ
 
 import (
-	"database/sql"
 	"errors"
 	htmTemplate "html/template"
 	"io"
-	"net"
 	txtTemplate "text/template"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 )
 
@@ -24,26 +23,36 @@ type Engine interface {
 
 type Exporter struct {
 	internal.RowsEncoderBase
-	output   io.Writer
-	format   Format
-	template string
-	tmpl     Engine
-	record   *TemplObj
-	rownum   int
-	colNames []string
+	output      io.Writer
+	format      Format
+	contentType string
+	template    string
+	tmpl        Engine
+	record      *Record
+	rownum      int
+	colNames    []string
 }
 
 func NewEncoder(format Format) *Exporter {
 	rr := &Exporter{format: format}
+	if format == TEXT {
+		rr.contentType = "text/plain"
+	} else {
+		rr.contentType = "application/xhtml+xml"
+	}
 	return rr
 }
 
 func (ex *Exporter) ContentType() string {
-	return "application/xhtml+xml"
+	return ex.contentType
 }
 
 func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
+}
+
+func (ex *Exporter) SetContentType(contentType string) {
+	ex.contentType = contentType
 }
 
 func (ex *Exporter) SetTemplate(template string) {
@@ -55,13 +64,22 @@ func (ex *Exporter) SetColumns(colNames ...string) {
 }
 
 func (ex *Exporter) Open() error {
-	var err error
 	if ex.format == HTML {
-		ex.tmpl, err = htmTemplate.New("row").Parse(ex.template)
+		tmpl, err := htmTemplate.New("row").Parse(ex.template)
+		if err != nil {
+			return err
+		}
+		tmpl.Funcs(map[string]any{})
+		ex.tmpl = tmpl
 	} else {
-		ex.tmpl, err = txtTemplate.New("row").Parse(ex.template)
+		tmpl, err := txtTemplate.New("row").Parse(ex.template)
+		if err != nil {
+			return err
+		}
+		tmpl.Funcs(map[string]any{})
+		ex.tmpl = tmpl
 	}
-	return err
+	return nil
 }
 
 func (ex *Exporter) Close() {
@@ -92,100 +110,43 @@ func (ex *Exporter) AddRow(values []any) error {
 		}
 	}
 	for i, val := range values {
-		switch v := val.(type) {
-		case *float64:
-			values[i] = *v
-		case float64:
-			values[i] = v
-		case *float32:
-			values[i] = float64(*v)
-		case float32:
-			values[i] = float64(v)
-		case *int:
-			values[i] = *v
-		case int:
-			values[i] = v
-		case *int8:
-			values[i] = int(*v)
-		case int8:
-			values[i] = int(v)
-		case *int16:
-			values[i] = int(*v)
-		case int16:
-			values[i] = int(v)
-		case *int32:
-			values[i] = int(*v)
-		case int32:
-			values[i] = int(v)
-		case *int64:
-			values[i] = int(*v)
-		case int64:
-			values[i] = int(v)
-		case *net.IP:
-			values[i] = v.String()
-		case net.IP:
-			values[i] = v.String()
-		case *sql.NullBool:
-			if v.Valid {
-				values[i] = v.Bool
-			}
-		case *sql.NullByte:
-			if v.Valid {
-				values[i] = v.Byte
-			}
-		case *sql.NullFloat64:
-			if v.Valid {
-				values[i] = v.Float64
-			}
-		case *sql.NullInt16:
-			if v.Valid {
-				values[i] = v.Int16
-			}
-		case *sql.NullInt32:
-			if v.Valid {
-				values[i] = v.Int32
-			}
-		case *sql.Null[float32]:
-			if v.Valid {
-				values[i] = v.V
-			}
-		case *sql.NullInt64:
-			if v.Valid {
-				values[i] = v.Int64
-			}
-		case *sql.NullString:
-			if v.Valid {
-				values[i] = v.String
-			}
-			// case *sql.NullTime:
-			// 	if v.Valid {
-			// 		values[i] = ex.timeformatter.Format(v.Time)
-			// 	}
-			// case *sql.Null[net.IP]:
-			// 	if v.Valid {
-			// 		ex.values[i] = v.V.String()
-			// 	}
-		}
+		values[i] = api.Unbox(val)
 	}
-	ex.record = &TemplObj{
-		ROW:     make(map[string]any),
-		Values:  values,
-		ROWNUM:  ex.rownum,
-		IsFirst: ex.rownum == 1,
-	}
-	if len(values) == 1 {
-		ex.record.Values = values[0]
-	}
-	for i := 0; i < len(values) && i < len(ex.colNames); i++ {
-		ex.record.ROW[ex.colNames[i]] = values[i]
+	ex.record = &Record{
+		values:   values,
+		Num:      ex.rownum,
+		IsFirst:  ex.rownum == 1,
+		colNames: ex.colNames,
 	}
 	return nil
 }
 
-type TemplObj struct {
-	ROW     map[string]any
-	ROWNUM  int
-	Values  any
-	IsFirst bool
-	IsLast  bool
+type Record struct {
+	Num      int
+	IsFirst  bool
+	IsLast   bool
+	colNames []string
+	values   []any
+	v        map[string]any
+}
+
+func (to *Record) Value(idx int) any {
+	if idx < 0 || idx >= len(to.values) {
+		return nil
+	}
+	return to.values[idx]
+}
+
+func (to *Record) Values() []any {
+	return to.values
+}
+
+func (to *Record) V() map[string]any {
+	if to.v == nil {
+		to.v = make(map[string]any)
+		for i := 0; i < len(to.values) && i < len(to.colNames); i++ {
+			to.v[to.colNames[i]] = to.values[i]
+		}
+	}
+	return to.v
 }

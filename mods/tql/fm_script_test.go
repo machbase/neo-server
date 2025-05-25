@@ -521,6 +521,85 @@ func TestScriptModule(t *testing.T) {
 	}
 }
 
+func TestScriptToTemplate(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "js-array-template",
+			Script: `
+				SCRIPT({
+					$.yield(1, 2, 3);
+					$.yield(4, 5, 6);
+				})
+				TEXT('{{- .Value 0 }},{{ .Value 1 }},{{ .Value 2 }}{{"\\n"}}')
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "1,2,3\n4,5,6\n", result, result)
+			},
+		},
+		{
+			Name: "js-obj-template",
+			Script: `
+				SCRIPT({
+					$.yield("John", 30);
+					$.yield("Jane", 25);
+				})
+				TEXT({
+					{{- with .V -}}
+						{{ .column0 }}:{{ .column1 }}{{"\n"}}
+					{{- end -}}
+				})
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "John:30\nJane:25\n", result, result)
+			},
+		},
+		{
+			Name: "js-obj-template",
+			Script: `
+				SCRIPT({
+					$.result = {
+						columns: ["name", "age"],
+						types: ["string", "int64"]
+					};
+					$.yield("John", 30);
+					$.yield("Jane", 25);
+				})
+				TEXT({
+					{{- with .V -}}
+						{{ .name }}:{{ .age }}{{"\n"}}
+					{{- end -}}
+				})
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "John:30\nJane:25\n", result, result)
+			},
+		},
+		{
+			Name: "js-obj-template",
+			Script: `
+				SCRIPT({
+					$.yield({name: "John", age: 30});
+					$.yield({name: "Jane", age: 25});
+				})
+				TEXT({
+					{{- with .Value 0 -}}
+						{{ .name }}:{{ .age }}{{"\n"}}
+					{{- end -}}
+				})
+			`,
+			ExpectFunc: func(t *testing.T, result string) {
+				require.Equal(t, "John:30\nJane:25\n", result, result)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}
+
 func TestScriptException(t *testing.T) {
 	tests := []TqlTestCase{
 		{

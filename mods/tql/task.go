@@ -357,6 +357,7 @@ var sinkOnlyFunctions = map[string]bool{
 	"JSON()":            true,
 	"MARKDOWN()":        true,
 	"HTML()":            true,
+	"TEXT()":            true,
 	"DISCARD()":         true,
 	"CHART()":           true,
 	"CHART_LINE()":      true,
@@ -715,7 +716,7 @@ func (l Level) LoggingLevel() logging.Level {
 	}
 }
 
-func LogginLevelFrom(l logging.Level) Level {
+func LoggingLevelFrom(l logging.Level) Level {
 	switch l {
 	default:
 		return INFO
