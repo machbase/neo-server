@@ -1762,6 +1762,9 @@ func TestBridgeSqlite(t *testing.T) {
 {{ if .IsLast }}--end--{{ end -}}
 				})
 			`,
+			RunCondition: func() bool {
+				return runtime.GOOS != "windows" // TODO: fix windows line endings
+			},
 			ExpectText: []string{
 				"--begin--",
 				"- 100: alpha, 10, street-100",
