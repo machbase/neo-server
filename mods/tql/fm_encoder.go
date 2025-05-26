@@ -17,7 +17,7 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 		case *time.Location:
 			arg = opts.TimeLocation(v)
 		case *CacheParam:
-			if slices.Contains([]string{"json", "csv", "ndjson"}, format) {
+			if slices.Contains([]string{"json", "csv", "ndjson", "text", "html"}, format) {
 				ret.cacheOption = v
 				continue
 			} else {
@@ -35,7 +35,21 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 }
 
 func (node *Node) fmHtml(args ...any) (*Encoder, error) {
+	for i := range args {
+		if str, ok := args[i].(string); ok {
+			args[i] = opts.Template(str)
+		}
+	}
 	return newEncoder("html", args...)
+}
+
+func (node *Node) fmText(args ...any) (*Encoder, error) {
+	for i := range args {
+		if str, ok := args[i].(string); ok {
+			args[i] = opts.Template(str)
+		}
+	}
+	return newEncoder("text", args...)
 }
 
 func (node *Node) fmMarkdown(args ...any) (*Encoder, error) {

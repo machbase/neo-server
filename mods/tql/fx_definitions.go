@@ -180,6 +180,7 @@ var FxDefinitions = []Definition{
 	{"NDJSON", defTask.fmNDJson},
 	{"MARKDOWN", defTask.fmMarkdown},
 	{"HTML", defTask.fmHtml},
+	{"TEXT", defTask.fmText},
 	{"DISCARD", defTask.fmDiscard},
 	{"CHART", defTask.fmChart},
 	{"CHART_LINE", defTask.fmChartLine},

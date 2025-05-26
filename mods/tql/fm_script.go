@@ -179,7 +179,7 @@ func newJSContext(node *Node, initCode string, mainCode string, deinitCode strin
 	}
 	ctx.vm.SetFieldNameMapper(js.TagFieldNameMapper("json", false))
 	builtin.EnableConsole(ctx.vm, func(level logging.Level, args ...any) error {
-		node.task._log(LogginLevelFrom(level), args...)
+		node.task._log(LoggingLevelFrom(level), args...)
 		return nil
 	})
 

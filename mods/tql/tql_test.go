@@ -1721,6 +1721,42 @@ func TestBridgeSqlite(t *testing.T) {
 			},
 		},
 		{
+			Name: "sqlite-to-html",
+			Script: `
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				HTML({
+{{- if .IsFirst }}<ul>{{ end }}
+<li>{{ .V.id }}: {{ .V.name }}, {{ .V.age }}, {{ .V.address }}
+{{ if .IsLast }}</ul>{{ end -}}
+ 				})
+			`,
+			ExpectText: []string{
+				"<ul>",
+				"<li>100: alpha, 10, street-100",
+				"",
+				"<li>200: bravo, 20, street-200",
+				"</ul>",
+			},
+		},
+		{
+			Name: "sqlite-to-text",
+			Script: `
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				TEXT({
+				{{- if .IsFirst }}--begin--{{ end }}
+- {{ .V.id }}: {{ .V.name }}, {{ .V.age }}, {{ .V.address }}
+{{ if .IsLast }}--end--{{ end -}}
+				})
+			`,
+			ExpectText: []string{
+				"--begin--",
+				"- 100: alpha, 10, street-100",
+				"",
+				"- 200: bravo, 20, street-200",
+				"--end--",
+			},
+		},
+		{
 			Name: "sqlite-update-100",
 			Script: `
 				SQL(bridge('sqlite'), 'update example_sql set weight=? where id = ?', 45.67, 100)
@@ -1852,7 +1888,7 @@ func TestBridgeSqlite(t *testing.T) {
 				require.True(t, gjson.Get(result, "success").Bool())
 				require.Equal(t, "success", gjson.Get(result, "reason").String())
 				require.Equal(t, `["column0","column1","column2","column3"]`, gjson.Get(result, "data.columns").Raw, result)
-				require.Equal(t, `["any","any","any","any"]`, gjson.Get(result, "data.types").Raw, result)
+				require.Equal(t, `["double","string","double","string"]`, gjson.Get(result, "data.types").Raw, result)
 				require.Equal(t, `[300,"charlie",30,"street-300"]`, gjson.Get(result, "data.rows.0").Raw, result)
 			},
 		},

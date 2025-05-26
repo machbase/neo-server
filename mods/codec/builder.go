@@ -23,6 +23,7 @@ const JSON = "json"
 const NDJSON = "ndjson"
 const MARKDOWN = "markdown"
 const HTML = "html"
+const TEXT = "text"
 const ECHART = "echart"
 const ECHART_LINE = "echart.line"
 const ECHART_SCATTER = "echart.scatter"
@@ -74,7 +75,9 @@ func NewEncoder(encoderType string, opts ...opts.Option) RowsEncoder {
 	case MARKDOWN:
 		ret = markdown.NewEncoder()
 	case HTML:
-		ret = templ.NewEncoder()
+		ret = templ.NewEncoder(templ.HTML)
+	case TEXT:
+		ret = templ.NewEncoder(templ.TEXT)
 	case ECHART:
 		ret = chart.NewChart()
 	case ECHART_LINE:

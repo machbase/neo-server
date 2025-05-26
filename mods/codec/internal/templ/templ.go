@@ -2,33 +2,57 @@ package templ
 
 import (
 	"errors"
-	"html/template"
+	htmTemplate "html/template"
 	"io"
+	txtTemplate "text/template"
 
+	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
 )
 
-type Exporter struct {
-	internal.RowsEncoderBase
-	output   io.Writer
-	template string
-	tmpl     *template.Template
-	record   *TemplObj
-	rownum   int
-	colNames []string
+type Format string
+
+const (
+	HTML Format = "html"
+	TEXT Format = "text"
+)
+
+type Engine interface {
+	Execute(wr io.Writer, data any) error
 }
 
-func NewEncoder() *Exporter {
-	rr := &Exporter{}
+type Exporter struct {
+	internal.RowsEncoderBase
+	output      io.Writer
+	format      Format
+	contentType string
+	template    string
+	tmpl        Engine
+	record      *Record
+	rownum      int
+	colNames    []string
+}
+
+func NewEncoder(format Format) *Exporter {
+	rr := &Exporter{format: format}
+	if format == TEXT {
+		rr.contentType = "text/plain"
+	} else {
+		rr.contentType = "application/xhtml+xml"
+	}
 	return rr
 }
 
 func (ex *Exporter) ContentType() string {
-	return "application/xhtml+xml"
+	return ex.contentType
 }
 
 func (ex *Exporter) SetOutputStream(o io.Writer) {
 	ex.output = o
+}
+
+func (ex *Exporter) SetContentType(contentType string) {
+	ex.contentType = contentType
 }
 
 func (ex *Exporter) SetTemplate(template string) {
@@ -40,11 +64,21 @@ func (ex *Exporter) SetColumns(colNames ...string) {
 }
 
 func (ex *Exporter) Open() error {
-	tmpl, err := template.New("row").Parse(ex.template)
-	if err != nil {
-		return err
+	if ex.format == HTML {
+		tmpl, err := htmTemplate.New("row").Parse(ex.template)
+		if err != nil {
+			return err
+		}
+		tmpl.Funcs(map[string]any{})
+		ex.tmpl = tmpl
+	} else {
+		tmpl, err := txtTemplate.New("row").Parse(ex.template)
+		if err != nil {
+			return err
+		}
+		tmpl.Funcs(map[string]any{})
+		ex.tmpl = tmpl
 	}
-	ex.tmpl = tmpl
 	return nil
 }
 
@@ -75,25 +109,44 @@ func (ex *Exporter) AddRow(values []any) error {
 			return err
 		}
 	}
-	ex.record = &TemplObj{
-		ROW:     make(map[string]any),
-		Values:  values,
-		ROWNUM:  ex.rownum,
-		IsFirst: ex.rownum == 1,
+	for i, val := range values {
+		values[i] = api.Unbox(val)
 	}
-	if len(values) == 1 {
-		ex.record.Values = values[0]
-	}
-	for i := 0; i < len(values) && i < len(ex.colNames); i++ {
-		ex.record.ROW[ex.colNames[i]] = values[i]
+	ex.record = &Record{
+		values:   values,
+		Num:      ex.rownum,
+		IsFirst:  ex.rownum == 1,
+		colNames: ex.colNames,
 	}
 	return nil
 }
 
-type TemplObj struct {
-	ROW     map[string]any
-	ROWNUM  int
-	Values  any
-	IsFirst bool
-	IsLast  bool
+type Record struct {
+	Num      int
+	IsFirst  bool
+	IsLast   bool
+	colNames []string
+	values   []any
+	v        map[string]any
+}
+
+func (to *Record) Value(idx int) any {
+	if idx < 0 || idx >= len(to.values) {
+		return nil
+	}
+	return to.values[idx]
+}
+
+func (to *Record) Values() []any {
+	return to.values
+}
+
+func (to *Record) V() map[string]any {
+	if to.v == nil {
+		to.v = make(map[string]any)
+		for i := 0; i < len(to.values) && i < len(to.colNames); i++ {
+			to.v[to.colNames[i]] = to.values[i]
+		}
+	}
+	return to.v
 }

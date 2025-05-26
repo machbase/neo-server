@@ -26,6 +26,7 @@ var CodecOptsDefinitions = []Definition{
 	{Name: "chartOption", Func: opts.ChartOption},
 	{Name: "columnTypes", Func: opts.ColumnTypes},
 	{Name: "columns", Func: opts.Columns},
+	{Name: "contentType", Func: opts.ContentType},
 	{Name: "dataZoom", Func: opts.DataZoom},
 	{Name: "delimiter", Func: opts.Delimiter},
 	{Name: "geoMapJson", Func: opts.GeoMapJson},
