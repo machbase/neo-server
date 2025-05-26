@@ -26,7 +26,7 @@ type Exporter struct {
 	output      io.Writer
 	format      Format
 	contentType string
-	template    string
+	templates   []string
 	tmpl        Engine
 	record      *Record
 	rownum      int
@@ -55,8 +55,8 @@ func (ex *Exporter) SetContentType(contentType string) {
 	ex.contentType = contentType
 }
 
-func (ex *Exporter) SetTemplate(template string) {
-	ex.template = template
+func (ex *Exporter) SetTemplate(templates ...string) {
+	ex.templates = append(ex.templates, templates...)
 }
 
 func (ex *Exporter) SetColumns(colNames ...string) {
@@ -65,16 +65,20 @@ func (ex *Exporter) SetColumns(colNames ...string) {
 
 func (ex *Exporter) Open() error {
 	if ex.format == HTML {
-		tmpl, err := htmTemplate.New("row").Parse(ex.template)
-		if err != nil {
-			return err
+		var tmpl = htmTemplate.New("_layout_0_")
+		for _, content := range ex.templates {
+			if _, err := tmpl.Parse(content); err != nil {
+				return err
+			}
 		}
 		tmpl.Funcs(map[string]any{})
 		ex.tmpl = tmpl
 	} else {
-		tmpl, err := txtTemplate.New("row").Parse(ex.template)
-		if err != nil {
-			return err
+		var tmpl = txtTemplate.New("_layout_0_")
+		for _, content := range ex.templates {
+			if _, err := tmpl.Parse(content); err != nil {
+				return err
+			}
 		}
 		tmpl.Funcs(map[string]any{})
 		ex.tmpl = tmpl

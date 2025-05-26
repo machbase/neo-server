@@ -82,15 +82,16 @@ func (ret *bytesSource) init(origin any, args ...any) error {
 }
 
 type FilePath struct {
+	Path     string // Original path
 	HttpPath string
 	AbsPath  string
 }
 
 func (x *Node) fmFile(path string) (*FilePath, error) {
 	if strings.HasPrefix(path, "http://") {
-		return &FilePath{HttpPath: path}, nil
+		return &FilePath{Path: path, HttpPath: path}, nil
 	} else if strings.HasPrefix(path, "https://") {
-		return &FilePath{HttpPath: path}, nil
+		return &FilePath{Path: path, HttpPath: path}, nil
 	} else {
 		serverFs := ssfs.Default()
 		if serverFs == nil {
@@ -100,7 +101,7 @@ func (x *Node) fmFile(path string) (*FilePath, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &FilePath{AbsPath: realPath}, nil
+		return &FilePath{Path: path, AbsPath: realPath}, nil
 	}
 }
 

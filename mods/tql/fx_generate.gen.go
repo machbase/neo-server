@@ -4794,16 +4794,17 @@ func (x *Node) gen_tableName(args ...any) (any, error) {
 
 // gen_template
 //
-// syntax: template(string)
+// syntax: template(...string)
 func (x *Node) gen_template(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, ErrInvalidNumOfArgs("template", 1, len(args))
+	p0 := []string{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convString(args, n, "template", "...string")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
 	}
-	p0, err := convString(args, 0, "template", "string")
-	if err != nil {
-		return nil, err
-	}
-	ret := opts.Template(p0)
+	ret := opts.Template(p0...)
 	return ret, nil
 }
 

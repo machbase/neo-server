@@ -18,7 +18,7 @@ func TestTemplEncoder(t *testing.T) {
 				{"Hello", "World!"},
 				{3.14, true},
 			},
-			Template: `<li>{{.Num}}: {{ .Value 0 }} {{ .Value 1 }}`,
+			Templates: []string{`<li>{{.Num}}: {{ .Value 0 }} {{ .Value 1 }}`},
 			Expects: []string{
 				"<li>1: Hello World!",
 				"<li>2: 3.14 true",
@@ -30,8 +30,8 @@ func TestTemplEncoder(t *testing.T) {
 				{"Hello", "World!"},
 				{3.14, true},
 			},
-			Template: `{{.Num}},{{ .Value 0 }},{{ .Value 1 }}`,
-			Format:   templ.TEXT,
+			Templates: []string{`{{.Num}},{{ .Value 0 }},{{ .Value 1 }}`},
+			Format:    templ.TEXT,
 			Expects: []string{
 				"1,Hello,World!",
 				"2,3.14,true",
@@ -42,11 +42,11 @@ func TestTemplEncoder(t *testing.T) {
 			Args: [][]any{
 				{"Hello", []float64{1, 2.3, 3.14}},
 			},
-			Template: `<script>
+			Templates: []string{`<script>
 function test() {
 	return {{ .Value 0 }}+{{ .Value 1 }};
 }
-</script>`,
+</script>`},
 			Expects: []string{
 				"<script>\n",
 				"function test() {\n",
@@ -61,9 +61,9 @@ function test() {
 				{"Hello", "World!"},
 				{3.14, true},
 			},
-			Template: `{{ if .IsFirst }}-head-{{end}}
+			Templates: []string{`{{ if .IsFirst }}-head-{{end}}
 <li>{{.Num}}: {{ .Value 0 }} {{ .Value 1 }}
-{{ if .IsLast }}-tail-{{end}}`,
+{{ if .IsLast }}-tail-{{end}}`},
 			Expects: []string{
 				"-head-\n",
 				"<li>1: Hello World!\n\n",
@@ -78,8 +78,8 @@ function test() {
 				{"B", 4.56, false},
 				{"C", 7.89, true},
 			},
-			Columns:  []string{"col1", "col2", "col3"},
-			Template: `{{- .Num}}: {{ .V.col1 }} {{ .V.col2 }} {{ .V.col3 }}{{ "\n" -}}`,
+			Columns:   []string{"col1", "col2", "col3"},
+			Templates: []string{`{{- .Num}}: {{ .V.col1 }} {{ .V.col2 }} {{ .V.col3 }}{{ "\n" -}}`},
 			Expects: []string{
 				"1: A 1.23 true\n",
 				"2: B 4.56 false\n",
@@ -93,8 +93,26 @@ function test() {
 				{"B", 4.56, false},
 				{"C", 7.89, true},
 			},
-			Columns:  []string{"col1", "col2", "col3"},
-			Template: `{{- .Num}}: {{ index .Values 0 }} {{ index .Values 1  }} {{ index .Values 2 }}{{ "\n" -}}`,
+			Columns:   []string{"col1", "col2", "col3"},
+			Templates: []string{`{{- .Num}}: {{ index .Values 0 }} {{ index .Values 1  }} {{ index .Values 2 }}{{ "\n" -}}`},
+			Expects: []string{
+				"1: A 1.23 true\n",
+				"2: B 4.56 false\n",
+				"3: C 7.89 true\n",
+			},
+		},
+		{
+			Name: "template_files",
+			Args: [][]any{
+				{"A", 1.23, true},
+				{"B", 4.56, false},
+				{"C", 7.89, true},
+			},
+			Columns: []string{"col1", "col2", "col3"},
+			Templates: []string{
+				`{{.Num}}: {{ template "item" .V }}{{"\n"}}`,
+				`{{ define "item" -}} {{ .col1 }} {{ .col2  }} {{ .col3 }} {{- end}}`,
+			},
 			Expects: []string{
 				"1: A 1.23 true\n",
 				"2: B 4.56 false\n",
@@ -110,12 +128,12 @@ function test() {
 }
 
 type TestCase struct {
-	Name     string
-	Args     [][]any
-	Columns  []string
-	Template string
-	Format   templ.Format
-	Expects  []string
+	Name      string
+	Args      [][]any
+	Columns   []string
+	Templates []string
+	Format    templ.Format
+	Expects   []string
 }
 
 func runTestCase(t *testing.T, testCase TestCase) {
@@ -131,7 +149,7 @@ func runTestCase(t *testing.T, testCase TestCase) {
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)
-	enc.SetTemplate(testCase.Template)
+	enc.SetTemplate(testCase.Templates...)
 	if len(testCase.Columns) > 0 {
 		enc.SetColumns(testCase.Columns...)
 	} else {

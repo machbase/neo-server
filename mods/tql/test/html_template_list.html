@@ -1,0 +1,3 @@
+{{- if .IsFirst }}<ul>{{ end }}
+{{ template "item" .V }}
+{{ if .IsLast }}</ul>{{ end -}}

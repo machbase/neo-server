@@ -779,13 +779,13 @@ func TableName(tableName string) Option {
 //
 //	mods/codec/internal/templ/templ.go:58:1
 type CanSetTemplate interface {
-	SetTemplate(template string)
+	SetTemplate(templates ...string)
 }
 
-func Template(template string) Option {
+func Template(templates ...string) Option {
 	return func(_one any) {
 		if _o, ok := _one.(CanSetTemplate); ok {
-			_o.SetTemplate(template)
+			_o.SetTemplate(templates...)
 		}
 	}
 }

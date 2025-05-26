@@ -1739,6 +1739,20 @@ func TestBridgeSqlite(t *testing.T) {
 			},
 		},
 		{
+			Name: "sqlite-to-html-files",
+			Script: `
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				HTML(file("/html_template_item.html"), file("/html_template_list.html"))
+			`,
+			ExpectText: []string{
+				"<ul>",
+				"<li>100: alpha, 10, street-100",
+				"",
+				"<li>200: bravo, 20, street-200",
+				"</ul>",
+			},
+		},
+		{
 			Name: "sqlite-to-text",
 			Script: `
 				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")

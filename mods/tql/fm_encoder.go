@@ -2,6 +2,7 @@ package tql
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
@@ -34,10 +35,30 @@ func newEncoder(format string, args ...any) (*Encoder, error) {
 	return ret, nil
 }
 
+func toTemplateOption(arg any) (opts.Option, error) {
+	switch v := arg.(type) {
+	case string:
+		return opts.Template(v), nil
+	case *FilePath:
+		if v.AbsPath != "" {
+			if content, err := os.ReadFile(v.AbsPath); err != nil {
+				return nil, fmt.Errorf("template file '%s' not found: %w", v.Path, err)
+			} else {
+				return opts.Template(string(content)), nil
+			}
+		} else {
+			return nil, fmt.Errorf("template file '%s' not found", v.Path)
+		}
+	}
+	return nil, nil
+}
+
 func (node *Node) fmHtml(args ...any) (*Encoder, error) {
 	for i := range args {
-		if str, ok := args[i].(string); ok {
-			args[i] = opts.Template(str)
+		if o, err := toTemplateOption(args[i]); err != nil {
+			return nil, err
+		} else if o != nil {
+			args[i] = o
 		}
 	}
 	return newEncoder("html", args...)
@@ -45,8 +66,10 @@ func (node *Node) fmHtml(args ...any) (*Encoder, error) {
 
 func (node *Node) fmText(args ...any) (*Encoder, error) {
 	for i := range args {
-		if str, ok := args[i].(string); ok {
-			args[i] = opts.Template(str)
+		if o, err := toTemplateOption(args[i]); err != nil {
+			return nil, err
+		} else if o != nil {
+			args[i] = o
 		}
 	}
 	return newEncoder("text", args...)
