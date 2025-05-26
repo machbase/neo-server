@@ -1740,6 +1740,9 @@ func TestBridgeSqlite(t *testing.T) {
 		},
 		{
 			Name: "sqlite-to-html-files",
+			RunCondition: func() bool {
+				return runtime.GOOS != "windows" // TODO: fix windows line endings
+			},
 			Script: `
 				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
 				HTML(file("/html_template_item.html"), file("/html_template_list.html"))
@@ -1762,9 +1765,7 @@ func TestBridgeSqlite(t *testing.T) {
 {{ if .IsLast }}--end--{{ end -}}
 				})
 			`,
-			RunCondition: func() bool {
-				return runtime.GOOS != "windows" // TODO: fix windows line endings
-			},
+
 			ExpectText: []string{
 				"--begin--",
 				"- 100: alpha, 10, street-100",
