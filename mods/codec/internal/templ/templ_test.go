@@ -72,6 +72,20 @@ function test() {
 			},
 		},
 		{
+			Name: "first_last_empty",
+			Args: [][]any{},
+			Templates: []string{`{{ if .IsFirst }}-head-{{"\n"}}{{end}}
+				{{- if not .IsEmpty -}}
+				<li>{{.Num}}: {{ .Value 0 }} {{ .Value 1 }}
+				{{- else }}
+				{{- end }}
+				{{- if .IsLast }}-tail-{{end}}`},
+			Expects: []string{
+				"-head-\n",
+				"-tail-",
+			},
+		},
+		{
 			Name: "columns",
 			Args: [][]any{
 				{"A", 1.23, true},
@@ -152,7 +166,7 @@ func runTestCase(t *testing.T, testCase TestCase) {
 	enc.SetTemplate(testCase.Templates...)
 	if len(testCase.Columns) > 0 {
 		enc.SetColumns(testCase.Columns...)
-	} else {
+	} else if len(testCase.Args) > 0 {
 		cols := make([]string, len(testCase.Args[0]))
 		for i := 0; i < len(testCase.Args[0]); i++ {
 			cols = append(cols, fmt.Sprintf("column%d", i))

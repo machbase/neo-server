@@ -226,6 +226,8 @@ func (out *output) start() {
 				out.setHeader(resultColumns[1:])
 				if err := out.openEncoder(); err == nil {
 					out.closeEncoder()
+				} else {
+					out.task.LogError(err.Error())
 				}
 			}
 		}

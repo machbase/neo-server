@@ -65,7 +65,7 @@ func (ex *Exporter) SetColumns(colNames ...string) {
 
 func (ex *Exporter) Open() error {
 	if ex.format == HTML {
-		var tmpl = htmTemplate.New("_layout_0_")
+		var tmpl = htmTemplate.New("html_layout")
 		for _, content := range ex.templates {
 			if _, err := tmpl.Parse(content); err != nil {
 				return err
@@ -74,7 +74,7 @@ func (ex *Exporter) Open() error {
 		tmpl.Funcs(map[string]any{})
 		ex.tmpl = tmpl
 	} else {
-		var tmpl = txtTemplate.New("_layout_0_")
+		var tmpl = txtTemplate.New("text_layout")
 		for _, content := range ex.templates {
 			if _, err := tmpl.Parse(content); err != nil {
 				return err
@@ -89,6 +89,16 @@ func (ex *Exporter) Open() error {
 func (ex *Exporter) Close() {
 	if ex.record != nil {
 		ex.record.IsLast = true
+		ex.tmpl.Execute(ex.output, ex.record)
+	} else if ex.rownum == 0 {
+		// If no rows were added, we still need to execute the template
+		ex.record = &Record{
+			Num:      0,
+			IsFirst:  true,
+			IsLast:   true,
+			IsEmpty:  true,
+			colNames: ex.colNames,
+		}
 		ex.tmpl.Execute(ex.output, ex.record)
 	}
 
@@ -120,6 +130,7 @@ func (ex *Exporter) AddRow(values []any) error {
 		values:   values,
 		Num:      ex.rownum,
 		IsFirst:  ex.rownum == 1,
+		IsEmpty:  len(values) == 0,
 		colNames: ex.colNames,
 	}
 	return nil
@@ -129,6 +140,7 @@ type Record struct {
 	Num      int
 	IsFirst  bool
 	IsLast   bool
+	IsEmpty  bool
 	colNames []string
 	values   []any
 	v        map[string]any
