@@ -342,7 +342,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "SQL_select-from-table",
 			Script: `
-				SQL("select time, value from tag_simple where name = 'tag1'")
+				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
 				CSV( precision(3), header(true) )
 				`,
 			ExpectCSV: []string{
@@ -355,7 +355,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "SQL_select-from-table-rownum",
 			Script: `
-				SQL("select time, value from tag_simple where name = 'tag1'")
+				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
 				PUSHKEY('test')
 				CSV( precision(3), header(true) )
 				`,
@@ -378,7 +378,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "QUERY_CSV",
 			Script: `
-				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
 				CSV( precision(3), header(true) )
 				`,
 			ExpectCSV: []string{
@@ -391,7 +391,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "QUERY_JSON-rows-flatten",
 			Script: `
-				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
 				JSON( precision(3), rowsFlatten(true) )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
@@ -404,7 +404,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "QUERY_JSON-rows-flatten-rownum",
 			Script: `
-				QUERY('value', from('tag_simple', 'tag1', "time"), between(1692686707000000000, 1692686709000000000))
+				QUERY('VALUE', from('tag_simple', 'tag1', "TIME"), between(1692686707000000000, 1692686709000000000))
 				JSON( precision(3), rowsFlatten(true), rownum(true) )
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
@@ -417,7 +417,7 @@ func TestDatabaseTql(t *testing.T) {
 		{
 			Name: "SQL_NDJSON",
 			Script: `
-				SQL("select time, value from tag_simple where name = 'tag1'")
+				SQL("select TIME, VALUE from tag_simple where name = 'tag1'")
 				NDJSON( timeformat('default'), tz('UTC') )
 				`,
 			ExpectText: []string{
@@ -431,7 +431,7 @@ func TestDatabaseTql(t *testing.T) {
 			Script: `
 				FAKE( linspace(0, 1, 3) )
 				PUSHVALUE(0, timeAdd('now', value(0)*2000000000))
-				INSERT('time', 'value', table('tag_simple'), tag('signal.3'))
+				INSERT('TIME', 'VALUE', table('tag_simple'), tag('signal.3'))
 				`,
 			ExpectFunc: func(t *testing.T, result string) {
 				require.True(t, gjson.Get(result, "success").Bool(), "result: %q", result)

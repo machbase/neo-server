@@ -1020,7 +1020,7 @@ func TestHttpQuery(t *testing.T) {
 	}{
 		{
 			name:        "select_v$example",
-			sqlText:     `select (min(min_time)),(max(max_time)) from v$EXAMPLE_stat where name = 'temp'`,
+			sqlText:     `select (MIN(MIN_TIME)),(MAX(MAX_TIME)) from v$EXAMPLE_stat where name = 'temp'`,
 			contentType: "application/json",
 			expectObj: map[string]any{
 				"success": true, "reason": "success",
@@ -1043,7 +1043,7 @@ func TestHttpQuery(t *testing.T) {
 			expectObj: map[string]any{
 				"success": true, "reason": "success",
 				"data": map[string]any{
-					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
 					"types":   []any{"datetime", "datetime"},
 					"cols": []any{
 						[]any{float64(testTimeTick.UnixNano())},
@@ -1062,7 +1062,7 @@ func TestHttpQuery(t *testing.T) {
 			expectObj: map[string]any{
 				"success": true, "reason": "success",
 				"data": map[string]any{
-					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
 					"types":   []any{"datetime", "datetime"},
 					"rows": []any{
 						float64(testTimeTick.UnixNano()), float64(testTimeTick.UnixNano()),
@@ -1080,10 +1080,10 @@ func TestHttpQuery(t *testing.T) {
 			expectObj: map[string]any{
 				"success": true, "reason": "success",
 				"data": map[string]any{
-					"columns": []any{"(MIN(MIN_TIME))", "(MAX(MAX_TIME))"},
+					"columns": []any{"(min(min_time))", "(max(max_time))"},
 					"types":   []any{"datetime", "datetime"},
 					"rows": []any{
-						map[string]any{"(MIN(MIN_TIME))": float64(testTimeTick.UnixNano()), "(MAX(MAX_TIME))": float64(testTimeTick.UnixNano())},
+						map[string]any{"(min(min_time))": float64(testTimeTick.UnixNano()), "(max(max_time))": float64(testTimeTick.UnixNano())},
 					},
 				},
 			},

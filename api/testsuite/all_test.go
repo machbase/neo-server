@@ -1,6 +1,7 @@
 package testsuite_test
 
 import (
+	"context"
 	_ "embed"
 	"os"
 	"runtime"
@@ -38,5 +39,20 @@ func TestAll(t *testing.T) {
 			// workaround for windows, it crash randomly when closing a connection of "drop table"
 			time.Sleep(10 * time.Second)
 		}
+	}
+}
+
+func TestColumns(t *testing.T) {
+	db := testServer.DatabaseSVR()
+	if err := testsuite.CreateTestTables(db); err != nil {
+		t.Fatalf("ERROR: %s", err)
+	}
+	testsuite.ColumnsCases(t, db, context.TODO())
+	if err := testsuite.DropTestTables(db); err != nil {
+		t.Fatalf("ERROR: %s", err)
+	}
+	if runtime.GOOS == "windows" {
+		// workaround for windows, it crash randomly when closing a connection of "drop table"
+		time.Sleep(10 * time.Second)
 	}
 }

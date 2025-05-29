@@ -176,8 +176,8 @@ func TestScriptJS(t *testing.T) {
 					db.exec("create tag table if not exists js_table(name varchar(100) primary key, time datetime basetime, value double)");
 					db.exec("insert into js_table(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
 				},{
-					db.query("select name, time, value from js_table limit ?", 2).yield();
-					db.query("select name, time, value from js_table limit ?", 2).forEach((row) => {
+					db.query("select NAME, TIME, VALUE from js_table limit ?", 2).yield();
+					db.query("select NAME, TIME, VALUE from js_table limit ?", 2).forEach((row) => {
 						$.yield(...row);
 					});
 				},{
@@ -206,7 +206,7 @@ func TestScriptJS(t *testing.T) {
 						conn.exec("insert into js_table2(name, time, value) values(?, ?, ?)", "js-db-query", 1696118400000000000, 1.234);
 						conn.exec("EXEC table_flush(tag_data)")
 
-						rows = conn.query("select name, time, value from js_table2 limit ?", 2)
+						rows = conn.query("select NAME, TIME, VALUE from js_table2 limit ?", 2)
 						$.result = rows.columns();
 						for( let row of rows ) {
 							$.yield(row.NAME, row.TIME.Unix(), row.VALUE);
@@ -348,7 +348,7 @@ func TestScriptJS(t *testing.T) {
 				})
 				CSV()`, testHttpAddress),
 			ExpectCSV: []string{
-				`NAME,TIME,VALUE`, `string,datetime,double`, "\n",
+				`name,time,value`, `string,datetime,double`, "\n",
 			},
 		},
 	}

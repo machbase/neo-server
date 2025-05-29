@@ -52,3 +52,35 @@ func Columns(t *testing.T, db api.Database, ctx context.Context) {
 		require.Equal(t, cd.typ, string(cols[i].DataType), "column[%d] %q's type was %q, want %q", i, cols[i].Name, cols[i].DataType, cd.typ)
 	}
 }
+
+func ColumnsCases(t *testing.T, db api.Database, ctx context.Context) {
+	conn, err := db.Connect(ctx, api.WithPassword("sys", "manager"))
+	require.NoError(t, err, "connect fail")
+	defer conn.Close()
+
+	rows, err := conn.Query(ctx, "select TiMe,Short_Value from log_data limit 10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.NotNil(t, rows, "no rows selected")
+	defer rows.Close()
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data := []struct {
+		name   string
+		typ    string
+		size   int
+		length int
+	}{
+		{"TiMe", "datetime", 8, 0},
+		{"Short_Value", "int16", 2, 0},
+	}
+	require.Equal(t, len(data), len(cols), "column count was %d, want %d", len(cols), len(data))
+	for i, cd := range data {
+		require.Equal(t, cd.name, cols[i].Name, "column[%d] name was %q, want %q", i, cols[i].Name, cd.name)
+		require.Equal(t, cd.typ, string(cols[i].DataType), "column[%d] %q's type was %q, want %q", i, cols[i].Name, cols[i].DataType, cd.typ)
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -730,7 +729,7 @@ func stmtColumns(stmt unsafe.Pointer) (api.Columns, error) {
 			return nil, mach.ErrDatabaseWrap("Invalid column type", err)
 		}
 		ret[i] = &api.Column{
-			Name:     strings.ToUpper(columnName),
+			Name:     columnName,
 			DataType: dataType,
 			Length:   columnSize,
 		}

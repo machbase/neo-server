@@ -172,7 +172,7 @@ func tcRpcExec(t *testing.T) {
 	// QueryRow("select")
 	queryRowReq := &machrpc.QueryRowRequest{
 		Conn: conn,
-		Sql:  "select name, time, value from test_tag where name = ?",
+		Sql:  "select Name, Time, Value from test_tag where name = ?",
 	}
 	if params, err := machrpc.ConvertAnyToPb([]any{"test"}); err != nil {
 		t.Fatal(err)
@@ -190,9 +190,9 @@ func tcRpcExec(t *testing.T) {
 	require.Equal(t, now, queryRowValues[1])
 	require.Equal(t, 123.456, queryRowValues[2])
 	expectColumns := []*machrpc.Column{
-		{Name: "NAME", DataType: "string", Length: 100},
-		{Name: "TIME", DataType: "datetime", Length: 8},
-		{Name: "VALUE", DataType: "double", Length: 8},
+		{Name: "Name", DataType: "string", Length: 100},
+		{Name: "Time", DataType: "datetime", Length: 8},
+		{Name: "Value", DataType: "double", Length: 8},
 	}
 	require.Equal(t, "a row selected.", queryRowRsp.Reason)
 	require.Equal(t, len(expectColumns), len(queryRowRsp.Columns))

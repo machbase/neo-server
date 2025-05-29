@@ -44,6 +44,7 @@ func TestAll(t *testing.T, db api.Database, tests ...func(*testing.T)) {
 		Explain,
 		ExplainFull,
 		Columns,
+		ColumnsCases,
 		LogTableExec,
 		LogTableAppend,
 		TagTableAppend,
