@@ -336,7 +336,9 @@ func (x *Node) fmSql(args ...any) (any, error) {
 	default:
 		return nil, ErrWrongTypeOfArgs("SQL", 0, "sql text or bridge('name')", args[0])
 	}
-
+	if len(sqlText) == 0 {
+		return nil, fmt.Errorf("f(SQL) Empty SQL text")
+	}
 	if sqlBridged && !api.DetectSQLStatementType(sqlText).IsFetch() {
 		conn, err := databaseProvider(x.task.ctx)
 		if err != nil {
