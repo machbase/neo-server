@@ -1721,6 +1721,21 @@ func TestBridgeSqlite(t *testing.T) {
 			},
 		},
 		{
+			Name: "sqlite-params-format",
+			Script: `
+				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")
+				HTML({
+					{{- .V.name }}: {{ .V.age | format (param "f") }}, {{ .V.address }}{{ "\n" -}}
+				})
+			`,
+			Params: map[string][]string{"f": {"age=%d"}},
+			ExpectCSV: []string{
+				"alpha: age=10, street-100",
+				"bravo: age=20, street-200",
+				"",
+			},
+		},
+		{
 			Name: "sqlite-to-html",
 			Script: `
 				SQL(bridge('sqlite'), "select id, name, age, address from example_sql")

@@ -2,12 +2,16 @@ package templ
 
 import (
 	"errors"
-	htmTemplate "html/template"
+	"fmt"
+	htmlTemplate "html/template"
 	"io"
+	"strings"
 	txtTemplate "text/template"
+	"time"
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/codec/internal"
+	"github.com/machbase/neo-server/v8/mods/util"
 )
 
 type Format string
@@ -31,6 +35,7 @@ type Exporter struct {
 	record      *Record
 	rownum      int
 	colNames    []string
+	params      map[string][]string
 }
 
 func NewEncoder(format Format) *Exporter {
@@ -63,27 +68,79 @@ func (ex *Exporter) SetColumns(colNames ...string) {
 	ex.colNames = colNames
 }
 
+func (ex *Exporter) ExportParams(params map[string][]string) {
+	if ex.params == nil {
+		ex.params = make(map[string][]string)
+	}
+	for k, v := range params {
+		ex.params[k] = make([]string, len(v))
+		copy(ex.params[k], v)
+	}
+}
+
 func (ex *Exporter) Open() error {
 	if ex.format == HTML {
-		var tmpl = htmTemplate.New("html_layout")
+		var tmpl = htmlTemplate.New("html_layout").Funcs(tmplFuncs(ex.params))
 		for _, content := range ex.templates {
 			if _, err := tmpl.Parse(content); err != nil {
 				return err
 			}
 		}
-		tmpl.Funcs(map[string]any{})
 		ex.tmpl = tmpl
 	} else {
-		var tmpl = txtTemplate.New("text_layout")
+		var tmpl = txtTemplate.New("text_layout").Funcs(tmplFuncs(ex.params))
 		for _, content := range ex.templates {
 			if _, err := tmpl.Parse(content); err != nil {
 				return err
 			}
 		}
-		tmpl.Funcs(map[string]any{})
 		ex.tmpl = tmpl
 	}
 	return nil
+}
+
+func tmplFuncs(params map[string][]string) htmlTemplate.FuncMap {
+	return htmlTemplate.FuncMap{
+		"timeformat": func(s any, z any, v any) string {
+			tz, err := util.ParseTimeLocation(fmt.Sprint(z), time.Local)
+			if err != nil {
+				return fmt.Sprintf("Invalid timezone: %v", err)
+			}
+			ts, err := util.ToTime(v)
+			if err != nil {
+				return fmt.Sprintf("Invalid time: %v", err)
+			}
+			tf := util.NewTimeFormatter(util.Timeformat(fmt.Sprint(s)), util.TimeLocation(tz))
+			return tf.Format(ts)
+		},
+		"format": func(format string, v any) string {
+			return fmt.Sprintf(format, v)
+		},
+		"param": func(name string) string {
+			if params == nil {
+				return ""
+			}
+			if value, ok := params[name]; ok {
+				return value[0]
+			}
+			return ""
+		},
+		"paramDefault": func(name, def string) string {
+			if params == nil {
+				return def
+			}
+			if value, ok := params[name]; ok {
+				return value[0]
+			}
+			return def
+		},
+		"toUpper": func(s string) string {
+			return strings.ToUpper(s)
+		},
+		"toLower": func(s string) string {
+			return strings.ToLower(s)
+		},
+	}
 }
 
 func (ex *Exporter) Close() {
@@ -144,6 +201,30 @@ type Record struct {
 	colNames []string
 	values   []any
 	v        map[string]any
+}
+
+func (to *Record) ValueHTML(idx int) htmlTemplate.HTML {
+	return htmlTemplate.HTML(to.ValueString(idx))
+}
+
+func (to *Record) ValueHTMLAttr(idx int) htmlTemplate.HTMLAttr {
+	return htmlTemplate.HTMLAttr(to.ValueString(idx))
+}
+
+func (to *Record) ValueCSS(idx int) htmlTemplate.CSS {
+	return htmlTemplate.CSS(to.ValueString(idx))
+}
+
+func (to *Record) ValueJS(idx int) htmlTemplate.JS {
+	return htmlTemplate.JS(to.ValueString(idx))
+}
+
+func (to *Record) ValueURL(idx int) htmlTemplate.URL {
+	return htmlTemplate.URL(to.ValueString(idx))
+}
+
+func (to *Record) ValueString(idx int) string {
+	return fmt.Sprint(to.Value(idx))
 }
 
 func (to *Record) Value(idx int) any {

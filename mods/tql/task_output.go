@@ -133,6 +133,11 @@ func (node *Node) compileSink(code *Line) (ret *output, err error) {
 		} else if _, ok := ret.encoder.(opts.CanSetGeoMapJson); ok {
 			ret.isGeoMap = true
 		}
+		if enc, ok := ret.encoder.(interface {
+			ExportParams(params map[string][]string)
+		}); ok {
+			enc.ExportParams(node.task.Params())
+		}
 	case DatabaseSink:
 		ret.dbSink = val
 	default:
