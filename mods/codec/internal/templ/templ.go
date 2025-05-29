@@ -247,3 +247,19 @@ func (to *Record) V() map[string]any {
 	}
 	return to.v
 }
+
+func (to *Record) Columns() []string {
+	if to.colNames == nil {
+		return nil
+	}
+	cols := make([]string, len(to.colNames))
+	copy(cols, to.colNames)
+	return cols
+}
+
+func (to *Record) Column(idx int) string {
+	if to.colNames == nil || idx < 0 || idx >= len(to.colNames) {
+		return ""
+	}
+	return to.colNames[idx]
+}
