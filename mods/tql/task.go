@@ -341,6 +341,7 @@ var srcOnlyFunctions = map[string]bool{
 	"BYTES()":      true,
 	"STRING()":     true,
 	"ARGS()":       true,
+	"HTTP()":       true,
 }
 
 var srcOrMapFunctions = map[string]bool{

@@ -53,6 +53,9 @@ func readLines(_ *Task, codeReader io.Reader) ([]*Line, error) {
 
 		trimLineText := strings.TrimSpace(lineText)
 		if trimLineText == "" {
+			if len(stmt) > 0 {
+				stmt = append(stmt, lineText)
+			}
 			continue
 		}
 		if strings.HasPrefix(trimLineText, "#pragma") {

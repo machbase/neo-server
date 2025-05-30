@@ -88,6 +88,10 @@ func (ex *Exporter) Open() error {
 		}
 		ex.tmpl = tmpl
 	} else {
+		if len(ex.templates) == 0 {
+			// no templates provided, produces the raw text output
+			return nil
+		}
 		var tmpl = txtTemplate.New("text_layout").Funcs(tmplFuncs(ex.params))
 		for _, content := range ex.templates {
 			if _, err := tmpl.Parse(content); err != nil {
@@ -147,7 +151,7 @@ func (ex *Exporter) Close() {
 	if ex.record != nil {
 		ex.record.IsLast = true
 		ex.tmpl.Execute(ex.output, ex.record)
-	} else if ex.rownum == 0 {
+	} else if ex.rownum == 0 && ex.tmpl != nil {
 		// If no rows were added, we still need to execute the template
 		ex.record = &Record{
 			Num:      0,
@@ -172,6 +176,19 @@ func (ex *Exporter) Flush(heading bool) {
 func (ex *Exporter) AddRow(values []any) error {
 	ex.rownum++
 	if ex.tmpl == nil {
+		if ex.format == TEXT && len(ex.templates) == 0 {
+			if ex.output != nil {
+				// If no template is set, we just output the raw values as text
+				for i, val := range values {
+					if i > 0 {
+						fmt.Fprint(ex.output, " ")
+					}
+					fmt.Fprint(ex.output, api.Unbox(val))
+				}
+				fmt.Fprintln(ex.output)
+			}
+			return nil
+		}
 		return errors.New("template is not set")
 	}
 	if ex.record != nil {
