@@ -39,7 +39,9 @@ func TestParser(t *testing.T) {
 				User-Agent: TestClient
 				Content-Type: application/json
 
-				{"key": "value"}
+				{
+					"key": "value"
+				}
 			`,
 			expectedMethod:  "POST",
 			expectedPath:    "/api/data",
@@ -50,7 +52,9 @@ func TestParser(t *testing.T) {
 				"Content-Type": []string{"application/json"},
 			},
 			expectedContent: []string{
-				`{"key": "value"}`,
+				`{`,
+				`"key": "value"`,
+				`}`,
 			},
 		},
 	}

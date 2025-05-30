@@ -179,6 +179,7 @@ func NewNode(task *Task) *Node {
 		"CHART_SURFACE3D": x.gen_CHART_SURFACE3D,
 		"CHART_SCATTER3D": x.gen_CHART_SCATTER3D,
 		"GEOMAP":          x.gen_GEOMAP,
+		"HTTP":            x.gen_HTTP,
 		// maps.bytes
 		"separator": x.gen_separator,
 		"trimspace": x.gen_trimspace,
@@ -2588,6 +2589,21 @@ func (x *Node) gen_GEOMAP(args ...any) (any, error) {
 		p0 = append(p0, argv)
 	}
 	return x.fmGeoMap(p0...)
+}
+
+// gen_HTTP
+//
+// syntax: HTTP(...interface {})
+func (x *Node) gen_HTTP(args ...any) (any, error) {
+	p0 := []interface{}{}
+	for n := 0; n < len(args); n++ {
+		argv, err := convAny(args, n, "HTTP", "...interface {}")
+		if err != nil {
+			return nil, err
+		}
+		p0 = append(p0, argv)
+	}
+	return x.fmHttp(p0...)
 }
 
 // gen_separator

@@ -191,6 +191,7 @@ var FxDefinitions = []Definition{
 	{"CHART_SURFACE3D", defTask.fmChartSurface3D},
 	{"CHART_SCATTER3D", defTask.fmChartScatter3D},
 	{"GEOMAP", defTask.fmGeoMap},
+	{"HTTP", defTask.fmHttp},
 	// maps.bytes
 	{"// maps.bytes", nil},
 	{"separator", defTask.fmSeparator},

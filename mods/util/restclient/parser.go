@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -36,12 +37,20 @@ func parse(content string) (*RestClient, error) {
 		headersBegin = true
 		key, value := parseHeaderLine(line)
 		if key == "" {
-			return nil, fmt.Errorf("invalid header line at line %d", lineno)
+			return nil, fmt.Errorf("invalid header line at %q line %d", line, lineno)
 		}
 		if ret.header == nil {
 			ret.header = make(http.Header)
 		}
 		ret.header.Add(key, value)
+	}
+	if strings.Contains(ret.path, "?") {
+		// split the path and query parameters
+		parts := strings.SplitN(ret.path, "?", 2)
+		if len(parts) > 1 {
+			ret.queryParams = parseParamLine(parts[1])
+		}
+		ret.path = parts[0] + "?" + ret.queryParams.Encode()
 	}
 
 	for r.Scan() {
@@ -74,4 +83,24 @@ func parseHeaderLine(line string) (string, string) {
 	key := strings.TrimSpace(parts[0])
 	value := strings.TrimSpace(parts[1])
 	return key, value
+}
+
+// parseRequestLine parses a request path into net.URL.
+func parseParamLine(line string) url.Values {
+	params := url.Values{}
+	parts := strings.Split(line, "&")
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		keyValue := strings.SplitN(part, "=", 2)
+		if len(keyValue) == 2 {
+			key := strings.TrimSpace(keyValue[0])
+			value := strings.TrimSpace(keyValue[1])
+			params.Add(key, value)
+		} else {
+			params.Add(strings.TrimSpace(keyValue[0]), "")
+		}
+	}
+	return params
 }

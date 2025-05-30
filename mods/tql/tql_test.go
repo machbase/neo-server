@@ -2104,3 +2104,29 @@ func TestPragma(t *testing.T) {
 		})
 	}
 }
+
+func TestRestClient(t *testing.T) {
+	tests := []TqlTestCase{
+		{
+			Name: "restclient-query-csv",
+			Script: fmt.Sprintf(`
+				HTTP({
+					GET %s/db/query
+					?q=select * from tag_simple limit 2
+					&format=csv
+				})
+				TEXT()
+				`, testHttpAddress),
+			ExpectFunc: func(t *testing.T, result string) {
+				require.True(t, strings.HasPrefix(result, "HTTP/1.1 200 OK"))
+				require.Contains(t, result, "Content-Type: text/csv")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			runTestCase(t, tc)
+		})
+	}
+}

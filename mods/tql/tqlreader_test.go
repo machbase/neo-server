@@ -176,8 +176,31 @@ func TestReadLine(t *testing.T) {
 			[]Line{
 				{text: " comment-first", isComment: true, line: 3},
 				{text: " comment-second", isComment: true, line: 5},
-				{text: "SCRIPT({\n\n  line2;\n\n  line4;\n})", line: 1},
+				{text: "SCRIPT({\n\n\n  line2;\n\n  line4;\n\n})", line: 1},
 				{text: "CSV()", line: 9},
+			},
+		},
+		{
+			`RESTCLIENT({
+			|  POST http://127.0.0.1:5654/db/query
+			|  Content-Type: application/json
+			|
+			|  {
+			|    "q": "select all"
+			|  }
+			|}) // comment
+			|TEXT()
+			`,
+			[]Line{
+				{text: `RESTCLIENT({
+  POST http://127.0.0.1:5654/db/query
+  Content-Type: application/json
+
+  {
+    "q": "select all"
+  }
+})`, line: 1},
+				{text: "TEXT()", line: 9},
 			},
 		},
 	}

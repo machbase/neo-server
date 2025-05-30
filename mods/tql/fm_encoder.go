@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
+	"github.com/machbase/neo-server/v8/mods/util/restclient"
 )
 
 func newEncoder(format string, args ...any) (*Encoder, error) {
@@ -152,4 +153,21 @@ func (node *Node) fmMarkArea(args ...any) (any, error) {
 		}
 	}
 	return opts.MarkAreaNameCoord(coord0, coord1, label, color, opacity), nil
+}
+
+func (node *Node) fmHttp(args ...any) (any, error) {
+	if len(args) < 1 {
+		return nil, ErrInvalidNumOfArgs("HTTP", 1, len(args))
+	}
+	content, err := convString(args, 0, "HTTP", "content")
+	if err != nil {
+		return nil, err
+	}
+	rcli, err := restclient.Parse(content)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP parse error: %w", err)
+	}
+	result := rcli.Do()
+	NewRecord(0, result).Tell(node.next)
+	return nil, nil
 }
