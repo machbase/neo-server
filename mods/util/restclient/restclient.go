@@ -1,6 +1,8 @@
 package restclient
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -79,46 +81,42 @@ func (rc *RestClient) Do() *RestResult {
 type RestResult struct {
 	StatusLine      string   `json:"statusLine"`
 	Header          []Header `json:"header"`
-	Body            string   `json:"body,omitempty"`
+	Body            *Body    `json:"body,omitempty"`
 	ContentType     string   `json:"contentType,omitempty"`
 	ContentEncoding string   `json:"contentEncoding,omitempty"`
-	Dump            string   `json:"dump,omitempty"`
 	Err             error    `json:"error,omitempty"`
-}
-
-type Header struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-func (h *Header) String() string {
-	return fmt.Sprintf("%s: %s", h.Name, h.Value)
+	dumpString      string   `json:"-"`
 }
 
 func (rr *RestResult) String() string {
 	if rr.Err != nil {
 		return rr.Err.Error()
 	}
-	return rr.Dump
-}
-
-// json() returns the JSON body of the response if it exists.
-// It is for convenience to extract the JSON part from the response data,
-// for testing purposes.
-func (rr *RestResult) json() string {
-	if rr.Err != nil || rr.Dump == "" {
-		return ""
-	}
-	lines := strings.Split(rr.Dump, "\n")
-	for i, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		if line == "" {
-			if i+1 < len(lines) {
-				return strings.Join(lines[i+1:], "\n")
+	if rr.dumpString == "" {
+		w := &strings.Builder{}
+		// Status line
+		if _, err := fmt.Fprintf(w, "%s\r\n", rr.StatusLine); err != nil {
+			return err.Error()
+		}
+		// Headers
+		for _, h := range rr.Header {
+			if _, err := fmt.Fprintf(w, "%s: %s\r\n", h.Name, h.Value); err != nil {
+				return err.Error()
 			}
 		}
+		// End-of-header
+		if _, err := io.WriteString(w, "\r\n"); err != nil {
+			return err.Error()
+		}
+		// Body
+		if rr.Body != nil {
+			if _, err := fmt.Fprintf(w, "%s", rr.Body.String()); err != nil {
+				return err.Error()
+			}
+		}
+		rr.dumpString = w.String()
 	}
-	return ""
+	return rr.dumpString
 }
 
 func (rr *RestResult) Load(r *http.Response) error {
@@ -131,21 +129,19 @@ func (rr *RestResult) Load(r *http.Response) error {
 	}
 	rr.ContentEncoding = r.Header.Get("Content-Encoding")
 
-	w := &strings.Builder{}
-	if err := rr.loadStatusLine(w, r); err != nil {
+	if err := rr.loadStatusLine(r); err != nil {
 		return fmt.Errorf("error loading status line: %w", err)
 	}
-	if err := rr.loadHeader(w, r); err != nil {
+	if err := rr.loadHeader(r); err != nil {
 		return fmt.Errorf("error loading header: %w", err)
 	}
-	if err := rr.loadBody(w, r); err != nil {
+	if err := rr.loadBody(r); err != nil {
 		return fmt.Errorf("error dumping response body: %w", err)
 	}
-	rr.Dump = w.String()
 	return nil
 }
 
-func (rr *RestResult) loadStatusLine(w io.Writer, r *http.Response) error {
+func (rr *RestResult) loadStatusLine(r *http.Response) error {
 	// Status line
 	text := r.Status
 	if text == "" {
@@ -160,13 +156,10 @@ func (rr *RestResult) loadStatusLine(w io.Writer, r *http.Response) error {
 	}
 
 	rr.StatusLine = fmt.Sprintf("HTTP/%d.%d %03d %s", r.ProtoMajor, r.ProtoMinor, r.StatusCode, text)
-	if _, err := fmt.Fprintf(w, "%s\r\n", rr.StatusLine); err != nil {
-		return err
-	}
 	return nil
 }
 
-func (rr *RestResult) loadHeader(w io.Writer, r *http.Response) error {
+func (rr *RestResult) loadHeader(r *http.Response) error {
 	// Header
 	keys := []string{}
 	for k := range r.Header {
@@ -174,59 +167,120 @@ func (rr *RestResult) loadHeader(w io.Writer, r *http.Response) error {
 	}
 	// Sort keys for consistent output
 	slices.Sort(keys)
-	// Write each header line
+	// each header line
 	for _, k := range keys {
 		for _, v := range r.Header.Values(k) {
 			rr.Header = append(rr.Header, Header{Name: k, Value: v})
-			if _, err := fmt.Fprintf(w, "%s: %s\r\n", k, v); err != nil {
-				return err
-			}
 		}
-	}
-	// End-of-header
-	if _, err := io.WriteString(w, "\r\n"); err != nil {
-		return err
 	}
 	return nil
 }
 
-func (rr *RestResult) loadBody(w io.Writer, r *http.Response) error {
+func (rr *RestResult) loadBody(r *http.Response) error {
 	if len(rr.ContentType) == 0 {
 		return nil
 	}
 
-	out := &strings.Builder{}
-	if rr.ContentEncoding == "" {
-		if rr.ContentType == "application/json" {
-			dec := json.NewDecoder(r.Body)
-			var m any
-			if err := dec.Decode(&m); err == nil {
-				// If the body is valid JSON, we can pretty-print it.
-				enc := json.NewEncoder(out)
-				enc.SetIndent("", "  ")
-				if err := enc.Encode(m); err != nil {
-					return fmt.Errorf("error encoding JSON: %w", err)
-				}
-				rr.Body = out.String()
+	rr.Body = &Body{
+		ContentType:     rr.ContentType,
+		ContentEncoding: rr.ContentEncoding,
+	}
+
+	out := &bytes.Buffer{}
+	_, err := io.Copy(out, r.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response body: %w", err)
+	}
+	rr.Body.Content = out.Bytes()
+
+	return nil
+}
+
+type Header struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func (h *Header) String() string {
+	return fmt.Sprintf("%s: %s", h.Name, h.Value)
+}
+
+type Body struct {
+	ContentType     string `json:"contentType,omitempty"`
+	ContentEncoding string `json:"contentEncoding,omitempty"`
+	Content         []byte `json:"content,omitempty"`
+	contentString   string `json:"-"`
+}
+
+var printableContentTypes = []string{
+	"text/*",
+	"application/json",
+	"application/javascript",
+}
+
+func isPrintableContentType(contentType string) bool {
+	if contentType == "" {
+		return false
+	}
+	for _, ct := range printableContentTypes {
+		if strings.HasSuffix(ct, "/*") {
+			ct = strings.TrimSuffix(ct, "/*")
+			if strings.HasPrefix(contentType, ct) {
+				return true
+			}
+		} else if contentType == ct {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Body) String() string {
+	if len(b.contentString) > 0 {
+		return b.contentString
+	}
+	var in io.Reader = bytes.NewReader(b.Content)
+	if b.ContentEncoding == "gzip" {
+		if r, err := gzip.NewReader(in); err != nil {
+			b.contentString = fmt.Sprintf("gzip error: %s", err.Error())
+			return b.contentString
+		} else {
+			defer r.Close()
+			in = r
+		}
+	}
+	var out = &strings.Builder{}
+	if b.ContentType == "application/json" {
+		dec := json.NewDecoder(in)
+		var m any
+		if err := dec.Decode(&m); err == nil {
+			// If the body is valid JSON, we can pretty-print it.
+			enc := json.NewEncoder(out)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(m); err != nil {
+				b.contentString = fmt.Sprintf("error encoding JSON: %s", err.Error())
 			} else {
-				// If the body is not valid JSON, we just dump it as is.
-				rr.Body = "Invalid JSON: " + err.Error()
+				b.contentString = out.String()
 			}
 		} else {
-			_, err := io.Copy(out, r.Body)
-			if err != nil {
-				return fmt.Errorf("error reading response body: %w", err)
-			}
-			rr.Body = out.String()
+			// If the body is not valid JSON, we just dump it as is.
+			b.contentString = "Invalid JSON: " + err.Error()
+		}
+	} else if isPrintableContentType(b.ContentType) {
+		_, err := io.Copy(out, in)
+		if err != nil {
+			b.contentString = fmt.Sprintf("error reading body: %s", err.Error())
+		} else {
+			b.contentString = out.String()
 		}
 	} else {
 		d := hex.Dumper(out)
-		if _, err := io.Copy(d, r.Body); err != nil {
-			return fmt.Errorf("error reading response body: %w", err)
+		if _, err := io.Copy(d, in); err != nil {
+			b.contentString = fmt.Sprintf("error dumping body: %s", err.Error())
+		} else {
+			d.Close()
+			b.contentString = out.String()
 		}
-		d.Close()
-		rr.Body = out.String()
 	}
-	_, err := fmt.Fprintf(w, rr.Body)
-	return err
+	return b.contentString
 }
