@@ -77,13 +77,22 @@ func (rc *RestClient) Do() *RestResult {
 }
 
 type RestResult struct {
-	StatusLine      string      `json:"statusLine"`
-	Header          http.Header `json:"header"`
-	Body            string      `json:"body,omitempty"`
-	ContentType     string      `json:"contentType,omitempty"`
-	ContentEncoding string      `json:"contentEncoding,omitempty"`
-	Dump            string      `json:"dump,omitempty"`
-	Err             error       `json:"error,omitempty"`
+	StatusLine      string   `json:"statusLine"`
+	Header          []Header `json:"header"`
+	Body            string   `json:"body,omitempty"`
+	ContentType     string   `json:"contentType,omitempty"`
+	ContentEncoding string   `json:"contentEncoding,omitempty"`
+	Dump            string   `json:"dump,omitempty"`
+	Err             error    `json:"error,omitempty"`
+}
+
+type Header struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func (h *Header) String() string {
+	return fmt.Sprintf("%s: %s", h.Name, h.Value)
 }
 
 func (rr *RestResult) String() string {
@@ -113,7 +122,13 @@ func (rr *RestResult) json() string {
 }
 
 func (rr *RestResult) Load(r *http.Response) error {
-	rr.ContentType = r.Header.Get("Content-Type")
+	// Get content type without charset, if any
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		parts := strings.SplitN(ct, ";", 2)
+		if len(parts) > 0 {
+			rr.ContentType = strings.TrimSpace(parts[0])
+		}
+	}
 	rr.ContentEncoding = r.Header.Get("Content-Encoding")
 
 	w := &strings.Builder{}
@@ -152,7 +167,6 @@ func (rr *RestResult) loadStatusLine(w io.Writer, r *http.Response) error {
 }
 
 func (rr *RestResult) loadHeader(w io.Writer, r *http.Response) error {
-	rr.Header = r.Header.Clone()
 	// Header
 	keys := []string{}
 	for k := range r.Header {
@@ -162,15 +176,13 @@ func (rr *RestResult) loadHeader(w io.Writer, r *http.Response) error {
 	slices.Sort(keys)
 	// Write each header line
 	for _, k := range keys {
-		vv := r.Header.Values(k)
-		// Write each header line
-		for _, v := range vv {
+		for _, v := range r.Header.Values(k) {
+			rr.Header = append(rr.Header, Header{Name: k, Value: v})
 			if _, err := fmt.Fprintf(w, "%s: %s\r\n", k, v); err != nil {
 				return err
 			}
 		}
 	}
-
 	// End-of-header
 	if _, err := io.WriteString(w, "\r\n"); err != nil {
 		return err
