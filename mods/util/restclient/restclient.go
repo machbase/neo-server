@@ -79,13 +79,13 @@ func (rc *RestClient) Do() *RestResult {
 }
 
 type RestResult struct {
-	StatusLine      string   `json:"statusLine"`
-	Header          []Header `json:"header"`
-	Body            *Body    `json:"body,omitempty"`
-	ContentType     string   `json:"contentType,omitempty"`
-	ContentEncoding string   `json:"contentEncoding,omitempty"`
-	Err             error    `json:"error,omitempty"`
-	dumpString      string   `json:"-"`
+	StatusLine      string `json:"statusLine"`
+	Header          Header `json:"header"`
+	Body            *Body  `json:"body,omitempty"`
+	ContentType     string `json:"contentType,omitempty"`
+	ContentEncoding string `json:"contentEncoding,omitempty"`
+	Err             error  `json:"error,omitempty"`
+	dumpString      string `json:"-"`
 }
 
 func (rr *RestResult) String() string {
@@ -170,7 +170,7 @@ func (rr *RestResult) loadHeader(r *http.Response) error {
 	// each header line
 	for _, k := range keys {
 		for _, v := range r.Header.Values(k) {
-			rr.Header = append(rr.Header, Header{Name: k, Value: v})
+			rr.Header = append(rr.Header, NameValue{Name: k, Value: v})
 		}
 	}
 	return nil
@@ -196,13 +196,26 @@ func (rr *RestResult) loadBody(r *http.Response) error {
 	return nil
 }
 
-type Header struct {
+type NameValue struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
 
-func (h *Header) String() string {
+func (h *NameValue) String() string {
 	return fmt.Sprintf("%s: %s", h.Name, h.Value)
+}
+
+type Header []NameValue
+
+func (h Header) String() string {
+	var sb strings.Builder
+	for i, header := range h {
+		if i > 0 {
+			sb.WriteString("\r\n")
+		}
+		sb.WriteString(header.String())
+	}
+	return sb.String()
 }
 
 type Body struct {
