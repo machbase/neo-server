@@ -353,3 +353,55 @@ func StringFields(values []any, timeformat string, timeLocation *time.Location, 
 type Stringify interface {
 	String() string
 }
+
+type HttpStatement struct {
+	Text      string `json:"text"`
+	BeginLine int    `json:"beginLine"`
+	EndLine   int    `json:"endLine"`
+}
+
+// SplitHttpStatements parses multiple HTTP statements from the reader.
+// Each HTTP statement is separated by at least three continuous '#' characters.
+func SplitHttpStatements(reader io.Reader) ([]*HttpStatement, error) {
+	var statements []*HttpStatement
+	var buffer bytes.Buffer
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(bufio.ScanLines)
+
+	lineNumber := 0
+	statementStartLine := 1
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineNumber++
+
+		if strings.HasPrefix(strings.TrimSpace(line), "###") {
+			if buffer.Len() > 0 {
+				text := buffer.String()
+				if strings.TrimSpace(text) != "" {
+					statements = append(statements, &HttpStatement{
+						Text:      buffer.String(),
+						BeginLine: statementStartLine,
+						EndLine:   lineNumber - 1,
+					})
+				}
+				buffer.Reset()
+			}
+			statementStartLine = lineNumber + 1
+			continue
+		}
+
+		buffer.WriteString(line)
+		buffer.WriteString("\n")
+	}
+
+	if buffer.Len() > 0 {
+		statements = append(statements, &HttpStatement{
+			Text:      buffer.String(),
+			BeginLine: statementStartLine,
+			EndLine:   lineNumber,
+		})
+	}
+
+	return statements, scanner.Err()
+}
