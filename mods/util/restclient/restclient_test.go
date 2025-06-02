@@ -59,7 +59,7 @@ func TestClient(t *testing.T) {
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
 				require.NoError(t, rr.Err)
-				body := rr.json()
+				body := rr.Body.String()
 				require.JSONEq(t,
 					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
 					body, body)
@@ -75,8 +75,8 @@ func TestClient(t *testing.T) {
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
 				require.NoError(t, rr.Err)
-				require.Contains(t, rr.Dump, "X-Debug: 12345")
-				body := rr.json()
+				require.Contains(t, rr.String(), "X-Debug: 12345")
+				body := rr.Body.String()
 				require.JSONEq(t,
 					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
 					body, body)
@@ -143,6 +143,7 @@ func TestMain(m *testing.M) {
 				o["q"] = r.URL.Query().Get("q")
 				o["format"] = r.URL.Query().Get("format")
 			}
+			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(o)
 		})
 		http.Serve(lsnr, nil)

@@ -246,3 +246,29 @@ func ExampleParseNameValuePairs() {
 	// name4=
 	// log-level=info
 }
+
+func ExampleSplitHttpStatements() {
+	input := `
+POST /api/echo HTTP/1.1
+Content-Type: application/json
+
+{"key": "value"}
+`
+	statements, err := util.SplitHttpStatements(strings.NewReader(input))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for n, stmt := range statements {
+		fmt.Println(n, stmt.BeginLine, stmt.EndLine)
+		fmt.Println(stmt.Text)
+	}
+	// Output:
+	//
+	// 0 1 5
+	//
+	// POST /api/echo HTTP/1.1
+	// Content-Type: application/json
+	//
+	// {"key": "value"}
+}

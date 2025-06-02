@@ -17,7 +17,7 @@ import (
 func TestBox1(t *testing.T) {
 	enc := box.NewEncoder()
 
-	require.Equal(t, "plain/text", enc.ContentType())
+	require.Equal(t, "text/plain", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)
@@ -120,7 +120,7 @@ func TestNano(t *testing.T) {
 func TestBoxFloat(t *testing.T) {
 	enc := box.NewEncoder()
 
-	require.Equal(t, "plain/text", enc.ContentType())
+	require.Equal(t, "text/plain", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)
@@ -157,7 +157,7 @@ func TestBoxFloat(t *testing.T) {
 func TestBoxFloat2(t *testing.T) {
 	enc := box.NewEncoder()
 
-	require.Equal(t, "plain/text", enc.ContentType())
+	require.Equal(t, "text/plain", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)
@@ -204,7 +204,7 @@ func TestBoxFloat2(t *testing.T) {
 func runTimeformat(t *testing.T, format string) string {
 	enc := box.NewEncoder()
 
-	require.Equal(t, "plain/text", enc.ContentType())
+	require.Equal(t, "text/plain", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)
@@ -272,7 +272,7 @@ func TestBoxWide(t *testing.T) {
 	}
 	enc := box.NewEncoder()
 
-	require.Equal(t, "plain/text", enc.ContentType())
+	require.Equal(t, "text/plain", enc.ContentType())
 
 	w := &bytes.Buffer{}
 	enc.SetOutputStream(w)

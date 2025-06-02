@@ -1565,3 +1565,59 @@ func TestSplitSQL(t *testing.T) {
 		require.EqualValues(t, tc.expects, resultObj.Data.Statements)
 	}
 }
+
+type SplitHttpResult struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+	Data    struct {
+		Statements []*util.HttpStatement `json:"statements"`
+	} `json:"data,omitempty"`
+}
+
+func TestSplitHTTP(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		expects []*util.HttpStatement
+	}{
+		{
+			name: "http_simple_get",
+			input: `GET /web/api/tables HTTP/1.1
+Host: localhost:8080`,
+			expects: []*util.HttpStatement{
+				{BeginLine: 1, EndLine: 2, Text: "GET /web/api/tables HTTP/1.1\nHost: localhost:8080\n"},
+			},
+		},
+		{
+			name:  "http_simple_multiple",
+			input: "\n###\nGET /abc\n###\nGET /def\n###\nGET /gih",
+			expects: []*util.HttpStatement{
+				{BeginLine: 3, EndLine: 3, Text: "GET /abc\n"},
+				{BeginLine: 5, EndLine: 5, Text: "GET /def\n"},
+				{BeginLine: 7, EndLine: 7, Text: "GET /gih\n"},
+			},
+		},
+	}
+
+	at, _, err := jwtLogin("sys", "manager")
+	require.NoError(t, err)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodPost, httpServerAddress+"/web/api/splitter/http", strings.NewReader(tc.input))
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at))
+			rsp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rsp.StatusCode)
+			result, _ := io.ReadAll(rsp.Body)
+			rsp.Body.Close()
+
+			resultObj := SplitHttpResult{}
+			err = json.Unmarshal(result, &resultObj)
+			require.NoError(t, err)
+
+			require.EqualValues(t, tc.expects, resultObj.Data.Statements)
+		})
+	}
+}

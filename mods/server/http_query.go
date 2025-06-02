@@ -308,6 +308,32 @@ func (svr *httpd) handleSplitSQL(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, rsp)
 }
 
+type SplitHTTPResponse struct {
+	Success bool   `json:"success"`
+	Reason  string `json:"reason"`
+	Elapse  string `json:"elapse"`
+	Data    any    `json:"data,omitempty"`
+}
+
+func (svr *httpd) handleSplitHTTP(ctx *gin.Context) {
+	rsp := &SplitHTTPResponse{Success: false, Reason: "not specified"}
+	tick := time.Now()
+	stmts, err := util.SplitHttpStatements(ctx.Request.Body)
+	if err != nil {
+		rsp.Reason = err.Error()
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusInternalServerError, rsp)
+		return
+	}
+	rsp.Success = true
+	rsp.Reason = "success"
+	rsp.Data = map[string]any{
+		"statements": stmts,
+	}
+	rsp.Elapse = time.Since(tick).String()
+	ctx.JSON(http.StatusOK, rsp)
+}
+
 func (svr *httpd) handleFileQuery(ctx *gin.Context) {
 	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()

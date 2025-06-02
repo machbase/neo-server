@@ -42,7 +42,7 @@ func NewEncoder() *Exporter {
 }
 
 func (ex *Exporter) ContentType() string {
-	return "plain/text"
+	return "text/plain"
 }
 
 func (ex *Exporter) SetOutputStream(o io.Writer) {
