@@ -1112,7 +1112,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
 	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
 	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
-	src = replaceHttpClient(src)
+	src = replaceHttpClient(src, true)
 
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
@@ -1124,7 +1124,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	ctx.Writer.Write([]byte("</div>"))
 }
 
-func replaceHttpClient(src []byte) []byte {
+func replaceHttpClient(src []byte, preserveSrc bool) []byte {
 	if !bytes.Contains(src, []byte("```http")) {
 		return src
 	}
@@ -1154,13 +1154,28 @@ func replaceHttpClient(src []byte) []byte {
 				[]byte("\n"))
 		}
 		result := restCli.Do()
-		src = bytes.Join([][]byte{
-			src[0:begin],
-			[]byte("```html"),
-			[]byte(result.String()),
-			[]byte("```"),
-			src[end+3:]},
-			[]byte("\n"))
+		resultString := result.String()
+		if preserveSrc {
+			// preserve original source code
+			src = bytes.Join([][]byte{
+				src[0 : end+3],
+				[]byte("```"),
+				[]byte(resultString),
+				[]byte("```"),
+				src[end+3:]},
+				[]byte("\n"))
+			offset += 6 + len(resultString) + 4
+		} else {
+			// replace original source code with the result
+			src = bytes.Join([][]byte{
+				src[0:begin],
+				[]byte("```"),
+				[]byte(resultString),
+				[]byte("```"),
+				src[end+3:]},
+				[]byte("\n"))
+			offset += 6 + len(resultString) + 4
+		}
 	}
 	return src
 }
