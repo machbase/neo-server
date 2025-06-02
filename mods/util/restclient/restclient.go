@@ -38,7 +38,12 @@ type RestClient struct {
 	header          http.Header // HTTP headers
 	contentLines    []string
 
-	result *RestResult
+	fileLoader FileLoader
+	result     *RestResult
+}
+
+func (rc *RestClient) SetFileLoader(loader FileLoader) {
+	rc.fileLoader = loader
 }
 
 func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -61,6 +66,10 @@ func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
 var restClientFileRegexp = regexp.MustCompile(`<(?:@([\w\-]+))?\s+([^\s]+)`)
 
 func (rc *RestClient) Do() *RestResult {
+	if rc.fileLoader == nil {
+		rc.fileLoader = osFileLoader
+	}
+
 	var client = &http.Client{Transport: rc}
 	var payload io.Reader
 	if rc.contentLines != nil && len(rc.contentLines) > 0 {
@@ -84,7 +93,7 @@ func (rc *RestClient) Do() *RestResult {
 						readers[i] = strings.NewReader(line + "\n")
 					} else {
 						// match[1] charset, or empty
-						fd, e := os.Open(match[2]) // file path
+						fd, e := rc.fileLoader(match[2]) // file path
 						if e != nil {
 							readers[i] = strings.NewReader(fmt.Sprintf("Error opening file %s: %v\n", match[2], e))
 							continue
@@ -118,6 +127,12 @@ func (rc *RestClient) Do() *RestResult {
 	defer rsp.Body.Close()
 
 	return rc.result
+}
+
+type FileLoader func(string) (io.ReadCloser, error)
+
+func osFileLoader(path string) (io.ReadCloser, error) {
+	return os.Open(path)
 }
 
 type RestResult struct {

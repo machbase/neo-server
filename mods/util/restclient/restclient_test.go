@@ -118,12 +118,12 @@ John
 Content-Disposition: form-data; name="image"; filename="1.png"
 Content-Type: image/png
 
-< ./test/1.png
+< 1.png
 ------WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="doc"; filename="1.xml"
 Content-Type: text/xml
 
-<@utf-8 ./test/1.xml
+<@utf-8 1.xml
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 `,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
@@ -154,6 +154,9 @@ Content-Type: text/xml
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			rc.SetFileLoader(func(name string) (io.ReadCloser, error) {
+				return os.Open(filepath.Join("./test", name))
+			})
 			result := rc.Do()
 			tt.expectedFunc(t, result)
 		})
