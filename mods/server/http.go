@@ -1718,7 +1718,7 @@ func isFsFile(path string) bool {
 	return contentTypeOfFile(path) != ""
 }
 
-// returns supproted content-type of the given file path (name),
+// returns supported content-type of the given file path (name),
 // if the name is an unsupported file type, it returns empty string
 func contentTypeOfFile(name string) string {
 	ext := filepath.Ext(name)
@@ -1982,9 +1982,9 @@ func (gitClone *GitCloneReq) Write(b []byte) (int, error) {
 		taskId := fmt.Sprintf("%p", gitClone)
 		lines := bytes.Split(b, []byte{'\n'})
 		for _, line := range lines {
-			carrageReturns := bytes.Split(line, []byte{'\r'})
-			for i := len(carrageReturns) - 1; i >= 0; i-- {
-				line = bytes.TrimSpace(carrageReturns[i])
+			carriageReturns := bytes.Split(line, []byte{'\r'})
+			for i := len(carriageReturns) - 1; i >= 0; i-- {
+				line = bytes.TrimSpace(carriageReturns[i])
 				if len(line) > 0 {
 					break
 				}
@@ -2026,12 +2026,12 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc/", Target: "_docs_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc-example/", Target: "_docs_machbase"})
 
-		cheatsheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
+		cheatSheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
 
-		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatsheets}
+		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets}
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)
