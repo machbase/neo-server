@@ -42,6 +42,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
+	"github.com/machbase/neo-server/v8/mods/util/restclient"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"golang.org/x/crypto/ssh"
@@ -1111,6 +1112,7 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 	src = mdFilePathRegexp.ReplaceAll(src, []byte(filePath))
 	src = mdFileNameRegexp.ReplaceAll(src, []byte(fileName))
 	src = mdFileDirRegexp.ReplaceAll(src, []byte(fileDir))
+	src = replaceHttpClient(src)
 
 	ctx.Writer.Header().Set("Content-Type", "application/xhtml+xml")
 	conv := mdconv.New(mdconv.WithDarkMode(strBool(ctx.Query("darkMode"), false)))
@@ -1120,6 +1122,47 @@ func (svr *httpd) handleMarkdown(ctx *gin.Context) {
 		ctx.String(http.StatusInternalServerError, fmt.Sprintf(`<p>%s</p>`, err.Error()))
 	}
 	ctx.Writer.Write([]byte("</div>"))
+}
+
+func replaceHttpClient(src []byte) []byte {
+	if !bytes.Contains(src, []byte("```http")) {
+		return src
+	}
+	offset := 0
+	for {
+		begin := bytes.Index(src[offset:], []byte("```http"))
+		if begin == -1 {
+			break
+		}
+		begin = offset + begin
+		offset = begin
+
+		end := bytes.Index(src[offset+7:], []byte("```"))
+		if end == -1 {
+			break
+		}
+		end = offset + 7 + end
+		offset = end + 3
+
+		content := src[begin+7 : end]
+		restCli, err := restclient.Parse(string(content))
+		if err != nil {
+			return bytes.Join([][]byte{
+				src[0 : end+3],
+				[]byte("\n" + err.Error()),
+				src[end+3:]},
+				[]byte("\n"))
+		}
+		result := restCli.Do()
+		src = bytes.Join([][]byte{
+			src[0:begin],
+			[]byte("```html"),
+			[]byte(result.String()),
+			[]byte("```"),
+			src[end+3:]},
+			[]byte("\n"))
+	}
+	return src
 }
 
 func (svr *httpd) handleConsoleData(ctx *gin.Context) {
