@@ -1,10 +1,14 @@
 package restclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"text/template"
@@ -82,6 +86,54 @@ func TestClient(t *testing.T) {
 					body, body)
 			},
 		},
+		{
+			name: "do_post_formdata",
+			content: `
+				POST http://{{ .HostPort }}/api/echo
+				Content-Type: application/x-www-form-urlencoded
+
+				q=SELECT * FROM users where name = 'John'
+				&format=json
+			`,
+			expectedFunc: func(t *testing.T, rr *RestResult) {
+				require.NoError(t, rr.Err)
+				require.Contains(t, rr.String(), "X-Debug: 12345")
+				body := rr.Body.String()
+				require.JSONEq(t,
+					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
+					body, body)
+			},
+		},
+		{
+			name: "do_post_multipart",
+			content: `
+				POST http://{{ .HostPort }}/api/upload
+				Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="name"
+
+John
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="image"; filename="1.png"
+Content-Type: image/png
+
+< 1.png
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="doc"; filename="1.xml"
+Content-Type: text/xml
+
+<@utf-8 1.xml
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+`,
+			expectedFunc: func(t *testing.T, rr *RestResult) {
+				require.NoError(t, rr.Err)
+				body := rr.Body.String()
+				require.JSONEq(t,
+					`{"name": "John", "image": "1.png", "doc": "1.xml"}`,
+					body, body)
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -102,6 +154,9 @@ func TestClient(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			rc.SetFileLoader(func(name string) (io.ReadCloser, error) {
+				return os.Open(filepath.Join("./test", name))
+			})
 			result := rc.Do()
 			tt.expectedFunc(t, result)
 		})
@@ -134,10 +189,16 @@ func TestMain(m *testing.M) {
 			w.Header().Set("X-Debug", "12345")
 			o := map[string]any{}
 			if r.Method == http.MethodPost {
-				err := json.NewDecoder(r.Body).Decode(&o)
-				if err != nil {
-					http.Error(w, "Invalid JSON", http.StatusBadRequest)
-					return
+				switch r.Header.Get("Content-Type") {
+				case "application/json":
+					err := json.NewDecoder(r.Body).Decode(&o)
+					if err != nil {
+						http.Error(w, "Invalid JSON", http.StatusBadRequest)
+						return
+					}
+				case "application/x-www-form-urlencoded":
+					o["q"] = r.PostFormValue("q")
+					o["format"] = r.PostFormValue("format")
 				}
 			} else if r.Method == http.MethodGet {
 				o["q"] = r.URL.Query().Get("q")
@@ -145,6 +206,66 @@ func TestMain(m *testing.M) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(o)
+		})
+		http.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if err := r.ParseMultipartForm(10 << 20); err != nil {
+				http.Error(w, "Failed to parse form", http.StatusBadRequest)
+				return
+			}
+			name := r.FormValue("name")
+
+			imagePart, imagePartHeader, err := r.FormFile("image")
+			if err != nil {
+				http.Error(w, "Failed to get image", http.StatusBadRequest)
+				return
+			}
+			defer imagePart.Close()
+			partExpect, err := os.ReadFile(filepath.Join("test", imagePartHeader.Filename))
+			if err != nil {
+				http.Error(w, "Failed to read image file", http.StatusInternalServerError)
+				return
+			}
+			partData := &bytes.Buffer{}
+			io.Copy(partData, imagePart)
+			if !bytes.Equal(partExpect, partData.Bytes()) {
+				http.Error(w, "Uploaded image content does not match expected content", http.StatusBadRequest)
+				return
+			}
+
+			docPart, docPartHeader, err := r.FormFile("doc")
+			if err != nil {
+				http.Error(w, "Failed to get image", http.StatusBadRequest)
+				return
+			}
+			defer docPart.Close()
+
+			partExpect, err = os.ReadFile(filepath.Join("test", docPartHeader.Filename))
+			if err != nil {
+				http.Error(w, "Failed to read image file", http.StatusInternalServerError)
+				return
+			}
+			docData := &bytes.Buffer{}
+			io.Copy(docData, docPart)
+			if !bytes.Equal(partExpect, docData.Bytes()) {
+				http.Error(w, "Uploaded doc content does not match expected content", http.StatusBadRequest)
+				return
+			}
+
+			// Here you would typically save the image to a file or process it.
+			response := map[string]string{
+				"name":  name,
+				"image": imagePartHeader.Filename,
+				"doc":   docPartHeader.Filename,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				return
+			}
 		})
 		http.Serve(lsnr, nil)
 	}()

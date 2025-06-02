@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,7 +38,12 @@ type RestClient struct {
 	header          http.Header // HTTP headers
 	contentLines    []string
 
-	result *RestResult
+	fileLoader FileLoader
+	result     *RestResult
+}
+
+func (rc *RestClient) SetFileLoader(loader FileLoader) {
+	rc.fileLoader = loader
 }
 
 func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -53,11 +60,55 @@ func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
 	return rsp, nil
 }
 
+// parse parses the content string into a RestClient.
+// e.g. < file.txt
+// e.g. <@latin1 file.txt  <- <@charset is not implemented yet
+var restClientFileRegexp = regexp.MustCompile(`<(?:@([\w\-]+))?\s+([^\s]+)`)
+
 func (rc *RestClient) Do() *RestResult {
+	if rc.fileLoader == nil {
+		rc.fileLoader = osFileLoader
+	}
+
 	var client = &http.Client{Transport: rc}
 	var payload io.Reader
 	if rc.contentLines != nil && len(rc.contentLines) > 0 {
-		payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+		contentType := rc.header.Get("Content-Type")
+		if contentType == "application/x-www-form-urlencoded" {
+			b := &strings.Builder{}
+			for i, line := range rc.contentLines {
+				if i == 0 || strings.HasPrefix(line, "&") {
+					b.WriteString(line)
+				} else {
+					b.WriteString(line + "\n")
+				}
+			}
+			payload = strings.NewReader(b.String())
+		} else if strings.Contains(contentType, "multipart/form-data") {
+			readers := make([]io.Reader, len(rc.contentLines))
+			for i, line := range rc.contentLines {
+				if strings.HasPrefix(line, "< ") || strings.HasPrefix(line, "<@") {
+					match := restClientFileRegexp.FindStringSubmatch(line)
+					if len(match) != 3 {
+						readers[i] = strings.NewReader(line + "\n")
+					} else {
+						// match[1] charset, or empty
+						fd, e := rc.fileLoader(match[2]) // file path
+						if e != nil {
+							readers[i] = strings.NewReader(fmt.Sprintf("Error opening file %s: %v\n", match[2], e))
+							continue
+						}
+						defer fd.Close()
+						readers[i] = io.MultiReader(fd, strings.NewReader("\n"))
+					}
+				} else {
+					readers[i] = strings.NewReader(line + "\n")
+				}
+			}
+			payload = io.MultiReader(readers...)
+		} else {
+			payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+		}
 	}
 
 	req, err := http.NewRequest(rc.method, rc.path, payload)
@@ -76,6 +127,12 @@ func (rc *RestClient) Do() *RestResult {
 	defer rsp.Body.Close()
 
 	return rc.result
+}
+
+type FileLoader func(string) (io.ReadCloser, error)
+
+func osFileLoader(path string) (io.ReadCloser, error) {
+	return os.Open(path)
 }
 
 type RestResult struct {

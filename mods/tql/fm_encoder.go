@@ -1,13 +1,16 @@
 package tql
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"time"
 
 	"github.com/machbase/neo-server/v8/mods/codec/opts"
 	"github.com/machbase/neo-server/v8/mods/util/restclient"
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func newEncoder(format string, args ...any) (*Encoder, error) {
@@ -167,6 +170,16 @@ func (node *Node) fmHttp(args ...any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("HTTP parse error: %w", err)
 	}
+	rcli.SetFileLoader(func(path string) (io.ReadCloser, error) {
+		def := ssfs.Default()
+		ent, err := def.Get(path)
+		if err != nil {
+			return nil, err
+		}
+
+		return io.NopCloser(bytes.NewBuffer(ent.Content)), nil
+
+	})
 	result := rcli.Do()
 	NewRecord(0, result).Tell(node.next)
 	return nil, nil
