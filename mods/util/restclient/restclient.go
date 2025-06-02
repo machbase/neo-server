@@ -229,6 +229,19 @@ var printableContentTypes = []string{
 	"text/*",
 	"application/json",
 	"application/javascript",
+	"application/x-ndjson",
+	"application/xml",
+	"application/xhtml+xml",
+	"application/x-www-form-urlencoded",
+	"application/atom+xml",
+	"application/rss+xml",
+	"application/geo+json",
+	"application/hal+json",
+	"application/hal+xml",
+	"application/ld+json",
+	"application/vnd.api+json",
+	"application/vnd.collection+json",
+	"application/vnd.geo+json",
 }
 
 func isPrintableContentType(contentType string) bool {
