@@ -4,7 +4,7 @@ go 1.23.7
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/alecthomas/chroma/v2 v2.12.0
+	github.com/alecthomas/chroma/v2 v2.18.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/creack/pty v1.1.18
@@ -51,7 +51,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/wroge/wgs84 v1.1.7
-	github.com/yuin/goldmark v1.7.0
+	github.com/yuin/goldmark v1.7.12
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	github.com/zclconf/go-cty v1.13.2
 	go.abhg.dev/goldmark/mermaid v0.5.0

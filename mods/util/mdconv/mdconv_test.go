@@ -13,7 +13,8 @@ func TestMdCon(t *testing.T) {
 	src := `# Test	
 	Content`
 	expect := `<h1>Test</h1>
-<pre><code>Content</code></pre>
+<pre><code>Content
+</code></pre>
 `
 	w := &bytes.Buffer{}
 	conv := mdconv.New(mdconv.WithDarkMode(true))

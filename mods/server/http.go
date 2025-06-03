@@ -1130,52 +1130,48 @@ func replaceHttpClient(src []byte, preserveSrc bool) []byte {
 	}
 	offset := 0
 	for {
-		begin := bytes.Index(src[offset:], []byte("```http"))
-		if begin == -1 {
+		fenceBegin := bytes.Index(src[offset:], []byte("```http"))
+		if fenceBegin == -1 {
 			break
 		}
-		begin = offset + begin
-		offset = begin
+		fenceBegin = offset + fenceBegin
+		contentBegin := fenceBegin + 7 // length of "```http"
+		contentEnd := contentBegin
 
-		end := bytes.Index(src[offset+7:], []byte("```"))
-		if end == -1 {
+		if end := bytes.Index(src[contentBegin:], []byte("```")); end == -1 {
 			break
+		} else {
+			contentEnd = contentBegin + end
 		}
-		end = offset + 7 + end
-		offset = end + 3
+		fenceEnd := contentEnd + 3 // length of "```"
+		offset = fenceEnd
 
-		content := src[begin+7 : end]
+		content := src[contentBegin:contentEnd]
 		restCli, err := restclient.Parse(string(content))
 		if err != nil {
 			return bytes.Join([][]byte{
-				src[0 : end+3],
+				src[0:fenceEnd],
 				[]byte("\n" + err.Error()),
-				src[end+3:]},
+				src[fenceEnd:]},
 				[]byte("\n"))
 		}
-		result := restCli.Do()
-		resultString := result.String()
-		if preserveSrc {
-			// preserve original source code
-			src = bytes.Join([][]byte{
-				src[0 : end+3],
-				[]byte("```"),
-				[]byte(resultString),
-				[]byte("```"),
-				src[end+3:]},
-				[]byte("\n"))
-			offset += 6 + len(resultString) + 4
-		} else {
-			// replace original source code with the result
-			src = bytes.Join([][]byte{
-				src[0:begin],
-				[]byte("```"),
-				[]byte(resultString),
-				[]byte("```"),
-				src[end+3:]},
-				[]byte("\n"))
-			offset += 6 + len(resultString) + 4
+		restRsp := restCli.Do()
+		resultString := restRsp.String()
+
+		newSrc := [][]byte{}
+		if preserveSrc { // preserve original source code
+			newSrc = append(newSrc, src[0:fenceEnd])
+		} else { // replace original source code with the result
+			newSrc = append(newSrc, src[0:fenceBegin])
 		}
+		newSrc = append(newSrc,
+			[]byte("```http"),
+			[]byte(resultString),
+			[]byte("```"),
+			src[fenceEnd:],
+		)
+		src = bytes.Join(newSrc, []byte("\n"))
+		offset += 10 + len(resultString) + 4 // 10 = len("```http") + len("```")
 	}
 	return src
 }
