@@ -1130,52 +1130,48 @@ func replaceHttpClient(src []byte, preserveSrc bool) []byte {
 	}
 	offset := 0
 	for {
-		begin := bytes.Index(src[offset:], []byte("```http"))
-		if begin == -1 {
+		fenceBegin := bytes.Index(src[offset:], []byte("```http"))
+		if fenceBegin == -1 {
 			break
 		}
-		begin = offset + begin
-		offset = begin
+		fenceBegin = offset + fenceBegin
+		contentBegin := fenceBegin + 7 // length of "```http"
+		contentEnd := contentBegin
 
-		end := bytes.Index(src[offset+7:], []byte("```"))
-		if end == -1 {
+		if end := bytes.Index(src[contentBegin:], []byte("```")); end == -1 {
 			break
+		} else {
+			contentEnd = contentBegin + end
 		}
-		end = offset + 7 + end
-		offset = end + 3
+		fenceEnd := contentEnd + 3 // length of "```"
+		offset = fenceEnd
 
-		content := src[begin+7 : end]
+		content := src[contentBegin:contentEnd]
 		restCli, err := restclient.Parse(string(content))
 		if err != nil {
 			return bytes.Join([][]byte{
-				src[0 : end+3],
+				src[0:fenceEnd],
 				[]byte("\n" + err.Error()),
-				src[end+3:]},
+				src[fenceEnd:]},
 				[]byte("\n"))
 		}
-		result := restCli.Do()
-		resultString := result.String()
-		if preserveSrc {
-			// preserve original source code
-			src = bytes.Join([][]byte{
-				src[0 : end+3],
-				[]byte("```"),
-				[]byte(resultString),
-				[]byte("```"),
-				src[end+3:]},
-				[]byte("\n"))
-			offset += 6 + len(resultString) + 4
-		} else {
-			// replace original source code with the result
-			src = bytes.Join([][]byte{
-				src[0:begin],
-				[]byte("```"),
-				[]byte(resultString),
-				[]byte("```"),
-				src[end+3:]},
-				[]byte("\n"))
-			offset += 6 + len(resultString) + 4
+		restRsp := restCli.Do()
+		resultString := restRsp.String()
+
+		newSrc := [][]byte{}
+		if preserveSrc { // preserve original source code
+			newSrc = append(newSrc, src[0:fenceEnd])
+		} else { // replace original source code with the result
+			newSrc = append(newSrc, src[0:fenceBegin])
 		}
+		newSrc = append(newSrc,
+			[]byte("```http"),
+			[]byte(resultString),
+			[]byte("```"),
+			src[fenceEnd:],
+		)
+		src = bytes.Join(newSrc, []byte("\n"))
+		offset += 10 + len(resultString) + 4 // 10 = len("```http") + len("```")
 	}
 	return src
 }
@@ -1718,7 +1714,7 @@ func isFsFile(path string) bool {
 	return contentTypeOfFile(path) != ""
 }
 
-// returns supproted content-type of the given file path (name),
+// returns supported content-type of the given file path (name),
 // if the name is an unsupported file type, it returns empty string
 func contentTypeOfFile(name string) string {
 	ext := filepath.Ext(name)
@@ -1982,9 +1978,9 @@ func (gitClone *GitCloneReq) Write(b []byte) (int, error) {
 		taskId := fmt.Sprintf("%p", gitClone)
 		lines := bytes.Split(b, []byte{'\n'})
 		for _, line := range lines {
-			carrageReturns := bytes.Split(line, []byte{'\r'})
-			for i := len(carrageReturns) - 1; i >= 0; i-- {
-				line = bytes.TrimSpace(carrageReturns[i])
+			carriageReturns := bytes.Split(line, []byte{'\r'})
+			for i := len(carriageReturns) - 1; i >= 0; i-- {
+				line = bytes.TrimSpace(carriageReturns[i])
 				if len(line) > 0 {
 					break
 				}
@@ -2026,12 +2022,12 @@ func (svr *httpd) handleRefs(ctx *gin.Context) {
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc/", Target: "_docs_machbase"})
 		sdk.Items = append(sdk.Items, ReferenceItem{Type: "url", Title: "ODBC Example", Addr: "https://docs.machbase.com/dbms/sdk/cli-odbc-example/", Target: "_docs_machbase"})
 
-		cheatsheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
-		cheatsheets.Items = append(cheatsheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
+		cheatSheets := &WebReferenceGroup{Label: "CHEAT SHEETS"}
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "markdown example", Addr: "./tutorials/sample_markdown.wrk"})
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "mermaid example", Addr: "./tutorials/sample_mermaid.wrk"})
+		cheatSheets.Items = append(cheatSheets.Items, ReferenceItem{Type: "wrk", Title: "pikchr example", Addr: "./tutorials/sample_pikchr.wrk"})
 
-		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatsheets}
+		rsp.Data.Refs = []*WebReferenceGroup{references, sdk, cheatSheets}
 		rsp.Success, rsp.Reason = true, "success"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusOK, rsp)

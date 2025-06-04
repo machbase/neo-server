@@ -26,7 +26,7 @@ type BusController interface {
 	WaitAsync()
 }
 
-// Bus englobes global (subscribe, publish, control) bus behavior
+// Bus global (subscribe, publish, control) bus behavior
 type Bus interface {
 	BusController
 	BusSubscriber
@@ -155,7 +155,7 @@ func (bus *EventBus) Publish(topic string, args ...interface{}) {
 	}
 }
 
-func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...interface{}) {
+func (bus *EventBus) doPublish(handler *eventHandler, _ /*topic*/ string, args ...interface{}) {
 	passedArguments := bus.setUpPublish(handler, args...)
 	handler.callBack.Call(passedArguments)
 }
