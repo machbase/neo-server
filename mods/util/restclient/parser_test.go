@@ -16,6 +16,15 @@ func TestParser(t *testing.T) {
 		expectedContent []string
 	}{
 		{
+			name:            "basic_get_simple",
+			content:         `GET /api/data`,
+			expectedMethod:  "GET",
+			expectedPath:    "/api/data",
+			expectedVersion: "",
+			expectedHeaders: http.Header{},
+			expectedContent: []string{},
+		},
+		{
 			name: "basic_get",
 			content: `
 				GET /api/data HTTP/1.1

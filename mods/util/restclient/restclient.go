@@ -87,29 +87,51 @@ func (rc *RestClient) Do() *RestResult {
 		} else if strings.Contains(contentType, "multipart/form-data") {
 			readers := make([]io.Reader, len(rc.contentLines))
 			for i, line := range rc.contentLines {
-				if strings.HasPrefix(line, "< ") || strings.HasPrefix(line, "<@") {
-					match := restClientFileRegexp.FindStringSubmatch(line)
-					if len(match) != 3 {
-						readers[i] = strings.NewReader(line + "\n")
-					} else {
-						// match[1] charset, or empty
-						fd, e := rc.fileLoader(match[2]) // file path
-						if e != nil {
-							readers[i] = strings.NewReader(fmt.Sprintf("Error opening file %s: %v\n", match[2], e))
-							continue
-						}
-						defer fd.Close()
-						readers[i] = io.MultiReader(fd, strings.NewReader("\n"))
-					}
-				} else {
-					readers[i] = strings.NewReader(line + "\n")
+				r, err := rc.paseFileLine(line)
+				if err != nil {
+					readers[i] = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+					continue
 				}
+				if r == nil {
+					readers[i] = strings.NewReader(line + "\n")
+					continue
+				}
+				if closer, ok := r.(io.Closer); ok {
+					defer closer.Close()
+				}
+				readers[i] = r
 			}
 			payload = io.MultiReader(readers...)
 		} else {
-			payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+			if r, err := rc.paseFileLine(rc.contentLines[0]); err != nil {
+				payload = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+			} else if r != nil {
+				readers := make([]io.Reader, len(rc.contentLines))
+				if closer, ok := r.(io.Closer); ok {
+					defer closer.Close()
+				}
+				readers[0] = r
+				for i, line := range rc.contentLines[1:] {
+					r, err := rc.paseFileLine(line)
+					if err != nil {
+						readers[i+1] = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+						continue
+					}
+					if closer, ok := r.(io.Closer); ok {
+						defer closer.Close()
+					}
+					readers = append(readers, r)
+				}
+				payload = io.MultiReader(readers...)
+			} else {
+				payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+			}
 		}
 	}
+
+	bb, _ := io.ReadAll(payload)
+	fmt.Println("Request payload:", string(bb))
+	payload = bytes.NewReader(bb)
 
 	req, err := http.NewRequest(rc.method, rc.path, payload)
 	if err != nil {
@@ -127,6 +149,32 @@ func (rc *RestClient) Do() *RestResult {
 	defer rsp.Body.Close()
 
 	return rc.result
+}
+
+func (rc *RestClient) paseFileLine(line string) (io.Reader, error) {
+	if slices.Contains([]string{"POST", "PUT", "PATCH"}, strings.ToUpper(rc.method)) {
+		match := restClientFileRegexp.FindStringSubmatch(strings.TrimSpace(line))
+		if len(match) != 3 {
+			return nil, nil
+		}
+	}
+	var ret io.Reader = nil
+	if strings.HasPrefix(line, "< ") || strings.HasPrefix(line, "<@") {
+		match := restClientFileRegexp.FindStringSubmatch(line)
+		if len(match) != 3 {
+			ret = strings.NewReader(line + "\n")
+		} else {
+			// match[1] charset, or empty
+			fd, e := rc.fileLoader(match[2]) // file path
+			if e != nil {
+				return nil, e
+			}
+			ret = io.MultiReader(fd, strings.NewReader("\n"))
+		}
+	} else {
+		ret = strings.NewReader(line + "\n")
+	}
+	return ret, nil
 }
 
 type FileLoader func(string) (io.ReadCloser, error)

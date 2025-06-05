@@ -105,6 +105,22 @@ func TestClient(t *testing.T) {
 			},
 		},
 		{
+			name: "do_post_by_file",
+			content: `
+				POST http://{{ .HostPort }}/api/echo
+				Content-Type: application/json
+
+				< 1.json
+			`,
+			expectedFunc: func(t *testing.T, rr *RestResult) {
+				require.NoError(t, rr.Err)
+				body := rr.Body.String()
+				require.JSONEq(t,
+					`{"name": "John", "image": "figure.png", "doc": "doc.xml"}`,
+					body, body)
+			},
+		},
+		{
 			name: "do_post_multipart",
 			content: `
 				POST http://{{ .HostPort }}/api/upload
