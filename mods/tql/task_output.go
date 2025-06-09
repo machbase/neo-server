@@ -223,16 +223,18 @@ func (out *output) start() {
 				}
 			}
 		}
-		if shouldClose && saneEncoder {
-			out.closeEncoder()
-		} else if saneEncoder {
-			// encoder has not been opened, which means no records are produced
-			if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
-				out.setHeader(resultColumns[1:])
-				if err := out.openEncoder(); err == nil {
-					out.closeEncoder()
-				} else {
-					out.task.LogError(err.Error())
+		if saneEncoder {
+			if shouldClose {
+				out.closeEncoder()
+			} else {
+				// encoder has not been opened, which means no records are produced
+				if resultColumns := out.task.ResultColumns(); len(resultColumns) > 0 {
+					out.setHeader(resultColumns[1:])
+					if err := out.openEncoder(); err == nil {
+						out.closeEncoder()
+					} else {
+						out.task.LogError(err.Error())
+					}
 				}
 			}
 		}

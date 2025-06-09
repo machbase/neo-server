@@ -42,9 +42,9 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 	var expectFunc ExpectFunc
 	var payload []byte
 	var params map[string][]string
+	var matchFunc func(*testing.T, string)
 	var matchPrefix bool
 	var httpClient *http.Client
-
 	var ctx context.Context
 	var ctxCancel context.CancelFunc
 	var ctxCancelIgnore bool
@@ -70,6 +70,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 			params[v.name] = arr
 		case MatchPrefix:
 			matchPrefix = bool(v)
+		case func(*testing.T, string):
+			matchFunc = v
 		case *http.Client:
 			httpClient = v
 		case context.Context:
@@ -180,6 +182,8 @@ func runTest(t *testing.T, codeLines []string, expect []string, options ...any) 
 				strResult = trimResult
 			}
 			require.Equal(t, strExpect, strResult)
+		} else if matchFunc != nil {
+			matchFunc(t, result)
 		} else {
 			resultLines := strings.Split(result, "\n")
 			if len(resultLines) > 0 && resultLines[len(resultLines)-1] == "" {
@@ -791,6 +795,48 @@ func TestJsonToCsv(t *testing.T) {
 		"",
 	}
 	runTest(t, codeLines, resultLines)
+}
+
+func TestCsvToJson(t *testing.T) {
+	var codeLines []string
+
+	codeLines = []string{
+		`CSV("A,123\nB,456\nC,789")`,
+		`JSON()`,
+	}
+	runTest(t, codeLines, nil, func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, `["column0","column1"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["string","string"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, `[["A","123"],["B","456"],["C","789"]]`, gjson.Get(result, "data.rows").String())
+	})
+	codeLines = []string{
+		`SQL("select * from tag_simple where name = 'no_name'")`,
+		`JSON()`,
+	}
+	runTest(t, codeLines, nil, func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, `[]`, gjson.Get(result, "data.rows").String())
+	})
+	codeLines = []string{
+		`SCRIPT({`,
+		`  $.result = {columns:["NAME","TIME","VALUE"],types:["string","datetime","double"]}`,
+		`},{`,
+		`  $.db().query("select * from tag_simple where name = 'no_name'").forEach(r => console.log(r))`,
+		`})`,
+		`JSON()`,
+	}
+	runTest(t, codeLines, nil, func(t *testing.T, result string) {
+		require.True(t, gjson.Get(result, "success").Bool())
+		require.Equal(t, "success", gjson.Get(result, "reason").String())
+		require.Equal(t, `["NAME","TIME","VALUE"]`, gjson.Get(result, "data.columns").String())
+		require.Equal(t, `["string","datetime","double"]`, gjson.Get(result, "data.types").String())
+		require.Equal(t, `[]`, gjson.Get(result, "data.rows").String())
+	})
 }
 
 func TestMath(t *testing.T) {
