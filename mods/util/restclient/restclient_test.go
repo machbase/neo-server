@@ -13,6 +13,7 @@ import (
 	"testing"
 	"text/template"
 
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -105,6 +106,22 @@ func TestClient(t *testing.T) {
 			},
 		},
 		{
+			name: "do_post_by_file",
+			content: `
+				POST http://{{ .HostPort }}/api/echo
+				Content-Type: application/json
+
+				< @./test/1.json
+			`,
+			expectedFunc: func(t *testing.T, rr *RestResult) {
+				require.NoError(t, rr.Err)
+				body := rr.Body.String()
+				require.JSONEq(t,
+					`{"name": "John", "image": "figure.png", "doc": "doc.xml"}`,
+					body, body)
+			},
+		},
+		{
 			name: "do_post_multipart",
 			content: `
 				POST http://{{ .HostPort }}/api/upload
@@ -118,12 +135,12 @@ John
 Content-Disposition: form-data; name="image"; filename="1.png"
 Content-Type: image/png
 
-< 1.png
+< @./test/1.png
 ------WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="doc"; filename="1.xml"
 Content-Type: text/xml
 
-<@utf-8 1.xml
+<@utf-8 /1.xml
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 `,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
@@ -154,9 +171,6 @@ Content-Type: text/xml
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			rc.SetFileLoader(func(name string) (io.ReadCloser, error) {
-				return os.Open(filepath.Join("./test", name))
-			})
 			result := rc.Do()
 			tt.expectedFunc(t, result)
 		})
@@ -170,6 +184,8 @@ type Env struct {
 var hostPort string
 
 func TestMain(m *testing.M) {
+	sf, _ := ssfs.NewServerSideFileSystem([]string{"/=./test"})
+	ssfs.SetDefault(sf)
 	lsnr, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(err)

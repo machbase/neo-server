@@ -29,7 +29,7 @@ var (
 type CacheOption struct {
 	MaxCapacity uint64 // max number of items
 	// TODO: ttlcache.WithMaxCost has a bug that introduces deadlock
-	// MaxCost     uint64 // max cost (memory consumptio in Bytes) of items
+	// MaxCost     uint64 // max cost (memory consumption in Bytes) of items
 }
 
 func StartCache(cap CacheOption) {

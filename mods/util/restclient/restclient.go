@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func Parse(content string) (*RestClient, error) {
@@ -37,13 +39,7 @@ type RestClient struct {
 	version         string      // HTTP version, e.g., "HTTP/1.1"
 	header          http.Header // HTTP headers
 	contentLines    []string
-
-	fileLoader FileLoader
-	result     *RestResult
-}
-
-func (rc *RestClient) SetFileLoader(loader FileLoader) {
-	rc.fileLoader = loader
+	result          *RestResult
 }
 
 func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -66,10 +62,6 @@ func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
 var restClientFileRegexp = regexp.MustCompile(`<(?:@([\w\-]+))?\s+([^\s]+)`)
 
 func (rc *RestClient) Do() *RestResult {
-	if rc.fileLoader == nil {
-		rc.fileLoader = osFileLoader
-	}
-
 	var client = &http.Client{Transport: rc}
 	var payload io.Reader
 	if rc.contentLines != nil && len(rc.contentLines) > 0 {
@@ -87,27 +79,45 @@ func (rc *RestClient) Do() *RestResult {
 		} else if strings.Contains(contentType, "multipart/form-data") {
 			readers := make([]io.Reader, len(rc.contentLines))
 			for i, line := range rc.contentLines {
-				if strings.HasPrefix(line, "< ") || strings.HasPrefix(line, "<@") {
-					match := restClientFileRegexp.FindStringSubmatch(line)
-					if len(match) != 3 {
-						readers[i] = strings.NewReader(line + "\n")
-					} else {
-						// match[1] charset, or empty
-						fd, e := rc.fileLoader(match[2]) // file path
-						if e != nil {
-							readers[i] = strings.NewReader(fmt.Sprintf("Error opening file %s: %v\n", match[2], e))
-							continue
-						}
-						defer fd.Close()
-						readers[i] = io.MultiReader(fd, strings.NewReader("\n"))
-					}
-				} else {
-					readers[i] = strings.NewReader(line + "\n")
+				r, err := rc.paseFileLine(line)
+				if err != nil {
+					readers[i] = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+					continue
 				}
+				if r == nil {
+					readers[i] = strings.NewReader(line + "\n")
+					continue
+				}
+				if closer, ok := r.(io.Closer); ok {
+					defer closer.Close()
+				}
+				readers[i] = r
 			}
 			payload = io.MultiReader(readers...)
 		} else {
-			payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+			if r, err := rc.paseFileLine(rc.contentLines[0]); err != nil {
+				payload = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+			} else if r != nil {
+				readers := make([]io.Reader, len(rc.contentLines))
+				if closer, ok := r.(io.Closer); ok {
+					defer closer.Close()
+				}
+				readers[0] = r
+				for i, line := range rc.contentLines[1:] {
+					r, err := rc.paseFileLine(line)
+					if err != nil {
+						readers[i+1] = strings.NewReader(fmt.Sprintf("Error opening file: %v", err))
+						continue
+					}
+					if closer, ok := r.(io.Closer); ok {
+						defer closer.Close()
+					}
+					readers = append(readers, r)
+				}
+				payload = io.MultiReader(readers...)
+			} else {
+				payload = strings.NewReader(strings.Join(rc.contentLines, "\n"))
+			}
 		}
 	}
 
@@ -129,10 +139,52 @@ func (rc *RestClient) Do() *RestResult {
 	return rc.result
 }
 
+func (rc *RestClient) paseFileLine(line string) (io.Reader, error) {
+	if slices.Contains([]string{"POST", "PUT", "PATCH"}, strings.ToUpper(rc.method)) {
+		match := restClientFileRegexp.FindStringSubmatch(strings.TrimSpace(line))
+		if len(match) != 3 {
+			return nil, nil
+		}
+	}
+	var ret io.Reader = nil
+	if strings.HasPrefix(line, "< ") || strings.HasPrefix(line, "<@") {
+		match := restClientFileRegexp.FindStringSubmatch(line)
+		if len(match) != 3 {
+			ret = strings.NewReader(line + "\n")
+		} else { // match[1] charset, or empty
+			var fileLoader FileLoader
+			var path = match[2]
+			if strings.HasPrefix(path, "@") {
+				path = path[1:]
+				fileLoader = OS_FileLoader
+			} else {
+				fileLoader = SSFS_FileLoader
+			}
+			in, e := fileLoader(path) // file path
+			if e != nil {
+				return nil, e
+			}
+			ret = io.MultiReader(in, strings.NewReader("\n"))
+		}
+	} else {
+		ret = strings.NewReader(line + "\n")
+	}
+	return ret, nil
+}
+
 type FileLoader func(string) (io.ReadCloser, error)
 
-func osFileLoader(path string) (io.ReadCloser, error) {
+func OS_FileLoader(path string) (io.ReadCloser, error) {
 	return os.Open(path)
+}
+
+func SSFS_FileLoader(path string) (io.ReadCloser, error) {
+	def := ssfs.Default()
+	ent, err := def.Get(path)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewBuffer(ent.Content)), nil
 }
 
 type RestResult struct {
