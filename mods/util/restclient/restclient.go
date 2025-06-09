@@ -371,6 +371,9 @@ func isPrintableContentType(contentType string) bool {
 }
 
 func (b *Body) String() string {
+	if b == nil || len(b.Content) == 0 {
+		return ""
+	}
 	if len(b.contentString) > 0 {
 		return b.contentString
 	}

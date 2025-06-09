@@ -106,6 +106,21 @@ func TestClient(t *testing.T) {
 			},
 		},
 		{
+			name: "do_post_formdata",
+			content: `
+				POST http://{{ .HostPort }}/api/no-content
+				Content-Type: applicatoin/json
+
+				{"q": "SELECT * FROM users where name = 'John'", "format": "json"}
+			`,
+			expectedFunc: func(t *testing.T, rr *RestResult) {
+				require.NoError(t, rr.Err)
+				body := rr.Body.String()
+				require.Equal(t, "HTTP/1.1 204 No Content", rr.StatusLine)
+				require.Equal(t, ``, body, body)
+			},
+		},
+		{
 			name: "do_post_by_file",
 			content: `
 				POST http://{{ .HostPort }}/api/echo
@@ -222,6 +237,9 @@ func TestMain(m *testing.M) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(o)
+		})
+		http.HandleFunc("/api/no-content", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
 		})
 		http.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
