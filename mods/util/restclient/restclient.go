@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
 func Parse(content string) (*RestClient, error) {
@@ -37,13 +39,7 @@ type RestClient struct {
 	version         string      // HTTP version, e.g., "HTTP/1.1"
 	header          http.Header // HTTP headers
 	contentLines    []string
-
-	fileLoader FileLoader
-	result     *RestResult
-}
-
-func (rc *RestClient) SetFileLoader(loader FileLoader) {
-	rc.fileLoader = loader
+	result          *RestResult
 }
 
 func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -66,10 +62,6 @@ func (rc *RestClient) RoundTrip(req *http.Request) (*http.Response, error) {
 var restClientFileRegexp = regexp.MustCompile(`<(?:@([\w\-]+))?\s+([^\s]+)`)
 
 func (rc *RestClient) Do() *RestResult {
-	if rc.fileLoader == nil {
-		rc.fileLoader = osFileLoader
-	}
-
 	var client = &http.Client{Transport: rc}
 	var payload io.Reader
 	if rc.contentLines != nil && len(rc.contentLines) > 0 {
@@ -129,10 +121,6 @@ func (rc *RestClient) Do() *RestResult {
 		}
 	}
 
-	bb, _ := io.ReadAll(payload)
-	fmt.Println("Request payload:", string(bb))
-	payload = bytes.NewReader(bb)
-
 	req, err := http.NewRequest(rc.method, rc.path, payload)
 	if err != nil {
 		return &RestResult{Err: err}
@@ -163,13 +151,20 @@ func (rc *RestClient) paseFileLine(line string) (io.Reader, error) {
 		match := restClientFileRegexp.FindStringSubmatch(line)
 		if len(match) != 3 {
 			ret = strings.NewReader(line + "\n")
-		} else {
-			// match[1] charset, or empty
-			fd, e := rc.fileLoader(match[2]) // file path
+		} else { // match[1] charset, or empty
+			var fileLoader FileLoader
+			var path = match[2]
+			if strings.HasPrefix(path, "@") {
+				path = path[1:]
+				fileLoader = OS_FileLoader
+			} else {
+				fileLoader = SSFS_FileLoader
+			}
+			in, e := fileLoader(path) // file path
 			if e != nil {
 				return nil, e
 			}
-			ret = io.MultiReader(fd, strings.NewReader("\n"))
+			ret = io.MultiReader(in, strings.NewReader("\n"))
 		}
 	} else {
 		ret = strings.NewReader(line + "\n")
@@ -179,8 +174,17 @@ func (rc *RestClient) paseFileLine(line string) (io.Reader, error) {
 
 type FileLoader func(string) (io.ReadCloser, error)
 
-func osFileLoader(path string) (io.ReadCloser, error) {
+func OS_FileLoader(path string) (io.ReadCloser, error) {
 	return os.Open(path)
+}
+
+func SSFS_FileLoader(path string) (io.ReadCloser, error) {
+	def := ssfs.Default()
+	ent, err := def.Get(path)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(bytes.NewBuffer(ent.Content)), nil
 }
 
 type RestResult struct {
