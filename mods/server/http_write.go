@@ -224,7 +224,7 @@ func (svr *httpd) handleWrite(ctx *gin.Context) {
 			if len(cols) > 0 && !slices.Equal(prevCols, cols) {
 				prevCols = cols
 				_hold := make([]string, len(cols))
-				for i := range desc.Columns {
+				for i := range cols {
 					_hold[i] = "?" // for prepared statement
 				}
 				insertQuery = fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(_hold, ","))
