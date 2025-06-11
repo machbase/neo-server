@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -31,6 +32,10 @@ func parse(content string) (*RestClient, error) {
 			continue
 		} else if strings.HasPrefix(line, "&") && !headersBegin {
 			ret.path += line
+			continue
+		} else if strings.HasPrefix(line, "HTTP/") && !headersBegin && ret.version == "" {
+			// This is the HTTP version line, e.g., "HTTP/1.1"
+			ret.version = line
 			continue
 		}
 
@@ -60,8 +65,26 @@ func parse(content string) (*RestClient, error) {
 	return ret, nil
 }
 
+var regexpVersion = regexp.MustCompile(`^(.*?)(?:\s+(HTTP/(?:\d|\d\.\d)))?$`)
+
 // parseCommandLine parses http request command line, contains the method, path, and optional version
 func parseCommandLine(line string) (method, path, version string) {
+	var params string
+	if strings.Contains(line, "?") {
+		parts := strings.SplitN(line, "?", 2)
+		if len(parts) > 1 {
+			toks := regexpVersion.FindStringSubmatch(parts[1])
+			if len(toks) > 1 {
+				params = toks[1]
+				if len(toks) > 2 {
+					version = toks[2]
+				}
+			} else {
+				params = parts[1]
+			}
+		}
+		line = parts[0]
+	}
 	parts := strings.Fields(line)
 	if len(parts) < 2 {
 		return "", "", ""
@@ -70,6 +93,9 @@ func parseCommandLine(line string) (method, path, version string) {
 	path = parts[1]
 	if len(parts) > 2 {
 		version = parts[2]
+	}
+	if params != "" {
+		path += "?" + params
 	}
 	return method, path, version
 }

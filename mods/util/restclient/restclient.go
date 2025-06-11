@@ -127,6 +127,8 @@ func (rc *RestClient) Do() *RestResult {
 	}
 	req.Header = rc.header
 	if rc.version != "" {
+		// This does not affect the HTTP version used by the client.
+		// The HTTP client code always uses either HTTP/1.1 or HTTP/2.
 		req.Proto = rc.version
 	}
 

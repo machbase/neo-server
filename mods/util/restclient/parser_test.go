@@ -3,7 +3,47 @@ package restclient
 import (
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+func TestParseCommandLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "method_and_path",
+			input:    "GET /api/data",
+			expected: []string{"GET", "/api/data", ""},
+		},
+		{
+			name:     "method_and_path",
+			input:    "GET /api/data HTTP/1.1",
+			expected: []string{"GET", "/api/data", "HTTP/1.1", ""},
+		},
+		{
+			name:     "method_and_path_with_query",
+			input:    "GET /api/data?p1=v1&p2=a",
+			expected: []string{"GET", "/api/data?p1=v1&p2=a", ""},
+		},
+		{
+			name:     "method_and_path_with_query_and_version",
+			input:    "GET /api/data?p1=v1&p2=a b HTTP/1.1",
+			expected: []string{"GET", "/api/data?p1=v1&p2=a b", "HTTP/1.1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			method, path, version := parseCommandLine(tt.input)
+			require.Equal(t, tt.expected[0], method, "method mismatch")
+			require.Equal(t, tt.expected[1], path, "path mismatch")
+			require.Equal(t, tt.expected[2], version, "version mismatch")
+		})
+	}
+}
 
 func TestParser(t *testing.T) {
 	tests := []struct {
@@ -34,6 +74,40 @@ func TestParser(t *testing.T) {
 			expectedMethod:  "GET",
 			expectedPath:    "/api/data",
 			expectedVersion: "HTTP/1.1",
+			expectedHeaders: http.Header{
+				"Host":       []string{"example.com"},
+				"User-Agent": []string{"TestClient"},
+			},
+			expectedContent: []string{},
+		},
+		{
+			name: "basic_get_params_version_oneline",
+			content: `
+				GET /api/data?param1=select count(*) from my_table&param2=value2 HTTP/1.0
+				Host: example.com
+				User-Agent: TestClient
+			`,
+			expectedMethod:  "GET",
+			expectedPath:    "/api/data?param1=select+count%28%2A%29+from+my_table&param2=value2",
+			expectedVersion: "HTTP/1.0",
+			expectedHeaders: http.Header{
+				"Host":       []string{"example.com"},
+				"User-Agent": []string{"TestClient"},
+			},
+			expectedContent: []string{},
+		},
+		{
+			name: "basic_get_params_version",
+			content: `
+				GET /api/data?param1=select count(*) from my_table
+					&param2=value2
+					HTTP/1.0
+				Host: example.com
+				User-Agent: TestClient
+			`,
+			expectedMethod:  "GET",
+			expectedPath:    "/api/data?param1=select+count%28%2A%29+from+my_table&param2=value2",
+			expectedVersion: "HTTP/1.0",
 			expectedHeaders: http.Header{
 				"Host":       []string{"example.com"},
 				"User-Agent": []string{"TestClient"},
