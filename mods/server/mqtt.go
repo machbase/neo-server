@@ -403,9 +403,16 @@ func (h *AuthHook) OnConnectAuthenticate(cl *mqtt.Client, pk packets.Packet) boo
 		clientId := cl.ID
 		username := string(pk.Connect.Username) // contains token
 		h.svr.log.Tracef("MQTT auth '%s' token '%s'", clientId, username)
-		if !strings.HasPrefix(username, clientId) {
-			return false
-		}
+		//
+		// Do not compare clientId with username
+		//
+		// If the token is shared with multiple clients,
+		// the username part should not compare with the client id.
+		// since the client id should be unique for each client.
+		//
+		// if !strings.HasPrefix(username, clientId) {
+		// 	return false
+		// }
 		pass, err := h.svr.authServer.ValidateClientToken(username)
 		if err != nil {
 			h.svr.log.Warn("fail to validate token", err)
