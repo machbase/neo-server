@@ -167,6 +167,15 @@ func HttpLoggerWithFilterAndFileConf(loggingName string, filter HttpLoggerFilter
 	}
 }
 
+var ignoreAccessLog = []struct {
+	pathSuffix string
+	method     string
+}{
+	{pathSuffix: "/healthz", method: http.MethodGet},
+	{pathSuffix: "/statz", method: http.MethodGet},
+	{pathSuffix: "/web/api/check", method: http.MethodGet},
+}
+
 func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
@@ -176,13 +185,10 @@ func logger(log logging.Log, filter HttpLoggerFilter) gin.HandlerFunc {
 		// Process request
 		c.Next()
 
-		// ignore healthz
-		if strings.HasSuffix(c.Request.URL.Path, "/healthz") && c.Request.Method == http.MethodGet {
-			return
-		}
-		// ignore statz
-		if strings.HasSuffix(c.Request.URL.Path, "/statz") && c.Request.Method == http.MethodGet {
-			return
+		for _, ignore := range ignoreAccessLog {
+			if c.Request.Method == ignore.method && strings.HasSuffix(c.Request.URL.Path, ignore.pathSuffix) {
+				return
+			}
 		}
 
 		// Stop timer
