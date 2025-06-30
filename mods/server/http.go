@@ -917,7 +917,8 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 			case api.DataTypeInt64:
 				ret[col.Name] = printer.Sprintf("%d", value)
 			case api.DataTypeFloat64:
-				if valueType == "dur" {
+				switch valueType {
+				case "dur":
 					switch val := value.(type) {
 					case float64:
 						ret[col.Name] = printer.Sprintf("%s", time.Duration(val))
@@ -926,7 +927,7 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 					default:
 						ret[col.Name] = printer.Sprintf("%v", value)
 					}
-				} else if valueType == "i" {
+				case "i":
 					switch val := value.(type) {
 					case float64:
 						ret[col.Name] = printer.Sprintf("%d", int64(val))
@@ -935,7 +936,7 @@ func (svr *httpd) handleStatz(ctx *gin.Context) {
 					default:
 						ret[col.Name] = printer.Sprintf("%v", value)
 					}
-				} else {
+				default:
 					ret[col.Name] = printer.Sprintf("%f", value)
 				}
 			case api.DataTypeString:
