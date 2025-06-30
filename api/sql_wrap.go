@@ -85,29 +85,32 @@ func (r *WrappedSqlResult) Message() string {
 	switch r.sqlType {
 	case SQLStatementTypeInsert:
 		rowsCount := r.RowsAffected()
-		if rowsCount == 0 {
+		switch rowsCount {
+		case 0:
 			return "no rows inserted."
-		} else if rowsCount == 1 {
+		case 1:
 			return "a row inserted."
-		} else {
+		default:
 			return fmt.Sprintf("%d rows inserted.", rowsCount)
 		}
 	case SQLStatementTypeUpdate:
 		rowsCount := r.RowsAffected()
-		if rowsCount == 0 {
+		switch rowsCount {
+		case 0:
 			return "no rows updated."
-		} else if rowsCount == 1 {
+		case 1:
 			return "a row updated."
-		} else {
+		default:
 			return fmt.Sprintf("%d rows updated.", rowsCount)
 		}
 	case SQLStatementTypeDelete:
 		rowsCount := r.RowsAffected()
-		if rowsCount == 0 {
+		switch rowsCount {
+		case 0:
 			return "no rows deleted."
-		} else if rowsCount == 1 {
+		case 1:
 			return "a row deleted."
-		} else {
+		default:
 			return fmt.Sprintf("%d rows deleted.", rowsCount)
 		}
 	case SQLStatementTypeCreate:
@@ -194,7 +197,7 @@ func (r *WrappedSqlRows) Columns() (Columns, error) {
 	for i, col := range cols {
 		ret[i] = &Column{
 			Name:     col.Name(),
-			DataType: scanTypeToDataType(col.ScanType().String()),
+			DataType: scanTypeToDataType(col),
 		}
 		if nullable, ok := col.Nullable(); ok {
 			ret[i].Nullable = nullable
@@ -227,8 +230,12 @@ func (r *WrappedSqlRows) Err() error {
 	return r.sqlRows.Err()
 }
 
-func scanTypeToDataType(sqlType string) DataType {
-	switch sqlType {
+func scanTypeToDataType(col *sql.ColumnType) DataType {
+	switch col.DatabaseTypeName() {
+	case "VARCHAR", "TEXT", "NVARCHAR":
+		return DataTypeString
+	}
+	switch col.ScanType().String() {
 	case "bool", "sql.NullBool":
 		return DataTypeBoolean
 	case "int8", "sql.NullByte":

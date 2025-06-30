@@ -120,11 +120,12 @@ func (qc *Query) Execute(ctx context.Context, conn Conn, sqlText string, args ..
 	if qc.End != nil {
 		defer func() {
 			if qc.err == nil {
-				if qc.rowNum == 0 {
+				switch qc.rowNum {
+				case 0:
 					qc.userMessage = "no rows fetched."
-				} else if qc.rowNum == 1 {
+				case 1:
 					qc.userMessage = "a row fetched."
-				} else {
+				default:
 					qc.userMessage = fmt.Sprintf("%d rows fetched.", qc.rowNum)
 				}
 			} else {
