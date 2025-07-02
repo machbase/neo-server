@@ -11,6 +11,7 @@ import (
 
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/api/machcli"
+	"github.com/machbase/neo-server/v8/mods/bridge/connector/duckdb"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mssql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/mysql"
 	"github.com/machbase/neo-server/v8/mods/bridge/connector/postgres"
@@ -84,6 +85,10 @@ func New(name string) (api.Database, error) {
 		dbType = "mysql"
 		dbConn = strings.TrimPrefix(name, "mysql,")
 		db, err = mysql.Connect(dbConn)
+	} else if strings.HasPrefix(name, "duckdb,") {
+		dbType = "duckdb"
+		dbConn = strings.TrimPrefix(name, "duckdb,")
+		db, err = duckdb.Connect(dbConn)
 	}
 	if err != nil {
 		return nil, err
@@ -107,16 +112,14 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 	switch driverName {
 	case "sqlite":
 		db, err = sqlite.Connect(dataSource)
-		break
 	case "mssql":
 		db, err = mssql.Connect(dataSource)
-		break
 	case "postgres", "postgresql":
 		db, err = postgres.Connect(dataSource)
-		break
 	case "mysql":
 		db, err = mysql.Connect(dataSource)
-		break
+	case "duckdb":
+		db, err = duckdb.Connect(dataSource)
 	case "machbase":
 		var host string
 		var port int
