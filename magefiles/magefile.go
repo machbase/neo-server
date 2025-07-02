@@ -284,11 +284,14 @@ func Protoc() error {
 
 	for _, mod := range args {
 		fmt.Printf("protoc regen api/proto/%s.proto...\n", mod)
-		sh.RunV("protoc", "-I", "api/proto", mod+".proto",
+		err := sh.RunV("protoc", "-I", "api/proto", mod+".proto",
 			"--experimental_allow_proto3_optional",
 			fmt.Sprintf("--go_out=./api/%s", mod), "--go_opt=paths=source_relative",
 			fmt.Sprintf("--go-grpc_out=./api/%s", mod), "--go-grpc_opt=paths=source_relative",
 		)
+		if err != nil {
+			return fmt.Errorf("error: protoc failed for %s: %w", mod, err)
+		}
 	}
 	return nil
 }

@@ -19,7 +19,7 @@ jobs:
           - { platform: ubuntu-22.04, arch: x64, os: linux }
           - { platform: ubuntu-22.04-arm, arch: arm64, os: linux }
           - { platform: ubuntu-22.04, arch: arm32, os: linux }
-          - { platform: windows-2019, arch: x64, os: windows }
+          - { platform: windows-2022, arch: x64, os: windows }
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
