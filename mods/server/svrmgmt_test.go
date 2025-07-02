@@ -1,3 +1,8 @@
+//go:debug rsa1024min=0
+//
+// TODO: https://pkg.go.dev/crypto/rsa#hdr-Minimum_key_size
+//       Minimum key size is 1024 bits, but we allow 512 bits for testing purposes.
+
 package server_test
 
 import (
