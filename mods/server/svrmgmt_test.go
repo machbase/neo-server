@@ -10,13 +10,13 @@ import (
 )
 
 func TestClientTokenRSA(t *testing.T) {
-	rc, err := rsa.GenerateKey(rand.Reader, 512)
+	rc, err := rsa.GenerateKey(rand.Reader, 4096)
 	require.Nil(t, err)
 
 	token, err := server.GenerateClientToken("abcdefg", rc, "b")
 	require.Nil(t, err)
 	require.True(t, len(token) > 0)
-	t.Logf("Token: %s", token)
+	// t.Logf("Token: %s", token)
 
 	pass, err := server.VerifyClientToken(token, &rc.PublicKey)
 	require.Nil(t, err)
