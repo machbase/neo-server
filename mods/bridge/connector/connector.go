@@ -107,16 +107,12 @@ func NewWithDataSource(driverName string, dataSource string) (api.Database, []ap
 	switch driverName {
 	case "sqlite":
 		db, err = sqlite.Connect(dataSource)
-		break
 	case "mssql":
 		db, err = mssql.Connect(dataSource)
-		break
 	case "postgres", "postgresql":
 		db, err = postgres.Connect(dataSource)
-		break
 	case "mysql":
 		db, err = mysql.Connect(dataSource)
-		break
 	case "machbase":
 		var host string
 		var port int

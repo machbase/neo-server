@@ -250,11 +250,12 @@ func (s *Server) rewriteMachbaseConf(confpath string) error {
 			continue
 		}
 		key = strings.TrimSpace(key)
-		if key == "PORT_NO" {
+		switch key {
+		case "PORT_NO":
 			newConfLines = append(newConfLines, fmt.Sprintf("PORT_NO = %d", s.Machbase.PORT_NO))
-		} else if key == "BIND_IP_ADDRESS" {
+		case "BIND_IP_ADDRESS":
 			newConfLines = append(newConfLines, fmt.Sprintf("BIND_IP_ADDRESS = %s", s.Machbase.BIND_IP_ADDRESS))
-		} else {
+		default:
 			newConfLines = append(newConfLines, line)
 		}
 	}

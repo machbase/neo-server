@@ -430,7 +430,8 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 	param.TableName = strings.ToUpper(param.TableName)
 
 	// limit count
-	if param.TableName == "TAG" {
+	switch param.TableName {
+	case "TAG":
 		if param.Limit != "" {
 			if check := svr.checkSelectValueLimit(ctx, param.Limit, currentPlan.limitSelectValue); check != "" {
 				rsp.Message = check
@@ -440,14 +441,15 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 		} else { // generally limit is received as a param?
 			param.Limit = fmt.Sprintf("%d", currentPlan.limitSelectValue)
 		}
-	} else if param.TableName == "TAGDATA" {
+	case "TAGDATA":
 		if param.Limit == "" {
 			param.Limit = fmt.Sprintf("%d", EDGE_SELECT_LIMIT) //default 5000, 10000
 		}
 	}
 
 	// get direction type
-	if param.TableName == "TAG" {
+	switch param.TableName {
+	case "TAG":
 		if param.Direction != "" {
 			if param.Direction != "0" && param.Direction != "1" {
 				svr.log.Info("direction range over")
@@ -459,7 +461,7 @@ func (svr *httpd) GetRawData(ctx *gin.Context) {
 			// TODO: remove this after solving nfx #128
 			param.Direction = "0"
 		}
-	} else if param.TableName == "TAGDATA" {
+	case "TAGDATA":
 		param.Direction = "0"
 	}
 
@@ -669,7 +671,8 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 
 	columnList := []string{"TIME", "NAME"}
 	var sqlText string
-	if param.TableName == "TAG" {
+	switch param.TableName {
+	case "TAG":
 		sqlText += "SELECT NAME, "
 		sqlText += makeTimeColumn(makeDateTrunc(param.IntervalType, "TIME", param.IntervalValue), param.DateFormat, "TIME") + ", "
 		sqlText += makeCalculator("VALUE", param.CalcMode) + " AS VALUE "
@@ -699,7 +702,7 @@ func (svr *httpd) GetCalculateData(ctx *gin.Context) {
 		}
 		sqlText += makeLimit(param.Offset, param.Limit)
 
-	} else if param.TableName == "TAGDATA" { // Use TAGDATA table, so there is no need to use ROLLUP
+	case "TAGDATA": // Use TAGDATA table, so there is no need to use ROLLUP
 		sqlText = fmt.Sprintf(SqlTidy(`
 		SELECT NAME, %s, %s(VALUE) AS VALUE
 		FROM TAGDATA

@@ -38,9 +38,11 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 
 	var err error
 	req := &QueryRequest{Precision: -1}
-	if ctx.Request.Method == http.MethodPost {
+	switch ctx.Request.Method {
+	case http.MethodPost:
 		contentType := ctx.ContentType()
-		if contentType == "application/json" {
+		switch contentType {
+		case "application/json":
 			req.Timeformat = "ns"
 			req.TimeLocation = "UTC"
 			req.Format = "json"
@@ -53,7 +55,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
-		} else if contentType == "application/x-www-form-urlencoded" {
+		case "application/x-www-form-urlencoded":
 			req.SqlText = ctx.PostForm("q")
 			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
 			req.TimeLocation = strString(ctx.PostForm("tz"), "UTC")
@@ -68,13 +70,13 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 			req.Transpose = strBool(ctx.PostForm("transpose"), false)
 			req.RowsFlatten = strBool(ctx.PostForm("rowsFlatten"), false)
 			req.RowsArray = strBool(ctx.PostForm("rowsArray"), false)
-		} else {
+		default:
 			rsp.Reason = fmt.Sprintf("unsupported content-type: %s", contentType)
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
-	} else if ctx.Request.Method == http.MethodGet {
+	case http.MethodGet:
 		req.SqlText = ctx.Query("q")
 		req.Timeformat = strString(ctx.Query("timeformat"), "ns")
 		req.TimeLocation = strString(ctx.Query("tz"), "UTC")
@@ -777,7 +779,8 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 	var codeReader io.Reader
 	var input io.Reader
 	var debug = false
-	if ctx.Request.Method == http.MethodPost {
+	switch ctx.Request.Method {
+	case http.MethodPost:
 		if script := ctx.Query(TQL_SCRIPT_PARAM); script == "" {
 			if debug {
 				b, _ := io.ReadAll(ctx.Request.Body)
@@ -795,7 +798,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			params.Del(TQL_TOKEN_PARAM)
 			input = ctx.Request.Body
 		}
-	} else if ctx.Request.Method == http.MethodGet {
+	case http.MethodGet:
 		if script := ctx.Query(TQL_SCRIPT_PARAM); script != "" {
 			codeReader = bytes.NewBufferString(script)
 			params.Del(TQL_SCRIPT_PARAM)
@@ -806,7 +809,7 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
 		}
-	} else {
+	default:
 		rsp.Reason = "unsupported method"
 		rsp.Elapse = time.Since(tick).String()
 		ctx.JSON(http.StatusMethodNotAllowed, rsp)

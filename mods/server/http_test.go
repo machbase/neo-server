@@ -668,17 +668,18 @@ func TestHttpWrite(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var payload io.Reader
 			var compressed bool
-			if tc.payloadType == "application/json" {
+			switch tc.payloadType {
+			case "application/json":
 				b, _ := json.Marshal(tc.payloadReq)
 				payload = bytes.NewBuffer(b)
-			} else if tc.payloadType == "application/x-ndjson" {
+			case "application/x-ndjson":
 				b := &bytes.Buffer{}
 				enc := json.NewEncoder(b)
 				for _, row := range tc.payloadReq.([]any) {
 					enc.Encode(row)
 				}
 				payload = b
-			} else if tc.payloadType == "text/csv" {
+			case "text/csv":
 				var w io.Writer
 				b := &bytes.Buffer{}
 				if strings.Contains(tc.queryParams, "compress=gzip") {

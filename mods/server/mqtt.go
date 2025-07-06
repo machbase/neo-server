@@ -577,7 +577,8 @@ func logFilter(name string, ctx context.Context, r slog.Record) bool {
 	if !slices.Contains([]string{"mqttd", "mqttd-persist"}, name) {
 		return true
 	}
-	if name == "mqttd" {
+	switch name {
+	case "mqttd":
 		if strings.Contains(r.Message, "mqtt starting") || strings.Contains(r.Message, "mqtt server st") {
 			return false
 		}
@@ -594,7 +595,7 @@ func logFilter(name string, ctx context.Context, r slog.Record) bool {
 			}
 			return true
 		})
-	} else if name == "mqttd-persist" {
+	case "mqttd-persist":
 		if r.Level < slog.LevelInfo {
 			return false
 		}
