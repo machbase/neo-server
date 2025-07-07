@@ -316,6 +316,10 @@ func (s *Server) StopServer(m *testing.M) {
 	}
 }
 
+func (s *Server) MachPort() int {
+	return s.machsvrPort
+}
+
 func (s *Server) CreateTestTables() error {
 	return CreateTestTables(s.machsvrDatabase)
 }
