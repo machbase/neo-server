@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/machbase/neo-server/api/machrpc"
+	"github.com/machbase/neo-server/v8/api/machrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
