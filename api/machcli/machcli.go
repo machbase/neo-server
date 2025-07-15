@@ -544,18 +544,24 @@ func (stmt *Stmt) bindParams(args ...any) error {
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_STRING
 			bStr := []byte(val)
-			value = (unsafe.Pointer)(&bStr[0])
+			if len(bStr) > 0 {
+				value = (unsafe.Pointer)(&bStr[0])
+			}
 			valueLen = len(bStr)
 		case *string:
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_STRING
 			bStr := []byte(*val)
-			value = (unsafe.Pointer)(&bStr[0])
+			if len(bStr) > 0 {
+				value = (unsafe.Pointer)(&bStr[0])
+			}
 			valueLen = len(bStr)
 		case []byte:
 			cType = mach.MACHCLI_C_TYPE_CHAR
 			sqlType = mach.MACHCLI_SQL_TYPE_BINARY
-			value = (unsafe.Pointer)(&val[0])
+			if len(val) > 0 {
+				value = (unsafe.Pointer)(&val[0])
+			}
 			valueLen = len(val)
 		}
 		if err := mach.CliBindParam(stmt.handle, idx, cType, sqlType, value, valueLen); err != nil {
