@@ -100,11 +100,12 @@ func WriteLineProtocol(ctx context.Context, conn Conn, dbName string, descColumn
 	ret := &InsertResult{
 		rowsAffected: numRows,
 	}
-	if numRows == 0 {
+	switch numRows {
+	case 0:
 		ret.message = "no rows inserted"
-	} else if numRows == 1 {
+	case 1:
 		ret.message = "a row inserted"
-	} else {
+	default:
 		ret.message = fmt.Sprintf("%d rows inserted", numRows)
 	}
 	return ret

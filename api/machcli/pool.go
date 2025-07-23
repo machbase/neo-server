@@ -82,14 +82,11 @@ func (p *Pool[T]) Put(item T) error {
 		p.mu.Unlock()
 	}()
 
-	var anyItem any
-	anyItem = item
-
 	if len(p.items) >= p.Capacity {
 		if err := p.Destructor(item); err != nil {
 			return err
 		}
-	} else if evicted, ok := anyItem.(PoolItem); ok && evicted.ShouldEvict() {
+	} else if evicted, ok := (any(item)).(PoolItem); ok && evicted.ShouldEvict() {
 		if err := p.Destructor(item); err != nil {
 			return err
 		}

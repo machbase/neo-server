@@ -184,9 +184,10 @@ func (p *CommandTokenizer) nextToken() string {
 func (p *CommandTokenizer) Tokens() []string {
 	ret := []string{p.verb}
 	var flagsTable map[string]bool
-	if p.verb == "sql" {
+	switch p.verb {
+	case "sql":
 		flagsTable = sqlFlags
-	} else if p.verb == "explain" {
+	case "explain":
 		flagsTable = explainFlags
 	}
 	for tok := p.nextToken(); tok != ""; tok = p.nextToken() {

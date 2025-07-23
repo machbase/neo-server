@@ -963,19 +963,21 @@ func (r *Rows) Message() string {
 	case "SELECT":
 		return "Select successfully."
 	case "INSERT":
-		if r.rowsCount == 0 {
+		switch r.rowsCount {
+		case 0:
 			return "no rows inserted."
-		} else if r.rowsCount == 1 {
+		case 1:
 			return "a row inserted."
-		} else {
+		default:
 			return fmt.Sprintf("%d rows inserted.", r.rowsCount)
 		}
 	case "DELETE":
-		if r.rowsCount == 0 {
+		switch r.rowsCount {
+		case 0:
 			return "no rows deleted."
-		} else if r.rowsCount == 1 {
+		case 1:
 			return "a row deleted."
-		} else {
+		default:
 			return fmt.Sprintf("%d rows deleted.", r.rowsCount)
 		}
 	case "CREATE":
@@ -1243,9 +1245,10 @@ func (a *Appender) Flush() error {
 }
 
 func (a *Appender) Append(values ...any) error {
-	if a.tableType == api.TableTypeTag {
+	switch a.tableType {
+	case api.TableTypeTag:
 		return a.append(values...)
-	} else if a.tableType == api.TableTypeLog {
+	case api.TableTypeLog:
 		var valuesWithTime []any
 		if len(values) == len(a.columns) {
 			valuesWithTime = values
@@ -1253,7 +1256,7 @@ func (a *Appender) Append(values ...any) error {
 			valuesWithTime = append([]any{time.Time{}}, values...)
 		}
 		return a.append(valuesWithTime...)
-	} else {
+	default:
 		return fmt.Errorf("%s can not be appended", a.tableName)
 	}
 }
