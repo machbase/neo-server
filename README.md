@@ -41,6 +41,26 @@ docker pull machbase/machbase-neo
 
 https://hub.docker.com/r/machbase/machbase-neo
 
+### Build using docker
+
+It is recommended to build machbase-neo using a container to ensure a consistent and reproducible build environment.
+
+- Checkout `machbase/neo-server`
+
+- Prepare build container
+
+```sh
+docker build -t centos-build-env -f ./scripts/CentOS7.Dockerfile .
+```
+
+- Run build container
+
+```sh
+docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
+```
+
+- Find the executable binary in `./tmp/machbase-neo` and pakcage zip file in `./packages`.
+
 ## Build from Sources
 
 - Install Go 1.23

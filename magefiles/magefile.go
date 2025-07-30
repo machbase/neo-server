@@ -312,22 +312,23 @@ func PackageX(targetOS string, targetArch string) error {
 	}
 	os.MkdirAll(filepath.Join("packages", bdir), 0755)
 
-	if targetOS == "windows" {
-		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
+	switch targetOS {
+	case "windows":
+		if err := copyFile(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
-		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
 			return err
 		}
-	} else if targetOS == "darwin" {
-		if err := os.Rename(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
+	case "darwin":
+		if err := copyFile(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
-		if err := os.Rename(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
 			return err
 		}
-	} else {
-		if err := os.Rename("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo")); err != nil {
+	default:
+		if err := copyFile("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
 	}
@@ -402,6 +403,26 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 		if _, err := io.Copy(w, fd); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, srcFile)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -520,10 +541,11 @@ func InstallNeoLauncherX(version string) error {
 	if err := unzip(dst, "./tmp"); err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
-		os.Rename("./tmp/neo-launcher.exe", "./tmp/neow.exe")
-	} else if runtime.GOOS == "darwin" {
-		os.Rename("./tmp/neo-launcher.app", "./tmp/neow.app")
+	switch runtime.GOOS {
+	case "windows":
+		copyFile("./tmp/neo-launcher.exe", "./tmp/neow.exe")
+	case "darwin":
+		copyFile("./tmp/neo-launcher.app", "./tmp/neow.app")
 	}
 	return nil
 }

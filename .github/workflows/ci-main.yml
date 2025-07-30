@@ -16,8 +16,8 @@ jobs:
         include:
           - { platform: macos-14, arch: arm64, os: macos }
           - { platform: macos-13, arch: x64, os: macos }
-          - { platform: ubuntu-22.04, arch: x64, os: linux }
-          - { platform: ubuntu-22.04-arm, arch: arm64, os: linux }
+          - { platform: ubuntu-24.04, arch: x64, os: linux }
+          - { platform: ubuntu-24.04-arm, arch: arm64, os: linux }
           - { platform: ubuntu-22.04, arch: arm32, os: linux }
           - { platform: windows-2022, arch: x64, os: windows }
     runs-on: ${{ matrix.platform }}
@@ -33,7 +33,14 @@ jobs:
           msystem: mingw64
           install: >-
             mingw-w64-x86_64-gcc
+      - name: Build Docker Image
+        if: matrix.os == 'linux' && matrix.arch != 'arm32'
+        run: docker build -t ubuntu18-build-env -f ./scripts/Ubuntu18.04.Dockerfile .
+      - name: Run Container
+        if: matrix.os == 'linux' && matrix.arch != 'arm32'
+        run: docker run -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env
       - name: Setup go compiler
+        if: matrix.os != 'linux' || matrix.arch == 'arm32'
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
@@ -44,18 +51,19 @@ jobs:
         with:
           version: 0.11.0
       - name: Install Neo Web
+        if: matrix.os != 'linux' || matrix.arch == 'arm32'
         run: go run mage.go InstallNeoWeb
       - name: Install Neo Launcher
-        if: matrix.os == 'macos' || matrix.os == 'windows'
+        if: matrix.os != 'linux'
         run: go run mage.go InstallNeoLauncher
       - name: Build
-        if: matrix.arch != 'arm32'
+        if: matrix.os != 'linux'
         run: go run mage.go test machbase-neo
       - name: Build arm32
         if: matrix.arch == 'arm32'
         run: go run mage.go buildx machbase-neo linux arm packagex linux arm
       - name: Codecov
-        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        if: matrix.os == 'macos' && matrix.arch == 'arm64'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -81,7 +89,7 @@ jobs:
           files: |
             machbase-neo.exe
       - name: Package
-        if: matrix.arch != 'arm32'
+        if: matrix.os != 'linux'
         run: go run mage.go package
       - name: Upload Artifact
         if: startsWith(github.ref, 'refs/tags/v') != true
