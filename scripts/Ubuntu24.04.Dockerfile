@@ -23,8 +23,14 @@ RUN apt-get update && \
 WORKDIR /app
 COPY . /app
 
-RUN /usr/local/go/bin/go mod download && \
-    /usr/local/go/bin/go run mage.go install-neo-web
+RUN groupadd -g 1000 builder && \
+    useradd -u 1000 -g builder -m builder && \
+    chown -R builder:builder /app
 
-CMD ["/usr/local/go/bin/go", "run", "mage.go", "machbase-neo", "package"]
+USER builder
+ENV PATH="/usr/local/go/bin:${PATH}"
 
+RUN go mod download && \
+    go run mage.go install-neo-web
+
+CMD ["go", "run", "mage.go", "test", "machbase-neo", "package"]
