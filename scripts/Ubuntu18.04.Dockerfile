@@ -17,20 +17,14 @@ RUN apt-get update && \
     echo "Install Go" && \
     wget -L https://go.dev/dl/go1.24.5.linux-$ARCH.tar.gz -O /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
-    rm -f /tmp/go.tar.gz && \
-    echo 'export PATH=$PATH:/usr/local/go/bin' >> /root/.bashrc
+    rm -f /tmp/go.tar.gz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /app
 COPY . /app
 
-RUN groupadd -g 1000 builder && \
-    useradd -u 1000 -g builder -m builder && \
-    chown -R builder:builder /app
-
-USER builder
-ENV PATH="/usr/local/go/bin:${PATH}"
-
 RUN go mod download && \
     go run mage.go install-neo-web
 
-CMD ["go", "run", "mage.go", "test", "machbase-neo", "package"]
+CMD ["go", "run", "mage.go", "machbase-neo", "package"]
