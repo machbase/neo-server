@@ -51,9 +51,11 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Docker Build and Push
-        uses: docker/build-push-action@v4
-        with:
-            file: ./scripts/machbase-neo.Dockerfile
-            platforms: linux/arm64,linux/amd64
-            push: true
-            tags: ${{ steps.check_stable.outputs.tags }}
+        shell: bash
+        run: |
+          docker buildx build --push \
+          --platform linux/arm64,linux/amd64 \
+          --userns ${{ secrets.DOCKER_USERNAME }} \
+          --tag ${{ steps.check_stable.outputs.tags }} \
+          -f ./scripts/machbase-neo.Dockerfile \
+          .
