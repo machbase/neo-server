@@ -12,10 +12,7 @@ jobs:
   build:
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { platform: ubuntu-24.04, arch: x64, os: linux }
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +31,20 @@ jobs:
         id: get_version
         run: echo "ver=$(go run mage.go buildversion)" >> $GITHUB_OUTPUT
         shell: bash
+      - name: Check if stable version
+        id: check_stable
+        run: |
+          VERSION="${{ steps.get_version.outputs.ver }}"
+          if [[ "$VERSION" != *"snapshot"* && "$VERSION" != *"rc"* ]]; then
+            echo "is_stable=true" >> $GITHUB_OUTPUT
+            echo "tags=machbase/machbase-neo:$VERSION,machbase/machbase-neo:latest" >> $GITHUB_OUTPUT
+            echo "This is a stable version: $VERSION - will tag as latest"
+          else
+            echo "is_stable=false" >> $GITHUB_OUTPUT
+            echo "tags=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
+            echo "This is a pre-release version: $VERSION - will not tag as latest"
+          fi
+        shell: bash
       - name: Docker Login
         uses: docker/login-action@v2
         with:
@@ -41,10 +52,8 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Docker Build and Push
         uses: docker/build-push-action@v4
-        if: (contains(github.ref, 'snapshot') || contains(github.ref, 'rc'))
         with:
             file: ./scripts/machbase-neo.Dockerfile
             platforms: linux/arm64,linux/amd64
             push: true
-            tags: |
-              machbase/machbase-neo:${{ steps.get_version.outputs.ver }}
+            tags: ${{ steps.check_stable.outputs.tags }}
