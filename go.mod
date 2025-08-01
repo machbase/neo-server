@@ -33,7 +33,7 @@ require (
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
 	github.com/mattn/go-colorable v0.1.13
-	github.com/mattn/go-sqlite3 v1.14.17
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/microsoft/go-mssqldb v1.5.0
 	github.com/mochi-mqtt/server/v2 v2.7.9
 	github.com/nats-io/nats.go v1.36.0

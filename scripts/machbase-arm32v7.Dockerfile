@@ -4,7 +4,7 @@
 # sudo apt-get install qemu-system-x86 binfmt-support qemu-user-static
 #
 ## Build the machbase-neo image with:
-# docker build --platform linux/arm/v7 -t machbase-neo-arm32v7 -f ./scripts/neo_arm32v7.Dockerfile .
+# docker build --platform linux/arm/v7 -t machbase-neo-arm32v7 -f ./scripts/machbase-arm32v7.Dockerfile .
 #
 ## Run the machbase-neo container with:
 # docker run -p 15654:5654 -p 15656:5656 --platform linux/arm/v7 machbase-neo-arm32v7
