@@ -534,7 +534,13 @@ func InstallNeoLauncherX(version string) error {
 			return err
 		}
 	} else {
-		if err := sh.RunV("curl", "-o", dst, "-L", url); err != nil {
+		if err := sh.RunV("curl",
+			"-fsSL",
+			"--retry", "3",
+			"--retry-delay", "5",
+			"--connect-timeout", "10",
+			"-o", dst,
+			"-L", url); err != nil {
 			return err
 		}
 	}
