@@ -36,11 +36,13 @@ jobs:
           VERSION="${{ steps.get_version.outputs.ver }}"
           if [[ "$VERSION" != *"snapshot"* && "$VERSION" != *"rc"* ]]; then
             echo "is_stable=true" >> $GITHUB_OUTPUT
-            echo "tags=machbase/machbase-neo:$VERSION,machbase/machbase-neo:latest" >> $GITHUB_OUTPUT
+            echo "version_tag=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
+            echo "latest_tag=machbase/machbase-neo:latest" >> $GITHUB_OUTPUT
             echo "This is a stable version: $VERSION - will tag as latest"
           else
             echo "is_stable=false" >> $GITHUB_OUTPUT
-            echo "tags=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
+            echo "version_tag=machbase/machbase-neo:$VERSION" >> $GITHUB_OUTPUT
+            echo "latest_tag=" >> $GITHUB_OUTPUT
             echo "This is a pre-release version: $VERSION - will not tag as latest"
           fi
         shell: bash
@@ -52,8 +54,17 @@ jobs:
       - name: Docker Build and Push
         shell: bash
         run: |
-          docker buildx build --push \
-          --platform linux/arm64,linux/amd64 \
-          --tag ${{ steps.check_stable.outputs.tags }} \
-          -f ./scripts/machbase-neo.Dockerfile \
-          .
+          if [[ "${{ steps.check_stable.outputs.is_stable }}" == "true" ]]; then
+            docker buildx build --push \
+            --platform linux/arm64,linux/amd64 \
+            --tag ${{ steps.check_stable.outputs.version_tag }} \
+            --tag ${{ steps.check_stable.outputs.latest_tag }} \
+            -f ./scripts/machbase-neo.Dockerfile \
+            .
+          else
+            docker buildx build --push \
+            --platform linux/arm64,linux/amd64 \
+            --tag ${{ steps.check_stable.outputs.version_tag }} \
+            -f ./scripts/machbase-neo.Dockerfile \
+            .
+          fi
