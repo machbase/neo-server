@@ -33,14 +33,7 @@ jobs:
           msystem: mingw64
           install: >-
             mingw-w64-x86_64-gcc
-      - name: Build Docker Image
-        if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        run: docker build -t ubuntu18-build-env -f ./scripts/Ubuntu18.04.Dockerfile .
-      - name: Run Container
-        if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        run: docker run -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env
       - name: Setup go compiler
-        if: matrix.os != 'linux' || matrix.arch == 'arm32'
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
@@ -56,14 +49,23 @@ jobs:
       - name: Install Neo Launcher
         if: matrix.os != 'linux'
         run: go run mage.go InstallNeoLauncher
+      - name: Test
+        if: matrix.arch != 'arm32'
+        run: go run mage.go test
+      - name: Build Docker Image
+        if: matrix.os == 'linux' && matrix.arch != 'arm32'
+        run: docker build -t ubuntu18-build-env -f ./scripts/Ubuntu18.04.Dockerfile .
+      - name: Run Container
+        if: matrix.os == 'linux' && matrix.arch != 'arm32'
+        run: docker run -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env
       - name: Build
         if: matrix.os != 'linux'
-        run: go run mage.go test machbase-neo
+        run: go run mage.go machbase-neo
       - name: Build arm32
         if: matrix.arch == 'arm32'
         run: go run mage.go buildx machbase-neo linux arm packagex linux arm
       - name: Codecov
-        if: matrix.os == 'macos' && matrix.arch == 'arm64'
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
