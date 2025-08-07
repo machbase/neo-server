@@ -314,21 +314,21 @@ func PackageX(targetOS string, targetArch string) error {
 
 	switch targetOS {
 	case "windows":
-		if err := copyFile(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe"), 0755); err != nil {
 			return err
 		}
-		if err := copyFile(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe"), 0755); err != nil {
 			return err
 		}
 	case "darwin":
-		if err := copyFile(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo"), 0755); err != nil {
 			return err
 		}
-		if err := copyFile(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
+		if err := copyFile(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app"), 0755); err != nil {
 			return err
 		}
 	default:
-		if err := copyFile("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo")); err != nil {
+		if err := copyFile("./tmp/machbase-neo", filepath.Join("./packages", bdir, "machbase-neo"), 0755); err != nil {
 			return err
 		}
 	}
@@ -407,14 +407,14 @@ func archiveAddEntry(zipWriter *zip.Writer, entry string, prefix string) error {
 	return nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string, fileMode os.FileMode) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
 
-	destFile, err := os.Create(dst)
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileMode)
 	if err != nil {
 		return err
 	}
@@ -549,9 +549,9 @@ func InstallNeoLauncherX(version string) error {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		copyFile("./tmp/neo-launcher.exe", "./tmp/neow.exe")
+		copyFile("./tmp/neo-launcher.exe", "./tmp/neow.exe", 0755)
 	case "darwin":
-		copyFile("./tmp/neo-launcher.app", "./tmp/neow.app")
+		copyFile("./tmp/neo-launcher.app", "./tmp/neow.app", 0755)
 	}
 	return nil
 }

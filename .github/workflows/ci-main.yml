@@ -57,7 +57,7 @@ jobs:
         run: docker build -t ubuntu18-build-env -f ./scripts/Ubuntu18.04.Dockerfile .
       - name: Run Container
         if: matrix.os == 'linux' && matrix.arch != 'arm32'
-        run: docker run -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env
+        run: docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages ubuntu18-build-env
       - name: Build
         if: matrix.os != 'linux'
         run: go run mage.go machbase-neo
