@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,16 @@ type Column struct {
 	DataType DataType   `json:"data_type"`          //
 	Flag     ColumnFlag `json:"flag,omitempty"`     // database column flag
 	Nullable bool       `json:"nullable,omitempty"` // is column nullable
+}
+
+func (col Column) String() string {
+	if col.Type != 0 {
+		return fmt.Sprintf("%s(%s)", col.Name, col.Type.String())
+	} else if col.DataType != "" {
+		return fmt.Sprintf("%s(%s)", col.Name, col.DataType)
+	} else {
+		return fmt.Sprintf("%s(unknown)", col.Name)
+	}
 }
 
 func (col *Column) IsBaseTime() bool {
@@ -73,6 +84,17 @@ func (col *Column) Width() int {
 }
 
 type Columns []*Column
+
+func (cols Columns) String() string {
+	if len(cols) == 0 {
+		return "[]"
+	}
+	strs := make([]string, len(cols))
+	for i, col := range cols {
+		strs[i] = col.String()
+	}
+	return fmt.Sprintf("[%s]", strings.Join(strs, ", "))
+}
 
 func (cols Columns) Names() []string {
 	names := make([]string, len(cols))
