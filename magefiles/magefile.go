@@ -314,17 +314,17 @@ func PackageX(targetOS string, targetArch string) error {
 
 	switch targetOS {
 	case "windows":
-		if err := copyFile(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe"), 0755); err != nil {
+		if err := os.Rename(filepath.Join("tmp", "machbase-neo.exe"), filepath.Join("packages", bdir, "machbase-neo.exe")); err != nil {
 			return err
 		}
-		if err := copyFile(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe"), 0755); err != nil {
+		if err := os.Rename(filepath.Join("tmp", "neow.exe"), filepath.Join("packages", bdir, "neow.exe")); err != nil {
 			return err
 		}
 	case "darwin":
-		if err := copyFile(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo"), 0755); err != nil {
+		if err := os.Rename(filepath.Join("tmp", "machbase-neo"), filepath.Join("packages", bdir, "machbase-neo")); err != nil {
 			return err
 		}
-		if err := copyFile(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app"), 0755); err != nil {
+		if err := os.Rename(filepath.Join("tmp", "neow.app"), filepath.Join("packages", bdir, "neow.app")); err != nil {
 			return err
 		}
 	default:
@@ -549,9 +549,9 @@ func InstallNeoLauncherX(version string) error {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		copyFile("./tmp/neo-launcher.exe", "./tmp/neow.exe", 0755)
+		os.Rename("./tmp/neo-launcher.exe", "./tmp/neow.exe")
 	case "darwin":
-		copyFile("./tmp/neo-launcher.app", "./tmp/neow.app", 0755)
+		os.Rename("./tmp/neo-launcher.app", "./tmp/neow.app")
 	}
 	return nil
 }
