@@ -18,8 +18,11 @@ type MCPServer struct {
 	sseServer *server.SSEServer
 }
 
+const MCPServerConfigVersion = 1
+
 type MCPServerConfig struct {
-	Tools map[string]struct {
+	Version int `json:"version"`
+	Tools   map[string]struct {
 		Description string `json:"description"`
 	} `json:"tools"`
 }
@@ -48,9 +51,12 @@ func (ms *MCPServer) ReloadTools() error {
 		fmt.Printf("Warning: Unable to get user home directory, using current directory for config: %v\n", err)
 	}
 	confFile := filepath.Join(confDir, "mcp_server.json")
+
+regen:
 	if stat, err := os.Stat(confFile); os.IsNotExist(err) {
 		fmt.Printf("Warning: MCP server config file not found at %s, using default configuration\n", confFile)
 		config = MCPServerConfig{
+			Version: MCPServerConfigVersion,
 			Tools: map[string]struct {
 				Description string `json:"description"`
 			}{
@@ -94,6 +100,17 @@ func (ms *MCPServer) ReloadTools() error {
 		if err := decoder.Decode(&config); err != nil {
 			fmt.Printf("Error decoding config file: %v\n", err)
 			return nil
+		}
+		if config.Version != MCPServerConfigVersion {
+			// Create backup filename with timestamp
+			dir := filepath.Dir(confFile)
+			base := filepath.Base(confFile)
+			ext := filepath.Ext(base)
+			name := base[:len(base)-len(ext)]
+			timestamp := time.Now().Format("20060102_150405")
+			bakFile := filepath.Join(dir, fmt.Sprintf("%s_%s%s", name, timestamp, ext))
+			os.Rename(confFile, bakFile)
+			goto regen
 		}
 	}
 	ms.conf = config
