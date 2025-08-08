@@ -21,10 +21,13 @@ type MCPServer struct {
 const MCPServerConfigVersion = 1
 
 type MCPServerConfig struct {
-	Version int `json:"version"`
-	Tools   map[string]struct {
-		Description string `json:"description"`
-	} `json:"tools"`
+	Version int                            `json:"version"`
+	Tools   map[string]MCPServerToolConfig `json:"tools"`
+}
+
+type MCPServerToolConfig struct {
+	Description string            `json:"description"`
+	Inputs      map[string]string `json:"inputs"`
 }
 
 func NewMCPServer() *MCPServer {
@@ -57,19 +60,19 @@ regen:
 		fmt.Printf("Warning: MCP server config file not found at %s, using default configuration\n", confFile)
 		config = MCPServerConfig{
 			Version: MCPServerConfigVersion,
-			Tools: map[string]struct {
-				Description string `json:"description"`
-			}{
-				"now": {
-					Description: "Get current time in Unix Epoch Nanosecond",
-				},
-				"gen_sql": {
-					Description: "Generate SQL query to retrieve data from a specified table within a given time range.",
-				},
-				"exec_query_sql": {
-					Description: "Execute a specified SQL query and return the results.",
-				},
-			},
+			Tools:   map[string]MCPServerToolConfig{},
+		}
+		for _, tool := range tools {
+			config.Tools[tool.Tool.Name] = MCPServerToolConfig{
+				Description: tool.Tool.Description,
+				Inputs:      map[string]string{},
+			}
+			for name, v := range tool.Tool.InputSchema.Properties {
+				desc, ok := v.(map[string]any)["description"]
+				if ok {
+					config.Tools[tool.Tool.Name].Inputs[name] = desc.(string)
+				}
+			}
 		}
 		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {

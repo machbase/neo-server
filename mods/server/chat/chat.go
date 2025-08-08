@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -107,6 +108,20 @@ func ChatSSEHandler(w http.ResponseWriter, r *http.Request) {
 		if err := decoder.Decode(&config); err != nil {
 			http.Error(w, fmt.Sprintf("Error decoding config file: %v", err), http.StatusInternalServerError)
 			return
+		}
+	}
+
+	for i, m := range config.ToolMessages {
+		if strings.HasPrefix(m.Content, "@") {
+			// Load tool message from file
+			filePath := strings.TrimPrefix(m.Content, "@")
+			filePath = filepath.Join(confDir, filePath)
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error reading tool message file: %v", err), http.StatusInternalServerError)
+				return
+			}
+			config.ToolMessages[i].Content = string(content)
 		}
 	}
 
