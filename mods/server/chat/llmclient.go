@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
@@ -62,11 +63,11 @@ func (d *LLMDialog) Close() {
 }
 
 func (d *LLMDialog) SendMessage(msg string, args ...any) {
-	d.Send(false, msg+"\n", args...)
+	d.Send(false, msg, args...)
 }
 
 func (d *LLMDialog) SendError(msg string, args ...any) {
-	d.Send(true, msg+"\n", args...)
+	d.Send(true, msg, args...)
 }
 
 func (d *LLMDialog) Send(isError bool, msg string, args ...any) {
@@ -114,7 +115,7 @@ func (d *LLMDialog) execLLM(ctx context.Context) {
 		d.SendError("Failed to initialize mcp client: %v", err)
 		return
 	}
-	d.SendMessage("🌍 MCP Server Info: %s %s", initResult.ServerInfo.Name, initResult.ServerInfo.Version)
+	d.SendMessage("🌍 MCP Server Info: %s %s\n", initResult.ServerInfo.Name, initResult.ServerInfo.Version)
 
 	// Get the list of tools
 	toolsRequest := mcp.ListToolsRequest{}
@@ -143,7 +144,7 @@ func (d *LLMDialog) execLLM(ctx context.Context) {
 		Content: d.userMessage,
 	})
 
-	var FALSE = false
+	var stream = true
 	req := &api.ChatRequest{
 		Model:    d.conf.ToolModel,
 		Messages: messages,
@@ -152,15 +153,16 @@ func (d *LLMDialog) execLLM(ctx context.Context) {
 			"repeat_last_n": 1,
 		},
 		Tools:  ollamaTools,
-		Stream: &FALSE,
+		Stream: &stream,
 	}
 
+	d.SendMessage("🦙 Ollama response: \n")
 	err = ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
-		d.SendMessage("🦙 Ollama response: %s", resp.Message.Content)
+		d.SendMessage(html.EscapeString(resp.Message.Content))
 		// Ollma tools to call
 		for _, toolCall := range resp.Message.ToolCalls {
 			// 🖐️ Call the mcp server
-			d.SendMessage("🦙🛠️ %s %s", toolCall.Function.Name, toolCall.Function.Arguments)
+			d.SendMessage("🦙🛠️ %s %s\n", toolCall.Function.Name, toolCall.Function.Arguments)
 			fetchRequest := mcp.CallToolRequest{}
 			fetchRequest.Request.Method = "tools/call"
 			fetchRequest.Params.Name = toolCall.Function.Name
@@ -175,7 +177,7 @@ func (d *LLMDialog) execLLM(ctx context.Context) {
 			for _, content := range result.Content {
 				switch c := content.(type) {
 				case mcp.TextContent:
-					d.SendMessage(c.Text)
+					d.SendMessage(html.EscapeString(c.Text))
 				default:
 					d.SendError("😡 Unhandled content type from tool: %#v", c)
 				}
