@@ -51,7 +51,6 @@ var tools = []server.ServerTool{
 }
 
 func getNowHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	fmt.Println("getNowHandler called")
 	now := time.Now().UnixNano()
 	return mcp.NewToolResultText(fmt.Sprintf("%d", now)), nil
 }

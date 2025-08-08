@@ -371,7 +371,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/tql/*path", svr.handleTqlFile)
 			group.GET("/tql", svr.handleTqlQuery)
 			group.POST("/tql", svr.handleTqlQuery)
-			group.Any("/mcp/*path", gin.WrapH(mcpsvr.NewMCPServer().Handler()))
+			group.Any("/mcp/*path", gin.WrapF(mcpsvr.NewMCPServer().HandlerFunc()))
 			//TODO: Move /db/chat handlers to /web/chat group
 			group.GET("/chat", func(ctx *gin.Context) { ctx.Redirect(http.StatusFound, path.Join(prefix, "/chat/ui/")) })
 			group.Any("/chat/ui/*path", gin.WrapH(chat.ChatDirHandler()))
