@@ -28,6 +28,8 @@ func Parse(content string) (*RestClient, error) {
 		Proxy:              http.ProxyFromEnvironment,
 		DisableCompression: true,
 	}
+	ret.Transport.CloseIdleConnections()
+
 	return ret, err
 }
 
