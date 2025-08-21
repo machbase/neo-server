@@ -166,7 +166,7 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			columnType = dec.columnTypes[i]
 		}
 
-		if field == "NULL" || field == "" {
+		if (field == "NULL" || field == "") && columnType.ColumnType() != api.ColumnTypeVarchar {
 			value = nil
 		} else {
 			if value, err = columnType.Apply(field, dec.timeformat, dec.timeLocation); err != nil {

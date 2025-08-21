@@ -54,7 +54,7 @@ func TestCsvDecoder(t *testing.T) {
 
 			for _, rec := range tc.expect {
 				for i, val := range rec {
-					require.Equal(t, val, fields[i], fmt.Sprintf("Test case: %s field[%d], expect:%+v, actual", tc.name, i, val))
+					require.Equal(t, val, fields[i], fmt.Sprintf("Test case: %s field[%d], expect:%+v, actual:%+v", tc.name, i, val, fields[i]))
 				}
 			}
 		})
