@@ -64,7 +64,7 @@ var restClientFileRegexp = regexp.MustCompile(`<(?:@([\w\-]+))?\s+([^\s]+)`)
 func (rc *RestClient) Do() *RestResult {
 	var client = &http.Client{Transport: rc}
 	var payload io.Reader
-	if rc.contentLines != nil && len(rc.contentLines) > 0 {
+	if len(rc.contentLines) > 0 {
 		contentType := rc.header.Get("Content-Type")
 		if contentType == "application/x-www-form-urlencoded" {
 			b := &strings.Builder{}
