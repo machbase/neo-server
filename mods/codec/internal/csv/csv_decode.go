@@ -166,8 +166,12 @@ func (dec *Decoder) NextRow() ([]any, []string, error) {
 			columnType = dec.columnTypes[i]
 		}
 
-		if value, err = columnType.Apply(field, dec.timeformat, dec.timeLocation); err != nil {
-			errs = append(errs, err)
+		if field == "NULL" || field == "" {
+			value = nil
+		} else {
+			if value, err = columnType.Apply(field, dec.timeformat, dec.timeLocation); err != nil {
+				errs = append(errs, err)
+			}
 		}
 		values = append(values, value)
 	}
