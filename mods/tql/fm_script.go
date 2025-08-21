@@ -149,10 +149,8 @@ func UnregisterPredefModule(name string) {
 }
 
 func ClearPredefModules() {
-	if predefModules != nil {
-		for k := range predefModules {
-			delete(predefModules, k)
-		}
+	for k := range predefModules {
+		delete(predefModules, k)
 	}
 }
 
