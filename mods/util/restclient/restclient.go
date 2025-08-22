@@ -131,7 +131,7 @@ func (rc *RestClient) Do() *RestResult {
 
 	req, err := http.NewRequest(rc.method, rc.path, payload)
 	if err != nil {
-		return &RestResult{Err: err}
+		return &RestResult{err: err}
 	}
 	req.Header = rc.header
 	if rc.version != "" {
@@ -142,7 +142,7 @@ func (rc *RestClient) Do() *RestResult {
 
 	rsp, err := client.Do(req)
 	if err != nil {
-		return &RestResult{Err: err}
+		return &RestResult{err: err}
 	}
 	defer rsp.Body.Close()
 
@@ -198,27 +198,56 @@ func SSFS_FileLoader(path string) (io.ReadCloser, error) {
 }
 
 type RestResult struct {
-	StatusLine      string `json:"statusLine"`
-	Header          Header `json:"header"`
-	Body            *Body  `json:"body,omitempty"`
-	ContentType     string `json:"contentType,omitempty"`
-	ContentEncoding string `json:"contentEncoding,omitempty"`
-	Err             error  `json:"error,omitempty"`
-	dumpString      string `json:"-"`
+	statusCode      int
+	statusLine      string
+	header          Header
+	body            *Body
+	ContentType     string
+	ContentEncoding string
+	err             error
+	dumpString      string
+}
+
+func (rr *RestResult) Error() error {
+	return rr.err
+}
+
+func (rr *RestResult) Body() string {
+	if rr.body == nil {
+		return ""
+	}
+	return rr.body.String()
+}
+
+func (rr *RestResult) Header(name string) string {
+	for _, h := range rr.header {
+		if strings.EqualFold(h.Name, name) {
+			return h.Value
+		}
+	}
+	return ""
+}
+
+func (rr *RestResult) StatusCode() int {
+	return rr.statusCode
+}
+
+func (rr *RestResult) Status() string {
+	return rr.statusLine
 }
 
 func (rr *RestResult) String() string {
-	if rr.Err != nil {
-		return rr.Err.Error()
+	if rr.err != nil {
+		return rr.err.Error()
 	}
 	if rr.dumpString == "" {
 		w := &strings.Builder{}
 		// Status line
-		if _, err := fmt.Fprintf(w, "%s\r\n", rr.StatusLine); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\r\n", rr.statusLine); err != nil {
 			return err.Error()
 		}
 		// Headers
-		for _, h := range rr.Header {
+		for _, h := range rr.header {
 			if _, err := fmt.Fprintf(w, "%s: %s\r\n", h.Name, h.Value); err != nil {
 				return err.Error()
 			}
@@ -228,8 +257,8 @@ func (rr *RestResult) String() string {
 			return err.Error()
 		}
 		// Body
-		if rr.Body != nil {
-			if _, err := fmt.Fprintf(w, "%s", rr.Body.String()); err != nil {
+		if rr.body != nil {
+			if _, err := fmt.Fprintf(w, "%s", rr.body.String()); err != nil {
 				return err.Error()
 			}
 		}
@@ -274,7 +303,8 @@ func (rr *RestResult) loadStatusLine(r *http.Response) error {
 		text = strings.TrimPrefix(text, strconv.Itoa(r.StatusCode)+" ")
 	}
 
-	rr.StatusLine = fmt.Sprintf("HTTP/%d.%d %03d %s", r.ProtoMajor, r.ProtoMinor, r.StatusCode, text)
+	rr.statusCode = r.StatusCode
+	rr.statusLine = fmt.Sprintf("HTTP/%d.%d %03d %s", r.ProtoMajor, r.ProtoMinor, r.StatusCode, text)
 	return nil
 }
 
@@ -289,7 +319,7 @@ func (rr *RestResult) loadHeader(r *http.Response) error {
 	// each header line
 	for _, k := range keys {
 		for _, v := range r.Header.Values(k) {
-			rr.Header = append(rr.Header, NameValue{Name: k, Value: v})
+			rr.header = append(rr.header, NameValue{Name: k, Value: v})
 		}
 	}
 	return nil
@@ -300,7 +330,7 @@ func (rr *RestResult) loadBody(r *http.Response) error {
 		return nil
 	}
 
-	rr.Body = &Body{
+	rr.body = &Body{
 		ContentType:     rr.ContentType,
 		ContentEncoding: rr.ContentEncoding,
 	}
@@ -310,7 +340,7 @@ func (rr *RestResult) loadBody(r *http.Response) error {
 	if err != nil {
 		return fmt.Errorf("error reading response body: %w", err)
 	}
-	rr.Body.Content = out.Bytes()
+	rr.body.Content = out.Bytes()
 
 	return nil
 }
