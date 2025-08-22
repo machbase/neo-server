@@ -1,12 +1,9 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"expvar"
 	"fmt"
-	"io"
-	"net/http"
 	"runtime"
 	"slices"
 	"strings"
@@ -15,6 +12,7 @@ import (
 
 	"github.com/OutOfBedlam/metric"
 	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 )
 
@@ -29,6 +27,8 @@ const MetricMeasurePeriod = 500 * time.Millisecond
 var MetricTimeFrames = []string{"2h1m", "10h5m", "30h15m"}
 
 const MetricQueryRowsMax = 120
+
+var metricLog = logging.GetLog("statz")
 
 var (
 	// session:conn
@@ -353,9 +353,9 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 var collector *metric.Collector
 var prefix string = "machbase"
 
-func StartMetrics() {
+func StartMetrics(dest string) {
 	collector = metric.NewCollector(2*time.Second,
-		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct),
+		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct(dest)),
 		metric.WithExpvarPrefix(prefix+":"),
 		metric.WithReceiverSize(20),
 	)
@@ -408,98 +408,117 @@ func collect_metrics() (metric.Measurement, error) {
 	)
 	return m, nil
 }
-func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
-	var result []any
-	switch p := tb.Value.(type) {
-	case *metric.CounterProduct:
-		if p.Count == 0 {
-			return // Skip zero counters
-		}
-		result = []any{
-			map[string]any{
-				"NAME":  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-				"TIME":  tb.Time.UnixNano(),
-				"VALUE": p.Value,
-			},
-		}
-	case *metric.GaugeProduct:
-		if p.Count == 0 {
-			return // Skip zero gauges
-		}
-		result = []any{
-			map[string]any{
-				"NAME":  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-				"TIME":  tb.Time.UnixNano(),
-				"VALUE": p.Value,
-			},
-		}
-	case *metric.MeterProduct:
-		if p.Count == 0 {
-			return // Skip zero meters
-		}
-		result = []any{
-			map[string]any{
-				"NAME":  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
-				"TIME":  tb.Time.UnixNano(),
-				"VALUE": p.Max,
-			},
-			map[string]any{
-				"NAME":  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
-				"TIME":  tb.Time.UnixNano(),
-				"VALUE": p.Sum / float64(p.Count),
-			},
-		}
-	case *metric.HistogramProduct:
-		if p.Count == 0 {
-			return // Skip zero meters
-		}
-		result = append(result, map[string]any{
-			"NAME":  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-			"TIME":  tb.Time.UnixNano(),
-			"VALUE": p.Count,
-		})
-		for i, x := range p.P {
-			pct := fmt.Sprintf("%d", int(x*1000))
-			if pct[len(pct)-1] == '0' {
-				pct = pct[:len(pct)-1]
-			}
-			result = append(result, map[string]any{
-				"NAME":  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
-				"TIME":  tb.Time.UnixNano(),
-				"VALUE": p.Values[i],
-			})
-		}
-	default:
-		fmt.Printf("metrics unknown type: %T\n", p)
-		return
-	}
 
-	// temporary go routine: to avoid blocking by recursive http call : actual service calls and metric collecting calls
-	go func(result []any) {
-		out := &bytes.Buffer{}
-		for _, m := range result {
-			b, err := json.Marshal(m)
+type MetricRec struct {
+	Name  string
+	Time  int64
+	Value float64
+}
+
+func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo) {
+	destTable = strings.ToUpper(strings.TrimSpace(destTable))
+	if destTable == "" {
+		return nil
+	}
+	ctx := context.Background()
+	conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+	if err != nil {
+		metricLog.Errorf("metrics connect: %v", err)
+		return nil
+	}
+	defer conn.Close()
+	ddl := fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s ("+
+		"NAME VARCHAR(200) primary key, "+
+		"TIME DATETIME basetime, "+
+		"VALUE DOUBLE)", destTable)
+	r := conn.Exec(ctx, ddl)
+	if r.Err() != nil {
+		metricLog.Errorf("metrics creating table: %v", r.Err())
+		return nil
+	}
+	return func(tb metric.TimeBin, field metric.FieldInfo) {
+		var result []MetricRec
+		switch p := tb.Value.(type) {
+		case *metric.CounterProduct:
+			if p.Count == 0 {
+				return // Skip zero counters
+			}
+			result = []MetricRec{{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: p.Value,
+			}}
+		case *metric.GaugeProduct:
+			if p.Count == 0 {
+				return // Skip zero gauges
+			}
+			result = []MetricRec{{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: p.Value,
+			}}
+		case *metric.MeterProduct:
+			if p.Count == 0 {
+				return // Skip zero meters
+			}
+			result = []MetricRec{
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:min", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Min,
+				},
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Max,
+				},
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Sum / float64(p.Count),
+				},
+			}
+		case *metric.HistogramProduct:
+			if p.Count == 0 {
+				return // Skip zero meters
+			}
+			result = append(result, MetricRec{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: float64(p.Count),
+			})
+			for i, x := range p.P {
+				pct := fmt.Sprintf("%d", int(x*1000))
+				if pct[len(pct)-1] == '0' {
+					pct = pct[:len(pct)-1]
+				}
+				result = append(result, MetricRec{
+					Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Values[i],
+				})
+			}
+		default:
+			metricLog.Errorf("metrics unknown type: %T", p)
+			return
+		}
+
+		go func(result []MetricRec) {
+			ctx := context.Background()
+			conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
 			if err != nil {
-				fmt.Printf("metrics marshaling: %v\n", err)
+				metricLog.Errorf("metrics connect: %v", err)
 				return
 			}
-			out.Write(b)
-			out.Write([]byte("\n"))
-		}
-		out.Write([]byte("\n"))
-
-		rsp, err := http.DefaultClient.Post(
-			"http://127.0.0.1:5654/db/write/TAG",
-			"application/x-ndjson", out)
-		if err != nil {
-			fmt.Printf("metrics sending: %v\n", err)
-			return
-		}
-		defer rsp.Body.Close()
-		if rsp.StatusCode != http.StatusOK {
-			msg, _ := io.ReadAll(rsp.Body)
-			fmt.Printf("metrics writing: %s\n", msg)
-			return
-		}
-	}(result)
+			defer conn.Close()
+			sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", destTable)
+			for _, m := range result {
+				r := conn.Exec(ctx, sqlText, m.Name, m.Time, m.Value)
+				if r.Err() != nil {
+					metricLog.Errorf("metrics writing: %v", r.Err())
+					return
+				}
+			}
+		}(result)
+	}
 }

@@ -15,7 +15,7 @@ import (
 var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
-	api.StartMetrics()
+	api.StartMetrics(s.Config.StatzOut)
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))

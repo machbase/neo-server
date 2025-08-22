@@ -91,6 +91,7 @@ type Config struct {
 	MaxOpenConnFactor  float64
 	MaxOpenQuery       int
 	MaxOpenQueryFactor float64
+	StatzOut           string
 }
 
 var PreferredPreset string = "auto"
