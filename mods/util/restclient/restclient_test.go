@@ -30,7 +30,7 @@ func TestClient(t *testing.T) {
 				User-Agent: TestClient
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
+				require.NoError(t, rr.err)
 				data := rr.String()
 				require.Contains(t, data, "HTTP/1.1 200 OK")
 				require.Contains(t, data, "text/plain; charset=utf-8")
@@ -47,7 +47,7 @@ func TestClient(t *testing.T) {
 				User-Agent: TestClient
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
+				require.NoError(t, rr.err)
 				data := rr.String()
 				require.Contains(t, data, "HTTP/1.1 200 OK")
 				require.Contains(t, data, "text/plain; charset=utf-8")
@@ -63,8 +63,8 @@ func TestClient(t *testing.T) {
 					&format=json
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
-				body := rr.Body.String()
+				require.NoError(t, rr.err)
+				body := rr.body.String()
 				require.JSONEq(t,
 					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
 					body, body)
@@ -79,9 +79,9 @@ func TestClient(t *testing.T) {
 				{"q": "SELECT * FROM users where name = 'John'", "format": "json"}
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
+				require.NoError(t, rr.err)
 				require.Contains(t, rr.String(), "X-Debug: 12345")
-				body := rr.Body.String()
+				body := rr.body.String()
 				require.JSONEq(t,
 					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
 					body, body)
@@ -97,9 +97,9 @@ func TestClient(t *testing.T) {
 				&format=json
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
+				require.NoError(t, rr.err)
 				require.Contains(t, rr.String(), "X-Debug: 12345")
-				body := rr.Body.String()
+				body := rr.body.String()
 				require.JSONEq(t,
 					`{"q": "SELECT * FROM users where name = 'John'", "format": "json"}`,
 					body, body)
@@ -114,9 +114,9 @@ func TestClient(t *testing.T) {
 				{"q": "SELECT * FROM users where name = 'John'", "format": "json"}
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
-				body := rr.Body.String()
-				require.Equal(t, "HTTP/1.1 204 No Content", rr.StatusLine)
+				require.NoError(t, rr.err)
+				body := rr.body.String()
+				require.Equal(t, "HTTP/1.1 204 No Content", rr.statusLine)
 				require.Equal(t, ``, body, body)
 			},
 		},
@@ -129,8 +129,8 @@ func TestClient(t *testing.T) {
 				< @./test/1.json
 			`,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
-				body := rr.Body.String()
+				require.NoError(t, rr.err)
+				body := rr.body.String()
 				require.JSONEq(t,
 					`{"name": "John", "image": "figure.png", "doc": "doc.xml"}`,
 					body, body)
@@ -159,8 +159,8 @@ Content-Type: text/xml
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 `,
 			expectedFunc: func(t *testing.T, rr *RestResult) {
-				require.NoError(t, rr.Err)
-				body := rr.Body.String()
+				require.NoError(t, rr.err)
+				body := rr.body.String()
 				require.JSONEq(t,
 					`{"name": "John", "image": "1.png", "doc": "1.xml"}`,
 					body, body)
