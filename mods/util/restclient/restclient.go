@@ -14,23 +14,29 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
+
+var DefaultTransport *http.Transport
+
+func init() {
+	DefaultTransport = http.DefaultTransport.(*http.Transport).Clone()
+	DefaultTransport.Proxy = http.ProxyFromEnvironment
+	DefaultTransport.DisableCompression = true
+	DefaultTransport.MaxIdleConns = 1
+	DefaultTransport.MaxConnsPerHost = 1
+	DefaultTransport.IdleConnTimeout = 5 * time.Second
+}
 
 func Parse(content string) (*RestClient, error) {
 	ret, err := parse(content)
 	if err != nil {
 		return nil, fmt.Errorf("restClient parse error: %w", err)
 	}
-
-	ret.Transport = &http.Transport{
-		Proxy:              http.ProxyFromEnvironment,
-		DisableCompression: true,
-	}
-	ret.Transport.CloseIdleConnections()
-
-	return ret, err
+	ret.Transport = DefaultTransport.Clone()
+	return ret, nil
 }
 
 type RestClient struct {
