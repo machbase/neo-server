@@ -37,8 +37,6 @@ func TestMain(m *testing.M) {
 	api.StartAppendWorkers()
 
 	api.StartMetrics("")
-	// FIXME: the first metrics can be collected 10s later.
-	time.Sleep(11 * time.Second)
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
