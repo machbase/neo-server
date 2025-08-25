@@ -155,7 +155,7 @@ func (j *Jsh) process_cd(call js.FunctionCall) js.Value {
 // jsh.readDir("/path/to/dir", (dir) => {})
 func (j *Jsh) process_readDir(call js.FunctionCall) js.Value {
 	if len(call.Arguments) != 2 {
-		panic(j.vm.ToValue(fmt.Sprintf("readdir: missing argument")))
+		panic(j.vm.ToValue("readdir: missing argument"))
 	}
 	path, ok := call.Arguments[0].Export().(string)
 	if !ok {
@@ -171,10 +171,7 @@ func (j *Jsh) process_readDir(call js.FunctionCall) js.Value {
 			This:      js.Undefined(),
 			Arguments: []js.Value{m},
 		})
-		if r.Export().(bool) {
-			return true
-		}
-		return false
+		return r.Export().(bool)
 	}
 
 	if filepath.IsAbs(path) {

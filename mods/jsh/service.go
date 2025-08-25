@@ -20,7 +20,6 @@ var jshServicesLock = sync.RWMutex{}
 type Service struct {
 	Config *ServiceConfig
 	pid    JshPID
-	log    logging.Log
 }
 
 type ServiceConfig struct {
@@ -198,9 +197,10 @@ func (s *ServiceConfig) Start() {
 			return
 		}
 		j.onStatusChanged = func(_ *Jsh, status JshStatus) {
-			if status == JshStatusRunning {
+			switch status {
+			case JshStatusRunning:
 				obj.pid = j.pid
-			} else if status == JshStatusStopped {
+			case JshStatusStopped:
 				obj.pid = 0
 			}
 		}

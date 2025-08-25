@@ -216,31 +216,10 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 			if pass, order := filter(key); pass {
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
 			}
-			// } else if v, ok := kv.Value.(metric.ExpVar); ok {
-			// 	switch v.MetricType() {
-			// 	case "c":
-			// 		if pass, order := filter(key); pass {
-			// 			metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnInt64(kv.Key), valueType: v.ValueType(), order: order})
-			// 		}
-			// 	case "g":
-			// 		for _, field := range []string{"avg", "max", "min"} {
-			// 			subKey := fmt.Sprintf("%s_%s", kv.Key, field)
-			// 			if pass, order := filter(subKey); pass {
-			// 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
-			// 			}
-			// 		}
-			// 	case "h":
-			// 		for _, field := range []string{"p50", "p90", "p99"} {
-			// 			subKey := fmt.Sprintf("%s_%s", kv.Key, field)
-			// 			if pass, order := filter(subKey); pass {
-			// 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
-			// 			}
-			// 		}
-			// 	default:
-			// 		if pass, order := filter(key); pass {
-			// 			metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: v.ValueType(), order: order})
-			// 		}
-			// 	}
+		} else if _, ok := kv.Value.(metric.MultiTimeSeries); ok {
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
+			}
 		}
 	})
 	if len(metricQueryKeys) == 0 {
@@ -298,53 +277,24 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				ret.Rows[r].Values[colIdxOffset] = val()
 			}
 			colIdxOffset++
-			// } else if val, ok := kv.(metric.ExpVar); ok {
-			// 	met := val.Metric()
-			// 	for r := 0; r < rowsCount; r++ {
-			// 		var colIdx = colIdxOffset
-			// 		var row = ret.Rows[r]
-			// 		var timeseries *metric.Timeseries
-			// 		var valueMetric metric.Metric
-
-			// 		if mts, ok := met.(metric.MultiTimeseries); ok {
-			// 			for _, ts := range mts {
-			// 				if ts.Interval() == interval {
-			// 					timeseries = ts
-			// 				}
-			// 			}
-			// 		} else if ts, ok := met.(*metric.Timeseries); ok {
-			// 			timeseries = ts
-			// 		} else {
-			// 			valueMetric = met
-			// 		}
-
-			// 		if timeseries != nil {
-			// 			if samples := timeseries.Samples(); r < len(samples) {
-			// 				valueMetric = samples[r]
-			// 			}
-			// 		}
-
-			// 		if valueMetric != nil {
-			// 			if counter, ok := valueMetric.(*metric.Counter); ok {
-			// 				row.Values[colIdx] = counter.Value()
-			// 				colIdx++
-			// 			} else if gauge, ok := valueMetric.(*metric.Gauge); ok {
-			// 				g := gauge.Value()
-			// 				row.Values[colIdx] = g[queryKey.field]
-			// 				colIdx++
-			// 			} else if histogram, ok := valueMetric.(*metric.Histogram); ok {
-			// 				h := histogram.Value()
-			// 				row.Values[colIdx] = h[queryKey.field]
-			// 				colIdx++
-			// 			}
-			// 		} else {
-			// 			row.Values[colIdx] = nil
-			// 			colIdx++
-			// 		}
-			// 		if r == rowsCount-1 {
-			// 			colIdxOffset = colIdx
-			// 		}
-			// 	}
+		} else if val, ok := kv.(metric.MultiTimeSeries); ok {
+			tss, prds := val[0].LastN(rowsCount)
+			for i := range tss {
+				ret.Rows[i].Timestamp = tss[i]
+				switch prd := prds[i].(type) {
+				case *metric.CounterProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Value
+				case *metric.GaugeProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Value
+				case *metric.MeterProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Last
+				case *metric.HistogramProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Values[0]
+				default:
+					fmt.Printf("unknown metric type:%#v\n", prd)
+				}
+			}
+			colIdxOffset++
 		}
 	}
 	return ret
@@ -356,7 +306,7 @@ var prefix string = "machbase"
 func StartMetrics(dest string) {
 	collector = metric.NewCollector(2*time.Second,
 		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct(dest)),
-		metric.WithExpvarPrefix(prefix+":"),
+		metric.WithExpvarPrefix(prefix),
 		metric.WithReceiverSize(20),
 	)
 	collector.AddInputFunc(collect_runtime)

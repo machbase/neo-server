@@ -405,7 +405,7 @@ func TestScriptSystemStatz(t *testing.T) {
 			Name: "js-statz",
 			Script: `
 				SCRIPT("js", {
-					statz = require("@jsh/system").statz("1m", "go:goroutine_max");
+					statz = require("@jsh/system").statz("1m", "machbase:runtime:goroutines");
 					last = statz.length - 1;
 					$.yield(statz[last].time, ...statz[last].values);
 				})

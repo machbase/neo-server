@@ -29,6 +29,9 @@ func StartCache(cap CacheOption) {
 	}()
 
 	api.AddMetricsFunc(func() (metric.Measurement, error) {
+		if tqlResultCache == nil || tqlResultCache.cache == nil {
+			return metric.Measurement{}, fmt.Errorf("------------- tql cache not started")
+		}
 		stat := tqlResultCache.cache.Metrics()
 		m := metric.Measurement{Name: "tql:cache"}
 		m.AddField(
