@@ -1,16 +1,19 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"expvar"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/OutOfBedlam/metric"
 	"github.com/machbase/neo-server/v8/api/mgmt"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 const (
@@ -25,29 +28,22 @@ var MetricTimeFrames = []string{"2h1m", "10h5m", "30h15m"}
 
 const MetricQueryRowsMax = 120
 
+var metricLog = logging.GetLog("statz")
+
 var (
 	// session:conn
-	metricConns        = metric.NewExpVarIntCounter("machbase:session:conn:count", MetricTimeFrames...)
-	metricConnsCounter = metric.NewCounter()
-	metricConnsInUse   = metric.NewExpVarIntCounter("machbase:session:conn:in_use", MetricTimeFrames...)
-	metricConnWaitTime = metric.NewExpVarDurationGauge("machbase:session:conn:wait_time", MetricTimeFrames...)
-	metricConnUseTime  = metric.NewExpVarDurationGauge("machbase:session:conn:use_time", MetricTimeFrames...)
+	metricConnsInUse atomic.Int64
 
 	// session:stmt
-	metricStmts        = metric.NewExpVarIntCounter("machbase:session:stmt:count", MetricTimeFrames...)
-	metricStmtsCounter = metric.NewCounter()
-	metricStmtsInUse   = metric.NewExpVarIntCounter("machbase:session:stmt:in_use", MetricTimeFrames...)
+	metricStmts      atomic.Int64
+	metricStmtsInUse atomic.Int64
 
 	// session:appender
-	metricAppenders        = metric.NewExpVarIntCounter("machbase:session:append:count", MetricTimeFrames...)
-	metricAppendersCounter = metric.NewCounter()
-	metricAppendersInUse   = metric.NewExpVarIntCounter("machbase:session:append:in_use", MetricTimeFrames...)
+	metricAppenders      atomic.Int64
+	metricAppendersInUse atomic.Int64
 
 	// session:query
-	metricQueryCount         = metric.NewExpVarIntCounter("machbase:session:query:count", MetricTimeFrames...)
-	metricQueryExecuteElapse = metric.NewExpVarDurationGauge("machbase:session:query:exec_time", MetricTimeFrames...)
-	metricQueryLimitWait     = metric.NewExpVarDurationGauge("machbase:session:query:wait_time", MetricTimeFrames...)
-	metricQueryFetchElapse   = metric.NewExpVarDurationGauge("machbase:session:query:fetch_time", MetricTimeFrames...)
+	metricQueryCount atomic.Int64
 
 	// longest query
 	metricQueryHwmSqlText       = expvar.NewString("machbase:session:query:hwm:sql_text")
@@ -58,43 +54,54 @@ var (
 	metricQueryHwmFetchElapse   = expvar.NewInt("machbase:session:query:hwm:fetch_time")
 )
 
-func init() {
-	go func() {
-		for range time.Tick(MetricMeasurePeriod) {
-			metricConnsInUse.Add(int64(metricConnsCounter.(*metric.Counter).Value()))
-			metricStmtsInUse.Add(int64(metricStmtsCounter.(*metric.Counter).Value()))
-			metricAppendersInUse.Add(int64(metricAppendersCounter.(*metric.Counter).Value()))
-		}
-	}()
-}
-
 func AllocConn(connWaitTime time.Duration) {
-	metricConns.Add(1)
-	metricConnsCounter.Add(1)
-	metricConnWaitTime.Add(connWaitTime)
+	metricConnsInUse.Add(1)
+	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
+		{Name: "conn:wait_time", Value: float64(connWaitTime), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+	}})
 }
 
 func FreeConn(connUseTime time.Duration) {
-	metricConnsCounter.Add(-1)
-	metricConnUseTime.Add(connUseTime)
+	metricConnsInUse.Add(-1)
+	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
+		{Name: "conn:use_time", Value: float64(connUseTime), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+	}})
 }
 
 func AllocStmt() {
 	metricStmts.Add(1)
-	metricStmtsCounter.Add(1)
+	metricStmtsInUse.Add(1)
 }
 
 func FreeStmt() {
-	metricStmtsCounter.Add(-1)
+	metricStmtsInUse.Add(-1)
 }
 
 func AllocAppender() {
 	metricAppenders.Add(1)
-	metricAppendersCounter.Add(1)
+	metricAppendersInUse.Add(1)
 }
 
 func FreeAppender() {
-	metricAppendersCounter.Add(-1)
+	metricAppendersInUse.Add(-1)
+}
+
+func QueryExecTime(d time.Duration) {
+	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
+		{Name: "query:exec_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+	}})
+}
+
+func QueryWaitTime(d time.Duration) {
+	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
+		{Name: "query:wait_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+	}})
+}
+
+func QueryFetchTime(d time.Duration) {
+	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
+		{Name: "query:fetch_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+	}})
 }
 
 var RawConns func() int
@@ -115,42 +122,40 @@ type QueryStatzRow struct {
 	Values    []any
 }
 
+func elapseAvgMax(key string) (uint64, uint64, int64) {
+	if value, ok := expvar.Get(key).(metric.MultiTimeSeries); ok && len(value) > 0 {
+		_, val := value[0].Last()
+		prd, ok := val.(*metric.HistogramProduct)
+		if !ok {
+			return 0, 0, 0
+		}
+		values := prd.Values
+		return uint64(values[0]), uint64(values[len(values)-1]), int64(prd.Count)
+	}
+	return 0, 0, 0
+}
+
 func StatzSnapshot() *mgmt.Statz {
 	ret := &mgmt.Statz{}
-	ret.Conns = metricConns.Value()
-	ret.ConnsInUse = int32(metricConnsCounter.(*metric.Counter).Value())
-	ret.ConnWaitTime = uint64(metricConnWaitTime.Value())
-	ret.ConnUseTime = uint64(metricConnUseTime.Value())
-	ret.Stmts = metricStmts.Value()
-	ret.StmtsInUse = int32(metricStmtsCounter.(*metric.Counter).Value())
-	ret.Appenders = metricAppenders.Value()
-	ret.AppendersInUse = int32(metricAppendersCounter.(*metric.Counter).Value())
+	ret.ConnWaitTime, _, _ = elapseAvgMax("machbase:session:conn:wait_time")
+	ret.ConnUseTime, _, ret.Conns = elapseAvgMax("machbase:session:conn:use_time")
+	ret.ConnsInUse = int32(metricConnsInUse.Load())
+	ret.Stmts = metricStmts.Load()
+	ret.StmtsInUse = int32(metricStmtsInUse.Load())
+	ret.Appenders = metricAppenders.Load()
+	ret.AppendersInUse = int32(metricAppendersInUse.Load())
 	if RawConns != nil {
 		ret.RawConns = int32(RawConns())
 	}
-
-	elapseAvgMax := func(p *metric.ExpVarMetric[time.Duration]) (uint64, uint64) {
-		if mm, ok := p.Metric().(metric.MultiTimeseries); ok {
-			b, _ := json.Marshal(mm[0])
-			m := map[string]interface{}{}
-			json.Unmarshal(b, &m)
-			total := m["total"].(map[string]interface{})
-			max := int64(total["max"].(float64))
-			avg := int64(total["avg"].(float64))
-			return uint64(avg), uint64(max)
-		}
-		return 0, 0
-	}
-	ret.QueryExecAvg, ret.QueryExecHwm = elapseAvgMax(metricQueryExecuteElapse)
-	ret.QueryWaitAvg, ret.QueryWaitHwm = elapseAvgMax(metricQueryLimitWait)
-	ret.QueryFetchAvg, ret.QueryFetchHwm = elapseAvgMax(metricQueryFetchElapse)
+	ret.QueryExecAvg, ret.QueryExecHwm, _ = elapseAvgMax("machbase:session:query:exec_time")
+	ret.QueryWaitAvg, ret.QueryWaitHwm, _ = elapseAvgMax("machbase:session:query:wait_time")
+	ret.QueryFetchAvg, ret.QueryFetchHwm, _ = elapseAvgMax("machbase:session:query:fetch_time")
 	ret.QueryHwmSql = metricQueryHwmSqlText.Value()
 	ret.QueryHwmSqlArg = metricQueryHwmSqlArgs.Value()
 	ret.QueryHwm = uint64(metricQueryHwmElapse.Value())
 	ret.QueryHwmExec = uint64(metricQueryHwmExecuteElapse.Value())
 	ret.QueryHwmWait = uint64(metricQueryHwmLimitWait.Value())
 	ret.QueryHwmFetch = uint64(metricQueryHwmFetchElapse.Value())
-
 	return ret
 }
 
@@ -211,30 +216,9 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 			if pass, order := filter(key); pass {
 				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
 			}
-		} else if v, ok := kv.Value.(metric.ExpVar); ok {
-			switch v.MetricType() {
-			case "c":
-				if pass, order := filter(key); pass {
-					metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnInt64(kv.Key), valueType: v.ValueType(), order: order})
-				}
-			case "g":
-				for _, field := range []string{"avg", "max", "min"} {
-					subKey := fmt.Sprintf("%s_%s", kv.Key, field)
-					if pass, order := filter(subKey); pass {
-						metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
-					}
-				}
-			case "h":
-				for _, field := range []string{"p50", "p90", "p99"} {
-					subKey := fmt.Sprintf("%s_%s", kv.Key, field)
-					if pass, order := filter(subKey); pass {
-						metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, field: field, column: MakeColumnDouble(subKey), valueType: v.ValueType(), order: order})
-					}
-				}
-			default:
-				if pass, order := filter(key); pass {
-					metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: v.ValueType(), order: order})
-				}
+		} else if _, ok := kv.Value.(metric.MultiTimeSeries); ok {
+			if pass, order := filter(key); pass {
+				metricQueryKeys = append(metricQueryKeys, MetricQueryKey{key: kv.Key, column: MakeColumnString(kv.Key), valueType: "i", order: order})
 			}
 		}
 	})
@@ -293,54 +277,201 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 				ret.Rows[r].Values[colIdxOffset] = val()
 			}
 			colIdxOffset++
-		} else if val, ok := kv.(metric.ExpVar); ok {
-			met := val.Metric()
-			for r := 0; r < rowsCount; r++ {
-				var colIdx = colIdxOffset
-				var row = ret.Rows[r]
-				var timeseries *metric.Timeseries
-				var valueMetric metric.Metric
-
-				if mts, ok := met.(metric.MultiTimeseries); ok {
-					for _, ts := range mts {
-						if ts.Interval() == interval {
-							timeseries = ts
-						}
-					}
-				} else if ts, ok := met.(*metric.Timeseries); ok {
-					timeseries = ts
-				} else {
-					valueMetric = met
-				}
-
-				if timeseries != nil {
-					if samples := timeseries.Samples(); r < len(samples) {
-						valueMetric = samples[r]
-					}
-				}
-
-				if valueMetric != nil {
-					if counter, ok := valueMetric.(*metric.Counter); ok {
-						row.Values[colIdx] = counter.Value()
-						colIdx++
-					} else if gauge, ok := valueMetric.(*metric.Gauge); ok {
-						g := gauge.Value()
-						row.Values[colIdx] = g[queryKey.field]
-						colIdx++
-					} else if histogram, ok := valueMetric.(*metric.Histogram); ok {
-						h := histogram.Value()
-						row.Values[colIdx] = h[queryKey.field]
-						colIdx++
-					}
-				} else {
-					row.Values[colIdx] = nil
-					colIdx++
-				}
-				if r == rowsCount-1 {
-					colIdxOffset = colIdx
+		} else if val, ok := kv.(metric.MultiTimeSeries); ok {
+			tss, prds := val[0].LastN(rowsCount)
+			for i := range tss {
+				ret.Rows[i].Timestamp = tss[i]
+				switch prd := prds[i].(type) {
+				case *metric.CounterProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Value
+				case *metric.GaugeProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Value
+				case *metric.MeterProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Last
+				case *metric.HistogramProduct:
+					ret.Rows[i].Values[colIdxOffset] = prd.Values[0]
+				default:
+					fmt.Printf("unknown metric type:%#v\n", prd)
 				}
 			}
+			colIdxOffset++
 		}
 	}
 	return ret
+}
+
+var collector *metric.Collector
+var prefix string = "machbase"
+
+func StartMetrics(dest string) {
+	collector = metric.NewCollector(2*time.Second,
+		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct(dest)),
+		metric.WithExpvarPrefix(prefix),
+		metric.WithReceiverSize(20),
+	)
+	collector.AddInputFunc(collect_runtime)
+	collector.AddInputFunc(collect_metrics)
+	collector.Start()
+}
+
+func StopMetrics() {
+	if collector == nil {
+		return
+	}
+	collector.Stop()
+	collector = nil
+}
+
+func AddMetricsFunc(f func() (metric.Measurement, error)) {
+	if collector == nil {
+		return
+	}
+	collector.AddInputFunc(f)
+}
+
+func AddMetrics(m metric.Measurement) {
+	if collector == nil {
+		return
+	}
+	collector.SendEvent(m)
+}
+
+func collect_runtime() (metric.Measurement, error) {
+	ms := runtime.MemStats{}
+	runtime.ReadMemStats(&ms)
+
+	m := metric.Measurement{Name: "runtime"}
+	m.AddField(
+		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+	)
+	return m, nil
+}
+
+func collect_metrics() (metric.Measurement, error) {
+	m := metric.Measurement{Name: "session"}
+	m.AddField(
+		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "stmt:count", Value: float64(metricStmts.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "stmt:in_use", Value: float64(metricStmtsInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "append:count", Value: float64(metricAppenders.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+	)
+	return m, nil
+}
+
+type MetricRec struct {
+	Name  string
+	Time  int64
+	Value float64
+}
+
+func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo) {
+	destTable = strings.ToUpper(strings.TrimSpace(destTable))
+	if destTable == "" {
+		return nil
+	}
+	ctx := context.Background()
+	conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+	if err != nil {
+		metricLog.Errorf("metrics connect: %v", err)
+		return nil
+	}
+	defer conn.Close()
+	ddl := fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s ("+
+		"NAME VARCHAR(200) primary key, "+
+		"TIME DATETIME basetime, "+
+		"VALUE DOUBLE)", destTable)
+	r := conn.Exec(ctx, ddl)
+	if r.Err() != nil {
+		metricLog.Errorf("metrics creating table: %v", r.Err())
+		return nil
+	}
+	return func(tb metric.TimeBin, field metric.FieldInfo) {
+		var result []MetricRec
+		switch p := tb.Value.(type) {
+		case *metric.CounterProduct:
+			if p.Count == 0 {
+				return // Skip zero counters
+			}
+			result = []MetricRec{{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: p.Value,
+			}}
+		case *metric.GaugeProduct:
+			if p.Count == 0 {
+				return // Skip zero gauges
+			}
+			result = []MetricRec{{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: p.Value,
+			}}
+		case *metric.MeterProduct:
+			if p.Count == 0 {
+				return // Skip zero meters
+			}
+			result = []MetricRec{
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:min", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Min,
+				},
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Max,
+				},
+				{
+					Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Sum / float64(p.Count),
+				},
+			}
+		case *metric.HistogramProduct:
+			if p.Count == 0 {
+				return // Skip zero meters
+			}
+			result = append(result, MetricRec{
+				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: float64(p.Count),
+			})
+			for i, x := range p.P {
+				pct := fmt.Sprintf("%d", int(x*1000))
+				if pct[len(pct)-1] == '0' {
+					pct = pct[:len(pct)-1]
+				}
+				result = append(result, MetricRec{
+					Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
+					Time:  tb.Time.UnixNano(),
+					Value: p.Values[i],
+				})
+			}
+		default:
+			metricLog.Errorf("metrics unknown type: %T", p)
+			return
+		}
+
+		go func(result []MetricRec) {
+			ctx := context.Background()
+			conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+			if err != nil {
+				metricLog.Errorf("metrics connect: %v", err)
+				return
+			}
+			defer conn.Close()
+			sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", destTable)
+			for _, m := range result {
+				r := conn.Exec(ctx, sqlText, m.Name, m.Time, m.Value)
+				if r.Err() != nil {
+					metricLog.Errorf("metrics writing: %v", r.Err())
+					return
+				}
+			}
+		}(result)
+	}
 }

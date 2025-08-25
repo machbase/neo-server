@@ -55,6 +55,7 @@ define VARS {
     EXPERIMENT_MODE       = flag("--experiment", false)
     MACHBASE_INIT_OPTION  = flag("--machbase-init-option", 2)
     CREATEDB_SCRIPT_FILES = flag("--createdb-script-files", "")
+    STATZ_OUT             = flag("--statz-out", "")
 }
 
 module "machbase.com/neo-logging" {
@@ -88,6 +89,7 @@ module "machbase.com/neo-server" {
         BackupDir        = VARS_BACKUP_DIR
         ExperimentMode   = VARS_EXPERIMENT_MODE
         MachbaseInitOption  = VARS_MACHBASE_INIT_OPTION
+        StatzOut            = VARS_STATZ_OUT
         CreateDBScriptFiles = [ VARS_CREATEDB_SCRIPT_FILES ]
         MaxPoolSize          = VARS_MAX_POOL_SIZE
         MaxOpenConn          = VARS_MAX_OPEN_CONN

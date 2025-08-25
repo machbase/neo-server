@@ -189,17 +189,17 @@ func (m *QueryMeter) MarkExecute(sqlText string, args []any) {
 	m.SqlText = sqlText
 	m.SqlArgs = args
 	m.Execute = time.Since(m.ts)
-	metricQueryExecuteElapse.Add(m.Execute)
+	QueryExecTime(m.Execute)
 }
 
 func (m *QueryMeter) MarkLimitWait() {
 	m.LimitWait = time.Since(m.ts) - m.Execute
-	metricQueryLimitWait.Add(m.LimitWait)
+	QueryWaitTime(m.LimitWait)
 }
 
 func (m *QueryMeter) MarkFetch() {
 	m.Fetch = time.Since(m.ts) - m.Execute - m.LimitWait
-	metricQueryFetchElapse.Add(m.Fetch)
+	QueryFetchTime(m.Fetch)
 
 	elapse := int64(m.Execute + m.LimitWait + m.Fetch)
 	// update high water mark of query elapse

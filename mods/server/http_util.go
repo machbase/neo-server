@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OutOfBedlam/metric"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 func strBool(str string, def bool) bool {
@@ -41,61 +41,45 @@ func strString(str string, def string) string {
 	return str
 }
 
-var (
-	metricRequestTotal         = metric.NewExpVarIntCounter("machbase:http:count", api.MetricTimeFrames...)
-	metricResponseLatency      = metric.NewExpVarDurationHistogram("machbase:http:latency", api.MetricTimeFrames...)
-	metricWriteRequestTotal    = metric.NewExpVarIntCounter("machbase:http:write:count", api.MetricTimeFrames...)
-	metricWriteResponseLatency = metric.NewExpVarDurationHistogram("machbase:http:write:latency", api.MetricTimeFrames...)
-	metricQueryRequestTotal    = metric.NewExpVarIntCounter("machbase:http:query:count", api.MetricTimeFrames...)
-	metricQueryResponseLatency = metric.NewExpVarDurationHistogram("machbase:http:query:latency", api.MetricTimeFrames...)
-	metricTqlResponseLatency   = metric.NewExpVarDurationHistogram("machbase:http:tql:latency", api.MetricTimeFrames...)
-	metricTqlRequestTotal      = metric.NewExpVarIntCounter("machbase:http:tql:count", api.MetricTimeFrames...)
-	metricRecvContentBytes     = metric.NewExpVarIntCounter("machbase:http:recv_bytes", api.MetricTimeFrames...)
-	metricSendContentBytes     = metric.NewExpVarIntCounter("machbase:http:send_bytes", api.MetricTimeFrames...)
-	metricStatus1xx            = metric.NewExpVarIntCounter("machbase:http:status_1xx", api.MetricTimeFrames...)
-	metricStatus2xx            = metric.NewExpVarIntCounter("machbase:http:status_2xx", api.MetricTimeFrames...)
-	metricStatus3xx            = metric.NewExpVarIntCounter("machbase:http:status_3xx", api.MetricTimeFrames...)
-	metricStatus4xx            = metric.NewExpVarIntCounter("machbase:http:status_4xx", api.MetricTimeFrames...)
-	metricStatus5xx            = metric.NewExpVarIntCounter("machbase:http:status_5xx", api.MetricTimeFrames...)
-)
-
 func MetricsInterceptor() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
 
-		metricRequestTotal.Add(1)
 		latency := time.Since(start)
-		metricResponseLatency.Add(latency)
+		m := metric.Measurement{Name: "http"}
+		m.AddField(metric.Field{Name: "count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
 		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
-			metricWriteResponseLatency.Add(latency)
-			metricWriteRequestTotal.Add(1)
+			m.AddField(metric.Field{Name: "write:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
-			metricQueryResponseLatency.Add(latency)
-			metricQueryRequestTotal.Add(1)
+			m.AddField(metric.Field{Name: "query:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
-			metricTqlResponseLatency.Add(latency)
-			metricTqlRequestTotal.Add(1)
+			m.AddField(metric.Field{Name: "tql:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
 		}
 		if s := c.Request.ContentLength; s > 0 {
-			metricRecvContentBytes.Add(s)
+			m.AddField(metric.Field{Name: "recv_bytes", Value: float64(s), Unit: metric.UnitBytes, Type: metric.FieldTypeCounter})
 		}
 		if s := c.Writer.Size(); s > 0 {
-			metricSendContentBytes.Add(int64(s))
+			m.AddField(metric.Field{Name: "send_bytes", Value: float64(s), Unit: metric.UnitBytes, Type: metric.FieldTypeCounter})
 		}
 
 		status := c.Writer.Status()
 		if status < 200 {
-			metricStatus1xx.Add(1)
+			m.AddField(metric.Field{Name: "status_1xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
 		} else if status < 300 {
-			metricStatus2xx.Add(1)
+			m.AddField(metric.Field{Name: "status_2xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
 		} else if status < 400 {
-			metricStatus3xx.Add(1)
+			m.AddField(metric.Field{Name: "status_3xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
 		} else if status < 500 {
-			metricStatus4xx.Add(1)
+			m.AddField(metric.Field{Name: "status_4xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
 		} else {
-			metricStatus5xx.Add(1)
+			m.AddField(metric.Field{Name: "status_5xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
 		}
+		api.AddMetrics(m)
 	}
 }
 

@@ -1,30 +1,18 @@
 package tql
 
 import (
-	"context"
 	"crypto/sha1"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/OutOfBedlam/metric"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/machbase/neo-server/v8/api"
-	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 var tqlResultCache *Cache
-
-var (
-	tqlResultCacheDataSize = metric.NewCounter()
-	metricCacheDataSize    = metric.NewExpVarIntGauge("machbase:tql:cache:data_size", api.MetricTimeFrames...)
-	tqlResultCacheCount    = metric.NewCounter()
-	metricCacheCount       = metric.NewExpVarIntGauge("machbase:tql:cache:count", api.MetricTimeFrames...)
-	metricInsertions       = metric.NewExpVarIntCounter("machbase:tql:cache:insertions", api.MetricTimeFrames...)
-	metricEvictions        = metric.NewExpVarIntCounter("machbase:tql:cache:evictions", api.MetricTimeFrames...)
-	metricHits             = metric.NewExpVarIntCounter("machbase:tql:cache:hits", api.MetricTimeFrames...)
-	metricMisses           = metric.NewExpVarIntCounter("machbase:tql:cache:misses", api.MetricTimeFrames...)
-)
 
 type CacheOption struct {
 	MaxCapacity uint64 // max number of items
@@ -40,29 +28,21 @@ func StartCache(cap CacheOption) {
 		tqlResultCache.cache.Start()
 	}()
 
-	tqlResultCache.closeWg.Add(1)
-	go func() {
-		defer tqlResultCache.closeWg.Done()
-		var prevMet = tqlResultCache.cache.Metrics()
-		for {
-			select {
-			case <-tqlResultCache.closeCh:
-				return
-			case <-time.Tick(api.MetricMeasurePeriod):
-				value := tqlResultCacheDataSize.(*metric.Counter).Value()
-				metricCacheDataSize.Add(value)
-				value = int64(tqlResultCache.cache.Len())
-				metricCacheCount.Add(value)
-
-				met := tqlResultCache.cache.Metrics()
-				metricInsertions.Add(int64(met.Insertions - prevMet.Insertions))
-				metricEvictions.Add(int64(met.Evictions - prevMet.Evictions))
-				metricHits.Add(int64(met.Hits - prevMet.Hits))
-				metricMisses.Add(int64(met.Misses - prevMet.Misses))
-				prevMet = met
-			}
+	api.AddMetricsFunc(func() (metric.Measurement, error) {
+		if tqlResultCache == nil || tqlResultCache.cache == nil {
+			return metric.Measurement{}, fmt.Errorf("tql cache not started")
 		}
-	}()
+		stat := tqlResultCache.cache.Metrics()
+		m := metric.Measurement{Name: "tql:cache"}
+		m.AddField(
+			metric.Field{Name: "evictions", Value: float64(stat.Evictions), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "insertions", Value: float64(stat.Insertions), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "hits", Value: float64(stat.Hits), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "misses", Value: float64(stat.Misses), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "items", Value: float64(tqlResultCache.cache.Len()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		)
+		return m, nil
+	})
 }
 
 func StopCache() {
@@ -97,16 +77,6 @@ func newCache(cap CacheOption) *Cache {
 		// 	return uint64(len(item.Value().Data))
 		// }),
 	)
-	cache.OnInsertion(func(ctx context.Context, i *ttlcache.Item[string, *CacheData]) {
-		data := i.Value()
-		tqlResultCacheDataSize.Add(float64(len(data.Data)))
-		tqlResultCacheCount.Add(1)
-	})
-	cache.OnEviction(func(ctx context.Context, er ttlcache.EvictionReason, i *ttlcache.Item[string, *CacheData]) {
-		data := i.Value()
-		tqlResultCacheDataSize.Add(float64(len(data.Data)) * -1)
-		tqlResultCacheCount.Add(-1)
-	})
 	return &Cache{
 		cache:   cache,
 		closeCh: make(chan struct{}),
