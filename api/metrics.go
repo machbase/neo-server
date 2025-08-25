@@ -337,10 +337,13 @@ func AddMetrics(m metric.Measurement) {
 }
 
 func collect_runtime() (metric.Measurement, error) {
+	ms := runtime.MemStats{}
+	runtime.ReadMemStats(&ms)
+
 	m := metric.Measurement{Name: "runtime"}
 	m.AddField(
 		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		// metric.Field{Name: "heap_inuse", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
 		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
 	)
 	return m, nil
