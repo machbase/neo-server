@@ -345,6 +345,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.GET("/api/refs/*path", svr.handleRefs)
 			group.GET("/api/license", svr.handleGetLicense)
 			group.POST("/api/license", svr.handleInstallLicense)
+			group.Any("/api/statz/config", svr.handleStatzConfig)
 			if svr.bakd != nil {
 				backupdGroup := group.Group("/api/backup")
 				svr.bakd.HttpRouter(backupdGroup)
@@ -890,6 +891,53 @@ func (svr *httpd) allowDebug(ctx *gin.Context) {
 	ctx.Next()
 }
 
+func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
+	tick := time.Now()
+	switch ctx.Request.Method {
+	case http.MethodGet:
+		ctx.JSON(http.StatusOK, map[string]any{
+			"success": true,
+			"reason":  "success",
+			"elapse":  time.Since(tick).String(),
+			"data": map[string]any{
+				"out": api.MetricsDestTable(),
+			},
+		})
+	case http.MethodPost:
+		obj := map[string]any{}
+		if err := ctx.Bind(&obj); err != nil {
+			ctx.JSON(http.StatusBadRequest, map[string]any{
+				"success": false,
+				"reason":  err.Error(),
+				"elapse":  time.Since(tick).String(),
+			})
+		} else {
+			if out, ok := obj["out"].(string); !ok || (ok && len(out) == 0) {
+				ctx.JSON(http.StatusBadRequest, map[string]any{
+					"success": false,
+					"reason":  "invalid out value",
+					"elapse":  time.Since(tick).String(),
+				})
+			} else {
+				if err := api.SetMetricsDestTable(out); err != nil {
+					ctx.JSON(http.StatusInternalServerError, map[string]any{
+						"success": false,
+						"reason":  err.Error(),
+						"elapse":  time.Since(tick).String(),
+					})
+				} else {
+					ctx.JSON(http.StatusOK, map[string]any{
+						"success": true,
+						"reason":  "success",
+						"elapse":  time.Since(tick).String(),
+					})
+				}
+			}
+		}
+	default:
+		ctx.String(http.StatusMethodNotAllowed, "")
+	}
+}
 func (svr *httpd) handleStatz(ctx *gin.Context) {
 	ret := map[string]any{}
 	includes := ctx.QueryArray("keys")

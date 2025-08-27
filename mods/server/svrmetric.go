@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/OutOfBedlam/metric"
 	mach "github.com/machbase/neo-engine/v8"
@@ -10,21 +11,53 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/jemalloc"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
-	api.StartMetrics(s.Config.StatzOut)
+	api.StartMetrics()
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))
+	api.AddMetricsFunc(collectPsStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
+
+	api.SetMetricsDestTable(s.Config.StatzOut)
 }
 
 func stopServerMetrics() {
 	api.StopMetrics()
+}
+
+func collectPsStatz() (metric.Measurement, error) {
+	m := metric.Measurement{Name: "ps"}
+
+	cpuPercent, err := cpu.Percent(0, false)
+	if err != nil {
+		return m, fmt.Errorf("failed to collect CPU percent: %w", err)
+	}
+	m.Fields = append(m.Fields, metric.Field{
+		Name:  "cpu_percent",
+		Value: cpuPercent[0],
+		Unit:  metric.UnitPercent,
+		Type:  metric.FieldTypeMeter,
+	})
+
+	memStat, err := mem.VirtualMemory()
+	if err != nil {
+		return m, fmt.Errorf("failed to collect memory percent: %w", err)
+	}
+	m.Fields = append(m.Fields, metric.Field{
+		Name:  "mem_percent",
+		Value: memStat.UsedPercent,
+		Unit:  metric.UnitPercent,
+		Type:  metric.FieldTypeMeter,
+	})
+	return m, nil
 }
 
 func collectSysStatz() (metric.Measurement, error) {
