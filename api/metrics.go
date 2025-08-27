@@ -130,7 +130,7 @@ func elapseAvgMax(key string) (uint64, uint64, int64) {
 			return 0, 0, 0
 		}
 		values := prd.Values
-		return uint64(values[0]), uint64(values[len(values)-1]), int64(prd.Count)
+		return uint64(values[0]), uint64(values[len(values)-1]), int64(prd.Samples)
 	}
 	return 0, 0, 0
 }
@@ -304,7 +304,8 @@ var collector *metric.Collector
 var prefix string = "machbase"
 
 func StartMetrics(dest string) {
-	collector = metric.NewCollector(2*time.Second,
+	collector = metric.NewCollector(
+		metric.WithCollectInterval(2*time.Second),
 		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct(dest)),
 		metric.WithExpvarPrefix(prefix),
 		metric.WithReceiverSize(20),
@@ -393,7 +394,7 @@ func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo)
 		var result []MetricRec
 		switch p := tb.Value.(type) {
 		case *metric.CounterProduct:
-			if p.Count == 0 {
+			if p.Samples == 0 {
 				return // Skip zero counters
 			}
 			result = []MetricRec{{
@@ -402,7 +403,7 @@ func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo)
 				Value: p.Value,
 			}}
 		case *metric.GaugeProduct:
-			if p.Count == 0 {
+			if p.Samples == 0 {
 				return // Skip zero gauges
 			}
 			result = []MetricRec{{
@@ -411,7 +412,7 @@ func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo)
 				Value: p.Value,
 			}}
 		case *metric.MeterProduct:
-			if p.Count == 0 {
+			if p.Samples == 0 {
 				return // Skip zero meters
 			}
 			result = []MetricRec{
@@ -428,17 +429,17 @@ func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo)
 				{
 					Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
 					Time:  tb.Time.UnixNano(),
-					Value: p.Sum / float64(p.Count),
+					Value: p.Sum / float64(p.Samples),
 				},
 			}
 		case *metric.HistogramProduct:
-			if p.Count == 0 {
-				return // Skip zero meters
+			if p.Samples == 0 {
+				return // Skip zero samples
 			}
 			result = append(result, MetricRec{
 				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
 				Time:  tb.Time.UnixNano(),
-				Value: float64(p.Count),
+				Value: float64(p.Samples),
 			})
 			for i, x := range p.P {
 				pct := fmt.Sprintf("%d", int(x*1000))
