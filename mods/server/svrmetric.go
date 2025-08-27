@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/OutOfBedlam/metric"
 	mach "github.com/machbase/neo-engine/v8"
@@ -22,6 +23,7 @@ func startServerMetrics(s *Server) {
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))
+	api.AddMetricsFunc(collectRuntime)
 	api.AddMetricsFunc(collectPsStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
@@ -31,6 +33,19 @@ func startServerMetrics(s *Server) {
 
 func stopServerMetrics() {
 	api.StopMetrics()
+}
+
+func collectRuntime() (metric.Measurement, error) {
+	ms := runtime.MemStats{}
+	runtime.ReadMemStats(&ms)
+
+	m := metric.Measurement{Name: "runtime"}
+	m.AddField(
+		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+	)
+	return m, nil
 }
 
 func collectPsStatz() (metric.Measurement, error) {

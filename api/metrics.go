@@ -4,7 +4,6 @@ import (
 	"context"
 	"expvar"
 	"fmt"
-	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -311,7 +310,6 @@ func StartMetrics() {
 		metric.WithExpvarPrefix(prefix),
 		metric.WithReceiverSize(20),
 	)
-	collector.AddInputFunc(collect_runtime)
 	collector.AddInputFunc(collect_metrics)
 	collector.Start()
 }
@@ -367,19 +365,6 @@ func AddMetrics(m metric.Measurement) {
 	collector.SendEvent(m)
 }
 
-func collect_runtime() (metric.Measurement, error) {
-	ms := runtime.MemStats{}
-	runtime.ReadMemStats(&ms)
-
-	m := metric.Measurement{Name: "runtime"}
-	m.AddField(
-		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-	)
-	return m, nil
-}
-
 func collect_metrics() (metric.Measurement, error) {
 	m := metric.Measurement{Name: "session"}
 	m.AddField(
@@ -399,19 +384,19 @@ type MetricRec struct {
 	Value float64
 }
 
-func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
+func onProduct(pd metric.ProducedData) {
 	if metricsDest == "" {
 		return
 	}
 	var result []MetricRec
-	switch p := tb.Value.(type) {
+	switch p := pd.Value.(type) {
 	case *metric.CounterProduct:
 		if p.Samples == 0 {
 			return // Skip zero counters
 		}
 		result = []MetricRec{{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-			Time:  tb.Time.UnixNano(),
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.GaugeProduct:
@@ -419,8 +404,8 @@ func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
 			return // Skip zero gauges
 		}
 		result = []MetricRec{{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-			Time:  tb.Time.UnixNano(),
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.MeterProduct:
@@ -429,18 +414,18 @@ func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
 		}
 		result = []MetricRec{
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:min", prefix, field.Measure, field.Name),
-				Time:  tb.Time.UnixNano(),
+				Name:  fmt.Sprintf("%s:%s:%s:min", prefix, pd.Measure, pd.Field),
+				Time:  pd.Time.UnixNano(),
 				Value: p.Min,
 			},
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
-				Time:  tb.Time.UnixNano(),
+				Name:  fmt.Sprintf("%s:%s:%s:max", prefix, pd.Measure, pd.Field),
+				Time:  pd.Time.UnixNano(),
 				Value: p.Max,
 			},
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
-				Time:  tb.Time.UnixNano(),
+				Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, pd.Measure, pd.Field),
+				Time:  pd.Time.UnixNano(),
 				Value: p.Sum / float64(p.Samples),
 			},
 		}
@@ -449,8 +434,8 @@ func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
 			return // Skip zero samples
 		}
 		result = append(result, MetricRec{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
-			Time:  tb.Time.UnixNano(),
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Time:  pd.Time.UnixNano(),
 			Value: float64(p.Samples),
 		})
 		for i, x := range p.P {
@@ -459,8 +444,8 @@ func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
 				pct = pct[:len(pct)-1]
 			}
 			result = append(result, MetricRec{
-				Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
-				Time:  tb.Time.UnixNano(),
+				Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, pd.Measure, pd.Field, pct),
+				Time:  pd.Time.UnixNano(),
 				Value: p.Values[i],
 			})
 		}
