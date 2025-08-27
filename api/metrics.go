@@ -302,11 +302,12 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 
 var collector *metric.Collector
 var prefix string = "machbase"
+var metricsDest string
 
-func StartMetrics(dest string) {
+func StartMetrics() {
 	collector = metric.NewCollector(
 		metric.WithCollectInterval(2*time.Second),
-		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct(dest)),
+		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct),
 		metric.WithExpvarPrefix(prefix),
 		metric.WithReceiverSize(20),
 	)
@@ -321,6 +322,35 @@ func StopMetrics() {
 	}
 	collector.Stop()
 	collector = nil
+}
+
+func MetricsDestTable() string {
+	return metricsDest
+}
+
+func SetMetricsDestTable(destTable string) error {
+	destTable = strings.ToUpper(strings.TrimSpace(destTable))
+	if destTable != "" {
+		ctx := context.Background()
+		conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+		if err != nil {
+			metricLog.Errorf("metrics connect: %v", err)
+			return nil
+		}
+		defer conn.Close()
+		ddl := fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s ("+
+			"NAME VARCHAR(200) primary key, "+
+			"TIME DATETIME basetime, "+
+			"VALUE DOUBLE)", destTable)
+		r := conn.Exec(ctx, ddl)
+		if r.Err() != nil {
+			metricLog.Errorf("metrics creating table: %v", r.Err())
+			return nil
+		}
+	}
+
+	metricsDest = destTable
+	return nil
 }
 
 func AddMetricsFunc(f func() (metric.Measurement, error)) {
@@ -369,110 +399,94 @@ type MetricRec struct {
 	Value float64
 }
 
-func onProduct(destTable string) func(tb metric.TimeBin, field metric.FieldInfo) {
-	destTable = strings.ToUpper(strings.TrimSpace(destTable))
-	if destTable == "" {
-		return nil
+func onProduct(tb metric.TimeBin, field metric.FieldInfo) {
+	if metricsDest == "" {
+		return
 	}
-	ctx := context.Background()
-	conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
-	if err != nil {
-		metricLog.Errorf("metrics connect: %v", err)
-		return nil
-	}
-	defer conn.Close()
-	ddl := fmt.Sprintf("CREATE TAG TABLE IF NOT EXISTS %s ("+
-		"NAME VARCHAR(200) primary key, "+
-		"TIME DATETIME basetime, "+
-		"VALUE DOUBLE)", destTable)
-	r := conn.Exec(ctx, ddl)
-	if r.Err() != nil {
-		metricLog.Errorf("metrics creating table: %v", r.Err())
-		return nil
-	}
-	return func(tb metric.TimeBin, field metric.FieldInfo) {
-		var result []MetricRec
-		switch p := tb.Value.(type) {
-		case *metric.CounterProduct:
-			if p.Samples == 0 {
-				return // Skip zero counters
-			}
-			result = []MetricRec{{
-				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+	var result []MetricRec
+	switch p := tb.Value.(type) {
+	case *metric.CounterProduct:
+		if p.Samples == 0 {
+			return // Skip zero counters
+		}
+		result = []MetricRec{{
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+			Time:  tb.Time.UnixNano(),
+			Value: p.Value,
+		}}
+	case *metric.GaugeProduct:
+		if p.Samples == 0 {
+			return // Skip zero gauges
+		}
+		result = []MetricRec{{
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+			Time:  tb.Time.UnixNano(),
+			Value: p.Value,
+		}}
+	case *metric.MeterProduct:
+		if p.Samples == 0 {
+			return // Skip zero meters
+		}
+		result = []MetricRec{
+			{
+				Name:  fmt.Sprintf("%s:%s:%s:min", prefix, field.Measure, field.Name),
 				Time:  tb.Time.UnixNano(),
-				Value: p.Value,
-			}}
-		case *metric.GaugeProduct:
-			if p.Samples == 0 {
-				return // Skip zero gauges
-			}
-			result = []MetricRec{{
-				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Value: p.Min,
+			},
+			{
+				Name:  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
 				Time:  tb.Time.UnixNano(),
-				Value: p.Value,
-			}}
-		case *metric.MeterProduct:
-			if p.Samples == 0 {
-				return // Skip zero meters
-			}
-			result = []MetricRec{
-				{
-					Name:  fmt.Sprintf("%s:%s:%s:min", prefix, field.Measure, field.Name),
-					Time:  tb.Time.UnixNano(),
-					Value: p.Min,
-				},
-				{
-					Name:  fmt.Sprintf("%s:%s:%s:max", prefix, field.Measure, field.Name),
-					Time:  tb.Time.UnixNano(),
-					Value: p.Max,
-				},
-				{
-					Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
-					Time:  tb.Time.UnixNano(),
-					Value: p.Sum / float64(p.Samples),
-				},
-			}
-		case *metric.HistogramProduct:
-			if p.Samples == 0 {
-				return // Skip zero samples
+				Value: p.Max,
+			},
+			{
+				Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, field.Measure, field.Name),
+				Time:  tb.Time.UnixNano(),
+				Value: p.Sum / float64(p.Samples),
+			},
+		}
+	case *metric.HistogramProduct:
+		if p.Samples == 0 {
+			return // Skip zero samples
+		}
+		result = append(result, MetricRec{
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+			Time:  tb.Time.UnixNano(),
+			Value: float64(p.Samples),
+		})
+		for i, x := range p.P {
+			pct := fmt.Sprintf("%d", int(x*1000))
+			if pct[len(pct)-1] == '0' {
+				pct = pct[:len(pct)-1]
 			}
 			result = append(result, MetricRec{
-				Name:  fmt.Sprintf("%s:%s:%s", prefix, field.Measure, field.Name),
+				Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
 				Time:  tb.Time.UnixNano(),
-				Value: float64(p.Samples),
+				Value: p.Values[i],
 			})
-			for i, x := range p.P {
-				pct := fmt.Sprintf("%d", int(x*1000))
-				if pct[len(pct)-1] == '0' {
-					pct = pct[:len(pct)-1]
-				}
-				result = append(result, MetricRec{
-					Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, field.Measure, field.Name, pct),
-					Time:  tb.Time.UnixNano(),
-					Value: p.Values[i],
-				})
-			}
-		default:
-			metricLog.Errorf("metrics unknown type: %T", p)
+		}
+	default:
+		metricLog.Errorf("metrics unknown type: %T", p)
+		return
+	}
+
+	go func(result []MetricRec, table string) {
+		if table == "" {
 			return
 		}
-
-		go func(result []MetricRec) {
-			ctx := context.Background()
-			conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
-			if err != nil {
-				metricLog.Errorf("metrics connect: %v", err)
+		ctx := context.Background()
+		conn, err := defaultDatabase.Connect(ctx, WithTrustUser("sys"))
+		if err != nil {
+			metricLog.Errorf("metrics connect: %v", err)
+			return
+		}
+		defer conn.Close()
+		sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", table)
+		for _, m := range result {
+			r := conn.Exec(ctx, sqlText, m.Name, m.Time, m.Value)
+			if r.Err() != nil {
+				metricLog.Errorf("metrics writing: %v", r.Err())
 				return
 			}
-			defer conn.Close()
-			sqlText := fmt.Sprintf("INSERT INTO %s (NAME, TIME, VALUE) VALUES (?, ?, ?)", destTable)
-			for _, m := range result {
-				r := conn.Exec(ctx, sqlText, m.Name, m.Time, m.Value)
-				if r.Err() != nil {
-					metricLog.Errorf("metrics writing: %v", r.Err())
-					return
-				}
-			}
-		}(result)
-	}
+		}
+	}(result, metricsDest)
 }

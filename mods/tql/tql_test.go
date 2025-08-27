@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	api.SetDefault(db)
 	api.StartAppendWorkers()
 
-	api.StartMetrics("")
+	api.StartMetrics()
 
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)

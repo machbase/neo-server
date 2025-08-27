@@ -18,13 +18,15 @@ import (
 var statzLog = logging.GetLog("server-statz")
 
 func startServerMetrics(s *Server) {
-	api.StartMetrics(s.Config.StatzOut)
+	api.StartMetrics()
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))
 	api.AddMetricsFunc(collectPsStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
+
+	api.SetMetricsDestTable(s.Config.StatzOut)
 }
 
 func stopServerMetrics() {
