@@ -48,36 +48,36 @@ func MetricsInterceptor() gin.HandlerFunc {
 
 		latency := time.Since(start)
 		m := metric.Measurement{Name: "http"}
-		m.AddField(metric.Field{Name: "count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
-		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
+		m.AddField(metric.Field{Name: "count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
 		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
-			m.AddField(metric.Field{Name: "write:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
-			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "write:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
-			m.AddField(metric.Field{Name: "query:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
-			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "query:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
-			m.AddField(metric.Field{Name: "tql:count", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
-			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "tql:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
 		}
 		if s := c.Request.ContentLength; s > 0 {
-			m.AddField(metric.Field{Name: "recv_bytes", Value: float64(s), Unit: metric.UnitBytes, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "recv_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
 		}
 		if s := c.Writer.Size(); s > 0 {
-			m.AddField(metric.Field{Name: "send_bytes", Value: float64(s), Unit: metric.UnitBytes, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "send_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
 		}
 
 		status := c.Writer.Status()
 		if status < 200 {
-			m.AddField(metric.Field{Name: "status_1xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "status_1xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 300 {
-			m.AddField(metric.Field{Name: "status_2xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "status_2xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 400 {
-			m.AddField(metric.Field{Name: "status_3xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "status_3xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 500 {
-			m.AddField(metric.Field{Name: "status_4xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "status_4xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else {
-			m.AddField(metric.Field{Name: "status_5xx", Value: 1, Unit: metric.UnitShort, Type: metric.FieldTypeCounter})
+			m.AddField(metric.Field{Name: "status_5xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		}
 		api.AddMetrics(m)
 	}

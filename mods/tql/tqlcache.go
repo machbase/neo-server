@@ -35,11 +35,11 @@ func StartCache(cap CacheOption) {
 		stat := tqlResultCache.cache.Metrics()
 		m := metric.Measurement{Name: "tql:cache"}
 		m.AddField(
-			metric.Field{Name: "evictions", Value: float64(stat.Evictions), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "insertions", Value: float64(stat.Insertions), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "hits", Value: float64(stat.Hits), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "misses", Value: float64(stat.Misses), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "items", Value: float64(tqlResultCache.cache.Len()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "evictions", Value: float64(stat.Evictions), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "insertions", Value: float64(stat.Insertions), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "hits", Value: float64(stat.Hits), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "misses", Value: float64(stat.Misses), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "items", Value: float64(tqlResultCache.cache.Len()), Type: metric.GaugeType(metric.UnitShort)},
 		)
 		return m, nil
 	})

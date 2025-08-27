@@ -56,14 +56,14 @@ var (
 func AllocConn(connWaitTime time.Duration) {
 	metricConnsInUse.Add(1)
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:wait_time", Value: float64(connWaitTime), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+		{Name: "conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
 	}})
 }
 
 func FreeConn(connUseTime time.Duration) {
 	metricConnsInUse.Add(-1)
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:use_time", Value: float64(connUseTime), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+		{Name: "conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
 	}})
 }
 
@@ -87,19 +87,19 @@ func FreeAppender() {
 
 func QueryExecTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:exec_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+		{Name: "query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
 	}})
 }
 
 func QueryWaitTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:wait_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+		{Name: "query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
 	}})
 }
 
 func QueryFetchTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:fetch_time", Value: float64(d), Unit: metric.UnitDuration, Type: metric.FieldTypeHistogram(10, 0.5, 0.99, 0.999)},
+		{Name: "query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
 	}})
 }
 
@@ -368,12 +368,12 @@ func AddMetrics(m metric.Measurement) {
 func collect_metrics() (metric.Measurement, error) {
 	m := metric.Measurement{Name: "session"}
 	m.AddField(
-		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "stmt:count", Value: float64(metricStmts.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "stmt:in_use", Value: float64(metricStmtsInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "append:count", Value: float64(metricAppenders.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "stmt:count", Value: float64(metricStmts.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "stmt:in_use", Value: float64(metricStmtsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "append:count", Value: float64(metricAppenders.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Type: metric.GaugeType(metric.UnitShort)},
 	)
 	return m, nil
 }

@@ -6,7 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/OutOfBedlam/metric v0.0.0-20250827072310-5ca5a64c1f4b
+	github.com/OutOfBedlam/metric v0.0.0-20250827074720-0b95216c8876
 	github.com/alecthomas/chroma/v2 v2.18.0
 	github.com/alecthomas/kong v0.8.0
 	github.com/atotto/clipboard v0.1.4

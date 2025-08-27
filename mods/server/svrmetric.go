@@ -41,9 +41,9 @@ func collectRuntime() (metric.Measurement, error) {
 
 	m := metric.Measurement{Name: "runtime"}
 	m.AddField(
-		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Type: metric.GaugeType(metric.UnitShort)},
 	)
 	return m, nil
 }
@@ -58,8 +58,7 @@ func collectPsStatz() (metric.Measurement, error) {
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "cpu_percent",
 		Value: cpuPercent[0],
-		Unit:  metric.UnitPercent,
-		Type:  metric.FieldTypeMeter,
+		Type:  metric.MeterType(metric.UnitPercent),
 	})
 
 	memStat, err := mem.VirtualMemory()
@@ -69,8 +68,7 @@ func collectPsStatz() (metric.Measurement, error) {
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "mem_percent",
 		Value: memStat.UsedPercent,
-		Unit:  metric.UnitPercent,
-		Type:  metric.FieldTypeMeter,
+		Type:  metric.MeterType(metric.UnitPercent),
 	})
 	return m, nil
 }
@@ -96,12 +94,12 @@ func collectSysStatz() (metric.Measurement, error) {
 		statzLog.Error("failed to scan machbase: %v", err)
 		return m, err
 	}
-	m.AddField(metric.Field{Name: "sysmem", Value: float64(usageTotal), Unit: metric.UnitBytes, Type: metric.FieldTypeGauge})
+	m.AddField(metric.Field{Name: "sysmem", Value: float64(usageTotal), Type: metric.GaugeType(metric.UnitBytes)})
 
 	if jemalloc.Enabled {
 		stat := &jemalloc.Stat{}
 		jemalloc.HeapStat(stat)
-		m.AddField(metric.Field{Name: "jemalloc_active", Value: float64(stat.Active), Unit: metric.UnitBytes, Type: metric.FieldTypeGauge})
+		m.AddField(metric.Field{Name: "jemalloc_active", Value: float64(stat.Active), Type: metric.GaugeType(metric.UnitBytes)})
 	}
 
 	return m, nil
@@ -110,9 +108,9 @@ func collectSysStatz() (metric.Measurement, error) {
 func collectMachSvrStatz() (metric.Measurement, error) {
 	m := metric.Measurement{Name: "machsvr"}
 	nfo := mach.Stat()
-	m.AddField(metric.Field{Name: "conn", Value: float64(nfo.EngConn), Unit: metric.UnitShort, Type: metric.FieldTypeGauge})
-	m.AddField(metric.Field{Name: "stmt", Value: float64(nfo.EngStmt), Unit: metric.UnitShort, Type: metric.FieldTypeGauge})
-	m.AddField(metric.Field{Name: "append", Value: float64(nfo.EngAppend), Unit: metric.UnitShort, Type: metric.FieldTypeGauge})
+	m.AddField(metric.Field{Name: "conn", Value: float64(nfo.EngConn), Type: metric.GaugeType(metric.UnitShort)})
+	m.AddField(metric.Field{Name: "stmt", Value: float64(nfo.EngStmt), Type: metric.GaugeType(metric.UnitShort)})
+	m.AddField(metric.Field{Name: "append", Value: float64(nfo.EngAppend), Type: metric.GaugeType(metric.UnitShort)})
 	return m, nil
 }
 
@@ -124,20 +122,20 @@ func collectMqttStatz(s *Server) func() (metric.Measurement, error) {
 		}
 		nfo := s.mqttd.broker.Info
 		m.AddField(
-			metric.Field{Name: "recv_bytes", Value: float64(nfo.BytesReceived), Unit: metric.UnitBytes, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "send_bytes", Value: float64(nfo.BytesSent), Unit: metric.UnitBytes, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "recv_msgs", Value: float64(nfo.MessagesReceived), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "send_msgs", Value: float64(nfo.MessagesSent), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "drop_msgs", Value: float64(nfo.MessagesDropped), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "send_pkts", Value: float64(nfo.PacketsSent), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "recv_pkts", Value: float64(nfo.PacketsReceived), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "retained", Value: float64(nfo.Retained), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "subscriptions", Value: float64(nfo.Subscriptions), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "clients", Value: float64(nfo.ClientsTotal), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "clients_connected", Value: float64(nfo.ClientsConnected), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "clients_disconnected", Value: float64(nfo.ClientsDisconnected), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "inflight", Value: float64(nfo.Inflight), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
-			metric.Field{Name: "inflight_dropped", Value: float64(nfo.InflightDropped), Unit: metric.UnitShort, Type: metric.FieldTypeGauge},
+			metric.Field{Name: "recv_bytes", Value: float64(nfo.BytesReceived), Type: metric.GaugeType(metric.UnitBytes)},
+			metric.Field{Name: "send_bytes", Value: float64(nfo.BytesSent), Type: metric.GaugeType(metric.UnitBytes)},
+			metric.Field{Name: "recv_msgs", Value: float64(nfo.MessagesReceived), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "send_msgs", Value: float64(nfo.MessagesSent), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "drop_msgs", Value: float64(nfo.MessagesDropped), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "send_pkts", Value: float64(nfo.PacketsSent), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "recv_pkts", Value: float64(nfo.PacketsReceived), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "retained", Value: float64(nfo.Retained), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "subscriptions", Value: float64(nfo.Subscriptions), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "clients", Value: float64(nfo.ClientsTotal), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "clients_connected", Value: float64(nfo.ClientsConnected), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "clients_disconnected", Value: float64(nfo.ClientsDisconnected), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "inflight", Value: float64(nfo.Inflight), Type: metric.GaugeType(metric.UnitShort)},
+			metric.Field{Name: "inflight_dropped", Value: float64(nfo.InflightDropped), Type: metric.GaugeType(metric.UnitShort)},
 		)
 		return m, nil
 	}
