@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OutOfBedlam/metric"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 var tqlResultCache *Cache

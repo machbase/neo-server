@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OutOfBedlam/metric"
 	"github.com/machbase/neo-server/v8/api/mgmt"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 )
 
 const (

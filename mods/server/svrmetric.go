@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/OutOfBedlam/metric"
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/api"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/jemalloc"
+	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
 )
