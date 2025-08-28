@@ -9,7 +9,7 @@ import (
 )
 
 func TestTimeseries(t *testing.T) {
-	now := time.Date(2023, 10, 1, 12, 4, 4, 400_000_000, time.UTC)
+	now := time.Date(2023, 10, 1, 12, 4, 4, 400_000_000, time.Local)
 	nowFunc = func() time.Time { return now }
 
 	ts := NewTimeSeries(time.Second, 3, NewMeter())
@@ -19,8 +19,8 @@ func TestTimeseries(t *testing.T) {
 	ts.Add(2.0)
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 21:04:05","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
-		`{"ts":"2023-10-01 21:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
+		`{"ts":"2023-10-01 12:04:05","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
+		`{"ts":"2023-10-01 12:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
 		`]`, ts.String())
 
 	now = now.Add(time.Second)
@@ -31,9 +31,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss := ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -49,9 +49,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss = ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -64,9 +64,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss = ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.UTC),
-		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.Local),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 4, Max: 5, First: 4, Last: 4.8, Sum: 13.8, Samples: 3},
@@ -78,14 +78,14 @@ func TestTimeseries(t *testing.T) {
 	ts.Add(7.0)
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 21:04:15","value":{"samples":1,"max":7,"min":7,"first":7,"last":7,"sum":7}}`+
+		`{"ts":"2023-10-01 12:04:15","value":{"samples":1,"max":7,"min":7,"first":7,"last":7,"sum":7}}`+
 		`]`, ts.String())
 }
 
 func TestTimeSeriesSubSeconds(t *testing.T) {
 	ts := NewTimeSeries(time.Second, 10, NewCounter())
 
-	now := time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC)
+	now := time.Date(2023, 10, 1, 12, 4, 5, 0, time.Local)
 	nowFunc = func() time.Time {
 		ret := now
 		now = now.Add(100 * time.Millisecond)
@@ -97,30 +97,30 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 	}
 
 	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 21:04:06","value":{"value":55,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:07","value":{"value":155,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:08","value":{"value":255,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:09","value":{"value":355,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:10","value":{"value":455,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:11","value":{"value":555,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:12","value":{"value":655,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:13","value":{"value":755,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:14","value":{"value":855,"samples":10}},`+
-		`{"ts":"2023-10-01 21:04:15","value":{"value":955,"samples":10}}`+
+		`{"ts":"2023-10-01 12:04:06","value":{"value":55,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:07","value":{"value":155,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:08","value":{"value":255,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:09","value":{"value":355,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:10","value":{"value":455,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:11","value":{"value":555,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:12","value":{"value":655,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:13","value":{"value":755,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:14","value":{"value":855,"samples":10}},`+
+		`{"ts":"2023-10-01 12:04:15","value":{"value":955,"samples":10}}`+
 		`]`, ts.String())
 
 	ss := ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 8, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 9, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 10, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 11, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 12, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC),
-		time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 6, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 7, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 8, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 9, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 10, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 11, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 12, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 14, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&CounterProduct{Value: 55, Samples: 10},
@@ -139,7 +139,7 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 
 	ptTime, ptValue := ts.Last()
 	require.Equal(t, &CounterProduct{Value: 955, Samples: 10}, ptValue)
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTime)
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local), ptTime)
 
 	ptTimes, _ := ts.LastN(0)
 	require.Nil(t, ptTimes)
@@ -149,14 +149,14 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 	ptTimes, _ = ts.LastN(20)
 	require.Equal(t, 10, len(ptTimes))
 
-	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC))
+	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local))
 	require.Equal(t, 3, len(ptTimes))
 	require.Equal(t, &CounterProduct{Value: 755, Samples: 10}, ptValues[0])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC), ptTimes[0])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local), ptTimes[0])
 	require.Equal(t, &CounterProduct{Value: 855, Samples: 10}, ptValues[1])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC), ptTimes[1])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.Local), ptTimes[1])
 	require.Equal(t, &CounterProduct{Value: 955, Samples: 10}, ptValues[2])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTimes[2])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local), ptTimes[2])
 }
 
 func TestMultiTimeSeries(t *testing.T) {
