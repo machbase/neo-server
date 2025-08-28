@@ -3,6 +3,7 @@ package mcpsvr
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,39 @@ var tools = []server.ServerTool{
 	{
 		Tool:    mcp.NewTool("now", mcp.WithDescription("Get current time in Unix Epoch Nanosecond")),
 		Handler: getNowHandler,
+	},
+	{
+		Tool: mcp.NewTool("timeformat", mcp.WithDescription("Format time in a specific format"),
+			mcp.WithString("time", mcp.Required(), mcp.Description("Time to format (Unix Epoch Nanosecond)")),
+			mcp.WithString("format", mcp.DefaultString("RFC3339"), mcp.Description("Time format (e.g., RFC3339, Unix, etc.)")),
+			mcp.WithString("location", mcp.DefaultString("Local"), mcp.Description("Time zone location (e.g., Local, UTC, Asia/Seoul)")),
+		),
+		Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			timeStr, err := request.RequireString("time")
+			if err != nil {
+				return mcp.NewToolResultError("time must be a string: " + err.Error()), nil
+			}
+			format, err := request.RequireString("format")
+			if err != nil {
+				return mcp.NewToolResultError("format must be a string: " + err.Error()), nil
+			}
+			locationStr, err := request.RequireString("location")
+			if err != nil {
+				return mcp.NewToolResultError("location must be a string: " + err.Error()), nil
+			}
+			location, err := time.LoadLocation(locationStr)
+			if err != nil {
+				return mcp.NewToolResultError("invalid location: " + err.Error()), nil
+			}
+			nano, err := strconv.ParseInt(timeStr, 10, 64)
+			if err != nil {
+				return mcp.NewToolResultError("invalid time format: " + err.Error()), nil
+			}
+			unixTime := time.Unix(0, nano)
+			timeFormat := util.NewTimeFormatter(util.Timeformat(format), util.TimeLocation(location))
+			formattedTime := timeFormat.Format(unixTime)
+			return mcp.NewToolResultText(formattedTime), nil
+		},
 	},
 	{
 		Tool: mcp.NewTool("gen_sql",
