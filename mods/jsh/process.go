@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +141,10 @@ func (j *Jsh) process_cd(call js.FunctionCall) js.Value {
 	}
 	ent, err := ssfs.Default().Get(path)
 	if err != nil {
+		if _, ok := err.(*fs.PathError); ok {
+			j.Print(fmt.Sprintf("%s: no such file or directory\n", path))
+			return js.Undefined()
+		}
 		panic(j.vm.NewGoError(err))
 	}
 	if !ent.IsDir {
