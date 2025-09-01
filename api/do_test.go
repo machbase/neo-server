@@ -3,7 +3,6 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	_ "embed"
 	"fmt"
@@ -121,10 +120,10 @@ func tcBridge(t *testing.T) {
 				require.NoError(t, err)
 				err = rows.Scan(buff...)
 				require.NoError(t, err)
-				require.Equal(t, &sql.NullInt64{Valid: true, Int64: 100}, buff[0])
-				require.Equal(t, &sql.NullString{Valid: true, String: "alpha"}, buff[1])
-				require.Equal(t, &sql.NullInt64{Valid: true, Int64: 10}, buff[2])
-				require.Equal(t, &sql.NullString{Valid: true, String: "street-100"}, buff[3])
+				require.Equal(t, int64(100), buff[0])
+				require.Equal(t, "alpha", buff[1])
+				require.Equal(t, int64(10), buff[2])
+				require.Equal(t, "street-100", buff[3])
 				nilRaw := new([]byte)
 				require.EqualValues(t, nilRaw, buff[5])
 			},
