@@ -9,8 +9,9 @@ import (
 )
 
 func TestTimeseries(t *testing.T) {
-	now := time.Date(2023, 10, 1, 12, 4, 4, 400_000_000, time.Local)
+	now := time.Date(2023, 10, 1, 12, 4, 4, 400_000_000, time.UTC)
 	nowFunc = func() time.Time { return now }
+	timeZone = time.UTC
 
 	ts := NewTimeSeries(time.Second, 3, NewMeter())
 	ts.Add(1.0)
@@ -31,9 +32,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss := ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -49,9 +50,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss = ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
@@ -64,9 +65,9 @@ func TestTimeseries(t *testing.T) {
 
 	ss = ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.Local),
-		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.Local),
+		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.UTC),
+		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.UTC),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&MeterProduct{Min: 4, Max: 5, First: 4, Last: 4.8, Sum: 13.8, Samples: 3},
@@ -85,7 +86,7 @@ func TestTimeseries(t *testing.T) {
 func TestTimeSeriesSubSeconds(t *testing.T) {
 	ts := NewTimeSeries(time.Second, 10, NewCounter())
 
-	now := time.Date(2023, 10, 1, 12, 4, 5, 0, time.Local)
+	now := time.Date(2023, 10, 1, 12, 4, 5, 0, time.UTC)
 	nowFunc = func() time.Time {
 		ret := now
 		now = now.Add(100 * time.Millisecond)
@@ -111,16 +112,16 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 
 	ss := ts.Snapshot()
 	require.Equal(t, []time.Time{
-		time.Date(2023, 10, 1, 12, 4, 6, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 7, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 8, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 9, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 10, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 11, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 12, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 14, 0, time.Local),
-		time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local),
+		time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 8, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 9, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 10, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 11, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 12, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC),
+		time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC),
 	}, ss.Times)
 	require.Equal(t, []Product{
 		&CounterProduct{Value: 55, Samples: 10},
@@ -139,7 +140,7 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 
 	ptTime, ptValue := ts.Last()
 	require.Equal(t, &CounterProduct{Value: 955, Samples: 10}, ptValue)
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local), ptTime)
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTime)
 
 	ptTimes, _ := ts.LastN(0)
 	require.Nil(t, ptTimes)
@@ -149,14 +150,14 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 	ptTimes, _ = ts.LastN(20)
 	require.Equal(t, 10, len(ptTimes))
 
-	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local))
+	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC))
 	require.Equal(t, 3, len(ptTimes))
 	require.Equal(t, &CounterProduct{Value: 755, Samples: 10}, ptValues[0])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.Local), ptTimes[0])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC), ptTimes[0])
 	require.Equal(t, &CounterProduct{Value: 855, Samples: 10}, ptValues[1])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.Local), ptTimes[1])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC), ptTimes[1])
 	require.Equal(t, &CounterProduct{Value: 955, Samples: 10}, ptValues[2])
-	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.Local), ptTimes[2])
+	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTimes[2])
 }
 
 func TestMultiTimeSeries(t *testing.T) {
@@ -400,15 +401,15 @@ func TestTimeSeriesHistogram(t *testing.T) {
 
 func createTestStorage(t *testing.T) *FileStorage {
 	t.Helper()
-	os.MkdirAll("../../../tmp/store", 0755)
-	storage := NewFileStorage("../../../tmp/store")
+	os.MkdirAll("./tmp/store", 0755)
+	storage := NewFileStorage("./tmp/store")
 	require.NotNil(t, storage)
 	return storage
 }
 
 func TestTimeseriesStorage(t *testing.T) {
 	storage := createTestStorage(t)
-	now := time.Date(2023, 10, 1, 12, 4, 4, 0, time.Local)
+	now := time.Date(2023, 10, 1, 12, 4, 4, 0, time.UTC)
 	nowFunc = func() time.Time { return now }
 
 	ts := NewTimeSeries(time.Second, 3, NewMeter())

@@ -16,9 +16,9 @@ type TimeBin struct {
 
 func (tv TimeBin) String() string {
 	if ((any)(tv.Value)) == nil {
-		return fmt.Sprintf(`{"ts":"%s",isNull:%t}`, tv.Time.In(time.Local).Format(time.DateTime), tv.IsNull)
+		return fmt.Sprintf(`{"ts":"%s",isNull:%t}`, tv.Time.In(timeZone).Format(time.DateTime), tv.IsNull)
 	}
-	return fmt.Sprintf(`{"ts":"%s","value":%s}`, tv.Time.In(time.Local).Format(time.DateTime), tv.Value.String())
+	return fmt.Sprintf(`{"ts":"%s","value":%s}`, tv.Time.In(timeZone).Format(time.DateTime), tv.Value.String())
 }
 
 func (tv TimeBin) MarshalJSON() ([]byte, error) {
@@ -40,7 +40,7 @@ func (tv *TimeBin) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return err
 	}
-	tv.Time = time.Unix(0, obj.Time).In(time.Local)
+	tv.Time = time.Unix(0, obj.Time).In(timeZone)
 	tv.IsNull = obj.IsNull
 	if tv.IsNull {
 		return nil
@@ -119,7 +119,7 @@ func (ts *TimeSeries) String() string {
 		result += ","
 	}
 	result += fmt.Sprintf(`{"ts":"%s","value":%v}`,
-		ts.roundTime(ts.lastTime).In(time.Local).Format(time.DateTime),
+		ts.roundTime(ts.lastTime).In(timeZone).Format(time.DateTime),
 		ts.producer.Produce(false))
 	result += "]"
 	return result
@@ -345,7 +345,7 @@ func (ts *TimeSeries) UnmarshalJSON(data []byte) error {
 	if obj.MaxCount > 0 {
 		ts.maxCount = obj.MaxCount
 	}
-	ts.lastTime = time.Unix(0, obj.LastTime).In(time.Local)
+	ts.lastTime = time.Unix(0, obj.LastTime).In(timeZone)
 	var producer Producer
 	switch obj.Type {
 	case "*metric.Meter":

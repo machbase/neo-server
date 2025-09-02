@@ -362,7 +362,7 @@ func AddMetrics(m metric.Measurement) {
 	if collector == nil {
 		return
 	}
-	collector.SendEvent(m)
+	collector.Send(m)
 }
 
 func collect_metrics() (metric.Measurement, error) {
@@ -384,7 +384,7 @@ type MetricRec struct {
 	Value float64
 }
 
-func onProduct(pd metric.ProducedData) {
+func onProduct(pd metric.ProductData) {
 	if metricsDest == "" {
 		return
 	}
