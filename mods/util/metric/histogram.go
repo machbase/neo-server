@@ -168,10 +168,10 @@ func (h *Histogram) quantile(qs ...float64) []float64 {
 	return ret
 }
 
-func (h *Histogram) Produce(reset bool) Product {
+func (h *Histogram) Produce(reset bool) Value {
 	h.Lock()
 	defer h.Unlock()
-	ret := &HistogramProduct{
+	ret := &HistogramValue{
 		Samples: int64(h.samples),
 		P:       h.qs,
 		Values:  h.quantile(h.qs...),
@@ -183,13 +183,13 @@ func (h *Histogram) Produce(reset bool) Product {
 	return ret
 }
 
-type HistogramProduct struct {
+type HistogramValue struct {
 	Samples int64     `json:"samples"`
 	P       []float64 `json:"p"`
 	Values  []float64 `json:"values"`
 }
 
-func (hp HistogramProduct) String() string {
+func (hp HistogramValue) String() string {
 	b, _ := json.Marshal(hp)
 	return string(b)
 }

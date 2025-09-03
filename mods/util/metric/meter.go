@@ -26,7 +26,7 @@ func (m *Meter) MarshalJSON() ([]byte, error) {
 }
 
 func (m *Meter) UnmarshalJSON(data []byte) error {
-	p := &MeterProduct{}
+	p := &MeterValue{}
 	if err := json.Unmarshal(data, p); err != nil {
 		return err
 	}
@@ -58,10 +58,10 @@ func (m *Meter) Add(v float64) {
 	m.samples++
 }
 
-func (m *Meter) Produce(reset bool) Product {
+func (m *Meter) Produce(reset bool) Value {
 	m.Lock()
 	defer m.Unlock()
-	ret := &MeterProduct{
+	ret := &MeterValue{
 		Samples: int64(m.samples),
 		First:   float64(m.first),
 		Last:    float64(m.last),
@@ -85,7 +85,7 @@ func (m *Meter) String() string {
 	return string(b)
 }
 
-type MeterProduct struct {
+type MeterValue struct {
 	Samples int64   `json:"samples"`
 	Sum     float64 `json:"sum"`
 	First   float64 `json:"first"`
@@ -94,7 +94,7 @@ type MeterProduct struct {
 	Max     float64 `json:"max"`
 }
 
-func (mp *MeterProduct) String() string {
+func (mp *MeterValue) String() string {
 	b, _ := json.Marshal(mp)
 	return string(b)
 }

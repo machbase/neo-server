@@ -58,10 +58,10 @@ func (t *Timer) Value() time.Duration {
 	return time.Duration(int64(t.sumDuration) / t.samples)
 }
 
-func (t *Timer) Produce(reset bool) Product {
+func (t *Timer) Produce(reset bool) Value {
 	t.Lock()
 	defer t.Unlock()
-	ret := TimerProduct{
+	ret := TimerValue{
 		Samples:     t.samples,
 		SumDuration: t.sumDuration,
 		MinDuration: t.minDuration,
@@ -93,14 +93,14 @@ func (t *Timer) Mark(d time.Duration) {
 	}
 }
 
-type TimerProduct struct {
+type TimerValue struct {
 	Samples     int64         `json:"samples"`
 	SumDuration time.Duration `json:"sum"`
 	MinDuration time.Duration `json:"min"`
 	MaxDuration time.Duration `json:"max"`
 }
 
-func (tp TimerProduct) String() string {
+func (tp TimerValue) String() string {
 	b, _ := json.Marshal(tp)
 	return string(b)
 }

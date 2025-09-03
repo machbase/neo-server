@@ -17,7 +17,7 @@ type Producer interface {
 	// Produce returns the last value in the producer.
 	// It resets the producer after producing.
 	// reset indicates whether to reset the producer after producing.
-	Produce(bool) Product
+	Produce(bool) Value
 	// String returns a string representation of the producer.
 	// It should be `{"ts":"2023-10-01T12:04:05Z","value":1}` for a single value.
 	String() string
@@ -27,8 +27,8 @@ type Producer interface {
 	UnmarshalJSON(data []byte) error
 }
 
-// Product is the output type for the time series.
-type Product interface {
+// Value is the output type for the time series.
+type Value interface {
 	String() string
 }
 

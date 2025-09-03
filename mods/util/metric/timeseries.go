@@ -10,7 +10,7 @@ import (
 
 type TimeBin struct {
 	Time   time.Time `json:"ts"`
-	Value  Product   `json:"value,omitempty"`
+	Value  Value     `json:"value,omitempty"`
 	IsNull bool      `json:"isNull,omitempty"`
 }
 
@@ -46,16 +46,18 @@ func (tv *TimeBin) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	switch obj.Type {
-	case "*metric.CounterProduct":
-		tv.Value = &CounterProduct{}
-	case "*metric.GaugeProduct":
-		tv.Value = &GaugeProduct{}
-	case "*metric.HistogramProduct":
-		tv.Value = &HistogramProduct{}
-	case "*metric.MeterProduct":
-		tv.Value = &MeterProduct{}
+	case "*metric.CounterValue":
+		tv.Value = &CounterValue{}
+	case "*metric.GaugeValue":
+		tv.Value = &GaugeValue{}
+	case "*metric.HistogramValue":
+		tv.Value = &HistogramValue{}
+	case "*metric.MeterValue":
+		tv.Value = &MeterValue{}
+	case "*metric.TimerValue":
+		tv.Value = &TimerValue{}
 	default:
-		return fmt.Errorf("unknown product type %s", obj.Type)
+		return fmt.Errorf("unknown value type %s", obj.Type)
 	}
 	b, err := json.Marshal(obj.Value)
 	if err != nil {
@@ -127,7 +129,7 @@ func (ts *TimeSeries) String() string {
 
 type Snapshot struct {
 	Times    []time.Time
-	Values   []Product
+	Values   []Value
 	Interval time.Duration
 	MaxCount int
 	Meta     any // Optional metadata that inherits from the TimeSeries meta
@@ -150,7 +152,7 @@ func (ts *TimeSeries) Snapshot() *Snapshot {
 	size := len(ts.data) + 1
 	snapshot := &Snapshot{
 		Times:    make([]time.Time, size),
-		Values:   make([]Product, size),
+		Values:   make([]Value, size),
 		Interval: ts.interval,
 		MaxCount: ts.maxCount,
 		Meta:     ts.meta,
@@ -166,15 +168,15 @@ func (ts *TimeSeries) Snapshot() *Snapshot {
 	return snapshot
 }
 
-func (ts *TimeSeries) Last() (time.Time, Product) {
+func (ts *TimeSeries) Last() (time.Time, Value) {
 	times, values := ts.LastN(1)
 	if len(times) == 0 {
-		return time.Time{}, *new(Product)
+		return time.Time{}, *new(Value)
 	}
 	return times[0], values[0]
 }
 
-func (ts *TimeSeries) LastN(n int) ([]time.Time, []Product) {
+func (ts *TimeSeries) LastN(n int) ([]time.Time, []Value) {
 	ts.Lock()
 	defer ts.Unlock()
 	if len(ts.data) == 0 || n <= 0 {
@@ -184,7 +186,7 @@ func (ts *TimeSeries) LastN(n int) ([]time.Time, []Product) {
 	lt := ts.roundTime(ts.lastTime)
 	lv := ts.producer.Produce(false)
 	if n == 1 {
-		return []time.Time{lt}, []Product{lv}
+		return []time.Time{lt}, []Value{lv}
 	}
 
 	offset := len(ts.data) - n - 1
@@ -194,7 +196,7 @@ func (ts *TimeSeries) LastN(n int) ([]time.Time, []Product) {
 
 	sub := ts.data[offset:]
 	times := make([]time.Time, len(sub)+1)
-	values := make([]Product, len(sub)+1)
+	values := make([]Value, len(sub)+1)
 	for i := range sub {
 		times[i], values[i] = sub[i].Time, sub[i].Value
 	}
@@ -202,7 +204,7 @@ func (ts *TimeSeries) LastN(n int) ([]time.Time, []Product) {
 	return times, values
 }
 
-func (ts *TimeSeries) After(t time.Time) ([]time.Time, []Product) {
+func (ts *TimeSeries) After(t time.Time) ([]time.Time, []Value) {
 	ts.Lock()
 	defer ts.Unlock()
 	idx := -1
@@ -218,7 +220,7 @@ func (ts *TimeSeries) After(t time.Time) ([]time.Time, []Product) {
 	}
 	sub := ts.data[idx:]
 	times := make([]time.Time, len(sub)+1)
-	values := make([]Product, len(sub)+1)
+	values := make([]Value, len(sub)+1)
 	for i := range sub {
 		times[i], values[i] = sub[i].Time, sub[i].Value
 	}

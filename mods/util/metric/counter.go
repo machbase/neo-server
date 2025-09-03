@@ -23,7 +23,7 @@ func (fs *Counter) MarshalJSON() ([]byte, error) {
 }
 
 func (fs *Counter) UnmarshalJSON(data []byte) error {
-	p := &CounterProduct{}
+	p := &CounterValue{}
 	if err := json.Unmarshal(data, p); err != nil {
 		return err
 	}
@@ -39,10 +39,10 @@ func (fs *Counter) Add(v float64) {
 	fs.samples++
 }
 
-func (fs *Counter) Produce(reset bool) Product {
+func (fs *Counter) Produce(reset bool) Value {
 	fs.Lock()
 	defer fs.Unlock()
-	ret := &CounterProduct{
+	ret := &CounterValue{
 		Samples: int64(fs.samples),
 		Value:   float64(fs.value),
 	}
@@ -57,12 +57,12 @@ func (fs *Counter) String() string {
 	return fs.Produce(false).String()
 }
 
-type CounterProduct struct {
+type CounterValue struct {
 	Samples int64   `json:"samples"`
 	Value   float64 `json:"value"`
 }
 
-func (cp *CounterProduct) String() string {
+func (cp *CounterValue) String() string {
 	b, _ := json.Marshal(cp)
 	return string(b)
 }

@@ -24,7 +24,7 @@ func (fs *Gauge) MarshalJSON() ([]byte, error) {
 }
 
 func (fs *Gauge) UnmarshalJSON(data []byte) error {
-	p := &GaugeProduct{}
+	p := &GaugeValue{}
 	if err := json.Unmarshal(data, p); err != nil {
 		return err
 	}
@@ -42,10 +42,10 @@ func (fs *Gauge) Add(v float64) {
 	fs.samples++
 }
 
-func (fs *Gauge) Produce(reset bool) Product {
+func (fs *Gauge) Produce(reset bool) Value {
 	fs.Lock()
 	defer fs.Unlock()
-	ret := &GaugeProduct{
+	ret := &GaugeValue{
 		Samples: int64(fs.samples),
 		Value:   float64(fs.value),
 		Sum:     float64(fs.sum),
@@ -62,13 +62,13 @@ func (fs *Gauge) String() string {
 	return fs.Produce(false).String()
 }
 
-type GaugeProduct struct {
+type GaugeValue struct {
 	Samples int64   `json:"samples"`
 	Sum     float64 `json:"sum"`
 	Value   float64 `json:"value"`
 }
 
-func (gp *GaugeProduct) String() string {
+func (gp *GaugeValue) String() string {
 	b, _ := json.Marshal(gp)
 	return string(b)
 }

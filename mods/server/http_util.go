@@ -49,16 +49,16 @@ func MetricsInterceptor() gin.HandlerFunc {
 		latency := time.Since(start)
 		m := metric.Measurement{Name: "http"}
 		m.AddField(metric.Field{Name: "count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
+		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
 			m.AddField(metric.Field{Name: "write:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
 			m.AddField(metric.Field{Name: "query:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
 			m.AddField(metric.Field{Name: "tql:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)})
+			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		}
 		if s := c.Request.ContentLength; s > 0 {
 			m.AddField(metric.Field{Name: "recv_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})

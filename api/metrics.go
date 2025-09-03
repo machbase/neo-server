@@ -56,14 +56,14 @@ var (
 func AllocConn(connWaitTime time.Duration) {
 	metricConnsInUse.Add(1)
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
+		{Name: "conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration)},
 	}})
 }
 
 func FreeConn(connUseTime time.Duration) {
 	metricConnsInUse.Add(-1)
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
+		{Name: "conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration)},
 	}})
 }
 
@@ -87,19 +87,19 @@ func FreeAppender() {
 
 func QueryExecTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
+		{Name: "query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
 	}})
 }
 
 func QueryWaitTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
+		{Name: "query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
 	}})
 }
 
 func QueryFetchTime(d time.Duration) {
 	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration, 100, 0.5, 0.99, 0.999)},
+		{Name: "query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
 	}})
 }
 
@@ -124,7 +124,7 @@ type QueryStatzRow struct {
 func elapseAvgMax(key string) (uint64, uint64, int64) {
 	if value, ok := expvar.Get(key).(metric.MultiTimeSeries); ok && len(value) > 0 {
 		_, val := value[0].Last()
-		prd, ok := val.(*metric.HistogramProduct)
+		prd, ok := val.(*metric.HistogramValue)
 		if !ok {
 			return 0, 0, 0
 		}
@@ -281,13 +281,13 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 			for i := range tss {
 				ret.Rows[i].Timestamp = tss[i]
 				switch prd := prds[i].(type) {
-				case *metric.CounterProduct:
+				case *metric.CounterValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Value
-				case *metric.GaugeProduct:
+				case *metric.GaugeValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Value
-				case *metric.MeterProduct:
+				case *metric.MeterValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Last
-				case *metric.HistogramProduct:
+				case *metric.HistogramValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Values[0]
 				default:
 					fmt.Printf("unknown metric type:%#v\n", prd)
@@ -305,12 +305,13 @@ var metricsDest string
 
 func StartMetrics() {
 	collector = metric.NewCollector(
-		metric.WithCollectInterval(2*time.Second),
-		metric.WithSeriesListener("30min/10s", 10*time.Second, 180, onProduct),
-		metric.WithExpvarPrefix(prefix),
-		metric.WithReceiverSize(20),
+		metric.WithInterval(2*time.Second),
+		metric.WithSeries("30min/10s", 10*time.Second, 180),
+		metric.WithPrefix(prefix),
+		metric.WithInputBuffer(20),
 	)
 	collector.AddInputFunc(collect_metrics)
+	collector.AddOutputFunc(onProduct)
 	collector.Start()
 }
 
@@ -384,13 +385,13 @@ type MetricRec struct {
 	Value float64
 }
 
-func onProduct(pd metric.ProductData) {
+func onProduct(pd metric.Product) {
 	if metricsDest == "" {
 		return
 	}
 	var result []MetricRec
 	switch p := pd.Value.(type) {
-	case *metric.CounterProduct:
+	case *metric.CounterValue:
 		if p.Samples == 0 {
 			return // Skip zero counters
 		}
@@ -399,7 +400,7 @@ func onProduct(pd metric.ProductData) {
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
-	case *metric.GaugeProduct:
+	case *metric.GaugeValue:
 		if p.Samples == 0 {
 			return // Skip zero gauges
 		}
@@ -408,7 +409,7 @@ func onProduct(pd metric.ProductData) {
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
-	case *metric.MeterProduct:
+	case *metric.MeterValue:
 		if p.Samples == 0 {
 			return // Skip zero meters
 		}
@@ -429,7 +430,7 @@ func onProduct(pd metric.ProductData) {
 				Value: p.Sum / float64(p.Samples),
 			},
 		}
-	case *metric.HistogramProduct:
+	case *metric.HistogramValue:
 		if p.Samples == 0 {
 			return // Skip zero samples
 		}
