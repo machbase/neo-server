@@ -36,7 +36,6 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	rsp := &QueryResponse{Success: false, Reason: "not specified"}
 	tick := time.Now()
 
-	var cypherQ string
 	var err error
 	req := &QueryRequest{Precision: -1}
 	switch ctx.Request.Method {
@@ -56,18 +55,8 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 				ctx.JSON(http.StatusBadRequest, rsp)
 				return
 			}
-			if req.SqlText == "" && svr.cypherAlg != "" && svr.cypherKey != "" {
-				rr := struct {
-					SqlText string `json:"Q"`
-				}{}
-				ctx.Bind(&rr)
-				cypherQ = rr.SqlText
-			}
 		case "application/x-www-form-urlencoded":
 			req.SqlText = ctx.PostForm("q")
-			if req.SqlText == "" && svr.cypherAlg != "" && svr.cypherKey != "" {
-				cypherQ = ctx.PostForm("Q")
-			}
 			req.Timeformat = strString(ctx.PostForm("timeformat"), "ns")
 			req.TimeLocation = strString(ctx.PostForm("tz"), "UTC")
 			req.Format = strString(ctx.PostForm("format"), "json")
@@ -89,9 +78,6 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		}
 	case http.MethodGet:
 		req.SqlText = ctx.Query("q")
-		if req.SqlText == "" && svr.cypherAlg != "" && svr.cypherKey != "" {
-			cypherQ = ctx.Query("Q")
-		}
 		req.Timeformat = strString(ctx.Query("timeformat"), "ns")
 		req.TimeLocation = strString(ctx.Query("tz"), "UTC")
 		req.Format = strString(ctx.Query("format"), "json")
@@ -107,21 +93,23 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 		req.RowsArray = strBool(ctx.Query("rowsArray"), false)
 	}
 
-	if len(req.SqlText) == 0 {
-		if cypherQ == "" {
-			rsp.Reason = "empty sql"
+	// golang json decoder case-insensitive for struct field names,
+	// as result, it accepts both "q" and "Q" into req.SqlText
+	if svr.cypherAlg != "" && svr.cypherKey != "" && strings.HasPrefix(req.SqlText, "ENC:") {
+		cypherQ := strings.TrimPrefix(req.SqlText, "ENC:")
+		req.SqlText, err = util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey)
+		if err != nil {
+			rsp.Reason = "decrypt sql fail, " + err.Error()
 			rsp.Elapse = time.Since(tick).String()
 			ctx.JSON(http.StatusBadRequest, rsp)
 			return
-		} else {
-			req.SqlText, err = util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey)
-			if err != nil {
-				rsp.Reason = "decrypt sql fail, " + err.Error()
-				rsp.Elapse = time.Since(tick).String()
-				ctx.JSON(http.StatusBadRequest, rsp)
-				return
-			}
 		}
+	}
+	if len(req.SqlText) == 0 {
+		rsp.Reason = "empty sql"
+		rsp.Elapse = time.Since(tick).String()
+		ctx.JSON(http.StatusBadRequest, rsp)
+		return
 	}
 
 	timeLocation, err := util.ParseTimeLocation(req.TimeLocation, time.UTC)
