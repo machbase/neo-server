@@ -12,6 +12,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
 	"github.com/machbase/neo-server/v8/mods/tql"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/ssfs"
 )
 
@@ -150,6 +151,27 @@ func WithHttpStatzAllow(remotes ...string) HttpOption {
 			}
 		}
 		s.statzAllowed = append(s.statzAllowed, addr...)
+	}
+}
+
+func WithHttpQueryCypher(algAndKey string) HttpOption {
+	alg := ""
+	key := ""
+	if parts := strings.SplitN(algAndKey, ":", 2); len(parts) == 2 {
+		alg = strings.TrimSpace(parts[0])
+		key = strings.TrimSpace(parts[1])
+	}
+	return func(s *httpd) {
+		if alg == "" && key == "" {
+			return
+		}
+		if err := util.ValidateCypherKey(alg, key); err != nil {
+			s.log.Errorf("Invalid cypher settings, query cypher disabled: %v", err)
+		} else {
+			s.cypherAlg = alg
+			s.cypherKey = key
+			s.log.Infof("HTTP query cypher enabled (alg=%s)", s.cypherAlg)
+		}
 	}
 }
 

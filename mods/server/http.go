@@ -119,6 +119,8 @@ type httpd struct {
 	pathMap  map[string]string
 
 	statzAllowed []string
+	cypherAlg    string
+	cypherKey    string
 }
 
 type HandlerType string
