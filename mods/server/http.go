@@ -914,7 +914,7 @@ func (svr *httpd) handleStatzConfig(ctx *gin.Context) {
 				"elapse":  time.Since(tick).String(),
 			})
 		} else {
-			if out, ok := obj["out"].(string); !ok || (ok && len(out) == 0) {
+			if out, ok := obj["out"].(string); !ok {
 				ctx.JSON(http.StatusBadRequest, map[string]any{
 					"success": false,
 					"reason":  "invalid out value",
