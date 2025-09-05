@@ -30,17 +30,17 @@ func TestTimeseries(t *testing.T) {
 	now = now.Add(time.Second)
 	ts.Add(4.0)
 
-	ss := ts.Snapshot()
+	times, values := ts.All()
 	require.Equal(t, []time.Time{
 		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
 		&MeterValue{Min: 3, Max: 3, First: 3, Last: 3, Sum: 3, Samples: 1},
 		&MeterValue{Min: 4, Max: 4, First: 4, Last: 4, Sum: 4, Samples: 1},
-	}, ss.Values)
+	}, values)
 
 	now = now.Add(100 * time.Millisecond)
 	ts.Add(5.0)
@@ -48,32 +48,32 @@ func TestTimeseries(t *testing.T) {
 	now = now.Add(200 * time.Millisecond)
 	ts.Add(4.8)
 
-	ss = ts.Snapshot()
+	times, values = ts.All()
 	require.Equal(t, []time.Time{
 		time.Date(2023, time.October, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 7, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2, Max: 2, First: 2, Last: 2, Sum: 2, Samples: 1},
 		&MeterValue{Min: 3, Max: 3, First: 3, Last: 3, Sum: 3, Samples: 1},
 		&MeterValue{Min: 4, Max: 5, First: 4, Last: 4.8, Sum: 13.8, Samples: 3},
-	}, ss.Values)
+	}, values)
 
 	now = now.Add(1700 * time.Millisecond)
 	ts.Add(6.0)
 
-	ss = ts.Snapshot()
+	times, values = ts.All()
 	require.Equal(t, []time.Time{
 		time.Date(2023, time.October, 1, 12, 4, 8, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 9, 0, time.UTC),
 		time.Date(2023, time.October, 1, 12, 4, 10, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 4, Max: 5, First: 4, Last: 4.8, Sum: 13.8, Samples: 3},
 		nil, //&MeterValue{Min: 0, Max: 0, First: 0, Last: 0, Total: 0, Count: 0}},
 		&MeterValue{Min: 6, Max: 6, First: 6, Last: 6, Sum: 6, Samples: 1},
-	}, ss.Values)
+	}, values)
 
 	now = now.Add(5 * time.Second)
 	ts.Add(7.0)
@@ -110,7 +110,7 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 		`{"ts":"2023-10-01 12:04:15","value":{"value":955,"samples":10}}`+
 		`]`, ts.String())
 
-	ss := ts.Snapshot()
+	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
 		time.Date(2023, 10, 1, 12, 4, 6, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 7, 0, time.UTC),
@@ -122,7 +122,7 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 		time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 14, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&CounterValue{Value: 55, Samples: 10},
 		&CounterValue{Value: 155, Samples: 10},
@@ -134,20 +134,15 @@ func TestTimeSeriesSubSeconds(t *testing.T) {
 		&CounterValue{Value: 755, Samples: 10},
 		&CounterValue{Value: 855, Samples: 10},
 		&CounterValue{Value: 955, Samples: 10},
-	}, ss.Values)
-	require.Equal(t, time.Second, ss.Interval)
-	require.Equal(t, 10, ss.MaxCount)
+	}, values)
+	require.Equal(t, time.Second, ts.Interval())
+	require.Equal(t, 10, ts.MaxCount())
 
 	ptTime, ptValue := ts.Last()
 	require.Equal(t, &CounterValue{Value: 955, Samples: 10}, ptValue)
 	require.Equal(t, time.Date(2023, 10, 1, 12, 4, 15, 0, time.UTC), ptTime)
 
-	ptTimes, _ := ts.LastN(0)
-	require.Nil(t, ptTimes)
-	ptTimes, _ = ts.LastN(-1)
-	require.Nil(t, ptTimes)
-
-	ptTimes, _ = ts.LastN(20)
+	ptTimes, _ := ts.LastN(20)
 	require.Equal(t, 10, len(ptTimes))
 
 	ptTimes, ptValues := ts.After(time.Date(2023, 10, 1, 12, 4, 13, 0, time.UTC))
@@ -175,7 +170,7 @@ func TestMultiTimeSeries(t *testing.T) {
 		now = now.Add(100 * time.Millisecond)
 	}
 
-	ss := mts[0].Snapshot()
+	times, values := mts[0].LastN(0)
 	require.Equal(t, []time.Time{
 		time.Date(2023, 10, 1, 12, 8, 56, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 57, 0, time.UTC),
@@ -187,7 +182,7 @@ func TestMultiTimeSeries(t *testing.T) {
 		time.Date(2023, 10, 1, 12, 9, 03, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 04, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 05, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2901, Max: 2910, First: 2901, Last: 2910, Sum: 29055, Samples: 10},
 		&MeterValue{Min: 2911, Max: 2920, First: 2911, Last: 2920, Sum: 29155, Samples: 10},
@@ -199,9 +194,9 @@ func TestMultiTimeSeries(t *testing.T) {
 		&MeterValue{Min: 2971, Max: 2980, First: 2971, Last: 2980, Sum: 29755, Samples: 10},
 		&MeterValue{Min: 2981, Max: 2990, First: 2981, Last: 2990, Sum: 29855, Samples: 10},
 		&MeterValue{Min: 2991, Max: 3000, First: 2991, Last: 3000, Sum: 29955, Samples: 10},
-	}, ss.Values)
+	}, values)
 
-	ss = mts[1].Snapshot()
+	times, values = mts[1].All()
 	require.Equal(t, []time.Time{
 		time.Date(2023, 10, 1, 12, 8, 20, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 30, 0, time.UTC),
@@ -209,7 +204,7 @@ func TestMultiTimeSeries(t *testing.T) {
 		time.Date(2023, 10, 1, 12, 8, 50, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 00, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 10, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 2451, Max: 2550, First: 2451, Last: 2550, Sum: 250050, Samples: 100},
 		&MeterValue{Min: 2551, Max: 2650, First: 2551, Last: 2650, Sum: 260050, Samples: 100},
@@ -217,23 +212,23 @@ func TestMultiTimeSeries(t *testing.T) {
 		&MeterValue{Min: 2751, Max: 2850, First: 2751, Last: 2850, Sum: 280050, Samples: 100},
 		&MeterValue{Min: 2851, Max: 2950, First: 2851, Last: 2950, Sum: 290050, Samples: 100},
 		&MeterValue{Min: 2951, Max: 3000, First: 2951, Last: 3000, Sum: 148775, Samples: 50},
-	}, ss.Values)
+	}, values)
 
-	ss = mts[2].Snapshot()
+	times, values = mts[2].All()
 	require.Equal(t, []time.Time{
 		time.Date(2023, 10, 1, 12, 6, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 7, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 8, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 9, 0, 0, time.UTC),
 		time.Date(2023, 10, 1, 12, 10, 0, 0, time.UTC),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 551, Max: 1150, First: 551, Last: 1150, Sum: 510300, Samples: 600},
 		&MeterValue{Min: 1151, Max: 1750, First: 1151, Last: 1750, Sum: 870300, Samples: 600},
 		&MeterValue{Min: 1751, Max: 2350, First: 1751, Last: 2350, Sum: 1230300, Samples: 600},
 		&MeterValue{Min: 2351, Max: 2950, First: 2351, Last: 2950, Sum: 1590300, Samples: 600},
 		&MeterValue{Min: 2951, Max: 3000, First: 2951, Last: 3000, Sum: 148775, Samples: 50},
-	}, ss.Values)
+	}, values)
 }
 
 func TestTimeSeriesCounter(t *testing.T) {
@@ -250,7 +245,7 @@ func TestTimeSeriesCounter(t *testing.T) {
 		ts.Add(float64(i))
 	}
 
-	ss := ts.Snapshot()
+	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -262,7 +257,7 @@ func TestTimeSeriesCounter(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&GaugeValue{Samples: 10, Sum: 55, Value: 10},
 		&GaugeValue{Samples: 10, Sum: 155, Value: 20},
@@ -274,7 +269,7 @@ func TestTimeSeriesCounter(t *testing.T) {
 		&GaugeValue{Samples: 10, Sum: 755, Value: 80},
 		&GaugeValue{Samples: 10, Sum: 855, Value: 90},
 		&GaugeValue{Samples: 10, Sum: 955, Value: 100},
-	}, ss.Values)
+	}, values)
 }
 
 func TestTimeSeriesGauge(t *testing.T) {
@@ -290,7 +285,7 @@ func TestTimeSeriesGauge(t *testing.T) {
 	for i := 1; i <= 100; i++ {
 		ts.Add(float64(i))
 	}
-	ss := ts.Snapshot()
+	times, values := ts.LastN(-1)
 	require.Equal(t, []time.Time{
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -302,7 +297,7 @@ func TestTimeSeriesGauge(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&GaugeValue{Samples: 10, Sum: 55, Value: 10},
 		&GaugeValue{Samples: 10, Sum: 155, Value: 20},
@@ -314,7 +309,7 @@ func TestTimeSeriesGauge(t *testing.T) {
 		&GaugeValue{Samples: 10, Sum: 755, Value: 80},
 		&GaugeValue{Samples: 10, Sum: 855, Value: 90},
 		&GaugeValue{Samples: 10, Sum: 955, Value: 100},
-	}, ss.Values)
+	}, values)
 }
 
 func TestTimeSeriesMeter(t *testing.T) {
@@ -331,7 +326,7 @@ func TestTimeSeriesMeter(t *testing.T) {
 		ts.Add(float64(i))
 	}
 
-	ss := ts.Snapshot()
+	times, values := ts.All()
 	require.Equal(t, []time.Time{
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -343,7 +338,7 @@ func TestTimeSeriesMeter(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10},
 		&MeterValue{Min: 11, Max: 20, First: 11, Last: 20, Sum: 155, Samples: 10},
@@ -355,7 +350,7 @@ func TestTimeSeriesMeter(t *testing.T) {
 		&MeterValue{Min: 71, Max: 80, First: 71, Last: 80, Sum: 755, Samples: 10},
 		&MeterValue{Min: 81, Max: 90, First: 81, Last: 90, Sum: 855, Samples: 10},
 		&MeterValue{Min: 91, Max: 100, First: 91, Last: 100, Sum: 955, Samples: 10},
-	}, ss.Values)
+	}, values)
 }
 
 func TestTimeSeriesHistogram(t *testing.T) {
@@ -372,7 +367,7 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		ts.Add(float64(i))
 	}
 
-	ss := ts.Snapshot()
+	times, values := ts.LastN(0)
 	require.Equal(t, []time.Time{
 		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
@@ -384,7 +379,7 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
-	}, ss.Times)
+	}, times)
 	require.Equal(t, []Value{
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}},
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{15, 18, 20}},
@@ -396,7 +391,7 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{75, 78, 80}},
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{85, 88, 90}},
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{95, 98, 100}},
-	}, ss.Values)
+	}, values)
 }
 
 func createTestStorage(t *testing.T) *FileStorage {

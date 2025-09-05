@@ -152,6 +152,7 @@ func NewCollector(opts ...CollectorOption) *Collector {
 
 type CollectorOption func(c *Collector)
 
+// WithInterval sets the collection interval for the collector.
 func WithInterval(interval time.Duration) CollectorOption {
 	return func(c *Collector) {
 		c.interval = interval
@@ -164,12 +165,14 @@ func WithSeries(name string, period time.Duration, maxCount int) CollectorOption
 	}
 }
 
+// WithPrefix sets the prefix for all published expvar metrics.
 func WithPrefix(prefix string) CollectorOption {
 	return func(c *Collector) {
 		c.expvarPrefix = prefix
 	}
 }
 
+// WithInputBuffer sets the size of the input buffer channel.
 func WithInputBuffer(size int) CollectorOption {
 	return func(c *Collector) {
 		c.recvChSize = size
@@ -182,12 +185,15 @@ func WithStorage(store Storage) CollectorOption {
 	}
 }
 
+// AddOutputFunc adds an output function to the collector.
+// The output function will be called with the collected Product.
 func (c *Collector) AddOutputFunc(output OutputFunc) {
 	c.Lock()
 	defer c.Unlock()
 	c.outputs = append(c.outputs, output)
 }
 
+// AddInputFunc adds an input function to the collector.
 func (c *Collector) AddInputFunc(input InputFunc) error {
 	// initial call to get the measurement name
 	m, err := input()
@@ -378,8 +384,8 @@ func (c *Collector) makeMultiTimeSeries(measureName string, field Field) MultiTi
 	return mts
 }
 
-// Names returns a list of all published metric names in the collector.
-func (c *Collector) Names() []string {
+// PublishNames returns a list of all published metric names in the collector.
+func (c *Collector) PublishNames() []string {
 	c.Lock()
 	defer c.Unlock()
 	names := make([]string, 0, len(c.inputs))
@@ -387,6 +393,16 @@ func (c *Collector) Names() []string {
 		for _, publishedName := range iw.publishedNames {
 			names = append(names, publishedName)
 		}
+	}
+	return names
+}
+
+func (c *Collector) SeriesNames() []string {
+	c.Lock()
+	defer c.Unlock()
+	var names = make([]string, len(c.series))
+	for i, s := range c.series {
+		names[i] = s.name
 	}
 	return names
 }

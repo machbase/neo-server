@@ -127,59 +127,30 @@ func (ts *TimeSeries) String() string {
 	return result
 }
 
-type Snapshot struct {
-	Times    []time.Time
-	Values   []Value
-	Interval time.Duration
-	MaxCount int
-	Meta     any // Optional metadata that inherits from the TimeSeries meta
+func (ts *TimeSeries) Interval() time.Duration {
+	return ts.interval
 }
 
-func (ss Snapshot) Field() (FieldInfo, bool) {
-	if ss.Meta == nil {
-		return FieldInfo{}, false
-	}
-	field, ok := ss.Meta.(FieldInfo)
-	return field, ok
-}
-
-// Snapshot creates a snapshot of the current time series data.
-// If snapshot is nil, it will create a new one.
-// The snapshot will contain rounded times and values.
-func (ts *TimeSeries) Snapshot() *Snapshot {
-	ts.Lock()
-	defer ts.Unlock()
-	size := len(ts.data) + 1
-	snapshot := &Snapshot{
-		Times:    make([]time.Time, size),
-		Values:   make([]Value, size),
-		Interval: ts.interval,
-		MaxCount: ts.maxCount,
-		Meta:     ts.meta,
-	}
-	for i, d := range ts.data {
-		snapshot.Times[i] = d.Time
-		snapshot.Values[i] = d.Value
-	}
-	// snapshot for the current funnel state
-	lt := ts.roundTime(ts.lastTime)
-	lv := ts.producer.Produce(false)
-	snapshot.Times[size-1], snapshot.Values[size-1] = lt, lv
-	return snapshot
+func (ts *TimeSeries) MaxCount() int {
+	return ts.maxCount
 }
 
 func (ts *TimeSeries) Last() (time.Time, Value) {
 	times, values := ts.LastN(1)
 	if len(times) == 0 {
-		return time.Time{}, *new(Value)
+		return time.Time{}, nil
 	}
 	return times[0], values[0]
+}
+
+func (ts *TimeSeries) All() ([]time.Time, []Value) {
+	return ts.LastN(0)
 }
 
 func (ts *TimeSeries) LastN(n int) ([]time.Time, []Value) {
 	ts.Lock()
 	defer ts.Unlock()
-	if len(ts.data) == 0 || n <= 0 {
+	if len(ts.data) == 0 {
 		return nil, nil
 	}
 
@@ -189,9 +160,12 @@ func (ts *TimeSeries) LastN(n int) ([]time.Time, []Value) {
 		return []time.Time{lt}, []Value{lv}
 	}
 
-	offset := len(ts.data) - n - 1
-	if offset < 0 {
-		offset = 0
+	var offset int = 0
+	if n > 0 {
+		offset := len(ts.data) - n - 1
+		if offset < 0 {
+			offset = 0
+		}
 	}
 
 	sub := ts.data[offset:]
