@@ -476,6 +476,24 @@ func (ss Snapshot) Series(opt Chart) []Series {
 				series[0].Data[i].Value = []any{v.First, v.Last, v.Min, v.Max}
 			}
 		}
+	case "odometer":
+		typ, stack := opt.Type.TypeAndStack("bar")
+		series = []Series{
+			{
+				Name:       ss.Meta.Name,
+				Type:       typ,
+				Stack:      stack,
+				Data:       make([]Item, len(ss.Times)),
+				Smooth:     true,
+				ShowSymbol: false,
+			},
+		}
+		for i, t := range ss.Times {
+			series[0].Data[i].Time = t.UnixMilli()
+			if v, ok := ss.Values[i].(*OdometerValue); ok && !v.Empty {
+				series[0].Data[i].Value = v.Diff()
+			}
+		}
 	case "histogram":
 		last := ss.Values[len(ss.Values)-1].(*HistogramValue)
 		for _, p := range last.P {

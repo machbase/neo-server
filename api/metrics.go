@@ -307,8 +307,8 @@ var metricsDest string
 func StartMetrics() {
 	collector = metric.NewCollector(
 		metric.WithSamplingInterval(10*time.Second),
-		metric.WithSeries("3h/60s", 60*time.Second, 180),
-		metric.WithSeries("3d12h/30m", 30*time.Minute, 168),
+		metric.WithSeries("2h/60s", 60*time.Second, 120),
+		metric.WithSeries("2d12h/30m", 30*time.Minute, 120),
 		metric.WithPrefix(prefix),
 		metric.WithInputBuffer(50),
 	)
@@ -375,11 +375,7 @@ func AddMetrics(m metric.Measurement) {
 	collector.Send(m)
 }
 
-type SessionInput struct {
-	lastStmtCount   int64
-	lastAppendCount int64
-	lastQueryCount  int64
-}
+type SessionInput struct{}
 
 var _ metric.Input = (*SessionInput)(nil)
 
@@ -393,32 +389,10 @@ func (si *SessionInput) Gather(g metric.Gather) {
 		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
 		metric.Field{Name: "stmt:in_use", Value: float64(metricStmtsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
 		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "stmt:count", Value: float64(metricStmts.Load()), Type: metric.OdometerType(metric.UnitShort)},
+		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Type: metric.OdometerType(metric.UnitShort)},
+		metric.Field{Name: "append:count", Value: float64(metricAppenders.Load()), Type: metric.OdometerType(metric.UnitShort)},
 	)
-	stmtCount := metricStmts.Load()
-	noNegStmtCount := stmtCount - si.lastStmtCount
-	si.lastStmtCount = stmtCount
-	if noNegStmtCount >= 0 {
-		m.AddField(
-			metric.Field{Name: "stmt:count", Value: float64(noNegStmtCount), Type: metric.GaugeType(metric.UnitShort)},
-		)
-	}
-	appendCount := metricAppenders.Load()
-	noNegAppendCount := appendCount - si.lastAppendCount
-	si.lastAppendCount = appendCount
-	if noNegAppendCount >= 0 {
-		m.AddField(
-			metric.Field{Name: "append:count", Value: float64(noNegAppendCount), Type: metric.GaugeType(metric.UnitShort)},
-		)
-	}
-	queryCount := metricQueryCount.Load()
-	noNegQueryCount := queryCount - si.lastQueryCount
-	si.lastQueryCount = queryCount
-	if noNegQueryCount >= 0 {
-		m.AddField(
-			metric.Field{Name: "query:count", Value: float64(noNegQueryCount), Type: metric.GaugeType(metric.UnitShort)},
-		)
-	}
-
 	g.AddMeasurement(m)
 }
 
@@ -493,6 +467,15 @@ func onProduct(pd metric.Product) {
 				Value: p.Values[i],
 			})
 		}
+	case *metric.OdometerValue:
+		if p.Empty {
+			return // Skip zero odometers
+		}
+		result = append(result, MetricRec{
+			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Time:  pd.Time.UnixNano(),
+			Value: p.Diff(),
+		})
 	default:
 		metricLog.Errorf("metrics unknown type: %T", p)
 		return
@@ -537,13 +520,13 @@ func DashboardHandler() http.HandlerFunc {
 	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"machbase:sys:sysmem"}})
 	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"machbase:runtime:goroutines"}})
 	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"machbase:runtime:heap_inuse"}, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"machbase:runtime:cgo_call"}, ValueSelector: avgFilter, Type: metric.ChartTypeBar})
+	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"machbase:runtime:cgo_call"}, Type: metric.ChartTypeBar})
 	dash.AddChart(metric.Chart{Title: "HTTP Payload", MetricNames: []string{"machbase:http:recv_bytes", "machbase:http:send_bytes"}, Type: metric.ChartTypeLine})
 	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNameFilter: httpStatusFilter, Type: metric.ChartTypeBarStack})
 	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"machbase:http:latency"}})
-	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNameFilter: dbInuseFilter, ValueSelector: avgFilter, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNameFilter: dbCountFilter, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "DB Native Use Count", MetricNameFilter: dbMachSvrFilter, ValueSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNameFilter: dbCountFilter})
+	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNameFilter: dbInuseFilter, ValueSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNameFilter: dbMachSvrFilter, ValueSelector: avgFilter})
 	dash.AddChart(metric.Chart{Title: "DB Wait Time", MetricNames: []string{"machbase:session:conn:wait_time"}})
 	dash.AddChart(metric.Chart{Title: "DB Use Time", MetricNames: []string{"machbase:session:conn:use_time"}})
 	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNameFilter: tqlCacheFilter, ValueSelector: avgFilter})

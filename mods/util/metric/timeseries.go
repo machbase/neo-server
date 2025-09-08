@@ -56,6 +56,8 @@ func (tv *TimeBin) UnmarshalJSON(data []byte) error {
 		tv.Value = &MeterValue{}
 	case "*metric.TimerValue":
 		tv.Value = &TimerValue{}
+	case "*metric.OdometerValue":
+		tv.Value = &OdometerValue{}
 	default:
 		return fmt.Errorf("unknown value type %s", obj.Type)
 	}
@@ -349,6 +351,8 @@ func (ts *TimeSeries) UnmarshalJSON(data []byte) error {
 		producer = &Gauge{}
 	case "*metric.Histogram":
 		producer = &Histogram{}
+	case "*metric.Odometer":
+		producer = &Odometer{}
 	default:
 		return fmt.Errorf("unknown producer type %s", obj.Type)
 	}

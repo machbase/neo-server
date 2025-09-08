@@ -36,7 +36,6 @@ func stopServerMetrics() {
 }
 
 type RuntimeInput struct {
-	lastCgoCall int64
 }
 
 func (ri *RuntimeInput) Init() error { return nil }
@@ -48,15 +47,8 @@ func (ri *RuntimeInput) Gather(g metric.Gather) {
 	m.AddField(
 		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Type: metric.GaugeType(metric.UnitShort)},
 		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Type: metric.GaugeType(metric.UnitBytes)},
+		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Type: metric.OdometerType(metric.UnitShort)},
 	)
-	cgoCalls := runtime.NumCgoCall()
-	cgoCallNoNegative := cgoCalls - ri.lastCgoCall
-	ri.lastCgoCall = cgoCalls
-	if cgoCallNoNegative >= 0 {
-		m.AddField(
-			metric.Field{Name: "cgo_call", Value: float64(cgoCallNoNegative), Type: metric.GaugeType(metric.UnitShort)},
-		)
-	}
 	g.AddMeasurement(m)
 }
 

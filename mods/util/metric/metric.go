@@ -68,8 +68,17 @@ func MeterType(u Unit) Type {
 	}
 }
 
+// OdometerType supports samples count, quantiles
 func HistogramType(u Unit) Type {
 	return HistogramTypePercentiles(u, 100, 0.5, 0.90, 0.99)
+}
+
+func OdometerType(u Unit) Type {
+	return Type{
+		p: func() Producer { return NewOdometer() },
+		s: "odometer",
+		u: u,
+	}
 }
 
 func HistogramTypePercentiles(u Unit, maxBin int, ps ...float64) Type {
