@@ -413,9 +413,6 @@ func (ss Snapshot) Series(opt Chart) []Series {
 				Stack:      stack,
 				Smooth:     true,
 				ShowSymbol: false,
-				AreaStyle: H{
-					"opacity": 0.5,
-				},
 			},
 		}
 		for i, t := range ss.Times {
@@ -507,9 +504,6 @@ func (ss Snapshot) Series(opt Chart) []Series {
 				Data:       make([]Item, len(ss.Times)),
 				Smooth:     true,
 				ShowSymbol: false,
-				AreaStyle: H{
-					"opacity": 0.3,
-				},
 			})
 		}
 
