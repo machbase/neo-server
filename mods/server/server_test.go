@@ -42,6 +42,9 @@ func TestMain(m *testing.M) {
 	database := testServer.DatabaseSVR()
 	initTestData(database)
 
+	// metric
+	api.StartMetrics()
+
 	// tql
 	fileDirs := []string{"/=./test"}
 	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
@@ -99,6 +102,7 @@ func TestMain(m *testing.M) {
 	// cleanup
 	mqttServer.Stop()
 	httpServer.Stop()
+	api.StopMetrics()
 	testServer.DropTestTables()
 	testServer.StopServer(m)
 }
