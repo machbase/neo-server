@@ -121,6 +121,7 @@ type httpd struct {
 	statzAllowed []string
 	cypherAlg    string
 	cypherKey    string
+	cypherPad    string
 }
 
 type HandlerType string

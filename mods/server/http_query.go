@@ -97,7 +97,7 @@ func (svr *httpd) handleQuery(ctx *gin.Context) {
 	// as result, it accepts both "q" and "Q" into req.SqlText
 	if svr.cypherAlg != "" && svr.cypherKey != "" && strings.HasPrefix(req.SqlText, "ENC:") {
 		cypherQ := strings.TrimPrefix(req.SqlText, "ENC:")
-		req.SqlText, err = util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey)
+		req.SqlText, err = util.DecryptString(cypherQ, svr.cypherAlg, svr.cypherKey, svr.cypherPad)
 		if err != nil {
 			rsp.Reason = "decrypt sql fail, " + err.Error()
 			rsp.Elapse = time.Since(tick).String()

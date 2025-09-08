@@ -72,7 +72,7 @@ func EncryptString(plainStr string, alg string, key string) (string, error) {
 // decypherString
 // secStr: base64 encoded string that encoded in alg cypher
 // alg: 3-DES, AES
-func DecryptString(secStr string, alg string, key string) (string, error) {
+func DecryptString(secStr string, alg string, key string, pad string) (string, error) {
 	data, err := base64.StdEncoding.DecodeString(secStr)
 	if err != nil {
 		return "", err
@@ -95,7 +95,11 @@ func DecryptString(secStr string, alg string, key string) (string, error) {
 		mode := cipher.NewCBCDecrypter(block, iv)
 		decrypted := make([]byte, len(data))
 		mode.CryptBlocks(decrypted, data)
-		decrypted, err = PKCS7Unpad(decrypted, block.BlockSize())
+		if strings.ToUpper(pad) == "PKCS5" {
+			decrypted, err = PKCS5Unpad(decrypted, block.BlockSize())
+		} else {
+			decrypted, err = PKCS7Unpad(decrypted, block.BlockSize())
+		}
 		if err != nil {
 			return "", err
 		}
@@ -116,7 +120,11 @@ func DecryptString(secStr string, alg string, key string) (string, error) {
 		mode := cipher.NewCBCDecrypter(block, iv)
 		decrypted := make([]byte, len(data))
 		mode.CryptBlocks(decrypted, data)
-		decrypted, err = PKCS7Unpad(decrypted, block.BlockSize())
+		if strings.ToUpper(pad) == "PKCS5" {
+			decrypted, err = PKCS5Unpad(decrypted, block.BlockSize())
+		} else {
+			decrypted, err = PKCS7Unpad(decrypted, block.BlockSize())
+		}
 		if err != nil {
 			return "", err
 		}
@@ -148,4 +156,26 @@ func PKCS7Pad(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize
 	pad := bytes.Repeat([]byte{byte(padding)}, padding)
 	return append(data, pad...)
+}
+
+func PKCS5Pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	pad := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(data, pad...)
+}
+
+func PKCS5Unpad(data []byte, blockSize int) ([]byte, error) {
+	if len(data) == 0 || len(data)%blockSize != 0 {
+		return nil, errors.New("invalid padding size")
+	}
+	padLen := int(data[len(data)-1])
+	if padLen == 0 || padLen > blockSize {
+		return nil, errors.New("invalid padding")
+	}
+	for i := 0; i < padLen; i++ {
+		if data[len(data)-1-i] != byte(padLen) {
+			return nil, errors.New("invalid padding")
+		}
+	}
+	return data[:len(data)-padLen], nil
 }

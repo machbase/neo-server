@@ -156,10 +156,18 @@ func WithHttpStatzAllow(remotes ...string) HttpOption {
 
 func WithHttpQueryCypher(algAndKey string) HttpOption {
 	alg := ""
+	pad := "PCKCS7"
 	key := ""
-	if parts := strings.SplitN(algAndKey, ":", 2); len(parts) == 2 {
-		alg = strings.TrimSpace(parts[0])
-		key = strings.TrimSpace(parts[1])
+	pairs := util.ParseNameValuePairs(algAndKey)
+	for _, p := range pairs {
+		switch strings.ToLower(p.Name) {
+		case "cypher", "cipher", "alg", "algorithm":
+			alg = strings.ToUpper(p.Value)
+		case "key":
+			key = p.Value
+		case "pad", "padding":
+			pad = strings.ToUpper(p.Value)
+		}
 	}
 	return func(s *httpd) {
 		if alg == "" && key == "" {
@@ -170,7 +178,8 @@ func WithHttpQueryCypher(algAndKey string) HttpOption {
 		} else {
 			s.cypherAlg = alg
 			s.cypherKey = key
-			s.log.Infof("HTTP query cypher enabled (alg=%s)", s.cypherAlg)
+			s.cypherPad = pad
+			s.log.Infof("HTTP query cypher enabled (alg=%s,pad=%s)", s.cypherAlg, s.cypherPad)
 		}
 	}
 }

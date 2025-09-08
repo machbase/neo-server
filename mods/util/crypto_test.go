@@ -20,7 +20,7 @@ func TestDecryptString(t *testing.T) {
 	encAES := make([]byte, len(plainAES))
 	modeAES.CryptBlocks(encAES, plainAES)
 	b64AES := base64.StdEncoding.EncodeToString(encAES)
-	out, err := DecryptString(b64AES, "AES", string(keyAES))
+	out, err := DecryptString(b64AES, "AES", string(keyAES), "")
 	if err != nil || out != "hello world!!!" {
 		t.Errorf("AES decrypt failed: got '%v', err=%v", out, err)
 	}
@@ -34,25 +34,25 @@ func TestDecryptString(t *testing.T) {
 	enc3DES := make([]byte, len(plain3DES))
 	mode3DES.CryptBlocks(enc3DES, plain3DES)
 	b64_3DES := base64.StdEncoding.EncodeToString(enc3DES)
-	out, err = DecryptString(b64_3DES, "3DES", string(key3DES))
+	out, err = DecryptString(b64_3DES, "3DES", string(key3DES), "")
 	if err != nil || out != "hello12345678" {
 		t.Errorf("3DES decrypt failed: got '%v', err=%v", out, err)
 	}
 
 	// Unsupported algorithm
-	_, err = DecryptString("", "FOO", "")
+	_, err = DecryptString("", "FOO", "", "")
 	if err == nil || !strings.Contains(err.Error(), "unsupported algorithm") {
 		t.Errorf("Unsupported algorithm should return error")
 	}
 
 	// Invalid base64
-	_, err = DecryptString("notbase64", "AES", string(keyAES))
+	_, err = DecryptString("notbase64", "AES", string(keyAES), "")
 	if err == nil {
 		t.Errorf("Invalid base64 should return error")
 	}
 
 	// Invalid key length
-	_, err = DecryptString(b64AES, "AES", "shortkey")
+	_, err = DecryptString(b64AES, "AES", "shortkey", "")
 	if err == nil || !strings.Contains(err.Error(), "AES key must") {
 		t.Errorf("Invalid AES key length should return error")
 	}
@@ -66,7 +66,7 @@ func TestEncryptString(t *testing.T) {
 	if err != nil {
 		t.Errorf("AES encrypt failed: %v", err)
 	}
-	decAES, err := DecryptString(encAES, "AES", keyAES)
+	decAES, err := DecryptString(encAES, "AES", keyAES, "")
 	if err != nil || decAES != plainAES {
 		t.Errorf("AES round-trip failed: got '%v', err=%v", decAES, err)
 	}
@@ -78,7 +78,7 @@ func TestEncryptString(t *testing.T) {
 	if err != nil {
 		t.Errorf("3DES encrypt failed: %v", err)
 	}
-	dec3DES, err := DecryptString(enc3DES, "3DES", key3DES)
+	dec3DES, err := DecryptString(enc3DES, "3DES", key3DES, "")
 	if err != nil || dec3DES != plain3DES {
 		t.Errorf("3DES round-trip failed: got '%v', err=%v", dec3DES, err)
 	}
