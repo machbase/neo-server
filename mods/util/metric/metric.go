@@ -4,23 +4,31 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
+	"strings"
 	"sync"
 	"time"
 )
 
 // InputFunc is a function type that matches the signature of the Collect method.
 // Periodically called by the Collector to gather metrics.
-type InputFunc func() (Measurement, error)
+type InputFunc func(Gather)
 
 // OutputFunc is a function type that processes the collected ProductData.
 type OutputFunc func(Product)
+
+type Gather interface {
+	AddMeasurement(Measurement)
+	AddError(error)
+	Err() error
+}
 
 type Measurement struct {
 	Name   string
 	Fields []Field // name -value pairs and producer function
 	// fields not exposed
-	ts     time.Time // time when the measurement was taken
-	doSync bool      // whether to sync storage after this measurement
+	ts   time.Time // time when the measurement was taken
+	noop bool
 }
 
 func (m *Measurement) AddField(f ...Field) {
@@ -105,9 +113,9 @@ type Collector struct {
 	outputs []OutputFunc
 
 	// periodically collects metrics from inputs
-	interval time.Duration
-	closeCh  chan struct{}
-	stopWg   sync.WaitGroup
+	samplingInterval time.Duration
+	closeCh          chan struct{}
+	stopWg           sync.WaitGroup
 
 	// event-driven measurements
 	recvCh     chan Measurement
@@ -124,9 +132,9 @@ type Collector struct {
 }
 
 type CollectorSeries struct {
-	name     string
-	period   time.Duration
-	maxCount int
+	Name     string
+	Period   time.Duration
+	MaxCount int
 }
 
 // NewCollector creates a new Collector with the specified interval.
@@ -135,9 +143,9 @@ type CollectorSeries struct {
 // It is safe to call Start() multiple times, but Stop() should be called only once
 func NewCollector(opts ...CollectorOption) *Collector {
 	c := &Collector{
-		interval: 10 * time.Second,
-		closeCh:  make(chan struct{}),
-		inputs:   make(map[string]*InputWrapper),
+		samplingInterval: 10 * time.Second,
+		closeCh:          make(chan struct{}),
+		inputs:           make(map[string]*InputWrapper),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -152,16 +160,17 @@ func NewCollector(opts ...CollectorOption) *Collector {
 
 type CollectorOption func(c *Collector)
 
-// WithInterval sets the collection interval for the collector.
-func WithInterval(interval time.Duration) CollectorOption {
+// WithSamplingInterval sets the collection interval for the collector.
+// Default is 10 seconds.
+func WithSamplingInterval(interval time.Duration) CollectorOption {
 	return func(c *Collector) {
-		c.interval = interval
+		c.samplingInterval = interval
 	}
 }
 
 func WithSeries(name string, period time.Duration, maxCount int) CollectorOption {
 	return func(c *Collector) {
-		c.series = append(c.series, CollectorSeries{name: name, period: period, maxCount: maxCount})
+		c.series = append(c.series, CollectorSeries{Name: name, Period: period, MaxCount: maxCount})
 	}
 }
 
@@ -193,35 +202,72 @@ func (c *Collector) AddOutputFunc(output OutputFunc) {
 	c.outputs = append(c.outputs, output)
 }
 
+type Input interface {
+	Init() error
+	Gather(Gather)
+}
+
+type MultipleError []error
+
+var _ error = MultipleError{}
+
+func (me MultipleError) Error() string {
+	var sb strings.Builder
+	for i, err := range me {
+		if i > 0 {
+			sb.WriteString("; ")
+		}
+		sb.WriteString(err.Error())
+	}
+	return sb.String()
+}
+
+func (c *Collector) AddInput(gs ...Input) error {
+	var errs MultipleError = nil
+	for _, g := range gs {
+		if err := c.AddInputFunc(g.Gather); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
 // AddInputFunc adds an input function to the collector.
 func (c *Collector) AddInputFunc(input InputFunc) error {
 	// initial call to get the measurement name
-	m, err := input()
-	if err != nil {
+	g := &Gatherer{}
+	input(g)
+	if err := g.Err(); err != nil {
 		return err
 	}
 
 	c.Lock()
 	defer func() {
 		c.Unlock()
-		c.receive(m)
+		ts := nowFunc()
+		for _, m := range g.M {
+			m.ts = ts
+			c.receive(m)
+		}
 	}()
 
-	if _, exists := c.inputs[m.Name]; exists {
-		return fmt.Errorf("input with name %q already registered", m.Name)
+	for _, m := range g.M {
+		if _, exists := c.inputs[m.Name]; exists {
+			return fmt.Errorf("input with name %q already registered", m.Name)
+		}
+		iw := &InputWrapper{
+			measureName:    m.Name,
+			input:          input,
+			mtsFields:      make(map[string]MultiTimeSeries),
+			publishedNames: make(map[string]string),
+		}
+		c.inputs[iw.measureName] = iw
 	}
-	iw := &InputWrapper{
-		measureName:    m.Name,
-		input:          input,
-		mtsFields:      make(map[string]MultiTimeSeries),
-		publishedNames: make(map[string]string),
-	}
-	c.inputs[iw.measureName] = iw
 	return nil
 }
 
 func (c *Collector) Start() {
-	ticker := time.NewTicker(c.interval)
+	ticker := time.NewTicker(c.samplingInterval)
 	c.stopWg.Add(1)
 	go func() {
 		defer c.stopWg.Done()
@@ -267,27 +313,71 @@ func (c *Collector) Send(m Measurement) {
 	c.recvCh <- m
 }
 
-func (c *Collector) runInputs(ts time.Time) {
-	for _, iw := range c.inputs {
-		if iw.input == nil {
-			continue
-		}
-		measure, err := iw.input()
-		if err != nil {
-			fmt.Printf("Error measuring: %v\n", err)
-			continue
-		}
-		measure.ts = ts
-		c.recvCh <- measure
+type Gatherer struct {
+	C    *Collector
+	M    []Measurement
+	errs MultipleError
+}
+
+func (g *Gatherer) AddMeasurement(m Measurement) {
+	g.M = append(g.M, m)
+}
+
+func (g *Gatherer) AddError(err error) {
+	g.errs = append(g.errs, err)
+}
+
+func (g *Gatherer) Err() error {
+	if len(g.errs) == 0 {
+		return nil
+	} else if len(g.errs) == 1 {
+		return g.errs[0]
 	}
-	// trigger storage sync
-	c.recvCh <- Measurement{doSync: true}
+	return g.errs
+}
+
+var _ Gather = &Gatherer{}
+
+func (c *Collector) runInputs(ts time.Time) {
+	for name, iw := range c.inputs {
+		if iw.input == nil {
+			measure := Measurement{
+				Name:   name,
+				Fields: nil,
+				ts:     ts,
+				noop:   true,
+			}
+			c.recvCh <- measure
+			continue
+		} else {
+			gather := &Gatherer{}
+			iw.input(gather)
+			if err := gather.Err(); err != nil {
+				fmt.Printf("Error measuring: %v\n", err)
+				continue
+			}
+			for _, measure := range gather.M {
+				measure.ts = ts
+				c.recvCh <- measure
+			}
+		}
+	}
 }
 
 func (c *Collector) receive(m Measurement) {
 	c.Lock()
 	defer c.Unlock()
 
+	if m.noop {
+		if input, ok := c.inputs[m.Name]; ok {
+			for _, mts := range input.mtsFields {
+				for _, ts := range mts {
+					ts.AddTime(m.ts, math.NaN())
+				}
+			}
+		}
+		return
+	}
 	if m.ts.IsZero() {
 		m.ts = nowFunc()
 	}
@@ -313,9 +403,6 @@ func (c *Collector) receive(m Measurement) {
 			expvar.Publish(publishName, mts)
 		}
 		mts.AddTime(m.ts, field.Value)
-	}
-	if m.doSync {
-		c.syncStorage()
 	}
 }
 
@@ -360,20 +447,20 @@ func (c *Collector) onProduct(tb TimeBin, meta any) {
 func (c *Collector) makeMultiTimeSeries(measureName string, field Field) MultiTimeSeries {
 	mts := make(MultiTimeSeries, len(c.series))
 	for i, ser := range c.series {
-		var ts = NewTimeSeries(ser.period, ser.maxCount, field.Type.Producer())
+		var ts = NewTimeSeries(ser.Period, ser.MaxCount, field.Type.Producer())
 		ts.SetListener(c.onProduct)
 		ts.SetMeta(FieldInfo{
 			Measure: measureName,
 			Name:    field.Name,
-			Series:  ser.name,
-			Period:  ser.period,
+			Series:  ser.Name,
+			Period:  ser.Period,
 			Type:    field.Type.String(),
 			Unit:    field.Type.Unit(),
 		})
 		if c.storage != nil {
 			seriesName := cleanPath(ts.interval.String())
 			if data, err := c.storage.Load(measureName, field.Name, seriesName); err != nil {
-				fmt.Printf("Failed to load time series for %s %s %s: %v\n", measureName, field.Name, ser.name, err)
+				fmt.Printf("Failed to load time series for %s %s %s: %v\n", measureName, field.Name, ser.Name, err)
 			} else if data != nil {
 				// if file is not exists, data will be nil
 				ts.data = data.data
@@ -382,6 +469,10 @@ func (c *Collector) makeMultiTimeSeries(measureName string, field Field) MultiTi
 		mts[i] = ts
 	}
 	return mts
+}
+
+func (c *Collector) SamplingInterval() time.Duration {
+	return c.samplingInterval
 }
 
 // PublishNames returns a list of all published metric names in the collector.
@@ -397,14 +488,28 @@ func (c *Collector) PublishNames() []string {
 	return names
 }
 
-func (c *Collector) SeriesNames() []string {
+func (c *Collector) MetricNames() []string {
 	c.Lock()
 	defer c.Unlock()
-	var names = make([]string, len(c.series))
-	for i, s := range c.series {
-		names[i] = s.name
+	names := make([]string, 0, len(c.inputs))
+	for _, iw := range c.inputs {
+		for _, publishedName := range iw.publishedNames {
+			if c.expvarPrefix != "" {
+				names = append(names, strings.TrimPrefix(publishedName, c.expvarPrefix+":"))
+			} else {
+				names = append(names, publishedName)
+			}
+		}
 	}
 	return names
+}
+
+func (c *Collector) Series() []CollectorSeries {
+	c.Lock()
+	defer c.Unlock()
+	ret := make([]CollectorSeries, len(c.series))
+	copy(ret, c.series)
+	return ret
 }
 
 // Inflight returns the current collecting data for each series of the specified measure and field.
@@ -432,7 +537,7 @@ func (c *Collector) InflightName(metricName string) (map[string]Product, error) 
 
 	ret := map[string]Product{}
 	for idx, n := range c.series {
-		seriesName := n.name
+		seriesName := n.Name
 		nfo, ok := mts[idx].Meta().(FieldInfo)
 		if !ok {
 			return nil, fmt.Errorf("metric %s series %s meta is not FieldInfo, but %T",
@@ -457,6 +562,8 @@ func (c *Collector) syncStorage() {
 	if c.storage == nil {
 		return
 	}
+	c.Lock()
+	defer c.Unlock()
 	for measureName, iw := range c.inputs {
 		for fieldName, mts := range iw.mtsFields {
 			for _, ts := range mts {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -305,10 +306,11 @@ var metricsDest string
 
 func StartMetrics() {
 	collector = metric.NewCollector(
-		metric.WithInterval(2*time.Second),
-		metric.WithSeries("30min/10s", 10*time.Second, 180),
+		metric.WithSamplingInterval(10*time.Second),
+		metric.WithSeries("3h/60s", 60*time.Second, 180),
+		metric.WithSeries("3d12h/30m", 30*time.Minute, 168),
 		metric.WithPrefix(prefix),
-		metric.WithInputBuffer(20),
+		metric.WithInputBuffer(50),
 	)
 	collector.AddInputFunc(collect_metrics)
 	collector.AddOutputFunc(onProduct)
@@ -352,7 +354,14 @@ func SetMetricsDestTable(destTable string) error {
 	return nil
 }
 
-func AddMetricsFunc(f func() (metric.Measurement, error)) {
+func AddMetricsInput(in metric.Input) {
+	if collector == nil {
+		return
+	}
+	collector.AddInput(in)
+}
+
+func AddMetricsFunc(f func(metric.Gather)) {
 	if collector == nil {
 		return
 	}
@@ -366,7 +375,7 @@ func AddMetrics(m metric.Measurement) {
 	collector.Send(m)
 }
 
-func collect_metrics() (metric.Measurement, error) {
+func collect_metrics(g metric.Gather) {
 	m := metric.Measurement{Name: "session"}
 	m.AddField(
 		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
@@ -376,7 +385,7 @@ func collect_metrics() (metric.Measurement, error) {
 		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
 		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Type: metric.GaugeType(metric.UnitShort)},
 	)
-	return m, nil
+	g.AddMeasurement(m)
 }
 
 type MetricRec struct {
@@ -475,4 +484,28 @@ func onProduct(pd metric.Product) {
 			}
 		}
 	}(result, metricsDest)
+}
+
+func DashboardHandler() http.HandlerFunc {
+	httpStatusFilter := metric.MustCompile([]string{"machbase:http:status_[1-5]xx"}, ':')
+	tqlCacheFilter := metric.MustCompile([]string{"machbase:tql:cache:*"}, ':')
+
+	avgFilter := metric.MustCompile([]string{"*(avg)"})
+	lastFilter := metric.MustCompile([]string{"*(last)"})
+
+	dash := metric.NewDashboard(collector)
+	dash.ShowRemains = true
+	dash.AddChart(metric.Chart{Title: "CPU Usage", MetricNames: []string{"machbase:ps:cpu_percent"}})
+	dash.AddChart(metric.Chart{Title: "MEM Usage", MetricNames: []string{"machbase:ps:mem_percent"}})
+	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"machbase:sys:sysmem"}})
+	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"machbase:runtime:goroutines"}})
+	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"machbase:runtime:heap_inuse"}, ValueSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"machbase:runtime:cgo_call"}, ValueSelector: lastFilter, Type: metric.ChartTypeBar})
+	dash.AddChart(metric.Chart{Title: "HTTP I/O", MetricNames: []string{"machbase:http:recv_bytes", "machbase:http:send_bytes"}, Type: metric.ChartTypeLine})
+	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNameFilter: httpStatusFilter, Type: metric.ChartTypeBarStack})
+	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"machbase:http:latency"}})
+	dash.AddChart(metric.Chart{Title: "CONN Wait Time", MetricNames: []string{"machbase:session:conn:wait_time"}})
+	dash.AddChart(metric.Chart{Title: "CONN Use Time", MetricNames: []string{"machbase:session:conn:use_time"}})
+	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNameFilter: tqlCacheFilter, ValueSelector: avgFilter, Type: metric.ChartTypeBarStack})
+	return dash.HandleFunc
 }

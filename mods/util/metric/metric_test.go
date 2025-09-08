@@ -21,7 +21,7 @@ func TestMetric(t *testing.T) {
 	var now time.Time
 	wg.Add(3)
 	c := NewCollector(
-		WithInterval(time.Second),
+		WithSamplingInterval(time.Second),
 		WithSeries("1m/1s", time.Second, 60),
 	)
 	c.AddOutputFunc(func(pd Product) {
@@ -37,10 +37,10 @@ func TestMetric(t *testing.T) {
 		expect := fmt.Sprintf(`m1:f1 1m/1s %s {"samples":1,"value":1} counter`, now.Format(time.TimeOnly))
 		require.Equal(t, expect, out)
 	})
-	c.AddInputFunc(func() (Measurement, error) {
+	c.AddInputFunc(func(g Gather) {
 		m := Measurement{Name: "m1"}
 		m.AddField(Field{Name: "f1", Value: 1.0, Type: CounterType(UnitShort)})
-		return m, nil
+		g.AddMeasurement(m)
 	})
 	c.Start()
 	wg.Wait()

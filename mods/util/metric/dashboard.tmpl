@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    {{- $opt := .Option -}}
+    {{- $seriesIdx := .SeriesIdx -}}
+	<meta charset="UTF-8">
+    {{- range $opt.JsSrc }}
+    <script src="{{ . }}"></script>
+    {{ end -}}
+    <style>
+        {{ $opt.StyleCSS }}
+    </style>
+    <script>
+        function trimRight(s) {
+            // Regexp matches .00, .0, and .[0-9]0 at the end of the string
+            if (!s) return s;
+            return s.replace(/(\.00|\.0|(\.\d)0)$/g, '$2');
+        }
+        function bytesFormatterYAxis(value, dataIndex) { return bytesFormatter0(value, dataIndex, true); }
+        function bytesFormatter(value, dataIndex) { return bytesFormatter0(value, dataIndex, false); }
+        function bytesFormatter0(value, dataIndex, forYAxis) {
+            if( value == null || (Array.isArray(value) && value.length == 0)) return null;
+            if (value === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            let i = Math.floor(Math.log(value) / Math.log(k));
+            if( i < 0 || i >= sizes.length ) {
+                i = 0;
+            }
+            let lbl = parseFloat((value / Math.pow(k, i)).toFixed(2)).toFixed(2);
+            if (forYAxis) {
+                lbl = trimRight(lbl);
+            }
+            return lbl + ' ' + sizes[i];
+        }
+        function durationFormatterYAxis(value, dataIndex) { return durationFormatter0(value, dataIndex, true); }
+        function durationFormatter(value, dataIndex) { return durationFormatter0(value, dataIndex, false); }
+        function durationFormatter0(value, dataIndex, forYAxis) {
+            if( value == null || (Array.isArray(value) && value.length == 0)) return null;
+            if (value < 1e3) {
+                return (forYAxis ? trimRight(value.toFixed(2)) : value.toFixed(2)) + ' ns';
+            } else if (value < 1e6) {
+                return (forYAxis ? trimRight((value / 1e3).toFixed(2)) : (value / 1e3).toFixed(2)) + ' µs';
+            } else if (value < 1e9) {
+                return (forYAxis ? trimRight((value / 1e6).toFixed(2)) : (value / 1e6).toFixed(2)) + ' ms';
+            } else {
+                return (forYAxis ? trimRight((value / 1e9).toFixed(2)) : (value / 1e9).toFixed(2)) + ' s';
+            }
+        }
+        function percentFormatterYAxis(value, dataIndex) { return percentFormatter0(value, dataIndex, true); }
+        function percentFormatter(value, dataIndex) { return percentFormatter0(value, dataIndex, false); }
+        function percentFormatter0(value, dataIndex, yAxis) {
+            if( value == null || (Array.isArray(value) && value.length == 0)) return null;
+            let lbl = value.toFixed(2);
+            if (yAxis) {
+                lbl = trimRight(lbl);
+            }
+            return lbl + ' %';
+        }
+        function shortFormatter(value, dataIndex) {
+            if( value == null || (Array.isArray(value) && value.length == 0)) return null;
+            // insert comma per thousands
+            return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        function setFormatter(opt, meta) {
+            let valueFormatter = null;
+            let labelFormatter = null;
+            switch(meta.unit) {
+            case 'Bytes':
+                valueFormatter = bytesFormatter;
+                labelFormatter = bytesFormatterYAxis;
+                break;
+            case 'Duration':
+                valueFormatter = durationFormatter;
+                labelFormatter = durationFormatterYAxis;
+                break;
+            case 'Percent':
+                valueFormatter = percentFormatter;
+                labelFormatter = percentFormatterYAxis;
+                break;
+            case 'Short':
+                valueFormatter = shortFormatter;
+                labelFormatter = shortFormatter;
+                break;
+            }
+            opt.tooltip.valueFormatter = valueFormatter;
+            if(opt.yAxis.axisLabel) {
+                opt.yAxis.axisLabel.formatter = labelFormatter;
+            } else {
+                opt.yAxis.axisLabel = { formatter: labelFormatter };
+            }
+        }
+    </script>
+</head>
+<body>
+{{- if gt (len .Timeseries) 1 -}}
+    <div class="series-tabs">
+        {{- range $i, $s := .Timeseries }}
+            <a href="{{$opt.BasePath}}?tsIdx={{$i}}"
+               class="tab{{if eq $i $.SeriesIdx}} active{{end}}">{{ $s | seriesTitle }} </a>
+        {{- end }}
+    </div>
+{{- end }}
+<script>
+    var refreshFunctions = [];
+    {{ $ser := index .Timeseries .SeriesIdx }}
+    const seriesInterval = {{ $ser.Period.Milliseconds }};
+    const samplingInterval = {{ $.SamplingInterval.Milliseconds }};
+    let interval = seriesInterval;
+    if (interval < samplingInterval) {
+        interval = samplingInterval;
+    } else if (interval > samplingInterval * 10) {
+        interval = samplingInterval * 10;
+    }
+    interval = samplingInterval;
+    setInterval(()=>{
+        refreshFunctions.forEach(f => f());
+    }, interval);
+</script>
+<div class="container">
+{{- range $n, $panel := .Panels }}
+	<div id="{{$panel.ID}}" class="panel"></div>
+	<script type="text/javascript">
+	(() => {
+		var chartDom = document.getElementById('{{$panel.ID}}');
+		var myChart = echarts.init(chartDom, 'dark');
+		var option = {};
+		function fetchData() {
+			fetch("{{$opt.BasePath}}?id={{$panel.ID}}&tsIdx={{$seriesIdx}}")
+            .then(response => response.json())
+            .then(data => {
+                setFormatter(data.chartOption, data.meta);
+                myChart.setOption(data.chartOption);
+            });
+		}
+		fetchData();
+        refreshFunctions.push(fetchData);
+    })();
+	</script>
+{{- end }}
+</div>
+</body>
+</html>

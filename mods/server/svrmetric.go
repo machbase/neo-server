@@ -23,7 +23,7 @@ func startServerMetrics(s *Server) {
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))
-	api.AddMetricsFunc(collectRuntime)
+	api.AddMetricsInput(&RuntimeInput{})
 	api.AddMetricsFunc(collectPsStatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
@@ -35,25 +35,37 @@ func stopServerMetrics() {
 	api.StopMetrics()
 }
 
-func collectRuntime() (metric.Measurement, error) {
+type RuntimeInput struct {
+	lastCgoCall int64
+}
+
+func (ri *RuntimeInput) Init() error { return nil }
+func (ri *RuntimeInput) Gather(g metric.Gather) {
 	ms := runtime.MemStats{}
 	runtime.ReadMemStats(&ms)
 
 	m := metric.Measurement{Name: "runtime"}
 	m.AddField(
 		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Type: metric.GaugeType(metric.UnitShort)},
+		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Type: metric.GaugeType(metric.UnitBytes)},
 	)
-	return m, nil
+	cgoCalls := runtime.NumCgoCall()
+	cgoCallNoNegative := cgoCalls - ri.lastCgoCall
+	ri.lastCgoCall = cgoCalls
+	if cgoCallNoNegative >= 0 {
+		m.AddField(
+			metric.Field{Name: "cgo_call", Value: float64(cgoCallNoNegative), Type: metric.GaugeType(metric.UnitShort)},
+		)
+	}
+	g.AddMeasurement(m)
 }
 
-func collectPsStatz() (metric.Measurement, error) {
+func collectPsStatz(g metric.Gather) {
 	m := metric.Measurement{Name: "ps"}
-
 	cpuPercent, err := cpu.Percent(0, false)
 	if err != nil {
-		return m, fmt.Errorf("failed to collect CPU percent: %w", err)
+		g.AddError(fmt.Errorf("failed to collect CPU percent: %w", err))
+		return
 	}
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "cpu_percent",
@@ -63,64 +75,67 @@ func collectPsStatz() (metric.Measurement, error) {
 
 	memStat, err := mem.VirtualMemory()
 	if err != nil {
-		return m, fmt.Errorf("failed to collect memory percent: %w", err)
+		g.AddError(fmt.Errorf("failed to collect memory percent: %w", err))
+		return
 	}
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "mem_percent",
 		Value: memStat.UsedPercent,
 		Type:  metric.MeterType(metric.UnitPercent),
 	})
-	return m, nil
+	g.AddMeasurement(m)
 }
 
-func collectSysStatz() (metric.Measurement, error) {
-	m := metric.Measurement{Name: "sys"}
-
+func collectSysStatz(g metric.Gather) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
-		return m, err
+		g.AddError(err)
+		return
 	}
 	defer conn.Close()
 	row := conn.QueryRow(ctx, "select sum(usage) from v$sysmem")
 	if err = row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
-		return m, err
+		g.AddError(err)
+		return
 	}
 	var usageTotal int64
 	if err = row.Scan(&usageTotal); err != nil {
 		statzLog.Error("failed to scan machbase: %v", err)
-		return m, err
+		g.AddError(err)
+		return
 	}
-	m.AddField(metric.Field{Name: "sysmem", Value: float64(usageTotal), Type: metric.GaugeType(metric.UnitBytes)})
 
+	m := metric.Measurement{Name: "sys"}
+	m.AddField(metric.Field{Name: "sysmem", Value: float64(usageTotal), Type: metric.GaugeType(metric.UnitBytes)})
 	if jemalloc.Enabled {
 		stat := &jemalloc.Stat{}
 		jemalloc.HeapStat(stat)
 		m.AddField(metric.Field{Name: "jemalloc_active", Value: float64(stat.Active), Type: metric.GaugeType(metric.UnitBytes)})
 	}
-
-	return m, nil
+	g.AddMeasurement(m)
 }
 
-func collectMachSvrStatz() (metric.Measurement, error) {
+func collectMachSvrStatz(g metric.Gather) {
 	m := metric.Measurement{Name: "machsvr"}
 	nfo := mach.Stat()
 	m.AddField(metric.Field{Name: "conn", Value: float64(nfo.EngConn), Type: metric.GaugeType(metric.UnitShort)})
 	m.AddField(metric.Field{Name: "stmt", Value: float64(nfo.EngStmt), Type: metric.GaugeType(metric.UnitShort)})
 	m.AddField(metric.Field{Name: "append", Value: float64(nfo.EngAppend), Type: metric.GaugeType(metric.UnitShort)})
-	return m, nil
+	g.AddMeasurement(m)
 }
 
-func collectMqttStatz(s *Server) func() (metric.Measurement, error) {
-	return func() (metric.Measurement, error) {
-		m := metric.Measurement{Name: "mqtt"}
+func collectMqttStatz(s *Server) func(g metric.Gather) {
+	return func(g metric.Gather) {
 		if s.mqttd == nil || s.mqttd.broker == nil {
-			return m, errors.New("MQTT broker is not initialized")
+			g.AddError(errors.New("MQTT broker is not initialized"))
+			return
 		}
 		nfo := s.mqttd.broker.Info
+		m := metric.Measurement{Name: "mqtt"}
 		m.AddField(
 			metric.Field{Name: "recv_bytes", Value: float64(nfo.BytesReceived), Type: metric.GaugeType(metric.UnitBytes)},
 			metric.Field{Name: "send_bytes", Value: float64(nfo.BytesSent), Type: metric.GaugeType(metric.UnitBytes)},
@@ -137,6 +152,6 @@ func collectMqttStatz(s *Server) func() (metric.Measurement, error) {
 			metric.Field{Name: "inflight", Value: float64(nfo.Inflight), Type: metric.GaugeType(metric.UnitShort)},
 			metric.Field{Name: "inflight_dropped", Value: float64(nfo.InflightDropped), Type: metric.GaugeType(metric.UnitShort)},
 		)
-		return m, nil
+		g.AddMeasurement(m)
 	}
 }

@@ -39,6 +39,10 @@ type Type struct {
 	u Unit
 }
 
+func (ft Type) Empty() bool {
+	return ft.p == nil
+}
+
 func (ft Type) Producer() Producer {
 	return ft.p()
 }

@@ -2,6 +2,7 @@ package tql
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -28,9 +29,10 @@ func StartCache(cap CacheOption) {
 		tqlResultCache.cache.Start()
 	}()
 
-	api.AddMetricsFunc(func() (metric.Measurement, error) {
+	api.AddMetricsFunc(func(g metric.Gather) {
 		if tqlResultCache == nil || tqlResultCache.cache == nil {
-			return metric.Measurement{}, fmt.Errorf("tql cache not started")
+			g.AddError(errors.New("tql cache not started"))
+			return
 		}
 		stat := tqlResultCache.cache.Metrics()
 		m := metric.Measurement{Name: "tql:cache"}
@@ -41,7 +43,7 @@ func StartCache(cap CacheOption) {
 			metric.Field{Name: "misses", Value: float64(stat.Misses), Type: metric.GaugeType(metric.UnitShort)},
 			metric.Field{Name: "items", Value: float64(tqlResultCache.cache.Len()), Type: metric.GaugeType(metric.UnitShort)},
 		)
-		return m, nil
+		g.AddMeasurement(m)
 	})
 }
 

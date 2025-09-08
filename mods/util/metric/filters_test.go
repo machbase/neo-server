@@ -58,7 +58,7 @@ func TestAllowName(t *testing.T) {
 		of := func(p Product) {
 			called = true
 		}
-		filter := AllowNameFilter(of, tt.patterns...)
+		filter := IncludeNames(of, tt.patterns...)
 		filter(Product{
 			Measure: tt.args.measure,
 			Field:   tt.args.field,
@@ -123,7 +123,7 @@ func TestDenyName(t *testing.T) {
 		of := func(p Product) {
 			called = true
 		}
-		filter := DenyNameFilter(of, tt.patterns...)
+		filter := ExcludeNames(of, tt.patterns...)
 		filter(Product{
 			Measure: tt.args.measure,
 			Field:   tt.args.field,
@@ -131,5 +131,59 @@ func TestDenyName(t *testing.T) {
 		if called != tt.allowed {
 			t.Errorf("%s: expected allowed=%v, got %v", tt.name, tt.allowed, called)
 		}
+	}
+}
+
+func TestCompilePatterns(t *testing.T) {
+	tests := []struct {
+		pattern    []string
+		separators []rune
+		input      string
+		want       bool
+	}{
+		{[]string{"abc", "def", "ghi*"}, nil, "abc", true},
+		{[]string{"abc", "def", "ghi*"}, nil, "def", true},
+		{[]string{"abc", "def", "ghi*"}, nil, "ghibelline", true},
+		{[]string{"abc", "def", "ghi*"}, nil, "defy", false},
+		{[]string{"abc", "def", "ghi*"}, nil, "xyz", false},
+		{[]string{"abc:*:def"}, []rune{':'}, "abc:def", false},
+		{[]string{"abc:*:def"}, []rune{':'}, "abc:xyz:def", true},
+		{[]string{"abc:*:def"}, []rune{':'}, "abc:opq:xyz:ghi", false},
+		{[]string{"abc:*:def"}, []rune{':'}, "abc:foo:def", true},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field0", true},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field1", true},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field2", true},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field3", true},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field4", false},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field", false},
+		{[]string{"metric:field[0-3]"}, []rune{':'}, "metric:field10", false},
+		{[]string{"abc", "metric:field[1-2]"}, []rune{':'}, "abc", true},
+		{[]string{"abc", "metric:field[1-2]"}, []rune{':'}, "metric:field1", true},
+		{[]string{"abc", "metric:field[1-2]"}, []rune{':'}, "metric:field2", true},
+		{[]string{"abc", "metric:field[1-2]"}, []rune{':'}, "metric:field3", false},
+		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:1", true},
+		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:2", true},
+		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:3", false},
+	}
+
+	for _, tt := range tests {
+		f, err := Compile(tt.pattern, tt.separators...)
+		if err != nil {
+			t.Fatalf("Compile returned error: %v", err)
+		}
+		got := f.Match(tt.input)
+		if got != tt.want {
+			t.Errorf("Match(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestCompileEmptyPatterns(t *testing.T) {
+	f, err := Compile([]string{})
+	if err != nil {
+		t.Fatalf("Compile returned error: %v", err)
+	}
+	if f != nil {
+		t.Errorf("Expected nil filter for empty patterns, got %v", f)
 	}
 }

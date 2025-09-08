@@ -388,6 +388,7 @@ func (svr *httpd) Router() *gin.Engine {
 	debugGroup := r.Group("/debug")
 	debugGroup.Use(svr.allowDebug)
 	debugGroup.Any("/pprof/*path", gin.WrapF(httpPprof.Index))
+	debugGroup.GET("/dashboard", gin.WrapF(api.DashboardHandler()))
 	debugGroup.GET("/statz", svr.handleStatz)
 
 	r.NoRoute(gin.WrapH(http.FileServer(AssetsDir())))

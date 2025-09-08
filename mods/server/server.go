@@ -184,6 +184,9 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// metrics
+	startServerMetrics(s)
+
 	// server side file system
 	if err := s.startServerFileSystem(); err != nil {
 		return err
@@ -273,9 +276,6 @@ func (s *Server) Start() error {
 	if s.NavelCord != nil {
 		s.StartNavelCord()
 	}
-
-	// metrics
-	startServerMetrics(s)
 
 	return nil
 }

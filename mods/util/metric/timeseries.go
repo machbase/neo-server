@@ -150,31 +150,44 @@ func (ts *TimeSeries) All() ([]time.Time, []Value) {
 func (ts *TimeSeries) LastN(n int) ([]time.Time, []Value) {
 	ts.Lock()
 	defer ts.Unlock()
-	if len(ts.data) == 0 {
-		return nil, nil
-	}
 
 	lt := ts.roundTime(ts.lastTime)
 	lv := ts.producer.Produce(false)
 	if n == 1 {
 		return []time.Time{lt}, []Value{lv}
+	} else if n <= 0 || n > ts.maxCount {
+		n = ts.maxCount
 	}
-
+	times := make([]time.Time, n)
+	values := make([]Value, n)
+	for i := range times {
+		times[i] = lt.Add(-time.Duration(len(times)-i-1) * ts.interval)
+		values[i] = nil
+	}
 	var offset int = 0
 	if n > 0 {
-		offset := len(ts.data) - n - 1
+		offset := len(ts.data) - n - 1 // -1 for the last point
 		if offset < 0 {
-			offset = 0
+			offset = 0 // keep at least one point before the last point
 		}
 	}
-
-	sub := ts.data[offset:]
-	times := make([]time.Time, len(sub)+1)
-	values := make([]Value, len(sub)+1)
-	for i := range sub {
-		times[i], values[i] = sub[i].Time, sub[i].Value
+	tmIdx := 0
+	for _, tb := range ts.data[offset:] {
+		if tmIdx >= len(times)-1 {
+			break
+		}
+		if tb.Time.Before(times[tmIdx]) {
+			continue
+		}
+		for tb.Time.After(times[tmIdx]) {
+			tmIdx++
+			continue
+		}
+		values[tmIdx] = tb.Value
 	}
-	times[len(times)-1], values[len(values)-1] = lt, lv
+	if times[len(times)-1].Equal(lt) {
+		values[len(values)-1] = lv
+	}
 	return times, values
 }
 
@@ -221,7 +234,9 @@ func (ts *TimeSeries) add(tm time.Time, val float64) {
 
 	if roll <= 0 || ts.lastTime.IsZero() {
 		ts.lastTime = tm
-		ts.producer.Add(val)
+		if val == val { // not NaN
+			ts.producer.Add(val)
+		}
 		return
 	}
 
@@ -232,7 +247,9 @@ func (ts *TimeSeries) add(tm time.Time, val float64) {
 	}
 	ts.data = append(ts.data, tb)
 	ts.lastTime = tm
-	ts.producer.Add(val)
+	if val == val { // not NaN
+		ts.producer.Add(val)
+	}
 	roll--
 
 	// Reset if the gap is too large
