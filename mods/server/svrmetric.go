@@ -65,7 +65,7 @@ func collectPsStatz(g metric.Gather) {
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "cpu_percent",
 		Value: cpuPercent[0],
-		Type:  metric.MeterType(metric.UnitPercent),
+		Type:  metric.GaugeType(metric.UnitPercent),
 	})
 
 	memStat, err := mem.VirtualMemory()
@@ -76,7 +76,7 @@ func collectPsStatz(g metric.Gather) {
 	m.Fields = append(m.Fields, metric.Field{
 		Name:  "mem_percent",
 		Value: memStat.UsedPercent,
-		Type:  metric.MeterType(metric.UnitPercent),
+		Type:  metric.GaugeType(metric.UnitPercent),
 	})
 	g.AddMeasurement(m)
 }
