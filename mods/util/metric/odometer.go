@@ -13,9 +13,10 @@ var _ Producer = (*Odometer)(nil)
 
 type Odometer struct {
 	sync.Mutex
-	first      float64
-	last       float64
-	validFirst bool
+	first       float64
+	last        float64
+	samples     int64
+	initialized bool
 }
 
 func (om *Odometer) MarshalJSON() ([]byte, error) {
@@ -29,17 +30,19 @@ func (om *Odometer) UnmarshalJSON(data []byte) error {
 	}
 	om.first = p.First
 	om.last = p.Last
-	om.validFirst = !p.Empty
+	om.samples = p.Samples
+	om.initialized = !(om.first == 0 && om.last == 0 && om.samples == 0)
 	return nil
 }
 
 func (om *Odometer) Add(v float64) {
 	om.Lock()
 	defer om.Unlock()
-	if !om.validFirst {
+	om.samples++
+	if !om.initialized {
 		om.first = v
 		om.last = v
-		om.validFirst = true
+		om.initialized = true
 		return
 	}
 	om.last = v
@@ -49,14 +52,13 @@ func (om *Odometer) Produce(reset bool) Value {
 	om.Lock()
 	defer om.Unlock()
 	v := &OdometerValue{
-		First: om.first,
-		Last:  om.last,
-	}
-	if !om.validFirst {
-		v.Empty = true
+		First:   om.first,
+		Last:    om.last,
+		Samples: om.samples,
 	}
 	if reset {
 		om.first = om.last
+		om.samples = 0
 	}
 	return v
 }
@@ -67,9 +69,9 @@ func (om *Odometer) String() string {
 }
 
 type OdometerValue struct {
-	First float64 `json:"first"`
-	Last  float64 `json:"last"`
-	Empty bool    `json:"empty,omitempty"`
+	First   float64 `json:"first"`
+	Last    float64 `json:"last"`
+	Samples int64   `json:"samples"`
 }
 
 func (ov *OdometerValue) String() string {
@@ -78,21 +80,21 @@ func (ov *OdometerValue) String() string {
 }
 
 func (ov *OdometerValue) Diff() float64 {
-	if ov.Empty {
+	if ov.Samples == 0 {
 		return 0
 	}
 	return ov.Last - ov.First
 }
 
 func (ov *OdometerValue) NonNegativeDiff() float64 {
-	if ov.Empty {
+	if ov.Samples == 0 {
 		return 0
 	}
 	return max(ov.Last-ov.First, 0)
 }
 
-func (ov *OdometerValue) NonAbsDiff() float64 {
-	if ov.Empty {
+func (ov *OdometerValue) AbsDiff() float64 {
+	if ov.Samples == 0 {
 		return 0
 	}
 	ret := ov.Last - ov.First

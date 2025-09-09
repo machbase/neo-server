@@ -307,8 +307,8 @@ var metricsDest string
 func StartMetrics() {
 	collector = metric.NewCollector(
 		metric.WithSamplingInterval(10*time.Second),
-		metric.WithSeries("2h/60s", 60*time.Second, 120),
-		metric.WithSeries("2d12h/30m", 30*time.Minute, 120),
+		metric.WithSeries("2h", 60*time.Second, 120),
+		metric.WithSeries("2d12h", 30*time.Minute, 120),
 		metric.WithPrefix(prefix),
 		metric.WithInputBuffer(50),
 	)
@@ -468,7 +468,7 @@ func onProduct(pd metric.Product) {
 			})
 		}
 	case *metric.OdometerValue:
-		if p.Empty {
+		if p.Samples == 0 {
 			return // Skip zero odometers
 		}
 		result = append(result, MetricRec{
@@ -514,7 +514,9 @@ func DashboardHandler() http.HandlerFunc {
 	lastFilter := metric.MustCompile([]string{"*(last)"})
 
 	dash := metric.NewDashboard(collector)
+	dash.PageTitle = "MACHBASE-NEO"
 	dash.ShowRemains = false
+	dash.SetTheme("light")
 	dash.AddChart(metric.Chart{Title: "CPU Usage", MetricNames: []string{"machbase:ps:cpu_percent"}})
 	dash.AddChart(metric.Chart{Title: "MEM Usage", MetricNames: []string{"machbase:ps:mem_percent"}})
 	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"machbase:sys:sysmem"}})

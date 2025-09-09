@@ -19,6 +19,7 @@ func NewDashboard(c *Collector) *Dashboard {
 		Timeseries:       c.Series(),
 		SamplingInterval: c.SamplingInterval(),
 		nameProvider:     c.PublishNames,
+		PageTitle:        "Metrics",
 	}
 	return d
 }
@@ -27,11 +28,12 @@ var _ http.Handler = (*Dashboard)(nil)
 
 type Dashboard struct {
 	Option           DashboardOption
-	PanelOptions     []Chart
+	Charts           []Chart
 	Timeseries       []CollectorSeries
 	SeriesIdx        int
 	ShowRemains      bool
 	SamplingInterval time.Duration
+	PageTitle        string
 	nameProvider     func() []string
 }
 
@@ -50,12 +52,12 @@ type Chart struct {
 func (d *Dashboard) AddChart(co ...Chart) {
 	for _, c := range co {
 		if c.ID == "" {
-			c.ID = fmt.Sprintf("@%d", len(d.PanelOptions)+1)
+			c.ID = fmt.Sprintf("@%d", len(d.Charts)+1)
 		}
 		if c.Title == "" {
 			c.Title = strings.Join(c.MetricNames, ", ")
 		}
-		d.PanelOptions = append(d.PanelOptions, c)
+		d.Charts = append(d.Charts, c)
 	}
 }
 
@@ -64,8 +66,8 @@ func (d Dashboard) Panels() []Chart {
 	slices.Sort(lst)
 
 	ret := []Chart{}
-	for idx := range d.PanelOptions {
-		po := &d.PanelOptions[idx]
+	for idx := range d.Charts {
+		po := &d.Charts[idx]
 		if po.MetricNameFilter != nil {
 			d.refreshPanel(po)
 			// remove matched names from lst
@@ -108,8 +110,9 @@ func (d Dashboard) refreshPanel(po *Chart) {
 
 type DashboardOption struct {
 	BasePath string
+	Theme    string // "light" or "dark"
 	JsSrc    []string
-	Style    []CSSStyle
+	Style    map[string]CSSStyle
 }
 
 func DefaultDashboardOption() DashboardOption {
@@ -117,79 +120,117 @@ func DefaultDashboardOption() DashboardOption {
 		JsSrc: []string{
 			"https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js",
 		},
-		Style: []CSSStyle{
-			{
-				Selector: "body",
-				Styles: map[string]string{
-					"background": "rgb(38,40,49)",
-				},
+		Theme: "dark",
+		Style: map[string]CSSStyle{
+			"body": {
+				"background": "rgb(38,40,49)",
 			},
-			{
-				Selector: ".container",
-				Styles: map[string]string{
-					"display":         "flex",       // Enables Flexbox
-					"flex-wrap":       "wrap",       // Allows wrapping to the next line
-					"gap":             "10px",       // Adds spacing between panels
-					"justify-content": "flex-start", // Aligns panels to the left
-					// "justify-content": "space-between" // Distributes panels evenly with space between
-				},
+			".container": {
+				"display":         "flex",       // Enables Flexbox
+				"flex-wrap":       "wrap",       // Allows wrapping to the next line
+				"gap":             "10px",       // Adds spacing between panels
+				"justify-content": "flex-start", // Aligns panels to the left
 			},
-			{
-				Selector: ".panel",
-				Styles: map[string]string{
-					"flex":          "0 0 400px", // Each panel takes up 400px width
-					"height":        "300px",     // Fixed height for each panel
-					"border-radius": "4px",
-					"padding":       "0px",
-					"box-shadow":    "2px 2px 5px rgba(0,0,0,0.1)",
-				},
+			".panel": {
+				"flex":          "1 1 400px", // Each panel takes up 400px width
+				"min-width":     "400px",     // Minimum width for each panel
+				"max-width":     "640px",     // Maximum width for each panel
+				"height":        "300px",     // Fixed height for each panel
+				"border-radius": "4px",
+				"padding":       "0px",
+				"border":        "1px solid rgba(0,0,0,0.1)",
+				"box-shadow":    "2px 2px 5px rgba(0,0,0,0.1)",
 			},
-			{
-				Selector: ".series-tabs",
-				Styles: map[string]string{
-					"display":       "flex",
-					"gap":           "4px",
-					"margin-bottom": "0.2em",
-					"margin-left":   "4px",
-				},
+			".header-row": {
+				"display":         "flex",
+				"justify-content": "space-between",
+				"align-items":     "center",
+				"width":           "100%",
+				"margin-bottom":   "0em",
 			},
-			{
-				Selector: ".series-tabs .tab",
-				Styles: map[string]string{
-					"padding":         "6px 16px",
-					"border":          "1px solid #888",
-					"border-radius":   "6px 6px 0 0",
-					"background":      "#222",
-					"color":           "#eee",
-					"text-decoration": "none",
-					"cursor":          "pointer",
-					"transition":      "background 0.2s",
-				},
+			".page-title": {
+				"font-family":  "'Segoe UI', 'Arial', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+				"font-weight":  "bold",
+				"font-size":    "1.8em",
+				"margin":       "0",
+				"padding-left": "0.5em",
 			},
-			{
-				Selector: ".series-tabs .tab.active",
-				Styles: map[string]string{
-					"background":    "#444",
-					"font-weight":   "bold",
-					"border-bottom": "2px solid #fff",
-				},
+			".series-tabs": {
+				"display":      "flex",
+				"gap":          "4px",
+				"font-family":  "'Segoe UI', 'Arial', 'Helvetica Neue', Helvetica, Arial, sans-serif",
+				"margin-right": "4px",
 			},
-			{
-				Selector: ".series-tabs .tab:hover",
-				Styles: map[string]string{
-					"background": "#333",
-				},
+			".series-tabs .tab": {
+				"padding":         "6px 16px",
+				"border":          "1px solid #888",
+				"border-radius":   "6px 6px 0 0",
+				"background":      "#222",
+				"color":           "#eee",
+				"text-decoration": "none",
+				"cursor":          "pointer",
+				"transition":      "background 0.2s",
+			},
+			".series-tabs .tab.active": {
+				"background":    "#444",
+				"font-weight":   "bold",
+				"border-bottom": "2px solid #fff",
+			},
+			".series-tabs .tab:hover": {
+				"background": "#333",
 			},
 		},
 	}
 }
 
+// SetTheme sets the dashboard theme to either "light" or "dark"
+func (d *Dashboard) SetTheme(theme string) {
+	switch theme {
+	case "light":
+		d.Option.Style["body"]["background"] = "rgb(255, 255, 255)"
+		d.Option.Style[".page-title"]["color"] = "#222"
+		d.Option.Style[".series-tabs .tab.active"]["border-bottom"] = "2px solid #c83707ff"
+		d.Option.Style[".series-tabs .tab.active"]["background"] = "#bbb"
+		d.Option.Style[".series-tabs .tab"]["background"] = "#eee"
+		d.Option.Style[".series-tabs .tab"]["color"] = "#222"
+		d.Option.Style[".series-tabs .tab:hover"]["background"] = "#ddd"
+	case "dark":
+		d.Option.Style["body"]["background"] = "rgb(38,40,49)"
+		d.Option.Style[".page-title"]["color"] = "#eee"
+		d.Option.Style[".series-tabs .tab.active"]["border-bottom"] = "2px solid #fff"
+		d.Option.Style[".series-tabs .tab.active"]["background"] = "#444"
+		d.Option.Style[".series-tabs .tab"]["background"] = "#222"
+		d.Option.Style[".series-tabs .tab"]["color"] = "#eee"
+		d.Option.Style[".series-tabs .tab:hover"]["background"] = "#333"
+	default:
+		return
+	}
+	d.Option.Theme = theme
+}
+
+func (d *Dashboard) SetPanelHeight(height int) {
+	// "height":        "300px",     // Fixed height for each panel
+	d.Option.Style[".panel"]["height"] = fmt.Sprintf("%dpx", height)
+}
+
+func (d *Dashboard) SetPanelMinWidth(width int) {
+	// "flex":          "1 1 400px", // Each panel takes up 400px width
+	// "min-width":     "400px",     // Minimum width for each panel
+	d.Option.Style[".panel"]["flex"] = fmt.Sprintf("1 1 %dpx", width)
+	d.Option.Style[".panel"]["min-width"] = fmt.Sprintf("%dpx", width)
+}
+
+func (d *Dashboard) SetPanelMaxWidth(width int) {
+	// "max-width":     "640px",     // Maximum width for each panel
+	d.Option.Style[".panel"]["max-width"] = fmt.Sprintf("%dpx", width)
+}
+
 func (opt DashboardOption) StyleCSS() template.CSS {
 	var sb strings.Builder
-	for _, style := range opt.Style {
-		sb.WriteString(style.Selector)
+	for selector, style := range opt.Style {
+		sb.WriteString(selector)
 		sb.WriteString(" {")
-		for k, v := range style.Styles {
+		for k, v := range style {
 			sb.WriteString(k)
 			sb.WriteString(": ")
 			sb.WriteString(v)
@@ -200,10 +241,7 @@ func (opt DashboardOption) StyleCSS() template.CSS {
 	return template.CSS(sb.String())
 }
 
-type CSSStyle struct {
-	Selector string
-	Styles   map[string]string
-}
+type CSSStyle map[string]string
 
 func (d Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.HandleFunc(w, r)
@@ -260,7 +298,7 @@ func (d Dashboard) HandleData(w http.ResponseWriter, r *http.Request) {
 		tsIdx = 0
 	}
 	var panelOpt Chart
-	for _, po := range d.PanelOptions {
+	for _, po := range d.Charts {
 		if po.ID == id {
 			panelOpt = po
 			break
@@ -322,7 +360,7 @@ func (d Dashboard) HandleData(w http.ResponseWriter, r *http.Request) {
 				"text":    panelOpt.Title,
 				"subtext": panelOpt.SubTitle,
 			},
-			"legend": H{},
+			"legend": H{"type": "scroll", "width": "80%", "bottom": 4, "textStyle": H{"fontSize": 11}},
 			"tooltip": H{
 				"trigger": "axis",
 			},
@@ -487,7 +525,7 @@ func (ss Snapshot) Series(opt Chart) []Series {
 		}
 		for i, t := range ss.Times {
 			series[0].Data[i].Time = t.UnixMilli()
-			if v, ok := ss.Values[i].(*OdometerValue); ok && !v.Empty {
+			if v, ok := ss.Values[i].(*OdometerValue); ok && v.Samples > 0 {
 				series[0].Data[i].Value = v.Diff()
 			}
 		}

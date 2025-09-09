@@ -12,7 +12,7 @@ func TestOdometerJSON(t *testing.T) {
 	data, err := json.Marshal(om.Produce(true))
 	require.NoError(t, err)
 
-	expected := `{"first":0,"last":0, "empty":true}`
+	expected := `{"first":0,"last":0, "samples":0}`
 	require.JSONEq(t, expected, string(data))
 
 	om = NewOdometer()
@@ -25,8 +25,18 @@ func TestOdometerJSON(t *testing.T) {
 
 	data, err = json.Marshal(om)
 	require.NoError(t, err)
+	expected = `{"first":2,"last":10, "samples":3}`
+	require.JSONEq(t, expected, string(data))
 
-	expected = `{"first":2,"last":10}`
+	om.Produce(true)
+	om.Add(13.0)
+
+	d, _ = om.Produce(false).(*OdometerValue)
+	require.Equal(t, 3.0, d.Diff())
+
+	data, err = json.Marshal(om)
+	require.NoError(t, err)
+	expected = `{"first":10,"last":13, "samples":1}`
 	require.JSONEq(t, expected, string(data))
 
 	var om2 Odometer
@@ -35,5 +45,5 @@ func TestOdometerJSON(t *testing.T) {
 
 	require.Equal(t, om.first, om2.first)
 	require.Equal(t, om.last, om2.last)
-	require.Equal(t, om.validFirst, om2.validFirst)
+	require.Equal(t, om.initialized, om2.initialized)
 }

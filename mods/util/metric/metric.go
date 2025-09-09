@@ -108,7 +108,7 @@ type FieldInfo struct {
 }
 
 type InputWrapper struct {
-	input          InputFunc
+	inputs         []InputFunc
 	measureName    string
 	mtsFields      map[string]MultiTimeSeries
 	publishedNames map[string]string
@@ -212,7 +212,6 @@ func (c *Collector) AddOutputFunc(output OutputFunc) {
 }
 
 type Input interface {
-	Init() error
 	Gather(Gather)
 }
 
@@ -261,16 +260,17 @@ func (c *Collector) AddInputFunc(input InputFunc) error {
 	}()
 
 	for _, m := range g.M {
-		if _, exists := c.inputs[m.Name]; exists {
-			return fmt.Errorf("input with name %q already registered", m.Name)
+		if iw, exists := c.inputs[m.Name]; exists {
+			iw.inputs = append(iw.inputs, input)
+		} else {
+			iw := &InputWrapper{
+				measureName:    m.Name,
+				inputs:         []InputFunc{input},
+				mtsFields:      make(map[string]MultiTimeSeries),
+				publishedNames: make(map[string]string),
+			}
+			c.inputs[iw.measureName] = iw
 		}
-		iw := &InputWrapper{
-			measureName:    m.Name,
-			input:          input,
-			mtsFields:      make(map[string]MultiTimeSeries),
-			publishedNames: make(map[string]string),
-		}
-		c.inputs[iw.measureName] = iw
 	}
 	return nil
 }
@@ -349,7 +349,7 @@ var _ Gather = &Gatherer{}
 
 func (c *Collector) runInputs(ts time.Time) {
 	for name, iw := range c.inputs {
-		if iw.input == nil {
+		if len(iw.inputs) == 0 {
 			measure := Measurement{
 				Name:   name,
 				Fields: nil,
@@ -360,13 +360,17 @@ func (c *Collector) runInputs(ts time.Time) {
 			continue
 		} else {
 			gather := &Gatherer{}
-			iw.input(gather)
+			for _, input := range iw.inputs {
+				input(gather)
+			}
 			if err := gather.Err(); err != nil {
 				fmt.Printf("Error measuring: %v\n", err)
 				continue
 			}
 			for _, measure := range gather.M {
 				measure.ts = ts
+				// TODO: there are chances that recvCh is already closed
+				// because of Stop() has been called.
 				c.recvCh <- measure
 			}
 		}
