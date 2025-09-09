@@ -509,6 +509,7 @@ func DashboardHandler() http.HandlerFunc {
 	dbCountFilter := metric.MustCompile([]string{"machbase:session:*:count"}, ':')
 	dbInuseFilter := metric.MustCompile([]string{"machbase:session:*:in_use"}, ':')
 	dbMachSvrFilter := metric.MustCompile([]string{"machbase:machsvr:*"}, ':')
+	netstatFilter := metric.MustCompile([]string{"machbase:netstat:*"}, ':')
 
 	avgFilter := metric.MustCompile([]string{"*(avg)"})
 	lastFilter := metric.MustCompile([]string{"*(last)"})
@@ -517,8 +518,9 @@ func DashboardHandler() http.HandlerFunc {
 	dash.PageTitle = "MACHBASE-NEO"
 	dash.ShowRemains = false
 	dash.SetTheme("light")
-	dash.AddChart(metric.Chart{Title: "CPU Usage", MetricNames: []string{"machbase:ps:cpu_percent"}})
-	dash.AddChart(metric.Chart{Title: "MEM Usage", MetricNames: []string{"machbase:ps:mem_percent"}})
+	dash.AddChart(metric.Chart{Title: "CPU", MetricNames: []string{"machbase:ps:cpu_percent"}})
+	dash.AddChart(metric.Chart{Title: "MEM", MetricNames: []string{"machbase:ps:mem_percent"}})
+	dash.AddChart(metric.Chart{Title: "NETSTAT", MetricNameFilter: netstatFilter, ValueSelector: lastFilter})
 	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"machbase:sys:sysmem"}})
 	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"machbase:runtime:goroutines"}})
 	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"machbase:runtime:heap_inuse"}, ValueSelector: lastFilter})

@@ -60,7 +60,8 @@ type Unit string
 const (
 	UnitPercent  Unit = "Percent"
 	UnitBytes    Unit = "Bytes"
-	UnitShort    Unit = "Short"
+	UnitShort    Unit = "Short"  // integer number without unit
+	UnitScalar   Unit = "Scalar" // floating number without unit
 	UnitDuration Unit = "Duration"
 )
 
@@ -103,6 +104,8 @@ func (u Unit) Format(value float64, decimal int) string {
 			return fmt.Sprintf("%.1fT", value/1_000_000_000_000)
 		}
 		return fmt.Sprintf("%.1fP", value/1_000_000_000_000_000)
+	case UnitScalar:
+		return fmt.Sprintf("%.*f", decimal, value)
 	case UnitDuration:
 		switch {
 		case value < 1e3:

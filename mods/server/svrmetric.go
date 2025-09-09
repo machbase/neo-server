@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"syscall"
 
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/api"
@@ -14,6 +15,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/metric"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 var statzLog = logging.GetLog("server-statz")
@@ -25,6 +27,7 @@ func startServerMetrics(s *Server) {
 	api.AddMetricsFunc(collectMqttStatz(s))
 	api.AddMetricsInput(&RuntimeInput{})
 	api.AddMetricsFunc(collectPsStatz)
+	api.AddMetricsFunc(collectNetstatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
@@ -76,6 +79,53 @@ func collectPsStatz(g metric.Gather) {
 		Type:  metric.MeterType(metric.UnitPercent),
 	})
 	g.AddMeasurement(m)
+}
+func collectNetstatz(g metric.Gather) {
+	stat, err := net.Connections("all")
+	if err != nil {
+		g.AddError(err)
+		return
+	}
+
+	counts := make(map[string]int)
+	for _, cs := range stat {
+		if cs.Type == syscall.SOCK_DGRAM {
+			continue
+		}
+		c, ok := counts[cs.Status]
+		if !ok {
+			counts[cs.Status] = 0
+		}
+		counts[cs.Status] = c + 1
+	}
+
+	gaugeType := metric.GaugeType(metric.UnitShort)
+	m := metric.Measurement{Name: "netstat"}
+	for kind, name := range netStatzList {
+		value, ok := counts[kind]
+		if !ok {
+			value = 0
+		}
+		val := float64(value)
+		m.AddField(metric.Field{Name: name, Value: val, Type: gaugeType})
+	}
+	g.AddMeasurement(m)
+}
+
+var netStatzList = map[string]string{
+	"ESTABLISHED": "tcp_established",
+	// "SYN_SENT":    "tcp_syn_sent",
+	// "SYN_RECV":    "tcp_syn_recv",
+	"FIN_WAIT1": "tcp_fin_wait1",
+	"FIN_WAIT2": "tcp_fin_wait2",
+	"TIME_WAIT": "tcp_time_wait",
+	// "CLOSE":       "tcp_close",
+	"CLOSE_WAIT": "tcp_close_wait",
+	// "LAST_ACK":    "tcp_last_ack",
+	"LISTEN": "tcp_listen",
+	// "CLOSING": "tcp_closing",
+	// "NONE":    "tcp_none",
+	// "UDP":     "udp_socket",
 }
 
 func collectSysStatz(g metric.Gather) {

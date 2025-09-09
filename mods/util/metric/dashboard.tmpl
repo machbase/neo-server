@@ -57,10 +57,25 @@
             }
             return lbl + ' %';
         }
-        function shortFormatter(value, dataIndex) {
+        function shortFormatterYAxis(value, dataIndex) { return shortFormatter0(value, dataIndex, true); }
+        function shortFormatter(value, dataIndex) { return shortFormatter0(value, dataIndex, false); }
+        function shortFormatter0(value, dataIndex, yAxis) {
             if( value == null || (Array.isArray(value) && value.length == 0)) return null;
             // insert comma per thousands
-            return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            if (yAxis && value > 999) {
+                if (value === 0) return '0';
+                const k = 1000;
+                const sizes = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+                let i = Math.floor(Math.log(value) / Math.log(k));
+                if( i < 0 || i >= sizes.length ) {
+                    i = 0;
+                }
+                let lbl = parseFloat((value / Math.pow(k, i)).toFixed(2)).toFixed(2);
+                lbl = trimRight(lbl);
+                return lbl + ' ' + sizes[i];
+            } else {
+                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            }
         }
         function setFormatter(opt, meta) {
             let valueFormatter = null;
@@ -80,7 +95,9 @@
                 break;
             case 'Short':
                 valueFormatter = shortFormatter;
-                labelFormatter = shortFormatter;
+                labelFormatter = shortFormatterYAxis;
+                break;
+            case 'Scalar':
                 break;
             }
             opt.tooltip.valueFormatter = valueFormatter;

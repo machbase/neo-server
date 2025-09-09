@@ -178,3 +178,53 @@ func ExcludeNames(of OutputFunc, patterns ...string) OutputFunc {
 		of(p)
 	}
 }
+
+type IncludeAndExclude struct {
+	includeFilter Filter
+	excludeFilter Filter
+}
+
+func CompileIncludeAndExclude(includes []string, excludes []string, separators ...rune) (Filter, error) {
+	var ret = &IncludeAndExclude{}
+	var errs []error
+	if len(includes) > 0 {
+		if filter, err := Compile(includes, separators...); err != nil {
+			errs = append(errs, err)
+		} else {
+			ret.includeFilter = filter
+		}
+	}
+	if len(excludes) > 0 {
+		if filter, err := Compile(excludes); err != nil {
+			errs = append(errs, err)
+		} else {
+			ret.excludeFilter = filter
+		}
+	}
+	if len(errs) > 0 {
+		return nil, MultipleError(errs)
+	}
+	return ret, nil
+}
+
+func (iae *IncludeAndExclude) Match(s string) bool {
+	if iae.includeFilter == nil && iae.excludeFilter == nil {
+		return true
+	}
+	if iae.excludeFilter == nil {
+		// only include is set
+		return iae.includeFilter.Match(s)
+	} else if iae.includeFilter == nil {
+		// only exclude is set
+		return !iae.excludeFilter.Match(s)
+	} else {
+		// include and exclude are both set
+		if !iae.includeFilter.Match(s) {
+			return false
+		}
+		if iae.excludeFilter.Match(s) {
+			return false
+		}
+		return true
+	}
+}
