@@ -11,6 +11,10 @@ type Filter interface {
 	Match(string) bool
 }
 
+func IsFilterPattern(s string) bool {
+	return strings.ContainsAny(s, "*?[]")
+}
+
 // Compile compiles a list of glob patterns into a Filter.
 //
 // f, _ := Compile([]string{"abc", "def", "ghi*"})
@@ -27,10 +31,10 @@ type Filter interface {
 // f.Match("abc:opq:xyz:ghi") => false
 //
 // if the patterns contains brackets with digits, it can be used to match range of numbers
-// e.g. "metric:field[0-3]" matches "metric:field0", "metric:field1", "metric:field2", "metric:field3"
+// e.g. "metric:name[0-3]" matches "metric:name0", "metric:name1", "metric:name2", "metric:name3"
 //
-//	"metric:field[1-3]" matches "metric:field1", "metric:field2", "metric:field3"
-//	"metric:field[2-4]" matches "metric:field2", "metric:field3", "metric:field4"
+//	"metric:name[1-3]" matches "metric:name1", "metric:name2", "metric:name3"
+//	"metric:name[2-4]" matches "metric:name2", "metric:name3", "metric:name4"
 func Compile(filters []string, separators ...rune) (Filter, error) {
 	if len(filters) == 0 {
 		return nil, nil
@@ -156,27 +160,72 @@ func replaceSeparators(s string, sep byte) string {
 
 func IncludeNames(of OutputFunc, patterns ...string) OutputFunc {
 	filter, _ := Compile(patterns, ':')
-	return func(p Product) {
+	return func(p Product) error {
 		// check if p.Measure matches any pattern
 		// if matches, call of
 		// else return without calling of
-		if filter != nil && filter.Match(p.Measure+":"+p.Field) {
+		if filter != nil && filter.Match(p.Name) {
 			of(p)
 		}
+		return nil
 	}
 }
 
 func ExcludeNames(of OutputFunc, patterns ...string) OutputFunc {
 	filter, _ := Compile(patterns, ':')
-	return func(p Product) {
+	return func(p Product) error {
 		// check if p.Measure matches any pattern
 		// if matches, return without calling of
 		// else call
-		if filter != nil && filter.Match(p.Measure+":"+p.Field) {
-			return // deny if any pattern matches
+		if filter != nil && filter.Match(p.Name) {
+			return nil // deny if any pattern matches
 		}
-		of(p)
+		return of(p)
 	}
+}
+
+func AndFilter(a Filter, b Filter) Filter {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &andFilter{
+		aFilter: a,
+		bFilter: b,
+	}
+}
+
+type andFilter struct {
+	aFilter Filter
+	bFilter Filter
+}
+
+func (af *andFilter) Match(s string) bool {
+	return af.aFilter.Match(s) && af.bFilter.Match(s)
+}
+
+func OrFilter(a Filter, b Filter) Filter {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &orFilter{
+		aFilter: a,
+		bFilter: b,
+	}
+}
+
+type orFilter struct {
+	aFilter Filter
+	bFilter Filter
+}
+
+func (of *orFilter) Match(s string) bool {
+	return of.aFilter.Match(s) || of.bFilter.Match(s)
 }
 
 type IncludeAndExclude struct {

@@ -42,49 +42,34 @@ type RuntimeInput struct {
 }
 
 func (ri *RuntimeInput) Init() error { return nil }
-func (ri *RuntimeInput) Gather(g metric.Gather) {
+func (ri *RuntimeInput) Gather(g *metric.Gather) error {
 	ms := runtime.MemStats{}
 	runtime.ReadMemStats(&ms)
-
-	m := metric.Measurement{Name: "runtime"}
-	m.AddField(
-		metric.Field{Name: "goroutines", Value: float64(runtime.NumGoroutine()), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "heap_inuse", Value: float64(ms.HeapInuse), Type: metric.GaugeType(metric.UnitBytes)},
-		metric.Field{Name: "cgo_call", Value: float64(runtime.NumCgoCall()), Type: metric.OdometerType(metric.UnitShort)},
-	)
-	g.AddMeasurement(m)
+	g.Add("runtime:goroutines", float64(runtime.NumGoroutine()), metric.GaugeType(metric.UnitShort))
+	g.Add("runtime:heap_inuse", float64(ms.HeapInuse), metric.GaugeType(metric.UnitBytes))
+	g.Add("runtime:cgo_call", float64(runtime.NumCgoCall()), metric.OdometerType(metric.UnitShort))
+	return nil
 }
 
-func collectPsStatz(g metric.Gather) {
-	m := metric.Measurement{Name: "ps"}
+func collectPsStatz(g *metric.Gather) error {
 	cpuPercent, err := cpu.Percent(0, false)
 	if err != nil {
-		g.AddError(fmt.Errorf("failed to collect CPU percent: %w", err))
-		return
+		return fmt.Errorf("failed to collect CPU percent: %w", err)
 	}
-	m.Fields = append(m.Fields, metric.Field{
-		Name:  "cpu_percent",
-		Value: cpuPercent[0],
-		Type:  metric.GaugeType(metric.UnitPercent),
-	})
+	g.Add("ps:cpu_percent", cpuPercent[0], metric.GaugeType(metric.UnitPercent))
 
 	memStat, err := mem.VirtualMemory()
 	if err != nil {
-		g.AddError(fmt.Errorf("failed to collect memory percent: %w", err))
-		return
+		return fmt.Errorf("failed to collect memory percent: %w", err)
 	}
-	m.Fields = append(m.Fields, metric.Field{
-		Name:  "mem_percent",
-		Value: memStat.UsedPercent,
-		Type:  metric.GaugeType(metric.UnitPercent),
-	})
-	g.AddMeasurement(m)
+	g.Add("ps:mem_percent", memStat.UsedPercent, metric.GaugeType(metric.UnitPercent))
+	return nil
 }
-func collectNetstatz(g metric.Gather) {
+
+func collectNetstatz(g *metric.Gather) error {
 	stat, err := net.Connections("all")
 	if err != nil {
-		g.AddError(err)
-		return
+		return fmt.Errorf("failed to collect netstat: %w", err)
 	}
 
 	counts := make(map[string]int)
@@ -100,16 +85,15 @@ func collectNetstatz(g metric.Gather) {
 	}
 
 	gaugeType := metric.GaugeType(metric.UnitShort)
-	m := metric.Measurement{Name: "netstat"}
 	for kind, name := range netStatzList {
 		value, ok := counts[kind]
 		if !ok {
 			value = 0
 		}
 		val := float64(value)
-		m.AddField(metric.Field{Name: name, Value: val, Type: gaugeType})
+		g.Add("netstat:"+name, val, gaugeType)
 	}
-	g.AddMeasurement(m)
+	return nil
 }
 
 var netStatzList = map[string]string{
@@ -128,72 +112,63 @@ var netStatzList = map[string]string{
 	// "UDP":     "udp_socket",
 }
 
-func collectSysStatz(g metric.Gather) {
+func collectSysStatz(g *metric.Gather) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	conn, err := api.Default().Connect(ctx, api.WithTrustUser("sys"))
 	if err != nil {
 		statzLog.Error("failed to connect to machbase: %v", err)
-		g.AddError(err)
-		return
+		return err
 	}
 	defer conn.Close()
 	row := conn.QueryRow(ctx, "select sum(usage) from v$sysmem")
 	if err = row.Err(); err != nil {
 		statzLog.Error("failed to query machbase: %v", err)
-		g.AddError(err)
-		return
+		return err
 	}
 	var usageTotal int64
 	if err = row.Scan(&usageTotal); err != nil {
 		statzLog.Error("failed to scan machbase: %v", err)
-		g.AddError(err)
-		return
+		return err
 	}
 
-	m := metric.Measurement{Name: "sys"}
-	m.AddField(metric.Field{Name: "sysmem", Value: float64(usageTotal), Type: metric.GaugeType(metric.UnitBytes)})
+	g.Add("sys:sysmem", float64(usageTotal), metric.GaugeType(metric.UnitBytes))
 	if jemalloc.Enabled {
 		stat := &jemalloc.Stat{}
 		jemalloc.HeapStat(stat)
-		m.AddField(metric.Field{Name: "jemalloc_active", Value: float64(stat.Active), Type: metric.GaugeType(metric.UnitBytes)})
+		g.Add("sys:jemalloc_active", float64(stat.Active), metric.GaugeType(metric.UnitBytes))
 	}
-	g.AddMeasurement(m)
+	return nil
 }
 
-func collectMachSvrStatz(g metric.Gather) {
-	m := metric.Measurement{Name: "machsvr"}
+func collectMachSvrStatz(g *metric.Gather) error {
 	nfo := mach.Stat()
-	m.AddField(metric.Field{Name: "conn", Value: float64(nfo.EngConn), Type: metric.GaugeType(metric.UnitShort)})
-	m.AddField(metric.Field{Name: "stmt", Value: float64(nfo.EngStmt), Type: metric.GaugeType(metric.UnitShort)})
-	m.AddField(metric.Field{Name: "append", Value: float64(nfo.EngAppend), Type: metric.GaugeType(metric.UnitShort)})
-	g.AddMeasurement(m)
+	g.Add("machsvr:conn", float64(nfo.EngConn), metric.GaugeType(metric.UnitShort))
+	g.Add("machsvr:stmt", float64(nfo.EngStmt), metric.GaugeType(metric.UnitShort))
+	g.Add("machsvr:append", float64(nfo.EngAppend), metric.GaugeType(metric.UnitShort))
+	return nil
 }
 
-func collectMqttStatz(s *Server) func(g metric.Gather) {
-	return func(g metric.Gather) {
+func collectMqttStatz(s *Server) func(g *metric.Gather) error {
+	return func(g *metric.Gather) error {
 		if s.mqttd == nil || s.mqttd.broker == nil {
-			g.AddError(errors.New("MQTT broker is not initialized"))
-			return
+			return errors.New("MQTT broker is not initialized")
 		}
 		nfo := s.mqttd.broker.Info
-		m := metric.Measurement{Name: "mqtt"}
-		m.AddField(
-			metric.Field{Name: "recv_bytes", Value: float64(nfo.BytesReceived), Type: metric.GaugeType(metric.UnitBytes)},
-			metric.Field{Name: "send_bytes", Value: float64(nfo.BytesSent), Type: metric.GaugeType(metric.UnitBytes)},
-			metric.Field{Name: "recv_msgs", Value: float64(nfo.MessagesReceived), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "send_msgs", Value: float64(nfo.MessagesSent), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "drop_msgs", Value: float64(nfo.MessagesDropped), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "send_pkts", Value: float64(nfo.PacketsSent), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "recv_pkts", Value: float64(nfo.PacketsReceived), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "retained", Value: float64(nfo.Retained), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "subscriptions", Value: float64(nfo.Subscriptions), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "clients", Value: float64(nfo.ClientsTotal), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "clients_connected", Value: float64(nfo.ClientsConnected), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "clients_disconnected", Value: float64(nfo.ClientsDisconnected), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "inflight", Value: float64(nfo.Inflight), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "inflight_dropped", Value: float64(nfo.InflightDropped), Type: metric.GaugeType(metric.UnitShort)},
-		)
-		g.AddMeasurement(m)
+		g.Add("mqtt:recv_bytes", float64(nfo.BytesReceived), metric.GaugeType(metric.UnitBytes))
+		g.Add("mqtt:send_bytes", float64(nfo.BytesSent), metric.GaugeType(metric.UnitBytes))
+		g.Add("mqtt:recv_msgs", float64(nfo.MessagesReceived), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:send_msgs", float64(nfo.MessagesSent), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:drop_msgs", float64(nfo.MessagesDropped), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:send_pkts", float64(nfo.PacketsSent), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:recv_pkts", float64(nfo.PacketsReceived), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:retained", float64(nfo.Retained), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:subscriptions", float64(nfo.Subscriptions), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:clients", float64(nfo.ClientsTotal), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:clients_connected", float64(nfo.ClientsConnected), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:clients_disconnected", float64(nfo.ClientsDisconnected), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:inflight", float64(nfo.Inflight), metric.GaugeType(metric.UnitShort))
+		g.Add("mqtt:inflight_dropped", float64(nfo.InflightDropped), metric.GaugeType(metric.UnitShort))
+		return nil
 	}
 }

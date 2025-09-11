@@ -32,7 +32,7 @@ type Value interface {
 	String() string
 }
 
-// Type is the type of the Field.
+// Type is the type of the Value.
 type Type struct {
 	p func() Producer
 	s string

@@ -56,16 +56,12 @@ var (
 
 func AllocConn(connWaitTime time.Duration) {
 	metricConnsInUse.Add(1)
-	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration)},
-	}})
+	AddMetrics(metric.Measure{Name: "session:conn:wait_time", Value: float64(connWaitTime), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
 func FreeConn(connUseTime time.Duration) {
 	metricConnsInUse.Add(-1)
-	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration)},
-	}})
+	AddMetrics(metric.Measure{Name: "session:conn:use_time", Value: float64(connUseTime), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
 func AllocStmt() {
@@ -87,21 +83,15 @@ func FreeAppender() {
 }
 
 func QueryExecTime(d time.Duration) {
-	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
-	}})
+	AddMetrics(metric.Measure{Name: "session:query:exec_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
 func QueryWaitTime(d time.Duration) {
-	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
-	}})
+	AddMetrics(metric.Measure{Name: "session:query:wait_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
 func QueryFetchTime(d time.Duration) {
-	AddMetrics(metric.Measurement{Name: "session", Fields: []metric.Field{
-		{Name: "query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)},
-	}})
+	AddMetrics(metric.Measure{Name: "session:query:fetch_time", Value: float64(d), Type: metric.HistogramType(metric.UnitDuration)})
 }
 
 var RawConns func() int
@@ -361,18 +351,18 @@ func AddMetricsInput(in metric.Input) {
 	collector.AddInput(in)
 }
 
-func AddMetricsFunc(f func(metric.Gather)) {
+func AddMetricsFunc(f func(*metric.Gather) error) {
 	if collector == nil {
 		return
 	}
 	collector.AddInputFunc(f)
 }
 
-func AddMetrics(m metric.Measurement) {
+func AddMetrics(m ...metric.Measure) {
 	if collector == nil {
 		return
 	}
-	collector.Send(m)
+	collector.Send(m...)
 }
 
 type SessionInput struct{}
@@ -383,17 +373,14 @@ func (si *SessionInput) Init() error {
 	return nil
 }
 
-func (si *SessionInput) Gather(g metric.Gather) {
-	m := metric.Measurement{Name: "session"}
-	m.AddField(
-		metric.Field{Name: "conn:in_use", Value: float64(metricConnsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "stmt:in_use", Value: float64(metricStmtsInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "append:in_use", Value: float64(metricAppendersInUse.Load()), Type: metric.GaugeType(metric.UnitShort)},
-		metric.Field{Name: "stmt:count", Value: float64(metricStmts.Load()), Type: metric.OdometerType(metric.UnitShort)},
-		metric.Field{Name: "query:count", Value: float64(metricQueryCount.Load()), Type: metric.OdometerType(metric.UnitShort)},
-		metric.Field{Name: "append:count", Value: float64(metricAppenders.Load()), Type: metric.OdometerType(metric.UnitShort)},
-	)
-	g.AddMeasurement(m)
+func (si *SessionInput) Gather(g *metric.Gather) error {
+	g.Add("session:conn:in_use", float64(metricConnsInUse.Load()), metric.GaugeType(metric.UnitShort))
+	g.Add("session:stmt:in_use", float64(metricStmtsInUse.Load()), metric.GaugeType(metric.UnitShort))
+	g.Add("session:append:in_use", float64(metricAppendersInUse.Load()), metric.GaugeType(metric.UnitShort))
+	g.Add("session:stmt:count", float64(metricStmts.Load()), metric.OdometerType(metric.UnitShort))
+	g.Add("session:query:count", float64(metricQueryCount.Load()), metric.OdometerType(metric.UnitShort))
+	g.Add("session:append:count", float64(metricAppenders.Load()), metric.OdometerType(metric.UnitShort))
+	return nil
 }
 
 type MetricRec struct {
@@ -402,57 +389,57 @@ type MetricRec struct {
 	Value float64
 }
 
-func onProduct(pd metric.Product) {
+func onProduct(pd metric.Product) error {
 	if metricsDest == "" {
-		return
+		return nil
 	}
 	var result []MetricRec
 	switch p := pd.Value.(type) {
 	case *metric.CounterValue:
 		if p.Samples == 0 {
-			return // Skip zero counters
+			return nil // Skip zero counters
 		}
 		result = []MetricRec{{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Name:  fmt.Sprintf("%s:%s", prefix, pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.GaugeValue:
 		if p.Samples == 0 {
-			return // Skip zero gauges
+			return nil // Skip zero gauges
 		}
 		result = []MetricRec{{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Name:  fmt.Sprintf("%s:%s", prefix, pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Value,
 		}}
 	case *metric.MeterValue:
 		if p.Samples == 0 {
-			return // Skip zero meters
+			return nil // Skip zero meters
 		}
 		result = []MetricRec{
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:min", prefix, pd.Measure, pd.Field),
+				Name:  fmt.Sprintf("%s:%s:min", prefix, pd.Name),
 				Time:  pd.Time.UnixNano(),
 				Value: p.Min,
 			},
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:max", prefix, pd.Measure, pd.Field),
+				Name:  fmt.Sprintf("%s:%s:max", prefix, pd.Name),
 				Time:  pd.Time.UnixNano(),
 				Value: p.Max,
 			},
 			{
-				Name:  fmt.Sprintf("%s:%s:%s:avg", prefix, pd.Measure, pd.Field),
+				Name:  fmt.Sprintf("%s:%s:avg", prefix, pd.Name),
 				Time:  pd.Time.UnixNano(),
 				Value: p.Sum / float64(p.Samples),
 			},
 		}
 	case *metric.HistogramValue:
 		if p.Samples == 0 {
-			return // Skip zero samples
+			return nil // Skip zero samples
 		}
 		result = append(result, MetricRec{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Name:  fmt.Sprintf("%s:%s", prefix, pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: float64(p.Samples),
 		})
@@ -462,23 +449,23 @@ func onProduct(pd metric.Product) {
 				pct = pct[:len(pct)-1]
 			}
 			result = append(result, MetricRec{
-				Name:  fmt.Sprintf("%s:%s:%s:p%s", prefix, pd.Measure, pd.Field, pct),
+				Name:  fmt.Sprintf("%s:%s:p%s", prefix, pd.Name, pct),
 				Time:  pd.Time.UnixNano(),
 				Value: p.Values[i],
 			})
 		}
 	case *metric.OdometerValue:
 		if p.Samples == 0 {
-			return // Skip zero odometers
+			return nil // Skip zero odometers
 		}
 		result = append(result, MetricRec{
-			Name:  fmt.Sprintf("%s:%s:%s", prefix, pd.Measure, pd.Field),
+			Name:  fmt.Sprintf("%s:%s", prefix, pd.Name),
 			Time:  pd.Time.UnixNano(),
 			Value: p.Diff(),
 		})
 	default:
 		metricLog.Errorf("metrics unknown type: %T", p)
-		return
+		return nil
 	}
 
 	go func(result []MetricRec, table string) {
@@ -501,38 +488,32 @@ func onProduct(pd metric.Product) {
 			}
 		}
 	}(result, metricsDest)
+	return nil
 }
 
 func DashboardHandler() http.HandlerFunc {
-	httpStatusFilter := metric.MustCompile([]string{"machbase:http:status_[1-5]xx"}, ':')
-	tqlCacheFilter := metric.MustCompile([]string{"machbase:tql:cache:*"}, ':')
-	dbCountFilter := metric.MustCompile([]string{"machbase:session:*:count"}, ':')
-	dbInuseFilter := metric.MustCompile([]string{"machbase:session:*:in_use"}, ':')
-	dbMachSvrFilter := metric.MustCompile([]string{"machbase:machsvr:*"}, ':')
-	netstatFilter := metric.MustCompile([]string{"machbase:netstat:*"}, ':')
-
-	avgFilter := metric.MustCompile([]string{"*(avg)"})
-	lastFilter := metric.MustCompile([]string{"*(last)"})
+	avgFilter := metric.MustCompile([]string{"*#avg"})
+	lastFilter := metric.MustCompile([]string{"*#last"})
 
 	dash := metric.NewDashboard(collector)
 	dash.PageTitle = "MACHBASE-NEO"
 	dash.ShowRemains = false
 	dash.SetTheme("light")
-	dash.AddChart(metric.Chart{Title: "CPU", MetricNames: []string{"machbase:ps:cpu_percent"}, ValueSelector: avgFilter})
-	dash.AddChart(metric.Chart{Title: "MEM", MetricNames: []string{"machbase:ps:mem_percent"}, ValueSelector: avgFilter})
-	dash.AddChart(metric.Chart{Title: "NETSTAT", MetricNameFilter: netstatFilter, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"machbase:sys:sysmem"}, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"machbase:runtime:goroutines"}, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"machbase:runtime:heap_inuse"}, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"machbase:runtime:cgo_call"}, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "HTTP Payload", MetricNames: []string{"machbase:http:recv_bytes", "machbase:http:send_bytes"}, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNameFilter: httpStatusFilter, Type: metric.ChartTypeBarStack})
-	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"machbase:http:latency"}})
-	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNameFilter: dbCountFilter, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNameFilter: dbInuseFilter, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNameFilter: dbMachSvrFilter, ValueSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "DB Wait Time", MetricNames: []string{"machbase:session:conn:wait_time"}})
-	dash.AddChart(metric.Chart{Title: "DB Use Time", MetricNames: []string{"machbase:session:conn:use_time"}})
-	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNameFilter: tqlCacheFilter, ValueSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "CPU", MetricNames: []string{"ps:cpu_percent"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "MEM", MetricNames: []string{"ps:mem_percent"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "NETSTAT", MetricNames: []string{"netstat:*"}, SeriesSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"sys:sysmem"}, SeriesSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"runtime:goroutines"}, SeriesSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"runtime:heap_inuse"}, SeriesSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"runtime:cgo_call"}, Type: metric.ChartTypeLine})
+	dash.AddChart(metric.Chart{Title: "HTTP Payload", MetricNames: []string{"http:recv_bytes", "http:send_bytes"}, Type: metric.ChartTypeLine})
+	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNames: []string{"http:status_[1-5]xx"}, Type: metric.ChartTypeBarStack})
+	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"http:latency"}})
+	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNames: []string{"session:*:count"}, Type: metric.ChartTypeLine})
+	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNames: []string{"session:*:in_use"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNames: []string{"machsvr:*"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "DB Wait Time", MetricNames: []string{"session:conn:wait_time"}})
+	dash.AddChart(metric.Chart{Title: "DB Use Time", MetricNames: []string{"session:conn:use_time"}})
+	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNames: []string{"tql:cache:*"}, SeriesSelector: avgFilter})
 	return dash.HandleFunc
 }

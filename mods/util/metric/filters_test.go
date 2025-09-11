@@ -5,49 +5,45 @@ import (
 )
 
 func TestAllowName(t *testing.T) {
-	type args struct {
-		measure string
-		field   string
-	}
 	tests := []struct {
 		name     string
-		args     args
+		args     string
 		patterns []string
 		allowed  bool
 	}{
 		{
 			name:     "exact match",
-			args:     args{"cpu", "usage"},
+			args:     "cpu:usage",
 			patterns: []string{"cpu:usage"},
 			allowed:  true,
 		},
 		{
 			name:     "wildcard match",
-			args:     args{"cpu", "usage"},
+			args:     "cpu:usage",
 			patterns: []string{"cpu:*"},
 			allowed:  true,
 		},
 		{
 			name:     "question mark match",
-			args:     args{"cpu", "user"},
+			args:     "cpu:user",
 			patterns: []string{"cpu:us?r"},
 			allowed:  true,
 		},
 		{
 			name:     "no match",
-			args:     args{"mem", "usage"},
+			args:     "mem:usage",
 			patterns: []string{"cpu:*"},
 			allowed:  false,
 		},
 		{
 			name:     "multiple patterns, one matches",
-			args:     args{"disk", "read"},
+			args:     "disk:read",
 			patterns: []string{"cpu:*", "disk:read"},
 			allowed:  true,
 		},
 		{
 			name:     "multiple patterns, none match",
-			args:     args{"net", "in"},
+			args:     "net:in",
 			patterns: []string{"cpu:*", "disk:*"},
 			allowed:  false,
 		},
@@ -55,13 +51,13 @@ func TestAllowName(t *testing.T) {
 
 	for _, tt := range tests {
 		called := false
-		of := func(p Product) {
+		of := func(p Product) error {
 			called = true
+			return nil
 		}
 		filter := IncludeNames(of, tt.patterns...)
 		filter(Product{
-			Measure: tt.args.measure,
-			Field:   tt.args.field,
+			Name: tt.args,
 		})
 		if called != tt.allowed {
 			t.Errorf("%s: expected allowed=%v, got %v", tt.name, tt.allowed, called)
@@ -70,49 +66,45 @@ func TestAllowName(t *testing.T) {
 }
 
 func TestDenyName(t *testing.T) {
-	type args struct {
-		measure string
-		field   string
-	}
 	tests := []struct {
 		name     string
-		args     args
+		args     string
 		patterns []string
 		allowed  bool
 	}{
 		{
 			name:     "exact deny match",
-			args:     args{"cpu", "usage"},
+			args:     "cpu:usage",
 			patterns: []string{"cpu:usage"},
 			allowed:  false,
 		},
 		{
 			name:     "wildcard deny match",
-			args:     args{"cpu", "usage"},
+			args:     "cpu:usage",
 			patterns: []string{"cpu:*"},
 			allowed:  false,
 		},
 		{
 			name:     "question mark deny match",
-			args:     args{"cpu", "user"},
+			args:     "cpu:user",
 			patterns: []string{"cpu:us?r"},
 			allowed:  false,
 		},
 		{
 			name:     "no deny match",
-			args:     args{"mem", "usage"},
+			args:     "mem:usage",
 			patterns: []string{"cpu:*"},
 			allowed:  true,
 		},
 		{
 			name:     "multiple patterns, one denies",
-			args:     args{"disk", "read"},
+			args:     "disk:read",
 			patterns: []string{"cpu:*", "disk:read"},
 			allowed:  false,
 		},
 		{
 			name:     "multiple patterns, none deny",
-			args:     args{"net", "in"},
+			args:     "net:in",
 			patterns: []string{"cpu:*", "disk:*"},
 			allowed:  true,
 		},
@@ -120,13 +112,13 @@ func TestDenyName(t *testing.T) {
 
 	for _, tt := range tests {
 		called := false
-		of := func(p Product) {
+		of := func(p Product) error {
 			called = true
+			return nil
 		}
 		filter := ExcludeNames(of, tt.patterns...)
 		filter(Product{
-			Measure: tt.args.measure,
-			Field:   tt.args.field,
+			Name: tt.args,
 		})
 		if called != tt.allowed {
 			t.Errorf("%s: expected allowed=%v, got %v", tt.name, tt.allowed, called)
@@ -185,5 +177,65 @@ func TestCompileEmptyPatterns(t *testing.T) {
 	}
 	if f != nil {
 		t.Errorf("Expected nil filter for empty patterns, got %v", f)
+	}
+}
+
+func TestAndFilter(t *testing.T) {
+	trueFilter := MustCompile([]string{"foo"})
+	falseFilter := MustCompile([]string{"bar"})
+
+	and := AndFilter(trueFilter, trueFilter)
+	if !and.Match("foo") {
+		t.Error("AndFilter: expected true when both filters match")
+	}
+
+	and = AndFilter(trueFilter, falseFilter)
+	if and.Match("foo") {
+		t.Error("AndFilter: expected false when one filter does not match")
+	}
+
+	and = AndFilter(falseFilter, falseFilter)
+	if and.Match("foo") {
+		t.Error("AndFilter: expected false when both filters do not match")
+	}
+
+	and = AndFilter(nil, trueFilter)
+	if !and.Match("foo") {
+		t.Error("AndFilter: expected true when one filter is nil and the other matches")
+	}
+
+	and = AndFilter(nil, nil)
+	if and != nil {
+		t.Error("AndFilter: expected nil when both filters are nil")
+	}
+}
+
+func TestOrFilter(t *testing.T) {
+	trueFilter := MustCompile([]string{"foo"})
+	falseFilter := MustCompile([]string{"bar"})
+
+	or := OrFilter(trueFilter, trueFilter)
+	if !or.Match("foo") {
+		t.Error("OrFilter: expected true when both filters match")
+	}
+
+	or = OrFilter(trueFilter, falseFilter)
+	if !or.Match("foo") {
+		t.Error("OrFilter: expected true when one filter matches")
+	}
+
+	or = OrFilter(falseFilter, falseFilter)
+	if or.Match("baz") {
+		t.Error("OrFilter: expected false when both filters do not match")
+	}
+
+	or = OrFilter(nil, trueFilter)
+	if !or.Match("foo") {
+		t.Error("OrFilter: expected true when one filter is nil and the other matches")
+	}
+
+	or = OrFilter(nil, nil)
+	if or != nil {
+		t.Error("OrFilter: expected nil when both filters are nil")
 	}
 }

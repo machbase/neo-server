@@ -78,6 +78,9 @@
             }
         }
         function setFormatter(opt, meta) {
+            if (!meta || !meta.unit) {
+                return;
+            }
             let valueFormatter = null;
             let labelFormatter = null;
             switch(meta.unit) {

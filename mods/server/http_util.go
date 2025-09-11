@@ -47,39 +47,39 @@ func MetricsInterceptor() gin.HandlerFunc {
 		c.Next()
 
 		latency := time.Since(start)
-		m := metric.Measurement{Name: "http"}
-		m.AddField(metric.Field{Name: "count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-		m.AddField(metric.Field{Name: "latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+		m := []metric.Measure{}
+		m = append(m, metric.Measure{Name: "http:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+		m = append(m, metric.Measure{Name: "http:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		if strings.HasPrefix(c.Request.URL.Path, "/db/write") {
-			m.AddField(metric.Field{Name: "write:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+			m = append(m, metric.Measure{Name: "http:write:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:write:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/query") {
-			m.AddField(metric.Field{Name: "query:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+			m = append(m, metric.Measure{Name: "http:query:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:query:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		} else if strings.HasPrefix(c.Request.URL.Path, "/db/tql") {
-			m.AddField(metric.Field{Name: "tql:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
-			m.AddField(metric.Field{Name: "tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
+			m = append(m, metric.Measure{Name: "http:tql:count", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:tql:latency", Value: float64(latency.Nanoseconds()), Type: metric.HistogramType(metric.UnitDuration)})
 		}
 		if s := c.Request.ContentLength; s > 0 {
-			m.AddField(metric.Field{Name: "recv_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
+			m = append(m, metric.Measure{Name: "http:recv_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
 		}
 		if s := c.Writer.Size(); s > 0 {
-			m.AddField(metric.Field{Name: "send_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
+			m = append(m, metric.Measure{Name: "http:send_bytes", Value: float64(s), Type: metric.CounterType(metric.UnitBytes)})
 		}
 
 		status := c.Writer.Status()
 		if status < 200 {
-			m.AddField(metric.Field{Name: "status_1xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:status_1xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 300 {
-			m.AddField(metric.Field{Name: "status_2xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:status_2xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 400 {
-			m.AddField(metric.Field{Name: "status_3xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:status_3xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else if status < 500 {
-			m.AddField(metric.Field{Name: "status_4xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:status_4xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		} else {
-			m.AddField(metric.Field{Name: "status_5xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
+			m = append(m, metric.Measure{Name: "http:status_5xx", Value: 1, Type: metric.CounterType(metric.UnitShort)})
 		}
-		api.AddMetrics(m)
+		api.AddMetrics(m...)
 	}
 }
 

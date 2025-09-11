@@ -29,21 +29,17 @@ func StartCache(cap CacheOption) {
 		tqlResultCache.cache.Start()
 	}()
 
-	api.AddMetricsFunc(func(g metric.Gather) {
+	api.AddMetricsFunc(func(g *metric.Gather) error {
 		if tqlResultCache == nil || tqlResultCache.cache == nil {
-			g.AddError(errors.New("tql cache not started"))
-			return
+			return errors.New("tql cache not started")
 		}
 		stat := tqlResultCache.cache.Metrics()
-		m := metric.Measurement{Name: "tql:cache"}
-		m.AddField(
-			metric.Field{Name: "evictions", Value: float64(stat.Evictions), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "insertions", Value: float64(stat.Insertions), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "hits", Value: float64(stat.Hits), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "misses", Value: float64(stat.Misses), Type: metric.GaugeType(metric.UnitShort)},
-			metric.Field{Name: "items", Value: float64(tqlResultCache.cache.Len()), Type: metric.GaugeType(metric.UnitShort)},
-		)
-		g.AddMeasurement(m)
+		g.Add("tql:cache:evictions", float64(stat.Evictions), metric.GaugeType(metric.UnitShort))
+		g.Add("tql:cache:insertions", float64(stat.Insertions), metric.GaugeType(metric.UnitShort))
+		g.Add("tql:cache:hits", float64(stat.Hits), metric.GaugeType(metric.UnitShort))
+		g.Add("tql:cache:misses", float64(stat.Misses), metric.GaugeType(metric.UnitShort))
+		g.Add("tql:cache:items", float64(tqlResultCache.cache.Len()), metric.GaugeType(metric.UnitShort))
+		return nil
 	})
 }
 

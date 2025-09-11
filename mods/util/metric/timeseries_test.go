@@ -418,10 +418,10 @@ func TestTimeseriesStorage(t *testing.T) {
 		`{"ts":"2023-10-01 12:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
 		`]`, ts.String())
 
-	err := storage.Store("test_measure", "test_field", "3s", ts)
+	err := storage.Store("test_measure:test_field", "3s", ts)
 	require.NoError(t, err)
 
-	loaded, err := storage.Load("test_measure", "test_field", "3s")
+	loaded, err := storage.Load("test_measure:test_field", "3s")
 	require.NoError(t, err)
 
 	require.JSONEq(t, `[`+
