@@ -1,11 +1,11 @@
 # This is a basic workflow to help you get started with Actions
 
-name: test-neo-regress
+name: neo-regress
 
 # Controls when the workflow will run
 on:
-  # schedule:
-  #   - cron: '15 15 * * *'
+  schedule:
+    - cron: '15 15 * * *'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -15,14 +15,23 @@ jobs:
   # This workflow contains a single job called "build"
   build:
     # The type of runner that the job will run on
-    #runs-on: [self-hosted, linux, x64, neo-regress]
-    runs-on: neo-regress
+    runs-on: 2025-neo-regress
+    env:
+       MACHBASENEO_HOME: "/home/sjkim/work/neo-server/tmp"
+       MACHBASE_HOME: "/home/sjkim/work/neo-server/tmp/machbase_home"
+       MACHBASE_PORT_NO: "15656"
+       NTF_HOME: "/home/sjkim/work/neo-test"
+       NTF_HOST: "127.0.0.1"
+       NTF_PORT: "15656"
+       NTF_SHELL_PORT: "15657"
+       NTF_MQTT_PORT: "15658"
+       NTF_HTTP_PORT: "15659"
+       NTF_GRPC_PORT: "15660"
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       #- uses: actions/checkout@v4
-
       - name: rm git repo
         run: cd ~/work; rm -rf neo-server; rm -rf neo-test;
       - name: clone neo-server
@@ -30,9 +39,18 @@ jobs:
       - name: clone neo-test
         run: cd ~/work; git clone git@github.com:machbase/neo-test.git;
       - name: build machbase-neo
-        run: cd ~/work/neo-server; make machbase-neo;
+        run:  |
+             cd ~/work/neo-server
+             go run mage.go install-neo-web
+             go run mage.go machbase-neo
       - name: run test
-        run: cd ~/work/neo-test/testsuite; ntf main.ts;
+        run:  |
+              echo "PATH=$MACHBASENEO_HOME:$NTF_HOME/bin:$PATH" >> $GITHUB_ENV
+              mkdir /home/sjkim/work/neo-server/tmp/machbase_home
+              mkdir /home/sjkim/work/neo-server/tmp/machbase_home/conf
+              mkdir /home/sjkim/work/neo-server/tmp/machbase_home/dbs
+              mkdir /home/sjkim/work/neo-server/tmp/machbase_home/trc
+              cd ~/work/neo-test/testsuite; ntf main.ts;
       - name: print result
         run: cd ~/work/neo-test/testsuite; cat summary.txt;
       - name: check run
