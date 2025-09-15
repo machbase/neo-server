@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"slices"
@@ -29,7 +30,7 @@ var _ http.Handler = (*Dashboard)(nil)
 type Dashboard struct {
 	Option             DashboardOption
 	Charts             []Chart
-	Timeseries         []CollectorSeries
+	Timeseries         []SeriesID
 	SeriesIdx          int
 	ShowRemains        bool
 	SamplingInterval   time.Duration
@@ -39,14 +40,16 @@ type Dashboard struct {
 }
 
 type Chart struct {
-	MetricNames    []string
-	SeriesSelector Filter // pattern to match field names, e.g., "*(avg)"
-	ID             string
-	Title          string
-	SubTitle       string
-	Type           ChartType // e.g., line, bar
+	MetricNames []string // metric names or patterns to include in this chart
+	FieldNames  []string // optional, field names of the metric to show in this chart
+	ID          string
+	Title       string
+	SubTitle    string
+	Type        ChartType // e.g., line, bar
+	ShowSymbol  bool      // whether to show symbol on the line chart
 
 	metricNameFilter Filter
+	fieldNameFilter  Filter
 }
 
 // multiple metric names can be added in one place to group them together
@@ -71,6 +74,15 @@ func (d *Dashboard) AddChart(co ...Chart) error {
 				return fmt.Errorf("error compiling metric name filter %v: %w", c.MetricNames, err)
 			} else {
 				c.metricNameFilter = f
+			}
+		}
+		if len(c.FieldNames) > 0 {
+			fields := make([]string, len(c.FieldNames))
+			copy(fields, c.FieldNames)
+			if f, err := Compile(fields); err != nil {
+				return fmt.Errorf("error compiling field name filter %v: %w", c.FieldNames, err)
+			} else {
+				c.fieldNameFilter = f
 			}
 		}
 		d.Charts = append(d.Charts, c)
@@ -130,6 +142,9 @@ type DashboardOption struct {
 	Theme    string // "light" or "dark"
 	JsSrc    []string
 	Style    map[string]CSSStyle
+
+	panelMinWidth string
+	panelMaxWidth string
 }
 
 func DefaultDashboardOption() DashboardOption {
@@ -137,24 +152,24 @@ func DefaultDashboardOption() DashboardOption {
 		JsSrc: []string{
 			"https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js",
 		},
-		Theme: "dark",
+		Theme:         "dark",
+		panelMinWidth: "400px", // match the .container style
+		panelMaxWidth: "1fr",   // match the .container style
 		Style: map[string]CSSStyle{
 			"body": {
+				"width":      "calc(100% - 25px)",
 				"background": "rgb(38,40,49)",
 			},
 			".container": {
-				"display":         "flex",       // Enables Flexbox
-				"flex-wrap":       "wrap",       // Allows wrapping to the next line
-				"gap":             "10px",       // Adds spacing between panels
-				"justify-content": "flex-start", // Aligns panels to the left
+				"display":               "grid",                                 // Enables Flexbox
+				"grid-template-columns": "repeat(auto-fit, minmax(400px, 1fr))", // Responsive columns
+				"gap":                   "10px",                                 // Adds spacing between panels
+				"margin":                "0 auto",
 			},
 			".panel": {
-				"flex":          "1 1 400px", // Each panel takes up 400px width
-				"min-width":     "400px",     // Minimum width for each panel
-				"max-width":     "640px",     // Maximum width for each panel
-				"height":        "300px",     // Fixed height for each panel
 				"border-radius": "4px",
 				"padding":       "0px",
+				"height":        "300px",
 				"border":        "1px solid rgba(0,0,0,0.1)",
 				"box-shadow":    "2px 2px 5px rgba(0,0,0,0.1)",
 			},
@@ -225,21 +240,23 @@ func (d *Dashboard) SetTheme(theme string) {
 	d.Option.Theme = theme
 }
 
-func (d *Dashboard) SetPanelHeight(height int) {
+func (d *Dashboard) SetPanelHeight(height string) {
 	// "height":        "300px",     // Fixed height for each panel
-	d.Option.Style[".panel"]["height"] = fmt.Sprintf("%dpx", height)
+	d.Option.Style[".panel"]["height"] = fmt.Sprintf("%s", height)
 }
 
-func (d *Dashboard) SetPanelMinWidth(width int) {
-	// "flex":          "1 1 400px", // Each panel takes up 400px width
-	// "min-width":     "400px",     // Minimum width for each panel
-	d.Option.Style[".panel"]["flex"] = fmt.Sprintf("1 1 %dpx", width)
-	d.Option.Style[".panel"]["min-width"] = fmt.Sprintf("%dpx", width)
+func (d *Dashboard) SetPanelMinWidth(width string) {
+	// 	"grid-template-columns": "repeat(auto-fit, minmax(400px, 1fr))", // Responsive columns
+	d.Option.panelMinWidth = width
+	d.Option.Style[".container"]["grid-template-columns"] = fmt.Sprintf("repeat(auto-fit, minmax(%s, %s))",
+		width, d.Option.panelMaxWidth)
 }
 
-func (d *Dashboard) SetPanelMaxWidth(width int) {
-	// "max-width":     "640px",     // Maximum width for each panel
-	d.Option.Style[".panel"]["max-width"] = fmt.Sprintf("%dpx", width)
+func (d *Dashboard) SetPanelMaxWidth(width string) {
+	// 	"grid-template-columns": "repeat(auto-fit, minmax(400px, 1fr))", // Responsive columns
+	d.Option.panelMaxWidth = width
+	d.Option.Style[".container"]["grid-template-columns"] = fmt.Sprintf("repeat(auto-fit, minmax(%s, %s))",
+		d.Option.panelMinWidth, width)
 }
 
 func (opt DashboardOption) StyleCSS() template.CSS {
@@ -267,7 +284,7 @@ func (d Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (d Dashboard) HandleFunc(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			fmt.Println("Recovered in Dashboard.Handle:", rec)
+			slog.Error("Recovered in Dashboard.Handle", "error", rec)
 			debug.PrintStack()
 			http.Error(w, fmt.Sprintf("Internal server error: %v", rec), http.StatusInternalServerError)
 		}
@@ -513,6 +530,7 @@ const (
 	ChartTypeLineStack   ChartType = "line-stack"
 	ChartTypeBar         ChartType = "bar"
 	ChartTypeBarStack    ChartType = "bar-stack"
+	ChartTypeScatter     ChartType = "scatter"
 	ChartTypeCandlestick ChartType = "candlestick"
 )
 
@@ -531,122 +549,241 @@ func (ct ChartType) TypeAndStack(fallback string) (string, any) {
 }
 
 func (ss Snapshot) Series(opt Chart) []Series {
-	var series []Series
-	switch ss.Meta.Type {
+	switch ss.Meta.MeasureType.Name() {
 	case "counter":
-		typ, stack := opt.Type.TypeAndStack("bar")
-		series = []Series{
-			{
-				Name:       ss.Meta.Name,
-				Type:       typ,
-				Data:       make([]Item, len(ss.Times)),
-				Stack:      stack,
-				Smooth:     true,
-				ShowSymbol: false,
-			},
-		}
-		for i, t := range ss.Times {
-			series[0].Data[i].Time = t.UnixMilli()
-			if v, ok := ss.Values[i].(*CounterValue); ok && v.Samples > 0 {
-				series[0].Data[i].Value = v.Value
-			}
-		}
+		return ss.counterToSeries(opt)
 	case "gauge":
-		// for gauge, show avg and last value
-		seriesNames := []string{ss.Meta.Name + "#avg", ss.Meta.Name + "#last"}
-		seriesFlags := map[string]int{}
-		for i, seriesName := range seriesNames {
-			if opt.SeriesSelector != nil && !opt.SeriesSelector.Match(seriesName) {
+		return ss.gaugeToSeries(opt)
+	case "meter":
+		return ss.meterToSeries(opt)
+	case "timer":
+		return ss.timerToSeries(opt)
+	case "odometer":
+		return ss.odometerToSeries(opt)
+	case "histogram":
+		return ss.histogramToSeries(opt)
+	default:
+		return []Series{}
+	}
+}
+
+func (ss Snapshot) counterToSeries(opt Chart) []Series {
+	var series []Series
+	typ, stack := opt.Type.TypeAndStack("bar")
+	data := make([]Item, len(ss.Times))
+	for i, t := range ss.Times {
+		data[i].Time = t.UnixMilli()
+		if v, ok := ss.Values[i].(*CounterValue); ok && v.Samples > 0 {
+			data[i].Value = v.Value
+		}
+	}
+	series = append(series, Series{
+		Name:       ss.Meta.MeasureName,
+		Type:       typ,
+		Data:       data,
+		Stack:      stack,
+		Smooth:     true,
+		ShowSymbol: opt.ShowSymbol,
+	})
+	return series
+}
+
+func (ss Snapshot) gaugeToSeries(opt Chart) []Series {
+	var series []Series
+	typ, stack := opt.Type.TypeAndStack("line")
+	for _, fieldName := range []string{"avg", "last"} {
+		if opt.fieldNameFilter != nil && !opt.fieldNameFilter.Match(fieldName) {
+			continue
+		}
+		data := make([]Item, len(ss.Times))
+		for i, tm := range ss.Times {
+			data[i].Time = tm.UnixMilli()
+			v, ok := ss.Values[i].(*GaugeValue)
+			if !ok || v.Samples == 0 {
 				continue
 			}
-			switch i {
-			case 0:
-				seriesFlags["avg"] = len(series)
-			case 1:
-				seriesFlags["last"] = len(series)
-			}
-			series = append(series, Series{
-				Name:       seriesName,
-				Type:       "line",
-				Data:       make([]Item, len(ss.Times)),
-				Smooth:     true,
-				ShowSymbol: false,
-			})
-		}
-		for i, tm := range ss.Times {
-			for s := range series {
-				series[s].Data[i].Time = tm.UnixMilli()
-			}
-			if v, ok := ss.Values[i].(*GaugeValue); ok && v.Samples > 0 {
-				if idx, ok := seriesFlags["avg"]; ok {
-					series[idx].Data[i].Value = v.Sum / float64(v.Samples)
-				}
-				if idx, ok := seriesFlags["last"]; ok {
-					series[idx].Data[i].Value = v.Value
-				}
+			switch fieldName {
+			case "avg":
+				data[i].Value = v.Sum / float64(v.Samples)
+			case "last":
+				data[i].Value = v.Value
 			}
 		}
-	case "meter":
-		series = []Series{
-			{
-				Name:       ss.Meta.Name,
-				Type:       "candlestick",
-				Data:       make([]Item, len(ss.Times)),
-				Smooth:     true,
-				ShowSymbol: false,
-			},
-		}
-		for i, t := range ss.Times {
-			series[0].Data[i].Time = t.UnixMilli()
-			if v, ok := ss.Values[i].(*MeterValue); ok && v.Samples > 0 {
-				// data order [open, close, lowest, highest]
-				series[0].Data[i].Value = []any{v.First, v.Last, v.Min, v.Max}
-			}
-		}
-	case "odometer":
-		typ, stack := opt.Type.TypeAndStack("bar")
-		series = []Series{
-			{
-				Name:       ss.Meta.Name,
-				Type:       typ,
-				Stack:      stack,
-				Data:       make([]Item, len(ss.Times)),
-				Smooth:     true,
-				ShowSymbol: false,
-			},
-		}
-		for i, t := range ss.Times {
-			series[0].Data[i].Time = t.UnixMilli()
-			if v, ok := ss.Values[i].(*OdometerValue); ok && v.Samples > 0 {
-				series[0].Data[i].Value = v.Diff()
-			}
-		}
-	case "histogram":
-		last := ss.Values[len(ss.Values)-1].(*HistogramValue)
-		for _, p := range last.P {
-			pName := fmt.Sprintf("p%d", int(p*1000))
-			if pName[len(pName)-1] == '0' {
-				pName = pName[:len(pName)-1]
-			}
-			series = append(series, Series{
-				Name:       ss.Meta.Name + "#" + pName,
-				Type:       "line",
-				Data:       make([]Item, len(ss.Times)),
-				Smooth:     true,
-				ShowSymbol: false,
-			})
-		}
+		series = append(series, Series{
+			Name:       ss.Meta.MeasureName + "#" + fieldName,
+			Type:       typ,
+			Data:       data,
+			Stack:      stack,
+			Smooth:     true,
+			ShowSymbol: opt.ShowSymbol,
+		})
+	}
+	return series
+}
 
-		for i, t := range ss.Times {
-			for s := range series {
-				series[s].Data[i].Time = t.UnixMilli()
+func (ss Snapshot) meterToSeries(opt Chart) []Series {
+	var series []Series
+	reqTyp, reqStack := opt.Type.TypeAndStack("line")
+	allFieldNames := []string{"ohlc", "min", "max", "avg", "first", "last"}
+	for _, fieldName := range allFieldNames {
+		if opt.fieldNameFilter != nil && !opt.fieldNameFilter.Match(fieldName) {
+			continue
+		}
+		typ, stack := reqTyp, reqStack
+		data := make([]Item, len(ss.Times))
+		for i, tm := range ss.Times {
+			data[i].Time = tm.UnixMilli()
+			v, ok := ss.Values[i].(*MeterValue)
+			if !ok || v.Samples == 0 {
+				continue
 			}
-			if v, ok := ss.Values[i].(*HistogramValue); ok && v.Samples > 0 {
-				for pIdx, pVal := range v.Values {
-					series[pIdx].Data[i].Value = pVal
-				}
+			switch fieldName {
+			case "min":
+				data[i].Value = v.Min
+			case "max":
+				data[i].Value = v.Max
+			case "first":
+				data[i].Value = v.First
+			case "last":
+				data[i].Value = v.Last
+			case "avg":
+				data[i].Value = v.Sum / float64(v.Samples)
+			case "ohlc":
+				// force to candlestick type whatever the requested type is
+				typ, stack = "candlestick", nil
+				// data order [open, close, lowest, highest]
+				data[i].Value = []any{v.First, v.Last, v.Min, v.Max}
 			}
 		}
+		series = append(series, Series{
+			Name:       ss.Meta.MeasureName + "#" + fieldName,
+			Type:       typ,
+			Data:       data,
+			Stack:      stack,
+			Smooth:     true,
+			ShowSymbol: opt.ShowSymbol,
+		})
+	}
+	return series
+}
+
+func (ss Snapshot) timerToSeries(opt Chart) []Series {
+	var series []Series
+	typ, stack := opt.Type.TypeAndStack("line")
+	allFieldNames := []string{"min", "max", "avg"}
+	for _, fieldName := range allFieldNames {
+		if opt.fieldNameFilter != nil && !opt.fieldNameFilter.Match(fieldName) {
+			continue
+		}
+		data := make([]Item, len(ss.Times))
+		for i, tm := range ss.Times {
+			data[i].Time = tm.UnixMilli()
+			v, ok := ss.Values[i].(*TimerValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			switch fieldName {
+			case "min":
+				data[i].Value = v.MinDuration
+			case "max":
+				data[i].Value = v.MaxDuration
+			case "avg":
+				data[i].Value = v.SumDuration / time.Duration(v.Samples)
+			}
+		}
+		series = append(series, Series{
+			Name:       ss.Meta.MeasureName + "#" + fieldName,
+			Type:       typ,
+			Data:       data,
+			Stack:      stack,
+			Smooth:     true,
+			ShowSymbol: opt.ShowSymbol,
+		})
+	}
+	return series
+}
+
+func (ss Snapshot) odometerToSeries(opt Chart) []Series {
+	var series []Series
+	typ, stack := opt.Type.TypeAndStack("bar")
+	allFieldNames := []string{"first", "last", "diff", "non-negative-diff", "abs-diff"}
+	if opt.fieldNameFilter == nil {
+		// if no field filter, always shows the "diff" field only
+		allFieldNames = []string{"last"}
+	}
+	for _, fieldName := range allFieldNames {
+		if opt.fieldNameFilter != nil && !opt.fieldNameFilter.Match(fieldName) {
+			continue
+		}
+		data := make([]Item, len(ss.Times))
+		for i, t := range ss.Times {
+			data[i].Time = t.UnixMilli()
+			v, ok := ss.Values[i].(*OdometerValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			switch fieldName {
+			case "first":
+				data[i].Value = v.First
+			case "last":
+				data[i].Value = v.Last
+			case "diff":
+				data[i].Value = v.Diff()
+			case "non-negative-diff":
+				data[i].Value = v.NonNegativeDiff()
+			case "abs-diff":
+				data[i].Value = v.AbsDiff()
+			}
+		}
+		series = append(series, Series{
+			Name:       ss.Meta.MeasureName + "#" + fieldName,
+			Type:       typ,
+			Stack:      stack,
+			Data:       data,
+			Smooth:     true,
+			ShowSymbol: opt.ShowSymbol,
+		})
+	}
+	return series
+}
+
+func (ss Snapshot) histogramToSeries(opt Chart) []Series {
+	var series []Series
+	var fieldNames = map[string]int{}
+
+	typ, stack := opt.Type.TypeAndStack("line")
+	last, ok := ss.Values[len(ss.Values)-1].(*HistogramValue)
+	if !ok {
+		return series
+	}
+	for pIdx, p := range last.P {
+		pName := fmt.Sprintf("p%d", int(p*1000))
+		if pName[len(pName)-1] == '0' {
+			pName = pName[:len(pName)-1]
+		}
+		fieldNames[pName] = pIdx
+	}
+	for fieldName, pIdx := range fieldNames {
+		if opt.fieldNameFilter != nil && !opt.fieldNameFilter.Match(fieldName) {
+			continue
+		}
+		data := make([]Item, len(ss.Times))
+		for i, tm := range ss.Times {
+			data[i].Time = tm.UnixMilli()
+			v, ok := ss.Values[i].(*HistogramValue)
+			if !ok || v.Samples == 0 {
+				continue
+			}
+			data[i].Value = v.Values[pIdx]
+		}
+		series = append(series, Series{
+			Name:       ss.Meta.MeasureName + "#" + fieldName,
+			Type:       typ,
+			Stack:      stack,
+			Data:       data,
+			Smooth:     true,
+			ShowSymbol: opt.ShowSymbol,
+		})
 	}
 	return series
 }
@@ -660,15 +797,8 @@ var tmplFuncMap = template.FuncMap{
 	"sub": func(a, b int) int {
 		return a - b
 	},
-	"seriesTitle": func(s CollectorSeries) string {
-		title := s.Name + " | " + s.Period.String()
-		if strings.HasSuffix(title, "m0s") {
-			title = strings.TrimSuffix(title, "0s")
-		}
-		if strings.HasSuffix(title, "h0m") {
-			title = strings.TrimSuffix(title, "0m")
-		}
-		return title
+	"seriesTitle": func(s SeriesID) string {
+		return s.Title()
 	},
 }
 

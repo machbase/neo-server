@@ -9,6 +9,15 @@ func NewOdometer() *Odometer {
 	return &Odometer{}
 }
 
+func NewOdometerWithValue(v *OdometerValue) *Odometer {
+	return &Odometer{
+		first:       v.First,
+		last:        v.Last,
+		samples:     v.Samples,
+		initialized: !(v.First == 0 && v.Last == 0 && v.Samples == 0),
+	}
+}
+
 var _ Producer = (*Odometer)(nil)
 
 type Odometer struct {

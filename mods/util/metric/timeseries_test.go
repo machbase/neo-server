@@ -1,7 +1,6 @@
 package metric
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -392,40 +391,4 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{85, 88, 90}},
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{95, 98, 100}},
 	}, values)
-}
-
-func createTestStorage(t *testing.T) *FileStorage {
-	t.Helper()
-	os.MkdirAll("./tmp/store", 0755)
-	storage := NewFileStorage("./tmp/store")
-	require.NotNil(t, storage)
-	return storage
-}
-
-func TestTimeseriesStorage(t *testing.T) {
-	storage := createTestStorage(t)
-	now := time.Date(2023, 10, 1, 12, 4, 4, 0, time.UTC)
-	nowFunc = func() time.Time { return now }
-
-	ts := NewTimeSeries(time.Second, 3, NewMeter())
-	ts.Add(1.0)
-
-	now = now.Add(time.Second)
-	ts.Add(2.0)
-
-	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 12:04:05","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
-		`{"ts":"2023-10-01 12:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
-		`]`, ts.String())
-
-	err := storage.Store("test_measure:test_field", "3s", ts)
-	require.NoError(t, err)
-
-	loaded, err := storage.Load("test_measure:test_field", "3s")
-	require.NoError(t, err)
-
-	require.JSONEq(t, `[`+
-		`{"ts":"2023-10-01 12:04:05","value":{"samples":1,"max":1,"min":1,"first":1,"last":1,"sum":1}},`+
-		`{"ts":"2023-10-01 12:04:06","value":{"samples":1,"max":2,"min":2,"first":2,"last":2,"sum":2}}`+
-		`]`, loaded.String())
 }

@@ -9,6 +9,13 @@ func NewCounter() *Counter {
 	return &Counter{}
 }
 
+func NewCounterWithValue(v *CounterValue) *Counter {
+	return &Counter{
+		samples: v.Samples,
+		value:   v.Value,
+	}
+}
+
 var _ Producer = (*Counter)(nil)
 
 type Counter struct {

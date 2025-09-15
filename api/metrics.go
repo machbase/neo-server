@@ -14,6 +14,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/util/glob"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
+	"github.com/machbase/neo-server/v8/mods/util/metric/input"
 )
 
 const (
@@ -294,15 +295,21 @@ var collector *metric.Collector
 var prefix string = "machbase"
 var metricsDest string
 
+const SERIES_ID_FINEST = "METRIC_2H"
+
 func StartMetrics() {
+	m2h, _ := metric.NewSeriesID(SERIES_ID_FINEST, "2h | 1m", 60*time.Second, 120)
+	m2d12h, _ := metric.NewSeriesID("METRIC_2D12H", "2d12h | 30m", 30*time.Minute, 120)
 	collector = metric.NewCollector(
 		metric.WithSamplingInterval(10*time.Second),
-		metric.WithSeries("2h", 60*time.Second, 120),
-		metric.WithSeries("2d12h", 30*time.Minute, 120),
+		metric.WithSeries(m2h),
+		metric.WithSeries(m2d12h),
 		metric.WithPrefix(prefix),
 		metric.WithInputBuffer(50),
 	)
 	collector.AddInput(&SessionInput{})
+	collector.AddInput(&input.Runtime{})
+	collector.AddInput(&input.Netstat{})
 	collector.AddOutputFunc(onProduct)
 	collector.Start()
 }
@@ -342,13 +349,6 @@ func SetMetricsDestTable(destTable string) error {
 
 	metricsDest = destTable
 	return nil
-}
-
-func AddMetricsInput(in metric.Input) {
-	if collector == nil {
-		return
-	}
-	collector.AddInput(in)
 }
 
 func AddMetricsFunc(f func(*metric.Gather) error) {
@@ -391,6 +391,10 @@ type MetricRec struct {
 
 func onProduct(pd metric.Product) error {
 	if metricsDest == "" {
+		return nil
+	}
+	// insert only finest resolution
+	if pd.SeriesID != SERIES_ID_FINEST {
 		return nil
 	}
 	var result []MetricRec
@@ -492,28 +496,28 @@ func onProduct(pd metric.Product) error {
 }
 
 func DashboardHandler() http.HandlerFunc {
-	avgFilter := metric.MustCompile([]string{"*#avg"})
-	lastFilter := metric.MustCompile([]string{"*#last"})
-
 	dash := metric.NewDashboard(collector)
 	dash.PageTitle = "MACHBASE-NEO"
 	dash.ShowRemains = false
+	// TODO: for offline use, download and place under /web/echarts
+	// dash.Option.JsSrc = []string{"/web/echarts/echarts.min.js"}
+	// dash.Option.JsSrc = append(dash.Option.JsSrc, "/web/echarts/themes/infographic.js")
 	dash.SetTheme("light")
-	dash.AddChart(metric.Chart{Title: "CPU", MetricNames: []string{"ps:cpu_percent"}, SeriesSelector: avgFilter})
-	dash.AddChart(metric.Chart{Title: "MEM", MetricNames: []string{"ps:mem_percent"}, SeriesSelector: avgFilter})
-	dash.AddChart(metric.Chart{Title: "NETSTAT", MetricNames: []string{"netstat:*"}, SeriesSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"sys:sysmem"}, SeriesSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"runtime:goroutines"}, SeriesSelector: lastFilter})
-	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"runtime:heap_inuse"}, SeriesSelector: lastFilter})
+	dash.AddChart(metric.Chart{Title: "CPU", MetricNames: []string{"ps:cpu_percent"}, FieldNames: []string{"avg"}})
+	dash.AddChart(metric.Chart{Title: "MEM", MetricNames: []string{"ps:mem_percent"}, FieldNames: []string{"avg"}})
+	dash.AddChart(metric.Chart{Title: "NETSTAT", MetricNames: []string{"netstat:*"}, FieldNames: []string{"last"}})
+	dash.AddChart(metric.Chart{Title: "DB SYSMEM", MetricNames: []string{"sys:sysmem"}, FieldNames: []string{"last"}})
+	dash.AddChart(metric.Chart{Title: "Go Routines", MetricNames: []string{"runtime:goroutines"}, FieldNames: []string{"last"}})
+	dash.AddChart(metric.Chart{Title: "Go Heap Inuse", MetricNames: []string{"runtime:heap_inuse"}, FieldNames: []string{"last"}})
 	dash.AddChart(metric.Chart{Title: "CGO Calls", MetricNames: []string{"runtime:cgo_call"}, Type: metric.ChartTypeLine})
 	dash.AddChart(metric.Chart{Title: "HTTP Payload", MetricNames: []string{"http:recv_bytes", "http:send_bytes"}, Type: metric.ChartTypeLine})
 	dash.AddChart(metric.Chart{Title: "HTTP Status", MetricNames: []string{"http:status_[1-5]xx"}, Type: metric.ChartTypeBarStack})
 	dash.AddChart(metric.Chart{Title: "HTTP Latency", MetricNames: []string{"http:latency"}})
 	dash.AddChart(metric.Chart{Title: "DB Use Count", MetricNames: []string{"session:*:count"}, Type: metric.ChartTypeLine})
-	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNames: []string{"session:*:in_use"}, SeriesSelector: avgFilter})
-	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNames: []string{"machsvr:*"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "DB Inuse", MetricNames: []string{"session:*:in_use"}, FieldNames: []string{"avg"}})
+	dash.AddChart(metric.Chart{Title: "DB Native Inuse", MetricNames: []string{"machsvr:*"}, FieldNames: []string{"avg"}})
 	dash.AddChart(metric.Chart{Title: "DB Wait Time", MetricNames: []string{"session:conn:wait_time"}})
 	dash.AddChart(metric.Chart{Title: "DB Use Time", MetricNames: []string{"session:conn:use_time"}})
-	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNames: []string{"tql:cache:*"}, SeriesSelector: avgFilter})
+	dash.AddChart(metric.Chart{Title: "TQL Cache", MetricNames: []string{"tql:cache:*"}, FieldNames: []string{"avg"}})
 	return dash.HandleFunc
 }

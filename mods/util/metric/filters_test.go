@@ -156,6 +156,7 @@ func TestCompilePatterns(t *testing.T) {
 		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:1", true},
 		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:2", true},
 		{[]string{"abc", "metric:field:[1-2]"}, []rune{':'}, "metric:field:3", false},
+		{[]string{"disk:*:used_percent"}, []rune{':'}, "disk:/mnt/c:used_percent", true},
 	}
 
 	for _, tt := range tests {
@@ -237,5 +238,27 @@ func TestOrFilter(t *testing.T) {
 	or = OrFilter(nil, nil)
 	if or != nil {
 		t.Error("OrFilter: expected nil when both filters are nil")
+	}
+}
+
+func TestCompilePatterns2(t *testing.T) {
+	tests := []struct {
+		pattern    []string
+		separators []rune
+		input      string
+		want       bool
+	}{
+		{[]string{"disk:*:used_percent"}, []rune{':'}, "disk:/mnt/c:used_percent", true},
+	}
+
+	for _, tt := range tests {
+		f, err := Compile(tt.pattern, tt.separators...)
+		if err != nil {
+			t.Fatalf("Compile returned error: %v", err)
+		}
+		got := f.Match(tt.input)
+		if got != tt.want {
+			t.Errorf("Match(%q) = %v, want %v", tt.input, got, tt.want)
+		}
 	}
 }

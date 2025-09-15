@@ -33,7 +33,7 @@ type Histogram struct {
 	sync.Mutex
 	maxBins int
 	bins    []HistBin
-	samples float64
+	samples int64
 	qs      []float64 // Quantile to calculate
 }
 
@@ -46,6 +46,19 @@ func NewHistogram(maxBins int, qs ...float64) *Histogram {
 	}
 	if len(qs) > 0 {
 		h.qs = qs
+	}
+	return h
+}
+
+func NewHistogramWithValue(v *HistogramValue, maxBins int, qs ...float64) *Histogram {
+	h := &Histogram{
+		maxBins: maxBins,
+		qs:      qs,
+	}
+	h.samples = v.Samples
+	h.bins = make([]HistBin, len(v.Values))
+	for i := range v.Values {
+		h.bins[i] = HistBin{value: v.Values[i], count: float64(v.Samples) / float64(len(v.Values))}
 	}
 	return h
 }
@@ -69,7 +82,7 @@ func (h *Histogram) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return err
 	}
-	h.samples = float64(obj.Samples)
+	h.samples = obj.Samples
 	h.qs = obj.Qs
 	h.bins = obj.Bins
 	return nil

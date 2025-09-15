@@ -47,7 +47,7 @@ func (ft Type) Producer() Producer {
 	return ft.p()
 }
 
-func (ft Type) String() string {
+func (ft Type) Name() string {
 	return ft.s
 }
 

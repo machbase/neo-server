@@ -4,6 +4,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"sync"
@@ -43,7 +44,7 @@ type Measure struct {
 	Type  Type
 }
 
-// CounterType supports samples count, value (sum)
+// CounterType supports only value: sum
 func CounterType(u Unit) Type {
 	return Type{
 		p: func() Producer { return NewCounter() },
@@ -52,7 +53,7 @@ func CounterType(u Unit) Type {
 	}
 }
 
-// GaugeType supports samples count, sum, value (last)
+// GaugeType supports: avg, last
 func GaugeType(u Unit) Type {
 	return Type{
 		p: func() Producer { return NewGauge() },
@@ -61,7 +62,8 @@ func GaugeType(u Unit) Type {
 	}
 }
 
-// MeterType supports samples count, sum, first, last, min, max
+// MeterType supports: avg, first, last, min, max, ohlc
+// OHLC is represented as a slice of 4 values: [open, close, lowest, highest]
 func MeterType(u Unit) Type {
 	return Type{
 		p: func() Producer { return NewMeter() },
@@ -70,11 +72,16 @@ func MeterType(u Unit) Type {
 	}
 }
 
-// OdometerType supports samples count, quantiles
-func HistogramType(u Unit) Type {
-	return HistogramTypePercentiles(u, 100, 0.5, 0.90, 0.99)
+// TimerType supports: avg, min, max in time.Duration
+func TimerType() Type {
+	return Type{
+		p: func() Producer { return NewTimer() },
+		s: "timer",
+		u: UnitDuration,
+	}
 }
 
+// OdometerType supports: first, last, diff, non-negative-diff, abs-diff
 func OdometerType(u Unit) Type {
 	return Type{
 		p: func() Producer { return NewOdometer() },
@@ -83,6 +90,15 @@ func OdometerType(u Unit) Type {
 	}
 }
 
+// HistogramType supports: p[1-999] percentiles e.g. p50, p90, p99
+func HistogramType(u Unit) Type {
+	return HistogramTypePercentiles(u, 100, 0.5, 0.90, 0.99)
+}
+
+// HistogramTypePercentiles supports: p[1-999] percentiles e.g. p50, p90, p99
+// maxBin is the maximum number of bins to use for the histogram.
+// ps is the list of percentiles to calculate, in the range (0, 1).
+// e.g., 0.5 for p50, 0.75 for p75, 0.9 for p90, 0.99 for p99, 0.999 for p999.
 func HistogramTypePercentiles(u Unit, maxBin int, ps ...float64) Type {
 	return Type{
 		p: func() Producer { return NewHistogram(maxBin, ps...) },
@@ -91,21 +107,10 @@ func HistogramTypePercentiles(u Unit, maxBin int, ps ...float64) Type {
 	}
 }
 
-// TimerType supports samples count, total, min, max
-func TimerType(u Unit) Type {
-	return Type{
-		p: func() Producer { return NewTimer() },
-		s: "timer",
-		u: u,
-	}
-}
-
 type SeriesInfo struct {
-	Name   string
-	Series string
-	Period time.Duration
-	Type   string
-	Unit   Unit
+	MeasureName string   `json:"measure_name"`
+	MeasureType Type     `json:"measure_type"`
+	SeriesID    SeriesID `json:"series_id"`
 }
 
 func (si *SeriesInfo) H() map[string]any {
@@ -113,10 +118,13 @@ func (si *SeriesInfo) H() map[string]any {
 		return nil
 	}
 	return H{
-		"name":   si.Name,
-		"series": si.Series,
-		"unit":   si.Unit,
-		"type":   si.Type,
+		"name":         si.MeasureName,
+		"series_id":    si.SeriesID.ID(),
+		"series_title": si.SeriesID.Title(),
+		"period":       si.SeriesID.period.String(),
+		"max_count":    si.SeriesID.maxCount,
+		"unit":         si.MeasureType.Unit(),
+		"type":         si.MeasureType.Name(),
 	}
 }
 
@@ -142,17 +150,11 @@ type Collector struct {
 	C chan<- *Gather
 
 	// time series configuration
-	series       []CollectorSeries
+	series       []SeriesID
 	expvarPrefix string
 
 	// persistent storage
 	storage Storage
-}
-
-type CollectorSeries struct {
-	Name     string
-	Period   time.Duration
-	MaxCount int
 }
 
 // NewCollector creates a new Collector with the specified interval.
@@ -186,9 +188,9 @@ func WithSamplingInterval(interval time.Duration) CollectorOption {
 	}
 }
 
-func WithSeries(name string, period time.Duration, maxCount int) CollectorOption {
+func WithSeries(seriesID ...SeriesID) CollectorOption {
 	return func(c *Collector) {
-		c.series = append(c.series, CollectorSeries{Name: name, Period: period, MaxCount: maxCount})
+		c.series = append(c.series, seriesID...)
 	}
 }
 
@@ -442,14 +444,14 @@ func (c *Collector) runInputs(ts time.Time) {
 	// so we need to recover from panic.
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered in runInputs:", r)
+			slog.Error("Recovered in runInputs", "error", r)
 		}
 	}()
 
 	for _, input := range c.inputs {
 		gather := &Gather{}
 		if err := input.Gather(gather); err != nil {
-			fmt.Printf("Error measuring: %v\n", err)
+			slog.Error("Error gathering metrics", "error", err)
 			continue
 		}
 		gather.ts = ts
@@ -494,39 +496,25 @@ func (c *Collector) receive(m *Gather) {
 }
 
 type Product struct {
-	Name   string        `json:"name"`
-	Time   time.Time     `json:"ts"`
-	Value  Value         `json:"value,omitempty"`
-	IsNull bool          `json:"isNull,omitempty"`
-	Series string        `json:"series"`
-	Period time.Duration `json:"period"`
-	Type   string        `json:"type"`
-	Unit   Unit          `json:"unit"`
+	Name        string        `json:"name"`
+	Time        time.Time     `json:"ts"`
+	Value       Value         `json:"value,omitempty"`
+	IsNull      bool          `json:"isNull,omitempty"`
+	SeriesID    string        `json:"series_id"`
+	SeriesTitle string        `json:"series_title"`
+	Period      time.Duration `json:"period"`
+	Type        string        `json:"type"`
+	Unit        Unit          `json:"unit"`
 }
 
 func (c *Collector) onProduct(tb TimeBin, meta any) {
-	if len(c.outputs) == 0 {
+	var prd Product
+	if ok := ToProduct(&prd, tb, meta); !ok {
 		return
-	}
-
-	mInfo, ok := meta.(SeriesInfo)
-	if !ok {
-		return
-	}
-
-	data := Product{
-		Name:   mInfo.Name,
-		Time:   tb.Time,
-		Value:  tb.Value,
-		IsNull: tb.IsNull,
-		Series: mInfo.Series,
-		Period: mInfo.Period,
-		Type:   mInfo.Type,
-		Unit:   mInfo.Unit,
 	}
 	for _, out := range c.outputs {
-		if err := out.Process(data); err != nil {
-			fmt.Printf("Error processing output for %s: %v\n", mInfo.Name, err)
+		if err := out.Process(prd); err != nil {
+			slog.Error("Error processing output", "name", prd.Name, "error", err)
 		}
 	}
 }
@@ -534,22 +522,17 @@ func (c *Collector) onProduct(tb TimeBin, meta any) {
 func (c *Collector) makeMultiTimeSeries(measure Measure) MultiTimeSeries {
 	mts := make(MultiTimeSeries, len(c.series))
 	for i, ser := range c.series {
-		var ts = NewTimeSeries(ser.Period, ser.MaxCount, measure.Type.Producer())
+		var ts = NewTimeSeries(ser.Period(), ser.MaxCount(), measure.Type.Producer())
 		ts.SetListener(c.onProduct)
+		ts.SetStorage(c.storage)
 		ts.SetMeta(SeriesInfo{
-			Name:   measure.Name,
-			Series: ser.Name,
-			Period: ser.Period,
-			Type:   measure.Type.String(),
-			Unit:   measure.Type.Unit(),
+			MeasureName: measure.Name,
+			MeasureType: measure.Type,
+			SeriesID:    ser,
 		})
 		if c.storage != nil {
-			seriesName := cleanPath(ts.interval.String())
-			if data, err := c.storage.Load(measure.Name, seriesName); err != nil {
-				fmt.Printf("Failed to load time series for %s %s: %v\n", measure.Name, ser.Name, err)
-			} else if data != nil {
-				// if file is not exists, data will be nil
-				ts.data = data.data
+			if err := ts.Restore(c.storage, measure.Name, ser); err != nil {
+				slog.Error("Failed to restore time series", "measure", measure.Name, "series", ser.ID(), "error", err)
 			}
 		}
 		mts[i] = ts
@@ -594,10 +577,10 @@ func (c *Collector) Timeseries(name string) MultiTimeSeries {
 	return c.timeseries[name]
 }
 
-func (c *Collector) Series() []CollectorSeries {
+func (c *Collector) Series() []SeriesID {
 	c.Lock()
 	defer c.Unlock()
-	ret := make([]CollectorSeries, len(c.series))
+	ret := make([]SeriesID, len(c.series))
 	copy(ret, c.series)
 	return ret
 }
@@ -615,21 +598,23 @@ func (c *Collector) Inflight(measureName string) (map[string]Product, error) {
 
 	ret := map[string]Product{}
 	for idx, n := range c.series {
-		seriesName := n.Name
+		seriesID := n.ID()
 		nfo, ok := mts[idx].Meta().(SeriesInfo)
 		if !ok {
 			return nil, fmt.Errorf("metric %s series %s meta is not MeasurementInfo, but %T",
-				measureName, seriesName, mts[idx].Meta())
+				measureName, seriesID, mts[idx].Meta())
 		}
 		ts, prd := mts[idx].Last()
-		ret[seriesName] = Product{
-			Name:   nfo.Name,
-			Time:   ts,
-			Value:  prd,
-			IsNull: prd == nil,
-			Series: nfo.Series,
-			Type:   nfo.Type,
-			Unit:   nfo.Unit,
+		ret[seriesID] = Product{
+			Name:        nfo.MeasureName,
+			Time:        ts,
+			Value:       prd,
+			IsNull:      prd == nil,
+			SeriesID:    nfo.SeriesID.ID(),
+			SeriesTitle: nfo.SeriesID.Title(),
+			Period:      nfo.SeriesID.Period(),
+			Type:        nfo.MeasureType.Name(),
+			Unit:        nfo.MeasureType.Unit(),
 		}
 	}
 	return ret, nil
@@ -641,12 +626,18 @@ func (c *Collector) syncStorage() {
 	}
 	c.Lock()
 	defer c.Unlock()
-	for name, mts := range c.timeseries {
+	for _, mts := range c.timeseries {
 		for _, ts := range mts {
-			seriesName := cleanPath(ts.interval.String())
-			err := c.storage.Store(name, seriesName, ts)
+			tb, meta := ts.LastBin()
+			var prd Product
+			ToProduct(&prd, tb, meta)
+			id, err := NewSeriesID(prd.SeriesID, prd.Name, prd.Period, ts.maxCount)
 			if err != nil {
-				fmt.Printf("Failed to store time series for %s %s %s: %v\n", name, ts.Meta(), seriesName, err)
+				slog.Error("Failed to create series ID", "ID", prd.SeriesID, "error", err)
+				continue
+			}
+			if err := c.storage.Store(id, prd, true); err != nil {
+				slog.Error("Failed to store time series", "ID", id.ID(), "error", err)
 			}
 		}
 	}

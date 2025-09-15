@@ -9,6 +9,17 @@ func NewMeter() *Meter {
 	return &Meter{}
 }
 
+func NewMeterWithValue(v *MeterValue) *Meter {
+	return &Meter{
+		first:   v.First,
+		last:    v.Last,
+		min:     v.Min,
+		max:     v.Max,
+		sum:     v.Sum,
+		samples: v.Samples,
+	}
+}
+
 var _ Producer = (*Meter)(nil)
 
 type Meter struct {
@@ -18,7 +29,7 @@ type Meter struct {
 	min     float64
 	max     float64
 	sum     float64
-	samples float64
+	samples int64
 }
 
 func (m *Meter) MarshalJSON() ([]byte, error) {
@@ -35,7 +46,7 @@ func (m *Meter) UnmarshalJSON(data []byte) error {
 	m.min = p.Min
 	m.max = p.Max
 	m.sum = p.Sum
-	m.samples = float64(p.Samples)
+	m.samples = p.Samples
 	return nil
 }
 

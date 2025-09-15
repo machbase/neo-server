@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -134,6 +135,17 @@ func (f *filterList) Match(s string) bool {
 				return true
 			}
 		} else {
+			// also try replacing path separators with underscores
+			// e.g. disk:/mnt/c:used_percent => disk:_mnt_c:used_percent
+			// so that pattern disk:*:used_percent can match
+			normalized = strings.Map(func(r rune) rune {
+				switch r {
+				case os.PathSeparator:
+					return '_'
+				default:
+					return r
+				}
+			}, normalized)
 			if matched, _ := path.Match(cp.glob, normalized); matched {
 				return true
 			}

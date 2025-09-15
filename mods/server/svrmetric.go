@@ -3,9 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
-	"runtime"
-	"syscall"
 
 	mach "github.com/machbase/neo-engine/v8"
 	"github.com/machbase/neo-server/v8/api"
@@ -13,9 +10,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/jemalloc"
 	"github.com/machbase/neo-server/v8/mods/util/metric"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/shirou/gopsutil/v4/net"
 )
 
 var statzLog = logging.GetLog("server-statz")
@@ -25,9 +19,6 @@ func startServerMetrics(s *Server) {
 	api.AddMetricsFunc(collectSysStatz)
 	api.AddMetricsFunc(collectMachSvrStatz)
 	api.AddMetricsFunc(collectMqttStatz(s))
-	api.AddMetricsInput(&RuntimeInput{})
-	api.AddMetricsFunc(collectPsStatz)
-	api.AddMetricsFunc(collectNetstatz)
 
 	util.AddShutdownHook(func() { stopServerMetrics() })
 
@@ -36,80 +27,6 @@ func startServerMetrics(s *Server) {
 
 func stopServerMetrics() {
 	api.StopMetrics()
-}
-
-type RuntimeInput struct {
-}
-
-func (ri *RuntimeInput) Init() error { return nil }
-func (ri *RuntimeInput) Gather(g *metric.Gather) error {
-	ms := runtime.MemStats{}
-	runtime.ReadMemStats(&ms)
-	g.Add("runtime:goroutines", float64(runtime.NumGoroutine()), metric.GaugeType(metric.UnitShort))
-	g.Add("runtime:heap_inuse", float64(ms.HeapInuse), metric.GaugeType(metric.UnitBytes))
-	g.Add("runtime:cgo_call", float64(runtime.NumCgoCall()), metric.OdometerType(metric.UnitShort))
-	return nil
-}
-
-func collectPsStatz(g *metric.Gather) error {
-	cpuPercent, err := cpu.Percent(0, false)
-	if err != nil {
-		return fmt.Errorf("failed to collect CPU percent: %w", err)
-	}
-	g.Add("ps:cpu_percent", cpuPercent[0], metric.GaugeType(metric.UnitPercent))
-
-	memStat, err := mem.VirtualMemory()
-	if err != nil {
-		return fmt.Errorf("failed to collect memory percent: %w", err)
-	}
-	g.Add("ps:mem_percent", memStat.UsedPercent, metric.GaugeType(metric.UnitPercent))
-	return nil
-}
-
-func collectNetstatz(g *metric.Gather) error {
-	stat, err := net.Connections("all")
-	if err != nil {
-		return fmt.Errorf("failed to collect netstat: %w", err)
-	}
-
-	counts := make(map[string]int)
-	for _, cs := range stat {
-		if cs.Type == syscall.SOCK_DGRAM {
-			continue
-		}
-		c, ok := counts[cs.Status]
-		if !ok {
-			counts[cs.Status] = 0
-		}
-		counts[cs.Status] = c + 1
-	}
-
-	gaugeType := metric.GaugeType(metric.UnitShort)
-	for kind, name := range netStatzList {
-		value, ok := counts[kind]
-		if !ok {
-			value = 0
-		}
-		val := float64(value)
-		g.Add("netstat:"+name, val, gaugeType)
-	}
-	return nil
-}
-
-var netStatzList = map[string]string{
-	"ESTABLISHED": "tcp_established",
-	// "SYN_SENT":    "tcp_syn_sent",
-	// "SYN_RECV":    "tcp_syn_recv",
-	"FIN_WAIT1": "tcp_fin_wait1",
-	"FIN_WAIT2": "tcp_fin_wait2",
-	"TIME_WAIT": "tcp_time_wait",
-	// "CLOSE":       "tcp_close",
-	"CLOSE_WAIT": "tcp_close_wait",
-	// "LAST_ACK":    "tcp_last_ack",
-	"LISTEN": "tcp_listen",
-	// "CLOSING": "tcp_closing",
-	// "NONE":    "tcp_none",
-	// "UDP":     "udp_socket",
 }
 
 func collectSysStatz(g *metric.Gather) error {

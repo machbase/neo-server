@@ -9,6 +9,14 @@ func NewGauge() *Gauge {
 	return &Gauge{}
 }
 
+func NewGaugeWithValue(v *GaugeValue) *Gauge {
+	return &Gauge{
+		samples: v.Samples,
+		sum:     v.Sum,
+		value:   v.Value,
+	}
+}
+
 var _ Producer = (*Gauge)(nil)
 
 type Gauge struct {

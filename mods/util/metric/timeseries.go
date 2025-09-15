@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -71,6 +72,37 @@ func (tv *TimeBin) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func ToProduct(prd *Product, tb TimeBin, meta any) bool {
+	mInfo, ok := meta.(SeriesInfo)
+	if !ok {
+		return false
+	}
+	*prd = Product{
+		Name:        mInfo.MeasureName,
+		Time:        tb.Time,
+		Value:       tb.Value,
+		IsNull:      tb.IsNull,
+		SeriesID:    mInfo.SeriesID.ID(),
+		SeriesTitle: mInfo.SeriesID.Title(),
+		Period:      mInfo.SeriesID.Period(),
+		Type:        mInfo.MeasureType.Name(),
+		Unit:        mInfo.MeasureType.Unit(),
+	}
+	return true
+}
+
+func FromProduct(prd []Product) []TimeBin {
+	ret := make([]TimeBin, len(prd))
+	for i, p := range prd {
+		ret[i] = TimeBin{
+			Time:   p.Time,
+			Value:  p.Value,
+			IsNull: p.IsNull,
+		}
+	}
+	return ret
+}
+
 type TimeSeries struct {
 	sync.Mutex
 	producer Producer
@@ -80,6 +112,7 @@ type TimeSeries struct {
 	maxCount int
 	meta     any // Optional metadata for the time series
 	lsnr     func(TimeBin, any)
+	storage  Storage
 }
 
 // If aggregator is nil, it will replace the last point with the new one.
@@ -99,6 +132,10 @@ func (ts *TimeSeries) roundTime(t time.Time) time.Time {
 
 func (ts *TimeSeries) SetListener(listener func(TimeBin, any)) {
 	ts.lsnr = listener
+}
+
+func (ts *TimeSeries) SetStorage(storage Storage) {
+	ts.storage = storage
 }
 
 func (ts *TimeSeries) SetMeta(meta any) {
@@ -135,6 +172,12 @@ func (ts *TimeSeries) Interval() time.Duration {
 
 func (ts *TimeSeries) MaxCount() int {
 	return ts.maxCount
+}
+
+func (ts *TimeSeries) LastBin() (TimeBin, any) {
+	tm, val := ts.Last()
+	tb := TimeBin{Time: tm, Value: val, IsNull: val == nil}
+	return tb, ts.meta
 }
 
 func (ts *TimeSeries) Last() (time.Time, Value) {
@@ -246,6 +289,18 @@ func (ts *TimeSeries) add(tm time.Time, val float64) {
 	tb := TimeBin{Time: ts.roundTime(ts.lastTime), Value: p, IsNull: p == nil}
 	if ts.lsnr != nil {
 		ts.lsnr(tb, ts.meta)
+	}
+	if ts.storage != nil {
+		var prd Product
+		if ok := ToProduct(&prd, tb, ts.meta); ok {
+			if seriesID, err := NewSeriesID(prd.SeriesID, prd.Name, prd.Period, ts.maxCount); err != nil {
+				slog.Error("Error creating series ID", "name", prd.Name, "error", err)
+			} else {
+				if err := ts.storage.Store(seriesID, prd, false); err != nil {
+					slog.Error("Error storing metric", "name", prd.Name, "error", err)
+				}
+			}
+		}
 	}
 	ts.data = append(ts.data, tb)
 	ts.lastTime = tm
@@ -367,6 +422,22 @@ func (ts *TimeSeries) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (ts *TimeSeries) Restore(storage Storage, metricName string, series SeriesID) error {
+	if data, err := storage.Load(series, metricName); err != nil {
+		slog.Error("Failed to load time series", "metric", metricName, "series", series.ID(), "error", err)
+	} else if len(data) > 0 {
+		// if file is not exists, data will be nil
+		ts.data = FromProduct(data)
+		//
+		// TODO: if the last data point is the same period as now,
+		// restore the inflight TimeBin
+		//
+		ts.lastTime = data[len(data)-1].Time
+	}
+
+	return nil
+}
+
 type MultiTimeSeries []*TimeSeries
 
 func (mts MultiTimeSeries) Add(v float64) {
@@ -378,6 +449,12 @@ func (mts MultiTimeSeries) Add(v float64) {
 func (mts MultiTimeSeries) AddTime(t time.Time, v float64) {
 	for _, ts := range mts {
 		ts.AddTime(t, v)
+	}
+}
+
+func (mts MultiTimeSeries) SetStorage(storage Storage) {
+	for _, ts := range mts {
+		ts.SetStorage(storage)
 	}
 }
 

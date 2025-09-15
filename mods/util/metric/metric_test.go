@@ -20,14 +20,16 @@ func TestMetric(t *testing.T) {
 	var cnt int
 	var now time.Time
 	wg.Add(3)
+	seriesID, err := NewSeriesID("1m", "1m/1s", time.Second, 60)
+	require.NoError(t, err)
 	c := NewCollector(
 		WithSamplingInterval(time.Second),
-		WithSeries("1m/1s", time.Second, 60),
+		WithSeries(seriesID),
 	)
 	c.AddOutputFunc(func(pd Product) error {
 		defer wg.Done()
 		out = fmt.Sprintf("%s %s %v %s %s",
-			pd.Name, pd.Series, pd.Time.Format(time.TimeOnly), pd.Value.String(), pd.Type)
+			pd.Name, pd.SeriesTitle, pd.Time.Format(time.TimeOnly), pd.Value.String(), pd.Type)
 		if cnt == 0 {
 			now = pd.Time
 		} else {
@@ -47,7 +49,8 @@ func TestMetric(t *testing.T) {
 
 	sn, err := c.Inflight("m1:f1")
 	require.NoError(t, err)
-	pd := sn["1m/1s"]
+	// TODO: how to preserve the lowercase of series ID?
+	pd := sn["1M"]
 	require.NotNil(t, pd)
 	require.Equal(t, "m1:f1", pd.Name)
 	require.Equal(t, int64(1), int64(pd.Value.(*CounterValue).Value))

@@ -16,6 +16,15 @@
             if (!s) return s;
             return s.replace(/(\.00|\.0|(\.\d)0)$/g, '$2');
         }
+        function numberFormat(value, precision = 6) {
+            const [intPart, decPart] = value.toString().split(".");
+            const intWithComma = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            if (decPart) {
+                const roundedDec = Math.round(Number("0." + decPart) * Math.pow(10, precision)).toString().padStart(precision, "0");
+                return intWithComma + "." + roundedDec.replace(/0+$/, ""); // trim trailing zeros
+            }
+            return intWithComma;
+        }
         function bytesFormatterYAxis(value, dataIndex) { return bytesFormatter0(value, dataIndex, true); }
         function bytesFormatter(value, dataIndex) { return bytesFormatter0(value, dataIndex, false); }
         function bytesFormatter0(value, dataIndex, forYAxis) {
@@ -51,7 +60,7 @@
         function percentFormatter(value, dataIndex) { return percentFormatter0(value, dataIndex, false); }
         function percentFormatter0(value, dataIndex, yAxis) {
             if( value == null || (Array.isArray(value) && value.length == 0)) return null;
-            let lbl = value.toFixed(2);
+            let lbl = numberFormat(value, 3);
             if (yAxis) {
                 lbl = trimRight(lbl);
             }
@@ -74,7 +83,7 @@
                 lbl = trimRight(lbl);
                 return lbl + ' ' + sizes[i];
             } else {
-                return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                return numberFormat(value, 3);
             }
         }
         function setFormatter(opt, meta) {
