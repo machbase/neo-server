@@ -27,6 +27,9 @@ jobs:
        NTF_MQTT_PORT: "15658"
        NTF_HTTP_PORT: "15659"
        NTF_GRPC_PORT: "15660"
+       NTF_MYSQL_PORT: "9000"
+       NTF_MSSQL_PORT: "9001"
+       NTF_POSTGRES_PORT: "9002"
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
