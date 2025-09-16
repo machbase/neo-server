@@ -20,7 +20,7 @@ func TestMetric(t *testing.T) {
 	var cnt int
 	var now time.Time
 	wg.Add(3)
-	seriesID, err := NewSeriesID("1m", "1m/1s", time.Second, 60)
+	seriesID, err := NewSeriesID("MET_1M", "1m/1s", time.Second, 60)
 	require.NoError(t, err)
 	c := NewCollector(
 		WithSamplingInterval(time.Second),
@@ -50,7 +50,7 @@ func TestMetric(t *testing.T) {
 	sn, err := c.Inflight("m1:f1")
 	require.NoError(t, err)
 	// TODO: how to preserve the lowercase of series ID?
-	pd := sn["1M"]
+	pd := sn["MET_1M"]
 	require.NotNil(t, pd)
 	require.Equal(t, "m1:f1", pd.Name)
 	require.Equal(t, int64(1), int64(pd.Value.(*CounterValue).Value))
