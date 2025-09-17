@@ -1,7 +1,6 @@
 package metric
 
 import (
-	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -140,7 +139,7 @@ func (f *filterList) Match(s string) bool {
 			// so that pattern disk:*:used_percent can match
 			normalized = strings.Map(func(r rune) rune {
 				switch r {
-				case os.PathSeparator:
+				case '/':
 					return '_'
 				default:
 					return r

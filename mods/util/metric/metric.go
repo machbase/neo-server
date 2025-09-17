@@ -81,7 +81,7 @@ func TimerType() Type {
 	}
 }
 
-// OdometerType supports: first, last, diff, non-negative-diff, abs-diff
+// OdometerType supports: first, last, diff, non_negative_diff, abs_diff
 func OdometerType(u Unit) Type {
 	return Type{
 		p: func() Producer { return NewOdometer() },
