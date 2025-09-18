@@ -391,7 +391,9 @@ func ListRollupGapWalk(ctx context.Context, conn Conn, callback func(*RollupGapI
 		V$STORAGE_TAG_TABLES B,
 		V$ROLLUP C
 	WHERE
-		A.ID=B.ID
+		A.DATABASE_ID=C.DATABASE_ID
+	AND A.DATABASE_ID=-1
+	AND	A.ID=B.ID
 	AND A.NAME=C.SOURCE_TABLE
 	ORDER BY SRC_TABLE`)
 
