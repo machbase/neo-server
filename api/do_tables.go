@@ -379,6 +379,51 @@ func ListLsmIndexesWalk(ctx context.Context, conn Conn, callback func(*LsmIndexI
 }
 
 func ListRollupGapWalk(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
+	r := conn.QueryRow(ctx, "SELECT count(DATABASE_ID) FROM V$ROLLUP")
+	if err := r.Err(); err != nil && strings.Contains(err.Error(), "DATABASE_ID") {
+		// neo version < 8.0.60 (19 Sep 2025) does not have DATABASE_ID column in V$ROLLUP
+		listRollupGapWalk_pre_8_0_60(ctx, conn, callback)
+	} else {
+		listRollupGapWalk_since_8_0_60(ctx, conn, callback)
+	}
+}
+
+func listRollupGapWalk_pre_8_0_60(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
+	sqlText := SqlTidy(`SELECT
+		C.SOURCE_TABLE AS SRC_TABLE,
+		C.ROLLUP_TABLE,
+		B.TABLE_END_RID AS SRC_END_RID,
+		C.END_RID AS ROLLUP_END_RID,
+		B.TABLE_END_RID - C.END_RID AS GAP,
+		C.LAST_ELAPSED_MSEC AS LAST_ELAPSED
+	FROM
+		M$SYS_TABLES A,
+		V$STORAGE_TAG_TABLES B,
+		V$ROLLUP C
+	WHERE
+		A.ID=B.ID
+	AND A.NAME=C.SOURCE_TABLE
+	ORDER BY SRC_TABLE`)
+
+	rows, err := conn.Query(ctx, sqlText)
+	if err != nil {
+		callback(&RollupGapInfo{err: err})
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		rec := &RollupGapInfo{}
+		var lastElapsedMs float64
+		rec.err = rows.Scan(&rec.SrcTable, &rec.RollupTable, &rec.SrcEndRID, &rec.RollupEndRID, &rec.Gap, &lastElapsedMs)
+		rec.LastElapsed = time.Duration(lastElapsedMs) * time.Millisecond
+		if !callback(rec) {
+			return
+		}
+	}
+}
+
+func listRollupGapWalk_since_8_0_60(ctx context.Context, conn Conn, callback func(*RollupGapInfo) bool) {
 	sqlText := SqlTidy(`SELECT
 		C.SOURCE_TABLE AS SRC_TABLE,
 		C.ROLLUP_TABLE,
