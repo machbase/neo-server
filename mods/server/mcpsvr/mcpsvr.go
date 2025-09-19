@@ -1,19 +1,14 @@
 package mcpsvr
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 )
 
 type MCPServer struct {
-	conf      MCPServerConfig
-	confTime  time.Time
 	mcpServer *server.MCPServer
 	sseServer *server.SSEServer
 }
@@ -44,86 +39,15 @@ func NewMCPServer() *MCPServer {
 	return ret
 }
 
-func (ms *MCPServer) ReloadTools() error {
-	// tool description
-	var config MCPServerConfig
-	confDir := "."
-	if dir, err := os.UserHomeDir(); err == nil {
-		confDir = filepath.Join(dir, ".config", "machbase")
-	} else {
-		fmt.Printf("Warning: Unable to get user home directory, using current directory for config: %v\n", err)
-	}
-	confFile := filepath.Join(confDir, "mcp_server.json")
+var registeredTools = []server.ServerTool{}
 
-regen:
-	if stat, err := os.Stat(confFile); os.IsNotExist(err) {
-		fmt.Printf("Warning: MCP server config file not found at %s, using default configuration\n", confFile)
-		config = MCPServerConfig{
-			Version: MCPServerConfigVersion,
-			Tools:   map[string]MCPServerToolConfig{},
-		}
-		for _, tool := range tools {
-			config.Tools[tool.Tool.Name] = MCPServerToolConfig{
-				Description: tool.Tool.Description,
-				Inputs:      map[string]string{},
-			}
-			for name, v := range tool.Tool.InputSchema.Properties {
-				desc, ok := v.(map[string]any)["description"]
-				if ok {
-					config.Tools[tool.Tool.Name].Inputs[name] = desc.(string)
-				}
-			}
-		}
-		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			fmt.Printf("Error creating config file: %v\n", err)
-			return nil
-		}
-		defer file.Close()
-		// Write default config to file
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(&config); err != nil {
-			fmt.Printf("Error encoding config file: %v\n", err)
-			return nil
-		}
-		ms.confTime = time.Now()
-	} else {
-		if stat.ModTime().Equal(ms.confTime) {
-			return nil // No changes
-		}
-		ms.confTime = stat.ModTime()
-		file, err := os.Open(confFile)
-		if err != nil {
-			fmt.Printf("Error opening config file: %v\n", err)
-			return nil
-		}
-		defer file.Close()
-		decoder := json.NewDecoder(file)
-		if err := decoder.Decode(&config); err != nil {
-			fmt.Printf("Error decoding config file: %v\n", err)
-			return nil
-		}
-		if config.Version != MCPServerConfigVersion {
-			// Create backup filename with timestamp
-			dir := filepath.Dir(confFile)
-			base := filepath.Base(confFile)
-			ext := filepath.Ext(base)
-			name := base[:len(base)-len(ext)]
-			timestamp := time.Now().Format("20060102_150405")
-			bakFile := filepath.Join(dir, fmt.Sprintf("%s_%s%s", name, timestamp, ext))
-			os.Rename(confFile, bakFile)
-			goto regen
-		}
-	}
-	ms.conf = config
-	for _, tool := range tools {
-		if desc, ok := config.Tools[tool.Tool.Name]; ok {
-			tool.Tool.Description = desc.Description
-		}
-	}
+func RegisterTools(ts ...server.ServerTool) {
+	registeredTools = append(registeredTools, ts...)
+}
+
+func (ms *MCPServer) ReloadTools() error {
 	// Set a tool
-	ms.mcpServer.SetTools(tools...)
+	ms.mcpServer.SetTools(registeredTools...)
 	return nil
 }
 

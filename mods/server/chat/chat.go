@@ -74,7 +74,8 @@ func ChatSSEHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Warning: LLM config file not found at %s, using default configuration\n", confFile)
 		config = LLMConfig{
 			MCPSSEEndpoint: "http://127.0.0.1:5654/db/mcp/sse",
-			OllamaUrl:      "http://127.0.0.1:11434",
+			Claude:         LLMClaudeConfig{Key: ""},
+			Ollama:         LLMOllamaConfig{Url: "http://127.0.0.1:11434"},
 			ChatModel:      "deepseek-r1:8b",
 			ToolModel:      "qwen3:0.6b",
 			ToolMessages: []LLMToolMessage{
