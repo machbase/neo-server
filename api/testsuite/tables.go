@@ -345,13 +345,11 @@ func InsertAndQuery(t *testing.T, db api.Database, ctx context.Context) {
 	require.Equal(t, int64(1), tagStat.RowCount)
 
 	// delete test data
-	// TODO: delete test data with BIND variable tag name
-	result = conn.Exec(ctx, `delete from tag_data where name = 'insert-once'`)
+	result = conn.Exec(ctx, `delete from tag_data where name = ?`, "insert-once")
 	require.NoError(t, result.Err(), "delete fail")
 	require.Equal(t, int64(1), result.RowsAffected())
 
-	// TODO: delete test data with BIND variable tag name
-	result = conn.Exec(ctx, `delete from tag_data where name = 'insert-twice'`)
+	result = conn.Exec(ctx, `delete from tag_data where name = ?`, "insert-twice")
 	require.NoError(t, result.Err(), "delete fail")
 	require.Equal(t, int64(1), result.RowsAffected())
 }
