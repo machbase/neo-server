@@ -60,21 +60,27 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 	client := anthropic.NewClient(
 		option.WithAPIKey(d.conf.Claude.Key),
 	)
-	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeSonnet4_20250514,
-		MaxTokens: 1024,
-		System: []anthropic.TextBlockParam{
-			{Text: `당신은 한국어로 대화하는 친근한 Machbase Neo DB의 AI 어시스턴트입니다.
-			답변에 대한 규칙은 아래와 같습니다.
-			1. 응답 전체를 무조건 순수한 JSON 형식으로만 답변.
-			2. 마크다운 코드블록 사용 금지.`},
-		},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(d.userMessage)),
-		},
+	request := anthropic.MessageNewParams{
+		Model:      anthropic.ModelClaudeSonnet4_20250514,
+		MaxTokens:  1024,
 		Tools:      ConvertToClaudeTools(tools.Tools),
 		ToolChoice: anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}},
-	})
+	}
+	systemMessages := []anthropic.TextBlockParam{
+		{Text: `당신은 한국어로 대화하는 친근한 Machbase Neo DB의 AI 어시스턴트입니다.
+답변에 대한 규칙은 아래와 같습니다.
+1. 응답 전체를 무조건 순수한 JSON 형식으로만 답변.
+2. 마크다운 코드블록 사용 금지.`},
+	}
+	requestMessages := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(d.userMessage)),
+	}
+
+repeat:
+	request.System = systemMessages
+	request.Messages = requestMessages
+
+	message, err := client.Messages.New(ctx, request)
 	if err != nil {
 		fmt.Println("Error creating message:", err)
 		d.SendError("😡 Failed to accumulate message: %v\n", err)
@@ -89,11 +95,50 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 		d.log.Debug("Claude response:", buf.String())
 	}
 	d.SendMessage("Claude response: \n")
-	for _, block := range message.Content {
-		switch block := block.AsAny().(type) {
+	switch message.StopReason {
+	default:
+	// case anthropic.StopReasonEndTurn:
+	// case anthropic.StopReasonMaxTokens:
+	// case anthropic.StopReasonStopSequence:
+	// case anthropic.StopReasonPauseTurn:
+	// case anthropic.StopReasonRefusal:
+	case anthropic.StopReasonToolUse:
+		content, callId, callResult := d.handleToolUse(ctx, message, mcpClient)
+		requestMessages = append(requestMessages, anthropic.MessageParam{
+			Role: anthropic.MessageParamRoleAssistant,
+			Content: []anthropic.ContentBlockParamUnion{
+				{
+					OfText: &anthropic.TextBlockParam{Text: content},
+				},
+			},
+		})
+		requestMessages = append(requestMessages, anthropic.MessageParam{
+			Role: anthropic.MessageParamRoleUser,
+			Content: []anthropic.ContentBlockParamUnion{
+				{
+					OfToolResult: &anthropic.ToolResultBlockParam{
+						ToolUseID: callId,
+						Content: []anthropic.ToolResultBlockParamContentUnion{
+							{
+								OfText: &anthropic.TextBlockParam{Text: callResult},
+							},
+						},
+					},
+				},
+			},
+		})
+		// go back to repeat
+		goto repeat
+	}
+}
+
+func (d *LLMDialog) handleToolUse(ctx context.Context, message *anthropic.Message, mcpClient *client.Client) (content string, toolUseId string, toolResult string) {
+	for _, contentBlock := range message.Content {
+		switch block := contentBlock.AsAny().(type) {
 		default:
 			fmt.Printf("😡 Unhandled block type from Claude: %#v\n", block)
 		case anthropic.TextBlock:
+			content = block.Text
 			d.SendMessage(fmt.Sprintf("📝 Claude message:\n<pre>%s</pre>\n", block.Text))
 		case anthropic.ToolUseBlock:
 			// 🖐️ Call the mcp server
@@ -116,12 +161,15 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 				switch c := content.(type) {
 				case mcp.TextContent:
 					d.SendMessage("<pre>" + c.Text + "</pre>\n")
+					toolUseId = contentBlock.ToolUseID
+					toolResult = c.Text
 				default:
 					d.SendError("😡 Unhandled content type from tool: %#v\n", c)
 				}
 			}
 		}
 	}
+	return
 }
 
 type ClaudeRequest struct {
