@@ -281,6 +281,8 @@ func QueryStatzRows(interval time.Duration, rowsCount int, filter func(key strin
 					ret.Rows[i].Values[colIdxOffset] = prd.Last
 				case *metric.HistogramValue:
 					ret.Rows[i].Values[colIdxOffset] = prd.Values[0]
+				case *metric.OdometerValue:
+					ret.Rows[i].Values[colIdxOffset] = prd.Diff()
 				default:
 					fmt.Printf("unknown metric type:%#v\n", prd)
 				}
