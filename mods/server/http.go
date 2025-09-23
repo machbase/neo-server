@@ -381,6 +381,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.Any("/chat/ui/*path", gin.WrapH(chat.ChatDirHandler()))
 			group.Any("/chat/sse", gin.WrapF(chat.ChatSSEHandler))
 			group.POST("/chat/message", gin.WrapF(chat.ChatMessageHandler))
+			group.GET("/chat/models", gin.WrapF(chat.ChatModelsHandler))
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

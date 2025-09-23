@@ -5,7 +5,8 @@ window.llmChatConfig = {
         baseUrl: 'http://127.0.0.1:5654',
         chatPath: '/db/chat',
         sseEndpoint: '/sse',
-        messageEndpoint: '/message'
+        messageEndpoint: '/message',
+        modelsEndpoint: '/models'
     },
     
     // 채팅 설정

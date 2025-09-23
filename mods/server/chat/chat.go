@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +27,7 @@ type Message struct {
 			Message   string              `json:"message"`
 			History   []map[string]string `json:"history"`
 			SessionId string              `json:"sessionId"`
+			Model     string              `json:"model"`
 		} `json:"arguments"`
 	} `json:"params"`
 }
@@ -61,69 +59,10 @@ func ChatSSEHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	// LLMConfig
-	var config LLMConfig
-
-	confDir := "."
-	if dir, err := os.UserHomeDir(); err == nil {
-		confDir = filepath.Join(dir, ".config", "machbase")
-	} else {
-		fmt.Printf("Warning: Unable to get user home directory, using current directory for config: %v\n", err)
-	}
-	confFile := filepath.Join(confDir, "llm_config.json")
-	if _, err := os.Stat(confFile); os.IsNotExist(err) {
-		fmt.Printf("Warning: LLM config file not found at %s, using default configuration\n", confFile)
-		config = LLMConfig{
-			MCPSSEEndpoint: "http://127.0.0.1:5654/db/mcp/sse",
-			Claude:         LLMClaudeConfig{Key: ""},
-			Ollama:         LLMOllamaConfig{Url: "http://127.0.0.1:11434"},
-			ChatModel:      "deepseek-r1:8b",
-			ToolModel:      "qwen3:0.6b",
-			ToolMessages: []LLMToolMessage{
-				{
-					Role:    "system",
-					Content: "You are a database that executes SQL statement and return the results.",
-				},
-			},
-		}
-		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error creating config file: %v", err), http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
-		// Write default config to file
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(&config); err != nil {
-			http.Error(w, fmt.Sprintf("Error encoding config file: %v", err), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		file, err := os.Open(confFile)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error opening config file: %v", err), http.StatusInternalServerError)
-			return
-		}
-		defer file.Close()
-		decoder := json.NewDecoder(file)
-		if err := decoder.Decode(&config); err != nil {
-			http.Error(w, fmt.Sprintf("Error decoding config file: %v", err), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	for i, m := range config.ToolMessages {
-		if strings.HasPrefix(m.Content, "@") {
-			// Load tool message from file
-			filePath := strings.TrimPrefix(m.Content, "@")
-			filePath = filepath.Join(confDir, filePath)
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Error reading tool message file: %v", err), http.StatusInternalServerError)
-				return
-			}
-			config.ToolMessages[i].Content = string(content)
-		}
+	config, err := loadLLMConfig()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error loading LLM config: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	bot := newBot(r.Context(), sessionId, w, config)
@@ -152,10 +91,10 @@ type Bot struct {
 	w         http.ResponseWriter
 	flusher   http.Flusher
 	input     chan Message
-	config    LLMConfig
+	config    *LLMConfig
 }
 
-func newBot(ctx context.Context, sessionId string, w http.ResponseWriter, conf LLMConfig) *Bot {
+func newBot(ctx context.Context, sessionId string, w http.ResponseWriter, conf *LLMConfig) *Bot {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
@@ -194,8 +133,9 @@ func (b *Bot) exec() {
 			}
 
 			question := msg.Params.Arguments.Message
+			model := msg.Params.Arguments.Model
 
-			replyCh := ExecLLM(b.ctx, b.config, question)
+			replyCh := ExecLLM(b.ctx, b.config, model, question)
 			seq := 0
 			for reply := range replyCh {
 				if reply.IsError {

@@ -53,7 +53,7 @@ func toolMachbaseListTablesFunc(ctx context.Context, request mcp.CallToolRequest
 }
 
 var ToolGetNowHandler = server.ServerTool{
-	Tool:    mcp.NewTool("now", mcp.WithDescription("Get current time in Unix Epoch Nanosecond")),
+	Tool:    mcp.NewTool("now", mcp.WithDescription("Returns the current time as a Unix Epoch Nanosecond value")),
 	Handler: toolGetNowHandlerFunc,
 }
 
@@ -205,7 +205,6 @@ func toolExecQuerySQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 	row, err := conn.Query(ctx, query)
 	if err != nil {
-		fmt.Println("Query execution failed:", err)
 		return mcp.NewToolResultError("query execution failed: " + err.Error()), nil
 	}
 	defer row.Close()

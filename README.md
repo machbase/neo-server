@@ -63,7 +63,7 @@ docker run --rm -v ./tmp:/app/tmp -v ./packages:/app/packages centos-build-env
 
 ## Build from Sources
 
-- Install Go 1.23
+- Install Go 1.24
 - Require a C compiler and linker (e.g., gcc)
 - Checkout `machbase/neo-server`
 - Execute `go run mage.go install-neo-web` to download the web-UI package

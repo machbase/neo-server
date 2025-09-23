@@ -13,22 +13,67 @@ class ChatUI {
         this.sendButton = document.getElementById('sendButton');
         this.connectionStatus = document.getElementById('connectionStatus');
         this.typingIndicator = document.getElementById('typingIndicator');
+        this.modelSelectContainer = document.getElementById('modelSelectContainer');
+
+        // Model selector will be initialized after fetching models
+        this.modelSelector = null;
 
         //this.config.enableDebug();
 
         this.init();
     }
 
-    init() {
+    createModelSelector = function(models) {
+        const select = document.createElement('select');
+        select.id = 'modelSelector';
+        select.style.marginBottom = '8px';
+        select.style.width = '100%';
+        select.style.padding = '4px';
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.provider + ":" + model.model;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+        return select;
+    }
+
+    init = function() {
         this.setupEventListeners();
         this.connectToSSE();
         this.updateWelcomeTime();
 
         // auto resize
         this.chatInput.addEventListener('input', this.autoResize.bind(this));
+
+        // Fetch models from /chat/models and initialize selector
+        this.fetchModelsAndInitSelector();
     }
 
-    setupEventListeners() {
+    fetchModelsAndInitSelector = async function() {
+        try {
+            const fetchUrl = this.config.getFullUrl(this.config.server.modelsEndpoint)
+            const response = await fetch(fetchUrl, { method: 'GET' });
+            if (!response.ok) throw new Error('Failed to fetch models');
+            const data = await response.json();
+            const models = (data && data.data && data.data.models) ? data.data.models : [];
+            this.modelSelector = this.createModelSelector(models);
+            this.modelSelectContainer.innerHTML = '';
+            this.modelSelectContainer.appendChild(this.modelSelector);
+        } catch (err) {
+            console.error('Error fetching models:', err);
+            // fallback to default models if fetch fails
+            const fallbackModels = [
+                { name: 'claude:sonnet-4-20250514' },
+                { name: 'ollama:qwen3:0.6b' },
+            ];
+            this.modelSelector = this.createModelSelector(fallbackModels);
+            this.modelSelectContainer.innerHTML = '';
+            this.modelSelectContainer.appendChild(this.modelSelector);
+        }
+    }
+
+    setupEventListeners = function() {
         // click send button
         this.sendButton.addEventListener('click', () => this.sendMessage());
 
@@ -48,12 +93,12 @@ class ChatUI {
         });
     }
 
-    autoResize() {
+    autoResize = function() {
         this.chatInput.style.height = 'auto';
         this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 100) + 'px';
     }
 
-    generateUniqueId() {
+    generateUniqueId = function() {
         // generates UUID v4 unique id
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             const r = Math.random() * 16 | 0;
@@ -62,7 +107,7 @@ class ChatUI {
         });
     }
 
-    connectToSSE() {
+    connectToSSE = function() {
         this.updateConnectionStatus('connecting', 'Connecting...');
 
         try {
@@ -105,7 +150,7 @@ class ChatUI {
         }
     }
 
-    reconnect() {
+    reconnect = function() {
         if (this.eventSource) {
             this.eventSource.close();
         }
@@ -113,14 +158,17 @@ class ChatUI {
         this.connectToSSE();
     }
 
-    updateConnectionStatus(status, text) {
+    updateConnectionStatus = function(status, text) {
         this.connectionStatus.className = `connection-status status-${status}`;
         this.connectionStatus.textContent = text;
     }
 
-    async sendMessage() {
+    sendMessage = async function() {
         const message = this.chatInput.value.trim();
         if (!message || !this.isConnected) return;
+
+        // get selected model
+        const selectedModel = this.modelSelector.value;
 
         // user message
         this.addMessage('user', message);
@@ -135,7 +183,7 @@ class ChatUI {
             // message endpoint
             const messageUrl = this.config.getFullUrl(this.config.server.messageEndpoint)
 
-            this.log('Send:', messageUrl, message);
+            this.log('Send:', messageUrl, message, 'model:', selectedModel);
 
             const response = await fetch(messageUrl, {
                 method: 'POST',
@@ -149,7 +197,8 @@ class ChatUI {
                         arguments: {
                             message: message,
                             history: this.conversationHistory,
-                            sessionId: this.sessionId
+                            sessionId: this.sessionId,
+                            model: selectedModel
                         }
                     }
                 })
@@ -168,7 +217,7 @@ class ChatUI {
         }
     }
 
-    handleSSEMessage(event) {
+    handleSSEMessage = function(event) {
         try {
             const data = JSON.parse(event.data);
             if (data.type === 'response' && data.content) {
@@ -193,7 +242,7 @@ class ChatUI {
         }
     }
 
-    addMessage(sender, content) {
+    addMessage = function(sender, content) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}`;
 
@@ -224,19 +273,19 @@ class ChatUI {
         }
     }
 
-    log(...args) {
+    log = function(...args) {
         if (this.config.debug?.enableChatLog) {
             console.log('[Chat]', ...args);
         }
     }
 
-    logSSE(...args) {
+    logSSE = function(...args) {
         if (this.config.debug?.showSSEMessages) {
             console.log('[SSE]', ...args);
         }
     }
 
-    addErrorMessage(message) {
+    addErrorMessage = function(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.textContent = message;
@@ -244,7 +293,7 @@ class ChatUI {
         this.scrollToBottom();
     }
 
-    formatMessage(content) {
+    formatMessage = function(content) {
         // simple markdown-like formatting
         return content
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -253,19 +302,19 @@ class ChatUI {
             .replace(/\n/g, '<br>');
     }
 
-    isTypingIndicatorVisible() {
+    isTypingIndicatorVisible = function() {
         return this.typingIndicator.classList.contains('show');
     }
-    showTypingIndicator() {
+    showTypingIndicator = function() {
         this.typingIndicator.classList.add('show');
         this.scrollToBottom();
     }
 
-    hideTypingIndicator() {
+    hideTypingIndicator = function() {
         this.typingIndicator.classList.remove('show');
     }
 
-    updateStreamingMessage(delta) {
+    updateStreamingMessage = function(delta) {
         // update streaming message (update the end of the last message)
         const messages = this.chatMessages.querySelectorAll('.message.assistant');
         if (messages.length > 0) {
@@ -278,11 +327,11 @@ class ChatUI {
         this.scrollToBottom();
     }
 
-    scrollToBottom() {
+    scrollToBottom = function() {
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
 
-    updateWelcomeTime() {
+    updateWelcomeTime = function() {
         const welcomeTime = document.getElementById('welcomeTime');
         const welcomeMessage = document.getElementById('welcomeMessage');
 

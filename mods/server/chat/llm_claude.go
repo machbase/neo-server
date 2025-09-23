@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,118 +8,125 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type LLMClaudeConfig struct {
-	Key string `json:"key"`
+	Key            string   `json:"key"`
+	MaxTokens      int64    `json:"max_tokens"`
+	SystemMessages []string `json:"system_messages,omitempty"`
 }
 
 func (d *LLMDialog) execClaude(ctx context.Context) {
-	mcpClient, err := client.NewSSEMCPClient(d.conf.MCPSSEEndpoint)
-	if err != nil {
-		d.SendError("Failed to create mcp client: %v", err)
-		return
-	}
-	if err = mcpClient.Start(ctx); err != nil {
-		d.SendError("Failed to start mcp client: %v", err)
-		return
-	}
-	defer mcpClient.Close()
-
-	// Initialize the request
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "neo-mcp client",
-		Version: "0.0.1",
-	}
-
-	// Initialize the client
-	initResult, err := mcpClient.Initialize(ctx, initRequest)
-	if err != nil {
-		d.SendError("Failed to initialize mcp client: %v", err)
-		return
-	}
-	d.SendMessage("🌍 MCP Server Info: %s %s\n", initResult.ServerInfo.Name, initResult.ServerInfo.Version)
-
-	d.SendMessage("Use claude model\n")
-
-	// Get the list of tools
-	toolsRequest := mcp.ListToolsRequest{}
-	tools, err := mcpClient.ListTools(ctx, toolsRequest)
-	if err != nil {
-		d.SendError("Failed to list tools: %v", err)
-		return
-	}
-
-	// Have a "tool chat"
-	// Prompt construction
-	client := anthropic.NewClient(
+	claudeClient := anthropic.NewClient(
 		option.WithAPIKey(d.conf.Claude.Key),
 	)
-	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeSonnet4_20250514,
-		MaxTokens: 1024,
-		System: []anthropic.TextBlockParam{
-			{Text: `당신은 한국어로 대화하는 친근한 Machbase Neo DB의 AI 어시스턴트입니다.
-			답변에 대한 규칙은 아래와 같습니다.
-			1. 응답 전체를 무조건 순수한 JSON 형식으로만 답변.
-			2. 마크다운 코드블록 사용 금지.`},
-		},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(anthropic.NewTextBlock(d.userMessage)),
-		},
-		Tools:      ConvertToClaudeTools(tools.Tools),
-		ToolChoice: anthropic.ToolChoiceUnionParam{OfAuto: &anthropic.ToolChoiceAutoParam{}},
-	})
-	if err != nil {
-		fmt.Println("Error creating message:", err)
-		d.SendError("😡 Failed to accumulate message: %v\n", err)
+
+	var toolParams []anthropic.ToolUnionParam
+	if tools, err := d.ListTools(ctx); err != nil {
+		d.SendError("Failed to list tools: %v", err)
 		return
+	} else {
+		toolParams = ConvertToClaudeTools(tools.Tools)
 	}
-	if d.log.DebugEnabled() {
-		buf := &bytes.Buffer{}
-		enc := json.NewEncoder(buf)
-		enc.SetIndent("", "  ")
-		enc.Encode(message)
-		d.log.Debug("User message:", d.userMessage)
-		d.log.Debug("Claude response:", buf.String())
+
+	claudeModel := anthropic.ModelClaudeSonnet4_20250514
+	if d.model != "" {
+		claudeModel = anthropic.Model(d.model)
 	}
-	d.SendMessage("Claude response: \n")
-	for _, block := range message.Content {
-		switch block := block.AsAny().(type) {
-		default:
-			fmt.Printf("😡 Unhandled block type from Claude: %#v\n", block)
-		case anthropic.TextBlock:
-			d.SendMessage(fmt.Sprintf("📝 Claude message:\n<pre>%s</pre>\n", block.Text))
-		case anthropic.ToolUseBlock:
-			// 🖐️ Call the mcp server
-			inputJSON, _ := json.Marshal(block.Input)
-			d.SendMessage("🛠️ Claude Tool - %q\n<pre>%s</pre>\n", block.Name, inputJSON)
 
-			fetchRequest := mcp.CallToolRequest{}
-			fetchRequest.Request.Method = "tools/call"
-			fetchRequest.Params.Name = block.Name
-			fetchRequest.Params.Arguments = block.Input
+	// System messages
+	systems := []anthropic.TextBlockParam{}
+	for _, msg := range d.conf.Claude.SystemMessages {
+		systemMessage := anthropic.TextBlockParam{
+			Text: msg,
+		}
+		systems = append(systems, systemMessage)
+	}
 
-			result, err := mcpClient.CallTool(ctx, fetchRequest)
-			if err != nil {
-				d.SendError("😡 Failed to call tool: %v", err)
-				continue
+	// User message
+	messages := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(d.userMessage)),
+	}
+
+	for {
+		stream := claudeClient.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+			Model:     claudeModel,
+			MaxTokens: d.conf.Claude.MaxTokens,
+			System:    systems,
+			Messages:  messages,
+			Tools:     toolParams,
+		})
+
+		message := anthropic.Message{}
+		for stream.Next() {
+			event := stream.Current()
+			if err := message.Accumulate(event); err != nil {
+				d.SendError("😡 Failed to accumulate message: %v\n", err)
+				return
 			}
-			// display the text content of result
-			d.SendMessage("🧾 call result:\n")
-			for _, content := range result.Content {
-				switch c := content.(type) {
-				case mcp.TextContent:
-					d.SendMessage("<pre>" + c.Text + "</pre>\n")
-				default:
-					d.SendError("😡 Unhandled content type from tool: %#v\n", c)
+			switch event := event.AsAny().(type) {
+			case anthropic.ContentBlockStartEvent:
+				// Start of a new content block
+				if event.ContentBlock.Name != "" {
+					d.Send(LLMMessage{Content: fmt.Sprintf("%s: ", event.ContentBlock.Name), IsPartial: true})
 				}
+			case anthropic.ContentBlockDeltaEvent:
+				// Partial content block
+				d.Send(LLMMessage{Content: event.Delta.Text, IsPartial: true})
+				d.Send(LLMMessage{Content: event.Delta.PartialJSON, IsPartial: true})
+			case anthropic.ContentBlockStopEvent:
+				// End of a content block
+				d.Send(LLMMessage{Content: "\n"})
+			case anthropic.MessageStopEvent:
+				// End of the message
+				d.Send(LLMMessage{Content: "\n"})
 			}
 		}
+
+		if stream.Err() != nil {
+			d.SendError("😡 Stream error: %v\n", stream.Err())
+			return
+		}
+
+		messages = append(messages, message.ToParam())
+		toolResults := []anthropic.ContentBlockParamUnion{}
+
+		for _, block := range message.Content {
+			switch variant := block.AsAny().(type) {
+			case anthropic.ToolUseBlock:
+				inputJSON, _ := json.Marshal(variant.JSON.Input.Raw())
+				d.Send(LLMMessage{Content: fmt.Sprintf(" 🛠️ Tool %q <code>%s</code>", block.Name, inputJSON), IsPartial: true})
+
+				fetchRequest := mcp.CallToolRequest{}
+				fetchRequest.Request.Method = "tools/call"
+				fetchRequest.Params.Name = block.Name
+				fetchRequest.Params.Arguments = block.Input
+
+				result, err := d.CallTool(ctx, fetchRequest)
+				if err != nil {
+					d.SendError("😡 Failed to call tool: %v", err)
+					continue
+				}
+
+				var callResult string
+				for _, content := range result.Content {
+					switch c := content.(type) {
+					case mcp.TextContent:
+						callResult = c.Text
+						d.Send(LLMMessage{Content: fmt.Sprintf("\nCallResult:\n<code>%s</code>", callResult), IsPartial: true})
+					default:
+						d.SendError("😡 Unhandled content type from tool: %#v\n", c)
+					}
+				}
+				d.Send(LLMMessage{Content: "\n", IsPartial: true})
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID, callResult, result.IsError))
+			}
+		}
+		if len(toolResults) == 0 {
+			break
+		}
+		messages = append(messages, anthropic.NewUserMessage(toolResults...))
 	}
 }
 

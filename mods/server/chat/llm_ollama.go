@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ollama/ollama/api"
 )
 
 type LLMOllamaConfig struct {
-	Url string `json:"url"`
+	Url            string   `json:"url"`
+	SystemMessages []string `json:"system_messages,omitempty"`
 }
 
 func (d *LLMDialog) execOllama(ctx context.Context) {
@@ -21,36 +21,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 		Timeout: 0,
 	})
 
-	mcpClient, err := client.NewSSEMCPClient(d.conf.MCPSSEEndpoint)
-	if err != nil {
-		d.SendError("Failed to create mcp client: %v", err)
-		return
-	}
-	if err = mcpClient.Start(ctx); err != nil {
-		d.SendError("Failed to start mcp client: %v", err)
-		return
-	}
-	defer mcpClient.Close()
-
-	// Initialize the request
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "neo-mcp client",
-		Version: "0.0.1",
-	}
-
-	// Initialize the client
-	initResult, err := mcpClient.Initialize(ctx, initRequest)
-	if err != nil {
-		d.SendError("Failed to initialize mcp client: %v", err)
-		return
-	}
-	d.SendMessage("🌍 MCP Server Info: %s %s\n", initResult.ServerInfo.Name, initResult.ServerInfo.Version)
-
-	// Get the list of tools
-	toolsRequest := mcp.ListToolsRequest{}
-	tools, err := mcpClient.ListTools(ctx, toolsRequest)
+	tools, err := d.ListTools(ctx)
 	if err != nil {
 		d.SendError("Failed to list tools: %v", err)
 		return
@@ -63,11 +34,10 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 	// Prompt construction
 	messages := []api.Message{}
 
-	for _, toolMessage := range d.conf.ToolMessages {
+	for _, toolMessage := range d.conf.Ollama.SystemMessages {
 		messages = append(messages, api.Message{
-			Role:     toolMessage.Role,
-			Content:  toolMessage.Content,
-			Thinking: toolMessage.Thinking,
+			Role:    "system",
+			Content: toolMessage,
 		})
 	}
 	messages = append(messages, api.Message{
@@ -77,7 +47,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 
 	var stream = true
 	req := &api.ChatRequest{
-		Model:    d.conf.ToolModel,
+		Model:    d.model, // d.conf.Ollama.ToolModel,
 		Messages: messages,
 		Options: map[string]interface{}{
 			"temperature":   0,
@@ -89,17 +59,17 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 
 	d.SendMessage("🦙 Ollama response: \n")
 	err = ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
-		d.SendMessage(html.EscapeString(resp.Message.Content))
+		d.SendMessage("%s", html.EscapeString(resp.Message.Content))
 		// Ollma tools to call
 		for _, toolCall := range resp.Message.ToolCalls {
 			// 🖐️ Call the mcp server
-			d.SendMessage("🦙🛠️ %s %s\n", toolCall.Function.Name, toolCall.Function.Arguments)
+			d.SendMessage("🦙🛠️ %s %v\n", toolCall.Function.Name, toolCall.Function.Arguments)
 			fetchRequest := mcp.CallToolRequest{}
 			fetchRequest.Request.Method = "tools/call"
 			fetchRequest.Params.Name = toolCall.Function.Name
 			fetchRequest.Params.Arguments = toolCall.Function.Arguments
 
-			result, err := mcpClient.CallTool(ctx, fetchRequest)
+			result, err := d.CallTool(ctx, fetchRequest)
 			if err != nil {
 				d.SendError("Failed to call tool: %v", err)
 			}
@@ -108,7 +78,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 			for _, content := range result.Content {
 				switch c := content.(type) {
 				case mcp.TextContent:
-					d.SendMessage(html.EscapeString(c.Text))
+					d.SendMessage("%s", html.EscapeString(c.Text))
 				default:
 					d.SendError("😡 Unhandled content type from tool: %#v", c)
 				}
