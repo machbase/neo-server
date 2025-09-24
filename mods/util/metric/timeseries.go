@@ -23,11 +23,12 @@ func (tv TimeBin) String() string {
 }
 
 func (tv TimeBin) MarshalJSON() ([]byte, error) {
+	ts := tv.Time.UnixNano()
 	if ((any)(tv.Value)) == nil {
-		return []byte(fmt.Sprintf(`{"ts":%d,"isNull":%t}`, tv.Time.UnixNano(), tv.IsNull)), nil
+		return []byte(fmt.Sprintf(`{"ts":%d,"isNull":%t}`, ts, tv.IsNull)), nil
 	} else {
 		typ := fmt.Sprintf("%T", tv.Value)
-		return []byte(fmt.Sprintf(`{"ts":%d,"type":%q,"value":%s}`, tv.Time.UnixNano(), typ, tv.Value.String())), nil
+		return []byte(fmt.Sprintf(`{"ts":%d,"type":%q,"value":%s}`, ts, typ, tv.Value.String())), nil
 	}
 }
 
@@ -111,35 +112,50 @@ type TimeSeries struct {
 	interval time.Duration
 	maxCount int
 	meta     any // Optional metadata for the time series
-	lsnr     func(TimeBin, any)
-	storage  Storage
+	lsnr     func(Product)
+	derivers map[string]Deriver
 }
 
 // If aggregator is nil, it will replace the last point with the new one.
 // Otherwise, it will aggregate the new point with the last one when it falls within the same interval.
-func NewTimeSeries(interval time.Duration, maxCount int, prod Producer) *TimeSeries {
-	return &TimeSeries{
+func NewTimeSeries(interval time.Duration, maxCount int, prod Producer, opts ...TimeSeriesOption) *TimeSeries {
+	ret := &TimeSeries{
 		producer: prod,
 		data:     make([]TimeBin, 0, maxCount),
 		interval: interval,
 		maxCount: maxCount,
 	}
+	for _, opt := range opts {
+		opt(ret)
+	}
+	return ret
+}
+
+type TimeSeriesOption func(*TimeSeries)
+
+func WithDeriver(id string, d Deriver) TimeSeriesOption {
+	return func(ts *TimeSeries) {
+		if ts.derivers == nil {
+			ts.derivers = make(map[string]Deriver)
+		}
+		ts.derivers[id] = d
+	}
+}
+
+func WithListener(lsnr func(Product)) TimeSeriesOption {
+	return func(ts *TimeSeries) {
+		ts.lsnr = lsnr
+	}
+}
+
+func WithMeta(meta any) TimeSeriesOption {
+	return func(ts *TimeSeries) {
+		ts.meta = meta
+	}
 }
 
 func (ts *TimeSeries) roundTime(t time.Time) time.Time {
 	return t.Add(ts.interval / 2).Round(ts.interval)
-}
-
-func (ts *TimeSeries) SetListener(listener func(TimeBin, any)) {
-	ts.lsnr = listener
-}
-
-func (ts *TimeSeries) SetStorage(storage Storage) {
-	ts.storage = storage
-}
-
-func (ts *TimeSeries) SetMeta(meta any) {
-	ts.meta = meta
 }
 
 func (ts *TimeSeries) Meta() any {
@@ -174,6 +190,29 @@ func (ts *TimeSeries) MaxCount() int {
 	return ts.maxCount
 }
 
+func (ts *TimeSeries) runDerivers(currentValue Value, preliminary bool) {
+	driving, ok := currentValue.(DerivingValue)
+	if !ok {
+		return
+	}
+	// Derive additional values
+	for id, d := range ts.derivers {
+		var values []Value
+		if ws := d.WindowSize(); ws > 0 {
+			_, values = ts.lastN(d.WindowSize() + 1)
+			if preliminary {
+				values = values[1:]
+			} else {
+				values = values[0 : len(values)-1] // Exclude the last point which is the last one which is empty.
+			}
+		} else {
+			_, values = ts.lastN(1)
+		}
+		dv := d.Derive(values)
+		driving.SetDerivedValue(id, dv)
+	}
+}
+
 func (ts *TimeSeries) LastBin() (TimeBin, any) {
 	tm, val := ts.Last()
 	tb := TimeBin{Time: tm, Value: val, IsNull: val == nil}
@@ -195,7 +234,12 @@ func (ts *TimeSeries) All() ([]time.Time, []Value) {
 func (ts *TimeSeries) LastN(n int) ([]time.Time, []Value) {
 	ts.Lock()
 	defer ts.Unlock()
+	times, values := ts.lastN(n)
+	ts.runDerivers(values[len(values)-1], true)
+	return times, values
+}
 
+func (ts *TimeSeries) lastN(n int) ([]time.Time, []Value) {
 	lt := ts.roundTime(ts.lastTime)
 	lv := ts.producer.Produce(false)
 	if n == 1 {
@@ -287,27 +331,24 @@ func (ts *TimeSeries) add(tm time.Time, val float64) {
 
 	p := ts.producer.Produce(true)
 	tb := TimeBin{Time: ts.roundTime(ts.lastTime), Value: p, IsNull: p == nil}
+
+	// Notify listener
 	if ts.lsnr != nil {
-		ts.lsnr(tb, ts.meta)
-	}
-	if ts.storage != nil {
-		var prd Product
+		prd := Product{}
 		if ok := ToProduct(&prd, tb, ts.meta); ok {
-			if seriesID, err := NewSeriesID(prd.SeriesID, prd.Name, prd.Period, ts.maxCount); err != nil {
-				slog.Error("Error creating series ID", "name", prd.Name, "error", err)
-			} else {
-				if err := ts.storage.Store(seriesID, prd, false); err != nil {
-					slog.Error("Error storing metric", "name", prd.Name, "error", err)
-				}
-			}
+			ts.lsnr(prd)
 		}
 	}
+
 	ts.data = append(ts.data, tb)
 	ts.lastTime = tm
 	if val == val { // not NaN
 		ts.producer.Add(val)
 	}
 	roll--
+
+	// Derive additional values
+	ts.runDerivers(tb.Value, false)
 
 	// Reset if the gap is too large
 	if roll >= ts.maxCount-1 {
@@ -449,12 +490,6 @@ func (mts MultiTimeSeries) Add(v float64) {
 func (mts MultiTimeSeries) AddTime(t time.Time, v float64) {
 	for _, ts := range mts {
 		ts.AddTime(t, v)
-	}
-}
-
-func (mts MultiTimeSeries) SetStorage(storage Storage) {
-	for _, ts := range mts {
-		ts.SetStorage(storage)
 	}
 }
 

@@ -44,69 +44,6 @@ type Measure struct {
 	Type  Type
 }
 
-// CounterType supports only value: sum
-func CounterType(u Unit) Type {
-	return Type{
-		p: func() Producer { return NewCounter() },
-		s: "counter",
-		u: u,
-	}
-}
-
-// GaugeType supports: avg, last
-func GaugeType(u Unit) Type {
-	return Type{
-		p: func() Producer { return NewGauge() },
-		s: "gauge",
-		u: u,
-	}
-}
-
-// MeterType supports: avg, first, last, min, max, ohlc
-// OHLC is represented as a slice of 4 values: [open, close, lowest, highest]
-func MeterType(u Unit) Type {
-	return Type{
-		p: func() Producer { return NewMeter() },
-		s: "meter",
-		u: u,
-	}
-}
-
-// TimerType supports: avg, min, max in time.Duration
-func TimerType() Type {
-	return Type{
-		p: func() Producer { return NewTimer() },
-		s: "timer",
-		u: UnitDuration,
-	}
-}
-
-// OdometerType supports: first, last, diff, non_negative_diff, abs_diff
-func OdometerType(u Unit) Type {
-	return Type{
-		p: func() Producer { return NewOdometer() },
-		s: "odometer",
-		u: u,
-	}
-}
-
-// HistogramType supports: p[1-999] percentiles e.g. p50, p90, p99
-func HistogramType(u Unit) Type {
-	return HistogramTypePercentiles(u, 100, 0.5, 0.90, 0.99)
-}
-
-// HistogramTypePercentiles supports: p[1-999] percentiles e.g. p50, p90, p99
-// maxBin is the maximum number of bins to use for the histogram.
-// ps is the list of percentiles to calculate, in the range (0, 1).
-// e.g., 0.5 for p50, 0.75 for p75, 0.9 for p90, 0.99 for p99, 0.999 for p999.
-func HistogramTypePercentiles(u Unit, maxBin int, ps ...float64) Type {
-	return Type{
-		p: func() Producer { return NewHistogram(maxBin, ps...) },
-		s: "histogram",
-		u: u,
-	}
-}
-
 type SeriesInfo struct {
 	MeasureName string   `json:"measure_name"`
 	MeasureType Type     `json:"measure_type"`
@@ -500,21 +437,28 @@ type Product struct {
 	Time        time.Time     `json:"ts"`
 	Value       Value         `json:"value,omitempty"`
 	IsNull      bool          `json:"isNull,omitempty"`
-	SeriesID    string        `json:"series_id"`
-	SeriesTitle string        `json:"series_title"`
-	Period      time.Duration `json:"period"`
-	Type        string        `json:"type"`
-	Unit        Unit          `json:"unit"`
+	SeriesID    string        `json:"series_id,omitempty"`
+	SeriesTitle string        `json:"series_title,omitempty"`
+	Period      time.Duration `json:"period,omitempty"`
+	Type        string        `json:"type,omitempty"`
+	Unit        Unit          `json:"unit,omitempty"`
 }
 
-func (c *Collector) onProduct(tb TimeBin, meta any) {
-	var prd Product
-	if ok := ToProduct(&prd, tb, meta); !ok {
-		return
-	}
+func (c *Collector) onProduct(prd Product) {
 	for _, out := range c.outputs {
 		if err := out.Process(prd); err != nil {
 			slog.Error("Error processing output", "name", prd.Name, "error", err)
+		}
+	}
+	// Store to storage
+	if c.storage != nil {
+		for _, series := range c.series {
+			if series.ID() == prd.SeriesID {
+				if err := c.storage.Store(series, prd, false); err != nil {
+					slog.Error("Error storing metric", "name", prd.Name, "error", err)
+				}
+				break
+			}
 		}
 	}
 }
@@ -522,14 +466,14 @@ func (c *Collector) onProduct(tb TimeBin, meta any) {
 func (c *Collector) makeMultiTimeSeries(measure Measure) MultiTimeSeries {
 	mts := make(MultiTimeSeries, len(c.series))
 	for i, ser := range c.series {
-		var ts = NewTimeSeries(ser.Period(), ser.MaxCount(), measure.Type.Producer())
-		ts.SetListener(c.onProduct)
-		ts.SetStorage(c.storage)
-		ts.SetMeta(SeriesInfo{
-			MeasureName: measure.Name,
-			MeasureType: measure.Type,
-			SeriesID:    ser,
-		})
+		var ts = NewTimeSeries(ser.Period(), ser.MaxCount(), measure.Type.Producer(),
+			WithListener(c.onProduct),
+			WithMeta(SeriesInfo{
+				MeasureName: measure.Name,
+				MeasureType: measure.Type,
+				SeriesID:    ser,
+			}),
+		)
 		if c.storage != nil {
 			if err := ts.Restore(c.storage, measure.Name, ser); err != nil {
 				slog.Error("Failed to restore time series", "measure", measure.Name, "series", ser.ID(), "error", err)
@@ -586,7 +530,7 @@ func (c *Collector) Series() []SeriesID {
 }
 
 // Inflight returns the current collecting data for each series of the specified measurement.
-// The key of the returned map is the series name.
+// The key of the returned map is the series id.
 // If the measurement does not exist, it returns ErrMetricNotFound.
 func (c *Collector) Inflight(measureName string) (map[string]Product, error) {
 	var mts MultiTimeSeries

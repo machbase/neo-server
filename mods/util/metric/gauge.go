@@ -74,9 +74,18 @@ type GaugeValue struct {
 	Samples int64   `json:"samples"`
 	Sum     float64 `json:"sum"`
 	Value   float64 `json:"value"`
+	// Optional derived values, such as moving averages
+	DerivedValues map[string]Value `json:"derived,omitempty"`
 }
 
 func (gp *GaugeValue) String() string {
 	b, _ := json.Marshal(gp)
 	return string(b)
+}
+
+func (cp *GaugeValue) SetDerivedValue(name string, value Value) {
+	if cp.DerivedValues == nil {
+		cp.DerivedValues = make(map[string]Value)
+	}
+	cp.DerivedValues[name] = value
 }

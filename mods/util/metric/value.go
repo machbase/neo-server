@@ -32,6 +32,11 @@ type Value interface {
 	String() string
 }
 
+type DerivingValue interface {
+	Value
+	SetDerivedValue(name string, value Value)
+}
+
 // Type is the type of the Value.
 type Type struct {
 	p func() Producer
@@ -53,6 +58,69 @@ func (ft Type) Name() string {
 
 func (ft Type) Unit() Unit {
 	return ft.u
+}
+
+// CounterType supports only value: sum
+func CounterType(u Unit) Type {
+	return Type{
+		p: func() Producer { return NewCounter() },
+		s: "counter",
+		u: u,
+	}
+}
+
+// GaugeType supports: avg, last
+func GaugeType(u Unit) Type {
+	return Type{
+		p: func() Producer { return NewGauge() },
+		s: "gauge",
+		u: u,
+	}
+}
+
+// MeterType supports: avg, first, last, min, max, ohlc
+// OHLC is represented as a slice of 4 values: [open, close, lowest, highest]
+func MeterType(u Unit) Type {
+	return Type{
+		p: func() Producer { return NewMeter() },
+		s: "meter",
+		u: u,
+	}
+}
+
+// TimerType supports: avg, min, max in time.Duration
+func TimerType() Type {
+	return Type{
+		p: func() Producer { return NewTimer() },
+		s: "timer",
+		u: UnitDuration,
+	}
+}
+
+// OdometerType supports: first, last, diff, non_negative_diff, abs_diff
+func OdometerType(u Unit) Type {
+	return Type{
+		p: func() Producer { return NewOdometer() },
+		s: "odometer",
+		u: u,
+	}
+}
+
+// HistogramType supports: p[1-999] percentiles e.g. p50, p90, p99
+func HistogramType(u Unit) Type {
+	return HistogramTypePercentiles(u, 100, 0.5, 0.90, 0.99)
+}
+
+// HistogramTypePercentiles supports: p[1-999] percentiles e.g. p50, p90, p99
+// maxBin is the maximum number of bins to use for the histogram.
+// ps is the list of percentiles to calculate, in the range (0, 1).
+// e.g., 0.5 for p50, 0.75 for p75, 0.9 for p90, 0.99 for p99, 0.999 for p999.
+func HistogramTypePercentiles(u Unit, maxBin int, ps ...float64) Type {
+	return Type{
+		p: func() Producer { return NewHistogram(maxBin, ps...) },
+		s: "histogram",
+		u: u,
+	}
 }
 
 type Unit string

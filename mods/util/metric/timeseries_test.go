@@ -231,7 +231,7 @@ func TestMultiTimeSeries(t *testing.T) {
 }
 
 func TestTimeSeriesCounter(t *testing.T) {
-	ts := NewTimeSeries(1*time.Second, 10, NewGauge())
+	ts := NewTimeSeries(1*time.Second, 10, NewCounter())
 
 	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
 	nowFunc = func() time.Time {
@@ -258,17 +258,89 @@ func TestTimeSeriesCounter(t *testing.T) {
 		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
 	}, times)
 	require.Equal(t, []Value{
-		&GaugeValue{Samples: 10, Sum: 55, Value: 10},
-		&GaugeValue{Samples: 10, Sum: 155, Value: 20},
-		&GaugeValue{Samples: 10, Sum: 255, Value: 30},
-		&GaugeValue{Samples: 10, Sum: 355, Value: 40},
-		&GaugeValue{Samples: 10, Sum: 455, Value: 50},
-		&GaugeValue{Samples: 10, Sum: 555, Value: 60},
-		&GaugeValue{Samples: 10, Sum: 655, Value: 70},
-		&GaugeValue{Samples: 10, Sum: 755, Value: 80},
-		&GaugeValue{Samples: 10, Sum: 855, Value: 90},
-		&GaugeValue{Samples: 10, Sum: 955, Value: 100},
+		&CounterValue{Samples: 10, Value: 55},
+		&CounterValue{Samples: 10, Value: 155},
+		&CounterValue{Samples: 10, Value: 255},
+		&CounterValue{Samples: 10, Value: 355},
+		&CounterValue{Samples: 10, Value: 455},
+		&CounterValue{Samples: 10, Value: 555},
+		&CounterValue{Samples: 10, Value: 655},
+		&CounterValue{Samples: 10, Value: 755},
+		&CounterValue{Samples: 10, Value: 855},
+		&CounterValue{Samples: 10, Value: 955},
 	}, values)
+}
+
+func TestTimeSeriesCounterWithSlidingWindow(t *testing.T) {
+	ts := NewTimeSeries(1*time.Second, 10, NewCounter(),
+		WithDeriver("ma3", NewMovingAverage(3)),
+		WithDeriver("ma5", NewMovingAverage(5)),
+	)
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(i))
+	}
+
+	times, values := ts.LastN(0)
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, &CounterValue{Samples: 10, Value: 55, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 10, Value: 55},
+		"ma5": &CounterValue{Samples: 10, Value: 55},
+	}}, values[0])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 155, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 20, Value: 105},
+		"ma5": &CounterValue{Samples: 20, Value: 105},
+	}}, values[1])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 255, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 155},
+		"ma5": &CounterValue{Samples: 30, Value: 155},
+	}}, values[2])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 355, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 255},
+		"ma5": &CounterValue{Samples: 40, Value: 205},
+	}}, values[3])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 455, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 355},
+		"ma5": &CounterValue{Samples: 50, Value: 255},
+	}}, values[4])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 555, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 455},
+		"ma5": &CounterValue{Samples: 50, Value: 355},
+	}}, values[5])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 655, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 555},
+		"ma5": &CounterValue{Samples: 50, Value: 455},
+	}}, values[6])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 755, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 655},
+		"ma5": &CounterValue{Samples: 50, Value: 555},
+	}}, values[7])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 855, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 755},
+		"ma5": &CounterValue{Samples: 50, Value: 655},
+	}}, values[8])
+	require.Equal(t, &CounterValue{Samples: 10, Value: 955, DerivedValues: map[string]Value{
+		"ma3": &CounterValue{Samples: 30, Value: 855},
+		"ma5": &CounterValue{Samples: 50, Value: 755},
+	}}, values[9])
 }
 
 func TestTimeSeriesGauge(t *testing.T) {
@@ -309,6 +381,77 @@ func TestTimeSeriesGauge(t *testing.T) {
 		&GaugeValue{Samples: 10, Sum: 855, Value: 90},
 		&GaugeValue{Samples: 10, Sum: 955, Value: 100},
 	}, values)
+}
+
+func TestTimeSeriesGaugeWithSlidingWindow(t *testing.T) {
+	ts := NewTimeSeries(time.Second, 10, NewGauge(),
+		WithDeriver("ma3", NewMovingAverage(3)),
+		WithDeriver("ma5", NewMovingAverage(5)),
+	)
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(i))
+	}
+	times, values := ts.LastN(-1)
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 55, Value: 10, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 10, Sum: 55, Value: 10},
+		"ma5": &GaugeValue{Samples: 10, Sum: 55, Value: 10},
+	}}, values[0])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 155, Value: 20, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 20, Sum: 210, Value: 15},
+		"ma5": &GaugeValue{Samples: 20, Sum: 210, Value: 15},
+	}}, values[1])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 255, Value: 30, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 465, Value: 20},
+		"ma5": &GaugeValue{Samples: 30, Sum: 465, Value: 20},
+	}}, values[2])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 355, Value: 40, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 765, Value: 30},
+		"ma5": &GaugeValue{Samples: 40, Sum: 820, Value: 25},
+	}}, values[3])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 455, Value: 50, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 1065, Value: 40},
+		"ma5": &GaugeValue{Samples: 50, Sum: 1275, Value: 30},
+	}}, values[4])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 555, Value: 60, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 1365, Value: 50},
+		"ma5": &GaugeValue{Samples: 50, Sum: 1775, Value: 40},
+	}}, values[5])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 655, Value: 70, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 1665, Value: 60},
+		"ma5": &GaugeValue{Samples: 50, Sum: 2275, Value: 50},
+	}}, values[6])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 755, Value: 80, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 1965, Value: 70},
+		"ma5": &GaugeValue{Samples: 50, Sum: 2775, Value: 60},
+	}}, values[7])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 855, Value: 90, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 2265, Value: 80},
+		"ma5": &GaugeValue{Samples: 50, Sum: 3275, Value: 70},
+	}}, values[8])
+	require.Equal(t, &GaugeValue{Samples: 10, Sum: 955, Value: 100, DerivedValues: map[string]Value{
+		"ma3": &GaugeValue{Samples: 30, Sum: 2565, Value: 90},
+		"ma5": &GaugeValue{Samples: 50, Sum: 3775, Value: 80},
+	}}, values[9])
 }
 
 func TestTimeSeriesMeter(t *testing.T) {

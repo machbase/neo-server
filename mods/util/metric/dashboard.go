@@ -398,6 +398,9 @@ func (d Dashboard) HandleData(w http.ResponseWriter, r *http.Request) {
 				"text":    panelOpt.Title,
 				"subtext": panelOpt.SubTitle,
 			},
+			"grid": H{
+				"bottom": 60,
+			},
 			"legend": H{"type": "scroll", "width": "80%", "bottom": 4, "textStyle": H{"fontSize": 11}},
 			"tooltip": H{
 				"trigger": "axis",

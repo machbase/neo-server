@@ -67,9 +67,18 @@ func (fs *Counter) String() string {
 type CounterValue struct {
 	Samples int64   `json:"samples"`
 	Value   float64 `json:"value"`
+	// Optional derived values, such as moving averages
+	DerivedValues map[string]Value `json:"derived,omitempty"`
 }
 
 func (cp *CounterValue) String() string {
 	b, _ := json.Marshal(cp)
 	return string(b)
+}
+
+func (cp *CounterValue) SetDerivedValue(name string, value Value) {
+	if cp.DerivedValues == nil {
+		cp.DerivedValues = make(map[string]Value)
+	}
+	cp.DerivedValues[name] = value
 }
