@@ -13,9 +13,11 @@ import (
 )
 
 type LLMMessage struct {
-	IsError   bool   `json:"isError"`
-	IsPartial bool   `json:"isPartial,omitempty"`
-	Content   string `json:"content"`
+	IsError     bool   `json:"isError,omitempty"`
+	IsPartial   bool   `json:"isPartial,omitempty"`
+	Type        string `json:"type,omitempty"`
+	ContentType string `json:"contentType,omitempty"`
+	Content     string `json:"content"`
 }
 
 type LLMDialog struct {

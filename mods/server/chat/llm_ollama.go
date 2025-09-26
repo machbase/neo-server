@@ -46,6 +46,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 	})
 
 	var stream = true
+	var think = api.ThinkValue{Value: false}
 	req := &api.ChatRequest{
 		Model:    d.model, // d.conf.Ollama.ToolModel,
 		Messages: messages,
@@ -55,6 +56,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 		},
 		Tools:  ollamaTools,
 		Stream: &stream,
+		Think:  &think,
 	}
 
 	d.SendMessage("🦙 Ollama response: \n")

@@ -11,9 +11,12 @@ func init() {
 }
 
 const (
-	EVT_PING      = "ping"
-	EVT_LOG       = "log"
-	EVT_OPEN_FILE = "open_file"
+	EVT_PING      = "ping"      // S -> C, C -> S
+	EVT_LOG       = "log"       // S -> C
+	EVT_OPEN_FILE = "open_file" // S -> C
+	EVT_RPC_REQ   = "rpc_req"   // C -> S
+	EVT_RPC_RSP   = "rpc_rsp"   // S -> C
+	EVT_MSG       = "msg"       // S -> C, C -> S
 )
 
 type Event struct {
@@ -21,6 +24,8 @@ type Event struct {
 	Ping     *Ping     `json:"ping,omitempty"`
 	Log      *Log      `json:"log,omitempty"`
 	OpenFile *OpenFile `json:"open_file,omitempty"`
+	Rpc      *RPC      `json:"rpc,omitempty"`
+	Message  *Message  `json:"msg,omitempty"`
 }
 
 type Ping struct {
@@ -92,5 +97,19 @@ func PublishOpenFile(topic string, file string) {
 		OpenFile: &OpenFile{
 			Path: file,
 		},
+	})
+}
+
+type RPC struct {
+	Ver    string        `json:"jsonrpc"` // "2.0"
+	ID     int64         `json:"id"`
+	Method string        `json:"method"` // method name
+	Params []interface{} `json:"params,omitempty"`
+}
+
+func PublishMessage(topic string, msg *Message) {
+	Default.Publish(topic, &Event{
+		Type:    EVT_MSG,
+		Message: msg,
 	})
 }

@@ -382,6 +382,7 @@ func (svr *httpd) Router() *gin.Engine {
 			group.Any("/chat/sse", gin.WrapF(chat.ChatSSEHandler))
 			group.POST("/chat/message", gin.WrapF(chat.ChatMessageHandler))
 			group.GET("/chat/models", gin.WrapF(chat.ChatModelsHandler))
+			group.POST("/chat/md", gin.WrapF(chat.ChatMarkdownHandler))
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}
@@ -710,8 +711,6 @@ func (svr *httpd) handleReLogin(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, rsp)
 		return
 	}
-
-	svr.log.Tracef("'%s' relogin", refreshClaim.Subject)
 
 	// Comparing with stored refresh token.
 	// load refresh token from cached table by claim.ID
@@ -1238,6 +1237,10 @@ func replaceHttpClient(src []byte, preserveSrc bool) []byte {
 	return src
 }
 
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
 func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 	consoleId := ctx.Param("console_id")
 	if len(consoleId) == 0 {
@@ -1259,139 +1262,7 @@ func (svr *httpd) handleConsoleData(ctx *gin.Context) {
 	}
 
 	cons := NewWebConsole(claim.Subject, consoleId, conn)
-	go cons.readerLoop()
-	go cons.flushLoop()
-}
-
-type WebConsole struct {
-	log       logging.Log
-	username  string
-	consoleId string
-	topic     string
-	conn      *websocket.Conn
-	connMutex sync.Mutex
-	closeOnce sync.Once
-	closed    bool
-
-	messages      []*eventbus.Event
-	lastFlushTime time.Time
-	flushPeriod   time.Duration
-}
-
-func NewWebConsole(username string, consoleId string, conn *websocket.Conn) *WebConsole {
-	ret := &WebConsole{
-		log:           logging.GetLog(fmt.Sprintf("console-%s-%s", username, consoleId)),
-		topic:         fmt.Sprintf("console:%s:%s", username, consoleId),
-		username:      username,
-		consoleId:     consoleId,
-		conn:          conn,
-		lastFlushTime: time.Now(),
-		flushPeriod:   300 * time.Millisecond,
-	}
-	eventbus.Default.SubscribeAsync(ret.topic, ret.sendMessage, true)
-	return ret
-}
-
-func (cons *WebConsole) Close() {
-	cons.closeOnce.Do(func() {
-		cons.closed = true
-		eventbus.Default.Unsubscribe(cons.topic, cons.sendMessage)
-		if cons.conn != nil {
-			cons.conn.Close()
-		}
-	})
-}
-
-func (cons *WebConsole) readerLoop() {
-	defer func() {
-		cons.Close()
-		if e := recover(); e != nil {
-			cons.log.Error("panic recover %s", e)
-		}
-	}()
-
-	cons.log.Trace("websocket: established")
-	for {
-		evt := &eventbus.Event{}
-		err := cons.conn.ReadJSON(evt)
-		if err != nil {
-			if we, ok := err.(*websocket.CloseError); ok {
-				cons.log.Trace(we.Error())
-			} else if !errors.Is(err, io.EOF) {
-				cons.log.Warn("ERR", err.Error())
-			}
-			cons.connMutex.Lock()
-			cons.conn.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(200*time.Millisecond))
-			cons.connMutex.Unlock()
-			return
-		}
-		switch evt.Type {
-		case eventbus.EVT_PING:
-			rsp := eventbus.NewPing(evt.Ping.Tick)
-			cons.connMutex.Lock()
-			cons.conn.WriteJSON(rsp)
-			cons.connMutex.Unlock()
-		}
-	}
-}
-
-func (cons *WebConsole) flushLoop() {
-	ticker := time.NewTicker(cons.flushPeriod)
-	for range ticker.C {
-		if cons.closed {
-			break
-		}
-		cons.sendMessage(nil)
-	}
-	ticker.Stop()
-}
-
-func (cons *WebConsole) sendMessage(evt *eventbus.Event) {
-	shouldAppend := true
-	forceFlush := false
-
-	cons.connMutex.Lock()
-	defer cons.connMutex.Unlock()
-
-	if evt != nil && evt.Type == eventbus.EVT_LOG &&
-		len(cons.messages) > 0 &&
-		cons.messages[len(cons.messages)-1].Type == eventbus.EVT_LOG {
-
-		lastLog := cons.messages[len(cons.messages)-1].Log
-		if lastLog.Message == evt.Log.Message {
-			if lastLog.Repeat == 0 {
-				lastLog.Repeat = 1
-			}
-			lastLog.Repeat += 1
-			shouldAppend = false
-		}
-	} else if evt != nil && evt.Type != eventbus.EVT_LOG {
-		forceFlush = true
-	}
-
-	if evt != nil && shouldAppend {
-		cons.messages = append(cons.messages, evt)
-	}
-
-	if !forceFlush && time.Since(cons.lastFlushTime) < cons.flushPeriod {
-		// do not flush for now
-		return
-	}
-
-	for _, msg := range cons.messages {
-		err := cons.conn.WriteJSON(msg)
-		if err != nil {
-			cons.log.Warn("ERR", err.Error())
-			cons.Close()
-			break
-		}
-	}
-	cons.lastFlushTime = time.Now()
-	cons.messages = cons.messages[0:0]
-}
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	cons.Run()
 }
 
 func (svr *httpd) handleTermData(ctx *gin.Context) {

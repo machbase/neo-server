@@ -2,8 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -59,6 +57,7 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 		})
 
 		message := anthropic.Message{}
+		var currentBlockType string
 		for stream.Next() {
 			event := stream.Current()
 			if err := message.Accumulate(event); err != nil {
@@ -66,21 +65,71 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 				return
 			}
 			switch event := event.AsAny().(type) {
+			case anthropic.MessageStartEvent:
+				// Start of a new message
+				d.Send(LLMMessage{Type: "message-start", IsPartial: true})
+			case anthropic.MessageDeltaEvent:
+				// Partial message content
+				d.Send(LLMMessage{Type: "message-delta", Content: string(event.Delta.StopReason), IsPartial: true})
+			case anthropic.MessageStopEvent:
+				// End of the message
+				d.Send(LLMMessage{Type: "message-stop"})
 			case anthropic.ContentBlockStartEvent:
 				// Start of a new content block
-				if event.ContentBlock.Name != "" {
-					d.Send(LLMMessage{Content: fmt.Sprintf("%s: ", event.ContentBlock.Name), IsPartial: true})
+				// Any of "text", "thinking", "redacted_thinking",
+				// "tool_use", "server_tool_use", "web_search_tool_result".
+				currentBlockType = event.ContentBlock.Type
+				switch currentBlockType {
+				case "text":
+					block := event.ContentBlock.AsText()
+					d.Send(LLMMessage{
+						Type:        "content-block-start",
+						ContentType: "text",
+						Content:     block.Text,
+						IsPartial:   true,
+					})
+				case "thinking":
+					block := event.ContentBlock.AsThinking()
+					d.Send(LLMMessage{
+						Type:        "content-block-start",
+						ContentType: "thinking",
+						Content:     block.Thinking,
+						IsPartial:   true,
+					})
 				}
 			case anthropic.ContentBlockDeltaEvent:
 				// Partial content block
-				d.Send(LLMMessage{Content: event.Delta.Text, IsPartial: true})
-				d.Send(LLMMessage{Content: event.Delta.PartialJSON, IsPartial: true})
+				switch currentBlockType {
+				case "text":
+					d.Send(LLMMessage{
+						Type:        "content-block-delta",
+						ContentType: "text",
+						Content:     event.Delta.Text,
+						IsPartial:   true,
+					})
+				case "thinking":
+					d.Send(LLMMessage{
+						Type:        "content-block-delta",
+						ContentType: "thinking",
+						Content:     event.Delta.Thinking,
+						IsPartial:   true,
+					})
+				}
 			case anthropic.ContentBlockStopEvent:
 				// End of a content block
-				d.Send(LLMMessage{Content: "\n"})
-			case anthropic.MessageStopEvent:
-				// End of the message
-				d.Send(LLMMessage{Content: "\n"})
+				switch currentBlockType {
+				case "text":
+					d.Send(LLMMessage{
+						Type:        "content-block-stop",
+						ContentType: "text",
+					})
+				case "thinking":
+					d.Send(LLMMessage{
+						Type:        "content-block-stop",
+						ContentType: "thinking",
+					})
+				}
+				currentBlockType = ""
 			}
 		}
 
@@ -95,8 +144,12 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 		for _, block := range message.Content {
 			switch variant := block.AsAny().(type) {
 			case anthropic.ToolUseBlock:
-				inputJSON, _ := json.Marshal(variant.JSON.Input.Raw())
-				d.Send(LLMMessage{Content: fmt.Sprintf(" 🛠️ Tool %q <code>%s</code>", block.Name, inputJSON), IsPartial: true})
+				d.log.Debugf("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
+				// w := &strings.Builder{}
+				// conv := mdconv.New(mdconv.WithDarkMode(false))
+				// code := fmt.Sprintf("🛠️ **%s**\n```json\n%s\n```", block.Name, variant.JSON.Input.Raw())
+				// conv.ConvertString(code, w)
+				// d.Send(LLMMessage{Content: w.String(), IsPartial: true})
 
 				fetchRequest := mcp.CallToolRequest{}
 				fetchRequest.Request.Method = "tools/call"
@@ -113,8 +166,13 @@ func (d *LLMDialog) execClaude(ctx context.Context) {
 				for _, content := range result.Content {
 					switch c := content.(type) {
 					case mcp.TextContent:
+						d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
 						callResult = c.Text
-						d.Send(LLMMessage{Content: fmt.Sprintf("\nCallResult:\n<code>%s</code>", callResult), IsPartial: true})
+						// conv := mdconv.New(mdconv.WithDarkMode(false))
+						// code := fmt.Sprintf("\n📎 **Result**\n```\n%s\n```\n", c.Text)
+						// w := &strings.Builder{}
+						// conv.ConvertString(code, w)
+						// d.Send(LLMMessage{Content: w.String(), IsPartial: true})
 					default:
 						d.SendError("😡 Unhandled content type from tool: %#v\n", c)
 					}

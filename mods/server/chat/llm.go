@@ -3,11 +3,14 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 type LLMConfig struct {
@@ -165,4 +168,16 @@ func ChatModelsHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	json.NewEncoder(w).Encode(rsp)
+}
+
+func ChatMarkdownHandler(w http.ResponseWriter, r *http.Request) {
+	content, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write(content)
+		return
+	}
+	w.Header().Set("Content-Type", "text/xhtml")
+	conv := mdconv.New(mdconv.WithDarkMode(false))
+	conv.ConvertString(string(content), w)
 }

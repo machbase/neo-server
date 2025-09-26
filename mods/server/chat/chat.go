@@ -142,16 +142,36 @@ func (b *Bot) exec() {
 					b.SendError(reply.Content)
 					continue
 				}
-				b.SendStream(reply.Content, seq, false)
+				b.SendStream(reply, seq, false)
 				seq++
 			}
-			b.SendStream("", seq, true) // End of stream
+			b.SendStream(LLMMessage{}, seq, true) // End of stream
 		}
 	}
 }
 
-func (b *Bot) SendStream(content string, seq int, end bool) {
-	streamResponse := fmt.Sprintf(`data: {"type":"stream","delta":%q,"seq":%d,"end":%t}`+"\n\n", content, seq, end)
+func (b *Bot) SendStream(msg LLMMessage, seq int, end bool) {
+	if end {
+		streamResponse := fmt.Sprintf(`data: {"type":"stream","delta":"","seq":%d,"end":true}`+"\n\n", seq)
+		fmt.Fprint(b.w, streamResponse)
+		b.flusher.Flush()
+		return
+	}
+	if msg.IsError {
+		b.SendError(msg.Content)
+		return
+	}
+	// TODO marshal msg to JSON
+	switch msg.Type {
+	case "thinking":
+		// skip thinking messages
+		return
+	case "message-delta":
+		// including "tool_use" and "end_turn"
+		return
+	}
+	streamResponse := fmt.Sprintf(`data: {"type":"stream","delta":%q,"seq":%d,"end":%t}`+"\n\n",
+		msg.Content, seq, end)
 	fmt.Fprint(b.w, streamResponse)
 	b.flusher.Flush()
 }

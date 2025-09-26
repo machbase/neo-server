@@ -6,7 +6,8 @@ window.llmChatConfig = {
         chatPath: '/db/chat',
         sseEndpoint: '/sse',
         messageEndpoint: '/message',
-        modelsEndpoint: '/models'
+        modelsEndpoint: '/models',
+        markdownEndpoint: '/md'
     },
     
     // 채팅 설정
