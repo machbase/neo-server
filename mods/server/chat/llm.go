@@ -16,11 +16,6 @@ import (
 type LLMConfig struct {
 	Ollama LLMOllamaConfig `json:"ollama"`
 	Claude LLMClaudeConfig `json:"claude"`
-	MCP    MCPConfig       `json:"mcp"`
-}
-
-type MCPConfig struct {
-	Endpoint string `json:"endpoint"`
 }
 
 func loadLLMConfig() (*LLMConfig, error) {
@@ -36,9 +31,6 @@ func loadLLMConfig() (*LLMConfig, error) {
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		fmt.Printf("Warning: LLM config file not found at %s, using default configuration\n", confFile)
 		config = &LLMConfig{
-			MCP: MCPConfig{
-				Endpoint: "http://127.0.0.1:5654/db/mcp/sse",
-			},
 			Claude: LLMClaudeConfig{
 				Key:       "",
 				MaxTokens: 1000,

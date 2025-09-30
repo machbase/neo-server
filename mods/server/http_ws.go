@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -68,6 +69,8 @@ func (cons *WebConsole) readerLoop() {
 	if cons.log.TraceEnabled() {
 		cons.log.Trace("websocket: established", cons.conn.RemoteAddr().String())
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for {
 		evt := &eventbus.Event{}
 		err := cons.conn.ReadJSON(evt)
@@ -85,15 +88,15 @@ func (cons *WebConsole) readerLoop() {
 		switch evt.Type {
 		case eventbus.EVT_PING:
 			if evt.Ping != nil {
-				cons.handlePing(evt.Ping)
+				cons.handlePing(ctx, evt.Ping)
 			}
 		case eventbus.EVT_RPC_REQ:
 			if evt.Rpc != nil {
-				go cons.handleRpc(evt.Rpc)
+				go cons.handleRpc(ctx, evt.Rpc)
 			}
 		case eventbus.EVT_MSG:
 			if evt.Message != nil {
-				go cons.handleMessage(evt.Message)
+				go cons.handleMessage(ctx, evt.Message)
 			}
 		}
 	}
@@ -169,14 +172,14 @@ func (cons *WebConsole) sendMessage(evt *eventbus.Event) {
 	cons.messages = cons.messages[0:0]
 }
 
-func (cons *WebConsole) handlePing(evt *eventbus.Ping) {
+func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 	rsp := eventbus.NewPing(evt.Tick)
 	cons.connMutex.Lock()
 	cons.conn.WriteJSON(rsp)
 	cons.connMutex.Unlock()
 }
 
-func (cons *WebConsole) handleRpc(evt *eventbus.RPC) {
+func (cons *WebConsole) handleRpc(_ context.Context, evt *eventbus.RPC) {
 	wsRpcHandlersMutex.RLock()
 	handler, ok := wsRpcHandlers[evt.Method]
 	wsRpcHandlersMutex.RUnlock()
@@ -230,15 +233,4 @@ func (cons *WebConsole) handleRpc(evt *eventbus.RPC) {
 		"type": eventbus.EVT_RPC_RSP,
 		"rpc":  rsp,
 	})
-}
-
-func (cons *WebConsole) handleMessage(msg *eventbus.Message) {
-	if msg.Ver != "1.0" {
-		eventbus.PublishLog(cons.topic, "ERROR",
-			fmt.Sprintf("unsupported msg.ver: %q", msg.Ver))
-		return
-	}
-
-	// currently do nothing
-	cons.log.Trace("recv msg", cons.topic, msg)
 }

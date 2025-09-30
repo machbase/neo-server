@@ -154,7 +154,9 @@ type StreamBlockStart struct {
 }
 
 type StreamBlockDelta struct {
-	Data string `json:"data"`
+	ContentType string `json:"contentType"`
+	Text        string `json:"data"`
+	Thinking    string `json:"thinking,omitempty"`
 }
 
 type StreamBlockStop struct {
