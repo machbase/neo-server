@@ -1005,7 +1005,9 @@ func (r *Rows) Next() bool {
 	}
 	row, err := r.stmt.fetch()
 	if err != nil {
-		r.err = err
+		if err != io.EOF {
+			r.err = err
+		}
 		return false
 	}
 	r.row = row
