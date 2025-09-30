@@ -2,12 +2,15 @@ package mcpsvr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/machbase/neo-server/v8/api"
+	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -17,15 +20,17 @@ func init() {
 	RegisterTools(
 		ToolGetNowHandler,
 		ToolTimeformat,
-		ToolExecQuerySQL,
+		ToolExecSQL,
+		ToolExecTQL,
 		ToolListTables,
+		ToolListTableTags,
 		ToolDescribeTable,
 	)
 }
 
 var ToolListTables = server.ServerTool{
 	Tool: mcp.NewTool("machbase_list_tables",
-		mcp.WithDescription("Machbase Neo 데이터베이스의 테이블 목록을 조회합니다"),
+		mcp.WithDescription("List tables in Machbase Neo database"),
 		mcp.WithBoolean("show_all", mcp.Required(), mcp.Description("Show all tables including hidden and system tables")),
 	),
 	Handler: toolMachbaseListTablesFunc,
@@ -50,6 +55,38 @@ func toolMachbaseListTablesFunc(ctx context.Context, request mcp.CallToolRequest
 		tables = append(tables, table.Name)
 	}
 	return mcp.NewToolResultText(strings.Join(tables, "\n")), nil
+}
+
+var ToolListTableTags = server.ServerTool{
+	Tool: mcp.NewTool("list_table_tags",
+		mcp.WithDescription("List tags in Machbase Neo database for a specified table"),
+		mcp.WithBoolean("table", mcp.Required(), mcp.Description("Name of the table to list tags")),
+	),
+	Handler: toolMachbaseListTagsFunc,
+}
+
+func toolMachbaseListTagsFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	table, err := request.RequireString("table")
+	if err != nil {
+		return mcp.NewToolResultError("table must be a string: " + err.Error()), nil
+	}
+
+	db := api.Default()
+	conn, err := db.Connect(ctx, api.WithTrustUser("sys"))
+	if err != nil {
+		return mcp.NewToolResultError("failed to connect to database: " + err.Error()), nil
+	}
+	defer conn.Close()
+
+	tags, err := api.ListTags(ctx, conn, table)
+	if err != nil {
+		return mcp.NewToolResultError("failed to list tags: " + err.Error()), nil
+	}
+	list := make([]string, len(tags))
+	for i, tag := range tags {
+		list[i] = tag.Name
+	}
+	return mcp.NewToolResultText(strings.Join(list, "\n")), nil
 }
 
 var ToolGetNowHandler = server.ServerTool{
@@ -180,8 +217,8 @@ func toolGenSqlFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	return mcp.NewToolResultText(sql), nil
 }
 
-var ToolExecQuerySQL = server.ServerTool{
-	Tool: mcp.NewTool("machbase_execute_sql",
+var ToolExecSQL = server.ServerTool{
+	Tool: mcp.NewTool("execute_sql_query",
 		mcp.WithDescription("Execute a specified SQL query and return the results."),
 		mcp.WithString("query",
 			mcp.Required(),
@@ -259,4 +296,77 @@ func toolExecQuerySQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mc
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+var ToolExecTQL = server.ServerTool{
+	Tool: mcp.NewTool("execute_tql_script",
+		mcp.WithDescription("Execute a specified TQL script and return the results."),
+		mcp.WithString("script", mcp.Required(), mcp.Description("TQL script to execute")),
+	),
+	Handler: toolExecTQLFunc,
+}
+
+func toolExecTQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	script, err := request.RequireString("script")
+	if err != nil {
+		return mcp.NewToolResultError("script must be a string: " + err.Error()), nil
+	}
+	codeReader := strings.NewReader(script)
+	outWriter := &strings.Builder{}
+
+	task := tql.NewTaskContext(ctx)
+	// task.SetParams(params)
+	// task.SetInputReader(input)
+	task.SetLogWriter(logging.GetLog("_llm.tql"))
+	//task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
+	// if claim != nil && consoleInfo.consoleId != "" {
+	// 	if svr.authServer == nil {
+	// 		task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
+	// 	} else {
+	// 		otp, _ := svr.authServer.GenerateOtp(claim.Subject)
+	// 		task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
+	// 	}
+	// }
+	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: outWriter}, true)
+	task.SetDatabase(api.Default())
+	if err := task.Compile(codeReader); err != nil {
+		// svr.log.Error("tql parse error", err.Error())
+		return mcp.NewToolResultError("TQL parse error: " + err.Error()), nil
+	}
+	// task.SetVolatileAssetsProvider(svr.memoryFs)
+	// ctx.Writer.Header().Set("Content-Type", task.OutputContentType())
+	// ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
+	// if chart := task.OutputChartType(); len(chart) > 0 {
+	// 	ctx.Writer.Header().Set(TqlHeaderChartType, chart)
+	// }
+	// if headers := task.OutputHttpHeaders(); len(headers) > 0 {
+	// 	for k, vs := range headers {
+	// 		for _, v := range vs {
+	// 			ctx.Writer.Header().Set(k, v)
+	// 		}
+	// 	}
+	// }
+	go func() {
+		<-ctx.Done()
+		task.Cancel()
+	}()
+
+	result := task.Execute()
+	if result == nil {
+		return mcp.NewToolResultError("task result is empty"), nil
+		//	} else if result.IsDbSink {
+		// ctx.JSON(http.StatusOK, result)
+		//	} else if !outWriter.Written() {
+		// clear headers for the json result
+		// ctx.Writer.Header().Set("Content-Type", "application/json")
+		// ctx.Writer.Header().Del("Content-Encoding")
+		// ctx.Writer.Header().Del(TqlHeaderChartType)
+		// ctx.JSON(http.StatusOK, result)
+	}
+	obj := map[string]any{
+		"message": result.Message,
+		"result":  outWriter.String(),
+	}
+	b, _ := json.Marshal(obj)
+	return mcp.NewToolResultText(string(b)), nil
 }
