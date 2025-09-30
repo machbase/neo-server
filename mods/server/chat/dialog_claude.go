@@ -195,7 +195,8 @@ func (d *DialogCalude) Talk(ctx context.Context, userMessage string) {
 		}
 
 		if d.log.DebugEnabled() {
-			d.log.Debugf("Claude stream ended: %#v", message)
+			b, _ := json.Marshal(message)
+			d.log.Debug("Claude stream ended:", string(b))
 		}
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))

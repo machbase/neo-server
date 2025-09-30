@@ -19,16 +19,15 @@ type LLMMessage struct {
 }
 
 type LLMDialog struct {
-	conf        *LLMConfig
-	ch          chan LLMMessage
-	userMessage string
-	model       string
+	conf  *LLMConfig
+	ch    chan LLMMessage
+	model string
 
 	log logging.Log `json:"-"`
 }
 
 func ExecLLM(ctx context.Context, c *LLMConfig, model string, userMessage string) <-chan LLMMessage {
-	d := NewDialog(userMessage, c)
+	d := NewDialog(c)
 	go func() {
 		defer d.Close()
 		if strings.HasPrefix(model, "claude:") {
@@ -53,12 +52,11 @@ func ExecLLM(ctx context.Context, c *LLMConfig, model string, userMessage string
 	return d.ch
 }
 
-func NewDialog(userMessage string, conf *LLMConfig) *LLMDialog {
+func NewDialog(conf *LLMConfig) *LLMDialog {
 	return &LLMDialog{
-		conf:        conf,
-		ch:          make(chan LLMMessage),
-		userMessage: userMessage,
-		log:         logging.GetLog("chat"),
+		conf: conf,
+		ch:   make(chan LLMMessage),
+		log:  logging.GetLog("chat"),
 	}
 }
 

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -135,7 +136,8 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 		}
 
 		if d.log.DebugEnabled() {
-			d.log.Debugf("Claude stream ended: %#v", message)
+			b, _ := json.Marshal(message)
+			d.log.Debug("Claude stream ended:", string(b))
 		}
 
 		if stream.Err() != nil {
@@ -171,7 +173,7 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 				for _, content := range result.Content {
 					switch c := content.(type) {
 					case mcp.TextContent:
-						d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
+						d.log.Debugf("%s Tool result: %s", block.ID, c.Text)
 						callResult = c.Text
 						// conv := mdconv.New(mdconv.WithDarkMode(false))
 						// code := fmt.Sprintf("\n📎 **Result**\n```\n%s\n```\n", c.Text)

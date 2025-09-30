@@ -16,7 +16,7 @@ type LLMOllamaConfig struct {
 	SystemMessages []string `json:"system_messages,omitempty"`
 }
 
-func (d *LLMDialog) execOllama(ctx context.Context, userlMessage string) {
+func (d *LLMDialog) execOllama(ctx context.Context, userMessage string) {
 	url, _ := url.Parse(d.conf.Ollama.Url)
 	ollamaClient := api.NewClient(url, &http.Client{
 		Timeout: 0,
@@ -42,7 +42,7 @@ func (d *LLMDialog) execOllama(ctx context.Context, userlMessage string) {
 	}
 	messages = append(messages, api.Message{
 		Role:    "user",
-		Content: d.userMessage,
+		Content: userMessage,
 	})
 
 	var stream = true
