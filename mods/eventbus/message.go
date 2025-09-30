@@ -49,7 +49,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 type BodyType string
 
 const (
-	BodyTypeQueation           BodyType = "question"
+	BodyTypeQuestion           BodyType = "question"
 	BodyTypeStreamMessageStart BodyType = "stream-message-start"
 	BodyTypeStreamMessageDelta BodyType = "stream-message-delta"
 	BodyTypeStreamMessageStop  BodyType = "stream-message-stop"
@@ -73,7 +73,7 @@ func (bu *BodyUnion) asAny(typ BodyType) any {
 		return nil
 	}
 	switch typ {
-	case BodyTypeQueation:
+	case BodyTypeQuestion:
 		return bu.OfQuestion
 	case BodyTypeStreamMessageStart:
 		return bu.OfStreamMessageStart
@@ -93,7 +93,7 @@ func (bu *BodyUnion) asAny(typ BodyType) any {
 
 func (bu *BodyUnion) unmarshal(typ BodyType, data []byte) error {
 	switch typ {
-	case BodyTypeQueation:
+	case BodyTypeQuestion:
 		bu.OfQuestion = &Question{}
 		if err := json.Unmarshal(data, bu.OfQuestion); err != nil {
 			return err
