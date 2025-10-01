@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/machbase/neo-server/v8/mods/server/mcpsvr"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ollama/ollama/api"
 )
@@ -15,20 +16,19 @@ type LLMOllamaConfig struct {
 	SystemMessages []string `json:"system_messages,omitempty"`
 }
 
-func (d *LLMDialog) execOllama(ctx context.Context) {
+func (d *LLMDialog) execOllama(ctx context.Context, userMessage string) {
 	url, _ := url.Parse(d.conf.Ollama.Url)
 	ollamaClient := api.NewClient(url, &http.Client{
 		Timeout: 0,
 	})
 
-	tools, err := d.ListTools(ctx)
-	if err != nil {
+	var ollamaTools []api.Tool
+	if tools, err := mcpsvr.ListTools(ctx); err != nil {
 		d.SendError("Failed to list tools: %v", err)
 		return
+	} else {
+		ollamaTools = ConvertToOllamaTools(tools.Tools)
 	}
-
-	// Define/Convert tool with Ollama format
-	ollamaTools := ConvertToOllamaTools(tools.Tools)
 
 	// Have a "tool chat" with Ollama 🦙
 	// Prompt construction
@@ -42,7 +42,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 	}
 	messages = append(messages, api.Message{
 		Role:    "user",
-		Content: d.userMessage,
+		Content: userMessage,
 	})
 
 	var stream = true
@@ -60,7 +60,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 	}
 
 	d.SendMessage("🦙 Ollama response: \n")
-	err = ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
+	err := ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
 		d.SendMessage("%s", html.EscapeString(resp.Message.Content))
 		// Ollma tools to call
 		for _, toolCall := range resp.Message.ToolCalls {
@@ -71,7 +71,7 @@ func (d *LLMDialog) execOllama(ctx context.Context) {
 			fetchRequest.Params.Name = toolCall.Function.Name
 			fetchRequest.Params.Arguments = toolCall.Function.Arguments
 
-			result, err := d.CallTool(ctx, fetchRequest)
+			result, err := mcpsvr.CallTool(ctx, fetchRequest)
 			if err != nil {
 				d.SendError("Failed to call tool: %v", err)
 			}

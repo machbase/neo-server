@@ -3,28 +3,70 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	"github.com/machbase/neo-server/v8/mods/eventbus"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/server/mcpsvr"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-type LLMClaudeConfig struct {
+func NewClaudeDialog(topic string, msgID int64, model string) *DialogCalude {
+	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
+	ret := &DialogCalude{
+		topic:          topic,
+		msgID:          msgID,
+		model:          model,
+		Key:            "your-key",
+		MaxTokens:      1024,
+		SystemMessages: []string{systemMessage},
+		log:            logging.GetLog("chat/claude"),
+	}
+	return ret
+}
+
+type DialogCalude struct {
 	Key            string   `json:"key"`
 	MaxTokens      int64    `json:"max_tokens"`
 	SystemMessages []string `json:"system_messages,omitempty"`
+
+	topic string      `json:"-"`
+	msgID int64       `json:"-"`
+	model string      `json:"-"`
+	log   logging.Log `json:"-"`
 }
 
-func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
+func (d *DialogCalude) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
+	eventbus.PublishMessage(d.topic, &eventbus.Message{
+		Ver:  "1.0",
+		ID:   d.msgID,
+		Type: typ,
+		Body: body,
+	})
+}
+
+func (d *DialogCalude) SendError(errMsg string) {
+	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        errMsg,
+			},
+		})
+	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+}
+
+func (d *DialogCalude) Talk(ctx context.Context, userMessage string) {
 	claudeClient := anthropic.NewClient(
-		option.WithAPIKey(d.conf.Claude.Key),
+		option.WithAPIKey(d.Key),
 	)
 
 	var toolParams []anthropic.ToolUnionParam
 	if tools, err := mcpsvr.ListTools(ctx); err != nil {
-		d.SendError("Failed to list tools: %v", err)
+		d.SendError(fmt.Sprintf("Failed to list tools: %v", err))
 		return
 	} else {
 		toolParams = ConvertToClaudeTools(tools.Tools)
@@ -37,7 +79,7 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 
 	// System messages
 	systems := []anthropic.TextBlockParam{}
-	for _, msg := range d.conf.Claude.SystemMessages {
+	for _, msg := range d.SystemMessages {
 		systemMessage := anthropic.TextBlockParam{
 			Text: msg,
 		}
@@ -52,30 +94,45 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 	for {
 		stream := claudeClient.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 			Model:     claudeModel,
-			MaxTokens: d.conf.Claude.MaxTokens,
+			MaxTokens: d.MaxTokens,
 			System:    systems,
 			Messages:  messages,
 			Tools:     toolParams,
 		})
 
 		message := anthropic.Message{}
+		event := stream.Current()
+		if err := message.Accumulate(event); err != nil {
+			d.SendError(fmt.Sprintf("😡 Failed to accumulate message: %v", err))
+			return
+		}
 		var currentBlockType string
 		for stream.Next() {
 			event := stream.Current()
 			if err := message.Accumulate(event); err != nil {
-				d.SendError("😡 Failed to accumulate message: %v\n", err)
+				d.SendError(fmt.Sprintf("😡 Failed to accumulate message: %v", err))
 				return
+			}
+			if d.log.InfoEnabled() {
+				bs, _ := json.Marshal(event)
+				d.log.Info(string(bs))
 			}
 			switch event := event.AsAny().(type) {
 			case anthropic.MessageStartEvent:
 				// Start of a new message
-				d.Send(LLMMessage{Type: "message-start", IsPartial: true})
+				d.publish(eventbus.BodyTypeStreamMessageStart, nil)
 			case anthropic.MessageDeltaEvent:
 				// Partial message content
-				d.Send(LLMMessage{Type: "message-delta", Content: string(event.Delta.StopReason), IsPartial: true})
+				d.publish(eventbus.BodyTypeStreamMessageDelta,
+					&eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "text",
+							Text:        string(event.Delta.StopReason),
+						},
+					})
 			case anthropic.MessageStopEvent:
 				// End of the message
-				d.Send(LLMMessage{Type: "message-stop"})
+				d.publish(eventbus.BodyTypeStreamMessageStop, nil)
 			case anthropic.ContentBlockStartEvent:
 				// Start of a new content block
 				// Any of "text", "thinking", "redacted_thinking",
@@ -84,51 +141,53 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 				switch currentBlockType {
 				case "text":
 					block := event.ContentBlock.AsText()
-					d.Send(LLMMessage{
-						Type:        "content-block-start",
-						ContentType: "text",
-						Content:     block.Text,
-						IsPartial:   true,
+					d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "text",
+							Text:        block.Text,
+						},
 					})
 				case "thinking":
 					block := event.ContentBlock.AsThinking()
-					d.Send(LLMMessage{
-						Type:        "content-block-start",
-						ContentType: "thinking",
-						Content:     block.Thinking,
-						IsPartial:   true,
+					d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "thinking",
+							Thinking:    block.Thinking,
+						},
 					})
 				}
 			case anthropic.ContentBlockDeltaEvent:
 				// Partial content block
 				switch currentBlockType {
 				case "text":
-					d.Send(LLMMessage{
-						Type:        "content-block-delta",
-						ContentType: "text",
-						Content:     event.Delta.Text,
-						IsPartial:   true,
+					d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "text",
+							Text:        event.Delta.Text,
+						},
 					})
 				case "thinking":
-					d.Send(LLMMessage{
-						Type:        "content-block-delta",
-						ContentType: "thinking",
-						Content:     event.Delta.Thinking,
-						IsPartial:   true,
+					d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "thinking",
+							Thinking:    event.Delta.Thinking,
+						},
 					})
 				}
 			case anthropic.ContentBlockStopEvent:
 				// End of a content block
 				switch currentBlockType {
 				case "text":
-					d.Send(LLMMessage{
-						Type:        "content-block-stop",
-						ContentType: "text",
+					d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "text",
+						},
 					})
 				case "thinking":
-					d.Send(LLMMessage{
-						Type:        "content-block-stop",
-						ContentType: "thinking",
+					d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
+						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+							ContentType: "thinking",
+						},
 					})
 				}
 				currentBlockType = ""
@@ -139,9 +198,8 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 			b, _ := json.Marshal(message)
 			d.log.Debug("Claude stream ended:", string(b))
 		}
-
-		if stream.Err() != nil {
-			d.SendError("😡 Stream error: %v\n", stream.Err())
+		if err := stream.Err(); err != nil {
+			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
 			return
 		}
 
@@ -165,7 +223,7 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 
 				result, err := mcpsvr.CallTool(ctx, fetchRequest)
 				if err != nil {
-					d.SendError("😡 Failed to call tool: %v", err)
+					d.SendError(fmt.Sprintf("😡 Failed to call tool: %v", err))
 					continue
 				}
 
@@ -173,7 +231,7 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 				for _, content := range result.Content {
 					switch c := content.(type) {
 					case mcp.TextContent:
-						d.log.Debugf("%s Tool result: %s", block.ID, c.Text)
+						d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
 						callResult = c.Text
 						// conv := mdconv.New(mdconv.WithDarkMode(false))
 						// code := fmt.Sprintf("\n📎 **Result**\n```\n%s\n```\n", c.Text)
@@ -181,10 +239,9 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 						// conv.ConvertString(code, w)
 						// d.Send(LLMMessage{Content: w.String(), IsPartial: true})
 					default:
-						d.SendError("😡 Unhandled content type from tool: %#v\n", c)
+						d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
 					}
 				}
-				d.Send(LLMMessage{Content: "\n", IsPartial: true})
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID, callResult, result.IsError))
 			}
 		}
@@ -193,73 +250,14 @@ func (d *LLMDialog) execClaude(ctx context.Context, userMessage string) {
 		}
 		messages = append(messages, anthropic.NewUserMessage(toolResults...))
 	}
-}
 
-type ClaudeRequest struct {
-	Model      string           `json:"model"`
-	MaxTokens  int              `json:"max_tokens,omitempty"`
-	System     string           `json:"system,omitempty"`
-	Messages   []ClaudeMessage  `json:"messages"`
-	Tools      []mcp.Tool       `json:"tools,omitempty"`
-	ToolChoice ClaudeToolChoice `json:"tool_choice,omitempty"`
-	Stream     *bool            `json:"stream,omitempty"`
-}
-
-type ClaudeToolChoice struct {
-	Type string `json:"type"`
-}
-
-type ClaudeMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ClaudeTool struct {
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	InputSchema ClaudeToolInputSchema `json:"input_schema"`
-}
-
-type ClaudeToolInputSchema struct {
-	Type       string                        `json:"type"`
-	Properties map[string]ClaudeToolProperty `json:"properties"`
-	Required   []string                      `json:"required"`
-}
-
-type ClaudeToolProperty struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
-	Default     any    `json:"default,omitempty"`
-}
-
-func ConvertToClaudeTools(tools []mcp.Tool) []anthropic.ToolUnionParam {
-	// Convert tools to Claude format
-	claudeTools := make([]anthropic.ToolUnionParam, len(tools))
-	for i, tool := range tools {
-		claudeTools[i] = anthropic.ToolUnionParam{OfTool: &anthropic.ToolParam{
-			Name:        tool.Name,
-			Description: anthropic.String(tool.Description),
-			InputSchema: anthropic.ToolInputSchemaParam{
-				Type:       constant.Object("object"),
-				Properties: convertClaudeProperties(tool.InputSchema.Properties),
-				Required:   tool.InputSchema.Required,
+	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        fmt.Sprintf("message from %s", d.model),
 			},
-		}}
-	}
-	return claudeTools
-}
-
-func convertClaudeProperties(props map[string]interface{}) map[string]ClaudeToolProperty {
-	result := make(map[string]ClaudeToolProperty)
-	for name, prop := range props {
-		if propMap, ok := prop.(map[string]interface{}); ok {
-			prop := ClaudeToolProperty{
-				Type:        getString(propMap, "type"),
-				Description: getString(propMap, "description"),
-				Default:     getString(propMap, "default"),
-			}
-			result[name] = prop
-		}
-	}
-	return result
+		})
+	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
