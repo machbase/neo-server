@@ -10,12 +10,14 @@ import (
 
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/server/chat"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 func init() {
 	llmProviders = loadLLMProviders()
 
 	RegisterWebSocketRPCHandler("llmGetProviders", handleLLMGetProviders)
+	RegisterWebSocketRPCHandler("markdownRender", handleMarkdownRender)
 }
 
 type LLMProvider struct {
@@ -24,17 +26,27 @@ type LLMProvider struct {
 	Model    string `json:"model"`    // model identifier
 }
 
-var llmProviders = []LLMProvider{}
 var llmTesting bool
+var llmProviders = []LLMProvider{}
+var llmFallbackProviders = []LLMProvider{
+	{Name: "Claude Sonnet 4", Provider: "claude", Model: "claude-sonnet-4-20250514"},
+	{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
+}
 
 func handleLLMGetProviders() ([]LLMProvider, error) {
 	if llmTesting {
-		return []LLMProvider{
-			{Name: "Claude Sonnet 4", Provider: "claude", Model: "claude-sonnet-4-20250514"},
-			{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
-		}, nil
+		return llmFallbackProviders, nil
 	}
 	return llmProviders, nil
+}
+
+func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
+	w := &strings.Builder{}
+	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
+	if err := conv.ConvertString(markdown, w); err != nil {
+		return "", err
+	}
+	return w.String(), nil
 }
 
 // useTestingLLMProviders sets the llmProviders to default values for testing purposes
@@ -43,10 +55,7 @@ func useTestingLLMProviders() {
 }
 
 func loadLLMProviders() []LLMProvider {
-	fallbackModels := []LLMProvider{
-		{Name: "Claude Sonnet 4", Provider: "claude", Model: "claude-sonnet-4-20250514"},
-		{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
-	}
+	fallbackModels := llmFallbackProviders
 
 	confDir := "."
 	if dir, err := os.UserHomeDir(); err == nil {

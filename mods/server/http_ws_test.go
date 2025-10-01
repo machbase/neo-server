@@ -11,14 +11,14 @@ import (
 
 func TestWsLLMGetProviders(t *testing.T) {
 	tests := []struct {
-		method  string
-		params  []interface{}
-		expects []interface{}
+		method string
+		params []interface{}
+		expect any
 	}{
 		{
 			method: "llmGetProviders",
 			params: nil,
-			expects: []interface{}{
+			expect: []interface{}{
 				map[string]interface{}{
 					"name":     "Claude Sonnet 4",
 					"provider": "claude",
@@ -30,6 +30,14 @@ func TestWsLLMGetProviders(t *testing.T) {
 					"model":    "qwen3:0.6b",
 				},
 			},
+		},
+		{
+			method: "markdownRender",
+			params: []interface{}{
+				"# Hello World\nThis is a **test**.",
+				false,
+			},
+			expect: "<h1>Hello World</h1>\n<p>This is a <strong>test</strong>.</p>\n",
 		},
 	}
 
@@ -72,7 +80,7 @@ func TestWsLLMGetProviders(t *testing.T) {
 		} else {
 			result, ok := rpcRsp["result"]
 			require.True(t, ok, "RPC result not found")
-			require.Equal(t, tc.expects, result)
+			require.Equal(t, tc.expect, result)
 		}
 	}
 }
