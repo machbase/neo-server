@@ -13,23 +13,33 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func NewClaudeDialog(topic string, msgID int64, model string) *DialogCalude {
+type ClaudeConfig struct {
+	Key       string `json:"key"`
+	MaxTokens int64  `json:"max_tokens"`
+}
+
+func NewClaudeConfig() ClaudeConfig {
+	return ClaudeConfig{
+		Key:       "your-key",
+		MaxTokens: 1024,
+	}
+}
+
+func NewClaudeDialog(topic string, msgID int64, model string) *ClaudeDialog {
 	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
-	ret := &DialogCalude{
+	ret := &ClaudeDialog{
 		topic:          topic,
 		msgID:          msgID,
 		model:          model,
-		Key:            "your-key",
-		MaxTokens:      1024,
+		ClaudeConfig:   NewClaudeConfig(),
 		SystemMessages: []string{systemMessage},
 		log:            logging.GetLog("chat/claude"),
 	}
 	return ret
 }
 
-type DialogCalude struct {
-	Key            string   `json:"key"`
-	MaxTokens      int64    `json:"max_tokens"`
+type ClaudeDialog struct {
+	ClaudeConfig
 	SystemMessages []string `json:"system_messages,omitempty"`
 
 	topic string      `json:"-"`
@@ -38,7 +48,7 @@ type DialogCalude struct {
 	log   logging.Log `json:"-"`
 }
 
-func (d *DialogCalude) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
+func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
 	eventbus.PublishMessage(d.topic, &eventbus.Message{
 		Ver:  "1.0",
 		ID:   d.msgID,
@@ -47,7 +57,7 @@ func (d *DialogCalude) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) 
 	})
 }
 
-func (d *DialogCalude) SendError(errMsg string) {
+func (d *ClaudeDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 	d.publish(eventbus.BodyTypeStreamBlockDelta,
 		&eventbus.BodyUnion{
@@ -59,7 +69,7 @@ func (d *DialogCalude) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
-func (d *DialogCalude) Talk(ctx context.Context, userMessage string) {
+func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 	claudeClient := anthropic.NewClient(
 		option.WithAPIKey(d.Key),
 	)

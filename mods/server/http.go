@@ -39,7 +39,6 @@ import (
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/model"
 	"github.com/machbase/neo-server/v8/mods/pkgs"
-	"github.com/machbase/neo-server/v8/mods/server/chat"
 	"github.com/machbase/neo-server/v8/mods/server/mcpsvr"
 	"github.com/machbase/neo-server/v8/mods/tql"
 	"github.com/machbase/neo-server/v8/mods/util"
@@ -377,13 +376,6 @@ func (svr *httpd) Router() *gin.Engine {
 			group.POST("/tql", svr.handleTqlQuery)
 			// machbase-neo MCP SSE endpoint /db/mcp/sse
 			group.Any("/mcp/*path", gin.WrapF(mcpsvr.NewMCPServer().HandlerFunc()))
-			//TODO: Move /db/chat handlers to /web/chat group
-			group.GET("/chat", func(ctx *gin.Context) { ctx.Redirect(http.StatusFound, path.Join(prefix, "/chat/ui/")) })
-			group.Any("/chat/ui/*path", gin.WrapH(chat.ChatDirHandler()))
-			group.Any("/chat/sse", gin.WrapF(chat.ChatSSEHandler))
-			group.POST("/chat/message", gin.WrapF(chat.ChatMessageHandler))
-			group.GET("/chat/models", gin.WrapF(chat.ChatModelsHandler))
-			group.POST("/chat/md", gin.WrapF(chat.ChatMarkdownHandler))
 			svr.log.Infof("HTTP path %s for machbase api", prefix)
 		}
 	}

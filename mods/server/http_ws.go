@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
+	"github.com/machbase/neo-server/v8/mods/server/chat"
+	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
 type WebConsole struct {
@@ -233,4 +236,49 @@ func (cons *WebConsole) handleRpc(_ context.Context, evt *eventbus.RPC) {
 		"type": eventbus.EVT_RPC_RSP,
 		"rpc":  rsp,
 	})
+}
+
+func init() {
+	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
+	RegisterWebSocketRPCHandler("llmGetClaudeConfig", chat.RpcLLMGetClaudeConfig)
+	RegisterWebSocketRPCHandler("llmSetClaudeConfig", chat.RpcLLMSetClaudeConfig)
+	RegisterWebSocketRPCHandler("llmGetOllamaConfig", chat.RpcLLMGetOllamaConfig)
+	RegisterWebSocketRPCHandler("llmSetOllamaConfig", chat.RpcLLMSetOllamaConfig)
+	RegisterWebSocketRPCHandler("markdownRender", handleMarkdownRender)
+}
+
+func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
+	w := &strings.Builder{}
+	conv := mdconv.New(mdconv.WithDarkMode(darkMode))
+	if err := conv.ConvertString(markdown, w); err != nil {
+		return "", err
+	}
+	return w.String(), nil
+}
+
+func (cons *WebConsole) handleMessage(ctx context.Context, msg *eventbus.Message) {
+	if msg.Ver != "1.0" {
+		eventbus.PublishLog(cons.topic, "ERROR",
+			fmt.Sprintf("unsupported msg.ver: %q", msg.Ver))
+		return
+	}
+	if msg.Type != "question" {
+		eventbus.PublishLog(cons.topic, "ERROR",
+			fmt.Sprintf("invalid message type %s", msg.Type))
+		return
+	}
+	if msg.Body == nil || msg.Body.OfQuestion == nil {
+		eventbus.PublishLog(cons.topic, "ERROR",
+			"missing question body")
+		return
+	}
+	question := msg.Body.OfQuestion
+	dc := chat.DialogConfig{
+		Topic:    cons.topic,
+		Provider: question.Provider,
+		Model:    question.Model,
+		MsgID:    msg.ID,
+	}
+	d := dc.NewDialog()
+	d.Talk(ctx, question.Text)
 }
