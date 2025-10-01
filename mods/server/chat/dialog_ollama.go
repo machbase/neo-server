@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/machbase/neo-server/v8/mods/eventbus"
+	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/server/mcpsvr"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ollama/ollama/api"
@@ -23,25 +24,13 @@ func NewOllamaConfig() OllamaConfig {
 	}
 }
 
-func NewOllamaDialog(topic string, msgID int64, model string) *OllamaDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
-	ret := &OllamaDialog{
-		OllamaConfig:   NewOllamaConfig(),
-		SystemMessages: []string{systemMessage},
-		topic:          topic,
-		msgID:          msgID,
-		model:          model,
-	}
-	return ret
-}
-
 type OllamaDialog struct {
 	OllamaConfig
-	SystemMessages []string `json:"system_messages,omitempty"`
-
-	topic string `json:"-"`
-	msgID int64  `json:"-"`
-	model string `json:"-"`
+	systemMessages []string
+	topic          string
+	msgID          int64
+	model          string
+	log            logging.Log
 }
 
 func (d *OllamaDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
@@ -93,7 +82,7 @@ func (d *OllamaDialog) Talk(ctx context.Context, message string) {
 	// Prompt construction
 	messages := []api.Message{}
 
-	for _, toolMessage := range d.SystemMessages {
+	for _, toolMessage := range d.systemMessages {
 		messages = append(messages, api.Message{
 			Role:    "system",
 			Content: toolMessage,

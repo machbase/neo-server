@@ -25,27 +25,13 @@ func NewClaudeConfig() ClaudeConfig {
 	}
 }
 
-func NewClaudeDialog(topic string, msgID int64, model string) *ClaudeDialog {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
-	ret := &ClaudeDialog{
-		topic:          topic,
-		msgID:          msgID,
-		model:          model,
-		ClaudeConfig:   NewClaudeConfig(),
-		SystemMessages: []string{systemMessage},
-		log:            logging.GetLog("chat/claude"),
-	}
-	return ret
-}
-
 type ClaudeDialog struct {
 	ClaudeConfig
-	SystemMessages []string `json:"system_messages,omitempty"`
-
-	topic string      `json:"-"`
-	msgID int64       `json:"-"`
-	model string      `json:"-"`
-	log   logging.Log `json:"-"`
+	systemMessages []string
+	topic          string
+	msgID          int64
+	model          string
+	log            logging.Log
 }
 
 func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
@@ -89,7 +75,7 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 
 	// System messages
 	systems := []anthropic.TextBlockParam{}
-	for _, msg := range d.SystemMessages {
+	for _, msg := range d.systemMessages {
 		systemMessage := anthropic.TextBlockParam{
 			Text: msg,
 		}

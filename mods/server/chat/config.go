@@ -10,14 +10,16 @@ import (
 
 // isTesting for testing purposes
 var isTesting bool
+var dirTesting string
 
-func SetTesting(testing bool) {
+func SetTesting(testing bool, dir string) {
 	isTesting = testing
+	dirTesting = dir
 }
 
 func configDir() (string, error) {
-	if isTesting {
-		confDir := "../../tmp/llm"
+	if dirTesting != "" {
+		confDir := dirTesting
 		if err := os.MkdirAll(confDir, 0755); err != nil {
 			return "", err
 		}
@@ -39,24 +41,6 @@ func SaveConfig(d interface{}, filename string) error {
 	confDir, err := configDir()
 	if err != nil {
 		return err
-	}
-
-	switch c := d.(type) {
-	case ClaudeDialog:
-		m := map[string]any{}
-		if err := LoadConfig(m, "claude.json"); err != nil {
-			return err
-		}
-		m["key"] = c.Key
-		m["max_tokens"] = c.MaxTokens
-		d = m
-	case OllamaDialog:
-		m := map[string]any{}
-		if err := LoadConfig(m, "ollama.json"); err != nil {
-			return err
-		}
-		m["url"] = c.Url
-		d = m
 	}
 	confFile := filepath.Join(confDir, filename)
 	// make backup .bak
@@ -82,7 +66,6 @@ func LoadConfig(d interface{}, filename string) error {
 	if err != nil {
 		return err
 	}
-
 	confFile := filepath.Join(confDir, filename)
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
@@ -104,12 +87,6 @@ func LoadConfig(d interface{}, filename string) error {
 		if err := decoder.Decode(d); err != nil {
 			return err
 		}
-	}
-	switch c := d.(type) {
-	case *ClaudeDialog:
-		c.SystemMessages, _ = loadSystemMessages(c.SystemMessages)
-	case *OllamaDialog:
-		c.SystemMessages, _ = loadSystemMessages(c.SystemMessages)
 	}
 	return nil
 }
@@ -138,16 +115,10 @@ func loadSystemMessages(messages []string) ([]string, error) {
 func loadLLMProviders() []LLMProvider {
 	fallbackModels := llmFallbackProviders
 
-	confDir := "."
-	if dir, err := os.UserHomeDir(); err == nil {
-		confDir = filepath.Join(dir, ".config", "machbase", "llm")
-		if err := os.MkdirAll(confDir, 0755); err != nil {
-			return fallbackModels
-		}
-	} else {
+	confDir, err := configDir()
+	if err != nil {
 		return fallbackModels
 	}
-
 	confFile := filepath.Join(confDir, "models.json")
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)

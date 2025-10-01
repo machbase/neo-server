@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"fmt"
+
+	"github.com/machbase/neo-server/v8/mods/logging"
 )
 
 func init() {
@@ -18,25 +20,64 @@ type DialogConfig struct {
 
 func (c DialogConfig) NewDialog() Dialog {
 	if isTesting {
-		return &TestingDialog{topic: c.Topic, msgID: c.MsgID, provider: c.Provider, model: c.Model}
+		return c.NewTest()
 	}
-	var errorMsg string
 	for _, p := range llmProviders {
 		if p.Provider == c.Provider && p.Model == c.Model {
 			switch p.Provider {
 			case "claude":
-				ret := NewClaudeDialog(c.Topic, c.MsgID, c.Model)
-				LoadConfig(ret, "claude.json")
-				return ret
+				return c.NewClaude()
 			case "ollama":
-				ret := NewOllamaDialog(c.Topic, c.MsgID, c.Model)
-				LoadConfig(ret, "ollama.json")
-				return ret
-			default:
-				errorMsg = fmt.Sprintf("Unknown LLM provider: %s, model: %s", c.Provider, c.Model)
+				return c.NewOllama()
 			}
 		}
 	}
+	return c.NewUnknown()
+}
+
+func (c DialogConfig) NewOllama() *OllamaDialog {
+	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
+	ret := &OllamaDialog{
+		OllamaConfig:   NewOllamaConfig(),
+		systemMessages: []string{systemMessage},
+		topic:          c.Topic,
+		msgID:          c.MsgID,
+		model:          c.Model,
+		log:            logging.GetLog("chat.ollama"),
+	}
+	LoadConfig(ret, "ollama.json")
+	LoadConfig(ret.systemMessages, "system.json")
+	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
+	return ret
+}
+
+func (c DialogConfig) NewClaude() *ClaudeDialog {
+	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
+	ret := &ClaudeDialog{
+		ClaudeConfig:   NewClaudeConfig(),
+		systemMessages: []string{systemMessage},
+		topic:          c.Topic,
+		msgID:          c.MsgID,
+		model:          c.Model,
+		log:            logging.GetLog("chat.claude"),
+	}
+	LoadConfig(ret, "claude.json")
+	LoadConfig(ret.systemMessages, "system.json")
+	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
+	return ret
+}
+
+func (c DialogConfig) NewTest() *TestingDialog {
+	return &TestingDialog{
+		topic:    c.Topic,
+		msgID:    c.MsgID,
+		provider: c.Provider,
+		model:    c.Model,
+	}
+}
+
+func (c DialogConfig) NewUnknown() *UnknownDialog {
+	errorMsg := fmt.Sprintf("Unknown LLM provider: %s, model: %s", c.Provider, c.Model)
 	return &UnknownDialog{
 		topic:    c.Topic,
 		provider: c.Provider,
@@ -75,6 +116,7 @@ func RpcLLMGetProviders() ([]LLMProvider, error) {
 	}
 	return llmProviders, nil
 }
+
 func RpcLLMGetClaudeConfig() (ClaudeConfig, error) {
 	ret := NewClaudeConfig()
 	if err := LoadConfig(&ret, "claude.json"); err != nil {

@@ -58,7 +58,7 @@ func TestWsLLMGetProviders(t *testing.T) {
 	}
 
 	// Ensure we have some LLM providers loaded
-	chat.SetTesting(true)
+	chat.SetTesting(true, "../../tmp/llm")
 
 	at, _, err := jwtLogin("sys", "manager")
 	require.Nil(t, err)
@@ -121,7 +121,7 @@ func TestWsLLMMessages(t *testing.T) {
 	}
 
 	// Ensure we have some LLM providers loaded
-	chat.SetTesting(true)
+	chat.SetTesting(true, "../../tmp/llm")
 
 	at, _, err := jwtLogin("sys", "manager")
 	require.Nil(t, err)
