@@ -10,16 +10,30 @@ import (
 
 // isTesting for testing purposes
 var isTesting bool
-var dirTesting string
+var dirConfig string
 
-func SetTesting(testing bool, dir string) {
+func Init() {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	llmProviders = loadLLMProviders()
+}
+
+func InitWithConfig(dir string) {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	if dir != "" {
+		dirConfig = dir
+	}
+	llmProviders = loadLLMProviders()
+}
+
+func SetTesting(testing bool) {
 	isTesting = testing
-	dirTesting = dir
 }
 
 func configDir() (string, error) {
-	if dirTesting != "" {
-		confDir := dirTesting
+	if dirConfig != "" {
+		confDir := dirConfig
 		if err := os.MkdirAll(confDir, 0755); err != nil {
 			return "", err
 		}
@@ -112,7 +126,7 @@ func loadSystemMessages(messages []string) ([]string, error) {
 	return messages, nil
 }
 
-func loadLLMProviders() []LLMProvider {
+func loadLLMProviders() map[string][]LLMProvider {
 	fallbackModels := llmFallbackProviders
 
 	confDir, err := configDir()
@@ -137,6 +151,7 @@ func loadLLMProviders() []LLMProvider {
 			return fallbackModels
 		}
 		defer file.Close()
+		var ret = map[string][]LLMProvider{}
 		var models []LLMProvider
 		decoder := json.NewDecoder(file)
 		if err := decoder.Decode(&models); err != nil {
@@ -145,6 +160,12 @@ func loadLLMProviders() []LLMProvider {
 		if len(models) == 0 {
 			return fallbackModels
 		}
-		return models
+		for _, m := range models {
+			if _, ok := ret[m.Provider]; !ok {
+				ret[m.Provider] = []LLMProvider{}
+			}
+			ret[m.Provider] = append(ret[m.Provider], m)
+		}
+		return ret
 	}
 }

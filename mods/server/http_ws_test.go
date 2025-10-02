@@ -12,42 +12,51 @@ import (
 
 func TestWsLLMGetProviders(t *testing.T) {
 	tests := []struct {
+		name   string
 		method string
 		params []interface{}
 		expect any
 	}{
 		{
-			method: "llmGetClaudeConfig",
-			params: nil,
+			name:   "llmGetClaudeConfig",
+			method: "llmGetProviderConfig",
+			params: []interface{}{"claude"},
 			expect: map[string]interface{}{
 				"key":        "your-key",
 				"max_tokens": float64(1024),
 			},
 		},
 		{
-			method: "llmGetOllamaConfig",
-			params: nil,
+			name:   "llmGetOllamaConfig",
+			method: "llmGetProviderConfig",
+			params: []interface{}{"ollama"},
 			expect: map[string]interface{}{
 				"url": "http://127.0.0.1:11434",
 			},
 		},
 		{
-			method: "llmGetProviders",
+			name:   "llmGetModels",
+			method: "llmGetModels",
 			params: nil,
-			expect: []interface{}{
-				map[string]interface{}{
-					"name":     "Claude Sonnet 4",
-					"provider": "claude",
-					"model":    "claude-sonnet-4-20250514",
+			expect: map[string]interface{}{
+				"claude": []any{
+					map[string]interface{}{
+						"name":     "Claude Sonnet 4",
+						"provider": "claude",
+						"model":    "claude-sonnet-4-20250514",
+					},
 				},
-				map[string]interface{}{
-					"name":     "Ollama qwen3:0.6b",
-					"provider": "ollama",
-					"model":    "qwen3:0.6b",
+				"ollama": []any{
+					map[string]interface{}{
+						"name":     "Ollama qwen3:0.6b",
+						"provider": "ollama",
+						"model":    "qwen3:0.6b",
+					},
 				},
 			},
 		},
 		{
+			name:   "markdownRender",
 			method: "markdownRender",
 			params: []interface{}{
 				"# Hello World\nThis is a **test**.",
@@ -58,7 +67,8 @@ func TestWsLLMGetProviders(t *testing.T) {
 	}
 
 	// Ensure we have some LLM providers loaded
-	chat.SetTesting(true, "../../tmp/llm")
+	chat.InitWithConfig("../../tmp/llm")
+	chat.SetTesting(true)
 
 	at, _, err := jwtLogin("sys", "manager")
 	require.Nil(t, err)
@@ -70,7 +80,7 @@ func TestWsLLMGetProviders(t *testing.T) {
 	defer ws.Close()
 
 	for id, tc := range tests {
-		t.Run(tc.method, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			rpcReq := &eventbus.RPC{
 				Ver:    "2.0",
 				ID:     int64(id + 1),
@@ -121,7 +131,8 @@ func TestWsLLMMessages(t *testing.T) {
 	}
 
 	// Ensure we have some LLM providers loaded
-	chat.SetTesting(true, "../../tmp/llm")
+	chat.InitWithConfig("../../tmp/llm")
+	chat.SetTesting(true)
 
 	at, _, err := jwtLogin("sys", "manager")
 	require.Nil(t, err)

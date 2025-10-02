@@ -18,6 +18,12 @@ type ClaudeConfig struct {
 	MaxTokens int64  `json:"max_tokens"`
 }
 
+func (c *ClaudeConfig) MaskSensitive() {
+	if len(c.Key) > 8 {
+		c.Key = c.Key[:8] + "******"
+	}
+}
+
 func NewClaudeConfig() ClaudeConfig {
 	return ClaudeConfig{
 		Key:       "your-key",

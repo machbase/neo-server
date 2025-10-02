@@ -239,11 +239,14 @@ func (cons *WebConsole) handleRpc(_ context.Context, evt *eventbus.RPC) {
 }
 
 func init() {
+	chat.Init()
 	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
-	RegisterWebSocketRPCHandler("llmGetClaudeConfig", chat.RpcLLMGetClaudeConfig)
-	RegisterWebSocketRPCHandler("llmSetClaudeConfig", chat.RpcLLMSetClaudeConfig)
-	RegisterWebSocketRPCHandler("llmGetOllamaConfig", chat.RpcLLMGetOllamaConfig)
-	RegisterWebSocketRPCHandler("llmSetOllamaConfig", chat.RpcLLMSetOllamaConfig)
+	RegisterWebSocketRPCHandler("llmGetProviderConfigTemplate", chat.RpcLLMGetProviderConfigTemplate)
+	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
+	RegisterWebSocketRPCHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
+	RegisterWebSocketRPCHandler("llmGetModels", chat.RpcLLMGetModels)
+	RegisterWebSocketRPCHandler("llmAddModels", chat.RpcLLMAddModels)
+	RegisterWebSocketRPCHandler("llmRemoveModels", chat.RpcLLMRemoveModels)
 	RegisterWebSocketRPCHandler("markdownRender", handleMarkdownRender)
 }
 

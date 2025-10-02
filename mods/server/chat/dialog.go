@@ -3,13 +3,11 @@ package chat
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
 
 	"github.com/machbase/neo-server/v8/mods/logging"
 )
-
-func init() {
-	llmProviders = loadLLMProviders()
-}
 
 type DialogConfig struct {
 	Topic    string
@@ -22,13 +20,15 @@ func (c DialogConfig) NewDialog() Dialog {
 	if isTesting {
 		return c.NewTest()
 	}
-	for _, p := range llmProviders {
-		if p.Provider == c.Provider && p.Model == c.Model {
-			switch p.Provider {
-			case "claude":
-				return c.NewClaude()
-			case "ollama":
-				return c.NewOllama()
+	for _, providers := range llmProviders {
+		for _, p := range providers {
+			if p.Provider == c.Provider && p.Model == c.Model {
+				switch p.Provider {
+				case "claude":
+					return c.NewClaude()
+				case "ollama":
+					return c.NewOllama()
+				}
 			}
 		}
 	}
@@ -104,39 +104,105 @@ type LLMProvider struct {
 	Model    string `json:"model"`    // model identifier
 }
 
-var llmProviders = []LLMProvider{}
-var llmFallbackProviders = []LLMProvider{
-	{Name: "Claude Sonnet 4", Provider: "claude", Model: "claude-sonnet-4-20250514"},
-	{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
+var llmProviders = map[string][]LLMProvider{}
+var llmProvidersMutex sync.Mutex
+
+var llmFallbackProviders = map[string][]LLMProvider{
+	"claude": {
+		{Name: "Claude Sonnet 4", Provider: "claude", Model: "claude-sonnet-4-20250514"},
+	},
+	"ollama": {
+		{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
+	},
+}
+var llmSupportedProviders = []string{"claude", "ollama"}
+
+func isSupportedLLMProvider(provider string) bool {
+	return slices.Contains(llmSupportedProviders, provider)
 }
 
-func RpcLLMGetProviders() ([]LLMProvider, error) {
-	if isTesting {
-		return llmFallbackProviders, nil
-	}
+func RpcLLMGetModels() (map[string][]LLMProvider, error) {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
 	return llmProviders, nil
 }
 
-func RpcLLMGetClaudeConfig() (ClaudeConfig, error) {
-	ret := NewClaudeConfig()
-	if err := LoadConfig(&ret, "claude.json"); err != nil {
+func RpcLLMAddModels(providers []LLMProvider) error {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	for _, p := range providers {
+		if !isSupportedLLMProvider(p.Provider) {
+			return fmt.Errorf("unknown provider: %s", p.Provider)
+		}
+		llmProviders[p.Provider] = append(llmProviders[p.Provider], p)
+	}
+	SaveConfig(llmProviders, "models.json")
+	return nil
+}
+
+func RpcLLMRemoveModels(providers []LLMProvider) error {
+	llmProvidersMutex.Lock()
+	defer llmProvidersMutex.Unlock()
+	for _, p := range providers {
+		if !isSupportedLLMProvider(p.Provider) {
+			return fmt.Errorf("unknown provider: %s", p.Provider)
+		}
+		if ps, ok := llmProviders[p.Provider]; ok {
+			for i, exist := range ps {
+				if exist.Model == p.Model {
+					llmProviders[p.Provider] = append(ps[:i], ps[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+	SaveConfig(llmProviders, "models.json")
+	return nil
+}
+
+func RpcLLMGetProviders() []string {
+	return llmSupportedProviders
+}
+
+func RpcLLMGetProviderConfigTemplate(provider string) (any, error) {
+	if !isSupportedLLMProvider(provider) {
+		return nil, fmt.Errorf("unknown provider: %s", provider)
+	}
+	switch provider {
+	case "claude":
+		return NewClaudeConfig(), nil
+	case "ollama":
+		return NewOllamaConfig(), nil
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", provider)
+	}
+}
+
+func RpcLLMGetProviderConfig(provider string) (any, error) {
+	var ret any
+	var err error
+	switch provider {
+	case "claude":
+		cfg := NewClaudeConfig()
+		err = LoadConfig(&cfg, provider+".json")
+		cfg.MaskSensitive()
+		ret = cfg
+	case "ollama":
+		cfg := NewOllamaConfig()
+		err = LoadConfig(&cfg, provider+".json")
+		ret = cfg
+	default:
+		return nil, fmt.Errorf("unknown provider: %s", provider)
+	}
+	if err != nil {
 		return ret, err
 	}
 	return ret, nil
 }
 
-func RpcLLMGetOllamaConfig() (OllamaConfig, error) {
-	ret := NewOllamaConfig()
-	if err := LoadConfig(&ret, "ollama.json"); err != nil {
-		return ret, err
+func RpcLLMSetProviderConfig(provider string, config any) error {
+	if !isSupportedLLMProvider(provider) {
+		return fmt.Errorf("unknown provider: %s", provider)
 	}
-	return ret, nil
-}
-
-func RpcLLMSetClaudeConfig(config ClaudeConfig) error {
-	return SaveConfig(config, "claude.json")
-}
-
-func RpcLLMSetOllamaConfig(config OllamaConfig) error {
-	return SaveConfig(config, "ollama.json")
+	return SaveConfig(config, provider+".json")
 }
