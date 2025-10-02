@@ -13,32 +13,34 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func NewClaudeDialog(topic string, msgID int64, model string) *DialogCalude {
-	const systemMessage = "You are a friendly AI assistant for Machbase Neo DB."
-	ret := &DialogCalude{
-		topic:          topic,
-		msgID:          msgID,
-		model:          model,
-		Key:            "your-key",
-		MaxTokens:      1024,
-		SystemMessages: []string{systemMessage},
-		log:            logging.GetLog("chat/claude"),
+type ClaudeConfig struct {
+	Key       string `json:"key"`
+	MaxTokens int64  `json:"max_tokens"`
+}
+
+func (c *ClaudeConfig) MaskSensitive() {
+	if len(c.Key) > 8 {
+		c.Key = c.Key[:8] + "******"
 	}
-	return ret
 }
 
-type DialogCalude struct {
-	Key            string   `json:"key"`
-	MaxTokens      int64    `json:"max_tokens"`
-	SystemMessages []string `json:"system_messages,omitempty"`
-
-	topic string      `json:"-"`
-	msgID int64       `json:"-"`
-	model string      `json:"-"`
-	log   logging.Log `json:"-"`
+func NewClaudeConfig() ClaudeConfig {
+	return ClaudeConfig{
+		Key:       "your-key",
+		MaxTokens: 1024,
+	}
 }
 
-func (d *DialogCalude) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
+type ClaudeDialog struct {
+	ClaudeConfig
+	systemMessages []string
+	topic          string
+	msgID          int64
+	model          string
+	log            logging.Log
+}
+
+func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
 	eventbus.PublishMessage(d.topic, &eventbus.Message{
 		Ver:  "1.0",
 		ID:   d.msgID,
@@ -47,7 +49,7 @@ func (d *DialogCalude) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) 
 	})
 }
 
-func (d *DialogCalude) SendError(errMsg string) {
+func (d *ClaudeDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 	d.publish(eventbus.BodyTypeStreamBlockDelta,
 		&eventbus.BodyUnion{
@@ -59,7 +61,7 @@ func (d *DialogCalude) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
-func (d *DialogCalude) Talk(ctx context.Context, userMessage string) {
+func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 	claudeClient := anthropic.NewClient(
 		option.WithAPIKey(d.Key),
 	)
@@ -79,7 +81,7 @@ func (d *DialogCalude) Talk(ctx context.Context, userMessage string) {
 
 	// System messages
 	systems := []anthropic.TextBlockParam{}
-	for _, msg := range d.SystemMessages {
+	for _, msg := range d.systemMessages {
 		systemMessage := anthropic.TextBlockParam{
 			Text: msg,
 		}
