@@ -21,6 +21,7 @@ const (
 
 type Event struct {
 	Type     string    `json:"type"`
+	Session  string    `json:"session,omitempty"`
 	Ping     *Ping     `json:"ping,omitempty"`
 	Log      *Log      `json:"log,omitempty"`
 	OpenFile *OpenFile `json:"open_file,omitempty"`
@@ -107,9 +108,10 @@ type RPC struct {
 	Params []interface{} `json:"params,omitempty"`
 }
 
-func PublishMessage(topic string, msg *Message) {
+func PublishMessage(topic string, session string, msg *Message) {
 	Default.Publish(topic, &Event{
 		Type:    EVT_MSG,
+		Session: session,
 		Message: msg,
 	})
 }

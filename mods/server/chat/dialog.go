@@ -14,6 +14,7 @@ type DialogConfig struct {
 	Provider string
 	Model    string
 	MsgID    int64
+	Session  string
 }
 
 func (c DialogConfig) NewDialog() Dialog {
@@ -41,6 +42,7 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 		OllamaConfig:   NewOllamaConfig(),
 		systemMessages: []string{systemMessage},
 		topic:          c.Topic,
+		session:        c.Session,
 		msgID:          c.MsgID,
 		model:          c.Model,
 		log:            logging.GetLog("chat.ollama"),
@@ -57,6 +59,7 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 		ClaudeConfig:   NewClaudeConfig(),
 		systemMessages: []string{systemMessage},
 		topic:          c.Topic,
+		session:        c.Session,
 		msgID:          c.MsgID,
 		model:          c.Model,
 		log:            logging.GetLog("chat.claude"),
@@ -70,6 +73,7 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 func (c DialogConfig) NewTest() *TestingDialog {
 	return &TestingDialog{
 		topic:    c.Topic,
+		session:  c.Session,
 		msgID:    c.MsgID,
 		provider: c.Provider,
 		model:    c.Model,
@@ -82,6 +86,7 @@ func (c DialogConfig) NewUnknown() *UnknownDialog {
 		topic:    c.Topic,
 		provider: c.Provider,
 		model:    c.Model,
+		session:  c.Session,
 		msgID:    c.MsgID,
 		error:    errorMsg,
 	}

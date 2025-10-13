@@ -199,6 +199,7 @@ func TestClaudeDialog(t *testing.T) {
 		Provider: "claude",
 		Model:    "claude-sonnet-4-20250514",
 		MsgID:    12345,
+		Session:  "test_session",
 	}
 	dialog := cfg.NewDialog()
 	if dialog == nil {

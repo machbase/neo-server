@@ -36,17 +36,19 @@ type ClaudeDialog struct {
 	systemMessages []string
 	topic          string
 	msgID          int64
+	session        string
 	model          string
 	log            logging.Log
 }
 
 func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
-	eventbus.PublishMessage(d.topic, &eventbus.Message{
-		Ver:  "1.0",
-		ID:   d.msgID,
-		Type: typ,
-		Body: body,
-	})
+	eventbus.PublishMessage(d.topic, d.session,
+		&eventbus.Message{
+			Ver:  "1.0",
+			ID:   d.msgID,
+			Type: typ,
+			Body: body,
+		})
 }
 
 func (d *ClaudeDialog) SendError(errMsg string) {

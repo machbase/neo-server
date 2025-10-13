@@ -28,18 +28,20 @@ type OllamaDialog struct {
 	OllamaConfig
 	systemMessages []string
 	topic          string
+	session        string
 	msgID          int64
 	model          string
 	log            logging.Log
 }
 
 func (d *OllamaDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
-	eventbus.PublishMessage(d.topic, &eventbus.Message{
-		Ver:  "1.0",
-		ID:   d.msgID,
-		Type: typ,
-		Body: body,
-	})
+	eventbus.PublishMessage(d.topic, d.session,
+		&eventbus.Message{
+			Ver:  "1.0",
+			ID:   d.msgID,
+			Type: typ,
+			Body: body,
+		})
 }
 
 func (d *OllamaDialog) SendError(errMsg string) {

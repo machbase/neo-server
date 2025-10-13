@@ -95,11 +95,11 @@ func (cons *WebConsole) readerLoop() {
 			}
 		case eventbus.EVT_RPC_REQ:
 			if evt.Rpc != nil {
-				go cons.handleRpc(ctx, evt.Rpc)
+				go cons.handleRpc(ctx, evt.Session, evt.Rpc)
 			}
 		case eventbus.EVT_MSG:
 			if evt.Message != nil {
-				go cons.handleMessage(ctx, evt.Message)
+				go cons.handleMessage(ctx, evt.Session, evt.Message)
 			}
 		}
 	}
@@ -182,7 +182,7 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 	cons.connMutex.Unlock()
 }
 
-func (cons *WebConsole) handleRpc(_ context.Context, evt *eventbus.RPC) {
+func (cons *WebConsole) handleRpc(_ context.Context, session string, evt *eventbus.RPC) {
 	wsRpcHandlersMutex.RLock()
 	handler, ok := wsRpcHandlers[evt.Method]
 	wsRpcHandlersMutex.RUnlock()
@@ -233,8 +233,9 @@ func (cons *WebConsole) handleRpc(_ context.Context, evt *eventbus.RPC) {
 		}
 	}
 	cons.conn.WriteJSON(map[string]any{
-		"type": eventbus.EVT_RPC_RSP,
-		"rpc":  rsp,
+		"type":    eventbus.EVT_RPC_RSP,
+		"session": session,
+		"rpc":     rsp,
 	})
 }
 
@@ -259,7 +260,7 @@ func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
 	return w.String(), nil
 }
 
-func (cons *WebConsole) handleMessage(ctx context.Context, msg *eventbus.Message) {
+func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {
 	if msg.Ver != "1.0" {
 		eventbus.PublishLog(cons.topic, "ERROR",
 			fmt.Sprintf("unsupported msg.ver: %q", msg.Ver))
@@ -281,6 +282,7 @@ func (cons *WebConsole) handleMessage(ctx context.Context, msg *eventbus.Message
 		Provider: question.Provider,
 		Model:    question.Model,
 		MsgID:    msg.ID,
+		Session:  session,
 	}
 	d := dc.NewDialog()
 	d.Talk(ctx, question.Text)
