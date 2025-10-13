@@ -20,8 +20,9 @@ var _ Producer = (*Counter)(nil)
 
 type Counter struct {
 	sync.Mutex
-	samples int64
-	value   float64
+	samples  int64
+	value    float64
+	derivers []Deriver
 }
 
 func (fs *Counter) MarshalJSON() ([]byte, error) {
@@ -37,6 +38,15 @@ func (fs *Counter) UnmarshalJSON(data []byte) error {
 	fs.samples = p.Samples
 	fs.value = p.Value
 	return nil
+}
+
+func (fs *Counter) WithDerivers(derivers ...Deriver) *Counter {
+	fs.derivers = append(fs.derivers, derivers...)
+	return fs
+}
+
+func (fs *Counter) Derivers() []Deriver {
+	return fs.derivers
 }
 
 func (fs *Counter) Add(v float64) {

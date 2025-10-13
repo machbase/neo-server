@@ -25,6 +25,8 @@ type Producer interface {
 	MarshalJSON() ([]byte, error)
 	// UnmarshalJSON unmarshal the producer from JSON.
 	UnmarshalJSON(data []byte) error
+	// Derivers returns the list of derivers associated with the producer.
+	Derivers() []Deriver
 }
 
 // Value is the output type for the time series.
@@ -35,6 +37,10 @@ type Value interface {
 type DerivingValue interface {
 	Value
 	SetDerivedValue(name string, value Value)
+}
+
+type Marker interface {
+	Mark()
 }
 
 // Type is the type of the Value.

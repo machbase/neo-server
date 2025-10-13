@@ -44,6 +44,10 @@ func (om *Odometer) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (om *Odometer) Derivers() []Deriver {
+	return nil
+}
+
 func (om *Odometer) Add(v float64) {
 	om.Lock()
 	defer om.Unlock()

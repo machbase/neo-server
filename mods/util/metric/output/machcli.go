@@ -120,9 +120,9 @@ func (m *MachCli) convertProduct(pd metric.Product) (result []StatRec, err error
 			return // Skip zero timers
 		}
 		result = []StatRec{
-			{fmt.Sprintf("%s%s:avg", prefix, pd.Name), pd.Time, float64(int64(p.SumDuration) / p.Samples)},
-			{fmt.Sprintf("%s%s:max", prefix, pd.Name), pd.Time, float64(p.MaxDuration)},
-			{fmt.Sprintf("%s%s:min", prefix, pd.Name), pd.Time, float64(p.MinDuration)},
+			{fmt.Sprintf("%s%s:avg", prefix, pd.Name), pd.Time, float64(int64(p.Sum) / p.Samples)},
+			{fmt.Sprintf("%s%s:max", prefix, pd.Name), pd.Time, float64(p.Max)},
+			{fmt.Sprintf("%s%s:min", prefix, pd.Name), pd.Time, float64(p.Min)},
 		}
 	case *metric.HistogramValue:
 		if p.Samples == 0 {

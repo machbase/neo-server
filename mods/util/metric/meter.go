@@ -24,12 +24,13 @@ var _ Producer = (*Meter)(nil)
 
 type Meter struct {
 	sync.Mutex
-	first   float64
-	last    float64
-	min     float64
-	max     float64
-	sum     float64
-	samples int64
+	first    float64
+	last     float64
+	min      float64
+	max      float64
+	sum      float64
+	samples  int64
+	derivers []Deriver
 }
 
 func (m *Meter) MarshalJSON() ([]byte, error) {
@@ -48,6 +49,15 @@ func (m *Meter) UnmarshalJSON(data []byte) error {
 	m.sum = p.Sum
 	m.samples = p.Samples
 	return nil
+}
+
+func (m *Meter) WithDerivers(derivers ...Deriver) *Meter {
+	m.derivers = append(m.derivers, derivers...)
+	return m
+}
+
+func (m *Meter) Derivers() []Deriver {
+	return m.derivers
 }
 
 func (m *Meter) Add(v float64) {
@@ -103,9 +113,18 @@ type MeterValue struct {
 	Last    float64 `json:"last"`
 	Min     float64 `json:"min"`
 	Max     float64 `json:"max"`
+	// Optional derived values, such as moving averages
+	DerivedValues map[string]Value `json:"derived,omitempty"`
 }
 
 func (mp *MeterValue) String() string {
 	b, _ := json.Marshal(mp)
 	return string(b)
+}
+
+func (cp *MeterValue) SetDerivedValue(name string, value Value) {
+	if cp.DerivedValues == nil {
+		cp.DerivedValues = make(map[string]Value)
+	}
+	cp.DerivedValues[name] = value
 }

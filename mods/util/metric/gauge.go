@@ -21,9 +21,10 @@ var _ Producer = (*Gauge)(nil)
 
 type Gauge struct {
 	sync.Mutex
-	samples int64
-	sum     float64
-	value   float64
+	samples  int64
+	sum      float64
+	value    float64
+	derivers []Deriver
 }
 
 func (fs *Gauge) MarshalJSON() ([]byte, error) {
@@ -40,6 +41,15 @@ func (fs *Gauge) UnmarshalJSON(data []byte) error {
 	fs.sum = p.Sum
 	fs.value = p.Value
 	return nil
+}
+
+func (fs *Gauge) WithDerivers(derivers ...Deriver) *Gauge {
+	fs.derivers = append(fs.derivers, derivers...)
+	return fs
+}
+
+func (fs *Gauge) Derivers() []Deriver {
+	return fs.derivers
 }
 
 func (fs *Gauge) Add(v float64) {

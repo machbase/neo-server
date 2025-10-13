@@ -31,10 +31,11 @@ func (hb *HistBin) UnmarshalJSON(data []byte) error {
 
 type Histogram struct {
 	sync.Mutex
-	maxBins int
-	bins    []HistBin
-	samples int64
-	qs      []float64 // Quantile to calculate
+	maxBins  int
+	bins     []HistBin
+	samples  int64
+	qs       []float64 // Quantile to calculate
+	derivers []Deriver
 }
 
 var _ Producer = (*Histogram)(nil)
@@ -88,8 +89,13 @@ func (h *Histogram) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (h *Histogram) String() string {
-	return h.Produce(false).String()
+func (h *Histogram) WithDerivers(derivers ...Deriver) *Histogram {
+	h.derivers = append(h.derivers, derivers...)
+	return h
+}
+
+func (h *Histogram) Derivers() []Deriver {
+	return h.derivers
 }
 
 func (h *Histogram) Add(value float64) {
@@ -196,13 +202,27 @@ func (h *Histogram) Produce(reset bool) Value {
 	return ret
 }
 
+func (h *Histogram) String() string {
+	return h.Produce(false).String()
+}
+
 type HistogramValue struct {
 	Samples int64     `json:"samples"`
 	P       []float64 `json:"p"`
 	Values  []float64 `json:"values"`
+
+	// Optional derived values, such as moving averages
+	DerivedValues map[string]Value `json:"derived,omitempty"`
 }
 
 func (hp HistogramValue) String() string {
 	b, _ := json.Marshal(hp)
 	return string(b)
+}
+
+func (hp *HistogramValue) SetDerivedValue(name string, value Value) {
+	if hp.DerivedValues == nil {
+		hp.DerivedValues = make(map[string]Value)
+	}
+	hp.DerivedValues[name] = value
 }

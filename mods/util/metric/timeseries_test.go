@@ -272,9 +272,11 @@ func TestTimeSeriesCounter(t *testing.T) {
 }
 
 func TestTimeSeriesCounterWithSlidingWindow(t *testing.T) {
-	ts := NewTimeSeries(1*time.Second, 10, NewCounter(),
-		WithDeriver("ma3", NewMovingAverage(3)),
-		WithDeriver("ma5", NewMovingAverage(5)),
+	ts := NewTimeSeries(1*time.Second, 10,
+		NewCounter().WithDerivers(
+			NewMovingAverage("ma3", 3),
+			NewMovingAverage("ma5", 5),
+		),
 	)
 
 	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
@@ -384,9 +386,11 @@ func TestTimeSeriesGauge(t *testing.T) {
 }
 
 func TestTimeSeriesGaugeWithSlidingWindow(t *testing.T) {
-	ts := NewTimeSeries(time.Second, 10, NewGauge(),
-		WithDeriver("ma3", NewMovingAverage(3)),
-		WithDeriver("ma5", NewMovingAverage(5)),
+	ts := NewTimeSeries(time.Second, 10,
+		NewGauge().WithDerivers(
+			NewMovingAverage("ma3", 3),
+			NewMovingAverage("ma5", 5),
+		),
 	)
 
 	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
@@ -495,6 +499,193 @@ func TestTimeSeriesMeter(t *testing.T) {
 	}, values)
 }
 
+func TestTimeSeriesMeterWithSlidingWindow(t *testing.T) {
+	ts := NewTimeSeries(time.Second, 10,
+		NewMeter().WithDerivers(
+			NewMovingAverage("ma3", 3),
+			NewMovingAverage("ma5", 5),
+		),
+	)
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(i))
+	}
+
+	times, values := ts.All()
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, &MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10},
+		"ma5": &MeterValue{Min: 1, Max: 10, First: 1, Last: 10, Sum: 55, Samples: 10},
+	}}, values[0])
+	require.Equal(t, &MeterValue{Min: 11, Max: 20, First: 11, Last: 20, Sum: 155, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 6, Max: 15, First: 6, Last: 15, Sum: 210, Samples: 20},
+		"ma5": &MeterValue{Min: 6, Max: 15, First: 6, Last: 15, Sum: 210, Samples: 20},
+	}}, values[1])
+	require.Equal(t, &MeterValue{Min: 21, Max: 30, First: 21, Last: 30, Sum: 255, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 11, Max: 20, First: 11, Last: 20, Sum: 465, Samples: 30},
+		"ma5": &MeterValue{Min: 11, Max: 20, First: 11, Last: 20, Sum: 465, Samples: 30},
+	}}, values[2])
+	require.Equal(t, &MeterValue{Min: 31, Max: 40, First: 31, Last: 40, Sum: 355, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 21, Max: 30, First: 21, Last: 30, Sum: 765, Samples: 30},
+		"ma5": &MeterValue{Min: 16, Max: 25, First: 16, Last: 25, Sum: 820, Samples: 40},
+	}}, values[3])
+	require.Equal(t, &MeterValue{Min: 41, Max: 50, First: 41, Last: 50, Sum: 455, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 31, Max: 40, First: 31, Last: 40, Sum: 1065, Samples: 30},
+		"ma5": &MeterValue{Min: 21, Max: 30, First: 21, Last: 30, Sum: 1275, Samples: 50},
+	}}, values[4])
+	require.Equal(t, &MeterValue{Min: 51, Max: 60, First: 51, Last: 60, Sum: 555, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 41, Max: 50, First: 41, Last: 50, Sum: 1365, Samples: 30},
+		"ma5": &MeterValue{Min: 31, Max: 40, First: 31, Last: 40, Sum: 1775, Samples: 50},
+	}}, values[5])
+	require.Equal(t, &MeterValue{Min: 61, Max: 70, First: 61, Last: 70, Sum: 655, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 51, Max: 60, First: 51, Last: 60, Sum: 1665, Samples: 30},
+		"ma5": &MeterValue{Min: 41, Max: 50, First: 41, Last: 50, Sum: 2275, Samples: 50},
+	}}, values[6])
+	require.Equal(t, &MeterValue{Min: 71, Max: 80, First: 71, Last: 80, Sum: 755, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 61, Max: 70, First: 61, Last: 70, Sum: 1965, Samples: 30},
+		"ma5": &MeterValue{Min: 51, Max: 60, First: 51, Last: 60, Sum: 2775, Samples: 50},
+	}}, values[7])
+	require.Equal(t, &MeterValue{Min: 81, Max: 90, First: 81, Last: 90, Sum: 855, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 71, Max: 80, First: 71, Last: 80, Sum: 2265, Samples: 30},
+		"ma5": &MeterValue{Min: 61, Max: 70, First: 61, Last: 70, Sum: 3275, Samples: 50},
+	}}, values[8])
+	require.Equal(t, &MeterValue{Min: 91, Max: 100, First: 91, Last: 100, Sum: 955, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &MeterValue{Min: 81, Max: 90, First: 81, Last: 90, Sum: 2565, Samples: 30},
+		"ma5": &MeterValue{Min: 71, Max: 80, First: 71, Last: 80, Sum: 3775, Samples: 50},
+	}}, values[9])
+}
+
+func TestTimeSeriesTimer(t *testing.T) {
+	ts := NewTimeSeries(time.Second, 10, NewTimer())
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(time.Duration(i) * time.Second))
+	}
+
+	times, values := ts.All()
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, []Value{
+		&TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(11) * time.Second, Max: time.Duration(20) * time.Second, Sum: time.Duration(155) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(21) * time.Second, Max: time.Duration(30) * time.Second, Sum: time.Duration(255) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(31) * time.Second, Max: time.Duration(40) * time.Second, Sum: time.Duration(355) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(41) * time.Second, Max: time.Duration(50) * time.Second, Sum: time.Duration(455) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(51) * time.Second, Max: time.Duration(60) * time.Second, Sum: time.Duration(555) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(61) * time.Second, Max: time.Duration(70) * time.Second, Sum: time.Duration(655) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(71) * time.Second, Max: time.Duration(80) * time.Second, Sum: time.Duration(755) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(81) * time.Second, Max: time.Duration(90) * time.Second, Sum: time.Duration(855) * time.Second, Samples: 10},
+		&TimerValue{Min: time.Duration(91) * time.Second, Max: time.Duration(100) * time.Second, Sum: time.Duration(955) * time.Second, Samples: 10},
+	}, values)
+}
+
+func TestTimeSeriesTimerWithSlidingWindow(t *testing.T) {
+	ts := NewTimeSeries(time.Second, 10, NewTimer().WithDerivers(
+		NewMovingAverage("ma3", 3),
+		NewMovingAverage("ma5", 5),
+	))
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(time.Duration(i) * time.Second))
+	}
+
+	times, values := ts.All()
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, &TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10},
+		"ma5": &TimerValue{Min: time.Duration(1) * time.Second, Max: time.Duration(10) * time.Second, Sum: time.Duration(55) * time.Second, Samples: 10},
+	}}, values[0])
+	require.Equal(t, &TimerValue{Min: time.Duration(11) * time.Second, Max: time.Duration(20) * time.Second, Sum: time.Duration(155) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(6) * time.Second, Max: time.Duration(15) * time.Second, Sum: time.Duration(210) * time.Second, Samples: 20},
+		"ma5": &TimerValue{Min: time.Duration(6) * time.Second, Max: time.Duration(15) * time.Second, Sum: time.Duration(210) * time.Second, Samples: 20},
+	}}, values[1])
+	require.Equal(t, &TimerValue{Min: time.Duration(21) * time.Second, Max: time.Duration(30) * time.Second, Sum: time.Duration(255) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(11) * time.Second, Max: time.Duration(20) * time.Second, Sum: time.Duration(465) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(11) * time.Second, Max: time.Duration(20) * time.Second, Sum: time.Duration(465) * time.Second, Samples: 30},
+	}}, values[2])
+	require.Equal(t, &TimerValue{Min: time.Duration(31) * time.Second, Max: time.Duration(40) * time.Second, Sum: time.Duration(355) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(21) * time.Second, Max: time.Duration(30) * time.Second, Sum: time.Duration(765) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(16) * time.Second, Max: time.Duration(25) * time.Second, Sum: time.Duration(820) * time.Second, Samples: 40},
+	}}, values[3])
+	require.Equal(t, &TimerValue{Min: time.Duration(41) * time.Second, Max: time.Duration(50) * time.Second, Sum: time.Duration(455) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(31) * time.Second, Max: time.Duration(40) * time.Second, Sum: time.Duration(1065) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(21) * time.Second, Max: time.Duration(30) * time.Second, Sum: time.Duration(1275) * time.Second, Samples: 50},
+	}}, values[4])
+	require.Equal(t, &TimerValue{Min: time.Duration(51) * time.Second, Max: time.Duration(60) * time.Second, Sum: time.Duration(555) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(41) * time.Second, Max: time.Duration(50) * time.Second, Sum: time.Duration(1365) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(31) * time.Second, Max: time.Duration(40) * time.Second, Sum: time.Duration(1775) * time.Second, Samples: 50},
+	}}, values[5])
+	require.Equal(t, &TimerValue{Min: time.Duration(61) * time.Second, Max: time.Duration(70) * time.Second, Sum: time.Duration(655) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(51) * time.Second, Max: time.Duration(60) * time.Second, Sum: time.Duration(1665) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(41) * time.Second, Max: time.Duration(50) * time.Second, Sum: time.Duration(2275) * time.Second, Samples: 50},
+	}}, values[6])
+	require.Equal(t, &TimerValue{Min: time.Duration(71) * time.Second, Max: time.Duration(80) * time.Second, Sum: time.Duration(755) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(61) * time.Second, Max: time.Duration(70) * time.Second, Sum: time.Duration(1965) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(51) * time.Second, Max: time.Duration(60) * time.Second, Sum: time.Duration(2775) * time.Second, Samples: 50},
+	}}, values[7])
+	require.Equal(t, &TimerValue{Min: time.Duration(81) * time.Second, Max: time.Duration(90) * time.Second, Sum: time.Duration(855) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(71) * time.Second, Max: time.Duration(80) * time.Second, Sum: time.Duration(2265) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(61) * time.Second, Max: time.Duration(70) * time.Second, Sum: time.Duration(3275) * time.Second, Samples: 50},
+	}}, values[8])
+	require.Equal(t, &TimerValue{Min: time.Duration(91) * time.Second, Max: time.Duration(100) * time.Second, Sum: time.Duration(955) * time.Second, Samples: 10, DerivedValues: map[string]Value{
+		"ma3": &TimerValue{Min: time.Duration(81) * time.Second, Max: time.Duration(90) * time.Second, Sum: time.Duration(2565) * time.Second, Samples: 30},
+		"ma5": &TimerValue{Min: time.Duration(71) * time.Second, Max: time.Duration(80) * time.Second, Sum: time.Duration(3775) * time.Second, Samples: 50},
+	}}, values[9])
+}
+
 func TestTimeSeriesHistogram(t *testing.T) {
 	ts := NewTimeSeries(time.Second, 10, NewHistogram(100, 0.5, 0.75, 0.99))
 
@@ -534,4 +725,76 @@ func TestTimeSeriesHistogram(t *testing.T) {
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{85, 88, 90}},
 		&HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{95, 98, 100}},
 	}, values)
+}
+
+func TestTimeSeriesHistogramWithSlidingWindow(t *testing.T) {
+	ts := NewTimeSeries(time.Second, 10, NewHistogram(100, 0.5, 0.75, 0.99).WithDerivers(
+		NewMovingAverage("ma3", 3),
+		NewMovingAverage("ma5", 5),
+	))
+
+	now := time.Date(2025, 07, 21, 17, 31, 12, 0, time.FixedZone("Asia/Seoul", 9*60*60))
+	nowFunc = func() time.Time {
+		ret := now
+		now = now.Add(time.Millisecond * 100)
+		return ret
+	}
+
+	for i := 1; i <= 100; i++ {
+		ts.Add(float64(i))
+	}
+
+	times, values := ts.LastN(0)
+	require.Equal(t, []time.Time{
+		time.Date(2025, 07, 21, 17, 31, 13, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 14, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 15, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 16, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 17, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 18, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 19, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 20, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 21, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+		time.Date(2025, 07, 21, 17, 31, 22, 0, time.FixedZone("Asia/Seoul", 9*60*60)),
+	}, times)
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}},
+		"ma5": &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{5, 8, 10}},
+	}}, values[0])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{15, 18, 20}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 20, P: []float64{0.5, 0.75, 0.99}, Values: []float64{10, 13, 15}},
+		"ma5": &HistogramValue{Samples: 20, P: []float64{0.5, 0.75, 0.99}, Values: []float64{10, 13, 15}},
+	}}, values[1])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{25, 28, 30}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{15, 18, 20}},
+		"ma5": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{15, 18, 20}},
+	}}, values[2])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{35, 38, 40}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{25, 28, 30}},
+		"ma5": &HistogramValue{Samples: 40, P: []float64{0.5, 0.75, 0.99}, Values: []float64{20, 23, 25}},
+	}}, values[3])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{45, 48, 50}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{35, 38, 40}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{25, 28, 30}},
+	}}, values[4])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{55, 58, 60}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{45, 48, 50}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{35, 38, 40}},
+	}}, values[5])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{65, 68, 70}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{55, 58, 60}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{45, 48, 50}},
+	}}, values[6])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{75, 78, 80}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{65, 68, 70}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{55, 58, 60}},
+	}}, values[7])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{85, 88, 90}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{75, 78, 80}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{65, 68, 70}},
+	}}, values[8])
+	require.Equal(t, &HistogramValue{Samples: 10, P: []float64{0.5, 0.75, 0.99}, Values: []float64{95, 98, 100}, DerivedValues: map[string]Value{
+		"ma3": &HistogramValue{Samples: 30, P: []float64{0.5, 0.75, 0.99}, Values: []float64{85, 88, 90}},
+		"ma5": &HistogramValue{Samples: 50, P: []float64{0.5, 0.75, 0.99}, Values: []float64{75, 78, 80}},
+	}}, values[9])
 }

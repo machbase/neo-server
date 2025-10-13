@@ -13,9 +13,9 @@ func NewTimer() *Timer {
 func NewTimerWithValue(v *TimerValue) *Timer {
 	return &Timer{
 		samples:     v.Samples,
-		sumDuration: v.SumDuration,
-		minDuration: v.MinDuration,
-		maxDuration: v.MaxDuration,
+		sumDuration: v.Sum,
+		minDuration: v.Min,
+		maxDuration: v.Max,
 	}
 }
 
@@ -25,6 +25,7 @@ type Timer struct {
 	sumDuration time.Duration
 	minDuration time.Duration
 	maxDuration time.Duration
+	derivers    []Deriver
 }
 
 var _ Producer = (*Timer)(nil)
@@ -40,10 +41,19 @@ func (t *Timer) UnmarshalJSON(data []byte) error {
 	}
 
 	t.samples = tv.Samples
-	t.sumDuration = tv.SumDuration
-	t.minDuration = tv.MinDuration
-	t.maxDuration = tv.MaxDuration
+	t.sumDuration = tv.Sum
+	t.minDuration = tv.Min
+	t.maxDuration = tv.Max
 	return nil
+}
+
+func (t *Timer) WithDerivers(derivers ...Deriver) *Timer {
+	t.derivers = append(t.derivers, derivers...)
+	return t
+}
+
+func (t *Timer) Derivers() []Deriver {
+	return t.derivers
 }
 
 func (t *Timer) String() string {
@@ -64,10 +74,10 @@ func (t *Timer) Produce(reset bool) Value {
 	t.Lock()
 	defer t.Unlock()
 	ret := &TimerValue{
-		Samples:     t.samples,
-		SumDuration: t.sumDuration,
-		MinDuration: t.minDuration,
-		MaxDuration: t.maxDuration,
+		Samples: t.samples,
+		Sum:     t.sumDuration,
+		Min:     t.minDuration,
+		Max:     t.maxDuration,
 	}
 	if reset {
 		t.samples = 0
@@ -76,6 +86,21 @@ func (t *Timer) Produce(reset bool) Value {
 		t.maxDuration = 0
 	}
 	return ret
+}
+
+type TimerMarker struct {
+	t     *Timer
+	start time.Time
+}
+
+var _ Marker = (*TimerMarker)(nil)
+
+func (w *TimerMarker) Mark() {
+	w.t.Mark(time.Since(w.start))
+}
+
+func (t *Timer) New() Marker {
+	return &TimerMarker{t: t, start: nowFunc()}
 }
 
 func (t *Timer) Add(v float64) {
@@ -100,13 +125,22 @@ func (t *Timer) Mark(d time.Duration) {
 }
 
 type TimerValue struct {
-	Samples     int64         `json:"samples"`
-	SumDuration time.Duration `json:"sum"`
-	MinDuration time.Duration `json:"min"`
-	MaxDuration time.Duration `json:"max"`
+	Samples int64         `json:"samples"`
+	Sum     time.Duration `json:"sum"`
+	Min     time.Duration `json:"min"`
+	Max     time.Duration `json:"max"`
+	// Optional derived values, such as moving averages
+	DerivedValues map[string]Value `json:"derived,omitempty"`
 }
 
 func (tp TimerValue) String() string {
 	b, _ := json.Marshal(tp)
 	return string(b)
+}
+
+func (cp *TimerValue) SetDerivedValue(name string, value Value) {
+	if cp.DerivedValues == nil {
+		cp.DerivedValues = make(map[string]Value)
+	}
+	cp.DerivedValues[name] = value
 }

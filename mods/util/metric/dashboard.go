@@ -687,11 +687,11 @@ func (ss Snapshot) timerToSeries(opt Chart) []Series {
 			}
 			switch fieldName {
 			case "min":
-				data[i].Value = v.MinDuration
+				data[i].Value = v.Min
 			case "max":
-				data[i].Value = v.MaxDuration
+				data[i].Value = v.Max
 			case "avg":
-				data[i].Value = v.SumDuration / time.Duration(v.Samples)
+				data[i].Value = v.Sum / time.Duration(v.Samples)
 			}
 		}
 		series = append(series, Series{

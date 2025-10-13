@@ -113,7 +113,6 @@ type TimeSeries struct {
 	maxCount int
 	meta     any // Optional metadata for the time series
 	lsnr     func(Product)
-	derivers map[string]Deriver
 }
 
 // If aggregator is nil, it will replace the last point with the new one.
@@ -132,15 +131,6 @@ func NewTimeSeries(interval time.Duration, maxCount int, prod Producer, opts ...
 }
 
 type TimeSeriesOption func(*TimeSeries)
-
-func WithDeriver(id string, d Deriver) TimeSeriesOption {
-	return func(ts *TimeSeries) {
-		if ts.derivers == nil {
-			ts.derivers = make(map[string]Deriver)
-		}
-		ts.derivers[id] = d
-	}
-}
 
 func WithListener(lsnr func(Product)) TimeSeriesOption {
 	return func(ts *TimeSeries) {
@@ -191,12 +181,16 @@ func (ts *TimeSeries) MaxCount() int {
 }
 
 func (ts *TimeSeries) runDerivers(currentValue Value, preliminary bool) {
+	derivers := ts.producer.Derivers()
+	if len(derivers) == 0 {
+		return
+	}
 	driving, ok := currentValue.(DerivingValue)
 	if !ok {
 		return
 	}
 	// Derive additional values
-	for id, d := range ts.derivers {
+	for _, d := range derivers {
 		var values []Value
 		if ws := d.WindowSize(); ws > 0 {
 			_, values = ts.lastN(d.WindowSize() + 1)
@@ -209,7 +203,7 @@ func (ts *TimeSeries) runDerivers(currentValue Value, preliminary bool) {
 			_, values = ts.lastN(1)
 		}
 		dv := d.Derive(values)
-		driving.SetDerivedValue(id, dv)
+		driving.SetDerivedValue(d.ID(), dv)
 	}
 }
 
