@@ -252,7 +252,6 @@ func init() {
 	chat.Init()
 	RegisterWebSocketRPCHandler("shell", handleShell)
 	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
-	RegisterWebSocketRPCHandler("llmGetProviderConfigTemplate", chat.RpcLLMGetProviderConfigTemplate)
 	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
 	RegisterWebSocketRPCHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
 	RegisterWebSocketRPCHandler("llmGetModels", chat.RpcLLMGetModels)
