@@ -57,6 +57,9 @@ func (d *OllamaDialog) SendError(errMsg string) {
 }
 
 func (d *OllamaDialog) Talk(ctx context.Context, message string) {
+	d.publish(eventbus.BodyTypeAnswerStart, nil)
+	defer d.publish(eventbus.BodyTypeAnswerStop, nil)
+
 	// d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 	// d.publish(eventbus.BodyTypeStreamBlockDelta,
 	// 	&eventbus.BodyUnion{

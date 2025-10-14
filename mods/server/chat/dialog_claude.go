@@ -64,6 +64,9 @@ func (d *ClaudeDialog) SendError(errMsg string) {
 }
 
 func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
+	d.publish(eventbus.BodyTypeAnswerStart, nil)
+	defer d.publish(eventbus.BodyTypeAnswerStop, nil)
+
 	claudeClient := anthropic.NewClient(
 		option.WithAPIKey(d.Key),
 	)

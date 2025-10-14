@@ -241,6 +241,7 @@ func (cons *WebConsole) handleRpc(_ context.Context, session string, evt *eventb
 
 func init() {
 	chat.Init()
+	RegisterWebSocketRPCHandler("shell", handleShell)
 	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
 	RegisterWebSocketRPCHandler("llmGetProviderConfigTemplate", chat.RpcLLMGetProviderConfigTemplate)
 	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
@@ -258,6 +259,10 @@ func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
 		return "", err
 	}
 	return w.String(), nil
+}
+
+func handleShell(command string) (string, error) {
+	return "ECHO: " + command, nil
 }
 
 func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {

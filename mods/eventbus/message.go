@@ -50,6 +50,8 @@ type BodyType string
 
 const (
 	BodyTypeQuestion           BodyType = "question"
+	BodyTypeAnswerStart        BodyType = "answer-start"
+	BodyTypeAnswerStop         BodyType = "answer-stop"
 	BodyTypeStreamMessageStart BodyType = "stream-message-start"
 	BodyTypeStreamMessageDelta BodyType = "stream-message-delta"
 	BodyTypeStreamMessageStop  BodyType = "stream-message-stop"
