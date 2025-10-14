@@ -217,11 +217,6 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 			switch variant := block.AsAny().(type) {
 			case anthropic.ToolUseBlock:
 				d.log.Debugf("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
-				// w := &strings.Builder{}
-				// conv := mdconv.New(mdconv.WithDarkMode(false))
-				// code := fmt.Sprintf("🛠️ **%s**\n```json\n%s\n```", block.Name, variant.JSON.Input.Raw())
-				// conv.ConvertString(code, w)
-				// d.Send(LLMMessage{Content: w.String(), IsPartial: true})
 
 				fetchRequest := mcp.CallToolRequest{}
 				fetchRequest.Request.Method = "tools/call"
@@ -240,11 +235,6 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 					case mcp.TextContent:
 						d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
 						callResult = c.Text
-						// conv := mdconv.New(mdconv.WithDarkMode(false))
-						// code := fmt.Sprintf("\n📎 **Result**\n```\n%s\n```\n", c.Text)
-						// w := &strings.Builder{}
-						// conv.ConvertString(code, w)
-						// d.Send(LLMMessage{Content: w.String(), IsPartial: true})
 					default:
 						d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
 					}
@@ -257,14 +247,4 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 		}
 		messages = append(messages, anthropic.NewUserMessage(toolResults...))
 	}
-
-	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
-	d.publish(eventbus.BodyTypeStreamBlockDelta,
-		&eventbus.BodyUnion{
-			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-				ContentType: "text",
-				Text:        fmt.Sprintf("message from %s", d.model),
-			},
-		})
-	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
