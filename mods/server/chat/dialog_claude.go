@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -120,9 +121,12 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 				d.SendError(fmt.Sprintf("😡 Failed to accumulate message: %v", err))
 				return
 			}
-			if d.log.InfoEnabled() {
-				bs, _ := json.Marshal(event)
-				d.log.Info(string(bs))
+			if d.log.DebugEnabled() {
+				bs := &bytes.Buffer{}
+				enc := json.NewEncoder(bs)
+				enc.SetIndent("", "  ")
+				enc.Encode(event)
+				d.log.Debug(bs.String())
 			}
 			switch event := event.AsAny().(type) {
 			case anthropic.MessageStartEvent:
@@ -202,8 +206,12 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 		}
 
 		if d.log.DebugEnabled() {
-			b, _ := json.Marshal(message)
-			d.log.Debug("Claude stream ended:", string(b))
+			bs := &bytes.Buffer{}
+			enc := json.NewEncoder(bs)
+			enc.SetIndent("", "  ")
+			enc.Encode(message)
+			d.log.Debug(bs.String())
+			d.log.Debug("Claude stream ended:", bs.String())
 		}
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
@@ -216,7 +224,9 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 		for _, block := range message.Content {
 			switch variant := block.AsAny().(type) {
 			case anthropic.ToolUseBlock:
-				d.log.Debugf("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
+				if d.log.DebugEnabled() {
+					d.log.Debugf("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
+				}
 
 				fetchRequest := mcp.CallToolRequest{}
 				fetchRequest.Request.Method = "tools/call"
@@ -233,7 +243,9 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 				for _, content := range result.Content {
 					switch c := content.(type) {
 					case mcp.TextContent:
-						d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
+						if d.log.DebugEnabled() {
+							d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
+						}
 						callResult = c.Text
 					default:
 						d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
