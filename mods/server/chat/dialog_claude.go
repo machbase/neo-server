@@ -122,12 +122,12 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 				d.SendError(fmt.Sprintf("😡 Failed to accumulate message: %v", err))
 				return
 			}
-			if d.log.DebugEnabled() {
+			if d.log.TraceEnabled() {
 				bs := &bytes.Buffer{}
 				enc := json.NewEncoder(bs)
 				enc.SetIndent("", "  ")
 				enc.Encode(event)
-				d.log.Debug(bs.String())
+				d.log.Trace(bs.String())
 			}
 			switch event := event.AsAny().(type) {
 			case anthropic.MessageStartEvent:
@@ -206,13 +206,12 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 			}
 		}
 
-		if d.log.DebugEnabled() {
+		if d.log.TraceEnabled() {
 			bs := &bytes.Buffer{}
 			enc := json.NewEncoder(bs)
 			enc.SetIndent("", "  ")
 			enc.Encode(message)
-			d.log.Debug(bs.String())
-			d.log.Debug("Claude stream ended:", bs.String())
+			d.log.Trace("Claude stream ended:", bs.String())
 		}
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
@@ -225,8 +224,8 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 		for _, block := range message.Content {
 			switch variant := block.AsAny().(type) {
 			case anthropic.ToolUseBlock:
-				if d.log.DebugEnabled() {
-					d.log.Debugf("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
+				if d.log.TraceEnabled() {
+					d.log.Tracef("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
 				}
 
 				fetchRequest := mcp.CallToolRequest{}
@@ -244,13 +243,13 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 				for _, content := range result.Content {
 					switch c := content.(type) {
 					case mcp.TextContent:
-						if d.log.DebugEnabled() {
+						if d.log.TraceEnabled() {
 							peek := c.Text
 							if len(peek) > 128 {
 								peek = peek[:128] + "..."
 							}
 							peek = strings.ReplaceAll(peek, "\n", "\\n")
-							d.log.Debugf("%s Tool result:\n%s", block.ID, peek)
+							d.log.Tracef("%s Tool result:\n%s", block.ID, peek)
 						}
 						callResult = c.Text
 					default:
