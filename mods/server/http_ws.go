@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/server/chat"
+	"github.com/machbase/neo-server/v8/mods/util"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
@@ -182,7 +184,7 @@ func (cons *WebConsole) handlePing(_ context.Context, evt *eventbus.Ping) {
 	cons.connMutex.Unlock()
 }
 
-func (cons *WebConsole) handleRpc(_ context.Context, session string, evt *eventbus.RPC) {
+func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *eventbus.RPC) {
 	wsRpcHandlersMutex.RLock()
 	handler, ok := wsRpcHandlers[evt.Method]
 	wsRpcHandlersMutex.RUnlock()
@@ -195,11 +197,18 @@ func (cons *WebConsole) handleRpc(_ context.Context, session string, evt *eventb
 		// convert evt.Params to the expected types of handler function.
 		var params []reflect.Value
 		handlerType := reflect.TypeOf(handler)
+		implicitParams := 0
 		for i := 0; i < handlerType.NumIn(); i++ {
 			paramType := handlerType.In(i)
 			var paramValue reflect.Value
-			if i < len(evt.Params) {
-				paramValue = reflect.ValueOf(evt.Params[i])
+			if paramType.String() == "*server.WebConsole" {
+				implicitParams++
+				paramValue = reflect.ValueOf(cons)
+			} else if paramType.String() == "context.Context" {
+				implicitParams++
+				paramValue = reflect.ValueOf(ctx)
+			} else if i-implicitParams < len(evt.Params) {
+				paramValue = reflect.ValueOf(evt.Params[i-implicitParams])
 			} else {
 				paramValue = reflect.Zero(paramType)
 			}
@@ -243,7 +252,6 @@ func init() {
 	chat.Init()
 	RegisterWebSocketRPCHandler("shell", handleShell)
 	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
-	RegisterWebSocketRPCHandler("llmGetProviderConfigTemplate", chat.RpcLLMGetProviderConfigTemplate)
 	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
 	RegisterWebSocketRPCHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
 	RegisterWebSocketRPCHandler("llmGetModels", chat.RpcLLMGetModels)
@@ -261,8 +269,54 @@ func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
 	return w.String(), nil
 }
 
-func handleShell(command string) (string, error) {
-	return "ECHO: " + command, nil
+func handleShell(wc *WebConsole, line string) (string, error) {
+	fields := util.SplitFields(line, true)
+	if len(fields) == 0 {
+		return "", nil
+	}
+	if runtime.GOOS == "windows" {
+		// on windows, command line keeps the trailing ';'
+		fields[len(fields)-1] = strings.TrimSuffix(fields[len(fields)-1], ";")
+	}
+	cmd := findCommand(fields[0])
+	switch cmd {
+	case "sql":
+		wc.sendMessage(&eventbus.Event{
+			Type: eventbus.EVT_LOG,
+			Log: &eventbus.Log{
+				Level:     "INFO",
+				Timestamp: time.Now().UnixNano(),
+				Message:   fmt.Sprintf("Executing SQL: %s", line),
+			},
+		})
+		return "SQL: " + line, nil
+	default:
+		return "ECHO: " + line, nil
+	}
+}
+
+func findCommand(cmdName string) string {
+	if IsSqlCommand(cmdName) {
+		return "sql"
+	}
+	return strings.ToLower(cmdName)
+}
+
+var sqlCommands = []string{
+	"select", "insert", "update", "delete", "alter",
+	"create", "drop", "truncate", "exec",
+	"mount", "unmount", "backup",
+	"grant", "revoke",
+}
+
+func IsSqlCommand(cmd string) bool {
+	cmd = strings.ToLower(cmd)
+	for _, c := range sqlCommands {
+		if c == cmd {
+			return true
+		}
+	}
+	return false
 }
 
 func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {

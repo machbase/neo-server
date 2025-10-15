@@ -169,20 +169,6 @@ func RpcLLMGetProviders() []string {
 	return llmSupportedProviders
 }
 
-func RpcLLMGetProviderConfigTemplate(provider string) (any, error) {
-	if !isSupportedLLMProvider(provider) {
-		return nil, fmt.Errorf("unknown provider: %s", provider)
-	}
-	switch provider {
-	case "claude":
-		return NewClaudeConfig(), nil
-	case "ollama":
-		return NewOllamaConfig(), nil
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", provider)
-	}
-}
-
 func RpcLLMGetProviderConfig(provider string) (any, error) {
 	var ret any
 	var err error

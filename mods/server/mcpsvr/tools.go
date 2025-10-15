@@ -2,6 +2,7 @@ package mcpsvr
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -25,6 +26,8 @@ func init() {
 		ToolListTables,
 		ToolListTableTags,
 		ToolDescribeTable,
+		ToolDocsAvailableList,
+		ToolDocsFetch,
 	)
 }
 
@@ -219,7 +222,19 @@ func toolGenSqlFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 var ToolExecSQL = server.ServerTool{
 	Tool: mcp.NewTool("execute_sql_query",
-		mcp.WithDescription("Execute a specified SQL query and return the results."),
+		mcp.WithDescription(`Execute a specified SQL query and return the results.
+
+	**IMPORTANT: Always check table structure first to understand column names,
+				data types, and time intervals before execution.**
+	**MANDATORY: Must use Machbase Neo documentation only.
+				Use docs_fetch to find exact syntax before writing any queries.
+				General SQL knowledge must not be used
+				- only documented Machbase Neo syntax and functions are allowed.**
+	**EXECUTION POLICY: Must test and verify all SQL queries before providing
+				them as answers. Only provide successfully executed and validated code to users.**
+
+	If no data is returned, it will be treated as a failure.	
+`),
 		mcp.WithString("query",
 			mcp.Required(),
 			mcp.Description("SQL query to execute"),
@@ -300,7 +315,17 @@ func toolExecQuerySQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mc
 
 var ToolExecTQL = server.ServerTool{
 	Tool: mcp.NewTool("execute_tql_script",
-		mcp.WithDescription("Execute a specified TQL script and return the results."),
+		mcp.WithDescription(`Execute a specified TQL script and return the results.
+
+	**CRITICAL: Before executing, analyze target table structure and
+				time intervals (minute/hour/daily data) as TQL operations
+				heavily depend on correct time-based aggregations.**
+	**MANDATORY: TQL syntax is unique to Machbase Neo. Must reference
+				documentation using docs_fetch before writing any TQL scripts.
+				Only use syntax and examples found in official documentation
+				- no assumptions or general query language knowledge allowed.**
+	**EXECUTION POLICY: Must test and verify all TQL scripts before providing them as answers. Only provide successfully executed and validated code to users.**
+`),
 		mcp.WithString("script", mcp.Required(), mcp.Description("TQL script to execute")),
 	),
 	Handler: toolExecTQLFunc,
@@ -369,4 +394,64 @@ func toolExecTQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	}
 	b, _ := json.Marshal(obj)
 	return mcp.NewToolResultText(string(b)), nil
+}
+
+//go:embed docs/*
+var docsFS embed.FS
+
+var ToolDocsAvailableList = server.ServerTool{
+	Tool: mcp.NewTool("docs_available_list",
+		mcp.WithDescription("List all available documentation files."),
+	),
+	Handler: toolDocsAvailableListFunc,
+}
+
+func toolDocsAvailableListFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// return the content of ./docs/index.md file
+	content, err := docsFS.ReadFile("docs/index.md")
+	if err != nil {
+		return mcp.NewToolResultError("failed to read docs/index.md: " + err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(content)), nil
+}
+
+var ToolDocsFetch = server.ServerTool{
+	Tool: mcp.NewTool("docs_fetch",
+		mcp.WithDescription(`Fetch the content of a specified documentation file.
+
+    **MANDATORY RESTRICTION**: 
+    ALWAYS search non-dbms folders (operations/, sql/, tql/, api/, utilities/, etc.) FIRST for all questions.
+
+    Use paths starting with "dbms/" ONLY when:
+    - The user's question explicitly mentions "DBMS" keyword, OR
+    - You have already searched at least one relevant non-dbms folder and found no information
+
+    Before using dbms/, briefly state which non-dbms folder you searched.
+    
+    Args:
+        file_identifier: relative path (e.g., "sql/rollup.md")
+`),
+		mcp.WithString("filename", mcp.Required(), mcp.Description("Name of the documentation file to fetch")),
+	),
+	Handler: toolDocsFetchFunc,
+}
+
+func toolDocsFetchFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	docName, err := request.RequireString("filename")
+	if err != nil {
+		return mcp.NewToolResultError("filename must be a string: " + err.Error()), nil
+	}
+	// sanitize docName to prevent directory traversal attacks
+	if strings.Contains(docName, "..") || strings.HasPrefix(docName, "/") || strings.HasPrefix(docName, "\\") {
+		return mcp.NewToolResultError("invalid filename: " + docName), nil
+	}
+	if !strings.HasPrefix(docName, "docs/") {
+		docName = "docs/" + docName
+	}
+	content, err := docsFS.ReadFile(docName)
+	if err != nil {
+		return mcp.NewToolResultError("failed to read documentation file: " + err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(content)), nil
 }
