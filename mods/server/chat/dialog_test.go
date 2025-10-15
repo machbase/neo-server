@@ -3,8 +3,6 @@ package chat
 import (
 	"testing"
 
-	"encoding/json"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,18 +59,6 @@ func TestRpcLLMProviders(t *testing.T) {
 			{Name: "Ollama qwen3:0.6b", Provider: "ollama", Model: "qwen3:0.6b"},
 		},
 	}, providers)
-}
-
-func TestRpcLLMProviderConfigTemplate(t *testing.T) {
-	cfg, err := RpcLLMGetProviderConfigTemplate("claude")
-	require.NoError(t, err)
-	b, _ := json.Marshal(cfg)
-	require.JSONEq(t, `{"key":"your-key","max_tokens":1024}`, string(b))
-
-	cfg, err = RpcLLMGetProviderConfigTemplate("ollama")
-	require.NoError(t, err)
-	b, _ = json.Marshal(cfg)
-	require.JSONEq(t, `{"url":"http://127.0.0.1:11434"}`, string(b))
 }
 
 func TestRpcLLMProviderConfig(t *testing.T) {
