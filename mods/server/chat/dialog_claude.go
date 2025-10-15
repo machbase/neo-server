@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -244,7 +245,12 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 					switch c := content.(type) {
 					case mcp.TextContent:
 						if d.log.DebugEnabled() {
-							d.log.Debugf("%s Tool result:\n%s", block.ID, c.Text)
+							peek := c.Text
+							if len(peek) > 128 {
+								peek = peek[:128] + "..."
+							}
+							peek = strings.ReplaceAll(peek, "\n", "\\n")
+							d.log.Debugf("%s Tool result:\n%s", block.ID, peek)
 						}
 						callResult = c.Text
 					default:
