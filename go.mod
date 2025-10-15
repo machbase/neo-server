@@ -32,7 +32,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.8
 	github.com/jellydator/ttlcache/v3 v3.3.0
 	github.com/lib/pq v1.10.9
-	github.com/machbase/neo-engine/v8 v8.0.49
+	github.com/machbase/neo-engine/v8 v8.0.50
 	github.com/machbase/neo-pkgdev v0.0.0-20240911234518-701b00a03b6b
 	github.com/magefile/mage v1.15.0
 	github.com/mark3labs/mcp-go v0.37.0
