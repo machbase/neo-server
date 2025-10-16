@@ -73,7 +73,7 @@ func TestRpcLLMProviderConfig(t *testing.T) {
 	cfg, err := RpcLLMGetProviderConfig("claude")
 	require.NoError(t, err)
 	require.EqualValues(t, ClaudeConfig{
-		Key:       "some-rea******",
+		Key:       "some-rea*******************",
 		MaxTokens: 1000,
 	}, cfg)
 

@@ -16,31 +16,37 @@ type UnknownDialog struct {
 	error    string
 }
 
+func (d *UnknownDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
+	eventbus.PublishMessage(d.topic, d.session,
+		&eventbus.Message{
+			Ver:  "1.0",
+			ID:   d.msgID,
+			Type: typ,
+			Body: body,
+		})
+}
+
 func (d *UnknownDialog) Talk(ctx context.Context, _ string) {
-	eventbus.PublishMessage(d.topic, d.session,
-		&eventbus.Message{
-			Ver:  "1.0",
-			ID:   d.msgID,
-			Type: eventbus.BodyTypeStreamBlockStart,
-		})
-	eventbus.PublishMessage(d.topic, d.session,
-		&eventbus.Message{
-			Ver:  "1.0",
-			ID:   d.msgID,
-			Type: eventbus.BodyTypeStreamBlockDelta,
-			Body: &eventbus.BodyUnion{
-				OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-					ContentType: "error",
-					Text:        d.error,
-				},
-			},
-		})
-	eventbus.PublishMessage(d.topic, d.session,
-		&eventbus.Message{
-			Ver:  "1.0",
-			ID:   d.msgID,
-			Type: eventbus.BodyTypeStreamBlockStop,
-		})
+	d.publish(eventbus.BodyTypeAnswerStart, nil)
+	d.publish(eventbus.BodyTypeStreamMessageStart, nil)
+	d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "text",
+		},
+	})
+	d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "error",
+			Text:        d.error,
+		},
+	})
+	d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "text",
+		},
+	})
+	d.publish(eventbus.BodyTypeStreamMessageStop, nil)
+	d.publish(eventbus.BodyTypeAnswerStop, nil)
 }
 
 type TestingDialog struct {

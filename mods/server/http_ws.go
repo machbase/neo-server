@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +14,7 @@ import (
 	"github.com/machbase/neo-server/v8/mods/eventbus"
 	"github.com/machbase/neo-server/v8/mods/logging"
 	"github.com/machbase/neo-server/v8/mods/server/chat"
-	"github.com/machbase/neo-server/v8/mods/util"
+	"github.com/machbase/neo-server/v8/mods/server/cmd"
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
@@ -44,7 +43,7 @@ func NewWebConsole(username string, consoleId string, conn *websocket.Conn) *Web
 		lastFlushTime: time.Now(),
 		flushPeriod:   300 * time.Millisecond,
 	}
-	eventbus.Default.SubscribeAsync(ret.topic, ret.sendMessage, true)
+	eventbus.Default.SubscribeAsync(ret.topic, ret.Send, true)
 	return ret
 }
 
@@ -56,7 +55,7 @@ func (cons *WebConsole) Run() {
 func (cons *WebConsole) Close() {
 	cons.closeOnce.Do(func() {
 		cons.closed = true
-		eventbus.Default.Unsubscribe(cons.topic, cons.sendMessage)
+		eventbus.Default.Unsubscribe(cons.topic, cons.Send)
 		if cons.conn != nil {
 			cons.conn.Close()
 		}
@@ -128,12 +127,12 @@ func (cons *WebConsole) flushLoop() {
 		if cons.closed {
 			break
 		}
-		cons.sendMessage(nil)
+		cons.Send(nil)
 	}
 	ticker.Stop()
 }
 
-func (cons *WebConsole) sendMessage(evt *eventbus.Event) {
+func (cons *WebConsole) Send(evt *eventbus.Event) {
 	shouldAppend := true
 	forceFlush := false
 
@@ -250,7 +249,6 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 
 func init() {
 	chat.Init()
-	RegisterWebSocketRPCHandler("shell", handleShell)
 	RegisterWebSocketRPCHandler("llmGetProviders", chat.RpcLLMGetProviders)
 	RegisterWebSocketRPCHandler("llmGetProviderConfig", chat.RpcLLMGetProviderConfig)
 	RegisterWebSocketRPCHandler("llmSetProviderConfig", chat.RpcLLMSetProviderConfig)
@@ -269,80 +267,44 @@ func handleMarkdownRender(markdown string, darkMode bool) (string, error) {
 	return w.String(), nil
 }
 
-func handleShell(wc *WebConsole, line string) (string, error) {
-	fields := util.SplitFields(line, true)
-	if len(fields) == 0 {
-		return "", nil
-	}
-	if runtime.GOOS == "windows" {
-		// on windows, command line keeps the trailing ';'
-		fields[len(fields)-1] = strings.TrimSuffix(fields[len(fields)-1], ";")
-	}
-	cmd := findCommand(fields[0])
-	switch cmd {
-	case "sql":
-		wc.sendMessage(&eventbus.Event{
-			Type: eventbus.EVT_LOG,
-			Log: &eventbus.Log{
-				Level:     "INFO",
-				Timestamp: time.Now().UnixNano(),
-				Message:   fmt.Sprintf("Executing SQL: %s", line),
-			},
-		})
-		return "SQL: " + line, nil
-	default:
-		return "ECHO: " + line, nil
-	}
-}
-
-func findCommand(cmdName string) string {
-	if IsSqlCommand(cmdName) {
-		return "sql"
-	}
-	return strings.ToLower(cmdName)
-}
-
-var sqlCommands = []string{
-	"select", "insert", "update", "delete", "alter",
-	"create", "drop", "truncate", "exec",
-	"mount", "unmount", "backup",
-	"grant", "revoke",
-}
-
-func IsSqlCommand(cmd string) bool {
-	cmd = strings.ToLower(cmd)
-	for _, c := range sqlCommands {
-		if c == cmd {
-			return true
-		}
-	}
-	return false
-}
-
 func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *eventbus.Message) {
 	if msg.Ver != "1.0" {
 		eventbus.PublishLog(cons.topic, "ERROR",
 			fmt.Sprintf("unsupported msg.ver: %q", msg.Ver))
 		return
 	}
-	if msg.Type != "question" {
+	switch msg.Type {
+	case eventbus.BodyTypeCommand:
+		if msg.Body == nil || msg.Body.OfCommand == nil {
+			eventbus.PublishLog(cons.topic, "ERROR",
+				"missing command body")
+			return
+		}
+		pc := cmd.Config{
+			Topic:   cons.topic,
+			MsgID:   msg.ID,
+			Session: session,
+		}
+		p := cmd.NewProcessor(pc)
+		p.Process(ctx, msg.Body.OfCommand.Line)
+	case eventbus.BodyTypeQuestion:
+		if msg.Body == nil || msg.Body.OfQuestion == nil {
+			eventbus.PublishLog(cons.topic, "ERROR",
+				"missing question body")
+			return
+		}
+		question := msg.Body.OfQuestion
+		dc := chat.DialogConfig{
+			Topic:    cons.topic,
+			Provider: question.Provider,
+			Model:    question.Model,
+			MsgID:    msg.ID,
+			Session:  session,
+		}
+		d := dc.NewDialog()
+		d.Talk(ctx, question.Text)
+	default:
 		eventbus.PublishLog(cons.topic, "ERROR",
 			fmt.Sprintf("invalid message type %s", msg.Type))
-		return
 	}
-	if msg.Body == nil || msg.Body.OfQuestion == nil {
-		eventbus.PublishLog(cons.topic, "ERROR",
-			"missing question body")
-		return
-	}
-	question := msg.Body.OfQuestion
-	dc := chat.DialogConfig{
-		Topic:    cons.topic,
-		Provider: question.Provider,
-		Model:    question.Model,
-		MsgID:    msg.ID,
-		Session:  session,
-	}
-	d := dc.NewDialog()
-	d.Talk(ctx, question.Text)
 }

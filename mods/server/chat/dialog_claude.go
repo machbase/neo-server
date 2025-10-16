@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,7 +21,7 @@ type ClaudeConfig struct {
 
 func (c *ClaudeConfig) MaskSensitive() {
 	if len(c.Key) > 8 {
-		c.Key = c.Key[:8] + "******"
+		c.Key = c.Key[:8] + strings.Repeat("*", len(c.Key)-8)
 	}
 }
 
@@ -51,6 +50,18 @@ func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) 
 			Type: typ,
 			Body: body,
 		})
+}
+
+func (d *ClaudeDialog) publishCodeFence(lang, code string) {
+	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        fmt.Sprintf("\n🛠️ Executing TQL script:\n```%s\n%s\n```\n\n", lang, code),
+			},
+		})
+	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
 func (d *ClaudeDialog) SendError(errMsg string) {
@@ -123,11 +134,7 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 				return
 			}
 			if d.log.TraceEnabled() {
-				bs := &bytes.Buffer{}
-				enc := json.NewEncoder(bs)
-				enc.SetIndent("", "  ")
-				enc.Encode(event)
-				d.log.Trace(bs.String())
+				d.log.Trace("stream:", event.RawJSON())
 			}
 			switch event := event.AsAny().(type) {
 			case anthropic.MessageStartEvent:
@@ -207,11 +214,7 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 		}
 
 		if d.log.TraceEnabled() {
-			bs := &bytes.Buffer{}
-			enc := json.NewEncoder(bs)
-			enc.SetIndent("", "  ")
-			enc.Encode(message)
-			d.log.Trace("Claude stream ended:", bs.String())
+			d.log.Trace("stream:", message.RawJSON())
 		}
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
@@ -226,6 +229,20 @@ func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
 			case anthropic.ToolUseBlock:
 				if d.log.TraceEnabled() {
 					d.log.Tracef("%s Tool using: %s %v", block.ID, block.Name, variant.JSON.Input.Raw())
+				}
+				switch block.Name {
+				case "execute_tql_script":
+					args := map[string]any{}
+					json.Unmarshal(block.Input, &args)
+					if script, ok := args["script"]; ok {
+						d.publishCodeFence("", script.(string))
+					}
+				case "execute_sql_query":
+					args := map[string]any{}
+					json.Unmarshal(block.Input, &args)
+					if script, ok := args["query"]; ok {
+						d.publishCodeFence("sql", script.(string))
+					}
 				}
 
 				fetchRequest := mcp.CallToolRequest{}

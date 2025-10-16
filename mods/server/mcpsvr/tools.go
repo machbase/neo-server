@@ -324,7 +324,8 @@ var ToolExecTQL = server.ServerTool{
 				documentation using docs_fetch before writing any TQL scripts.
 				Only use syntax and examples found in official documentation
 				- no assumptions or general query language knowledge allowed.**
-	**EXECUTION POLICY: Must test and verify all TQL scripts before providing them as answers. Only provide successfully executed and validated code to users.**
+	**EXECUTION POLICY: Must test and verify all TQL scripts before providing them as answers.
+				Only provide successfully executed and validated code to users.**
 `),
 		mcp.WithString("script", mcp.Required(), mcp.Description("TQL script to execute")),
 	),
