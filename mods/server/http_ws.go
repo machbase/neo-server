@@ -172,7 +172,9 @@ func (cons *WebConsole) Send(evt *eventbus.Event) {
 	}
 
 	for _, msg := range cons.messages {
+		cons.connMutex.Lock()
 		err := cons.conn.WriteJSON(msg)
+		cons.connMutex.Unlock()
 		if err != nil {
 			cons.log.Warn("ERR", err.Error())
 			cons.Close()
@@ -247,11 +249,13 @@ func (cons *WebConsole) handleRpc(ctx context.Context, session string, evt *even
 			"message": "Method not found",
 		}
 	}
+	cons.connMutex.Lock()
 	cons.conn.WriteJSON(map[string]any{
 		"type":    eventbus.EVT_RPC_RSP,
 		"session": session,
 		"rpc":     rsp,
 	})
+	cons.connMutex.Unlock()
 }
 
 func init() {
