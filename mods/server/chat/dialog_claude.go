@@ -14,6 +14,11 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+const (
+	ModelClaudeSonnet4_5 = "claude-sonnet-4-5-20250929"
+	ModelClaudeHaiku4_5  = "claude-haiku-4-5-20251001"
+)
+
 type ClaudeConfig struct {
 	Key       string `json:"key"`
 	MaxTokens int64  `json:"max_tokens"`
@@ -64,13 +69,13 @@ func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) 
 		})
 }
 
-func (d *ClaudeDialog) publishCodeFence(lang, code string) {
+func (d *ClaudeDialog) publishTextBlock(text string) {
 	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 	d.publish(eventbus.BodyTypeStreamBlockDelta,
 		&eventbus.BodyUnion{
 			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
 				ContentType: "text",
-				Text:        fmt.Sprintf("\n🛠️ Executing TQL script:\n```%s\n%s\n```\n\n", lang, code),
+				Text:        text,
 			},
 		})
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
@@ -230,7 +235,7 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 		}
 
 		if d.log.TraceEnabled() {
-			d.log.Trace("stream:", message.RawJSON())
+			d.log.Trace("message:", message.RawJSON())
 		}
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
@@ -251,14 +256,16 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 					args := map[string]any{}
 					json.Unmarshal(block.Input, &args)
 					if script, ok := args["script"]; ok {
-						d.publishCodeFence("", script.(string))
+						d.publishTextBlock(fmt.Sprintf("\n🛠️ Executing TQL script:\n```\n%s\n```\n", script))
 					}
 				case "execute_sql_query":
 					args := map[string]any{}
 					json.Unmarshal(block.Input, &args)
 					if script, ok := args["query"]; ok {
-						d.publishCodeFence("sql", script.(string))
+						d.publishTextBlock(fmt.Sprintf("\n🛠️ Executing SQL script:\n```sql\n%s\n```\n", script))
 					}
+				default:
+					d.publishTextBlock(fmt.Sprintf("\n🛠️ Calling tool: %s\n", block.Name))
 				}
 
 				fetchRequest := mcp.CallToolRequest{}
