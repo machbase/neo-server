@@ -81,6 +81,60 @@ func (d *ClaudeDialog) publishTextBlock(text string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
+func (d *ClaudeDialog) publishTextBlockStart(text string) {
+	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
+	if text == "" {
+		return
+	}
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        text,
+			},
+		})
+}
+
+func (d *ClaudeDialog) publishTextBlockStop() {
+	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+}
+
+func (d *ClaudeDialog) publishTextBlockDelta(text string) {
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        text,
+			},
+		})
+}
+
+func (d *ClaudeDialog) publishThinkingBlockStart(thinking string) {
+	d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "thinking",
+			Thinking:    thinking,
+		},
+	})
+}
+
+func (d *ClaudeDialog) publishThinkingBlockDelta(thinking string) {
+	d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "thinking",
+			Thinking:    thinking,
+		},
+	})
+}
+
+func (d *ClaudeDialog) publishThinkingBlockStop() {
+	d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
+		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+			ContentType: "thinking",
+		},
+	})
+}
+
 func (d *ClaudeDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 	d.publish(eventbus.BodyTypeStreamBlockDelta,
@@ -163,13 +217,7 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 				d.publish(eventbus.BodyTypeStreamMessageStart, nil)
 			case anthropic.MessageDeltaEvent:
 				// Partial message content
-				d.publish(eventbus.BodyTypeStreamMessageDelta,
-					&eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "text",
-							Text:        string(event.Delta.StopReason),
-						},
-					})
+				d.publishTextBlockDelta(string(event.Delta.StopReason))
 			case anthropic.MessageStopEvent:
 				// End of the message
 				d.publish(eventbus.BodyTypeStreamMessageStop, nil)
@@ -181,54 +229,26 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 				switch currentBlockType {
 				case "text":
 					block := event.ContentBlock.AsText()
-					d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "text",
-							Text:        block.Text,
-						},
-					})
+					d.publishTextBlockStart(block.Text)
 				case "thinking":
 					block := event.ContentBlock.AsThinking()
-					d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "thinking",
-							Thinking:    block.Thinking,
-						},
-					})
+					d.publishThinkingBlockStart(block.Thinking)
 				}
 			case anthropic.ContentBlockDeltaEvent:
 				// Partial content block
 				switch currentBlockType {
 				case "text":
-					d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "text",
-							Text:        event.Delta.Text,
-						},
-					})
+					d.publishTextBlockDelta(event.Delta.Text)
 				case "thinking":
-					d.publish(eventbus.BodyTypeStreamBlockDelta, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "thinking",
-							Thinking:    event.Delta.Thinking,
-						},
-					})
+					d.publishThinkingBlockDelta(event.Delta.Thinking)
 				}
 			case anthropic.ContentBlockStopEvent:
 				// End of a content block
 				switch currentBlockType {
 				case "text":
-					d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "text",
-						},
-					})
+					d.publishTextBlockStop()
 				case "thinking":
-					d.publish(eventbus.BodyTypeStreamBlockStop, &eventbus.BodyUnion{
-						OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-							ContentType: "thinking",
-						},
-					})
+					d.publishThinkingBlockStop()
 				}
 				currentBlockType = ""
 			}
@@ -240,6 +260,23 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 		if err := stream.Err(); err != nil {
 			d.SendError(fmt.Sprintf("😡 Stream error: %v", err))
 			return
+		}
+		switch message.StopReason {
+		case anthropic.StopReasonEndTurn:
+			// The most common stop reason. Indicates Claude finished its response naturally.
+		case anthropic.StopReasonPauseTurn:
+			// Used with server tools like web search when Claude needs to pause a long-running operation.
+		case anthropic.StopReasonMaxTokens:
+			// Claude stopped because it reached the max_tokens limit specified in your request.
+		case anthropic.StopReasonStopSequence:
+			// Claude encountered one of your custom stop sequences.
+		case anthropic.StopReasonToolUse:
+			// Indicates the response was cut off because a stop sequence was generated.
+		case anthropic.StopReasonRefusal:
+			// Claude refused to generate a response due to safety concerns.
+		case anthropic.StopReasonModelContextWindowExceeded:
+			// Claude stopped because it reached the model’s context window limit. This allows you to
+			// request the maximum possible tokens without knowing the exact input size.
 		}
 
 		messages = append(messages, message.ToParam())

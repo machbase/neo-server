@@ -56,11 +56,39 @@ func SaveConfig(d interface{}, filename string) error {
 	if err != nil {
 		return err
 	}
+	old := map[string]interface{}{}
 	confFile := filepath.Join(confDir, filename)
+	// remove old backup files
+	files, err := os.ReadDir(confDir)
+	if err == nil {
+		for _, f := range files {
+			if strings.HasPrefix(f.Name(), filename+".bak.") {
+				os.Remove(filepath.Join(confDir, f.Name()))
+			}
+		}
+	}
 	// make backup .bak
 	if _, err := os.Stat(confFile); err == nil {
-		os.Rename(confFile, confFile+time.Now().Format(".bak.20060102_150405"))
+		bakFile := confFile + time.Now().Format(".bak.20060102_150405")
+		if err := os.Rename(confFile, bakFile); err == nil {
+			data, err := os.ReadFile(bakFile)
+			if err == nil {
+				json.Unmarshal(data, &old)
+			}
+		}
 	}
+	newBytes, _ := json.Marshal(d)
+	new := map[string]interface{}{}
+	json.Unmarshal(newBytes, &new)
+	// restore old values for missing keys
+	for k, v := range old {
+		if _, ok := new[k]; !ok {
+			new[k] = v
+		}
+	}
+	d = new
+
+	// Open config file for writing
 	file, err := os.OpenFile(confFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
