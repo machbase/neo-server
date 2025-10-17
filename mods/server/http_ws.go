@@ -172,9 +172,7 @@ func (cons *WebConsole) Send(evt *eventbus.Event) {
 	}
 
 	for _, msg := range cons.messages {
-		cons.connMutex.Lock()
 		err := cons.conn.WriteJSON(msg)
-		cons.connMutex.Unlock()
 		if err != nil {
 			cons.log.Warn("ERR", err.Error())
 			cons.Close()
