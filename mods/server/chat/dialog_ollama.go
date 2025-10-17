@@ -34,6 +34,12 @@ type OllamaDialog struct {
 	log            logging.Log
 }
 
+func (d *OllamaDialog) Input(line string) {
+}
+
+func (d *OllamaDialog) Control(ctrl string) {
+}
+
 func (d *OllamaDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
 	eventbus.PublishMessage(d.topic, d.session,
 		&eventbus.Message{
@@ -56,7 +62,7 @@ func (d *OllamaDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
-func (d *OllamaDialog) Talk(ctx context.Context, message string) {
+func (d *OllamaDialog) Process(ctx context.Context, message string) {
 	d.publish(eventbus.BodyTypeAnswerStart, nil)
 	defer d.publish(eventbus.BodyTypeAnswerStop, nil)
 

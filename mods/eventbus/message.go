@@ -51,6 +51,7 @@ type BodyType string
 const (
 	BodyTypeCommand            BodyType = "command"
 	BodyTypeQuestion           BodyType = "question"
+	BodyTypeInput              BodyType = "input"
 	BodyTypeAnswerStart        BodyType = "answer-start"
 	BodyTypeAnswerStop         BodyType = "answer-stop"
 	BodyTypeStreamMessageStart BodyType = "stream-message-start"
@@ -64,6 +65,7 @@ const (
 type BodyUnion struct {
 	OfCommand            *Command
 	OfQuestion           *Question
+	OfInput              *Input
 	OfStreamMessageStart *StreamMessageStart
 	OfStreamMessageDelta *StreamMessageDelta
 	OfStreamMessageStop  *StreamMessageStop
@@ -77,6 +79,8 @@ func (bu *BodyUnion) asAny(typ BodyType) any {
 		return nil
 	}
 	switch typ {
+	case BodyTypeInput:
+		return bu.OfInput
 	case BodyTypeCommand:
 		return bu.OfCommand
 	case BodyTypeQuestion:
@@ -99,6 +103,11 @@ func (bu *BodyUnion) asAny(typ BodyType) any {
 
 func (bu *BodyUnion) unmarshal(typ BodyType, data []byte) error {
 	switch typ {
+	case BodyTypeInput:
+		bu.OfInput = &Input{}
+		if err := json.Unmarshal(data, bu.OfInput); err != nil {
+			return err
+		}
 	case BodyTypeCommand:
 		bu.OfCommand = &Command{}
 		if err := json.Unmarshal(data, bu.OfCommand); err != nil {
@@ -151,6 +160,11 @@ type Question struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	Text     string `json:"text"`
+}
+
+type Input struct {
+	Text    string `json:"text,omitempty"`
+	Control string `json:"control,omitempty"`
 }
 
 type StreamMessageStart struct {

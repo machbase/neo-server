@@ -93,7 +93,9 @@ func (c DialogConfig) NewUnknown() *UnknownDialog {
 }
 
 type Dialog interface {
-	Talk(context.Context, string)
+	Process(context.Context, string)
+	Input(string)
+	Control(string)
 }
 
 var (

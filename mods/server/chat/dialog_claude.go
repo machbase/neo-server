@@ -40,6 +40,18 @@ type ClaudeDialog struct {
 	session        string
 	model          string
 	log            logging.Log
+	ctxCancel      context.CancelFunc
+}
+
+func (d *ClaudeDialog) Input(line string) {
+}
+
+func (d *ClaudeDialog) Control(ctrl string) {
+	d.log.Trace("User control:", ctrl)
+	switch ctrl {
+	case "^C":
+		d.ctxCancel()
+	}
 }
 
 func (d *ClaudeDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion) {
@@ -76,13 +88,17 @@ func (d *ClaudeDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
-func (d *ClaudeDialog) Talk(ctx context.Context, userMessage string) {
+func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 	d.publish(eventbus.BodyTypeAnswerStart, nil)
 	defer d.publish(eventbus.BodyTypeAnswerStop, nil)
 
 	claudeClient := anthropic.NewClient(
 		option.WithAPIKey(d.Key),
 	)
+
+	ctx, cancel := context.WithCancel(ctxParent)
+	d.ctxCancel = cancel
+	defer cancel()
 
 	var toolParams []anthropic.ToolUnionParam
 	if tools, err := mcpsvr.ListTools(ctx); err != nil {

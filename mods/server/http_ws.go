@@ -18,6 +18,12 @@ import (
 	"github.com/machbase/neo-server/v8/mods/util/mdconv"
 )
 
+type WebConsoleProcessor interface {
+	Process(ctx context.Context, line string)
+	Input(line string)
+	Control(ctrl string)
+}
+
 type WebConsole struct {
 	log       logging.Log
 	username  string
@@ -31,6 +37,7 @@ type WebConsole struct {
 	messages      []*eventbus.Event
 	lastFlushTime time.Time
 	flushPeriod   time.Duration
+	processor     WebConsoleProcessor
 }
 
 func NewWebConsole(username string, consoleId string, conn *websocket.Conn) *WebConsole {
@@ -274,6 +281,21 @@ func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *
 		return
 	}
 	switch msg.Type {
+	case eventbus.BodyTypeInput:
+		if cons.processor != nil {
+			if msg.Body == nil || msg.Body.OfInput == nil {
+				eventbus.PublishLog(cons.topic, "ERROR",
+					"missing input body")
+				return
+			}
+			input := msg.Body.OfInput
+			if input.Text != "" {
+				cons.processor.Input(input.Text)
+			}
+			if input.Control != "" {
+				cons.processor.Control(input.Control)
+			}
+		}
 	case eventbus.BodyTypeCommand:
 		if msg.Body == nil || msg.Body.OfCommand == nil {
 			eventbus.PublishLog(cons.topic, "ERROR",
@@ -285,7 +307,8 @@ func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *
 			MsgID:   msg.ID,
 			Session: session,
 		}
-		p := cmd.NewProcessor(pc)
+		p := pc.NewProcessor()
+		cons.processor = p
 		p.Process(ctx, msg.Body.OfCommand.Line)
 	case eventbus.BodyTypeQuestion:
 		if msg.Body == nil || msg.Body.OfQuestion == nil {
@@ -302,7 +325,8 @@ func (cons *WebConsole) handleMessage(ctx context.Context, session string, msg *
 			Session:  session,
 		}
 		d := dc.NewDialog()
-		d.Talk(ctx, question.Text)
+		cons.processor = d
+		d.Process(ctx, question.Text)
 	default:
 		eventbus.PublishLog(cons.topic, "ERROR",
 			fmt.Sprintf("invalid message type %s", msg.Type))

@@ -26,7 +26,13 @@ func (d *UnknownDialog) publish(typ eventbus.BodyType, body *eventbus.BodyUnion)
 		})
 }
 
-func (d *UnknownDialog) Talk(ctx context.Context, _ string) {
+func (d *UnknownDialog) Input(line string) {
+}
+
+func (d *UnknownDialog) Control(ctrl string) {
+}
+
+func (d *UnknownDialog) Process(ctx context.Context, _ string) {
 	d.publish(eventbus.BodyTypeAnswerStart, nil)
 	d.publish(eventbus.BodyTypeStreamMessageStart, nil)
 	d.publish(eventbus.BodyTypeStreamBlockStart, &eventbus.BodyUnion{
@@ -57,7 +63,13 @@ type TestingDialog struct {
 	model    string
 }
 
-func (d *TestingDialog) Talk(ctx context.Context, message string) {
+func (d *TestingDialog) Input(line string) {
+}
+
+func (d *TestingDialog) Control(ctrl string) {
+}
+
+func (d *TestingDialog) Process(ctx context.Context, message string) {
 	// Simulate a response
 	eventbus.PublishMessage(d.topic, d.session,
 		&eventbus.Message{

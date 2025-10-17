@@ -16,14 +16,22 @@ type Config struct {
 	Session string
 }
 
-type Processor struct {
-	Config
+func (c Config) NewProcessor() *Processor {
+	return &Processor{
+		Config: c,
+	}
 }
 
-func NewProcessor(cfg Config) *Processor {
-	return &Processor{
-		Config: cfg,
-	}
+type Processor struct {
+	Config
+	control string
+}
+
+func (p *Processor) Input(line string) {
+}
+
+func (p *Processor) Control(ctrl string) {
+	p.control = ctrl
 }
 
 func (p *Processor) Process(ctx context.Context, line string) {
@@ -48,6 +56,10 @@ func (p *Processor) Process(ctx context.Context, line string) {
 	case "sql":
 		p.Printf("Executing SQL: %s\n", line)
 		for i := range 10 {
+			if p.control == "^C" {
+				p.Printf("SQL execution stopped by user\n")
+				break
+			}
 			p.Printf("[%d] %v\n", i, time.Now())
 			time.Sleep(time.Second)
 		}
