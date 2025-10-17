@@ -7,6 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/ollama/ollama/api"
 )
 
 func NewClient(ctx context.Context, endpoint string) (*client.Client, error) {
@@ -40,7 +41,7 @@ func NewClient(ctx context.Context, endpoint string) (*client.Client, error) {
 
 func CallTool(ctx context.Context, toolCall mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if toolCall.Request.Method != "tools/call" {
-		return mcp.NewToolResultError("invalid method: " + toolCall.Request.Method), nil
+		return mcp.NewToolResultError("CallTool invalid method: " + toolCall.Request.Method), nil
 	}
 	// direct mode, find the tool from registered tools
 	for _, tool := range registeredTools {
@@ -52,13 +53,19 @@ func CallTool(ctx context.Context, toolCall mcp.CallToolRequest) (*mcp.CallToolR
 				if err := json.Unmarshal(raw, &args); err == nil {
 					toolCall.Params.Arguments = args
 				}
+			case api.ToolCallFunctionArguments: // ollama style
+				var args = map[string]interface{}{}
+				for k, v := range raw {
+					args[k] = v
+				}
+				toolCall.Params.Arguments = args
 			default:
-				return mcp.NewToolResultError(fmt.Sprintf("tool invalid arguments: %s, %T", toolCall.Params.Name, raw)), nil
+				return mcp.NewToolResultError(fmt.Sprintf("CallTool invalid arguments: %s, %T", toolCall.Params.Name, raw)), nil
 			}
 			return tool.Handler(ctx, toolCall)
 		}
 	}
-	return mcp.NewToolResultError("tool not found: " + toolCall.Params.Name), nil
+	return mcp.NewToolResultError("CallTool not found: " + toolCall.Params.Name), nil
 }
 
 func ListTools(ctx context.Context) (*mcp.ListToolsResult, error) {

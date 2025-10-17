@@ -328,8 +328,8 @@ github.com/nyaosorg/go-box/v2 v2.1.4 h1:kD+hlbceIG93HiI2wxOvnuPGZzNcEt/gWNu1krgZ
 github.com/nyaosorg/go-box/v2 v2.1.4/go.mod h1:raYiz1+ScY4DdrnuoJ8IO5BkE65AldpV9HHuXLg2O1U=
 github.com/nyaosorg/go-readline-ny v1.0.1 h1:btfsdjQTfciYcY5Rbds1nOsHuw1+fo6agegv/3v4Txg=
 github.com/nyaosorg/go-readline-ny v1.0.1/go.mod h1:/JojGEnLMPy6g+oHBMqy1/AEUDUgjiG2lUYOalhtQpY=
-github.com/ollama/ollama v0.11.3 h1:mtzQLZcQZ7e9f7ge2wu5qBqokmY97EzNRXm9Y8V56No=
-github.com/ollama/ollama v0.11.3/go.mod h1:9+1//yWPsDE2u+l1a5mpaKrYw4VdnSsRU3ioq5BvMms=
+github.com/ollama/ollama v0.12.6 h1:bJwDFeFFswOIXkfmSTQReV6Mj3yzPkP2LPb/OjSHQ2M=
+github.com/ollama/ollama v0.12.6/go.mod h1:9+1//yWPsDE2u+l1a5mpaKrYw4VdnSsRU3ioq5BvMms=
 github.com/onsi/gomega v1.34.1 h1:EUMJIKUjM8sKjYbtxQI9A4z2o+rruxnzNvpknOXie6k=
 github.com/onsi/gomega v1.34.1/go.mod h1:kU1QgUvBDLXBJq618Xvm2LUX6rSAfRaFRTcdOeDLwwY=
 github.com/orcaman/concurrent-map/v2 v2.0.1 h1:jOJ5Pg2w1oeB6PeDurIYf6k9PQ+aTITr/6lP/L/zp6c=

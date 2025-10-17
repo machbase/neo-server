@@ -2,8 +2,8 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 
@@ -62,19 +62,19 @@ func (d *OllamaDialog) SendError(errMsg string) {
 	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
 
+func (d *OllamaDialog) publishTextBlock(text string) {
+	d.publish(eventbus.BodyTypeStreamBlockDelta,
+		&eventbus.BodyUnion{
+			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
+				ContentType: "text",
+				Text:        text,
+			},
+		})
+}
+
 func (d *OllamaDialog) Process(ctx context.Context, message string) {
 	d.publish(eventbus.BodyTypeAnswerStart, nil)
 	defer d.publish(eventbus.BodyTypeAnswerStop, nil)
-
-	// d.publish(eventbus.BodyTypeStreamBlockStart, nil)
-	// d.publish(eventbus.BodyTypeStreamBlockDelta,
-	// 	&eventbus.BodyUnion{
-	// 		OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-	// 			ContentType: "text",
-	// 			Text:        fmt.Sprintf("message from %s\n", d.model),
-	// 		},
-	// 	})
-	// d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 
 	url, _ := url.Parse(d.Url)
 	ollamaClient := api.NewClient(url, &http.Client{
@@ -118,71 +118,73 @@ func (d *OllamaDialog) Process(ctx context.Context, message string) {
 		Think:  &think,
 	}
 
-	d.publish(eventbus.BodyTypeStreamBlockStart, nil)
-	d.publish(eventbus.BodyTypeStreamBlockDelta,
-		&eventbus.BodyUnion{
-			OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-				ContentType: "text",
-				Text:        "🦙 Ollama response: \n",
-			},
-		})
+	for {
+		d.publish(eventbus.BodyTypeStreamMessageStart, nil)
+		d.publish(eventbus.BodyTypeStreamBlockStart, nil)
 
-	err := ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
-		d.publish(eventbus.BodyTypeStreamBlockDelta,
-			&eventbus.BodyUnion{
-				OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-					ContentType: "text",
-					Text:        html.EscapeString(resp.Message.Content),
-				},
-			})
-		// Ollma tools to call
-		for _, toolCall := range resp.Message.ToolCalls {
-			// 🖐️ Call the mcp server
-			d.publish(eventbus.BodyTypeStreamBlockDelta,
-				&eventbus.BodyUnion{
-					OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-						ContentType: "text",
-						Text:        fmt.Sprintf("🦙🛠️ %s %v\n", toolCall.Function.Name, toolCall.Function.Arguments),
-					},
-				})
-			fetchRequest := mcp.CallToolRequest{}
-			fetchRequest.Request.Method = "tools/call"
-			fetchRequest.Params.Name = toolCall.Function.Name
-			fetchRequest.Params.Arguments = toolCall.Function.Arguments
-
-			result, err := mcpsvr.CallTool(ctx, fetchRequest)
-			if err != nil {
-				d.SendError(fmt.Sprintf("Failed to call tool: %v", err))
+		messages = []api.Message{}
+		err := ollamaClient.Chat(ctx, req, func(resp api.ChatResponse) error {
+			messages = append(messages, resp.Message)
+			if len(resp.Message.ToolCalls) == 0 {
+				d.publishTextBlock(resp.Message.Content)
 			}
-			// display the text content of result
-			d.publish(eventbus.BodyTypeStreamBlockDelta,
-				&eventbus.BodyUnion{
-					OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-						ContentType: "text",
-						Text:        "🌍 call result:",
-					},
-				})
-			for _, content := range result.Content {
-				switch c := content.(type) {
-				case mcp.TextContent:
-					d.publish(eventbus.BodyTypeStreamBlockDelta,
-						&eventbus.BodyUnion{
-							OfStreamBlockDelta: &eventbus.StreamBlockDelta{
-								ContentType: "text",
-								Text:        html.EscapeString(c.Text),
-							},
-						})
-				default:
-					d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
+			return nil
+		})
+		if err != nil {
+			d.publishTextBlock(fmt.Sprintf("Failed to chat with Ollama: %v\n", err))
+			d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+			d.publish(eventbus.BodyTypeStreamMessageStop, nil)
+			return
+		}
+		d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+
+		toolCalls := 0
+		for _, msg := range messages {
+			if len(msg.ToolCalls) == 0 {
+				req.Messages = append(req.Messages, msg)
+				continue
+			}
+			// Ollama tools to call
+			for _, toolCall := range msg.ToolCalls {
+				toolCalls++
+				d.publish(eventbus.BodyTypeStreamBlockStart, nil)
+				d.publishTextBlock(fmt.Sprintf("🛠️ %s %v\n", toolCall.Function.Name, toolCall.Function.Arguments))
+
+				fetchRequest := mcp.CallToolRequest{}
+				fetchRequest.Request.Method = "tools/call"
+				fetchRequest.Params.Name = toolCall.Function.Name
+				fetchRequest.Params.Arguments = toolCall.Function.Arguments
+
+				result, err := mcpsvr.CallTool(ctx, fetchRequest)
+				if err != nil {
+					d.publishTextBlock(fmt.Sprintf("Failed to call tool: %v", err))
+					d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+					d.publish(eventbus.BodyTypeStreamMessageStop, nil)
+					return
+				}
+				if result.IsError {
+					buf, _ := json.Marshal(result)
+					d.publishTextBlock(fmt.Sprintf("Error to call tool: %v", string(buf)))
+					d.publish(eventbus.BodyTypeStreamBlockStop, nil)
+					d.publish(eventbus.BodyTypeStreamMessageStop, nil)
+					return
+				}
+				// display the text content of result
+				d.publishTextBlock("🌍 call result:\n")
+				for _, content := range result.Content {
+					switch c := content.(type) {
+					case mcp.TextContent:
+						req.Messages = append(req.Messages, api.Message{Role: "tool", ToolName: toolCall.Function.Name, Content: c.Text})
+						d.publishTextBlock(">>" + c.Text + "<<\n")
+					default:
+						d.publishTextBlock(fmt.Sprintf("😡 Unhandled content type from tool: %#v\n", c))
+					}
 				}
 			}
 		}
-		return nil
-	})
-
-	if err != nil {
-		d.SendError(fmt.Sprintf("Failed to chat with Ollama: %v", err))
+		d.publish(eventbus.BodyTypeStreamMessageStop, nil)
+		if toolCalls == 0 {
+			break
+		}
 	}
-
-	d.publish(eventbus.BodyTypeStreamBlockStop, nil)
 }
