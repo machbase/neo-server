@@ -1,15 +1,17 @@
 package chat
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
-	InitWithConfig("../../../tmp/llm")
+	InitWithConfig("../../../tmp/chat_llm")
 	SetTesting(true)
 	m.Run()
+	os.RemoveAll("../../../tmp/chat_llm")
 }
 
 func TestRpcLLMProviders(t *testing.T) {
@@ -27,7 +29,7 @@ func TestRpcLLMProviders(t *testing.T) {
 		},
 	}, providers)
 
-	err = RpcLLMAddModels([]LLMProvider{
+	err = RpcLLMAddModels0([]LLMProvider{
 		{Name: "Ollama deepseek-r1:1.5b", Provider: "ollama", Model: "deepseek-r1:1.5b"},
 	})
 	require.NoError(t, err)
@@ -44,7 +46,7 @@ func TestRpcLLMProviders(t *testing.T) {
 		},
 	}, providers)
 
-	err = RpcLLMRemoveModels([]LLMProvider{
+	err = RpcLLMRemoveModels0([]LLMProvider{
 		{Name: "Ollama deepseek-r1:1.5b", Provider: "ollama", Model: "deepseek-r1:1.5b"},
 	})
 	require.NoError(t, err)

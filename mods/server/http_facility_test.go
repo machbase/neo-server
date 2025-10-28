@@ -82,7 +82,6 @@ func NewMockServer(w *httptest.ResponseRecorder) (*mockServer, *gin.Context, *gi
 		db:              ret,
 		neoShellAccount: map[string]string{},
 		jwtCache:        NewJwtCache(),
-		memoryFs:        &MemoryFS{},
 	}
 	ctx, engine := gin.CreateTestContext(w)
 	engine.POST("/web/api/login", svr.handleLogin)

@@ -850,7 +850,6 @@ func (svr *httpd) handleTqlQuery(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, rsp)
 		return
 	}
-	task.SetVolatileAssetsProvider(svr.memoryFs)
 	ctx.Writer.Header().Set("Content-Type", task.OutputContentType())
 	ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
 	if chart := task.OutputChartType(); len(chart) > 0 {

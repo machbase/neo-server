@@ -351,6 +351,20 @@ func (c *Conn) Exec(ctx context.Context, query string, args ...any) api.Result {
 	}
 }
 
+func (c *Conn) Prepare(ctx context.Context, query string) error {
+	stmt, err := c.NewStmt()
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	stmt.sqlHead = strings.ToUpper(strings.Fields(query)[0])
+	if err := stmt.prepare(query); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Conn) QueryRow(ctx context.Context, query string, args ...any) api.Row {
 	ret := &Row{}
 	stmt, err := c.NewStmt()

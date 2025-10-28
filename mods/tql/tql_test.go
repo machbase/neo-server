@@ -41,6 +41,8 @@ func TestMain(m *testing.M) {
 	f, _ := ssfs.NewServerSideFileSystem([]string{"/=test"})
 	ssfs.SetDefault(f)
 
+	tql.Init()
+
 	http, err := server.NewHttp(db,
 		server.WithHttpListenAddress("tcp://127.0.0.1:0"),
 	)
@@ -58,6 +60,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	http.Stop()
+	tql.Deinit()
 	testServer.DropTestTables()
 	testServer.StopServer(m)
 	os.Exit(code)

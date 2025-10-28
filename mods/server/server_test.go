@@ -49,12 +49,13 @@ func TestMain(m *testing.M) {
 	fileDirs := []string{"/=./test"}
 	serverFs, _ := ssfs.NewServerSideFileSystem(fileDirs)
 	ssfs.SetDefault(serverFs)
-	tqlLoader := tql.NewLoader()
+	tql.Init()
+	defer tql.Deinit()
 
 	// http server
 	httpOpts := []HttpOption{
 		WithHttpListenAddress("tcp://127.0.0.1:0"),
-		WithHttpTqlLoader(tqlLoader),
+		WithHttpTqlLoader(tql.NewLoader()),
 		WithHttpEulaFilePath("./testsuite_tmp/eula.txt"),
 		WithHttpPathMap("data", dataPath),
 	}
@@ -77,7 +78,7 @@ func TestMain(m *testing.M) {
 	// mqtt broker
 	mqttOpts := []MqttOption{
 		WithMqttTcpListener("127.0.0.1:0", nil),
-		WithMqttTqlLoader(tqlLoader),
+		WithMqttTqlLoader(tql.NewLoader()),
 	}
 	if svr, err := NewMqtt(database, mqttOpts...); err != nil {
 		panic(err)

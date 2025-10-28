@@ -114,8 +114,7 @@ type httpd struct {
 	experimentModeProvider func() bool
 	uiContentFs            http.FileSystem
 
-	memoryFs *MemoryFS
-	pathMap  map[string]string
+	pathMap map[string]string
 
 	statzAllowed []string
 	cypherAlg    string
@@ -201,10 +200,6 @@ func (svr *httpd) Stop() {
 	svr.httpServer.Shutdown(ctx)
 	cancelFunc()
 	svr.httpServer.Close()
-
-	if svr.memoryFs != nil {
-		svr.memoryFs.Stop()
-	}
 }
 
 func (svr *httpd) AdvertiseAddress() string {
@@ -286,10 +281,7 @@ func (svr *httpd) Router() *gin.Engine {
 				svr.log.Infof("MQTT websocket handler enabled")
 			}
 			if svr.tqlLoader != nil {
-				svr.memoryFs = NewMemoryFS("/web/api/tql-assets/")
-				go svr.memoryFs.Start()
-				svr.tqlLoader.SetVolatileAssetsProvider(svr.memoryFs)
-				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(svr.memoryFs)))
+				group.GET("/api/tql-assets/*path", gin.WrapH(http.FileServer(tql.HttpFileSystem())))
 			}
 			if svr.pkgMgr != nil {
 				svr.pkgMgr.HttpAppRouter(group, svr.handleTqlFile)

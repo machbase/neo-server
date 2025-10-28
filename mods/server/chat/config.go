@@ -103,6 +103,18 @@ func SaveConfig(d interface{}, filename string) error {
 	return nil
 }
 
+func ExistsConfig(filename string) bool {
+	confDir, err := configDir()
+	if err != nil {
+		return false
+	}
+	confFile := filepath.Join(confDir, filename)
+	if _, err := os.Stat(confFile); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func LoadConfig(d interface{}, filename string) error {
 	confDir, err := configDir()
 	if err != nil {
@@ -180,19 +192,12 @@ func loadLLMProviders() map[string][]LLMProvider {
 		}
 		defer file.Close()
 		var ret = map[string][]LLMProvider{}
-		var models []LLMProvider
 		decoder := json.NewDecoder(file)
-		if err := decoder.Decode(&models); err != nil {
+		if err := decoder.Decode(&ret); err != nil {
 			return fallbackModels
 		}
-		if len(models) == 0 {
+		if len(ret) == 0 {
 			return fallbackModels
-		}
-		for _, m := range models {
-			if _, ok := ret[m.Provider]; !ok {
-				ret[m.Provider] = []LLMProvider{}
-			}
-			ret[m.Provider] = append(ret[m.Provider], m)
 		}
 		return ret
 	}

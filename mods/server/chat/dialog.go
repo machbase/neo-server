@@ -48,7 +48,7 @@ func (c DialogConfig) NewOllama() *OllamaDialog {
 		log:            logging.GetLog("chat.ollama"),
 	}
 	LoadConfig(ret, "ollama.json")
-	LoadConfig(ret.systemMessages, "system.json")
+	LoadConfig(&ret.systemMessages, "system.json")
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
@@ -65,7 +65,7 @@ func (c DialogConfig) NewClaude() *ClaudeDialog {
 		log:            logging.GetLog("chat.claude"),
 	}
 	LoadConfig(ret, "claude.json")
-	LoadConfig(ret.systemMessages, "system.json")
+	LoadConfig(&ret.systemMessages, "system.json")
 	ret.systemMessages, _ = loadSystemMessages(ret.systemMessages)
 	return ret
 }
@@ -134,7 +134,43 @@ func RpcLLMGetModels() (map[string][]LLMProvider, error) {
 	return llmProviders, nil
 }
 
-func RpcLLMAddModels(providers []LLMProvider) error {
+func RpcLLMAddModels(providers ...map[string]any) error {
+	vals := []LLMProvider{}
+	for _, p := range providers {
+		nameVal, ok := p["name"]
+		if !ok {
+			return fmt.Errorf("missing name field")
+		}
+		name, ok := nameVal.(string)
+		if !ok {
+			return fmt.Errorf("invalid name field")
+		}
+		providerVal, ok := p["provider"]
+		if !ok {
+			return fmt.Errorf("missing provider field")
+		}
+		provider, ok := providerVal.(string)
+		if !ok {
+			return fmt.Errorf("invalid provider field")
+		}
+		modelVal, ok := p["model"]
+		if !ok {
+			return fmt.Errorf("missing model field")
+		}
+		model, ok := modelVal.(string)
+		if !ok {
+			return fmt.Errorf("invalid model field")
+		}
+		vals = append(vals, LLMProvider{
+			Name:     name,
+			Provider: provider,
+			Model:    model,
+		})
+	}
+	return RpcLLMAddModels0(vals)
+}
+
+func RpcLLMAddModels0(providers []LLMProvider) error {
 	llmProvidersMutex.Lock()
 	defer llmProvidersMutex.Unlock()
 	for _, p := range providers {
@@ -147,7 +183,34 @@ func RpcLLMAddModels(providers []LLMProvider) error {
 	return nil
 }
 
-func RpcLLMRemoveModels(providers []LLMProvider) error {
+func RpcLLMRemoveModels(providers ...map[string]any) error {
+	vals := []LLMProvider{}
+	for _, p := range providers {
+		providerVal, ok := p["provider"]
+		if !ok {
+			return fmt.Errorf("missing provider field")
+		}
+		provider, ok := providerVal.(string)
+		if !ok {
+			return fmt.Errorf("invalid provider field")
+		}
+		modelVal, ok := p["model"]
+		if !ok {
+			return fmt.Errorf("missing model field")
+		}
+		model, ok := modelVal.(string)
+		if !ok {
+			return fmt.Errorf("invalid model field")
+		}
+		vals = append(vals, LLMProvider{
+			Provider: provider,
+			Model:    model,
+		})
+	}
+	return RpcLLMRemoveModels0(vals)
+}
+
+func RpcLLMRemoveModels0(providers []LLMProvider) error {
 	llmProvidersMutex.Lock()
 	defer llmProvidersMutex.Unlock()
 	for _, p := range providers {

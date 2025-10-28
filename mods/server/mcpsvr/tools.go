@@ -341,22 +341,11 @@ func toolExecTQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	outWriter := &strings.Builder{}
 
 	task := tql.NewTaskContext(ctx)
-	// task.SetParams(params)
-	// task.SetInputReader(input)
+	task.SetParams(map[string][]string{})
 	task.SetLogWriter(logging.GetLog("_llm.tql"))
-	//task.SetConsoleLogLevel(consoleInfo.consoleLogLevel)
-	// if claim != nil && consoleInfo.consoleId != "" {
-	// 	if svr.authServer == nil {
-	// 		task.SetConsole(claim.Subject, consoleInfo.consoleId, "")
-	// 	} else {
-	// 		otp, _ := svr.authServer.GenerateOtp(claim.Subject)
-	// 		task.SetConsole(claim.Subject, consoleInfo.consoleId, "$otp$:"+otp)
-	// 	}
-	// }
 	task.SetOutputWriterJson(&util.NopCloseWriter{Writer: outWriter}, true)
 	task.SetDatabase(api.Default())
 	if err := task.Compile(codeReader); err != nil {
-		// svr.log.Error("tql parse error", err.Error())
 		return mcp.NewToolResultError("TQL parse error: " + err.Error()), nil
 	}
 	// task.SetVolatileAssetsProvider(svr.memoryFs)
@@ -364,13 +353,6 @@ func toolExecTQLFunc(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	// ctx.Writer.Header().Set("Content-Encoding", task.OutputContentEncoding())
 	// if chart := task.OutputChartType(); len(chart) > 0 {
 	// 	ctx.Writer.Header().Set(TqlHeaderChartType, chart)
-	// }
-	// if headers := task.OutputHttpHeaders(); len(headers) > 0 {
-	// 	for k, vs := range headers {
-	// 		for _, v := range vs {
-	// 			ctx.Writer.Header().Set(k, v)
-	// 		}
-	// 	}
 	// }
 	go func() {
 		<-ctx.Done()

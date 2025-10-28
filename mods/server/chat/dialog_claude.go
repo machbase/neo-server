@@ -342,6 +342,7 @@ func (d *ClaudeDialog) Process(ctxParent context.Context, userMessage string) {
 							d.log.Tracef("%s Tool result:\n%s", block.ID, peek)
 						}
 						callResult = c.Text
+						d.publishTextBlock(c.Text)
 					default:
 						d.SendError(fmt.Sprintf("😡 Unhandled content type from tool: %#v", c))
 					}

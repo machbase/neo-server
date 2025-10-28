@@ -90,6 +90,7 @@ func NewTaskContext(ctx context.Context) *Task {
 		logLevel: ERROR,
 		_created: time.Now(),
 	}
+	ret.volatileAssetsProvider = instance.vap
 	ret.ctx, ret.ctxCancel = context.WithCancel(ctx)
 	return ret
 }

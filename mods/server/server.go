@@ -88,8 +88,6 @@ type Server struct {
 
 var _ booter.Boot = (*Server)(nil)
 
-var tqlLoader tql.Loader = tql.NewLoader()
-
 func NewServer(conf *Config) (*Server, error) {
 	if navelCord := os.Getenv(NAVEL_ENV); navelCord != "" {
 		if port, err := strconv.ParseInt(navelCord, 10, 64); err == nil {
@@ -183,6 +181,9 @@ func (s *Server) Start() error {
 			return err
 		}
 	}
+
+	// tqlLoader
+	tql.Init()
 
 	// metrics
 	startServerMetrics(s)
@@ -328,6 +329,8 @@ func representativePort(addr string) string {
 
 func (s *Server) Stop() {
 	util.RunShutdownHooks()
+
+	tql.Deinit()
 
 	if db, ok := api.Default().(*machsvr.Database); ok {
 		if err := db.Shutdown(); err != nil {
@@ -757,7 +760,7 @@ func (s *Server) startBridgeAndSchedulerService() error {
 	s.schedSvc = scheduler.NewService(
 		scheduler.WithVerbose(false),
 		scheduler.WithProvider(s.models.ScheduleProvider()),
-		scheduler.WithTqlLoader(tqlLoader),
+		scheduler.WithTqlLoader(tql.NewLoader()),
 		scheduler.WithDatabase(api.Default()),
 	)
 
@@ -801,7 +804,7 @@ func (s *Server) startMqttServer() error {
 	opts := []MqttOption{
 		WithMqttAuthServer(s, s.Mqtt.EnableTokenAuth && !s.Mqtt.EnableTls),
 		WithMqttMaxMessageSizeLimit(s.Mqtt.MaxMessageSizeLimit),
-		WithMqttTqlLoader(tqlLoader),
+		WithMqttTqlLoader(tql.NewLoader()),
 		WithMqttWsHandleListener(s.Http.Listeners),
 	}
 	if s.Mqtt.EnablePersistence {
@@ -845,7 +848,7 @@ func (s *Server) startHttpServer() error {
 		WithHttpEulaFilePath(filepath.Join(s.prefDirPath, "EULA.TXT")),
 		WithHttpListenAddress(s.Http.Listeners...),
 		WithHttpAuthServer(s, s.Http.EnableTokenAuth),
-		WithHttpTqlLoader(tqlLoader),
+		WithHttpTqlLoader(tql.NewLoader()),
 		WithHttpManagementServer(s),        // add, key
 		WithHttpScheduleServer(s.schedSvc), // add, timer
 		WithHttpBridgeServer(s.bridgeSvc),

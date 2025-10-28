@@ -640,6 +640,19 @@ func (conn *Conn) ExecSync(ctx context.Context, sqlText string, params ...any) a
 	return result
 }
 
+func (conn *Conn) Prepare(ctx context.Context, sqlText string) error {
+	var stmt unsafe.Pointer
+	if err := mach.EngAllocStmt(conn.handle, &stmt); err != nil {
+		return err
+	}
+	defer mach.EngFreeStmt(stmt)
+
+	if err := mach.EngPrepare(stmt, sqlText); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Query executes SQL statements that are expected multiple rows as result.
 // Commonly used to execute 'SELECT * FROM <TABLE>'
 //
